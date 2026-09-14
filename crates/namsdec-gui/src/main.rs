@@ -83,6 +83,16 @@ impl AppTheme {
         visuals.widgets.active.corner_radius = widget_radius;
         visuals.widgets.open.corner_radius = widget_radius;
 
+        // Boutons plats au repos (fond et bordure transparents, comme dans
+        // la maquette HTML — `.tool { background: transparent; border:
+        // 1px solid transparent; }`, coloré seulement au survol) : le
+        // style par défaut d'egui donne à CHAQUE bouton un fond visible en
+        // permanence, ce qui fait que la barre de menus (Fichier/Édition/…)
+        // et la barre d'outils (icônes) finissent par se ressembler — une
+        // rangée de boîtes uniformes sans hiérarchie visuelle entre elles.
+        visuals.widgets.inactive.weak_bg_fill = egui::Color32::TRANSPARENT;
+        visuals.widgets.inactive.bg_stroke = egui::Stroke::NONE;
+
         visuals
     }
 }
@@ -1037,6 +1047,16 @@ impl NamsdecApp {
     fn statusbar_ui(&mut self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
         let lang = self.lang;
+
+        if let Some(key) = self.dispatcher.leader_armed() {
+            let text = if lang == Lang::Fr {
+                format!("{} appuyée — touche suivante attendue…", key.name())
+            } else {
+                format!("{} pressed — waiting for next key…", key.name())
+            };
+            ui.colored_label(ACCENT, text);
+        }
+
         ui.horizontal(|ui| match &self.status {
             Status::Idle => {
                 ui.label(s.status_ready);

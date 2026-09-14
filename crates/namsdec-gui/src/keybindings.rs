@@ -144,63 +144,77 @@ impl Dispatcher {
     ) -> Option<Action> {
         let pressed = pressed_keys_this_frame(ctx);
 
-        if let Some(&key) = pressed.first() {
-            // Correspondance EXACTE des modificateurs (pas
-            // `matches_logically`, qui ignore volontairement les
-            // modificateurs *en trop* par rapport au motif — F5 sans
-            // modificateur "matchait" donc tout aussi bien Maj+F5, ce qui
-            // rendait Stop/Reset injoignables tant que Run (F5 nu) était
-            // testé en premier). Avec une correspondance exacte, au plus un
-            // seul raccourci peut matcher une combinaison de touches
-            // donnée : plus besoin de départager par ordre ou spécificité.
-            let modifiers = ctx.input(|i| i.modifiers);
-            for (&action, chord) in &bindings.map {
-                if let Chord::Simple(sc) = chord
-                    && sc.logical_key == key
-                    && modifiers.matches_exact(sc.modifiers)
-                {
-                    self.leader_armed = None;
+        // Parcourt CHAQUE touche pressée cette frame, dans l'ordre — pas
+        // seulement la première. Si l'appli n'a pas repeint entre les deux
+        // frappes d'une séquence (rien ne force un repaint entre elles),
+        // Espace *et* E peuvent atterrir dans le même lot d'évènements
+        // d'une seule frame ; ne regarder que `pressed.first()` armait
+        // Espace puis jetait silencieusement le E qui suivait dans la même
+        // frame, sans jamais compléter la séquence.
+        for &(key, modifiers) in &pressed {
+            // 1. Raccourcis simples — correspondance EXACTE des
+            // modificateurs (pas `matches_logically`, qui tolère des
+            // modificateurs *en trop* par rapport au motif), lus sur
+            // l'évènement lui-même — pas sur l'agrégat `InputState::
+            // modifiers`, qui ne se met à jour que sur
+            // `Event::ModifiersChanged` et peut donc être en retard d'une
+            // frame par rapport au `Event::Key` qu'on est en train de
+            // traiter. C'est aussi exactement ce que fait en interne
+            // `consume_shortcut`/`count_and_consume_key` d'egui.
+            let simple_match = bindings.map.iter().find_map(|(&action, chord)| match chord {
+                Chord::Simple(sc) if sc.logical_key == key && modifiers.matches_exact(sc.modifiers) => {
+                    Some(action)
+                }
+                _ => None,
+            });
+            if let Some(action) = simple_match {
+                self.leader_armed = None;
+                return Some(action);
+            }
+
+            // 2. Seconde touche d'une séquence déjà armée.
+            if let Some(first) = self.leader_armed.take() {
+                let leader_match = bindings
+                    .map
+                    .iter()
+                    .find_map(|(&action, chord)| (*chord == Chord::Leader(first, key)).then_some(action));
+                if let Some(action) = leader_match {
                     return Some(action);
                 }
+                // Pas de correspondance : cette touche redevient
+                // éligible à armer une *nouvelle* séquence ci-dessous.
             }
-        }
 
-        if let Some(first) = self.leader_armed.take() {
-            if let Some(&second) = pressed.first() {
-                for (&action, chord) in &bindings.map {
-                    if *chord == Chord::Leader(first, second) {
-                        return Some(action);
-                    }
-                }
-            }
-            return None;
-        }
-
-        if !editor_focused
-            && let Some(&k) = pressed.first() {
+            // 3. Cette touche peut-elle armer une séquence ?
+            if !editor_focused {
                 let arms_a_leader = bindings
                     .map
                     .values()
-                    .any(|c| matches!(c, Chord::Leader(first, _) if *first == k));
+                    .any(|c| matches!(c, Chord::Leader(first, _) if *first == key));
                 if arms_a_leader {
-                    self.leader_armed = Some(k);
+                    self.leader_armed = Some(key);
                 }
             }
+        }
 
         None
+    }
+
+    /// La première touche d'une séquence en attente de la seconde, s'il y
+    /// en a une — pour afficher un indicateur visible plutôt qu'un état
+    /// muet impossible à distinguer d'un raccourci qui ne fait rien.
+    pub fn leader_armed(&self) -> Option<Key> {
+        self.leader_armed
     }
 
     /// À appeler une fois par frame pendant qu'une capture (`Rebinding`)
     /// est en cours. Renvoie le nouveau `Chord` dès qu'il est complet.
     pub fn poll_rebind(&mut self, ctx: &egui::Context, rebinding: &mut Rebinding) -> Option<Chord> {
         let pressed = pressed_keys_this_frame(ctx);
-        let &key = pressed.first()?;
+        let &(key, modifiers) = pressed.first()?;
 
         match rebinding.mode {
-            RebindMode::Simple => {
-                let modifiers = ctx.input(|i| i.modifiers);
-                Some(Chord::Simple(KeyboardShortcut::new(modifiers, key)))
-            }
+            RebindMode::Simple => Some(Chord::Simple(KeyboardShortcut::new(modifiers, key))),
             RebindMode::Leader => match rebinding.first_captured {
                 None => {
                     rebinding.first_captured = Some(key);
@@ -212,7 +226,11 @@ impl Dispatcher {
     }
 }
 
-fn pressed_keys_this_frame(ctx: &egui::Context) -> Vec<Key> {
+/// Chaque touche pressée cette frame, avec les modificateurs *attachés à
+/// cet évènement précis* — pas l'agrégat `InputState::modifiers`, qui ne
+/// se met à jour que sur `Event::ModifiersChanged` et peut donc être en
+/// retard d'une frame par rapport à l'`Event::Key` en cours de traitement.
+fn pressed_keys_this_frame(ctx: &egui::Context) -> Vec<(Key, Modifiers)> {
     ctx.input(|i| {
         i.events
             .iter()
@@ -221,10 +239,128 @@ fn pressed_keys_this_frame(ctx: &egui::Context) -> Vec<Key> {
                     key,
                     pressed: true,
                     repeat: false,
+                    modifiers,
                     ..
-                } => Some(*key),
+                } => Some((*key, *modifiers)),
                 _ => None,
             })
             .collect()
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use egui::{Event, RawInput};
+
+    fn key_event(key: Key) -> Event {
+        Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Modifiers::NONE,
+        }
+    }
+
+    fn raw_input(events: Vec<Event>) -> RawInput {
+        RawInput {
+            events,
+            ..Default::default()
+        }
+    }
+
+    /// `Context::run_ui` renvoie un `FullOutput` dont `textures_delta` doit
+    /// être explicitement vidé, sinon egui panique volontairement à sa
+    /// destruction (garde-fou pensé pour les intégrations réelles, qui
+    /// n'a pas de sens pour ces tests headless).
+    fn run(ctx: &egui::Context, events: Vec<Event>, mut logic: impl FnMut(&egui::Ui)) {
+        let mut output = ctx.run_ui(raw_input(events), |ui| logic(ui));
+        output.textures_delta.clear();
+    }
+
+    #[test]
+    fn leader_sequence_resolves_even_when_both_keys_land_in_one_frame() {
+        // Régression : si l'appli n'a pas repeint entre les deux frappes,
+        // Espace et E peuvent arriver dans le même lot d'évènements d'une
+        // seule frame plutôt que sur deux frames séparées.
+        let ctx = egui::Context::default();
+        let bindings = KeyBindings::default();
+        let mut dispatcher = Dispatcher::default();
+        let mut result = None;
+
+        run(&ctx, vec![key_event(Key::Space), key_event(Key::E)], |ui| {
+            result = dispatcher.poll(ui.ctx(), &bindings, false);
+        });
+
+        assert_eq!(result, Some(Action::ToggleExplorer));
+    }
+
+    #[test]
+    fn leader_sequence_resolves_across_two_separate_frames() {
+        let ctx = egui::Context::default();
+        let bindings = KeyBindings::default();
+        let mut dispatcher = Dispatcher::default();
+
+        run(&ctx, vec![key_event(Key::Space)], |ui| {
+            assert_eq!(dispatcher.poll(ui.ctx(), &bindings, false), None);
+        });
+        assert_eq!(dispatcher.leader_armed(), Some(Key::Space));
+
+        let mut result = None;
+        run(&ctx, vec![key_event(Key::E)], |ui| {
+            result = dispatcher.poll(ui.ctx(), &bindings, false);
+        });
+
+        assert_eq!(result, Some(Action::ToggleExplorer));
+    }
+
+    #[test]
+    fn leader_does_not_arm_while_editor_focused() {
+        let ctx = egui::Context::default();
+        let bindings = KeyBindings::default();
+        let mut dispatcher = Dispatcher::default();
+        let mut result = None;
+
+        run(&ctx, vec![key_event(Key::Space), key_event(Key::E)], |ui| {
+            result = dispatcher.poll(ui.ctx(), &bindings, true);
+        });
+
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn simple_shortcut_requires_exact_modifiers() {
+        let bindings = KeyBindings::default();
+
+        // Maj+F5 (Stop) ne doit pas se faire happer par Run (F5 nu).
+        let ctx = egui::Context::default();
+        let mut dispatcher = Dispatcher::default();
+        let mut result = None;
+        run(
+            &ctx,
+            vec![Event::Key {
+                key: Key::F5,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: Modifiers::SHIFT,
+            }],
+            |ui| {
+                result = dispatcher.poll(ui.ctx(), &bindings, false);
+            },
+        );
+        assert_eq!(result, Some(Action::Stop));
+
+        // F5 nu doit toujours déclencher Run — un contexte/dispatcher
+        // frais, pour ne pas mélanger cette assertion avec l'état
+        // (répétitions détectées, etc.) de la précédente.
+        let ctx = egui::Context::default();
+        let mut dispatcher = Dispatcher::default();
+        let mut result = None;
+        run(&ctx, vec![key_event(Key::F5)], |ui| {
+            result = dispatcher.poll(ui.ctx(), &bindings, false);
+        });
+        assert_eq!(result, Some(Action::Run));
+    }
 }
