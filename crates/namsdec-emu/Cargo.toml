@@ -4,3 +4,10 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+namsdec-core.workspace = true
+namsdec-disasm.workspace = true
+iced-x86.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+namsdec-asm.workspace = true
