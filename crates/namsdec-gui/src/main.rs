@@ -6,6 +6,7 @@
 mod explorer;
 mod i18n;
 mod keybindings;
+mod syntax;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -545,25 +546,25 @@ impl NamsdecApp {
                 }
                 let can_exec = self.emulator.is_some();
                 ui.add_enabled_ui(can_exec, |ui| {
-                    if ui.button(format!("↓ {}", s.action_step_into)).clicked() {
+                    if ui.button(s.action_step_into).clicked() {
                         self.dispatch(Action::StepInto);
                         ui.close();
                     }
-                    if ui.button(format!("→ {}", s.action_step_over)).clicked() {
+                    if ui.button(s.action_step_over).clicked() {
                         self.dispatch(Action::StepOver);
                         ui.close();
                     }
-                    if ui.button(format!("▶ {}", s.action_run)).clicked() {
+                    if ui.button(s.action_run).clicked() {
                         self.dispatch(Action::Run);
                         ui.close();
                     }
                     ui.add_enabled_ui(self.running, |ui| {
-                        if ui.button(format!("⏹ {}", s.action_stop)).clicked() {
+                        if ui.button(s.action_stop).clicked() {
                             self.dispatch(Action::Stop);
                             ui.close();
                         }
                     });
-                    if ui.button(format!("⟲ {}", s.action_reset)).clicked() {
+                    if ui.button(s.action_reset).clicked() {
                         self.dispatch(Action::Reset);
                         ui.close();
                     }
@@ -758,7 +759,7 @@ impl NamsdecApp {
             ui.separator();
 
             if ui
-                .button(format!("🔨 {}", s.action_assemble))
+                .button(s.action_assemble)
                 .on_hover_text(shortcut_hint(&self.keybindings, &ctx, s.action_assemble, Action::Assemble))
                 .clicked()
             {
@@ -767,22 +768,19 @@ impl NamsdecApp {
 
             let can_exec = self.emulator.is_some();
             ui.add_enabled_ui(can_exec, |ui| {
-                if ui
-                    .button(format!("▶ {}", s.action_run))
+                if icon_button(ui, icon_run, s.action_run)
                     .on_hover_text(shortcut_hint(&self.keybindings, &ctx, s.action_run, Action::Run))
                     .clicked()
                 {
                     self.dispatch(Action::Run);
                 }
-                if ui
-                    .button(format!("↓ {}", s.action_step_into))
+                if icon_button(ui, icon_step_into, s.action_step_into)
                     .on_hover_text(shortcut_hint(&self.keybindings, &ctx, s.action_step_into, Action::StepInto))
                     .clicked()
                 {
                     self.dispatch(Action::StepInto);
                 }
-                if ui
-                    .button(format!("→ {}", s.action_step_over))
+                if icon_button(ui, icon_step_over, s.action_step_over)
                     .on_hover_text(shortcut_hint(&self.keybindings, &ctx, s.action_step_over, Action::StepOver))
                     .clicked()
                 {
@@ -790,8 +788,7 @@ impl NamsdecApp {
                 }
             });
             ui.add_enabled_ui(self.running, |ui| {
-                if ui
-                    .button(format!("⏹ {}", s.action_stop))
+                if icon_button(ui, icon_stop, s.action_stop)
                     .on_hover_text(shortcut_hint(&self.keybindings, &ctx, s.action_stop, Action::Stop))
                     .clicked()
                 {
@@ -907,12 +904,16 @@ impl NamsdecApp {
     /// — sinon la gouttière se décale sur une ligne trop longue.
     fn editor_ui(&mut self, ui: &mut egui::Ui) {
         if let Some(line) = self.current_line() {
-            let text = if self.lang == Lang::Fr {
-                format!("▶ Ligne courante : {line}")
-            } else {
-                format!("▶ Current line: {line}")
-            };
-            ui.colored_label(ACCENT, text);
+            ui.horizontal(|ui| {
+                let (rect, _) = ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
+                icon_run(ui.painter(), rect, ACCENT);
+                let text = if self.lang == Lang::Fr {
+                    format!("Ligne courante : {line}")
+                } else {
+                    format!("Current line: {line}")
+                };
+                ui.colored_label(ACCENT, text);
+            });
         }
 
         let line_count = self.source.lines().count().max(1) as u32;
@@ -926,14 +927,23 @@ impl NamsdecApp {
                     ui.vertical(|ui| {
                         for line in 1..=line_count {
                             let has_bp = self.breakpoint_lines.contains(&line);
+                            let is_current = current_line == Some(line);
                             ui.horizontal(|ui| {
                                 ui.set_height(row_height);
                                 let (rect, resp) = ui.allocate_exact_size(
-                                    egui::vec2(14.0, row_height),
+                                    egui::vec2(20.0, row_height),
                                     egui::Sense::click(),
                                 );
                                 if has_bp {
-                                    ui.painter().circle_filled(rect.center(), 4.0, BAD);
+                                    let dot_center = egui::pos2(rect.left() + 5.0, rect.center().y);
+                                    ui.painter().circle_filled(dot_center, 4.0, BAD);
+                                }
+                                if is_current {
+                                    let arrow_rect = egui::Rect::from_center_size(
+                                        egui::pos2(rect.right() - 6.0, rect.center().y),
+                                        egui::vec2(10.0, 10.0),
+                                    );
+                                    icon_run(ui.painter(), arrow_rect, ACCENT);
                                 }
                                 if resp.clicked() {
                                     if has_bp {
@@ -943,11 +953,7 @@ impl NamsdecApp {
                                     }
                                     self.sync_breakpoints();
                                 }
-                                let color = if current_line == Some(line) {
-                                    ACCENT
-                                } else {
-                                    ui.visuals().weak_text_color()
-                                };
+                                let color = if is_current { ACCENT } else { ui.visuals().weak_text_color() };
                                 ui.colored_label(color, format!("{line:>4}"));
                             });
                         }
@@ -955,11 +961,16 @@ impl NamsdecApp {
 
                     ui.separator();
 
+                    let mut layouter = |ui: &egui::Ui, buf: &dyn egui::TextBuffer, wrap_width: f32| {
+                        let job = syntax::highlight(ui, buf.as_str(), wrap_width);
+                        ui.fonts_mut(|f| f.layout_job(job))
+                    };
                     let response = ui.add(
                         egui::TextEdit::multiline(&mut self.source)
                             .desired_width(f32::INFINITY)
                             .desired_rows(line_count.max(24) as usize)
-                            .code_editor(),
+                            .code_editor()
+                            .layouter(&mut layouter),
                     );
                     // Conditionne l'armement de la touche leader (Espace, ...) :
                     // sinon "Espace" taperait un espace *et* armerait la
@@ -1211,6 +1222,95 @@ fn shortcut_hint(bindings: &KeyBindings, ctx: &egui::Context, label: &str, actio
         Some(chord) => format!("{label} ({})", chord.display(ctx)),
         None => label.to_string(),
     }
+}
+
+/// Bouton de barre d'outils avec une icône dessinée directement plutôt
+/// qu'un glyphe Unicode — "●", puis "↓"/"→"/"🔨" se sont tous révélés
+/// absents de la police par défaut d'egui et retombaient sur des carrés
+/// vides ou des glyphes de repli erratiques (voir commit 5d95e09 et le
+/// retour utilisateur qui a suivi). Peindre la forme soi-même élimine le
+/// risque une fois pour toutes.
+fn icon_button(
+    ui: &mut egui::Ui,
+    icon: impl FnOnce(&egui::Painter, egui::Rect, egui::Color32),
+    label: &str,
+) -> egui::Response {
+    let icon_size = 14.0;
+    let gap = 6.0;
+    let galley = ui.painter().layout_no_wrap(
+        label.to_string(),
+        egui::FontId::proportional(13.0),
+        egui::Color32::PLACEHOLDER,
+    );
+    let padding = ui.spacing().button_padding;
+    let desired_size = egui::vec2(
+        icon_size + gap + galley.size().x + padding.x * 2.0,
+        ui.spacing().interact_size.y,
+    );
+    let (rect, response) = ui.allocate_exact_size(desired_size, egui::Sense::click());
+
+    if ui.is_rect_visible(rect) {
+        let visuals = ui.style().interact(&response);
+        ui.painter().rect(
+            rect,
+            visuals.corner_radius,
+            visuals.weak_bg_fill,
+            visuals.bg_stroke,
+            egui::StrokeKind::Inside,
+        );
+        let icon_rect = egui::Rect::from_min_size(
+            egui::pos2(rect.left() + padding.x, rect.center().y - icon_size / 2.0),
+            egui::vec2(icon_size, icon_size),
+        );
+        icon(ui.painter(), icon_rect, visuals.text_color());
+        let text_pos = egui::pos2(icon_rect.right() + gap, rect.center().y - galley.size().y / 2.0);
+        ui.painter().galley(text_pos, galley, visuals.text_color());
+    }
+
+    response
+}
+
+fn icon_run(painter: &egui::Painter, rect: egui::Rect, color: egui::Color32) {
+    let r = rect.shrink(1.0);
+    painter.add(egui::Shape::convex_polygon(
+        vec![r.left_top(), r.left_bottom(), egui::pos2(r.right(), r.center().y)],
+        color,
+        egui::Stroke::NONE,
+    ));
+}
+
+fn icon_stop(painter: &egui::Painter, rect: egui::Rect, color: egui::Color32) {
+    painter.rect_filled(rect.shrink(2.0), 1.0, color);
+}
+
+fn icon_step_into(painter: &egui::Painter, rect: egui::Rect, color: egui::Color32) {
+    let x = rect.center().x;
+    let stroke = egui::Stroke::new(1.6, color);
+    painter.line_segment([egui::pos2(x, rect.top()), egui::pos2(x, rect.bottom() - 3.0)], stroke);
+    painter.add(egui::Shape::convex_polygon(
+        vec![
+            egui::pos2(x - 3.0, rect.bottom() - 5.0),
+            egui::pos2(x + 3.0, rect.bottom() - 5.0),
+            egui::pos2(x, rect.bottom()),
+        ],
+        color,
+        egui::Stroke::NONE,
+    ));
+}
+
+fn icon_step_over(painter: &egui::Painter, rect: egui::Rect, color: egui::Color32) {
+    let y = rect.center().y;
+    let stroke = egui::Stroke::new(1.6, color);
+    painter.line_segment([egui::pos2(rect.left(), y), egui::pos2(rect.right() - 3.0, y)], stroke);
+    painter.add(egui::Shape::convex_polygon(
+        vec![
+            egui::pos2(rect.right() - 5.0, y - 3.0),
+            egui::pos2(rect.right() - 5.0, y + 3.0),
+            egui::pos2(rect.right(), y),
+        ],
+        color,
+        egui::Stroke::NONE,
+    ));
 }
 
 /// Petit disque de statut peint directement (plutôt qu'un glyphe texte

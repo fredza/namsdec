@@ -59,13 +59,16 @@ pub struct KeyBindings {
 }
 
 impl Default for KeyBindings {
-    /// Les conventions de VS Code, délibérément — un clin d'œil cohérent
-    /// avec le reste de l'app, pas des choix arbitraires : F5/F10/F11 pour
-    /// Run/Step Over/Step Into, Maj+F5 pour Stop, Ctrl+Maj+F5 pour Reset
-    /// ("Restart" côté VS Code), Ctrl+Maj+B pour Assembler ("Run Build
-    /// Task"). `Quitter` n'a volontairement aucun raccourci par défaut :
-    /// une frappe malheureuse qui ferme l'appli est pire qu'un clic de menu
-    /// en plus.
+    /// Les conventions de VS Code, dans la mesure où elles survivent au
+    /// bureau Linux : F5/Maj+F5/Ctrl+Maj+F5 pour Run/Stop/Reset et
+    /// Ctrl+Maj+B pour Assembler ("Run Build Task") restent tels quels.
+    /// F10/F11 nus, en revanche, sont trop souvent interceptés avant même
+    /// d'atteindre l'appli (F11 = plein écran quasi universel au niveau du
+    /// gestionnaire de fenêtres, F10 = mnémonique "activer le menu" côté
+    /// GTK) — Step Into/Step Over utilisent donc Ctrl+Alt+I/O à la place,
+    /// pour rester fiables plutôt que fidèles à la lettre. `Quitter` n'a
+    /// volontairement aucun raccourci par défaut : une frappe malheureuse
+    /// qui ferme l'appli est pire qu'un clic de menu en plus.
     fn default() -> Self {
         let mut map = BTreeMap::new();
         map.insert(
@@ -75,11 +78,11 @@ impl Default for KeyBindings {
         map.insert(Action::Run, Chord::Simple(KeyboardShortcut::new(Modifiers::NONE, Key::F5)));
         map.insert(
             Action::StepOver,
-            Chord::Simple(KeyboardShortcut::new(Modifiers::NONE, Key::F10)),
+            Chord::Simple(KeyboardShortcut::new(Modifiers::CTRL | Modifiers::ALT, Key::O)),
         );
         map.insert(
             Action::StepInto,
-            Chord::Simple(KeyboardShortcut::new(Modifiers::NONE, Key::F11)),
+            Chord::Simple(KeyboardShortcut::new(Modifiers::CTRL | Modifiers::ALT, Key::I)),
         );
         map.insert(
             Action::Stop,
@@ -139,15 +142,42 @@ impl Dispatcher {
         bindings: &KeyBindings,
         editor_focused: bool,
     ) -> Option<Action> {
-        for (&action, chord) in &bindings.map {
-            if let Chord::Simple(sc) = chord
-                && ctx.input_mut(|i| i.consume_shortcut(sc)) {
-                    self.leader_armed = None;
-                    return Some(action);
-                }
-        }
-
         let pressed = pressed_keys_this_frame(ctx);
+
+        if let Some(&key) = pressed.first() {
+            // Le raccourci le plus spécifique gagne (ex. Maj+F5 pour Stop
+            // face à F5 seul pour Run) : `egui::Modifiers::matches_logically`
+            // ignore volontairement les modificateurs *en trop* par rapport
+            // au motif, donc F5-sans-modificateur "matche" tout aussi bien
+            // Maj+F5 — un simple `consume_shortcut` premier-arrivé, dans
+            // l'ordre du BTreeMap, rendait Stop/Reset injoignables tant que
+            // Run (F5 nu) était déclaré avant eux. On compare explicitement
+            // la spécificité plutôt que de dépendre de l'ordre du map.
+            let modifiers = ctx.input(|i| i.modifiers);
+            let mut best: Option<(Action, u8)> = None;
+            for (&action, chord) in &bindings.map {
+                if let Chord::Simple(sc) = chord
+                    && sc.logical_key == key
+                    && modifiers.matches_logically(sc.modifiers)
+                {
+                    let specificity = sc.modifiers.alt as u8
+                        + sc.modifiers.shift as u8
+                        + sc.modifiers.ctrl as u8
+                        + sc.modifiers.command as u8;
+                    let is_more_specific = match best {
+                        Some((_, current)) => specificity > current,
+                        None => true,
+                    };
+                    if is_more_specific {
+                        best = Some((action, specificity));
+                    }
+                }
+            }
+            if let Some((action, _)) = best {
+                self.leader_armed = None;
+                return Some(action);
+            }
+        }
 
         if let Some(first) = self.leader_armed.take() {
             if let Some(&second) = pressed.first() {
