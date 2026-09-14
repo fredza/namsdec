@@ -1163,65 +1163,78 @@ impl NamsdecApp {
         let line_count = self.source.lines().count().max(1) as u32;
         let current_line = self.current_line();
         let row_height = ui.text_style_height(&egui::TextStyle::Monospace);
+        let editor_bg = ui.visuals().extreme_bg_color;
 
-        egui::ScrollArea::both()
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                ui.horizontal_top(|ui| {
-                    ui.vertical(|ui| {
-                        for line in 1..=line_count {
-                            let has_bp = self.breakpoint_lines.contains(&line);
-                            let is_current = current_line == Some(line);
-                            ui.horizontal(|ui| {
-                                ui.set_height(row_height);
-                                let (rect, resp) = ui.allocate_exact_size(
-                                    egui::vec2(20.0, row_height),
-                                    egui::Sense::click(),
-                                );
-                                if has_bp {
-                                    let dot_center = egui::pos2(rect.left() + 5.0, rect.center().y);
-                                    ui.painter().circle_filled(dot_center, 4.0, BAD);
-                                }
-                                if is_current {
-                                    let arrow_rect = egui::Rect::from_center_size(
-                                        egui::pos2(rect.right() - 6.0, rect.center().y),
-                                        egui::vec2(10.0, 10.0),
+        // Gouttière et texte peints sur UN seul fond continu (celui du
+        // `TextEdit`, `extreme_bg_color`) plutôt que le `panel_fill` du
+        // panneau englobant : sans ce cadre explicite, la gouttière
+        // affichait le fond du panneau (plus clair) derrière elle tandis
+        // que le `TextEdit` peignait son propre fond plus sombre avec sa
+        // propre bordure — deux zones visuellement distinctes au lieu
+        // d'un seul éditeur. Le `TextEdit` est rendu sans cadre
+        // (`Frame::NONE`) pour ne pas re-dessiner par-dessus.
+        egui::Frame::new().fill(editor_bg).show(ui, |ui| {
+            egui::ScrollArea::both()
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    ui.horizontal_top(|ui| {
+                        ui.spacing_mut().item_spacing.x = 0.0;
+                        ui.vertical(|ui| {
+                            for line in 1..=line_count {
+                                let has_bp = self.breakpoint_lines.contains(&line);
+                                let is_current = current_line == Some(line);
+                                ui.horizontal(|ui| {
+                                    ui.set_height(row_height);
+                                    let (rect, resp) = ui.allocate_exact_size(
+                                        egui::vec2(20.0, row_height),
+                                        egui::Sense::click(),
                                     );
-                                    icon_run(ui.painter(), arrow_rect, ACCENT);
-                                }
-                                if resp.clicked() {
                                     if has_bp {
-                                        self.breakpoint_lines.remove(&line);
-                                    } else {
-                                        self.breakpoint_lines.insert(line);
+                                        let dot_center = egui::pos2(rect.left() + 5.0, rect.center().y);
+                                        ui.painter().circle_filled(dot_center, 4.0, BAD);
                                     }
-                                    self.sync_breakpoints();
-                                }
-                                let color = if is_current { ACCENT } else { ui.visuals().weak_text_color() };
-                                ui.colored_label(color, format!("{line:>4}"));
-                            });
-                        }
+                                    if is_current {
+                                        let arrow_rect = egui::Rect::from_center_size(
+                                            egui::pos2(rect.right() - 6.0, rect.center().y),
+                                            egui::vec2(10.0, 10.0),
+                                        );
+                                        icon_run(ui.painter(), arrow_rect, ACCENT);
+                                    }
+                                    if resp.clicked() {
+                                        if has_bp {
+                                            self.breakpoint_lines.remove(&line);
+                                        } else {
+                                            self.breakpoint_lines.insert(line);
+                                        }
+                                        self.sync_breakpoints();
+                                    }
+                                    let color =
+                                        if is_current { ACCENT } else { ui.visuals().weak_text_color() };
+                                    ui.colored_label(color, format!("{line:>4}  "));
+                                });
+                            }
+                        });
+
+                        let mut layouter = |ui: &egui::Ui, buf: &dyn egui::TextBuffer, wrap_width: f32| {
+                            let job = syntax::highlight(ui, buf.as_str(), wrap_width);
+                            ui.fonts_mut(|f| f.layout_job(job))
+                        };
+                        let response = ui.add(
+                            egui::TextEdit::multiline(&mut self.source)
+                                .frame(egui::Frame::NONE.inner_margin(egui::Margin::symmetric(0, 0)))
+                                .desired_width(f32::INFINITY)
+                                .desired_rows(line_count.max(24) as usize)
+                                .code_editor()
+                                .layouter(&mut layouter),
+                        );
+                        // Conditionne l'armement de la touche leader
+                        // (Espace, ...) : sinon "Espace" taperait un
+                        // espace *et* armerait la séquence à chaque mot
+                        // pendant la frappe.
+                        self.editor_focused = response.has_focus();
                     });
-
-                    ui.separator();
-
-                    let mut layouter = |ui: &egui::Ui, buf: &dyn egui::TextBuffer, wrap_width: f32| {
-                        let job = syntax::highlight(ui, buf.as_str(), wrap_width);
-                        ui.fonts_mut(|f| f.layout_job(job))
-                    };
-                    let response = ui.add(
-                        egui::TextEdit::multiline(&mut self.source)
-                            .desired_width(f32::INFINITY)
-                            .desired_rows(line_count.max(24) as usize)
-                            .code_editor()
-                            .layouter(&mut layouter),
-                    );
-                    // Conditionne l'armement de la touche leader (Espace, ...) :
-                    // sinon "Espace" taperait un espace *et* armerait la
-                    // séquence à chaque mot pendant la frappe.
-                    self.editor_focused = response.has_focus();
                 });
-            });
+        });
     }
 
     fn sidebar_ui(&mut self, ui: &mut egui::Ui) {
