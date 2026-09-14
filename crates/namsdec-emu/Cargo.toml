@@ -1,0 +1,6 @@
+[package]
+name = "namsdec-emu"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]

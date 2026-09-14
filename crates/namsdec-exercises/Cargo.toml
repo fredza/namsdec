@@ -1,0 +1,6 @@
+[package]
+name = "namsdec-exercises"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]

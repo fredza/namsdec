@@ -1,0 +1,6 @@
+[package]
+name = "namsdec-disasm"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]

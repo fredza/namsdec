@@ -1,0 +1,6 @@
+[package]
+name = "namsdec-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]

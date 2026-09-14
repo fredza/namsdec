@@ -1,0 +1,6 @@
+[package]
+name = "namsdec-asm"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
