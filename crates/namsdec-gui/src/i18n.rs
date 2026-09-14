@@ -46,8 +46,6 @@ pub struct Strings {
     pub tab_re: &'static str,
 
     // Éditeur
-    pub breakpoint_on_line: &'static str,
-    pub add: &'static str,
     pub memory_address_label: &'static str,
 
     // Barre de statut (cas statiques uniquement)
@@ -120,8 +118,6 @@ const FR: Strings = Strings {
     tab_memory: "Mémoire",
     tab_re: "RE",
 
-    breakpoint_on_line: "Point d'arrêt sur la ligne :",
-    add: "Ajouter",
     memory_address_label: "Adresse :",
 
     status_ready: "Prêt.",
@@ -188,8 +184,6 @@ const EN: Strings = Strings {
     tab_memory: "Memory",
     tab_re: "RE",
 
-    breakpoint_on_line: "Breakpoint on line:",
-    add: "Add",
     memory_address_label: "Address:",
 
     status_ready: "Ready.",

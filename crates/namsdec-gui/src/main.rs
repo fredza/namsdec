@@ -124,7 +124,6 @@ struct NamsdecApp {
     lang: Lang,
     nasm_info: Option<namsdec_asm::NasmInfo>,
     breakpoint_lines: BTreeSet<u32>,
-    bp_input: u32,
     assemble_state: Option<AssembleState>,
     emulator: Option<Emulator>,
     re_registry: ReModuleRegistry,
@@ -179,7 +178,6 @@ impl Default for NamsdecApp {
             lang: Lang::Fr,
             nasm_info: namsdec_asm::find_nasm(),
             breakpoint_lines: BTreeSet::new(),
-            bp_input: 1,
             assemble_state: None,
             emulator: None,
             re_registry,
@@ -793,28 +791,15 @@ impl NamsdecApp {
         }
     }
 
+    /// Un vrai éditeur : gouttière avec numéros de ligne et points d'arrêt
+    /// cliquables (plus de saisie de numéro à la main), ligne courante en
+    /// surbrillance. La gouttière et le `TextEdit` partagent la même
+    /// `ScrollArea` pour rester synchronisés au défilement ; le
+    /// retour-à-la-ligne automatique du `TextEdit` est désactivé
+    /// (`desired_width(INFINITY)` + défilement horizontal disponible) pour
+    /// qu'une ligne logique corresponde toujours à une seule ligne visuelle
+    /// — sinon la gouttière se décale sur une ligne trop longue.
     fn editor_ui(&mut self, ui: &mut egui::Ui) {
-        let s = strings(self.lang);
-        ui.horizontal(|ui| {
-            ui.label(s.breakpoint_on_line);
-            ui.add(egui::DragValue::new(&mut self.bp_input).range(1..=9999));
-            if ui.button(s.add).clicked() {
-                self.breakpoint_lines.insert(self.bp_input);
-                self.sync_breakpoints();
-            }
-            ui.separator();
-            let mut to_remove = None;
-            for line in &self.breakpoint_lines {
-                if ui.button(format!("L{line} ✕")).clicked() {
-                    to_remove = Some(*line);
-                }
-            }
-            if let Some(line) = to_remove {
-                self.breakpoint_lines.remove(&line);
-                self.sync_breakpoints();
-            }
-        });
-
         if let Some(line) = self.current_line() {
             let text = if self.lang == Lang::Fr {
                 format!("▶ Ligne courante : {line}")
@@ -824,18 +809,58 @@ impl NamsdecApp {
             ui.colored_label(ACCENT, text);
         }
 
-        egui::ScrollArea::vertical().show(ui, |ui| {
-            let response = ui.add(
-                egui::TextEdit::multiline(&mut self.source)
-                    .desired_width(f32::INFINITY)
-                    .desired_rows(24)
-                    .code_editor(),
-            );
-            // Conditionne l'armement de la touche leader (Espace, ...) :
-            // sinon "Espace" taperait un espace *et* armerait la séquence
-            // à chaque mot pendant la frappe.
-            self.editor_focused = response.has_focus();
-        });
+        let line_count = self.source.lines().count().max(1) as u32;
+        let current_line = self.current_line();
+        let row_height = ui.text_style_height(&egui::TextStyle::Monospace);
+
+        egui::ScrollArea::both()
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                ui.horizontal_top(|ui| {
+                    ui.vertical(|ui| {
+                        for line in 1..=line_count {
+                            let has_bp = self.breakpoint_lines.contains(&line);
+                            ui.horizontal(|ui| {
+                                ui.set_height(row_height);
+                                let (rect, resp) = ui.allocate_exact_size(
+                                    egui::vec2(14.0, row_height),
+                                    egui::Sense::click(),
+                                );
+                                if has_bp {
+                                    ui.painter().circle_filled(rect.center(), 4.0, BAD);
+                                }
+                                if resp.clicked() {
+                                    if has_bp {
+                                        self.breakpoint_lines.remove(&line);
+                                    } else {
+                                        self.breakpoint_lines.insert(line);
+                                    }
+                                    self.sync_breakpoints();
+                                }
+                                let color = if current_line == Some(line) {
+                                    ACCENT
+                                } else {
+                                    ui.visuals().weak_text_color()
+                                };
+                                ui.colored_label(color, format!("{line:>4}"));
+                            });
+                        }
+                    });
+
+                    ui.separator();
+
+                    let response = ui.add(
+                        egui::TextEdit::multiline(&mut self.source)
+                            .desired_width(f32::INFINITY)
+                            .desired_rows(line_count.max(24) as usize)
+                            .code_editor(),
+                    );
+                    // Conditionne l'armement de la touche leader (Espace, ...) :
+                    // sinon "Espace" taperait un espace *et* armerait la
+                    // séquence à chaque mot pendant la frappe.
+                    self.editor_focused = response.has_focus();
+                });
+            });
     }
 
     fn sidebar_ui(&mut self, ui: &mut egui::Ui) {
