@@ -1030,17 +1030,6 @@ impl NamsdecApp {
                 }
             });
 
-            ui.separator();
-            match &self.nasm_info {
-                Some(info) => {
-                    status_dot(ui, GOOD);
-                    ui.label(&info.version);
-                }
-                None => {
-                    status_dot(ui, BAD);
-                    ui.label(s.nasm_not_found);
-                }
-            }
         });
     }
 
@@ -1057,7 +1046,43 @@ impl NamsdecApp {
             ui.colored_label(ACCENT, text);
         }
 
-        ui.horizontal(|ui| match &self.status {
+        ui.horizontal(|ui| {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                match &self.nasm_info {
+                    Some(info) => {
+                        ui.label(&info.version);
+                        status_dot(ui, GOOD);
+                    }
+                    None => {
+                        ui.label(s.nasm_not_found);
+                        status_dot(ui, BAD);
+                    }
+                }
+            });
+            self.status_message_ui(ui);
+        });
+
+        if !self.diagnostics.is_empty() {
+            egui::ScrollArea::vertical()
+                .max_height(96.0)
+                .show(ui, |ui| {
+                    for d in &self.diagnostics {
+                        let color = if d.severity == Severity::Error { BAD } else { WARN };
+                        let text = if lang == Lang::Fr {
+                            format!("ligne {} — {}", d.line, d.message)
+                        } else {
+                            format!("line {} — {}", d.line, d.message)
+                        };
+                        ui.colored_label(color, text);
+                    }
+                });
+        }
+    }
+
+    fn status_message_ui(&mut self, ui: &mut egui::Ui) {
+        let s = strings(self.lang);
+        let lang = self.lang;
+        match &self.status {
             Status::Idle => {
                 ui.label(s.status_ready);
             }
@@ -1119,22 +1144,6 @@ impl NamsdecApp {
                     },
                 );
             }
-        });
-
-        if !self.diagnostics.is_empty() {
-            egui::ScrollArea::vertical()
-                .max_height(96.0)
-                .show(ui, |ui| {
-                    for d in &self.diagnostics {
-                        let color = if d.severity == Severity::Error { BAD } else { WARN };
-                        let text = if lang == Lang::Fr {
-                            format!("ligne {} — {}", d.line, d.message)
-                        } else {
-                            format!("line {} — {}", d.line, d.message)
-                        };
-                        ui.colored_label(color, text);
-                    }
-                });
         }
     }
 
@@ -1660,7 +1669,17 @@ impl eframe::App for NamsdecApp {
             egui::Panel::top("toolbar").show(ui, |ui| self.toolbar_ui(ui));
         }
         if self.show_statusbar {
-            egui::Panel::bottom("statusbar").show(ui, |ui| self.statusbar_ui(ui));
+            // Un fond et une bordure propres, distincts du reste — sinon la
+            // barre de statut se noie visuellement dans le panneau
+            // au-dessus d'elle (retour utilisateur : "plus embossée, plus
+            // démarquée").
+            let statusbar_frame = egui::Frame::new()
+                .fill(ui.visuals().faint_bg_color)
+                .inner_margin(egui::Margin::symmetric(10, 5))
+                .stroke(ui.visuals().window_stroke);
+            egui::Panel::bottom("statusbar")
+                .frame(statusbar_frame)
+                .show(ui, |ui| self.statusbar_ui(ui));
         }
         if self.show_sidebar {
             egui::Panel::right("sidebar")
