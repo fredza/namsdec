@@ -145,37 +145,23 @@ impl Dispatcher {
         let pressed = pressed_keys_this_frame(ctx);
 
         if let Some(&key) = pressed.first() {
-            // Le raccourci le plus spécifique gagne (ex. Maj+F5 pour Stop
-            // face à F5 seul pour Run) : `egui::Modifiers::matches_logically`
-            // ignore volontairement les modificateurs *en trop* par rapport
-            // au motif, donc F5-sans-modificateur "matche" tout aussi bien
-            // Maj+F5 — un simple `consume_shortcut` premier-arrivé, dans
-            // l'ordre du BTreeMap, rendait Stop/Reset injoignables tant que
-            // Run (F5 nu) était déclaré avant eux. On compare explicitement
-            // la spécificité plutôt que de dépendre de l'ordre du map.
+            // Correspondance EXACTE des modificateurs (pas
+            // `matches_logically`, qui ignore volontairement les
+            // modificateurs *en trop* par rapport au motif — F5 sans
+            // modificateur "matchait" donc tout aussi bien Maj+F5, ce qui
+            // rendait Stop/Reset injoignables tant que Run (F5 nu) était
+            // testé en premier). Avec une correspondance exacte, au plus un
+            // seul raccourci peut matcher une combinaison de touches
+            // donnée : plus besoin de départager par ordre ou spécificité.
             let modifiers = ctx.input(|i| i.modifiers);
-            let mut best: Option<(Action, u8)> = None;
             for (&action, chord) in &bindings.map {
                 if let Chord::Simple(sc) = chord
                     && sc.logical_key == key
-                    && modifiers.matches_logically(sc.modifiers)
+                    && modifiers.matches_exact(sc.modifiers)
                 {
-                    let specificity = sc.modifiers.alt as u8
-                        + sc.modifiers.shift as u8
-                        + sc.modifiers.ctrl as u8
-                        + sc.modifiers.command as u8;
-                    let is_more_specific = match best {
-                        Some((_, current)) => specificity > current,
-                        None => true,
-                    };
-                    if is_more_specific {
-                        best = Some((action, specificity));
-                    }
+                    self.leader_armed = None;
+                    return Some(action);
                 }
-            }
-            if let Some((action, _)) = best {
-                self.leader_armed = None;
-                return Some(action);
             }
         }
 

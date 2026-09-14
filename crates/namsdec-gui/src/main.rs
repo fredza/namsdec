@@ -71,6 +71,18 @@ impl AppTheme {
                 visuals.selection.bg_fill = egui::Color32::from_rgb(0x00, 0x5f, 0xb8);
             }
         }
+
+        // Coins arrondis partout — une des choses les plus visibles qui
+        // distinguent un look "moderne" du carré par défaut d'egui.
+        visuals.window_corner_radius = egui::CornerRadius::from(10);
+        visuals.menu_corner_radius = egui::CornerRadius::from(8);
+        let widget_radius = egui::CornerRadius::from(6);
+        visuals.widgets.noninteractive.corner_radius = widget_radius;
+        visuals.widgets.inactive.corner_radius = widget_radius;
+        visuals.widgets.hovered.corner_radius = widget_radius;
+        visuals.widgets.active.corner_radius = widget_radius;
+        visuals.widgets.open.corner_radius = widget_radius;
+
         visuals
     }
 }
@@ -148,6 +160,67 @@ struct NamsdecApp {
     explorer: FileExplorer,
     show_explorer: bool,
     current_file: Option<PathBuf>,
+    show_toolbar: bool,
+    show_sidebar: bool,
+    show_statusbar: bool,
+    command_palette: Option<CommandPalette>,
+}
+
+#[derive(Default)]
+struct CommandPalette {
+    query: String,
+    selected: usize,
+}
+
+/// Tout ce que la palette de commandes (Ctrl+Maj+P) peut déclencher —
+/// délibérément large ("toutes les fonctions du programme"), pas limité
+/// aux huit `Action` liées à un raccourci.
+#[derive(Clone, Copy)]
+enum PaletteCommand {
+    Do(Action),
+    ShowPreferences,
+    ShowAbout,
+    SetTheme(AppTheme),
+    SetLang(Lang),
+    OpenFolder,
+    OpenFile,
+    SaveAs,
+    Quit,
+    GoTab(SidebarTab),
+    ToggleToolbar,
+    ToggleSidebar,
+    ToggleStatusbar,
+}
+
+fn palette_commands(s: &Strings) -> Vec<(String, PaletteCommand)> {
+    vec![
+        (s.action_assemble.to_string(), PaletteCommand::Do(Action::Assemble)),
+        (s.action_run.to_string(), PaletteCommand::Do(Action::Run)),
+        (s.action_step_into.to_string(), PaletteCommand::Do(Action::StepInto)),
+        (s.action_step_over.to_string(), PaletteCommand::Do(Action::StepOver)),
+        (s.action_stop.to_string(), PaletteCommand::Do(Action::Stop)),
+        (s.action_reset.to_string(), PaletteCommand::Do(Action::Reset)),
+        (s.action_toggle_explorer.to_string(), PaletteCommand::Do(Action::ToggleExplorer)),
+        (s.action_save.to_string(), PaletteCommand::Do(Action::Save)),
+        (s.file_save_as.to_string(), PaletteCommand::SaveAs),
+        (s.file_open_folder.to_string(), PaletteCommand::OpenFolder),
+        (s.file_open_file.to_string(), PaletteCommand::OpenFile),
+        (s.file_preferences.to_string(), PaletteCommand::ShowPreferences),
+        (s.help_about.to_string(), PaletteCommand::ShowAbout),
+        (format!("{}: {}", s.preferences_theme, s.theme_dark), PaletteCommand::SetTheme(AppTheme::Dark)),
+        (format!("{}: {}", s.preferences_theme, s.theme_light), PaletteCommand::SetTheme(AppTheme::Light)),
+        (format!("{}: Français", s.preferences_language), PaletteCommand::SetLang(Lang::Fr)),
+        (format!("{}: English", s.preferences_language), PaletteCommand::SetLang(Lang::En)),
+        (format!("{}: {}", s.menu_view, s.tab_registers), PaletteCommand::GoTab(SidebarTab::Registers)),
+        (format!("{}: {}", s.menu_view, s.tab_flags), PaletteCommand::GoTab(SidebarTab::Flags)),
+        (format!("{}: {}", s.menu_view, s.tab_stack), PaletteCommand::GoTab(SidebarTab::Stack)),
+        (format!("{}: {}", s.menu_view, s.tab_memory), PaletteCommand::GoTab(SidebarTab::Memory)),
+        (format!("{}: {}", s.menu_view, s.tab_re), PaletteCommand::GoTab(SidebarTab::Re)),
+        (s.palette_toggle_toolbar.to_string(), PaletteCommand::ToggleToolbar),
+        (s.palette_toggle_sidebar.to_string(), PaletteCommand::ToggleSidebar),
+        (s.palette_toggle_statusbar.to_string(), PaletteCommand::ToggleStatusbar),
+        (s.file_quit.to_string(), PaletteCommand::Quit),
+    ]
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -205,6 +278,10 @@ impl Default for NamsdecApp {
             explorer: FileExplorer::default(),
             show_explorer: false,
             current_file: None,
+            show_toolbar: true,
+            show_sidebar: true,
+            show_statusbar: true,
+            command_palette: None,
         }
     }
 }
@@ -212,6 +289,11 @@ impl Default for NamsdecApp {
 impl NamsdecApp {
     fn apply_theme(&self, ctx: &egui::Context) {
         ctx.set_visuals(self.theme.visuals());
+        ctx.all_styles_mut(|style| {
+            style.spacing.item_spacing = egui::vec2(8.0, 6.0);
+            style.spacing.button_padding = egui::vec2(10.0, 5.0);
+            style.spacing.window_margin = egui::Margin::from(12);
+        });
     }
 
     fn do_assemble(&mut self) {
@@ -448,6 +530,144 @@ impl NamsdecApp {
         }
     }
 
+    /// L'arborescence elle-même, ou une invite claire tant qu'aucun dossier
+    /// n'a été choisi — un panneau simplement vide se lit comme cassé.
+    fn explorer_panel_ui(&mut self, ui: &mut egui::Ui) {
+        let s = strings(self.lang);
+        if self.explorer.root.is_none() {
+            ui.add_space(12.0);
+            ui.vertical_centered(|ui| {
+                ui.label(s.explorer_empty);
+                ui.add_space(6.0);
+                if ui.button(s.file_open_folder).clicked() {
+                    self.do_open_folder();
+                }
+            });
+            return;
+        }
+        if let Some(path) = self.explorer.ui(ui) {
+            self.open_file(path);
+        }
+    }
+
+    fn execute_palette_command(&mut self, ctx: &egui::Context, cmd: PaletteCommand) {
+        match cmd {
+            PaletteCommand::Do(action) => self.dispatch(action),
+            PaletteCommand::ShowPreferences => self.show_preferences = true,
+            PaletteCommand::ShowAbout => self.show_about = true,
+            PaletteCommand::SetTheme(theme) => {
+                self.theme = theme;
+                self.apply_theme(ctx);
+            }
+            PaletteCommand::SetLang(lang) => self.lang = lang,
+            PaletteCommand::OpenFolder => self.do_open_folder(),
+            PaletteCommand::OpenFile => self.do_open_file_dialog(),
+            PaletteCommand::SaveAs => self.do_save_as(),
+            PaletteCommand::Quit => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
+            PaletteCommand::GoTab(tab) => {
+                if tab == SidebarTab::Re {
+                    self.show_re_tab = true;
+                }
+                self.show_sidebar = true;
+                self.active_tab = tab;
+            }
+            PaletteCommand::ToggleToolbar => self.show_toolbar = !self.show_toolbar,
+            PaletteCommand::ToggleSidebar => self.show_sidebar = !self.show_sidebar,
+            PaletteCommand::ToggleStatusbar => self.show_statusbar = !self.show_statusbar,
+        }
+    }
+
+    /// Palette de commandes (Ctrl+Maj+P, ou le raccourci ré-armé depuis
+    /// n'importe quel état puisqu'elle bascule plutôt que de seulement
+    /// s'ouvrir) : recherche par sous-chaîne sur toutes les fonctions du
+    /// programme, navigation clavier haut/bas, Entrée pour exécuter.
+    fn command_palette_ui(&mut self, ctx: &egui::Context) {
+        if self.command_palette.is_none() {
+            return;
+        }
+        let s = strings(self.lang);
+        let commands = palette_commands(s);
+
+        let (mut query, mut selected) = {
+            let p = self.command_palette.as_ref().unwrap();
+            (p.query.clone(), p.selected)
+        };
+
+        let query_lower = query.to_lowercase();
+        let filtered: Vec<&(String, PaletteCommand)> = commands
+            .iter()
+            .filter(|(label, _)| query_lower.is_empty() || label.to_lowercase().contains(&query_lower))
+            .collect();
+        if filtered.is_empty() {
+            selected = 0;
+        } else {
+            selected = selected.min(filtered.len() - 1);
+        }
+
+        let mut close = false;
+        let mut execute: Option<PaletteCommand> = None;
+
+        egui::Window::new("command_palette")
+            .id(egui::Id::new("command_palette"))
+            .title_bar(false)
+            .resizable(false)
+            .collapsible(false)
+            .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 80.0))
+            .fixed_size(egui::vec2(480.0, 340.0))
+            .show(ctx, |ui| {
+                let text_response = ui.add(
+                    egui::TextEdit::singleline(&mut query)
+                        .hint_text(s.palette_placeholder)
+                        .desired_width(f32::INFINITY),
+                );
+                if !text_response.has_focus() {
+                    text_response.request_focus();
+                }
+                ui.separator();
+                egui::ScrollArea::vertical().max_height(280.0).show(ui, |ui| {
+                    if filtered.is_empty() {
+                        ui.weak(s.palette_no_match);
+                    }
+                    for (i, (label, cmd)) in filtered.iter().enumerate() {
+                        if ui.selectable_label(i == selected, label.as_str()).clicked() {
+                            execute = Some(*cmd);
+                        }
+                    }
+                });
+            });
+
+        ctx.input(|i| {
+            if i.key_pressed(egui::Key::Escape) {
+                close = true;
+            }
+            if i.key_pressed(egui::Key::ArrowDown) && !filtered.is_empty() {
+                selected = (selected + 1).min(filtered.len() - 1);
+            }
+            if i.key_pressed(egui::Key::ArrowUp) {
+                selected = selected.saturating_sub(1);
+            }
+            if i.key_pressed(egui::Key::Enter)
+                && let Some((_, cmd)) = filtered.get(selected)
+            {
+                execute = Some(*cmd);
+            }
+        });
+
+        if close {
+            self.command_palette = None;
+            return;
+        }
+        if let Some(cmd) = execute {
+            self.command_palette = None;
+            self.execute_palette_command(ctx, cmd);
+            return;
+        }
+        if let Some(p) = &mut self.command_palette {
+            p.query = query;
+            p.selected = selected;
+        }
+    }
+
     fn do_save(&mut self) {
         match self.current_file.clone() {
             Some(path) => self.write_to(&path),
@@ -572,12 +792,18 @@ impl NamsdecApp {
             });
 
             ui.menu_button(s.menu_view, |ui| {
-                let ctx = ui.ctx().clone();
-                if ui
-                    .button(shortcut_hint(&self.keybindings, &ctx, s.action_toggle_explorer, Action::ToggleExplorer))
-                    .clicked()
-                {
-                    self.dispatch(Action::ToggleExplorer);
+                // Toutes les fenêtres non-dialogue sont affichables/masquables
+                // ici — des cases à cocher, pas des boutons, pour pouvoir en
+                // activer/désactiver plusieurs sans refermer le menu à
+                // chaque fois.
+                ui.checkbox(&mut self.show_toolbar, s.view_toolbar);
+                ui.checkbox(&mut self.show_sidebar, s.view_sidebar);
+                ui.checkbox(&mut self.show_statusbar, s.view_statusbar);
+                ui.checkbox(&mut self.show_explorer, s.action_toggle_explorer);
+
+                ui.separator();
+                if ui.button(s.palette_open).clicked() {
+                    self.command_palette = Some(CommandPalette::default());
                     ui.close();
                 }
                 ui.separator();
@@ -586,6 +812,7 @@ impl NamsdecApp {
                         continue;
                     }
                     if ui.button(tab.label(s)).clicked() {
+                        self.show_sidebar = true;
                         self.active_tab = tab;
                         ui.close();
                     }
@@ -755,9 +982,6 @@ impl NamsdecApp {
         let s = strings(self.lang);
         let ctx = ui.ctx().clone();
         ui.horizontal(|ui| {
-            ui.heading("Namsdec");
-            ui.separator();
-
             if ui
                 .button(s.action_assemble)
                 .on_hover_text(shortcut_hint(&self.keybindings, &ctx, s.action_assemble, Action::Assemble))
@@ -1359,27 +1583,44 @@ impl eframe::App for NamsdecApp {
             }
         }
 
+        if self.rebinding.is_none()
+            && ctx.input_mut(|i| {
+                i.consume_shortcut(&egui::KeyboardShortcut::new(
+                    egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
+                    egui::Key::P,
+                ))
+            })
+        {
+            self.command_palette = match self.command_palette {
+                Some(_) => None,
+                None => Some(CommandPalette::default()),
+            };
+        }
+
         egui::Panel::top("menu_bar").show(ui, |ui| self.menu_bar_ui(ui));
-        egui::Panel::top("toolbar").show(ui, |ui| self.toolbar_ui(ui));
-        egui::Panel::bottom("statusbar").show(ui, |ui| self.statusbar_ui(ui));
-        egui::Panel::right("sidebar")
-            .resizable(true)
-            .default_size(300.0)
-            .show(ui, |ui| self.sidebar_ui(ui));
+        if self.show_toolbar {
+            egui::Panel::top("toolbar").show(ui, |ui| self.toolbar_ui(ui));
+        }
+        if self.show_statusbar {
+            egui::Panel::bottom("statusbar").show(ui, |ui| self.statusbar_ui(ui));
+        }
+        if self.show_sidebar {
+            egui::Panel::right("sidebar")
+                .resizable(true)
+                .default_size(300.0)
+                .show(ui, |ui| self.sidebar_ui(ui));
+        }
         if self.show_explorer {
             egui::Panel::left("explorer")
                 .resizable(true)
                 .default_size(220.0)
-                .show(ui, |ui| {
-                    if let Some(path) = self.explorer.ui(ui) {
-                        self.open_file(path);
-                    }
-                });
+                .show(ui, |ui| self.explorer_panel_ui(ui));
         }
         self.editor_ui(ui);
 
         self.preferences_window_ui(ui.ctx());
         self.about_window_ui(ui.ctx());
+        self.command_palette_ui(&ctx);
     }
 }
 
@@ -1416,7 +1657,12 @@ fn hexdump(bytes: &[u8], base_addr: u64) -> String {
 }
 
 fn main() -> eframe::Result<()> {
-    let options = eframe::NativeOptions::default();
+    let options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_inner_size([1280.0, 820.0])
+            .with_min_inner_size([800.0, 520.0]),
+        ..Default::default()
+    };
     eframe::run_native(
         "Namsdec",
         options,

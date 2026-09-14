@@ -48,6 +48,22 @@ pub struct Strings {
     pub tab_memory: &'static str,
     pub tab_re: &'static str,
 
+    // Menu Affichage — visibilité des panneaux
+    pub view_toolbar: &'static str,
+    pub view_sidebar: &'static str,
+    pub view_statusbar: &'static str,
+
+    // Explorateur de fichiers
+    pub explorer_empty: &'static str,
+
+    // Palette de commandes
+    pub palette_open: &'static str,
+    pub palette_placeholder: &'static str,
+    pub palette_no_match: &'static str,
+    pub palette_toggle_toolbar: &'static str,
+    pub palette_toggle_sidebar: &'static str,
+    pub palette_toggle_statusbar: &'static str,
+
     // Éditeur
     pub memory_address_label: &'static str,
 
@@ -124,6 +140,19 @@ const FR: Strings = Strings {
     tab_memory: "Mémoire",
     tab_re: "RE",
 
+    view_toolbar: "Barre d'outils",
+    view_sidebar: "Panneau latéral",
+    view_statusbar: "Barre de statut",
+
+    explorer_empty: "Aucun dossier ouvert.",
+
+    palette_open: "Palette de commandes…",
+    palette_placeholder: "Tapez une commande…",
+    palette_no_match: "Aucune commande ne correspond.",
+    palette_toggle_toolbar: "Afficher/masquer la barre d'outils",
+    palette_toggle_sidebar: "Afficher/masquer le panneau latéral",
+    palette_toggle_statusbar: "Afficher/masquer la barre de statut",
+
     memory_address_label: "Adresse :",
 
     status_ready: "Prêt.",
@@ -192,6 +221,19 @@ const EN: Strings = Strings {
     tab_stack: "Stack",
     tab_memory: "Memory",
     tab_re: "RE",
+
+    view_toolbar: "Toolbar",
+    view_sidebar: "Side Panel",
+    view_statusbar: "Status Bar",
+
+    explorer_empty: "No folder open.",
+
+    palette_open: "Command Palette…",
+    palette_placeholder: "Type a command…",
+    palette_no_match: "No matching command.",
+    palette_toggle_toolbar: "Toggle Toolbar",
+    palette_toggle_sidebar: "Toggle Side Panel",
+    palette_toggle_statusbar: "Toggle Status Bar",
 
     memory_address_label: "Address:",
 
