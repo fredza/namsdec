@@ -38,6 +38,23 @@ pub enum RunStop {
     StepLimit,
 }
 
+/// Résultat d'un `step_over` : distinct de `StepResult`/`RunStop` parce que
+/// "j'ai enjambé un appel entier" n'est ni un simple pas, ni une fin de
+/// `run()`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StepOverResult {
+    /// L'instruction courante n'était pas un `call` : un pas normal a été
+    /// fait, exactement comme `step()`.
+    Stepped,
+    /// C'était un `call` : toute la sous-routine a été exécutée d'un bloc,
+    /// RIP est revenu juste après l'appel.
+    SteppedOverCall,
+    Halted,
+    /// Un point d'arrêt a été atteint à l'intérieur de la sous-routine.
+    Breakpoint(u64),
+    StepLimit,
+}
+
 pub struct Emulator {
     pub cpu: Cpu,
     pub breakpoints: BTreeSet<u64>,
@@ -51,16 +68,22 @@ impl Emulator {
         }
     }
 
+    /// Décode l'instruction à RIP sans l'exécuter — partagé par `step()` et
+    /// `step_over()` (qui doit inspecter l'instruction avant de décider
+    /// comment avancer).
+    fn decode_at_rip(&self) -> Result<Instruction, EmuError> {
+        let rip = self.cpu.regs.rip;
+        let window = fetch_window(&self.cpu.mem, rip)?.to_vec();
+        namsdec_disasm::decode_one(&window, rip).ok_or(EmuError::InvalidInstruction { addr: rip })
+    }
+
     /// Décode puis exécute l'instruction à RIP.
     pub fn step(&mut self) -> Result<StepResult, EmuError> {
         if self.cpu.halted {
             return Ok(StepResult::Halted);
         }
 
-        let rip = self.cpu.regs.rip;
-        let window = fetch_window(&self.cpu.mem, rip)?.to_vec();
-        let instr = namsdec_disasm::decode_one(&window, rip)
-            .ok_or(EmuError::InvalidInstruction { addr: rip })?;
+        let instr = self.decode_at_rip()?;
 
         // Par défaut RIP avance à l'instruction suivante ; les branchements
         // écrasent cette valeur pendant `execute`.
@@ -72,6 +95,45 @@ impl Emulator {
         } else {
             StepResult::Continued
         })
+    }
+
+    /// Comme `step()`, sauf que si l'instruction courante est un `call`,
+    /// toute la sous-routine appelée est exécutée d'un bloc plutôt que d'y
+    /// entrer — le comportement "Step Over" standard des débogueurs.
+    pub fn step_over(&mut self, max_steps: u32) -> Result<StepOverResult, EmuError> {
+        if self.cpu.halted {
+            return Ok(StepOverResult::Halted);
+        }
+
+        let instr = self.decode_at_rip()?;
+        if instr.mnemonic() != Mnemonic::Call {
+            return match self.step()? {
+                StepResult::Halted => Ok(StepOverResult::Halted),
+                StepResult::Continued => Ok(StepOverResult::Stepped),
+            };
+        }
+
+        let return_addr = instr.next_ip();
+        let start_rsp = self.cpu.regs.get64(namsdec_core::Reg64::Rsp);
+
+        for _ in 0..max_steps {
+            if self.step()? == StepResult::Halted {
+                return Ok(StepOverResult::Halted);
+            }
+            // La pile doit être revenue au moins à son niveau de départ pour
+            // qu'on considère être "revenu" — protège contre un `ret`
+            // orphelin qui atterrirait par coïncidence sur `return_addr` à
+            // une profondeur de pile différente.
+            if self.cpu.regs.rip == return_addr
+                && self.cpu.regs.get64(namsdec_core::Reg64::Rsp) >= start_rsp
+            {
+                return Ok(StepOverResult::SteppedOverCall);
+            }
+            if self.breakpoints.contains(&self.cpu.regs.rip) {
+                return Ok(StepOverResult::Breakpoint(self.cpu.regs.rip));
+            }
+        }
+        Ok(StepOverResult::StepLimit)
     }
 
     /// Exécute jusqu'à `max_steps` instructions, jusqu'à `hlt`, un point
@@ -128,13 +190,31 @@ impl Emulator {
             }
             M::Nop => {}
             M::Jmp => {
-                self.cpu.regs.rip = instr.near_branch_target();
+                self.cpu.regs.rip = self.branch_target(instr)?;
             }
             M::Je | M::Jne | M::Jl | M::Jle | M::Jg | M::Jge | M::Jb | M::Jbe | M::Ja
             | M::Jae => {
                 if self.condition_met(instr.mnemonic()) {
                     self.cpu.regs.rip = instr.near_branch_target();
                 }
+            }
+            M::Call => {
+                let target = self.branch_target(instr)?;
+                // step() a déjà avancé RIP à next_ip avant d'appeler execute() :
+                // c'est exactement l'adresse de retour à empiler.
+                let ret_addr = self.cpu.regs.rip;
+                let new_rsp = self.cpu.regs.get64(namsdec_core::Reg64::Rsp).wrapping_sub(8);
+                self.cpu.mem.write_u64(new_rsp, ret_addr)?;
+                self.cpu.regs.set64(namsdec_core::Reg64::Rsp, new_rsp);
+                self.cpu.regs.rip = target;
+            }
+            M::Ret => {
+                let rsp = self.cpu.regs.get64(namsdec_core::Reg64::Rsp);
+                let ret_addr = self.cpu.mem.read_u64(rsp)?;
+                self.cpu
+                    .regs
+                    .set64(namsdec_core::Reg64::Rsp, rsp.wrapping_add(8));
+                self.cpu.regs.rip = ret_addr;
             }
             M::Hlt => {
                 self.cpu.halted = true;
@@ -199,6 +279,21 @@ impl Emulator {
             self.write_op(instr, 0, result)?;
         }
         Ok(())
+    }
+
+    /// Adresse cible d'un `jmp`/`call` : `near_branch_target()` pour les
+    /// formes relatives (rel8/rel32, l'immense majorité en pratique), sinon
+    /// l'opérande générique (registre ou mémoire indirects). Sans ce
+    /// dispatch, `near_branch_target()` sur une forme indirecte renvoie
+    /// silencieusement 0 plutôt que d'échouer — un bug latent qu'avait
+    /// `Jmp` avant l'ajout de `Call`.
+    fn branch_target(&self, instr: &Instruction) -> Result<u64, EmuError> {
+        match instr.op_kind(0) {
+            OpKind::NearBranch16 | OpKind::NearBranch32 | OpKind::NearBranch64 => {
+                Ok(instr.near_branch_target())
+            }
+            _ => self.read_op(instr, 0),
+        }
     }
 
     /// INC/DEC affectent OF/SF/ZF/AF/PF comme add/sub de 1, mais
@@ -374,6 +469,21 @@ mod tests {
         emu
     }
 
+    /// Comme `run_program`, mais sans exécuter quoi que ce soit — pour les
+    /// tests qui doivent piloter `step`/`step_over` à la main. Renvoie
+    /// aussi la sortie d'assemblage pour retrouver les adresses par ligne.
+    fn load_program(asm: &str) -> (Emulator, namsdec_asm::AssembleOutput) {
+        let out = namsdec_asm::assemble(asm, BASE).expect("assemblage (nasm requis)");
+        let mut mem = Memory::new(BASE, 0x10000);
+        mem.load(BASE, &out.bytes).unwrap();
+
+        let mut cpu = Cpu::new(mem);
+        cpu.regs.rip = BASE;
+        cpu.regs.set64(Reg64::Rsp, BASE + 0x8000);
+
+        (Emulator::new(cpu), out)
+    }
+
     const SUM_LOOP_ASM: &str = "\
 BITS 64
 org 0x400000
@@ -448,5 +558,58 @@ org 0x400000
         assert!(emu.cpu.halted);
         assert!(emu.cpu.flags.contains(RFlags::CF));
         assert_eq!(emu.cpu.regs.get64(Reg64::Rbx), 1);
+    }
+
+    const CALL_RET_ASM: &str = "\
+BITS 64
+org 0x400000
+    mov rax, 1
+    call add_five
+    hlt
+add_five:
+    add rax, 5
+    ret
+";
+
+    #[test]
+    fn call_then_ret_round_trips_and_updates_rax() {
+        let emu = run_program(CALL_RET_ASM, &[]);
+        assert!(emu.cpu.halted);
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rax), 6);
+    }
+
+    #[test]
+    fn step_into_a_call_enters_the_subroutine() {
+        let (mut emu, out) = load_program(CALL_RET_ASM);
+        let call_addr = out.line_to_addr[&4];
+        while emu.cpu.regs.rip != call_addr {
+            emu.step().unwrap();
+        }
+        let subroutine_addr = out.line_to_addr[&7]; // "add rax, 5"
+        emu.step().unwrap();
+        assert_eq!(emu.cpu.regs.rip, subroutine_addr);
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rax), 1); // pas encore exécuté
+    }
+
+    #[test]
+    fn step_over_a_call_runs_the_whole_subroutine() {
+        let (mut emu, out) = load_program(CALL_RET_ASM);
+        let call_addr = out.line_to_addr[&4];
+        while emu.cpu.regs.rip != call_addr {
+            emu.step().unwrap();
+        }
+        let after_call_addr = out.line_to_addr[&5]; // hlt
+        let result = emu.step_over(1000).unwrap();
+        assert_eq!(result, StepOverResult::SteppedOverCall);
+        assert_eq!(emu.cpu.regs.rip, after_call_addr);
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rax), 6);
+    }
+
+    #[test]
+    fn step_over_a_non_call_instruction_behaves_like_step() {
+        let (mut emu, _out) = load_program(SUM_LOOP_ASM);
+        let result = emu.step_over(1000).unwrap();
+        assert_eq!(result, StepOverResult::Stepped);
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rax), 0); // "mov rax, 0" tout juste exécuté
     }
 }
