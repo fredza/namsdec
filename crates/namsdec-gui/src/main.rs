@@ -138,6 +138,37 @@ enum Status {
     Error(String),
 }
 
+/// Mode d'édition façon (n)vim : en Normal, l'éditeur ne prend pas la
+/// frappe comme du texte (`i`/`I` pour passer en Insertion) ; en
+/// Insertion, il se comporte comme un éditeur de texte classique
+/// (`Échap` pour revenir en Normal). Volontairement limité à ces deux
+/// modes et ces trois touches — pas les mouvements hjkl ni les commandes
+/// (dd, yy, ...) de vim, qui n'ont pas été demandés.
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+enum EditorMode {
+    #[default]
+    Normal,
+    Insert,
+}
+
+impl EditorMode {
+    fn label(self) -> &'static str {
+        // Comme dans (n)vim lui-même : jamais traduit, y compris en UI
+        // anglaise — c'est la convention, pas un texte applicatif.
+        match self {
+            EditorMode::Normal => "NORMAL",
+            EditorMode::Insert => "INSERT",
+        }
+    }
+
+    fn color(self) -> egui::Color32 {
+        match self {
+            EditorMode::Normal => ACCENT,
+            EditorMode::Insert => GOOD,
+        }
+    }
+}
+
 struct AssembleState {
     output: namsdec_asm::AssembleOutput,
     disasm: Vec<DecodedInstruction>,
@@ -165,6 +196,7 @@ struct NamsdecApp {
     running: bool,
     run_steps_taken: u64,
     editor_focused: bool,
+    editor_mode: EditorMode,
     preferences_tab: PreferencesTab,
     show_re_tab: bool,
     explorer: FileExplorer,
@@ -283,6 +315,7 @@ impl Default for NamsdecApp {
             running: false,
             run_steps_taken: 0,
             editor_focused: false,
+            editor_mode: EditorMode::Normal,
             preferences_tab: PreferencesTab::General,
             show_re_tab: false,
             explorer: FileExplorer::default(),
@@ -1047,19 +1080,23 @@ impl NamsdecApp {
         }
 
         ui.horizontal(|ui| {
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                match &self.nasm_info {
-                    Some(info) => {
-                        ui.label(&info.version);
-                        status_dot(ui, GOOD);
-                    }
-                    None => {
-                        ui.label(s.nasm_not_found);
-                        status_dot(ui, BAD);
-                    }
-                }
-            });
+            // Compartimenté plutôt qu'un seul bloc de texte : pastille de
+            // mode, séparateur, message de statut, séparateur, statut nasm
+            // (version raccourcie — "NASM 3.02", pas la ligne complète de
+            // `nasm -v` avec sa date de compilation, hors de propos ici).
+            mode_pill_ui(ui, self.editor_mode);
+            ui.separator();
             self.status_message_ui(ui);
+
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let (dot_color, text) = match &self.nasm_info {
+                    Some(info) => (GOOD, short_nasm_version(&info.version)),
+                    None => (BAD, s.nasm_not_found.to_string()),
+                };
+                ui.label(text);
+                status_dot(ui, dot_color);
+                ui.separator();
+            });
         });
 
         if !self.diagnostics.is_empty() {
@@ -1156,6 +1193,48 @@ impl NamsdecApp {
     /// qu'une ligne logique corresponde toujours à une seule ligne visuelle
     /// — sinon la gouttière se décale sur une ligne trop longue.
     fn editor_ui(&mut self, ui: &mut egui::Ui) {
+        // Modes façon (n)vim : `i`/`I` pour passer en Insertion, `Échap`
+        // pour revenir en Normal — désactivé pendant qu'une autre capture
+        // de texte est active (palette de commandes, rebind de raccourci)
+        // pour ne pas leur voler leurs propres touches.
+        let mut just_entered_insert = false;
+        if self.command_palette.is_none() && self.rebinding.is_none() {
+            let (enter_insert, exit_insert) = ui.ctx().input(|inp| {
+                let mut enter = false;
+                let mut exit = false;
+                for event in &inp.events {
+                    if let egui::Event::Key {
+                        key,
+                        pressed: true,
+                        repeat: false,
+                        modifiers,
+                        ..
+                    } = event
+                    {
+                        // `Maj+I` doit rester "I" (vim l'utilise pour insérer
+                        // en début de ligne) — seuls Ctrl/Alt/Cmd distinguent
+                        // ça d'un raccourci sans rapport, comme Ctrl+Alt+I
+                        // (Step Into).
+                        let plain = !modifiers.ctrl && !modifiers.alt && !modifiers.mac_cmd;
+                        match key {
+                            egui::Key::I if plain => enter = true,
+                            egui::Key::Escape => exit = true,
+                            _ => {}
+                        }
+                    }
+                }
+                (enter, exit)
+            });
+            match self.editor_mode {
+                EditorMode::Normal if enter_insert => {
+                    self.editor_mode = EditorMode::Insert;
+                    just_entered_insert = true;
+                }
+                EditorMode::Insert if exit_insert => self.editor_mode = EditorMode::Normal,
+                _ => {}
+            }
+        }
+
         if let Some(line) = self.current_line() {
             ui.horizontal(|ui| {
                 let (rect, _) = ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
@@ -1259,8 +1338,12 @@ impl NamsdecApp {
                                 .desired_width(f32::INFINITY)
                                 .desired_rows(24)
                                 .code_editor()
+                                .interactive(self.editor_mode == EditorMode::Insert)
                                 .layouter(&mut layouter),
                         );
+                        if just_entered_insert {
+                            response.request_focus();
+                        }
                         // Conditionne l'armement de la touche leader
                         // (Espace, ...) : sinon "Espace" taperait un
                         // espace *et* armerait la séquence à chaque mot
@@ -1604,6 +1687,29 @@ fn icon_step_over(painter: &egui::Painter, rect: egui::Rect, color: egui::Color3
     ));
 }
 
+/// Pastille de mode façon vim-airline : fond plein de la couleur du mode,
+/// texte sombre par-dessus pour le contraste.
+fn mode_pill_ui(ui: &mut egui::Ui, mode: EditorMode) {
+    egui::Frame::new()
+        .fill(mode.color())
+        .corner_radius(3)
+        .inner_margin(egui::Margin::symmetric(6, 1))
+        .show(ui, |ui| {
+            ui.colored_label(egui::Color32::from_rgb(0x14, 0x14, 0x14), mode.label());
+        });
+}
+
+/// "NASM version 3.02 compiled on Jul 14 2026" -> "NASM 3.02" — la barre
+/// de statut n'a pas besoin de la date de compilation de nasm lui-même,
+/// seulement de savoir qu'il est disponible et sa version.
+fn short_nasm_version(full: &str) -> String {
+    let mut words = full.split_whitespace();
+    match (words.next(), words.next(), words.next()) {
+        (Some(name), Some("version"), Some(version)) => format!("{name} {version}"),
+        _ => full.to_string(),
+    }
+}
+
 /// Petit disque de statut peint directement (plutôt qu'un glyphe texte
 /// "●", que la police par défaut d'egui ne contient pas et qui retombe
 /// sur un carré de remplacement).
@@ -1669,14 +1775,13 @@ impl eframe::App for NamsdecApp {
             egui::Panel::top("toolbar").show(ui, |ui| self.toolbar_ui(ui));
         }
         if self.show_statusbar {
-            // Un fond et une bordure propres, distincts du reste — sinon la
-            // barre de statut se noie visuellement dans le panneau
-            // au-dessus d'elle (retour utilisateur : "plus embossée, plus
-            // démarquée").
+            // Un fond légèrement distinct, sans bordure complète autour —
+            // une pleine boîte s'est révélée trop marquée (retour
+            // utilisateur), un simple ton différent suffit à la séparer du
+            // panneau au-dessus sans "encadrer" toute la barre.
             let statusbar_frame = egui::Frame::new()
                 .fill(ui.visuals().faint_bg_color)
-                .inner_margin(egui::Margin::symmetric(10, 5))
-                .stroke(ui.visuals().window_stroke);
+                .inner_margin(egui::Margin::symmetric(10, 5));
             egui::Panel::bottom("statusbar")
                 .frame(statusbar_frame)
                 .show(ui, |ui| self.statusbar_ui(ui));
