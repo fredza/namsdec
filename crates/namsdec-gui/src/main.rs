@@ -154,6 +154,12 @@ struct NamsdecApp {
     run_steps_taken: u64,
     editor_focused: bool,
     editor_mode: EditorMode,
+    /// Position du curseur de texte (ligne, colonne), toutes deux
+    /// 1-indexées. Conservée d'une frame à l'autre : en mode Normal le
+    /// `TextEdit` n'est pas interactif et ne rend donc aucun curseur, mais
+    /// la barre de statut doit continuer d'indiquer où l'on est — comme
+    /// vim, qui ne perd pas son curseur en quittant le mode Insertion.
+    cursor_pos: (usize, usize),
     preferences_tab: PreferencesTab,
     show_re_tab: bool,
     /// Fenêtre flottante indépendante (crate `namsdec-explorer`), ouverte
@@ -303,6 +309,7 @@ impl Default for NamsdecApp {
             run_steps_taken: 0,
             editor_focused: false,
             editor_mode: EditorMode::Normal,
+            cursor_pos: (1, 1),
             preferences_tab: PreferencesTab::General,
             show_re_tab: false,
             explorer: FileExplorer::default(),
@@ -1360,6 +1367,9 @@ impl NamsdecApp {
             ui.separator();
             self.status_message_ui(ui);
 
+            // Compartiments de droite, remplis de droite à gauche :
+            // nasm, puis la position du curseur, puis — seulement quand un
+            // programme est chargé — la ligne où l'exécution est arrêtée.
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let (dot_color, text) = match &self.nasm_info {
                     Some(info) => (theme.good, short_nasm_version(&info.version)),
@@ -1368,6 +1378,30 @@ impl NamsdecApp {
                 ui.label(text);
                 status_dot(ui, dot_color);
                 ui.separator();
+
+                let (line, col) = self.cursor_pos;
+                ui.label(if lang == Lang::Fr {
+                    format!("Lig {line}, Col {col}")
+                } else {
+                    format!("Ln {line}, Col {col}")
+                });
+
+                if let Some(exec_line) = self.current_line() {
+                    ui.separator();
+                    ui.colored_label(
+                        theme.accent,
+                        if lang == Lang::Fr {
+                            format!("ligne {exec_line}")
+                        } else {
+                            format!("line {exec_line}")
+                        },
+                    );
+                    // La même flèche que la gouttière marque dans la marge,
+                    // pour que les deux se lisent comme la même chose.
+                    let (rect, _) =
+                        ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
+                    icon_run(ui.painter(), rect, theme.accent);
+                }
             });
         });
 
@@ -1523,19 +1557,9 @@ impl NamsdecApp {
             }
         }
 
-        if let Some(line) = self.current_line() {
-            ui.horizontal(|ui| {
-                let (rect, _) = ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
-                icon_run(ui.painter(), rect, theme.accent);
-                let text = if self.lang == Lang::Fr {
-                    format!("Ligne courante : {line}")
-                } else {
-                    format!("Current line: {line}")
-                };
-                ui.colored_label(theme.accent, text);
-            });
-        }
-
+        // La ligne courante d'exécution n'est plus annoncée par un bandeau
+        // au-dessus de l'éditeur : elle a sa place dans la barre de
+        // statut, avec la position du curseur.
         let current_line = self.current_line();
         let editor_bg = ui.visuals().extreme_bg_color;
         let font_id = egui::TextStyle::Monospace.resolve(ui.style());
@@ -1627,15 +1651,21 @@ impl NamsdecApp {
                             let job = syntax::highlight(ui, theme, buf.as_str(), wrap_width);
                             ui.fonts_mut(|f| f.layout_job(job))
                         };
-                        let response = ui.add(
-                            egui::TextEdit::multiline(&mut self.source)
-                                .frame(egui::Frame::NONE)
-                                .desired_width(f32::INFINITY)
-                                .desired_rows(24)
-                                .code_editor()
-                                .interactive(self.editor_mode == EditorMode::Insert)
-                                .layouter(&mut layouter),
-                        );
+                        // `.show()` plutôt que `ui.add()` : c'est la seule
+                        // forme qui donne accès au curseur, dont la barre
+                        // de statut affiche la position.
+                        let output = egui::TextEdit::multiline(&mut self.source)
+                            .frame(egui::Frame::NONE)
+                            .desired_width(f32::INFINITY)
+                            .desired_rows(24)
+                            .code_editor()
+                            .interactive(self.editor_mode == EditorMode::Insert)
+                            .layouter(&mut layouter)
+                            .show(ui);
+                        if let Some(range) = output.cursor_range {
+                            self.cursor_pos = line_col(&self.source, range.primary.index.0);
+                        }
+                        let response = output.response.response;
                         if just_entered_insert {
                             response.request_focus();
                         }
@@ -2026,6 +2056,25 @@ fn mode_pill_ui(ui: &mut egui::Ui, theme: &Theme, mode: EditorMode) {
         });
 }
 
+/// Traduit un index de *caractère* dans le texte en (ligne, colonne),
+/// toutes deux 1-indexées. egui ne donne que l'index brut ; le compter
+/// ici plutôt que de lire la géométrie du `Galley` rend la position
+/// indépendante de la mise en page (retour à la ligne automatique,
+/// tabulations) — c'est bien la position dans le *texte* qu'on affiche.
+fn line_col(text: &str, char_index: usize) -> (usize, usize) {
+    let mut line = 1;
+    let mut col = 1;
+    for c in text.chars().take(char_index) {
+        if c == '\n' {
+            line += 1;
+            col = 1;
+        } else {
+            col += 1;
+        }
+    }
+    (line, col)
+}
+
 /// "NASM version 3.02 compiled on Jul 14 2026" -> "NASM 3.02" — la barre
 /// de statut n'a pas besoin de la date de compilation de nasm lui-même,
 /// seulement de savoir qu'il est disponible et sa version.
@@ -2315,6 +2364,21 @@ mod tests {
             7,
             "le binaire chargé doit s'exécuter pas à pas comme un programme assemblé"
         );
+    }
+
+    #[test]
+    fn cursor_position_counts_characters_not_bytes() {
+        let text = "mov rax, 0\nsum_loop:\n    add rax, rcx";
+
+        assert_eq!(line_col(text, 0), (1, 1), "début du texte");
+        assert_eq!(line_col(text, 4), (1, 5), "milieu de la première ligne");
+        // Index 11 = juste après le '\n' : début de la ligne 2.
+        assert_eq!(line_col(text, 11), (2, 1), "après un saut de ligne");
+        assert_eq!(line_col(text, text.chars().count()), (3, 17), "fin du texte");
+
+        // Des caractères non-ASCII ne doivent pas décaler la colonne :
+        // egui compte des caractères, pas des octets.
+        assert_eq!(line_col("éàü|", 3), (1, 4), "trois caractères accentués");
     }
 
     /// Un fichier plus gros que la mémoire simulée est tronqué plutôt que
