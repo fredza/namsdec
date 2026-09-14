@@ -55,6 +55,7 @@ pub struct Strings {
 
     // Explorateur de fichiers
     pub explorer_empty: &'static str,
+    pub explorer_filter_hint: &'static str,
 
     // Palette de commandes
     pub palette_open: &'static str,
@@ -145,6 +146,7 @@ const FR: Strings = Strings {
     view_statusbar: "Barre de statut",
 
     explorer_empty: "Aucun dossier ouvert.",
+    explorer_filter_hint: "Filtrer…",
 
     palette_open: "Palette de commandes…",
     palette_placeholder: "Tapez une commande…",
@@ -227,6 +229,7 @@ const EN: Strings = Strings {
     view_statusbar: "Status Bar",
 
     explorer_empty: "No folder open.",
+    explorer_filter_hint: "Filter…",
 
     palette_open: "Command Palette…",
     palette_placeholder: "Type a command…",

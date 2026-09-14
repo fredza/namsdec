@@ -1305,6 +1305,7 @@ dependencies = [
  "namsdec-emu",
  "namsdec-re",
  "rfd",
+ "tempfile",
 ]
 
 [[package]]

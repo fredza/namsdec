@@ -18,7 +18,7 @@ use namsdec_disasm::DecodedInstruction;
 use namsdec_emu::{Emulator, RunStop, StepOverResult, StepResult};
 use namsdec_re::{BinaryInfoModule, ReContext, ReModuleRegistry};
 
-use explorer::FileExplorer;
+use explorer::{ExplorerAction, FileExplorer};
 use i18n::{strings, Lang, Strings};
 use keybindings::{Action, Dispatcher, KeyBindings, Rebinding};
 
@@ -201,6 +201,10 @@ struct NamsdecApp {
     show_re_tab: bool,
     explorer: FileExplorer,
     show_explorer: bool,
+    /// L'explorateur a-t-il le focus clavier ? Comme dans nvim, les touches
+    /// vont soit à l'arborescence (j/k/l/h…), soit à l'éditeur, jamais aux
+    /// deux.
+    explorer_focused: bool,
     current_file: Option<PathBuf>,
     show_toolbar: bool,
     show_sidebar: bool,
@@ -320,6 +324,7 @@ impl Default for NamsdecApp {
             show_re_tab: false,
             explorer: FileExplorer::default(),
             show_explorer: false,
+            explorer_focused: false,
             current_file: None,
             show_toolbar: true,
             show_sidebar: true,
@@ -522,7 +527,12 @@ impl NamsdecApp {
     /// implémentations de "ce que fait Assembler" qui divergent.
     fn dispatch(&mut self, action: Action) {
         match action {
-            Action::ToggleExplorer => self.show_explorer = !self.show_explorer,
+            Action::ToggleExplorer => {
+                self.show_explorer = !self.show_explorer;
+                // L'ouvrir lui donne le focus (comme `:Neotree focus`) ;
+                // le refermer le rend à l'éditeur.
+                self.focus_explorer(self.show_explorer);
+            }
             Action::Assemble => self.do_assemble(),
             Action::Run => self.do_run(),
             Action::StepInto => self.do_step(),
@@ -573,6 +583,16 @@ impl NamsdecApp {
         }
     }
 
+    /// Donner le focus à l'explorateur repasse forcément l'éditeur en mode
+    /// Normal : sinon le `TextEdit` garderait le focus clavier d'egui et
+    /// chaque `j`/`k` de navigation serait *aussi* tapé dans le code.
+    fn focus_explorer(&mut self, focused: bool) {
+        self.explorer_focused = focused;
+        if focused {
+            self.editor_mode = EditorMode::Normal;
+        }
+    }
+
     /// L'arborescence elle-même, ou une invite claire tant qu'aucun dossier
     /// n'a été choisi — un panneau simplement vide se lit comme cassé.
     fn explorer_panel_ui(&mut self, ui: &mut egui::Ui) {
@@ -588,8 +608,21 @@ impl NamsdecApp {
             });
             return;
         }
-        if let Some(path) = self.explorer.ui(ui) {
-            self.open_file(path);
+        // Cliquer dans le panneau lui donne le focus clavier.
+        if ui.ui_contains_pointer() && ui.input(|i| i.pointer.any_pressed()) {
+            self.focus_explorer(true);
+        }
+
+        let focused = self.explorer_focused;
+        match self.explorer.ui(ui, focused, s.explorer_filter_hint) {
+            ExplorerAction::OpenFile(path) => {
+                self.open_file(path);
+                // Ouvrir un fichier rend la main à l'éditeur, comme dans
+                // neo-tree où la sélection d'un fichier saute au buffer.
+                self.explorer_focused = false;
+            }
+            ExplorerAction::Defocus => self.explorer_focused = false,
+            ExplorerAction::None => {}
         }
     }
 
@@ -1198,7 +1231,7 @@ impl NamsdecApp {
         // de texte est active (palette de commandes, rebind de raccourci)
         // pour ne pas leur voler leurs propres touches.
         let mut just_entered_insert = false;
-        if self.command_palette.is_none() && self.rebinding.is_none() {
+        if self.command_palette.is_none() && self.rebinding.is_none() && !self.explorer_focused {
             let (enter_insert, exit_insert) = ui.ctx().input(|inp| {
                 let mut enter = false;
                 let mut exit = false;
@@ -1343,6 +1376,11 @@ impl NamsdecApp {
                         );
                         if just_entered_insert {
                             response.request_focus();
+                        }
+                        if response.clicked() {
+                            // Cliquer dans le code reprend le focus clavier
+                            // à l'explorateur.
+                            self.explorer_focused = false;
                         }
                         // Conditionne l'armement de la touche leader
                         // (Espace, ...) : sinon "Espace" taperait un
@@ -1795,7 +1833,7 @@ impl eframe::App for NamsdecApp {
         if self.show_explorer {
             egui::Panel::left("explorer")
                 .resizable(true)
-                .default_size(220.0)
+                .default_size(260.0)
                 .show(ui, |ui| self.explorer_panel_ui(ui));
         }
         self.editor_ui(ui);
