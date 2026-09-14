@@ -329,7 +329,14 @@ impl Default for NamsdecApp {
 impl NamsdecApp {
     /// Construit l'application à partir des réglages relus sur le disque.
     fn from_settings(settings: Settings) -> Self {
-        let explorer = FileExplorer::with_root(settings.explorer_root());
+        // Le dossier des réglages s'il est toujours là, sinon celui d'où
+        // l'application a été lancée : l'explorateur ne doit jamais
+        // s'ouvrir sur du vide.
+        let root = settings
+            .explorer_root()
+            .filter(|p| p.is_dir())
+            .or_else(default_explorer_root);
+        let explorer = FileExplorer::with_root(root);
         let mut app = Self {
             theme: settings.theme(),
             lang: settings.lang(),
@@ -342,20 +349,26 @@ impl NamsdecApp {
             saved_settings: settings,
             ..Default::default()
         };
+        app.ensure_explorer_root();
+        app
+    }
 
-        // Écrit le fichier dès le premier lancement, même si rien n'a
-        // encore été réglé : l'utilisateur doit pouvoir le trouver et
-        // l'éditer sans devoir changer un réglage d'abord, et les défauts
-        // du jour y sont gravés plutôt que de suivre en silence ceux
-        // d'une version future.
-        if let Err(e) = app.saved_settings.save() {
-            app.status = Status::Error(if app.lang == Lang::Fr {
+    /// Écrit le fichier de réglages sans attendre qu'un réglage change :
+    /// appelé au démarrage pour que l'utilisateur puisse le trouver et
+    /// l'éditer dès le premier lancement, avec les défauts du jour gravés
+    /// dedans plutôt que de suivre en silence ceux d'une version future.
+    ///
+    /// Volontairement hors de `from_settings` : construire l'application
+    /// ne doit pas écrire sur le disque, sinon les tests qui la
+    /// construisent écraseraient la configuration de la machine.
+    fn save_settings_now(&mut self) {
+        if let Err(e) = self.saved_settings.save() {
+            self.status = Status::Error(if self.lang == Lang::Fr {
                 format!("impossible d'enregistrer les réglages : {e}")
             } else {
                 format!("could not save settings: {e}")
             });
         }
-        app
     }
 
     /// L'état courant des réglages, sous la forme qui part dans le
@@ -595,6 +608,9 @@ impl NamsdecApp {
             Action::ToggleExplorer => {
                 self.show_explorer = !self.show_explorer;
                 self.explorer_just_opened = self.show_explorer;
+                if self.show_explorer {
+                    self.ensure_explorer_root();
+                }
                 // L'ouvrir lui donne le focus (comme `:Neotree focus`) ;
                 // le refermer le rend à l'éditeur.
                 self.focus_explorer(self.show_explorer);
@@ -722,6 +738,17 @@ impl NamsdecApp {
                 bytes: loaded,
                 truncated,
             };
+        }
+    }
+
+    /// Garantit que l'explorateur a un dossier à montrer. Sans ça, il
+    /// s'ouvre sur une invite "Aucun dossier ouvert" qui oblige à passer
+    /// par une boîte de dialogue avant de voir quoi que ce soit — alors
+    /// qu'il y a toujours un dossier évident à afficher : celui depuis
+    /// lequel l'application a été lancée, comme `nvim .`.
+    fn ensure_explorer_root(&mut self) {
+        if self.explorer.root.is_none() {
+            self.explorer.root = default_explorer_root();
         }
     }
 
@@ -2056,6 +2083,18 @@ fn mode_pill_ui(ui: &mut egui::Ui, theme: &Theme, mode: EditorMode) {
         });
 }
 
+/// Dossier sur lequel ouvrir l'explorateur faute de mieux : le répertoire
+/// de travail, puis le dossier personnel. Les deux peuvent échouer (un
+/// répertoire courant supprimé, un environnement sans `HOME`) — dans ce
+/// cas seulement, l'explorateur retombe sur son invite "Aucun dossier
+/// ouvert".
+fn default_explorer_root() -> Option<PathBuf> {
+    std::env::current_dir()
+        .ok()
+        .or_else(|| std::env::var_os("HOME").map(PathBuf::from))
+        .filter(|path| path.is_dir())
+}
+
 /// Traduit un index de *caractère* dans le texte en (ligne, colonne),
 /// toutes deux 1-indexées. egui ne donne que l'index brut ; le compter
 /// ici plutôt que de lire la géométrie du `Galley` rend la position
@@ -2304,7 +2343,8 @@ fn main() -> eframe::Result<()> {
         "Namsdec",
         options,
         Box::new(|cc| {
-            let app = NamsdecApp::from_settings(Settings::load());
+            let mut app = NamsdecApp::from_settings(Settings::load());
+            app.save_settings_now();
             app.apply_theme(&cc.egui_ctx);
             Ok(Box::new(app))
         }),
@@ -2364,6 +2404,43 @@ mod tests {
             7,
             "le binaire chargé doit s'exécuter pas à pas comme un programme assemblé"
         );
+    }
+
+    /// L'explorateur ne doit jamais s'ouvrir sur "Aucun dossier ouvert" :
+    /// il y a toujours le répertoire de travail à montrer, et une boîte
+    /// de dialogue de plus avant de voir l'arborescence n'a pas lieu
+    /// d'être.
+    #[test]
+    fn the_explorer_always_opens_on_a_folder() {
+        let app = NamsdecApp::from_settings(Settings::default());
+        assert!(
+            app.explorer.root.is_some(),
+            "au démarrage, sans réglage enregistré"
+        );
+
+        // Et si la racine disparaît en cours de route, la rouvrir en
+        // retrouve une plutôt que d'afficher l'invite vide.
+        let mut app = NamsdecApp::default();
+        app.explorer.root = None;
+        app.dispatch(Action::ToggleExplorer);
+        assert!(app.show_explorer);
+        assert!(
+            app.explorer.root.is_some(),
+            "ouvrir l'explorateur doit lui donner un dossier"
+        );
+    }
+
+    /// Un dossier enregistré qui n'existe plus (projet déplacé, clé USB
+    /// retirée) ne doit pas laisser l'explorateur sur une racine morte.
+    #[test]
+    fn a_stale_saved_folder_falls_back_to_the_working_directory() {
+        let settings = Settings {
+            explorer_root: Some("/ce/chemin/n/existe/pas".to_owned()),
+            ..Default::default()
+        };
+        let app = NamsdecApp::from_settings(settings);
+        let root = app.explorer.root.expect("une racine de repli");
+        assert!(root.is_dir(), "la racine de repli doit exister : {root:?}");
     }
 
     #[test]

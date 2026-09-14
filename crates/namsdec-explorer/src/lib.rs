@@ -129,13 +129,20 @@ impl FileExplorer {
 
         let mut action = ExplorerAction::None;
 
+        // Un panneau haut, comme l'arbre de fichiers d'un éditeur, plutôt
+        // qu'une boîte ajustée à son contenu : il occupe la hauteur
+        // disponible sous les barres d'outils, quelle que soit la taille
+        // de la fenêtre.
+        const TOP: f32 = 104.0;
+        let height = (ctx.viewport_rect().height() - TOP - 60.0).max(240.0);
+
         let window = egui::Window::new("namsdec_explorer")
             .id(egui::Id::new("namsdec_explorer"))
             .title_bar(false)
             .frame(frame)
             .resizable(true)
-            .default_pos(egui::pos2(18.0, 104.0))
-            .default_size(egui::vec2(290.0, 460.0))
+            .default_pos(egui::pos2(18.0, TOP))
+            .default_size(egui::vec2(300.0, height))
             .show(ctx, |ui| {
                 action = self.ui(ui, theme, labels, focused);
             });
@@ -189,6 +196,9 @@ impl FileExplorer {
                     action = ExplorerAction::PickRoot;
                 }
             });
+            // Garde la fenêtre à sa taille au lieu de la laisser se
+            // rétracter autour de deux lignes de texte.
+            ui.allocate_space(ui.available_size());
             return action;
         };
 
