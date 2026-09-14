@@ -305,11 +305,11 @@ impl NamsdecApp {
             ui.separator();
             match &self.nasm_info {
                 Some(info) => {
-                    ui.colored_label(GOOD, "●");
+                    status_dot(ui, GOOD);
                     ui.label(&info.version);
                 }
                 None => {
-                    ui.colored_label(BAD, "●");
+                    status_dot(ui, BAD);
                     ui.label("nasm introuvable");
                 }
             }
@@ -597,6 +597,15 @@ impl NamsdecApp {
     }
 }
 
+/// Petit disque de statut peint directement (plutôt qu'un glyphe texte
+/// "●", que la police par défaut d'egui ne contient pas et qui retombe
+/// sur un carré de remplacement).
+fn status_dot(ui: &mut egui::Ui, color: egui::Color32) {
+    let (rect, _response) =
+        ui.allocate_exact_size(egui::vec2(8.0, 8.0), egui::Sense::hover());
+    ui.painter().circle_filled(rect.center(), 4.0, color);
+}
+
 /// Une ligne de la vue d'ensemble des modules : nom, version, point coloré
 /// de statut, et une courte description de ce que fait ce module là,
 /// maintenant.
@@ -610,7 +619,7 @@ fn module_card(
 ) {
     ui.group(|ui| {
         ui.horizontal(|ui| {
-            ui.colored_label(if active { color } else { egui::Color32::GRAY }, "●");
+            status_dot(ui, if active { color } else { egui::Color32::GRAY });
             ui.strong(name);
             ui.weak(format!("v{version}"));
         });
