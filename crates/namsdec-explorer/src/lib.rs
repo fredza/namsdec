@@ -2,6 +2,13 @@
 //! navigation au clavier, connecteurs d'arborescence, icônes de dossier
 //! ouvert/fermé et filtre incrémental.
 //!
+//! Crate à part entière, et pas un module de l'interface : l'explorateur
+//! ne connaît ni l'éditeur, ni les préférences, ni la langue (ses libellés
+//! lui sont passés). Il se présente comme une **fenêtre flottante
+//! indépendante**, invoquée directement par son raccourci — il n'est
+//! accroché à aucun panneau de la mise en page, et le fermer ne réorganise
+//! rien autour de lui.
+//!
 //! Le rendu part d'une **liste aplatie** des lignes visibles, reconstruite
 //! à chaque frame depuis le disque et l'ensemble des dossiers dépliés. Ce
 //! détour — plutôt qu'un parcours récursif qui dessine au fil de l'eau —
@@ -11,7 +18,9 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use eframe::egui;
+use namsdec_theme::Theme;
+
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 const INDENT: f32 = 16.0;
 const ROW_HEIGHT: f32 = 22.0;
@@ -20,15 +29,36 @@ const LEFT_PAD: f32 = 6.0;
 /// la ligne soit un dossier ou un fichier.
 const ICON_W: f32 = 22.0;
 
-const ACCENT: egui::Color32 = egui::Color32::from_rgb(0xe0, 0x9a, 0x5a);
-const FOLDER_ICON: egui::Color32 = egui::Color32::from_rgb(0x2a, 0xc3, 0xde);
-const FOLDER_TEXT: egui::Color32 = egui::Color32::from_rgb(0x7d, 0xcf, 0xff);
-
+/// Ce que l'explorateur demande à l'application hôte après une frame.
 pub enum ExplorerAction {
     None,
     OpenFile(PathBuf),
+    /// Aucun dossier ouvert et l'utilisateur en réclame un — c'est l'hôte
+    /// qui ouvre le sélecteur natif, l'explorateur n'a pas à dépendre de
+    /// `rfd`.
+    PickRoot,
     /// `Échap` : rendre le focus clavier à l'éditeur.
     Defocus,
+}
+
+/// Ce qu'un clic de souris a fait au focus clavier de l'explorateur.
+/// Renvoyé plutôt que décidé ici : c'est l'hôte qui arbitre le focus entre
+/// l'explorateur et son éditeur.
+#[derive(PartialEq, Eq, Debug)]
+pub enum FocusChange {
+    Unchanged,
+    /// Clic à l'intérieur de la fenêtre.
+    Gained,
+    /// Clic ailleurs alors que l'explorateur avait le focus.
+    Lost,
+}
+
+/// Libellés fournis par l'hôte : la traduction reste de son côté.
+pub struct Labels<'a> {
+    pub title: &'a str,
+    pub filter_hint: &'a str,
+    pub empty: &'a str,
+    pub open_folder: &'a str,
 }
 
 #[derive(Default)]
@@ -56,12 +86,93 @@ struct Row {
 }
 
 impl FileExplorer {
-    /// Affiche l'arborescence. `focused` indique si l'explorateur a le
-    /// focus clavier (sinon les touches sont ignorées et laissées à
-    /// l'éditeur).
-    pub fn ui(&mut self, ui: &mut egui::Ui, focused: bool, filter_hint: &str) -> ExplorerAction {
+    /// Affiche la fenêtre flottante. `focused` indique si l'explorateur a
+    /// le focus clavier ; le `FocusChange` renvoyé dit ce qu'un éventuel
+    /// clic vient d'y changer.
+    pub fn show(
+        &mut self,
+        ctx: &egui::Context,
+        theme: &Theme,
+        labels: &Labels,
+        focused: bool,
+    ) -> (ExplorerAction, FocusChange) {
+        let frame = egui::Frame::new()
+            .fill(theme.panel)
+            .stroke(egui::Stroke::new(
+                1.0,
+                if focused {
+                    theme.header
+                } else {
+                    theme.dim.gamma_multiply(0.6)
+                },
+            ))
+            .corner_radius(10)
+            .inner_margin(egui::Margin::same(8))
+            // Ombre portée propre plutôt que celle du style courant : elle
+            // doit détacher l'explorateur de l'éditeur qu'il recouvre, y
+            // compris sur un thème clair où l'ombre par défaut d'egui est
+            // presque invisible.
+            .shadow(egui::epaint::Shadow {
+                offset: [0, 6],
+                blur: 18,
+                spread: 0,
+                color: egui::Color32::from_black_alpha(96),
+            });
+
+        let mut action = ExplorerAction::None;
+
+        let window = egui::Window::new("namsdec_explorer")
+            .id(egui::Id::new("namsdec_explorer"))
+            .title_bar(false)
+            .frame(frame)
+            .resizable(true)
+            .default_pos(egui::pos2(18.0, 104.0))
+            .default_size(egui::vec2(290.0, 460.0))
+            .show(ctx, |ui| {
+                action = self.ui(ui, theme, labels, focused);
+            });
+
+        // Le rectangle de la *fenêtre* entière, marge comprise — pas
+        // `ui_contains_pointer()` du contenu, qui exclurait la marge
+        // intérieure et ferait donc perdre le focus à un clic posé sur le
+        // bord de l'explorateur.
+        let inside = window
+            .as_ref()
+            .map(|w| w.response.rect)
+            .zip(ctx.input(|i| i.pointer.interact_pos()))
+            .is_some_and(|(rect, pos)| rect.contains(pos));
+
+        let focus = match (ctx.input(|i| i.pointer.any_pressed()), inside) {
+            (true, true) => FocusChange::Gained,
+            (true, false) if focused => FocusChange::Lost,
+            _ => FocusChange::Unchanged,
+        };
+
+        (action, focus)
+    }
+
+    /// Le contenu seul, sans la fenêtre — utilisable tel quel dans un
+    /// panneau si l'hôte préfère, et c'est ce que pilotent les tests.
+    pub fn ui(
+        &mut self,
+        ui: &mut egui::Ui,
+        theme: &Theme,
+        labels: &Labels,
+        focused: bool,
+    ) -> ExplorerAction {
         let Some(root) = self.root.clone() else {
-            return ExplorerAction::None;
+            // Un panneau simplement vide se lit comme cassé : on dit ce
+            // qui manque et on propose l'action qui le corrige.
+            ui.add_space(12.0);
+            let mut action = ExplorerAction::None;
+            ui.vertical_centered(|ui| {
+                ui.label(labels.empty);
+                ui.add_space(6.0);
+                if ui.button(labels.open_folder).clicked() {
+                    action = ExplorerAction::PickRoot;
+                }
+            });
+            return action;
         };
 
         let everything = self.build_rows(&root);
@@ -71,7 +182,7 @@ impl FileExplorer {
             self.selected = rows.len().saturating_sub(1);
         }
 
-        let filter_focused = self.header_ui(ui, rows.len(), total, filter_hint);
+        let filter_focused = self.header_ui(ui, theme, rows.len(), total, labels);
 
         let mut action = if focused && !filter_focused {
             self.handle_keys(ui, &rows)
@@ -103,7 +214,7 @@ impl FileExplorer {
                         ui.scroll_to_rect(rect, None);
                     }
                     if ui.is_rect_visible(rect) {
-                        paint_row(ui, rect, row, is_selected, response.hovered());
+                        paint_row(ui, theme, rect, row, is_selected, response.hovered());
                     }
                 }
             });
@@ -152,7 +263,11 @@ impl FileExplorer {
                 egui::Key::K | egui::Key::ArrowUp => self.move_selection(-1, rows.len()),
                 egui::Key::G => {
                     // `G` (majuscule) va en bas, `g` en haut — comme dans vim.
-                    self.selected = if modifiers.shift { rows.len().saturating_sub(1) } else { 0 };
+                    self.selected = if modifiers.shift {
+                        rows.len().saturating_sub(1)
+                    } else {
+                        0
+                    };
                     self.scroll_to_selection = true;
                 }
                 egui::Key::Home => {
@@ -222,39 +337,45 @@ impl FileExplorer {
     /// avec son compteur `visibles/total`. Renvoie `true` si le champ de
     /// filtre a le focus clavier (auquel cas `j`/`k` doivent s'y taper au
     /// lieu de déplacer la sélection).
-    fn header_ui(&mut self, ui: &mut egui::Ui, shown: usize, total: usize, hint: &str) -> bool {
-        ui.add_space(6.0);
+    fn header_ui(
+        &mut self,
+        ui: &mut egui::Ui,
+        theme: &Theme,
+        shown: usize,
+        total: usize,
+        labels: &Labels,
+    ) -> bool {
+        ui.add_space(4.0);
 
-        let title = "Explorer";
         let font = egui::FontId::monospace(13.0);
         let title_width = ui
             .painter()
-            .layout_no_wrap(title.to_owned(), font.clone(), ACCENT)
+            .layout_no_wrap(labels.title.to_owned(), font.clone(), theme.header)
             .size()
             .x;
         let side = ((ui.available_width() - title_width - 16.0) * 0.5).max(4.0);
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 4.0;
-            rule(ui, side);
-            ui.colored_label(ACCENT, title);
-            rule(ui, side);
+            rule(ui, theme, side);
+            ui.colored_label(theme.header, labels.title);
+            rule(ui, theme, side);
         });
 
         let mut filter_focused = false;
         egui::Frame::new()
-            .stroke(egui::Stroke::new(1.0, ACCENT))
+            .stroke(egui::Stroke::new(1.0, theme.header))
             .corner_radius(6)
             .inner_margin(egui::Margin::symmetric(6, 3))
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     let (chevron, _) =
                         ui.allocate_exact_size(egui::vec2(10.0, 12.0), egui::Sense::hover());
-                    paint_triangle(ui.painter(), chevron.center(), false, FOLDER_TEXT);
+                    paint_triangle(ui.painter(), chevron.center(), false, theme.folder_text);
 
                     let count = format!("{shown}/{total}");
                     let count_width = ui
                         .painter()
-                        .layout_no_wrap(count.clone(), font.clone(), ACCENT)
+                        .layout_no_wrap(count.clone(), font.clone(), theme.header)
                         .size()
                         .x;
                     let field_width = (ui.available_width() - count_width - 10.0).max(24.0);
@@ -262,7 +383,7 @@ impl FileExplorer {
                     let response = ui.add(
                         egui::TextEdit::singleline(&mut self.filter)
                             .frame(egui::Frame::NONE)
-                            .hint_text(hint)
+                            .hint_text(labels.filter_hint)
                             .desired_width(field_width),
                     );
                     if self.request_filter_focus {
@@ -272,7 +393,7 @@ impl FileExplorer {
                     filter_focused = response.has_focus();
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.colored_label(ui.visuals().weak_text_color(), count);
+                        ui.colored_label(theme.dim, count);
                     });
                 });
             });
@@ -366,30 +487,41 @@ fn filter_rows(rows: Vec<Row>, filter: &str) -> Vec<Row> {
         .collect()
 }
 
-fn paint_row(ui: &egui::Ui, rect: egui::Rect, row: &Row, selected: bool, hovered: bool) {
+fn paint_row(
+    ui: &egui::Ui,
+    theme: &Theme,
+    rect: egui::Rect,
+    row: &Row,
+    selected: bool,
+    hovered: bool,
+) {
     let painter = ui.painter();
 
     if selected {
-        let fill = ui.visuals().selection.bg_fill;
-        painter.rect_filled(rect, 0, fill.gamma_multiply(0.45));
+        painter.rect_filled(rect, 0, theme.selection.gamma_multiply(0.45));
         // Le petit repère vertical au bord gauche, comme neo-tree.
         painter.rect_filled(
             egui::Rect::from_min_size(rect.min, egui::vec2(3.0, rect.height())),
             0,
-            fill,
+            theme.accent,
         );
     } else if hovered {
-        painter.rect_filled(rect, 0, ui.visuals().widgets.hovered.weak_bg_fill);
+        painter.rect_filled(rect, 0, theme.surface);
     }
 
-    paint_guides(painter, rect, row, ui.visuals().weak_text_color().gamma_multiply(0.4));
+    paint_guides(painter, rect, row, theme.dim.gamma_multiply(0.7));
 
     let icon_left = rect.left() + LEFT_PAD + row.depth as f32 * INDENT;
     let icon_center = egui::pos2(icon_left + ICON_W * 0.5, rect.center().y);
     let font = egui::FontId::monospace(13.0);
 
     if row.is_dir {
-        paint_folder_icon(painter, icon_center, FOLDER_ICON, row.is_expanded);
+        let color = if row.is_expanded {
+            theme.folder_open
+        } else {
+            theme.folder
+        };
+        paint_folder_icon(painter, icon_center, color, row.is_expanded);
     } else {
         let (badge, color) = file_badge(&row.name);
         let galley = painter.layout_no_wrap(badge, egui::FontId::monospace(11.0), color);
@@ -401,9 +533,9 @@ fn paint_row(ui: &egui::Ui, rect: egui::Rect, row: &Row, selected: bool, hovered
     }
 
     let text_color = if row.is_dir {
-        FOLDER_TEXT
+        theme.folder_text
     } else {
-        ui.visuals().text_color()
+        theme.text
     };
     painter.text(
         egui::pos2(icon_left + ICON_W + 4.0, rect.center().y),
@@ -435,7 +567,11 @@ fn paint_guides(painter: &egui::Painter, rect: egui::Rect, row: &Row, color: egu
     let own = row.depth - 1;
     let x = guide_x(own);
     let center_y = rect.center().y;
-    let bottom = if row.guides[own] { rect.bottom() } else { center_y };
+    let bottom = if row.guides[own] {
+        rect.bottom()
+    } else {
+        center_y
+    };
     painter.vline(x, egui::Rangef::new(rect.top(), bottom), stroke);
     painter.hline(
         egui::Rangef::new(x, rect.left() + LEFT_PAD + row.depth as f32 * INDENT + 2.0),
@@ -459,7 +595,11 @@ fn paint_triangle(painter: &egui::Painter, center: egui::Pos2, down: bool, color
             egui::pos2(center.x + s * 0.8, center.y),
         ]
     };
-    painter.add(egui::Shape::convex_polygon(points, color, egui::Stroke::NONE));
+    painter.add(egui::Shape::convex_polygon(
+        points,
+        color,
+        egui::Stroke::NONE,
+    ));
 }
 
 /// Dossier fermé plein, dossier ouvert avec sa face avant inclinée — c'est
@@ -475,7 +615,10 @@ fn paint_folder_icon(painter: &egui::Painter, center: egui::Pos2, color: egui::C
 
     if open {
         painter.rect_filled(
-            egui::Rect::from_min_max(egui::pos2(r.left(), r.top() + 2.0), egui::pos2(r.right() - 3.0, r.bottom())),
+            egui::Rect::from_min_max(
+                egui::pos2(r.left(), r.top() + 2.0),
+                egui::pos2(r.right() - 3.0, r.bottom()),
+            ),
             1,
             color.gamma_multiply(0.5),
         );
@@ -500,7 +643,9 @@ fn paint_folder_icon(painter: &egui::Painter, center: egui::Pos2, color: egui::C
 
 /// Badge `[X]` coloré selon l'extension — même principe visuel que
 /// l'arborescence de référence (qui affiche `[T]` pour les `.toml`), sans
-/// dépendre d'une police d'icônes type nerd-font.
+/// dépendre d'une police d'icônes type nerd-font. Ces couleurs ne suivent
+/// volontairement pas le thème : comme les devicons de nvim, elles
+/// identifient un type de fichier et restent les mêmes partout.
 fn file_badge(name: &str) -> (String, egui::Color32) {
     if name.eq_ignore_ascii_case("LICENSE") {
         return ("[L]".to_owned(), egui::Color32::from_rgb(0x4e, 0xc9, 0xb0));
@@ -509,30 +654,48 @@ fn file_badge(name: &str) -> (String, egui::Color32) {
         .extension()
         .and_then(|e| e.to_str())
         .map(str::to_ascii_lowercase)
-        .or_else(|| name.eq_ignore_ascii_case("Cargo.lock").then(|| "toml".to_owned()));
+        .or_else(|| {
+            name.eq_ignore_ascii_case("Cargo.lock")
+                .then(|| "toml".to_owned())
+        });
 
     match ext.as_deref() {
         Some("toml") => ("[T]".to_owned(), egui::Color32::from_rgb(0xdc, 0x98, 0x2b)),
         Some("rs") => ("[R]".to_owned(), egui::Color32::from_rgb(0xde, 0x76, 0x56)),
-        Some("asm" | "nasm" | "s") => ("[A]".to_owned(), egui::Color32::from_rgb(0x56, 0x9c, 0xd6)),
+        Some("asm" | "nasm" | "s") => {
+            ("[A]".to_owned(), egui::Color32::from_rgb(0x56, 0x9c, 0xd6))
+        }
         Some("md") => ("[M]".to_owned(), egui::Color32::from_rgb(0x9c, 0xa3, 0xaf)),
         Some(other) => (
-            format!("[{}]", other.chars().next().unwrap_or('?').to_ascii_uppercase()),
+            format!(
+                "[{}]",
+                other.chars().next().unwrap_or('?').to_ascii_uppercase()
+            ),
             egui::Color32::from_rgb(0x8a, 0x8a, 0x8a),
         ),
         None => ("[F]".to_owned(), egui::Color32::from_rgb(0x8a, 0x8a, 0x8a)),
     }
 }
 
-fn rule(ui: &mut egui::Ui, len: f32) {
+fn rule(ui: &mut egui::Ui, theme: &Theme, len: f32) {
     let (rect, _) = ui.allocate_exact_size(egui::vec2(len.max(0.0), 8.0), egui::Sense::hover());
-    ui.painter()
-        .hline(rect.x_range(), rect.center().y, egui::Stroke::new(1.0, ACCENT));
+    ui.painter().hline(
+        rect.x_range(),
+        rect.center().y,
+        egui::Stroke::new(1.0, theme.header),
+    );
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const LABELS: Labels<'static> = Labels {
+        title: "Explorer",
+        filter_hint: "",
+        empty: "",
+        open_folder: "",
+    };
 
     fn row(name: &str, depth: usize) -> Row {
         Row {
@@ -575,11 +738,7 @@ mod tests {
     /// Fait tourner une frame d'egui avec de vraies frappes clavier.
     /// `run_ui` renvoie un `FullOutput` dont `textures_delta` doit être
     /// vidé, sinon egui panique volontairement à sa destruction.
-    fn frame(
-        ctx: &egui::Context,
-        keys: &[egui::Key],
-        mut logic: impl FnMut(&mut egui::Ui),
-    ) {
+    fn frame(ctx: &egui::Context, keys: &[egui::Key], mut logic: impl FnMut(&mut egui::Ui)) {
         let events = keys
             .iter()
             .map(|key| egui::Event::Key {
@@ -617,6 +776,7 @@ mod tests {
         std::fs::write(root.join("Cargo.toml"), "").unwrap();
 
         let ctx = egui::Context::default();
+        let theme = &namsdec_theme::TOKYO_NIGHT;
         let mut explorer = FileExplorer {
             root: Some(root.clone()),
             ..Default::default()
@@ -632,13 +792,13 @@ mod tests {
 
         // `j` descend de la racine vers `src`.
         frame(&ctx, &[egui::Key::J], |ui| {
-            explorer.ui(ui, true, "");
+            explorer.ui(ui, theme, &LABELS, true);
         });
         assert_eq!(explorer.selected, 1);
 
         // `l` déplie `src`.
         frame(&ctx, &[egui::Key::L], |ui| {
-            explorer.ui(ui, true, "");
+            explorer.ui(ui, theme, &LABELS, true);
         });
         assert!(
             explorer.expanded.contains(&root.join("src")),
@@ -652,11 +812,11 @@ mod tests {
 
         // `j` puis `l` sur `main.rs` doit demander son ouverture.
         frame(&ctx, &[egui::Key::J], |ui| {
-            explorer.ui(ui, true, "");
+            explorer.ui(ui, theme, &LABELS, true);
         });
         let mut opened = None;
         frame(&ctx, &[egui::Key::L], |ui| {
-            if let ExplorerAction::OpenFile(path) = explorer.ui(ui, true, "") {
+            if let ExplorerAction::OpenFile(path) = explorer.ui(ui, theme, &LABELS, true) {
                 opened = Some(path);
             }
         });
@@ -672,13 +832,14 @@ mod tests {
         std::fs::create_dir(root.join("src")).unwrap();
 
         let ctx = egui::Context::default();
+        let theme = &namsdec_theme::TOKYO_NIGHT;
         let mut explorer = FileExplorer {
             root: Some(root),
             ..Default::default()
         };
 
         frame(&ctx, &[egui::Key::J], |ui| {
-            explorer.ui(ui, false, "");
+            explorer.ui(ui, theme, &LABELS, false);
         });
 
         assert_eq!(explorer.selected, 0);

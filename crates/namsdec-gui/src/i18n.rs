@@ -54,6 +54,7 @@ pub struct Strings {
     pub view_statusbar: &'static str,
 
     // Explorateur de fichiers
+    pub explorer_title: &'static str,
     pub explorer_empty: &'static str,
     pub explorer_filter_hint: &'static str,
 
@@ -94,10 +95,17 @@ pub struct Strings {
     pub preferences_tab_general: &'static str,
     pub preferences_tab_shortcuts: &'static str,
     pub preferences_tab_modules: &'static str,
+    pub preferences_tab_plugins: &'static str,
     pub preferences_theme: &'static str,
-    pub theme_dark: &'static str,
-    pub theme_light: &'static str,
+    pub preferences_theme_in_plugins: &'static str,
     pub preferences_language: &'static str,
+
+    // Onglet Plugins (point d'extension : les thèmes en sont le premier
+    // type, d'autres viendront s'y installer)
+    pub plugins_themes: &'static str,
+    pub plugins_themes_hint: &'static str,
+    pub plugins_install_soon: &'static str,
+    pub plugins_active: &'static str,
     pub rebind_simple: &'static str,
     pub rebind_leader: &'static str,
     pub rebind_waiting: &'static str,
@@ -145,6 +153,7 @@ const FR: Strings = Strings {
     view_sidebar: "Panneau latéral",
     view_statusbar: "Barre de statut",
 
+    explorer_title: "Explorateur",
     explorer_empty: "Aucun dossier ouvert.",
     explorer_filter_hint: "Filtrer…",
 
@@ -178,10 +187,16 @@ const FR: Strings = Strings {
     preferences_tab_general: "Général",
     preferences_tab_shortcuts: "Raccourcis",
     preferences_tab_modules: "Modules",
+    preferences_tab_plugins: "Plugins",
     preferences_theme: "Thème",
-    theme_dark: "🌙 Sombre",
-    theme_light: "☀ Clair",
+    preferences_theme_in_plugins: "Le thème se choisit dans l'onglet Plugins.",
     preferences_language: "Langue",
+
+    plugins_themes: "Thèmes",
+    plugins_themes_hint: "Cliquez sur un thème pour l'appliquer aussitôt.",
+    plugins_install_soon:
+        "D'autres thèmes pourront être installés gratuitement ici dans une prochaine version.",
+    plugins_active: "actif",
     rebind_simple: "Touche simple…",
     rebind_leader: "Séquence…",
     rebind_waiting: "En attente d'une touche…",
@@ -228,6 +243,7 @@ const EN: Strings = Strings {
     view_sidebar: "Side Panel",
     view_statusbar: "Status Bar",
 
+    explorer_title: "Explorer",
     explorer_empty: "No folder open.",
     explorer_filter_hint: "Filter…",
 
@@ -261,10 +277,15 @@ const EN: Strings = Strings {
     preferences_tab_general: "General",
     preferences_tab_shortcuts: "Shortcuts",
     preferences_tab_modules: "Modules",
+    preferences_tab_plugins: "Plugins",
     preferences_theme: "Theme",
-    theme_dark: "🌙 Dark",
-    theme_light: "☀ Light",
+    preferences_theme_in_plugins: "Pick a theme in the Plugins tab.",
     preferences_language: "Language",
+
+    plugins_themes: "Themes",
+    plugins_themes_hint: "Click a theme to apply it right away.",
+    plugins_install_soon: "More themes will be installable here for free in a future release.",
+    plugins_active: "active",
     rebind_simple: "Single key…",
     rebind_leader: "Sequence…",
     rebind_waiting: "Waiting for a key…",

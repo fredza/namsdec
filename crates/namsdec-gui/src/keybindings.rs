@@ -134,13 +134,15 @@ pub struct Dispatcher {
 
 impl Dispatcher {
     /// À appeler une fois par frame, avant de construire les panneaux.
-    /// `editor_focused` conditionne l'armement de la touche leader (voir
-    /// la note sur `Chord::Leader`).
+    /// `text_focused` conditionne l'armement de la touche leader (voir la
+    /// note sur `Chord::Leader`) : dès qu'un champ capte la frappe —
+    /// l'éditeur, mais aussi le filtre de l'explorateur ou la palette —
+    /// Espace doit rester un simple espace.
     pub fn poll(
         &mut self,
         ctx: &egui::Context,
         bindings: &KeyBindings,
-        editor_focused: bool,
+        text_focused: bool,
     ) -> Option<Action> {
         let pressed = pressed_keys_this_frame(ctx);
 
@@ -186,7 +188,7 @@ impl Dispatcher {
             }
 
             // 3. Cette touche peut-elle armer une séquence ?
-            if !editor_focused {
+            if !text_focused {
                 let arms_a_leader = bindings
                     .map
                     .values()

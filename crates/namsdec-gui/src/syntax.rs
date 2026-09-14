@@ -7,6 +7,7 @@
 use eframe::egui;
 use egui::text::{LayoutJob, TextFormat};
 use egui::{Color32, FontId, TextStyle, Ui};
+use namsdec_theme::Theme;
 
 const MNEMONICS: &[&str] = &[
     "mov", "add", "sub", "cmp", "test", "and", "or", "xor", "inc", "dec", "push", "pop", "lea",
@@ -19,52 +20,27 @@ const DIRECTIVES: &[&str] = &[
     "resq", "equ", "times", "default", "align",
 ];
 
-pub fn highlight(ui: &Ui, text: &str, wrap_width: f32) -> LayoutJob {
+/// Les couleurs viennent du thème actif (`namsdec-theme`) et non du
+/// `dark_mode` d'egui : un thème installé plus tard apporte sa propre
+/// palette de code sans qu'il y ait ici deux branches à rallonger.
+pub fn highlight(ui: &Ui, theme: &Theme, text: &str, wrap_width: f32) -> LayoutJob {
     let font_id = TextStyle::Monospace.resolve(ui.style());
-    let visuals = ui.visuals();
-    let base = visuals.text_color();
-
-    // Palette inspirée de VS Code Dark+/Light+, comme le reste de l'app.
-    let (mnemonic, number, label, comment) = if visuals.dark_mode {
-        (
-            Color32::from_rgb(0x56, 0x9c, 0xd6),
-            Color32::from_rgb(0xb5, 0xce, 0xa8),
-            Color32::from_rgb(0x4e, 0xc9, 0xb0),
-            Color32::from_rgb(0x6a, 0x99, 0x55),
-        )
-    } else {
-        (
-            Color32::from_rgb(0x00, 0x00, 0xff),
-            Color32::from_rgb(0x09, 0x86, 0x58),
-            Color32::from_rgb(0x26, 0x7f, 0x99),
-            Color32::from_rgb(0x00, 0x80, 0x00),
-        )
-    };
 
     let mut job = LayoutJob::default();
     job.wrap.max_width = wrap_width;
 
     for (i, line) in text.split('\n').enumerate() {
         if i > 0 {
-            append(&mut job, "\n", &font_id, base, false);
+            append(&mut job, "\n", &font_id, theme.text, false);
         }
-        highlight_line(&mut job, line, &font_id, base, mnemonic, number, label, comment);
+        highlight_line(&mut job, theme, line, &font_id);
     }
 
     job
 }
 
-#[allow(clippy::too_many_arguments)]
-fn highlight_line(
-    job: &mut LayoutJob,
-    line: &str,
-    font_id: &FontId,
-    base: Color32,
-    mnemonic_color: Color32,
-    number_color: Color32,
-    label_color: Color32,
-    comment_color: Color32,
-) {
+fn highlight_line(job: &mut LayoutJob, theme: &Theme, line: &str, font_id: &FontId) {
+    let base = theme.text;
     let (code, comment) = match line.find(';') {
         Some(idx) => (&line[..idx], Some(&line[idx..])),
         None => (line, None),
@@ -90,13 +66,13 @@ fn highlight_line(
             let followed_by_colon = i < chars.len() && chars[i] == ':';
             let lower = word.to_ascii_lowercase();
             let color = if followed_by_colon {
-                label_color
+                theme.label
             } else if first_word_on_line
                 && (MNEMONICS.contains(&lower.as_str()) || DIRECTIVES.contains(&lower.as_str()))
             {
-                mnemonic_color
+                theme.mnemonic
             } else if word.starts_with(|c: char| c.is_ascii_digit()) {
-                number_color
+                theme.number
             } else {
                 base
             };
@@ -109,7 +85,7 @@ fn highlight_line(
     }
 
     if let Some(comment) = comment {
-        append(job, comment, font_id, comment_color, true);
+        append(job, comment, font_id, theme.comment, true);
     }
 }
 

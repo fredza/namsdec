@@ -1293,6 +1293,15 @@ name = "namsdec-exercises"
 version = "0.0.2"
 
 [[package]]
+name = "namsdec-explorer"
+version = "0.0.2"
+dependencies = [
+ "egui",
+ "namsdec-theme",
+ "tempfile",
+]
+
+[[package]]
 name = "namsdec-gui"
 version = "0.0.2"
 dependencies = [
@@ -1303,7 +1312,9 @@ dependencies = [
  "namsdec-core",
  "namsdec-disasm",
  "namsdec-emu",
+ "namsdec-explorer",
  "namsdec-re",
+ "namsdec-theme",
  "rfd",
  "tempfile",
 ]
@@ -1315,6 +1326,13 @@ dependencies = [
  "egui",
  "namsdec-core",
  "namsdec-disasm",
+]
+
+[[package]]
+name = "namsdec-theme"
+version = "0.0.2"
+dependencies = [
+ "egui",
 ]
 
 [[package]]

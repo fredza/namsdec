@@ -1,0 +1,12 @@
+[package]
+name = "namsdec-explorer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+namsdec-theme.workspace = true
+egui.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

@@ -3,7 +3,6 @@
 //! (vérification pédagogique) et exécute pas à pas via `namsdec-emu`,
 //! en affichant les panneaux des modules `ReModule` enregistrés.
 
-mod explorer;
 mod i18n;
 mod keybindings;
 mod syntax;
@@ -16,9 +15,10 @@ use namsdec_asm::{AsmError, Diagnostic, Severity};
 use namsdec_core::{Reg64, RFlags};
 use namsdec_disasm::DecodedInstruction;
 use namsdec_emu::{Emulator, RunStop, StepOverResult, StepResult};
+use namsdec_explorer::{ExplorerAction, FileExplorer};
 use namsdec_re::{BinaryInfoModule, ReContext, ReModuleRegistry};
+use namsdec_theme::Theme;
 
-use explorer::{ExplorerAction, FileExplorer};
 use i18n::{strings, Lang, Strings};
 use keybindings::{Action, Dispatcher, KeyBindings, Rebinding};
 
@@ -40,62 +40,9 @@ const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// seule, aucune approbation requise contrairement à APP_VERSION.
 const BUILD_DATE: &str = env!("NAMSDEC_BUILD_DATE");
 
-const GOOD: egui::Color32 = egui::Color32::from_rgb(0x89, 0xd1, 0x85);
-const BAD: egui::Color32 = egui::Color32::from_rgb(0xf4, 0x87, 0x71);
-const WARN: egui::Color32 = egui::Color32::from_rgb(0xdc, 0xdc, 0xaa);
-const ACCENT: egui::Color32 = egui::Color32::from_rgb(0x37, 0x94, 0xff);
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum AppTheme {
-    Dark,
-    Light,
-}
-
-impl AppTheme {
-    fn visuals(self) -> egui::Visuals {
-        let mut visuals = match self {
-            AppTheme::Dark => egui::Visuals::dark(),
-            AppTheme::Light => egui::Visuals::light(),
-        };
-        match self {
-            AppTheme::Dark => {
-                visuals.panel_fill = egui::Color32::from_rgb(0x25, 0x25, 0x26);
-                visuals.window_fill = egui::Color32::from_rgb(0x1e, 0x1e, 0x1e);
-                visuals.extreme_bg_color = egui::Color32::from_rgb(0x1e, 0x1e, 0x1e);
-                visuals.selection.bg_fill = ACCENT;
-            }
-            AppTheme::Light => {
-                visuals.panel_fill = egui::Color32::from_rgb(0xf3, 0xf3, 0xf3);
-                visuals.window_fill = egui::Color32::WHITE;
-                visuals.extreme_bg_color = egui::Color32::WHITE;
-                visuals.selection.bg_fill = egui::Color32::from_rgb(0x00, 0x5f, 0xb8);
-            }
-        }
-
-        // Coins arrondis partout — une des choses les plus visibles qui
-        // distinguent un look "moderne" du carré par défaut d'egui.
-        visuals.window_corner_radius = egui::CornerRadius::from(10);
-        visuals.menu_corner_radius = egui::CornerRadius::from(8);
-        let widget_radius = egui::CornerRadius::from(6);
-        visuals.widgets.noninteractive.corner_radius = widget_radius;
-        visuals.widgets.inactive.corner_radius = widget_radius;
-        visuals.widgets.hovered.corner_radius = widget_radius;
-        visuals.widgets.active.corner_radius = widget_radius;
-        visuals.widgets.open.corner_radius = widget_radius;
-
-        // Boutons plats au repos (fond et bordure transparents, comme dans
-        // la maquette HTML — `.tool { background: transparent; border:
-        // 1px solid transparent; }`, coloré seulement au survol) : le
-        // style par défaut d'egui donne à CHAQUE bouton un fond visible en
-        // permanence, ce qui fait que la barre de menus (Fichier/Édition/…)
-        // et la barre d'outils (icônes) finissent par se ressembler — une
-        // rangée de boîtes uniformes sans hiérarchie visuelle entre elles.
-        visuals.widgets.inactive.weak_bg_fill = egui::Color32::TRANSPARENT;
-        visuals.widgets.inactive.bg_stroke = egui::Stroke::NONE;
-
-        visuals
-    }
-}
+/// Thème appliqué au premier lancement. Les autres (dont Tokyo Night, le
+/// thème nvim) se choisissent dans Préférences > Plugins.
+const DEFAULT_THEME: &Theme = &namsdec_theme::VSCODE_DARK;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum SidebarTab {
@@ -161,10 +108,10 @@ impl EditorMode {
         }
     }
 
-    fn color(self) -> egui::Color32 {
+    fn color(self, theme: &Theme) -> egui::Color32 {
         match self {
-            EditorMode::Normal => ACCENT,
-            EditorMode::Insert => GOOD,
+            EditorMode::Normal => theme.accent,
+            EditorMode::Insert => theme.good,
         }
     }
 }
@@ -177,7 +124,10 @@ struct AssembleState {
 
 struct NamsdecApp {
     source: String,
-    theme: AppTheme,
+    /// Thème actif. Une référence statique plutôt qu'un enum : ajouter un
+    /// thème (installé ou fourni) ne doit pas obliger à rouvrir un `match`
+    /// quelque part dans l'interface.
+    theme: &'static Theme,
     lang: Lang,
     nasm_info: Option<namsdec_asm::NasmInfo>,
     breakpoint_lines: BTreeSet<u32>,
@@ -199,6 +149,10 @@ struct NamsdecApp {
     editor_mode: EditorMode,
     preferences_tab: PreferencesTab,
     show_re_tab: bool,
+    /// Fenêtre flottante indépendante (crate `namsdec-explorer`), ouverte
+    /// directement par son raccourci — elle ne fait pas partie des
+    /// panneaux de la mise en page et n'apparaît donc pas dans le groupe
+    /// de cases à cocher du menu Affichage.
     explorer: FileExplorer,
     show_explorer: bool,
     /// L'explorateur a-t-il le focus clavier ? Comme dans nvim, les touches
@@ -226,7 +180,7 @@ enum PaletteCommand {
     Do(Action),
     ShowPreferences,
     ShowAbout,
-    SetTheme(AppTheme),
+    SetTheme(&'static Theme),
     SetLang(Lang),
     OpenFolder,
     OpenFile,
@@ -239,7 +193,7 @@ enum PaletteCommand {
 }
 
 fn palette_commands(s: &Strings) -> Vec<(String, PaletteCommand)> {
-    vec![
+    let mut commands = vec![
         (s.action_assemble.to_string(), PaletteCommand::Do(Action::Assemble)),
         (s.action_run.to_string(), PaletteCommand::Do(Action::Run)),
         (s.action_step_into.to_string(), PaletteCommand::Do(Action::StepInto)),
@@ -253,8 +207,6 @@ fn palette_commands(s: &Strings) -> Vec<(String, PaletteCommand)> {
         (s.file_open_file.to_string(), PaletteCommand::OpenFile),
         (s.file_preferences.to_string(), PaletteCommand::ShowPreferences),
         (s.help_about.to_string(), PaletteCommand::ShowAbout),
-        (format!("{}: {}", s.preferences_theme, s.theme_dark), PaletteCommand::SetTheme(AppTheme::Dark)),
-        (format!("{}: {}", s.preferences_theme, s.theme_light), PaletteCommand::SetTheme(AppTheme::Light)),
         (format!("{}: Français", s.preferences_language), PaletteCommand::SetLang(Lang::Fr)),
         (format!("{}: English", s.preferences_language), PaletteCommand::SetLang(Lang::En)),
         (format!("{}: {}", s.menu_view, s.tab_registers), PaletteCommand::GoTab(SidebarTab::Registers)),
@@ -266,7 +218,17 @@ fn palette_commands(s: &Strings) -> Vec<(String, PaletteCommand)> {
         (s.palette_toggle_sidebar.to_string(), PaletteCommand::ToggleSidebar),
         (s.palette_toggle_statusbar.to_string(), PaletteCommand::ToggleStatusbar),
         (s.file_quit.to_string(), PaletteCommand::Quit),
-    ]
+    ];
+
+    // Un thème installé plus tard apparaît ici sans rien changer d'autre.
+    commands.extend(namsdec_theme::BUILT_IN.iter().map(|theme| {
+        (
+            format!("{}: {}", s.preferences_theme, theme.name),
+            PaletteCommand::SetTheme(theme),
+        )
+    }));
+
+    commands
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -274,6 +236,7 @@ enum PreferencesTab {
     General,
     Shortcuts,
     Modules,
+    Plugins,
 }
 
 /// Programme de départ affiché au lancement, pour ouvrir sur un exemple
@@ -300,7 +263,7 @@ impl Default for NamsdecApp {
 
         Self {
             source: DEFAULT_SOURCE.to_string(),
-            theme: AppTheme::Dark,
+            theme: DEFAULT_THEME,
             lang: Lang::Fr,
             nasm_info: namsdec_asm::find_nasm(),
             breakpoint_lines: BTreeSet::new(),
@@ -593,34 +556,39 @@ impl NamsdecApp {
         }
     }
 
-    /// L'arborescence elle-même, ou une invite claire tant qu'aucun dossier
-    /// n'a été choisi — un panneau simplement vide se lit comme cassé.
-    fn explorer_panel_ui(&mut self, ui: &mut egui::Ui) {
-        let s = strings(self.lang);
-        if self.explorer.root.is_none() {
-            ui.add_space(12.0);
-            ui.vertical_centered(|ui| {
-                ui.label(s.explorer_empty);
-                ui.add_space(6.0);
-                if ui.button(s.file_open_folder).clicked() {
-                    self.do_open_folder();
-                }
-            });
+    /// La fenêtre flottante de l'explorateur. Indépendante de la mise en
+    /// page : elle se superpose à l'éditeur au lieu de le rétrécir, et
+    /// n'existe que tant que son raccourci l'a ouverte.
+    fn explorer_window_ui(&mut self, ctx: &egui::Context) {
+        if !self.show_explorer {
             return;
         }
-        // Cliquer dans le panneau lui donne le focus clavier.
-        if ui.ui_contains_pointer() && ui.input(|i| i.pointer.any_pressed()) {
-            self.focus_explorer(true);
+        let s = strings(self.lang);
+        let labels = namsdec_explorer::Labels {
+            title: s.explorer_title,
+            filter_hint: s.explorer_filter_hint,
+            empty: s.explorer_empty,
+            open_folder: s.file_open_folder,
+        };
+
+        let (action, focus) = self
+            .explorer
+            .show(ctx, self.theme, &labels, self.explorer_focused);
+
+        match focus {
+            namsdec_explorer::FocusChange::Gained => self.focus_explorer(true),
+            namsdec_explorer::FocusChange::Lost => self.explorer_focused = false,
+            namsdec_explorer::FocusChange::Unchanged => {}
         }
 
-        let focused = self.explorer_focused;
-        match self.explorer.ui(ui, focused, s.explorer_filter_hint) {
+        match action {
             ExplorerAction::OpenFile(path) => {
                 self.open_file(path);
                 // Ouvrir un fichier rend la main à l'éditeur, comme dans
                 // neo-tree où la sélection d'un fichier saute au buffer.
                 self.explorer_focused = false;
             }
+            ExplorerAction::PickRoot => self.do_open_folder(),
             ExplorerAction::Defocus => self.explorer_focused = false,
             ExplorerAction::None => {}
         }
@@ -875,7 +843,24 @@ impl NamsdecApp {
                 ui.checkbox(&mut self.show_toolbar, s.view_toolbar);
                 ui.checkbox(&mut self.show_sidebar, s.view_sidebar);
                 ui.checkbox(&mut self.show_statusbar, s.view_statusbar);
-                ui.checkbox(&mut self.show_explorer, s.action_toggle_explorer);
+
+                ui.separator();
+                // L'explorateur n'est PAS un de ces panneaux : c'est une
+                // fenêtre indépendante qu'on appelle, d'où une entrée à
+                // part qui rappelle son raccourci plutôt qu'une case à
+                // cocher dans le groupe ci-dessus.
+                if ui
+                    .button(shortcut_hint(
+                        &self.keybindings,
+                        &ui.ctx().clone(),
+                        s.action_toggle_explorer,
+                        Action::ToggleExplorer,
+                    ))
+                    .clicked()
+                {
+                    self.dispatch(Action::ToggleExplorer);
+                    ui.close();
+                }
 
                 ui.separator();
                 if ui.button(s.palette_open).clicked() {
@@ -910,30 +895,27 @@ impl NamsdecApp {
         egui::Window::new(s.preferences_title)
             .open(&mut open)
             .resizable(true)
-            .default_width(440.0)
+            // Pas de flèche de repli : replier une boîte de préférences
+            // ne laisse qu'un bandeau de titre qui flotte, sans usage.
+            .collapsible(false)
+            .default_width(460.0)
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    ui.selectable_value(
-                        &mut self.preferences_tab,
-                        PreferencesTab::General,
-                        s.preferences_tab_general,
-                    );
-                    ui.selectable_value(
-                        &mut self.preferences_tab,
-                        PreferencesTab::Shortcuts,
-                        s.preferences_tab_shortcuts,
-                    );
-                    ui.selectable_value(
-                        &mut self.preferences_tab,
-                        PreferencesTab::Modules,
-                        s.preferences_tab_modules,
-                    );
+                    for (tab, label) in [
+                        (PreferencesTab::General, s.preferences_tab_general),
+                        (PreferencesTab::Shortcuts, s.preferences_tab_shortcuts),
+                        (PreferencesTab::Modules, s.preferences_tab_modules),
+                        (PreferencesTab::Plugins, s.preferences_tab_plugins),
+                    ] {
+                        ui.selectable_value(&mut self.preferences_tab, tab, label);
+                    }
                 });
                 ui.separator();
                 match self.preferences_tab {
                     PreferencesTab::General => self.preferences_general_ui(ui),
                     PreferencesTab::Shortcuts => self.preferences_shortcuts_ui(ui),
                     PreferencesTab::Modules => self.preferences_modules_ui(ui),
+                    PreferencesTab::Plugins => self.preferences_plugins_ui(ui),
                 }
             });
         self.show_preferences = open;
@@ -941,24 +923,11 @@ impl NamsdecApp {
 
     fn preferences_general_ui(&mut self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
-        let ctx = ui.ctx().clone();
-        ui.label(s.preferences_theme);
         ui.horizontal(|ui| {
-            if ui
-                .selectable_label(self.theme == AppTheme::Dark, s.theme_dark)
-                .clicked()
-            {
-                self.theme = AppTheme::Dark;
-                self.apply_theme(&ctx);
-            }
-            if ui
-                .selectable_label(self.theme == AppTheme::Light, s.theme_light)
-                .clicked()
-            {
-                self.theme = AppTheme::Light;
-                self.apply_theme(&ctx);
-            }
+            ui.label(s.preferences_theme);
+            ui.strong(self.theme.name);
         });
+        ui.weak(s.preferences_theme_in_plugins);
 
         ui.separator();
 
@@ -975,6 +944,7 @@ impl NamsdecApp {
 
     fn preferences_shortcuts_ui(&mut self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
+        let theme = self.theme;
         let ctx = ui.ctx().clone();
 
         // Une capture en cours avance ici plutôt que dans le dispatch
@@ -997,7 +967,7 @@ impl NamsdecApp {
                     ui.label(action_label(s, action));
 
                     if is_rebinding {
-                        ui.colored_label(ACCENT, s.rebind_waiting);
+                        ui.colored_label(theme.accent, s.rebind_waiting);
                     } else {
                         let current = self
                             .keybindings
@@ -1033,6 +1003,33 @@ impl NamsdecApp {
             self.modules_ui(ui);
             ui.checkbox(&mut self.show_re_tab, s.show_re_tab_checkbox);
         });
+    }
+
+    /// Onglet Plugins : pour l'instant les thèmes, qui en sont le premier
+    /// type. Un thème est une simple palette (`namsdec-theme`), donc le
+    /// jour où d'autres s'installent, ils se contentent d'allonger la
+    /// liste — rien ici n'est écrit par thème.
+    fn preferences_plugins_ui(&mut self, ui: &mut egui::Ui) {
+        let s = strings(self.lang);
+        let ctx = ui.ctx().clone();
+
+        ui.strong(s.plugins_themes);
+        ui.weak(s.plugins_themes_hint);
+        ui.add_space(6.0);
+
+        egui::ScrollArea::vertical().max_height(320.0).show(ui, |ui| {
+            for theme in namsdec_theme::BUILT_IN {
+                let active = std::ptr::eq(self.theme, *theme);
+                let response = theme_card(ui, theme, active, s.plugins_active);
+                if response.clicked() && !active {
+                    self.theme = theme;
+                    self.apply_theme(&ctx);
+                }
+            }
+        });
+
+        ui.add_space(6.0);
+        ui.weak(s.plugins_install_soon);
     }
 
     fn about_window_ui(&mut self, ctx: &egui::Context) {
@@ -1102,6 +1099,7 @@ impl NamsdecApp {
     fn statusbar_ui(&mut self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
         let lang = self.lang;
+        let theme = self.theme;
 
         if let Some(key) = self.dispatcher.leader_armed() {
             let text = if lang == Lang::Fr {
@@ -1109,7 +1107,7 @@ impl NamsdecApp {
             } else {
                 format!("{} pressed — waiting for next key…", key.name())
             };
-            ui.colored_label(ACCENT, text);
+            ui.colored_label(theme.accent, text);
         }
 
         ui.horizontal(|ui| {
@@ -1117,14 +1115,14 @@ impl NamsdecApp {
             // mode, séparateur, message de statut, séparateur, statut nasm
             // (version raccourcie — "NASM 3.02", pas la ligne complète de
             // `nasm -v` avec sa date de compilation, hors de propos ici).
-            mode_pill_ui(ui, self.editor_mode);
+            mode_pill_ui(ui, theme, self.editor_mode);
             ui.separator();
             self.status_message_ui(ui);
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let (dot_color, text) = match &self.nasm_info {
-                    Some(info) => (GOOD, short_nasm_version(&info.version)),
-                    None => (BAD, s.nasm_not_found.to_string()),
+                    Some(info) => (theme.good, short_nasm_version(&info.version)),
+                    None => (theme.bad, s.nasm_not_found.to_string()),
                 };
                 ui.label(text);
                 status_dot(ui, dot_color);
@@ -1137,7 +1135,7 @@ impl NamsdecApp {
                 .max_height(96.0)
                 .show(ui, |ui| {
                     for d in &self.diagnostics {
-                        let color = if d.severity == Severity::Error { BAD } else { WARN };
+                        let color = if d.severity == Severity::Error { theme.bad } else { theme.warn };
                         let text = if lang == Lang::Fr {
                             format!("ligne {} — {}", d.line, d.message)
                         } else {
@@ -1152,16 +1150,17 @@ impl NamsdecApp {
     fn status_message_ui(&mut self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
         let lang = self.lang;
+        let theme = self.theme;
         match &self.status {
             Status::Idle => {
                 ui.label(s.status_ready);
             }
             Status::Running => {
-                ui.colored_label(ACCENT, s.status_running);
+                ui.colored_label(theme.accent, s.status_running);
             }
             Status::AssembleOk { bytes } => {
                 ui.colored_label(
-                    GOOD,
+                    theme.good,
                     if lang == Lang::Fr {
                         format!("✓ Assemblage réussi — {bytes} octets")
                     } else {
@@ -1171,7 +1170,7 @@ impl NamsdecApp {
             }
             Status::AssembleFailed => {
                 ui.colored_label(
-                    BAD,
+                    theme.bad,
                     if lang == Lang::Fr {
                         format!(
                             "✗ Échec de l'assemblage — {} diagnostic(s)",
@@ -1186,11 +1185,11 @@ impl NamsdecApp {
                 );
             }
             Status::Halted => {
-                ui.colored_label(GOOD, s.status_halted);
+                ui.colored_label(theme.good, s.status_halted);
             }
             Status::Breakpoint(addr) => {
                 ui.colored_label(
-                    ACCENT,
+                    theme.accent,
                     if lang == Lang::Fr {
                         format!("Arrêté sur point d'arrêt — {addr:#x}")
                     } else {
@@ -1199,14 +1198,14 @@ impl NamsdecApp {
                 );
             }
             Status::StepLimit => {
-                ui.colored_label(BAD, s.status_step_limit);
+                ui.colored_label(theme.bad, s.status_step_limit);
             }
             Status::NasmMissing => {
-                ui.colored_label(BAD, s.status_nasm_missing);
+                ui.colored_label(theme.bad, s.status_nasm_missing);
             }
             Status::Error(msg) => {
                 ui.colored_label(
-                    BAD,
+                    theme.bad,
                     if lang == Lang::Fr {
                         format!("Erreur : {msg}")
                     } else {
@@ -1226,6 +1225,7 @@ impl NamsdecApp {
     /// qu'une ligne logique corresponde toujours à une seule ligne visuelle
     /// — sinon la gouttière se décale sur une ligne trop longue.
     fn editor_ui(&mut self, ui: &mut egui::Ui) {
+        let theme = self.theme;
         // Modes façon (n)vim : `i`/`I` pour passer en Insertion, `Échap`
         // pour revenir en Normal — désactivé pendant qu'une autre capture
         // de texte est active (palette de commandes, rebind de raccourci)
@@ -1271,13 +1271,13 @@ impl NamsdecApp {
         if let Some(line) = self.current_line() {
             ui.horizontal(|ui| {
                 let (rect, _) = ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
-                icon_run(ui.painter(), rect, ACCENT);
+                icon_run(ui.painter(), rect, theme.accent);
                 let text = if self.lang == Lang::Fr {
                     format!("Ligne courante : {line}")
                 } else {
                     format!("Current line: {line}")
                 };
-                ui.colored_label(ACCENT, text);
+                ui.colored_label(theme.accent, text);
             });
         }
 
@@ -1302,7 +1302,7 @@ impl NamsdecApp {
                     // mise en page ligne après ligne — c'est ce décalage
                     // cumulatif qui désynchronisait gouttière et texte.
                     let galley = {
-                        let job = syntax::highlight(ui, &self.source, f32::INFINITY);
+                        let job = syntax::highlight(ui, theme, &self.source, f32::INFINITY);
                         ui.fonts_mut(|f| f.layout_job(job))
                     };
 
@@ -1333,7 +1333,7 @@ impl NamsdecApp {
                                 painter.circle_filled(
                                     egui::pos2(gutter_rect.left() + 8.0, row_rect.center().y),
                                     4.0,
-                                    BAD,
+                                    theme.bad,
                                 );
                             }
                             if is_current {
@@ -1341,9 +1341,9 @@ impl NamsdecApp {
                                     egui::pos2(gutter_rect.left() + 20.0, row_rect.center().y),
                                     egui::vec2(10.0, 10.0),
                                 );
-                                icon_run(painter, arrow_rect, ACCENT);
+                                icon_run(painter, arrow_rect, theme.accent);
                             }
-                            let color = if is_current { ACCENT } else { ui.visuals().weak_text_color() };
+                            let color = if is_current { theme.accent } else { ui.visuals().weak_text_color() };
                             painter.text(
                                 egui::pos2(gutter_rect.right() - 6.0, row_rect.center().y),
                                 egui::Align2::RIGHT_CENTER,
@@ -1362,7 +1362,7 @@ impl NamsdecApp {
                         }
 
                         let mut layouter = |ui: &egui::Ui, buf: &dyn egui::TextBuffer, wrap_width: f32| {
-                            let job = syntax::highlight(ui, buf.as_str(), wrap_width);
+                            let job = syntax::highlight(ui, theme, buf.as_str(), wrap_width);
                             ui.fonts_mut(|f| f.layout_job(job))
                         };
                         let response = ui.add(
@@ -1517,6 +1517,7 @@ impl NamsdecApp {
     /// il deviendra un module séparé, ajoutable indépendamment.
     fn modules_ui(&self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
+        let theme = self.theme;
         let fr = self.lang == Lang::Fr;
 
         module_card(
@@ -1524,7 +1525,7 @@ impl NamsdecApp {
             "namsdec-core",
             namsdec_core::VERSION,
             true,
-            GOOD,
+            theme.good,
             s.module_core_detail,
         );
 
@@ -1551,7 +1552,7 @@ impl NamsdecApp {
             "namsdec-asm",
             namsdec_asm::VERSION,
             asm_ok,
-            if asm_ok { GOOD } else { BAD },
+            if asm_ok { theme.good } else { theme.bad },
             &asm_status,
         );
 
@@ -1570,7 +1571,7 @@ impl NamsdecApp {
             "namsdec-disasm",
             namsdec_disasm::VERSION,
             self.assemble_state.is_some(),
-            ACCENT,
+            theme.accent,
             &disasm_status,
         );
 
@@ -1596,7 +1597,7 @@ impl NamsdecApp {
             "namsdec-emu",
             namsdec_emu::VERSION,
             self.emulator.is_some(),
-            ACCENT,
+            theme.accent,
             &emu_status,
         );
 
@@ -1608,7 +1609,7 @@ impl NamsdecApp {
         } else {
             format!("{} module(s): {}", titles.len(), titles.join(", "))
         };
-        module_card(ui, "namsdec-re", namsdec_re::VERSION, true, GOOD, &re_status);
+        module_card(ui, "namsdec-re", namsdec_re::VERSION, true, theme.good, &re_status);
     }
 }
 
@@ -1727,9 +1728,9 @@ fn icon_step_over(painter: &egui::Painter, rect: egui::Rect, color: egui::Color3
 
 /// Pastille de mode façon vim-airline : fond plein de la couleur du mode,
 /// texte sombre par-dessus pour le contraste.
-fn mode_pill_ui(ui: &mut egui::Ui, mode: EditorMode) {
+fn mode_pill_ui(ui: &mut egui::Ui, theme: &Theme, mode: EditorMode) {
     egui::Frame::new()
-        .fill(mode.color())
+        .fill(mode.color(theme))
         .corner_radius(3)
         .inner_margin(egui::Margin::symmetric(6, 1))
         .show(ui, |ui| {
@@ -1755,6 +1756,79 @@ fn status_dot(ui: &mut egui::Ui, color: egui::Color32) {
     let (rect, _response) =
         ui.allocate_exact_size(egui::vec2(8.0, 8.0), egui::Sense::hover());
     ui.painter().circle_filled(rect.center(), 4.0, color);
+}
+
+/// Une entrée du catalogue de thèmes : un aperçu miniature peint avec les
+/// couleurs du thème lui-même (fond, panneau, accents) plutôt qu'un nom
+/// seul — c'est le thème qui se décrit, donc rien à écrire de plus quand
+/// un nouveau s'ajoute.
+fn theme_card(
+    ui: &mut egui::Ui,
+    theme: &Theme,
+    active: bool,
+    active_word: &str,
+) -> egui::Response {
+    let (rect, response) =
+        ui.allocate_exact_size(egui::vec2(ui.available_width(), 44.0), egui::Sense::click());
+
+    if ui.is_rect_visible(rect) {
+        let visuals = ui.style().interact_selectable(&response, active);
+        let painter = ui.painter();
+        painter.rect(
+            rect,
+            8,
+            visuals.weak_bg_fill,
+            visuals.bg_stroke,
+            egui::StrokeKind::Inside,
+        );
+
+        let preview = egui::Rect::from_min_size(
+            egui::pos2(rect.left() + 8.0, rect.center().y - 14.0),
+            egui::vec2(58.0, 28.0),
+        );
+        painter.rect_filled(preview, 4, theme.bg);
+        painter.rect_filled(
+            egui::Rect::from_min_size(preview.min, egui::vec2(14.0, preview.height())),
+            4,
+            theme.panel,
+        );
+        for (i, color) in [theme.accent, theme.good, theme.warn, theme.bad]
+            .iter()
+            .enumerate()
+        {
+            painter.circle_filled(
+                egui::pos2(preview.left() + 23.0 + i as f32 * 9.0, preview.center().y),
+                3.0,
+                *color,
+            );
+        }
+        painter.rect_stroke(
+            preview,
+            4,
+            egui::Stroke::new(1.0, theme.dim),
+            egui::StrokeKind::Inside,
+        );
+
+        painter.text(
+            egui::pos2(preview.right() + 10.0, rect.center().y),
+            egui::Align2::LEFT_CENTER,
+            theme.name,
+            egui::FontId::proportional(14.0),
+            visuals.text_color(),
+        );
+        if active {
+            painter.text(
+                egui::pos2(rect.right() - 10.0, rect.center().y),
+                egui::Align2::RIGHT_CENTER,
+                active_word,
+                egui::FontId::proportional(12.0),
+                theme.accent,
+            );
+        }
+    }
+
+    ui.add_space(4.0);
+    response
 }
 
 /// Une ligne de la vue d'ensemble des modules : nom, version, point coloré
@@ -1786,10 +1860,14 @@ impl eframe::App for NamsdecApp {
         if self.rebinding.is_none() {
             // Un rebind en cours capture les touches lui-même (voir
             // rebinding_ui) — pas de dispatch normal pendant ce temps.
-            if let Some(action) = self
-                .dispatcher
-                .poll(&ctx, &self.keybindings, self.editor_focused)
-            {
+            //
+            // N'importe quel champ de texte ayant le focus suffit à
+            // désarmer la touche leader, pas seulement l'éditeur : taper
+            // "une note" dans le filtre de l'explorateur ne doit pas
+            // refermer celui-ci sur le "e" qui suit l'espace.
+            let text_focused =
+                self.editor_focused || ctx.memory(|m| m.focused().is_some());
+            if let Some(action) = self.dispatcher.poll(&ctx, &self.keybindings, text_focused) {
                 self.dispatch(action);
             }
         }
@@ -1830,16 +1908,13 @@ impl eframe::App for NamsdecApp {
                 .default_size(300.0)
                 .show(ui, |ui| self.sidebar_ui(ui));
         }
-        if self.show_explorer {
-            egui::Panel::left("explorer")
-                .resizable(true)
-                .default_size(260.0)
-                .show(ui, |ui| self.explorer_panel_ui(ui));
-        }
         self.editor_ui(ui);
 
-        self.preferences_window_ui(ui.ctx());
-        self.about_window_ui(ui.ctx());
+        // Fenêtres flottantes — dont l'explorateur, qui n'occupe donc plus
+        // de place dans la mise en page et ne dépend d'aucun panneau.
+        self.explorer_window_ui(&ctx);
+        self.preferences_window_ui(&ctx);
+        self.about_window_ui(&ctx);
         self.command_palette_ui(&ctx);
     }
 }
