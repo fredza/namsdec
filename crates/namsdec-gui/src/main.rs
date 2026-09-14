@@ -1160,60 +1160,85 @@ impl NamsdecApp {
             });
         }
 
-        let line_count = self.source.lines().count().max(1) as u32;
         let current_line = self.current_line();
-        let row_height = ui.text_style_height(&egui::TextStyle::Monospace);
         let editor_bg = ui.visuals().extreme_bg_color;
+        let font_id = egui::TextStyle::Monospace.resolve(ui.style());
 
         // Gouttière et texte peints sur UN seul fond continu (celui du
         // `TextEdit`, `extreme_bg_color`) plutôt que le `panel_fill` du
-        // panneau englobant : sans ce cadre explicite, la gouttière
-        // affichait le fond du panneau (plus clair) derrière elle tandis
-        // que le `TextEdit` peignait son propre fond plus sombre avec sa
-        // propre bordure — deux zones visuellement distinctes au lieu
-        // d'un seul éditeur. Le `TextEdit` est rendu sans cadre
-        // (`Frame::NONE`) pour ne pas re-dessiner par-dessus.
+        // panneau englobant, et le `TextEdit` est rendu sans cadre
+        // (`Frame::NONE`) pour ne pas repeindre un fond/une bordure
+        // différents par-dessus.
         egui::Frame::new().fill(editor_bg).show(ui, |ui| {
             egui::ScrollArea::both()
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
+                    // Calculé UNE fois ici, en dehors du `TextEdit`, pour que
+                    // la gouttière connaisse la position Y *exacte* de
+                    // chaque ligne telle que le texte la rendra réellement,
+                    // plutôt que de deviner une hauteur de ligne générique
+                    // (`ui.text_style_height`) qui dérivait de la vraie
+                    // mise en page ligne après ligne — c'est ce décalage
+                    // cumulatif qui désynchronisait gouttière et texte.
+                    let galley = {
+                        let job = syntax::highlight(ui, &self.source, f32::INFINITY);
+                        ui.fonts_mut(|f| f.layout_job(job))
+                    };
+
                     ui.horizontal_top(|ui| {
                         ui.spacing_mut().item_spacing.x = 0.0;
-                        ui.vertical(|ui| {
-                            for line in 1..=line_count {
-                                let has_bp = self.breakpoint_lines.contains(&line);
-                                let is_current = current_line == Some(line);
-                                ui.horizontal(|ui| {
-                                    ui.set_height(row_height);
-                                    let (rect, resp) = ui.allocate_exact_size(
-                                        egui::vec2(20.0, row_height),
-                                        egui::Sense::click(),
-                                    );
-                                    if has_bp {
-                                        let dot_center = egui::pos2(rect.left() + 5.0, rect.center().y);
-                                        ui.painter().circle_filled(dot_center, 4.0, BAD);
-                                    }
-                                    if is_current {
-                                        let arrow_rect = egui::Rect::from_center_size(
-                                            egui::pos2(rect.right() - 6.0, rect.center().y),
-                                            egui::vec2(10.0, 10.0),
-                                        );
-                                        icon_run(ui.painter(), arrow_rect, ACCENT);
-                                    }
-                                    if resp.clicked() {
-                                        if has_bp {
-                                            self.breakpoint_lines.remove(&line);
-                                        } else {
-                                            self.breakpoint_lines.insert(line);
-                                        }
-                                        self.sync_breakpoints();
-                                    }
-                                    let color =
-                                        if is_current { ACCENT } else { ui.visuals().weak_text_color() };
-                                    ui.colored_label(color, format!("{line:>4}  "));
-                                });
+
+                        const GUTTER_WIDTH: f32 = 44.0;
+                        let (gutter_rect, gutter_resp) = ui.allocate_exact_size(
+                            egui::vec2(GUTTER_WIDTH, galley.rect.height().max(1.0)),
+                            egui::Sense::click(),
+                        );
+                        let click_y = gutter_resp.interact_pointer_pos().map(|p| p.y);
+                        let mut clicked_line = None;
+                        let painter = ui.painter();
+                        for (i, row) in galley.rows.iter().enumerate() {
+                            let line = (i + 1) as u32;
+                            let row_rect = row.rect().translate(gutter_rect.min.to_vec2());
+
+                            if gutter_resp.clicked()
+                                && let Some(y) = click_y
+                                && row_rect.y_range().contains(y)
+                            {
+                                clicked_line = Some(line);
                             }
-                        });
+
+                            let is_current = current_line == Some(line);
+                            if self.breakpoint_lines.contains(&line) {
+                                painter.circle_filled(
+                                    egui::pos2(gutter_rect.left() + 8.0, row_rect.center().y),
+                                    4.0,
+                                    BAD,
+                                );
+                            }
+                            if is_current {
+                                let arrow_rect = egui::Rect::from_center_size(
+                                    egui::pos2(gutter_rect.left() + 20.0, row_rect.center().y),
+                                    egui::vec2(10.0, 10.0),
+                                );
+                                icon_run(painter, arrow_rect, ACCENT);
+                            }
+                            let color = if is_current { ACCENT } else { ui.visuals().weak_text_color() };
+                            painter.text(
+                                egui::pos2(gutter_rect.right() - 6.0, row_rect.center().y),
+                                egui::Align2::RIGHT_CENTER,
+                                line.to_string(),
+                                font_id.clone(),
+                                color,
+                            );
+                        }
+                        if let Some(line) = clicked_line {
+                            if self.breakpoint_lines.contains(&line) {
+                                self.breakpoint_lines.remove(&line);
+                            } else {
+                                self.breakpoint_lines.insert(line);
+                            }
+                            self.sync_breakpoints();
+                        }
 
                         let mut layouter = |ui: &egui::Ui, buf: &dyn egui::TextBuffer, wrap_width: f32| {
                             let job = syntax::highlight(ui, buf.as_str(), wrap_width);
@@ -1221,9 +1246,9 @@ impl NamsdecApp {
                         };
                         let response = ui.add(
                             egui::TextEdit::multiline(&mut self.source)
-                                .frame(egui::Frame::NONE.inner_margin(egui::Margin::symmetric(0, 0)))
+                                .frame(egui::Frame::NONE)
                                 .desired_width(f32::INFINITY)
-                                .desired_rows(line_count.max(24) as usize)
+                                .desired_rows(24)
                                 .code_editor()
                                 .layouter(&mut layouter),
                         );
