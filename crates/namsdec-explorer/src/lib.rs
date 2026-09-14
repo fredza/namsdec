@@ -86,6 +86,15 @@ struct Row {
 }
 
 impl FileExplorer {
+    /// Ouvre l'explorateur sur un dossier donné — typiquement celui que
+    /// l'hôte a retrouvé dans ses réglages au lancement.
+    pub fn with_root(root: Option<PathBuf>) -> Self {
+        Self {
+            root,
+            ..Default::default()
+        }
+    }
+
     /// Affiche la fenêtre flottante. `focused` indique si l'explorateur a
     /// le focus clavier ; le `FocusChange` renvoyé dit ce qu'un éventuel
     /// clic vient d'y changer.

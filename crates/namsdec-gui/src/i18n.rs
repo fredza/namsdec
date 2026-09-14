@@ -7,7 +7,7 @@
 //! nul face à la mécanique qu'il faudrait pour templater des arguments
 //! formatés à travers une seule struct.
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Lang {
     Fr,
     En,

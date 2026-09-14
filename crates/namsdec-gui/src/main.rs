@@ -5,6 +5,7 @@
 
 mod i18n;
 mod keybindings;
+mod settings;
 mod syntax;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -21,6 +22,7 @@ use namsdec_theme::Theme;
 
 use i18n::{strings, Lang, Strings};
 use keybindings::{Action, Dispatcher, KeyBindings, Rebinding};
+use settings::Settings;
 
 const BASE_ADDR: u64 = 0x400000;
 const MEM_SIZE: usize = 0x10000;
@@ -169,6 +171,11 @@ struct NamsdecApp {
     show_sidebar: bool,
     show_statusbar: bool,
     command_palette: Option<CommandPalette>,
+    /// Réglages tels qu'écrits sur le disque. Comparés à l'état courant à
+    /// chaque frame : dès qu'ils divergent, le fichier est réécrit. C'est
+    /// ce qui garantit qu'aucun réglage ne peut être oublié — il n'y a pas
+    /// un appel à "sauvegarder" par endroit où un réglage se change.
+    saved_settings: Settings,
 }
 
 #[derive(Default)]
@@ -304,11 +311,85 @@ impl Default for NamsdecApp {
             show_sidebar: true,
             show_statusbar: true,
             command_palette: None,
+            saved_settings: Settings::default(),
         }
     }
 }
 
 impl NamsdecApp {
+    /// Construit l'application à partir des réglages relus sur le disque.
+    fn from_settings(settings: Settings) -> Self {
+        let explorer = FileExplorer::with_root(settings.explorer_root());
+        let mut app = Self {
+            theme: settings.theme(),
+            lang: settings.lang(),
+            keybindings: settings.keybindings(),
+            show_toolbar: settings.show_toolbar,
+            show_sidebar: settings.show_sidebar,
+            show_statusbar: settings.show_statusbar,
+            show_re_tab: settings.show_re_tab,
+            explorer,
+            saved_settings: settings,
+            ..Default::default()
+        };
+
+        // Écrit le fichier dès le premier lancement, même si rien n'a
+        // encore été réglé : l'utilisateur doit pouvoir le trouver et
+        // l'éditer sans devoir changer un réglage d'abord, et les défauts
+        // du jour y sont gravés plutôt que de suivre en silence ceux
+        // d'une version future.
+        if let Err(e) = app.saved_settings.save() {
+            app.status = Status::Error(if app.lang == Lang::Fr {
+                format!("impossible d'enregistrer les réglages : {e}")
+            } else {
+                format!("could not save settings: {e}")
+            });
+        }
+        app
+    }
+
+    /// L'état courant des réglages, sous la forme qui part dans le
+    /// fichier. Tout ce qui est réglable par l'utilisateur doit figurer
+    /// ici — c'est le point unique à compléter en ajoutant un réglage.
+    fn settings_snapshot(&self) -> Settings {
+        Settings {
+            theme: self.theme.id.to_owned(),
+            language: match self.lang {
+                Lang::Fr => "fr".to_owned(),
+                Lang::En => "en".to_owned(),
+            },
+            show_toolbar: self.show_toolbar,
+            show_sidebar: self.show_sidebar,
+            show_statusbar: self.show_statusbar,
+            show_re_tab: self.show_re_tab,
+            explorer_root: self
+                .explorer
+                .root
+                .as_ref()
+                .map(|p| p.display().to_string()),
+            shortcuts: settings::shortcuts_to_strings(&self.keybindings),
+        }
+    }
+
+    /// Appelé à chaque frame : n'écrit que si un réglage a bougé. Une
+    /// écriture qui échoue est signalée une seule fois (l'instantané est
+    /// mis à jour quoi qu'il arrive) plutôt que retentée à chaque frame.
+    fn persist_settings_if_changed(&mut self) {
+        let current = self.settings_snapshot();
+        if current == self.saved_settings {
+            return;
+        }
+        let result = current.save();
+        self.saved_settings = current;
+        if let Err(e) = result {
+            self.status = Status::Error(if self.lang == Lang::Fr {
+                format!("impossible d'enregistrer les réglages : {e}")
+            } else {
+                format!("could not save settings: {e}")
+            });
+        }
+    }
+
     fn apply_theme(&self, ctx: &egui::Context) {
         ctx.set_visuals(self.theme.visuals());
         ctx.all_styles_mut(|style| {
@@ -2105,6 +2186,11 @@ impl eframe::App for NamsdecApp {
         self.preferences_window_ui(&ctx);
         self.about_window_ui(&ctx);
         self.command_palette_ui(&ctx);
+
+        // En dernier : tout réglage changé pendant cette frame, d'où qu'il
+        // vienne (menu, préférences, palette, raccourci), est sur le
+        // disque avant la frame suivante.
+        self.persist_settings_if_changed();
     }
 }
 
@@ -2151,7 +2237,7 @@ fn main() -> eframe::Result<()> {
         "Namsdec",
         options,
         Box::new(|cc| {
-            let app = NamsdecApp::default();
+            let app = NamsdecApp::from_settings(Settings::load());
             app.apply_theme(&cc.egui_ctx);
             Ok(Box::new(app))
         }),
