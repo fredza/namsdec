@@ -41,16 +41,13 @@ pub enum ExplorerAction {
     Close,
 }
 
-/// Ce qu'un clic de souris a fait au focus clavier de l'explorateur.
-/// Renvoyé plutôt que décidé ici : c'est l'hôte qui arbitre le focus entre
-/// l'explorateur et son éditeur.
-#[derive(PartialEq, Eq, Debug)]
-pub enum FocusChange {
-    Unchanged,
-    /// Clic à l'intérieur de la fenêtre.
-    Gained,
-    /// Clic ailleurs alors que l'explorateur avait le focus.
-    Lost,
+/// Ce qu'une frame de l'explorateur demande à l'hôte.
+pub struct ExplorerResponse {
+    pub action: ExplorerAction,
+    /// Un clic à l'intérieur vient de lui donner le focus clavier.
+    /// Renvoyé plutôt que décidé ici : c'est l'hôte qui arbitre le focus
+    /// entre l'explorateur et son éditeur.
+    pub focus_gained: bool,
 }
 
 /// Libellés fournis par l'hôte : la traduction reste de son côté.
@@ -96,15 +93,17 @@ impl FileExplorer {
     }
 
     /// Affiche la fenêtre flottante. `focused` indique si l'explorateur a
-    /// le focus clavier ; le `FocusChange` renvoyé dit ce qu'un éventuel
-    /// clic vient d'y changer.
+    /// le focus clavier.
+    ///
+    /// L'explorateur se comporte comme une fenêtre surgissante : `Échap`
+    /// la referme, et un clic en dehors aussi.
     pub fn show(
         &mut self,
         ctx: &egui::Context,
         theme: &Theme,
         labels: &Labels,
         focused: bool,
-    ) -> (ExplorerAction, FocusChange) {
+    ) -> ExplorerResponse {
         let frame = egui::Frame::new()
             .fill(theme.panel)
             .stroke(egui::Stroke::new(
@@ -143,21 +142,30 @@ impl FileExplorer {
 
         // Le rectangle de la *fenêtre* entière, marge comprise — pas
         // `ui_contains_pointer()` du contenu, qui exclurait la marge
-        // intérieure et ferait donc perdre le focus à un clic posé sur le
-        // bord de l'explorateur.
+        // intérieure et refermerait donc l'explorateur sur un clic posé
+        // sur son bord. `GRAB_MARGIN` étend encore un peu la zone, pour
+        // couvrir la poignée de redimensionnement qui déborde du cadre :
+        // attraper le bord pour redimensionner ne doit pas fermer.
+        const GRAB_MARGIN: f32 = 6.0;
         let inside = window
             .as_ref()
             .map(|w| w.response.rect)
             .zip(ctx.input(|i| i.pointer.interact_pos()))
-            .is_some_and(|(rect, pos)| rect.contains(pos));
+            .is_some_and(|(rect, pos)| rect.expand(GRAB_MARGIN).contains(pos));
 
-        let focus = match (ctx.input(|i| i.pointer.any_pressed()), inside) {
-            (true, true) => FocusChange::Gained,
-            (true, false) if focused => FocusChange::Lost,
-            _ => FocusChange::Unchanged,
-        };
+        let pressed = ctx.input(|i| i.pointer.any_pressed());
+        if pressed && !inside {
+            // Un clic ailleurs referme, comme n'importe quelle fenêtre
+            // surgissante — et prime sur ce que le contenu aurait pu
+            // renvoyer, qui ne peut de toute façon pas venir d'un clic
+            // hors de lui.
+            action = ExplorerAction::Close;
+        }
 
-        (action, focus)
+        ExplorerResponse {
+            action,
+            focus_gained: pressed && inside,
+        }
     }
 
     /// Le contenu seul, sans la fenêtre — utilisable tel quel dans un
@@ -868,6 +876,103 @@ mod tests {
             }
         });
         assert!(closed, "sans filtre, Échap referme");
+    }
+
+    /// Fait tourner une frame complète de `show()` — fenêtre comprise —
+    /// avec les évènements bruts donnés, comme les recevrait eframe.
+    fn window_frame(
+        ctx: &egui::Context,
+        explorer: &mut FileExplorer,
+        events: Vec<egui::Event>,
+    ) -> ExplorerResponse {
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1280.0, 800.0),
+            )),
+            events,
+            ..Default::default()
+        };
+        let mut response = None;
+        let mut output = ctx.run_ui(input, |ui| {
+            let ctx = ui.ctx().clone();
+            response = Some(explorer.show(&ctx, &namsdec_theme::TOKYO_NIGHT, &LABELS, true));
+        });
+        output.textures_delta.clear();
+        response.expect("show() doit avoir tourné")
+    }
+
+    fn key(key: egui::Key) -> egui::Event {
+        egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        }
+    }
+
+    fn click_at(pos: egui::Pos2) -> Vec<egui::Event> {
+        vec![
+            egui::Event::PointerMoved(pos),
+            egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: egui::Modifiers::NONE,
+            },
+        ]
+    }
+
+    /// Le chemin réel de `Échap`, à travers la fenêtre flottante et non
+    /// juste le contenu : c'est celui que l'application emprunte.
+    #[test]
+    fn escape_closes_the_floating_window() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("main.asm"), "").unwrap();
+        let ctx = egui::Context::default();
+        let mut explorer = FileExplorer::with_root(Some(dir.path().to_path_buf()));
+
+        // Une première frame pour que la fenêtre existe et se place.
+        window_frame(&ctx, &mut explorer, Vec::new());
+
+        let response = window_frame(&ctx, &mut explorer, vec![key(egui::Key::Escape)]);
+        assert!(
+            matches!(response.action, ExplorerAction::Close),
+            "Échap doit refermer l'explorateur"
+        );
+    }
+
+    /// Un clic en dehors referme ; un clic dedans donne le focus et ne
+    /// referme surtout pas.
+    #[test]
+    fn a_click_outside_closes_but_a_click_inside_focuses() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("main.asm"), "").unwrap();
+        let ctx = egui::Context::default();
+        let mut explorer = FileExplorer::with_root(Some(dir.path().to_path_buf()));
+
+        window_frame(&ctx, &mut explorer, Vec::new());
+
+        // Loin à droite : dans l'éditeur, hors de la fenêtre (posée en
+        // haut à gauche).
+        let outside = window_frame(&ctx, &mut explorer, click_at(egui::pos2(1000.0, 600.0)));
+        assert!(
+            matches!(outside.action, ExplorerAction::Close),
+            "un clic en dehors doit refermer"
+        );
+        assert!(!outside.focus_gained);
+
+        // Dans l'en-tête de la fenêtre, au-dessus des lignes de fichiers.
+        let inside = window_frame(&ctx, &mut explorer, click_at(egui::pos2(60.0, 120.0)));
+        assert!(
+            !matches!(inside.action, ExplorerAction::Close),
+            "un clic à l'intérieur ne doit pas refermer"
+        );
+        assert!(
+            inside.focus_gained,
+            "un clic à l'intérieur doit donner le focus clavier"
+        );
     }
 
     /// Sans le focus, l'explorateur doit ignorer les touches — sinon il

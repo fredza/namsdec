@@ -162,6 +162,8 @@ struct NamsdecApp {
     /// de cases à cocher du menu Affichage.
     explorer: FileExplorer,
     show_explorer: bool,
+    /// Vient d'être ouvert dans cette frame — voir `explorer_window_ui`.
+    explorer_just_opened: bool,
     /// L'explorateur a-t-il le focus clavier ? Comme dans nvim, les touches
     /// vont soit à l'arborescence (j/k/l/h…), soit à l'éditeur, jamais aux
     /// deux.
@@ -305,6 +307,7 @@ impl Default for NamsdecApp {
             show_re_tab: false,
             explorer: FileExplorer::default(),
             show_explorer: false,
+            explorer_just_opened: false,
             explorer_focused: false,
             current_file: None,
             show_toolbar: true,
@@ -584,6 +587,7 @@ impl NamsdecApp {
         match action {
             Action::ToggleExplorer => {
                 self.show_explorer = !self.show_explorer;
+                self.explorer_just_opened = self.show_explorer;
                 // L'ouvrir lui donne le focus (comme `:Neotree focus`) ;
                 // le refermer le rend à l'éditeur.
                 self.focus_explorer(self.show_explorer);
@@ -607,6 +611,11 @@ impl NamsdecApp {
         if let Some(folder) = rfd::FileDialog::new().pick_folder() {
             self.explorer.root = Some(folder);
             self.show_explorer = true;
+            // Même garde que pour la bascule : le clic du menu (ou celui
+            // qui a validé la boîte native) ne doit pas refermer aussitôt
+            // la fenêtre qu'il vient de faire apparaître.
+            self.explorer_just_opened = true;
+            self.focus_explorer(true);
         }
     }
 
@@ -734,14 +743,23 @@ impl NamsdecApp {
             open_folder: s.file_open_folder,
         };
 
-        let (action, focus) = self
+        let response = self
             .explorer
             .show(ctx, self.theme, &labels, self.explorer_focused);
 
-        match focus {
-            namsdec_explorer::FocusChange::Gained => self.focus_explorer(true),
-            namsdec_explorer::FocusChange::Lost => self.explorer_focused = false,
-            namsdec_explorer::FocusChange::Unchanged => {}
+        if response.focus_gained {
+            self.focus_explorer(true);
+        }
+
+        let mut action = response.action;
+        if self.explorer_just_opened {
+            // Le clic qui vient de l'ouvrir (entrée de menu, palette) est
+            // par construction hors de la fenêtre : sans cette garde, il
+            // la refermerait dans la frame même où elle apparaît.
+            self.explorer_just_opened = false;
+            if matches!(action, ExplorerAction::Close) {
+                action = ExplorerAction::None;
+            }
         }
 
         match action {
