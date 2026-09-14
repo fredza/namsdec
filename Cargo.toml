@@ -5,7 +5,11 @@ default-members = ["crates/namsdec-gui"]
 
 [workspace.package]
 edition = "2024"
-version = "0.1.0"
+# Ne JAMAIS monter ce numéro sans demander d'abord à l'utilisateur — règle
+# explicite (voir memory: feedback_version_bump_approval). Le numéro de
+# build (date de compilation) n'est pas concerné, il se met à jour seul.
+version = "0.0.2"
+license = "MIT"
 
 [workspace.dependencies]
 namsdec-core = { path = "crates/namsdec-core" }
@@ -19,6 +23,7 @@ egui = "0.36"
 eframe = { version = "0.36", default-features = false, features = ["default_fonts", "glow", "persistence", "wayland", "x11"] }
 egui_extras = "0.36"
 egui_code_editor = "0.4"
+arboard = "3"
 iced-x86 = { version = "1.21", default-features = false, features = ["std", "decoder", "nasm", "instr_info"] }
 thiserror = "2"
 anyhow = "1"
