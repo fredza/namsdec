@@ -3,10 +3,12 @@
 //! (vérification pédagogique) et exécute pas à pas via `namsdec-emu`,
 //! en affichant les panneaux des modules `ReModule` enregistrés.
 
+mod explorer;
 mod i18n;
 mod keybindings;
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::{Path, PathBuf};
 
 use eframe::egui;
 use namsdec_asm::{AsmError, Diagnostic, Severity};
@@ -15,6 +17,7 @@ use namsdec_disasm::DecodedInstruction;
 use namsdec_emu::{Emulator, RunStop, StepOverResult, StepResult};
 use namsdec_re::{BinaryInfoModule, ReContext, ReModuleRegistry};
 
+use explorer::FileExplorer;
 use i18n::{strings, Lang, Strings};
 use keybindings::{Action, Dispatcher, KeyBindings, Rebinding};
 
@@ -141,6 +144,9 @@ struct NamsdecApp {
     editor_focused: bool,
     preferences_tab: PreferencesTab,
     show_re_tab: bool,
+    explorer: FileExplorer,
+    show_explorer: bool,
+    current_file: Option<PathBuf>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -195,6 +201,9 @@ impl Default for NamsdecApp {
             editor_focused: false,
             preferences_tab: PreferencesTab::General,
             show_re_tab: false,
+            explorer: FileExplorer::default(),
+            show_explorer: false,
+            current_file: None,
         }
     }
 }
@@ -387,7 +396,7 @@ impl NamsdecApp {
     /// implémentations de "ce que fait Assembler" qui divergent.
     fn dispatch(&mut self, action: Action) {
         match action {
-            Action::ToggleExplorer => {} // câblé avec l'explorateur de fichiers
+            Action::ToggleExplorer => self.show_explorer = !self.show_explorer,
             Action::Assemble => self.do_assemble(),
             Action::Run => self.do_run(),
             Action::StepInto => self.do_step(),
@@ -397,7 +406,72 @@ impl NamsdecApp {
                 self.rebuild_emulator();
                 self.status = Status::Idle;
             }
-            Action::Save => {} // câblé avec l'explorateur de fichiers
+            Action::Save => self.do_save(),
+        }
+    }
+
+    fn do_open_folder(&mut self) {
+        if let Some(folder) = rfd::FileDialog::new().pick_folder() {
+            self.explorer.root = Some(folder);
+            self.show_explorer = true;
+        }
+    }
+
+    fn do_open_file_dialog(&mut self) {
+        if let Some(path) = rfd::FileDialog::new().pick_file() {
+            self.open_file(path);
+        }
+    }
+
+    /// Charge `path` dans l'éditeur — n'importe quel fichier texte, pas
+    /// seulement les `.asm` (comme VS Code, qui n'écarte pas les fichiers
+    /// non reconnus). Une erreur d'E/S ou un contenu non-UTF8 finit dans
+    /// la barre de statut, jamais en panique.
+    fn open_file(&mut self, path: PathBuf) {
+        match std::fs::read_to_string(&path) {
+            Ok(text) => {
+                self.source = text;
+                self.current_file = Some(path);
+                self.assemble_state = None;
+                self.emulator = None;
+                self.diagnostics.clear();
+                self.status = Status::Idle;
+            }
+            Err(e) => {
+                self.status = Status::Error(if self.lang == Lang::Fr {
+                    format!("impossible d'ouvrir le fichier : {e}")
+                } else {
+                    format!("could not open file: {e}")
+                });
+            }
+        }
+    }
+
+    fn do_save(&mut self) {
+        match self.current_file.clone() {
+            Some(path) => self.write_to(&path),
+            None => self.do_save_as(),
+        }
+    }
+
+    fn do_save_as(&mut self) {
+        if let Some(path) = rfd::FileDialog::new().save_file() {
+            self.write_to(&path);
+        }
+    }
+
+    fn write_to(&mut self, path: &Path) {
+        match std::fs::write(path, &self.source) {
+            Ok(()) => {
+                self.current_file = Some(path.to_path_buf());
+            }
+            Err(e) => {
+                self.status = Status::Error(if self.lang == Lang::Fr {
+                    format!("impossible d'enregistrer : {e}")
+                } else {
+                    format!("could not save: {e}")
+                });
+            }
         }
     }
 
@@ -411,6 +485,26 @@ impl NamsdecApp {
         let s = strings(self.lang);
         ui.horizontal(|ui| {
             ui.menu_button(s.menu_file, |ui| {
+                if ui.button(s.file_open_folder).clicked() {
+                    self.do_open_folder();
+                    ui.close();
+                }
+                if ui.button(s.file_open_file).clicked() {
+                    self.do_open_file_dialog();
+                    ui.close();
+                }
+                if ui
+                    .button(shortcut_hint(&self.keybindings, &ui.ctx().clone(), s.action_save, Action::Save))
+                    .clicked()
+                {
+                    self.do_save();
+                    ui.close();
+                }
+                if ui.button(s.file_save_as).clicked() {
+                    self.do_save_as();
+                    ui.close();
+                }
+                ui.separator();
                 if ui.button(s.file_preferences).clicked() {
                     self.show_preferences = true;
                     ui.close();
@@ -477,7 +571,19 @@ impl NamsdecApp {
             });
 
             ui.menu_button(s.menu_view, |ui| {
+                let ctx = ui.ctx().clone();
+                if ui
+                    .button(shortcut_hint(&self.keybindings, &ctx, s.action_toggle_explorer, Action::ToggleExplorer))
+                    .clicked()
+                {
+                    self.dispatch(Action::ToggleExplorer);
+                    ui.close();
+                }
+                ui.separator();
                 for tab in SidebarTab::ALL {
+                    if !self.show_re_tab && tab == SidebarTab::Re {
+                        continue;
+                    }
                     if ui.button(tab.label(s)).clicked() {
                         self.active_tab = tab;
                         ui.close();
@@ -1160,6 +1266,16 @@ impl eframe::App for NamsdecApp {
             .resizable(true)
             .default_size(300.0)
             .show(ui, |ui| self.sidebar_ui(ui));
+        if self.show_explorer {
+            egui::Panel::left("explorer")
+                .resizable(true)
+                .default_size(220.0)
+                .show(ui, |ui| {
+                    if let Some(path) = self.explorer.ui(ui) {
+                        self.open_file(path);
+                    }
+                });
+        }
         self.editor_ui(ui);
 
         self.preferences_window_ui(ui.ctx());

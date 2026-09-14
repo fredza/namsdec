@@ -13,3 +13,4 @@ namsdec-re.workspace = true
 eframe.workspace = true
 egui.workspace = true
 arboard.workspace = true
+rfd.workspace = true

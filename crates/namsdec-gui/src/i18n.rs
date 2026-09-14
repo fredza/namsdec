@@ -21,6 +21,9 @@ pub struct Strings {
     pub menu_view: &'static str,
     pub menu_help: &'static str,
 
+    pub file_open_folder: &'static str,
+    pub file_open_file: &'static str,
+    pub file_save_as: &'static str,
     pub file_preferences: &'static str,
     pub file_quit: &'static str,
     pub edit_copy_code: &'static str,
@@ -96,6 +99,9 @@ const FR: Strings = Strings {
     menu_view: "Affichage",
     menu_help: "Aide",
 
+    file_open_folder: "Ouvrir un dossier…",
+    file_open_file: "Ouvrir un fichier…",
+    file_save_as: "Enregistrer sous…",
     file_preferences: "Préférences…",
     file_quit: "Quitter",
     edit_copy_code: "Copier le code",
@@ -162,6 +168,9 @@ const EN: Strings = Strings {
     menu_view: "View",
     menu_help: "Help",
 
+    file_open_folder: "Open Folder…",
+    file_open_file: "Open File…",
+    file_save_as: "Save As…",
     file_preferences: "Preferences…",
     file_quit: "Quit",
     edit_copy_code: "Copy code",
