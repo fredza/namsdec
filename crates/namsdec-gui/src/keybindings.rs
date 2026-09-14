@@ -19,10 +19,12 @@ pub enum Action {
     Stop,
     Reset,
     Save,
+    OpenFile,
+    OpenFolder,
 }
 
 impl Action {
-    pub const ALL: [Action; 8] = [
+    pub const ALL: [Action; 10] = [
         Action::ToggleExplorer,
         Action::Assemble,
         Action::Run,
@@ -31,6 +33,8 @@ impl Action {
         Action::Stop,
         Action::Reset,
         Action::Save,
+        Action::OpenFile,
+        Action::OpenFolder,
     ];
 }
 
@@ -54,6 +58,7 @@ impl Chord {
     }
 }
 
+#[derive(Clone)]
 pub struct KeyBindings {
     pub map: BTreeMap<Action, Chord>,
 }
@@ -93,6 +98,17 @@ impl Default for KeyBindings {
             Chord::Simple(KeyboardShortcut::new(Modifiers::CTRL | Modifiers::SHIFT, Key::F5)),
         );
         map.insert(Action::Save, Chord::Simple(KeyboardShortcut::new(Modifiers::CTRL, Key::S)));
+        // Ouvrir un fichier sans passer par l'explorateur — Ctrl+O comme
+        // partout ailleurs ; Ctrl+Maj+O pour un dossier, qui lui alimente
+        // l'explorateur.
+        map.insert(
+            Action::OpenFile,
+            Chord::Simple(KeyboardShortcut::new(Modifiers::CTRL, Key::O)),
+        );
+        map.insert(
+            Action::OpenFolder,
+            Chord::Simple(KeyboardShortcut::new(Modifiers::CTRL | Modifiers::SHIFT, Key::O)),
+        );
         map.insert(Action::ToggleExplorer, Chord::Leader(Key::Space, Key::E));
         Self { map }
     }

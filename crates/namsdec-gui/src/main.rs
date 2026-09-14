@@ -79,6 +79,7 @@ enum Status {
     AssembleFailed,
     Running,
     Halted,
+    BinaryLoaded { bytes: usize, truncated: bool },
     Breakpoint(u64),
     StepLimit,
     NasmMissing,
@@ -139,6 +140,10 @@ struct NamsdecApp {
     active_tab: SidebarTab,
     mem_addr_input: String,
     show_preferences: bool,
+    /// Réglages tels qu'ils étaient à l'ouverture de la boîte Préférences.
+    /// C'est ce qui donne un sens distinct aux deux boutons : OK garde,
+    /// Quitter revient à cet état.
+    prefs_snapshot: Option<PreferencesSnapshot>,
     show_about: bool,
     keybindings: KeyBindings,
     dispatcher: Dispatcher,
@@ -182,8 +187,6 @@ enum PaletteCommand {
     ShowAbout,
     SetTheme(&'static Theme),
     SetLang(Lang),
-    OpenFolder,
-    OpenFile,
     SaveAs,
     Quit,
     GoTab(SidebarTab),
@@ -203,8 +206,8 @@ fn palette_commands(s: &Strings) -> Vec<(String, PaletteCommand)> {
         (s.action_toggle_explorer.to_string(), PaletteCommand::Do(Action::ToggleExplorer)),
         (s.action_save.to_string(), PaletteCommand::Do(Action::Save)),
         (s.file_save_as.to_string(), PaletteCommand::SaveAs),
-        (s.file_open_folder.to_string(), PaletteCommand::OpenFolder),
-        (s.file_open_file.to_string(), PaletteCommand::OpenFile),
+        (s.file_open_file.to_string(), PaletteCommand::Do(Action::OpenFile)),
+        (s.file_open_folder.to_string(), PaletteCommand::Do(Action::OpenFolder)),
         (s.file_preferences.to_string(), PaletteCommand::ShowPreferences),
         (s.help_about.to_string(), PaletteCommand::ShowAbout),
         (format!("{}: Français", s.preferences_language), PaletteCommand::SetLang(Lang::Fr)),
@@ -229,6 +232,13 @@ fn palette_commands(s: &Strings) -> Vec<(String, PaletteCommand)> {
     }));
 
     commands
+}
+
+struct PreferencesSnapshot {
+    theme: &'static Theme,
+    lang: Lang,
+    show_re_tab: bool,
+    keybindings: KeyBindings,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -275,6 +285,7 @@ impl Default for NamsdecApp {
             active_tab: SidebarTab::Registers,
             mem_addr_input: format!("{BASE_ADDR:#x}"),
             show_preferences: false,
+            prefs_snapshot: None,
             show_about: false,
             keybindings: KeyBindings::default(),
             dispatcher: Dispatcher::default(),
@@ -506,6 +517,8 @@ impl NamsdecApp {
                 self.status = Status::Idle;
             }
             Action::Save => self.do_save(),
+            Action::OpenFile => self.do_open_file_dialog(),
+            Action::OpenFolder => self.do_open_folder(),
         }
     }
 
@@ -516,18 +529,42 @@ impl NamsdecApp {
         }
     }
 
+    /// Sélecteur natif avec ses filtres — source assembleur, binaire, ou
+    /// tout. Accessible directement (Ctrl+O, menu Fichier, palette) sans
+    /// avoir à ouvrir l'explorateur d'abord.
     fn do_open_file_dialog(&mut self) {
-        if let Some(path) = rfd::FileDialog::new().pick_file() {
+        let s = strings(self.lang);
+        let picked = rfd::FileDialog::new()
+            .add_filter(s.filter_asm, &["asm", "nasm", "s", "inc"])
+            .add_filter(s.filter_binary, &["bin", "o", "obj", "elf", "so", "exe", "dll"])
+            // "*" est traduit en glob `*` par le backend portail de rfd :
+            // c'est ce qui laisse choisir un exécutable ELF sans
+            // extension, cas le plus courant sous Linux.
+            .add_filter(s.filter_all, &["*"])
+            .pick_file();
+        if let Some(path) = picked {
             self.open_file(path);
         }
     }
 
-    /// Charge `path` dans l'éditeur — n'importe quel fichier texte, pas
-    /// seulement les `.asm` (comme VS Code, qui n'écarte pas les fichiers
-    /// non reconnus). Une erreur d'E/S ou un contenu non-UTF8 finit dans
-    /// la barre de statut, jamais en panique.
+    /// Charge `path`. Du texte part dans l'éditeur ; tout le reste est
+    /// traité comme un binaire brut à désassembler, plutôt que rejeté
+    /// comme "pas de l'UTF-8" — c'est un atelier de reverse engineering,
+    /// ouvrir un binaire doit y mener quelque part.
     fn open_file(&mut self, path: PathBuf) {
-        match std::fs::read_to_string(&path) {
+        let bytes = match std::fs::read(&path) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                self.status = Status::Error(if self.lang == Lang::Fr {
+                    format!("impossible d'ouvrir le fichier : {e}")
+                } else {
+                    format!("could not open file: {e}")
+                });
+                return;
+            }
+        };
+
+        match String::from_utf8(bytes) {
             Ok(text) => {
                 self.source = text;
                 self.current_file = Some(path);
@@ -536,13 +573,58 @@ impl NamsdecApp {
                 self.diagnostics.clear();
                 self.status = Status::Idle;
             }
-            Err(e) => {
-                self.status = Status::Error(if self.lang == Lang::Fr {
-                    format!("impossible d'ouvrir le fichier : {e}")
-                } else {
-                    format!("could not open file: {e}")
-                });
-            }
+            Err(e) => self.load_binary(e.into_bytes()),
+        }
+    }
+
+    /// Ouvre un binaire brut : désassemblage direct à `BASE_ADDR`, sans
+    /// passer par nasm. Le listing obtenu remplit l'éditeur, une
+    /// instruction par ligne — ce qui donne aussi la correspondance
+    /// ligne <-> adresse dont dépendent la gouttière, le suivi de RIP et
+    /// les points d'arrêt.
+    ///
+    /// `current_file` est délibérément remis à zéro : le tampon affiché
+    /// est reconstruit, pas le contenu du fichier, et un Ctrl+S distrait
+    /// ne doit pas écraser le binaire par son propre désassemblage.
+    fn load_binary(&mut self, mut bytes: Vec<u8>) {
+        // Borné à la fenêtre mémoire simulée : au-delà, `rebuild_emulator`
+        // refuserait le chargement de toute façon, et désassembler
+        // plusieurs centaines de kilo-octets pour les jeter ensuite
+        // figerait l'éditeur le temps de la mise en page du listing.
+        let truncated = bytes.len() > MEM_SIZE;
+        bytes.truncate(MEM_SIZE);
+
+        let disasm = namsdec_disasm::disassemble(&bytes, BASE_ADDR);
+
+        let mut listing = String::new();
+        let mut line_to_addr = BTreeMap::new();
+        for (index, instruction) in disasm.iter().enumerate() {
+            line_to_addr.insert((index + 1) as u32, instruction.address);
+            listing.push_str(&instruction.text);
+            listing.push('\n');
+        }
+
+        let addr_to_line = line_to_addr.iter().map(|(l, a)| (*a, *l)).collect();
+        let loaded = bytes.len();
+        self.source = listing;
+        self.current_file = None;
+        self.breakpoint_lines.clear();
+        self.diagnostics.clear();
+        self.assemble_state = Some(AssembleState {
+            output: namsdec_asm::AssembleOutput {
+                bytes,
+                diagnostics: Vec::new(),
+                line_to_addr,
+            },
+            disasm,
+            addr_to_line,
+        });
+        self.rebuild_emulator();
+        if !matches!(self.status, Status::Error(_)) {
+            self.status = Status::BinaryLoaded {
+                bytes: loaded,
+                truncated,
+            };
         }
     }
 
@@ -589,7 +671,10 @@ impl NamsdecApp {
                 self.explorer_focused = false;
             }
             ExplorerAction::PickRoot => self.do_open_folder(),
-            ExplorerAction::Defocus => self.explorer_focused = false,
+            ExplorerAction::Close => {
+                self.show_explorer = false;
+                self.explorer_focused = false;
+            }
             ExplorerAction::None => {}
         }
     }
@@ -597,15 +682,13 @@ impl NamsdecApp {
     fn execute_palette_command(&mut self, ctx: &egui::Context, cmd: PaletteCommand) {
         match cmd {
             PaletteCommand::Do(action) => self.dispatch(action),
-            PaletteCommand::ShowPreferences => self.show_preferences = true,
+            PaletteCommand::ShowPreferences => self.open_preferences(),
             PaletteCommand::ShowAbout => self.show_about = true,
             PaletteCommand::SetTheme(theme) => {
                 self.theme = theme;
                 self.apply_theme(ctx);
             }
             PaletteCommand::SetLang(lang) => self.lang = lang,
-            PaletteCommand::OpenFolder => self.do_open_folder(),
-            PaletteCommand::OpenFile => self.do_open_file_dialog(),
             PaletteCommand::SaveAs => self.do_save_as(),
             PaletteCommand::Quit => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
             PaletteCommand::GoTab(tab) => {
@@ -750,12 +833,19 @@ impl NamsdecApp {
         let s = strings(self.lang);
         ui.horizontal(|ui| {
             ui.menu_button(s.menu_file, |ui| {
-                if ui.button(s.file_open_folder).clicked() {
-                    self.do_open_folder();
+                let ctx = ui.ctx().clone();
+                if ui
+                    .button(shortcut_hint(&self.keybindings, &ctx, s.file_open_file, Action::OpenFile))
+                    .clicked()
+                {
+                    self.dispatch(Action::OpenFile);
                     ui.close();
                 }
-                if ui.button(s.file_open_file).clicked() {
-                    self.do_open_file_dialog();
+                if ui
+                    .button(shortcut_hint(&self.keybindings, &ctx, s.file_open_folder, Action::OpenFolder))
+                    .clicked()
+                {
+                    self.dispatch(Action::OpenFolder);
                     ui.close();
                 }
                 if ui
@@ -771,7 +861,7 @@ impl NamsdecApp {
                 }
                 ui.separator();
                 if ui.button(s.file_preferences).clicked() {
-                    self.show_preferences = true;
+                    self.open_preferences();
                     ui.close();
                 }
                 ui.separator();
@@ -889,9 +979,44 @@ impl NamsdecApp {
         });
     }
 
+    /// Ouvre la boîte Préférences en mémorisant l'état des réglages, pour
+    /// que "Quitter" ait quelque chose à quoi revenir. Rouvrir une boîte
+    /// déjà ouverte ne réécrit pas l'instantané.
+    fn open_preferences(&mut self) {
+        if !self.show_preferences {
+            self.prefs_snapshot = Some(PreferencesSnapshot {
+                theme: self.theme,
+                lang: self.lang,
+                show_re_tab: self.show_re_tab,
+                keybindings: self.keybindings.clone(),
+            });
+        }
+        self.show_preferences = true;
+    }
+
+    /// Ferme la boîte Préférences. `keep` distingue les deux boutons :
+    /// OK garde ce qui vient d'être réglé, Quitter restaure l'état
+    /// d'avant l'ouverture — les réglages s'appliquent en direct (le
+    /// thème surtout), il faut donc pouvoir revenir en arrière.
+    fn close_preferences(&mut self, ctx: &egui::Context, keep: bool) {
+        if let Some(snapshot) = self.prefs_snapshot.take()
+            && !keep
+        {
+            self.theme = snapshot.theme;
+            self.lang = snapshot.lang;
+            self.show_re_tab = snapshot.show_re_tab;
+            self.keybindings = snapshot.keybindings;
+            self.apply_theme(ctx);
+        }
+        self.rebinding = None;
+        self.show_preferences = false;
+    }
+
     fn preferences_window_ui(&mut self, ctx: &egui::Context) {
         let s = strings(self.lang);
+        let theme = self.theme;
         let mut open = self.show_preferences;
+        let mut close_keeping: Option<bool> = None;
         egui::Window::new(s.preferences_title)
             .open(&mut open)
             .resizable(true)
@@ -917,8 +1042,17 @@ impl NamsdecApp {
                     PreferencesTab::Modules => self.preferences_modules_ui(ui),
                     PreferencesTab::Plugins => self.preferences_plugins_ui(ui),
                 }
+                ui.separator();
+                close_keeping = dialog_buttons(ui, theme, s);
             });
-        self.show_preferences = open;
+
+        match close_keeping {
+            Some(keep) => self.close_preferences(ctx, keep),
+            // La croix du bandeau vaut OK : refermer une boîte ne doit pas
+            // défaire en silence ce qu'on vient d'y régler.
+            None if !open => self.close_preferences(ctx, true),
+            None => {}
+        }
     }
 
     fn preferences_general_ui(&mut self, ui: &mut egui::Ui) {
@@ -1034,10 +1168,13 @@ impl NamsdecApp {
 
     fn about_window_ui(&mut self, ctx: &egui::Context) {
         let s = strings(self.lang);
+        let theme = self.theme;
         let mut open = self.show_about;
+        let mut close = false;
         egui::Window::new(s.about_title)
             .open(&mut open)
             .resizable(false)
+            .collapsible(false)
             .show(ctx, |ui| {
                 ui.heading("Namsdec");
                 ui.label(format!(
@@ -1047,8 +1184,13 @@ impl NamsdecApp {
                 ui.label(s.about_license);
                 ui.separator();
                 ui.label(s.about_description);
+                ui.separator();
+                // Rien à valider ni à annuler ici : les deux boutons
+                // referment, ils sont là pour que toutes les boîtes se
+                // manipulent de la même façon.
+                close = dialog_buttons(ui, theme, s).is_some();
             });
-        self.show_about = open;
+        self.show_about = open && !close;
     }
 
     fn toolbar_ui(&mut self, ui: &mut egui::Ui) {
@@ -1187,6 +1329,20 @@ impl NamsdecApp {
             Status::Halted => {
                 ui.colored_label(theme.good, s.status_halted);
             }
+            Status::BinaryLoaded { bytes, truncated } => {
+                let size = if *truncated {
+                    if lang == Lang::Fr {
+                        format!("{bytes} premiers octets")
+                    } else {
+                        format!("first {bytes} bytes")
+                    }
+                } else if lang == Lang::Fr {
+                    format!("{bytes} octets")
+                } else {
+                    format!("{bytes} bytes")
+                };
+                ui.colored_label(theme.accent, format!("{} — {size}", s.binary_not_text));
+            }
             Status::Breakpoint(addr) => {
                 ui.colored_label(
                     theme.accent,
@@ -1309,7 +1465,14 @@ impl NamsdecApp {
                     ui.horizontal_top(|ui| {
                         ui.spacing_mut().item_spacing.x = 0.0;
 
-                        const GUTTER_WIDTH: f32 = 44.0;
+                        // `GUTTER_PAD` est l'air entre le dernier chiffre
+                        // et la première colonne de code. Il fait partie
+                        // de la gouttière plutôt que d'être un
+                        // `item_spacing` : l'espacement horizontal est mis
+                        // à zéro juste au-dessus pour que le `TextEdit`
+                        // commence exactement où la gouttière s'arrête.
+                        const GUTTER_PAD: f32 = 16.0;
+                        const GUTTER_WIDTH: f32 = 38.0 + GUTTER_PAD;
                         let (gutter_rect, gutter_resp) = ui.allocate_exact_size(
                             egui::vec2(GUTTER_WIDTH, galley.rect.height().max(1.0)),
                             egui::Sense::click(),
@@ -1345,7 +1508,7 @@ impl NamsdecApp {
                             }
                             let color = if is_current { theme.accent } else { ui.visuals().weak_text_color() };
                             painter.text(
-                                egui::pos2(gutter_rect.right() - 6.0, row_rect.center().y),
+                                egui::pos2(gutter_rect.right() - GUTTER_PAD, row_rect.center().y),
                                 egui::Align2::RIGHT_CENTER,
                                 line.to_string(),
                                 font_id.clone(),
@@ -1613,6 +1776,30 @@ impl NamsdecApp {
     }
 }
 
+/// Rangée de boutons commune à toutes les boîtes de dialogue, alignée à
+/// droite. Renvoie `Some(true)` pour OK, `Some(false)` pour Quitter,
+/// `None` tant que rien n'est cliqué.
+///
+/// Ces deux-là sont dessinés avec un fond et un contour explicites : le
+/// style de l'appli rend les boutons plats au repos, ce qui convient aux
+/// barres d'outils mais laisserait les boutons d'une boîte de dialogue
+/// se confondre avec du texte.
+fn dialog_buttons(ui: &mut egui::Ui, theme: &Theme, s: &Strings) -> Option<bool> {
+    let mut result = None;
+    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        let ok = egui::Button::new(egui::RichText::new(s.dialog_ok).color(theme.bg))
+            .fill(theme.accent);
+        if ui.add(ok).clicked() {
+            result = Some(true);
+        }
+        let quit = egui::Button::new(s.dialog_quit).stroke(egui::Stroke::new(1.0, theme.dim));
+        if ui.add(quit).clicked() {
+            result = Some(false);
+        }
+    });
+    result
+}
+
 /// Libellé d'une action, pour le tableau de raccourcis de Préférences.
 fn action_label(s: &Strings, action: Action) -> &'static str {
     match action {
@@ -1624,6 +1811,8 @@ fn action_label(s: &Strings, action: Action) -> &'static str {
         Action::Stop => s.action_stop,
         Action::Reset => s.action_reset,
         Action::Save => s.action_save,
+        Action::OpenFile => s.file_open_file,
+        Action::OpenFolder => s.file_open_folder,
     }
 }
 
@@ -1967,4 +2156,77 @@ fn main() -> eframe::Result<()> {
             Ok(Box::new(app))
         }),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Ouvrir un binaire doit mener quelque part : un vrai programme
+    /// passé par nasm, relu comme des octets bruts, doit remplir
+    /// l'éditeur d'un listing, donner la correspondance ligne <-> adresse
+    /// dont dépend la gouttière, et produire un émulateur capable
+    /// d'avancer.
+    #[test]
+    fn opening_a_raw_binary_disassembles_and_boots_the_emulator() {
+        let Some(_nasm) = namsdec_asm::find_nasm() else {
+            // Pas de nasm ici : ce test vérifie un aller-retour à travers
+            // l'assembleur réel, il n'a rien à prouver sans lui.
+            return;
+        };
+        let output = namsdec_asm::assemble(
+            "BITS 64\norg 0x400000\n    mov rax, 7\n    hlt\n",
+            BASE_ADDR,
+        )
+        .expect("le programme de test doit s'assembler");
+
+        let mut app = NamsdecApp::default();
+        app.load_binary(output.bytes.clone());
+
+        assert!(
+            app.source.contains("mov"),
+            "le listing désassemblé doit remplir l'éditeur, obtenu : {:?}",
+            app.source
+        );
+        assert_eq!(
+            app.current_file, None,
+            "le tampon est reconstruit : pas de fichier à réécrire dessus"
+        );
+
+        let state = app.assemble_state.as_ref().expect("un état chargé");
+        assert_eq!(
+            state.output.line_to_addr.get(&1).copied(),
+            Some(BASE_ADDR),
+            "la première ligne du listing est la première instruction"
+        );
+        assert_eq!(
+            app.current_line(),
+            Some(1),
+            "RIP au départ doit se refléter sur la ligne 1 de la gouttière"
+        );
+
+        app.do_step();
+        assert_eq!(
+            app.emulator.as_ref().unwrap().cpu.regs.get64(Reg64::Rax),
+            7,
+            "le binaire chargé doit s'exécuter pas à pas comme un programme assemblé"
+        );
+    }
+
+    /// Un fichier plus gros que la mémoire simulée est tronqué plutôt que
+    /// rejeté — et le statut le dit, au lieu de laisser croire que tout a
+    /// été chargé.
+    #[test]
+    fn oversized_binaries_are_truncated_not_rejected() {
+        let mut app = NamsdecApp::default();
+        app.load_binary(vec![0x90; MEM_SIZE + 1024]); // que des `nop`
+
+        match app.status {
+            Status::BinaryLoaded { bytes, truncated } => {
+                assert_eq!(bytes, MEM_SIZE);
+                assert!(truncated);
+            }
+            _ => panic!("un binaire trop gros doit tout de même se charger"),
+        }
+    }
 }

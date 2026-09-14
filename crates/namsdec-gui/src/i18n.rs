@@ -23,6 +23,10 @@ pub struct Strings {
 
     pub file_open_folder: &'static str,
     pub file_open_file: &'static str,
+    // Filtres du sélecteur de fichiers natif
+    pub filter_asm: &'static str,
+    pub filter_binary: &'static str,
+    pub filter_all: &'static str,
     pub file_save_as: &'static str,
     pub file_preferences: &'static str,
     pub file_quit: &'static str,
@@ -40,6 +44,10 @@ pub struct Strings {
     pub action_toggle_explorer: &'static str,
     pub action_save: &'static str,
     pub nasm_not_found: &'static str,
+
+    // Boutons communs aux boîtes de dialogue
+    pub dialog_ok: &'static str,
+    pub dialog_quit: &'static str,
 
     // Onglets du panneau latéral / menu Affichage
     pub tab_registers: &'static str,
@@ -76,6 +84,7 @@ pub struct Strings {
     pub status_step_limit: &'static str,
     pub status_nasm_missing: &'static str,
     pub binary_too_large: &'static str,
+    pub binary_not_text: &'static str,
 
     // Phrases "rien à afficher pour l'instant", réutilisées à plusieurs
     // endroits
@@ -126,6 +135,9 @@ const FR: Strings = Strings {
 
     file_open_folder: "Ouvrir un dossier…",
     file_open_file: "Ouvrir un fichier…",
+    filter_asm: "Source assembleur",
+    filter_binary: "Binaire",
+    filter_all: "Tous les fichiers",
     file_save_as: "Enregistrer sous…",
     file_preferences: "Préférences…",
     file_quit: "Quitter",
@@ -142,6 +154,9 @@ const FR: Strings = Strings {
     action_toggle_explorer: "Explorateur de fichiers",
     action_save: "Enregistrer",
     nasm_not_found: "nasm introuvable",
+
+    dialog_ok: "OK",
+    dialog_quit: "Quitter",
 
     tab_registers: "Registres",
     tab_flags: "Flags",
@@ -172,6 +187,7 @@ const FR: Strings = Strings {
     status_step_limit: "Limite de pas atteinte — boucle infinie possible ?",
     status_nasm_missing: "nasm est introuvable dans le PATH (ex : `sudo dnf install nasm`).",
     binary_too_large: "le binaire assemblé dépasse la fenêtre mémoire simulée",
+    binary_not_text: "Fichier binaire chargé et désassemblé (le code affiché est reconstruit).",
 
     no_binary_assembled: "Aucun binaire assemblé.",
     no_binary_assembled_yet: "Aucun binaire assemblé pour l'instant.",
@@ -216,6 +232,9 @@ const EN: Strings = Strings {
 
     file_open_folder: "Open Folder…",
     file_open_file: "Open File…",
+    filter_asm: "Assembly source",
+    filter_binary: "Binary",
+    filter_all: "All files",
     file_save_as: "Save As…",
     file_preferences: "Preferences…",
     file_quit: "Quit",
@@ -232,6 +251,9 @@ const EN: Strings = Strings {
     action_toggle_explorer: "File Explorer",
     action_save: "Save",
     nasm_not_found: "nasm not found",
+
+    dialog_ok: "OK",
+    dialog_quit: "Quit",
 
     tab_registers: "Registers",
     tab_flags: "Flags",
@@ -262,6 +284,7 @@ const EN: Strings = Strings {
     status_step_limit: "Step limit reached — possible infinite loop?",
     status_nasm_missing: "nasm was not found in PATH (e.g.: `sudo dnf install nasm`).",
     binary_too_large: "the assembled binary exceeds the simulated memory window",
+    binary_not_text: "Binary file loaded and disassembled (the code shown is reconstructed).",
 
     no_binary_assembled: "No binary assembled.",
     no_binary_assembled_yet: "No binary assembled yet.",

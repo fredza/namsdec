@@ -37,8 +37,8 @@ pub enum ExplorerAction {
     /// qui ouvre le sélecteur natif, l'explorateur n'a pas à dépendre de
     /// `rfd`.
     PickRoot,
-    /// `Échap` : rendre le focus clavier à l'éditeur.
-    Defocus,
+    /// `Échap` : refermer l'explorateur et rendre le focus à l'éditeur.
+    Close,
 }
 
 /// Ce qu'un clic de souris a fait au focus clavier de l'explorateur.
@@ -236,7 +236,7 @@ impl FileExplorer {
     /// Raccourcis de neo-tree : `j`/`k` (ou flèches) pour se déplacer,
     /// `l`/`Entrée` pour ouvrir ou déplier, `h` pour replier ou remonter au
     /// parent, `g`/`G` pour les extrémités, `/` pour filtrer, `Échap` pour
-    /// vider le filtre puis rendre le focus à l'éditeur.
+    /// vider le filtre puis refermer l'explorateur.
     fn handle_keys(&mut self, ui: &egui::Ui, rows: &[Row]) -> ExplorerAction {
         let keys: Vec<(egui::Key, egui::Modifiers)> = ui.ctx().input(|i| {
             i.events
@@ -295,8 +295,11 @@ impl FileExplorer {
                 egui::Key::H | egui::Key::ArrowLeft => self.collapse_or_go_to_parent(rows),
                 egui::Key::Slash => self.request_filter_focus = true,
                 egui::Key::Escape => {
+                    // Un premier Échap annule le filtre en cours (sinon on
+                    // perdrait la recherche en même temps que la fenêtre) ;
+                    // sans filtre, il referme.
                     if self.filter.is_empty() {
-                        action = ExplorerAction::Defocus;
+                        action = ExplorerAction::Close;
                     } else {
                         self.filter.clear();
                     }
@@ -821,6 +824,41 @@ mod tests {
             }
         });
         assert_eq!(opened.as_deref(), Some(root.join("src/main.rs").as_path()));
+    }
+
+    /// `Échap` referme l'explorateur — mais pas avant d'avoir annulé un
+    /// filtre en cours, sinon la fenêtre disparaîtrait au moment où
+    /// l'utilisateur voulait seulement effacer sa recherche.
+    #[test]
+    fn escape_clears_the_filter_first_then_closes() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_path_buf();
+        std::fs::write(root.join("main.asm"), "").unwrap();
+
+        let ctx = egui::Context::default();
+        let theme = &namsdec_theme::TOKYO_NIGHT;
+        let mut explorer = FileExplorer {
+            root: Some(root),
+            filter: "asm".to_owned(),
+            ..Default::default()
+        };
+
+        let mut closed = false;
+        frame(&ctx, &[egui::Key::Escape], |ui| {
+            if let ExplorerAction::Close = explorer.ui(ui, theme, &LABELS, true) {
+                closed = true;
+            }
+        });
+        assert!(explorer.filter.is_empty(), "le filtre doit être annulé");
+        assert!(!closed, "ce premier Échap ne devait pas refermer");
+
+        let ctx = egui::Context::default();
+        frame(&ctx, &[egui::Key::Escape], |ui| {
+            if let ExplorerAction::Close = explorer.ui(ui, theme, &LABELS, true) {
+                closed = true;
+            }
+        });
+        assert!(closed, "sans filtre, Échap referme");
     }
 
     /// Sans le focus, l'explorateur doit ignorer les touches — sinon il
