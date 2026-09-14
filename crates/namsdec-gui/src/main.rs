@@ -65,15 +65,17 @@ enum SidebarTab {
     Stack,
     Memory,
     Re,
+    Modules,
 }
 
 impl SidebarTab {
-    const ALL: [SidebarTab; 5] = [
+    const ALL: [SidebarTab; 6] = [
         SidebarTab::Registers,
         SidebarTab::Flags,
         SidebarTab::Stack,
         SidebarTab::Memory,
         SidebarTab::Re,
+        SidebarTab::Modules,
     ];
 
     fn label(self) -> &'static str {
@@ -83,6 +85,7 @@ impl SidebarTab {
             SidebarTab::Stack => "Pile",
             SidebarTab::Memory => "Mémoire",
             SidebarTab::Re => "RE",
+            SidebarTab::Modules => "Modules",
         }
     }
 }
@@ -433,6 +436,7 @@ impl NamsdecApp {
             SidebarTab::Stack => self.stack_ui(ui),
             SidebarTab::Memory => self.memory_ui(ui),
             SidebarTab::Re => self.re_ui(ui),
+            SidebarTab::Modules => self.modules_ui(ui),
         });
     }
 
@@ -521,6 +525,94 @@ impl NamsdecApp {
             });
         }
     }
+
+    /// Vue d'ensemble des crates moteur (core/asm/disasm/emu/re), un peu
+    /// comme un gestionnaire de plugins — namsdec-exercises n'y figure pas,
+    /// c'est un contenu statique et non un module du moteur.
+    fn modules_ui(&self, ui: &mut egui::Ui) {
+        module_card(
+            ui,
+            "namsdec-core",
+            namsdec_core::VERSION,
+            true,
+            GOOD,
+            "Registres, indicateurs (RFLAGS), mémoire simulée, état CPU.",
+        );
+
+        let (asm_ok, asm_status) = match &self.nasm_info {
+            Some(info) => (true, format!("nasm détecté — {}", info.version)),
+            None => (false, "nasm introuvable dans le PATH".to_string()),
+        };
+        module_card(
+            ui,
+            "namsdec-asm",
+            namsdec_asm::VERSION,
+            asm_ok,
+            if asm_ok { GOOD } else { BAD },
+            &asm_status,
+        );
+
+        let disasm_status = match &self.assemble_state {
+            Some(state) => format!("{} instructions désassemblées (vérification)", state.disasm.len()),
+            None => "Aucun binaire assemblé pour l'instant.".to_string(),
+        };
+        module_card(
+            ui,
+            "namsdec-disasm",
+            namsdec_disasm::VERSION,
+            self.assemble_state.is_some(),
+            ACCENT,
+            &disasm_status,
+        );
+
+        let emu_status = match &self.emulator {
+            Some(emulator) => format!(
+                "RIP={:#x} · {} point(s) d'arrêt · {}",
+                emulator.cpu.regs.rip,
+                emulator.breakpoints.len(),
+                if emulator.cpu.halted { "arrêté (hlt)" } else { "en cours" },
+            ),
+            None => "Aucun programme chargé.".to_string(),
+        };
+        module_card(
+            ui,
+            "namsdec-emu",
+            namsdec_emu::VERSION,
+            self.emulator.is_some(),
+            ACCENT,
+            &emu_status,
+        );
+
+        let titles = self.re_registry.titles();
+        let re_status = if titles.is_empty() {
+            "Aucun module RE enregistré.".to_string()
+        } else {
+            format!("{} module(s) : {}", titles.len(), titles.join(", "))
+        };
+        module_card(ui, "namsdec-re", namsdec_re::VERSION, true, GOOD, &re_status);
+    }
+}
+
+/// Une ligne de la vue d'ensemble des modules : nom, version, point coloré
+/// de statut, et une courte description de ce que fait ce module là,
+/// maintenant.
+fn module_card(
+    ui: &mut egui::Ui,
+    name: &str,
+    version: &str,
+    active: bool,
+    color: egui::Color32,
+    detail: &str,
+) {
+    ui.group(|ui| {
+        ui.horizontal(|ui| {
+            ui.colored_label(if active { color } else { egui::Color32::GRAY }, "●");
+            ui.strong(name);
+            ui.weak(format!("v{version}"));
+        });
+        ui.label(detail);
+    });
+    ui.add_space(4.0);
 }
 
 impl eframe::App for NamsdecApp {

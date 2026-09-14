@@ -13,6 +13,8 @@ use thiserror::Error;
 
 use regmap::map_register;
 
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 #[derive(Debug, Error)]
 pub enum EmuError {
     #[error("instruction non supportée par l'interpréteur : {0}")]

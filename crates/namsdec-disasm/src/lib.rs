@@ -4,6 +4,8 @@
 
 use iced_x86::{Decoder, DecoderOptions, Formatter, Instruction, NasmFormatter};
 
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 #[derive(Debug, Clone)]
 pub struct DecodedInstruction {
     pub address: u64,

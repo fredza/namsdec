@@ -12,6 +12,8 @@ pub use binary_info::BinaryInfoModule;
 use namsdec_core::Cpu;
 use namsdec_disasm::DecodedInstruction;
 
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 /// Ce que voit un module à chaque point d'accroche : l'état du CPU simulé,
 /// le désassemblage du binaire chargé, et le source NASM d'origine.
 pub struct ReContext<'a> {
@@ -52,6 +54,20 @@ impl ReModuleRegistry {
 
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Box<dyn ReModule>> {
         self.modules.iter_mut()
+    }
+
+    pub fn len(&self) -> usize {
+        self.modules.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.modules.is_empty()
+    }
+
+    /// Titres des modules enregistrés, dans l'ordre d'enregistrement —
+    /// utilisé par la vue d'ensemble de l'interface graphique.
+    pub fn titles(&self) -> Vec<&'static str> {
+        self.modules.iter().map(|m| m.title()).collect()
     }
 
     pub fn on_binary_loaded(&mut self, ctx: &ReContext) {

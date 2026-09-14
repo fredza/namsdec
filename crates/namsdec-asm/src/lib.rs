@@ -10,6 +10,8 @@ use std::sync::LazyLock;
 use regex::Regex;
 use thiserror::Error;
 
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Severity {
     Warning,
