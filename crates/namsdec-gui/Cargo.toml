@@ -4,3 +4,11 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+namsdec-core.workspace = true
+namsdec-asm.workspace = true
+namsdec-disasm.workspace = true
+namsdec-emu.workspace = true
+namsdec-re.workspace = true
+namsdec-exercises.workspace = true
+eframe.workspace = true
+egui.workspace = true
