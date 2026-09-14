@@ -2,6 +2,7 @@
 name = "namsdec-gui"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 
 [dependencies]
 namsdec-core.workspace = true
@@ -11,3 +12,4 @@ namsdec-emu.workspace = true
 namsdec-re.workspace = true
 eframe.workspace = true
 egui.workspace = true
+arboard.workspace = true

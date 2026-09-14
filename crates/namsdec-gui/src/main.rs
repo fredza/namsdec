@@ -3,6 +3,8 @@
 //! (vérification pédagogique) et exécute pas à pas via `namsdec-emu`,
 //! en affichant les panneaux des modules `ReModule` enregistrés.
 
+mod i18n;
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use eframe::egui;
@@ -12,9 +14,18 @@ use namsdec_disasm::DecodedInstruction;
 use namsdec_emu::{Emulator, RunStop, StepResult};
 use namsdec_re::{BinaryInfoModule, ReContext, ReModuleRegistry};
 
+use i18n::{strings, Lang, Strings};
+
 const BASE_ADDR: u64 = 0x400000;
 const MEM_SIZE: usize = 0x10000;
 const MAX_RUN_STEPS: u32 = 1_000_000;
+
+/// Numéro de version SemVer — ne JAMAIS le monter sans l'accord explicite
+/// de l'utilisateur (voir memory: feedback_version_bump_approval).
+const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
+/// Date de compilation (YYYYMMDD), calculée par build.rs — se met à jour
+/// seule, aucune approbation requise contrairement à APP_VERSION.
+const BUILD_DATE: &str = env!("NAMSDEC_BUILD_DATE");
 
 const GOOD: egui::Color32 = egui::Color32::from_rgb(0x89, 0xd1, 0x85);
 const BAD: egui::Color32 = egui::Color32::from_rgb(0xf4, 0x87, 0x71);
@@ -71,14 +82,14 @@ impl SidebarTab {
         SidebarTab::Modules,
     ];
 
-    fn label(self) -> &'static str {
+    fn label(self, s: &Strings) -> &'static str {
         match self {
-            SidebarTab::Registers => "Registres",
-            SidebarTab::Flags => "Flags",
-            SidebarTab::Stack => "Pile",
-            SidebarTab::Memory => "Mémoire",
-            SidebarTab::Re => "RE",
-            SidebarTab::Modules => "Modules",
+            SidebarTab::Registers => s.tab_registers,
+            SidebarTab::Flags => s.tab_flags,
+            SidebarTab::Stack => s.tab_stack,
+            SidebarTab::Memory => s.tab_memory,
+            SidebarTab::Re => s.tab_re,
+            SidebarTab::Modules => s.tab_modules,
         }
     }
 }
@@ -103,6 +114,7 @@ struct AssembleState {
 struct NamsdecApp {
     source: String,
     theme: AppTheme,
+    lang: Lang,
     nasm_info: Option<namsdec_asm::NasmInfo>,
     breakpoint_lines: BTreeSet<u32>,
     bp_input: u32,
@@ -113,6 +125,8 @@ struct NamsdecApp {
     diagnostics: Vec<Diagnostic>,
     active_tab: SidebarTab,
     mem_addr_input: String,
+    show_preferences: bool,
+    show_about: bool,
 }
 
 /// Programme de départ affiché au lancement, pour ouvrir sur un exemple
@@ -140,6 +154,7 @@ impl Default for NamsdecApp {
         Self {
             source: DEFAULT_SOURCE.to_string(),
             theme: AppTheme::Dark,
+            lang: Lang::Fr,
             nasm_info: namsdec_asm::find_nasm(),
             breakpoint_lines: BTreeSet::new(),
             bp_input: 1,
@@ -150,6 +165,8 @@ impl Default for NamsdecApp {
             diagnostics: Vec::new(),
             active_tab: SidebarTab::Registers,
             mem_addr_input: format!("{BASE_ADDR:#x}"),
+            show_preferences: false,
+            show_about: false,
         }
     }
 }
@@ -184,7 +201,11 @@ impl NamsdecApp {
                 self.status = Status::AssembleFailed;
             }
             Err(AsmError::Io(e)) => {
-                self.status = Status::Error(format!("erreur d'entrée/sortie : {e}"));
+                self.status = Status::Error(if self.lang == Lang::Fr {
+                    format!("erreur d'entrée/sortie : {e}")
+                } else {
+                    format!("I/O error: {e}")
+                });
             }
         }
     }
@@ -195,9 +216,7 @@ impl NamsdecApp {
         };
         let mut mem = namsdec_core::Memory::new(BASE_ADDR, MEM_SIZE);
         if mem.load(BASE_ADDR, &state.output.bytes).is_err() {
-            self.status = Status::Error(
-                "le binaire assemblé dépasse la fenêtre mémoire simulée".to_string(),
-            );
+            self.status = Status::Error(strings(self.lang).binary_too_large.to_string());
             self.emulator = None;
             return;
         }
@@ -280,23 +299,161 @@ impl NamsdecApp {
         state.addr_to_line.get(&emulator.cpu.regs.rip).copied()
     }
 
+    fn menu_bar_ui(&mut self, ui: &mut egui::Ui) {
+        let s = strings(self.lang);
+        ui.horizontal(|ui| {
+            ui.menu_button(s.menu_file, |ui| {
+                if ui.button(s.file_preferences).clicked() {
+                    self.show_preferences = true;
+                    ui.close();
+                }
+                ui.separator();
+                if ui.button(s.file_quit).clicked() {
+                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+                }
+            });
+
+            ui.menu_button(s.menu_edit, |ui| {
+                if ui.button(s.edit_copy_code).clicked() {
+                    ui.ctx().copy_text(self.source.clone());
+                    ui.close();
+                }
+                if ui.button(s.edit_paste).clicked() {
+                    match arboard::Clipboard::new().and_then(|mut c| c.get_text()) {
+                        Ok(text) => {
+                            self.source = text;
+                            self.status = Status::Idle;
+                        }
+                        Err(e) => {
+                            self.status = Status::Error(if self.lang == Lang::Fr {
+                                format!("presse-papiers inaccessible : {e}")
+                            } else {
+                                format!("clipboard unavailable: {e}")
+                            });
+                        }
+                    }
+                    ui.close();
+                }
+            });
+
+            ui.menu_button(s.menu_tools, |ui| {
+                if ui.button(s.action_assemble).clicked() {
+                    self.do_assemble();
+                    ui.close();
+                }
+                let can_exec = self.emulator.is_some();
+                ui.add_enabled_ui(can_exec, |ui| {
+                    if ui.button(format!("⏭ {}", s.action_step)).clicked() {
+                        self.do_step();
+                        ui.close();
+                    }
+                    if ui.button(format!("⏵ {}", s.action_run)).clicked() {
+                        self.do_run();
+                        ui.close();
+                    }
+                    if ui.button(format!("⟲ {}", s.action_reset)).clicked() {
+                        self.rebuild_emulator();
+                        self.status = Status::Idle;
+                        ui.close();
+                    }
+                });
+            });
+
+            ui.menu_button(s.menu_view, |ui| {
+                for tab in SidebarTab::ALL {
+                    if ui.button(tab.label(s)).clicked() {
+                        self.active_tab = tab;
+                        ui.close();
+                    }
+                }
+            });
+
+            ui.menu_button(s.menu_help, |ui| {
+                if ui.button(s.help_about).clicked() {
+                    self.show_about = true;
+                    ui.close();
+                }
+            });
+        });
+    }
+
+    fn preferences_window_ui(&mut self, ctx: &egui::Context) {
+        let s = strings(self.lang);
+        let mut open = self.show_preferences;
+        egui::Window::new(s.preferences_title)
+            .open(&mut open)
+            .resizable(false)
+            .show(ctx, |ui| {
+                ui.label(s.preferences_theme);
+                ui.horizontal(|ui| {
+                    if ui
+                        .selectable_label(self.theme == AppTheme::Dark, s.theme_dark)
+                        .clicked()
+                    {
+                        self.theme = AppTheme::Dark;
+                        self.apply_theme(ctx);
+                    }
+                    if ui
+                        .selectable_label(self.theme == AppTheme::Light, s.theme_light)
+                        .clicked()
+                    {
+                        self.theme = AppTheme::Light;
+                        self.apply_theme(ctx);
+                    }
+                });
+
+                ui.separator();
+
+                ui.label(s.preferences_language);
+                ui.horizontal(|ui| {
+                    if ui.selectable_label(self.lang == Lang::Fr, "Français").clicked() {
+                        self.lang = Lang::Fr;
+                    }
+                    if ui.selectable_label(self.lang == Lang::En, "English").clicked() {
+                        self.lang = Lang::En;
+                    }
+                });
+            });
+        self.show_preferences = open;
+    }
+
+    fn about_window_ui(&mut self, ctx: &egui::Context) {
+        let s = strings(self.lang);
+        let mut open = self.show_about;
+        egui::Window::new(s.about_title)
+            .open(&mut open)
+            .resizable(false)
+            .show(ctx, |ui| {
+                ui.heading("Namsdec");
+                ui.label(format!(
+                    "Version {APP_VERSION} ({} {BUILD_DATE})",
+                    s.about_build_word
+                ));
+                ui.label(s.about_license);
+                ui.separator();
+                ui.label(s.about_description);
+            });
+        self.show_about = open;
+    }
+
     fn toolbar_ui(&mut self, ui: &mut egui::Ui) {
+        let s = strings(self.lang);
         ui.horizontal(|ui| {
             ui.heading("Namsdec");
             ui.separator();
 
-            if ui.button("Assembler").clicked() {
+            if ui.button(s.action_assemble).clicked() {
                 self.do_assemble();
             }
             let can_exec = self.emulator.is_some();
             ui.add_enabled_ui(can_exec, |ui| {
-                if ui.button("⏭ Step").clicked() {
+                if ui.button(format!("⏭ {}", s.action_step)).clicked() {
                     self.do_step();
                 }
-                if ui.button("⏵ Run").clicked() {
+                if ui.button(format!("⏵ {}", s.action_run)).clicked() {
                     self.do_run();
                 }
-                if ui.button("⟲ Reset").clicked() {
+                if ui.button(format!("⟲ {}", s.action_reset)).clicked() {
                     self.rebuild_emulator();
                     self.status = Status::Idle;
                 }
@@ -310,68 +467,73 @@ impl NamsdecApp {
                 }
                 None => {
                     status_dot(ui, BAD);
-                    ui.label("nasm introuvable");
+                    ui.label(s.nasm_not_found);
                 }
             }
-
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.menu_button("⚙ Réglages", |ui| {
-                    ui.label("Thème");
-                    if ui
-                        .selectable_label(self.theme == AppTheme::Dark, "🌙 Sombre")
-                        .clicked()
-                    {
-                        self.theme = AppTheme::Dark;
-                        self.apply_theme(ui.ctx());
-                        ui.close();
-                    }
-                    if ui
-                        .selectable_label(self.theme == AppTheme::Light, "☀ Clair")
-                        .clicked()
-                    {
-                        self.theme = AppTheme::Light;
-                        self.apply_theme(ui.ctx());
-                        ui.close();
-                    }
-                });
-            });
         });
     }
 
     fn statusbar_ui(&mut self, ui: &mut egui::Ui) {
+        let s = strings(self.lang);
+        let lang = self.lang;
         ui.horizontal(|ui| match &self.status {
             Status::Idle => {
-                ui.label("Prêt.");
+                ui.label(s.status_ready);
             }
             Status::AssembleOk { bytes } => {
-                ui.colored_label(GOOD, format!("✓ Assemblage réussi — {bytes} octets"));
+                ui.colored_label(
+                    GOOD,
+                    if lang == Lang::Fr {
+                        format!("✓ Assemblage réussi — {bytes} octets")
+                    } else {
+                        format!("✓ Assembled successfully — {bytes} bytes")
+                    },
+                );
             }
             Status::AssembleFailed => {
                 ui.colored_label(
                     BAD,
-                    format!(
-                        "✗ Échec de l'assemblage — {} diagnostic(s)",
-                        self.diagnostics.len()
-                    ),
+                    if lang == Lang::Fr {
+                        format!(
+                            "✗ Échec de l'assemblage — {} diagnostic(s)",
+                            self.diagnostics.len()
+                        )
+                    } else {
+                        format!(
+                            "✗ Assembly failed — {} diagnostic(s)",
+                            self.diagnostics.len()
+                        )
+                    },
                 );
             }
             Status::Halted => {
-                ui.colored_label(GOOD, "Arrêté (hlt).");
+                ui.colored_label(GOOD, s.status_halted);
             }
             Status::Breakpoint(addr) => {
-                ui.colored_label(ACCENT, format!("Arrêté sur point d'arrêt — {addr:#x}"));
-            }
-            Status::StepLimit => {
-                ui.colored_label(BAD, "Limite de pas atteinte — boucle infinie possible ?");
-            }
-            Status::NasmMissing => {
                 ui.colored_label(
-                    BAD,
-                    "nasm est introuvable dans le PATH (ex : `sudo dnf install nasm`).",
+                    ACCENT,
+                    if lang == Lang::Fr {
+                        format!("Arrêté sur point d'arrêt — {addr:#x}")
+                    } else {
+                        format!("Stopped at breakpoint — {addr:#x}")
+                    },
                 );
             }
+            Status::StepLimit => {
+                ui.colored_label(BAD, s.status_step_limit);
+            }
+            Status::NasmMissing => {
+                ui.colored_label(BAD, s.status_nasm_missing);
+            }
             Status::Error(msg) => {
-                ui.colored_label(BAD, format!("Erreur : {msg}"));
+                ui.colored_label(
+                    BAD,
+                    if lang == Lang::Fr {
+                        format!("Erreur : {msg}")
+                    } else {
+                        format!("Error: {msg}")
+                    },
+                );
             }
         });
 
@@ -381,17 +543,23 @@ impl NamsdecApp {
                 .show(ui, |ui| {
                     for d in &self.diagnostics {
                         let color = if d.severity == Severity::Error { BAD } else { WARN };
-                        ui.colored_label(color, format!("ligne {} — {}", d.line, d.message));
+                        let text = if lang == Lang::Fr {
+                            format!("ligne {} — {}", d.line, d.message)
+                        } else {
+                            format!("line {} — {}", d.line, d.message)
+                        };
+                        ui.colored_label(color, text);
                     }
                 });
         }
     }
 
     fn editor_ui(&mut self, ui: &mut egui::Ui) {
+        let s = strings(self.lang);
         ui.horizontal(|ui| {
-            ui.label("Point d'arrêt sur la ligne :");
+            ui.label(s.breakpoint_on_line);
             ui.add(egui::DragValue::new(&mut self.bp_input).range(1..=9999));
-            if ui.button("Ajouter").clicked() {
+            if ui.button(s.add).clicked() {
                 self.breakpoint_lines.insert(self.bp_input);
                 self.sync_breakpoints();
             }
@@ -409,7 +577,12 @@ impl NamsdecApp {
         });
 
         if let Some(line) = self.current_line() {
-            ui.colored_label(ACCENT, format!("▶ Ligne courante : {line}"));
+            let text = if self.lang == Lang::Fr {
+                format!("▶ Ligne courante : {line}")
+            } else {
+                format!("▶ Current line: {line}")
+            };
+            ui.colored_label(ACCENT, text);
         }
 
         egui::ScrollArea::vertical().show(ui, |ui| {
@@ -423,10 +596,11 @@ impl NamsdecApp {
     }
 
     fn sidebar_ui(&mut self, ui: &mut egui::Ui) {
+        let s = strings(self.lang);
         ui.horizontal(|ui| {
             for tab in SidebarTab::ALL {
                 if ui
-                    .selectable_label(self.active_tab == tab, tab.label())
+                    .selectable_label(self.active_tab == tab, tab.label(s))
                     .clicked()
                 {
                     self.active_tab = tab;
@@ -446,7 +620,7 @@ impl NamsdecApp {
 
     fn registers_ui(&self, ui: &mut egui::Ui) {
         let Some(emulator) = &self.emulator else {
-            ui.label("Aucun binaire assemblé.");
+            ui.label(strings(self.lang).no_binary_assembled);
             return;
         };
         let regs = &emulator.cpu.regs;
@@ -474,7 +648,7 @@ impl NamsdecApp {
 
     fn flags_ui(&self, ui: &mut egui::Ui) {
         let Some(emulator) = &self.emulator else {
-            ui.label("Aucun binaire assemblé.");
+            ui.label(strings(self.lang).no_binary_assembled);
             return;
         };
         let f = emulator.cpu.flags;
@@ -491,30 +665,33 @@ impl NamsdecApp {
     }
 
     fn stack_ui(&self, ui: &mut egui::Ui) {
+        let s = strings(self.lang);
         let Some(emulator) = &self.emulator else {
-            ui.label("Aucun binaire assemblé.");
+            ui.label(s.no_binary_assembled);
             return;
         };
         let addr = emulator.cpu.regs.get64(Reg64::Rsp).saturating_sub(16);
-        ui.monospace(safe_hexdump(&emulator.cpu.mem, addr, 64));
+        ui.monospace(safe_hexdump(&emulator.cpu.mem, addr, 64, s.address_out_of_range));
     }
 
     fn memory_ui(&mut self, ui: &mut egui::Ui) {
+        let s = strings(self.lang);
         let Some(emulator) = &self.emulator else {
-            ui.label("Aucun binaire assemblé.");
+            ui.label(s.no_binary_assembled);
             return;
         };
         ui.horizontal(|ui| {
-            ui.label("Adresse :");
+            ui.label(s.memory_address_label);
             ui.text_edit_singleline(&mut self.mem_addr_input);
         });
         let addr = parse_addr(&self.mem_addr_input).unwrap_or(BASE_ADDR);
-        ui.monospace(safe_hexdump(&emulator.cpu.mem, addr, 128));
+        ui.monospace(safe_hexdump(&emulator.cpu.mem, addr, 128, s.address_out_of_range));
     }
 
     fn re_ui(&mut self, ui: &mut egui::Ui) {
+        let s = strings(self.lang);
         let (Some(emulator), Some(state)) = (&self.emulator, &self.assemble_state) else {
-            ui.label("Aucun binaire assemblé.");
+            ui.label(s.no_binary_assembled);
             return;
         };
         let ctx = ReContext {
@@ -534,18 +711,35 @@ impl NamsdecApp {
     /// comme un gestionnaire de plugins — namsdec-exercises n'y figure pas :
     /// il deviendra un module séparé, ajoutable indépendamment.
     fn modules_ui(&self, ui: &mut egui::Ui) {
+        let s = strings(self.lang);
+        let fr = self.lang == Lang::Fr;
+
         module_card(
             ui,
             "namsdec-core",
             namsdec_core::VERSION,
             true,
             GOOD,
-            "Registres, indicateurs (RFLAGS), mémoire simulée, état CPU.",
+            s.module_core_detail,
         );
 
         let (asm_ok, asm_status) = match &self.nasm_info {
-            Some(info) => (true, format!("nasm détecté — {}", info.version)),
-            None => (false, "nasm introuvable dans le PATH".to_string()),
+            Some(info) => (
+                true,
+                if fr {
+                    format!("nasm détecté — {}", info.version)
+                } else {
+                    format!("nasm detected — {}", info.version)
+                },
+            ),
+            None => (
+                false,
+                if fr {
+                    "nasm introuvable dans le PATH".to_string()
+                } else {
+                    "nasm not found in PATH".to_string()
+                },
+            ),
         };
         module_card(
             ui,
@@ -557,8 +751,14 @@ impl NamsdecApp {
         );
 
         let disasm_status = match &self.assemble_state {
-            Some(state) => format!("{} instructions désassemblées (vérification)", state.disasm.len()),
-            None => "Aucun binaire assemblé pour l'instant.".to_string(),
+            Some(state) => {
+                if fr {
+                    format!("{} instructions désassemblées (vérification)", state.disasm.len())
+                } else {
+                    format!("{} instructions disassembled (verification)", state.disasm.len())
+                }
+            }
+            None => s.no_binary_assembled_yet.to_string(),
         };
         module_card(
             ui,
@@ -570,13 +770,21 @@ impl NamsdecApp {
         );
 
         let emu_status = match &self.emulator {
-            Some(emulator) => format!(
-                "RIP={:#x} · {} point(s) d'arrêt · {}",
-                emulator.cpu.regs.rip,
-                emulator.breakpoints.len(),
-                if emulator.cpu.halted { "arrêté (hlt)" } else { "en cours" },
-            ),
-            None => "Aucun programme chargé.".to_string(),
+            Some(emulator) => {
+                let state_word = match (emulator.cpu.halted, fr) {
+                    (true, true) => "arrêté (hlt)",
+                    (true, false) => "halted (hlt)",
+                    (false, true) => "en cours",
+                    (false, false) => "running",
+                };
+                let bp_word = if fr { "point(s) d'arrêt" } else { "breakpoint(s)" };
+                format!(
+                    "RIP={:#x} · {} {bp_word} · {state_word}",
+                    emulator.cpu.regs.rip,
+                    emulator.breakpoints.len(),
+                )
+            }
+            None => s.no_program_loaded.to_string(),
         };
         module_card(
             ui,
@@ -589,9 +797,11 @@ impl NamsdecApp {
 
         let titles = self.re_registry.titles();
         let re_status = if titles.is_empty() {
-            "Aucun module RE enregistré.".to_string()
-        } else {
+            s.no_re_module_registered.to_string()
+        } else if fr {
             format!("{} module(s) : {}", titles.len(), titles.join(", "))
+        } else {
+            format!("{} module(s): {}", titles.len(), titles.join(", "))
         };
         module_card(ui, "namsdec-re", namsdec_re::VERSION, true, GOOD, &re_status);
     }
@@ -630,6 +840,7 @@ fn module_card(
 
 impl eframe::App for NamsdecApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        egui::Panel::top("menu_bar").show(ui, |ui| self.menu_bar_ui(ui));
         egui::Panel::top("toolbar").show(ui, |ui| self.toolbar_ui(ui));
         egui::Panel::bottom("statusbar").show(ui, |ui| self.statusbar_ui(ui));
         egui::Panel::right("sidebar")
@@ -637,6 +848,9 @@ impl eframe::App for NamsdecApp {
             .default_size(300.0)
             .show(ui, |ui| self.sidebar_ui(ui));
         self.editor_ui(ui);
+
+        self.preferences_window_ui(ui.ctx());
+        self.about_window_ui(ui.ctx());
     }
 }
 
@@ -646,15 +860,15 @@ fn parse_addr(s: &str) -> Option<u64> {
     u64::from_str_radix(s, 16).ok()
 }
 
-fn safe_hexdump(mem: &namsdec_core::Memory, addr: u64, len: usize) -> String {
+fn safe_hexdump(mem: &namsdec_core::Memory, addr: u64, len: usize, out_of_range: &str) -> String {
     let range = mem.range();
     if addr < range.start || addr >= range.end {
-        return "Adresse hors de la fenêtre mémoire simulée.".to_string();
+        return out_of_range.to_string();
     }
     let len = len.min((range.end - addr) as usize);
     match mem.bytes_at(addr, len) {
         Ok(bytes) => hexdump(bytes, addr),
-        Err(_) => "Adresse hors de la fenêtre mémoire simulée.".to_string(),
+        Err(_) => out_of_range.to_string(),
     }
 }
 
