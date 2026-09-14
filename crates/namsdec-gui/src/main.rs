@@ -4,6 +4,7 @@
 //! en affichant les panneaux des modules `ReModule` enregistrés.
 
 mod i18n;
+mod keybindings;
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -11,14 +12,22 @@ use eframe::egui;
 use namsdec_asm::{AsmError, Diagnostic, Severity};
 use namsdec_core::{Reg64, RFlags};
 use namsdec_disasm::DecodedInstruction;
-use namsdec_emu::{Emulator, RunStop, StepResult};
+use namsdec_emu::{Emulator, RunStop, StepOverResult, StepResult};
 use namsdec_re::{BinaryInfoModule, ReContext, ReModuleRegistry};
 
 use i18n::{strings, Lang, Strings};
+use keybindings::{Action, Dispatcher, KeyBindings, Rebinding};
 
 const BASE_ADDR: u64 = 0x400000;
 const MEM_SIZE: usize = 0x10000;
 const MAX_RUN_STEPS: u32 = 1_000_000;
+/// Nombre de pas exécutés par frame pendant un Run — assez petit pour que
+/// Stop réagisse vite (au prochain batch), assez grand pour que la plupart
+/// des programmes finissent en une poignée de frames.
+const RUN_BATCH_STEPS: u32 = 5_000;
+/// Plafond de sécurité total, réparti sur tous les batches d'un même Run —
+/// distinct de RUN_BATCH_STEPS, qui ne borne qu'un seul batch.
+const RUN_TOTAL_STEPS_CAP: u64 = 50_000_000;
 
 /// Numéro de version SemVer — ne JAMAIS le monter sans l'accord explicite
 /// de l'utilisateur (voir memory: feedback_version_bump_approval).
@@ -69,17 +78,15 @@ enum SidebarTab {
     Stack,
     Memory,
     Re,
-    Modules,
 }
 
 impl SidebarTab {
-    const ALL: [SidebarTab; 6] = [
+    const ALL: [SidebarTab; 5] = [
         SidebarTab::Registers,
         SidebarTab::Flags,
         SidebarTab::Stack,
         SidebarTab::Memory,
         SidebarTab::Re,
-        SidebarTab::Modules,
     ];
 
     fn label(self, s: &Strings) -> &'static str {
@@ -89,7 +96,6 @@ impl SidebarTab {
             SidebarTab::Stack => s.tab_stack,
             SidebarTab::Memory => s.tab_memory,
             SidebarTab::Re => s.tab_re,
-            SidebarTab::Modules => s.tab_modules,
         }
     }
 }
@@ -98,6 +104,7 @@ enum Status {
     Idle,
     AssembleOk { bytes: usize },
     AssembleFailed,
+    Running,
     Halted,
     Breakpoint(u64),
     StepLimit,
@@ -127,6 +134,21 @@ struct NamsdecApp {
     mem_addr_input: String,
     show_preferences: bool,
     show_about: bool,
+    keybindings: KeyBindings,
+    dispatcher: Dispatcher,
+    rebinding: Option<Rebinding>,
+    running: bool,
+    run_steps_taken: u64,
+    editor_focused: bool,
+    preferences_tab: PreferencesTab,
+    show_re_tab: bool,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PreferencesTab {
+    General,
+    Shortcuts,
+    Modules,
 }
 
 /// Programme de départ affiché au lancement, pour ouvrir sur un exemple
@@ -167,6 +189,14 @@ impl Default for NamsdecApp {
             mem_addr_input: format!("{BASE_ADDR:#x}"),
             show_preferences: false,
             show_about: false,
+            keybindings: KeyBindings::default(),
+            dispatcher: Dispatcher::default(),
+            rebinding: None,
+            running: false,
+            run_steps_taken: 0,
+            editor_focused: false,
+            preferences_tab: PreferencesTab::General,
+            show_re_tab: false,
         }
     }
 }
@@ -280,17 +310,97 @@ impl NamsdecApp {
         self.notify_step();
     }
 
+    /// Démarre un Run — ne bloque plus le thread UI jusqu'à la fin :
+    /// `tick_run` avance par petits paquets, une frame à la fois, pour que
+    /// Stop reste réactif.
     fn do_run(&mut self) {
+        if self.emulator.is_none() {
+            return;
+        }
+        self.running = true;
+        self.run_steps_taken = 0;
+        self.status = Status::Running;
+    }
+
+    /// À appeler une fois par frame. N'avance que si un Run est en cours.
+    fn tick_run(&mut self, ctx: &egui::Context) {
+        if !self.running {
+            return;
+        }
+        let Some(emulator) = &mut self.emulator else {
+            self.running = false;
+            return;
+        };
+        match emulator.run(RUN_BATCH_STEPS) {
+            Ok(RunStop::Halted) => {
+                self.running = false;
+                self.status = Status::Halted;
+            }
+            Ok(RunStop::Breakpoint(addr)) => {
+                self.running = false;
+                self.status = Status::Breakpoint(addr);
+            }
+            Ok(RunStop::StepLimit) => {
+                self.run_steps_taken += RUN_BATCH_STEPS as u64;
+                if self.run_steps_taken >= RUN_TOTAL_STEPS_CAP {
+                    self.running = false;
+                    self.status = Status::StepLimit;
+                }
+            }
+            Err(e) => {
+                self.running = false;
+                self.status = Status::Error(e.to_string());
+            }
+        }
+        self.notify_step();
+        if self.running {
+            // egui ne redessine que sur un événement d'entrée par défaut :
+            // il faut forcer des frames tant qu'un Run est en cours.
+            ctx.request_repaint();
+        }
+    }
+
+    /// Interrompt un Run en cours. Prend effet au prochain batch (latence
+    /// bornée par RUN_BATCH_STEPS, pas instantanée), sans exiger que
+    /// `Emulator` devienne `Send`/threadable.
+    fn do_stop(&mut self) {
+        if self.running {
+            self.running = false;
+            self.status = Status::Idle;
+        }
+    }
+
+    fn do_step_over(&mut self) {
         let Some(emulator) = &mut self.emulator else {
             return;
         };
-        match emulator.run(MAX_RUN_STEPS) {
-            Ok(RunStop::Halted) => self.status = Status::Halted,
-            Ok(RunStop::Breakpoint(addr)) => self.status = Status::Breakpoint(addr),
-            Ok(RunStop::StepLimit) => self.status = Status::StepLimit,
+        match emulator.step_over(MAX_RUN_STEPS) {
+            Ok(StepOverResult::Halted) => self.status = Status::Halted,
+            Ok(StepOverResult::Breakpoint(addr)) => self.status = Status::Breakpoint(addr),
+            Ok(StepOverResult::StepLimit) => self.status = Status::StepLimit,
+            Ok(StepOverResult::Stepped | StepOverResult::SteppedOverCall) => {}
             Err(e) => self.status = Status::Error(e.to_string()),
         }
         self.notify_step();
+    }
+
+    /// Point d'entrée unique pour tout ce qui déclenche une action —
+    /// raccourci clavier ou clic de bouton/menu, pour ne jamais avoir deux
+    /// implémentations de "ce que fait Assembler" qui divergent.
+    fn dispatch(&mut self, action: Action) {
+        match action {
+            Action::ToggleExplorer => {} // câblé avec l'explorateur de fichiers
+            Action::Assemble => self.do_assemble(),
+            Action::Run => self.do_run(),
+            Action::StepInto => self.do_step(),
+            Action::StepOver => self.do_step_over(),
+            Action::Stop => self.do_stop(),
+            Action::Reset => {
+                self.rebuild_emulator();
+                self.status = Status::Idle;
+            }
+            Action::Save => {} // câblé avec l'explorateur de fichiers
+        }
     }
 
     fn current_line(&self) -> Option<u32> {
@@ -338,22 +448,31 @@ impl NamsdecApp {
 
             ui.menu_button(s.menu_tools, |ui| {
                 if ui.button(s.action_assemble).clicked() {
-                    self.do_assemble();
+                    self.dispatch(Action::Assemble);
                     ui.close();
                 }
                 let can_exec = self.emulator.is_some();
                 ui.add_enabled_ui(can_exec, |ui| {
-                    if ui.button(format!("⏭ {}", s.action_step)).clicked() {
-                        self.do_step();
+                    if ui.button(format!("↓ {}", s.action_step_into)).clicked() {
+                        self.dispatch(Action::StepInto);
                         ui.close();
                     }
-                    if ui.button(format!("⏵ {}", s.action_run)).clicked() {
-                        self.do_run();
+                    if ui.button(format!("→ {}", s.action_step_over)).clicked() {
+                        self.dispatch(Action::StepOver);
                         ui.close();
                     }
+                    if ui.button(format!("▶ {}", s.action_run)).clicked() {
+                        self.dispatch(Action::Run);
+                        ui.close();
+                    }
+                    ui.add_enabled_ui(self.running, |ui| {
+                        if ui.button(format!("⏹ {}", s.action_stop)).clicked() {
+                            self.dispatch(Action::Stop);
+                            ui.close();
+                        }
+                    });
                     if ui.button(format!("⟲ {}", s.action_reset)).clicked() {
-                        self.rebuild_emulator();
-                        self.status = Status::Idle;
+                        self.dispatch(Action::Reset);
                         ui.close();
                     }
                 });
@@ -382,39 +501,130 @@ impl NamsdecApp {
         let mut open = self.show_preferences;
         egui::Window::new(s.preferences_title)
             .open(&mut open)
-            .resizable(false)
+            .resizable(true)
+            .default_width(440.0)
             .show(ctx, |ui| {
-                ui.label(s.preferences_theme);
                 ui.horizontal(|ui| {
-                    if ui
-                        .selectable_label(self.theme == AppTheme::Dark, s.theme_dark)
-                        .clicked()
-                    {
-                        self.theme = AppTheme::Dark;
-                        self.apply_theme(ctx);
-                    }
-                    if ui
-                        .selectable_label(self.theme == AppTheme::Light, s.theme_light)
-                        .clicked()
-                    {
-                        self.theme = AppTheme::Light;
-                        self.apply_theme(ctx);
-                    }
+                    ui.selectable_value(
+                        &mut self.preferences_tab,
+                        PreferencesTab::General,
+                        s.preferences_tab_general,
+                    );
+                    ui.selectable_value(
+                        &mut self.preferences_tab,
+                        PreferencesTab::Shortcuts,
+                        s.preferences_tab_shortcuts,
+                    );
+                    ui.selectable_value(
+                        &mut self.preferences_tab,
+                        PreferencesTab::Modules,
+                        s.preferences_tab_modules,
+                    );
                 });
-
                 ui.separator();
-
-                ui.label(s.preferences_language);
-                ui.horizontal(|ui| {
-                    if ui.selectable_label(self.lang == Lang::Fr, "Français").clicked() {
-                        self.lang = Lang::Fr;
-                    }
-                    if ui.selectable_label(self.lang == Lang::En, "English").clicked() {
-                        self.lang = Lang::En;
-                    }
-                });
+                match self.preferences_tab {
+                    PreferencesTab::General => self.preferences_general_ui(ui),
+                    PreferencesTab::Shortcuts => self.preferences_shortcuts_ui(ui),
+                    PreferencesTab::Modules => self.preferences_modules_ui(ui),
+                }
             });
         self.show_preferences = open;
+    }
+
+    fn preferences_general_ui(&mut self, ui: &mut egui::Ui) {
+        let s = strings(self.lang);
+        let ctx = ui.ctx().clone();
+        ui.label(s.preferences_theme);
+        ui.horizontal(|ui| {
+            if ui
+                .selectable_label(self.theme == AppTheme::Dark, s.theme_dark)
+                .clicked()
+            {
+                self.theme = AppTheme::Dark;
+                self.apply_theme(&ctx);
+            }
+            if ui
+                .selectable_label(self.theme == AppTheme::Light, s.theme_light)
+                .clicked()
+            {
+                self.theme = AppTheme::Light;
+                self.apply_theme(&ctx);
+            }
+        });
+
+        ui.separator();
+
+        ui.label(s.preferences_language);
+        ui.horizontal(|ui| {
+            if ui.selectable_label(self.lang == Lang::Fr, "Français").clicked() {
+                self.lang = Lang::Fr;
+            }
+            if ui.selectable_label(self.lang == Lang::En, "English").clicked() {
+                self.lang = Lang::En;
+            }
+        });
+    }
+
+    fn preferences_shortcuts_ui(&mut self, ui: &mut egui::Ui) {
+        let s = strings(self.lang);
+        let ctx = ui.ctx().clone();
+
+        // Une capture en cours avance ici plutôt que dans le dispatch
+        // normal (voir App::ui, qui saute le dispatch tant que
+        // `self.rebinding` est `Some`).
+        if let Some(rebinding) = &mut self.rebinding
+            && let Some(chord) = self.dispatcher.poll_rebind(&ctx, rebinding) {
+                let action = rebinding.action;
+                self.keybindings.map.insert(action, chord);
+                self.rebinding = None;
+            }
+
+        egui::Grid::new("shortcuts_grid")
+            .num_columns(4)
+            .striped(true)
+            .show(ui, |ui| {
+                for action in Action::ALL {
+                    let is_rebinding = self.rebinding.as_ref().is_some_and(|r| r.action == action);
+
+                    ui.label(action_label(s, action));
+
+                    if is_rebinding {
+                        ui.colored_label(ACCENT, s.rebind_waiting);
+                    } else {
+                        let current = self
+                            .keybindings
+                            .map
+                            .get(&action)
+                            .map(|c| c.display(&ctx))
+                            .unwrap_or_default();
+                        ui.monospace(current);
+                    }
+
+                    if ui
+                        .add_enabled(!is_rebinding, egui::Button::new(s.rebind_simple))
+                        .clicked()
+                    {
+                        self.rebinding = Some(Rebinding::new(action, keybindings::RebindMode::Simple));
+                    }
+                    if ui
+                        .add_enabled(!is_rebinding, egui::Button::new(s.rebind_leader))
+                        .clicked()
+                    {
+                        self.rebinding = Some(Rebinding::new(action, keybindings::RebindMode::Leader));
+                    }
+                    ui.end_row();
+                }
+            });
+    }
+
+    fn preferences_modules_ui(&mut self, ui: &mut egui::Ui) {
+        let s = strings(self.lang);
+        ui.label(s.modules_legend);
+        ui.add_space(6.0);
+        egui::ScrollArea::vertical().max_height(360.0).show(ui, |ui| {
+            self.modules_ui(ui);
+            ui.checkbox(&mut self.show_re_tab, s.show_re_tab_checkbox);
+        });
     }
 
     fn about_window_ui(&mut self, ctx: &egui::Context) {
@@ -438,24 +648,50 @@ impl NamsdecApp {
 
     fn toolbar_ui(&mut self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
+        let ctx = ui.ctx().clone();
         ui.horizontal(|ui| {
             ui.heading("Namsdec");
             ui.separator();
 
-            if ui.button(s.action_assemble).clicked() {
-                self.do_assemble();
+            if ui
+                .button(format!("🔨 {}", s.action_assemble))
+                .on_hover_text(shortcut_hint(&self.keybindings, &ctx, s.action_assemble, Action::Assemble))
+                .clicked()
+            {
+                self.dispatch(Action::Assemble);
             }
+
             let can_exec = self.emulator.is_some();
             ui.add_enabled_ui(can_exec, |ui| {
-                if ui.button(format!("⏭ {}", s.action_step)).clicked() {
-                    self.do_step();
+                if ui
+                    .button(format!("▶ {}", s.action_run))
+                    .on_hover_text(shortcut_hint(&self.keybindings, &ctx, s.action_run, Action::Run))
+                    .clicked()
+                {
+                    self.dispatch(Action::Run);
                 }
-                if ui.button(format!("⏵ {}", s.action_run)).clicked() {
-                    self.do_run();
+                if ui
+                    .button(format!("↓ {}", s.action_step_into))
+                    .on_hover_text(shortcut_hint(&self.keybindings, &ctx, s.action_step_into, Action::StepInto))
+                    .clicked()
+                {
+                    self.dispatch(Action::StepInto);
                 }
-                if ui.button(format!("⟲ {}", s.action_reset)).clicked() {
-                    self.rebuild_emulator();
-                    self.status = Status::Idle;
+                if ui
+                    .button(format!("→ {}", s.action_step_over))
+                    .on_hover_text(shortcut_hint(&self.keybindings, &ctx, s.action_step_over, Action::StepOver))
+                    .clicked()
+                {
+                    self.dispatch(Action::StepOver);
+                }
+            });
+            ui.add_enabled_ui(self.running, |ui| {
+                if ui
+                    .button(format!("⏹ {}", s.action_stop))
+                    .on_hover_text(shortcut_hint(&self.keybindings, &ctx, s.action_stop, Action::Stop))
+                    .clicked()
+                {
+                    self.dispatch(Action::Stop);
                 }
             });
 
@@ -479,6 +715,9 @@ impl NamsdecApp {
         ui.horizontal(|ui| match &self.status {
             Status::Idle => {
                 ui.label(s.status_ready);
+            }
+            Status::Running => {
+                ui.colored_label(ACCENT, s.status_running);
             }
             Status::AssembleOk { bytes } => {
                 ui.colored_label(
@@ -586,19 +825,32 @@ impl NamsdecApp {
         }
 
         egui::ScrollArea::vertical().show(ui, |ui| {
-            ui.add(
+            let response = ui.add(
                 egui::TextEdit::multiline(&mut self.source)
                     .desired_width(f32::INFINITY)
                     .desired_rows(24)
                     .code_editor(),
             );
+            // Conditionne l'armement de la touche leader (Espace, ...) :
+            // sinon "Espace" taperait un espace *et* armerait la séquence
+            // à chaque mot pendant la frappe.
+            self.editor_focused = response.has_focus();
         });
     }
 
     fn sidebar_ui(&mut self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
+        // RE est masqué par défaut (activable dans Préférences > Modules) :
+        // s'il vient d'être caché pendant qu'il était actif, on retombe
+        // sur Registres plutôt que de laisser un panneau vide.
+        if self.active_tab == SidebarTab::Re && !self.show_re_tab {
+            self.active_tab = SidebarTab::Registers;
+        }
         ui.horizontal(|ui| {
             for tab in SidebarTab::ALL {
+                if tab == SidebarTab::Re && !self.show_re_tab {
+                    continue;
+                }
                 if ui
                     .selectable_label(self.active_tab == tab, tab.label(s))
                     .clicked()
@@ -614,7 +866,6 @@ impl NamsdecApp {
             SidebarTab::Stack => self.stack_ui(ui),
             SidebarTab::Memory => self.memory_ui(ui),
             SidebarTab::Re => self.re_ui(ui),
-            SidebarTab::Modules => self.modules_ui(ui),
         });
     }
 
@@ -807,6 +1058,30 @@ impl NamsdecApp {
     }
 }
 
+/// Libellé d'une action, pour le tableau de raccourcis de Préférences.
+fn action_label(s: &Strings, action: Action) -> &'static str {
+    match action {
+        Action::ToggleExplorer => s.action_toggle_explorer,
+        Action::Assemble => s.action_assemble,
+        Action::Run => s.action_run,
+        Action::StepInto => s.action_step_into,
+        Action::StepOver => s.action_step_over,
+        Action::Stop => s.action_stop,
+        Action::Reset => s.action_reset,
+        Action::Save => s.action_save,
+    }
+}
+
+/// Texte d'info-bulle pour un bouton lié à une action : le libellé plus,
+/// s'il existe, son raccourci courant — lu en direct dans `KeyBindings`
+/// pour qu'un changement dans Préférences se reflète aussitôt.
+fn shortcut_hint(bindings: &KeyBindings, ctx: &egui::Context, label: &str, action: Action) -> String {
+    match bindings.map.get(&action) {
+        Some(chord) => format!("{label} ({})", chord.display(ctx)),
+        None => label.to_string(),
+    }
+}
+
 /// Petit disque de statut peint directement (plutôt qu'un glyphe texte
 /// "●", que la police par défaut d'egui ne contient pas et qui retombe
 /// sur un carré de remplacement).
@@ -840,6 +1115,19 @@ fn module_card(
 
 impl eframe::App for NamsdecApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let ctx = ui.ctx().clone();
+        self.tick_run(&ctx);
+        if self.rebinding.is_none() {
+            // Un rebind en cours capture les touches lui-même (voir
+            // rebinding_ui) — pas de dispatch normal pendant ce temps.
+            if let Some(action) = self
+                .dispatcher
+                .poll(&ctx, &self.keybindings, self.editor_focused)
+            {
+                self.dispatch(action);
+            }
+        }
+
         egui::Panel::top("menu_bar").show(ui, |ui| self.menu_bar_ui(ui));
         egui::Panel::top("toolbar").show(ui, |ui| self.toolbar_ui(ui));
         egui::Panel::bottom("statusbar").show(ui, |ui| self.statusbar_ui(ui));
