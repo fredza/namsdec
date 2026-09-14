@@ -28,13 +28,6 @@ enum AppTheme {
 }
 
 impl AppTheme {
-    fn label(self) -> &'static str {
-        match self {
-            AppTheme::Dark => "🌙 Sombre",
-            AppTheme::Light => "☀ Clair",
-        }
-    }
-
     fn visuals(self) -> egui::Visuals {
         let mut visuals = match self {
             AppTheme::Dark => egui::Visuals::dark(),
@@ -122,19 +115,30 @@ struct NamsdecApp {
     mem_addr_input: String,
 }
 
+/// Programme de départ affiché au lancement, pour ouvrir sur un exemple
+/// qui fonctionne plutôt qu'un éditeur vide. namsdec-exercises n'est
+/// volontairement pas utilisé ici : les exercices deviendront un module
+/// séparé, ajoutable indépendamment de la coquille de base.
+const DEFAULT_SOURCE: &str = "\
+BITS 64
+org 0x400000
+
+    mov rax, 0
+    mov rcx, 5
+sum_loop:
+    add rax, rcx
+    dec rcx
+    jnz sum_loop
+    hlt
+";
+
 impl Default for NamsdecApp {
     fn default() -> Self {
         let mut re_registry = ReModuleRegistry::new();
         re_registry.register(Box::new(BinaryInfoModule::default()));
 
-        let source = namsdec_exercises::builtin_exercises()
-            .into_iter()
-            .next()
-            .map(|ex| ex.starter_code.to_string())
-            .unwrap_or_default();
-
         Self {
-            source,
+            source: DEFAULT_SOURCE.to_string(),
             theme: AppTheme::Dark,
             nasm_info: namsdec_asm::find_nasm(),
             breakpoint_lines: BTreeSet::new(),
@@ -311,25 +315,25 @@ impl NamsdecApp {
             }
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.menu_button("Exercices ▾", |ui| {
-                    for ex in namsdec_exercises::builtin_exercises() {
-                        if ui.button(ex.title).clicked() {
-                            self.source = ex.starter_code.to_string();
-                            self.assemble_state = None;
-                            self.emulator = None;
-                            self.diagnostics.clear();
-                            self.status = Status::Idle;
-                            ui.close();
-                        }
+                ui.menu_button("⚙ Réglages", |ui| {
+                    ui.label("Thème");
+                    if ui
+                        .selectable_label(self.theme == AppTheme::Dark, "🌙 Sombre")
+                        .clicked()
+                    {
+                        self.theme = AppTheme::Dark;
+                        self.apply_theme(ui.ctx());
+                        ui.close();
+                    }
+                    if ui
+                        .selectable_label(self.theme == AppTheme::Light, "☀ Clair")
+                        .clicked()
+                    {
+                        self.theme = AppTheme::Light;
+                        self.apply_theme(ui.ctx());
+                        ui.close();
                     }
                 });
-                if ui.button(self.theme.label()).clicked() {
-                    self.theme = match self.theme {
-                        AppTheme::Dark => AppTheme::Light,
-                        AppTheme::Light => AppTheme::Dark,
-                    };
-                    self.apply_theme(ui.ctx());
-                }
             });
         });
     }
@@ -527,8 +531,8 @@ impl NamsdecApp {
     }
 
     /// Vue d'ensemble des crates moteur (core/asm/disasm/emu/re), un peu
-    /// comme un gestionnaire de plugins — namsdec-exercises n'y figure pas,
-    /// c'est un contenu statique et non un module du moteur.
+    /// comme un gestionnaire de plugins — namsdec-exercises n'y figure pas :
+    /// il deviendra un module séparé, ajoutable indépendamment.
     fn modules_ui(&self, ui: &mut egui::Ui) {
         module_card(
             ui,
