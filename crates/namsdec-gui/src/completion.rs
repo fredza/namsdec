@@ -18,15 +18,16 @@ use crate::syntax::{self, DIRECTIVES, PREPROCESSOR, REGISTERS, Token};
 /// instruction que le moteur refusera serait un mauvais service.
 pub const MNEMONICS: &[&str] = &[
     "adc", "add", "and", "call", "cld", "cmova", "cmovae", "cmovb", "cmovbe", "cmove", "cmovg",
-    "cmovge", "cmovl", "cmovle", "cmovne", "cmovnz", "cmovz", "cmp", "cmpsb", "cmpsd", "cmpsq",
-    "cmpsw", "dec", "div", "hlt", "idiv", "imul", "inc", "ja", "jae", "jb", "jbe", "je", "jg",
-    "jge", "jl", "jle", "jmp", "jna", "jnae", "jnb", "jnbe", "jne", "jng", "jnge", "jnl", "jnle",
-    "jno", "jnp", "jns", "jnz", "jo", "jp", "js", "jz", "lea", "leave", "lodsb", "lodsd", "lodsq",
-    "lodsw", "loop", "mov", "movsb", "movsd", "movsq", "movsw", "movsx", "movsxd", "movzx", "mul",
-    "neg", "nop", "not", "or", "pop", "push", "rep", "repe", "repne", "repnz", "repz", "ret",
-    "sal", "sar", "sbb", "scasb", "scasd", "scasq", "scasw", "seta", "setae", "setb", "setbe",
-    "sete", "setg", "setge", "setl", "setle", "setne", "setnz", "setz", "shl", "shr", "std",
-    "stosb", "stosd", "stosq", "stosw", "sub", "syscall", "test", "xchg", "xor",
+    "cmovge", "cmovl", "cmovle", "cmovne", "cmovno", "cmovnp", "cmovns", "cmovnz", "cmovo",
+    "cmovp", "cmovs", "cmovz", "cmp", "cmpsb", "cmpsd", "cmpsq", "cmpsw", "dec", "div", "hlt",
+    "idiv", "imul", "inc", "ja", "jae", "jb", "jbe", "je", "jg", "jge", "jl", "jle", "jmp", "jna",
+    "jnae", "jnb", "jnbe", "jne", "jng", "jnge", "jnl", "jnle", "jno", "jnp", "jns", "jnz", "jo",
+    "jp", "js", "jz", "lea", "leave", "lodsb", "lodsd", "lodsq", "lodsw", "loop", "mov", "movsb",
+    "movsd", "movsq", "movsw", "movsx", "movsxd", "movzx", "mul", "neg", "nop", "not", "or", "pop",
+    "push", "rep", "repe", "repne", "repnz", "repz", "ret", "sal", "sar", "sbb", "scasb", "scasd",
+    "scasq", "scasw", "seta", "setae", "setb", "setbe", "sete", "setg", "setge", "setl", "setle",
+    "setne", "setno", "setnp", "setns", "setnz", "seto", "setp", "sets", "setz", "shl", "shr",
+    "std", "stosb", "stosd", "stosq", "stosw", "sub", "syscall", "test", "xchg", "xor",
 ];
 
 /// Ce qu'on propose, et d'où ça vient — la provenance sert à colorer la
@@ -48,10 +49,20 @@ pub struct Suggestions {
 }
 
 impl Suggestions {
-    /// Ce qu'il reste à écrire pour accepter le premier candidat.
-    pub fn completion(&self) -> Option<&str> {
-        let first = self.candidates.first()?;
-        first.text.get(self.prefix.len()..)
+    /// Le candidat qu'`Alt` accepte.
+    pub fn accepted(&self) -> Option<&str> {
+        self.candidates.first().map(|first| first.text.as_str())
+    }
+
+    /// L'étendue à remplacer, en octets : le mot commencé, en entier.
+    ///
+    /// Remplacer et non compléter : une étiquette vient de la source
+    /// telle qu'elle y est écrite, et NASM distingue les casses. Après
+    /// avoir tapé `bo`, accepter `Boucle` doit écrire `Boucle` — ajouter
+    /// « ucle » derrière « bo » donnerait `boucle`, une étiquette qui
+    /// n'existe pas.
+    pub fn range(&self) -> std::ops::Range<usize> {
+        self.start..self.start + self.prefix.len()
     }
 }
 
@@ -144,15 +155,28 @@ fn push_matching(out: &mut Vec<Candidate>, words: &[&str], prefix: &str, kind: T
     }
 }
 
-/// Les étiquettes définies dans la source : c'est ce qu'on écrit après un
-/// `jmp` ou un `call`, et personne ne peut le deviner à notre place.
+/// Les étiquettes **définies** dans la source : c'est ce qu'on écrit
+/// après un `jmp` ou un `call`, et personne ne peut le deviner à notre
+/// place.
+///
+/// Définies, donc en tête de ligne et suivies de leurs deux-points. Tout
+/// ce qui *ressemble* à une étiquette ne se saute pas : le `.text` de
+/// `section .text` nomme une section, et proposer d'y sauter n'aiderait
+/// personne.
 fn labels_of(source: &str) -> Vec<String> {
     let mut labels = Vec::new();
     for line in source.lines() {
-        for (piece, token) in syntax::tokenize(line) {
-            if token == Token::Label && !labels.iter().any(|known| known == piece) {
-                labels.push(piece.to_owned());
-            }
+        let trimmed = line.trim_start();
+        let Some(colon) = trimmed.find(':') else {
+            continue;
+        };
+        let name = &trimmed[..colon];
+        let looks_like_a_label = !name.is_empty()
+            && name
+                .chars()
+                .all(|c| c.is_alphanumeric() || matches!(c, '_' | '.' | '$' | '@' | '?'));
+        if looks_like_a_label && !labels.iter().any(|known| known == name) {
+            labels.push(name.to_owned());
         }
     }
     labels
@@ -172,12 +196,23 @@ fn start_of_word(line: &str) -> usize {
 }
 
 /// Le mot commencé est-il le premier de la ligne — hors étiquette ?
+///
+/// « Hors étiquette » veut dire : une définition d'étiquette en tête de
+/// ligne, `boucle:`, après quoi on écrit bien une instruction. Pas
+/// n'importe quels deux-points : ceux de `[fs:0x28]` n'ouvrent rien, et
+/// s'en servir comme repère proposait des instructions au milieu d'une
+/// opérande.
 fn is_first_word(line: &str, word_start: usize) -> bool {
-    let before = &line[..word_start];
-    // Une étiquette et ses deux-points ne comptent pas : après
-    // `boucle:`, on écrit bien une instruction.
-    let before = before.rsplit(':').next().unwrap_or(before);
-    before.trim().is_empty()
+    let before = line[..word_start].trim_start();
+    let Some(colon) = before.find(':') else {
+        return before.is_empty();
+    };
+    let (name, rest) = before.split_at(colon);
+    let is_label_definition = !name.is_empty()
+        && name
+            .chars()
+            .all(|c| c.is_alphanumeric() || matches!(c, '_' | '.' | '$' | '@' | '?'));
+    is_label_definition && rest[1..].trim().is_empty()
 }
 
 /// Le curseur est-il dans un commentaire ou une chaîne ? Les morceaux de
@@ -266,14 +301,39 @@ mod tests {
         let source = "_start:\n    mo";
         let suggestions = at_end(source).expect("des propositions");
         assert_eq!(suggestions.prefix, "mo");
-        assert_eq!(&source[suggestions.start..], "mo");
-        assert_eq!(suggestions.completion(), Some("v"), "« mo » + « v »");
+        assert_eq!(&source[suggestions.range()], "mo", "le mot commencé");
+        assert_eq!(suggestions.accepted(), Some("mov"));
 
-        // La casse de ce qui est déjà tapé est respectée : on ne réécrit
-        // pas ce que l'utilisateur a saisi.
-        let suggestions = suggest("_start:\n    MO", 14).expect("des propositions");
-        assert_eq!(suggestions.prefix, "MO");
-        assert_eq!(suggestions.completion(), Some("v"));
+        // C'est bien le mot *entier* qui est remplacé : le candidat porte
+        // sa casse, et NASM distingue `Boucle` de `boucle`.
+        let source = "Boucle:\n    dec rcx\n    jnz bo";
+        let suggestions = at_end(source).expect("des propositions");
+        assert_eq!(suggestions.accepted(), Some("Boucle"));
+        assert_eq!(&source[suggestions.range()], "bo");
+    }
+
+    /// Un préfixe de segment n'ouvre pas une nouvelle instruction : les
+    /// deux-points de `[fs:0x28]` ne sont pas ceux d'une étiquette, et
+    /// s'en servir comme repère proposait `rep` et `ret` au milieu d'une
+    /// opérande.
+    #[test]
+    fn a_segment_override_does_not_start_a_new_instruction() {
+        let proposed = texts("    mov rax, [fs:r");
+        assert!(proposed.contains(&"rax".to_owned()), "{proposed:?}");
+        assert!(!proposed.iter().any(|c| c == "ret"), "{proposed:?}");
+    }
+
+    /// Seules les étiquettes *définies* se proposent comme cibles : le
+    /// `.text` de `section .text` nomme une section, on n'y saute pas.
+    #[test]
+    fn only_defined_labels_are_offered_as_jump_targets() {
+        let source = "section .text\n_start:\n    mov rax, [fs:0]\n.fin:\n    jmp ";
+        let labels = labels_of(source);
+        assert_eq!(
+            labels,
+            vec!["_start".to_owned(), ".fin".to_owned()],
+            "{labels:?}"
+        );
     }
 
     /// Rien à proposer : pas de mot commencé, ou un mot déjà complet et

@@ -2619,6 +2619,11 @@ impl NamsdecApp {
         // panneau englobant, et le `TextEdit` est rendu sans cadre
         // (`Frame::NONE`) pour ne pas repeindre un fond/une bordure
         // différents par-dessus.
+        // Mesurées avant d'entrer dans la zone de défilement : ce sont
+        // les dimensions *visibles*, celles que le contenu doit remplir
+        // pour qu'aucune barre n'ait lieu d'être.
+        let visible = ui.available_size();
+        let row_height = ui.text_style_height(&egui::TextStyle::Monospace);
         egui::Frame::new().fill(editor_bg).show(ui, |ui| {
             egui::ScrollArea::both()
                 .id_salt("editeur_scroll")
@@ -2720,7 +2725,7 @@ impl NamsdecApp {
                             .id(editor_id())
                             .frame(egui::Frame::NONE)
                             .desired_width(width)
-                            .desired_rows(24)
+                            .desired_rows(editor_rows(visible.y, row_height))
                             .code_editor()
                             .interactive(self.editor_mode == EditorMode::Insert)
                             .layouter(&mut layouter)
@@ -2759,6 +2764,20 @@ impl NamsdecApp {
         let theme = self.theme;
         // Ni en mode Normal (on ne tape pas), ni si le réglage l'a
         // éteinte.
+        // Relevé avant tout retour anticipé : gardée enfoncée pendant
+        // qu'aucune liste n'est affichée, `Alt` serait lue comme une
+        // nouvelle frappe au moment où la liste revient.
+        //
+        // Et `Alt` *seule* : les raccourcis d'exécution sont `Ctrl+Alt+I`
+        // et `Ctrl+Alt+O`, qui accepteraient sinon la proposition au
+        // passage, en plus de faire leur travail.
+        let alt_alone = ui.input(|i| {
+            let m = i.modifiers;
+            m.alt && !m.ctrl && !m.shift && !m.command && !m.mac_cmd
+        });
+        let alt_pressed = alt_alone && !self.alt_was_down;
+        self.alt_was_down = alt_alone;
+
         let Some(range) = output.cursor_range else {
             self.suggestions = None;
             return;
@@ -2775,13 +2794,9 @@ impl NamsdecApp {
             return;
         };
 
-        // `Alt` accepte, et seulement `Alt` : elle ne sert à rien d'autre
-        // dans l'éditeur, là où Tab et Entrée ont déjà un sens. C'est le
-        // passage de relâché à enfoncé qui compte, pas l'état.
-        let alt_down = ui.input(|i| i.modifiers.alt);
-        let accepted = alt_down && !self.alt_was_down;
-        self.alt_was_down = alt_down;
-        if accepted {
+        // `Alt` accepte : elle ne sert à rien d'autre dans l'éditeur, là
+        // où Tab et Entrée ont déjà un sens.
+        if alt_pressed {
             self.accept_completion(ui.ctx(), &suggestions);
             return;
         }
@@ -2816,14 +2831,18 @@ impl NamsdecApp {
     /// Écrit la première proposition à la place du mot commencé, et
     /// replace le curseur derrière.
     fn accept_completion(&mut self, ctx: &egui::Context, suggestions: &completion::Suggestions) {
-        let Some(rest) = suggestions.completion() else {
+        let Some(accepted) = suggestions.accepted() else {
             return;
         };
-        let insert_at = suggestions.start + suggestions.prefix.len();
-        self.source.insert_str(insert_at, rest);
+        // Le mot commencé est *remplacé*, et non complété : le candidat
+        // porte sa propre casse, et une étiquette écrite `Boucle` doit
+        // s'écrire `Boucle`.
+        let range = suggestions.range();
+        let end = range.start + accepted.len();
+        self.source.replace_range(range, accepted);
 
         // Le curseur d'egui compte en caractères, pas en octets.
-        let after = byte_to_char(&self.source, insert_at + rest.len());
+        let after = byte_to_char(&self.source, end);
         if let Some(mut state) = egui::TextEdit::load_state(ctx, editor_id()) {
             state
                 .cursor
@@ -4384,6 +4403,23 @@ fn editor_width(code: f32, available: f32) -> f32 {
     code.max(available)
 }
 
+/// Combien de lignes l'éditeur réclame : de quoi remplir la hauteur
+/// visible, ni plus ni moins.
+///
+/// Un nombre fixe — vingt-quatre, hérité du terminal — donnait une barre
+/// de défilement verticale sur un fichier de six lignes : le champ
+/// réclamait plus de hauteur que la fenêtre n'en montrait, et la zone de
+/// défilement en concluait qu'il y avait à voir plus bas. Rempli à la
+/// hauteur visible, il n'y a rien à atteindre tant que le texte ne
+/// dépasse pas — et le clic reste actif jusqu'en bas, ce qu'un champ
+/// ajusté au texte aurait perdu.
+fn editor_rows(visible_height: f32, row_height: f32) -> usize {
+    if row_height <= 0.0 {
+        return 1;
+    }
+    ((visible_height / row_height).floor() as usize).max(1)
+}
+
 /// La mise en page du code, telle que la gouttière **et** l'éditeur la
 /// voient — c'est le fait qu'ils partagent celle-ci qui les garde alignés.
 ///
@@ -5525,6 +5561,28 @@ _start:
         ));
     }
 
+    /// Accepter écrit le candidat *tel qu'il est*, casse comprise : une
+    /// étiquette vient de la source, et NASM distingue `Boucle` de
+    /// `boucle`. Compléter derrière ce qui est tapé écrivait une
+    /// étiquette qui n'existe pas.
+    #[test]
+    fn accepting_a_label_keeps_the_case_it_was_defined_with() {
+        let mut app = NamsdecApp {
+            source: "Boucle:\n    dec rcx\n    jnz bo".to_owned(),
+            ..Default::default()
+        };
+        let suggestions =
+            completion::suggest(&app.source, app.source.len()).expect("des propositions");
+        assert_eq!(suggestions.accepted(), Some("Boucle"));
+
+        app.accept_completion(&egui::Context::default(), &suggestions);
+        assert!(
+            app.source.ends_with("jnz Boucle"),
+            "obtenu {:?}",
+            app.source
+        );
+    }
+
     /// L'autocomplétion se règle, et le réglage est enregistré : c'est
     /// une préférence de travail, pas une humeur du moment.
     #[test]
@@ -5573,6 +5631,22 @@ _start:
         let suggestions = completion::suggest(&app.source, 6).expect("des propositions");
         app.accept_completion(&egui::Context::default(), &suggestions);
         assert_eq!(app.source, "    mov rax, 1");
+    }
+
+    /// L'éditeur réclame juste la hauteur visible — ni vingt-quatre
+    /// lignes en dur, qui donnaient une barre de défilement verticale sur
+    /// un fichier de six lignes, ni la hauteur du texte, qui aurait rendu
+    /// le clic inactif sous la dernière ligne.
+    #[test]
+    fn the_editor_asks_for_the_height_it_can_show() {
+        // Vingt lignes de vingt pixels tiennent dans quatre cents.
+        assert_eq!(editor_rows(400.0, 20.0), 20);
+        // On arrondit vers le bas : une ligne à moitié visible ne compte
+        // pas, sinon elle déborde et la barre revient.
+        assert_eq!(editor_rows(409.0, 20.0), 20);
+        // Jamais zéro ligne, et jamais de division par zéro.
+        assert_eq!(editor_rows(5.0, 20.0), 1);
+        assert_eq!(editor_rows(400.0, 0.0), 1);
     }
 
     /// L'éditeur ne réclame que la largeur de son code — jamais

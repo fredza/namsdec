@@ -125,9 +125,12 @@ pub fn tokenize(line: &str) -> Vec<(&str, Token)> {
     let mut out = Vec::new();
     let mut i = 0;
     // Le premier mot d'une instruction est un mnémonique — sauf s'il est
-    // un mot de NASM. Une étiquette en tête de ligne ne consomme pas ce
-    // droit : `boucle: add rax, 1` a bien un mnémonique.
+    // un mot de NASM. Une étiquette *en tête de ligne* ne consomme pas ce
+    // droit : `boucle: add rax, 1` a bien un mnémonique. Une étiquette
+    // employée comme opérande, elle, n'ouvre rien : dans `db .foo, bar`,
+    // `bar` n'est pas une instruction.
     let mut first_word = true;
+    let mut at_line_start = true;
 
     while i < line.len() {
         let c = line[i..].chars().next().expect("i est sur une frontière");
@@ -142,6 +145,7 @@ pub fn tokenize(line: &str) -> Vec<(&str, Token)> {
                 i = end_of_string(bytes, i);
                 out.push((&line[start..i], Token::Str));
                 first_word = false;
+                at_line_start = false;
             }
             c if c.is_whitespace() => {
                 let start = i;
@@ -154,6 +158,7 @@ pub fn tokenize(line: &str) -> Vec<(&str, Token)> {
                 i = scan(line, i + 1, is_word_char);
                 out.push((&line[start..i], Token::Preprocessor));
                 first_word = false;
+                at_line_start = false;
             }
             '$' => {
                 // `$` est l'adresse courante, `$$` le début de section :
@@ -162,12 +167,14 @@ pub fn tokenize(line: &str) -> Vec<(&str, Token)> {
                 i = scan(line, i, |c| c == '$' || is_word_char(c));
                 out.push((&line[start..i], Token::Number));
                 first_word = false;
+                at_line_start = false;
             }
             c if c.is_ascii_digit() => {
                 let start = i;
                 i = scan(line, i, is_number_char);
                 out.push((&line[start..i], Token::Number));
                 first_word = false;
+                at_line_start = false;
             }
             c if is_word_start(c) => {
                 let start = i;
@@ -176,8 +183,11 @@ pub fn tokenize(line: &str) -> Vec<(&str, Token)> {
                 let followed_by_colon = bytes.get(i) == Some(&b':');
                 let token = classify(word, first_word, followed_by_colon);
                 out.push((word, token));
-                // Une étiquette ne consomme pas la place du mnémonique.
-                first_word = matches!(token, Token::Label);
+                // Une étiquette en tête de ligne ne consomme pas la place
+                // du mnémonique ; ailleurs, elle est une opérande comme
+                // une autre.
+                first_word = at_line_start && token == Token::Label;
+                at_line_start = false;
             }
             // Un caractère quelconque — y compris hors ASCII : on avance
             // d'un *caractère* et non d'un octet, sinon la découpe
@@ -186,6 +196,7 @@ pub fn tokenize(line: &str) -> Vec<(&str, Token)> {
                 let len = other.len_utf8();
                 out.push((&line[i..i + len], Token::Plain));
                 i += len;
+                at_line_start = false;
             }
         }
     }
@@ -195,13 +206,15 @@ pub fn tokenize(line: &str) -> Vec<(&str, Token)> {
 /// À quelle famille appartient un mot, à sa place dans la ligne.
 fn classify(word: &str, first_word: bool, followed_by_colon: bool) -> Token {
     let lower = word.to_ascii_lowercase();
+    // Les registres passent avant la règle des deux-points : le `fs` de
+    // `[fs:0x28]` est un registre de segment, pas une étiquette.
+    if REGISTERS.contains(&lower.as_str()) {
+        return Token::Register;
+    }
     if followed_by_colon || word.starts_with('.') {
         // `.boucle` est une étiquette locale, même sans deux-points quand
         // on y saute : `jmp .boucle`.
         return Token::Label;
-    }
-    if REGISTERS.contains(&lower.as_str()) {
-        return Token::Register;
     }
     if DIRECTIVES.contains(&lower.as_str()) {
         return Token::Directive;
@@ -222,10 +235,11 @@ fn end_of_string(bytes: &[u8], i: usize) -> usize {
     let quote = bytes[i];
     let mut j = i + 1;
     while j < bytes.len() {
-        // Seuls les guillemets doubles et les accents graves connaissent
-        // les échappements en NASM ; l'apostrophe prend tout au pied de
-        // la lettre.
-        if bytes[j] == b'\\' && quote != b'\'' && j + 1 < bytes.len() {
+        // Seul l'accent grave connaît les échappements en NASM :
+        // guillemets et apostrophes prennent tout au pied de la lettre.
+        // `db "C:\", 0` ferme donc bien sa chaîne sur le guillemet, et
+        // la suite de la ligne reste du code.
+        if bytes[j] == b'\\' && quote == b'`' && j + 1 < bytes.len() {
             j += 2;
             continue;
         }
@@ -347,12 +361,40 @@ mod tests {
         assert!(line.contains(&("\"a;b\"", Token::Str)));
         assert!(line.contains(&("; vrai commentaire", Token::Comment)));
 
-        // L'apostrophe ne connaît pas les échappements, le guillemet si.
-        assert!(tokens("db 'a\\'").contains(&("'a\\'", Token::Str)));
-        assert!(tokens("db \"a\\\"b\"").contains(&("\"a\\\"b\"", Token::Str)));
+        // Seul l'accent grave traite les échappements — c'est la règle
+        // de NASM, et elle a son importance : `db "C:\", 0` ferme bien
+        // sa chaîne sur le guillemet, et le `0` qui suit reste un nombre.
+        let line = tokens("db \"C:\\\", 0");
+        assert!(line.contains(&("\"C:\\\"", Token::Str)), "{line:?}");
+        assert!(line.contains(&("0", Token::Number)), "{line:?}");
+        // Entre accents graves, au contraire, l'échappement protège.
+        assert!(tokens("db `a\\`b`").contains(&("`a\\`b`", Token::Str)));
         // Une chaîne non refermée prend le reste de la ligne plutôt que
         // de faire passer la suite pour du code.
         assert_eq!(tokens("db \"oubli").last().unwrap().1, Token::Str);
+    }
+
+    /// Une étiquette n'ouvre la porte à un mnémonique que si elle est en
+    /// tête de ligne : employée comme opérande, elle est une opérande.
+    #[test]
+    fn a_label_used_as_an_operand_does_not_start_an_instruction() {
+        let line = tokens("    db .foo, bar");
+        assert!(line.contains(&(".foo", Token::Label)));
+        assert!(
+            line.contains(&("bar", Token::Plain)),
+            "« bar » est une opérande, pas une instruction : {line:?}"
+        );
+        // Alors qu'en tête de ligne, l'étiquette laisse bien la place.
+        assert!(tokens("boucle: add rax, 1").contains(&("add", Token::Mnemonic)));
+    }
+
+    /// Un registre de segment reste un registre, même suivi des
+    /// deux-points d'un préfixe d'adresse.
+    #[test]
+    fn a_segment_override_is_a_register_not_a_label() {
+        let line = tokens("    mov rax, [fs:0x28]");
+        assert!(line.contains(&("fs", Token::Register)), "{line:?}");
+        assert!(line.contains(&("rax", Token::Register)));
     }
 
     /// Le préprocesseur et les étiquettes locales, que NASM écrit d'une
