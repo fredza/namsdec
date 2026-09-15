@@ -42,7 +42,7 @@ pub enum Width {
 }
 
 impl Width {
-    fn bits(self) -> u32 {
+    pub fn bits(self) -> u32 {
         match self {
             Width::W8 => 8,
             Width::W16 => 16,
@@ -51,7 +51,7 @@ impl Width {
         }
     }
 
-    fn mask(self) -> u64 {
+    pub fn mask(self) -> u64 {
         if self.bits() == 64 {
             u64::MAX
         } else {

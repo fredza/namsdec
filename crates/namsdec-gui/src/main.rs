@@ -236,6 +236,12 @@ struct NamsdecApp {
     /// pas lequel tourne, et n'a pas à le savoir (voir
     /// `namsdec_emu::Backend`).
     emulator: Option<Box<dyn Backend>>,
+    /// Les registres tels qu'ils étaient avant la dernière avancée —
+    /// un pas, un pas principal, ou le départ d'une exécution. Le
+    /// bandeau met en avant ceux qui ont changé depuis : c'est ce qui
+    /// fait *voir* ce qu'une instruction fait, et gdb lui-même laisse
+    /// l'utilisateur comparer de tête.
+    regs_before: Option<namsdec_core::Registers>,
     re_registry: ReModuleRegistry,
     status: Status,
     diagnostics: Vec<Diagnostic>,
@@ -522,6 +528,7 @@ impl Default for NamsdecApp {
             breakpoint_lines: BTreeSet::new(),
             assemble_state: None,
             emulator: None,
+            regs_before: None,
             re_registry,
             status: Status::Idle,
             diagnostics: Vec::new(),
@@ -789,6 +796,12 @@ impl NamsdecApp {
         }
     }
 
+    /// Retient l'état des registres avant de laisser le programme
+    /// avancer.
+    fn remember_registers(&mut self) {
+        self.regs_before = self.emulator.as_ref().map(|e| e.cpu().regs.clone());
+    }
+
     fn rebuild_emulator(&mut self) {
         let Some(state) = &self.assemble_state else {
             return;
@@ -813,6 +826,9 @@ impl NamsdecApp {
         cpu.regs
             .set64(Reg64::Rsp, BASE_ADDR + MEM_SIZE as u64 - 0x100);
 
+        // Un programme qui vient d'être chargé n'a pas de passé : rien à
+        // mettre en avant tant qu'il n'a pas avancé d'un pas.
+        self.regs_before = None;
         let mut emulator = Emulator::new(cpu);
         emulator.set_breakpoints(
             self.breakpoint_lines
@@ -858,6 +874,7 @@ impl NamsdecApp {
     }
 
     fn do_step(&mut self) {
+        self.remember_registers();
         // Avancer d'un pas, c'est reprendre la main : un Run suspendu
         // faute d'entrée ne doit pas repartir tout seul à la saisie
         // suivante, sans quoi la ligne tapée pour ce pas-ci relancerait
@@ -885,6 +902,10 @@ impl NamsdecApp {
         if self.emulator.is_none() {
             return;
         }
+        // Photographie prise au départ : à l'arrêt suivant — un point
+        // d'arrêt, un `hlt` — le bandeau montre tout ce que la course a
+        // changé, et non le seul dernier pas.
+        self.remember_registers();
         self.resume_run_after_input = false;
         self.running = true;
         self.run_steps_taken = 0;
@@ -952,6 +973,7 @@ impl NamsdecApp {
     }
 
     fn do_step_over(&mut self) {
+        self.remember_registers();
         // Même raison que dans `do_step`.
         self.resume_run_after_input = false;
         let Some(emulator) = &mut self.emulator else {
@@ -2511,6 +2533,7 @@ impl NamsdecApp {
         };
         let theme = self.theme;
         let regs = &emulator.cpu().regs;
+        let changed = changed_registers(self.regs_before.as_ref(), regs);
         // Dix-sept lignes d'affilée, c'est haut. Le panneau élargi, elles
         // tiennent sur deux colonnes et le bandeau retrouve la moitié de
         // sa hauteur — celui qui garde le panneau étroit garde une
@@ -2537,9 +2560,13 @@ impl NamsdecApp {
                 {
                     // RIP n'est pas un registre comme un autre ici :
                     // c'est lui que la gouttière suit, et c'est la ligne
-                    // qu'on cherche des yeux après chaque pas.
+                    // qu'on cherche des yeux après chaque pas. Il change
+                    // à chaque instruction, le mettre en avant pour ça
+                    // n'apprendrait rien.
                     let color = if name == "RIP" {
                         theme.accent
+                    } else if changed.contains(&name) {
+                        theme.warn
                     } else {
                         ui.visuals().text_color()
                     };
@@ -3506,6 +3533,26 @@ fn address_field_width(ui: &egui::Ui) -> f32 {
 /// ligne d'après la taille annoncée par l'élément. Un `Frame` ne l'annonce
 /// qu'une fois son contenu posé — les six pastilles restaient donc sur une
 /// seule ligne, qui dépassait du panneau.
+/// Les noms des registres dont la valeur a changé depuis la photographie
+/// prise avant la dernière avancée.
+///
+/// Sans photographie — programme tout juste assemblé, jamais exécuté —
+/// personne n'a changé : le bandeau reste uni plutôt que de tout
+/// souligner.
+fn changed_registers(
+    before: Option<&namsdec_core::Registers>,
+    now: &namsdec_core::Registers,
+) -> Vec<&'static str> {
+    let Some(before) = before else {
+        return Vec::new();
+    };
+    REGISTERS
+        .iter()
+        .filter(|&&(_, reg)| before.get64(reg) != now.get64(reg))
+        .map(|&(name, _)| name)
+        .collect()
+}
+
 /// Combien de paires nom/valeur tiennent côte à côte dans `width`.
 ///
 /// Une paire mesure un peu moins de 175 px (trois lettres, seize chiffres
@@ -4824,6 +4871,66 @@ _start:
             !app.about_update_clicked,
             "la note se referme avec la boîte"
         );
+    }
+
+    /// Le bandeau met en avant les registres que la dernière avancée a
+    /// changés — c'est ce qui fait *voir* ce qu'une instruction fait,
+    /// sans comparer seize valeurs de tête à chaque pas.
+    #[test]
+    fn the_banner_points_out_what_the_last_step_changed() {
+        if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+            return;
+        }
+        let mut app = NamsdecApp {
+            source: "\
+section .text
+    global _start
+_start:
+    mov rax, 7
+    mov rbx, 9
+    add rax, rbx
+    hlt
+"
+            .to_owned(),
+            ..Default::default()
+        };
+        app.do_assemble();
+        assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+
+        let changed = |app: &NamsdecApp| {
+            changed_registers(
+                app.regs_before.as_ref(),
+                &app.emulator.as_ref().unwrap().cpu().regs,
+            )
+        };
+
+        // Rien n'a encore bougé : le bandeau reste uni.
+        assert!(
+            changed(&app).is_empty(),
+            "un programme jamais exécuté n'a rien changé"
+        );
+
+        app.do_step(); // mov rax, 7
+        assert_eq!(changed(&app), ["RAX"]);
+
+        app.do_step(); // mov rbx, 9
+        assert_eq!(changed(&app), ["RBX"], "seul le dernier pas compte");
+
+        app.do_step(); // add rax, rbx
+        assert_eq!(changed(&app), ["RAX"]);
+
+        // Et une exécution complète montre tout ce qu'elle a changé,
+        // depuis son départ.
+        app.do_assemble();
+        let ctx = egui::Context::default();
+        app.do_run();
+        for _ in 0..10 {
+            if !app.running {
+                break;
+            }
+            app.tick_run(&ctx);
+        }
+        assert_eq!(changed(&app), ["RAX", "RBX"]);
     }
 
     /// Le bandeau d'état s'ouvre déployé à chaque lancement.

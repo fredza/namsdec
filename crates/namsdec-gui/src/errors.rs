@@ -70,6 +70,29 @@ pub fn emu(lang: Lang, error: &EmuError) -> String {
                 format!("the {backend} interpreter does not simulate syscall {number}")
             }
         }
+        // Les deux fautes de division. Le message dit *pourquoi* le
+        // processeur s'arrête là : c'est une exception matérielle (#DE),
+        // pas une limite de l'interpréteur.
+        EmuError::DivideByZero { addr } => {
+            if fr {
+                format!("division par zéro à l'adresse {addr:#x}")
+            } else {
+                format!("division by zero at {addr:#x}")
+            }
+        }
+        EmuError::DivideOverflow { addr } => {
+            if fr {
+                format!(
+                    "le quotient ne tient pas dans le registre, à l'adresse {addr:#x} \
+                     (pensez à mettre à zéro la moitié haute du dividende)"
+                )
+            } else {
+                format!(
+                    "the quotient does not fit in its register, at {addr:#x} \
+                     (remember to clear the high half of the dividend)"
+                )
+            }
+        }
         EmuError::Mem(e) => mem(lang, e),
         EmuError::InvalidInstruction { addr } => {
             if fr {

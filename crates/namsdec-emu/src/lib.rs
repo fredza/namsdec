@@ -7,7 +7,7 @@ mod regmap;
 
 use std::collections::{BTreeSet, VecDeque};
 
-use iced_x86::{Instruction, Mnemonic, OpKind, Register};
+use iced_x86::{ConditionCode, Instruction, Mnemonic, OpKind, Register};
 use namsdec_core::{
     Cpu, Memory, RFlags, Reg64, Width, add_with_flags, logic_flags, sub_with_flags,
 };
@@ -61,6 +61,34 @@ pub enum EmuError {
     Mem(#[from] namsdec_core::MemError),
     #[error("invalid instruction at {addr:#x}")]
     InvalidInstruction { addr: u64 },
+    /// Ce que le processeur signale par l'exception #DE : une division
+    /// par zéro, ou un quotient trop grand pour le registre qui doit le
+    /// recevoir. Deux variantes distinctes parce que ce ne sont pas la
+    /// même erreur de programmation.
+    #[error("division by zero at {addr:#x}")]
+    DivideByZero { addr: u64 },
+    #[error("quotient too large at {addr:#x}")]
+    DivideOverflow { addr: u64 },
+}
+
+/// Le sens d'un décalage, et s'il recopie le bit de signe.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ShiftKind {
+    Left,
+    Right,
+    /// `sar` : décalage à droite qui recopie le bit de signe, donc une
+    /// division entière par une puissance de deux.
+    Arithmetic,
+}
+
+/// Étend `value`, large de `w`, sur 64 bits en recopiant son bit de signe.
+fn sign_extend(value: u64, w: Width) -> u64 {
+    let bits = w.bits();
+    if bits >= 64 {
+        return value;
+    }
+    let shift = 64 - bits;
+    (((value << shift) as i64) >> shift) as u64
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -536,12 +564,141 @@ impl Emulator {
                 let addr = self.effective_address(instr, 1)?;
                 self.write_op(instr, 0, addr)?;
             }
+
+            // Extensions de taille : la source est plus étroite que la
+            // destination, c'est tout l'intérêt de l'instruction — d'où
+            // une largeur lue sur l'opérande source et non sur la
+            // destination comme partout ailleurs.
+            M::Movzx => {
+                let v = self.read_op(instr, 1)?;
+                self.write_op(instr, 0, v)?;
+            }
+            M::Movsx | M::Movsxd => {
+                let v = self.read_op(instr, 1)?;
+                let w = self.src_width(instr, 1)?;
+                self.write_op(instr, 0, sign_extend(v, w))?;
+            }
+
+            M::Neg => {
+                let w = self.dest_width(instr)?;
+                let a = self.read_op(instr, 0)?;
+                let (result, flags) = sub_with_flags(0, a, w);
+                self.cpu.flags.apply_arith(flags);
+                self.write_op(instr, 0, result)?;
+            }
+            M::Not => {
+                // La seule opération logique qui ne touche aucun flag.
+                let w = self.dest_width(instr)?;
+                let a = self.read_op(instr, 0)?;
+                self.write_op(instr, 0, !a & w.mask())?;
+            }
+
+            M::Adc => self.binary_carry(instr, true)?,
+            M::Sbb => self.binary_carry(instr, false)?,
+
+            M::Shl | M::Sal => self.shift(instr, ShiftKind::Left)?,
+            M::Shr => self.shift(instr, ShiftKind::Right)?,
+            M::Sar => self.shift(instr, ShiftKind::Arithmetic)?,
+
+            M::Mul => self.multiply_accumulator(instr, false)?,
+            M::Imul => self.imul(instr)?,
+            M::Div => self.divide(instr, false)?,
+            M::Idiv => self.divide(instr, true)?,
+
+            M::Xchg => {
+                let a = self.read_op(instr, 0)?;
+                let b = self.read_op(instr, 1)?;
+                self.write_op(instr, 0, b)?;
+                self.write_op(instr, 1, a)?;
+            }
+
+            // `leave` défait ce que le prologue d'une fonction a monté :
+            // RSP revient sur le cadre, puis RBP est dépilé.
+            M::Leave => {
+                let rbp = self.cpu.regs.get64(namsdec_core::Reg64::Rbp);
+                let saved = self.cpu.mem.read_u64(rbp)?;
+                self.cpu
+                    .regs
+                    .set64(namsdec_core::Reg64::Rsp, rbp.wrapping_add(8));
+                self.cpu.regs.set64(namsdec_core::Reg64::Rbp, saved);
+            }
+
+            // `loop` : RCX décrémenté *sans toucher aux flags*, puis saut
+            // tant qu'il n'est pas nul.
+            M::Loop => {
+                let rcx = self
+                    .cpu
+                    .regs
+                    .get64(namsdec_core::Reg64::Rcx)
+                    .wrapping_sub(1);
+                self.cpu.regs.set64(namsdec_core::Reg64::Rcx, rcx);
+                if rcx != 0 {
+                    self.cpu.regs.rip = instr.near_branch_target();
+                }
+            }
+
+            M::Sete
+            | M::Setne
+            | M::Setb
+            | M::Setae
+            | M::Setbe
+            | M::Seta
+            | M::Setl
+            | M::Setge
+            | M::Setle
+            | M::Setg
+            | M::Sets
+            | M::Setns
+            | M::Seto
+            | M::Setno
+            | M::Setp
+            | M::Setnp => {
+                let v = u64::from(self.condition_met(instr));
+                self.write_op(instr, 0, v)?;
+            }
+
+            M::Cmove
+            | M::Cmovne
+            | M::Cmovb
+            | M::Cmovae
+            | M::Cmovbe
+            | M::Cmova
+            | M::Cmovl
+            | M::Cmovge
+            | M::Cmovle
+            | M::Cmovg
+            | M::Cmovs
+            | M::Cmovns
+            | M::Cmovo
+            | M::Cmovno
+            | M::Cmovp
+            | M::Cmovnp => {
+                if self.condition_met(instr) {
+                    let v = self.read_op(instr, 1)?;
+                    self.write_op(instr, 0, v)?;
+                }
+            }
             M::Nop => {}
             M::Jmp => {
                 self.cpu.regs.rip = self.branch_target(instr)?;
             }
-            M::Je | M::Jne | M::Jl | M::Jle | M::Jg | M::Jge | M::Jb | M::Jbe | M::Ja | M::Jae => {
-                if self.condition_met(instr.mnemonic()) {
+            M::Je
+            | M::Jne
+            | M::Jl
+            | M::Jle
+            | M::Jg
+            | M::Jge
+            | M::Jb
+            | M::Jbe
+            | M::Ja
+            | M::Jae
+            | M::Js
+            | M::Jns
+            | M::Jo
+            | M::Jno
+            | M::Jp
+            | M::Jnp => {
+                if self.condition_met(instr) {
                     self.cpu.regs.rip = instr.near_branch_target();
                 }
             }
@@ -581,24 +738,35 @@ impl Emulator {
         Ok(())
     }
 
-    fn condition_met(&self, mnemonic: Mnemonic) -> bool {
+    /// La condition d'un `jcc`, d'un `setcc` ou d'un `cmovcc`, lue sur
+    /// l'instruction elle-même plutôt que déduite de son mnémonique :
+    /// iced-x86 les ramène toutes à un même code, et les trois familles
+    /// se partagent donc ce seul test.
+    fn condition_met(&self, instr: &Instruction) -> bool {
         let f = &self.cpu.flags;
         let zf = f.contains(RFlags::ZF);
         let sf = f.contains(RFlags::SF);
         let cf = f.contains(RFlags::CF);
         let of = f.contains(RFlags::OF);
-        match mnemonic {
-            Mnemonic::Je => zf,
-            Mnemonic::Jne => !zf,
-            Mnemonic::Jb => cf,
-            Mnemonic::Jae => !cf,
-            Mnemonic::Jbe => cf || zf,
-            Mnemonic::Ja => !cf && !zf,
-            Mnemonic::Jl => sf != of,
-            Mnemonic::Jge => sf == of,
-            Mnemonic::Jle => zf || (sf != of),
-            Mnemonic::Jg => !zf && (sf == of),
-            _ => unreachable!("condition_met appelé pour un mnémonique non conditionnel"),
+        let pf = f.contains(RFlags::PF);
+        match instr.condition_code() {
+            ConditionCode::e => zf,
+            ConditionCode::ne => !zf,
+            ConditionCode::b => cf,
+            ConditionCode::ae => !cf,
+            ConditionCode::be => cf || zf,
+            ConditionCode::a => !cf && !zf,
+            ConditionCode::l => sf != of,
+            ConditionCode::ge => sf == of,
+            ConditionCode::le => zf || (sf != of),
+            ConditionCode::g => !zf && (sf == of),
+            ConditionCode::s => sf,
+            ConditionCode::ns => !sf,
+            ConditionCode::o => of,
+            ConditionCode::no => !of,
+            ConditionCode::p => pf,
+            ConditionCode::np => !pf,
+            ConditionCode::None => unreachable!("instruction sans condition"),
         }
     }
 
@@ -617,6 +785,250 @@ impl Emulator {
             self.write_op(instr, 0, result)?;
         }
         Ok(())
+    }
+
+    /// `adc`/`sbb` : l'addition et la soustraction qui tiennent compte de
+    /// la retenue précédente — c'est par elles qu'on additionne des
+    /// nombres plus larges qu'un registre.
+    fn binary_carry(&mut self, instr: &Instruction, add: bool) -> Result<(), EmuError> {
+        let w = self.dest_width(instr)?;
+        let a = self.read_op(instr, 0)?;
+        let b = self.read_op(instr, 1)?;
+        let carry = u64::from(self.cpu.flags.contains(RFlags::CF));
+
+        // Deux opérations enchaînées plutôt qu'une : chacune peut
+        // déborder, et `a + 0xff.. + 1` déborde deux fois.
+        let (partial, first) = if add {
+            add_with_flags(a, b, w)
+        } else {
+            sub_with_flags(a, b, w)
+        };
+        let (result, second) = if add {
+            add_with_flags(partial, carry, w)
+        } else {
+            sub_with_flags(partial, carry, w)
+        };
+        let mut flags = second;
+        for flag in [RFlags::CF, RFlags::OF, RFlags::AF] {
+            if first.contains(flag) {
+                flags.insert(flag);
+            }
+        }
+        self.cpu.flags.apply_arith(flags);
+        self.write_op(instr, 0, result)?;
+        Ok(())
+    }
+
+    /// Décalages : `shl`/`sal`, `shr` et `sar`.
+    ///
+    /// Le compte est masqué comme sur le processeur (5 bits, 6 en 64
+    /// bits), et un compte nul ne touche à aucun flag — c'est ce qui
+    /// distingue `shl reg, cl` avec CL à zéro d'un décalage de 1. CF
+    /// reçoit le dernier bit sorti ; OF n'a de sens que pour un décalage
+    /// de 1, et AF reste indéfini (laissé à zéro).
+    fn shift(&mut self, instr: &Instruction, kind: ShiftKind) -> Result<(), EmuError> {
+        let w = self.dest_width(instr)?;
+        let bits = u64::from(w.bits());
+        let a = self.read_op(instr, 0)? & w.mask();
+        let count = self.read_op(instr, 1)? & if bits == 64 { 0x3f } else { 0x1f };
+        if count == 0 {
+            return Ok(());
+        }
+
+        let msb = 1u64 << (bits - 1);
+        let (result, carry) = match kind {
+            ShiftKind::Left => {
+                let carry = count <= bits && (a >> (bits - count)) & 1 == 1;
+                (a.wrapping_shl(count as u32) & w.mask(), carry)
+            }
+            ShiftKind::Right => {
+                let carry = count <= bits && (a >> (count - 1)) & 1 == 1;
+                (a >> count.min(63), carry)
+            }
+            ShiftKind::Arithmetic => {
+                let signed = sign_extend(a, w) as i64;
+                let carry = (signed >> (count - 1).min(63)) & 1 == 1;
+                ((signed >> count.min(63)) as u64 & w.mask(), carry)
+            }
+        };
+
+        let mut flags = logic_flags(result, w);
+        flags.set(RFlags::CF, carry);
+        if count == 1 {
+            let overflow = match kind {
+                ShiftKind::Left => ((result & msb) != 0) != carry,
+                ShiftKind::Right => (a & msb) != 0,
+                ShiftKind::Arithmetic => false,
+            };
+            flags.set(RFlags::OF, overflow);
+        }
+        self.cpu.flags.apply_arith(flags);
+        self.write_op(instr, 0, result)?;
+        Ok(())
+    }
+
+    /// `mul`, et la forme à un opérande d'`imul` : le produit est deux
+    /// fois plus large que les opérandes, il déborde donc sur un second
+    /// registre (AH, DX, EDX ou RDX selon la taille).
+    fn multiply_accumulator(&mut self, instr: &Instruction, signed: bool) -> Result<(), EmuError> {
+        let w = self.src_width(instr, 0)?;
+        let src = self.read_op(instr, 0)?;
+        let acc = self.accumulator(w);
+        let mask = u128::from(w.mask());
+
+        let full = if signed {
+            ((sign_extend(acc, w) as i64 as i128) * (sign_extend(src, w) as i64 as i128)) as u128
+        } else {
+            u128::from(acc & w.mask()) * u128::from(src & w.mask())
+        };
+        let low = (full & mask) as u64;
+        let high = ((full >> w.bits()) & mask) as u64;
+        self.write_wide_result(w, low, high);
+
+        // CF et OF disent la seule chose qui compte : le produit
+        // tenait-il dans la largeur de départ ?
+        let overflowed = if signed {
+            sign_extend(low, w) != ((high << (w.bits() - 1)) | low)
+                || (high != 0 && high != w.mask())
+        } else {
+            high != 0
+        };
+        self.cpu.flags.set(RFlags::CF, overflowed);
+        self.cpu.flags.set(RFlags::OF, overflowed);
+        Ok(())
+    }
+
+    /// `imul` a trois formes : un opérande (comme `mul`, en signé), deux
+    /// (`dst *= src`) et trois (`dst = src * immédiat`). Les deux
+    /// dernières gardent le produit dans la largeur de la destination.
+    fn imul(&mut self, instr: &Instruction) -> Result<(), EmuError> {
+        if instr.op_count() == 1 {
+            return self.multiply_accumulator(instr, true);
+        }
+        let w = self.dest_width(instr)?;
+        let (a, b) = if instr.op_count() == 2 {
+            (self.read_op(instr, 0)?, self.read_op(instr, 1)?)
+        } else {
+            (self.read_op(instr, 1)?, self.read_op(instr, 2)?)
+        };
+        let full = (sign_extend(a, w) as i64 as i128) * (sign_extend(b, w) as i64 as i128);
+        let result = (full as u64) & w.mask();
+        // Le produit a-t-il été tronqué ? C'est tout ce que disent CF et
+        // OF sur ces formes-là.
+        let truncated = i128::from(sign_extend(result, w) as i64) != full;
+        self.cpu.flags.set(RFlags::CF, truncated);
+        self.cpu.flags.set(RFlags::OF, truncated);
+        self.write_op(instr, 0, result)?;
+        Ok(())
+    }
+
+    /// `div` et `idiv` : le dividende est deux fois plus large que le
+    /// diviseur (AX, DX:AX, EDX:EAX, RDX:RAX), le quotient va dans
+    /// l'accumulateur et le reste dans RDX (AH en 8 bits).
+    ///
+    /// Une division par zéro, comme un quotient trop grand pour le
+    /// registre qui doit le recevoir, lève l'exception du processeur —
+    /// ici une erreur qui arrête l'exécution en le disant, plutôt qu'un
+    /// résultat inventé.
+    fn divide(&mut self, instr: &Instruction, signed: bool) -> Result<(), EmuError> {
+        use namsdec_core::Reg64::{Rax, Rdx};
+        let w = self.src_width(instr, 0)?;
+        let divisor = self.read_op(instr, 0)? & w.mask();
+        if divisor == 0 {
+            return Err(EmuError::DivideByZero {
+                addr: self.cpu.regs.rip,
+            });
+        }
+
+        let bits = w.bits();
+        let low = self.accumulator(w) & w.mask();
+        let high = match w {
+            // En 8 bits le dividende est AX en entier : sa moitié haute
+            // est AH, pas DX.
+            Width::W8 => u64::from(self.cpu.regs.get16(Rax) >> 8),
+            Width::W16 => u64::from(self.cpu.regs.get16(Rdx)),
+            Width::W32 => u64::from(self.cpu.regs.get32(Rdx)),
+            Width::W64 => self.cpu.regs.get64(Rdx),
+        };
+        let raw = (u128::from(high) << bits) | u128::from(low);
+
+        let (quotient, remainder) = if signed {
+            // Le dividende double largeur porte son signe sur son bit de
+            // poids fort : il faut l'étendre avant de diviser.
+            let shift = 128 - 2 * bits;
+            let dividend = ((raw << shift) as i128) >> shift;
+            let divisor = sign_extend(divisor, w) as i64 as i128;
+            let quotient = dividend / divisor;
+            if i128::from(sign_extend((quotient as u64) & w.mask(), w) as i64) != quotient {
+                return Err(EmuError::DivideOverflow {
+                    addr: self.cpu.regs.rip,
+                });
+            }
+            (
+                (quotient as u64) & w.mask(),
+                ((dividend % divisor) as u64) & w.mask(),
+            )
+        } else {
+            let quotient = raw / u128::from(divisor);
+            if quotient > u128::from(w.mask()) {
+                return Err(EmuError::DivideOverflow {
+                    addr: self.cpu.regs.rip,
+                });
+            }
+            (quotient as u64, (raw % u128::from(divisor)) as u64)
+        };
+
+        self.write_wide_result(w, quotient, remainder);
+        Ok(())
+    }
+
+    /// Range une paire (bas, haut) là où le processeur la met : AX en 8
+    /// bits, sinon l'accumulateur et RDX à la bonne largeur.
+    fn write_wide_result(&mut self, w: Width, low: u64, high: u64) {
+        use namsdec_core::Reg64::{Rax, Rdx};
+        match w {
+            Width::W8 => self
+                .cpu
+                .regs
+                .set16(Rax, ((low & 0xff) | ((high & 0xff) << 8)) as u16),
+            Width::W16 => {
+                self.cpu.regs.set16(Rax, low as u16);
+                self.cpu.regs.set16(Rdx, high as u16);
+            }
+            Width::W32 => {
+                self.cpu.regs.set32(Rax, low as u32);
+                self.cpu.regs.set32(Rdx, high as u32);
+            }
+            Width::W64 => {
+                self.cpu.regs.set64(Rax, low);
+                self.cpu.regs.set64(Rdx, high);
+            }
+        }
+    }
+
+    /// AL, AX, EAX ou RAX selon la largeur.
+    fn accumulator(&self, w: Width) -> u64 {
+        use namsdec_core::Reg64::Rax;
+        match w {
+            Width::W8 => u64::from(self.cpu.regs.get8l(Rax)),
+            Width::W16 => u64::from(self.cpu.regs.get16(Rax)),
+            Width::W32 => u64::from(self.cpu.regs.get32(Rax)),
+            Width::W64 => self.cpu.regs.get64(Rax),
+        }
+    }
+
+    /// La largeur d'un opérande donné — celle de la *source* quand elle
+    /// diffère de la destination (`movzx`, `movsx`, `mul`, `div`).
+    fn src_width(&self, instr: &Instruction, op_index: u32) -> Result<Width, EmuError> {
+        match instr.op_kind(op_index) {
+            OpKind::Register => Ok(map_register(instr.op_register(op_index))?.1),
+            OpKind::Memory => self.mem_operand_width(instr),
+            other => Err(EmuError::UnsupportedOperand {
+                backend: Self::NAME,
+                role: OperandRole::Read,
+                kind: format!("{other:?}"),
+            }),
+        }
     }
 
     fn binary_logic(
@@ -1138,6 +1550,265 @@ _start:
 
     /// Charge sans exécuter — pour les programmes dont on veut observer
     /// l'échec plutôt que le résultat.
+    /// Le lot d'instructions qui manquait pour aller au-delà des
+    /// premiers exercices : multiplication, division, décalages,
+    /// extensions de taille, `setcc`. Chacune est vérifiée sur son
+    /// résultat *et* sur les flags qu'un cours fait lire juste après.
+    #[test]
+    fn multiplication_and_division_land_in_the_right_registers() {
+        let emu = run_program(
+            "\
+section .text
+    global _start
+_start:
+    mov rax, 7
+    mov rbx, 6
+    mul rbx             ; RDX:RAX = 42
+    mov rcx, rax
+
+    mov rax, 100
+    xor rdx, rdx        ; la moitié haute du dividende doit être nette
+    mov rbx, 7
+    div rbx             ; RAX = 14, RDX = 2
+    hlt
+",
+            &[],
+        );
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rcx), 42, "7 * 6");
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rax), 14, "100 / 7");
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rdx), 2, "et son reste");
+    }
+
+    /// `imul` à deux opérandes garde le produit dans la destination, et
+    /// signale par CF/OF qu'il a dû le tronquer.
+    #[test]
+    fn imul_reports_a_truncated_product() {
+        let emu = run_program(
+            "\
+section .text
+    global _start
+_start:
+    mov eax, -3
+    imul eax, 5         ; -15, tient dans 32 bits
+    mov ebx, eax
+
+    mov eax, 0x40000000
+    imul eax, 4         ; 2^32 : ne tient pas
+    hlt
+",
+            &[],
+        );
+        assert_eq!(emu.cpu.regs.get32(Reg64::Rbx) as i32, -15);
+        assert!(
+            emu.cpu.flags.contains(RFlags::CF) && emu.cpu.flags.contains(RFlags::OF),
+            "le produit tronqué doit lever CF et OF"
+        );
+    }
+
+    /// Une division par zéro est l'exception du processeur, pas un
+    /// résultat inventé — et l'adresse fautive vient avec.
+    #[test]
+    fn dividing_by_zero_is_reported_as_the_processor_would() {
+        let mut emu = load_only(
+            "\
+section .text
+    global _start
+_start:
+    mov rax, 5
+    xor rdx, rdx
+    xor rbx, rbx
+    div rbx
+    hlt
+",
+            &[],
+        );
+        let err = emu.run(50).expect_err("division par zéro");
+        assert!(
+            matches!(err, EmuError::DivideByZero { .. }),
+            "obtenu {err:?}"
+        );
+        // Et le quotient qui déborde est une faute distincte.
+        let mut emu = load_only(
+            "\
+section .text
+    global _start
+_start:
+    mov rdx, 1          ; dividende = 2^64, quotient trop grand
+    xor rax, rax
+    mov rbx, 1
+    div rbx
+    hlt
+",
+            &[],
+        );
+        let err = emu.run(50).expect_err("quotient hors bornes");
+        assert!(
+            matches!(err, EmuError::DivideOverflow { .. }),
+            "obtenu {err:?}"
+        );
+    }
+
+    /// Décalages : le résultat, et le dernier bit sorti dans CF.
+    #[test]
+    fn shifts_move_the_bits_and_the_carry() {
+        let emu = run_program(
+            "\
+section .text
+    global _start
+_start:
+    mov rax, 5
+    shl rax, 3          ; 40
+    mov rbx, rax
+
+    mov rcx, 0x81
+    shr rcx, 1          ; 0x40, CF = 1 (le bit sorti)
+    hlt
+",
+            &[],
+        );
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rbx), 40, "5 << 3");
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rcx), 0x40);
+        assert!(emu.cpu.flags.contains(RFlags::CF), "le bit 0 sort dans CF");
+    }
+
+    /// `sar` recopie le bit de signe : c'est ce qui en fait une division
+    /// signée par une puissance de deux, là où `shr` ferait entrer des
+    /// zéros et changerait le signe.
+    #[test]
+    fn sar_keeps_the_sign_where_shr_loses_it() {
+        let emu = run_program(
+            "\
+section .text
+    global _start
+_start:
+    mov rax, -16
+    sar rax, 2          ; -4
+    mov rbx, rax
+
+    mov rcx, -16
+    shr rcx, 2          ; un très grand nombre positif
+    hlt
+",
+            &[],
+        );
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rbx) as i64, -4);
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rcx), (-16i64 as u64) >> 2);
+    }
+
+    /// `movzx` complète par des zéros, `movsx` par le bit de signe : la
+    /// même valeur d'octet donne deux nombres différents, et c'est
+    /// exactement la leçon.
+    #[test]
+    fn movzx_and_movsx_disagree_on_purpose() {
+        let emu = run_program(
+            "\
+section .text
+    global _start
+_start:
+    mov al, 0xf0
+    movzx rbx, al       ; 240
+    mov al, 0xf0
+    movsx rcx, al       ; -16
+    hlt
+",
+            &[],
+        );
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rbx), 240);
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rcx) as i64, -16);
+    }
+
+    /// `setcc` met un booléen dans un octet, sans branchement — et
+    /// `neg`/`not`, que le complément à deux réclame dès le premier cours.
+    #[test]
+    fn setcc_neg_and_not_do_their_arithmetic() {
+        let emu = run_program(
+            "\
+section .text
+    global _start
+_start:
+    mov rax, 3
+    cmp rax, 3
+    sete bl             ; 1
+    cmp rax, 4
+    setg cl             ; 0
+
+    mov rdx, 5
+    neg rdx             ; -5
+    mov rsi, 0
+    not rsi             ; tous les bits à 1
+    hlt
+",
+            &[],
+        );
+        assert_eq!(emu.cpu.regs.get8l(Reg64::Rbx), 1, "3 == 3");
+        assert_eq!(emu.cpu.regs.get8l(Reg64::Rcx), 0, "3 > 4 est faux");
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rdx) as i64, -5);
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rsi), u64::MAX);
+    }
+
+    /// `loop`, `xchg` et `leave` : la boucle idiomatique, l'échange, et
+    /// le démontage du cadre de pile qu'un prologue a monté.
+    #[test]
+    fn loop_xchg_and_leave_behave_as_taught() {
+        let emu = run_program(
+            "\
+section .text
+    global _start
+_start:
+    mov rcx, 4
+    xor rax, rax
+somme:
+    add rax, rcx
+    loop somme          ; 4+3+2+1 = 10
+
+    mov rbx, 1
+    mov rdx, 2
+    xchg rbx, rdx
+
+    push rbp
+    mov rbp, rsp
+    sub rsp, 32
+    leave               ; RSP et RBP reviennent où ils étaient
+    hlt
+",
+            &[],
+        );
+        assert_eq!(
+            emu.cpu.regs.get64(Reg64::Rax),
+            10,
+            "la boucle a bien tourné"
+        );
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rbx), 2, "échangés");
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rdx), 1);
+        assert_eq!(
+            emu.cpu.regs.get64(Reg64::Rsp),
+            BASE + 0x8000,
+            "`leave` défait le prologue en entier, `push rbp` compris"
+        );
+    }
+
+    /// `adc` additionne la retenue : c'est ainsi qu'on additionne plus
+    /// large qu'un registre.
+    #[test]
+    fn adc_carries_across_registers() {
+        let emu = run_program(
+            "\
+section .text
+    global _start
+_start:
+    mov rax, -1         ; 0xffff_ffff_ffff_ffff
+    mov rbx, 1
+    add rax, rbx        ; déborde : CF = 1
+    mov rcx, 0
+    adc rcx, 0          ; la retenue remonte
+    hlt
+",
+            &[],
+        );
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rax), 0);
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rcx), 1, "la retenue est passée");
+    }
+
     /// Un `read` dont le tampon tombe hors de la fenêtre mémoire échoue —
     /// et l'entrée déjà fournie doit rester dans la file. `step` rembobine
     /// RIP pour rejouer le `syscall` à l'identique ; si les octets avaient
