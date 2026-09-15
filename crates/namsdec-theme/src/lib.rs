@@ -211,6 +211,22 @@ pub fn install(theme: Theme) -> Result<&'static Theme, PluginError> {
     Ok(theme)
 }
 
+/// Retire un thème installé de la liste. Rend `false` s'il n'y était pas.
+///
+/// Les trois thèmes d'origine ne sont pas concernés : ils ne sont pas
+/// dans cette liste-là, et rien ne peut les en retirer.
+///
+/// La palette elle-même reste en mémoire jusqu'à la fermeture — elle a
+/// été fuitée à l'installation pour vivre aussi longtemps que
+/// l'application, et quelque chose peut encore la désigner. Ce n'est pas
+/// une négligence mais le prix, une fois pour toutes, de `&'static`.
+pub fn uninstall(id: &str) -> bool {
+    let mut installed = INSTALLED.write().expect("la liste des thèmes installés");
+    let before = installed.len();
+    installed.retain(|theme| theme.id != id);
+    installed.len() != before
+}
+
 /// Tous les thèmes disponibles : ceux d'origine, puis les installés.
 pub fn all() -> Vec<&'static Theme> {
     let mut themes: Vec<&'static Theme> = BUILT_IN.to_vec();
@@ -285,6 +301,35 @@ mod tests {
                 theme.id
             );
         }
+    }
+
+    /// Installer puis retirer : la liste revient à ce qu'elle était, et
+    /// les thèmes d'origine ne sont jamais concernés.
+    #[test]
+    fn an_installed_theme_can_be_taken_back_out() {
+        let file = include_str!("../tests/abyss.json").replace("\"abyss\"", "\"abyss-jetable\"");
+        let theme = plugin::parse(&file).expect("thème de test");
+        let before = all().len();
+
+        install(theme).expect("installation");
+        assert_eq!(all().len(), before + 1);
+        assert_eq!(by_id("abyss-jetable").id, "abyss-jetable");
+
+        assert!(uninstall("abyss-jetable"), "il était bien installé");
+        assert_eq!(all().len(), before, "la liste revient à son état");
+        assert_eq!(
+            by_id("abyss-jetable").id,
+            VSCODE_DARK.id,
+            "et l'identifiant retombe sur le thème par défaut"
+        );
+
+        // Retirer deux fois, ou retirer un thème d'origine, ne fait rien.
+        assert!(!uninstall("abyss-jetable"));
+        assert!(
+            !uninstall(VSCODE_DARK.id),
+            "un thème d'origine n'est pas retirable"
+        );
+        assert_eq!(all().len(), before);
     }
 
     #[test]

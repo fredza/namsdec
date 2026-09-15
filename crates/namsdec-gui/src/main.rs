@@ -381,6 +381,15 @@ struct NamsdecApp {
     /// Le compte rendu de la dernière installation de plugin, affiché
     /// dans Préférences > Plugins jusqu'à la suivante.
     plugin_note: Option<PluginNote>,
+    /// Le fichier d'où vient chaque thème installé, par identifiant.
+    ///
+    /// C'est ce qui rend le retrait possible — et c'est aussi ce qui
+    /// distingue un thème installé d'un thème d'origine : ces derniers
+    /// n'y figurent pas, et n'ont donc pas de bouton pour les retirer.
+    theme_files: BTreeMap<String, PathBuf>,
+    /// Le thème dont on vient de demander le retrait, en attente de
+    /// confirmation. Supprimer un fichier ne se fait pas d'un seul clic.
+    theme_to_remove: Option<String>,
 }
 
 /// Ce qu'on demande au sélecteur natif, et donc ce qu'on fera du chemin
@@ -632,6 +641,8 @@ impl Default for NamsdecApp {
             saved_settings: Settings::default(),
             pending_dialog: None,
             plugin_note: None,
+            theme_files: BTreeMap::new(),
+            theme_to_remove: None,
         }
     }
 }
@@ -1279,13 +1290,19 @@ impl NamsdecApp {
                         // Copié seulement maintenant : le thème est bon,
                         // il doit revenir au lancement suivant.
                         let copied = copy_into_plugins(path);
+                        if let Ok(destination) = &copied {
+                            // D'où vient le thème : c'est ce qui rendra
+                            // son retrait possible.
+                            self.theme_files
+                                .insert(installed.id.to_owned(), destination.clone());
+                        }
                         // Appliqué aussitôt : on installe un thème pour
                         // le voir, pas pour le chercher ensuite dans la
                         // liste.
                         self.theme = installed;
                         self.apply_theme(ctx);
                         match copied {
-                            Ok(()) => PluginNote {
+                            Ok(_) => PluginNote {
                                 ok: true,
                                 text: format!("{} — {name}", s.plugins_added),
                             },
@@ -2025,8 +2042,43 @@ impl NamsdecApp {
                         self.theme = theme;
                         self.apply_theme(&ctx);
                     }
+                    // Seuls les thèmes venus d'un fichier se retirent :
+                    // les trois d'origine ne figurent pas dans cette
+                    // table, aucun bouton ne les propose donc.
+                    if self.theme_files.contains_key(theme.id) {
+                        ui.horizontal(|ui| {
+                            ui.add_space(12.0);
+                            if ui.small_button(s.plugins_remove).clicked() {
+                                self.theme_to_remove = Some(theme.id.to_owned());
+                            }
+                        });
+                    }
                 }
             });
+
+        // Le retrait attend une confirmation : supprimer un fichier ne
+        // se fait pas d'un seul clic, surtout à côté de celui qui
+        // applique le thème.
+        if let Some(id) = self.theme_to_remove.clone() {
+            ui.separator();
+            ui.colored_label(
+                theme.warn,
+                format!(
+                    "{} {}",
+                    s.plugins_remove_question,
+                    namsdec_theme::by_id(&id).name
+                ),
+            );
+            ui.horizontal(|ui| {
+                if ui.button(s.plugins_remove_yes).clicked() {
+                    self.remove_theme(&id, &ctx);
+                    self.theme_to_remove = None;
+                }
+                if ui.button(s.plugins_remove_no).clicked() {
+                    self.theme_to_remove = None;
+                }
+            });
+        }
 
         ui.add_space(6.0);
         ui.separator();
@@ -2042,6 +2094,42 @@ impl NamsdecApp {
             let colour = if note.ok { theme.good } else { theme.bad };
             ui.colored_label(colour, &note.text);
         }
+    }
+
+    /// Retire un thème installé : son fichier est supprimé, et le thème
+    /// quitte la liste.
+    ///
+    /// Si c'était le thème actif, on retombe sur celui d'origine plutôt
+    /// que de garder à l'écran une palette qui n'existe plus nulle part.
+    fn remove_theme(&mut self, id: &str, ctx: &egui::Context) {
+        let s = strings(self.lang);
+        let Some(path) = self.theme_files.get(id).cloned() else {
+            return;
+        };
+        // Le fichier d'abord : s'il résiste, le thème reste installé et
+        // on le dit, plutôt que de le faire disparaître de la liste pour
+        // le voir revenir au lancement suivant.
+        if let Err(e) = std::fs::remove_file(&path)
+            && e.kind() != std::io::ErrorKind::NotFound
+        {
+            self.plugin_note = Some(PluginNote {
+                ok: false,
+                text: format!("{} ({e})", s.plugins_remove_failed),
+            });
+            return;
+        }
+
+        let name = namsdec_theme::by_id(id).name;
+        namsdec_theme::uninstall(id);
+        self.theme_files.remove(id);
+        if self.theme.id == id {
+            self.theme = DEFAULT_THEME;
+            self.apply_theme(ctx);
+        }
+        self.plugin_note = Some(PluginNote {
+            ok: true,
+            text: format!("{} — {name}", s.plugins_removed),
+        });
     }
 
     /// L'illustration du bouton de don. Montée en texture au premier
@@ -3904,7 +3992,7 @@ fn plugins_dir() -> Option<PathBuf> {
 /// Recopie le fichier de thème dans le dossier des plugins, pour qu'il
 /// revienne au lancement suivant. Un fichier déjà installé est écrasé :
 /// c'est la version qu'on vient de choisir qui fait foi.
-fn copy_into_plugins(path: &Path) -> std::io::Result<()> {
+fn copy_into_plugins(path: &Path) -> std::io::Result<PathBuf> {
     let dir = plugins_dir().ok_or_else(|| {
         std::io::Error::other("aucun dossier de données (ni XDG_DATA_HOME ni HOME)")
     })?;
@@ -3915,9 +4003,9 @@ fn copy_into_plugins(path: &Path) -> std::io::Result<()> {
     let destination = dir.join(name);
     // Se recopier sur soi-même n'a pas de sens, et `copy` s'en plaindrait.
     if path != destination {
-        std::fs::copy(path, destination)?;
+        std::fs::copy(path, &destination)?;
     }
-    Ok(())
+    Ok(destination)
 }
 
 /// Charge les thèmes déjà installés. Appelé une fois au démarrage.
@@ -3925,13 +4013,14 @@ fn copy_into_plugins(path: &Path) -> std::io::Result<()> {
 /// Un fichier illisible n'empêche pas les autres de se charger : il est
 /// nommé dans le compte rendu, et l'application démarre quand même —
 /// perdre son éditeur parce qu'un thème a mal vieilli serait absurde.
-fn load_installed_themes() -> Vec<String> {
+fn load_installed_themes() -> (BTreeMap<String, PathBuf>, Vec<String>) {
+    let mut files = BTreeMap::new();
     let mut failures = Vec::new();
     let Some(dir) = plugins_dir() else {
-        return failures;
+        return (files, failures);
     };
     let Ok(entries) = std::fs::read_dir(&dir) else {
-        return failures;
+        return (files, failures);
     };
     let mut paths: Vec<PathBuf> = entries
         .flatten()
@@ -3942,14 +4031,14 @@ fn load_installed_themes() -> Vec<String> {
     // lancement à l'autre.
     paths.sort();
     for path in paths {
-        let outcome = namsdec_theme::plugin::read(&path)
-            .and_then(namsdec_theme::install)
-            .map(|_| ());
-        if let Err(e) = outcome {
-            failures.push(format!("{} : {e}", path.display()));
+        match namsdec_theme::plugin::read(&path).and_then(namsdec_theme::install) {
+            Ok(theme) => {
+                files.insert(theme.id.to_owned(), path);
+            }
+            Err(e) => failures.push(format!("{} : {e}", path.display())),
         }
     }
-    failures
+    (files, failures)
 }
 
 /// La largeur que l'éditeur réclame : celle du code, ou celle de la place
@@ -4273,8 +4362,9 @@ fn main() -> eframe::Result<()> {
             // Les thèmes installés sont chargés *avant* les réglages :
             // celui que l'utilisateur avait choisi peut être l'un d'eux,
             // et `by_id` doit pouvoir le retrouver.
-            let failures = load_installed_themes();
+            let (theme_files, failures) = load_installed_themes();
             let mut app = NamsdecApp::from_settings(Settings::load());
+            app.theme_files = theme_files;
             if !failures.is_empty() {
                 app.plugin_note = Some(PluginNote {
                     ok: false,
@@ -4803,6 +4893,56 @@ _start:
         assert!(width >= SIDEBAR_MIN_WIDTH, "obtenu : {width}");
     }
 
+    /// Retirer un thème installé : son fichier disparaît, il quitte la
+    /// liste, et les thèmes d'origine ne sont jamais concernés — ils ne
+    /// figurent pas dans la table des fichiers, donc aucun bouton ne les
+    /// propose.
+    #[test]
+    fn removing_an_installed_theme_deletes_its_file_and_frees_the_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("jetable.namsdec-theme.json");
+        let file = std::fs::read_to_string(EXTERNAL_ABYSS)
+            .unwrap_or_else(|_| return_sample())
+            .replace("\"abyss\"", "\"abyss-a-retirer\"");
+        std::fs::write(&path, &file).unwrap();
+
+        let theme = namsdec_theme::plugin::read(&path).expect("le thème se lit");
+        let installed = namsdec_theme::install(theme).expect("installation");
+
+        let mut app = NamsdecApp {
+            theme: installed,
+            ..Default::default()
+        };
+        app.theme_files
+            .insert("abyss-a-retirer".to_owned(), path.clone());
+        // Un thème d'origine n'a pas de fichier : rien ne peut le retirer.
+        assert!(!app.theme_files.contains_key(DEFAULT_THEME.id));
+
+        app.remove_theme("abyss-a-retirer", &egui::Context::default());
+
+        assert!(!path.exists(), "le fichier est supprimé");
+        assert!(
+            !namsdec_theme::all()
+                .iter()
+                .any(|t| t.id == "abyss-a-retirer"),
+            "et le thème quitte la liste"
+        );
+        assert!(app.theme_files.is_empty());
+        assert_eq!(
+            app.theme.id, DEFAULT_THEME.id,
+            "le thème actif ayant disparu, on retombe sur celui d'origine"
+        );
+        let note = app.plugin_note.as_ref().expect("un compte rendu");
+        assert!(note.ok, "{}", note.text);
+    }
+
+    /// Le fichier d'exemple, ou une copie minimale quand le plugin n'est
+    /// pas sur cette machine : le test ne dépend pas de ce qui traîne
+    /// hors du dépôt.
+    fn return_sample() -> String {
+        include_str!("../../namsdec-theme/tests/abyss.json").to_owned()
+    }
+
     /// Installe réellement le thème d'exemple, par le chemin de code du
     /// bouton « Ajouter un thème… », dans le dossier de plugins de
     /// l'utilisateur courant.
@@ -4831,6 +4971,40 @@ _start:
             .expect("un dossier de données")
             .join("abyss.namsdec-theme.json");
         assert!(installed.exists(), "le fichier est recopié : {installed:?}");
+    }
+
+    /// Le retrait par le bouton, pour de vrai : même fonction que celle
+    /// que la confirmation appelle, sur le fichier réellement installé.
+    /// `ignore` pour la même raison que son jumeau.
+    #[test]
+    #[ignore = "écrit dans le dossier de plugins de l'utilisateur"]
+    fn removes_the_external_theme_for_real() {
+        let dir = plugins_dir().expect("un dossier de données");
+        let installed = dir.join("abyss.namsdec-theme.json");
+        assert!(installed.exists(), "à lancer après l'installation");
+
+        // Tel qu'au démarrage : les thèmes du dossier sont chargés, et
+        // c'est de là que le bouton tient le chemin du fichier.
+        let (theme_files, failures) = load_installed_themes();
+        assert!(failures.is_empty(), "{failures:?}");
+        let mut app = NamsdecApp {
+            theme_files,
+            ..Default::default()
+        };
+        assert!(
+            app.theme_files.contains_key("abyss"),
+            "le thème installé doit être retrouvé, avec son fichier"
+        );
+
+        app.remove_theme("abyss", &egui::Context::default());
+
+        let note = app.plugin_note.as_ref().expect("un compte rendu");
+        assert!(note.ok, "{}", note.text);
+        assert!(!installed.exists(), "le fichier est supprimé");
+        assert!(!namsdec_theme::all().iter().any(|t| t.id == "abyss"));
+        if dir.read_dir().is_ok_and(|mut d| d.next().is_none()) {
+            let _ = std::fs::remove_dir(&dir);
+        }
     }
 
     /// Le pendant du précédent : retire le fichier installé et vérifie
