@@ -2956,7 +2956,12 @@ fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1280.0, 820.0])
-            .with_min_inner_size([800.0, 520.0]),
+            .with_min_inner_size([800.0, 520.0])
+            // Sous Wayland, c'est par cet identifiant que le bureau relie
+            // la fenêtre à son fichier `.desktop`, et donc à son icône :
+            // il doit valoir le nom de ce fichier (`namsdec.desktop`),
+            // sans quoi la barre des tâches affiche une icône générique.
+            .with_app_id("namsdec"),
         ..Default::default()
     };
     eframe::run_native(
