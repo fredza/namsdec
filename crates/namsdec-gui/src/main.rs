@@ -3,6 +3,7 @@
 //! (vérification pédagogique) et exécute pas à pas via `namsdec-emu`,
 //! en affichant les panneaux des modules `ReModule` enregistrés.
 
+mod completion;
 mod errors;
 mod i18n;
 mod keybindings;
@@ -380,6 +381,19 @@ struct NamsdecApp {
     show_console: bool,
     /// Les infobulles au survol (réglage Préférences > Général).
     show_tooltips: bool,
+    /// L'autocomplétion de l'éditeur (réglage Préférences > Général).
+    completion: bool,
+    /// Ce que l'autocomplétion propose en ce moment, recalculé à chaque
+    /// frappe. Rien à enregistrer : c'est l'état d'un instant.
+    suggestions: Option<completion::Suggestions>,
+    /// `Alt` était-il enfoncé à la frame précédente ?
+    ///
+    /// egui n'émet pas d'évènement pour une touche de modification seule
+    /// — elle n'apparaît que dans l'état des modificateurs. C'est donc le
+    /// *passage* de relâché à enfoncé qu'on guette, et lui seul :
+    /// autrement, garder Alt enfoncé accepterait une proposition à chaque
+    /// frame.
+    alt_was_down: bool,
     command_palette: Option<CommandPalette>,
     /// Réglages tels qu'écrits sur le disque. Comparés à l'état courant à
     /// chaque frame : dès qu'ils divergent, le fichier est réécrit. C'est
@@ -648,6 +662,9 @@ impl Default for NamsdecApp {
             show_statusbar: true,
             show_console: true,
             show_tooltips: true,
+            completion: true,
+            suggestions: None,
+            alt_was_down: false,
             command_palette: None,
             saved_settings: Settings::default(),
             pending_dialog: None,
@@ -678,6 +695,7 @@ impl NamsdecApp {
             show_statusbar: settings.show_statusbar,
             show_console: settings.show_console,
             show_tooltips: settings.show_tooltips,
+            completion: settings.completion,
             memory_format: MemoryFormat::by_id(&settings.memory_format),
             explorer,
             saved_settings: settings,
@@ -756,6 +774,7 @@ impl NamsdecApp {
             show_statusbar: self.show_statusbar,
             show_console: self.show_console,
             show_tooltips: self.show_tooltips,
+            completion: self.completion,
             memory_format: self.memory_format.id().to_owned(),
             explorer_root: self.explorer.root.as_ref().map(|p| p.display().to_string()),
             current_file: self.current_file.as_ref().map(|p| p.display().to_string()),
@@ -1951,6 +1970,10 @@ impl NamsdecApp {
         ui.checkbox(&mut self.show_tooltips, s.preferences_tooltips);
         ui.weak(s.preferences_tooltips_hint);
 
+        ui.add_space(6.0);
+        ui.checkbox(&mut self.completion, s.preferences_completion);
+        ui.weak(s.preferences_completion_hint);
+
         ui.separator();
 
         ui.label(s.preferences_language);
@@ -2694,6 +2717,7 @@ impl NamsdecApp {
                         // caractères.
                         let width = editor_width(galley.rect.width(), ui.available_width());
                         let output = egui::TextEdit::multiline(&mut self.source)
+                            .id(editor_id())
                             .frame(egui::Frame::NONE)
                             .desired_width(width)
                             .desired_rows(24)
@@ -2704,6 +2728,7 @@ impl NamsdecApp {
                         if let Some(range) = output.cursor_range {
                             self.cursor_pos = line_col(&self.source, range.primary.index.0);
                         }
+                        self.completion_ui(ui, &output);
                         let response = output.response.response;
                         if just_entered_insert {
                             response.request_focus();
@@ -2721,6 +2746,93 @@ impl NamsdecApp {
                     });
                 });
         });
+    }
+
+    /// L'autocomplétion : ce qu'on pourrait écrire là, et `Alt` pour
+    /// l'accepter.
+    ///
+    /// Une liste flottante sous le curseur plutôt qu'un texte fantôme
+    /// dans le champ : le tampon reste exactement ce que l'utilisateur a
+    /// tapé, et rien de ce qu'il voit n'est écrit avant qu'il l'accepte.
+    fn completion_ui(&mut self, ui: &mut egui::Ui, output: &egui::text_edit::TextEditOutput) {
+        let s = strings(self.lang);
+        let theme = self.theme;
+        // Ni en mode Normal (on ne tape pas), ni si le réglage l'a
+        // éteinte.
+        let Some(range) = output.cursor_range else {
+            self.suggestions = None;
+            return;
+        };
+        if !self.completion || self.editor_mode != EditorMode::Insert {
+            self.suggestions = None;
+            return;
+        }
+
+        let cursor = range.primary.index.0;
+        let byte = char_to_byte(&self.source, cursor);
+        self.suggestions = completion::suggest(&self.source, byte);
+        let Some(suggestions) = self.suggestions.clone() else {
+            return;
+        };
+
+        // `Alt` accepte, et seulement `Alt` : elle ne sert à rien d'autre
+        // dans l'éditeur, là où Tab et Entrée ont déjà un sens. C'est le
+        // passage de relâché à enfoncé qui compte, pas l'état.
+        let alt_down = ui.input(|i| i.modifiers.alt);
+        let accepted = alt_down && !self.alt_was_down;
+        self.alt_was_down = alt_down;
+        if accepted {
+            self.accept_completion(ui.ctx(), &suggestions);
+            return;
+        }
+
+        // Sous le curseur, comme une bulle : la liste suit la frappe.
+        let cursor_rect = output.galley.pos_from_cursor(range.primary);
+        let at = output.galley_pos + cursor_rect.left_bottom().to_vec2();
+        egui::Area::new(egui::Id::new("completion"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(at + egui::vec2(0.0, 4.0))
+            .show(ui.ctx(), |ui| {
+                egui::Frame::popup(ui.style()).show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.y = 2.0;
+                    for (index, candidate) in suggestions.candidates.iter().enumerate() {
+                        let colour = candidate.kind.colour(theme);
+                        let text = egui::RichText::new(&candidate.text).monospace();
+                        // Le premier est celui qu'`Alt` prendra : il est
+                        // le seul en couleur pleine.
+                        if index == 0 {
+                            ui.horizontal(|ui| {
+                                ui.colored_label(colour, text.strong());
+                                ui.colored_label(theme.dim, s.completion_accept);
+                            });
+                        } else {
+                            ui.colored_label(theme.dim, text);
+                        }
+                    }
+                });
+            });
+    }
+
+    /// Écrit la première proposition à la place du mot commencé, et
+    /// replace le curseur derrière.
+    fn accept_completion(&mut self, ctx: &egui::Context, suggestions: &completion::Suggestions) {
+        let Some(rest) = suggestions.completion() else {
+            return;
+        };
+        let insert_at = suggestions.start + suggestions.prefix.len();
+        self.source.insert_str(insert_at, rest);
+
+        // Le curseur d'egui compte en caractères, pas en octets.
+        let after = byte_to_char(&self.source, insert_at + rest.len());
+        if let Some(mut state) = egui::TextEdit::load_state(ctx, editor_id()) {
+            state
+                .cursor
+                .set_char_range(Some(egui::text::CCursorRange::one(
+                    egui::text::CCursor::new(after),
+                )));
+            state.store(ctx, editor_id());
+        }
+        self.suggestions = None;
     }
 
     fn sidebar_ui(&mut self, ui: &mut egui::Ui) {
@@ -4064,6 +4176,26 @@ fn hexdump_ui(ui: &mut egui::Ui, id: &str, dump: &str) {
         });
 }
 
+/// L'éditeur porte un identifiant fixe : l'autocomplétion doit pouvoir
+/// replacer son curseur après avoir écrit, ce qui demande de retrouver
+/// son état.
+fn editor_id() -> egui::Id {
+    egui::Id::new("editeur")
+}
+
+/// Décalage en octets du `n`-ième caractère, et l'inverse. egui compte
+/// les curseurs en caractères, Rust tranche les chaînes en octets, et
+/// confondre les deux coupe un « é » en deux.
+fn char_to_byte(text: &str, chars: usize) -> usize {
+    text.char_indices()
+        .nth(chars)
+        .map_or(text.len(), |(index, _)| index)
+}
+
+fn byte_to_char(text: &str, byte: usize) -> usize {
+    text[..byte.min(text.len())].chars().count()
+}
+
 /// La boîte « À propos » porte un identifiant fixe, indépendant de son
 /// titre traduit.
 fn about_window_id() -> egui::Id {
@@ -5391,6 +5523,56 @@ _start:
             namsdec_theme::install(again),
             Err(namsdec_theme::PluginError::DuplicateId(_))
         ));
+    }
+
+    /// L'autocomplétion se règle, et le réglage est enregistré : c'est
+    /// une préférence de travail, pas une humeur du moment.
+    #[test]
+    fn completion_can_be_turned_off_and_the_choice_is_kept() {
+        assert!(NamsdecApp::default().completion, "proposée par défaut");
+        assert!(Settings::default().completion);
+
+        let app = NamsdecApp {
+            completion: false,
+            ..Default::default()
+        };
+        let written = serde_json::to_string(&app.settings_snapshot()).unwrap();
+        assert!(written.contains("\"completion\":false"), "{written}");
+
+        // Et un fichier qui l'éteint la rend éteinte au lancement.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        std::fs::write(&path, r#"{"version": 2, "completion": false}"#).unwrap();
+        let app = NamsdecApp::from_settings(Settings::load_from(&path));
+        assert!(!app.completion);
+    }
+
+    /// Accepter une proposition écrit ce qu'il manque, là où il faut —
+    /// et rien d'autre. Le tampon reste ce que l'utilisateur a tapé
+    /// jusqu'à ce qu'il accepte.
+    #[test]
+    fn accepting_a_suggestion_writes_only_what_was_missing() {
+        let mut app = NamsdecApp {
+            source: "section .text\n_start:\n    mo".to_owned(),
+            ..Default::default()
+        };
+        let suggestions =
+            completion::suggest(&app.source, app.source.len()).expect("des propositions");
+        assert_eq!(suggestions.candidates[0].text, "mov");
+
+        app.accept_completion(&egui::Context::default(), &suggestions);
+        assert_eq!(app.source, "section .text\n_start:\n    mov");
+        assert!(app.suggestions.is_none(), "la liste se referme");
+
+        // Au milieu d'une ligne, l'insertion se fait à la place du mot,
+        // sans toucher à ce qui suit.
+        let mut app = NamsdecApp {
+            source: "    mo rax, 1".to_owned(),
+            ..Default::default()
+        };
+        let suggestions = completion::suggest(&app.source, 6).expect("des propositions");
+        app.accept_completion(&egui::Context::default(), &suggestions);
+        assert_eq!(app.source, "    mov rax, 1");
     }
 
     /// L'éditeur ne réclame que la largeur de son code — jamais

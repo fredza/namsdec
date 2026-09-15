@@ -55,6 +55,15 @@ pub struct Theme {
     pub number: Color32,
     pub label: Color32,
     pub comment: Color32,
+    /// Les registres : `rax`, `xmm0`, `cl`… Ils forment la moitié d'une
+    /// ligne d'assembleur et n'avaient aucune couleur à eux.
+    pub register: Color32,
+    /// Le texte entre guillemets, `db "salut", 10`.
+    pub string: Color32,
+    /// Les directives (`section`, `global`, `db`) et le préprocesseur
+    /// (`%include`, `%define`) : ce qui s'adresse à nasm et non au
+    /// processeur.
+    pub directive: Color32,
 
     // Explorateur de fichiers.
     pub folder: Color32,
@@ -124,6 +133,9 @@ pub static VSCODE_DARK: Theme = Theme {
     number: Color32::from_rgb(0xb5, 0xce, 0xa8),
     label: Color32::from_rgb(0x4e, 0xc9, 0xb0),
     comment: Color32::from_rgb(0x6a, 0x99, 0x55),
+    register: Color32::from_rgb(0x9c, 0xdc, 0xfe),
+    string: Color32::from_rgb(0xce, 0x91, 0x78),
+    directive: Color32::from_rgb(0xc5, 0x86, 0xc0),
     folder: Color32::from_rgb(0x7d, 0xd3, 0xfc),
     folder_open: Color32::from_rgb(0x38, 0xbd, 0xf8),
     folder_text: Color32::from_rgb(0x9c, 0xdc, 0xfe),
@@ -150,6 +162,9 @@ pub static VSCODE_LIGHT: Theme = Theme {
     number: Color32::from_rgb(0x09, 0x86, 0x58),
     label: Color32::from_rgb(0x26, 0x7f, 0x99),
     comment: Color32::from_rgb(0x00, 0x80, 0x00),
+    register: Color32::from_rgb(0x00, 0x70, 0xc1),
+    string: Color32::from_rgb(0xa3, 0x15, 0x15),
+    directive: Color32::from_rgb(0xaf, 0x00, 0xdb),
     folder: Color32::from_rgb(0x1a, 0x85, 0xb8),
     folder_open: Color32::from_rgb(0x00, 0x6b, 0x9c),
     folder_text: Color32::from_rgb(0x0a, 0x53, 0x94),
@@ -176,6 +191,9 @@ pub static TOKYO_NIGHT: Theme = Theme {
     number: Color32::from_rgb(0xff, 0x9e, 0x64),
     label: Color32::from_rgb(0x7d, 0xcf, 0xff),
     comment: Color32::from_rgb(0x56, 0x5f, 0x89),
+    register: Color32::from_rgb(0x2a, 0xc3, 0xde),
+    string: Color32::from_rgb(0x9e, 0xce, 0x6a),
+    directive: Color32::from_rgb(0xf7, 0x76, 0x8e),
     folder: Color32::from_rgb(0x7d, 0xcf, 0xff),
     folder_open: Color32::from_rgb(0x2a, 0xc3, 0xde),
     folder_text: Color32::from_rgb(0x7d, 0xcf, 0xff),
@@ -212,13 +230,16 @@ pub fn perceptual_distance(a: Color32, b: Color32) -> f32 {
 /// Le texte ordinaire en fait partie : c'est lui que portent les
 /// registres, les opérandes, tout ce qui n'est ni mnémonique, ni nombre,
 /// ni étiquette, ni commentaire.
-pub fn code_colours(theme: &Theme) -> [(&'static str, Color32); 5] {
+pub fn code_colours(theme: &Theme) -> [(&'static str, Color32); 8] {
     [
         ("text", theme.text),
         ("mnemonic", theme.mnemonic),
         ("number", theme.number),
         ("label", theme.label),
         ("comment", theme.comment),
+        ("register", theme.register),
+        ("string", theme.string),
+        ("directive", theme.directive),
     ]
 }
 

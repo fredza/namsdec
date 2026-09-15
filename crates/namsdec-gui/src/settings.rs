@@ -59,6 +59,8 @@ pub struct Settings {
     /// Les infobulles au survol. Certains les veulent, d'autres les
     /// trouvent envahissantes — d'où un réglage plutôt qu'un choix imposé.
     pub show_tooltips: bool,
+    /// L'autocomplétion de l'éditeur : elle propose, `Alt` accepte.
+    pub completion: bool,
     /// Comment l'onglet Mémoire lit les octets : « bytes », « words » ou
     /// « text ».
     pub memory_format: String,
@@ -88,6 +90,7 @@ impl Default for Settings {
             show_statusbar: true,
             show_console: true,
             show_tooltips: true,
+            completion: true,
             memory_format: "bytes".to_owned(),
             explorer_root: None,
             current_file: None,

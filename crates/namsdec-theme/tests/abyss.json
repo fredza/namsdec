@@ -19,6 +19,9 @@
   "number": "#f280d0",
   "label": "#ddbb88",
   "comment": "#384887",
+  "register": "#82aaff",
+  "string": "#22aa44",
+  "directive": "#2277ff",
 
   "folder": "#82aaff",
   "folder_open": "#2f7ee6",

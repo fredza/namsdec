@@ -69,6 +69,9 @@ pub struct Strings {
     pub view_console: &'static str,
     pub preferences_tooltips: &'static str,
     pub preferences_tooltips_hint: &'static str,
+    pub preferences_completion: &'static str,
+    pub preferences_completion_hint: &'static str,
+    pub completion_accept: &'static str,
 
     // Explorateur de fichiers
     pub explorer_title: &'static str,
@@ -235,6 +238,9 @@ const FR: Strings = Strings {
     view_console: "Console",
     preferences_tooltips: "Infobulles",
     preferences_tooltips_hint: "Les bulles d'aide qui apparaissent au survol des boutons.",
+    preferences_completion: "Autocomplétion dans l'éditeur",
+    preferences_completion_hint: "Propose instructions, registres, directives et étiquettes pendant la frappe. Alt accepte la première.",
+    completion_accept: "Alt pour accepter",
 
     explorer_title: "Explorateur",
     explorer_empty: "Aucun dossier ouvert.",
@@ -387,6 +393,9 @@ const EN: Strings = Strings {
     view_console: "Console",
     preferences_tooltips: "Tooltips",
     preferences_tooltips_hint: "The help bubbles shown when hovering over buttons.",
+    preferences_completion: "Completion in the editor",
+    preferences_completion_hint: "Suggests instructions, registers, directives and labels as you type. Alt accepts the first one.",
+    completion_accept: "Alt to accept",
 
     explorer_title: "Explorer",
     explorer_empty: "No folder open.",

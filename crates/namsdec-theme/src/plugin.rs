@@ -57,6 +57,17 @@ struct ThemeFile {
     number: String,
     label: String,
     comment: String,
+    // Ces trois rôles sont arrivés après le format : un thème écrit
+    // avant eux reste valide, et ils reprennent la couleur la plus
+    // proche de celles qu'il donne. C'est la seule dérivation
+    // automatique de tout le crate, et elle n'existe que pour ne pas
+    // casser les thèmes déjà installés.
+    #[serde(default)]
+    register: Option<String>,
+    #[serde(default)]
+    string: Option<String>,
+    #[serde(default)]
+    directive: Option<String>,
     folder: String,
     folder_open: String,
     folder_text: String,
@@ -108,6 +119,18 @@ pub fn parse(text: &str) -> Result<Theme, PluginError> {
         number: colour("number", &file.number)?,
         label: colour("label", &file.label)?,
         comment: colour("comment", &file.comment)?,
+        register: match &file.register {
+            Some(value) => colour("register", value)?,
+            None => colour("text", &file.text)?,
+        },
+        string: match &file.string {
+            Some(value) => colour("string", value)?,
+            None => colour("number", &file.number)?,
+        },
+        directive: match &file.directive {
+            Some(value) => colour("directive", value)?,
+            None => colour("mnemonic", &file.mnemonic)?,
+        },
         folder: colour("folder", &file.folder)?,
         folder_open: colour("folder_open", &file.folder_open)?,
         folder_text: colour("folder_text", &file.folder_text)?,
