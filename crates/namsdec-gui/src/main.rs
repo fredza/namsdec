@@ -201,6 +201,12 @@ enum Status {
     Idle,
     AssembleOk,
     AssembleFailed,
+    /// Une zone surveillée a changé de valeur.
+    Watchpoint {
+        addr: u64,
+        old: u64,
+        new: u64,
+    },
     /// Le dernier pas vient d'être défait.
     SteppedBack,
     /// Il n'y avait plus rien à défaire.
@@ -304,6 +310,10 @@ struct NamsdecApp {
     /// Comment l'onglet Mémoire lit les octets. Réglage utilisateur, donc
     /// enregistré dans `settings.json`.
     memory_format: MemoryFormat,
+    /// Les zones surveillées : adresse et longueur. Elles appartiennent
+    /// au programme en cours, pas aux réglages — un point posé sur
+    /// `0x401000` n'a aucun sens pour le binaire suivant.
+    watchpoints: Vec<(u64, usize)>,
     show_preferences: bool,
     /// Réglages tels qu'ils étaient à l'ouverture de la boîte Préférences.
     /// C'est ce qui donne un sens distinct aux deux boutons : OK garde,
@@ -609,6 +619,7 @@ impl Default for NamsdecApp {
             mem_addr_input: format!("{BASE_ADDR:#x}"),
             mem_addr: BASE_ADDR,
             memory_format: MemoryFormat::Bytes,
+            watchpoints: Vec::new(),
             show_preferences: false,
             prefs_snapshot: None,
             show_about: false,
@@ -923,6 +934,18 @@ impl NamsdecApp {
         self.re_registry.on_binary_loaded(&ctx);
 
         self.emulator = Some(Box::new(emulator));
+        // Les zones surveillées survivent au réassemblage : on travaille
+        // souvent sur la même adresse en corrigeant son programme.
+        self.sync_watchpoints();
+    }
+
+    /// Pousse les zones surveillées dans le moteur, ce qui les arme sur
+    /// l'état courant.
+    fn sync_watchpoints(&mut self) {
+        let points = self.watchpoints.clone();
+        if let Some(emulator) = &mut self.emulator {
+            emulator.set_watchpoints(&points);
+        }
     }
 
     fn sync_breakpoints(&mut self) {
@@ -1009,6 +1032,11 @@ impl NamsdecApp {
                 self.running = false;
                 self.status = Status::Breakpoint(addr);
             }
+            Ok(RunStop::Watchpoint { addr, old, new }) => {
+                self.running = false;
+                self.status = Status::Watchpoint { addr, old, new };
+                self.back_to_command_mode();
+            }
             Ok(RunStop::NeedsInput) => {
                 // Suspendu, pas arrêté : l'exécution redémarrera d'
                 // elle-même dès que l'utilisateur aura tapé quelque chose.
@@ -1089,6 +1117,9 @@ impl NamsdecApp {
                 self.back_to_command_mode();
             }
             Ok(StepOverResult::Breakpoint(addr)) => self.status = Status::Breakpoint(addr),
+            Ok(StepOverResult::Watchpoint { addr, old, new }) => {
+                self.status = Status::Watchpoint { addr, old, new }
+            }
             Ok(StepOverResult::StepLimit) => self.status = Status::StepLimit,
             Ok(StepOverResult::NeedsInput) => self.status = Status::WaitingForInput,
             Ok(StepOverResult::Stepped | StepOverResult::SteppedOverCall) => {}
@@ -2413,6 +2444,19 @@ impl NamsdecApp {
                 status_dot(ui, theme.bad);
                 ui.colored_label(theme.bad, s.status_assemble_failed);
             }
+            Status::Watchpoint { addr, old, new } => {
+                status_dot(ui, theme.changed);
+                // La valeur d'avant et celle d'après : c'est toute
+                // l'information qu'on attendait en posant le point.
+                ui.colored_label(
+                    theme.changed,
+                    if lang == Lang::Fr {
+                        format!("Surveillance : {addr:#x} est passé de {old:#x} à {new:#x}")
+                    } else {
+                        format!("Watchpoint: {addr:#x} went from {old:#x} to {new:#x}")
+                    },
+                );
+            }
             Status::SteppedBack => {
                 ui.colored_label(theme.accent, s.status_stepped_back);
             }
@@ -3088,6 +3132,45 @@ impl NamsdecApp {
         hexdump_ui(ui, "stack_dump", &dump);
     }
 
+    /// Les zones surveillées, avec leur valeur courante et de quoi les
+    /// retirer.
+    ///
+    /// Là où un point d'arrêt dit « arrête-toi là », celui-ci dit
+    /// « arrête-toi quand *ça* change » — sans qu'on ait à deviner quelle
+    /// instruction le fera. C'est ce qu'un débogueur ordinaire rend cher
+    /// et qu'un interpréteur offre pour rien.
+    fn watchpoints_ui(&mut self, ui: &mut egui::Ui, watched: &[(u64, u64)]) {
+        if self.watchpoints.is_empty() {
+            return;
+        }
+        let s = strings(self.lang);
+        let theme = self.theme;
+        ui.separator();
+        ui.label(egui::RichText::new(s.watchpoints_title).color(theme.dim));
+
+        let mut remove = None;
+        for &(addr, value) in watched {
+            ui.horizontal(|ui| {
+                if ui
+                    .small_button("×")
+                    .on_hover_text(s.watchpoints_remove)
+                    .clicked()
+                {
+                    remove = Some(addr);
+                }
+                ui.colored_label(
+                    theme.changed,
+                    egui::RichText::new(format!("{addr:#x}")).monospace(),
+                );
+                ui.monospace(format!("= {value:#x}"));
+            });
+        }
+        if let Some(addr) = remove {
+            self.watchpoints.retain(|&(a, _)| a != addr);
+            self.sync_watchpoints();
+        }
+    }
+
     /// La chaîne des appels, du plus récent au plus ancien — l'ordre d'un
     /// débogueur, parce que c'est l'appel en cours qui intéresse d'abord.
     ///
@@ -3141,6 +3224,7 @@ impl NamsdecApp {
         let regs = emulator.cpu().regs.clone();
         let typed = eval_address(&self.mem_addr_input, Some(&regs));
         let mut go = false;
+        let mut watch = None;
         ui.horizontal(|ui| {
             ui.label(s.memory_address_label);
             let response = ui
@@ -3170,6 +3254,16 @@ impl NamsdecApp {
                 go |= icon_square_button(ui, icon_go)
                     .on_hover_text(s.memory_go_hint)
                     .clicked();
+                // Surveiller l'adresse *écrite*, et non celle affichée :
+                // on tape « rsi », on clique, et c'est le tampon qu'on
+                // regarde — sans avoir à valider d'abord.
+                if icon_square_button(ui, icon_watch)
+                    .on_hover_text(s.memory_watch_hint)
+                    .clicked()
+                    && let Some(addr) = typed
+                {
+                    watch = Some(addr);
+                }
             });
         });
         // Rien n'a bougé tant que l'adresse n'est pas validée : le vidage
@@ -3196,13 +3290,33 @@ impl NamsdecApp {
             }
         });
 
+        // Le vidage est calculé *avant* la liste : celle-ci peut retirer
+        // une zone, donc emprunter `self` en écriture, et l'émulateur
+        // n'est plus disponible à ce moment-là.
         let dump = read_memory(
             &emulator.cpu().mem,
             self.mem_addr,
             self.memory_format,
             s.address_out_of_range,
         );
+        let watched: Vec<(u64, u64)> = emulator
+            .watchpoints()
+            .iter()
+            .map(|point| (point.addr, point.value()))
+            .collect();
+        self.watchpoints_ui(ui, &watched);
         hexdump_ui(ui, "memory_dump", &dump);
+
+        // Poser la zone en dernier : `sync_watchpoints` emprunte
+        // l'émulateur en écriture, et il est lu jusqu'ici.
+        if let Some(addr) = watch
+            && !self.watchpoints.iter().any(|&(a, _)| a == addr)
+        {
+            // Huit octets : la taille d'un mot, celle qu'on surveille
+            // neuf fois sur dix.
+            self.watchpoints.push((addr, 8));
+            self.sync_watchpoints();
+        }
     }
 
     fn re_ui(&mut self, ui: &mut egui::Ui) {
@@ -3473,6 +3587,28 @@ fn icon_square_button(
         icon(ui.painter(), rect.shrink(5.0), visuals.text_color());
     }
     response
+}
+
+/// Surveiller : un œil. Deux arcs et une pupille — de quoi se
+/// reconnaître à quatorze pixels sans ressembler au reste.
+fn icon_watch(painter: &egui::Painter, rect: egui::Rect, color: egui::Color32) {
+    let stroke = egui::Stroke::new(1.3, color);
+    let centre = rect.center();
+    let half = rect.width() * 0.5;
+    // Les deux paupières, chacune une suite de segments.
+    for sign in [-1.0, 1.0] {
+        let points: Vec<egui::Pos2> = (0..=8)
+            .map(|i| {
+                let t = -1.0 + i as f32 * 0.25;
+                egui::pos2(
+                    centre.x + t * half,
+                    centre.y + sign * (1.0 - t * t) * half * 0.62,
+                )
+            })
+            .collect();
+        painter.add(egui::Shape::line(points, stroke));
+    }
+    painter.circle_stroke(centre, half * 0.26, stroke);
 }
 
 /// « Aller à » : une flèche qui bute sur un montant, comme la fin d'une
@@ -5917,6 +6053,78 @@ _start:
             "au début, il le dit plutôt que de ne rien faire : {:?}",
             app.status
         );
+    }
+
+    /// Une zone surveillée arrête l'exécution et le dit : l'adresse, la
+    /// valeur d'avant, celle d'après. C'est l'information qu'on attendait
+    /// en posant le point — sans elle, l'arrêt ne servirait à rien.
+    #[test]
+    fn a_watched_area_stops_the_run_and_says_what_changed() {
+        if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+            return;
+        }
+        let mut app = NamsdecApp {
+            source: "\
+section .data
+    compteur dq 0
+
+section .text
+    global _start
+_start:
+    mov rax, 42
+    mov [compteur], rax
+    mov rbx, 7
+    hlt
+"
+            .to_owned(),
+            ..Default::default()
+        };
+        app.do_assemble();
+        assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+
+        let compteur = app
+            .assemble_state
+            .as_ref()
+            .unwrap()
+            .output
+            .sections
+            .iter()
+            .find(|s| s.name == ".data")
+            .expect("une section .data")
+            .addr;
+
+        // Comme le bouton « Surveiller » : l'adresse entre dans la liste,
+        // et le moteur l'arme sur l'état courant.
+        app.watchpoints.push((compteur, 8));
+        app.sync_watchpoints();
+
+        let ctx = egui::Context::default();
+        app.do_run();
+        for _ in 0..10 {
+            if !app.running {
+                break;
+            }
+            app.tick_run(&ctx);
+        }
+
+        match app.status {
+            Status::Watchpoint { addr, old, new } => {
+                assert_eq!(addr, compteur);
+                assert_eq!((old, new), (0, 42));
+            }
+            ref other => panic!("attendu un arrêt sur surveillance, obtenu {other:?}"),
+        }
+        assert!(!app.running, "l'exécution est suspendue");
+        assert_eq!(
+            app.emulator.as_ref().unwrap().cpu().regs.get64(Reg64::Rbx),
+            0,
+            "arrêté juste après l'écriture, avant la suite"
+        );
+
+        // Et le réassemblage garde la zone : on corrige son programme
+        // sans avoir à reposer ses points.
+        app.do_assemble();
+        assert_eq!(app.emulator.as_ref().unwrap().watchpoints().len(), 1);
     }
 
     /// Le bandeau met en avant les registres que la dernière avancée a

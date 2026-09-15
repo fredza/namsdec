@@ -103,6 +103,9 @@ pub struct Strings {
     pub memory_format_words: &'static str,
     pub memory_format_text: &'static str,
     pub memory_go_hint: &'static str,
+    pub memory_watch_hint: &'static str,
+    pub watchpoints_title: &'static str,
+    pub watchpoints_remove: &'static str,
 
     // Barre de statut (cas statiques uniquement)
     pub status_ready: &'static str,
@@ -260,6 +263,9 @@ const FR: Strings = Strings {
     memory_format_words: "Mots",
     memory_format_text: "Texte",
     memory_go_hint: "Afficher la mémoire à cette adresse (ou Entrée)",
+    memory_watch_hint: "Surveiller ces huit octets : l'exécution s'arrêtera quand ils changeront",
+    watchpoints_title: "Zones surveillées",
+    watchpoints_remove: "Ne plus surveiller",
 
     status_ready: "Prêt.",
     status_assembled: "Assemblage réussi",
@@ -409,6 +415,9 @@ const EN: Strings = Strings {
     memory_format_words: "Words",
     memory_format_text: "Text",
     memory_go_hint: "Show memory at this address (or press Enter)",
+    memory_watch_hint: "Watch these eight bytes: execution stops when they change",
+    watchpoints_title: "Watched areas",
+    watchpoints_remove: "Stop watching",
 
     status_ready: "Ready.",
     status_assembled: "Assembled",

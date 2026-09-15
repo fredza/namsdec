@@ -71,6 +71,26 @@ pub enum EmuError {
     DivideOverflow { addr: u64 },
 }
 
+/// Une zone de mémoire surveillée : on s'arrête quand elle change.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Watchpoint {
+    pub addr: u64,
+    /// Un à huit octets — la taille de ce qu'on regarde d'habitude : un
+    /// octet, un mot, un pointeur.
+    pub len: usize,
+    /// La valeur vue la dernière fois. C'est la comparaison avec elle qui
+    /// déclenche l'arrêt, et non l'écriture : un `mov [x], 0` sur une
+    /// case déjà nulle n'apprend rien et n'arrête rien.
+    previous: u64,
+}
+
+impl Watchpoint {
+    /// La valeur retenue au dernier armement.
+    pub fn value(&self) -> u64 {
+        self.previous
+    }
+}
+
 /// Un appel en cours : ce qu'il faut pour remonter la chaîne.
 ///
 /// L'émulateur *voit* les `call` et les `ret` passer, il n'a donc pas à
@@ -139,6 +159,18 @@ enum ShiftKind {
     Arithmetic,
 }
 
+/// Lit `len` octets (1 à 8) en petit-boutien. Hors de la fenêtre
+/// simulée, rend zéro : une zone surveillée qu'on ne peut pas lire ne
+/// change jamais, plutôt que de faire échouer l'exécution.
+fn read_bytes(mem: &namsdec_core::Memory, addr: u64, len: usize) -> u64 {
+    let mut value = 0u64;
+    for i in (0..len).rev() {
+        let byte = mem.read_u8(addr.wrapping_add(i as u64)).unwrap_or(0);
+        value = (value << 8) | u64::from(byte);
+    }
+    value
+}
+
 /// Étend `value`, large de `w`, sur 64 bits en recopiant son bit de signe.
 fn sign_extend(value: u64, w: Width) -> u64 {
     let bits = w.bits();
@@ -164,6 +196,18 @@ pub enum StepResult {
 pub enum RunStop {
     Halted,
     Breakpoint(u64),
+    /// Un point de surveillance a vu la mémoire changer sous lui.
+    ///
+    /// Là où un point d'arrêt demande « arrête-toi *là* », celui-ci
+    /// demande « arrête-toi quand *ça* change » — et l'on ne sait pas
+    /// d'avance quelle instruction le fera. C'est ce qui le rend utile,
+    /// et coûteux dans un vrai débogueur ; ici, l'interpréteur passe déjà
+    /// par un seul endroit pour écrire en mémoire.
+    Watchpoint {
+        addr: u64,
+        old: u64,
+        new: u64,
+    },
     StepLimit,
     /// Suspendu en attendant l'entrée standard (voir
     /// `StepResult::NeedsInput`). L'exécution reprend d'elle-même une fois
@@ -176,6 +220,13 @@ pub enum RunStop {
 /// `run()`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StepOverResult {
+    /// Comme `RunStop::Watchpoint` : la sous-routine enjambée a touché à
+    /// une zone surveillée.
+    Watchpoint {
+        addr: u64,
+        old: u64,
+        new: u64,
+    },
     /// L'instruction courante n'était pas un `call` : un pas normal a été
     /// fait, exactement comme `step()`.
     Stepped,
@@ -216,6 +267,13 @@ pub trait Backend {
 
     fn breakpoints(&self) -> &BTreeSet<u64>;
     fn set_breakpoints(&mut self, breakpoints: BTreeSet<u64>);
+
+    /// Les zones à surveiller — adresse et longueur (1 à 8 octets).
+    /// Poser un point de surveillance l'arme sur l'état courant.
+    fn set_watchpoints(&mut self, points: &[(u64, usize)]);
+
+    /// Les zones surveillées, avec la valeur retenue.
+    fn watchpoints(&self) -> &[Watchpoint];
 
     fn step(&mut self) -> Result<StepResult, EmuError>;
     fn step_over(&mut self, max_steps: u32) -> Result<StepOverResult, EmuError>;
@@ -278,6 +336,8 @@ pub struct Emulator {
     history: VecDeque<Undo>,
     /// Les appels en cours, du plus ancien au plus récent.
     frames: Vec<Frame>,
+    /// Les zones surveillées.
+    watchpoints: Vec<Watchpoint>,
 }
 
 impl Backend for Emulator {
@@ -295,6 +355,14 @@ impl Backend for Emulator {
 
     fn breakpoints(&self) -> &BTreeSet<u64> {
         &self.breakpoints
+    }
+
+    fn set_watchpoints(&mut self, points: &[(u64, usize)]) {
+        Emulator::set_watchpoints(self, points);
+    }
+
+    fn watchpoints(&self) -> &[Watchpoint] {
+        Emulator::watchpoints(self)
     }
 
     fn set_breakpoints(&mut self, breakpoints: BTreeSet<u64>) {
@@ -362,6 +430,7 @@ impl Emulator {
             exit_code: None,
             history: VecDeque::new(),
             frames: Vec::new(),
+            watchpoints: Vec::new(),
         }
     }
 
@@ -574,13 +643,21 @@ impl Emulator {
 
         for _ in 0..max_steps {
             match self.step()? {
-                StepResult::Halted => return Ok(StepOverResult::Halted),
+                StepResult::Halted => {
+                    if let Some((addr, old, new)) = self.triggered_watchpoint() {
+                        return Ok(StepOverResult::Watchpoint { addr, old, new });
+                    }
+                    return Ok(StepOverResult::Halted);
+                }
                 // Le `read` est au milieu de la sous-routine : on rend la
                 // main, et `step_over` sera relancé quand l'entrée sera
                 // là. La sous-routine reprendra donc là où elle en est,
                 // et non depuis son début.
                 StepResult::NeedsInput => return Ok(StepOverResult::NeedsInput),
                 StepResult::Continued => {}
+            }
+            if let Some((addr, old, new)) = self.triggered_watchpoint() {
+                return Ok(StepOverResult::Watchpoint { addr, old, new });
             }
             // La pile doit être revenue au moins à son niveau de départ pour
             // qu'on considère être "revenu" — protège contre un `ret`
@@ -607,6 +684,12 @@ impl Emulator {
             }
             if self.step()? == StepResult::NeedsInput {
                 return Ok(RunStop::NeedsInput);
+            }
+            // Avant même l'arrêt de la machine : si la dernière
+            // instruction a touché une zone surveillée, c'est elle qu'on
+            // vient voir, fût-elle la dernière du programme.
+            if let Some((addr, old, new)) = self.triggered_watchpoint() {
+                return Ok(RunStop::Watchpoint { addr, old, new });
             }
             if self.cpu.halted {
                 return Ok(RunStop::Halted);
@@ -1331,12 +1414,64 @@ impl Emulator {
             }
             FrameChange::Popped(frame) => self.frames.push(frame),
         }
+        // Revenir en arrière ne déclenche pas les points de
+        // surveillance : ils regardent ce qui vient, pas ce qu'on défait.
+        self.rearm_watchpoints();
         true
     }
 
     /// Les appels en cours, du plus ancien au plus récent.
     pub fn frames(&self) -> &[Frame] {
         &self.frames
+    }
+
+    /// Remplace les zones surveillées, et les arme sur l'état courant :
+    /// poser un point de surveillance, c'est dire « préviens-moi si ça
+    /// change **à partir de maintenant** ».
+    pub fn set_watchpoints(&mut self, points: &[(u64, usize)]) {
+        self.watchpoints = points
+            .iter()
+            .map(|&(addr, len)| Watchpoint {
+                addr,
+                len: len.clamp(1, 8),
+                previous: self.peek(addr, len.clamp(1, 8)),
+            })
+            .collect();
+    }
+
+    pub fn watchpoints(&self) -> &[Watchpoint] {
+        &self.watchpoints
+    }
+
+    /// Réarme les zones surveillées sur l'état courant, sans rien
+    /// signaler. Après un retour en arrière, c'est d'ici qu'on repart.
+    fn rearm_watchpoints(&mut self) {
+        for point in &mut self.watchpoints {
+            let (addr, len) = (point.addr, point.len);
+            // Emprunt : la lecture passe par `peek`, qui ne touche à rien.
+            let value = read_bytes(&self.cpu.mem, addr, len);
+            point.previous = value;
+        }
+    }
+
+    /// La première zone surveillée dont la valeur a changé.
+    fn triggered_watchpoint(&mut self) -> Option<(u64, u64, u64)> {
+        for index in 0..self.watchpoints.len() {
+            let (addr, len, old) = {
+                let point = &self.watchpoints[index];
+                (point.addr, point.len, point.previous)
+            };
+            let new = read_bytes(&self.cpu.mem, addr, len);
+            if new != old {
+                self.watchpoints[index].previous = new;
+                return Some((addr, old, new));
+            }
+        }
+        None
+    }
+
+    fn peek(&self, addr: u64, len: usize) -> u64 {
+        read_bytes(&self.cpu.mem, addr, len)
     }
 
     /// Y a-t-il quelque chose à défaire ?
@@ -1762,6 +1897,127 @@ _start:
 
     /// Charge sans exécuter — pour les programmes dont on veut observer
     /// l'échec plutôt que le résultat.
+    /// Un point de surveillance arrête l'exécution quand la mémoire
+    /// change sous lui — sans qu'on ait eu à deviner quelle instruction
+    /// le ferait, ce qui est tout l'intérêt.
+    #[test]
+    fn a_watchpoint_stops_the_run_when_the_value_changes() {
+        let mut emu = load_only(
+            "\
+section .data
+    compteur dq 0
+
+section .text
+    global _start
+_start:
+    mov rax, 1
+    mov rbx, 2
+    mov rcx, 3
+    mov [compteur], rcx     ; c'est ici que ça change
+    mov rdx, 4
+    hlt
+",
+            &[],
+        );
+        let compteur = namsdec_asm::assemble(
+            "section .data\n    compteur dq 0\nsection .text\n    global _start\n_start:\n    hlt\n",
+            BASE,
+        )
+        .unwrap()
+        .sections
+        .iter()
+        .find(|s| s.name == ".data")
+        .expect("une section .data")
+        .addr;
+
+        emu.set_watchpoints(&[(compteur, 8)]);
+        assert_eq!(emu.watchpoints().len(), 1);
+        assert_eq!(
+            emu.watchpoints()[0].value(),
+            0,
+            "armé sur la valeur du moment"
+        );
+
+        let stop = emu.run(100).expect("exécution");
+        match stop {
+            RunStop::Watchpoint { addr, old, new } => {
+                assert_eq!(addr, compteur);
+                assert_eq!((old, new), (0, 3), "la valeur d'avant et celle d'après");
+            }
+            other => panic!("attendu un arrêt sur surveillance, obtenu {other:?}"),
+        }
+        // Arrêté *après* l'instruction fautive, pas à la fin du programme.
+        assert_eq!(
+            emu.cpu.regs.get64(Reg64::Rdx),
+            0,
+            "`mov rdx, 4` n'a pas eu lieu"
+        );
+        assert!(!emu.cpu.halted);
+
+        // Relancé, il va jusqu'au bout : la zone ne change plus.
+        assert_eq!(emu.run(100).unwrap(), RunStop::Halted);
+    }
+
+    /// Une écriture qui ne change rien n'arrête rien : `mov [x], 0` sur
+    /// une case déjà nulle n'apprend rien à personne.
+    #[test]
+    fn writing_the_same_value_does_not_trigger_a_watchpoint() {
+        let mut emu = load_only(
+            "\
+section .bss
+    case resq 1
+
+section .text
+    global _start
+_start:
+    xor rax, rax
+    mov [case], rax
+    hlt
+",
+            &[],
+        );
+        let case = BASE + 0x1000; // .bss, la seule donnée
+        emu.set_watchpoints(&[(case, 8)]);
+        assert_eq!(emu.run(100).unwrap(), RunStop::Halted, "rien n'a changé");
+    }
+
+    /// Le retour en arrière réarme les zones surveillées : il défait, il
+    /// ne déclenche pas.
+    #[test]
+    fn stepping_back_rearms_the_watchpoints_instead_of_firing_them() {
+        let mut emu = load_only(
+            "\
+section .bss
+    case resq 1
+
+section .text
+    global _start
+_start:
+    mov rax, 5
+    mov [case], rax
+    hlt
+",
+            &[],
+        );
+        let case = BASE + 0x1000;
+        emu.set_watchpoints(&[(case, 8)]);
+        assert!(matches!(
+            emu.run(100).unwrap(),
+            RunStop::Watchpoint { old: 0, new: 5, .. }
+        ));
+
+        // On revient avant l'écriture : la zone est réarmée sur zéro, et
+        // rien ne s'est déclenché au passage.
+        assert!(emu.step_back());
+        assert_eq!(emu.watchpoints()[0].value(), 0);
+
+        // Et rejouer le même pas la redéclenche.
+        assert!(matches!(
+            emu.run(100).unwrap(),
+            RunStop::Watchpoint { old: 0, new: 5, .. }
+        ));
+    }
+
     /// La chaîne des appels se lit directement : l'émulateur voit passer
     /// les `call` et les `ret`, il n'a pas à deviner les cadres en
     /// suivant RBP — ce que le code d'un débutant ne monte pas.
