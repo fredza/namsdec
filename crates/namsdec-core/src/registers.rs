@@ -66,6 +66,20 @@ impl Registers {
         *slot = (*slot & !0xFFFF) | v as u64;
     }
 
+    /// L'octet *haut* du registre bas — AH, BH, CH, DH : les bits 8 à 15.
+    ///
+    /// Un vestige du 8086, qu'une instruction ne peut atteindre que sans
+    /// préfixe REX : `mov ah, 1` s'assemble, `mov ah, r8b` non.
+    pub fn get8h(&self, r: Reg64) -> u8 {
+        (self.gpr[r as usize] >> 8) as u8
+    }
+
+    /// Écrire l'octet haut préserve le reste du registre 64 bits.
+    pub fn set8h(&mut self, r: Reg64, v: u8) {
+        let slot = &mut self.gpr[r as usize];
+        *slot = (*slot & !0xFF00) | ((v as u64) << 8);
+    }
+
     /// Écrire l'octet bas préserve le reste du registre 64 bits.
     pub fn set8l(&mut self, r: Reg64, v: u8) {
         let slot = &mut self.gpr[r as usize];

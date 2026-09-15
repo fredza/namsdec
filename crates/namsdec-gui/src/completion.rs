@@ -17,17 +17,23 @@ use crate::syntax::{self, DIRECTIVES, PREPROCESSOR, REGISTERS, Token};
 /// de namsdec sait exécuter, plus ce qu'un cours écrit tôt : proposer une
 /// instruction que le moteur refusera serait un mauvais service.
 pub const MNEMONICS: &[&str] = &[
-    "adc", "add", "and", "call", "cld", "cmova", "cmovae", "cmovb", "cmovbe", "cmove", "cmovg",
-    "cmovge", "cmovl", "cmovle", "cmovne", "cmovno", "cmovnp", "cmovns", "cmovnz", "cmovo",
-    "cmovp", "cmovs", "cmovz", "cmp", "cmpsb", "cmpsd", "cmpsq", "cmpsw", "dec", "div", "hlt",
-    "idiv", "imul", "inc", "ja", "jae", "jb", "jbe", "je", "jg", "jge", "jl", "jle", "jmp", "jna",
-    "jnae", "jnb", "jnbe", "jne", "jng", "jnge", "jnl", "jnle", "jno", "jnp", "jns", "jnz", "jo",
-    "jp", "js", "jz", "lea", "leave", "lodsb", "lodsd", "lodsq", "lodsw", "loop", "mov", "movsb",
-    "movsd", "movsq", "movsw", "movsx", "movsxd", "movzx", "mul", "neg", "nop", "not", "or", "pop",
-    "push", "rep", "repe", "repne", "repnz", "repz", "ret", "sal", "sar", "sbb", "scasb", "scasd",
-    "scasq", "scasw", "seta", "setae", "setb", "setbe", "sete", "setg", "setge", "setl", "setle",
-    "setne", "setno", "setnp", "setns", "setnz", "seto", "setp", "sets", "setz", "shl", "shr",
-    "std", "stosb", "stosd", "stosq", "stosw", "sub", "syscall", "test", "xchg", "xor",
+    "adc", "add", "and", "andn", "bextr", "blsi", "blsmsk", "blsr", "bsf", "bsr", "bswap", "bt",
+    "btc", "btr", "bts", "bzhi", "call", "cbw", "cdq", "cdqe", "clc", "cld", "cmc", "cmova",
+    "cmovae", "cmovb", "cmovbe", "cmove", "cmovg", "cmovge", "cmovl", "cmovle", "cmovne", "cmovno",
+    "cmovnp", "cmovns", "cmovnz", "cmovo", "cmovp", "cmovs", "cmovz", "cmp", "cmpsb", "cmpsd",
+    "cmpsq", "cmpsw", "cmpxchg", "cpuid", "cqo", "cwd", "cwde", "dec", "div", "endbr64", "enter",
+    "hlt", "idiv", "imul", "inc", "int3", "ja", "jae", "jb", "jbe", "jc", "je", "jecxz", "jg",
+    "jge", "jl", "jle", "jmp", "jna", "jnae", "jnb", "jnbe", "jnc", "jne", "jng", "jnge", "jnl",
+    "jnle", "jno", "jnp", "jns", "jnz", "jo", "jp", "jrcxz", "js", "jz", "lahf", "lea", "leave",
+    "lfence", "lodsb", "lodsd", "lodsq", "lodsw", "loop", "loope", "loopne", "loopnz", "loopz",
+    "lzcnt", "mfence", "mov", "movbe", "movsb", "movsd", "movsq", "movsw", "movsx", "movsxd",
+    "movzx", "mul", "mulx", "neg", "nop", "not", "or", "pause", "pop", "popcnt", "popf", "popfq",
+    "push", "pushf", "pushfq", "rcl", "rcr", "rdtsc", "rdtscp", "rep", "repe", "repne", "repnz",
+    "repz", "ret", "rol", "ror", "rorx", "sahf", "sal", "sar", "sarx", "sbb", "scasb", "scasd",
+    "scasq", "scasw", "seta", "setae", "setb", "setbe", "setc", "sete", "setg", "setge", "setl",
+    "setle", "setnc", "setne", "setno", "setnp", "setns", "setnz", "seto", "setp", "sets", "setz",
+    "sfence", "shl", "shld", "shlx", "shr", "shrd", "shrx", "stc", "std", "stosb", "stosd",
+    "stosq", "stosw", "sub", "syscall", "test", "tzcnt", "ud2", "xadd", "xchg", "xlatb", "xor",
 ];
 
 /// Ce qu'on propose, et d'où ça vient — la provenance sert à colorer la

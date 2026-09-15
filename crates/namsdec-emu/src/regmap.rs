@@ -5,6 +5,17 @@ use crate::EmuError;
 
 /// Associe un registre `iced_x86` (dans une quelconque de ses largeurs) au
 /// registre 64 bits `namsdec-core` qui le contient et à sa largeur.
+/// AH, BH, CH, DH désignent l'octet *haut* du registre, et non le bas :
+/// `map_register` les range avec lui — c'est bien le même registre 64
+/// bits, à la même largeur — et c'est cette question-ci qui dit lequel
+/// des deux octets lire.
+pub fn is_high_byte(reg: Register) -> bool {
+    matches!(
+        reg,
+        Register::AH | Register::BH | Register::CH | Register::DH
+    )
+}
+
 pub fn map_register(reg: Register) -> Result<(Reg64, Width), EmuError> {
     use Register::*;
     let mapped = match reg {
@@ -12,21 +23,25 @@ pub fn map_register(reg: Register) -> Result<(Reg64, Width), EmuError> {
         EAX => (Reg64::Rax, Width::W32),
         AX => (Reg64::Rax, Width::W16),
         AL => (Reg64::Rax, Width::W8),
+        AH => (Reg64::Rax, Width::W8),
 
         RCX => (Reg64::Rcx, Width::W64),
         ECX => (Reg64::Rcx, Width::W32),
         CX => (Reg64::Rcx, Width::W16),
         CL => (Reg64::Rcx, Width::W8),
+        CH => (Reg64::Rcx, Width::W8),
 
         RDX => (Reg64::Rdx, Width::W64),
         EDX => (Reg64::Rdx, Width::W32),
         DX => (Reg64::Rdx, Width::W16),
         DL => (Reg64::Rdx, Width::W8),
+        DH => (Reg64::Rdx, Width::W8),
 
         RBX => (Reg64::Rbx, Width::W64),
         EBX => (Reg64::Rbx, Width::W32),
         BX => (Reg64::Rbx, Width::W16),
         BL => (Reg64::Rbx, Width::W8),
+        BH => (Reg64::Rbx, Width::W8),
 
         RSP => (Reg64::Rsp, Width::W64),
         ESP => (Reg64::Rsp, Width::W32),

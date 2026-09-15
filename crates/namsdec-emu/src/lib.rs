@@ -13,7 +13,7 @@ use namsdec_core::{
 };
 use thiserror::Error;
 
-use regmap::map_register;
+use regmap::{is_high_byte, map_register};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -150,6 +150,9 @@ struct Undo {
     frames: FrameChange,
     /// Le tas d'avant : un `brk` se défait comme le reste.
     heap: Heap,
+    /// Le compteur d'instructions d'avant : `rdtsc` doit rendre deux fois
+    /// la même valeur si on rejoue deux fois le même pas.
+    ticks: u64,
 }
 
 /// Combien de pas on peut défaire. Au-delà, les plus anciens sont
@@ -200,6 +203,39 @@ fn is_string_operation(instr: &Instruction) -> bool {
                 | OpKind::MemoryESDI
         )
     })
+}
+
+/// Le sens d'une rotation, et si elle passe par la retenue — auquel cas
+/// le registre tourne sur un bit de plus que sa largeur.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RotateKind {
+    Left,
+    Right,
+    CarryLeft,
+    CarryRight,
+}
+
+/// Ce qu'on fait au bit désigné, une fois qu'on l'a lu dans CF.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum BitOp {
+    /// `bt` : le lire, et rien d'autre.
+    Test,
+    Set,
+    Reset,
+    Complement,
+}
+
+impl BitOp {
+    /// La valeur à réécrire, ou `None` quand il n'y a rien à écrire.
+    fn apply(self, value: u64, bit: u32) -> Option<u64> {
+        let one = 1u64 << bit;
+        match self {
+            BitOp::Test => None,
+            BitOp::Set => Some(value | one),
+            BitOp::Reset => Some(value & !one),
+            BitOp::Complement => Some(value ^ one),
+        }
+    }
 }
 
 /// Le sens d'un décalage, et s'il recopie le bit de signe.
@@ -445,6 +481,9 @@ pub struct Emulator {
     watchpoints: Vec<Watchpoint>,
     /// Le tas, tel que `brk` l'a laissé.
     heap: Heap,
+    /// Combien d'instructions ont été exécutées depuis le chargement.
+    /// C'est ce que rend `rdtsc` : le temps qu'on peut mesurer ici.
+    ticks: u64,
 }
 
 impl Backend for Emulator {
@@ -551,6 +590,7 @@ impl Emulator {
                 current: end,
                 limit: end,
             },
+            ticks: 0,
             cpu,
         }
     }
@@ -777,6 +817,7 @@ impl Emulator {
         let rip_before = self.cpu.regs.rip;
         self.begin_undo();
         self.cpu.regs.rip = instr.next_ip();
+        self.ticks = self.ticks.wrapping_add(1);
         if let Err(e) = self.execute(&instr) {
             // L'instruction n'a pas eu lieu : RIP doit rester dessus.
             // Sinon chaque tentative suivante avançait d'un cran — et
@@ -1063,6 +1104,389 @@ impl Emulator {
             M::Cmpsb | M::Cmpsw | M::Cmpsd | M::Cmpsq if is_string_operation(instr) => {
                 self.string_step(instr, StringOp::Compare)?
             }
+            // --- Changer une valeur signée de largeur -----------------
+            // `cbw`/`cwde`/`cdqe` recopient le bit de signe dans la
+            // moitié haute ; `cwd`/`cdq`/`cqo` le recopient dans le
+            // registre voisin, ce qu'il faut faire avant chaque `idiv`
+            // sous peine de diviser par un reste oublié.
+            M::Cbw => {
+                let v = sign_extend(u64::from(self.cpu.regs.get8l(Reg64::Rax)), Width::W8);
+                self.cpu.regs.set16(Reg64::Rax, v as u16);
+            }
+            M::Cwde => {
+                let v = sign_extend(u64::from(self.cpu.regs.get16(Reg64::Rax)), Width::W16);
+                self.cpu.regs.set32(Reg64::Rax, v as u32);
+            }
+            M::Cdqe => {
+                let v = sign_extend(u64::from(self.cpu.regs.get32(Reg64::Rax)), Width::W32);
+                self.cpu.regs.set64(Reg64::Rax, v);
+            }
+            M::Cwd => {
+                let high = if (self.cpu.regs.get16(Reg64::Rax) as i16) < 0 {
+                    u16::MAX
+                } else {
+                    0
+                };
+                self.cpu.regs.set16(Reg64::Rdx, high);
+            }
+            M::Cdq => {
+                let high = if (self.cpu.regs.get32(Reg64::Rax) as i32) < 0 {
+                    u32::MAX
+                } else {
+                    0
+                };
+                self.cpu.regs.set32(Reg64::Rdx, high);
+            }
+            M::Cqo => {
+                let high = if (self.cpu.regs.get64(Reg64::Rax) as i64) < 0 {
+                    u64::MAX
+                } else {
+                    0
+                };
+                self.cpu.regs.set64(Reg64::Rdx, high);
+            }
+
+            // --- Rotations -------------------------------------------
+            M::Rol => self.rotate(instr, RotateKind::Left)?,
+            M::Ror => self.rotate(instr, RotateKind::Right)?,
+            M::Rcl => self.rotate(instr, RotateKind::CarryLeft)?,
+            M::Rcr => self.rotate(instr, RotateKind::CarryRight)?,
+
+            // --- Décalages doubles -----------------------------------
+            M::Shld => self.double_shift(instr, true)?,
+            M::Shrd => self.double_shift(instr, false)?,
+
+            // --- Le bit désigné --------------------------------------
+            M::Bt => self.bit_test(instr, BitOp::Test)?,
+            M::Bts => self.bit_test(instr, BitOp::Set)?,
+            M::Btr => self.bit_test(instr, BitOp::Reset)?,
+            M::Btc => self.bit_test(instr, BitOp::Complement)?,
+
+            // --- Chercher et compter des bits ------------------------
+            M::Bsf | M::Bsr => {
+                let w = self.dest_width(instr)?;
+                let src = self.read_op(instr, 1)? & w.mask();
+                let mut flags = self.cpu.flags;
+                flags.set(RFlags::ZF, src == 0);
+                self.cpu.flags = flags;
+                // Source nulle : la destination garde sa valeur — c'est
+                // « indéfini » chez Intel, et ne rien faire est la seule
+                // lecture qui ne mente pas.
+                if src != 0 {
+                    let index = if instr.mnemonic() == M::Bsf {
+                        src.trailing_zeros()
+                    } else {
+                        63 - src.leading_zeros()
+                    };
+                    self.write_op(instr, 0, u64::from(index))?;
+                }
+            }
+            M::Tzcnt | M::Lzcnt => {
+                let w = self.dest_width(instr)?;
+                let bits = w.bits();
+                let src = self.read_op(instr, 1)? & w.mask();
+                // Là où `bsf`/`bsr` laissent la destination en l'air,
+                // `tzcnt`/`lzcnt` rendent la largeur de l'opérande : une
+                // réponse, et non un cas particulier à traiter.
+                let count = if src == 0 {
+                    bits
+                } else if instr.mnemonic() == M::Tzcnt {
+                    src.trailing_zeros()
+                } else {
+                    src.leading_zeros() - (64 - bits)
+                };
+                let mut flags = self.cpu.flags;
+                flags.set(RFlags::CF, src == 0);
+                flags.set(RFlags::ZF, count == 0);
+                self.cpu.flags = flags;
+                self.write_op(instr, 0, u64::from(count))?;
+            }
+            M::Popcnt => {
+                let w = self.dest_width(instr)?;
+                let src = self.read_op(instr, 1)? & w.mask();
+                let count = u64::from(src.count_ones());
+                let mut flags = RFlags::empty();
+                flags.set(RFlags::ZF, count == 0);
+                self.cpu.flags.apply_arith(flags);
+                self.write_op(instr, 0, count)?;
+            }
+
+            // --- Échanges -------------------------------------------
+            M::Xadd => {
+                let w = self.dest_width(instr)?;
+                let dest = self.read_op(instr, 0)?;
+                let src = self.read_op(instr, 1)?;
+                let (result, flags) = add_with_flags(dest, src, w);
+                self.cpu.flags.apply_arith(flags);
+                // L'ancienne destination part dans la source : c'est ce
+                // qui fait de `xadd` un compteur atomique.
+                self.write_op(instr, 1, dest)?;
+                self.write_op(instr, 0, result)?;
+            }
+            M::Cmpxchg => {
+                let w = self.dest_width(instr)?;
+                let dest = self.read_op(instr, 0)?;
+                let acc = self.accumulator(w);
+                let (_, flags) = sub_with_flags(acc & w.mask(), dest & w.mask(), w);
+                self.cpu.flags.apply_arith(flags);
+                if acc & w.mask() == dest & w.mask() {
+                    let src = self.read_op(instr, 1)?;
+                    self.write_op(instr, 0, src)?;
+                } else {
+                    // Échec : l'accumulateur reçoit ce qu'il y avait, de
+                    // quoi réessayer avec la bonne valeur de départ.
+                    self.set_accumulator(w, dest);
+                }
+            }
+            M::Bswap => {
+                let w = self.dest_width(instr)?;
+                let v = self.read_op(instr, 0)?;
+                let swapped = match w {
+                    Width::W64 => v.swap_bytes(),
+                    _ => u64::from((v as u32).swap_bytes()),
+                };
+                self.write_op(instr, 0, swapped)?;
+            }
+            M::Movbe => {
+                let w = self.dest_width(instr)?;
+                let v = self.read_op(instr, 1)? & w.mask();
+                let swapped = match w {
+                    Width::W16 => u64::from((v as u16).swap_bytes()),
+                    Width::W32 => u64::from((v as u32).swap_bytes()),
+                    _ => v.swap_bytes(),
+                };
+                self.write_op(instr, 0, swapped)?;
+            }
+
+            // --- Les indicateurs à la main ---------------------------
+            M::Clc => self.cpu.flags.remove(RFlags::CF),
+            M::Stc => self.cpu.flags.insert(RFlags::CF),
+            M::Cmc => self.cpu.flags.toggle(RFlags::CF),
+            M::Lahf => {
+                // Le bit 1 vaut toujours 1 sur un vrai processeur : le
+                // recopier ici évite qu'un programme qui compare AH à une
+                // constante trouve autre chose que sur la machine.
+                let ah = (self.cpu.flags.bits() & 0xd5) as u8 | 0x02;
+                self.cpu.regs.set8h(Reg64::Rax, ah);
+            }
+            M::Sahf => {
+                let ah = u64::from(self.cpu.regs.get8h(Reg64::Rax));
+                let kept = self.cpu.flags.bits() & !0xd5;
+                self.cpu.flags = RFlags::from_bits_truncate(kept | (ah & 0xd5));
+            }
+            M::Pushfq | M::Pushfd | M::Pushf => {
+                let value = self.cpu.flags.bits() | 0x02;
+                self.push(value)?;
+            }
+            M::Popfq | M::Popfd | M::Popf => {
+                let value = self.pop()?;
+                self.cpu.flags = RFlags::from_bits_truncate(value);
+            }
+
+            // --- Boucles et sauts sur RCX ----------------------------
+            M::Loope | M::Loopne => {
+                let rcx = self.cpu.regs.get64(Reg64::Rcx).wrapping_sub(1);
+                self.cpu.regs.set64(Reg64::Rcx, rcx);
+                let zf = self.cpu.flags.contains(RFlags::ZF);
+                let wanted = instr.mnemonic() == M::Loope;
+                if rcx != 0 && zf == wanted {
+                    self.cpu.regs.rip = instr.near_branch_target();
+                }
+            }
+            M::Jrcxz | M::Jecxz => {
+                let counter = if instr.mnemonic() == M::Jrcxz {
+                    self.cpu.regs.get64(Reg64::Rcx)
+                } else {
+                    u64::from(self.cpu.regs.get32(Reg64::Rcx))
+                };
+                if counter == 0 {
+                    self.cpu.regs.rip = instr.near_branch_target();
+                }
+            }
+
+            // --- Cadre de pile, table, et le reste -------------------
+            M::Enter => {
+                // Le niveau d'imbrication (le second opérande) sert aux
+                // langages à fonctions imbriquées, que personne n'écrit
+                // en assembleur : seul le niveau 0 est simulé, et les
+                // autres se signalent plutôt que de mentir.
+                if self.read_op(instr, 1)? & 0x1f != 0 {
+                    return Err(EmuError::UnsupportedInstruction {
+                        backend: Self::NAME,
+                        mnemonic: "enter (niveau ≠ 0)".to_owned(),
+                    });
+                }
+                let rbp = self.cpu.regs.get64(Reg64::Rbp);
+                self.push(rbp)?;
+                let rsp = self.cpu.regs.get64(Reg64::Rsp);
+                self.cpu.regs.set64(Reg64::Rbp, rsp);
+                let frame = self.read_op(instr, 0)?;
+                self.cpu.regs.set64(Reg64::Rsp, rsp.wrapping_sub(frame));
+            }
+            M::Xlatb => {
+                let addr = self
+                    .cpu
+                    .regs
+                    .get64(Reg64::Rbx)
+                    .wrapping_add(u64::from(self.cpu.regs.get8l(Reg64::Rax)));
+                let byte = self.cpu.mem.read_u8(addr)?;
+                self.cpu.regs.set8l(Reg64::Rax, byte);
+            }
+            M::Rdtsc => {
+                // Un vrai compteur de cycles n'a pas de sens ici ; celui
+                // des instructions exécutées en a un : il mesure ce que
+                // le programme fait, et non ce que la machine met à le
+                // faire. Il avance donc de 1 par pas, toujours.
+                let ticks = self.ticks;
+                self.cpu.regs.set32(Reg64::Rax, ticks as u32);
+                self.cpu.regs.set32(Reg64::Rdx, (ticks >> 32) as u32);
+            }
+            // Un point d'arrêt logiciel : l'exécution s'arrête, comme
+            // devant un débogueur — sauf qu'ici, le débogueur, c'est
+            // l'application elle-même.
+            M::Int3 => {
+                self.cpu.halted = true;
+            }
+            // `ud2` existe pour planter : c'est ce qu'un compilateur pose
+            // là où le programme ne doit jamais passer.
+            M::Ud2 => {
+                return Err(EmuError::InvalidInstruction { addr: instr.ip() });
+            }
+            // --- Les instructions de bits « modernes » (BMI) ---------
+            // Elles font en une instruction ce qui en demandait trois, et
+            // surtout : elles ne touchent pas aux indicateurs, ce qui
+            // permet de les glisser au milieu d'un calcul.
+            M::Shlx | M::Shrx | M::Sarx => {
+                let w = self.dest_width(instr)?;
+                let bits = u64::from(w.bits());
+                let value = self.read_op(instr, 1)? & w.mask();
+                let count = self.read_op(instr, 2)? % bits;
+                let result = match instr.mnemonic() {
+                    M::Shlx => (value << count) & w.mask(),
+                    M::Shrx => value >> count,
+                    _ => ((sign_extend(value, w) as i64) >> count) as u64 & w.mask(),
+                };
+                self.write_op(instr, 0, result)?;
+            }
+            M::Rorx => {
+                let w = self.dest_width(instr)?;
+                let bits = w.bits();
+                let value = self.read_op(instr, 1)? & w.mask();
+                let count = (self.read_op(instr, 2)? % u64::from(bits)) as u32;
+                let result = if count == 0 {
+                    value
+                } else {
+                    ((value >> count) | (value << (bits - count))) & w.mask()
+                };
+                self.write_op(instr, 0, result)?;
+            }
+            M::Andn => {
+                let w = self.dest_width(instr)?;
+                let result = !self.read_op(instr, 1)? & self.read_op(instr, 2)? & w.mask();
+                self.cpu.flags.apply_arith(logic_flags(result, w));
+                self.write_op(instr, 0, result)?;
+            }
+            M::Blsi | M::Blsr | M::Blsmsk => {
+                let w = self.dest_width(instr)?;
+                let src = self.read_op(instr, 1)? & w.mask();
+                // `src & -src` isole le bit bas posé ; les trois
+                // instructions en dérivent.
+                let lowest = src.isolate_lowest_one();
+                let result = match instr.mnemonic() {
+                    M::Blsi => lowest,
+                    M::Blsr => src & src.wrapping_sub(1),
+                    _ => src ^ src.wrapping_sub(1),
+                } & w.mask();
+                let mut flags = logic_flags(result, w);
+                // `blsi` dit « il y avait un bit » ; les deux autres
+                // disent « il n'y en avait pas ». Une différence de
+                // convention, pas de calcul.
+                flags.set(RFlags::CF, (src == 0) != (instr.mnemonic() == M::Blsi));
+                if instr.mnemonic() == M::Blsmsk {
+                    flags.remove(RFlags::ZF);
+                }
+                self.cpu.flags.apply_arith(flags);
+                self.write_op(instr, 0, result)?;
+            }
+            M::Bextr | M::Bzhi => {
+                let w = self.dest_width(instr)?;
+                let bits = w.bits();
+                let src = self.read_op(instr, 1)? & w.mask();
+                let control = self.read_op(instr, 2)?;
+                let result = if instr.mnemonic() == M::Bextr {
+                    let start = (control & 0xff) as u32;
+                    let len = ((control >> 8) & 0xff) as u32;
+                    if start >= bits || len == 0 {
+                        0
+                    } else {
+                        let taken = len.min(bits - start);
+                        let mask = if taken >= 64 {
+                            u64::MAX
+                        } else {
+                            (1u64 << taken) - 1
+                        };
+                        (src >> start) & mask
+                    }
+                } else {
+                    let index = (control & 0xff) as u32;
+                    if index >= bits {
+                        src
+                    } else {
+                        src & ((1u64 << index) - 1)
+                    }
+                };
+                let mut flags = logic_flags(result, w);
+                flags.remove(RFlags::SF);
+                self.cpu.flags.apply_arith(flags);
+                self.write_op(instr, 0, result)?;
+            }
+            M::Mulx => {
+                // Le seul produit qui ne touche à aucun indicateur, et qui
+                // dit lui-même où ranger ses deux moitiés.
+                let w = self.dest_width(instr)?;
+                let src = self.read_op(instr, 2)? & w.mask();
+                let acc = match w {
+                    Width::W32 => u64::from(self.cpu.regs.get32(Reg64::Rdx)),
+                    _ => self.cpu.regs.get64(Reg64::Rdx),
+                };
+                let full = u128::from(acc) * u128::from(src);
+                let low = (full & u128::from(w.mask())) as u64;
+                let high = ((full >> w.bits()) & u128::from(w.mask())) as u64;
+                self.write_op(instr, 1, low)?;
+                self.write_op(instr, 0, high)?;
+            }
+
+            // --- Ce que la machine dit d'elle-même -------------------
+            M::Cpuid => {
+                // namsdec n'est pas un processeur : il ne peut annoncer
+                // aucune extension sans mentir. Il se nomme, et déclare
+                // n'avoir rien de plus — un programme qui interroge
+                // `cpuid` prendra donc son chemin de repli, ce qui est la
+                // seule réponse honnête.
+                let leaf = self.cpu.regs.get32(Reg64::Rax);
+                let (a, b, c, d) = if leaf == 0 {
+                    // « namsdec emu », dans l'ordre EBX:EDX:ECX du manuel.
+                    (0u32, 0x736d_616e, 0x0075_6d65, 0x2063_6564)
+                } else {
+                    (0, 0, 0, 0)
+                };
+                self.cpu.regs.set32(Reg64::Rax, a);
+                self.cpu.regs.set32(Reg64::Rbx, b);
+                self.cpu.regs.set32(Reg64::Rcx, c);
+                self.cpu.regs.set32(Reg64::Rdx, d);
+            }
+            M::Rdtscp => {
+                let ticks = self.ticks;
+                self.cpu.regs.set32(Reg64::Rax, ticks as u32);
+                self.cpu.regs.set32(Reg64::Rdx, (ticks >> 32) as u32);
+                // L'identifiant du cœur : il n'y en a qu'un.
+                self.cpu.regs.set32(Reg64::Rcx, 0);
+            }
+
+            // Rien à simuler : ni cache, ni pipeline, ni exécution dans
+            // le désordre. Elles restent légales, et ne font rien.
+            M::Pause | M::Mfence | M::Lfence | M::Sfence | M::Endbr64 | M::Endbr32 => {}
+
             M::Jmp => {
                 self.cpu.regs.rip = self.branch_target(instr)?;
             }
@@ -1376,6 +1800,179 @@ impl Emulator {
         Ok(())
     }
 
+    /// Empile huit octets : RSP descend, puis la valeur s'écrit.
+    fn push(&mut self, value: u64) -> Result<(), EmuError> {
+        let new_rsp = self.cpu.regs.get64(Reg64::Rsp).wrapping_sub(8);
+        self.record_memory(new_rsp, 8);
+        self.cpu.mem.write_u64(new_rsp, value)?;
+        self.cpu.regs.set64(Reg64::Rsp, new_rsp);
+        Ok(())
+    }
+
+    /// Dépile huit octets. RSP n'avance que si la lecture a réussi : un
+    /// pas qui échoue doit pouvoir se rejouer à l'identique.
+    fn pop(&mut self) -> Result<u64, EmuError> {
+        let rsp = self.cpu.regs.get64(Reg64::Rsp);
+        let value = self.cpu.mem.read_u64(rsp)?;
+        self.cpu.regs.set64(Reg64::Rsp, rsp.wrapping_add(8));
+        Ok(value)
+    }
+
+    /// Les quatre rotations. Contrairement aux décalages, elles ne
+    /// touchent ni ZF, ni SF, ni PF : seule la retenue en sort, et le
+    /// débordement n'a de sens que pour une rotation d'un cran.
+    fn rotate(&mut self, instr: &Instruction, kind: RotateKind) -> Result<(), EmuError> {
+        let w = self.dest_width(instr)?;
+        let bits = w.bits();
+        let mask = w.mask();
+        let a = self.read_op(instr, 0)? & mask;
+        let raw = self.read_op(instr, 1)? & if bits == 64 { 0x3f } else { 0x1f };
+        if raw == 0 {
+            // Compte nul : pas même un indicateur ne bouge.
+            return Ok(());
+        }
+
+        let through_carry = matches!(kind, RotateKind::CarryLeft | RotateKind::CarryRight);
+        let count = if through_carry {
+            // La retenue fait un bit de plus dans le tour.
+            match bits {
+                8 => raw % 9,
+                16 => raw % 17,
+                _ => raw,
+            }
+        } else {
+            raw % u64::from(bits)
+        };
+
+        let msb = 1u64 << (bits - 1);
+        let cf_before = self.cpu.flags.contains(RFlags::CF);
+        let mut cf = cf_before;
+        let mut v = a;
+        // Un cran à la fois : c'est lent, et c'est mot pour mot ce que
+        // dit le manuel — ce qui compte davantage ici.
+        for _ in 0..count {
+            match kind {
+                RotateKind::Left => {
+                    let top = v & msb != 0;
+                    v = ((v << 1) & mask) | u64::from(top);
+                    cf = top;
+                }
+                RotateKind::Right => {
+                    let bottom = v & 1;
+                    v = (v >> 1) | (bottom << (bits - 1));
+                    cf = bottom == 1;
+                }
+                RotateKind::CarryLeft => {
+                    let top = v & msb != 0;
+                    v = ((v << 1) & mask) | u64::from(cf);
+                    cf = top;
+                }
+                RotateKind::CarryRight => {
+                    let bottom = v & 1 == 1;
+                    v = (v >> 1) | (u64::from(cf) << (bits - 1));
+                    cf = bottom;
+                }
+            }
+        }
+        // `rol al, 8` ne change rien à AL mais renseigne tout de même la
+        // retenue : elle vaut le bit qui serait sorti.
+        match kind {
+            RotateKind::Left => cf = v & 1 == 1,
+            RotateKind::Right => cf = v & msb != 0,
+            _ => {}
+        }
+
+        let mut flags = self.cpu.flags;
+        flags.set(RFlags::CF, cf);
+        if raw == 1 {
+            let of = match kind {
+                RotateKind::Left | RotateKind::CarryLeft => (v & msb != 0) != cf,
+                RotateKind::Right => (v & msb != 0) != (v & (msb >> 1) != 0),
+                RotateKind::CarryRight => (a & msb != 0) != cf_before,
+            };
+            flags.set(RFlags::OF, of);
+        }
+        self.cpu.flags = flags;
+        self.write_op(instr, 0, v)?;
+        Ok(())
+    }
+
+    /// `shld`/`shrd` : la destination se décale, et les bits qui entrent
+    /// viennent de la source au lieu d'être des zéros. C'est ainsi qu'on
+    /// décale une valeur plus large qu'un registre.
+    fn double_shift(&mut self, instr: &Instruction, left: bool) -> Result<(), EmuError> {
+        let w = self.dest_width(instr)?;
+        let bits = w.bits();
+        let mask = w.mask();
+        let dest = self.read_op(instr, 0)? & mask;
+        let src = self.read_op(instr, 1)? & mask;
+        let count = (self.read_op(instr, 2)? & if bits == 64 { 0x3f } else { 0x1f }) as u32;
+        if count == 0 {
+            return Ok(());
+        }
+        if count >= bits {
+            // Intel laisse le résultat indéfini ; ne rien faire est la
+            // seule réponse qui ne raconte pas d'histoire.
+            return Ok(());
+        }
+
+        let (result, cf) = if left {
+            (
+                ((dest << count) | (src >> (bits - count))) & mask,
+                (dest >> (bits - count)) & 1 == 1,
+            )
+        } else {
+            (
+                ((dest >> count) | (src << (bits - count))) & mask,
+                (dest >> (count - 1)) & 1 == 1,
+            )
+        };
+
+        let mut flags = logic_flags(result, w);
+        flags.set(RFlags::CF, cf);
+        if count == 1 {
+            // Le signe a-t-il changé ? C'est tout ce que dit OF ici.
+            flags.set(RFlags::OF, (dest ^ result) & (1 << (bits - 1)) != 0);
+        }
+        self.cpu.flags.apply_arith(flags);
+        self.write_op(instr, 0, result)?;
+        Ok(())
+    }
+
+    /// `bt`, `bts`, `btr`, `btc` : le bit désigné part dans CF, et
+    /// l'instruction le laisse, le pose, l'efface ou le retourne.
+    fn bit_test(&mut self, instr: &Instruction, op: BitOp) -> Result<(), EmuError> {
+        let w = self.dest_width(instr)?;
+        let raw = self.read_op(instr, 1)?;
+
+        // Décalage dans un registre et destination en mémoire : le bit
+        // désigné n'est pas borné par l'opérande, il compte dans une
+        // suite d'octets. `bt [drapeaux], rax` avec RAX = 100 va donc
+        // chercher le treizième octet — ce qui permet de tester un
+        // tableau de bits sans calculer soi-même l'octet.
+        if instr.op_kind(0) == OpKind::Memory && instr.op_kind(1) == OpKind::Register {
+            let base = self.effective_address(instr, 0)?;
+            let offset = sign_extend(raw, self.src_width(instr, 1)?) as i64;
+            let addr = base.wrapping_add_signed(offset.div_euclid(8));
+            let bit = offset.rem_euclid(8) as u32;
+            let byte = u64::from(self.cpu.mem.read_u8(addr)?);
+            self.cpu.flags.set(RFlags::CF, (byte >> bit) & 1 == 1);
+            if let Some(new) = op.apply(byte, bit) {
+                self.record_memory(addr, 1);
+                self.cpu.mem.write_u8(addr, new as u8)?;
+            }
+            return Ok(());
+        }
+
+        let value = self.read_op(instr, 0)? & w.mask();
+        let bit = (raw & u64::from(w.bits() - 1)) as u32;
+        self.cpu.flags.set(RFlags::CF, (value >> bit) & 1 == 1);
+        if let Some(new) = op.apply(value, bit) {
+            self.write_op(instr, 0, new)?;
+        }
+        Ok(())
+    }
+
     /// `mul`, et la forme à un opérande d'`imul` : le produit est deux
     /// fois plus large que les opérandes, il déborde donc sur un second
     /// registre (AH, DX, EDX ou RDX selon la taille).
@@ -1625,7 +2222,10 @@ impl Emulator {
             | OpKind::Immediate8to16
             | OpKind::Immediate8to32
             | OpKind::Immediate8to64
-            | OpKind::Immediate32to64 => Ok(instr.immediate(op_index)),
+            | OpKind::Immediate32to64
+            // Le second immédiat d'`enter` : la seule instruction du jeu
+            // qui en porte deux.
+            | OpKind::Immediate8_2nd => Ok(instr.immediate(op_index)),
             other => Err(EmuError::UnsupportedOperand {
                 backend: Self::NAME,
                 role: OperandRole::Read,
@@ -1666,6 +2266,7 @@ impl Emulator {
             memory: Vec::new(),
             frames: FrameChange::None,
             heap: self.heap,
+            ticks: self.ticks,
         });
     }
 
@@ -1710,6 +2311,7 @@ impl Emulator {
         }
         self.input_closed = undo.input_closed;
         self.heap = undo.heap;
+        self.ticks = undo.ticks;
         match undo.frames {
             FrameChange::None => {}
             FrameChange::Pushed => {
@@ -1784,6 +2386,9 @@ impl Emulator {
 
     fn get_reg(&self, reg: Register) -> Result<u64, EmuError> {
         let (r, w) = map_register(reg)?;
+        if is_high_byte(reg) {
+            return Ok(u64::from(self.cpu.regs.get8h(r)));
+        }
         Ok(match w {
             Width::W64 => self.cpu.regs.get64(r),
             Width::W32 => self.cpu.regs.get32(r) as u64,
@@ -1794,6 +2399,10 @@ impl Emulator {
 
     fn set_reg(&mut self, reg: Register, value: u64) -> Result<(), EmuError> {
         let (r, w) = map_register(reg)?;
+        if is_high_byte(reg) {
+            self.cpu.regs.set8h(r, value as u8);
+            return Ok(());
+        }
         match w {
             Width::W64 => self.cpu.regs.set64(r, value),
             Width::W32 => self.cpu.regs.set32(r, value as u32),
@@ -1879,15 +2488,16 @@ mod tests {
     #[test]
     fn a_failed_step_leaves_rip_on_the_offending_instruction() {
         let mut mem = namsdec_core::Memory::new(0x400000, 0x1000);
-        // `cpuid` (0F A2) : parfaitement décodable, mais pas exécutée par
-        // cet interpréteur.
-        mem.load(0x400000, &[0x0f, 0xa2]).unwrap();
+        // `in al, dx` (EC) : parfaitement décodable, et jamais exécutée
+        // ici — il n'y a pas de ports d'entrée-sortie dans une machine
+        // qui n'a pas de matériel.
+        mem.load(0x400000, &[0xec]).unwrap();
         let mut cpu = namsdec_core::Cpu::new(mem);
         cpu.regs.rip = 0x400000;
         let mut emu = Emulator::new(cpu);
 
         for attempt in 1..=3 {
-            let err = emu.step().expect_err("cpuid n'est pas supporté");
+            let err = emu.step().expect_err("`in` n'est pas supportée");
             assert!(
                 matches!(err, EmuError::UnsupportedInstruction { .. }),
                 "obtenu {err:?}"
@@ -3399,5 +4009,503 @@ _start:
             start,
             "défaire le pas rend aussi la mémoire"
         );
+    }
+    /// Diviser un nombre négatif demande d'abord d'étendre son signe dans
+    /// RDX : sans `cqo`, `idiv` divise par un reste oublié.
+    #[test]
+    fn sign_extension_prepares_a_signed_division() {
+        let emu = run_program(
+            "\
+section .text
+    global _start
+_start:
+    mov rax, -17
+    cqo                 ; RDX:RAX = -17 sur 128 bits
+    mov rbx, 5
+    idiv rbx            ; RAX = -3, RDX = -2
+
+    mov r13, rax        ; le quotient, mis à l'abri
+    mov r14, rdx        ; et le reste
+
+    mov r8b, -3
+    movsx r9, r8b       ; comparaison : la même idée, sur un registre
+    mov al, -5
+    cbw                 ; AL -> AX
+    mov r10w, ax
+    mov eax, -6
+    cdqe                ; EAX -> RAX
+    mov r11, rax
+    hlt
+",
+            &[],
+        );
+        assert_eq!(emu.cpu.regs.get64(Reg64::R13) as i64, -3, "quotient");
+        assert_eq!(emu.cpu.regs.get64(Reg64::R14) as i64, -2, "reste");
+        assert_eq!(emu.cpu.regs.get64(Reg64::R9) as i64, -3);
+        assert_eq!(emu.cpu.regs.get16(Reg64::R10) as i16, -5, "cbw");
+        assert_eq!(emu.cpu.regs.get64(Reg64::R11) as i64, -6, "cdqe");
+    }
+
+    /// Les rotations font ressortir par le bas ce qui sort par le haut —
+    /// et `rcl`/`rcr` font passer le bit par la retenue.
+    #[test]
+    fn rotations_bring_back_what_a_shift_would_lose() {
+        let emu = run_program(
+            "\
+section .text
+    global _start
+_start:
+    mov al, 10000001b
+    rol al, 1           ; 00000011b, CF = 1
+    mov bl, al
+
+    mov cl, 00000011b
+    ror cl, 1           ; 10000001b, CF = 1
+
+    stc
+    mov dl, 00000001b
+    rcl dl, 1           ; la retenue entre par le bas : 00000011b
+
+    mov sil, 11111111b
+    rol sil, 8          ; un tour complet : rien ne change
+    hlt
+",
+            &[],
+        );
+        assert_eq!(emu.cpu.regs.get8l(Reg64::Rbx), 0b0000_0011, "rol");
+        assert_eq!(emu.cpu.regs.get8l(Reg64::Rcx), 0b1000_0001, "ror");
+        assert_eq!(emu.cpu.regs.get8l(Reg64::Rdx), 0b0000_0011, "rcl");
+        assert_eq!(
+            emu.cpu.regs.get64(Reg64::Rsi) & 0xff,
+            0xff,
+            "un tour entier"
+        );
+        assert!(
+            emu.cpu.flags.contains(RFlags::CF),
+            "le bit sorti reste dans la retenue"
+        );
+    }
+
+    /// Le bit désigné : `bt` le lit, `bts` le pose, et sur une zone
+    /// mémoire le décalage n'est pas borné par l'opérande — c'est ce qui
+    /// permet de traiter un tableau de bits.
+    #[test]
+    fn the_bit_instructions_find_set_and_count_bits() {
+        let emu = run_program(
+            "\
+section .bss
+    drapeaux resb 32
+
+section .text
+    global _start
+_start:
+    mov rax, 1000b
+    bt rax, 3           ; CF = 1
+    setc r8b
+    bts rax, 4          ; rax = 11000b
+    btr rax, 3          ; rax = 10000b
+    btc rax, 0          ; rax = 10001b
+    mov r9, rax
+
+    mov rcx, 100        ; le centième bit : treizième octet, bit 4
+    bts [drapeaux], rcx
+    movzx r10, byte [drapeaux + 12]
+
+    mov rax, 0x100
+    bsf rbx, rax        ; 8
+    bsr rdx, rax        ; 8
+    mov rax, 0xff00
+    popcnt rsi, rax     ; 8
+    tzcnt rdi, rax      ; 8
+    lzcnt r11, rax      ; 48
+    hlt
+",
+            &[],
+        );
+        assert_eq!(emu.cpu.regs.get8l(Reg64::R8), 1, "bt a mis CF");
+        assert_eq!(emu.cpu.regs.get64(Reg64::R9), 0b1_0001);
+        assert_eq!(emu.cpu.regs.get64(Reg64::R10), 1 << 4, "le centième bit");
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rbx), 8, "bsf");
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rdx), 8, "bsr");
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rsi), 8, "popcnt");
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rdi), 8, "tzcnt");
+        assert_eq!(emu.cpu.regs.get64(Reg64::R11), 48, "lzcnt");
+    }
+
+    /// `xadd` et `cmpxchg` sont les deux instructions sur lesquelles
+    /// reposent les compteurs et les verrous : elles lisent et écrivent
+    /// dans le même souffle.
+    #[test]
+    fn exchange_instructions_swap_and_compare() {
+        let emu = run_program(
+            "\
+section .text
+    global _start
+_start:
+    mov rax, 10
+    mov rbx, 3
+    xadd rax, rbx       ; rax = 13, rbx = 10
+    mov r11, rax        ; la somme, avant que cmpxchg ne reprenne RAX
+
+    mov rcx, 5
+    mov rax, 5
+    mov rdx, 42
+    cmpxchg rcx, rdx    ; rax == rcx : rcx prend 42, ZF = 1
+    setz r8b
+
+    mov rax, 0          ; cette fois la comparaison échoue
+    mov rsi, 7
+    cmpxchg rsi, rdx    ; rax reçoit 7, rsi ne bouge pas
+    setz r9b
+
+    mov r10d, 0x11223344
+    bswap r10d          ; 0x44332211
+    hlt
+",
+            &[],
+        );
+        assert_eq!(emu.cpu.regs.get64(Reg64::R11), 13, "xadd : la somme");
+        assert_eq!(
+            emu.cpu.regs.get64(Reg64::Rbx),
+            10,
+            "xadd : l'ancienne valeur"
+        );
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rcx), 42, "l'échange a eu lieu");
+        assert_eq!(emu.cpu.regs.get8l(Reg64::R8), 1);
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rsi), 7, "l'échange a échoué");
+        assert_eq!(emu.cpu.regs.get8l(Reg64::R9), 0);
+        assert_eq!(
+            emu.cpu.regs.get64(Reg64::Rax),
+            7,
+            "un cmpxchg qui échoue rend la valeur trouvée"
+        );
+        assert_eq!(emu.cpu.regs.get32(Reg64::R10), 0x4433_2211, "bswap");
+    }
+
+    /// Les indicateurs se posent aussi à la main, et se rangent sur la
+    /// pile — ce qu'il faut pour écrire une routine qui ne perturbe pas
+    /// l'état de celle qui l'appelle.
+    #[test]
+    fn flags_can_be_set_saved_and_restored() {
+        let emu = run_program(
+            "\
+section .text
+    global _start
+_start:
+    stc
+    pushfq              ; la retenue part sur la pile
+    clc
+    setc r8b            ; 0
+    popfq
+    setc r9b            ; 1 : elle est revenue
+
+    cmc                 ; et elle se retourne
+    setc r10b           ; 0
+
+    stc
+    lahf                ; les indicateurs dans AH
+    mov dl, ah          ; (AH ne se lit pas dans une instruction à REX)
+    movzx r11, dl
+    clc
+    sahf                ; et retour
+    setc r12b           ; 1
+    hlt
+",
+            &[],
+        );
+        assert_eq!(emu.cpu.regs.get8l(Reg64::R8), 0);
+        assert_eq!(emu.cpu.regs.get8l(Reg64::R9), 1, "popfq a rendu la retenue");
+        assert_eq!(emu.cpu.regs.get8l(Reg64::R10), 0, "cmc l'a retournée");
+        assert_eq!(
+            emu.cpu.regs.get64(Reg64::R11) & 0x03,
+            0x03,
+            "lahf : CF posée, et le bit 1 toujours à 1"
+        );
+        assert_eq!(emu.cpu.regs.get8l(Reg64::R12), 1, "sahf l'a rendue");
+    }
+
+    /// Boucles conditionnelles, saut sur RCX nul, cadre de pile par
+    /// `enter`, et la table de `xlatb`.
+    #[test]
+    fn loops_frames_and_tables() {
+        let emu = run_program(
+            "\
+section .data
+    table db 'a', 'b', 'c', 'd'
+
+section .text
+    global _start
+_start:
+    mov rcx, 10
+    xor rax, rax
+compte:
+    inc rax
+    cmp rax, 4
+    loopne compte       ; s'arrête sur l'égalité, RCX non nul
+    mov r13, rax        ; mis à l'abri : xlatb reprendra RAX
+    mov r14, rcx        ; de même pour RCX, remis à zéro plus bas
+
+    xor rcx, rcx
+    jrcxz vide          ; RCX est nul : on saute
+    mov rbx, 1          ; sautée
+vide:
+    mov rbx, 2
+
+    mov rbp, rsp
+    enter 32, 0         ; cadre de 32 octets
+    mov r8, rsp
+    mov r9, rbp
+    leave
+
+    mov rbx, table
+    mov al, 2
+    xlatb               ; AL = table[2] = 'c'
+    mov r10b, al
+    hlt
+",
+            &[],
+        );
+        assert_eq!(emu.cpu.regs.get64(Reg64::R13), 4, "loopne s'arrête sur ZF");
+        assert_eq!(
+            emu.cpu.regs.get64(Reg64::R14),
+            6,
+            "et RCX a compté les tours"
+        );
+        assert_eq!(emu.cpu.regs.get8l(Reg64::R10), b'c', "xlatb a lu la table");
+        assert_eq!(
+            emu.cpu.regs.get64(Reg64::R9) - emu.cpu.regs.get64(Reg64::R8),
+            32,
+            "enter a réservé 32 octets sous RBP"
+        );
+    }
+
+    /// `shld`/`shrd` décalent une valeur plus large qu'un registre : les
+    /// bits qui entrent viennent de l'autre moitié, et non de zéros.
+    #[test]
+    fn double_shifts_carry_bits_across_registers() {
+        let emu = run_program(
+            "\
+section .text
+    global _start
+_start:
+    mov rax, 0xff00000000000000
+    mov rbx, 0x8000000000000000
+    shld rax, rbx, 4    ; rax = 0xf000...008
+    mov r8, rax
+
+    mov rcx, 0x0f
+    mov rdx, 0xf0
+    shrd rcx, rdx, 4    ; rcx = 0x0000...00 | (0xf0 << 60)
+    mov r9, rcx
+    hlt
+",
+            &[],
+        );
+        assert_eq!(emu.cpu.regs.get64(Reg64::R8), 0xf000_0000_0000_0008, "shld");
+        assert_eq!(emu.cpu.regs.get64(Reg64::R9), 0x0000_0000_0000_0000, "shrd");
+    }
+
+    /// `rdtsc` compte les instructions exécutées : un temps qui a un sens
+    /// ici, et qui revient en arrière avec le pas arrière.
+    #[test]
+    fn rdtsc_counts_the_instructions_and_steps_back() {
+        let mut emu = load_only(
+            "\
+section .text
+    global _start
+_start:
+    rdtsc
+    mov r8, rax
+    rdtsc
+    mov r9, rax
+    hlt
+",
+            &[],
+        );
+        emu.run(100).expect("exécution");
+        let first = emu.cpu.regs.get64(Reg64::R8);
+        let second = emu.cpu.regs.get64(Reg64::R9);
+        assert_eq!(first, 1, "le premier rdtsc est la première instruction");
+        assert_eq!(second, 3, "deux instructions plus loin");
+        while emu.can_step_back() {
+            emu.step_back();
+        }
+        assert_eq!(emu.ticks, 0, "revenir au départ remet le compteur à zéro");
+    }
+    /// AH, BH, CH, DH : l'octet haut des quatre registres historiques.
+    /// Un vestige du 8086, mais tous les cours d'assembleur passent par
+    /// lui — et il ne se confond pas avec l'octet bas.
+    #[test]
+    fn the_high_byte_registers_are_not_the_low_ones() {
+        let emu = run_program(
+            "\
+section .text
+    global _start
+_start:
+    mov rax, 0x1122
+    mov ah, 0xff        ; seul l'octet haut change
+    mov bl, al          ; l'octet bas est intact
+    mov cl, ah
+    mov dx, ax
+    hlt
+",
+            &[],
+        );
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rax), 0xff22, "ah seul a changé");
+        assert_eq!(emu.cpu.regs.get8l(Reg64::Rbx), 0x22, "al n'a pas bougé");
+        assert_eq!(emu.cpu.regs.get8l(Reg64::Rcx), 0xff, "ah se lit");
+        assert_eq!(emu.cpu.regs.get16(Reg64::Rdx), 0xff22);
+    }
+
+    /// Ce qui ne simule rien mais doit tout de même passer : les barrières
+    /// mémoire, `pause`, et le `endbr64` que tout compilateur pose en tête
+    /// de fonction depuis que les processeurs vérifient les sauts.
+    #[test]
+    fn the_instructions_that_do_nothing_still_run() {
+        let emu = run_program(
+            "\
+section .data
+    mot dd 0x11223344
+
+section .text
+    global _start
+_start:
+    endbr64
+    pause
+    mfence
+    lfence
+    sfence
+    movbe eax, [mot]    ; 0x44332211 : les octets à l'envers
+    mov r8d, eax
+    xchg r8, r9
+    hlt
+",
+            &[],
+        );
+        assert_eq!(
+            emu.cpu.regs.get64(Reg64::R9),
+            0x4433_2211,
+            "movbe, puis xchg"
+        );
+        assert_eq!(emu.cpu.regs.get64(Reg64::R8), 0);
+    }
+
+    /// `int3` arrête le programme là où il est — c'est le point d'arrêt
+    /// qu'un programme se pose à lui-même — et `ud2` échoue exprès.
+    #[test]
+    fn int3_stops_and_ud2_faults() {
+        let mut emu = load_only(
+            "\
+section .text
+    global _start
+_start:
+    mov rax, 1
+    int3
+    mov rax, 2
+    ud2
+",
+            &[],
+        );
+        assert_eq!(emu.run(100).unwrap(), RunStop::Halted);
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rax), 1, "arrêté sur l'int3");
+
+        // On repart : l'arrêt n'est pas la fin du programme.
+        emu.cpu.halted = false;
+        let err = emu.run(100).expect_err("ud2 doit échouer");
+        assert!(
+            matches!(err, EmuError::InvalidInstruction { .. }),
+            "obtenu {err:?}"
+        );
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rax), 2);
+    }
+    /// Les instructions de bits récentes : elles font en une fois ce qui
+    /// demandait un masque et deux décalages, sans toucher aux
+    /// indicateurs qu'un calcul en cours pourrait attendre.
+    #[test]
+    fn the_modern_bit_instructions_shift_extract_and_multiply() {
+        let emu = run_program(
+            "\
+section .text
+    global _start
+_start:
+    mov rax, 0xff
+    mov rcx, 4
+    shlx rbx, rax, rcx      ; 0xff0
+    shrx rdx, rax, rcx      ; 0x0f
+    mov rsi, -16
+    sarx rdi, rsi, rcx      ; -1 : le signe est recopié
+    rorx r8, rax, 4         ; 0xf00000000000000f
+
+    mov r9, 0b1011000
+    blsi r10, r9            ; le bit bas posé : 0b1000
+    blsr r11, r9            ; le même, effacé : 0b1010000
+    andn r12, r9, rax       ; ~r9 & 0xff = 0b10100111
+
+    mov rax, 0x1234
+    mov rcx, 0x0804         ; huit bits (0x08) à partir du quatrième (0x04)
+    bextr r13, rax, rcx     ; 0x23
+    mov rcx, 8
+    bzhi r14, rax, rcx      ; on ne garde que les huit bas : 0x34
+
+    mov rdx, 0x1_0000_0000
+    mov r15, 4
+    mulx rbx, rsi, r15      ; rdx * r15 = 0x4_0000_0000
+    hlt
+",
+            &[],
+        );
+        assert_eq!(
+            emu.cpu.regs.get64(Reg64::Rbx) as i64,
+            0,
+            "mulx : la moitié haute"
+        );
+        assert_eq!(
+            emu.cpu.regs.get64(Reg64::Rsi),
+            0x4_0000_0000,
+            "mulx : la basse"
+        );
+        assert_eq!(
+            emu.cpu.regs.get64(Reg64::Rdi) as i64,
+            -1,
+            "sarx recopie le signe"
+        );
+        assert_eq!(emu.cpu.regs.get64(Reg64::R8), 0xf000_0000_0000_000f, "rorx");
+        assert_eq!(emu.cpu.regs.get64(Reg64::R10), 0b1000, "blsi");
+        assert_eq!(emu.cpu.regs.get64(Reg64::R11), 0b101_0000, "blsr");
+        assert_eq!(emu.cpu.regs.get64(Reg64::R12), 0b1010_0111, "andn");
+        assert_eq!(emu.cpu.regs.get64(Reg64::R13), 0x23, "bextr");
+        assert_eq!(emu.cpu.regs.get64(Reg64::R14), 0x34, "bzhi");
+    }
+
+    /// `cpuid` ne peut annoncer aucune extension sans mentir : il se nomme
+    /// et s'arrête là.
+    #[test]
+    fn cpuid_says_who_it_is_and_promises_nothing() {
+        let emu = run_program(
+            "\
+section .text
+    global _start
+_start:
+    xor eax, eax
+    cpuid
+    mov r8, rbx
+    mov r9, rcx
+    mov r10, rdx
+    mov r11, rax
+
+    mov eax, 1
+    cpuid                   ; aucune extension annoncée
+    mov r12, rdx
+    hlt
+",
+            &[],
+        );
+        let mut vendor = Vec::new();
+        for part in [Reg64::R8, Reg64::R10, Reg64::R9] {
+            vendor.extend_from_slice(&(emu.cpu.regs.get32(part)).to_le_bytes());
+        }
+        assert_eq!(&vendor, b"namsdec emu\0", "obtenu {vendor:?}");
+        assert_eq!(emu.cpu.regs.get64(Reg64::R11), 0, "aucune feuille au-delà");
+        assert_eq!(emu.cpu.regs.get64(Reg64::R12), 0, "aucun bit de capacité");
     }
 }
