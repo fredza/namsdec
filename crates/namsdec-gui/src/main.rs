@@ -35,6 +35,10 @@ const MEM_SIZE: usize = 0x10000;
 const STACK_TOP: u64 = BASE_ADDR + MEM_SIZE as u64 - 0x100;
 /// Le plafond du tas. Il monte vers la pile, qui descend vers lui : ce
 /// qui les sépare est ce que la pile a le droit de consommer.
+/// Combien d'octets du tas l'onglet montre d'un coup. Au-delà, c'est
+/// l'onglet Mémoire qui prend le relais — avec son champ d'adresse, qui
+/// sait aller n'importe où.
+const HEAP_DUMP_BYTES: usize = 256;
 const HEAP_LIMIT: u64 = BASE_ADDR + MEM_SIZE as u64 - 0x2000;
 // Le tas monte, la pile descend : ce qui les sépare doit rester assez
 // grand pour que la seconde ne soit jamais écrasée par le premier. Une
@@ -127,16 +131,23 @@ const DEFAULT_THEME: &Theme = &namsdec_theme::VSCODE_DARK;
 enum SidebarTab {
     Stack,
     Memory,
+    Heap,
     Re,
 }
 
 impl SidebarTab {
-    const ALL: [SidebarTab; 3] = [SidebarTab::Stack, SidebarTab::Memory, SidebarTab::Re];
+    const ALL: [SidebarTab; 4] = [
+        SidebarTab::Stack,
+        SidebarTab::Memory,
+        SidebarTab::Heap,
+        SidebarTab::Re,
+    ];
 
     fn label(self, s: &Strings) -> &'static str {
         match self {
             SidebarTab::Stack => s.tab_stack,
             SidebarTab::Memory => s.tab_memory,
+            SidebarTab::Heap => s.tab_heap,
             SidebarTab::Re => s.tab_re,
         }
     }
@@ -542,6 +553,10 @@ fn palette_commands(s: &Strings, show_re_tab: bool) -> Vec<(String, PaletteComma
         (
             format!("{}: {}", s.menu_view, s.tab_memory),
             PaletteCommand::GoTab(SidebarTab::Memory),
+        ),
+        (
+            format!("{}: {}", s.menu_view, s.tab_heap),
+            PaletteCommand::GoTab(SidebarTab::Heap),
         ),
         (
             format!("{}: {}", s.menu_view, s.tab_output),
@@ -2934,6 +2949,7 @@ impl NamsdecApp {
         match self.active_tab {
             SidebarTab::Stack => self.stack_ui(ui),
             SidebarTab::Memory => self.memory_ui(ui),
+            SidebarTab::Heap => self.heap_ui(ui),
             SidebarTab::Re => self.re_ui(ui),
         }
     }
@@ -3282,6 +3298,77 @@ impl NamsdecApp {
         let addr = emulator.cpu().regs.get64(Reg64::Rsp).saturating_sub(16);
         let dump = safe_hexdump(&emulator.cpu().mem, addr, 64, s.address_out_of_range);
         hexdump_ui(ui, "stack_dump", &dump);
+    }
+
+    /// Le tas : ce que `brk` a donné au programme, et ce qu'il en reste.
+    ///
+    /// Un débogueur montre la pile parce qu'elle est sous RSP, où il sait
+    /// regarder. Le tas, lui, n'a pas de registre : sans le noyau, on ne
+    /// sait pas où il commence ni où il s'arrête. L'émulateur, qui tient
+    /// la frontière lui-même, peut la montrer — c'est tout l'intérêt.
+    fn heap_ui(&mut self, ui: &mut egui::Ui) {
+        let s = strings(self.lang);
+        let theme = self.theme;
+        let Some(emulator) = &self.emulator else {
+            ui.label(s.no_binary_assembled);
+            return;
+        };
+        let heap = emulator.heap();
+        let room = heap.limit().saturating_sub(heap.start());
+        // Le vidage est calculé tant que l'émulateur est emprunté : les
+        // boutons, eux, écrivent dans `self` et viennent après.
+        let dump = safe_hexdump(
+            &emulator.cpu().mem,
+            heap.start(),
+            (heap.len() as usize).min(HEAP_DUMP_BYTES),
+            s.address_out_of_range,
+        );
+
+        let bound = |ui: &mut egui::Ui, label: &str, addr: u64, colour: egui::Color32| {
+            ui.colored_label(theme.dim, label);
+            ui.colored_label(
+                colour,
+                egui::RichText::new(format!("{addr:#x}")).monospace(),
+            );
+            ui.end_row();
+        };
+        egui::Grid::new("heap_bounds")
+            .num_columns(2)
+            .spacing([12.0, 4.0])
+            .show(ui, |ui| {
+                bound(ui, s.heap_start, heap.start(), theme.text);
+                // La rupture est la seule des trois qui bouge : elle
+                // porte donc la couleur de ce qui vient de changer.
+                bound(ui, s.heap_break, heap.current(), theme.changed);
+                bound(ui, s.heap_limit, heap.limit(), theme.text);
+                ui.colored_label(theme.dim, s.heap_used);
+                ui.monospace(format!("{} / {} {}", heap.len(), room, s.unit_bytes));
+                ui.end_row();
+            });
+
+        // La jauge dit d'un coup d'œil ce que trois adresses hexadécimales
+        // demandent de soustraire.
+        let filled = if room == 0 {
+            0.0
+        } else {
+            heap.len() as f32 / room as f32
+        };
+        ui.add(egui::ProgressBar::new(filled).desired_height(6.0));
+        ui.add_space(2.0);
+        ui.colored_label(theme.dim, egui::RichText::new(s.heap_hint).small());
+        ui.separator();
+
+        if heap.is_empty() {
+            ui.colored_label(theme.dim, s.heap_empty);
+            return;
+        }
+        if framed_button(ui, theme, s.heap_inspect).clicked() {
+            self.mem_addr = heap.start();
+            self.mem_addr_input = format!("{:#x}", heap.start());
+            self.active_tab = SidebarTab::Memory;
+        }
+        ui.add_space(4.0);
+        hexdump_ui(ui, "heap_dump", &dump);
     }
 
     /// Les zones surveillées, avec leur valeur courante et de quoi les
@@ -4207,7 +4294,14 @@ fn hexdump_ui(ui: &mut egui::Ui, id: &str, dump: &str) {
         .id_salt(id)
         .auto_shrink([false, false])
         .show(ui, |ui| {
-            ui.monospace(dump);
+            // Sans `Extend`, seize octets et leur transcription se
+            // replient à la largeur du panneau : une ligne sur deux part
+            // à la ligne et le vidage devient illisible. C'est pour ça
+            // que la zone défile aussi horizontalement.
+            ui.add(
+                egui::Label::new(egui::RichText::new(dump).monospace())
+                    .wrap_mode(egui::TextWrapMode::Extend),
+            );
         });
 }
 
@@ -6671,7 +6765,7 @@ _start:
             .filter(|tab| app.show_re_tab || **tab != SidebarTab::Re)
             .map(|tab| tab.label(strings(Lang::Fr)))
             .collect();
-        assert_eq!(shown, ["Pile", "Mémoire"]);
+        assert_eq!(shown, ["Pile", "Mémoire", "Tas"]);
 
         // Ce qu'on coche dans Préférences vaut pour la session, et ne
         // part pas dans les réglages enregistrés.
@@ -7046,5 +7140,78 @@ _start:
             }
             _ => panic!("un binaire trop gros doit tout de même se charger"),
         }
+    }
+    /// L'onglet Tas montre la frontière que `brk` déplace. Aucun registre
+    /// ne la porte : sans l'émulateur qui la tient, ni l'utilisateur ni un
+    /// débogueur ne sauraient où la chercher.
+    #[test]
+    fn the_heap_tab_shows_the_break_the_program_moved() {
+        if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+            return;
+        }
+        let mut app = NamsdecApp {
+            active_tab: SidebarTab::Heap,
+            source: "\
+section .text
+    global _start
+_start:
+    mov rax, 12
+    xor rdi, rdi
+    syscall
+    mov rdi, rax
+    add rdi, 4096
+    mov rax, 12
+    syscall
+    hlt
+"
+            .to_owned(),
+            ..Default::default()
+        };
+        app.do_assemble();
+
+        let heap = app.emulator.as_ref().unwrap().heap();
+        assert_eq!(heap.len(), 0, "rien n'est demandé avant de tourner");
+
+        for _ in 0..10 {
+            app.do_step();
+        }
+        let heap = app.emulator.as_ref().unwrap().heap();
+        assert_eq!(heap.len(), 4096, "le programme a pris 4 Kio");
+
+        let ctx = egui::Context::default();
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1280.0, 820.0),
+            )),
+            ..Default::default()
+        };
+        let mut painted = String::new();
+        for _ in 0..2 {
+            painted.clear();
+            let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+            for clipped in &output.shapes {
+                if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                    painted.push_str(text.galley.text());
+                    painted.push('\n');
+                }
+            }
+            output.textures_delta.clear();
+        }
+
+        for expected in [
+            format!("{:#x}", heap.start()),
+            format!("{:#x}", heap.current()),
+            format!("{:#x}", heap.limit()),
+        ] {
+            assert!(
+                painted.contains(&expected),
+                "l'onglet doit montrer {expected} ; peint : {painted}"
+            );
+        }
+        assert!(
+            painted.contains("4096 / "),
+            "il doit dire ce qui est pris sur ce qui reste"
+        );
     }
 }

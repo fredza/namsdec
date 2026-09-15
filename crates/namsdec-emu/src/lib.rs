@@ -346,6 +346,10 @@ pub trait Backend {
     /// l'exécution est au niveau du programme principal.
     fn frames(&self) -> &[Frame];
 
+    /// Le tas : où il commence, où `brk` l'a laissé, jusqu'où il peut
+    /// monter. Un moteur qui n'en simule pas rend un tas vide.
+    fn heap(&self) -> Heap;
+
     /// Ce que le programme a écrit sur sa sortie standard depuis le
     /// démarrage.
     fn output(&self) -> &[u8];
@@ -494,6 +498,10 @@ impl Backend for Emulator {
 
     fn frames(&self) -> &[Frame] {
         Emulator::frames(self)
+    }
+
+    fn heap(&self) -> Heap {
+        Emulator::heap(self)
     }
 
     fn output(&self) -> &[u8] {
