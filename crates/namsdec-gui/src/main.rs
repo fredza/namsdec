@@ -2068,24 +2068,29 @@ impl NamsdecApp {
         egui::ScrollArea::vertical()
             .max_height(320.0)
             .show(ui, |ui| {
-                for listed in namsdec_theme::all() {
-                    let active = std::ptr::eq(self.theme, listed);
-                    let response = theme_card(ui, listed, active, s.plugins_active);
-                    if response.clicked() && !active {
-                        self.theme = listed;
-                        self.apply_theme(&ctx);
-                    }
-                    // Seuls les thèmes venus d'un fichier se retirent :
-                    // les trois d'origine ne figurent pas dans cette
-                    // table, aucun bouton ne les propose donc.
-                    if self.theme_files.contains_key(listed.id) {
-                        ui.horizontal(|ui| {
-                            ui.add_space(12.0);
-                            if framed_button(ui, theme, s.plugins_remove).clicked() {
-                                self.theme_to_remove = Some(listed.id.to_owned());
-                            }
-                        });
-                    }
+                let themes = namsdec_theme::all();
+                let card_width = theme_card_width(ui, &themes, s.plugins_active);
+                for listed in themes {
+                    ui.horizontal(|ui| {
+                        let active = std::ptr::eq(self.theme, listed);
+                        let response = theme_card(ui, listed, active, s.plugins_active, card_width);
+                        if response.clicked() && !active {
+                            self.theme = listed;
+                            self.apply_theme(&ctx);
+                        }
+                        // Seuls les thèmes venus d'un fichier se
+                        // retirent : les trois d'origine ne figurent pas
+                        // dans cette table, aucun bouton ne les propose
+                        // donc. Et comme les vignettes ont toutes la même
+                        // largeur, les boutons tombent les uns sous les
+                        // autres.
+                        if self.theme_files.contains_key(listed.id)
+                            && framed_button(ui, theme, s.plugins_remove).clicked()
+                        {
+                            self.theme_to_remove = Some(listed.id.to_owned());
+                        }
+                    });
+                    ui.add_space(4.0);
                 }
             });
 
@@ -3806,9 +3811,20 @@ fn framed_button(ui: &mut egui::Ui, theme: &Theme, label: &str) -> egui::Respons
     )
 }
 
-fn theme_card(ui: &mut egui::Ui, theme: &Theme, active: bool, active_word: &str) -> egui::Response {
-    let (rect, response) =
-        ui.allocate_exact_size(egui::vec2(ui.available_width(), 44.0), egui::Sense::click());
+/// La vignette d'un thème, de largeur imposée.
+///
+/// Imposée, et non « toute la place » : les boutons « Retirer » qui la
+/// suivent doivent s'aligner d'une ligne à l'autre, donc toutes les
+/// vignettes doivent finir à la même abscisse — celle que dicte le nom
+/// le plus long (voir `theme_card_width`).
+fn theme_card(
+    ui: &mut egui::Ui,
+    theme: &Theme,
+    active: bool,
+    active_word: &str,
+    width: f32,
+) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(width, 44.0), egui::Sense::click());
 
     if ui.is_rect_visible(rect) {
         let visuals = ui.style().interact_selectable(&response, active);
@@ -3866,8 +3882,32 @@ fn theme_card(ui: &mut egui::Ui, theme: &Theme, active: bool, active_word: &str)
         }
     }
 
-    ui.add_space(4.0);
     response
+}
+
+/// La largeur commune des vignettes : de quoi loger la plus longue des
+/// étiquettes — le nom, et « actif » qui le suit quand le thème l'est.
+///
+/// Mesurée sur les polices réelles plutôt qu'estimée : un thème installé
+/// peut s'appeler « Solarized Light Extra Contrast », et les boutons
+/// doivent rester alignés.
+fn theme_card_width(ui: &egui::Ui, themes: &[&Theme], active_word: &str) -> f32 {
+    let text_width = |text: &str, size: f32| {
+        ui.painter()
+            .layout_no_wrap(
+                text.to_owned(),
+                egui::FontId::proportional(size),
+                egui::Color32::PLACEHOLDER,
+            )
+            .size()
+            .x
+    };
+    let widest_name = themes
+        .iter()
+        .map(|theme| text_width(theme.name, 14.0))
+        .fold(0.0_f32, f32::max);
+    // Vignette (8 + 58) + espace (10) + nom + espace + « actif » + marge.
+    76.0 + widest_name + 12.0 + text_width(active_word, 12.0) + 10.0
 }
 
 /// Une ligne de la vue d'ensemble des modules : nom, version, point coloré
@@ -5050,6 +5090,95 @@ _start:
              obtenu : {width}"
         );
         assert!(width >= SIDEBAR_MIN_WIDTH, "obtenu : {width}");
+    }
+
+    /// Les vignettes de thème ont toutes la même largeur, celle que
+    /// dicte le nom le plus long — c'est ce qui fait tomber les boutons
+    /// « Retirer » les uns sous les autres, au lieu de les décaler au
+    /// gré de la longueur des noms.
+    #[test]
+    fn theme_cards_share_a_width_set_by_the_longest_name() {
+        let ctx = egui::Context::default();
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            // « Tokyo Night » est plus court que « VS Code Light+ ».
+            let court = [&namsdec_theme::TOKYO_NIGHT];
+            let long = [&namsdec_theme::TOKYO_NIGHT, &namsdec_theme::VSCODE_LIGHT];
+
+            let avec_court = theme_card_width(ui, &court, "actif");
+            let avec_long = theme_card_width(ui, &long, "actif");
+            assert!(
+                avec_long > avec_court,
+                "un nom plus long élargit toutes les vignettes : {avec_long} contre {avec_court}"
+            );
+
+            // Le même jeu de thèmes donne toujours la même largeur, quel
+            // que soit l'ordre : c'est ce qui les aligne.
+            let inverse = [&namsdec_theme::VSCODE_LIGHT, &namsdec_theme::TOKYO_NIGHT];
+            assert_eq!(avec_long, theme_card_width(ui, &inverse, "actif"));
+
+            // Et le mot « actif » compte : il s'affiche à droite du nom,
+            // dans la vignette.
+            assert!(theme_card_width(ui, &long, "actif") > avec_long - 1.0);
+            assert!(
+                theme_card_width(ui, &long, "actuellement actif") > avec_long,
+                "un mot plus long élargit la vignette d'autant"
+            );
+        });
+        output.textures_delta.clear();
+    }
+
+    /// Les boutons « Retirer » tombent les uns sous les autres, quelle
+    /// que soit la longueur des noms — c'est ce qu'on attend d'une liste,
+    /// et ce qu'un nom court aurait défait si la vignette s'y ajustait.
+    #[test]
+    fn the_remove_buttons_line_up_whatever_the_names() {
+        // Deux thèmes installés, aux noms de longueurs très différentes.
+        let dir = tempfile::tempdir().unwrap();
+        let sample = std::fs::read_to_string(EXTERNAL_ABYSS).unwrap_or_else(|_| return_sample());
+        let mut app = NamsdecApp::default();
+        for (id, name) in [("court-a", "Ab"), ("long-a", "Un nom vraiment très long")] {
+            let file = sample
+                .replace("\"abyss\"", &format!("\"{id}\""))
+                .replace("\"Abyss\"", &format!("\"{name}\""));
+            let path = dir.path().join(format!("{id}.json"));
+            std::fs::write(&path, &file).unwrap();
+            let theme = namsdec_theme::plugin::read(&path).expect("thème de test");
+            if namsdec_theme::install(theme).is_ok() {
+                app.theme_files.insert(id.to_owned(), path);
+            }
+        }
+
+        let ctx = egui::Context::default();
+        ctx.set_visuals(app.theme.visuals());
+        let mut left_edges = Vec::new();
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            app.preferences_plugins_ui(ui);
+        });
+        for clipped in &output.shapes {
+            // Les cadres des boutons, et eux seuls (voir `framed_button`).
+            if let egui::epaint::Shape::Rect(rect) = &clipped.shape
+                && rect.stroke.width >= 1.0
+                && rect.stroke.color == app.theme.dim
+            {
+                left_edges.push(rect.rect.min.x);
+            }
+        }
+        output.textures_delta.clear();
+
+        // Deux « Retirer » plus le bouton d'ajout, qui commence à gauche.
+        assert!(left_edges.len() >= 3, "obtenu {left_edges:?}");
+        let mut removes: Vec<f32> = left_edges.iter().copied().filter(|x| *x > 100.0).collect();
+        removes.sort_by(f32::total_cmp);
+        removes.dedup();
+        assert_eq!(
+            removes.len(),
+            1,
+            "les boutons « Retirer » doivent partager une abscisse, obtenu {removes:?}"
+        );
+
+        for id in ["court-a", "long-a"] {
+            namsdec_theme::uninstall(id);
+        }
     }
 
     /// Un bouton de cette page doit se *voir* sans qu'on le survole.
