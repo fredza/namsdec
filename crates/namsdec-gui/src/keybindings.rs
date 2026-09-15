@@ -264,6 +264,8 @@ impl Dispatcher {
     ) -> Option<Action> {
         let pressed = pressed_keys_this_frame(ctx);
         self.consumed.clear();
+        // Retenu pour la trace de diagnostic, plus bas.
+        let seen: Vec<Key> = pressed.iter().map(|(k, _)| *k).collect();
 
         // Parcourt CHAQUE touche pressée cette frame, dans l'ordre — pas
         // seulement la première. Si l'appli n'a pas repeint entre les deux
@@ -295,7 +297,14 @@ impl Dispatcher {
                 });
             if let Some(action) = simple_match {
                 self.pending.clear();
-                self.consumed.push(key);
+                self.take(ctx, key);
+                trace(
+                    &seen,
+                    &self.pending,
+                    &self.consumed,
+                    Some(action),
+                    text_focused,
+                );
                 return Some(action);
             }
 
@@ -308,7 +317,14 @@ impl Dispatcher {
             });
             if let Some(action) = completed {
                 self.pending.clear();
-                self.consumed.push(key);
+                self.take(ctx, key);
+                trace(
+                    &seen,
+                    &self.pending,
+                    &self.consumed,
+                    Some(action),
+                    text_focused,
+                );
                 return Some(action);
             }
 
@@ -322,7 +338,7 @@ impl Dispatcher {
                     .values()
                     .any(|c| matches!(c, Chord::Leader(s) if s.starts_with(&self.pending)));
             if still_possible {
-                self.consumed.push(key);
+                self.take(ctx, key);
             } else {
                 self.pending.clear();
                 let arms_a_leader = !text_focused
@@ -332,12 +348,35 @@ impl Dispatcher {
                         .any(|c| matches!(c, Chord::Leader(s) if s.first() == key));
                 if arms_a_leader {
                     self.pending.push(key);
-                    self.consumed.push(key);
+                    self.take(ctx, key);
                 }
             }
         }
 
+        trace(&seen, &self.pending, &self.consumed, None, text_focused);
         None
+    }
+
+    /// Prend une touche pour le dispatcher : elle est notée comme
+    /// consommée **et retirée de l'entrée d'egui**.
+    ///
+    /// Le retrait est la vraie garantie. Marquer la touche ne protège que
+    /// le code qui pense à consulter `consumed()` — et seulement tant
+    /// qu'il le fait dans la même passe, avec la même liste. La retirer
+    /// des évènements la fait disparaître pour tout le monde, quel que
+    /// soit l'ordre dans lequel les widgets lisent l'entrée : la touche a
+    /// servi à un raccourci, elle n'existe plus pour le reste de
+    /// l'interface.
+    fn take(&mut self, ctx: &egui::Context, key: Key) {
+        self.consumed.push(key);
+        ctx.input_mut(|input| {
+            input.events.retain(|event| {
+                !matches!(
+                    event,
+                    egui::Event::Key { key: k, pressed: true, .. } if *k == key
+                )
+            });
+        });
     }
 
     /// Tout ce qui a été tapé de la séquence en cours, pour l'afficher —
@@ -382,6 +421,37 @@ impl Dispatcher {
             }
         }
     }
+}
+
+/// Trace de diagnostic des raccourcis, activée par `NAMSDEC_TRACE_KEYS=1`.
+///
+/// Un raccourci qui se comporte mal ne laisse rien derrière lui : on ne
+/// peut ni le rejouer, ni deviner après coup ce que le dispatcher avait
+/// en main au moment de la frappe. Cette trace dit, frame par frame, ce
+/// qu'il a vu et ce qu'il en a fait.
+fn trace(
+    seen: &[Key],
+    pending: &[Key],
+    consumed: &[Key],
+    action: Option<Action>,
+    text_focused: bool,
+) {
+    if seen.is_empty() {
+        return;
+    }
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    if !ENABLED.get_or_init(|| std::env::var_os("NAMSDEC_TRACE_KEYS").is_some()) {
+        return;
+    }
+    let names = |keys: &[Key]| keys.iter().map(|k| k.name()).collect::<Vec<_>>().join("+");
+    eprintln!(
+        "namsdec: touches [{}] · en attente [{}] · consommées [{}] · action {:?} · champ actif {}",
+        names(seen),
+        names(pending),
+        names(consumed),
+        action,
+        text_focused
+    );
 }
 
 /// Chaque touche pressée cette frame, avec les modificateurs *attachés à

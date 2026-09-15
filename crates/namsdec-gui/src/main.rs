@@ -88,9 +88,7 @@ impl SidebarTab {
 #[derive(Debug)]
 enum Status {
     Idle,
-    AssembleOk {
-        bytes: usize,
-    },
+    AssembleOk,
     AssembleFailed,
     Running,
     Halted,
@@ -556,14 +554,13 @@ impl NamsdecApp {
             Ok(output) => {
                 let disasm = disassemble_code(&output);
                 let addr_to_line = output.line_to_addr.iter().map(|(l, a)| (*a, *l)).collect();
-                let bytes = output.bytes.len();
                 self.diagnostics = output.diagnostics.clone();
                 self.assemble_state = Some(AssembleState {
                     output,
                     disasm,
                     addr_to_line,
                 });
-                self.status = Status::AssembleOk { bytes };
+                self.status = Status::AssembleOk;
                 self.rebuild_emulator();
             }
             Err(AsmError::NasmNotFound) => {
@@ -1769,31 +1766,19 @@ impl NamsdecApp {
             Status::Running => {
                 ui.colored_label(theme.accent, s.status_running);
             }
-            Status::AssembleOk { bytes } => {
-                ui.colored_label(
-                    theme.good,
-                    if lang == Lang::Fr {
-                        format!("✓ Assemblage réussi — {bytes} octets")
-                    } else {
-                        format!("✓ Assembled successfully — {bytes} bytes")
-                    },
-                );
+            // Une pastille peinte, pas un glyphe : "✓" et "✗" ne sont pas
+            // dans la police par défaut d'egui et retombaient sur le carré
+            // de remplacement. Le compte d'octets et de diagnostics n'y
+            // figure plus non plus — les diagnostics sont listés juste en
+            // dessous, avec leur ligne, et la taille du binaire
+            // n'apprenait rien d'utile à cet endroit.
+            Status::AssembleOk => {
+                status_dot(ui, theme.good);
+                ui.colored_label(theme.good, s.status_assembled);
             }
             Status::AssembleFailed => {
-                ui.colored_label(
-                    theme.bad,
-                    if lang == Lang::Fr {
-                        format!(
-                            "✗ Échec de l'assemblage — {} diagnostic(s)",
-                            self.diagnostics.len()
-                        )
-                    } else {
-                        format!(
-                            "✗ Assembly failed — {} diagnostic(s)",
-                            self.diagnostics.len()
-                        )
-                    },
-                );
+                status_dot(ui, theme.bad);
+                ui.colored_label(theme.bad, s.status_assemble_failed);
             }
             Status::Halted => {
                 ui.colored_label(theme.good, s.status_halted);
@@ -2742,6 +2727,17 @@ fn module_card(
 
 impl eframe::App for NamsdecApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.draw(ui);
+    }
+}
+
+impl NamsdecApp {
+    /// Le contenu d'une frame, séparé de l'implémentation d'`eframe::App`
+    /// pour qu'un test puisse le faire tourner : construire un
+    /// `eframe::Frame` hors d'eframe n'est pas possible, et c'est bien
+    /// cette fonction-ci — l'enchaînement complet, dispatch des touches
+    /// compris — qu'il faut exercer.
+    fn draw(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         self.tick_run(&ctx);
         if self.rebinding.is_none() {
@@ -3016,7 +3012,7 @@ _start:
 
         app.do_assemble();
         assert!(
-            matches!(app.status, Status::AssembleOk { .. }),
+            matches!(app.status, Status::AssembleOk),
             "l'assemblage doit réussir, obtenu : {:?}",
             app.status
         );
@@ -3176,6 +3172,105 @@ _start:
         }
     }
 
+    /// Le cas réel : les touches d'une séquence arrivent sur des frames
+    /// séparées, une par frappe, avec relâchement — et non toutes dans le
+    /// même lot d'évènements comme lorsqu'on tape très vite.
+    #[test]
+    fn stepping_stays_in_normal_mode_across_separate_frames() {
+        for sequence in [
+            [egui::Key::Space, egui::Key::S, egui::Key::I],
+            [egui::Key::Space, egui::Key::N, egui::Key::I],
+        ] {
+            let mut app = NamsdecApp::default();
+            let ctx = egui::Context::default();
+
+            for key in sequence {
+                let input = egui::RawInput {
+                    events: vec![
+                        egui::Event::Key {
+                            key,
+                            physical_key: None,
+                            pressed: true,
+                            repeat: false,
+                            modifiers: egui::Modifiers::NONE,
+                        },
+                        egui::Event::Key {
+                            key,
+                            physical_key: None,
+                            pressed: false,
+                            repeat: false,
+                            modifiers: egui::Modifiers::NONE,
+                        },
+                    ],
+                    ..Default::default()
+                };
+                // La frame entière, telle qu'eframe l'exécute : dispatch
+                // des raccourcis, panneaux, éditeur.
+                let mut output = ctx.run_ui(input, |ui| app.draw(ui));
+                output.textures_delta.clear();
+            }
+
+            assert_eq!(
+                app.editor_mode,
+                EditorMode::Normal,
+                "après {sequence:?} tapée touche par touche"
+            );
+        }
+    }
+
+    /// Le vrai parcours : on écrit du code (mode Insertion), on en sort
+    /// par Échap, puis on lance un pas au clavier. C'est là que le
+    /// raccourci doit fonctionner — et surtout ne pas rouvrir la saisie.
+    #[test]
+    fn stepping_works_after_leaving_insert_mode() {
+        let mut app = NamsdecApp::default();
+        let ctx = egui::Context::default();
+
+        let stroke = |key| {
+            vec![
+                egui::Event::Key {
+                    key,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+                egui::Event::Key {
+                    key,
+                    physical_key: None,
+                    pressed: false,
+                    repeat: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ]
+        };
+        let frame = |app: &mut NamsdecApp, key| {
+            let input = egui::RawInput {
+                events: stroke(key),
+                ..Default::default()
+            };
+            let mut output = ctx.run_ui(input, |ui| app.draw(ui));
+            output.textures_delta.clear();
+        };
+
+        // `i` ouvre la saisie, Échap la referme.
+        frame(&mut app, egui::Key::I);
+        assert_eq!(app.editor_mode, EditorMode::Insert, "`i` ouvre la saisie");
+        frame(&mut app, egui::Key::Escape);
+        assert_eq!(app.editor_mode, EditorMode::Normal, "Échap la referme");
+
+        // Puis la séquence de pas, touche par touche.
+        for key in [egui::Key::Space, egui::Key::S, egui::Key::I] {
+            frame(&mut app, key);
+        }
+
+        assert_eq!(
+            app.editor_mode,
+            EditorMode::Normal,
+            "`Espace s i` après une édition ne doit pas rouvrir la saisie"
+        );
+    }
+
     /// Mais `i` tapé seul, lui, ouvre toujours la saisie : seule la touche
     /// qui a servi à un raccourci est retirée à l'éditeur.
     #[test]
@@ -3241,7 +3336,7 @@ _start:
         };
         app.do_assemble();
         assert!(
-            matches!(app.status, Status::AssembleOk { .. }),
+            matches!(app.status, Status::AssembleOk),
             "obtenu {:?}",
             app.status
         );

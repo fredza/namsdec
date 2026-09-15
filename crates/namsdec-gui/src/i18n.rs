@@ -91,6 +91,8 @@ pub struct Strings {
 
     // Barre de statut (cas statiques uniquement)
     pub status_ready: &'static str,
+    pub status_assembled: &'static str,
+    pub status_assemble_failed: &'static str,
     pub status_running: &'static str,
     pub status_halted: &'static str,
     pub status_step_limit: &'static str,
@@ -211,6 +213,8 @@ const FR: Strings = Strings {
     memory_address_label: "Adresse :",
 
     status_ready: "Prêt.",
+    status_assembled: "Assemblage réussi",
+    status_assemble_failed: "Erreur d'assemblage",
     status_running: "Exécution en cours…",
     status_halted: "Arrêté (hlt).",
     status_step_limit: "Limite de pas atteinte — boucle infinie possible ?",
@@ -324,6 +328,8 @@ const EN: Strings = Strings {
     memory_address_label: "Address:",
 
     status_ready: "Ready.",
+    status_assembled: "Assembled",
+    status_assemble_failed: "Assembly error",
     status_running: "Running…",
     status_halted: "Halted (hlt).",
     status_step_limit: "Step limit reached — possible infinite loop?",
