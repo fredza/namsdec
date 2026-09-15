@@ -93,8 +93,18 @@ pub enum AsmError {
     Io(#[from] std::io::Error),
 }
 
-/// Détecte la présence de `nasm` dans le PATH et sa version.
+/// Détecte la présence de `nasm` dans le PATH et sa version. Sondé une
+/// fois, retenu ensuite — même raison que `find_linker`, dont la
+/// documentation détaille la contrepartie.
+///
+/// La copie rendue à chaque appel est une petite chaîne de version, sans
+/// commune mesure avec le `nasm -v` qu'elle remplace.
 pub fn find_nasm() -> Option<NasmInfo> {
+    static NASM: LazyLock<Option<NasmInfo>> = LazyLock::new(probe_nasm);
+    NASM.clone()
+}
+
+fn probe_nasm() -> Option<NasmInfo> {
     let output = Command::new("nasm").arg("-v").output().ok()?;
     if !output.status.success() {
         return None;
@@ -104,8 +114,23 @@ pub fn find_nasm() -> Option<NasmInfo> {
     Some(NasmInfo { version })
 }
 
-/// Détecte la présence de `ld` dans le PATH.
+/// Détecte la présence de `ld` dans le PATH. Sondé une fois, retenu
+/// ensuite.
+///
+/// Le sondage lance un processus, et `assemble` le refaisait à chaque
+/// appel : un `ld --version` par Assembler, soit plusieurs par minute
+/// pour une réponse qui ne change pas — une chaîne d'outils n'apparaît ni
+/// ne disparaît en cours de session.
+///
+/// Contrepartie assumée : `ld` installé pendant que namsdec tourne n'est
+/// vu qu'au lancement suivant. C'est déjà le cas de nasm, dont l'interface
+/// retient au démarrage la version trouvée.
 pub fn find_linker() -> bool {
+    static LINKER: LazyLock<bool> = LazyLock::new(probe_linker);
+    *LINKER
+}
+
+fn probe_linker() -> bool {
     Command::new("ld")
         .arg("--version")
         .output()
@@ -413,6 +438,48 @@ _start:
             }
             other => panic!("attendu LinkFailed, obtenu {other:?}"),
         }
+    }
+
+    /// Même chose pour `nasm`, à la version rendue près : le cache doit
+    /// dire ce que dirait le sondage, et ne le lancer qu'une fois.
+    #[test]
+    fn nasm_is_probed_once_and_then_remembered() {
+        let found = find_nasm().map(|info| info.version);
+        assert_eq!(
+            found,
+            probe_nasm().map(|info| info.version),
+            "le cache doit dire la vérité"
+        );
+
+        let start = std::time::Instant::now();
+        for _ in 0..1_000 {
+            assert_eq!(find_nasm().map(|info| info.version), found);
+        }
+        let elapsed = start.elapsed();
+        assert!(
+            elapsed < std::time::Duration::from_millis(50),
+            "mille appels ont pris {elapsed:?} — le processus est relancé à chaque fois"
+        );
+    }
+
+    /// Le sondage de `ld` ne doit avoir lieu qu'une fois : c'est tout
+    /// l'intérêt du cache, et mille appels ne peuvent pas lancer mille
+    /// processus sans que la durée le dise.
+    #[test]
+    fn the_linker_is_probed_once_and_then_remembered() {
+        // Le premier appel sonde pour de bon, les suivants non.
+        let found = find_linker();
+        assert_eq!(found, probe_linker(), "le cache doit dire la vérité");
+
+        let start = std::time::Instant::now();
+        for _ in 0..1_000 {
+            assert_eq!(find_linker(), found);
+        }
+        let elapsed = start.elapsed();
+        assert!(
+            elapsed < std::time::Duration::from_millis(50),
+            "mille appels ont pris {elapsed:?} — le processus est relancé à chaque fois"
+        );
     }
 
     #[test]

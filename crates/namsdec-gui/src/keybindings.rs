@@ -310,6 +310,19 @@ impl Dispatcher {
 
             // 2. Suite d'une séquence en cours. La touche vient allonger
             // ce qui a déjà été tapé : `Espace` puis `s` puis `i`.
+            //
+            // Sauf si le clavier appartient à un champ de texte : aucune
+            // séquence ne s'y arme (étape 3), aucune ne doit donc s'y
+            // terminer, et celle qui l'était déjà est abandonnée. Un
+            // `Espace` armé dans l'éditeur en mode Normal survivait à un
+            // clic dans le filtre de l'explorateur ou la console : le
+            // premier `e` tapé là complétait `Espace e`, l'explorateur
+            // basculait, et la lettre s'écrivait quand même dans le champ
+            // — `take` ne retire que l'évènement Touche, pas le Texte.
+            if text_focused {
+                self.pending.clear();
+                continue;
+            }
             self.pending.push(key);
             let completed = bindings.map.iter().find_map(|(&action, chord)| {
                 matches!(chord, Chord::Leader(sequence) if sequence.as_slice() == self.pending)
@@ -400,7 +413,7 @@ impl Dispatcher {
 
     /// À appeler une fois par frame pendant qu'une capture (`Rebinding`)
     /// est en cours. Renvoie le nouveau `Chord` dès qu'il est complet.
-    pub fn poll_rebind(&mut self, ctx: &egui::Context, rebinding: &mut Rebinding) -> Option<Chord> {
+    pub fn poll_rebind(&self, ctx: &egui::Context, rebinding: &mut Rebinding) -> Option<Chord> {
         let pressed = pressed_keys_this_frame(ctx);
         let &(key, modifiers) = pressed.first()?;
 
@@ -623,6 +636,50 @@ mod tests {
     }
 
     /// Les commandes d'exécution de gdb/pwndbg, en trois touches.
+    /// Une séquence armée ne survit pas au clavier qui part dans un
+    /// champ de texte.
+    ///
+    /// `Espace` s'arme dans l'éditeur en mode Normal (rien n'a le focus).
+    /// L'utilisateur clique ensuite dans le filtre de l'explorateur ou la
+    /// console et tape `e` : sans cette garde, la frappe complétait
+    /// `Espace e`, l'explorateur basculait — et la lettre s'écrivait
+    /// quand même dans le champ.
+    #[test]
+    fn an_armed_sequence_is_dropped_when_a_text_field_takes_over() {
+        let ctx = egui::Context::default();
+        let bindings = KeyBindings::default();
+        let mut dispatcher = Dispatcher::default();
+
+        // Frame 1 : Espace, hors de tout champ. Rien ne se déclenche,
+        // la séquence est armée.
+        let mut armed = None;
+        run(&ctx, vec![key_event(Key::Space)], |ui| {
+            armed = dispatcher.poll(ui.ctx(), &bindings, false);
+        });
+        assert_eq!(armed, None);
+        assert_eq!(
+            dispatcher.pending(),
+            [Key::Space],
+            "Espace arme la séquence"
+        );
+
+        // Frame 2 : le clavier est dans un champ, et on y tape `e`.
+        let mut fired = None;
+        run(&ctx, vec![key_event(Key::E)], |ui| {
+            fired = dispatcher.poll(ui.ctx(), &bindings, true);
+        });
+
+        assert_eq!(fired, None, "aucune action ne doit partir");
+        assert!(
+            dispatcher.pending().is_empty(),
+            "et la séquence en attente est abandonnée"
+        );
+        assert!(
+            dispatcher.consumed().is_empty(),
+            "la touche appartient au champ, le dispatcher n'en prend rien"
+        );
+    }
+
     #[test]
     fn a_three_key_sequence_resolves() {
         for (keys, expected) in [

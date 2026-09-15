@@ -351,8 +351,14 @@ impl Emulator {
             return Ok(0);
         }
 
-        let bytes: Vec<u8> = self.input.drain(..take).collect();
+        // L'entrée n'est retirée de la file qu'une fois écrite. Drainée
+        // d'abord, elle était perdue quand le tampon de destination
+        // tombait hors de la fenêtre mémoire : `step` rembobine RIP pour
+        // rejouer le `syscall`, mais l'utilisateur devait retaper ce
+        // qu'il avait déjà envoyé.
+        let bytes: Vec<u8> = self.input.iter().take(take).copied().collect();
         self.cpu.mem.write_bytes(buf, &bytes)?;
+        self.input.drain(..take);
         Ok(take as i64)
     }
 
@@ -510,10 +516,21 @@ impl Emulator {
             M::Pop => {
                 let rsp = self.cpu.regs.get64(namsdec_core::Reg64::Rsp);
                 let v = self.cpu.mem.read_u64(rsp)?;
+                // RSP avance *avant* l'écriture, comme sur un vrai
+                // processeur : `pop rsp` charge RSP depuis la pile (la
+                // valeur dépilée l'emporte), et `pop [rsp+8]` calcule son
+                // adresse après l'incrément.
                 self.cpu
                     .regs
                     .set64(namsdec_core::Reg64::Rsp, rsp.wrapping_add(8));
-                self.write_op(instr, 0, v)?;
+                if let Err(e) = self.write_op(instr, 0, v) {
+                    // Mais si l'écriture échoue, l'instruction n'a pas eu
+                    // lieu : RSP retourne où il était, sans quoi chaque
+                    // rejeu (que `step` provoque en rembobinant RIP)
+                    // dépilerait un mot de plus.
+                    self.cpu.regs.set64(namsdec_core::Reg64::Rsp, rsp);
+                    return Err(e);
+                }
             }
             M::Lea => {
                 let addr = self.effective_address(instr, 1)?;
@@ -1121,6 +1138,73 @@ _start:
 
     /// Charge sans exécuter — pour les programmes dont on veut observer
     /// l'échec plutôt que le résultat.
+    /// Un `read` dont le tampon tombe hors de la fenêtre mémoire échoue —
+    /// et l'entrée déjà fournie doit rester dans la file. `step` rembobine
+    /// RIP pour rejouer le `syscall` à l'identique ; si les octets avaient
+    /// été consommés au passage, l'utilisateur devait retaper ce qu'il
+    /// venait d'envoyer, et le rejeu se bloquait sur une file vide.
+    #[test]
+    fn a_read_that_faults_keeps_the_input_it_could_not_write() {
+        if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+            return;
+        }
+        let mut emu = load_only(
+            "\
+section .text
+    global _start
+_start:
+    mov rax, 0
+    mov rdi, 0
+    mov rsi, 0xdeadbeef     ; tampon hors de la fenêtre simulée
+    mov rdx, 4
+    syscall
+    hlt
+",
+            &[],
+        );
+        emu.provide_input(b"oui\n");
+
+        let err = emu.run(100).expect_err("le tampon est hors bornes");
+        assert!(matches!(err, EmuError::Mem(_)), "obtenu {err:?}");
+        assert_eq!(
+            emu.pending_input(),
+            4,
+            "l'entrée doit être intacte pour le rejeu"
+        );
+        // Et le `syscall` est toujours sous RIP, prêt à être rejoué.
+        assert_eq!(
+            emu.cpu.mem.bytes_at(emu.cpu.regs.rip, 2).unwrap(),
+            &[0x0f, 0x05],
+            "RIP doit être resté sur le syscall"
+        );
+    }
+
+    /// Un `pop` dont l'écriture échoue laisse RSP là où il était. Il
+    /// avançait avant l'écriture : chaque rejeu — que `step` provoque en
+    /// rembobinant RIP — dépilait un mot de plus, et la pile se dévidait
+    /// silencieusement, huit octets par tentative.
+    #[test]
+    fn a_failed_pop_leaves_rsp_where_it_was() {
+        let mut mem = namsdec_core::Memory::new(0x400000, 0x1000);
+        // `pop qword [rax]` (8F 00), avec RAX hors de la fenêtre.
+        mem.load(0x400000, &[0x8f, 0x00]).unwrap();
+        let mut cpu = namsdec_core::Cpu::new(mem);
+        cpu.regs.rip = 0x400000;
+        cpu.regs.set64(Reg64::Rsp, 0x400800);
+        cpu.regs.set64(Reg64::Rax, 0xdeadbeef);
+        let mut emu = Emulator::new(cpu);
+
+        for attempt in 1..=3 {
+            emu.step().expect_err("la destination est hors bornes");
+            assert_eq!(
+                emu.cpu.regs.get64(Reg64::Rsp),
+                0x400800,
+                "RSP a bougé à la tentative {attempt}"
+            );
+            assert_eq!(emu.cpu.regs.rip, 0x400000, "et RIP aussi");
+        }
+    }
+
     fn load_only(asm: &str, breakpoints: &[u64]) -> Emulator {
         let out = namsdec_asm::assemble(asm, BASE).expect("assemblage (nasm et ld requis)");
         let mut mem = Memory::new(BASE, 0x10000);

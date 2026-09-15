@@ -50,17 +50,21 @@ pub struct Strings {
     pub dialog_quit: &'static str,
 
     // Onglets du panneau latéral / menu Affichage
-    pub tab_registers: &'static str,
-    pub tab_flags: &'static str,
     pub tab_stack: &'static str,
     pub tab_memory: &'static str,
     pub tab_output: &'static str,
+    pub tab_diagnostics: &'static str,
     pub tab_re: &'static str,
+    /// Titre du bandeau fixe du panneau latéral (registres + flags).
+    pub cpu_state: &'static str,
 
     // Menu Affichage — visibilité des panneaux
     pub view_toolbar: &'static str,
     pub view_sidebar: &'static str,
     pub view_statusbar: &'static str,
+    pub view_console: &'static str,
+    pub preferences_tooltips: &'static str,
+    pub preferences_tooltips_hint: &'static str,
 
     // Explorateur de fichiers
     pub explorer_title: &'static str,
@@ -88,6 +92,9 @@ pub struct Strings {
 
     // Éditeur
     pub memory_address_label: &'static str,
+    /// Le champ Adresse refuse ce qui n'est pas une adresse, et le dit.
+    pub memory_address_invalid: &'static str,
+    pub memory_go_hint: &'static str,
 
     // Barre de statut (cas statiques uniquement)
     pub status_ready: &'static str,
@@ -114,6 +121,7 @@ pub struct Strings {
     pub console_waiting: &'static str,
     pub status_waiting_for_input: &'static str,
     pub address_out_of_range: &'static str,
+    pub no_diagnostics: &'static str,
 
     // Vue d'ensemble des modules (dans Préférences)
     pub module_core_detail: &'static str,
@@ -145,6 +153,12 @@ pub struct Strings {
     pub about_build_word: &'static str,
     pub about_license: &'static str,
     pub about_description: &'static str,
+    pub about_license_link: &'static str,
+    pub about_donate: &'static str,
+    pub about_donate_hint: &'static str,
+    pub about_donate_unset: &'static str,
+    pub about_check_update: &'static str,
+    pub about_check_update_todo: &'static str,
 }
 
 const FR: Strings = Strings {
@@ -179,16 +193,19 @@ const FR: Strings = Strings {
     dialog_ok: "OK",
     dialog_quit: "Quitter",
 
-    tab_registers: "Registres",
-    tab_flags: "Flags",
     tab_stack: "Pile",
     tab_memory: "Mémoire",
     tab_output: "Console",
+    tab_diagnostics: "Diagnostics",
     tab_re: "RE",
+    cpu_state: "État du processeur",
 
     view_toolbar: "Barre d'outils",
     view_sidebar: "Panneau latéral",
     view_statusbar: "Barre de statut",
+    view_console: "Console",
+    preferences_tooltips: "Infobulles",
+    preferences_tooltips_hint: "Les bulles d'aide qui apparaissent au survol des boutons.",
 
     explorer_title: "Explorateur",
     explorer_empty: "Aucun dossier ouvert.",
@@ -211,6 +228,8 @@ const FR: Strings = Strings {
     palette_toggle_statusbar: "Afficher/masquer la barre de statut",
 
     memory_address_label: "Adresse :",
+    memory_address_invalid: "Ce n'est pas une adresse : des chiffres hexadécimaux, avec ou sans « 0x ».",
+    memory_go_hint: "Afficher la mémoire à cette adresse (ou Entrée)",
 
     status_ready: "Prêt.",
     status_assembled: "Assemblage réussi",
@@ -234,6 +253,7 @@ const FR: Strings = Strings {
     console_waiting: "Le programme attend une entrée.",
     status_waiting_for_input: "En attente d'une entrée…",
     address_out_of_range: "Adresse hors de la fenêtre mémoire simulée.",
+    no_diagnostics: "Aucun diagnostic — l'assemblage n'a rien à signaler.",
 
     module_core_detail: "Registres, indicateurs (RFLAGS), mémoire simulée, état CPU.",
     modules_legend: "Vert = sain/actif · Rouge = problème · Bleu = actif, des données à afficher · Gris = inactif pour l'instant.",
@@ -260,6 +280,12 @@ const FR: Strings = Strings {
     about_build_word: "build",
     about_license: "Licence MIT",
     about_description: "Atelier d'apprentissage NASM et de reverse engineering, modulaire.",
+    about_license_link: "Lire le texte de la licence MIT",
+    about_donate: "Ouvrir la page de don (5 $)",
+    about_donate_hint: "Si le programme vous est utile, vous pouvez m'offrir un café ou un hamburger.",
+    about_donate_unset: "Le lien de don n'est pas encore renseigné (DONATION_URL).",
+    about_check_update: "Rechercher une mise à jour",
+    about_check_update_todo: "La recherche de mises à jour n'est pas encore branchée.",
 };
 
 const EN: Strings = Strings {
@@ -294,16 +320,19 @@ const EN: Strings = Strings {
     dialog_ok: "OK",
     dialog_quit: "Quit",
 
-    tab_registers: "Registers",
-    tab_flags: "Flags",
     tab_stack: "Stack",
     tab_memory: "Memory",
     tab_output: "Console",
+    tab_diagnostics: "Diagnostics",
     tab_re: "RE",
+    cpu_state: "CPU state",
 
     view_toolbar: "Toolbar",
     view_sidebar: "Side Panel",
     view_statusbar: "Status Bar",
+    view_console: "Console",
+    preferences_tooltips: "Tooltips",
+    preferences_tooltips_hint: "The help bubbles shown when hovering over buttons.",
 
     explorer_title: "Explorer",
     explorer_empty: "No folder open.",
@@ -326,6 +355,8 @@ const EN: Strings = Strings {
     palette_toggle_statusbar: "Toggle Status Bar",
 
     memory_address_label: "Address:",
+    memory_address_invalid: "Not an address: hexadecimal digits, with or without \"0x\".",
+    memory_go_hint: "Show memory at this address (or press Enter)",
 
     status_ready: "Ready.",
     status_assembled: "Assembled",
@@ -349,6 +380,7 @@ const EN: Strings = Strings {
     console_waiting: "The program is waiting for input.",
     status_waiting_for_input: "Waiting for input…",
     address_out_of_range: "Address outside the simulated memory window.",
+    no_diagnostics: "No diagnostics — the assembler had nothing to report.",
 
     module_core_detail: "Registers, flags (RFLAGS), simulated memory, CPU state.",
     modules_legend: "Green = healthy/active · Red = problem · Blue = active, has data to show · Gray = inactive for now.",
@@ -375,6 +407,12 @@ const EN: Strings = Strings {
     about_build_word: "build",
     about_license: "MIT License",
     about_description: "A modular NASM learning and reverse-engineering workbench.",
+    about_license_link: "Read the MIT license text",
+    about_donate: "Open the donation page ($5)",
+    about_donate_hint: "If this program is useful to you, you can buy me a coffee or a burger.",
+    about_donate_unset: "The donation link is not set yet (DONATION_URL).",
+    about_check_update: "Check for updates",
+    about_check_update_todo: "Update checking is not wired up yet.",
 };
 
 pub fn strings(lang: Lang) -> &'static Strings {

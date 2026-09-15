@@ -1261,7 +1261,7 @@ dependencies = [
 
 [[package]]
 name = "namsdec-asm"
-version = "0.0.2"
+version = "0.1.1"
 dependencies = [
  "regex",
  "tempfile",
@@ -1270,7 +1270,7 @@ dependencies = [
 
 [[package]]
 name = "namsdec-core"
-version = "0.0.2"
+version = "0.1.1"
 dependencies = [
  "bitflags 2.13.2",
  "thiserror 2.0.20",
@@ -1278,14 +1278,14 @@ dependencies = [
 
 [[package]]
 name = "namsdec-disasm"
-version = "0.0.2"
+version = "0.1.1"
 dependencies = [
  "iced-x86",
 ]
 
 [[package]]
 name = "namsdec-emu"
-version = "0.0.2"
+version = "0.1.1"
 dependencies = [
  "iced-x86",
  "namsdec-asm",
@@ -1296,11 +1296,11 @@ dependencies = [
 
 [[package]]
 name = "namsdec-exercises"
-version = "0.0.2"
+version = "0.1.1"
 
 [[package]]
 name = "namsdec-explorer"
-version = "0.0.2"
+version = "0.1.1"
 dependencies = [
  "egui",
  "namsdec-theme",
@@ -1309,7 +1309,7 @@ dependencies = [
 
 [[package]]
 name = "namsdec-gui"
-version = "0.0.2"
+version = "0.1.1"
 dependencies = [
  "arboard",
  "eframe",
@@ -1329,7 +1329,7 @@ dependencies = [
 
 [[package]]
 name = "namsdec-re"
-version = "0.0.2"
+version = "0.1.1"
 dependencies = [
  "egui",
  "namsdec-core",
@@ -1338,7 +1338,7 @@ dependencies = [
 
 [[package]]
 name = "namsdec-theme"
-version = "0.0.2"
+version = "0.1.1"
 dependencies = [
  "egui",
 ]

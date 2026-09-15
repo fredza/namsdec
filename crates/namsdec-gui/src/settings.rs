@@ -54,7 +54,11 @@ pub struct Settings {
     pub show_toolbar: bool,
     pub show_sidebar: bool,
     pub show_statusbar: bool,
-    pub show_re_tab: bool,
+    /// Panneau bas — la console du programme et les diagnostics de nasm.
+    pub show_console: bool,
+    /// Les infobulles au survol. Certains les veulent, d'autres les
+    /// trouvent envahissantes — d'où un réglage plutôt qu'un choix imposé.
+    pub show_tooltips: bool,
     /// Dernier dossier ouvert dans l'explorateur, pour le retrouver au
     /// lancement suivant.
     pub explorer_root: Option<String>,
@@ -79,7 +83,8 @@ impl Default for Settings {
             show_toolbar: true,
             show_sidebar: true,
             show_statusbar: true,
-            show_re_tab: false,
+            show_console: true,
+            show_tooltips: true,
             explorer_root: None,
             current_file: None,
             shortcuts: shortcuts_to_strings(&KeyBindings::default()),

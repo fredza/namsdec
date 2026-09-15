@@ -131,6 +131,10 @@ pub struct FileExplorer {
     /// Le champ de chemin, quand il est ouvert : la racine s'y tape à la
     /// main. `None` tant que l'utilisateur ne l'a pas ouvert.
     path_edit: Option<String>,
+    /// Le champ de chemin vient d'être ouvert et réclame le clavier —
+    /// une fois, à la frame suivante (même patron que
+    /// `request_filter_focus`).
+    request_path_focus: bool,
     renaming: Option<Renaming>,
     /// Dernière opération échouée (renommage, chemin invalide), affichée
     /// sous l'en-tête jusqu'à l'action suivante.
@@ -714,6 +718,7 @@ impl FileExplorer {
         // carré de repli serait pire qu'un `..` que tout le monde lit.
         // L'infobulle, elle, est traduite.
         let mut commit_path = false;
+        let mut close_path_edit = false;
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 4.0;
 
@@ -756,9 +761,22 @@ impl FileExplorer {
                             .font(egui::TextStyle::Monospace)
                             .desired_width(ui.available_width()),
                     );
-                    response.request_focus();
+                    // Le focus se demande une fois, à l'ouverture.
+                    // Redemandé à chaque frame, le champ le reprenait
+                    // aussitôt qu'on l'avait donné ailleurs : cliquer
+                    // dans le code ne suffisait plus à en sortir, et
+                    // chaque touche continuait d'atterrir ici.
+                    if self.request_path_focus {
+                        self.request_path_focus = false;
+                        response.request_focus();
+                    }
                     if response.lost_focus() {
                         commit_path = ui.input(|i| i.key_pressed(egui::Key::Enter));
+                        if !commit_path {
+                            // Partir ailleurs referme le champ, comme on
+                            // abandonne une étiquette qu'on éditait.
+                            close_path_edit = true;
+                        }
                     }
                 }
                 None => {
@@ -779,6 +797,7 @@ impl FileExplorer {
                                 .map(|r| r.display().to_string())
                                 .unwrap_or_default(),
                         );
+                        self.request_path_focus = true;
                     }
                 }
             }
@@ -786,8 +805,9 @@ impl FileExplorer {
 
         if commit_path {
             self.apply_path_edit(labels);
-        } else if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
-            // Échap abandonne la saisie sans toucher à la racine.
+        } else if close_path_edit || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            // Échap — ou un clic ailleurs — abandonne la saisie sans
+            // toucher à la racine.
             self.path_edit = None;
         }
     }
@@ -1584,6 +1604,43 @@ mod tests {
 
     /// Un chemin tapé à la main qui ne mène pas à un dossier laisse la
     /// racine où elle est, et le dit.
+    /// Le champ de chemin rend le clavier quand on va ailleurs.
+    ///
+    /// Il redemandait le focus à *chaque* frame tant qu'il était ouvert :
+    /// une fois cliqué, plus rien n'atteignait l'éditeur — chaque touche
+    /// retombait dans le champ, frame après frame, et seuls Entrée ou
+    /// Échap en sortaient.
+    #[test]
+    fn the_path_field_releases_the_keyboard_when_focus_goes_elsewhere() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut explorer = FileExplorer::with_root(Some(dir.path().to_path_buf()));
+        let ctx = egui::Context::default();
+
+        // Ouvert : il prend le clavier, une fois. Deux frames, le temps
+        // qu'egui enregistre qui l'avait au début de la précédente —
+        // c'est de là qu'il tire la perte de focus.
+        explorer.path_edit = Some(dir.path().display().to_string());
+        explorer.request_path_focus = true;
+        window_frame(&ctx, &mut explorer, vec![]);
+        let field = ctx.memory(|m| m.focused()).expect("le champ a le clavier");
+        window_frame(&ctx, &mut explorer, vec![]);
+        assert_eq!(ctx.memory(|m| m.focused()), Some(field), "il le garde");
+
+        // L'utilisateur clique ailleurs (l'éditeur, une autre fenêtre) :
+        // egui donne le focus à autre chose.
+        ctx.memory_mut(|m| m.surrender_focus(field));
+        window_frame(&ctx, &mut explorer, vec![]);
+
+        assert!(
+            explorer.path_edit.is_none(),
+            "partir ailleurs doit refermer le champ"
+        );
+        assert!(
+            ctx.memory(|m| m.focused()).is_none(),
+            "et lui faire lâcher le clavier"
+        );
+    }
+
     #[test]
     fn a_path_that_is_not_a_directory_is_refused() {
         let dir = tempfile::tempdir().unwrap();
