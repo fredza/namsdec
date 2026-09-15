@@ -165,6 +165,13 @@ mod tests {
         );
     }
 
+    /// Le thème d'exemple doit rendre le code lisible comme du code —
+    /// la même exigence que les thèmes d'origine.
+    #[test]
+    fn the_sample_theme_tells_the_code_apart() {
+        crate::tests::check_code_colours(&parse(ABYSS).unwrap());
+    }
+
     /// Le dièse est facultatif et la casse indifférente : un thème
     /// recopié depuis un site web ne doit pas être refusé pour un détail
     /// d'écriture.

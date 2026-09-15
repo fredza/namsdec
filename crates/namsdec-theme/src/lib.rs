@@ -206,6 +206,22 @@ pub fn perceptual_distance(a: Color32, b: Color32) -> f32 {
         .sqrt()
 }
 
+/// Les couleurs qui doivent distinguer le code les unes des autres, avec
+/// le nom de leur rôle.
+///
+/// Le texte ordinaire en fait partie : c'est lui que portent les
+/// registres, les opérandes, tout ce qui n'est ni mnémonique, ni nombre,
+/// ni étiquette, ni commentaire.
+pub fn code_colours(theme: &Theme) -> [(&'static str, Color32); 5] {
+    [
+        ("text", theme.text),
+        ("mnemonic", theme.mnemonic),
+        ("number", theme.number),
+        ("label", theme.label),
+        ("comment", theme.comment),
+    ]
+}
+
 /// Les thèmes venus d'un fichier, ajoutés au fil des installations.
 ///
 /// Un `RwLock` et non un `OnceLock` : on peut en installer un pendant que
@@ -278,6 +294,44 @@ mod tests {
     /// (253) : descendre en dessous, c'est repasser du côté d'Abyss et
     /// de son rose invisible (229).
     const CHANGED_APART_FROM_TEXT: f32 = 240.0;
+
+    /// Deux rôles du code doivent rester distinguables. Le plus serré
+    /// des thèmes d'origine est VS Code Dark+, entre son texte et ses
+    /// nombres (84).
+    pub(crate) const CODE_ROLES_APART: f32 = 80.0;
+    /// Et chacun doit se détacher du fond de l'éditeur. Le plus serré
+    /// est le commentaire de Tokyo Night (232) — un commentaire a le
+    /// droit d'être discret, pas d'être illisible.
+    pub(crate) const CODE_OFF_BACKGROUND: f32 = 225.0;
+
+    /// Un thème doit rendre le code lisible *comme du code* : quatre
+    /// rôles qui ne se confondent pas, et aucun qui se noie dans le fond.
+    ///
+    /// C'est ce qui manquait au thème d'exemple : son mnémonique et son
+    /// commentaire, deux bleus sombres de même clarté, étaient à 42 l'un
+    /// de l'autre. `mov` avait la couleur d'un commentaire, et la ligne
+    /// ne se lisait plus.
+    pub(crate) fn check_code_colours(theme: &Theme) {
+        let roles = code_colours(theme);
+        for (name, colour) in roles {
+            let off = perceptual_distance(colour, theme.bg);
+            assert!(
+                off > CODE_OFF_BACKGROUND,
+                "{} : « {name} » se noie dans le fond de l'éditeur ({off:.0})",
+                theme.id
+            );
+        }
+        for (i, (a, ca)) in roles.iter().enumerate() {
+            for (b, cb) in &roles[i + 1..] {
+                let apart = perceptual_distance(*ca, *cb);
+                assert!(
+                    apart > CODE_ROLES_APART,
+                    "{} : « {a} » et « {b} » se ressemblent trop ({apart:.0})",
+                    theme.id
+                );
+            }
+        }
+    }
 
     #[test]
     fn ids_are_unique_and_resolvable() {
@@ -365,6 +419,15 @@ mod tests {
             "un thème d'origine n'est pas retirable"
         );
         assert_eq!(all().len(), before);
+    }
+
+    /// Les trois thèmes d'origine tiennent la même exigence que celle
+    /// qu'on impose aux thèmes installés.
+    #[test]
+    fn every_built_in_theme_tells_the_code_apart() {
+        for theme in BUILT_IN {
+            check_code_colours(theme);
+        }
     }
 
     #[test]
