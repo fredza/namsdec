@@ -4803,6 +4803,54 @@ _start:
         assert!(width >= SIDEBAR_MIN_WIDTH, "obtenu : {width}");
     }
 
+    /// Installe réellement le thème d'exemple, par le chemin de code du
+    /// bouton « Ajouter un thème… », dans le dossier de plugins de
+    /// l'utilisateur courant.
+    ///
+    /// Marqué `ignore` : il écrit hors du dépôt, personne ne veut de ça
+    /// en lançant la suite. Il se lance à la main —
+    /// `cargo test -p namsdec-gui -- --ignored --exact` — et se défait
+    /// avec `uninstalls_the_external_theme_for_real`.
+    #[test]
+    #[ignore = "écrit dans le dossier de plugins de l'utilisateur"]
+    fn installs_the_external_theme_for_real() {
+        let path = std::path::Path::new(EXTERNAL_ABYSS);
+        assert!(path.exists(), "le plugin doit être là : {EXTERNAL_ABYSS}");
+
+        let mut app = NamsdecApp::default();
+        let before = app.theme.id;
+        // Exactement ce que le bouton appelle.
+        app.install_theme(path, &egui::Context::default());
+
+        let note = app.plugin_note.as_ref().expect("un compte rendu");
+        assert!(note.ok, "l'installation doit réussir : {}", note.text);
+        assert_eq!(app.theme.id, "abyss", "et le thème est appliqué aussitôt");
+        assert_ne!(before, app.theme.id);
+
+        let installed = plugins_dir()
+            .expect("un dossier de données")
+            .join("abyss.namsdec-theme.json");
+        assert!(installed.exists(), "le fichier est recopié : {installed:?}");
+    }
+
+    /// Le pendant du précédent : retire le fichier installé et vérifie
+    /// qu'il ne reste rien.
+    #[test]
+    #[ignore = "écrit dans le dossier de plugins de l'utilisateur"]
+    fn uninstalls_the_external_theme_for_real() {
+        let dir = plugins_dir().expect("un dossier de données");
+        let installed = dir.join("abyss.namsdec-theme.json");
+        if installed.exists() {
+            std::fs::remove_file(&installed).expect("le retrait du fichier");
+        }
+        assert!(!installed.exists());
+        // Un dossier vide ne sert à rien : on le retire aussi, pour ne
+        // laisser aucune trace.
+        if dir.read_dir().is_ok_and(|mut d| d.next().is_none()) {
+            let _ = std::fs::remove_dir(&dir);
+        }
+    }
+
     /// Le thème d'exemple livré à côté du dépôt s'installe : lu,
     /// enregistré, retrouvé par son identifiant, et proposé dans la
     /// liste comme les thèmes d'origine.
