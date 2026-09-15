@@ -2664,7 +2664,7 @@ impl NamsdecApp {
                     let color = if name == "RIP" {
                         theme.accent
                     } else if changed.contains(&name) {
-                        theme.warn
+                        theme.changed
                     } else {
                         ui.visuals().text_color()
                     };

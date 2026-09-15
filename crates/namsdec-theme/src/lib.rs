@@ -34,6 +34,12 @@ pub struct Theme {
     pub good: Color32,
     pub warn: Color32,
     pub bad: Color32,
+    /// Ce qui vient de changer — les registres qu'une instruction a
+    /// modifiés. Une couleur à part, et **vive** : elle doit sauter aux
+    /// yeux à chaque pas au milieu de seize valeurs figées, là où
+    /// `warn` a le rôle plus tiède d'un avertissement qu'on peut lire
+    /// plus tard.
+    pub changed: Color32,
 
     // Coloration syntaxique NASM.
     pub mnemonic: Color32,
@@ -104,6 +110,7 @@ pub static VSCODE_DARK: Theme = Theme {
     good: Color32::from_rgb(0x89, 0xd1, 0x85),
     warn: Color32::from_rgb(0xdc, 0xdc, 0xaa),
     bad: Color32::from_rgb(0xf4, 0x87, 0x71),
+    changed: Color32::from_rgb(0xff, 0xd7, 0x00),
     mnemonic: Color32::from_rgb(0x56, 0x9c, 0xd6),
     number: Color32::from_rgb(0xb5, 0xce, 0xa8),
     label: Color32::from_rgb(0x4e, 0xc9, 0xb0),
@@ -129,6 +136,7 @@ pub static VSCODE_LIGHT: Theme = Theme {
     good: Color32::from_rgb(0x38, 0x8a, 0x34),
     warn: Color32::from_rgb(0xb8, 0x85, 0x00),
     bad: Color32::from_rgb(0xcd, 0x31, 0x31),
+    changed: Color32::from_rgb(0xd9, 0x5f, 0x00),
     mnemonic: Color32::from_rgb(0x00, 0x00, 0xff),
     number: Color32::from_rgb(0x09, 0x86, 0x58),
     label: Color32::from_rgb(0x26, 0x7f, 0x99),
@@ -154,6 +162,7 @@ pub static TOKYO_NIGHT: Theme = Theme {
     good: Color32::from_rgb(0x9e, 0xce, 0x6a),
     warn: Color32::from_rgb(0xe0, 0xaf, 0x68),
     bad: Color32::from_rgb(0xf7, 0x76, 0x8e),
+    changed: Color32::from_rgb(0xff, 0x9e, 0x64),
     mnemonic: Color32::from_rgb(0xbb, 0x9a, 0xf7),
     number: Color32::from_rgb(0xff, 0x9e, 0x64),
     label: Color32::from_rgb(0x7d, 0xcf, 0xff),
@@ -190,6 +199,44 @@ mod tests {
             assert!(
                 std::ptr::eq(by_id(theme.id), *theme),
                 "l'identifiant « {} » doit retrouver exactement son thème",
+                theme.id
+            );
+        }
+    }
+
+    /// La couleur du changement doit être *vive* : c'est elle qui doit
+    /// attraper l'œil au milieu de seize registres figés. On exige donc
+    /// qu'elle soit plus saturée et plus contrastée sur son panneau que
+    /// l'avertissement, dont le rôle est de se laisser lire plus tard.
+    #[test]
+    fn the_change_colour_is_livelier_than_the_warning() {
+        /// Écart entre la composante la plus forte et la plus faible :
+        /// une couleur grise vaut zéro, une couleur pure vaut 255.
+        fn saturation(c: Color32) -> i32 {
+            let (r, g, b) = (c.r() as i32, c.g() as i32, c.b() as i32);
+            r.max(g).max(b) - r.min(g).min(b)
+        }
+        /// Distance à la couleur du panneau : le contraste, en gros.
+        fn distance(a: Color32, b: Color32) -> i32 {
+            (a.r() as i32 - b.r() as i32).abs()
+                + (a.g() as i32 - b.g() as i32).abs()
+                + (a.b() as i32 - b.b() as i32).abs()
+        }
+
+        for theme in BUILT_IN {
+            assert!(
+                saturation(theme.changed) > saturation(theme.warn),
+                "{} : le changement doit être plus saturé que l'avertissement",
+                theme.id
+            );
+            assert!(
+                distance(theme.changed, theme.panel) > 200,
+                "{} : et bien détaché du fond du panneau",
+                theme.id
+            );
+            assert_ne!(
+                theme.changed, theme.accent,
+                "{} : à ne pas confondre avec RIP, qui porte l'accent",
                 theme.id
             );
         }
