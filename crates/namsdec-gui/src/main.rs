@@ -2025,6 +2025,8 @@ impl NamsdecApp {
     /// liste — rien ici n'est écrit par thème.
     fn preferences_plugins_ui(&mut self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
+        // Le thème *de l'interface*, à ne pas confondre avec ceux que la
+        // page liste — nommés `listed` plus bas pour cette raison.
         let theme = self.theme;
         let ctx = ui.ctx().clone();
 
@@ -2035,21 +2037,21 @@ impl NamsdecApp {
         egui::ScrollArea::vertical()
             .max_height(320.0)
             .show(ui, |ui| {
-                for theme in namsdec_theme::all() {
-                    let active = std::ptr::eq(self.theme, theme);
-                    let response = theme_card(ui, theme, active, s.plugins_active);
+                for listed in namsdec_theme::all() {
+                    let active = std::ptr::eq(self.theme, listed);
+                    let response = theme_card(ui, listed, active, s.plugins_active);
                     if response.clicked() && !active {
-                        self.theme = theme;
+                        self.theme = listed;
                         self.apply_theme(&ctx);
                     }
                     // Seuls les thèmes venus d'un fichier se retirent :
                     // les trois d'origine ne figurent pas dans cette
                     // table, aucun bouton ne les propose donc.
-                    if self.theme_files.contains_key(theme.id) {
+                    if self.theme_files.contains_key(listed.id) {
                         ui.horizontal(|ui| {
                             ui.add_space(12.0);
-                            if ui.small_button(s.plugins_remove).clicked() {
-                                self.theme_to_remove = Some(theme.id.to_owned());
+                            if framed_button(ui, theme, s.plugins_remove).clicked() {
+                                self.theme_to_remove = Some(listed.id.to_owned());
                             }
                         });
                     }
@@ -2070,11 +2072,11 @@ impl NamsdecApp {
                 ),
             );
             ui.horizontal(|ui| {
-                if ui.button(s.plugins_remove_yes).clicked() {
+                if framed_button(ui, theme, s.plugins_remove_yes).clicked() {
                     self.remove_theme(&id, &ctx);
                     self.theme_to_remove = None;
                 }
-                if ui.button(s.plugins_remove_no).clicked() {
+                if framed_button(ui, theme, s.plugins_remove_no).clicked() {
                     self.theme_to_remove = None;
                 }
             });
@@ -2082,10 +2084,16 @@ impl NamsdecApp {
 
         ui.add_space(6.0);
         ui.separator();
-        if ui.button(s.plugins_add).clicked() {
+        if framed_button(ui, theme, s.plugins_add).clicked() {
             self.spawn_file_dialog(FileDialogKind::AddTheme);
         }
         ui.weak(s.plugins_add_hint);
+        // Sans thème installé, rien ne porte de bouton « Retirer » : la
+        // page le dit, plutôt que de laisser croire qu'il manque quelque
+        // chose.
+        if self.theme_files.is_empty() {
+            ui.weak(s.plugins_none_installed);
+        }
         // Le compte rendu de la dernière installation reste affiché
         // jusqu'à la suivante : une boîte modale de plus pour dire « c'est
         // fait » n'apprendrait rien, un refus doit en revanche pouvoir
@@ -3647,6 +3655,21 @@ fn status_dot(ui: &mut egui::Ui, color: egui::Color32) {
 /// couleurs du thème lui-même (fond, panneau, accents) plutôt qu'un nom
 /// seul — c'est le thème qui se décrit, donc rien à écrire de plus quand
 /// un nouveau s'ajoute.
+/// Un bouton **encadré**, pour les endroits où il doit se voir sans
+/// qu'on ait à le survoler.
+///
+/// Le thème met les boutons à plat au repos — c'est ce qui empêche la
+/// barre de menus et la barre d'outils de se ressembler. Dans une boîte
+/// de dialogue, l'effet se retourne contre nous : « Ajouter un thème… »
+/// se lisait comme une phrase, et personne n'allait cliquer dessus.
+fn framed_button(ui: &mut egui::Ui, theme: &Theme, label: &str) -> egui::Response {
+    ui.add(
+        egui::Button::new(label)
+            .stroke(egui::Stroke::new(1.0, theme.dim))
+            .corner_radius(egui::CornerRadius::from(6)),
+    )
+}
+
 fn theme_card(ui: &mut egui::Ui, theme: &Theme, active: bool, active_word: &str) -> egui::Response {
     let (rect, response) =
         ui.allocate_exact_size(egui::vec2(ui.available_width(), 44.0), egui::Sense::click());
@@ -4891,6 +4914,46 @@ _start:
              obtenu : {width}"
         );
         assert!(width >= SIDEBAR_MIN_WIDTH, "obtenu : {width}");
+    }
+
+    /// Un bouton de cette page doit se *voir* sans qu'on le survole.
+    ///
+    /// Le thème met les boutons à plat au repos — bon pour les barres,
+    /// désastreux dans une boîte de dialogue : « Ajouter un thème… » se
+    /// lisait comme une phrase, et personne n'allait cliquer dessus. On
+    /// compare donc ce que les deux dessinent : le bouton ordinaire ne
+    /// trace aucun cadre, le nôtre en trace un.
+    #[test]
+    fn a_framed_button_draws_the_outline_a_flat_one_does_not() {
+        let outlines = |framed: bool| {
+            let ctx = egui::Context::default();
+            ctx.set_visuals(DEFAULT_THEME.visuals());
+            let mut count = 0;
+            let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+                if framed {
+                    framed_button(ui, DEFAULT_THEME, "Ajouter un thème…");
+                } else {
+                    let _ = ui.button("Ajouter un thème…");
+                }
+            });
+            for clipped in &output.shapes {
+                if let egui::epaint::Shape::Rect(rect) = &clipped.shape
+                    && rect.stroke.width >= 1.0
+                    && rect.stroke.color == DEFAULT_THEME.dim
+                {
+                    count += 1;
+                }
+            }
+            output.textures_delta.clear();
+            count
+        };
+
+        assert_eq!(
+            outlines(false),
+            0,
+            "un bouton ordinaire reste plat au repos"
+        );
+        assert_eq!(outlines(true), 1, "le nôtre porte son cadre");
     }
 
     /// Retirer un thème installé : son fichier disparaît, il quitte la
