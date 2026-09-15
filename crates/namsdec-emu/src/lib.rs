@@ -149,6 +149,51 @@ struct Undo {
 /// pédagogique, et la mémoire n'est pas extensible.
 const HISTORY_LIMIT: usize = 5_000;
 
+/// Ce que fait une instruction de chaîne d'un élément.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum StringOp {
+    /// `movs` : recopie de `[rsi]` vers `[rdi]`.
+    Move,
+    /// `stos` : écrit l'accumulateur en `[rdi]`.
+    Store,
+    /// `lods` : lit `[rsi]` dans l'accumulateur.
+    Load,
+    /// `scas` : compare l'accumulateur à `[rdi]`.
+    Scan,
+    /// `cmps` : compare `[rsi]` à `[rdi]`.
+    Compare,
+}
+
+/// La largeur d'un élément, lue sur le mnémonique.
+fn string_width(mnemonic: Mnemonic) -> Option<Width> {
+    use Mnemonic as M;
+    Some(match mnemonic {
+        M::Movsb | M::Stosb | M::Lodsb | M::Scasb | M::Cmpsb => Width::W8,
+        M::Movsw | M::Stosw | M::Lodsw | M::Scasw | M::Cmpsw => Width::W16,
+        M::Movsd | M::Stosd | M::Lodsd | M::Scasd | M::Cmpsd => Width::W32,
+        M::Movsq | M::Stosq | M::Lodsq | M::Scasq | M::Cmpsq => Width::W64,
+        _ => return None,
+    })
+}
+
+/// `movsd` et `cmpsd` nomment deux instructions sans rapport : celle qui
+/// travaille sur une chaîne, et celle du jeu SSE qui manipule un flottant
+/// dans un registre `xmm`. Seule la première désigne ses opérandes par
+/// RSI/RDI, et c'est à ça qu'on les distingue.
+fn is_string_operation(instr: &Instruction) -> bool {
+    (0..instr.op_count()).any(|op| {
+        matches!(
+            instr.op_kind(op),
+            OpKind::MemorySegRSI
+                | OpKind::MemorySegESI
+                | OpKind::MemorySegSI
+                | OpKind::MemoryESRDI
+                | OpKind::MemoryESEDI
+                | OpKind::MemoryESDI
+        )
+    })
+}
+
 /// Le sens d'un décalage, et s'il recopie le bit de signe.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ShiftKind {
@@ -866,6 +911,26 @@ impl Emulator {
                 }
             }
             M::Nop => {}
+
+            // Le drapeau de direction : vers les adresses croissantes
+            // (`cld`, l'état normal) ou décroissantes (`std`).
+            M::Cld => self.cpu.flags.remove(RFlags::DF),
+            M::Std => self.cpu.flags.insert(RFlags::DF),
+
+            // Les instructions de chaînes. Le garde `is_string_operation`
+            // écarte l'homonyme SSE : `movsd xmm0, [rax]` porte le même
+            // mnémonique que `movsd` sur chaîne, et n'a rien à voir.
+            M::Movsb | M::Movsw | M::Movsd | M::Movsq if is_string_operation(instr) => {
+                self.string_step(instr, StringOp::Move)?
+            }
+            M::Stosb | M::Stosw | M::Stosd | M::Stosq => {
+                self.string_step(instr, StringOp::Store)?
+            }
+            M::Lodsb | M::Lodsw | M::Lodsd | M::Lodsq => self.string_step(instr, StringOp::Load)?,
+            M::Scasb | M::Scasw | M::Scasd | M::Scasq => self.string_step(instr, StringOp::Scan)?,
+            M::Cmpsb | M::Cmpsw | M::Cmpsd | M::Cmpsq if is_string_operation(instr) => {
+                self.string_step(instr, StringOp::Compare)?
+            }
             M::Jmp => {
                 self.cpu.regs.rip = self.branch_target(instr)?;
             }
@@ -993,6 +1058,110 @@ impl Emulator {
             self.write_op(instr, 0, result)?;
         }
         Ok(())
+    }
+
+    /// **Une seule itération** d'une instruction de chaîne, préfixe `rep`
+    /// compris.
+    ///
+    /// C'est le choix de conception de ces instructions-là. Un vrai
+    /// processeur les rend interruptibles : `rep movsb` n'est pas une
+    /// boucle atomique, il avance d'un élément et se rejoue tant que RCX
+    /// n'est pas nul. On fait pareil, pour deux raisons qui vont dans le
+    /// même sens : le pas à pas montre RSI, RDI et RCX avancer un à un —
+    /// c'est ce qu'on vient voir en apprenant —, et une copie d'un
+    /// million d'octets ne fige pas l'interface le temps d'une frame.
+    ///
+    /// RIP a déjà avancé quand on arrive ici (voir `step`) : le rejeu
+    /// consiste à le remettre sur l'instruction.
+    fn string_step(&mut self, instr: &Instruction, op: StringOp) -> Result<(), EmuError> {
+        use namsdec_core::Reg64::{Rcx, Rdi, Rsi};
+        let w = string_width(instr.mnemonic()).ok_or_else(|| EmuError::UnsupportedInstruction {
+            backend: Self::NAME,
+            mnemonic: format!("{:?}", instr.mnemonic()),
+        })?;
+        let repeat = instr.has_rep_prefix() || instr.has_repe_prefix() || instr.has_repne_prefix();
+
+        // `rep` avec RCX nul ne fait rien du tout — pas même une
+        // itération. C'est la nuance qui distingue un compteur à zéro
+        // d'un compteur à un.
+        if repeat && self.cpu.regs.get64(Rcx) == 0 {
+            return Ok(());
+        }
+
+        let bytes = u64::from(w.bits() / 8);
+        let step = if self.cpu.flags.contains(RFlags::DF) {
+            bytes.wrapping_neg()
+        } else {
+            bytes
+        };
+        let (rsi, rdi) = (self.cpu.regs.get64(Rsi), self.cpu.regs.get64(Rdi));
+
+        match op {
+            StringOp::Move => {
+                let v = self.read_mem(rsi, w)?;
+                self.write_mem(rdi, w, v)?;
+                self.cpu.regs.set64(Rsi, rsi.wrapping_add(step));
+                self.cpu.regs.set64(Rdi, rdi.wrapping_add(step));
+            }
+            StringOp::Store => {
+                let v = self.accumulator(w);
+                self.write_mem(rdi, w, v)?;
+                self.cpu.regs.set64(Rdi, rdi.wrapping_add(step));
+            }
+            StringOp::Load => {
+                let v = self.read_mem(rsi, w)?;
+                self.set_accumulator(w, v);
+                self.cpu.regs.set64(Rsi, rsi.wrapping_add(step));
+            }
+            StringOp::Scan => {
+                let v = self.read_mem(rdi, w)?;
+                let (_, flags) = sub_with_flags(self.accumulator(w), v, w);
+                self.cpu.flags.apply_arith(flags);
+                self.cpu.regs.set64(Rdi, rdi.wrapping_add(step));
+            }
+            StringOp::Compare => {
+                let left = self.read_mem(rsi, w)?;
+                let right = self.read_mem(rdi, w)?;
+                let (_, flags) = sub_with_flags(left, right, w);
+                self.cpu.flags.apply_arith(flags);
+                self.cpu.regs.set64(Rsi, rsi.wrapping_add(step));
+                self.cpu.regs.set64(Rdi, rdi.wrapping_add(step));
+            }
+        }
+
+        if repeat {
+            let remaining = self.cpu.regs.get64(Rcx).wrapping_sub(1);
+            self.cpu.regs.set64(Rcx, remaining);
+            // `repe`/`repne` s'arrêtent aussi sur la comparaison : c'est
+            // ce qui fait de `repne scasb` un « cherche cet octet » et de
+            // `repe cmpsb` un « compare jusqu'à la différence ».
+            let zf = self.cpu.flags.contains(RFlags::ZF);
+            let again = remaining != 0
+                && match op {
+                    StringOp::Scan | StringOp::Compare => {
+                        if instr.has_repne_prefix() {
+                            !zf
+                        } else {
+                            zf
+                        }
+                    }
+                    _ => true,
+                };
+            if again {
+                self.cpu.regs.rip = instr.ip();
+            }
+        }
+        Ok(())
+    }
+
+    fn set_accumulator(&mut self, w: Width, value: u64) {
+        use namsdec_core::Reg64::Rax;
+        match w {
+            Width::W8 => self.cpu.regs.set8l(Rax, value as u8),
+            Width::W16 => self.cpu.regs.set16(Rax, value as u16),
+            Width::W32 => self.cpu.regs.set32(Rax, value as u32),
+            Width::W64 => self.cpu.regs.set64(Rax, value),
+        }
     }
 
     /// `adc`/`sbb` : l'addition et la soustraction qui tiennent compte de
@@ -1897,6 +2066,206 @@ _start:
 
     /// Charge sans exécuter — pour les programmes dont on veut observer
     /// l'échec plutôt que le résultat.
+    /// `rep movsb` recopie une chaîne, un octet par pas — et le pas à
+    /// pas montre RSI, RDI et RCX avancer, ce qu'une boucle atomique
+    /// aurait caché.
+    #[test]
+    fn rep_movsb_copies_one_byte_per_step() {
+        let mut emu = load_only(
+            "\
+section .data
+    source db \"salut\", 0
+
+section .bss
+    cible resb 8
+
+section .text
+    global _start
+_start:
+    mov rsi, source
+    mov rdi, cible
+    mov rcx, 6
+    rep movsb
+    hlt
+",
+            &[],
+        );
+        // Les trois `mov`, puis la copie.
+        for _ in 0..3 {
+            emu.step().unwrap();
+        }
+        let (rsi, rdi) = (
+            emu.cpu.regs.get64(Reg64::Rsi),
+            emu.cpu.regs.get64(Reg64::Rdi),
+        );
+        let rip = emu.cpu.regs.rip;
+
+        emu.step().unwrap();
+        assert_eq!(
+            emu.cpu.regs.rip, rip,
+            "l'instruction se rejoue tant que RCX reste"
+        );
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rcx), 5, "un élément par pas");
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rsi), rsi + 1);
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rdi), rdi + 1);
+        assert_eq!(
+            emu.cpu.mem.read_u8(rdi).unwrap(),
+            b's',
+            "le premier octet est passé"
+        );
+
+        // Jusqu'au bout.
+        emu.run(100).unwrap();
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rcx), 0);
+        assert_eq!(
+            emu.cpu.mem.bytes_at(rdi, 6).unwrap(),
+            b"salut\0",
+            "la chaîne entière, terminateur compris"
+        );
+        assert!(emu.cpu.halted);
+    }
+
+    /// `rep` avec RCX à zéro ne fait *rien* — pas même une itération.
+    /// C'est la nuance qui distingue un compteur nul d'un compteur à un,
+    /// et le piège de tous les premiers `rep`.
+    #[test]
+    fn rep_with_a_zero_count_does_nothing_at_all() {
+        let mut emu = load_only(
+            "\
+section .bss
+    cible resb 4
+
+section .text
+    global _start
+_start:
+    mov rdi, cible
+    mov rax, 0x41
+    xor rcx, rcx
+    rep stosb
+    hlt
+",
+            &[],
+        );
+        emu.run(100).unwrap();
+        let cible = emu.cpu.regs.get64(Reg64::Rdi);
+        assert_eq!(emu.cpu.mem.read_u8(cible).unwrap(), 0, "rien n'a été écrit");
+        assert!(emu.cpu.halted);
+    }
+
+    /// `std` fait travailler les chaînes à reculons, `cld` les remet à
+    /// l'endroit — c'est tout ce que le drapeau de direction fait, et on
+    /// ne le voit que sur une instruction de chaîne.
+    #[test]
+    fn the_direction_flag_reverses_a_string_operation() {
+        let mut emu = load_only(
+            "\
+section .bss
+    cible resb 8
+
+section .text
+    global _start
+_start:
+    mov rdi, cible
+    add rdi, 3          ; on part de la fin
+    mov rax, 0x41
+    mov rcx, 4
+    std
+    rep stosb           ; écrit vers les adresses décroissantes
+    cld
+    hlt
+",
+            &[],
+        );
+        emu.run(200).unwrap();
+        let base = emu.cpu.regs.get64(Reg64::Rdi).wrapping_add(1);
+        assert_eq!(
+            emu.cpu.mem.bytes_at(base, 4).unwrap(),
+            b"AAAA",
+            "les quatre octets sont remplis, de la fin vers le début"
+        );
+        assert!(
+            !emu.cpu.flags.contains(RFlags::DF),
+            "`cld` a remis la direction à l'endroit"
+        );
+    }
+
+    /// `repne scasb` cherche un octet : il s'arrête sur l'égalité, sans
+    /// attendre que RCX s'épuise. C'est ainsi qu'on mesure une chaîne
+    /// terminée par un zéro.
+    #[test]
+    fn repne_scasb_stops_on_the_byte_it_was_looking_for() {
+        let mut emu = load_only(
+            "\
+section .data
+    texte db \"abc\", 0
+
+section .text
+    global _start
+_start:
+    mov rdi, texte
+    xor rax, rax        ; on cherche l'octet nul
+    mov rcx, 16
+    repne scasb
+    hlt
+",
+            &[],
+        );
+        emu.run(200).unwrap();
+        // RDI s'est arrêté juste après le zéro, et RCX porte ce qui
+        // restait : la longueur s'en déduit.
+        assert_eq!(
+            emu.cpu.regs.get64(Reg64::Rcx),
+            12,
+            "quatre octets parcourus"
+        );
+        assert!(
+            emu.cpu.flags.contains(RFlags::ZF),
+            "arrêté sur une égalité, pas sur l'épuisement du compteur"
+        );
+    }
+
+    /// Le pas arrière défait une itération à la fois, la mémoire copiée
+    /// comprise : chaque élément est un pas, donc chaque élément se
+    /// défait.
+    #[test]
+    fn stepping_back_undoes_one_string_element_at_a_time() {
+        let mut emu = load_only(
+            "\
+section .data
+    source db \"ab\"
+
+section .bss
+    cible resb 4
+
+section .text
+    global _start
+_start:
+    mov rsi, source
+    mov rdi, cible
+    mov rcx, 2
+    rep movsb
+    hlt
+",
+            &[],
+        );
+        for _ in 0..3 {
+            emu.step().unwrap();
+        }
+        let cible = emu.cpu.regs.get64(Reg64::Rdi);
+        emu.step().unwrap();
+        emu.step().unwrap();
+        assert_eq!(emu.cpu.mem.bytes_at(cible, 2).unwrap(), b"ab");
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rcx), 0);
+
+        emu.step_back();
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rcx), 1, "une itération défaite");
+        assert_eq!(
+            emu.cpu.mem.bytes_at(cible, 2).unwrap(),
+            b"a\0",
+            "et l'octet qu'elle avait écrit est repris"
+        );
+    }
+
     /// Un point de surveillance arrête l'exécution quand la mémoire
     /// change sous lui — sans qu'on ait eu à deviner quelle instruction
     /// le ferait, ce qui est tout l'intérêt.
