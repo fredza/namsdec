@@ -6,13 +6,22 @@
 //! ajouter d'autres sans toucher au rendu — un thème installé plus tard
 //! n'est qu'un `Theme` de plus dans la liste.
 
+pub mod plugin;
+
+use std::sync::RwLock;
+
 use egui::Color32;
+
+pub use plugin::PluginError;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Palette complète d'un thème. Volontairement plate et explicite : un
 /// champ par rôle, pas de dérivation automatique, pour qu'un thème
 /// importé d'ailleurs (tokyonight, gruvbox…) se transcrive directement.
+///
+/// `Debug` sert aux tests et aux messages d'erreur d'installation.
+#[derive(Debug)]
 pub struct Theme {
     /// Identifiant stable, utilisé pour retrouver un thème (et le
     /// persister le jour où les préférences le seront).
@@ -178,13 +187,49 @@ pub static TOKYO_NIGHT: Theme = Theme {
 /// viendra simplement s'ajouter à cette liste.
 pub static BUILT_IN: &[&Theme] = &[&VSCODE_DARK, &VSCODE_LIGHT, &TOKYO_NIGHT];
 
+/// Les thèmes venus d'un fichier, ajoutés au fil des installations.
+///
+/// Un `RwLock` et non un `OnceLock` : on peut en installer un pendant que
+/// l'application tourne, et la liste doit alors s'allonger sous les yeux
+/// de l'utilisateur plutôt qu'au lancement suivant.
+static INSTALLED: RwLock<Vec<&'static Theme>> = RwLock::new(Vec::new());
+
+/// Ajoute un thème lu depuis un fichier. Son identifiant doit être libre :
+/// deux thèmes qui répondent au même nom rendraient `by_id` — et donc le
+/// thème enregistré dans les réglages — imprévisible.
+pub fn install(theme: Theme) -> Result<&'static Theme, PluginError> {
+    if all().iter().any(|known| known.id == theme.id) {
+        return Err(PluginError::DuplicateId(theme.id.to_owned()));
+    }
+    // Même raison que dans `plugin::parse` : un thème vit aussi longtemps
+    // que l'application.
+    let theme: &'static Theme = Box::leak(Box::new(theme));
+    INSTALLED
+        .write()
+        .expect("la liste des thèmes installés")
+        .push(theme);
+    Ok(theme)
+}
+
+/// Tous les thèmes disponibles : ceux d'origine, puis les installés.
+pub fn all() -> Vec<&'static Theme> {
+    let mut themes: Vec<&'static Theme> = BUILT_IN.to_vec();
+    themes.extend(
+        INSTALLED
+            .read()
+            .expect("la liste des thèmes installés")
+            .iter()
+            .copied(),
+    );
+    themes
+}
+
 /// Retrouve un thème par identifiant, en retombant sur le thème par défaut
 /// si l'identifiant est inconnu — un thème désinstallé ne doit pas empêcher
 /// l'application de démarrer.
 pub fn by_id(id: &str) -> &'static Theme {
-    BUILT_IN
-        .iter()
-        .copied()
+    all()
+        .into_iter()
         .find(|theme| theme.id == id)
         .unwrap_or(&VSCODE_DARK)
 }

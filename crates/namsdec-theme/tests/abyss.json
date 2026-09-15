@@ -1,0 +1,28 @@
+{
+  "id": "abyss",
+  "name": "Abyss",
+  "dark": true,
+
+  "bg": "#000c18",
+  "panel": "#051336",
+  "surface": "#10192c",
+  "text": "#6688cc",
+  "dim": "#406385",
+
+  "accent": "#2f7ee6",
+  "good": "#22aa44",
+  "warn": "#ddbb88",
+  "bad": "#ff628c",
+  "changed": "#f280d0",
+
+  "mnemonic": "#225588",
+  "number": "#f280d0",
+  "label": "#9966b8",
+  "comment": "#384887",
+
+  "folder": "#82aaff",
+  "folder_open": "#2f7ee6",
+  "folder_text": "#6688cc",
+  "header": "#ddbb88",
+  "selection": "#770811"
+}

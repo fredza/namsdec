@@ -18,7 +18,6 @@ SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Marqueur pour retrouver — et n'ajouter qu'une fois — la ligne de PATH.
 MARKER="# ajouté par namsdec"
-
 say()  { printf '\033[1;34m==>\033[0m %s\n' "$1"; }
 warn() { printf '\033[1;33m /!\\\033[0m %s\n' "$1"; }
 die()  { printf '\033[1;31merreur:\033[0m %s\n' "$1" >&2; exit 1; }

@@ -185,6 +185,50 @@ pub fn asm(lang: Lang, error: &AsmError) -> String {
     }
 }
 
+/// Les refus à l'installation d'un thème. Ils doivent dire quoi corriger
+/// dans le fichier : c'est tout ce que l'utilisateur peut faire.
+pub fn plugin(lang: Lang, error: &namsdec_theme::PluginError) -> String {
+    use namsdec_theme::PluginError as E;
+    let fr = lang == Lang::Fr;
+    match error {
+        E::Io(e) => {
+            if fr {
+                format!("fichier illisible : {e}")
+            } else {
+                format!("cannot read the file: {e}")
+            }
+        }
+        E::Format(e) => {
+            if fr {
+                format!("ce n'est pas un fichier de thème valide : {e}")
+            } else {
+                format!("this is not a valid theme file: {e}")
+            }
+        }
+        E::Colour { field, value } => {
+            if fr {
+                format!("« {field} » n'est pas une couleur comme « #1e1e1e » : {value}")
+            } else {
+                format!("\"{field}\" is not a colour like \"#1e1e1e\": {value}")
+            }
+        }
+        E::DuplicateId(id) => {
+            if fr {
+                format!("l'identifiant « {id} » est déjà pris par un autre thème")
+            } else {
+                format!("the identifier \"{id}\" is already taken by another theme")
+            }
+        }
+        E::BadId(id) => {
+            if fr {
+                format!("l'identifiant ne peut contenir que lettres, chiffres et tirets : « {id} »")
+            } else {
+                format!("the identifier may only contain letters, digits and dashes: \"{id}\"")
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -63,6 +63,12 @@ const TREAT_IMAGE_SIDE: usize = 128;
 const TREAT_IMAGE_SHOWN: f32 = 84.0;
 
 /// Le texte de la licence sous laquelle namsdec est publié.
+/// Le thème d'exemple, volontairement **hors du dépôt** : c'est un
+/// plugin, il doit s'installer depuis n'importe où sur le disque.
+#[cfg(test)]
+const EXTERNAL_ABYSS: &str =
+    "/home/fred/Projects/Rust/namsdec-plugin-abyss/abyss.namsdec-theme.json";
+
 const MIT_LICENSE_URL: &str = "https://opensource.org/license/mit";
 /// Où mène le bouton de don. Adresse **fictive** pour l'instant —
 /// `example.com` est réservé à la documentation, personne n'y reçoit
@@ -372,6 +378,9 @@ struct NamsdecApp {
     saved_settings: Settings,
     /// Le sélecteur de fichiers natif ouvert en ce moment, s'il y en a un.
     pending_dialog: Option<PendingDialog>,
+    /// Le compte rendu de la dernière installation de plugin, affiché
+    /// dans Préférences > Plugins jusqu'à la suivante.
+    plugin_note: Option<PluginNote>,
 }
 
 /// Ce qu'on demande au sélecteur natif, et donc ce qu'on fera du chemin
@@ -381,6 +390,14 @@ enum FileDialogKind {
     OpenFile,
     OpenFolder,
     SaveAs,
+    /// Choisir un fichier de thème à installer.
+    AddTheme,
+}
+
+/// Le compte rendu de la dernière installation de plugin.
+struct PluginNote {
+    ok: bool,
+    text: String,
 }
 
 /// Un sélecteur natif en cours, ouvert sur un thread à part.
@@ -518,7 +535,7 @@ fn palette_commands(s: &Strings, show_re_tab: bool) -> Vec<(String, PaletteComma
     }
 
     // Un thème installé plus tard apparaît ici sans rien changer d'autre.
-    commands.extend(namsdec_theme::BUILT_IN.iter().map(|theme| {
+    commands.extend(namsdec_theme::all().into_iter().map(|theme| {
         (
             format!("{}: {}", s.preferences_theme, theme.name),
             PaletteCommand::SetTheme(theme),
@@ -614,6 +631,7 @@ impl Default for NamsdecApp {
             command_palette: None,
             saved_settings: Settings::default(),
             pending_dialog: None,
+            plugin_note: None,
         }
     }
 }
@@ -1158,7 +1176,7 @@ impl NamsdecApp {
         let (sender, result) = mpsc::channel();
         std::thread::spawn(move || {
             let picked = match kind {
-                FileDialogKind::OpenFile => dialog.pick_file(),
+                FileDialogKind::OpenFile | FileDialogKind::AddTheme => dialog.pick_file(),
                 FileDialogKind::OpenFolder => dialog.pick_folder(),
                 FileDialogKind::SaveAs => dialog.save_file(),
             };
@@ -1177,6 +1195,10 @@ impl NamsdecApp {
         let s = strings(self.lang);
         let dialog = rfd::FileDialog::new();
         match kind {
+            // Un thème est un fichier JSON — le filtre le dit, sans
+            // interdire d'en choisir un autre : c'est la lecture qui
+            // tranche, pas l'extension.
+            FileDialogKind::AddTheme => dialog.add_filter(s.filter_theme, &["json"]),
             FileDialogKind::OpenFile => dialog
                 .add_filter(s.filter_asm, &["asm", "nasm", "s", "inc"])
                 .add_filter(
@@ -1201,7 +1223,7 @@ impl NamsdecApp {
             Ok(picked) => {
                 self.pending_dialog = None;
                 if let Some(path) = picked {
-                    self.finish_file_dialog(kind, path);
+                    self.finish_file_dialog(kind, path, ctx);
                 }
             }
             // Toujours ouvert. Aucun évènement n'arrive plus sur la
@@ -1216,7 +1238,7 @@ impl NamsdecApp {
     }
 
     /// Ce qu'on fait du chemin choisi, une fois la boîte refermée.
-    fn finish_file_dialog(&mut self, kind: FileDialogKind, path: PathBuf) {
+    fn finish_file_dialog(&mut self, kind: FileDialogKind, path: PathBuf, ctx: &egui::Context) {
         match kind {
             FileDialogKind::OpenFile => self.open_file(path),
             FileDialogKind::OpenFolder => {
@@ -1229,7 +1251,54 @@ impl NamsdecApp {
                 self.focus_explorer(true);
             }
             FileDialogKind::SaveAs => self.write_to(&path),
+            FileDialogKind::AddTheme => self.install_theme(&path, ctx),
         }
+    }
+
+    /// Installe un thème choisi dans le sélecteur.
+    ///
+    /// Le fichier est d'abord **lu**, donc validé : rien n'est copié dans
+    /// le dossier des plugins tant qu'on ne sait pas que c'est un thème
+    /// complet. Un fichier illisible ne laisse donc aucune trace, et le
+    /// message dit ce qui cloche.
+    fn install_theme(&mut self, path: &Path, ctx: &egui::Context) {
+        let s = strings(self.lang);
+        let note = match namsdec_theme::plugin::read(path) {
+            Err(e) => PluginNote {
+                ok: false,
+                text: errors::plugin(self.lang, &e),
+            },
+            Ok(theme) => {
+                let name = theme.name.to_owned();
+                match namsdec_theme::install(theme) {
+                    Err(e) => PluginNote {
+                        ok: false,
+                        text: errors::plugin(self.lang, &e),
+                    },
+                    Ok(installed) => {
+                        // Copié seulement maintenant : le thème est bon,
+                        // il doit revenir au lancement suivant.
+                        let copied = copy_into_plugins(path);
+                        // Appliqué aussitôt : on installe un thème pour
+                        // le voir, pas pour le chercher ensuite dans la
+                        // liste.
+                        self.theme = installed;
+                        self.apply_theme(ctx);
+                        match copied {
+                            Ok(()) => PluginNote {
+                                ok: true,
+                                text: format!("{} — {name}", s.plugins_added),
+                            },
+                            Err(e) => PluginNote {
+                                ok: false,
+                                text: format!("{} ({e})", s.plugins_added_not_kept),
+                            },
+                        }
+                    }
+                }
+            }
+        };
+        self.plugin_note = Some(note);
     }
 
     /// Charge `path`. Du texte part dans l'éditeur ; tout le reste est
@@ -1939,6 +2008,7 @@ impl NamsdecApp {
     /// liste — rien ici n'est écrit par thème.
     fn preferences_plugins_ui(&mut self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
+        let theme = self.theme;
         let ctx = ui.ctx().clone();
 
         ui.strong(s.plugins_themes);
@@ -1948,8 +2018,8 @@ impl NamsdecApp {
         egui::ScrollArea::vertical()
             .max_height(320.0)
             .show(ui, |ui| {
-                for theme in namsdec_theme::BUILT_IN {
-                    let active = std::ptr::eq(self.theme, *theme);
+                for theme in namsdec_theme::all() {
+                    let active = std::ptr::eq(self.theme, theme);
                     let response = theme_card(ui, theme, active, s.plugins_active);
                     if response.clicked() && !active {
                         self.theme = theme;
@@ -1959,7 +2029,19 @@ impl NamsdecApp {
             });
 
         ui.add_space(6.0);
-        ui.weak(s.plugins_install_soon);
+        ui.separator();
+        if ui.button(s.plugins_add).clicked() {
+            self.spawn_file_dialog(FileDialogKind::AddTheme);
+        }
+        ui.weak(s.plugins_add_hint);
+        // Le compte rendu de la dernière installation reste affiché
+        // jusqu'à la suivante : une boîte modale de plus pour dire « c'est
+        // fait » n'apprendrait rien, un refus doit en revanche pouvoir
+        // être relu.
+        if let Some(note) = &self.plugin_note {
+            let colour = if note.ok { theme.good } else { theme.bad };
+            ui.colored_label(colour, &note.text);
+        }
     }
 
     /// L'illustration du bouton de don. Montée en texture au premier
@@ -2371,6 +2453,7 @@ impl NamsdecApp {
         // différents par-dessus.
         egui::Frame::new().fill(editor_bg).show(ui, |ui| {
             egui::ScrollArea::both()
+                .id_salt("editeur_scroll")
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
                     // Calculé UNE fois ici, en dehors du `TextEdit`, pour que
@@ -2457,9 +2540,17 @@ impl NamsdecApp {
                         // `.show()` plutôt que `ui.add()` : c'est la seule
                         // forme qui donne accès au curseur, dont la barre
                         // de statut affiche la position.
+                        // La largeur demandée est celle du code, ou celle
+                        // du panneau s'il est plus large — et non l'infini.
+                        // Demander l'infini faisait croire à la zone de
+                        // défilement qu'il y avait toujours quelque chose à
+                        // atteindre à droite : sa barre horizontale restait
+                        // affichée même sur trois lignes de vingt
+                        // caractères.
+                        let width = editor_width(galley.rect.width(), ui.available_width());
                         let output = egui::TextEdit::multiline(&mut self.source)
                             .frame(egui::Frame::NONE)
-                            .desired_width(f32::INFINITY)
+                            .desired_width(width)
                             .desired_rows(24)
                             .code_editor()
                             .interactive(self.editor_mode == EditorMode::Insert)
@@ -3798,6 +3889,81 @@ fn flag_chip(ui: &mut egui::Ui, theme: &'static Theme, name: &str, on: bool) {
     ui.painter().galley(pos, galley, color);
 }
 
+/// Où vivent les thèmes installés : à côté des réglages, dans le dossier
+/// de données de l'utilisateur.
+fn plugins_dir() -> Option<PathBuf> {
+    let base = std::env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .filter(|p| p.is_absolute())
+        .or_else(|| {
+            std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local").join("share"))
+        })?;
+    Some(base.join("namsdec").join("themes"))
+}
+
+/// Recopie le fichier de thème dans le dossier des plugins, pour qu'il
+/// revienne au lancement suivant. Un fichier déjà installé est écrasé :
+/// c'est la version qu'on vient de choisir qui fait foi.
+fn copy_into_plugins(path: &Path) -> std::io::Result<()> {
+    let dir = plugins_dir().ok_or_else(|| {
+        std::io::Error::other("aucun dossier de données (ni XDG_DATA_HOME ni HOME)")
+    })?;
+    std::fs::create_dir_all(&dir)?;
+    let name = path
+        .file_name()
+        .ok_or_else(|| std::io::Error::other("le chemin ne nomme pas un fichier"))?;
+    let destination = dir.join(name);
+    // Se recopier sur soi-même n'a pas de sens, et `copy` s'en plaindrait.
+    if path != destination {
+        std::fs::copy(path, destination)?;
+    }
+    Ok(())
+}
+
+/// Charge les thèmes déjà installés. Appelé une fois au démarrage.
+///
+/// Un fichier illisible n'empêche pas les autres de se charger : il est
+/// nommé dans le compte rendu, et l'application démarre quand même —
+/// perdre son éditeur parce qu'un thème a mal vieilli serait absurde.
+fn load_installed_themes() -> Vec<String> {
+    let mut failures = Vec::new();
+    let Some(dir) = plugins_dir() else {
+        return failures;
+    };
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return failures;
+    };
+    let mut paths: Vec<PathBuf> = entries
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "json"))
+        .collect();
+    // Ordre stable : la liste des thèmes ne doit pas changer d'ordre d'un
+    // lancement à l'autre.
+    paths.sort();
+    for path in paths {
+        let outcome = namsdec_theme::plugin::read(&path)
+            .and_then(namsdec_theme::install)
+            .map(|_| ());
+        if let Err(e) = outcome {
+            failures.push(format!("{} : {e}", path.display()));
+        }
+    }
+    failures
+}
+
+/// La largeur que l'éditeur réclame : celle du code, ou celle de la place
+/// disponible s'il est plus étroit.
+///
+/// Surtout pas l'infini, qui était demandé jusqu'ici : la zone de
+/// défilement croyait alors toujours avoir quelque chose à atteindre à
+/// droite, et gardait sa barre horizontale sous trois lignes de vingt
+/// caractères. Prendre au moins la place disponible garde en revanche le
+/// clic actif sur toute la largeur, jusqu'au bord droit.
+fn editor_width(code: f32, available: f32) -> f32 {
+    code.max(available)
+}
+
 /// La mise en page du code, telle que la gouttière **et** l'éditeur la
 /// voient — c'est le fait qu'ils partagent celle-ci qui les garde alignés.
 ///
@@ -4104,7 +4270,21 @@ fn main() -> eframe::Result<()> {
         "Namsdec",
         options,
         Box::new(|cc| {
+            // Les thèmes installés sont chargés *avant* les réglages :
+            // celui que l'utilisateur avait choisi peut être l'un d'eux,
+            // et `by_id` doit pouvoir le retrouver.
+            let failures = load_installed_themes();
             let mut app = NamsdecApp::from_settings(Settings::load());
+            if !failures.is_empty() {
+                app.plugin_note = Some(PluginNote {
+                    ok: false,
+                    text: format!(
+                        "{} {}",
+                        strings(app.lang).plugins_failed,
+                        failures.join(" ; ")
+                    ),
+                });
+            }
             app.save_settings_now();
             app.apply_theme(&cc.egui_ctx);
             Ok(Box::new(app))
@@ -4621,6 +4801,61 @@ _start:
              obtenu : {width}"
         );
         assert!(width >= SIDEBAR_MIN_WIDTH, "obtenu : {width}");
+    }
+
+    /// Le thème d'exemple livré à côté du dépôt s'installe : lu,
+    /// enregistré, retrouvé par son identifiant, et proposé dans la
+    /// liste comme les thèmes d'origine.
+    ///
+    /// Il n'est pas *copié* ici : ce test lit un fichier, il n'a rien à
+    /// faire dans le dossier de plugins de qui exécute la suite.
+    #[test]
+    fn an_external_theme_file_installs_and_joins_the_list() {
+        let path = std::path::Path::new(EXTERNAL_ABYSS);
+        if !path.exists() {
+            // Le plugin vit hors du dépôt : sur une autre machine, ce
+            // test n'a rien à vérifier.
+            return;
+        }
+        let theme = namsdec_theme::plugin::read(path).expect("le thème doit se lire");
+        assert_eq!(theme.name, "Abyss");
+
+        let before = namsdec_theme::all().len();
+        let installed = match namsdec_theme::install(theme) {
+            Ok(installed) => installed,
+            // Un autre test de ce binaire l'a déjà installé : la liste
+            // est partagée par tout le processus.
+            Err(_) => namsdec_theme::by_id("abyss"),
+        };
+        assert_eq!(installed.id, "abyss");
+        assert!(namsdec_theme::all().len() >= before);
+        assert!(
+            std::ptr::eq(namsdec_theme::by_id("abyss"), installed),
+            "il se retrouve par son identifiant, comme un thème d'origine"
+        );
+
+        // Et un identifiant déjà pris est refusé : deux thèmes qui
+        // répondent au même nom rendraient le réglage imprévisible.
+        let again = namsdec_theme::plugin::read(path).unwrap();
+        assert!(matches!(
+            namsdec_theme::install(again),
+            Err(namsdec_theme::PluginError::DuplicateId(_))
+        ));
+    }
+
+    /// L'éditeur ne réclame que la largeur de son code — jamais
+    /// l'infini, qui laissait la zone de défilement croire qu'il y avait
+    /// toujours quelque chose à atteindre à droite, barre horizontale
+    /// comprise, sous trois lignes de vingt caractères.
+    #[test]
+    fn the_editor_asks_for_the_width_of_its_code() {
+        // Code étroit : on prend la place offerte, ni plus (rien à
+        // faire défiler) ni moins (le clic reste actif jusqu'au bord).
+        assert_eq!(editor_width(120.0, 800.0), 800.0);
+        // Code plus large : c'est lui qui donne la mesure, et la barre
+        // horizontale a alors une raison d'être.
+        assert_eq!(editor_width(2400.0, 800.0), 2400.0);
+        assert!(editor_width(2400.0, 800.0).is_finite(), "jamais l'infini");
     }
 
     /// Un numéro de la règle par ligne de code, quelle que soit la
@@ -5708,7 +5943,11 @@ _start:
         let dir = tempfile::tempdir().unwrap();
         let mut app = NamsdecApp::default();
 
-        app.finish_file_dialog(FileDialogKind::OpenFolder, dir.path().to_path_buf());
+        app.finish_file_dialog(
+            FileDialogKind::OpenFolder,
+            dir.path().to_path_buf(),
+            &egui::Context::default(),
+        );
 
         assert_eq!(app.explorer.root.as_deref(), Some(dir.path()));
         assert!(app.show_explorer, "l'explorateur s'ouvre sur ce dossier");
