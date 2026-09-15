@@ -30,6 +30,16 @@ use settings::Settings;
 
 const BASE_ADDR: u64 = 0x400000;
 const MEM_SIZE: usize = 0x10000;
+/// Le sommet de la pile : tout en haut de la fenêtre simulée, moins de
+/// quoi laisser une adresse de retour lisible au-dessus.
+const STACK_TOP: u64 = BASE_ADDR + MEM_SIZE as u64 - 0x100;
+/// Le plafond du tas. Il monte vers la pile, qui descend vers lui : ce
+/// qui les sépare est ce que la pile a le droit de consommer.
+const HEAP_LIMIT: u64 = BASE_ADDR + MEM_SIZE as u64 - 0x2000;
+// Le tas monte, la pile descend : ce qui les sépare doit rester assez
+// grand pour que la seconde ne soit jamais écrasée par le premier. Une
+// constante changée sans y penser ne compile plus.
+const _: () = assert!(STACK_TOP - HEAP_LIMIT >= 0x1000);
 const MAX_RUN_STEPS: u32 = 1_000_000;
 /// Nombre de pas exécutés par frame pendant un Run — assez petit pour que
 /// Stop réagisse vite (au prochain batch), assez grand pour que la plupart
@@ -931,13 +941,19 @@ impl NamsdecApp {
         // un programme qui commence par `.data`, ce sont deux adresses
         // différentes.
         cpu.regs.rip = state.output.entry;
-        cpu.regs
-            .set64(Reg64::Rsp, BASE_ADDR + MEM_SIZE as u64 - 0x100);
+        cpu.regs.set64(Reg64::Rsp, STACK_TOP);
 
         // Un programme qui vient d'être chargé n'a pas de passé : rien à
         // mettre en avant tant qu'il n'a pas avancé d'un pas.
         self.regs_before = None;
         let mut emulator = Emulator::new(cpu);
+        // Le tas commence après l'image du programme et monte vers la
+        // pile : c'est la disposition d'un vrai processus, et c'est elle
+        // qui donne un sens à `brk`.
+        emulator.set_heap(
+            state.output.load_addr + state.output.bytes.len() as u64,
+            HEAP_LIMIT,
+        );
         emulator.set_breakpoints(
             self.breakpoint_lines
                 .iter()

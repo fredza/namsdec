@@ -71,6 +71,12 @@ pub enum EmuError {
     DivideOverflow { addr: u64 },
 }
 
+/// L'adresse arrondie au début de la page suivante — elle-même si elle
+/// est déjà alignée.
+fn page_up(addr: u64) -> u64 {
+    addr.div_ceil(PAGE).saturating_mul(PAGE)
+}
+
 /// Une zone de mémoire surveillée : on s'arrête quand elle change.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Watchpoint {
@@ -142,6 +148,8 @@ struct Undo {
     memory: Vec<(u64, Vec<u8>)>,
     /// Ce que le pas a fait à la pile des appels.
     frames: FrameChange,
+    /// Le tas d'avant : un `brk` se défait comme le reste.
+    heap: Heap,
 }
 
 /// Combien de pas on peut défaire. Au-delà, les plus anciens sont
@@ -359,6 +367,54 @@ pub trait Backend {
     fn exit_code(&self) -> Option<i64>;
 }
 
+/// La taille d'une page. `brk` travaille par pages sous Linux, et
+/// aligner la rupture de départ dessus, c'est montrer la même chose ici.
+const PAGE: u64 = 0x1000;
+
+/// Le tas : le segment que `brk` fait grandir, entre la fin de l'image du
+/// programme et la pile.
+///
+/// Il n'y a pas de pagination ici, ni de noyau qui cherche de la place :
+/// la mémoire simulée existe déjà tout entière. Ce que `brk` déplace est
+/// donc une simple frontière — mais c'est exactement ce qu'un programme
+/// voit d'elle, et c'est ce qu'il faut comprendre pour écrire un
+/// allocateur.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Heap {
+    start: u64,
+    current: u64,
+    limit: u64,
+}
+
+impl Heap {
+    /// La première adresse du tas. `brk` ne descend jamais en dessous :
+    /// ce qui est là, c'est le programme lui-même.
+    pub fn start(&self) -> u64 {
+        self.start
+    }
+
+    /// La rupture courante : la première adresse **hors** du tas. C'est
+    /// ce que rend `brk(0)`.
+    pub fn current(&self) -> u64 {
+        self.current
+    }
+
+    /// Le plafond : au-delà, `brk` échoue. Il laisse de quoi vivre à la
+    /// pile, qui descend depuis le haut de la mémoire.
+    pub fn limit(&self) -> u64 {
+        self.limit
+    }
+
+    /// Combien d'octets le programme s'est fait donner.
+    pub fn len(&self) -> u64 {
+        self.current - self.start
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.current == self.start
+    }
+}
+
 pub struct Emulator {
     pub cpu: Cpu,
     pub breakpoints: BTreeSet<u64>,
@@ -383,6 +439,8 @@ pub struct Emulator {
     frames: Vec<Frame>,
     /// Les zones surveillées.
     watchpoints: Vec<Watchpoint>,
+    /// Le tas, tel que `brk` l'a laissé.
+    heap: Heap,
 }
 
 impl Backend for Emulator {
@@ -466,8 +524,8 @@ impl Emulator {
     pub const NAME: &'static str = "namsdec";
 
     pub fn new(cpu: Cpu) -> Self {
+        let end = cpu.mem.range().end;
         Self {
-            cpu,
             breakpoints: BTreeSet::new(),
             output: Vec::new(),
             input: VecDeque::new(),
@@ -476,18 +534,75 @@ impl Emulator {
             history: VecDeque::new(),
             frames: Vec::new(),
             watchpoints: Vec::new(),
+            // Pas de tas tant que personne n'a dit où le mettre : seul
+            // celui qui a chargé le programme sait où son image finit.
+            // `brk` se comporte alors comme sous un système à court de
+            // mémoire — il rend la rupture sans la déplacer.
+            heap: Heap {
+                start: end,
+                current: end,
+                limit: end,
+            },
+            cpu,
         }
+    }
+
+    /// Installe le tas : `start` est la fin de l'image du programme (la
+    /// rupture part de la page suivante, comme sous Linux), `limit` le
+    /// plus haut qu'on le laisse monter.
+    ///
+    /// C'est à l'appelant de le dire parce que lui seul sait où le
+    /// programme finit et où sa pile commence ; l'émulateur ne voit qu'un
+    /// bloc d'octets.
+    pub fn set_heap(&mut self, start: u64, limit: u64) {
+        let range = self.cpu.mem.range();
+        let start = page_up(start).clamp(range.start, range.end);
+        // Un plafond plus bas que le départ n'est pas une erreur : c'est
+        // un tas de taille nulle, et `brk` refusera tout.
+        let limit = limit.clamp(start, range.end);
+        self.heap = Heap {
+            start,
+            current: start,
+            limit,
+        };
+    }
+
+    /// Le tas, tel que `brk` l'a laissé.
+    pub fn heap(&self) -> Heap {
+        self.heap
+    }
+
+    /// Déplace la rupture et rend celle qui vaut désormais.
+    ///
+    /// Linux rend **toujours** la rupture effective, pas un code
+    /// d'erreur : inchangée, elle veut dire « refusé ». D'où l'usage de
+    /// `brk(0)`, qui ne demande rien et sert donc à la lire.
+    fn set_break(&mut self, requested: u64) -> u64 {
+        if (self.heap.start..=self.heap.limit).contains(&requested) {
+            if requested < self.heap.current {
+                // Ce qu'on rend au système est perdu : le noyau reprend
+                // les pages et n'en rendra que des vierges. Les remettre
+                // à zéro ici, c'est rendre cet oubli visible plutôt que
+                // de laisser un programme fautif retrouver ses données.
+                let len = (self.heap.current - requested) as usize;
+                self.record_memory(requested, len);
+                let _ = self.cpu.mem.write_bytes(requested, &vec![0u8; len]);
+            }
+            self.heap.current = requested;
+        }
+        self.heap.current
     }
 
     /// L'appel système Linux x86-64 : le numéro est dans RAX, les
     /// arguments dans RDI, RSI, RDX (puis R10, R8, R9 — dont aucun appel
     /// géré ici n'a besoin), et la valeur de retour repart dans RAX.
     ///
-    /// Deux appels seulement sont implémentés, ceux dont tout premier
+    /// Quatre appels seulement sont implémentés : ceux dont un premier
     /// programme en assembleur a besoin pour faire quelque chose de
-    /// visible : `write` et `exit`. namsdec n'est pas un noyau, et ne
-    /// prétend pas l'être — un appel non géré s'arrête en le disant, ce
-    /// qui apprend davantage qu'un code d'erreur silencieux.
+    /// visible — `read`, `write`, `exit` — et `brk`, qui lui donne de la
+    /// mémoire. namsdec n'est pas un noyau, et ne prétend pas l'être : un
+    /// appel non géré s'arrête en le disant, ce qui apprend davantage
+    /// qu'un code d'erreur silencieux.
     fn syscall(&mut self) -> Result<(), EmuError> {
         const SYS_READ: u64 = 0;
         const SYS_WRITE: u64 = 1;
@@ -496,6 +611,10 @@ impl Emulator {
         /// c'est un `exit` — et c'est celui que produisent la plupart des
         /// bibliothèques C.
         const SYS_EXIT_GROUP: u64 = 231;
+        /// `brk` déplace la fin du tas. C'est sur lui que repose tout
+        /// `malloc`, et c'est le seul appel « mémoire » qu'un programme
+        /// écrit à la main utilise sans bibliothèque.
+        const SYS_BRK: u64 = 12;
 
         let number = self.cpu.regs.get64(Reg64::Rax);
         match number {
@@ -512,6 +631,11 @@ impl Emulator {
                 let count = self.cpu.regs.get64(Reg64::Rdx);
                 let written = self.write(fd, buf, count)?;
                 self.cpu.regs.set64(Reg64::Rax, written as u64);
+            }
+            SYS_BRK => {
+                let requested = self.cpu.regs.get64(Reg64::Rdi);
+                let now = self.set_break(requested);
+                self.cpu.regs.set64(Reg64::Rax, now);
             }
             SYS_EXIT | SYS_EXIT_GROUP => {
                 // Le code de sortie est un octet : `exit(256)` rend 0, et
@@ -1533,6 +1657,7 @@ impl Emulator {
             input_closed: self.input_closed,
             memory: Vec::new(),
             frames: FrameChange::None,
+            heap: self.heap,
         });
     }
 
@@ -1576,6 +1701,7 @@ impl Emulator {
             self.input.push_front(*byte);
         }
         self.input_closed = undo.input_closed;
+        self.heap = undo.heap;
         match undo.frames {
             FrameChange::None => {}
             FrameChange::Pushed => {
@@ -2986,6 +3112,7 @@ _start:
         cpu.regs.set64(Reg64::Rsp, BASE + 0x8000);
 
         let mut emu = Emulator::new(cpu);
+        emu.set_heap(out.load_addr + out.bytes.len() as u64, BASE + 0x7000);
         emu.breakpoints.extend(breakpoints.iter().copied());
         emu
     }
@@ -3002,7 +3129,11 @@ _start:
         cpu.regs.rip = out.entry;
         cpu.regs.set64(Reg64::Rsp, BASE + 0x8000);
 
-        (Emulator::new(cpu), out)
+        let mut emu = Emulator::new(cpu);
+        // Le tas entre l'image du programme et la pile, comme le fait
+        // l'interface quand elle charge un programme.
+        emu.set_heap(out.load_addr + out.bytes.len() as u64, BASE + 0x7000);
+        (emu, out)
     }
 
     const SUM_LOOP_ASM: &str = "\
@@ -3132,5 +3263,133 @@ add_five:
         let result = emu.step_over(1000).unwrap();
         assert_eq!(result, StepOverResult::Stepped);
         assert_eq!(emu.cpu.regs.get64(Reg64::Rax), 0); // "mov rax, 0" tout juste exécuté
+    }
+    /// Un tas neuf : le programme demande où il commence, le fait
+    /// grandir, et écrit dans ce qu'il vient d'obtenir. C'est le cœur de
+    /// ce qu'un `malloc` fait pour vous.
+    #[test]
+    fn brk_grows_the_heap_and_the_new_memory_is_usable() {
+        let emu = run_program(
+            "\
+section .text
+    global _start
+_start:
+    mov rax, 12         ; brk(0) : ne demande rien, lit la rupture
+    xor rdi, rdi
+    syscall
+    mov r12, rax        ; le début du tas
+
+    mov rdi, rax
+    add rdi, 4096
+    mov rax, 12         ; brk(fin + 4096) : 4 Kio de plus
+    syscall
+    mov r13, rax
+
+    mov byte [r12], 42  ; la mémoire obtenue s'écrit
+    movzx r14, byte [r12]
+    hlt
+",
+            &[],
+        );
+
+        let start = emu.cpu.regs.get64(Reg64::R12);
+        assert_eq!(start % PAGE, 0, "la rupture part sur une page");
+        assert_eq!(start, emu.heap().start());
+        assert_eq!(
+            emu.cpu.regs.get64(Reg64::R13),
+            start + 4096,
+            "brk rend la rupture obtenue, pas un code d'erreur"
+        );
+        assert_eq!(emu.heap().len(), 4096);
+        assert_eq!(emu.cpu.regs.get64(Reg64::R14), 42, "le tas est utilisable");
+    }
+
+    /// Le tas ne mord ni sur le programme, ni sur la pile : hors de ces
+    /// bornes, `brk` refuse — et refuser, pour lui, c'est rendre la
+    /// rupture inchangée.
+    #[test]
+    fn a_brk_outside_the_heap_is_refused_and_leaves_the_break_alone() {
+        let mut emu = Emulator::new(Cpu::new(Memory::new(BASE, 0x10000)));
+        emu.set_heap(BASE + 0x1000, BASE + 0x2000);
+
+        assert_eq!(emu.set_break(0), BASE + 0x1000, "brk(0) ne déplace rien");
+        assert_eq!(
+            emu.set_break(BASE + 0x2001),
+            BASE + 0x1000,
+            "au-dessus du plafond : refusé"
+        );
+        assert_eq!(
+            emu.set_break(BASE + 0x0800),
+            BASE + 0x1000,
+            "sous le programme : refusé"
+        );
+        assert_eq!(
+            emu.set_break(BASE + 0x2000),
+            BASE + 0x2000,
+            "le plafond lui-même s'atteint"
+        );
+    }
+
+    /// Rendre de la mémoire, c'est la perdre : le noyau reprend les pages
+    /// et n'en rendra que des vierges. Un programme qui rétrécit son tas
+    /// puis le rouvre ne doit pas y retrouver ses données.
+    #[test]
+    fn giving_the_heap_back_forgets_what_was_in_it() {
+        let mut emu = Emulator::new(Cpu::new(Memory::new(BASE, 0x10000)));
+        emu.set_heap(BASE + 0x1000, BASE + 0x3000);
+        emu.set_break(BASE + 0x2000);
+        emu.cpu.mem.write_u64(BASE + 0x1000, 0x1122_3344).unwrap();
+
+        emu.set_break(BASE + 0x1000); // rendu
+        emu.set_break(BASE + 0x2000); // repris
+        assert_eq!(emu.cpu.mem.read_u64(BASE + 0x1000).unwrap(), 0);
+    }
+
+    /// Sans tas installé, `brk` se comporte comme sous un système à court
+    /// de mémoire : il rend la rupture, il ne la déplace pas.
+    #[test]
+    fn without_a_heap_brk_hands_out_nothing() {
+        let mut emu = Emulator::new(Cpu::new(Memory::new(BASE, 0x10000)));
+        let top = BASE + 0x10000;
+        assert_eq!(emu.set_break(0), top);
+        assert_eq!(emu.set_break(top + 0x1000), top);
+        assert_eq!(emu.heap().len(), 0);
+    }
+
+    /// Revenir en arrière sur un `brk` rend la mémoire au système.
+    #[test]
+    fn stepping_back_undoes_a_brk() {
+        let mut emu = load_only(
+            "\
+section .text
+    global _start
+_start:
+    mov rax, 12
+    xor rdi, rdi
+    syscall
+    mov rdi, rax
+    add rdi, 4096
+    mov rax, 12
+    syscall
+    hlt
+",
+            &[],
+        );
+
+        let start = emu.heap().current();
+        for _ in 0..20 {
+            if emu.heap().current() != start {
+                break;
+            }
+            emu.step().unwrap();
+        }
+        assert_eq!(emu.heap().current(), start + 4096, "le tas a grandi");
+
+        assert!(emu.step_back());
+        assert_eq!(
+            emu.heap().current(),
+            start,
+            "défaire le pas rend aussi la mémoire"
+        );
     }
 }
