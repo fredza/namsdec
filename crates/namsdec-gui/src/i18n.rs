@@ -52,6 +52,9 @@ pub struct Strings {
 
     // Onglets du panneau latéral / menu Affichage
     pub tab_stack: &'static str,
+    pub call_chain: &'static str,
+    pub call_chain_line: &'static str,
+    pub call_chain_empty: &'static str,
     pub tab_memory: &'static str,
     pub tab_output: &'static str,
     pub tab_diagnostics: &'static str,
@@ -202,6 +205,9 @@ const FR: Strings = Strings {
     dialog_quit: "Quitter",
 
     tab_stack: "Pile",
+    call_chain: "Chaîne des appels",
+    call_chain_line: "ligne",
+    call_chain_empty: "Aucun appel en cours — on est dans le programme principal.",
     tab_memory: "Mémoire",
     tab_output: "Console",
     tab_diagnostics: "Diagnostics",
@@ -336,6 +342,9 @@ const EN: Strings = Strings {
     dialog_quit: "Quit",
 
     tab_stack: "Stack",
+    call_chain: "Call chain",
+    call_chain_line: "line",
+    call_chain_empty: "No call in progress — this is the main program.",
     tab_memory: "Memory",
     tab_output: "Console",
     tab_diagnostics: "Diagnostics",

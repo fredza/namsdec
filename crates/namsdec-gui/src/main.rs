@@ -2893,9 +2893,53 @@ impl NamsdecApp {
             ui.label(s.no_binary_assembled);
             return;
         };
+        self.call_chain_ui(ui, emulator.as_ref());
+        ui.separator();
+
         let addr = emulator.cpu().regs.get64(Reg64::Rsp).saturating_sub(16);
         let dump = safe_hexdump(&emulator.cpu().mem, addr, 64, s.address_out_of_range);
         hexdump_ui(ui, "stack_dump", &dump);
+    }
+
+    /// La chaîne des appels, du plus récent au plus ancien — l'ordre d'un
+    /// débogueur, parce que c'est l'appel en cours qui intéresse d'abord.
+    ///
+    /// Chaque cadre porte la ligne d'où part l'appel : c'est ce qui
+    /// transforme une suite d'adresses en une phrase lisible, « appelé
+    /// depuis la ligne 12 ».
+    fn call_chain_ui(&self, ui: &mut egui::Ui, emulator: &dyn Backend) {
+        let s = strings(self.lang);
+        let theme = self.theme;
+        ui.label(egui::RichText::new(s.call_chain).color(theme.dim));
+
+        let line_of = |addr: u64| {
+            self.assemble_state
+                .as_ref()
+                .and_then(|state| state.addr_to_line.get(&addr).copied())
+        };
+        let position = |addr: u64| match line_of(addr) {
+            Some(line) => format!("{addr:#x}  ({} {line})", s.call_chain_line),
+            None => format!("{addr:#x}"),
+        };
+
+        // Le sommet : là où l'exécution se trouve en ce moment.
+        let rip = emulator.cpu().regs.rip;
+        ui.horizontal(|ui| {
+            ui.colored_label(theme.accent, "▸");
+            ui.monospace(position(rip));
+        });
+
+        let frames = emulator.frames();
+        if frames.is_empty() {
+            ui.colored_label(theme.dim, s.call_chain_empty);
+            return;
+        }
+        for frame in frames.iter().rev() {
+            ui.horizontal(|ui| {
+                ui.colored_label(theme.dim, "└");
+                ui.monospace(position(frame.call_site));
+            });
+        }
     }
 
     fn memory_ui(&mut self, ui: &mut egui::Ui) {
@@ -5239,6 +5283,56 @@ _start:
             !app.about_update_clicked,
             "la note se referme avec la boîte"
         );
+    }
+
+    /// La chaîne des appels nomme les lignes source, pas seulement des
+    /// adresses : c'est ce qui la rend lisible pour quelqu'un qui apprend
+    /// — « appelé depuis la ligne 4 », et non « 0x400000 ».
+    #[test]
+    fn the_call_chain_names_source_lines() {
+        if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+            return;
+        }
+        let mut app = NamsdecApp {
+            source: "\
+section .text
+    global _start
+_start:
+    call externe
+    hlt
+
+externe:
+    call interne
+    ret
+
+interne:
+    mov rax, 1
+    ret
+"
+            .to_owned(),
+            ..Default::default()
+        };
+        app.do_assemble();
+        assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+
+        app.do_step(); // call externe
+        app.do_step(); // call interne
+
+        let state = app.assemble_state.as_ref().expect("un binaire assemblé");
+        let frames = app.emulator.as_ref().unwrap().frames();
+        assert_eq!(frames.len(), 2, "deux appels imbriqués");
+
+        // Les deux sites d'appel se traduisent en lignes du source : le
+        // `call externe` de la ligne 4, le `call interne` de la ligne 8.
+        let lines: Vec<u32> = frames
+            .iter()
+            .map(|f| state.addr_to_line[&f.call_site])
+            .collect();
+        assert_eq!(lines, [4, 8], "obtenu {lines:?}");
+
+        // Et le pas arrière défait la chaîne comme le reste.
+        app.do_step_back();
+        assert_eq!(app.emulator.as_ref().unwrap().frames().len(), 1);
     }
 
     /// Le pas arrière rend la main à l'utilisateur et met en avant ce

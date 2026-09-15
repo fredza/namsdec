@@ -71,6 +71,36 @@ pub enum EmuError {
     DivideOverflow { addr: u64 },
 }
 
+/// Un appel en cours : ce qu'il faut pour remonter la chaîne.
+///
+/// L'émulateur *voit* les `call` et les `ret` passer, il n'a donc pas à
+/// deviner les cadres en suivant RBP comme le fait un débogueur sans
+/// symboles — ce qui échoue justement sur le code qu'on écrit en
+/// apprenant, où personne ne monte de cadre de pile.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Frame {
+    /// L'adresse de l'instruction `call` elle-même : c'est elle qui se
+    /// traduit en « appelé depuis la ligne … ».
+    pub call_site: u64,
+    /// Où l'appel est parti — le début de la sous-routine.
+    pub entry: u64,
+    /// Où il reviendra.
+    pub return_addr: u64,
+    /// RSP juste après l'empilement de l'adresse de retour.
+    pub rsp: u64,
+}
+
+/// Ce qu'un pas a fait à la pile des appels, pour pouvoir le défaire.
+#[derive(Clone, Copy, Debug)]
+enum FrameChange {
+    /// Ni `call` ni `ret` : rien à défaire.
+    None,
+    /// Un `call` : le cadre empilé est à retirer.
+    Pushed,
+    /// Un `ret` : le cadre dépilé est à remettre.
+    Popped(Frame),
+}
+
 /// Ce qu'il faut retenir d'un pas pour pouvoir le défaire.
 ///
 /// Un instantané complet de la machine coûterait la mémoire entière à
@@ -90,6 +120,8 @@ struct Undo {
     input_closed: bool,
     /// Les octets écrasés, avec leur adresse, dans l'ordre des écritures.
     memory: Vec<(u64, Vec<u8>)>,
+    /// Ce que le pas a fait à la pile des appels.
+    frames: FrameChange,
 }
 
 /// Combien de pas on peut défaire. Au-delà, les plus anciens sont
@@ -199,6 +231,10 @@ pub trait Backend {
     /// Reste-t-il un pas à défaire ?
     fn can_step_back(&self) -> bool;
 
+    /// Les appels en cours, du plus ancien au plus récent. Vide quand
+    /// l'exécution est au niveau du programme principal.
+    fn frames(&self) -> &[Frame];
+
     /// Ce que le programme a écrit sur sa sortie standard depuis le
     /// démarrage.
     fn output(&self) -> &[u8];
@@ -240,6 +276,8 @@ pub struct Emulator {
     exit_code: Option<i64>,
     /// De quoi défaire les derniers pas — voir `Undo` et `step_back`.
     history: VecDeque<Undo>,
+    /// Les appels en cours, du plus ancien au plus récent.
+    frames: Vec<Frame>,
 }
 
 impl Backend for Emulator {
@@ -283,6 +321,10 @@ impl Backend for Emulator {
         Emulator::can_step_back(self)
     }
 
+    fn frames(&self) -> &[Frame] {
+        Emulator::frames(self)
+    }
+
     fn output(&self) -> &[u8] {
         &self.output
     }
@@ -319,6 +361,7 @@ impl Emulator {
             input_closed: false,
             exit_code: None,
             history: VecDeque::new(),
+            frames: Vec::new(),
         }
     }
 
@@ -773,9 +816,21 @@ impl Emulator {
                     .regs
                     .get64(namsdec_core::Reg64::Rsp)
                     .wrapping_sub(8);
+                self.record_memory(new_rsp, 8);
                 self.cpu.mem.write_u64(new_rsp, ret_addr)?;
                 self.cpu.regs.set64(namsdec_core::Reg64::Rsp, new_rsp);
                 self.cpu.regs.rip = target;
+                self.frames.push(Frame {
+                    // RIP a déjà avancé : l'adresse du `call` lui-même
+                    // est celle d'où l'instruction a été lue.
+                    call_site: instr.ip(),
+                    entry: target,
+                    return_addr: ret_addr,
+                    rsp: new_rsp,
+                });
+                if let Some(undo) = self.history.back_mut() {
+                    undo.frames = FrameChange::Pushed;
+                }
             }
             M::Ret => {
                 let rsp = self.cpu.regs.get64(namsdec_core::Reg64::Rsp);
@@ -784,6 +839,15 @@ impl Emulator {
                     .regs
                     .set64(namsdec_core::Reg64::Rsp, rsp.wrapping_add(8));
                 self.cpu.regs.rip = ret_addr;
+                // Un `ret` sans `call` — du code qui saute dans une
+                // sous-routine, ou une pile bricolée à la main — ne
+                // dépile rien : la chaîne ne prétend pas savoir ce
+                // qu'elle n'a pas vu.
+                if let Some(frame) = self.frames.pop()
+                    && let Some(undo) = self.history.back_mut()
+                {
+                    undo.frames = FrameChange::Popped(frame);
+                }
             }
             M::Hlt => {
                 self.cpu.halted = true;
@@ -1216,6 +1280,7 @@ impl Emulator {
             consumed_input: Vec::new(),
             input_closed: self.input_closed,
             memory: Vec::new(),
+            frames: FrameChange::None,
         });
     }
 
@@ -1259,7 +1324,19 @@ impl Emulator {
             self.input.push_front(*byte);
         }
         self.input_closed = undo.input_closed;
+        match undo.frames {
+            FrameChange::None => {}
+            FrameChange::Pushed => {
+                self.frames.pop();
+            }
+            FrameChange::Popped(frame) => self.frames.push(frame),
+        }
         true
+    }
+
+    /// Les appels en cours, du plus ancien au plus récent.
+    pub fn frames(&self) -> &[Frame] {
+        &self.frames
     }
 
     /// Y a-t-il quelque chose à défaire ?
@@ -1685,6 +1762,90 @@ _start:
 
     /// Charge sans exécuter — pour les programmes dont on veut observer
     /// l'échec plutôt que le résultat.
+    /// La chaîne des appels se lit directement : l'émulateur voit passer
+    /// les `call` et les `ret`, il n'a pas à deviner les cadres en
+    /// suivant RBP — ce que le code d'un débutant ne monte pas.
+    #[test]
+    fn the_call_chain_follows_calls_and_returns() {
+        let mut emu = load_only(
+            "\
+section .text
+    global _start
+_start:
+    call externe
+    hlt
+
+externe:
+    call interne
+    ret
+
+interne:
+    mov rax, 1
+    ret
+",
+            &[],
+        );
+        assert!(emu.frames().is_empty(), "au départ, personne n'est appelé");
+
+        emu.step().unwrap(); // call externe
+        assert_eq!(emu.frames().len(), 1);
+        assert_eq!(
+            emu.frames()[0].call_site,
+            BASE,
+            "le `call` est la première instruction"
+        );
+
+        emu.step().unwrap(); // call interne
+        assert_eq!(emu.frames().len(), 2, "deux appels imbriqués");
+        let inner = emu.frames()[1];
+        assert_eq!(inner.entry, emu.cpu.regs.rip, "on est entré dans `interne`");
+        assert!(inner.call_site > emu.frames()[0].call_site);
+
+        emu.step().unwrap(); // mov rax, 1
+        emu.step().unwrap(); // ret
+        assert_eq!(emu.frames().len(), 1, "le retour dépile son cadre");
+        emu.step().unwrap(); // ret
+        assert!(emu.frames().is_empty(), "de retour au programme principal");
+
+        // Un `ret` de trop ne dépile rien qui n'existe pas.
+        emu.cpu.regs.rip = inner.return_addr;
+        assert!(emu.frames().is_empty());
+    }
+
+    /// Et le pas arrière remet la chaîne comme elle était : défaire un
+    /// `call` retire son cadre, défaire un `ret` le remet.
+    #[test]
+    fn stepping_back_restores_the_call_chain() {
+        let mut emu = load_only(
+            "\
+section .text
+    global _start
+_start:
+    call externe
+    hlt
+
+externe:
+    mov rax, 1
+    ret
+",
+            &[],
+        );
+        emu.step().unwrap(); // call
+        let called = emu.frames().to_vec();
+        assert_eq!(called.len(), 1);
+
+        emu.step().unwrap(); // mov
+        emu.step().unwrap(); // ret
+        assert!(emu.frames().is_empty());
+
+        emu.step_back(); // défait le ret
+        assert_eq!(emu.frames(), called.as_slice(), "le cadre est revenu");
+
+        emu.step_back(); // défait le mov
+        emu.step_back(); // défait le call
+        assert!(emu.frames().is_empty(), "et il repart avec son `call`");
+    }
+
     /// Lire et écrire *en mémoire* par un opérande — le pain quotidien
     /// dès qu'on manipule un tableau.
     ///
