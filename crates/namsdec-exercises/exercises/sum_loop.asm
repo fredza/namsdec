@@ -1,5 +1,5 @@
 BITS 64
-org 0x400000
+section .text
 
     mov rax, 0
     mov rcx, 5

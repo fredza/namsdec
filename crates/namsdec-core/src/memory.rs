@@ -1,9 +1,17 @@
 use std::ops::Range;
 use thiserror::Error;
 
+/// Les erreurs des crates métier portent un `Display` **anglais** et
+/// gardent leurs valeurs (ici l'adresse) dans des variantes structurées.
+///
+/// L'anglais est la langue des traces et des tests, celle qui se colle
+/// dans un rapport de bug ; la langue de l'utilisateur, elle, est une
+/// affaire d'interface, et c'est le module `errors` de `namsdec-gui` qui
+/// traduit chaque variante. Aucune crate sous l'interface n'a donc à
+/// connaître la langue choisie.
 #[derive(Debug, Error, PartialEq, Eq, Clone, Copy)]
 pub enum MemError {
-    #[error("accès mémoire hors bornes à l'adresse {addr:#x}")]
+    #[error("memory access out of bounds at {addr:#x}")]
     OutOfBounds { addr: u64 },
 }
 
@@ -53,6 +61,14 @@ impl Memory {
     }
 
     pub fn load(&mut self, addr: u64, bytes: &[u8]) -> Result<(), MemError> {
+        self.write_bytes(addr, bytes)
+    }
+
+    /// Écrit un bloc d'octets, bornes vérifiées. Même chose que `load`,
+    /// sous le nom qui convient quand ce n'est pas un programme qu'on
+    /// charge mais une donnée qu'on dépose — ce que fait `read` en
+    /// remplissant le tampon d'un programme.
+    pub fn write_bytes(&mut self, addr: u64, bytes: &[u8]) -> Result<(), MemError> {
         let off = self.offset(addr, bytes.len())?;
         self.data[off..off + bytes.len()].copy_from_slice(bytes);
         Ok(())

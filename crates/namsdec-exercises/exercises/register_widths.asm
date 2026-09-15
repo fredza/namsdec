@@ -1,5 +1,5 @@
 BITS 64
-org 0x400000
+section .text
 
     mov rax, 0x1122334455667788
     mov eax, 0xAABBCCDD  ; écrire EAX remet à zéro les 32 bits hauts de RAX

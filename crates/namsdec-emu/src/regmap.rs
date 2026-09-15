@@ -89,9 +89,10 @@ pub fn map_register(reg: Register) -> Result<(Reg64, Width), EmuError> {
         R15L => (Reg64::R15, Width::W8),
 
         other => {
-            return Err(EmuError::Unsupported(format!(
-                "registre non supporté par l'interpréteur : {other:?}"
-            )))
+            return Err(EmuError::UnsupportedRegister {
+                backend: crate::Emulator::NAME,
+                register: format!("{other:?}"),
+            });
         }
     };
     Ok(mapped)

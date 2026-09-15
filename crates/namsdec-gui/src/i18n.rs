@@ -54,6 +54,7 @@ pub struct Strings {
     pub tab_flags: &'static str,
     pub tab_stack: &'static str,
     pub tab_memory: &'static str,
+    pub tab_output: &'static str,
     pub tab_re: &'static str,
 
     // Menu Affichage — visibilité des panneaux
@@ -65,6 +66,17 @@ pub struct Strings {
     pub explorer_title: &'static str,
     pub explorer_empty: &'static str,
     pub explorer_filter_hint: &'static str,
+    pub explorer_path_hint: &'static str,
+    pub explorer_go_parent: &'static str,
+    pub explorer_go_root: &'static str,
+    pub explorer_go_home: &'static str,
+    pub explorer_go_current_file: &'static str,
+    pub explorer_rename_hint: &'static str,
+    /// Les trois messages d'échec de l'explorateur portent un `{}`, que la
+    /// crate remplace par la raison ou le nom fautif.
+    pub explorer_rename_failed: &'static str,
+    pub explorer_rename_exists: &'static str,
+    pub explorer_path_not_a_directory: &'static str,
 
     // Palette de commandes
     pub palette_open: &'static str,
@@ -92,6 +104,13 @@ pub struct Strings {
     pub no_binary_assembled_yet: &'static str,
     pub no_program_loaded: &'static str,
     pub no_re_module_registered: &'static str,
+    pub output_empty: &'static str,
+    pub console_input_hint: &'static str,
+    pub console_send: &'static str,
+    pub console_eof: &'static str,
+    pub console_eof_hint: &'static str,
+    pub console_waiting: &'static str,
+    pub status_waiting_for_input: &'static str,
     pub address_out_of_range: &'static str,
 
     // Vue d'ensemble des modules (dans Préférences)
@@ -162,6 +181,7 @@ const FR: Strings = Strings {
     tab_flags: "Flags",
     tab_stack: "Pile",
     tab_memory: "Mémoire",
+    tab_output: "Console",
     tab_re: "RE",
 
     view_toolbar: "Barre d'outils",
@@ -171,6 +191,15 @@ const FR: Strings = Strings {
     explorer_title: "Explorateur",
     explorer_empty: "Aucun dossier ouvert.",
     explorer_filter_hint: "Filtrer…",
+    explorer_path_hint: "Chemin du dossier (~ accepté)",
+    explorer_go_parent: "Dossier parent (Retour arrière)",
+    explorer_go_root: "Racine du disque",
+    explorer_go_home: "Dossier personnel",
+    explorer_go_current_file: "Dossier du fichier ouvert",
+    explorer_rename_hint: "Nouveau nom (Entrée pour valider)",
+    explorer_rename_failed: "Renommage impossible : {}",
+    explorer_rename_exists: "« {} » existe déjà.",
+    explorer_path_not_a_directory: "« {} » n'est pas un dossier.",
 
     palette_open: "Palette de commandes…",
     palette_placeholder: "Tapez une commande…",
@@ -193,6 +222,13 @@ const FR: Strings = Strings {
     no_binary_assembled_yet: "Aucun binaire assemblé pour l'instant.",
     no_program_loaded: "Aucun programme chargé.",
     no_re_module_registered: "Aucun module RE enregistré.",
+    output_empty: "Le programme n'a rien écrit.",
+    console_input_hint: "Entrée du programme…",
+    console_send: "Envoyer",
+    console_eof: "Fin d'entrée",
+    console_eof_hint: "Signale qu'il n'y a plus rien à lire (comme Ctrl+D). Les `read` suivants rendront 0.",
+    console_waiting: "Le programme attend une entrée.",
+    status_waiting_for_input: "En attente d'une entrée…",
     address_out_of_range: "Adresse hors de la fenêtre mémoire simulée.",
 
     module_core_detail: "Registres, indicateurs (RFLAGS), mémoire simulée, état CPU.",
@@ -210,8 +246,7 @@ const FR: Strings = Strings {
 
     plugins_themes: "Thèmes",
     plugins_themes_hint: "Cliquez sur un thème pour l'appliquer aussitôt.",
-    plugins_install_soon:
-        "D'autres thèmes pourront être installés gratuitement ici dans une prochaine version.",
+    plugins_install_soon: "D'autres thèmes pourront être installés gratuitement ici dans une prochaine version.",
     plugins_active: "actif",
     rebind_simple: "Touche simple…",
     rebind_leader: "Séquence…",
@@ -259,6 +294,7 @@ const EN: Strings = Strings {
     tab_flags: "Flags",
     tab_stack: "Stack",
     tab_memory: "Memory",
+    tab_output: "Console",
     tab_re: "RE",
 
     view_toolbar: "Toolbar",
@@ -268,6 +304,15 @@ const EN: Strings = Strings {
     explorer_title: "Explorer",
     explorer_empty: "No folder open.",
     explorer_filter_hint: "Filter…",
+    explorer_path_hint: "Folder path (~ accepted)",
+    explorer_go_parent: "Parent folder (Backspace)",
+    explorer_go_root: "Filesystem root",
+    explorer_go_home: "Home folder",
+    explorer_go_current_file: "Folder of the open file",
+    explorer_rename_hint: "New name (Enter to confirm)",
+    explorer_rename_failed: "Rename failed: {}",
+    explorer_rename_exists: "“{}” already exists.",
+    explorer_path_not_a_directory: "“{}” is not a folder.",
 
     palette_open: "Command Palette…",
     palette_placeholder: "Type a command…",
@@ -290,6 +335,13 @@ const EN: Strings = Strings {
     no_binary_assembled_yet: "No binary assembled yet.",
     no_program_loaded: "No program loaded.",
     no_re_module_registered: "No RE module registered.",
+    output_empty: "The program has not written anything.",
+    console_input_hint: "Program input…",
+    console_send: "Send",
+    console_eof: "End input",
+    console_eof_hint: "Signals there is nothing left to read (like Ctrl+D). Further reads return 0.",
+    console_waiting: "The program is waiting for input.",
+    status_waiting_for_input: "Waiting for input…",
     address_out_of_range: "Address outside the simulated memory window.",
 
     module_core_detail: "Registers, flags (RFLAGS), simulated memory, CPU state.",

@@ -5,23 +5,61 @@
 
 mod regmap;
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, VecDeque};
 
 use iced_x86::{Instruction, Mnemonic, OpKind, Register};
-use namsdec_core::{add_with_flags, logic_flags, sub_with_flags, Cpu, Memory, RFlags, Width};
+use namsdec_core::{
+    Cpu, Memory, RFlags, Reg64, Width, add_with_flags, logic_flags, sub_with_flags,
+};
 use thiserror::Error;
 
 use regmap::map_register;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// Là où une opérande n'a pas pu être traitée — le sens de la phrase
+/// change en français (« opérande source/destination »), la variante le
+/// garde donc plutôt que de figer une formulation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OperandRole {
+    Destination,
+    Read,
+    Write,
+}
+
+/// Erreurs d'exécution. `Display` est en anglais et les valeurs restent
+/// accessibles : c'est `namsdec-gui` qui rend le message dans la langue de
+/// l'utilisateur (voir `MemError` pour le pourquoi).
+///
+/// « Non supporté » désigne toujours l'interpréteur *courant* : un autre
+/// moteur d'exécution branché derrière `Backend` peut parfaitement
+/// connaître l'instruction que celui-ci refuse, d'où le nom du backend
+/// dans le message.
 #[derive(Debug, Error)]
 pub enum EmuError {
-    #[error("instruction non supportée par l'interpréteur : {0}")]
-    Unsupported(String),
-    #[error("erreur mémoire : {0}")]
+    #[error("{backend}: unsupported instruction: {mnemonic}")]
+    UnsupportedInstruction {
+        backend: &'static str,
+        mnemonic: String,
+    },
+    #[error("{backend}: unsupported register: {register}")]
+    UnsupportedRegister {
+        backend: &'static str,
+        register: String,
+    },
+    #[error("{backend}: unsupported {role:?} operand: {kind}")]
+    UnsupportedOperand {
+        backend: &'static str,
+        role: OperandRole,
+        kind: String,
+    },
+    #[error("{backend}: unsupported memory operand size: {bytes} bytes")]
+    UnsupportedOperandSize { backend: &'static str, bytes: usize },
+    #[error("{backend}: unsupported syscall: {number}")]
+    UnsupportedSyscall { backend: &'static str, number: u64 },
+    #[error("memory error: {0}")]
     Mem(#[from] namsdec_core::MemError),
-    #[error("décodage invalide à l'adresse {addr:#x}")]
+    #[error("invalid instruction at {addr:#x}")]
     InvalidInstruction { addr: u64 },
 }
 
@@ -29,6 +67,11 @@ pub enum EmuError {
 pub enum StepResult {
     Continued,
     Halted,
+    /// Le programme a demandé à lire son entrée standard, et il n'y a rien
+    /// à lui donner. L'instruction n'a **pas** été exécutée et RIP est
+    /// resté dessus : dès que l'entrée arrive, le même `syscall` repart
+    /// comme si de rien n'était.
+    NeedsInput,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,6 +79,10 @@ pub enum RunStop {
     Halted,
     Breakpoint(u64),
     StepLimit,
+    /// Suspendu en attendant l'entrée standard (voir
+    /// `StepResult::NeedsInput`). L'exécution reprend d'elle-même une fois
+    /// l'entrée fournie.
+    NeedsInput,
 }
 
 /// Résultat d'un `step_over` : distinct de `StepResult`/`RunStop` parce que
@@ -53,19 +100,278 @@ pub enum StepOverResult {
     /// Un point d'arrêt a été atteint à l'intérieur de la sous-routine.
     Breakpoint(u64),
     StepLimit,
+    /// Suspendu en attendant l'entrée standard (voir
+    /// `StepResult::NeedsInput`).
+    NeedsInput,
+}
+
+/// Un moteur d'exécution x86-64, vu par l'interface.
+///
+/// L'interpréteur maison (`Emulator`) en est le premier, et le seul pour
+/// l'instant : il exécute pas à pas et *explique*, ce qui est tout l'objet
+/// pédagogique de namsdec. Un moteur de production (Unicorn, par exemple)
+/// couvre en revanche bien plus d'instructions et va bien plus vite — deux
+/// qualités qui n'ont de sens qu'à côté de la première, pas à sa place.
+/// D'où ce trait plutôt qu'un remplacement : le jour où un second moteur
+/// arrive, il se branche ici et l'interface ne change pas d'une ligne.
+///
+/// `cpu()` fait partie du contrat parce que toute la barre latérale
+/// (registres, flags, pile, mémoire) lit cet état-là. Un moteur qui tient
+/// son état ailleurs — dans un processus, dans une VM — le recopie donc
+/// dans ce `Cpu` après chaque pas : c'est la vue que l'interface sait
+/// afficher, et c'est le prix d'entrée pour s'y brancher.
+pub trait Backend {
+    /// Nom court du moteur, tel qu'il apparaît dans les messages
+    /// d'erreur : « non supporté » ne veut rien dire sans dire *par qui*.
+    fn name(&self) -> &'static str;
+
+    fn cpu(&self) -> &Cpu;
+    fn cpu_mut(&mut self) -> &mut Cpu;
+
+    fn breakpoints(&self) -> &BTreeSet<u64>;
+    fn set_breakpoints(&mut self, breakpoints: BTreeSet<u64>);
+
+    fn step(&mut self) -> Result<StepResult, EmuError>;
+    fn step_over(&mut self, max_steps: u32) -> Result<StepOverResult, EmuError>;
+    fn run(&mut self, max_steps: u32) -> Result<RunStop, EmuError>;
+
+    /// Ce que le programme a écrit sur sa sortie standard depuis le
+    /// démarrage.
+    fn output(&self) -> &[u8];
+
+    /// Ajoute des octets à l'entrée standard du programme.
+    fn provide_input(&mut self, bytes: &[u8]);
+
+    /// Signale la fin de l'entrée : les `read` suivants rendront 0 (fin de
+    /// fichier) au lieu d'attendre. L'équivalent d'un Ctrl+D.
+    fn close_input(&mut self);
+
+    /// Reste-t-il de l'entrée non lue ? Sert à dire à l'utilisateur ce que
+    /// le programme va trouver.
+    fn pending_input(&self) -> usize;
+
+    /// Le code rendu par `exit`, si le programme s'est terminé de
+    /// lui-même. `None` tant qu'il tourne, ou s'il s'est arrêté sur `hlt`
+    /// — qui arrête la machine sans rien rendre.
+    fn exit_code(&self) -> Option<i64>;
 }
 
 pub struct Emulator {
     pub cpu: Cpu,
     pub breakpoints: BTreeSet<u64>,
+    /// Ce que le programme a écrit via `write` — des octets bruts, pas du
+    /// texte : un programme peut parfaitement écrire ce qu'il veut sur sa
+    /// sortie, y compris de l'UTF-8 incomplet ou du binaire, et ce n'est
+    /// pas à l'émulateur d'en décider.
+    output: Vec<u8>,
+    /// Ce que l'utilisateur a fourni et que le programme n'a pas encore
+    /// lu. Une file : `read` consomme par le début, l'interface ajoute
+    /// par la fin.
+    input: VecDeque<u8>,
+    /// L'entrée est-elle terminée ? Tant qu'elle ne l'est pas, un `read`
+    /// sur un tampon vide *attend* au lieu de rendre une fin de fichier —
+    /// c'est ce que fait un vrai terminal, et c'est ce qui distingue
+    /// « rien pour l'instant » de « plus rien à lire ».
+    input_closed: bool,
+    exit_code: Option<i64>,
+}
+
+impl Backend for Emulator {
+    fn name(&self) -> &'static str {
+        Self::NAME
+    }
+
+    fn cpu(&self) -> &Cpu {
+        &self.cpu
+    }
+
+    fn cpu_mut(&mut self) -> &mut Cpu {
+        &mut self.cpu
+    }
+
+    fn breakpoints(&self) -> &BTreeSet<u64> {
+        &self.breakpoints
+    }
+
+    fn set_breakpoints(&mut self, breakpoints: BTreeSet<u64>) {
+        self.breakpoints = breakpoints;
+    }
+
+    fn step(&mut self) -> Result<StepResult, EmuError> {
+        Emulator::step(self)
+    }
+
+    fn step_over(&mut self, max_steps: u32) -> Result<StepOverResult, EmuError> {
+        Emulator::step_over(self, max_steps)
+    }
+
+    fn run(&mut self, max_steps: u32) -> Result<RunStop, EmuError> {
+        Emulator::run(self, max_steps)
+    }
+
+    fn output(&self) -> &[u8] {
+        &self.output
+    }
+
+    fn provide_input(&mut self, bytes: &[u8]) {
+        self.input.extend(bytes);
+    }
+
+    fn close_input(&mut self) {
+        self.input_closed = true;
+    }
+
+    fn pending_input(&self) -> usize {
+        self.input.len()
+    }
+
+    fn exit_code(&self) -> Option<i64> {
+        self.exit_code
+    }
 }
 
 impl Emulator {
+    /// Le nom de ce moteur-ci dans les messages d'erreur. Un nom propre,
+    /// sans mot traduisible autour : c'est l'interface qui l'enchâsse dans
+    /// une phrase française ou anglaise.
+    pub const NAME: &'static str = "namsdec";
+
     pub fn new(cpu: Cpu) -> Self {
         Self {
             cpu,
             breakpoints: BTreeSet::new(),
+            output: Vec::new(),
+            input: VecDeque::new(),
+            input_closed: false,
+            exit_code: None,
         }
+    }
+
+    /// L'appel système Linux x86-64 : le numéro est dans RAX, les
+    /// arguments dans RDI, RSI, RDX (puis R10, R8, R9 — dont aucun appel
+    /// géré ici n'a besoin), et la valeur de retour repart dans RAX.
+    ///
+    /// Deux appels seulement sont implémentés, ceux dont tout premier
+    /// programme en assembleur a besoin pour faire quelque chose de
+    /// visible : `write` et `exit`. namsdec n'est pas un noyau, et ne
+    /// prétend pas l'être — un appel non géré s'arrête en le disant, ce
+    /// qui apprend davantage qu'un code d'erreur silencieux.
+    fn syscall(&mut self) -> Result<(), EmuError> {
+        const SYS_READ: u64 = 0;
+        const SYS_WRITE: u64 = 1;
+        const SYS_EXIT: u64 = 60;
+        /// `exit_group` termine tous les fils d'exécution. Sans threads,
+        /// c'est un `exit` — et c'est celui que produisent la plupart des
+        /// bibliothèques C.
+        const SYS_EXIT_GROUP: u64 = 231;
+
+        let number = self.cpu.regs.get64(Reg64::Rax);
+        match number {
+            SYS_READ => {
+                let fd = self.cpu.regs.get64(Reg64::Rdi);
+                let buf = self.cpu.regs.get64(Reg64::Rsi);
+                let count = self.cpu.regs.get64(Reg64::Rdx);
+                let read = self.read(fd, buf, count)?;
+                self.cpu.regs.set64(Reg64::Rax, read as u64);
+            }
+            SYS_WRITE => {
+                let fd = self.cpu.regs.get64(Reg64::Rdi);
+                let buf = self.cpu.regs.get64(Reg64::Rsi);
+                let count = self.cpu.regs.get64(Reg64::Rdx);
+                let written = self.write(fd, buf, count)?;
+                self.cpu.regs.set64(Reg64::Rax, written as u64);
+            }
+            SYS_EXIT | SYS_EXIT_GROUP => {
+                // Le code de sortie est un octet : `exit(256)` rend 0, et
+                // le tronquer ici évite de laisser croire le contraire.
+                let code = self.cpu.regs.get64(Reg64::Rdi) as u8;
+                self.exit_code = Some(code as i64);
+                self.cpu.halted = true;
+            }
+            number => {
+                return Err(EmuError::UnsupportedSyscall {
+                    backend: Self::NAME,
+                    number,
+                });
+            }
+        }
+        Ok(())
+    }
+
+    /// `write(fd, buf, count)`. Rend le nombre d'octets écrits, ou un code
+    /// d'erreur négatif — la convention du noyau, qu'un programme en
+    /// assembleur est censé savoir lire.
+    fn write(&mut self, fd: u64, buf: u64, count: u64) -> Result<i64, EmuError> {
+        /// Sortie standard et sortie d'erreur sont les seules ouvertes :
+        /// il n'y a pas de système de fichiers derrière cet émulateur.
+        /// Tout autre descripteur reçoit `-EBADF`, exactement comme le
+        /// noyau répondrait à un descripteur jamais ouvert.
+        const EBADF: i64 = -9;
+        if fd != 1 && fd != 2 {
+            return Ok(EBADF);
+        }
+        // Rien à lire, et surtout rien à vérifier en mémoire : un
+        // `write` de zéro octet est valide et ne touche pas au tampon.
+        if count == 0 {
+            return Ok(0);
+        }
+
+        // La lecture passe par la mémoire simulée et ses bornes : un
+        // pointeur qui sort de la fenêtre est une erreur d'exécution, pas
+        // un moyen de lire ce qui traîne à côté.
+        let bytes = self.cpu.mem.bytes_at(buf, count as usize)?;
+        self.output.extend_from_slice(bytes);
+        Ok(count as i64)
+    }
+
+    /// `read(fd, buf, count)`. Rend le nombre d'octets lus, 0 en fin
+    /// d'entrée, ou un code d'erreur négatif.
+    ///
+    /// N'est jamais appelée quand il n'y a rien à lire et que l'entrée
+    /// reste ouverte : `step` suspend l'exécution avant d'en arriver là
+    /// (voir `blocks_on_input`). Ce qui suit n'a donc à traiter que les
+    /// cas où `read` peut répondre tout de suite.
+    fn read(&mut self, fd: u64, buf: u64, count: u64) -> Result<i64, EmuError> {
+        /// L'entrée standard est le seul descripteur en lecture.
+        const EBADF: i64 = -9;
+        if fd != 0 {
+            return Ok(EBADF);
+        }
+        if count == 0 {
+            return Ok(0);
+        }
+
+        // Un `read` rend ce qu'il a sous la main, sans attendre d'avoir de
+        // quoi remplir tout le tampon — c'est pour ça qu'un programme
+        // sérieux boucle sur `read` au lieu de croire qu'un seul appel
+        // suffit, et cette leçon-là mérite d'être apprise ici aussi.
+        let take = (count as usize).min(self.input.len());
+        if take == 0 {
+            // Entrée close : fin de fichier.
+            return Ok(0);
+        }
+
+        let bytes: Vec<u8> = self.input.drain(..take).collect();
+        self.cpu.mem.write_bytes(buf, &bytes)?;
+        Ok(take as i64)
+    }
+
+    /// Cette instruction est-elle un `read` qui n'a rien à lire ?
+    ///
+    /// La question se pose *avant* d'exécuter quoi que ce soit : le
+    /// programme doit être suspendu sans que RIP ni RAX ne bougent, pour
+    /// que le même `syscall` se rejoue à l'identique quand l'entrée
+    /// arrive. C'est ce qu'un vrai `read` bloquant fait du point de vue du
+    /// programme, sans qu'on ait à bloquer le fil d'exécution de
+    /// l'interface.
+    fn blocks_on_input(&self, instr: &Instruction) -> bool {
+        const SYS_READ: u64 = 0;
+        instr.mnemonic() == Mnemonic::Syscall
+            && self.cpu.regs.get64(Reg64::Rax) == SYS_READ
+            && self.cpu.regs.get64(Reg64::Rdi) == 0
+            && self.cpu.regs.get64(Reg64::Rdx) > 0
+            && self.input.is_empty()
+            && !self.input_closed
     }
 
     /// Décode l'instruction à RIP sans l'exécuter — partagé par `step()` et
@@ -85,10 +391,22 @@ impl Emulator {
 
         let instr = self.decode_at_rip()?;
 
+        if self.blocks_on_input(&instr) {
+            return Ok(StepResult::NeedsInput);
+        }
+
         // Par défaut RIP avance à l'instruction suivante ; les branchements
         // écrasent cette valeur pendant `execute`.
+        let rip_before = self.cpu.regs.rip;
         self.cpu.regs.rip = instr.next_ip();
-        self.execute(&instr)?;
+        if let Err(e) = self.execute(&instr) {
+            // L'instruction n'a pas eu lieu : RIP doit rester dessus.
+            // Sinon chaque tentative suivante avançait d'un cran — et
+            // relancer le pas à pas après une erreur finissait par sortir
+            // du code pour « exécuter » les données qui le suivent.
+            self.cpu.regs.rip = rip_before;
+            return Err(e);
+        }
 
         Ok(if self.cpu.halted {
             StepResult::Halted
@@ -109,6 +427,7 @@ impl Emulator {
         if instr.mnemonic() != Mnemonic::Call {
             return match self.step()? {
                 StepResult::Halted => Ok(StepOverResult::Halted),
+                StepResult::NeedsInput => Ok(StepOverResult::NeedsInput),
                 StepResult::Continued => Ok(StepOverResult::Stepped),
             };
         }
@@ -117,8 +436,14 @@ impl Emulator {
         let start_rsp = self.cpu.regs.get64(namsdec_core::Reg64::Rsp);
 
         for _ in 0..max_steps {
-            if self.step()? == StepResult::Halted {
-                return Ok(StepOverResult::Halted);
+            match self.step()? {
+                StepResult::Halted => return Ok(StepOverResult::Halted),
+                // Le `read` est au milieu de la sous-routine : on rend la
+                // main, et `step_over` sera relancé quand l'entrée sera
+                // là. La sous-routine reprendra donc là où elle en est,
+                // et non depuis son début.
+                StepResult::NeedsInput => return Ok(StepOverResult::NeedsInput),
+                StepResult::Continued => {}
             }
             // La pile doit être revenue au moins à son niveau de départ pour
             // qu'on considère être "revenu" — protège contre un `ret`
@@ -143,7 +468,9 @@ impl Emulator {
             if self.cpu.halted {
                 return Ok(RunStop::Halted);
             }
-            self.step()?;
+            if self.step()? == StepResult::NeedsInput {
+                return Ok(RunStop::NeedsInput);
+            }
             if self.cpu.halted {
                 return Ok(RunStop::Halted);
             }
@@ -172,7 +499,11 @@ impl Emulator {
             M::Dec => self.inc_dec(instr, false)?,
             M::Push => {
                 let v = self.read_op(instr, 0)?;
-                let new_rsp = self.cpu.regs.get64(namsdec_core::Reg64::Rsp).wrapping_sub(8);
+                let new_rsp = self
+                    .cpu
+                    .regs
+                    .get64(namsdec_core::Reg64::Rsp)
+                    .wrapping_sub(8);
                 self.cpu.mem.write_u64(new_rsp, v)?;
                 self.cpu.regs.set64(namsdec_core::Reg64::Rsp, new_rsp);
             }
@@ -192,8 +523,7 @@ impl Emulator {
             M::Jmp => {
                 self.cpu.regs.rip = self.branch_target(instr)?;
             }
-            M::Je | M::Jne | M::Jl | M::Jle | M::Jg | M::Jge | M::Jb | M::Jbe | M::Ja
-            | M::Jae => {
+            M::Je | M::Jne | M::Jl | M::Jle | M::Jg | M::Jge | M::Jb | M::Jbe | M::Ja | M::Jae => {
                 if self.condition_met(instr.mnemonic()) {
                     self.cpu.regs.rip = instr.near_branch_target();
                 }
@@ -203,7 +533,11 @@ impl Emulator {
                 // step() a déjà avancé RIP à next_ip avant d'appeler execute() :
                 // c'est exactement l'adresse de retour à empiler.
                 let ret_addr = self.cpu.regs.rip;
-                let new_rsp = self.cpu.regs.get64(namsdec_core::Reg64::Rsp).wrapping_sub(8);
+                let new_rsp = self
+                    .cpu
+                    .regs
+                    .get64(namsdec_core::Reg64::Rsp)
+                    .wrapping_sub(8);
                 self.cpu.mem.write_u64(new_rsp, ret_addr)?;
                 self.cpu.regs.set64(namsdec_core::Reg64::Rsp, new_rsp);
                 self.cpu.regs.rip = target;
@@ -219,8 +553,12 @@ impl Emulator {
             M::Hlt => {
                 self.cpu.halted = true;
             }
+            M::Syscall => self.syscall()?,
             other => {
-                return Err(EmuError::Unsupported(format!("{other:?}")));
+                return Err(EmuError::UnsupportedInstruction {
+                    backend: Self::NAME,
+                    mnemonic: format!("{other:?}"),
+                });
             }
         }
         Ok(())
@@ -317,18 +655,20 @@ impl Emulator {
         match instr.op_kind(0) {
             OpKind::Register => Ok(map_register(instr.op_register(0))?.1),
             OpKind::Memory => self.mem_operand_width(instr),
-            other => Err(EmuError::Unsupported(format!(
-                "opérande destination non supportée : {other:?}"
-            ))),
+            other => Err(EmuError::UnsupportedOperand {
+                backend: Self::NAME,
+                role: OperandRole::Destination,
+                kind: format!("{other:?}"),
+            }),
         }
     }
 
     fn mem_operand_width(&self, instr: &Instruction) -> Result<Width, EmuError> {
         width_from_bytes(instr.memory_size().size()).ok_or_else(|| {
-            EmuError::Unsupported(format!(
-                "taille d'opérande mémoire non supportée : {} octets",
-                instr.memory_size().size()
-            ))
+            EmuError::UnsupportedOperandSize {
+                backend: Self::NAME,
+                bytes: instr.memory_size().size(),
+            }
         })
     }
 
@@ -348,9 +688,11 @@ impl Emulator {
             | OpKind::Immediate8to32
             | OpKind::Immediate8to64
             | OpKind::Immediate32to64 => Ok(instr.immediate(op_index)),
-            other => Err(EmuError::Unsupported(format!(
-                "lecture d'un opérande {other:?} non supportée"
-            ))),
+            other => Err(EmuError::UnsupportedOperand {
+                backend: Self::NAME,
+                role: OperandRole::Read,
+                kind: format!("{other:?}"),
+            }),
         }
     }
 
@@ -362,9 +704,11 @@ impl Emulator {
                 let w = self.mem_operand_width(instr)?;
                 self.write_mem(addr, w, value)
             }
-            other => Err(EmuError::Unsupported(format!(
-                "écriture vers un opérande {other:?} non supportée"
-            ))),
+            other => Err(EmuError::UnsupportedOperand {
+                backend: Self::NAME,
+                role: OperandRole::Write,
+                kind: format!("{other:?}"),
+            }),
         }
     }
 
@@ -398,7 +742,9 @@ impl Emulator {
                 } else if register == Register::RIP {
                     Some(next_ip)
                 } else {
-                    map_register(register).ok().map(|(r, _)| self.cpu.regs.get64(r))
+                    map_register(register)
+                        .ok()
+                        .map(|(r, _)| self.cpu.regs.get64(r))
                 }
             })
             .ok_or(EmuError::InvalidInstruction { addr: instr.ip() })
@@ -447,6 +793,32 @@ fn fetch_window(mem: &Memory, addr: u64) -> Result<&[u8], EmuError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Une instruction que l'interpréteur ne sait pas exécuter laisse RIP
+    /// où il est. Sans ça, réessayer avançait d'un cran à chaque fois et
+    /// l'exécution finissait par décoder les données comme du code.
+    #[test]
+    fn a_failed_step_leaves_rip_on_the_offending_instruction() {
+        let mut mem = namsdec_core::Memory::new(0x400000, 0x1000);
+        // `cpuid` (0F A2) : parfaitement décodable, mais pas exécutée par
+        // cet interpréteur.
+        mem.load(0x400000, &[0x0f, 0xa2]).unwrap();
+        let mut cpu = namsdec_core::Cpu::new(mem);
+        cpu.regs.rip = 0x400000;
+        let mut emu = Emulator::new(cpu);
+
+        for attempt in 1..=3 {
+            let err = emu.step().expect_err("cpuid n'est pas supporté");
+            assert!(
+                matches!(err, EmuError::UnsupportedInstruction { .. }),
+                "obtenu {err:?}"
+            );
+            assert_eq!(
+                emu.cpu.regs.rip, 0x400000,
+                "RIP a bougé à la tentative {attempt}"
+            );
+        }
+    }
     use namsdec_core::Reg64;
 
     const BASE: u64 = 0x400000;
@@ -455,17 +827,313 @@ mod tests {
     /// jusqu'à l'arrêt (halt, point d'arrêt ou limite de pas). Test
     /// d'intégration "golden" : il passe par le vrai `nasm` externe.
     fn run_program(asm: &str, breakpoints: &[u64]) -> Emulator {
-        let out = namsdec_asm::assemble(asm, BASE).expect("assemblage (nasm requis)");
+        let mut emu = load_only(asm, breakpoints);
+        emu.run(10_000).expect("exécution");
+        emu
+    }
+
+    /// Le programme que tout le monde écrit en premier : il parle, puis
+    /// il sort. C'est exactement ce que `write` et `exit` servent à faire.
+    #[test]
+    fn a_program_can_write_to_stdout_and_exit_with_a_code() {
+        let emu = run_program(
+            "\
+section .data
+    message db \"salut\", 10
+
+section .text
+    global _start
+_start:
+    mov rax, 1
+    mov rdi, 1
+    mov rsi, message
+    mov rdx, 6
+    syscall
+
+    mov rax, 60
+    mov rdi, 3
+    syscall
+",
+            &[],
+        );
+
+        assert_eq!(emu.output(), b"salut\n");
+        assert_eq!(emu.exit_code(), Some(3));
+        assert!(emu.cpu.halted, "`exit` arrête la machine");
+    }
+
+    /// `write` rend le nombre d'octets écrits, comme le noyau — un
+    /// programme peut donc le vérifier, et le `hlt` juste après laisse la
+    /// valeur observable dans RAX.
+    #[test]
+    fn write_returns_the_number_of_bytes_written() {
+        let emu = run_program(
+            "\
+section .data
+    message db \"salut\", 10
+
+section .text
+    global _start
+_start:
+    mov rax, 1
+    mov rdi, 1
+    mov rsi, message
+    mov rdx, 6
+    syscall
+    hlt
+",
+            &[],
+        );
+
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rax), 6);
+        assert_eq!(emu.output(), b"salut\n");
+    }
+
+    /// Un programme qui lit son entrée : tant qu'on ne lui a rien donné,
+    /// il attend — sans avancer d'un pouce, et sans bloquer l'interface.
+    /// Dès que l'entrée arrive, le même `syscall` repart et la lit.
+    #[test]
+    fn read_waits_for_input_then_consumes_it() {
+        const PROGRAM: &str = "\
+section .bss
+    tampon resb 32
+
+section .text
+    global _start
+_start:
+    mov rax, 0
+    mov rdi, 0
+    mov rsi, tampon
+    mov rdx, 32
+    syscall
+    hlt
+";
+        let mut emu = load_only(PROGRAM, &[]);
+
+        // Le programme court jusqu'au `read`, puis s'arrête là.
+        assert_eq!(emu.run(100).unwrap(), RunStop::NeedsInput);
+        let waiting_at = emu.cpu.regs.rip;
+        assert!(!emu.cpu.halted, "attendre n'est pas finir");
+
+        // Insister ne sert à rien et ne casse rien : RIP ne bouge pas.
+        assert_eq!(emu.step().unwrap(), StepResult::NeedsInput);
+        assert_eq!(emu.cpu.regs.rip, waiting_at);
+
+        emu.provide_input(b"bonjour\n");
+        assert_eq!(emu.run(100).unwrap(), RunStop::Halted);
+
+        // `read` a rendu le nombre d'octets lus...
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rax), 8);
+        // ...et les a bien déposés dans le tampon du programme.
+        let buf = emu.cpu.regs.get64(Reg64::Rsi);
+        assert_eq!(emu.cpu.mem.bytes_at(buf, 8).unwrap(), b"bonjour\n");
+        assert_eq!(emu.pending_input(), 0, "tout a été consommé");
+    }
+
+    /// Une entrée close rend une fin de fichier (0) au lieu d'attendre —
+    /// l'équivalent d'un Ctrl+D. Sans ça, un programme qui lit jusqu'à la
+    /// fin de son entrée attendrait pour toujours.
+    #[test]
+    fn a_closed_input_reads_as_end_of_file() {
+        let mut emu = load_only(
+            "\
+section .bss
+    tampon resb 8
+
+section .text
+    global _start
+_start:
+    mov rax, 0
+    mov rdi, 0
+    mov rsi, tampon
+    mov rdx, 8
+    syscall
+    hlt
+",
+            &[],
+        );
+
+        emu.close_input();
+        assert_eq!(emu.run(100).unwrap(), RunStop::Halted);
+        assert_eq!(
+            emu.cpu.regs.get64(Reg64::Rax),
+            0,
+            "attendu une fin de fichier"
+        );
+    }
+
+    /// `read` rend ce qu'il a sous la main plutôt que d'attendre de quoi
+    /// remplir tout le tampon — c'est pourquoi un programme sérieux boucle
+    /// sur `read`.
+    #[test]
+    fn read_returns_what_is_available_without_filling_the_buffer() {
+        let mut emu = load_only(
+            "\
+section .bss
+    tampon resb 64
+
+section .text
+    global _start
+_start:
+    mov rax, 0
+    mov rdi, 0
+    mov rsi, tampon
+    mov rdx, 64
+    syscall
+    hlt
+",
+            &[],
+        );
+
+        emu.provide_input(b"court");
+        assert_eq!(emu.run(100).unwrap(), RunStop::Halted);
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rax), 5);
+    }
+
+    /// Lire depuis autre chose que l'entrée standard n'a pas de sens ici :
+    /// même réponse que le noyau pour un descripteur jamais ouvert.
+    #[test]
+    fn reading_from_an_unknown_file_descriptor_returns_ebadf() {
+        let emu = run_program(
+            "\
+section .text
+    global _start
+_start:
+    mov rax, 0
+    mov rdi, 7
+    mov rsi, 0
+    mov rdx, 8
+    syscall
+    hlt
+",
+            &[],
+        );
+
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rax) as i64, -9);
+    }
+
+    /// `hlt` arrête la machine sans que le programme ait rendu quoi que ce
+    /// soit : il n'y a pas de code de sortie à inventer.
+    #[test]
+    fn halting_is_not_exiting() {
+        let emu = run_program("section .text\n    mov rax, 1\n    hlt\n", &[]);
+        assert!(emu.cpu.halted);
+        assert_eq!(emu.exit_code(), None);
+    }
+
+    /// Il n'y a pas de système de fichiers derrière cet émulateur : tout
+    /// descripteur autre que 1 et 2 reçoit `-EBADF`, la réponse qu'aurait
+    /// donnée le noyau. Un programme en assembleur est censé savoir lire
+    /// ce retour négatif — c'est la convention, pas un détail d'émulation.
+    #[test]
+    fn writing_to_an_unknown_file_descriptor_returns_ebadf() {
+        let emu = run_program(
+            "\
+section .text
+    global _start
+_start:
+    mov rax, 1
+    mov rdi, 7
+    mov rsi, 0
+    mov rdx, 1
+    syscall
+    hlt
+",
+            &[],
+        );
+
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rax) as i64, -9, "attendu -EBADF");
+        assert!(emu.output().is_empty(), "rien ne doit avoir été écrit");
+    }
+
+    /// Un appel système que namsdec ne simule pas s'arrête en le disant.
+    /// Mieux vaut cet aveu qu'un code d'erreur inventé, qui laisserait
+    /// croire que l'appel a eu lieu.
+    #[test]
+    fn an_unimplemented_syscall_says_so() {
+        // 39 = `getpid`.
+        let mut emu = load_only(
+            "section .text\n    global _start\n_start:\n    mov rax, 39\n    syscall\n    hlt\n",
+            &[],
+        );
+        let entry = emu.cpu.regs.rip;
+
+        let err = emu.run(100).expect_err("getpid n'est pas simulé");
+        match err {
+            EmuError::UnsupportedSyscall { number, .. } => assert_eq!(number, 39),
+            other => panic!("attendu UnsupportedSyscall, obtenu {other:?}"),
+        }
+        assert!(
+            emu.cpu.regs.rip > entry,
+            "les instructions avant le syscall se sont bien exécutées"
+        );
+        assert!(!emu.cpu.halted, "un appel refusé n'arrête pas la machine");
+    }
+
+    /// Un pointeur qui sort de la fenêtre mémoire simulée est une erreur,
+    /// pas une occasion de lire ce qui traîne à côté.
+    #[test]
+    fn writing_from_an_address_outside_memory_fails() {
+        let mut emu = load_only(
+            "\
+section .text
+    global _start
+_start:
+    mov rax, 1
+    mov rdi, 1
+    mov rsi, 0xdeadbeef
+    mov rdx, 4
+    syscall
+    hlt
+",
+            &[],
+        );
+
+        let err = emu
+            .run(100)
+            .expect_err("l'adresse est hors de la mémoire simulée");
+        assert!(matches!(err, EmuError::Mem(_)), "obtenu {err:?}");
+        assert!(emu.output().is_empty());
+    }
+
+    /// Un `write` de zéro octet est valide et ne regarde même pas le
+    /// pointeur — y compris quand celui-ci ne pointe nulle part.
+    #[test]
+    fn writing_zero_bytes_is_allowed_and_writes_nothing() {
+        let emu = run_program(
+            "\
+section .text
+    global _start
+_start:
+    mov rax, 1
+    mov rdi, 1
+    mov rsi, 0xdeadbeef
+    mov rdx, 0
+    syscall
+    hlt
+",
+            &[],
+        );
+
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rax), 0);
+        assert!(emu.output().is_empty());
+    }
+
+    /// Charge sans exécuter — pour les programmes dont on veut observer
+    /// l'échec plutôt que le résultat.
+    fn load_only(asm: &str, breakpoints: &[u64]) -> Emulator {
+        let out = namsdec_asm::assemble(asm, BASE).expect("assemblage (nasm et ld requis)");
         let mut mem = Memory::new(BASE, 0x10000);
-        mem.load(BASE, &out.bytes).unwrap();
+        // L'ELF dit où il veut être chargé et par où commencer : sur un
+        // programme à plusieurs sections, ce ne sont pas la même adresse.
+        mem.load(out.load_addr, &out.bytes).unwrap();
 
         let mut cpu = Cpu::new(mem);
-        cpu.regs.rip = BASE;
+        cpu.regs.rip = out.entry;
         cpu.regs.set64(Reg64::Rsp, BASE + 0x8000);
 
         let mut emu = Emulator::new(cpu);
         emu.breakpoints.extend(breakpoints.iter().copied());
-        emu.run(10_000).expect("exécution");
         emu
     }
 
@@ -473,12 +1141,12 @@ mod tests {
     /// tests qui doivent piloter `step`/`step_over` à la main. Renvoie
     /// aussi la sortie d'assemblage pour retrouver les adresses par ligne.
     fn load_program(asm: &str) -> (Emulator, namsdec_asm::AssembleOutput) {
-        let out = namsdec_asm::assemble(asm, BASE).expect("assemblage (nasm requis)");
+        let out = namsdec_asm::assemble(asm, BASE).expect("assemblage (nasm et ld requis)");
         let mut mem = Memory::new(BASE, 0x10000);
-        mem.load(BASE, &out.bytes).unwrap();
+        mem.load(out.load_addr, &out.bytes).unwrap();
 
         let mut cpu = Cpu::new(mem);
-        cpu.regs.rip = BASE;
+        cpu.regs.rip = out.entry;
         cpu.regs.set64(Reg64::Rsp, BASE + 0x8000);
 
         (Emulator::new(cpu), out)
@@ -486,7 +1154,7 @@ mod tests {
 
     const SUM_LOOP_ASM: &str = "\
 BITS 64
-org 0x400000
+section .text
     mov rax, 0
     mov rcx, 5
 sum_loop:
@@ -517,7 +1185,7 @@ sum_loop:
     fn push_pop_round_trip() {
         let asm = "\
 BITS 64
-org 0x400000
+section .text
     mov rax, 0x1234
     push rax
     mov rax, 0
@@ -534,7 +1202,7 @@ org 0x400000
     fn lea_computes_address_without_touching_memory() {
         let asm = "\
 BITS 64
-org 0x400000
+section .text
     mov rbx, 0x400000
     lea rax, [rbx + 0x10]
     hlt
@@ -548,7 +1216,7 @@ org 0x400000
     fn inc_dec_preserve_carry_flag() {
         let asm = "\
 BITS 64
-org 0x400000
+section .text
     mov rax, 0xFFFFFFFFFFFFFFFF
     add rax, 2       ; positionne CF=1
     inc rbx          ; ne doit pas modifier CF
@@ -562,7 +1230,7 @@ org 0x400000
 
     const CALL_RET_ASM: &str = "\
 BITS 64
-org 0x400000
+section .text
     mov rax, 1
     call add_five
     hlt

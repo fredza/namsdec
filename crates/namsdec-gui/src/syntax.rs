@@ -56,10 +56,18 @@ fn highlight_line(job: &mut LayoutJob, theme: &Theme, line: &str, font_id: &Font
             while i < chars.len() && chars[i].is_whitespace() {
                 i += 1;
             }
-            append(job, &chars[start..i].iter().collect::<String>(), font_id, base, false);
+            append(
+                job,
+                &chars[start..i].iter().collect::<String>(),
+                font_id,
+                base,
+                false,
+            );
         } else if c.is_alphanumeric() || c == '_' || c == '.' {
             let start = i;
-            while i < chars.len() && (chars[i].is_alphanumeric() || chars[i] == '_' || chars[i] == '.') {
+            while i < chars.len()
+                && (chars[i].is_alphanumeric() || chars[i] == '_' || chars[i] == '.')
+            {
                 i += 1;
             }
             let word: String = chars[start..i].iter().collect();

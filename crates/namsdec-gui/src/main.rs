@@ -3,6 +3,7 @@
 //! (vérification pédagogique) et exécute pas à pas via `namsdec-emu`,
 //! en affichant les panneaux des modules `ReModule` enregistrés.
 
+mod errors;
 mod i18n;
 mod keybindings;
 mod settings;
@@ -10,17 +11,18 @@ mod syntax;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use eframe::egui;
 use namsdec_asm::{AsmError, Diagnostic, Severity};
-use namsdec_core::{Reg64, RFlags};
+use namsdec_core::{RFlags, Reg64};
 use namsdec_disasm::DecodedInstruction;
-use namsdec_emu::{Emulator, RunStop, StepOverResult, StepResult};
+use namsdec_emu::{Backend, Emulator, RunStop, StepOverResult, StepResult};
 use namsdec_explorer::{ExplorerAction, FileExplorer};
 use namsdec_re::{BinaryInfoModule, ReContext, ReModuleRegistry};
 use namsdec_theme::Theme;
 
-use i18n::{strings, Lang, Strings};
+use i18n::{Lang, Strings, strings};
 use keybindings::{Action, Dispatcher, KeyBindings, Rebinding};
 use settings::Settings;
 
@@ -52,15 +54,20 @@ enum SidebarTab {
     Flags,
     Stack,
     Memory,
+    /// Ce que le programme a écrit lui-même, via `write` — la seule chose
+    /// qu'il affiche au monde, et donc celle qu'on vient vérifier après
+    /// l'avoir exécuté.
+    Output,
     Re,
 }
 
 impl SidebarTab {
-    const ALL: [SidebarTab; 5] = [
+    const ALL: [SidebarTab; 6] = [
         SidebarTab::Registers,
         SidebarTab::Flags,
         SidebarTab::Stack,
         SidebarTab::Memory,
+        SidebarTab::Output,
         SidebarTab::Re,
     ];
 
@@ -70,18 +77,35 @@ impl SidebarTab {
             SidebarTab::Flags => s.tab_flags,
             SidebarTab::Stack => s.tab_stack,
             SidebarTab::Memory => s.tab_memory,
+            SidebarTab::Output => s.tab_output,
             SidebarTab::Re => s.tab_re,
         }
     }
 }
 
+/// `Debug` sert aux tests, qui doivent pouvoir dire quel statut ils ont
+/// obtenu quand ils en attendaient un autre.
+#[derive(Debug)]
 enum Status {
     Idle,
-    AssembleOk { bytes: usize },
+    AssembleOk {
+        bytes: usize,
+    },
     AssembleFailed,
     Running,
     Halted,
-    BinaryLoaded { bytes: usize, truncated: bool },
+    /// Le programme s'est terminé lui-même par `exit`, avec ce code — ce
+    /// qui n'est pas la même chose que la machine arrêtée par `hlt`.
+    Exited {
+        code: i64,
+    },
+    /// Le programme attend son entrée standard : il ne reprendra que
+    /// lorsqu'on lui aura donné de quoi lire.
+    WaitingForInput,
+    BinaryLoaded {
+        bytes: usize,
+        truncated: bool,
+    },
     Breakpoint(u64),
     StepLimit,
     NasmMissing,
@@ -94,7 +118,7 @@ enum Status {
 /// (`Échap` pour revenir en Normal). Volontairement limité à ces deux
 /// modes et ces trois touches — pas les mouvements hjkl ni les commandes
 /// (dd, yy, ...) de vim, qui n'ont pas été demandés.
-#[derive(Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
 enum EditorMode {
     #[default]
     Normal,
@@ -135,7 +159,19 @@ struct NamsdecApp {
     nasm_info: Option<namsdec_asm::NasmInfo>,
     breakpoint_lines: BTreeSet<u32>,
     assemble_state: Option<AssembleState>,
-    emulator: Option<Emulator>,
+    /// Texte en cours de saisie dans la console, pas encore envoyé au
+    /// programme. Donnée de session et non réglage : elle n'a aucun sens
+    /// hors du programme qui tourne, et n'a donc rien à faire dans
+    /// `settings.json`.
+    console_input: String,
+    /// Un `Exécuter` a été suspendu faute d'entrée, et doit repartir tout
+    /// seul dès qu'elle arrive. Un pas à pas, lui, ne reprend pas de
+    /// lui-même : c'est l'utilisateur qui décide quand avancer.
+    resume_run_after_input: bool,
+    /// Le moteur d'exécution, derrière son trait : l'interface ne sait
+    /// pas lequel tourne, et n'a pas à le savoir (voir
+    /// `namsdec_emu::Backend`).
+    emulator: Option<Box<dyn Backend>>,
     re_registry: ReModuleRegistry,
     status: Status,
     diagnostics: Vec<Diagnostic>,
@@ -212,29 +248,87 @@ enum PaletteCommand {
 
 fn palette_commands(s: &Strings) -> Vec<(String, PaletteCommand)> {
     let mut commands = vec![
-        (s.action_assemble.to_string(), PaletteCommand::Do(Action::Assemble)),
+        (
+            s.action_assemble.to_string(),
+            PaletteCommand::Do(Action::Assemble),
+        ),
         (s.action_run.to_string(), PaletteCommand::Do(Action::Run)),
-        (s.action_step_into.to_string(), PaletteCommand::Do(Action::StepInto)),
-        (s.action_step_over.to_string(), PaletteCommand::Do(Action::StepOver)),
+        (
+            s.action_step_into.to_string(),
+            PaletteCommand::Do(Action::StepInto),
+        ),
+        (
+            s.action_step_over.to_string(),
+            PaletteCommand::Do(Action::StepOver),
+        ),
         (s.action_stop.to_string(), PaletteCommand::Do(Action::Stop)),
-        (s.action_reset.to_string(), PaletteCommand::Do(Action::Reset)),
-        (s.action_toggle_explorer.to_string(), PaletteCommand::Do(Action::ToggleExplorer)),
+        (
+            s.action_reset.to_string(),
+            PaletteCommand::Do(Action::Reset),
+        ),
+        (
+            s.action_toggle_explorer.to_string(),
+            PaletteCommand::Do(Action::ToggleExplorer),
+        ),
         (s.action_save.to_string(), PaletteCommand::Do(Action::Save)),
         (s.file_save_as.to_string(), PaletteCommand::SaveAs),
-        (s.file_open_file.to_string(), PaletteCommand::Do(Action::OpenFile)),
-        (s.file_open_folder.to_string(), PaletteCommand::Do(Action::OpenFolder)),
-        (s.file_preferences.to_string(), PaletteCommand::ShowPreferences),
+        (
+            s.file_open_file.to_string(),
+            PaletteCommand::Do(Action::OpenFile),
+        ),
+        (
+            s.file_open_folder.to_string(),
+            PaletteCommand::Do(Action::OpenFolder),
+        ),
+        (
+            s.file_preferences.to_string(),
+            PaletteCommand::ShowPreferences,
+        ),
         (s.help_about.to_string(), PaletteCommand::ShowAbout),
-        (format!("{}: Français", s.preferences_language), PaletteCommand::SetLang(Lang::Fr)),
-        (format!("{}: English", s.preferences_language), PaletteCommand::SetLang(Lang::En)),
-        (format!("{}: {}", s.menu_view, s.tab_registers), PaletteCommand::GoTab(SidebarTab::Registers)),
-        (format!("{}: {}", s.menu_view, s.tab_flags), PaletteCommand::GoTab(SidebarTab::Flags)),
-        (format!("{}: {}", s.menu_view, s.tab_stack), PaletteCommand::GoTab(SidebarTab::Stack)),
-        (format!("{}: {}", s.menu_view, s.tab_memory), PaletteCommand::GoTab(SidebarTab::Memory)),
-        (format!("{}: {}", s.menu_view, s.tab_re), PaletteCommand::GoTab(SidebarTab::Re)),
-        (s.palette_toggle_toolbar.to_string(), PaletteCommand::ToggleToolbar),
-        (s.palette_toggle_sidebar.to_string(), PaletteCommand::ToggleSidebar),
-        (s.palette_toggle_statusbar.to_string(), PaletteCommand::ToggleStatusbar),
+        (
+            format!("{}: Français", s.preferences_language),
+            PaletteCommand::SetLang(Lang::Fr),
+        ),
+        (
+            format!("{}: English", s.preferences_language),
+            PaletteCommand::SetLang(Lang::En),
+        ),
+        (
+            format!("{}: {}", s.menu_view, s.tab_registers),
+            PaletteCommand::GoTab(SidebarTab::Registers),
+        ),
+        (
+            format!("{}: {}", s.menu_view, s.tab_flags),
+            PaletteCommand::GoTab(SidebarTab::Flags),
+        ),
+        (
+            format!("{}: {}", s.menu_view, s.tab_stack),
+            PaletteCommand::GoTab(SidebarTab::Stack),
+        ),
+        (
+            format!("{}: {}", s.menu_view, s.tab_memory),
+            PaletteCommand::GoTab(SidebarTab::Memory),
+        ),
+        (
+            format!("{}: {}", s.menu_view, s.tab_output),
+            PaletteCommand::GoTab(SidebarTab::Output),
+        ),
+        (
+            format!("{}: {}", s.menu_view, s.tab_re),
+            PaletteCommand::GoTab(SidebarTab::Re),
+        ),
+        (
+            s.palette_toggle_toolbar.to_string(),
+            PaletteCommand::ToggleToolbar,
+        ),
+        (
+            s.palette_toggle_sidebar.to_string(),
+            PaletteCommand::ToggleSidebar,
+        ),
+        (
+            s.palette_toggle_statusbar.to_string(),
+            PaletteCommand::ToggleStatusbar,
+        ),
         (s.file_quit.to_string(), PaletteCommand::Quit),
     ];
 
@@ -270,7 +364,7 @@ enum PreferencesTab {
 /// séparé, ajoutable indépendamment de la coquille de base.
 const DEFAULT_SOURCE: &str = "\
 BITS 64
-org 0x400000
+section .text
 
     mov rax, 0
     mov rcx, 5
@@ -312,6 +406,8 @@ impl Default for NamsdecApp {
             cursor_pos: (1, 1),
             preferences_tab: PreferencesTab::General,
             show_re_tab: false,
+            console_input: String::new(),
+            resume_run_after_input: false,
             explorer: FileExplorer::default(),
             show_explorer: false,
             explorer_just_opened: false,
@@ -350,7 +446,37 @@ impl NamsdecApp {
             ..Default::default()
         };
         app.ensure_explorer_root();
+        app.reopen_last_file();
         app
+    }
+
+    /// Rouvre le fichier sur lequel on travaillait au lancement précédent,
+    /// pour reprendre où l'on s'était arrêté.
+    ///
+    /// Seul le chemin a été enregistré : c'est le fichier du disque qui
+    /// fait foi, y compris s'il a été modifié ailleurs entre-temps. En
+    /// garder une copie dans les réglages n'y entretiendrait qu'un double
+    /// périmé.
+    ///
+    /// Un fichier disparu ou devenu illisible ne doit ni empêcher de
+    /// démarrer, ni accueillir par une erreur quelqu'un qui vient
+    /// seulement d'ouvrir l'application : on retombe sur le programme
+    /// d'exemple, et l'entrée périmée disparaît des réglages d'elle-même.
+    fn reopen_last_file(&mut self) {
+        let Some(path) = self
+            .saved_settings
+            .current_file()
+            .filter(|path| path.is_file())
+        else {
+            self.current_file = None;
+            return;
+        };
+        self.open_file(path);
+        if matches!(self.status, Status::Error(_)) {
+            self.current_file = None;
+            self.source = DEFAULT_SOURCE.to_owned();
+            self.status = Status::Idle;
+        }
     }
 
     /// Écrit le fichier de réglages sans attendre qu'un réglage change :
@@ -376,6 +502,12 @@ impl NamsdecApp {
     /// ici — c'est le point unique à compléter en ajoutant un réglage.
     fn settings_snapshot(&self) -> Settings {
         Settings {
+            // Toujours la version courante : l'instantané décrit l'état de
+            // *cette* version de l'application. Reprendre la version lue
+            // dans le fichier ferait diverger l'instantané de ce qui est
+            // enregistré, et l'application réécrirait le fichier à chaque
+            // frame en croyant qu'un réglage a bougé.
+            version: settings::SETTINGS_VERSION,
             theme: self.theme.id.to_owned(),
             language: match self.lang {
                 Lang::Fr => "fr".to_owned(),
@@ -385,11 +517,8 @@ impl NamsdecApp {
             show_sidebar: self.show_sidebar,
             show_statusbar: self.show_statusbar,
             show_re_tab: self.show_re_tab,
-            explorer_root: self
-                .explorer
-                .root
-                .as_ref()
-                .map(|p| p.display().to_string()),
+            explorer_root: self.explorer.root.as_ref().map(|p| p.display().to_string()),
+            current_file: self.current_file.as_ref().map(|p| p.display().to_string()),
             shortcuts: settings::shortcuts_to_strings(&self.keybindings),
         }
     }
@@ -425,7 +554,7 @@ impl NamsdecApp {
     fn do_assemble(&mut self) {
         match namsdec_asm::assemble(&self.source, BASE_ADDR) {
             Ok(output) => {
-                let disasm = namsdec_disasm::disassemble(&output.bytes, BASE_ADDR);
+                let disasm = disassemble_code(&output);
                 let addr_to_line = output.line_to_addr.iter().map(|(l, a)| (*a, *l)).collect();
                 let bytes = output.bytes.len();
                 self.diagnostics = output.diagnostics.clone();
@@ -440,18 +569,23 @@ impl NamsdecApp {
             Err(AsmError::NasmNotFound) => {
                 self.status = Status::NasmMissing;
             }
+            Err(
+                e @ (AsmError::LinkerNotFound
+                | AsmError::LinkFailed { .. }
+                | AsmError::UnreadableProgram),
+            ) => {
+                self.assemble_state = None;
+                self.emulator = None;
+                self.status = Status::Error(errors::asm(self.lang, &e));
+            }
             Err(AsmError::Failed { diagnostics }) => {
                 self.diagnostics = diagnostics;
                 self.assemble_state = None;
                 self.emulator = None;
                 self.status = Status::AssembleFailed;
             }
-            Err(AsmError::Io(e)) => {
-                self.status = Status::Error(if self.lang == Lang::Fr {
-                    format!("erreur d'entrée/sortie : {e}")
-                } else {
-                    format!("I/O error: {e}")
-                });
+            Err(e @ AsmError::Io(_)) => {
+                self.status = Status::Error(errors::asm(self.lang, &e));
             }
         }
     }
@@ -461,31 +595,41 @@ impl NamsdecApp {
             return;
         };
         let mut mem = namsdec_core::Memory::new(BASE_ADDR, MEM_SIZE);
-        if mem.load(BASE_ADDR, &state.output.bytes).is_err() {
+        // `load_addr` plutôt que `BASE_ADDR` : le programme lié dit
+        // lui-même où ses sections doivent se trouver, et `.data` n'est
+        // pas collée derrière `.text` mais sur la page suivante.
+        if mem
+            .load(state.output.load_addr, &state.output.bytes)
+            .is_err()
+        {
             self.status = Status::Error(strings(self.lang).binary_too_large.to_string());
             self.emulator = None;
             return;
         }
         let mut cpu = namsdec_core::Cpu::new(mem);
-        cpu.regs.rip = BASE_ADDR;
+        // Le point d'entrée de l'ELF, et non le premier octet chargé : sur
+        // un programme qui commence par `.data`, ce sont deux adresses
+        // différentes.
+        cpu.regs.rip = state.output.entry;
         cpu.regs
             .set64(Reg64::Rsp, BASE_ADDR + MEM_SIZE as u64 - 0x100);
 
         let mut emulator = Emulator::new(cpu);
-        emulator.breakpoints = self
-            .breakpoint_lines
-            .iter()
-            .filter_map(|l| state.output.line_to_addr.get(l).copied())
-            .collect();
+        emulator.set_breakpoints(
+            self.breakpoint_lines
+                .iter()
+                .filter_map(|l| state.output.line_to_addr.get(l).copied())
+                .collect(),
+        );
 
         let ctx = ReContext {
-            cpu: &emulator.cpu,
+            cpu: emulator.cpu(),
             disasm: &state.disasm,
             source: &self.source,
         };
         self.re_registry.on_binary_loaded(&ctx);
 
-        self.emulator = Some(emulator);
+        self.emulator = Some(Box::new(emulator));
     }
 
     fn sync_breakpoints(&mut self) {
@@ -498,7 +642,7 @@ impl NamsdecApp {
             .filter_map(|l| state.output.line_to_addr.get(l).copied())
             .collect();
         if let Some(emulator) = &mut self.emulator {
-            emulator.breakpoints = addrs;
+            emulator.set_breakpoints(addrs);
         }
     }
 
@@ -507,7 +651,7 @@ impl NamsdecApp {
             return;
         };
         let ctx = ReContext {
-            cpu: &emulator.cpu,
+            cpu: emulator.cpu(),
             disasm: &state.disasm,
             source: &self.source,
         };
@@ -519,9 +663,13 @@ impl NamsdecApp {
             return;
         };
         match emulator.step() {
-            Ok(StepResult::Halted) => self.status = Status::Halted,
+            Ok(StepResult::Halted) => {
+                self.status = halted_status(emulator.as_ref());
+                self.back_to_command_mode();
+            }
+            Ok(StepResult::NeedsInput) => self.status = Status::WaitingForInput,
             Ok(StepResult::Continued) => {}
-            Err(e) => self.status = Status::Error(e.to_string()),
+            Err(e) => self.status = Status::Error(errors::emu(self.lang, &e)),
         }
         self.notify_step();
     }
@@ -533,6 +681,7 @@ impl NamsdecApp {
         if self.emulator.is_none() {
             return;
         }
+        self.resume_run_after_input = false;
         self.running = true;
         self.run_steps_taken = 0;
         self.status = Status::Running;
@@ -550,11 +699,19 @@ impl NamsdecApp {
         match emulator.run(RUN_BATCH_STEPS) {
             Ok(RunStop::Halted) => {
                 self.running = false;
-                self.status = Status::Halted;
+                self.status = halted_status(emulator.as_ref());
+                self.back_to_command_mode();
             }
             Ok(RunStop::Breakpoint(addr)) => {
                 self.running = false;
                 self.status = Status::Breakpoint(addr);
+            }
+            Ok(RunStop::NeedsInput) => {
+                // Suspendu, pas arrêté : l'exécution redémarrera d'
+                // elle-même dès que l'utilisateur aura tapé quelque chose.
+                self.running = false;
+                self.resume_run_after_input = true;
+                self.status = Status::WaitingForInput;
             }
             Ok(RunStop::StepLimit) => {
                 self.run_steps_taken += RUN_BATCH_STEPS as u64;
@@ -565,7 +722,7 @@ impl NamsdecApp {
             }
             Err(e) => {
                 self.running = false;
-                self.status = Status::Error(e.to_string());
+                self.status = Status::Error(errors::emu(self.lang, &e));
             }
         }
         self.notify_step();
@@ -591,11 +748,15 @@ impl NamsdecApp {
             return;
         };
         match emulator.step_over(MAX_RUN_STEPS) {
-            Ok(StepOverResult::Halted) => self.status = Status::Halted,
+            Ok(StepOverResult::Halted) => {
+                self.status = halted_status(emulator.as_ref());
+                self.back_to_command_mode();
+            }
             Ok(StepOverResult::Breakpoint(addr)) => self.status = Status::Breakpoint(addr),
             Ok(StepOverResult::StepLimit) => self.status = Status::StepLimit,
+            Ok(StepOverResult::NeedsInput) => self.status = Status::WaitingForInput,
             Ok(StepOverResult::Stepped | StepOverResult::SteppedOverCall) => {}
-            Err(e) => self.status = Status::Error(e.to_string()),
+            Err(e) => self.status = Status::Error(errors::emu(self.lang, &e)),
         }
         self.notify_step();
     }
@@ -603,7 +764,43 @@ impl NamsdecApp {
     /// Point d'entrée unique pour tout ce qui déclenche une action —
     /// raccourci clavier ou clic de bouton/menu, pour ne jamais avoir deux
     /// implémentations de "ce que fait Assembler" qui divergent.
+    /// Le programme chargé est-il allé jusqu'au bout ? `halted` couvre les
+    /// deux fins possibles : `exit`, et la machine arrêtée par `hlt`.
+    fn program_finished(&self) -> bool {
+        self.emulator
+            .as_ref()
+            .is_some_and(|emulator| emulator.cpu().halted)
+    }
+
+    /// Les commandes d'exécution ont-elles encore un sens ?
+    ///
+    /// Il faut un programme chargé, et qu'il lui reste quelque chose à
+    /// faire : relancer Step Into sur un programme terminé ne peut plus
+    /// rien produire, et laisser le bouton actif laisse croire le
+    /// contraire. `Réinitialiser` reste disponible — c'est précisément ce
+    /// qu'on veut faire ensuite.
+    fn can_execute(&self) -> bool {
+        self.emulator.is_some() && !self.program_finished()
+    }
+
+    /// Ce que fait namsdec quand l'exécution rend la main, comme gdb :
+    /// on revient aux commandes. Rester en mode Insertion ferait taper du
+    /// texte dans le code à quelqu'un qui pianote `Espace r` pour
+    /// relancer.
+    fn back_to_command_mode(&mut self) {
+        self.editor_mode = EditorMode::Normal;
+    }
+
     fn dispatch(&mut self, action: Action) {
+        // Un raccourci doit obéir aux mêmes règles qu'un bouton : si la
+        // commande est grisée dans la barre d'outils, la frapper au
+        // clavier ne doit pas la déclencher non plus.
+        if matches!(action, Action::Run | Action::StepInto | Action::StepOver)
+            && !self.can_execute()
+        {
+            return;
+        }
+
         match action {
             Action::ToggleExplorer => {
                 self.show_explorer = !self.show_explorer;
@@ -649,7 +846,10 @@ impl NamsdecApp {
         let s = strings(self.lang);
         let picked = rfd::FileDialog::new()
             .add_filter(s.filter_asm, &["asm", "nasm", "s", "inc"])
-            .add_filter(s.filter_binary, &["bin", "o", "obj", "elf", "so", "exe", "dll"])
+            .add_filter(
+                s.filter_binary,
+                &["bin", "o", "obj", "elf", "so", "exe", "dll"],
+            )
             // "*" est traduit en glob `*` par le backend portail de rfd :
             // c'est ce qui laisse choisir un exécutable ELF sans
             // extension, cas le plus courant sous Linux.
@@ -725,6 +925,12 @@ impl NamsdecApp {
         self.diagnostics.clear();
         self.assemble_state = Some(AssembleState {
             output: namsdec_asm::AssembleOutput {
+                load_addr: BASE_ADDR,
+                entry: BASE_ADDR,
+                // Un binaire brut ouvert depuis le disque n'a pas de
+                // sections : tout ce qu'on en sait, c'est qu'on l'a
+                // désassemblé comme du code depuis son premier octet.
+                sections: Vec::new(),
                 bytes,
                 diagnostics: Vec::new(),
                 line_to_addr,
@@ -775,11 +981,24 @@ impl NamsdecApp {
             filter_hint: s.explorer_filter_hint,
             empty: s.explorer_empty,
             open_folder: s.file_open_folder,
+            path_hint: s.explorer_path_hint,
+            go_parent: s.explorer_go_parent,
+            go_root: s.explorer_go_root,
+            go_home: s.explorer_go_home,
+            go_current_file: s.explorer_go_current_file,
+            rename_hint: s.explorer_rename_hint,
+            rename_failed: s.explorer_rename_failed,
+            rename_exists: s.explorer_rename_exists,
+            path_not_a_directory: s.explorer_path_not_a_directory,
         };
 
-        let response = self
-            .explorer
-            .show(ctx, self.theme, &labels, self.explorer_focused);
+        let response = self.explorer.show(
+            ctx,
+            self.theme,
+            &labels,
+            self.explorer_focused,
+            self.current_file.as_deref(),
+        );
 
         if response.focus_gained {
             self.focus_explorer(true);
@@ -807,6 +1026,15 @@ impl NamsdecApp {
             ExplorerAction::Close => {
                 self.show_explorer = false;
                 self.explorer_focused = false;
+            }
+            ExplorerAction::Renamed { from, to } => {
+                // Si c'est le fichier ouvert qui vient d'être renommé, le
+                // tampon doit suivre : sans ça, le prochain Enregistrer
+                // réécrirait l'ancien chemin et ferait réapparaître le
+                // fichier sous son ancien nom.
+                if self.current_file.as_deref() == Some(from.as_path()) {
+                    self.current_file = Some(to);
+                }
             }
             ExplorerAction::None => {}
         }
@@ -856,7 +1084,9 @@ impl NamsdecApp {
         let query_lower = query.to_lowercase();
         let filtered: Vec<&(String, PaletteCommand)> = commands
             .iter()
-            .filter(|(label, _)| query_lower.is_empty() || label.to_lowercase().contains(&query_lower))
+            .filter(|(label, _)| {
+                query_lower.is_empty() || label.to_lowercase().contains(&query_lower)
+            })
             .collect();
         if filtered.is_empty() {
             selected = 0;
@@ -884,16 +1114,18 @@ impl NamsdecApp {
                     text_response.request_focus();
                 }
                 ui.separator();
-                egui::ScrollArea::vertical().max_height(280.0).show(ui, |ui| {
-                    if filtered.is_empty() {
-                        ui.weak(s.palette_no_match);
-                    }
-                    for (i, (label, cmd)) in filtered.iter().enumerate() {
-                        if ui.selectable_label(i == selected, label.as_str()).clicked() {
-                            execute = Some(*cmd);
+                egui::ScrollArea::vertical()
+                    .max_height(280.0)
+                    .show(ui, |ui| {
+                        if filtered.is_empty() {
+                            ui.weak(s.palette_no_match);
                         }
-                    }
-                });
+                        for (i, (label, cmd)) in filtered.iter().enumerate() {
+                            if ui.selectable_label(i == selected, label.as_str()).clicked() {
+                                execute = Some(*cmd);
+                            }
+                        }
+                    });
             });
 
         ctx.input(|i| {
@@ -959,7 +1191,7 @@ impl NamsdecApp {
     fn current_line(&self) -> Option<u32> {
         let emulator = self.emulator.as_ref()?;
         let state = self.assemble_state.as_ref()?;
-        state.addr_to_line.get(&emulator.cpu.regs.rip).copied()
+        state.addr_to_line.get(&emulator.cpu().regs.rip).copied()
     }
 
     fn menu_bar_ui(&mut self, ui: &mut egui::Ui) {
@@ -968,21 +1200,36 @@ impl NamsdecApp {
             ui.menu_button(s.menu_file, |ui| {
                 let ctx = ui.ctx().clone();
                 if ui
-                    .button(shortcut_hint(&self.keybindings, &ctx, s.file_open_file, Action::OpenFile))
+                    .button(shortcut_hint(
+                        &self.keybindings,
+                        &ctx,
+                        s.file_open_file,
+                        Action::OpenFile,
+                    ))
                     .clicked()
                 {
                     self.dispatch(Action::OpenFile);
                     ui.close();
                 }
                 if ui
-                    .button(shortcut_hint(&self.keybindings, &ctx, s.file_open_folder, Action::OpenFolder))
+                    .button(shortcut_hint(
+                        &self.keybindings,
+                        &ctx,
+                        s.file_open_folder,
+                        Action::OpenFolder,
+                    ))
                     .clicked()
                 {
                     self.dispatch(Action::OpenFolder);
                     ui.close();
                 }
                 if ui
-                    .button(shortcut_hint(&self.keybindings, &ui.ctx().clone(), s.action_save, Action::Save))
+                    .button(shortcut_hint(
+                        &self.keybindings,
+                        &ui.ctx().clone(),
+                        s.action_save,
+                        Action::Save,
+                    ))
                     .clicked()
                 {
                     self.do_save();
@@ -1031,7 +1278,7 @@ impl NamsdecApp {
                     self.dispatch(Action::Assemble);
                     ui.close();
                 }
-                let can_exec = self.emulator.is_some();
+                let can_exec = self.can_execute();
                 ui.add_enabled_ui(can_exec, |ui| {
                     if ui.button(s.action_step_into).clicked() {
                         self.dispatch(Action::StepInto);
@@ -1200,10 +1447,16 @@ impl NamsdecApp {
 
         ui.label(s.preferences_language);
         ui.horizontal(|ui| {
-            if ui.selectable_label(self.lang == Lang::Fr, "Français").clicked() {
+            if ui
+                .selectable_label(self.lang == Lang::Fr, "Français")
+                .clicked()
+            {
                 self.lang = Lang::Fr;
             }
-            if ui.selectable_label(self.lang == Lang::En, "English").clicked() {
+            if ui
+                .selectable_label(self.lang == Lang::En, "English")
+                .clicked()
+            {
                 self.lang = Lang::En;
             }
         });
@@ -1218,11 +1471,12 @@ impl NamsdecApp {
         // normal (voir App::ui, qui saute le dispatch tant que
         // `self.rebinding` est `Some`).
         if let Some(rebinding) = &mut self.rebinding
-            && let Some(chord) = self.dispatcher.poll_rebind(&ctx, rebinding) {
-                let action = rebinding.action;
-                self.keybindings.map.insert(action, chord);
-                self.rebinding = None;
-            }
+            && let Some(chord) = self.dispatcher.poll_rebind(&ctx, rebinding)
+        {
+            let action = rebinding.action;
+            self.keybindings.map.insert(action, chord);
+            self.rebinding = None;
+        }
 
         egui::Grid::new("shortcuts_grid")
             .num_columns(4)
@@ -1234,7 +1488,19 @@ impl NamsdecApp {
                     ui.label(action_label(s, action));
 
                     if is_rebinding {
-                        ui.colored_label(theme.accent, s.rebind_waiting);
+                        // Une séquence n'a pas de longueur imposée : sans
+                        // voir ce qu'il a déjà tapé, l'utilisateur ne sait
+                        // pas s'il doit continuer ou valider.
+                        let captured: Vec<&str> = self
+                            .rebinding
+                            .as_ref()
+                            .map(|r| r.captured().iter().map(|k| k.name()).collect())
+                            .unwrap_or_default();
+                        if captured.is_empty() {
+                            ui.colored_label(theme.accent, s.rebind_waiting);
+                        } else {
+                            ui.colored_label(theme.accent, format!("{} …", captured.join(" ")));
+                        }
                     } else {
                         let current = self
                             .keybindings
@@ -1249,13 +1515,15 @@ impl NamsdecApp {
                         .add_enabled(!is_rebinding, egui::Button::new(s.rebind_simple))
                         .clicked()
                     {
-                        self.rebinding = Some(Rebinding::new(action, keybindings::RebindMode::Simple));
+                        self.rebinding =
+                            Some(Rebinding::new(action, keybindings::RebindMode::Simple));
                     }
                     if ui
                         .add_enabled(!is_rebinding, egui::Button::new(s.rebind_leader))
                         .clicked()
                     {
-                        self.rebinding = Some(Rebinding::new(action, keybindings::RebindMode::Leader));
+                        self.rebinding =
+                            Some(Rebinding::new(action, keybindings::RebindMode::Leader));
                     }
                     ui.end_row();
                 }
@@ -1266,10 +1534,12 @@ impl NamsdecApp {
         let s = strings(self.lang);
         ui.label(s.modules_legend);
         ui.add_space(6.0);
-        egui::ScrollArea::vertical().max_height(360.0).show(ui, |ui| {
-            self.modules_ui(ui);
-            ui.checkbox(&mut self.show_re_tab, s.show_re_tab_checkbox);
-        });
+        egui::ScrollArea::vertical()
+            .max_height(360.0)
+            .show(ui, |ui| {
+                self.modules_ui(ui);
+                ui.checkbox(&mut self.show_re_tab, s.show_re_tab_checkbox);
+            });
     }
 
     /// Onglet Plugins : pour l'instant les thèmes, qui en sont le premier
@@ -1284,16 +1554,18 @@ impl NamsdecApp {
         ui.weak(s.plugins_themes_hint);
         ui.add_space(6.0);
 
-        egui::ScrollArea::vertical().max_height(320.0).show(ui, |ui| {
-            for theme in namsdec_theme::BUILT_IN {
-                let active = std::ptr::eq(self.theme, *theme);
-                let response = theme_card(ui, theme, active, s.plugins_active);
-                if response.clicked() && !active {
-                    self.theme = theme;
-                    self.apply_theme(&ctx);
+        egui::ScrollArea::vertical()
+            .max_height(320.0)
+            .show(ui, |ui| {
+                for theme in namsdec_theme::BUILT_IN {
+                    let active = std::ptr::eq(self.theme, *theme);
+                    let response = theme_card(ui, theme, active, s.plugins_active);
+                    if response.clicked() && !active {
+                        self.theme = theme;
+                        self.apply_theme(&ctx);
+                    }
                 }
-            }
-        });
+            });
 
         ui.add_space(6.0);
         ui.weak(s.plugins_install_soon);
@@ -1332,28 +1604,48 @@ impl NamsdecApp {
         ui.horizontal(|ui| {
             if ui
                 .button(s.action_assemble)
-                .on_hover_text(shortcut_hint(&self.keybindings, &ctx, s.action_assemble, Action::Assemble))
+                .on_hover_text(shortcut_hint(
+                    &self.keybindings,
+                    &ctx,
+                    s.action_assemble,
+                    Action::Assemble,
+                ))
                 .clicked()
             {
                 self.dispatch(Action::Assemble);
             }
 
-            let can_exec = self.emulator.is_some();
+            let can_exec = self.can_execute();
             ui.add_enabled_ui(can_exec, |ui| {
                 if icon_button(ui, icon_run, s.action_run)
-                    .on_hover_text(shortcut_hint(&self.keybindings, &ctx, s.action_run, Action::Run))
+                    .on_hover_text(shortcut_hint(
+                        &self.keybindings,
+                        &ctx,
+                        s.action_run,
+                        Action::Run,
+                    ))
                     .clicked()
                 {
                     self.dispatch(Action::Run);
                 }
                 if icon_button(ui, icon_step_into, s.action_step_into)
-                    .on_hover_text(shortcut_hint(&self.keybindings, &ctx, s.action_step_into, Action::StepInto))
+                    .on_hover_text(shortcut_hint(
+                        &self.keybindings,
+                        &ctx,
+                        s.action_step_into,
+                        Action::StepInto,
+                    ))
                     .clicked()
                 {
                     self.dispatch(Action::StepInto);
                 }
                 if icon_button(ui, icon_step_over, s.action_step_over)
-                    .on_hover_text(shortcut_hint(&self.keybindings, &ctx, s.action_step_over, Action::StepOver))
+                    .on_hover_text(shortcut_hint(
+                        &self.keybindings,
+                        &ctx,
+                        s.action_step_over,
+                        Action::StepOver,
+                    ))
                     .clicked()
                 {
                     self.dispatch(Action::StepOver);
@@ -1361,13 +1653,17 @@ impl NamsdecApp {
             });
             ui.add_enabled_ui(self.running, |ui| {
                 if icon_button(ui, icon_stop, s.action_stop)
-                    .on_hover_text(shortcut_hint(&self.keybindings, &ctx, s.action_stop, Action::Stop))
+                    .on_hover_text(shortcut_hint(
+                        &self.keybindings,
+                        &ctx,
+                        s.action_stop,
+                        Action::Stop,
+                    ))
                     .clicked()
                 {
                     self.dispatch(Action::Stop);
                 }
             });
-
         });
     }
 
@@ -1376,11 +1672,20 @@ impl NamsdecApp {
         let lang = self.lang;
         let theme = self.theme;
 
-        if let Some(key) = self.dispatcher.leader_armed() {
+        // Toutes les touches déjà tapées, pas seulement la première : sur
+        // `Espace s i`, l'indicateur doit montrer où l'on en est dans la
+        // séquence, sinon il ne dit plus rien après la deuxième frappe.
+        let pending = self.dispatcher.pending();
+        if !pending.is_empty() {
+            let keys = pending
+                .iter()
+                .map(|k| k.name())
+                .collect::<Vec<_>>()
+                .join(" ");
             let text = if lang == Lang::Fr {
-                format!("{} appuyée — touche suivante attendue…", key.name())
+                format!("{keys} — touche suivante attendue…")
             } else {
-                format!("{} pressed — waiting for next key…", key.name())
+                format!("{keys} — waiting for next key…")
             };
             ui.colored_label(theme.accent, text);
         }
@@ -1437,7 +1742,11 @@ impl NamsdecApp {
                 .max_height(96.0)
                 .show(ui, |ui| {
                     for d in &self.diagnostics {
-                        let color = if d.severity == Severity::Error { theme.bad } else { theme.warn };
+                        let color = if d.severity == Severity::Error {
+                            theme.bad
+                        } else {
+                            theme.warn
+                        };
                         let text = if lang == Lang::Fr {
                             format!("ligne {} — {}", d.line, d.message)
                         } else {
@@ -1488,6 +1797,20 @@ impl NamsdecApp {
             }
             Status::Halted => {
                 ui.colored_label(theme.good, s.status_halted);
+            }
+            Status::WaitingForInput => {
+                ui.colored_label(theme.accent, s.status_waiting_for_input);
+            }
+            Status::Exited { code } => {
+                let color = if *code == 0 { theme.good } else { theme.bad };
+                ui.colored_label(
+                    color,
+                    if lang == Lang::Fr {
+                        format!("Programme terminé (code {code}).")
+                    } else {
+                        format!("Program exited (code {code}).")
+                    },
+                );
             }
             Status::BinaryLoaded { bytes, truncated } => {
                 let size = if *truncated {
@@ -1548,6 +1871,10 @@ impl NamsdecApp {
         // pour ne pas leur voler leurs propres touches.
         let mut just_entered_insert = false;
         if self.command_palette.is_none() && self.rebinding.is_none() && !self.explorer_focused {
+            // Les touches déjà prises par un raccourci ne sont plus
+            // disponibles ici : le `i` qui termine `Espace s i` a servi à
+            // demander un pas, pas à ouvrir la saisie.
+            let consumed = self.dispatcher.consumed().to_vec();
             let (enter_insert, exit_insert) = ui.ctx().input(|inp| {
                 let mut enter = false;
                 let mut exit = false;
@@ -1566,7 +1893,7 @@ impl NamsdecApp {
                         // (Step Into).
                         let plain = !modifiers.ctrl && !modifiers.alt && !modifiers.mac_cmd;
                         match key {
-                            egui::Key::I if plain => enter = true,
+                            egui::Key::I if plain && !consumed.contains(key) => enter = true,
                             egui::Key::Escape => exit = true,
                             _ => {}
                         }
@@ -1656,7 +1983,11 @@ impl NamsdecApp {
                                 );
                                 icon_run(painter, arrow_rect, theme.accent);
                             }
-                            let color = if is_current { theme.accent } else { ui.visuals().weak_text_color() };
+                            let color = if is_current {
+                                theme.accent
+                            } else {
+                                ui.visuals().weak_text_color()
+                            };
                             painter.text(
                                 egui::pos2(gutter_rect.right() - GUTTER_PAD, row_rect.center().y),
                                 egui::Align2::RIGHT_CENTER,
@@ -1674,10 +2005,11 @@ impl NamsdecApp {
                             self.sync_breakpoints();
                         }
 
-                        let mut layouter = |ui: &egui::Ui, buf: &dyn egui::TextBuffer, wrap_width: f32| {
-                            let job = syntax::highlight(ui, theme, buf.as_str(), wrap_width);
-                            ui.fonts_mut(|f| f.layout_job(job))
-                        };
+                        let mut layouter =
+                            |ui: &egui::Ui, buf: &dyn egui::TextBuffer, wrap_width: f32| {
+                                let job = syntax::highlight(ui, theme, buf.as_str(), wrap_width);
+                                ui.fonts_mut(|f| f.layout_job(job))
+                            };
                         // `.show()` plutôt que `ui.add()` : c'est la seule
                         // forme qui donne accès au curseur, dont la barre
                         // de statut affiche la position.
@@ -1738,6 +2070,7 @@ impl NamsdecApp {
             SidebarTab::Flags => self.flags_ui(ui),
             SidebarTab::Stack => self.stack_ui(ui),
             SidebarTab::Memory => self.memory_ui(ui),
+            SidebarTab::Output => self.output_ui(ui),
             SidebarTab::Re => self.re_ui(ui),
         });
     }
@@ -1747,7 +2080,7 @@ impl NamsdecApp {
             ui.label(strings(self.lang).no_binary_assembled);
             return;
         };
-        let regs = &emulator.cpu.regs;
+        let regs = &emulator.cpu().regs;
         egui::Grid::new("registers_grid")
             .num_columns(2)
             .striped(true)
@@ -1775,7 +2108,7 @@ impl NamsdecApp {
             ui.label(strings(self.lang).no_binary_assembled);
             return;
         };
-        let f = emulator.cpu.flags;
+        let f = emulator.cpu().flags;
         for (name, bit) in [
             ("CF", RFlags::CF),
             ("PF", RFlags::PF),
@@ -1788,14 +2121,152 @@ impl NamsdecApp {
         }
     }
 
+    /// La console du programme : ce qu'il a écrit, et de quoi lui donner
+    /// ce qu'il veut lire.
+    ///
+    /// Les octets de sortie sont rendus en UTF-8 « au mieux » : un
+    /// programme en assembleur écrit ce qu'il veut, y compris des octets
+    /// qui ne forment aucun texte, et ce n'est pas une raison pour ne rien
+    /// afficher.
+    fn output_ui(&mut self, ui: &mut egui::Ui) {
+        let s = strings(self.lang);
+        if self.emulator.is_none() {
+            ui.label(s.no_binary_assembled);
+            return;
+        }
+
+        let (output, exit_code, pending) = {
+            let emulator = self.emulator.as_ref().expect("vérifié juste au-dessus");
+            (
+                String::from_utf8_lossy(emulator.output()).into_owned(),
+                emulator.exit_code(),
+                emulator.pending_input(),
+            )
+        };
+
+        if output.is_empty() {
+            ui.colored_label(self.theme.dim, s.output_empty);
+        } else {
+            ui.monospace(output);
+        }
+
+        self.console_input_ui(ui, pending);
+
+        if let Some(code) = exit_code {
+            ui.separator();
+            let color = if code == 0 {
+                self.theme.good
+            } else {
+                self.theme.bad
+            };
+            ui.colored_label(
+                color,
+                if self.lang == Lang::Fr {
+                    format!("Le programme s'est terminé avec le code {code}.")
+                } else {
+                    format!("The program exited with code {code}.")
+                },
+            );
+        }
+    }
+
+    /// Le côté « entrée » de la console.
+    ///
+    /// Une ligne validée part avec son saut de ligne, parce que c'est ce
+    /// qu'un programme attend d'un terminal : il lit jusqu'au `\n`, et une
+    /// ligne sans fin de ligne le laisserait croire qu'elle n'est pas
+    /// terminée.
+    fn console_input_ui(&mut self, ui: &mut egui::Ui, pending: usize) {
+        let s = strings(self.lang);
+        let waiting = matches!(self.status, Status::WaitingForInput);
+
+        ui.separator();
+        if waiting {
+            ui.colored_label(self.theme.accent, s.console_waiting);
+        }
+
+        let mut send = false;
+        ui.horizontal(|ui| {
+            let response = ui.add(
+                egui::TextEdit::singleline(&mut self.console_input)
+                    .hint_text(s.console_input_hint)
+                    .font(egui::TextStyle::Monospace)
+                    .desired_width(ui.available_width() - 120.0),
+            );
+            // Le programme réclame de quoi lire : le curseur va là où
+            // l'utilisateur doit taper, sans qu'il ait à le chercher.
+            if waiting && !response.has_focus() {
+                response.request_focus();
+            }
+            send = response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+            send |= ui.button(s.console_send).clicked();
+
+            // Fin d'entrée : un programme qui lit jusqu'au bout de son
+            // entrée attendrait indéfiniment sans ce bouton.
+            if ui
+                .button(s.console_eof)
+                .on_hover_text(s.console_eof_hint)
+                .clicked()
+            {
+                self.send_input(None);
+            }
+        });
+
+        if pending > 0 {
+            ui.colored_label(
+                self.theme.dim,
+                if self.lang == Lang::Fr {
+                    format!("{pending} octet(s) en attente d'être lus.")
+                } else {
+                    format!("{pending} byte(s) waiting to be read.")
+                },
+            );
+        }
+
+        if send {
+            let line = std::mem::take(&mut self.console_input);
+            self.send_input(Some(line));
+        }
+    }
+
+    /// Donne au programme la ligne saisie, ou ferme son entrée (`None`),
+    /// puis relance l'exécution si c'est elle qui attendait.
+    fn send_input(&mut self, line: Option<String>) {
+        let Some(emulator) = &mut self.emulator else {
+            return;
+        };
+        match line {
+            Some(line) => emulator.provide_input(format!("{line}\n").as_bytes()),
+            None => emulator.close_input(),
+        }
+
+        // Un `Exécuter` suspendu repart tout seul : c'est le programme qui
+        // attendait, pas l'utilisateur. Un pas à pas, lui, garde la main à
+        // l'utilisateur, qui décide quand avancer.
+        if matches!(self.status, Status::WaitingForInput) {
+            self.status = if self.resume_run_after_input {
+                self.resume_run_after_input = false;
+                self.running = true;
+                Status::Running
+            } else {
+                Status::Idle
+            };
+        }
+    }
+
     fn stack_ui(&self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
         let Some(emulator) = &self.emulator else {
             ui.label(s.no_binary_assembled);
             return;
         };
-        let addr = emulator.cpu.regs.get64(Reg64::Rsp).saturating_sub(16);
-        ui.monospace(safe_hexdump(&emulator.cpu.mem, addr, 64, s.address_out_of_range));
+        let addr = emulator.cpu().regs.get64(Reg64::Rsp).saturating_sub(16);
+        ui.monospace(safe_hexdump(
+            &emulator.cpu().mem,
+            addr,
+            64,
+            s.address_out_of_range,
+        ));
     }
 
     fn memory_ui(&mut self, ui: &mut egui::Ui) {
@@ -1809,7 +2280,12 @@ impl NamsdecApp {
             ui.text_edit_singleline(&mut self.mem_addr_input);
         });
         let addr = parse_addr(&self.mem_addr_input).unwrap_or(BASE_ADDR);
-        ui.monospace(safe_hexdump(&emulator.cpu.mem, addr, 128, s.address_out_of_range));
+        ui.monospace(safe_hexdump(
+            &emulator.cpu().mem,
+            addr,
+            128,
+            s.address_out_of_range,
+        ));
     }
 
     fn re_ui(&mut self, ui: &mut egui::Ui) {
@@ -1819,7 +2295,7 @@ impl NamsdecApp {
             return;
         };
         let ctx = ReContext {
-            cpu: &emulator.cpu,
+            cpu: emulator.cpu(),
             disasm: &state.disasm,
             source: &self.source,
         };
@@ -1878,9 +2354,15 @@ impl NamsdecApp {
         let disasm_status = match &self.assemble_state {
             Some(state) => {
                 if fr {
-                    format!("{} instructions désassemblées (vérification)", state.disasm.len())
+                    format!(
+                        "{} instructions désassemblées (vérification)",
+                        state.disasm.len()
+                    )
                 } else {
-                    format!("{} instructions disassembled (verification)", state.disasm.len())
+                    format!(
+                        "{} instructions disassembled (verification)",
+                        state.disasm.len()
+                    )
                 }
             }
             None => s.no_binary_assembled_yet.to_string(),
@@ -1896,17 +2378,21 @@ impl NamsdecApp {
 
         let emu_status = match &self.emulator {
             Some(emulator) => {
-                let state_word = match (emulator.cpu.halted, fr) {
+                let state_word = match (emulator.cpu().halted, fr) {
                     (true, true) => "arrêté (hlt)",
                     (true, false) => "halted (hlt)",
                     (false, true) => "en cours",
                     (false, false) => "running",
                 };
-                let bp_word = if fr { "point(s) d'arrêt" } else { "breakpoint(s)" };
+                let bp_word = if fr {
+                    "point(s) d'arrêt"
+                } else {
+                    "breakpoint(s)"
+                };
                 format!(
                     "RIP={:#x} · {} {bp_word} · {state_word}",
-                    emulator.cpu.regs.rip,
-                    emulator.breakpoints.len(),
+                    emulator.cpu().regs.rip,
+                    emulator.breakpoints().len(),
                 )
             }
             None => s.no_program_loaded.to_string(),
@@ -1928,7 +2414,14 @@ impl NamsdecApp {
         } else {
             format!("{} module(s): {}", titles.len(), titles.join(", "))
         };
-        module_card(ui, "namsdec-re", namsdec_re::VERSION, true, theme.good, &re_status);
+        module_card(
+            ui,
+            "namsdec-re",
+            namsdec_re::VERSION,
+            true,
+            theme.good,
+            &re_status,
+        );
     }
 }
 
@@ -1943,8 +2436,8 @@ impl NamsdecApp {
 fn dialog_buttons(ui: &mut egui::Ui, theme: &Theme, s: &Strings) -> Option<bool> {
     let mut result = None;
     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-        let ok = egui::Button::new(egui::RichText::new(s.dialog_ok).color(theme.bg))
-            .fill(theme.accent);
+        let ok =
+            egui::Button::new(egui::RichText::new(s.dialog_ok).color(theme.bg)).fill(theme.accent);
         if ui.add(ok).clicked() {
             result = Some(true);
         }
@@ -1975,7 +2468,12 @@ fn action_label(s: &Strings, action: Action) -> &'static str {
 /// Texte d'info-bulle pour un bouton lié à une action : le libellé plus,
 /// s'il existe, son raccourci courant — lu en direct dans `KeyBindings`
 /// pour qu'un changement dans Préférences se reflète aussitôt.
-fn shortcut_hint(bindings: &KeyBindings, ctx: &egui::Context, label: &str, action: Action) -> String {
+fn shortcut_hint(
+    bindings: &KeyBindings,
+    ctx: &egui::Context,
+    label: &str,
+    action: Action,
+) -> String {
     match bindings.map.get(&action) {
         Some(chord) => format!("{label} ({})", chord.display(ctx)),
         None => label.to_string(),
@@ -2021,7 +2519,10 @@ fn icon_button(
             egui::vec2(icon_size, icon_size),
         );
         icon(ui.painter(), icon_rect, visuals.text_color());
-        let text_pos = egui::pos2(icon_rect.right() + gap, rect.center().y - galley.size().y / 2.0);
+        let text_pos = egui::pos2(
+            icon_rect.right() + gap,
+            rect.center().y - galley.size().y / 2.0,
+        );
         ui.painter().galley(text_pos, galley, visuals.text_color());
     }
 
@@ -2031,7 +2532,11 @@ fn icon_button(
 fn icon_run(painter: &egui::Painter, rect: egui::Rect, color: egui::Color32) {
     let r = rect.shrink(1.0);
     painter.add(egui::Shape::convex_polygon(
-        vec![r.left_top(), r.left_bottom(), egui::pos2(r.right(), r.center().y)],
+        vec![
+            r.left_top(),
+            r.left_bottom(),
+            egui::pos2(r.right(), r.center().y),
+        ],
         color,
         egui::Stroke::NONE,
     ));
@@ -2044,7 +2549,13 @@ fn icon_stop(painter: &egui::Painter, rect: egui::Rect, color: egui::Color32) {
 fn icon_step_into(painter: &egui::Painter, rect: egui::Rect, color: egui::Color32) {
     let x = rect.center().x;
     let stroke = egui::Stroke::new(1.6, color);
-    painter.line_segment([egui::pos2(x, rect.top()), egui::pos2(x, rect.bottom() - 3.0)], stroke);
+    painter.line_segment(
+        [
+            egui::pos2(x, rect.top()),
+            egui::pos2(x, rect.bottom() - 3.0),
+        ],
+        stroke,
+    );
     painter.add(egui::Shape::convex_polygon(
         vec![
             egui::pos2(x - 3.0, rect.bottom() - 5.0),
@@ -2059,7 +2570,13 @@ fn icon_step_into(painter: &egui::Painter, rect: egui::Rect, color: egui::Color3
 fn icon_step_over(painter: &egui::Painter, rect: egui::Rect, color: egui::Color32) {
     let y = rect.center().y;
     let stroke = egui::Stroke::new(1.6, color);
-    painter.line_segment([egui::pos2(rect.left(), y), egui::pos2(rect.right() - 3.0, y)], stroke);
+    painter.line_segment(
+        [
+            egui::pos2(rect.left(), y),
+            egui::pos2(rect.right() - 3.0, y),
+        ],
+        stroke,
+    );
     painter.add(egui::Shape::convex_polygon(
         vec![
             egui::pos2(rect.right() - 5.0, y - 3.0),
@@ -2129,8 +2646,7 @@ fn short_nasm_version(full: &str) -> String {
 /// "●", que la police par défaut d'egui ne contient pas et qui retombe
 /// sur un carré de remplacement).
 fn status_dot(ui: &mut egui::Ui, color: egui::Color32) {
-    let (rect, _response) =
-        ui.allocate_exact_size(egui::vec2(8.0, 8.0), egui::Sense::hover());
+    let (rect, _response) = ui.allocate_exact_size(egui::vec2(8.0, 8.0), egui::Sense::hover());
     ui.painter().circle_filled(rect.center(), 4.0, color);
 }
 
@@ -2138,12 +2654,7 @@ fn status_dot(ui: &mut egui::Ui, color: egui::Color32) {
 /// couleurs du thème lui-même (fond, panneau, accents) plutôt qu'un nom
 /// seul — c'est le thème qui se décrit, donc rien à écrire de plus quand
 /// un nouveau s'ajoute.
-fn theme_card(
-    ui: &mut egui::Ui,
-    theme: &Theme,
-    active: bool,
-    active_word: &str,
-) -> egui::Response {
+fn theme_card(ui: &mut egui::Ui, theme: &Theme, active: bool, active_word: &str) -> egui::Response {
     let (rect, response) =
         ui.allocate_exact_size(egui::vec2(ui.available_width(), 44.0), egui::Sense::click());
 
@@ -2241,8 +2752,7 @@ impl eframe::App for NamsdecApp {
             // désarmer la touche leader, pas seulement l'éditeur : taper
             // "une note" dans le filtre de l'explorateur ne doit pas
             // refermer celui-ci sur le "e" qui suit l'espace.
-            let text_focused =
-                self.editor_focused || ctx.memory(|m| m.focused().is_some());
+            let text_focused = self.editor_focused || ctx.memory(|m| m.focused().is_some());
             if let Some(action) = self.dispatcher.poll(&ctx, &self.keybindings, text_focused) {
                 self.dispatch(action);
             }
@@ -2262,10 +2772,15 @@ impl eframe::App for NamsdecApp {
             };
         }
 
-        egui::Panel::top("menu_bar").show(ui, |ui| self.menu_bar_ui(ui));
-        if self.show_toolbar {
-            egui::Panel::top("toolbar").show(ui, |ui| self.toolbar_ui(ui));
-        }
+        let mut spans: Vec<(&'static str, Duration)> = Vec::new();
+        let frame_start = Instant::now();
+
+        timed(&mut spans, "barres", || {
+            egui::Panel::top("menu_bar").show(ui, |ui| self.menu_bar_ui(ui));
+            if self.show_toolbar {
+                egui::Panel::top("toolbar").show(ui, |ui| self.toolbar_ui(ui));
+            }
+        });
         if self.show_statusbar {
             // Un fond légèrement distinct, sans bordure complète autour —
             // une pleine boîte s'est révélée trop marquée (retour
@@ -2278,31 +2793,85 @@ impl eframe::App for NamsdecApp {
                 .frame(statusbar_frame)
                 .show(ui, |ui| self.statusbar_ui(ui));
         }
-        if self.show_sidebar {
-            egui::Panel::right("sidebar")
-                .resizable(true)
-                .default_size(300.0)
-                .show(ui, |ui| self.sidebar_ui(ui));
-        }
-        self.editor_ui(ui);
+        timed(&mut spans, "panneau latéral", || {
+            if self.show_sidebar {
+                egui::Panel::right("sidebar")
+                    .resizable(true)
+                    .default_size(300.0)
+                    .show(ui, |ui| self.sidebar_ui(ui));
+            }
+        });
+        // L'éditeur recolore tout le tampon à chaque frame : c'est le
+        // premier suspect dès que la source devient longue (un binaire
+        // désassemblé, par exemple).
+        timed(&mut spans, "éditeur", || self.editor_ui(ui));
 
         // Fenêtres flottantes — dont l'explorateur, qui n'occupe donc plus
         // de place dans la mise en page et ne dépend d'aucun panneau.
-        self.explorer_window_ui(&ctx);
-        self.preferences_window_ui(&ctx);
-        self.about_window_ui(&ctx);
-        self.command_palette_ui(&ctx);
+        // L'explorateur relit le disque, d'où sa mesure à part.
+        timed(&mut spans, "explorateur", || self.explorer_window_ui(&ctx));
+        timed(&mut spans, "fenêtres", || {
+            self.preferences_window_ui(&ctx);
+            self.about_window_ui(&ctx);
+            self.command_palette_ui(&ctx);
+        });
 
         // En dernier : tout réglage changé pendant cette frame, d'où qu'il
         // vienne (menu, préférences, palette, raccourci), est sur le
         // disque avant la frame suivante.
-        self.persist_settings_if_changed();
+        timed(&mut spans, "réglages", || {
+            self.persist_settings_if_changed()
+        });
+
+        report_slow_frame(frame_start.elapsed(), &spans);
+    }
+}
+
+/// Désassemble les sections exécutables, et elles seules.
+///
+/// Passer l'image entière au désassembleur revenait à décoder `.data`
+/// comme des instructions : une chaîne de caractères y produit des
+/// « instructions » qui n'existent pas, et le listing comme les modules de
+/// reverse engineering héritaient de ce bruit.
+fn disassemble_code(output: &namsdec_asm::AssembleOutput) -> Vec<DecodedInstruction> {
+    let load_addr = output.load_addr;
+    let slice = |addr: u64, size: usize| -> Option<&[u8]> {
+        let start = addr.checked_sub(load_addr)? as usize;
+        output.bytes.get(start..start.checked_add(size)?)
+    };
+
+    let mut code: Vec<&namsdec_asm::Section> =
+        output.sections.iter().filter(|s| s.executable).collect();
+    code.sort_by_key(|s| s.addr);
+
+    if code.is_empty() {
+        // Un binaire brut, sans table des sections : il n'y a rien d'autre
+        // à faire que de tout prendre pour du code.
+        return namsdec_disasm::disassemble(&output.bytes, load_addr);
+    }
+
+    code.iter()
+        .filter_map(|s| Some(namsdec_disasm::disassemble(slice(s.addr, s.size)?, s.addr)))
+        .flatten()
+        .collect()
+}
+
+/// Comment le programme s'est arrêté : de lui-même par `exit`, ou parce
+/// que la machine a rencontré `hlt`. Les deux se voient pareil depuis
+/// `StepResult::Halted`, et ne veulent pourtant pas dire la même chose.
+fn halted_status(emulator: &dyn Backend) -> Status {
+    match emulator.exit_code() {
+        Some(code) => Status::Exited { code },
+        None => Status::Halted,
     }
 }
 
 fn parse_addr(s: &str) -> Option<u64> {
     let s = s.trim();
-    let s = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")).unwrap_or(s);
+    let s = s
+        .strip_prefix("0x")
+        .or_else(|| s.strip_prefix("0X"))
+        .unwrap_or(s);
     u64::from_str_radix(s, 16).ok()
 }
 
@@ -2325,11 +2894,62 @@ fn hexdump(bytes: &[u8], base_addr: u64) -> String {
         let hex: Vec<String> = chunk.iter().map(|b| format!("{b:02x}")).collect();
         let ascii: String = chunk
             .iter()
-            .map(|&b| if (0x20..0x7f).contains(&b) { b as char } else { '.' })
+            .map(|&b| {
+                if (0x20..0x7f).contains(&b) {
+                    b as char
+                } else {
+                    '.'
+                }
+            })
             .collect();
         out.push_str(&format!("{addr:08x}  {:<47}  {ascii}\n", hex.join(" ")));
     }
     out
+}
+
+/// Au-delà de ce seuil, une frame n'est plus une saccade : la fenêtre a
+/// cessé de répondre assez longtemps pour que l'utilisateur le voie, et
+/// le compositeur finit par proposer de forcer l'application à quitter.
+///
+/// Un gel ne laisse aucune trace une fois passé — surtout un gel
+/// intermittent, qu'on ne peut pas provoquer à la demande sous un
+/// profileur. La frame lente s'écrit donc sur la sortie d'erreur avec le
+/// détail de ce qui l'a occupée, pour que le prochain gel désigne son
+/// coupable au lieu d'être à reproduire.
+const SLOW_FRAME: Duration = Duration::from_millis(120);
+
+/// Mesure une étape de la frame et l'ajoute au relevé.
+fn timed<R>(
+    spans: &mut Vec<(&'static str, Duration)>,
+    name: &'static str,
+    body: impl FnOnce() -> R,
+) -> R {
+    let start = Instant::now();
+    let out = body();
+    spans.push((name, start.elapsed()));
+    out
+}
+
+/// N'écrit rien tant que la frame tient dans son budget : en marche
+/// normale cette instrumentation est silencieuse.
+fn report_slow_frame(total: Duration, spans: &[(&'static str, Duration)]) {
+    if total < SLOW_FRAME {
+        return;
+    }
+    let detail: Vec<String> = spans
+        .iter()
+        .filter(|(_, d)| *d >= Duration::from_millis(1))
+        .map(|(name, d)| format!("{name} {}ms", d.as_millis()))
+        .collect();
+    eprintln!(
+        "namsdec: frame lente — {}ms au total ({})",
+        total.as_millis(),
+        if detail.is_empty() {
+            "hors des étapes mesurées".to_owned()
+        } else {
+            detail.join(", ")
+        }
+    );
 }
 
 fn main() -> eframe::Result<()> {
@@ -2355,6 +2975,445 @@ fn main() -> eframe::Result<()> {
 mod tests {
     use super::*;
 
+    /// Le programme type qu'on écrit en apprenant l'assembleur sous
+    /// Linux : deux sections, un `_start`, des appels système. Il doit
+    /// s'assembler, démarrer à `_start` — et non au premier octet chargé,
+    /// qui appartient à `.data` — relier chaque ligne à la bonne adresse,
+    /// écrire son message et se terminer sur son propre code de sortie.
+    #[test]
+    fn a_two_section_linux_program_prints_its_message_and_exits() {
+        if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+            return;
+        }
+
+        let source = "\
+section .data
+    message db \"Je parle maintenant au processeur !\", 10
+    longueur equ $ - message
+
+section .text
+    global _start
+_start:
+    mov rax, 1
+    mov rdi, 1
+    mov rsi, message
+    mov rdx, longueur
+    syscall
+
+    mov rax, 60
+    xor rdi, rdi
+    syscall
+";
+        let mut app = NamsdecApp {
+            source: source.to_owned(),
+            ..Default::default()
+        };
+
+        app.do_assemble();
+        assert!(
+            matches!(app.status, Status::AssembleOk { .. }),
+            "l'assemblage doit réussir, obtenu : {:?}",
+            app.status
+        );
+
+        let line_to_addr = app
+            .assemble_state
+            .as_ref()
+            .unwrap()
+            .output
+            .line_to_addr
+            .clone();
+        assert_ne!(
+            line_to_addr[&2], line_to_addr[&8],
+            "une ligne de `.data` et une ligne de `.text` ne peuvent pas partager une adresse"
+        );
+        assert_eq!(
+            app.emulator.as_ref().unwrap().cpu().regs.rip,
+            line_to_addr[&8],
+            "l'exécution démarre à `_start`"
+        );
+
+        // Exécution complète : le programme parle, puis sort de lui-même.
+        app.do_run();
+        for _ in 0..10 {
+            if !app.running {
+                break;
+            }
+            app.tick_run(&egui::Context::default());
+        }
+
+        let emulator = app.emulator.as_ref().expect("un émulateur chargé");
+        assert_eq!(
+            String::from_utf8_lossy(emulator.output()),
+            "Je parle maintenant au processeur !\n",
+            "le message doit être arrivé sur la sortie"
+        );
+        assert_eq!(emulator.exit_code(), Some(0));
+        assert!(
+            matches!(app.status, Status::Exited { code: 0 }),
+            "la barre de statut doit dire que le programme s'est terminé, obtenu : {:?}",
+            app.status
+        );
+    }
+
+    /// Un programme allé jusqu'au bout n'a plus rien à exécuter : les
+    /// commandes d'exécution deviennent inertes — au clavier comme au
+    /// bouton, sans quoi le raccourci ferait ce que le bouton grisé
+    /// refuse — et l'éditeur revient en mode commande, comme gdb rend la
+    /// main après la fin du programme.
+    #[test]
+    fn a_finished_program_disables_execution_and_returns_to_command_mode() {
+        if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+            return;
+        }
+
+        let mut app = NamsdecApp {
+            source: "\
+section .text
+    global _start
+_start:
+    mov rax, 60
+    mov rdi, 2
+    syscall
+"
+            .to_owned(),
+            ..Default::default()
+        };
+        app.do_assemble();
+        // L'utilisateur était en train d'écrire quand il a lancé.
+        app.editor_mode = EditorMode::Insert;
+        assert!(app.can_execute(), "avant de lancer, tout est disponible");
+
+        app.do_run();
+        for _ in 0..10 {
+            if !app.running {
+                break;
+            }
+            app.tick_run(&egui::Context::default());
+        }
+
+        assert!(app.program_finished());
+        assert!(
+            !app.can_execute(),
+            "Exécuter, Step Into et Step Over n'ont plus de sens"
+        );
+        assert_eq!(
+            app.editor_mode,
+            EditorMode::Normal,
+            "la fin du programme rend la main aux commandes"
+        );
+
+        // Le raccourci doit obéir à la même règle que le bouton : RIP ne
+        // bouge plus, et le statut de fin reste affiché.
+        let rip = app.emulator.as_ref().unwrap().cpu().regs.rip;
+        app.dispatch(Action::StepInto);
+        app.dispatch(Action::StepOver);
+        app.dispatch(Action::Run);
+        assert_eq!(app.emulator.as_ref().unwrap().cpu().regs.rip, rip);
+        assert!(
+            matches!(app.status, Status::Exited { code: 2 }),
+            "obtenu {:?}",
+            app.status
+        );
+
+        // Réinitialiser, en revanche, doit rester possible : c'est
+        // justement ce qu'on veut faire ensuite.
+        app.dispatch(Action::Reset);
+        assert!(app.can_execute(), "après Réinitialiser, on peut relancer");
+    }
+
+    /// Avancer d'un pas ne doit pas ouvrir la saisie.
+    ///
+    /// `Espace s i` et `Espace n i` se terminent par `i` — la touche qui,
+    /// dans l'éditeur, fait passer en mode Insertion. Sans précaution, un
+    /// pas d'exécution laissait donc l'éditeur en Insertion, et la frappe
+    /// suivante s'écrivait dans le code au lieu de piloter l'exécution.
+    #[test]
+    fn stepping_with_a_leader_sequence_stays_in_normal_mode() {
+        for sequence in [
+            [egui::Key::Space, egui::Key::S, egui::Key::I],
+            [egui::Key::Space, egui::Key::N, egui::Key::I],
+        ] {
+            let mut app = NamsdecApp::default();
+            assert_eq!(app.editor_mode, EditorMode::Normal);
+
+            let ctx = egui::Context::default();
+            let events = sequence
+                .iter()
+                .map(|key| egui::Event::Key {
+                    key: *key,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::NONE,
+                })
+                .collect();
+            let input = egui::RawInput {
+                events,
+                ..Default::default()
+            };
+
+            // Une frame complète, dans l'ordre réel : le dispatcher lit
+            // les touches, puis l'éditeur relit les mêmes évènements.
+            let mut action = None;
+            let mut output = ctx.run_ui(input, |ui| {
+                action = app.dispatcher.poll(ui.ctx(), &app.keybindings, false);
+                app.editor_ui(ui);
+            });
+            output.textures_delta.clear();
+
+            assert!(action.is_some(), "la séquence {sequence:?} doit agir");
+            assert_eq!(
+                app.editor_mode,
+                EditorMode::Normal,
+                "après {sequence:?}, l'éditeur doit rester en mode commande"
+            );
+        }
+    }
+
+    /// Mais `i` tapé seul, lui, ouvre toujours la saisie : seule la touche
+    /// qui a servi à un raccourci est retirée à l'éditeur.
+    #[test]
+    fn plain_i_still_enters_insert_mode() {
+        let mut app = NamsdecApp::default();
+        let ctx = egui::Context::default();
+        let input = egui::RawInput {
+            events: vec![egui::Event::Key {
+                key: egui::Key::I,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+            ..Default::default()
+        };
+
+        let mut output = ctx.run_ui(input, |ui| {
+            app.dispatcher.poll(ui.ctx(), &app.keybindings, false);
+            app.editor_ui(ui);
+        });
+        output.textures_delta.clear();
+
+        assert_eq!(app.editor_mode, EditorMode::Insert);
+    }
+
+    /// Un programme qui lit son entrée puis la répète : il doit se
+    /// suspendre pour de bon en attendant, puis repartir tout seul dès que
+    /// l'utilisateur a tapé quelque chose — l'interface, elle, ne bloque
+    /// jamais.
+    #[test]
+    fn a_program_waits_for_console_input_then_echoes_it() {
+        if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+            return;
+        }
+
+        let mut app = NamsdecApp {
+            source: "\
+section .bss
+    tampon resb 32
+
+section .text
+    global _start
+_start:
+    mov rax, 0
+    mov rdi, 0
+    mov rsi, tampon
+    mov rdx, 32
+    syscall
+
+    mov rdx, rax
+    mov rax, 1
+    mov rdi, 1
+    mov rsi, tampon
+    syscall
+
+    mov rax, 60
+    xor rdi, rdi
+    syscall
+"
+            .to_owned(),
+            ..Default::default()
+        };
+        app.do_assemble();
+        assert!(
+            matches!(app.status, Status::AssembleOk { .. }),
+            "obtenu {:?}",
+            app.status
+        );
+
+        let ctx = egui::Context::default();
+        app.do_run();
+        for _ in 0..10 {
+            if !app.running {
+                break;
+            }
+            app.tick_run(&ctx);
+        }
+
+        assert!(
+            matches!(app.status, Status::WaitingForInput),
+            "le programme doit attendre son entrée, obtenu {:?}",
+            app.status
+        );
+        assert!(!app.running, "l'exécution est suspendue, pas en cours");
+        assert!(
+            app.emulator.as_ref().unwrap().output().is_empty(),
+            "il n'a encore rien écrit : il n'a rien lu"
+        );
+
+        // L'utilisateur tape sa réponse et valide.
+        app.send_input(Some("bonjour".to_owned()));
+        assert!(app.running, "un Exécuter suspendu doit repartir tout seul");
+
+        for _ in 0..10 {
+            if !app.running {
+                break;
+            }
+            app.tick_run(&ctx);
+        }
+
+        assert_eq!(
+            String::from_utf8_lossy(app.emulator.as_ref().unwrap().output()),
+            "bonjour\n",
+            "le programme répète ce qu'on lui a donné, saut de ligne compris"
+        );
+        assert!(matches!(app.status, Status::Exited { code: 0 }));
+    }
+
+    /// Fermer l'entrée débloque un programme qui lit jusqu'au bout, au
+    /// lieu de le laisser attendre pour toujours.
+    #[test]
+    fn ending_the_input_releases_a_waiting_program() {
+        if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+            return;
+        }
+
+        let mut app = NamsdecApp {
+            source: "\
+section .bss
+    tampon resb 16
+
+section .text
+    global _start
+_start:
+    mov rax, 0
+    mov rdi, 0
+    mov rsi, tampon
+    mov rdx, 16
+    syscall
+    hlt
+"
+            .to_owned(),
+            ..Default::default()
+        };
+        app.do_assemble();
+
+        let ctx = egui::Context::default();
+        app.do_run();
+        for _ in 0..10 {
+            if !app.running {
+                break;
+            }
+            app.tick_run(&ctx);
+        }
+        assert!(matches!(app.status, Status::WaitingForInput));
+
+        // « Fin d'entrée » : `read` rend 0 et le programme continue.
+        app.send_input(None);
+        for _ in 0..10 {
+            if !app.running {
+                break;
+            }
+            app.tick_run(&ctx);
+        }
+
+        assert!(
+            app.program_finished(),
+            "le programme doit être allé au bout"
+        );
+        assert_eq!(
+            app.emulator.as_ref().unwrap().cpu().regs.get64(Reg64::Rax),
+            0,
+            "`read` rend une fin de fichier"
+        );
+    }
+
+    /// Le fichier sur lequel on travaillait se rouvre au lancement
+    /// suivant. C'est bien le **chemin** qui est enregistré : le contenu
+    /// relu est celui du disque, y compris s'il a changé entre-temps.
+    #[test]
+    fn the_last_file_is_reopened_at_startup() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("travail.asm");
+        std::fs::write(&path, "section .text\n    hlt\n").unwrap();
+
+        let settings = Settings {
+            current_file: Some(path.display().to_string()),
+            ..Default::default()
+        };
+        let app = NamsdecApp::from_settings(settings);
+
+        assert_eq!(app.current_file.as_deref(), Some(path.as_path()));
+        assert!(app.source.contains("hlt"), "obtenu : {:?}", app.source);
+
+        // Modifié à l'extérieur : c'est la version du disque qui revient,
+        // pas une copie gardée dans les réglages.
+        std::fs::write(&path, "section .text\n    nop\n").unwrap();
+        let app = NamsdecApp::from_settings(Settings {
+            current_file: Some(path.display().to_string()),
+            ..Default::default()
+        });
+        assert!(app.source.contains("nop"));
+    }
+
+    /// Un fichier déplacé ou supprimé entre deux lancements ne doit ni
+    /// empêcher de démarrer, ni accueillir l'utilisateur par une erreur.
+    #[test]
+    fn a_vanished_file_falls_back_to_the_example_program() {
+        let dir = tempfile::tempdir().unwrap();
+        let settings = Settings {
+            current_file: Some(dir.path().join("jamais-ecrit.asm").display().to_string()),
+            ..Default::default()
+        };
+
+        let app = NamsdecApp::from_settings(settings);
+
+        assert_eq!(app.current_file, None, "le chemin périmé est oublié");
+        assert_eq!(app.source, DEFAULT_SOURCE);
+        assert!(
+            !matches!(app.status, Status::Error(_)),
+            "démarrer ne doit pas afficher d'erreur, obtenu {:?}",
+            app.status
+        );
+    }
+
+    /// Le fichier ouvert part bien dans les réglages — et son contenu,
+    /// lui, n'y va jamais.
+    #[test]
+    fn settings_record_the_path_and_never_the_source() {
+        let mut app = NamsdecApp {
+            source: "section .text\n    mov rax, 1234\n".to_owned(),
+            current_file: Some(PathBuf::from("/tmp/projet/travail.asm")),
+            ..Default::default()
+        };
+        let snapshot = app.settings_snapshot();
+
+        assert_eq!(
+            snapshot.current_file.as_deref(),
+            Some("/tmp/projet/travail.asm")
+        );
+        let written = serde_json::to_string(&snapshot).unwrap();
+        assert!(
+            !written.contains("1234"),
+            "le programme ne doit pas se retrouver dans les réglages : {written}"
+        );
+
+        // Un tampon sans fichier (binaire désassemblé, exemple de départ)
+        // n'enregistre aucun chemin.
+        app.current_file = None;
+        assert_eq!(app.settings_snapshot().current_file, None);
+    }
+
     /// Ouvrir un binaire doit mener quelque part : un vrai programme
     /// passé par nasm, relu comme des octets bruts, doit remplir
     /// l'éditeur d'un listing, donner la correspondance ligne <-> adresse
@@ -2368,7 +3427,7 @@ mod tests {
             return;
         };
         let output = namsdec_asm::assemble(
-            "BITS 64\norg 0x400000\n    mov rax, 7\n    hlt\n",
+            "BITS 64\nsection .text\n    mov rax, 7\n    hlt\n",
             BASE_ADDR,
         )
         .expect("le programme de test doit s'assembler");
@@ -2400,7 +3459,7 @@ mod tests {
 
         app.do_step();
         assert_eq!(
-            app.emulator.as_ref().unwrap().cpu.regs.get64(Reg64::Rax),
+            app.emulator.as_ref().unwrap().cpu().regs.get64(Reg64::Rax),
             7,
             "le binaire chargé doit s'exécuter pas à pas comme un programme assemblé"
         );
@@ -2451,7 +3510,11 @@ mod tests {
         assert_eq!(line_col(text, 4), (1, 5), "milieu de la première ligne");
         // Index 11 = juste après le '\n' : début de la ligne 2.
         assert_eq!(line_col(text, 11), (2, 1), "après un saut de ligne");
-        assert_eq!(line_col(text, text.chars().count()), (3, 17), "fin du texte");
+        assert_eq!(
+            line_col(text, text.chars().count()),
+            (3, 17),
+            "fin du texte"
+        );
 
         // Des caractères non-ASCII ne doivent pas décaler la colonne :
         // egui compte des caractères, pas des octets.
