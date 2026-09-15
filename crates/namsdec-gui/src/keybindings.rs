@@ -721,6 +721,78 @@ mod tests {
         assert_eq!(result, Some(Action::Run));
     }
 
+    /// Une touche prise par un raccourci doit *disparaître* de l'entrée,
+    /// et pas seulement être notée quelque part.
+    ///
+    /// C'est la différence qui comptait : tant que la touche restait dans
+    /// les évènements, l'éditeur la voyait passer et le `i` final de
+    /// `Espace s i` ouvrait le mode Insertion en même temps qu'il
+    /// demandait un pas. La marquer ne protégeait que le code qui pensait
+    /// à consulter la liste ; la retirer protège tout le monde.
+    #[test]
+    fn a_key_taken_by_a_shortcut_is_removed_from_the_input() {
+        let ctx = egui::Context::default();
+        let bindings = KeyBindings::default();
+        let mut dispatcher = Dispatcher::default();
+        let mut remaining = Vec::new();
+
+        run(
+            &ctx,
+            vec![key_event(Key::Space), key_event(Key::S), key_event(Key::I)],
+            |ui| {
+                assert_eq!(
+                    dispatcher.poll(ui.ctx(), &bindings, false),
+                    Some(Action::StepInto)
+                );
+                // Ce que verra tout widget lisant l'entrée après nous.
+                remaining = ui.ctx().input(|i| {
+                    i.events
+                        .iter()
+                        .filter_map(|e| match e {
+                            Event::Key {
+                                key, pressed: true, ..
+                            } => Some(*key),
+                            _ => None,
+                        })
+                        .collect()
+                });
+            },
+        );
+
+        assert!(
+            remaining.is_empty(),
+            "les touches du raccourci doivent avoir quitté l'entrée, reste : {remaining:?}"
+        );
+    }
+
+    /// Ce qui n'appartient à aucun raccourci, en revanche, doit traverser
+    /// intact — sans quoi le dispatcher mangerait la frappe de tout le
+    /// monde.
+    #[test]
+    fn keys_that_match_nothing_are_left_in_the_input() {
+        let ctx = egui::Context::default();
+        let bindings = KeyBindings::default();
+        let mut dispatcher = Dispatcher::default();
+        let mut remaining = Vec::new();
+
+        run(&ctx, vec![key_event(Key::I), key_event(Key::Z)], |ui| {
+            assert_eq!(dispatcher.poll(ui.ctx(), &bindings, false), None);
+            remaining = ui.ctx().input(|i| {
+                i.events
+                    .iter()
+                    .filter_map(|e| match e {
+                        Event::Key {
+                            key, pressed: true, ..
+                        } => Some(*key),
+                        _ => None,
+                    })
+                    .collect()
+            });
+        });
+
+        assert_eq!(remaining, [Key::I, Key::Z]);
+    }
+
     /// Une séquence de trois touches se relit comme elle s'écrit, et une
     /// séquence vide ou trop longue n'existe pas.
     #[test]
