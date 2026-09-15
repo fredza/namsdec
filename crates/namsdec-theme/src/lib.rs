@@ -187,6 +187,25 @@ pub static TOKYO_NIGHT: Theme = Theme {
 /// viendra simplement s'ajouter à cette liste.
 pub static BUILT_IN: &[&Theme] = &[&VSCODE_DARK, &VSCODE_LIGHT, &TOKYO_NIGHT];
 
+/// À quel point deux couleurs se distinguent à l'œil, sur 0 à ~765.
+///
+/// Une distance RGB brute ment : deux couleurs de teintes différentes
+/// mais de même clarté s'y ressemblent peu, alors qu'à l'écran elles se
+/// confondent. Cette approximation-ci (« redmean ») pèse les composantes
+/// selon la sensibilité de l'œil, et c'est elle qui a fait voir que le
+/// rose d'Abyss ne se détachait pas de son bleu : deux pastels de même
+/// clarté, distincts sur le papier, indiscernables du coin de l'œil.
+pub fn perceptual_distance(a: Color32, b: Color32) -> f32 {
+    let (ar, ag, ab) = (a.r() as f32, a.g() as f32, a.b() as f32);
+    let (br, bg, bb) = (b.r() as f32, b.g() as f32, b.b() as f32);
+    let red_mean = (ar + br) / 2.0;
+    let (dr, dg, db) = (ar - br, ag - bg, ab - bb);
+    ((2.0 + red_mean / 256.0) * dr * dr
+        + 4.0 * dg * dg
+        + (2.0 + (255.0 - red_mean) / 256.0) * db * db)
+        .sqrt()
+}
+
 /// Les thèmes venus d'un fichier, ajoutés au fil des installations.
 ///
 /// Un `RwLock` et non un `OnceLock` : on peut en installer un pendant que
@@ -254,6 +273,12 @@ pub fn by_id(id: &str) -> &'static Theme {
 mod tests {
     use super::*;
 
+    /// Le seuil à partir duquel une couleur se remarque sans qu'on la
+    /// cherche. Tokyo Night est le plus serré des thèmes d'origine
+    /// (253) : descendre en dessous, c'est repasser du côté d'Abyss et
+    /// de son rose invisible (229).
+    const CHANGED_APART_FROM_TEXT: f32 = 240.0;
+
     #[test]
     fn ids_are_unique_and_resolvable() {
         for theme in BUILT_IN {
@@ -293,6 +318,16 @@ mod tests {
             assert!(
                 distance(theme.changed, theme.panel) > 200,
                 "{} : et bien détaché du fond du panneau",
+                theme.id
+            );
+            // Et surtout : détaché du texte ordinaire. C'est là que le
+            // rose d'Abyss échouait — même clarté que son bleu, donc
+            // invisible sans le chercher, alors que les deux couleurs
+            // sont « différentes » sur le papier.
+            let from_text = perceptual_distance(theme.changed, theme.text);
+            assert!(
+                from_text > CHANGED_APART_FROM_TEXT,
+                "{} : le changement doit se distinguer du texte ordinaire ({from_text:.0})",
                 theme.id
             );
             assert_ne!(

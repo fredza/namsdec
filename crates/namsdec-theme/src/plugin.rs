@@ -149,6 +149,22 @@ mod tests {
         assert!(theme.dark);
     }
 
+    /// Le thème d'exemple doit passer la même exigence que les thèmes
+    /// d'origine : sa couleur de changement doit se détacher du texte
+    /// ordinaire, sans quoi un registre modifié passe inaperçu.
+    ///
+    /// C'est le défaut qu'il avait : un rose de la même clarté que son
+    /// bleu, « différent » sur le papier et invisible à l'écran.
+    #[test]
+    fn the_sample_theme_makes_a_change_stand_out() {
+        let theme = parse(ABYSS).unwrap();
+        let from_text = crate::perceptual_distance(theme.changed, theme.text);
+        assert!(
+            from_text > 240.0,
+            "le changement doit se distinguer du texte ({from_text:.0})"
+        );
+    }
+
     /// Le dièse est facultatif et la casse indifférente : un thème
     /// recopié depuis un site web ne doit pas être refusé pour un détail
     /// d'écriture.
