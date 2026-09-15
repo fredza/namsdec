@@ -37,6 +37,7 @@ pub struct Strings {
     // Barre d'outils / menu Outils (mêmes libellés, réutilisés)
     pub action_assemble: &'static str,
     pub action_step_into: &'static str,
+    pub action_step_back: &'static str,
     pub action_step_over: &'static str,
     pub action_run: &'static str,
     pub action_stop: &'static str,
@@ -94,12 +95,18 @@ pub struct Strings {
     pub memory_address_label: &'static str,
     /// Le champ Adresse refuse ce qui n'est pas une adresse, et le dit.
     pub memory_address_invalid: &'static str,
+    pub memory_address_hint: &'static str,
+    pub memory_format_bytes: &'static str,
+    pub memory_format_words: &'static str,
+    pub memory_format_text: &'static str,
     pub memory_go_hint: &'static str,
 
     // Barre de statut (cas statiques uniquement)
     pub status_ready: &'static str,
     pub status_assembled: &'static str,
     pub status_assemble_failed: &'static str,
+    pub status_stepped_back: &'static str,
+    pub status_nothing_to_undo: &'static str,
     pub status_running: &'static str,
     pub status_halted: &'static str,
     pub status_step_limit: &'static str,
@@ -182,6 +189,7 @@ const FR: Strings = Strings {
 
     action_assemble: "Assembler",
     action_step_into: "Step Into",
+    action_step_back: "Step Back",
     action_step_over: "Step Over",
     action_run: "Exécuter",
     action_stop: "Stop",
@@ -228,12 +236,18 @@ const FR: Strings = Strings {
     palette_toggle_statusbar: "Afficher/masquer la barre de statut",
 
     memory_address_label: "Adresse :",
-    memory_address_invalid: "Ce n'est pas une adresse : des chiffres hexadécimaux, avec ou sans « 0x ».",
+    memory_address_invalid: "Ce n'est pas une adresse : des chiffres hexadécimaux, un registre, ou une somme des deux.",
+    memory_address_hint: "Hexadécimal, ou un registre : rsp, rsi+10, rip-8, rbx+rcx*4. Tout est en hexadécimal, décalages compris.",
+    memory_format_bytes: "Octets",
+    memory_format_words: "Mots",
+    memory_format_text: "Texte",
     memory_go_hint: "Afficher la mémoire à cette adresse (ou Entrée)",
 
     status_ready: "Prêt.",
     status_assembled: "Assemblage réussi",
     status_assemble_failed: "Erreur d'assemblage",
+    status_stepped_back: "Pas défait — on est revenu avant l'instruction.",
+    status_nothing_to_undo: "Plus rien à défaire : on est au début du programme.",
     status_running: "Exécution en cours…",
     status_halted: "Arrêté (hlt).",
     status_step_limit: "Limite de pas atteinte — boucle infinie possible ?",
@@ -309,6 +323,7 @@ const EN: Strings = Strings {
 
     action_assemble: "Assemble",
     action_step_into: "Step Into",
+    action_step_back: "Step Back",
     action_step_over: "Step Over",
     action_run: "Run",
     action_stop: "Stop",
@@ -355,12 +370,18 @@ const EN: Strings = Strings {
     palette_toggle_statusbar: "Toggle Status Bar",
 
     memory_address_label: "Address:",
-    memory_address_invalid: "Not an address: hexadecimal digits, with or without \"0x\".",
+    memory_address_invalid: "Not an address: hexadecimal digits, a register, or a sum of both.",
+    memory_address_hint: "Hexadecimal, or a register: rsp, rsi+10, rip-8, rbx+rcx*4. Everything is hexadecimal, offsets included.",
+    memory_format_bytes: "Bytes",
+    memory_format_words: "Words",
+    memory_format_text: "Text",
     memory_go_hint: "Show memory at this address (or press Enter)",
 
     status_ready: "Ready.",
     status_assembled: "Assembled",
     status_assemble_failed: "Assembly error",
+    status_stepped_back: "Step undone — back to before the instruction.",
+    status_nothing_to_undo: "Nothing left to undo: this is the start of the program.",
     status_running: "Running…",
     status_halted: "Halted (hlt).",
     status_step_limit: "Step limit reached — possible infinite loop?",

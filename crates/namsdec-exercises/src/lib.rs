@@ -19,8 +19,7 @@ pub fn builtin_exercises() -> Vec<Exercise> {
         Exercise {
             id: "register_widths",
             title: "Largeurs de registres",
-            description:
-                "Observer la différence entre écrire un registre 32 bits (qui remet à zéro le haut de RAX) et un registre 16 bits (qui le préserve).",
+            description: "Observer la différence entre écrire un registre 32 bits (qui remet à zéro le haut de RAX) et un registre 16 bits (qui le préserve).",
             starter_code: include_str!("../exercises/register_widths.asm"),
         },
         Exercise {

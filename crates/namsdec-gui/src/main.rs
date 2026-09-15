@@ -125,6 +125,45 @@ impl SidebarTab {
     }
 }
 
+/// Comment lire les octets de l'onglet Mémoire.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum MemoryFormat {
+    /// Le vidage hexadécimal classique, seize octets par ligne.
+    Bytes,
+    /// Des mots de huit octets, en décimal à côté : la vue d'une pile.
+    Words,
+    /// Le texte jusqu'au premier octet nul.
+    Text,
+}
+
+impl MemoryFormat {
+    const ALL: [MemoryFormat; 3] = [MemoryFormat::Bytes, MemoryFormat::Words, MemoryFormat::Text];
+
+    fn label(self, s: &Strings) -> &'static str {
+        match self {
+            MemoryFormat::Bytes => s.memory_format_bytes,
+            MemoryFormat::Words => s.memory_format_words,
+            MemoryFormat::Text => s.memory_format_text,
+        }
+    }
+
+    /// L'identifiant écrit dans `settings.json`.
+    fn id(self) -> &'static str {
+        match self {
+            MemoryFormat::Bytes => "bytes",
+            MemoryFormat::Words => "words",
+            MemoryFormat::Text => "text",
+        }
+    }
+
+    fn by_id(id: &str) -> Self {
+        Self::ALL
+            .into_iter()
+            .find(|format| format.id() == id)
+            .unwrap_or(MemoryFormat::Bytes)
+    }
+}
+
 /// Les deux vues du panneau bas.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum ConsoleTab {
@@ -156,6 +195,10 @@ enum Status {
     Idle,
     AssembleOk,
     AssembleFailed,
+    /// Le dernier pas vient d'être défait.
+    SteppedBack,
+    /// Il n'y avait plus rien à défaire.
+    NothingToUndo,
     Running,
     Halted,
     /// Le programme s'est terminé lui-même par `exit`, avec ce code — ce
@@ -252,6 +295,9 @@ struct NamsdecApp {
     /// la saisie : tant que celle-ci n'est pas une adresse valide et
     /// validée, le vidage reste là où il était.
     mem_addr: u64,
+    /// Comment l'onglet Mémoire lit les octets. Réglage utilisateur, donc
+    /// enregistré dans `settings.json`.
+    memory_format: MemoryFormat,
     show_preferences: bool,
     /// Réglages tels qu'ils étaient à l'ouverture de la boîte Préférences.
     /// C'est ce qui donne un sens distinct aux deux boutons : OK garde,
@@ -536,6 +582,7 @@ impl Default for NamsdecApp {
             console_tab: ConsoleTab::Output,
             mem_addr_input: format!("{BASE_ADDR:#x}"),
             mem_addr: BASE_ADDR,
+            memory_format: MemoryFormat::Bytes,
             show_preferences: false,
             prefs_snapshot: None,
             show_about: false,
@@ -591,6 +638,7 @@ impl NamsdecApp {
             show_statusbar: settings.show_statusbar,
             show_console: settings.show_console,
             show_tooltips: settings.show_tooltips,
+            memory_format: MemoryFormat::by_id(&settings.memory_format),
             explorer,
             saved_settings: settings,
             ..Default::default()
@@ -668,6 +716,7 @@ impl NamsdecApp {
             show_statusbar: self.show_statusbar,
             show_console: self.show_console,
             show_tooltips: self.show_tooltips,
+            memory_format: self.memory_format.id().to_owned(),
             explorer_root: self.explorer.root.as_ref().map(|p| p.display().to_string()),
             current_file: self.current_file.as_ref().map(|p| p.display().to_string()),
             shortcuts: settings::shortcuts_to_strings(&self.keybindings),
@@ -972,6 +1021,32 @@ impl NamsdecApp {
         }
     }
 
+    /// Défait le dernier pas.
+    ///
+    /// Le bandeau montre alors ce que ce pas avait changé : la
+    /// photographie est prise *avant* de reculer, si bien que la mise en
+    /// avant désigne exactement ce qu'on vient d'annuler.
+    fn do_step_back(&mut self) {
+        // Un Run suspendu ne repart pas tout seul après un retour en
+        // arrière : c'est l'utilisateur qui tient la main, comme pour un
+        // pas ordinaire.
+        self.resume_run_after_input = false;
+        self.running = false;
+        self.remember_registers();
+        let Some(emulator) = &mut self.emulator else {
+            return;
+        };
+        if emulator.step_back() {
+            self.status = Status::SteppedBack;
+            self.back_to_command_mode();
+            self.notify_step();
+        } else {
+            // Rien à défaire : on le dit plutôt que de ne rien faire.
+            self.status = Status::NothingToUndo;
+            self.regs_before = None;
+        }
+    }
+
     fn do_step_over(&mut self) {
         self.remember_registers();
         // Même raison que dans `do_step`.
@@ -1048,6 +1123,7 @@ impl NamsdecApp {
             Action::Run => self.do_run(),
             Action::StepInto => self.do_step(),
             Action::StepOver => self.do_step_over(),
+            Action::StepBack => self.do_step_back(),
             Action::Stop => self.do_stop(),
             Action::Reset => {
                 self.rebuild_emulator();
@@ -1996,6 +2072,9 @@ impl NamsdecApp {
             }
 
             let can_exec = self.can_execute();
+            // Le pas arrière a son propre grisé : il ne dépend pas de
+            // l'état d'exécution mais de l'existence d'un pas à défaire.
+            let can_undo = self.emulator.as_ref().is_some_and(|e| e.can_step_back());
             ui.add_enabled_ui(can_exec, |ui| {
                 if icon_button(ui, icon_run, s.action_run)
                     .on_hover_text(shortcut_hint(
@@ -2029,6 +2108,19 @@ impl NamsdecApp {
                     .clicked()
                 {
                     self.dispatch(Action::StepOver);
+                }
+            });
+            ui.add_enabled_ui(can_undo, |ui| {
+                if icon_button(ui, icon_step_back, s.action_step_back)
+                    .on_hover_text(shortcut_hint(
+                        &self.keybindings,
+                        &ctx,
+                        s.action_step_back,
+                        Action::StepBack,
+                    ))
+                    .clicked()
+                {
+                    self.dispatch(Action::StepBack);
                 }
             });
             ui.add_enabled_ui(self.running, |ui| {
@@ -2142,6 +2234,12 @@ impl NamsdecApp {
             Status::AssembleFailed => {
                 status_dot(ui, theme.bad);
                 ui.colored_label(theme.bad, s.status_assemble_failed);
+            }
+            Status::SteppedBack => {
+                ui.colored_label(theme.accent, s.status_stepped_back);
+            }
+            Status::NothingToUndo => {
+                ui.colored_label(theme.dim, s.status_nothing_to_undo);
             }
             Status::Halted => {
                 ui.colored_label(theme.good, s.status_halted);
@@ -2809,16 +2907,19 @@ impl NamsdecApp {
         // Le champ est posé *avant* la zone de défilement, et non dedans :
         // à l'intérieur, il se serait étiré à la largeur du vidage.
         let theme = self.theme;
-        let typed = parse_addr(&self.mem_addr_input);
+        let regs = emulator.cpu().regs.clone();
+        let typed = eval_address(&self.mem_addr_input, Some(&regs));
         let mut go = false;
         ui.horizontal(|ui| {
             ui.label(s.memory_address_label);
-            let response = ui.add(
-                egui::TextEdit::singleline(&mut self.mem_addr_input)
-                    .id(memory_address_id())
-                    .font(egui::TextStyle::Monospace)
-                    .desired_width(address_field_width(ui)),
-            );
+            let response = ui
+                .add(
+                    egui::TextEdit::singleline(&mut self.mem_addr_input)
+                        .id(memory_address_id())
+                        .font(egui::TextStyle::Monospace)
+                        .desired_width(address_field_width(ui)),
+                )
+                .on_hover_text(s.memory_address_hint);
             // Le refus se voit sur le champ lui-même, peint par-dessus :
             // le liseré d'egui change avec le focus, celui-ci ne dépend
             // que de ce qui est écrit.
@@ -2844,15 +2945,30 @@ impl NamsdecApp {
         // ne saute plus à chaque frappe, et une saisie invalide le laisse
         // là où il est au lieu de le renvoyer au début du programme.
         if go {
-            self.mem_addr = validated_address(self.mem_addr, &self.mem_addr_input);
+            self.mem_addr = validated_address(self.mem_addr, &self.mem_addr_input, Some(&regs));
         }
         if typed.is_none() {
             ui.colored_label(theme.bad, s.memory_address_invalid);
         }
-        let dump = safe_hexdump(
+
+        // Comment lire ces octets : bruts, par mots de huit, ou comme du
+        // texte. Le même endroit dit trois choses différentes selon ce
+        // qu'on y cherche — un tampon, une pile, une chaîne.
+        ui.horizontal_wrapped(|ui| {
+            for format in MemoryFormat::ALL {
+                if ui
+                    .selectable_label(self.memory_format == format, format.label(s))
+                    .clicked()
+                {
+                    self.memory_format = format;
+                }
+            }
+        });
+
+        let dump = read_memory(
             &emulator.cpu().mem,
             self.mem_addr,
-            128,
+            self.memory_format,
             s.address_out_of_range,
         );
         hexdump_ui(ui, "memory_dump", &dump);
@@ -3033,6 +3149,7 @@ fn action_label(s: &Strings, action: Action) -> &'static str {
         Action::Run => s.action_run,
         Action::StepInto => s.action_step_into,
         Action::StepOver => s.action_step_over,
+        Action::StepBack => s.action_step_back,
         Action::Stop => s.action_stop,
         Action::Reset => s.action_reset,
         Action::Save => s.action_save,
@@ -3190,6 +3307,34 @@ fn icon_step_into(painter: &egui::Painter, rect: egui::Rect, color: egui::Color3
         color,
         egui::Stroke::NONE,
     ));
+}
+
+/// Le pas arrière : une flèche qui remonte, exactement l'inverse de celle
+/// de Step Into, qui descend dans l'instruction.
+fn icon_step_back(painter: &egui::Painter, rect: egui::Rect, color: egui::Color32) {
+    let stroke = egui::Stroke::new(1.6, color);
+    let x = rect.center().x;
+    painter.line_segment(
+        [
+            egui::pos2(x, rect.bottom() - 1.0),
+            egui::pos2(x, rect.top() + 1.0),
+        ],
+        stroke,
+    );
+    painter.line_segment(
+        [
+            egui::pos2(x - 3.5, rect.top() + 4.5),
+            egui::pos2(x, rect.top() + 1.0),
+        ],
+        stroke,
+    );
+    painter.line_segment(
+        [
+            egui::pos2(x + 3.5, rect.top() + 4.5),
+            egui::pos2(x, rect.top() + 1.0),
+        ],
+        stroke,
+    );
 }
 
 fn icon_step_over(painter: &egui::Painter, rect: egui::Rect, color: egui::Color32) {
@@ -3669,17 +3814,157 @@ fn halted_status(emulator: &dyn Backend) -> Status {
 /// retombait sur le début du programme dès que la saisie ne s'analysait
 /// pas — une frappe de trop, et l'affichage sautait ailleurs sans rien
 /// dire.
-fn validated_address(current: u64, typed: &str) -> u64 {
-    parse_addr(typed).unwrap_or(current)
+fn validated_address(current: u64, typed: &str, regs: Option<&namsdec_core::Registers>) -> u64 {
+    eval_address(typed, regs).unwrap_or(current)
 }
 
-fn parse_addr(s: &str) -> Option<u64> {
-    let s = s.trim();
-    let s = s
+/// Évalue une expression d'adresse : un nombre, un registre, ou une
+/// somme des deux — `0x401000`, `rsp`, `rsi+10`, `rip-8`, `rbx+rcx*4`.
+///
+/// C'est le `x/` de gdb réduit à ce qui sert : suivre un pointeur qu'on a
+/// sous les yeux dans le bandeau, sans recopier seize chiffres à la main.
+/// Les registres viennent de `regs` ; sans processeur chargé, seuls les
+/// nombres sont acceptés.
+///
+/// **Tout est hexadécimal**, décalages compris — une seule règle, la même
+/// que le vidage d'en dessous. `rsi+10` avance donc de seize octets.
+fn eval_address(expr: &str, regs: Option<&namsdec_core::Registers>) -> Option<u64> {
+    let expr = expr.trim().to_ascii_lowercase();
+    if expr.is_empty() {
+        return None;
+    }
+
+    let mut total: u64 = 0;
+    let mut add = true;
+    let mut term = String::new();
+    // Les termes se lisent au fil des signes ; le dernier se solde à la
+    // sortie de la boucle.
+    for c in expr.chars().chain(std::iter::once('+')) {
+        match c {
+            '+' | '-' => {
+                let value = eval_term(&term, regs)?;
+                total = if add {
+                    total.wrapping_add(value)
+                } else {
+                    total.wrapping_sub(value)
+                };
+                add = c == '+';
+                term.clear();
+            }
+            ' ' | '\t' => {}
+            _ => term.push(c),
+        }
+    }
+    Some(total)
+}
+
+/// Un terme : un facteur, ou deux multipliés (`rcx*4`, l'indexation d'un
+/// tableau telle qu'on l'écrit dans `[rbx + rcx*4]`).
+fn eval_term(term: &str, regs: Option<&namsdec_core::Registers>) -> Option<u64> {
+    let mut product: u64 = 1;
+    let mut seen = false;
+    for factor in term.split('*') {
+        product = product.wrapping_mul(eval_factor(factor, regs)?);
+        seen = true;
+    }
+    seen.then_some(product)
+}
+
+fn eval_factor(factor: &str, regs: Option<&namsdec_core::Registers>) -> Option<u64> {
+    let factor = factor.trim();
+    if factor.is_empty() {
+        return None;
+    }
+    if let Some(reg) = register_by_name(factor) {
+        return regs.map(|r| r.get64(reg));
+    }
+    if factor == "rip" {
+        return regs.map(|r| r.rip);
+    }
+    let digits = factor
         .strip_prefix("0x")
-        .or_else(|| s.strip_prefix("0X"))
-        .unwrap_or(s);
-    u64::from_str_radix(s, 16).ok()
+        .or_else(|| factor.strip_prefix("0h"))
+        .unwrap_or(factor);
+    u64::from_str_radix(digits, 16).ok()
+}
+
+/// Le registre que ce nom désigne, en minuscules — les seize généraux.
+fn register_by_name(name: &str) -> Option<Reg64> {
+    REGISTERS
+        .iter()
+        .find(|(label, _)| label.eq_ignore_ascii_case(name))
+        .map(|&(_, reg)| reg)
+}
+
+/// Les mêmes octets, lus de trois façons.
+///
+/// Le vidage hexadécimal montre la mémoire telle qu'elle est ; les mots
+/// de huit octets la montrent telle que la pile la range (adresses de
+/// retour, pointeurs, `push`) ; le texte, telle qu'un `write` la
+/// enverra. Choisir la lecture, c'est déjà savoir ce qu'on cherche.
+fn read_memory(
+    mem: &namsdec_core::Memory,
+    addr: u64,
+    format: MemoryFormat,
+    out_of_range: &str,
+) -> String {
+    let range = mem.range();
+    if addr < range.start || addr >= range.end {
+        return out_of_range.to_string();
+    }
+    let available = (range.end - addr) as usize;
+    match format {
+        MemoryFormat::Bytes => safe_hexdump(mem, addr, 128, out_of_range),
+        MemoryFormat::Words => {
+            let len = (16 * 8).min(available & !7);
+            match mem.bytes_at(addr, len) {
+                Ok(bytes) => words_dump(bytes, addr),
+                Err(_) => out_of_range.to_string(),
+            }
+        }
+        MemoryFormat::Text => {
+            let len = 256.min(available);
+            match mem.bytes_at(addr, len) {
+                Ok(bytes) => text_dump(bytes),
+                Err(_) => out_of_range.to_string(),
+            }
+        }
+    }
+}
+
+/// Un mot de huit octets par ligne, lu en petit-boutien comme le
+/// processeur le fait — c'est la vue qui rend une pile lisible.
+fn words_dump(bytes: &[u8], base_addr: u64) -> String {
+    let mut out = String::new();
+    for (i, chunk) in bytes.as_chunks::<8>().0.iter().enumerate() {
+        let word = u64::from_le_bytes(*chunk);
+        let addr = base_addr + (i * 8) as u64;
+        out.push_str(&format!("{addr:016x}  {word:016x}  {word}\n"));
+    }
+    out
+}
+
+/// Le texte jusqu'au premier octet nul — ce qu'un `write` enverrait.
+/// Les octets qui ne forment pas un caractère lisible sont montrés tels
+/// quels, entre chevrons, plutôt que remplacés par un point : leur valeur
+/// est justement ce qu'on vient vérifier.
+fn text_dump(bytes: &[u8]) -> String {
+    let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
+    let mut out = String::new();
+    for &b in &bytes[..end] {
+        match b {
+            b'\n' => out.push_str("\\n\n"),
+            b'\t' => out.push_str("\\t"),
+            0x20..=0x7e => out.push(b as char),
+            other => out.push_str(&format!("<{other:02x}>")),
+        }
+    }
+    if end == 0 {
+        out.push_str("(vide)");
+    } else if end < bytes.len() {
+        out.push_str("\n\\0");
+    }
+    out
 }
 
 fn safe_hexdump(mem: &namsdec_core::Memory, addr: u64, len: usize, out_of_range: &str) -> String {
@@ -4382,15 +4667,15 @@ _start:
     /// du programme sans un mot d'explication.
     #[test]
     fn an_unparsable_address_keeps_the_one_on_screen() {
-        assert_eq!(validated_address(0x401000, "0x400500"), 0x400500);
+        assert_eq!(validated_address(0x401000, "0x400500", None), 0x400500);
         assert_eq!(
-            validated_address(0x401000, "400500"),
+            validated_address(0x401000, "400500", None),
             0x400500,
             "le 0x est facultatif"
         );
-        assert_eq!(validated_address(0x401000, "truc"), 0x401000);
-        assert_eq!(validated_address(0x401000, "0x40_1000"), 0x401000);
-        assert_eq!(validated_address(0x401000, ""), 0x401000);
+        assert_eq!(validated_address(0x401000, "truc", None), 0x401000);
+        assert_eq!(validated_address(0x401000, "0x40_1000", None), 0x401000);
+        assert_eq!(validated_address(0x401000, "", None), 0x401000);
     }
 
     /// Et l'affichage d'une frame entière avec une saisie invalide ne
@@ -4461,6 +4746,89 @@ _start:
             ctx.style_of(egui::Theme::Dark).interaction.tooltip_delay,
             TOOLTIP_DELAY
         );
+    }
+
+    /// Le champ Adresse comprend les registres, et une petite
+    /// arithmétique autour : c'est ce qui permet de suivre un pointeur
+    /// qu'on a sous les yeux dans le bandeau, sans recopier seize
+    /// chiffres à la main.
+    #[test]
+    fn the_address_field_understands_registers_and_arithmetic() {
+        let mut regs = namsdec_core::Registers::default();
+        regs.set64(Reg64::Rsp, 0x40ff00);
+        regs.set64(Reg64::Rsi, 0x401000);
+        regs.set64(Reg64::Rcx, 4);
+        regs.rip = 0x400020;
+        let at = |expr: &str| eval_address(expr, Some(&regs));
+
+        // Ce qui marchait déjà marche toujours.
+        assert_eq!(at("0x401000"), Some(0x401000));
+        assert_eq!(at("401000"), Some(0x401000), "le 0x reste facultatif");
+
+        // Les registres, RIP compris.
+        assert_eq!(at("rsp"), Some(0x40ff00));
+        assert_eq!(at("RSI"), Some(0x401000), "la casse est indifférente");
+        assert_eq!(at("rip"), Some(0x400020));
+
+        // L'arithmétique, en hexadécimal de bout en bout.
+        assert_eq!(
+            at("rsi+10"),
+            Some(0x401010),
+            "les décalages aussi sont hexa"
+        );
+        assert_eq!(at("rsp-8"), Some(0x40fef8));
+        assert_eq!(
+            at(" rsi + rcx * 4 "),
+            Some(0x401010),
+            "l'indexation d'un tableau"
+        );
+        assert_eq!(at("rsp-8+8"), Some(0x40ff00));
+
+        // Et ce qui n'est pas une adresse est refusé, plutôt que deviné.
+        assert_eq!(at("truc"), None);
+        assert_eq!(at("rsi+"), None, "une somme inachevée");
+        assert_eq!(at(""), None);
+        assert_eq!(at("rax*"), None);
+
+        // Sans processeur chargé, les registres n'ont pas de valeur : le
+        // champ le dit au lieu d'inventer un zéro.
+        assert_eq!(eval_address("rsp", None), None);
+        assert_eq!(eval_address("0x401000", None), Some(0x401000));
+    }
+
+    /// Les trois lectures de la mémoire disent trois choses différentes
+    /// des mêmes octets.
+    #[test]
+    fn the_three_memory_formats_read_the_same_bytes_differently() {
+        let mut mem = namsdec_core::Memory::new(BASE_ADDR, 0x1000);
+        // « Hi », un octet nul, puis un mot de huit octets valant 1.
+        mem.load(BASE_ADDR, b"Hi\0\0\0\0\0\0\x01\0\0\0\0\0\0\0")
+            .unwrap();
+
+        let bytes = read_memory(&mem, BASE_ADDR, MemoryFormat::Bytes, "hors bornes");
+        assert!(bytes.contains("48 69"), "l'hexadécimal brut : {bytes}");
+
+        let words = read_memory(&mem, BASE_ADDR, MemoryFormat::Words, "hors bornes");
+        let second = words.lines().nth(1).expect("un deuxième mot");
+        assert!(
+            second.ends_with("  1") && second.contains("0000000000000001"),
+            "le mot suivant, en hexa et en décimal : {second}"
+        );
+
+        let text = read_memory(&mem, BASE_ADDR, MemoryFormat::Text, "hors bornes");
+        assert!(
+            text.starts_with("Hi"),
+            "le texte s'arrête au premier nul : {text}"
+        );
+        assert!(!text.contains("48"), "et ne montre plus d'hexadécimal");
+
+        // Hors de la fenêtre simulée, les trois le disent.
+        for format in MemoryFormat::ALL {
+            assert_eq!(
+                read_memory(&mem, 0xdead_beef, format, "hors bornes"),
+                "hors bornes"
+            );
+        }
     }
 
     /// Le champ « Adresse » a la largeur d'une adresse, pas celle du
@@ -4870,6 +5238,70 @@ _start:
         assert!(
             !app.about_update_clicked,
             "la note se referme avec la boîte"
+        );
+    }
+
+    /// Le pas arrière rend la main à l'utilisateur et met en avant ce
+    /// que le pas défait avait changé — la photographie est prise avant
+    /// de reculer, donc la couleur désigne exactement ce qu'on annule.
+    #[test]
+    fn stepping_back_shows_what_it_undid() {
+        if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+            return;
+        }
+        let mut app = NamsdecApp {
+            source: "\
+section .text
+    global _start
+_start:
+    mov rax, 7
+    mov rbx, 9
+    hlt
+"
+            .to_owned(),
+            ..Default::default()
+        };
+        app.do_assemble();
+        app.do_step(); // mov rax, 7
+        app.do_step(); // mov rbx, 9
+        assert_eq!(
+            app.emulator.as_ref().unwrap().cpu().regs.get64(Reg64::Rbx),
+            9
+        );
+
+        app.do_step_back();
+        assert!(
+            matches!(app.status, Status::SteppedBack),
+            "{:?}",
+            app.status
+        );
+        assert_eq!(
+            app.emulator.as_ref().unwrap().cpu().regs.get64(Reg64::Rbx),
+            0,
+            "RBX est revenu à ce qu'il était"
+        );
+        assert_eq!(
+            changed_registers(
+                app.regs_before.as_ref(),
+                &app.emulator.as_ref().unwrap().cpu().regs
+            ),
+            ["RBX"],
+            "et c'est lui que le bandeau montre"
+        );
+
+        // Jusqu'au début du programme, puis plus rien.
+        while app.emulator.as_ref().unwrap().can_step_back() {
+            app.do_step_back();
+        }
+        assert_eq!(
+            app.emulator.as_ref().unwrap().cpu().regs.get64(Reg64::Rax),
+            0
+        );
+        app.do_step_back();
+        assert!(
+            matches!(app.status, Status::NothingToUndo),
+            "au début, il le dit plutôt que de ne rien faire : {:?}",
+            app.status
         );
     }
 

@@ -59,6 +59,9 @@ pub struct Settings {
     /// Les infobulles au survol. Certains les veulent, d'autres les
     /// trouvent envahissantes — d'où un réglage plutôt qu'un choix imposé.
     pub show_tooltips: bool,
+    /// Comment l'onglet Mémoire lit les octets : « bytes », « words » ou
+    /// « text ».
+    pub memory_format: String,
     /// Dernier dossier ouvert dans l'explorateur, pour le retrouver au
     /// lancement suivant.
     pub explorer_root: Option<String>,
@@ -85,6 +88,7 @@ impl Default for Settings {
             show_statusbar: true,
             show_console: true,
             show_tooltips: true,
+            memory_format: "bytes".to_owned(),
             explorer_root: None,
             current_file: None,
             shortcuts: shortcuts_to_strings(&KeyBindings::default()),
@@ -228,6 +232,7 @@ fn action_id(action: Action) -> &'static str {
         Action::Run => "run",
         Action::StepInto => "step_into",
         Action::StepOver => "step_over",
+        Action::StepBack => "step_back",
         Action::Stop => "stop",
         Action::Reset => "reset",
         Action::Save => "save",

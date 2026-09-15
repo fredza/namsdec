@@ -21,6 +21,9 @@ pub enum Action {
     Run,
     StepInto,
     StepOver,
+    /// Défaire le dernier pas — ce qu'un émulateur peut offrir et qu'un
+    /// débogueur ordinaire rend laborieux.
+    StepBack,
     Stop,
     Reset,
     Save,
@@ -29,12 +32,13 @@ pub enum Action {
 }
 
 impl Action {
-    pub const ALL: [Action; 10] = [
+    pub const ALL: [Action; 11] = [
         Action::ToggleExplorer,
         Action::Assemble,
         Action::Run,
         Action::StepInto,
         Action::StepOver,
+        Action::StepBack,
         Action::Stop,
         Action::Reset,
         Action::Save,
@@ -169,6 +173,9 @@ impl Default for KeyBindings {
             Action::StepInto,
             Chord::leader(&[Key::Space, Key::S, Key::I]),
         );
+        // `Espace b` comme *back* : gdb écrit `reverse-stepi`, qui n'a pas
+        // d'abréviation courte à imiter.
+        map.insert(Action::StepBack, Chord::leader(&[Key::Space, Key::B]));
         map.insert(
             Action::Stop,
             Chord::Simple(KeyboardShortcut::new(Modifiers::SHIFT, Key::F5)),

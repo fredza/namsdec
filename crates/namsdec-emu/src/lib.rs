@@ -71,6 +71,32 @@ pub enum EmuError {
     DivideOverflow { addr: u64 },
 }
 
+/// Ce qu'il faut retenir d'un pas pour pouvoir le défaire.
+///
+/// Un instantané complet de la machine coûterait la mémoire entière à
+/// chaque instruction ; on ne garde donc que ce qui est petit (registres,
+/// flags, état d'arrêt) et, pour la mémoire, les seuls octets que le pas
+/// s'apprête à écraser. Un pas ordinaire n'en touche aucun.
+#[derive(Clone, Debug)]
+struct Undo {
+    regs: namsdec_core::Registers,
+    flags: RFlags,
+    halted: bool,
+    exit_code: Option<i64>,
+    /// Longueur de la sortie avant le pas : ce qu'il a écrit se tronque.
+    output_len: usize,
+    /// Les octets d'entrée qu'un `read` a consommés, à remettre en tête.
+    consumed_input: Vec<u8>,
+    input_closed: bool,
+    /// Les octets écrasés, avec leur adresse, dans l'ordre des écritures.
+    memory: Vec<(u64, Vec<u8>)>,
+}
+
+/// Combien de pas on peut défaire. Au-delà, les plus anciens sont
+/// oubliés : revenir mille instructions en arrière n'a pas de sens
+/// pédagogique, et la mémoire n'est pas extensible.
+const HISTORY_LIMIT: usize = 5_000;
+
 /// Le sens d'un décalage, et s'il recopie le bit de signe.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ShiftKind {
@@ -163,6 +189,16 @@ pub trait Backend {
     fn step_over(&mut self, max_steps: u32) -> Result<StepOverResult, EmuError>;
     fn run(&mut self, max_steps: u32) -> Result<RunStop, EmuError>;
 
+    /// Défait le dernier pas, s'il en reste un à défaire.
+    ///
+    /// Un moteur qui ne sait pas revenir en arrière rend `false` sans
+    /// rien faire : c'est à l'interface de griser son bouton, pas au
+    /// programme de se retrouver dans un état à moitié restauré.
+    fn step_back(&mut self) -> bool;
+
+    /// Reste-t-il un pas à défaire ?
+    fn can_step_back(&self) -> bool;
+
     /// Ce que le programme a écrit sur sa sortie standard depuis le
     /// démarrage.
     fn output(&self) -> &[u8];
@@ -202,6 +238,8 @@ pub struct Emulator {
     /// « rien pour l'instant » de « plus rien à lire ».
     input_closed: bool,
     exit_code: Option<i64>,
+    /// De quoi défaire les derniers pas — voir `Undo` et `step_back`.
+    history: VecDeque<Undo>,
 }
 
 impl Backend for Emulator {
@@ -235,6 +273,14 @@ impl Backend for Emulator {
 
     fn run(&mut self, max_steps: u32) -> Result<RunStop, EmuError> {
         Emulator::run(self, max_steps)
+    }
+
+    fn step_back(&mut self) -> bool {
+        Emulator::step_back(self)
+    }
+
+    fn can_step_back(&self) -> bool {
+        Emulator::can_step_back(self)
     }
 
     fn output(&self) -> &[u8] {
@@ -272,6 +318,7 @@ impl Emulator {
             input: VecDeque::new(),
             input_closed: false,
             exit_code: None,
+            history: VecDeque::new(),
         }
     }
 
@@ -385,8 +432,15 @@ impl Emulator {
         // rejouer le `syscall`, mais l'utilisateur devait retaper ce
         // qu'il avait déjà envoyé.
         let bytes: Vec<u8> = self.input.iter().take(take).copied().collect();
+        self.record_memory(buf, bytes.len());
         self.cpu.mem.write_bytes(buf, &bytes)?;
         self.input.drain(..take);
+        // L'entrée consommée est notée pour pouvoir être rendue : sans
+        // ça, défaire un `read` laisserait le programme sans ce qu'il
+        // vient de lire, et le rejeu se bloquerait sur une file vide.
+        if let Some(undo) = self.history.back_mut() {
+            undo.consumed_input.extend(bytes.iter().copied());
+        }
         Ok(take as i64)
     }
 
@@ -432,12 +486,18 @@ impl Emulator {
         // Par défaut RIP avance à l'instruction suivante ; les branchements
         // écrasent cette valeur pendant `execute`.
         let rip_before = self.cpu.regs.rip;
+        self.begin_undo();
         self.cpu.regs.rip = instr.next_ip();
         if let Err(e) = self.execute(&instr) {
             // L'instruction n'a pas eu lieu : RIP doit rester dessus.
             // Sinon chaque tentative suivante avançait d'un cran — et
             // relancer le pas à pas après une erreur finissait par sortir
             // du code pour « exécuter » les données qui le suivent.
+            //
+            // Elle n'a pas non plus à figurer dans l'historique : on
+            // défait tout de suite ce qu'elle a pu écrire avant d'échouer,
+            // et sa page de journal disparaît avec.
+            self.step_back();
             self.cpu.regs.rip = rip_before;
             return Err(e);
         }
@@ -538,6 +598,7 @@ impl Emulator {
                     .regs
                     .get64(namsdec_core::Reg64::Rsp)
                     .wrapping_sub(8);
+                self.record_memory(new_rsp, 8);
                 self.cpu.mem.write_u64(new_rsp, v)?;
                 self.cpu.regs.set64(namsdec_core::Reg64::Rsp, new_rsp);
             }
@@ -1141,6 +1202,71 @@ impl Emulator {
         }
     }
 
+    /// Ouvre une page de journal pour le pas qui commence.
+    fn begin_undo(&mut self) {
+        if self.history.len() >= HISTORY_LIMIT {
+            self.history.pop_front();
+        }
+        self.history.push_back(Undo {
+            regs: self.cpu.regs.clone(),
+            flags: self.cpu.flags,
+            halted: self.cpu.halted,
+            exit_code: self.exit_code,
+            output_len: self.output.len(),
+            consumed_input: Vec::new(),
+            input_closed: self.input_closed,
+            memory: Vec::new(),
+        });
+    }
+
+    /// Note les octets sur le point d'être écrasés. Lus *avant*
+    /// l'écriture, évidemment — c'est toute l'idée.
+    fn record_memory(&mut self, addr: u64, len: usize) {
+        if self.history.is_empty() {
+            return;
+        }
+        let Ok(old) = self.cpu.mem.bytes_at(addr, len) else {
+            return;
+        };
+        let old = old.to_vec();
+        if let Some(undo) = self.history.back_mut() {
+            undo.memory.push((addr, old));
+        }
+    }
+
+    /// Défait le dernier pas : les registres, les flags, l'arrêt, la
+    /// sortie écrite, l'entrée consommée et les octets écrasés reviennent
+    /// à ce qu'ils étaient.
+    ///
+    /// C'est ce qu'un émulateur peut offrir et qu'un débogueur ordinaire
+    /// peine à rendre : on rejoue une instruction autant de fois qu'il le
+    /// faut pour la comprendre, au lieu de tout relancer depuis le début.
+    pub fn step_back(&mut self) -> bool {
+        let Some(undo) = self.history.pop_back() else {
+            return false;
+        };
+        // Dans l'ordre inverse des écritures : deux écritures au même
+        // endroit doivent se défaire en commençant par la dernière.
+        for (addr, bytes) in undo.memory.iter().rev() {
+            let _ = self.cpu.mem.write_bytes(*addr, bytes);
+        }
+        self.cpu.regs = undo.regs;
+        self.cpu.flags = undo.flags;
+        self.cpu.halted = undo.halted;
+        self.exit_code = undo.exit_code;
+        self.output.truncate(undo.output_len);
+        for byte in undo.consumed_input.iter().rev() {
+            self.input.push_front(*byte);
+        }
+        self.input_closed = undo.input_closed;
+        true
+    }
+
+    /// Y a-t-il quelque chose à défaire ?
+    pub fn can_step_back(&self) -> bool {
+        !self.history.is_empty()
+    }
+
     fn get_reg(&self, reg: Register) -> Result<u64, EmuError> {
         let (r, w) = map_register(reg)?;
         Ok(match w {
@@ -1165,16 +1291,24 @@ impl Emulator {
     fn effective_address(&self, instr: &Instruction, op_index: u32) -> Result<u64, EmuError> {
         let next_ip = instr.next_ip();
         instr
-            .virtual_address(op_index, 0, |register, _idx, _size| {
-                if register == Register::None {
-                    Some(0)
-                } else if register == Register::RIP {
-                    Some(next_ip)
-                } else {
-                    map_register(register)
-                        .ok()
-                        .map(|(r, _)| self.cpu.regs.get64(r))
-                }
+            .virtual_address(op_index, 0, |register, _idx, _size| match register {
+                Register::None => Some(0),
+                Register::RIP | Register::EIP => Some(next_ip),
+                // iced réclame aussi le registre de segment : une adresse
+                // virtuelle, c'est la base du segment plus le décalage.
+                // En 64 bits, CS/DS/ES/SS ont une base nulle — c'est le
+                // modèle plat, et c'est ce que Linux donne à un
+                // programme. Sans ce cas, *aucun* opérande mémoire ne se
+                // calculait : `mov [case], rax` échouait avant même de
+                // lire la mémoire.
+                Register::CS | Register::DS | Register::ES | Register::SS => Some(0),
+                // FS et GS, eux, ont une base que le noyau installe (TLS,
+                // canari de pile). namsdec ne la simule pas : mieux vaut
+                // refuser l'instruction que calculer une adresse fausse.
+                Register::FS | Register::GS => None,
+                other => map_register(other)
+                    .ok()
+                    .map(|(r, _)| self.cpu.regs.get64(r)),
             })
             .ok_or(EmuError::InvalidInstruction { addr: instr.ip() })
     }
@@ -1189,6 +1323,7 @@ impl Emulator {
     }
 
     fn write_mem(&mut self, addr: u64, w: Width, value: u64) -> Result<(), EmuError> {
+        self.record_memory(addr, (w.bits() / 8) as usize);
         match w {
             Width::W8 => self.cpu.mem.write_u8(addr, value as u8)?,
             Width::W16 => self.cpu.mem.write_u16(addr, value as u16)?,
@@ -1550,6 +1685,183 @@ _start:
 
     /// Charge sans exécuter — pour les programmes dont on veut observer
     /// l'échec plutôt que le résultat.
+    /// Lire et écrire *en mémoire* par un opérande — le pain quotidien
+    /// dès qu'on manipule un tableau.
+    ///
+    /// Aucune de ces formes ne fonctionnait : iced réclame le registre de
+    /// segment pour calculer une adresse virtuelle, et l'interpréteur ne
+    /// savait pas quoi en faire. Il refusait donc l'instruction avant
+    /// même de toucher à la mémoire — et rien ne le disait, faute d'un
+    /// test qui déréférence quoi que ce soit.
+    #[test]
+    fn memory_operands_are_addressable_in_every_usual_form() {
+        let emu = run_program(
+            "\
+section .data
+    table dq 10, 20, 30, 40
+
+section .bss
+    case resq 1
+
+section .text
+    global _start
+_start:
+    mov rax, [table]            ; adresse absolue
+    mov rsi, table
+    mov rbx, [rsi + 8]          ; base + décalage
+    mov rcx, 2
+    mov rdx, [rsi + rcx*8]      ; base + index mis à l'échelle
+    mov r8, 99
+    mov [case], r8              ; écriture absolue
+    mov r9, [case]              ; relecture
+    hlt
+",
+            &[],
+        );
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rax), 10, "[table]");
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rbx), 20, "[rsi + 8]");
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rdx), 30, "[rsi + rcx*8]");
+        assert_eq!(emu.cpu.regs.get64(Reg64::R9), 99, "ce qu'on vient d'écrire");
+    }
+
+    /// Le pas arrière défait ce que le dernier pas a fait : registres,
+    /// flags, et la mémoire écrite au passage.
+    #[test]
+    fn stepping_back_undoes_registers_flags_and_memory() {
+        let mut emu = load_only(
+            "\
+section .bss
+    case resq 1
+
+section .text
+    global _start
+_start:
+    mov rax, 7
+    mov [case], rax
+    cmp rax, 7          ; ZF = 1
+    hlt
+",
+            &[],
+        );
+        for _ in 0..3 {
+            emu.step().unwrap();
+        }
+        let case = emu.cpu.regs.rip;
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rax), 7);
+        assert!(emu.cpu.flags.contains(RFlags::ZF), "le cmp a levé ZF");
+
+        // On défait le `cmp` : ZF retombe, RIP recule.
+        assert!(emu.step_back());
+        assert!(
+            !emu.cpu.flags.contains(RFlags::ZF),
+            "ZF est revenu comme avant"
+        );
+        assert!(emu.cpu.regs.rip < case);
+
+        // Puis l'écriture en mémoire, et enfin le `mov rax, 7` : RAX
+        // redevient nul.
+        assert!(emu.step_back());
+        assert!(emu.step_back());
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rax), 0, "RAX est revenu à zéro");
+
+        // Plus rien à défaire au départ du programme.
+        assert!(!emu.can_step_back());
+        assert!(!emu.step_back());
+    }
+
+    /// Ce qu'un `mov [adresse], valeur` a écrit est bien remis en place,
+    /// et pas seulement les registres.
+    #[test]
+    fn stepping_back_restores_the_bytes_that_were_overwritten() {
+        let mut emu = load_only(
+            "\
+section .data
+    case dq 0x1122334455667788
+
+section .text
+    global _start
+_start:
+    mov rax, 0
+    mov [case], rax
+    hlt
+",
+            &[],
+        );
+        let addr = {
+            // La case est la seule donnée : elle est au début de .data.
+            let out = namsdec_asm::assemble(
+                "section .data\n    case dq 0x1122334455667788\nsection .text\n    global _start\n_start:\n    hlt\n",
+                BASE,
+            )
+            .unwrap();
+            out.sections
+                .iter()
+                .find(|s| s.name == ".data")
+                .expect("une section .data")
+                .addr
+        };
+
+        emu.step().unwrap(); // mov rax, 0
+        emu.step().unwrap(); // mov [case], rax
+        assert_eq!(
+            emu.cpu.mem.read_u64(addr).unwrap(),
+            0,
+            "la case est écrasée"
+        );
+
+        assert!(emu.step_back());
+        assert_eq!(
+            emu.cpu.mem.read_u64(addr).unwrap(),
+            0x1122334455667788,
+            "les octets d'origine sont revenus"
+        );
+    }
+
+    /// Défaire un `write` reprend ce que le programme avait affiché, et
+    /// défaire un `read` lui rend ce qu'il avait consommé — sans quoi le
+    /// rejeu se bloquerait sur une entrée vide.
+    #[test]
+    fn stepping_back_rewinds_the_console_too() {
+        let mut emu = load_only(
+            "\
+section .bss
+    tampon resb 8
+
+section .text
+    global _start
+_start:
+    mov rax, 0
+    mov rdi, 0
+    mov rsi, tampon
+    mov rdx, 3
+    syscall             ; read
+    mov rax, 1
+    mov rdi, 1
+    mov rsi, tampon
+    mov rdx, 3
+    syscall             ; write
+    hlt
+",
+            &[],
+        );
+        emu.provide_input(b"oui");
+        emu.run(100).unwrap();
+        assert_eq!(emu.output(), b"oui");
+        assert_eq!(emu.pending_input(), 0);
+
+        // Défaire le `write` : la sortie se vide.
+        while emu.output() == b"oui" {
+            assert!(emu.step_back());
+        }
+        assert!(emu.output().is_empty(), "la sortie est reprise");
+
+        // Continuer jusqu'à défaire le `read` : l'entrée revient.
+        while emu.pending_input() == 0 && emu.can_step_back() {
+            emu.step_back();
+        }
+        assert_eq!(emu.pending_input(), 3, "les octets lus sont rendus");
+    }
+
     /// Le lot d'instructions qui manquait pour aller au-delà des
     /// premiers exercices : multiplication, division, décalages,
     /// extensions de taille, `setcc`. Chacune est vérifiée sur son
