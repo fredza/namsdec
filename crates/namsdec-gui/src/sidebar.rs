@@ -488,20 +488,119 @@ impl NamsdecApp {
         // l'aide-mémoire de la convention et les entorses relevées font
         // déjà plus d'une hauteur de panneau, et le vidage de la pile
         // vient après. Sans cela, ce qui dépasse est simplement coupé.
-        let addr = emulator.cpu().regs.get64(Reg64::Rsp).saturating_sub(16);
-        let dump = safe_hexdump(&emulator.cpu().mem, addr, 64, s.address_out_of_range);
         egui::ScrollArea::vertical()
             .id_salt("stack_tab")
             .auto_shrink([false, false])
             .show(ui, |ui| {
+                // La pile d'abord : c'est le sujet de l'onglet. La
+                // chaîne des appels et l'aide-mémoire de la convention
+                // l'expliquent, mais ils passaient devant elle et la
+                // repoussaient hors du panneau.
+                self.stack_words_ui(ui, emulator.as_ref());
+                ui.separator();
                 self.call_chain_ui(ui, emulator.as_ref());
                 ui.separator();
                 self.abi_ui(ui, emulator.as_ref());
-                ui.separator();
-                // Horizontal seulement : le défilement vertical est celui
-                // de l'onglet, deux imbriqués se disputeraient la molette.
-                hexdump_wide(ui, "stack_dump", &dump);
             });
+    }
+
+    /// La pile, mot par mot, avec ses repères.
+    ///
+    /// Seize octets par ligne d'hexadécimal ne montrent pas une pile :
+    /// une pile se lit par mots de huit octets, et ce qui compte, ce
+    /// sont RSP et RBP — où commence ce qui est à moi, où commence le
+    /// cadre de l'appelant. Ce qui est *au-dessus* de RSP a été dépilé :
+    /// les octets sont encore là, mais ils ne m'appartiennent plus, et
+    /// le premier `push` venu les écrasera. On les montre en grisé, pour
+    /// que cela se voie plutôt que de s'apprendre à ses dépens.
+    fn stack_words_ui(&self, ui: &mut egui::Ui, emulator: &dyn Backend) {
+        let s = strings(self.lang);
+        let theme = self.theme;
+        let regs = &emulator.cpu().regs;
+        let rsp = regs.get64(Reg64::Rsp);
+        let rbp = regs.get64(Reg64::Rbp);
+        let symbols = self
+            .assemble_state
+            .as_ref()
+            .map(|state| state.output.symbols.as_slice())
+            .unwrap_or_default();
+        // Les zones de code : une valeur qui pointe dedans est une
+        // adresse de retour, pas un nombre.
+        let code: Vec<std::ops::Range<u64>> = self
+            .assemble_state
+            .as_ref()
+            .map(|state| {
+                state
+                    .output
+                    .sections
+                    .iter()
+                    .filter(|section| section.executable)
+                    .map(|section| section.addr..section.addr + section.size as u64)
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        // Deux mots au-dessus de RSP — ce qui vient d'être dépilé — et
+        // dix en dessous : de quoi voir un cadre d'appel entier.
+        let first = rsp.saturating_sub(16);
+        egui::Grid::new("stack_words")
+            .num_columns(3)
+            .min_col_width(0.0)
+            .striped(true)
+            .show(ui, |ui| {
+                for index in 0..12u64 {
+                    let addr = first + index * 8;
+                    let Ok(value) = emulator.cpu().mem.peek_bytes(addr, 8) else {
+                        continue;
+                    };
+                    let value = u64::from_le_bytes(value.try_into().unwrap_or_default());
+                    let dépilé = addr < rsp;
+                    let colour = if dépilé {
+                        theme.dim
+                    } else {
+                        ui.visuals().text_color()
+                    };
+                    ui.colored_label(
+                        colour,
+                        egui::RichText::new(format!("{addr:#010x}")).monospace(),
+                    );
+                    ui.colored_label(
+                        colour,
+                        egui::RichText::new(format!("{value:016x}")).monospace(),
+                    );
+                    // Le repère : d'abord ce que l'adresse *est* pour le
+                    // processeur, puis ce que la valeur veut dire.
+                    let mut note = String::new();
+                    if addr == rsp {
+                        note.push_str("← RSP");
+                    }
+                    if addr == rbp && rbp != 0 {
+                        if !note.is_empty() {
+                            note.push_str(", ");
+                        }
+                        note.push_str("← RBP");
+                    }
+                    if code.iter().any(|range| range.contains(&value)) {
+                        if !note.is_empty() {
+                            note.push_str(" · ");
+                        }
+                        note.push_str(s.stack_return_address);
+                        if let Some(label) = symbol_at(symbols, value) {
+                            note.push_str(&format!(" ({label})"));
+                        }
+                    }
+                    ui.colored_label(
+                        if addr == rsp || addr == rbp {
+                            theme.accent
+                        } else {
+                            theme.dim
+                        },
+                        note,
+                    );
+                    ui.end_row();
+                }
+            });
+        ui.weak(s.stack_above_hint);
     }
 
     /// Le tas : ce que `brk` a donné au programme, et ce qu'il en reste.
@@ -1266,21 +1365,6 @@ pub(crate) fn flag_chip(ui: &mut egui::Ui, theme: &'static Theme, name: &str, on
     );
     let pos = rect.center() - 0.5 * galley.size();
     ui.painter().galley(pos, galley, color);
-}
-
-/// Un vidage mémoire, dans une zone qui défile des deux côtés : seize
-/// octets et leur transcription font bien plus large que le panneau,
-/// et la ligne était jusqu'ici coupée net sans moyen d'aller voir la
-/// suite.
-/// Un vidage qui ne défile qu'en largeur : à poser dans une zone qui
-/// défile déjà en hauteur.
-pub(crate) fn hexdump_wide(ui: &mut egui::Ui, id: &str, dump: &str) {
-    egui::ScrollArea::horizontal().id_salt(id).show(ui, |ui| {
-        ui.add(
-            egui::Label::new(egui::RichText::new(dump).monospace())
-                .wrap_mode(egui::TextWrapMode::Extend),
-        );
-    });
 }
 
 pub(crate) fn hexdump_ui(ui: &mut egui::Ui, id: &str, dump: &str) {

@@ -3504,10 +3504,13 @@ malpolie:
     }
 
     let ctx = egui::Context::default();
+    // Une fenêtre haute : l'onglet montre d'abord la pile elle-même, et
+    // l'aide-mémoire de la convention vient après — c'est lui qu'on
+    // vérifie ici.
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 900.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -4652,4 +4655,70 @@ hlt
         app.tick_run(&ctx);
     }
     assert!(!peindre(&mut app).contains("Dernier pas"));
+}
+
+/// La pile se lit par mots, avec ses repères : où est RSP, où est RBP,
+/// et laquelle de ces valeurs est une adresse de retour.
+#[test]
+fn the_stack_shows_rsp_rbp_and_the_return_address() {
+    let mut app = NamsdecApp {
+        source: "\
+global _start
+section .text
+_start:
+call sous
+hlt
+sous:
+push rbp
+mov rbp, rsp
+ret
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+    app.do_step(); // call  → l'adresse de retour est empilée
+    app.do_step(); // push rbp
+    app.do_step(); // mov rbp, rsp
+
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 900.0),
+        )),
+        ..Default::default()
+    };
+    let mut painted = String::new();
+    for _ in 0..2 {
+        painted.clear();
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        for clipped in &output.shapes {
+            if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                painted.push_str(text.galley.text());
+                painted.push('|');
+            }
+        }
+        output.textures_delta.clear();
+    }
+
+    assert!(
+        painted.contains("← RSP"),
+        "RSP doit être repéré : {painted}"
+    );
+    assert!(
+        painted.contains("← RBP") || painted.contains("RSP, ← RBP"),
+        "RBP aussi, une fois le cadre posé : {painted}"
+    );
+    assert!(
+        painted.contains("adresse de code"),
+        "l'adresse de retour empilée par `call` doit être nommée : {painted}"
+    );
+    // Et elle porte l'étiquette de l'endroit d'où l'on vient.
+    assert!(
+        painted.contains("_start+"),
+        "l'adresse de retour pointe juste après le call, dans _start : {painted}"
+    );
 }
