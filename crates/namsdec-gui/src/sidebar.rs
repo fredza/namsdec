@@ -514,6 +514,42 @@ impl NamsdecApp {
         ui.separator();
     }
 
+    /// D'où vient la valeur d'un registre : le pas qui l'a écrite.
+    ///
+    /// Rendue en clair — « écrit il y a 12 pas, ligne 7 : add rax, rcx »
+    /// — parce que c'est la phrase qu'on se dit en cherchant.
+    pub(crate) fn last_write_line(&self, name: &str) -> Option<String> {
+        let s = strings(self.lang);
+        let reg = register_by_name(name)?;
+        let emulator = self.emulator.as_ref()?;
+        let rang = emulator.last_write_to(reg)?;
+        let pas = emulator.trace().get(rang)?;
+        let recul = emulator.trace().len() - rang;
+        let state = self.assemble_state.as_ref();
+        let ligne = state.and_then(|state| state.addr_to_line.get(&pas.addr).copied());
+        // Reformatée comme on l'écrit — `add rax, rbx` et non
+        // `add rax,rbx` : c'est une phrase, pas une colonne de listing.
+        let texte = state
+            .and_then(|state| {
+                state
+                    .disasm
+                    .iter()
+                    .find(|instruction| instruction.address == pas.addr)
+            })
+            .and_then(|instruction| {
+                namsdec_disasm::decode_one(&instruction.bytes, instruction.address)
+                    .map(|decoded| namsdec_disasm::format_one(&decoded))
+            })
+            .unwrap_or_default();
+        Some(match ligne {
+            Some(ligne) => format!(
+                "{} -{recul}, {} {ligne} : {texte}",
+                s.written_at, s.line_word
+            ),
+            None => format!("{} -{recul} : {texte}", s.written_at),
+        })
+    }
+
     fn registers_ui(&mut self, ui: &mut egui::Ui) {
         let Some(emulator) = &self.emulator else {
             ui.label(strings(self.lang).no_binary_assembled);
@@ -601,9 +637,18 @@ impl NamsdecApp {
                     // connaît pas — RBX et R12 lui sont identiques —, et
                     // rien dans le code ne le rappelle. Puis ce que le
                     // clic ferait.
+                    let provenance = self.last_write_line(name);
                     let response = response.on_hover_ui(|ui| {
                         ui.strong(name);
                         ui.label(roles::of(lang, name));
+                        // D'où vient la valeur : le pas qui l'a écrite,
+                        // son rang et sa ligne. « Qui a mis ça là ? » est
+                        // la question qu'on pose devant un registre qui
+                        // ne contient pas ce qu'on croyait.
+                        if let Some(texte) = &provenance {
+                            ui.add_space(4.0);
+                            ui.colored_label(theme.accent, texte);
+                        }
                         ui.add_space(4.0);
                         ui.weak(if name == "RIP" {
                             s.register_rip_hint

@@ -7144,3 +7144,51 @@ ret
         "le rang affiché doit être celui du chemin : {painted}"
     );
 }
+
+/// « Qui a mis ça là ? » : le panneau sait retrouver le pas qui a écrit
+/// dans un registre.
+#[test]
+fn a_register_says_where_its_value_came_from() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: "\
+global _start
+section .text
+_start:
+mov rax, 1
+mov rbx, 2
+add rax, rbx
+mov rcx, 9
+hlt
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+    let ctx = egui::Context::default();
+    app.do_run();
+    for _ in 0..10 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&ctx);
+    }
+
+    // RAX vient du `add`, en ligne 6.
+    let texte = app.last_write_line("RAX").expect("RAX a été écrit");
+    assert!(texte.contains("ligne 6"), "{texte}");
+    assert!(texte.contains("add rax, rbx"), "{texte}");
+
+    // RBX, lui, vient du `mov` de la ligne 5.
+    let texte = app.last_write_line("RBX").expect("RBX a été écrit");
+    assert!(texte.contains("ligne 5"), "{texte}");
+
+    // Et un registre auquel personne n'a touché n'a rien à dire, plutôt
+    // que d'inventer une provenance.
+    assert!(app.last_write_line("R15").is_none());
+    // Ni un nom qui n'est pas un registre général.
+    assert!(app.last_write_line("XMM0").is_none());
+}

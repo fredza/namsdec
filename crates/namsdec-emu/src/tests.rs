@@ -2834,3 +2834,40 @@ fn the_trace_says_what_each_step_did() {
         "le saut, lui, a bien été pris"
     );
 }
+
+/// « D'où vient cette valeur ? » : l'historique sait qui a écrit en
+/// dernier dans un registre.
+///
+/// Le chercher à la main veut dire relire son programme à l'envers en
+/// suivant un registre — et se tromper une fois sur deux quand il y a
+/// une boucle.
+#[test]
+fn the_last_write_to_a_register_can_be_found() {
+    let mut emu = load_only(
+        "global _start\nsection .text\n_start:\n\
+         mov rax, 1\nmov rbx, 2\nadd rax, rbx\nmov rcx, 9\nhlt\n",
+        &[],
+    );
+    emu.run(50).unwrap();
+
+    // RAX a été écrit par le `add`, troisième pas (rang 2).
+    let rang = emu.last_write_to(Reg64::Rax).expect("RAX a été écrit");
+    assert_eq!(rang, 2);
+    assert_eq!(emu.trace()[rang].addr, emu.trace()[2].addr);
+
+    // RBX, lui, n'a plus bougé depuis le deuxième pas.
+    assert_eq!(emu.last_write_to(Reg64::Rbx), Some(1));
+    // Et un registre auquel personne n'a touché n'a pas d'écriture.
+    assert_eq!(emu.last_write_to(Reg64::R15), None);
+
+    // Dans une boucle, c'est bien la *dernière* écriture qu'on trouve.
+    let mut emu = load_only(
+        "global _start\nsection .text\n_start:\nmov rcx, 3\nboucle:\ndec rcx\njnz boucle\nhlt\n",
+        &[],
+    );
+    emu.run(50).unwrap();
+    let rang = emu.last_write_to(Reg64::Rcx).expect("RCX a été écrit");
+    // Le dernier `dec`, pas le `mov` du départ.
+    assert!(rang > 0, "rang {rang}");
+    assert_eq!(emu.trace()[rang].kind, StepKind::Plain);
+}

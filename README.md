@@ -44,6 +44,11 @@ qu'elle est : une adresse de retour, avec son étiquette. Ce qui est
 au-dessus de RSP est grisé — ces octets sont encore là, mais le prochain
 `push` les écrase.
 
+**D'où vient cette valeur.** Survoler un registre dit quel pas y a écrit
+en dernier, son rang et sa ligne : « écrit au pas -12, ligne 7 :
+add rax, rcx ». Le chercher à la main veut dire relire son programme à
+l'envers, et se tromper une fois sur deux dès qu'il y a une boucle.
+
 **Combien de fois chaque ligne a tourné.** `×5` dans la gouttière en face
 du corps de boucle, rien en face de la ligne que le saut enjambe.
 

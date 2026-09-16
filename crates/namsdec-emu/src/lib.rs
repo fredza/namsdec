@@ -500,6 +500,15 @@ pub trait Backend {
     /// façons d'écrire la même boucle ne donnent pas le même nombre.
     fn executed(&self) -> u64;
 
+    /// Le pas qui a écrit dans ce registre pour la dernière fois, par
+    /// son rang dans [`Backend::trace`].
+    ///
+    /// « D'où vient cette valeur ? » est la question qu'on pose devant
+    /// un registre qui ne contient pas ce qu'on croyait, et le chercher
+    /// à la main veut dire relire son programme à l'envers. L'historique
+    /// le sait : il garde les registres d'avant chaque pas.
+    fn last_write_to(&self, reg: Reg64) -> Option<usize>;
+
     /// Le chemin parcouru : l'adresse de chaque pas qu'on peut encore
     /// défaire, du plus ancien au plus récent.
     ///
@@ -669,6 +678,22 @@ impl Backend for Emulator {
 
     fn trace(&self) -> &VecDeque<Step> {
         &self.trace
+    }
+
+    fn last_write_to(&self, reg: Reg64) -> Option<usize> {
+        // On remonte le journal en gardant la valeur « d'après » : le
+        // premier pas dont la valeur d'avant diffère est celui qui a
+        // écrit. Les autres ne l'ont pas touché, quoi qu'ils aient fait
+        // par ailleurs.
+        let mut après = self.cpu.regs.get64(reg);
+        for (index, undo) in self.history.iter().enumerate().rev() {
+            let avant = undo.regs.get64(reg);
+            if avant != après {
+                return Some(index);
+            }
+            après = avant;
+        }
+        None
     }
 
     fn visits(&self) -> &BTreeMap<u64, u64> {
