@@ -56,6 +56,9 @@ pub struct AssembleOutput {
     /// instruction qu'elle génère (adresse de sa section + décalage lu
     /// dans le listing nasm).
     pub line_to_addr: BTreeMap<u32, u64>,
+    /// Les étiquettes du programme, triées par adresse : de quoi montrer
+    /// « tampon+2 » là où le processeur ne voit que 0x401002.
+    pub symbols: Vec<elf::Symbol>,
 }
 
 /// Une section chargeable, telle que l'appelant en a besoin.
@@ -231,6 +234,7 @@ pub fn assemble(source: &str, base_addr: u64) -> Result<AssembleOutput, AsmError
             .collect(),
         diagnostics,
         line_to_addr,
+        symbols: elf.symbols,
     })
 }
 
@@ -573,6 +577,7 @@ _start:
                     writable: true,
                 },
             ],
+            symbols: Vec::new(),
         };
         let listing = "\
      1                                  section .data

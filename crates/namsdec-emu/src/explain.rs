@@ -22,6 +22,10 @@ pub struct Line {
     /// Sa valeur maintenant : `0x402000`, `96`, ou l'adresse calculée
     /// suivie de ce qu'elle contient.
     pub value: String,
+    /// L'adresse que cette ligne désigne, quand elle en désigne une :
+    /// l'adresse effective d'un opérande mémoire, la cible d'un saut.
+    /// L'interface la rapproche des étiquettes du programme.
+    pub addr: Option<u64>,
 }
 
 /// Les opérandes de `instr`, résolus sur l'état actuel du processeur.
@@ -40,10 +44,15 @@ pub fn operands(cpu: &Cpu, instr: &Instruction) -> Vec<Line> {
         if formatter.format_operand(instr, &mut text, index).is_err() {
             continue;
         }
+        let mut addr = None;
         let value = match instr.op_kind(index) {
             OpKind::Register => register_value(cpu, instr.op_register(index)),
-            OpKind::Memory => memory_value(cpu, instr, index),
+            OpKind::Memory => {
+                addr = crate::effective_address(&cpu.regs, instr, index);
+                memory_value(cpu, instr, index)
+            }
             OpKind::NearBranch16 | OpKind::NearBranch32 | OpKind::NearBranch64 => {
+                addr = Some(instr.near_branch_target());
                 Some(format!("{:#x}", instr.near_branch_target()))
             }
             // Une immédiate est déjà sous les yeux ; sa forme décimale ne
@@ -61,7 +70,7 @@ pub fn operands(cpu: &Cpu, instr: &Instruction) -> Vec<Line> {
             _ => None,
         };
         if let Some(value) = value {
-            lines.push(Line { text, value });
+            lines.push(Line { text, value, addr });
         }
     }
     lines

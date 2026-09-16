@@ -1780,6 +1780,10 @@ impl NamsdecApp {
                 bytes: image,
                 diagnostics: Vec::new(),
                 line_to_addr,
+                // Les étiquettes de l'ELF ouvert : elles nomment les
+                // adresses aussi bien ici que pour un programme qu'on
+                // vient d'assembler soi-même.
+                symbols: elf.symbols.clone(),
             },
             disasm,
             addr_to_line,
@@ -1835,6 +1839,9 @@ impl NamsdecApp {
                 bytes,
                 diagnostics: Vec::new(),
                 line_to_addr,
+                // Un binaire brut n'a pas de table de symboles : il n'a
+                // même pas d'en-tête.
+                symbols: Vec::new(),
             },
             disasm,
             addr_to_line,
@@ -4207,6 +4214,35 @@ impl NamsdecApp {
 /// Un plafond en pixels — trois cent soixante, trois cent vingt — faisait
 /// défiler quatre thèmes au milieu d'un écran qui en aurait montré
 /// quinze. Celui-ci suit l'écran qu'on a.
+/// L'étiquette qui nomme `addr`, telle qu'on l'a écrite dans le source :
+/// `tampon`, ou `tampon+2` deux octets plus loin.
+///
+/// Les symboles sont triés par adresse : on prend le dernier qui commence
+/// avant, et on ne le propose que s'il est assez proche pour dire encore
+/// quelque chose — sa taille déclarée quand nasm en donne une, sinon la
+/// distance jusqu'au symbole suivant.
+pub(crate) fn symbol_at(symbols: &[namsdec_asm::elf::Symbol], addr: u64) -> Option<String> {
+    let index = symbols.partition_point(|s| s.addr <= addr).checked_sub(1)?;
+    let symbol = &symbols[index];
+    let offset = addr - symbol.addr;
+    let reach = if symbol.size > 0 {
+        symbol.size
+    } else {
+        symbols
+            .get(index + 1)
+            .map(|next| next.addr - symbol.addr)
+            .unwrap_or(1)
+    };
+    if offset >= reach {
+        return None;
+    }
+    if offset == 0 {
+        Some(symbol.name.clone())
+    } else {
+        Some(format!("{}+{offset}", symbol.name))
+    }
+}
+
 fn window_room(ui: &egui::Ui) -> f32 {
     (ui.ctx().input(|i| i.content_rect()).height() * 0.55).max(240.0)
 }

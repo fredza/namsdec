@@ -224,13 +224,27 @@ impl NamsdecApp {
         if lines.is_empty() {
             return;
         }
+        // Les étiquettes du programme, pour nommer les adresses : le
+        // désassembleur ne connaît que des nombres, et « tampon+2 » se
+        // relit dans le source, pas « 0x401002 ».
+        let symbols = self
+            .assemble_state
+            .as_ref()
+            .map(|state| state.output.symbols.as_slice())
+            .unwrap_or_default();
         egui::Grid::new("next_instruction_grid")
-            .num_columns(2)
+            .num_columns(3)
+            .min_col_width(0.0)
             .striped(true)
             .show(ui, |ui| {
                 for line in lines {
                     ui.colored_label(theme.dim, egui::RichText::new(line.text).monospace());
                     ui.label(egui::RichText::new(line.value).monospace());
+                    let named = line.addr.and_then(|addr| symbol_at(symbols, addr));
+                    ui.colored_label(
+                        theme.accent,
+                        egui::RichText::new(named.unwrap_or_default()).monospace(),
+                    );
                     ui.end_row();
                 }
             });

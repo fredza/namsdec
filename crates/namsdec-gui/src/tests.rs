@@ -4226,3 +4226,82 @@ fn the_command_palette_shrinks_to_what_it_shows() {
         "filtrée, elle doit se replier : {filtre} contre {tout}"
     );
 }
+
+/// Le bandeau nomme l'adresse qu'il calcule : `tampon+2`, l'étiquette
+/// telle qu'elle est écrite dans le source, à côté du nombre.
+#[test]
+fn the_next_instruction_names_the_address_it_computes() {
+    let mut app = NamsdecApp {
+        source: "\
+global _start
+section .data
+tampon: db 0x11, 0x22, 0x33, 0x44
+section .text
+_start:
+mov rcx, 2
+mov al, [tampon + rcx]
+hlt
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+    app.do_step();
+
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 820.0),
+        )),
+        ..Default::default()
+    };
+    let mut painted = String::new();
+    for _ in 0..2 {
+        painted.clear();
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        for clipped in &output.shapes {
+            if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                painted.push_str(text.galley.text());
+                painted.push('|');
+            }
+        }
+        output.textures_delta.clear();
+    }
+
+    assert!(
+        painted.contains("tampon+2"),
+        "l'adresse calculée doit porter son étiquette : {painted}"
+    );
+}
+
+/// Une adresse qu'aucune étiquette ne couvre reste un nombre : on ne
+/// rattache pas `_start+4000` à une étiquette qui s'arrête bien avant.
+#[test]
+fn an_address_past_its_label_is_not_named() {
+    use namsdec_asm::elf::Symbol;
+    let symbols = vec![
+        Symbol {
+            name: "tampon".to_owned(),
+            addr: 0x401000,
+            size: 4,
+        },
+        Symbol {
+            name: "suite".to_owned(),
+            addr: 0x401010,
+            size: 0,
+        },
+    ];
+    assert_eq!(symbol_at(&symbols, 0x401000).as_deref(), Some("tampon"));
+    assert_eq!(symbol_at(&symbols, 0x401002).as_deref(), Some("tampon+2"));
+    // Au-delà de sa taille déclarée, l'étiquette ne dit plus rien.
+    assert_eq!(symbol_at(&symbols, 0x401004), None);
+    // Avant la première, non plus.
+    assert_eq!(symbol_at(&symbols, 0x400fff), None);
+    // Sans taille déclarée, une étiquette couvre jusqu'à la suivante —
+    // ici il n'y en a pas, donc son seul octet.
+    assert_eq!(symbol_at(&symbols, 0x401010).as_deref(), Some("suite"));
+    assert_eq!(symbol_at(&symbols, 0x401011), None);
+}

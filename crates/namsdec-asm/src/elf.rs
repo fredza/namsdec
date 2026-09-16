@@ -9,8 +9,12 @@
 //! adresse, avec *son* point d'entrée, au lieu d'être désassemblé depuis
 //! son en-tête comme s'il s'agissait de code.
 //!
-//! Ce qu'il ne lit pas — symboles, relocations, formats abîmés — reste du
-//! ressort de `namsdec-re`, qui a d'autres exigences.
+//! Il lit aussi la table des symboles, quand `ld` en laisse une : ce sont
+//! les étiquettes écrites dans le source, et les revoir en face d'une
+//! adresse est toute la différence entre « 0x401002 » et « tampon+2 ».
+//!
+//! Ce qu'il ne lit pas — relocations, formats abîmés — reste du ressort
+//! de `namsdec-re`, qui a d'autres exigences.
 
 /// Une section chargeable du programme lié.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -29,10 +33,22 @@ pub struct Section {
     pub writable: bool,
 }
 
+/// Une étiquette du programme, telle qu'elle est écrite dans le source.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Symbol {
+    pub name: String,
+    pub addr: u64,
+    /// La taille déclarée, souvent nulle : nasm ne la renseigne que pour
+    /// les symboles passés par `size`.
+    pub size: u64,
+}
+
 #[derive(Debug, Clone)]
 pub struct Elf {
     pub entry: u64,
     pub sections: Vec<Section>,
+    /// Les étiquettes du programme, triées par adresse croissante.
+    pub symbols: Vec<Symbol>,
 }
 
 const SHF_ALLOC: u64 = 0x2;
@@ -40,6 +56,18 @@ const SHF_WRITE: u64 = 0x1;
 const SHF_EXECINSTR: u64 = 0x4;
 /// `.bss` : la section occupe de la mémoire mais rien dans le fichier.
 const SHT_NOBITS: u32 = 8;
+/// La table des symboles laissée par l'éditeur de liens.
+const SHT_SYMTAB: u32 = 2;
+/// Types de symboles qui désignent quelque chose en mémoire : une
+/// donnée, une fonction, ou une étiquette sans type — le cas ordinaire
+/// en assembleur.
+const STT_NOTYPE: u8 = 0;
+const STT_OBJECT: u8 = 1;
+const STT_FUNC: u8 = 2;
+/// L'index de section « aucune » : un symbole absolu ou indéfini, qui ne
+/// nomme pas une adresse du programme.
+const SHN_UNDEF: u16 = 0;
+const SHN_ABS: u16 = 0xfff1;
 
 fn u16_at(bytes: &[u8], offset: usize) -> Option<u16> {
     Some(u16::from_le_bytes(
@@ -125,7 +153,83 @@ pub fn parse(bytes: &[u8]) -> Option<Elf> {
         });
     }
 
-    Some(Elf { entry, sections })
+    let symbols = parse_symbols(bytes, shoff, shentsize, shnum).unwrap_or_default();
+    Some(Elf {
+        entry,
+        sections,
+        symbols,
+    })
+}
+
+/// Les étiquettes du programme, lues dans `.symtab`.
+///
+/// Rend `None` — et non une erreur — quand il n'y en a pas : un binaire
+/// dépouillé (`strip`) se charge et s'exécute très bien, il se lit
+/// seulement moins agréablement.
+fn parse_symbols(
+    bytes: &[u8],
+    shoff: usize,
+    shentsize: usize,
+    shnum: usize,
+) -> Option<Vec<Symbol>> {
+    let mut symbols = Vec::new();
+    for index in 0..shnum {
+        let header = shoff.checked_add(index.checked_mul(shentsize)?)?;
+        if u32_at(bytes, header + 0x04)? != SHT_SYMTAB {
+            continue;
+        }
+        // `sh_link` d'une table de symboles donne la section de chaînes
+        // où sont leurs noms.
+        let strtab = u32_at(bytes, header + 0x28)? as usize;
+        let strtab_header = shoff.checked_add(strtab.checked_mul(shentsize)?)?;
+        let str_offset = u64_at(bytes, strtab_header + 0x18)? as usize;
+        let str_size = u64_at(bytes, strtab_header + 0x20)? as usize;
+        let names = bytes.get(str_offset..str_offset.checked_add(str_size)?)?;
+
+        let offset = u64_at(bytes, header + 0x18)? as usize;
+        let size = u64_at(bytes, header + 0x20)? as usize;
+        let entry_size = u64_at(bytes, header + 0x38)? as usize;
+        if entry_size == 0 {
+            continue;
+        }
+        for at in (offset..offset.checked_add(size)?).step_by(entry_size) {
+            let name_offset = u32_at(bytes, at)? as usize;
+            let info = *bytes.get(at + 4)?;
+            let shndx = u16_at(bytes, at + 6)?;
+            let value = u64_at(bytes, at + 8)?;
+            let sym_size = u64_at(bytes, at + 16)?;
+            // Le type est dans les quatre bits bas de st_info.
+            let kind = info & 0xf;
+            if !matches!(kind, STT_NOTYPE | STT_OBJECT | STT_FUNC) {
+                continue;
+            }
+            if shndx == SHN_UNDEF || shndx == SHN_ABS {
+                continue;
+            }
+            let name = names
+                .get(name_offset..)?
+                .iter()
+                .position(|&b| b == 0)
+                .map(|end| {
+                    String::from_utf8_lossy(&names[name_offset..name_offset + end]).into_owned()
+                })
+                .unwrap_or_default();
+            // Les symboles que produit l'assembleur pour son propre usage
+            // — le nom du fichier, les étiquettes locales `.L…` — ne
+            // disent rien à qui lit son programme.
+            if name.is_empty() || name.starts_with(".L") || name.ends_with(".asm") {
+                continue;
+            }
+            symbols.push(Symbol {
+                name,
+                addr: value,
+                size: sym_size,
+            });
+        }
+    }
+    symbols.sort_by_key(|s| (s.addr, s.name.clone()));
+    symbols.dedup();
+    Some(symbols)
 }
 
 impl Elf {
@@ -153,5 +257,61 @@ impl Elf {
             image[at..at + section.data.len()].copy_from_slice(&section.data);
         }
         Some((start, image))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    /// Les étiquettes du source se retrouvent dans l'ELF lié, à leur
+    /// adresse — c'est ce qui permet de dire « tampon » plutôt que
+    /// « 0x401000 ».
+    #[test]
+    fn labels_come_back_with_their_addresses() {
+        let Some(_) = crate::find_nasm() else {
+            eprintln!("nasm absent : test ignoré");
+            return;
+        };
+        if !crate::find_linker() {
+            eprintln!("ld absent : test ignoré");
+            return;
+        }
+        let source = "\
+global _start
+section .data
+tampon: db 1, 2, 3, 4
+section .text
+_start:
+    mov al, [tampon]
+    hlt
+";
+        let out = crate::assemble(source, 0x400000).expect("le programme doit s'assembler");
+        let tampon = out
+            .symbols
+            .iter()
+            .find(|s| s.name == "tampon")
+            .expect("l'étiquette tampon doit être connue");
+        let start = out
+            .symbols
+            .iter()
+            .find(|s| s.name == "_start")
+            .expect("le point d'entrée aussi");
+        assert_eq!(start.addr, out.entry);
+        assert!(
+            tampon.addr != start.addr,
+            "les deux étiquettes sont dans des sections différentes"
+        );
+        // Triés par adresse : l'interface s'appuie dessus pour trouver
+        // « la dernière étiquette avant cette adresse ».
+        let mut adresses: Vec<u64> = out.symbols.iter().map(|s| s.addr).collect();
+        let triees = adresses.clone();
+        adresses.sort_unstable();
+        assert_eq!(adresses, triees, "les symboles doivent être triés");
+        // Et pas de bruit d'assembleur dans la liste.
+        assert!(
+            !out.symbols.iter().any(|s| s.name.ends_with(".asm")),
+            "le nom du fichier n'est pas une étiquette : {:?}",
+            out.symbols
+        );
     }
 }
