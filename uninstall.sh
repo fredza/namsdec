@@ -2,9 +2,11 @@
 #
 # Désinstalle namsdec : défait exactement ce qu'a fait `install.sh`.
 #
-# Les réglages (~/.config/namsdec) sont conservés par défaut — on
-# désinstalle souvent pour réinstaller, et perdre ses raccourcis au
-# passage serait une mauvaise surprise. `--purge` les supprime aussi.
+# Les réglages (~/.config/namsdec) et les données (~/.local/share/namsdec :
+# thèmes et séries d'exercices installés) sont conservés par défaut — on
+# désinstalle souvent pour réinstaller, et perdre ses raccourcis ou les
+# séries qu'on a écrites au passage serait une mauvaise surprise.
+# `--purge` supprime les deux.
 
 set -euo pipefail
 
@@ -14,6 +16,8 @@ BIN_DIR="$HOME/.local/bin"
 ICON_DIR="$PREFIX/icons/hicolor"
 DESKTOP_DIR="$PREFIX/applications"
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/$APP"
+# Ce que l'utilisateur a ajouté : thèmes et séries d'exercices installés.
+DATA_DIR="$PREFIX/$APP"
 MARKER="# ajouté par namsdec"
 
 PURGE=0
@@ -72,12 +76,21 @@ for rc in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.profile"; do
     fi
 done
 
-# --- Réglages ----------------------------------------------------------
+# --- Réglages et données ------------------------------------------------
 if [ "$PURGE" = 1 ]; then
     say "Suppression des réglages ($CONFIG_DIR)"
     rm -rf "$CONFIG_DIR"
-elif [ -d "$CONFIG_DIR" ]; then
-    say "Réglages conservés dans $CONFIG_DIR (--purge pour les supprimer aussi)."
+    say "Suppression des données ($DATA_DIR)"
+    rm -rf "$DATA_DIR"
+else
+    # `if` et non `[ … ] && …` : sous `set -e`, un test faux en fin de
+    # script suffirait à le faire sortir en erreur avant son dernier mot.
+    if [ -d "$CONFIG_DIR" ]; then
+        say "Réglages conservés dans $CONFIG_DIR (--purge pour tout supprimer)."
+    fi
+    if [ -d "$DATA_DIR" ]; then
+        say "Thèmes et séries d'exercices conservés dans $DATA_DIR."
+    fi
 fi
 
 say "Terminé."

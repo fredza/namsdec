@@ -226,7 +226,7 @@ pub const ENTRIES: &[Entry] = &[
             en: "Multiplies RDX by the source and puts the two halves of the product wherever it is told, without touching a single flag. Which is what lets it sit in the middle of a carry chain.",
         },
         flags: "",
-        example: "mov rdx, a\nmulx haut, bas, b",
+        example: "mov rdx, [a]          ; le multiplicande, implicite\nmulx r9, r8, [b]      ; r9:r8 = a * b",
     },
     Entry {
         names: &["and", "or", "xor", "not"],
@@ -265,7 +265,7 @@ pub const ENTRIES: &[Entry] = &[
             en: "Computes \"NOT source1 AND source2\" in one instruction, without destroying its sources. Handy to clear the bits of a mask.",
         },
         flags: "ZF SF",
-        example: "andn rax, masque, valeur",
+        example: "mov rbx, [masque]\nandn rax, rbx, [valeur]   ; rax = ~masque & valeur",
     },
     Entry {
         names: &["shl", "sal", "shr", "sar"],

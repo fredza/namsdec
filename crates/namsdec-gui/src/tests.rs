@@ -2974,3 +2974,83 @@ fn every_program_we_ship_is_a_complete_program() {
         );
     }
 }
+/// Les quatre-vingt-onze exemples des fiches d'instructions s'assemblent,
+/// et namsdec les exécute.
+///
+/// Un exemple est un extrait — deux lignes qui montrent la forme d'une
+/// instruction —, on l'entoure donc de ce qu'il nomme : des données, et
+/// les étiquettes vers lesquelles il saute. Ce qui reste vérifié est ce
+/// qui compte : l'instruction existe, ses opérandes sont du bon type et
+/// dans le bon ordre. Deux exemples écrits à la main s'y sont fait
+/// prendre, qui donnaient des étiquettes de données à `mulx` et `andn`
+/// là où il faut des registres.
+///
+/// L'exécution, elle, ne cherche qu'une chose : aucune instruction
+/// documentée ne doit être refusée par l'interpréteur. Décrire ce qu'on
+/// ne sait pas exécuter serait une promesse en l'air.
+#[test]
+fn every_documented_example_assembles_and_runs() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let prelude = "default rel\nglobal _start\n\nsection .data\n\
+        \x20   msg db \"salut\", 10\n    len equ $ - msg\n    x dq 1.5\n    y dq 2.5\n\
+        \x20   a dq 1.0\n    b dq 2.0\n    n dd 7\n    haut dq 0\n    bas dq 0\n\
+        \x20   masque dq 0\n    résultat dq 0\n    entier dq 0\n    compteur dq 0\n\
+        \x20   table db 1, 2, 3, 4\n    drapeaux times 32 db 0\n    verrou dq 0\n\
+        \x20   attendu dq 0\n    facteur dd 1.0\n    masque_signe dq 0\n    valeur dq 0\n\
+        \x20   align 32\n    huit_valeurs dd 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0\n\
+        \x20   vecteur times 16 db 0\n    non_aligné times 32 db 0\n\
+        \x20   valeurs dq 1.0\n    sortie times 32 db 0\n    buf times 64 db 0\n\
+        \x20   texte db \"abc\", 0\n\nsection .text\n_start:\n";
+    let epilogue = "\n    hlt\nplus_grand:\nfin:\nnul:\nfini:\nidentiques:\n\
+        non_comparable:\nétait_déjà_posé:\n    hlt\n";
+
+    let mut fautifs = Vec::new();
+    for entry in namsdec_doc::ENTRIES {
+        let source = format!("{prelude}{}{epilogue}", entry.example);
+        if let Err(e) = namsdec_asm::assemble(&source, BASE_ADDR) {
+            let détail = match &e {
+                namsdec_asm::AsmError::Failed { diagnostics } => diagnostics
+                    .iter()
+                    .map(|d| d.message.clone())
+                    .collect::<Vec<_>>()
+                    .join(" ; "),
+                autre => format!("{autre}"),
+            };
+            fautifs.push(format!("{} : {détail}", entry.names[0]));
+            continue;
+        }
+
+        // Et l'interpréteur les exécute. Une fiche qui décrit une
+        // instruction que le moteur refuse serait une promesse en l'air ;
+        // les autres erreurs — une adresse hors bornes, une division par
+        // zéro — viennent des données inventées ici et ne prouvent rien.
+        let mut app = NamsdecApp {
+            source,
+            ..Default::default()
+        };
+        app.do_assemble();
+        if let Some(emu) = app.emulator.as_mut() {
+            emu.cpu_mut().regs.set64(Reg64::Rcx, 4);
+            emu.cpu_mut().regs.set64(Reg64::Rbx, 5);
+        }
+        for _ in 0..60 {
+            let Some(emu) = app.emulator.as_mut() else {
+                break;
+            };
+            match emu.step() {
+                Ok(namsdec_emu::StepResult::Halted) => break,
+                Ok(_) => {}
+                Err(e) => {
+                    let texte = format!("{e:?}");
+                    if texte.contains("Unsupported") {
+                        fautifs.push(format!("{} : {texte}", entry.names[0]));
+                    }
+                    break;
+                }
+            }
+        }
+    }
+    assert!(fautifs.is_empty(), "{}", fautifs.join("\n"));
+}
