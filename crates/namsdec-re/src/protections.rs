@@ -231,6 +231,49 @@ impl ReModule for ProtectionsModule {
             },
         );
 
+        verdict(
+            ui,
+            scan.cet.ibt,
+            "IBT",
+            if scan.cet.ibt {
+                ctx.t("demandé", "requested")
+            } else {
+                ctx.t("non demandé", "not requested")
+            },
+            if scan.cet.ibt {
+                ctx.t(
+                    "Un saut indirect ne peut atterrir que sur un `endbr64` : \
+                     les morceaux de code choisis au milieu d'une instruction \
+                     ne sont plus des cibles valables.",
+                    "An indirect jump may only land on an `endbr64`: code \
+                     fragments picked mid-instruction are no longer valid \
+                     targets.",
+                )
+            } else {
+                ctx.t(
+                    "N'importe quelle adresse peut être la cible d'un saut \
+                     indirect, y compris au milieu d'une instruction.",
+                    "Any address can be the target of an indirect jump, \
+                     including mid-instruction.",
+                )
+            },
+        );
+        if scan.cet.shadow_stack {
+            verdict(
+                ui,
+                true,
+                ctx.t("Pile fantôme", "Shadow stack"),
+                ctx.t("demandée", "requested"),
+                ctx.t(
+                    "Le processeur garde sa propre copie des adresses de retour \
+                     et compare : écraser celle de la pile ne suffit plus.",
+                    "The processor keeps its own copy of return addresses and \
+                     compares: overwriting the one on the stack is no longer \
+                     enough.",
+                ),
+            );
+        }
+
         if !scan.fortified.is_empty() {
             verdict(
                 ui,
@@ -320,6 +363,85 @@ impl ReModule for ProtectionsModule {
                      can drop their own library in it.",
                 ));
             }
+        }
+
+        if let Some(build_id) = &scan.build_id {
+            ui.add_space(6.0);
+            ui.horizontal_wrapped(|ui| {
+                ui.label(ctx.t("Empreinte de build", "Build ID"));
+                ui.monospace(build_id);
+            })
+            .response
+            .on_hover_text(ctx.t(
+                "Deux fichiers qui la partagent sont le même programme, \
+                 compilé une seule fois.",
+                "Two files sharing it are the same program, built once.",
+            ));
+        }
+
+        // Les fonctions nommées : par où commencer la lecture.
+        if !scan.functions.is_empty() {
+            ui.add_space(6.0);
+            egui::CollapsingHeader::new(format!(
+                "{} ({})",
+                ctx.t("Fonctions", "Functions"),
+                scan.functions.len()
+            ))
+            .id_salt("protections_functions")
+            .show(ui, |ui| {
+                egui::Grid::new("protections_functions_grid")
+                    .num_columns(3)
+                    .striped(true)
+                    .min_col_width(0.0)
+                    .show(ui, |ui| {
+                        for function in &scan.functions {
+                            ui.monospace(format!("{:#x}", function.addr));
+                            ui.monospace(&function.name);
+                            ui.weak(if function.size > 0 {
+                                format!("{} {}", function.size, ctx.t("o", "B"))
+                            } else {
+                                String::new()
+                            });
+                            ui.end_row();
+                        }
+                    });
+            });
+        }
+
+        // Les sections : le découpage fin, celui que l'éditeur de liens a
+        // choisi — plus précis que les segments, qui les regroupent par
+        // droits.
+        if !scan.sections.is_empty() {
+            ui.add_space(6.0);
+            egui::CollapsingHeader::new(format!(
+                "{} ({})",
+                ctx.t("Sections", "Sections"),
+                scan.sections.len()
+            ))
+            .id_salt("protections_sections")
+            .show(ui, |ui| {
+                egui::Grid::new("protections_sections_grid")
+                    .num_columns(4)
+                    .striped(true)
+                    .min_col_width(0.0)
+                    .show(ui, |ui| {
+                        for section in &scan.sections {
+                            ui.monospace(&section.name);
+                            ui.monospace(format!(
+                                "{}{}",
+                                if section.write { 'w' } else { '-' },
+                                if section.execute { 'x' } else { '-' }
+                            ));
+                            ui.monospace(if section.addr > 0 {
+                                format!("{:#x}", section.addr)
+                            } else {
+                                String::new()
+                            });
+                            ui.monospace(format!("{} {}", section.size, ctx.t("o", "B")));
+                            ui.end_row();
+                        }
+                    });
+            });
         }
 
         // Et la carte de ce qui sera projeté, droits compris : c'est elle

@@ -65,6 +65,36 @@ impl Segment {
     }
 }
 
+/// Une section, telle que l'éditeur de liens l'a rangée.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SectionInfo {
+    pub name: String,
+    pub addr: u64,
+    pub size: u64,
+    pub write: bool,
+    pub execute: bool,
+}
+
+/// Une fonction nommée par la table des symboles.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Function {
+    pub name: String,
+    pub addr: u64,
+    pub size: u64,
+}
+
+/// Les défenses que le processeur lui-même applique, quand le binaire
+/// les réclame — le fichier le dit dans une note que le noyau relit au
+/// chargement.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Cet {
+    /// Les sauts indirects doivent atterrir sur un `endbr64`.
+    pub ibt: bool,
+    /// Le processeur tient sa propre pile d'adresses de retour et
+    /// compare.
+    pub shadow_stack: bool,
+}
+
 /// Tout ce que l'en-tête et les tables racontent du binaire.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Scan {
@@ -94,8 +124,15 @@ pub struct Scan {
     pub runpath: Option<String>,
     pub rpath: Option<String>,
     pub segments: Vec<Segment>,
+    pub sections: Vec<SectionInfo>,
+    /// Les fonctions que la table des symboles nomme, par adresse.
+    pub functions: Vec<Function>,
     /// Le nombre de symboles lisibles, toutes tables confondues.
     pub symbol_count: usize,
+    pub cet: Cet,
+    /// L'empreinte que l'éditeur de liens a posée : deux binaires ayant
+    /// le même sont le même.
+    pub build_id: Option<String>,
 }
 
 impl Scan {
@@ -147,6 +184,13 @@ const DF_BIND_NOW: u64 = 0x8;
 const DF_1_NOW: u64 = 0x1;
 
 const SHT_SYMTAB: u32 = 2;
+const SHT_NOTE: u32 = 7;
+const STT_FUNC: u8 = 2;
+const NT_GNU_BUILD_ID: u32 = 3;
+const NT_GNU_PROPERTY_TYPE_0: u32 = 5;
+const GNU_PROPERTY_X86_FEATURE_1_AND: u32 = 0xc000_0002;
+const X86_FEATURE_1_IBT: u32 = 0x1;
+const X86_FEATURE_1_SHSTK: u32 = 0x2;
 const SHT_DYNSYM: u32 = 11;
 
 fn u16_at(bytes: &[u8], at: usize) -> Option<u16> {
@@ -275,7 +319,7 @@ pub fn scan(bytes: &[u8]) -> Option<Scan> {
         }
     }
 
-    let symbols = read_symbols(bytes).unwrap_or_default();
+    let (symbols, functions) = read_symbols(bytes).unwrap_or_default();
     let canary = symbols.iter().any(|name| name == "__stack_chk_fail");
     let mut fortified: Vec<String> = symbols
         .iter()
@@ -301,7 +345,11 @@ pub fn scan(bytes: &[u8]) -> Option<Scan> {
         runpath,
         rpath,
         segments,
+        sections: read_sections(bytes).unwrap_or_default(),
+        functions,
         symbol_count: symbols.len(),
+        cet: read_cet(bytes).unwrap_or_default(),
+        build_id: read_build_id(bytes),
     })
 }
 
@@ -372,11 +420,13 @@ fn file_offset(addr: u64, segments: &[Segment]) -> Option<usize> {
 /// Les noms de toutes les tables de symboles présentes — `.symtab` quand
 /// le binaire n'est pas dépouillé, `.dynsym` toujours pour un binaire
 /// dynamique.
-fn read_symbols(bytes: &[u8]) -> Option<Vec<String>> {
+#[allow(clippy::type_complexity)]
+fn read_symbols(bytes: &[u8]) -> Option<(Vec<String>, Vec<Function>)> {
     let shoff = u64_at(bytes, 0x28)? as usize;
     let shentsize = u16_at(bytes, 0x3a)? as usize;
     let shnum = u16_at(bytes, 0x3c)? as usize;
     let mut names = Vec::new();
+    let mut functions: Vec<Function> = Vec::new();
     for index in 0..shnum {
         let header = shoff.checked_add(index.checked_mul(shentsize)?)?;
         let kind = u32_at(bytes, header + 0x04)?;
@@ -396,14 +446,153 @@ fn read_symbols(bytes: &[u8]) -> Option<Vec<String>> {
             let Some(name_offset) = u32_at(bytes, at) else {
                 break;
             };
-            if let Some(name) = string_at(bytes, str_offset + name_offset as usize)
-                && !name.is_empty()
-            {
-                names.push(name);
+            let Some(name) = string_at(bytes, str_offset + name_offset as usize) else {
+                continue;
+            };
+            if name.is_empty() {
+                continue;
             }
+            // Le type est dans les quatre bits bas de st_info ; une
+            // fonction déclarée porte une adresse et souvent une taille.
+            let info = bytes.get(at + 4).copied().unwrap_or(0);
+            let value = u64_at(bytes, at + 8).unwrap_or(0);
+            let size = u64_at(bytes, at + 16).unwrap_or(0);
+            if info & 0xf == STT_FUNC && value != 0 {
+                functions.push(Function {
+                    name: name.clone(),
+                    addr: value,
+                    size,
+                });
+            }
+            names.push(name);
         }
     }
-    Some(names)
+    functions.sort_by_key(|f| (f.addr, f.name.clone()));
+    functions.dedup();
+    Some((names, functions))
+}
+
+/// Les sections, pour qui veut savoir où le code s'arrête et où les
+/// données commencent — un découpage plus fin que celui des segments.
+fn read_sections(bytes: &[u8]) -> Option<Vec<SectionInfo>> {
+    let shoff = u64_at(bytes, 0x28)? as usize;
+    let shentsize = u16_at(bytes, 0x3a)? as usize;
+    let shnum = u16_at(bytes, 0x3c)? as usize;
+    let shstrndx = u16_at(bytes, 0x3e)? as usize;
+    let shstr_header = shoff.checked_add(shstrndx.checked_mul(shentsize)?)?;
+    let names_at = u64_at(bytes, shstr_header + 0x18)? as usize;
+
+    let mut sections = Vec::new();
+    for index in 0..shnum {
+        let header = shoff.checked_add(index.checked_mul(shentsize)?)?;
+        let name_offset = u32_at(bytes, header)? as usize;
+        let flags = u64_at(bytes, header + 0x08)?;
+        let addr = u64_at(bytes, header + 0x10)?;
+        let size = u64_at(bytes, header + 0x20)?;
+        let name = string_at(bytes, names_at + name_offset)?;
+        if name.is_empty() {
+            continue;
+        }
+        sections.push(SectionInfo {
+            name,
+            addr,
+            size,
+            write: flags & 0x1 != 0,
+            execute: flags & 0x4 != 0,
+        });
+    }
+    Some(sections)
+}
+
+/// Les notes du fichier : chacune porte un nom, un type, et des octets.
+///
+/// Rend les triplets (nom, type, contenu) de toutes les sections de
+/// notes — c'est là que vivent l'empreinte de build et les drapeaux que
+/// le processeur applique.
+fn notes(bytes: &[u8]) -> Vec<(String, u32, Vec<u8>)> {
+    let mut found = Vec::new();
+    let Some(shoff) = u64_at(bytes, 0x28).map(|v| v as usize) else {
+        return found;
+    };
+    let (Some(shentsize), Some(shnum)) = (
+        u16_at(bytes, 0x3a).map(|v| v as usize),
+        u16_at(bytes, 0x3c).map(|v| v as usize),
+    ) else {
+        return found;
+    };
+    for index in 0..shnum {
+        let Some(header) = shoff.checked_add(index * shentsize) else {
+            break;
+        };
+        if u32_at(bytes, header + 0x04) != Some(SHT_NOTE) {
+            continue;
+        }
+        let (Some(offset), Some(size)) = (
+            u64_at(bytes, header + 0x18).map(|v| v as usize),
+            u64_at(bytes, header + 0x20).map(|v| v as usize),
+        ) else {
+            continue;
+        };
+        let mut at = offset;
+        while at + 12 <= offset + size {
+            let (Some(name_size), Some(desc_size), Some(kind)) = (
+                u32_at(bytes, at).map(|v| v as usize),
+                u32_at(bytes, at + 4).map(|v| v as usize),
+                u32_at(bytes, at + 8),
+            ) else {
+                break;
+            };
+            // Nom et contenu sont alignés sur quatre octets chacun.
+            let name_at = at + 12;
+            let desc_at = name_at + name_size.next_multiple_of(4);
+            let end = desc_at + desc_size.next_multiple_of(4);
+            let name = string_at(bytes, name_at).unwrap_or_default();
+            if let Some(desc) = bytes.get(desc_at..desc_at + desc_size) {
+                found.push((name, kind, desc.to_vec()));
+            }
+            if end <= at {
+                break;
+            }
+            at = end;
+        }
+    }
+    found
+}
+
+/// Les défenses matérielles réclamées dans `.note.gnu.property`.
+fn read_cet(bytes: &[u8]) -> Option<Cet> {
+    let mut cet = Cet::default();
+    for (name, kind, desc) in notes(bytes) {
+        if name != "GNU" || kind != NT_GNU_PROPERTY_TYPE_0 {
+            continue;
+        }
+        // Une suite de propriétés : type, longueur, valeur, le tout
+        // aligné sur huit octets en 64 bits.
+        let mut at = 0usize;
+        while at + 8 <= desc.len() {
+            let Some(kind) = u32_at(&desc, at) else { break };
+            let Some(size) = u32_at(&desc, at + 4).map(|v| v as usize) else {
+                break;
+            };
+            let value_at = at + 8;
+            if kind == GNU_PROPERTY_X86_FEATURE_1_AND
+                && let Some(value) = u32_at(&desc, value_at)
+            {
+                cet.ibt |= value & X86_FEATURE_1_IBT != 0;
+                cet.shadow_stack |= value & X86_FEATURE_1_SHSTK != 0;
+            }
+            at = value_at + size.next_multiple_of(8);
+        }
+    }
+    Some(cet)
+}
+
+/// L'empreinte posée par l'éditeur de liens, en hexadécimal.
+fn read_build_id(bytes: &[u8]) -> Option<String> {
+    notes(bytes)
+        .into_iter()
+        .find(|(name, kind, _)| name == "GNU" && *kind == NT_GNU_BUILD_ID)
+        .map(|(_, _, desc)| desc.iter().map(|b| format!("{b:02x}")).collect())
 }
 
 fn has_symtab(bytes: &[u8]) -> Option<bool> {
@@ -475,6 +664,44 @@ mod tests {
             scan.writable_executable().is_empty(),
             "aucun segment W+X dans un binaire de distribution"
         );
+    }
+
+    /// Un binaire de distribution moderne réclame les défenses du
+    /// processeur et porte son empreinte de build ; le nôtre, non — et
+    /// c'est une chose de plus qu'on apprend en comparant les deux.
+    #[test]
+    fn a_system_binary_asks_the_processor_for_help() {
+        let Ok(bytes) = std::fs::read("/bin/ls") else {
+            eprintln!("/bin/ls introuvable : test ignoré");
+            return;
+        };
+        let Some(scan) = scan(&bytes) else {
+            eprintln!("/bin/ls n'est pas un ELF64 ici : test ignoré");
+            return;
+        };
+        assert!(
+            scan.build_id.is_some(),
+            "les distributions posent une empreinte de build"
+        );
+        assert!(
+            scan.functions.iter().any(|f| f.name.contains("main"))
+                || !scan.functions.is_empty()
+                || scan.stripped,
+            "soit des fonctions nommées, soit un binaire dépouillé"
+        );
+        assert!(
+            scan.sections.iter().any(|s| s.name == ".text" && s.execute),
+            "il y a bien une section de code : {:?}",
+            scan.sections.iter().map(|s| &s.name).collect::<Vec<_>>()
+        );
+        // IBT/SHSTK ne sont pas partout, mais quand ils sont là, ils
+        // viennent de la note, pas d'une supposition.
+        if scan.cet.ibt {
+            assert!(
+                scan.sections.iter().any(|s| s.name == ".note.gnu.property"),
+                "IBT se lit dans .note.gnu.property"
+            );
+        }
     }
 
     /// Ce qui n'est pas un ELF64 est refusé net, plutôt que lu de
