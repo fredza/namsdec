@@ -203,15 +203,23 @@ enum ConsoleTab {
     /// reliés à leur ligne. Ils vivaient sous la barre de statut, où une
     /// liste un peu longue n'avait pas la place d'être lue.
     Diagnostics,
+    /// La fiche de l'instruction sur laquelle on a demandé de l'aide.
+    /// Ici et pas dans une fenêtre : on la lit en continuant d'écrire.
+    Help,
 }
 
 impl ConsoleTab {
-    const ALL: [ConsoleTab; 2] = [ConsoleTab::Output, ConsoleTab::Diagnostics];
+    const ALL: [ConsoleTab; 3] = [
+        ConsoleTab::Output,
+        ConsoleTab::Diagnostics,
+        ConsoleTab::Help,
+    ];
 
     fn label(self, s: &Strings) -> &'static str {
         match self {
             ConsoleTab::Output => s.tab_output,
             ConsoleTab::Diagnostics => s.tab_diagnostics,
+            ConsoleTab::Help => s.tab_help,
         }
     }
 }
@@ -362,6 +370,13 @@ struct NamsdecApp {
     /// la barre de statut doit continuer d'indiquer où l'on est — comme
     /// vim, qui ne perd pas son curseur en quittant le mode Insertion.
     cursor_pos: (usize, usize),
+    /// Où se trouve le curseur dans la source, en octets. Relevé à chaque
+    /// frame pendant que l'éditeur est dessiné : l'aide, elle, est
+    /// demandée par une touche, longtemps après.
+    cursor_byte: usize,
+    /// Le mot sur lequel l'aide a été demandée, et sa fiche s'il y en a
+    /// une. `None` tant que personne n'a appuyé sur F1.
+    help: Option<(String, Option<&'static namsdec_doc::Entry>)>,
     preferences_tab: PreferencesTab,
     /// L'onglet RE est-il dans la barre latérale ? **Volontairement hors
     /// de `settings.json`** : il ouvre un module de reverse engineering
@@ -537,6 +552,10 @@ fn palette_commands(s: &Strings, show_re_tab: bool) -> Vec<(String, PaletteComma
             s.file_preferences.to_string(),
             PaletteCommand::ShowPreferences,
         ),
+        (
+            s.action_instruction_help.to_string(),
+            PaletteCommand::Do(Action::InstructionHelp),
+        ),
         (s.help_about.to_string(), PaletteCommand::ShowAbout),
         (
             format!("{}: Français", s.preferences_language),
@@ -672,6 +691,8 @@ impl Default for NamsdecApp {
             editor_focused: false,
             editor_mode: EditorMode::Normal,
             cursor_pos: (1, 1),
+            cursor_byte: 0,
+            help: None,
             preferences_tab: PreferencesTab::General,
             show_re_tab: false,
             cpu_state_open: true,
@@ -1242,6 +1263,7 @@ impl NamsdecApp {
             Action::Save => self.do_save(),
             Action::OpenFile => self.do_open_file_dialog(),
             Action::OpenFolder => self.do_open_folder(),
+            Action::InstructionHelp => self.do_instruction_help(),
         }
     }
 
@@ -1902,6 +1924,13 @@ impl NamsdecApp {
             });
 
             ui.menu_button(s.menu_help, |ui| {
+                // La fiche de l'instruction où l'on est : F1 la donne,
+                // mais encore faut-il savoir que F1 fait quelque chose.
+                if ui.button(s.action_instruction_help).clicked() {
+                    self.dispatch(Action::InstructionHelp);
+                    ui.close();
+                }
+                ui.separator();
                 if ui.button(s.help_about).clicked() {
                     self.show_about = true;
                     ui.close();
@@ -2763,6 +2792,7 @@ impl NamsdecApp {
                             .show(ui);
                         if let Some(range) = output.cursor_range {
                             self.cursor_pos = line_col(&self.source, range.primary.index.0);
+                            self.cursor_byte = char_to_byte(&self.source, range.primary.index.0);
                         }
                         self.completion_ui(ui, &output);
                         let response = output.response.response;
@@ -3065,7 +3095,84 @@ impl NamsdecApp {
         match self.console_tab {
             ConsoleTab::Output => self.output_ui(ui),
             ConsoleTab::Diagnostics => self.diagnostics_ui(ui),
+            ConsoleTab::Help => self.help_ui(ui),
         }
+    }
+
+    /// Cherche la fiche du mot sous le curseur et l'ouvre.
+    ///
+    /// Sous le curseur, et non « le premier mot de la ligne » : on demande
+    /// aussi bien ce que fait `movzx` que ce que fait le `rep` qui le
+    /// précède, et c'est là qu'on a mis le curseur.
+    fn do_instruction_help(&mut self) {
+        let word = word_at(&self.source, self.cursor_byte);
+        if word.is_empty() {
+            return;
+        }
+        self.help = Some((word.to_owned(), namsdec_doc::lookup(word)));
+        self.show_console = true;
+        self.console_tab = ConsoleTab::Help;
+    }
+
+    /// La fiche d'une instruction : ce qu'elle fait, ce qu'elle laisse
+    /// dans les indicateurs, et à quoi elle ressemble écrite.
+    ///
+    /// Les indicateurs sont dits explicitement parce que c'est ce qu'on
+    /// oublie : une instruction qui n'en touche aucun n'est pas la même
+    /// qu'une qui les écrase tous, et le saut qui suit ne lira pas la
+    /// même chose.
+    fn help_ui(&mut self, ui: &mut egui::Ui) {
+        let s = strings(self.lang);
+        let theme = self.theme;
+        let Some((word, entry)) = &self.help else {
+            ui.colored_label(theme.dim, s.help_empty);
+            return;
+        };
+        let Some(entry) = entry else {
+            ui.colored_label(theme.bad, format!("{} : {word}", s.help_unknown));
+            ui.colored_label(theme.dim, s.help_unknown_hint);
+            return;
+        };
+        let lang = if self.lang == Lang::Fr { "fr" } else { "en" };
+        egui::ScrollArea::vertical()
+            .id_salt("help")
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    for name in entry.names {
+                        ui.colored_label(
+                            if name.eq_ignore_ascii_case(word) {
+                                theme.changed
+                            } else {
+                                theme.mnemonic
+                            },
+                            egui::RichText::new(*name).monospace(),
+                        );
+                    }
+                });
+                ui.add_space(4.0);
+                ui.strong(entry.title.get(lang));
+                ui.add_space(2.0);
+                ui.label(prose(ui, theme, entry.body.get(lang)));
+                ui.add_space(6.0);
+                ui.horizontal_wrapped(|ui| {
+                    ui.colored_label(theme.dim, s.help_flags);
+                    if entry.flags.is_empty() {
+                        ui.colored_label(theme.dim, s.help_no_flags);
+                    } else {
+                        ui.colored_label(
+                            theme.register,
+                            egui::RichText::new(entry.flags).monospace(),
+                        );
+                    }
+                });
+                ui.add_space(6.0);
+                ui.colored_label(theme.dim, s.help_example);
+                ui.add(
+                    egui::Label::new(egui::RichText::new(entry.example).monospace())
+                        .wrap_mode(egui::TextWrapMode::Extend),
+                );
+            });
     }
 
     /// Ce que nasm a dit de la source, une ligne par diagnostic.
@@ -3857,6 +3964,7 @@ fn action_label(s: &Strings, action: Action) -> &'static str {
         Action::Save => s.action_save,
         Action::OpenFile => s.file_open_file,
         Action::OpenFolder => s.file_open_folder,
+        Action::InstructionHelp => s.action_instruction_help,
     }
 }
 
@@ -4433,6 +4541,70 @@ fn editor_id() -> egui::Id {
 /// Décalage en octets du `n`-ième caractère, et l'inverse. egui compte
 /// les curseurs en caractères, Rust tranche les chaînes en octets, et
 /// confondre les deux coupe un « é » en deux.
+/// Un texte d'explication où les morceaux de code sont écrits comme du
+/// code.
+///
+/// Les fiches marquent ces morceaux entre accents graves, comme partout
+/// ailleurs. Les laisser tels quels donnerait « préparer RDX — `xor rdx,
+/// rdx` » ; les retirer sans rien mettre à la place perdrait la
+/// distinction. Un `LayoutJob` permet de changer de police au milieu
+/// d'une phrase, sans casser le retour à la ligne.
+fn prose(ui: &egui::Ui, theme: &'static Theme, text: &str) -> egui::text::LayoutJob {
+    let normal = egui::TextFormat {
+        font_id: egui::TextStyle::Body.resolve(ui.style()),
+        color: ui.visuals().text_color(),
+        ..Default::default()
+    };
+    let code = egui::TextFormat {
+        font_id: egui::TextStyle::Monospace.resolve(ui.style()),
+        color: theme.mnemonic,
+        ..Default::default()
+    };
+    let mut job = egui::text::LayoutJob::default();
+    job.wrap.max_width = ui.available_width();
+    for (index, part) in text.split('`').enumerate() {
+        if part.is_empty() {
+            continue;
+        }
+        // Un accent grave sur deux ouvre un morceau de code.
+        let format = if index % 2 == 0 { &normal } else { &code };
+        job.append(part, 0.0, format.clone());
+    }
+    job
+}
+
+/// Le mot qui entoure `byte` dans `text`.
+///
+/// « Mot » au sens de l'assembleur : lettres, chiffres, et le souligné et
+/// le point qui font partie des noms (`_start`, `.boucle`). Le curseur
+/// posé juste après un mot compte comme dedans — c'est là qu'il se trouve
+/// quand on vient de le taper.
+fn word_at(text: &str, byte: usize) -> &str {
+    fn is_word(c: char) -> bool {
+        c.is_alphanumeric() || c == '_' || c == '.'
+    }
+    let byte = byte.min(text.len());
+    // Reculer jusqu'au début du mot, avancer jusqu'à sa fin.
+    let start = text[..byte]
+        .char_indices()
+        .rev()
+        .take_while(|(_, c)| is_word(*c))
+        .map(|(i, _)| i)
+        .last()
+        .unwrap_or(byte);
+    let end = byte
+        + text[byte..]
+            .char_indices()
+            .take_while(|(_, c)| is_word(*c))
+            .map(|(i, c)| i + c.len_utf8())
+            .last()
+            .unwrap_or(0);
+    // Un point *devant* fait partie du nom (`.boucle`) ; un point
+    // derrière est de la ponctuation — « … avant idiv. » dans un
+    // commentaire ne demande pas d'aide sur « idiv. ».
+    text[start..end].trim_end_matches('.')
+}
+
 fn char_to_byte(text: &str, chars: usize) -> usize {
     text.char_indices()
         .nth(chars)
@@ -7505,5 +7677,100 @@ _start:
             tip.contains(&format!("{:032x}{:032x}", 1u128, 7u128)),
             "les 256 bits, la haute d'abord : {tip}"
         );
+    }
+    /// Le mot sous le curseur : c'est lui qu'on documente, pas le premier
+    /// de la ligne. On demande aussi bien ce que fait `movzx` que le
+    /// `rep` qui le précède.
+    #[test]
+    fn the_word_under_the_cursor_is_the_one_asked_about() {
+        let source = "    rep movsb\n_start:\n    mov rax, 1\n";
+        // Au milieu d'un mot, à son début, à sa fin.
+        assert_eq!(word_at(source, 6), "rep");
+        assert_eq!(word_at(source, 4), "rep");
+        assert_eq!(word_at(source, 7), "rep", "juste après, on est dedans");
+        assert_eq!(word_at(source, 9), "movsb");
+        // Les noms d'étiquettes gardent leur souligné et leur point.
+        assert_eq!(word_at("_start:\n", 3), "_start");
+        assert_eq!(word_at("    jmp .boucle\n", 12), ".boucle");
+        // Mais un point de ponctuation n'en fait pas partie.
+        assert_eq!(word_at("; … avant idiv.\n", 15), "idiv");
+        // Dans le blanc, il n'y a pas de mot.
+        assert_eq!(word_at(source, 0), "");
+        // Et hors bornes, pas de panique.
+        assert_eq!(word_at(source, 9_999), "");
+    }
+
+    /// F1 ouvre la fiche de l'instruction où l'on est, dans l'onglet
+    /// d'aide — et le dit quand il n'y en a pas.
+    #[test]
+    fn f1_opens_the_entry_for_the_instruction_under_the_cursor() {
+        let mut app = NamsdecApp {
+            source: "_start:\n    cqo\n".to_owned(),
+            show_console: false,
+            ..Default::default()
+        };
+        app.cursor_byte = 13; // au milieu de « cqo »
+        app.dispatch(Action::InstructionHelp);
+
+        assert!(app.show_console, "l'aide ouvre le panneau");
+        assert_eq!(app.console_tab, ConsoleTab::Help);
+        let (word, entry) = app.help.clone().expect("une demande d'aide");
+        assert_eq!(word, "cqo");
+        let entry = entry.expect("cqo doit être documentée");
+        assert!(entry.names.contains(&"cdq"), "la fiche couvre la famille");
+        assert!(
+            entry.body.fr.contains("idiv"),
+            "et dit à quoi elle sert : {}",
+            entry.body.fr
+        );
+
+        // Un mot qui n'est pas une instruction : on le dit, sans fiche.
+        app.source = "_start:\n    truc\n".to_owned();
+        app.cursor_byte = 14;
+        app.dispatch(Action::InstructionHelp);
+        let (word, entry) = app.help.clone().expect("une demande d'aide");
+        assert_eq!(word, "truc");
+        assert!(entry.is_none());
+    }
+
+    /// L'autocomplétion et l'aide lisent la même liste : une instruction
+    /// proposée est une instruction qu'on sait expliquer.
+    #[test]
+    fn everything_proposed_can_be_explained() {
+        for name in completion::mnemonics() {
+            assert!(
+                namsdec_doc::lookup(name).is_some(),
+                "« {name} » est proposé sans fiche"
+            );
+        }
+        assert!(completion::mnemonics().len() > 400);
+    }
+    /// Les morceaux de code d'une fiche s'écrivent en chasse fixe, et
+    /// l'accent grave qui les marque ne s'affiche pas.
+    #[test]
+    fn code_inside_an_explanation_is_written_as_code() {
+        let ctx = egui::Context::default();
+        let mut job = None;
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            job = Some(prose(
+                ui,
+                namsdec_theme::by_id("vscode-dark"),
+                "préparer `rdx` avant",
+            ));
+        });
+        output.textures_delta.clear();
+        let job = job.expect("un texte mis en forme");
+        assert_eq!(job.text, "préparer rdx avant", "pas d'accent grave affiché");
+        assert_eq!(job.sections.len(), 3);
+        let fonts: Vec<_> = job
+            .sections
+            .iter()
+            .map(|s| s.format.font_id.family.clone())
+            .collect();
+        assert_eq!(
+            fonts[0], fonts[2],
+            "le texte ordinaire est d'une seule police"
+        );
+        assert_ne!(fonts[0], fonts[1], "le code est dans une autre");
     }
 }

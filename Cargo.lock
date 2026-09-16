@@ -1284,6 +1284,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "namsdec-doc"
+version = "0.1.1"
+
+[[package]]
 name = "namsdec-emu"
 version = "0.1.1"
 dependencies = [
@@ -1317,6 +1321,7 @@ dependencies = [
  "namsdec-asm",
  "namsdec-core",
  "namsdec-disasm",
+ "namsdec-doc",
  "namsdec-emu",
  "namsdec-explorer",
  "namsdec-re",

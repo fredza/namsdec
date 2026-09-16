@@ -29,10 +29,12 @@ pub enum Action {
     Save,
     OpenFile,
     OpenFolder,
+    /// Ouvrir la fiche de l'instruction sous le curseur.
+    InstructionHelp,
 }
 
 impl Action {
-    pub const ALL: [Action; 11] = [
+    pub const ALL: [Action; 12] = [
         Action::ToggleExplorer,
         Action::Assemble,
         Action::Run,
@@ -44,6 +46,7 @@ impl Action {
         Action::Save,
         Action::OpenFile,
         Action::OpenFolder,
+        Action::InstructionHelp,
     ];
 }
 
@@ -204,6 +207,12 @@ impl Default for KeyBindings {
                 Modifiers::CTRL | Modifiers::SHIFT,
                 Key::O,
             )),
+        );
+        // F1 sur le mot où l'on est : c'est la touche d'aide partout
+        // ailleurs, et elle ne sert à rien d'autre ici.
+        map.insert(
+            Action::InstructionHelp,
+            Chord::Simple(KeyboardShortcut::new(Modifiers::NONE, Key::F1)),
         );
         map.insert(Action::ToggleExplorer, Chord::leader(&[Key::Space, Key::E]));
         Self { map }

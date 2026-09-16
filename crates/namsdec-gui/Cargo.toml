@@ -12,6 +12,7 @@ namsdec-emu.workspace = true
 namsdec-re.workspace = true
 namsdec-theme.workspace = true
 namsdec-explorer.workspace = true
+namsdec-doc.workspace = true
 eframe.workspace = true
 egui.workspace = true
 arboard.workspace = true

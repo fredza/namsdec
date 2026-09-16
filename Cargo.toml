@@ -18,6 +18,7 @@ namsdec-disasm = { path = "crates/namsdec-disasm" }
 namsdec-emu = { path = "crates/namsdec-emu" }
 namsdec-re = { path = "crates/namsdec-re" }
 namsdec-exercises = { path = "crates/namsdec-exercises" }
+namsdec-doc = { path = "crates/namsdec-doc" }
 namsdec-theme = { path = "crates/namsdec-theme" }
 namsdec-explorer = { path = "crates/namsdec-explorer" }
 
