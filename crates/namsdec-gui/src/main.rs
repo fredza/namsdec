@@ -446,6 +446,8 @@ struct NamsdecApp {
     /// La fenêtre d'analyse du binaire — les modules de rétro-ingénierie
     /// dans une fenêtre à eux, où ils ont la place de tout dire.
     show_analysis: bool,
+    /// La fenêtre des registres étendus : SSE, AVX et la pile x87.
+    show_vectors: bool,
     /// Les séries chargées : celle livrée avec l'application, puis celles
     /// installées depuis le disque, dans l'ordre où on les a trouvées.
     exercise_packs: Vec<namsdec_exercises::Pack>,
@@ -473,12 +475,6 @@ struct NamsdecApp {
     /// cachés, sans qu'on sache pourquoi. Il se replie toujours à la
     /// main, le temps de la session.
     cpu_state_open: bool,
-    /// Les deux replis qui suivent le bandeau : leur état est à nous pour
-    /// la même raison que le sien — égaré une fois dans la mémoire
-    /// d'egui, il rouvrait l'application sur un panneau que personne
-    /// n'avait plié.
-    sse_open: bool,
-    x87_open: bool,
     /// Fenêtre flottante indépendante (crate `namsdec-explorer`), ouverte
     /// directement par son raccourci — elle ne fait pas partie des
     /// panneaux de la mise en page et n'apparaît donc pas dans le groupe
@@ -598,6 +594,7 @@ enum PaletteCommand {
     /// chargé, sans quoi la commande n'est pas proposée.
     ShowExercises,
     ShowAnalysis,
+    ShowVectors,
     SetTheme(&'static Theme),
     SetLang(Lang),
     SaveAs,
@@ -662,6 +659,7 @@ fn palette_commands(
         ),
         (s.help_about.to_string(), PaletteCommand::ShowAbout),
         (s.analysis_open.to_string(), PaletteCommand::ShowAnalysis),
+        (s.vectors_open.to_string(), PaletteCommand::ShowVectors),
         (
             format!("{}: Français", s.preferences_language),
             PaletteCommand::SetLang(Lang::Fr),
@@ -836,14 +834,13 @@ impl Default for NamsdecApp {
             show_exercises: false,
             show_help: false,
             show_analysis: false,
+            show_vectors: false,
             exercise_packs: vec![namsdec_exercises::builtin_pack()],
             exercise_files: BTreeMap::new(),
             pack_to_remove: None,
             disabled_packs: BTreeSet::new(),
             settings_file: None,
             cpu_state_open: true,
-            sse_open: false,
-            x87_open: false,
             console_input: String::new(),
             resume_run_after_input: false,
             explorer: FileExplorer::default(),
@@ -1983,6 +1980,7 @@ impl NamsdecApp {
             PaletteCommand::ShowAbout => self.show_about = true,
             PaletteCommand::ShowExercises => self.show_exercises = true,
             PaletteCommand::ShowAnalysis => self.show_analysis = true,
+            PaletteCommand::ShowVectors => self.show_vectors = true,
             PaletteCommand::SetTheme(theme) => {
                 self.theme = theme;
                 self.apply_theme(ctx);
@@ -2314,6 +2312,10 @@ impl NamsdecApp {
                 // qui ne sait pas qu'il existe.
                 if ui.button(s.analysis_open).clicked() {
                     self.show_analysis = true;
+                    ui.close();
+                }
+                if ui.button(s.vectors_open).clicked() {
+                    self.show_vectors = true;
                     ui.close();
                 }
                 // Le module des exercices n'existe pour l'interface que
@@ -3803,13 +3805,6 @@ impl NamsdecApp {
         self.show_help = true;
     }
 
-    /// La fiche d'une instruction : ce qu'elle fait, ce qu'elle laisse
-    /// dans les indicateurs, et à quoi elle ressemble écrite.
-    ///
-    /// Les indicateurs sont dits explicitement parce que c'est ce qu'on
-    /// oublie : une instruction qui n'en touche aucun n'est pas la même
-    /// qu'une qui les écrase tous, et le saut qui suit ne lira pas la
-    /// même chose.
     /// La fenêtre d'analyse : tous les modules de rétro-ingénierie, avec
     /// la place de s'exprimer.
     ///
@@ -3843,6 +3838,13 @@ impl NamsdecApp {
         self.show_analysis = open;
     }
 
+    /// La fiche d'une instruction : ce qu'elle fait, ce qu'elle laisse
+    /// dans les indicateurs, et à quoi elle ressemble écrite.
+    ///
+    /// Les indicateurs sont dits explicitement parce que c'est ce qu'on
+    /// oublie : une instruction qui n'en touche aucun n'est pas la même
+    /// qu'une qui les écrase tous, et le saut qui suit ne lira pas la
+    /// même chose.
     fn help_window_ui(&mut self, ctx: &egui::Context) {
         let s = strings(self.lang);
         let mut open = self.show_help;
@@ -3861,6 +3863,44 @@ impl NamsdecApp {
             .default_pos(ctx.viewport_rect().max - egui::vec2(24.0, 24.0))
             .show(ctx, |ui| self.help_ui(ui));
         self.show_help = open;
+    }
+
+    /// Les registres étendus, dans une fenêtre à eux.
+    ///
+    /// Seize registres vectoriels de deux cent cinquante-six bits et huit
+    /// emplacements x87 ne tiennent pas dans un panneau qui porte déjà
+    /// dix-huit registres entiers : dans le panneau, ils poussaient la
+    /// rangée d'onglets dehors, et bornés par une zone de défilement ils
+    /// se lisaient par tranches de trois lignes. Ici ils tiennent en
+    /// entier, et la fenêtre s'agrandit si l'on veut.
+    fn vectors_window_ui(&mut self, ctx: &egui::Context) {
+        if !self.show_vectors {
+            return;
+        }
+        let s = strings(self.lang);
+        let mut open = true;
+        egui::Window::new(s.vectors_title)
+            .id(egui::Id::new("vectors_window"))
+            .open(&mut open)
+            .resizable(true)
+            .collapsible(false)
+            .default_size([520.0, 620.0])
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(ctx.viewport_rect().center())
+            .show(ctx, |ui| {
+                if self.emulator.is_none() {
+                    ui.label(s.no_binary_assembled);
+                    return;
+                }
+                // Aucune zone de défilement : les vingt-quatre valeurs
+                // se posent sur autant de colonnes que la fenêtre en
+                // tient, et tiennent donc en entier. C'est toute la
+                // raison d'être de cette fenêtre.
+                self.xmm_ui(ui);
+                ui.add_space(10.0);
+                self.x87_ui(ui);
+            });
+        self.show_vectors = open;
     }
 
     fn help_ui(&mut self, ui: &mut egui::Ui) {
@@ -4893,6 +4933,7 @@ impl NamsdecApp {
             self.preferences_window_ui(&ctx);
             self.about_window_ui(&ctx);
             self.help_window_ui(&ctx);
+            self.vectors_window_ui(&ctx);
             self.analysis_window_ui(&ctx);
             if self.exercises {
                 self.exercises_window_ui(&ctx);

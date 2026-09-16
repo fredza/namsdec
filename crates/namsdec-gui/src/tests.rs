@@ -3098,8 +3098,6 @@ fn nothing_unfolded_can_push_the_tabs_out_of_the_panel() {
         // Tout ouvert, et un programme chargé pour que chaque section ait
         // quelque chose à montrer.
         cpu_state_open: true,
-        sse_open: true,
-        x87_open: true,
         source: DEFAULT_SOURCE.to_owned(),
         ..Default::default()
     };
@@ -3150,8 +3148,6 @@ fn a_scroll_bar_shows_up_when_there_is_something_to_scroll_and_not_before() {
         let mut app = NamsdecApp {
             source,
             cpu_state_open: ouvert,
-            sse_open: ouvert,
-            x87_open: ouvert,
             ..Default::default()
         };
         if ouvert && namsdec_asm::find_nasm().is_some() && namsdec_asm::find_linker() {
@@ -3198,15 +3194,136 @@ fn a_scroll_bar_shows_up_when_there_is_something_to_scroll_and_not_before() {
         "quatre-vingts lignes, elles, en méritent une"
     );
 
-    // Et dans le panneau latéral, les vectoriels dépliés : la barre doit
-    // être là, sans quoi rien ne dit que les onglets sont plus bas.
-    if namsdec_asm::find_nasm().is_some() && namsdec_asm::find_linker() {
-        let barres = barres_de(court, true);
+    // Le panneau latéral, lui, n'en a plus aucune au-dessus de ses
+    // onglets : l'état du processeur y tient en entier, et les registres
+    // vectoriels sont partis dans leur propre fenêtre. Voir la
+    // vérification complète dans `the_sidebar_never_scrolls_its_state`.
+}
+
+/// Le panneau latéral ne défile pas : ni les registres, ni les
+/// vectoriels, ni la pile x87.
+///
+/// Les vectoriels y tenaient dans une zone bornée, et cette zone avait
+/// sa barre — au milieu de l'état du processeur, en plein pas à pas.
+/// Ils ont maintenant une fenêtre, et le panneau n'a plus rien qui
+/// défile au-dessus de ses onglets.
+#[test]
+fn the_sidebar_never_scrolls_its_state() {
+    let mut app = NamsdecApp {
+        source: DEFAULT_SOURCE.to_owned(),
+        cpu_state_open: true,
+        ..Default::default()
+    };
+    app.do_assemble();
+
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 820.0),
+        )),
+        ..Default::default()
+    };
+    let mut barres: Vec<egui::Rect> = Vec::new();
+    let mut onglet_y = f32::MAX;
+    let mut lien = false;
+    for _ in 0..3 {
+        barres.clear();
+        onglet_y = f32::MAX;
+        lien = false;
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        for clipped in &output.shapes {
+            match &clipped.shape {
+                egui::epaint::Shape::Text(text) => {
+                    let texte = text.galley.text();
+                    if texte == strings(Lang::Fr).tab_stack {
+                        onglet_y = onglet_y.min(text.pos.y);
+                    }
+                    if texte == strings(Lang::Fr).vectors_open {
+                        lien = true;
+                    }
+                    // Aucun registre vectoriel ne doit être peint dans le
+                    // panneau : ils ne sont plus là.
+                    assert_ne!(texte, "XMM0", "les vectoriels ont quitté le panneau");
+                }
+                egui::epaint::Shape::Rect(r) if r.rect.width() < 20.0 && r.rect.height() > 40.0 => {
+                    barres.push(r.rect);
+                }
+                _ => {}
+            }
+        }
+        output.textures_delta.clear();
+    }
+
+    assert!(lien, "le panneau doit mener aux registres étendus");
+    let fautives: Vec<_> = barres
+        .iter()
+        .filter(|r| r.min.x > 1280.0 - SIDEBAR_WIDTH && r.max.y < onglet_y)
+        .collect();
+    assert!(
+        fautives.is_empty(),
+        "rien ne doit défiler au-dessus des onglets : {fautives:?}"
+    );
+}
+
+/// Et les registres vectoriels, eux, s'affichent en entier dans leur
+/// fenêtre — les seize, plus les huit emplacements x87.
+#[test]
+fn the_vector_window_shows_them_all() {
+    let mut app = NamsdecApp {
+        source: DEFAULT_SOURCE.to_owned(),
+        show_vectors: true,
+        ..Default::default()
+    };
+    app.do_assemble();
+
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 1000.0),
+        )),
+        ..Default::default()
+    };
+    let mut painted = String::new();
+    let mut barres: Vec<egui::Rect> = Vec::new();
+    for _ in 0..3 {
+        painted.clear();
+        barres.clear();
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        for clipped in &output.shapes {
+            match &clipped.shape {
+                egui::epaint::Shape::Text(text) => {
+                    painted.push_str(text.galley.text());
+                    painted.push('|');
+                }
+                egui::epaint::Shape::Rect(r) if r.rect.width() < 20.0 && r.rect.height() > 40.0 => {
+                    barres.push(r.rect);
+                }
+                _ => {}
+            }
+        }
+        output.textures_delta.clear();
+    }
+
+    for attendu in ["XMM0", "XMM15", "ST0", "ST7"] {
         assert!(
-            barres.iter().any(|(x, _)| *x > 900.0),
-            "pas de barre dans le panneau d'état : {barres:?}"
+            painted.contains(attendu),
+            "« {attendu} » doit être visible dans la fenêtre : {painted}"
         );
     }
+    // Et rien ne défile : c'est pour cela que cette fenêtre existe.
+    // La fenêtre est centrée ; le panneau latéral, lui, est à droite.
+    let fautives: Vec<_> = barres
+        .iter()
+        .filter(|r| r.min.x < 1280.0 - SIDEBAR_WIDTH)
+        .collect();
+    assert!(
+        fautives.is_empty(),
+        "les registres étendus ne doivent pas défiler : {fautives:?}"
+    );
 }
 
 /// Un programme ne peut pas écrire dans son propre code, ni exécuter ses

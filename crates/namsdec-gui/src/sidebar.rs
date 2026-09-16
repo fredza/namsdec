@@ -49,24 +49,13 @@ impl NamsdecApp {
             self.cpu_state_open = !self.cpu_state_open;
         }
 
-        // Les vectoriels, eux, peuvent devenir très hauts : seize
-        // registres SSE et huit emplacements x87, soit vingt-quatre
-        // lignes de plus. Dépliés, ils poussaient la rangée d'onglets
-        // hors du panneau sans qu'aucune barre ne dise où elle était
-        // passée. Bornés ici, et à eux seuls : c'est cette zone-là qui
-        // défile, pas l'état du processeur.
-        //
-        // Ce qu'on garde en dessous : la rangée d'onglets et de quoi
-        // lire le début de l'onglet ouvert.
-        const TABS_AND_A_LOOK: f32 = 190.0;
-        let room = (ui.available_height() - TABS_AND_A_LOOK).max(80.0);
-        egui::ScrollArea::vertical()
-            .id_salt("vector_state")
-            .max_height(room)
-            .show(ui, |ui| {
-                self.xmm_ui(ui);
-                self.x87_ui(ui);
-            });
+        // Les vectoriels ne sont plus ici : seize registres SSE et huit
+        // emplacements x87, c'est vingt-quatre lignes de plus dans un
+        // panneau qui en a déjà dix-huit. Dépliés, ils poussaient la
+        // rangée d'onglets hors du panneau ; bornés, ils défilaient au
+        // milieu de l'état du processeur. Ils ont maintenant une fenêtre
+        // à eux, où ils tiennent en entier.
+        self.vectors_link_ui(ui);
 
         ui.separator();
         ui.horizontal_wrapped(|ui| {
@@ -112,7 +101,7 @@ impl NamsdecApp {
     /// flottant scalaire — suivie de sa valeur décimale, parce que
     /// personne ne lit `4014000000000000` comme « 5 ». Le reste est dans
     /// l'infobulle.
-    fn xmm_ui(&mut self, ui: &mut egui::Ui) {
+    pub(crate) fn xmm_ui(&mut self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
         let Some(emulator) = &self.emulator else {
             return;
@@ -120,52 +109,71 @@ impl NamsdecApp {
         let theme = self.theme;
         let regs = &emulator.cpu().regs;
         let changed = changed_registers(self.regs_before.as_ref(), regs);
-        let fold =
-            egui::CollapsingHeader::new(egui::RichText::new(s.sse_registers).color(theme.dim))
-                .id_salt("xmm_registers")
-                .open(Some(self.sse_open))
-                .show(ui, |ui| {
-                    egui::Grid::new("xmm_grid")
-                        .num_columns(3)
-                        .striped(true)
-                        .show(ui, |ui| {
-                            for (name, reg) in XMM_REGISTERS {
-                                let value = regs.get_ymm(reg);
-                                let color = if changed.contains(&name) {
-                                    theme.changed
-                                } else {
-                                    ui.visuals().text_color()
-                                };
-                                let low = value[0] as u64;
-                                let shown = vector_name(name, value);
-                                ui.colored_label(color, egui::RichText::new(shown).monospace());
-                                ui.colored_label(
-                                    color,
-                                    egui::RichText::new(format!("{low:016x}")).monospace(),
-                                )
-                                .on_hover_text(xmm_tooltip(s, value));
-                                // La lecture décimale n'a de sens que
-                                // si le registre contient *un* nombre :
-                                // lire le bas d'un vecteur de quatre
-                                // flottants simples comme un double
-                                // donne un nombre qui n'existe nulle
-                                // part. Le détail est dans l'infobulle.
-                                let scalar = value[1] == 0 && value[0] >> 64 == 0;
-                                let reading = if scalar {
-                                    short_float(f64::from_bits(low))
-                                } else {
-                                    String::new()
-                                };
-                                ui.colored_label(
-                                    theme.dim,
-                                    egui::RichText::new(reading).monospace(),
-                                );
-                                ui.end_row();
-                            }
-                        });
-                });
-        if fold.header_response.clicked() {
-            self.sse_open = !self.sse_open;
+
+        ui.strong(s.sse_registers);
+        // Autant de colonnes que la fenêtre en tient : seize registres
+        // d'affilée font seize lignes, et une fenêtre large les pose sur
+        // deux ou trois — sans jamais rien à faire défiler.
+        let entry = register_pair_width(ui) + 70.0;
+        let columns = register_columns(ui.available_width() - 2.0, entry, 16.0);
+        egui::Grid::new("xmm_grid")
+            .num_columns(3 * columns)
+            .min_col_width(0.0)
+            .striped(true)
+            .show(ui, |ui| {
+                for (index, (name, reg)) in XMM_REGISTERS.into_iter().enumerate() {
+                    let value = regs.get_ymm(reg);
+                    let color = if changed.contains(&name) {
+                        theme.changed
+                    } else {
+                        ui.visuals().text_color()
+                    };
+                    let low = value[0] as u64;
+                    let shown = vector_name(name, value);
+                    ui.colored_label(color, egui::RichText::new(shown).monospace());
+                    ui.colored_label(
+                        color,
+                        egui::RichText::new(format!("{low:016x}")).monospace(),
+                    )
+                    .on_hover_text(xmm_tooltip(s, value));
+                    // La lecture décimale n'a de sens que si le registre
+                    // contient *un* nombre : lire le bas d'un vecteur de
+                    // quatre flottants simples comme un double donne un
+                    // nombre qui n'existe nulle part. Le détail est dans
+                    // l'infobulle.
+                    let scalar = value[1] == 0 && value[0] >> 64 == 0;
+                    let reading = if scalar {
+                        short_float(f64::from_bits(low))
+                    } else {
+                        String::new()
+                    };
+                    ui.colored_label(theme.dim, egui::RichText::new(reading).monospace());
+                    if (index + 1) % columns == 0 {
+                        ui.end_row();
+                    }
+                }
+                ui.end_row();
+            });
+    }
+
+    /// La ligne qui mène aux registres étendus.
+    ///
+    /// Un lien plutôt qu'un repli : ce que l'on déplie dans un panneau,
+    /// il faut bien le poser quelque part, et il n'y a pas la place. La
+    /// fenêtre, elle, s'agrandit.
+    fn vectors_link_ui(&mut self, ui: &mut egui::Ui) {
+        let s = strings(self.lang);
+        let theme = self.theme;
+        if self.emulator.is_none() {
+            return;
+        }
+        ui.add_space(2.0);
+        let link = ui.add(
+            egui::Label::new(egui::RichText::new(s.vectors_open).color(theme.dim))
+                .sense(egui::Sense::click()),
+        );
+        if link.on_hover_text(s.vectors_hint).clicked() {
+            self.show_vectors = true;
         }
     }
 
@@ -498,7 +506,7 @@ impl NamsdecApp {
     /// ce que le programme écrit : `fadd st2` compte à partir du sommet,
     /// et c'est de là que vient la moitié des erreurs quand on découvre
     /// cette machine.
-    fn x87_ui(&mut self, ui: &mut egui::Ui) {
+    pub(crate) fn x87_ui(&mut self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
         let Some(emulator) = &self.emulator else {
             return;
@@ -506,38 +514,38 @@ impl NamsdecApp {
         let theme = self.theme;
         let regs = &emulator.cpu().regs;
         let changed = changed_registers(self.regs_before.as_ref(), regs);
-        let fold = egui::CollapsingHeader::new(egui::RichText::new(s.x87_stack).color(theme.dim))
-            .id_salt("x87_stack")
-            .open(Some(self.x87_open))
+
+        ui.strong(s.x87_stack);
+        let entry = register_pair_width(ui);
+        let columns = register_columns(ui.available_width() - 2.0, entry, 16.0);
+        egui::Grid::new("x87_grid")
+            .num_columns(2 * columns)
+            .min_col_width(0.0)
+            .striped(true)
             .show(ui, |ui| {
-                egui::Grid::new("x87_grid")
-                    .num_columns(2)
-                    .striped(true)
-                    .show(ui, |ui| {
-                        for (index, name) in X87_SLOTS.iter().enumerate() {
-                            let occupied = regs.x87.is_occupied(index);
-                            let color = if changed.contains(name) {
-                                theme.changed
-                            } else if occupied {
-                                ui.visuals().text_color()
-                            } else {
-                                theme.dim
-                            };
-                            ui.colored_label(color, egui::RichText::new(*name).monospace());
-                            let text = if occupied {
-                                format!("{}", regs.x87.get(index))
-                            } else {
-                                s.x87_empty.to_owned()
-                            };
-                            ui.colored_label(color, egui::RichText::new(text).monospace())
-                                .on_hover_text(s.x87_hint);
-                            ui.end_row();
-                        }
-                    });
+                for (index, name) in X87_SLOTS.iter().enumerate() {
+                    let occupied = regs.x87.is_occupied(index);
+                    let color = if changed.contains(name) {
+                        theme.changed
+                    } else if occupied {
+                        ui.visuals().text_color()
+                    } else {
+                        theme.dim
+                    };
+                    ui.colored_label(color, egui::RichText::new(*name).monospace());
+                    let text = if occupied {
+                        format!("{}", regs.x87.get(index))
+                    } else {
+                        s.x87_empty.to_owned()
+                    };
+                    ui.colored_label(color, egui::RichText::new(text).monospace())
+                        .on_hover_text(s.x87_hint);
+                    if (index + 1) % columns == 0 {
+                        ui.end_row();
+                    }
+                }
+                ui.end_row();
             });
-        if fold.header_response.clicked() {
-            self.x87_open = !self.x87_open;
-        }
     }
 
     /// La convention d'appel : par où passent les arguments, où revient
