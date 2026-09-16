@@ -83,8 +83,8 @@ pub struct Strings {
     pub heap_inspect: &'static str,
     pub tab_output: &'static str,
     pub tab_diagnostics: &'static str,
-    /// L'onglet d'aide, et ce qu'il dit.
-    pub tab_help: &'static str,
+    /// La fenêtre d'aide, et ce qu'elle dit.
+    pub help_title: &'static str,
     pub help_empty: &'static str,
     pub help_unknown: &'static str,
     pub help_unknown_hint: &'static str,
@@ -301,7 +301,7 @@ const FR: Strings = Strings {
     heap_inspect: "Voir dans Mémoire",
     tab_output: "Console",
     tab_diagnostics: "Diagnostics",
-    tab_help: "Aide",
+    help_title: "Aide sur l'instruction",
     help_empty: "Placez le curseur sur une instruction et appuyez sur F1.",
     help_unknown: "Pas de fiche pour",
     help_unknown_hint: "Ce n'est pas une instruction que namsdec sait exécuter — ou c'est une étiquette, un registre, une directive.",
@@ -494,7 +494,7 @@ const EN: Strings = Strings {
     heap_inspect: "Show in Memory",
     tab_output: "Console",
     tab_diagnostics: "Diagnostics",
-    tab_help: "Help",
+    help_title: "Instruction help",
     help_empty: "Put the cursor on an instruction and press F1.",
     help_unknown: "No entry for",
     help_unknown_hint: "Not an instruction namsdec can execute — or it is a label, a register, a directive.",

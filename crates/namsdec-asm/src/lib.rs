@@ -167,7 +167,7 @@ pub fn assemble(source: &str, base_addr: u64) -> Result<AssembleOutput, AsmError
         ])
         .output()?;
 
-    let diagnostics = parse_diagnostics(&String::from_utf8_lossy(&output.stderr));
+    let mut diagnostics = parse_diagnostics(&String::from_utf8_lossy(&output.stderr));
     if !output.status.success() {
         return Err(AsmError::Failed { diagnostics });
     }
@@ -187,10 +187,23 @@ pub fn assemble(source: &str, base_addr: u64) -> Result<AssembleOutput, AsmError
             message: String::from_utf8_lossy(&linked.stderr).trim().to_owned(),
         });
     }
-    // Un programme sans `_start` fait seulement *avertir* ld, qui prend
-    // alors une entrée par défaut. C'est le cas de tous les exercices
-    // d'apprentissage, qui ne sont pas des programmes complets : cet
-    // avertissement-là ne doit pas être traité comme un échec.
+    // L'éditeur de liens peut réussir *en avertissant* — un programme
+    // sans `_start`, par exemple, pour lequel il choisit une entrée par
+    // défaut. Ces avertissements-là ont longtemps été jetés ici, et le
+    // programme démarrait en silence à un endroit que personne n'avait
+    // choisi. Ils rejoignent maintenant ceux de nasm, sans numéro de
+    // ligne : ils parlent du programme entier, pas d'une ligne.
+    diagnostics.extend(
+        String::from_utf8_lossy(&linked.stderr)
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .map(|line| Diagnostic {
+                line: 0,
+                severity: Severity::Warning,
+                message: line.to_owned(),
+            }),
+    );
 
     let elf = elf::parse(&fs::read(&program_path)?).ok_or(AsmError::UnreadableProgram)?;
     let (load_addr, bytes) = elf.image().ok_or(AsmError::UnreadableProgram)?;
@@ -298,15 +311,43 @@ fn parse_listing(listing: &str, elf: &elf::Elf) -> BTreeMap<u32, u64> {
 mod tests {
     use super::*;
 
-    const SUM_LOOP_ASM: &str = "\
-BITS 64
+    /// Un programme sans `_start` se lie quand même : `ld` avertit et
+    /// choisit une entrée. L'avertissement doit remonter, sans quoi le
+    /// programme démarre à un endroit que personne n'a choisi.
+    #[test]
+    fn a_linker_warning_becomes_a_diagnostic() {
+        if find_nasm().is_none() || !find_linker() {
+            return;
+        }
+        let sans_start = "section .text\n    mov rax, 1\n    hlt\n";
+        let out = assemble(sans_start, 0x400000).expect("le lien réussit malgré tout");
+        assert!(
+            out.diagnostics
+                .iter()
+                .any(|d| d.line == 0 && d.severity == Severity::Warning),
+            "obtenu {:?}",
+            out.diagnostics
+        );
 
+        // Le même programme complet ne dit plus rien.
+        let complet = "global _start\nsection .text\n_start:\n    mov rax, 1\n    hlt\n";
+        let out = assemble(complet, 0x400000).expect("assemblage");
+        assert!(out.diagnostics.is_empty(), "obtenu {:?}", out.diagnostics);
+    }
+
+    /// Un programme complet : il déclare son point d'entrée, comme tout
+    /// ce que namsdec livre — sans quoi l'éditeur de liens avertit.
+    const SUM_LOOP_ASM: &str = "\
+global _start
+
+section .text
+_start:
     mov rax, 0
     mov rcx, 5
-sum_loop:
+boucle:
     add rax, rcx
     dec rcx
-    jnz sum_loop
+    jnz boucle
     hlt
 ";
 
@@ -329,16 +370,13 @@ _start:
     #[test]
     fn assembles_sum_loop_and_reports_line_addresses() {
         let out = assemble(SUM_LOOP_ASM, 0x400000).expect("nasm et ld doivent être installés");
-        assert!(out.diagnostics.is_empty());
+        assert!(out.diagnostics.is_empty(), "obtenu {:?}", out.diagnostics);
         // mov rax,0 / mov rcx,5 (5 octets chacun, nasm optimise en mov e*x)
         // add rax,rcx / dec rcx (3 octets chacun) / jnz (2) / hlt (1).
-        assert_eq!(out.line_to_addr[&3], 0x400000);
-        assert_eq!(out.line_to_addr[&6], 0x40000A); // sum_loop:
-        assert_eq!(out.line_to_addr[&9], 0x400012); // hlt
-        assert_eq!(
-            out.entry, 0x400000,
-            "sans `_start`, on démarre au début du code"
-        );
+        assert_eq!(out.line_to_addr[&5], 0x400000);
+        assert_eq!(out.line_to_addr[&8], 0x40000A); // la première ligne de la boucle
+        assert_eq!(out.line_to_addr[&11], 0x400012); // hlt
+        assert_eq!(out.entry, 0x400000, "`_start` est au début du code");
     }
 
     /// La régression qui rendait le pas à pas inexploitable : les

@@ -154,9 +154,16 @@ mod tests {
             assert!(!exercise.title.fr.is_empty() && !exercise.title.en.is_empty());
             assert!(!exercise.description.fr.is_empty());
             assert!(!exercise.description.en.is_empty());
-            // Un exercice est un programme, pas un extrait : il doit
-            // pouvoir être assemblé tel quel.
-            assert!(exercise.starter_code.contains("BITS 64"));
+            // Un exercice est un programme complet, pas un extrait : il
+            // déclare son point d'entrée, sans quoi l'éditeur de liens
+            // en choisit un à sa place — et le programme démarre là où
+            // personne ne l'a demandé.
+            assert!(
+                exercise.starter_code.contains("global _start"),
+                "{} ne déclare pas son point d'entrée",
+                exercise.id
+            );
+            assert!(exercise.starter_code.contains("_start:"));
             // Et il doit s'arrêter, sinon « Exécuter » ne rend jamais la
             // main.
             assert!(

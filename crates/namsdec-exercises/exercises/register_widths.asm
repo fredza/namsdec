@@ -1,11 +1,18 @@
-BITS 64
+; Largeurs de registres.
+;
+; But : observer, pas à pas, que RAX perd sa moitié haute et que RBX la
+; garde. Avancez avec Step Into et regardez le bandeau des registres.
+
+global _start
+
 section .text
-
+_start:
     mov rax, 0x1122334455667788
-    mov eax, 0xAABBCCDD  ; écrire EAX remet à zéro les 32 bits hauts de RAX
-    mov rbx, 0x1122334455667788
-    mov bx, 0xBEEF        ; écrire BX préserve le reste de RBX
-    hlt
+    mov eax, 0xAABBCCDD     ; RAX devient 0x00000000AABBCCDD
 
-; But : observer, pas à pas, la différence entre écrire un registre 32 bits
-; (RAX -> 0x00000000AABBCCDD) et un registre 16 bits (RBX -> ...667788 devient ...66BEEF).
+    mov rbx, 0x1122334455667788
+    mov bx, 0xBEEF          ; RBX devient 0x112233445566BEEF
+
+    mov rcx, 0x1122334455667788
+    mov cl, 0x42            ; RCX devient 0x1122334455667742
+    hlt

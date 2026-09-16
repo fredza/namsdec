@@ -210,23 +210,15 @@ enum ConsoleTab {
     /// reliés à leur ligne. Ils vivaient sous la barre de statut, où une
     /// liste un peu longue n'avait pas la place d'être lue.
     Diagnostics,
-    /// La fiche de l'instruction sur laquelle on a demandé de l'aide.
-    /// Ici et pas dans une fenêtre : on la lit en continuant d'écrire.
-    Help,
 }
 
 impl ConsoleTab {
-    const ALL: [ConsoleTab; 3] = [
-        ConsoleTab::Output,
-        ConsoleTab::Diagnostics,
-        ConsoleTab::Help,
-    ];
+    const ALL: [ConsoleTab; 2] = [ConsoleTab::Output, ConsoleTab::Diagnostics];
 
     fn label(self, s: &Strings) -> &'static str {
         match self {
             ConsoleTab::Output => s.tab_output,
             ConsoleTab::Diagnostics => s.tab_diagnostics,
-            ConsoleTab::Help => s.tab_help,
         }
     }
 }
@@ -403,6 +395,11 @@ struct NamsdecApp {
     exercises: bool,
     /// La fenêtre qui liste les exercices.
     show_exercises: bool,
+    /// La fenêtre de l'aide sur l'instruction. Une fenêtre et non un
+    /// onglet de la console : celle-ci porte ce que *le programme* dit —
+    /// sa sortie, les diagnostics de nasm —, et une fiche d'instruction
+    /// n'en fait pas partie.
+    show_help: bool,
     /// Les séries chargées : celle livrée avec l'application, puis celles
     /// installées depuis le disque, dans l'ordre où on les a trouvées.
     exercise_packs: Vec<namsdec_exercises::Pack>,
@@ -692,16 +689,20 @@ enum PreferencesTab {
 /// qu'on ne le demande pas, et l'application doit s'ouvrir sur quelque
 /// chose qui marche même quand il ne l'est pas.
 const DEFAULT_SOURCE: &str = "\
-BITS 64
-section .text
+; Bienvenue dans namsdec. Assemblez (Ctrl+Maj+B), puis avancez pas à pas.
 
+global _start
+
+section .text
+_start:
     mov rax, 0
     mov rcx, 5
-sum_loop:
+boucle:
     add rax, rcx
     dec rcx
-    jnz sum_loop
-    hlt
+    jnz boucle          ; RAX vaut 5+4+3+2+1 = 15 à la sortie
+
+    hlt                 ; arrête la machine en laissant les registres lisibles
 ";
 
 impl Default for NamsdecApp {
@@ -752,6 +753,7 @@ impl Default for NamsdecApp {
             show_re_tab: false,
             exercises: false,
             show_exercises: false,
+            show_help: false,
             exercise_packs: vec![namsdec_exercises::builtin_pack()],
             exercise_files: BTreeMap::new(),
             pack_to_remove: None,
@@ -3350,7 +3352,6 @@ impl NamsdecApp {
         match self.console_tab {
             ConsoleTab::Output => self.output_ui(ui),
             ConsoleTab::Diagnostics => self.diagnostics_ui(ui),
-            ConsoleTab::Help => self.help_ui(ui),
         }
     }
 
@@ -3365,8 +3366,7 @@ impl NamsdecApp {
             return;
         }
         self.help = Some((word.to_owned(), namsdec_doc::lookup(word)));
-        self.show_console = true;
-        self.console_tab = ConsoleTab::Help;
+        self.show_help = true;
     }
 
     /// La fiche d'une instruction : ce qu'elle fait, ce qu'elle laisse
@@ -3376,6 +3376,26 @@ impl NamsdecApp {
     /// oublie : une instruction qui n'en touche aucun n'est pas la même
     /// qu'une qui les écrase tous, et le saut qui suit ne lira pas la
     /// même chose.
+    fn help_window_ui(&mut self, ctx: &egui::Context) {
+        let s = strings(self.lang);
+        let mut open = self.show_help;
+        egui::Window::new(s.help_title)
+            // Un identifiant explicite : le titre change avec la langue,
+            // et la fenêtre perdrait sa position en passant à l'anglais.
+            .id(egui::Id::new("instruction_help"))
+            .open(&mut open)
+            .resizable(true)
+            .collapsible(false)
+            .default_size([460.0, 320.0])
+            // En bas à droite, loin du curseur : on lit la fiche en
+            // continuant d'écrire, elle ne doit pas couvrir la ligne sur
+            // laquelle on vient de demander de l'aide.
+            .pivot(egui::Align2::RIGHT_BOTTOM)
+            .default_pos(ctx.viewport_rect().max - egui::vec2(24.0, 24.0))
+            .show(ctx, |ui| self.help_ui(ui));
+        self.show_help = open;
+    }
+
     fn help_ui(&mut self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
         let theme = self.theme;
@@ -3447,10 +3467,13 @@ impl NamsdecApp {
                     } else {
                         theme.warn
                     };
-                    let text = if lang == Lang::Fr {
-                        format!("ligne {} — {}", d.line, d.message)
-                    } else {
-                        format!("line {} — {}", d.line, d.message)
+                    // Un diagnostic sans ligne — ceux de l'éditeur de
+                    // liens, qui parlent du programme entier — ne
+                    // s'annonce pas par « ligne 0 ».
+                    let text = match (d.line, lang) {
+                        (0, _) => d.message.clone(),
+                        (line, Lang::Fr) => format!("ligne {line} — {}", d.message),
+                        (line, _) => format!("line {line} — {}", d.message),
                     };
                     ui.colored_label(color, egui::RichText::new(text).monospace());
                 }
@@ -4320,6 +4343,7 @@ impl NamsdecApp {
         timed(&mut spans, "fenêtres", || {
             self.preferences_window_ui(&ctx);
             self.about_window_ui(&ctx);
+            self.help_window_ui(&ctx);
             if self.exercises {
                 self.exercises_window_ui(&ctx);
             }

@@ -1327,7 +1327,7 @@ fn a_failed_assembly_brings_up_its_diagnostics() {
         return;
     }
     let mut app = NamsdecApp {
-        source: "section .text\n    mov rax, pasunregistre\n".to_owned(),
+        source: "global _start\nsection .text\n_start:\n    mov rax, pasunregistre\n".to_owned(),
         show_console: false,
         ..Default::default()
     };
@@ -1341,7 +1341,7 @@ fn a_failed_assembly_brings_up_its_diagnostics() {
     assert!(app.show_console, "le panneau bas doit s'ouvrir");
     assert_eq!(app.console_tab, ConsoleTab::Diagnostics);
 
-    app.source = "section .text\n    hlt\n".to_owned();
+    app.source = "global _start\nsection .text\n_start:\n    hlt\n".to_owned();
     app.do_assemble();
     assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
     assert_eq!(
@@ -1383,9 +1383,11 @@ fn diagnostics_no_longer_swell_the_status_bar() {
         (app.diagnostics.len(), bar)
     };
 
-    let (clean, clean_height) = height_of_status_bar("section .text\n    hlt\n");
+    let (clean, clean_height) =
+        height_of_status_bar("global _start\nsection .text\n_start:\n    hlt\n");
     let (broken, broken_height) = height_of_status_bar(
-        "section .text\n    mov rax, pasunregistre\n    mov rbx, pasnonplus\n",
+        "global _start\nsection .text\n_start:\n    mov rax, pasunregistre\n\
+         \n    mov rbx, pasnonplus\n",
     );
 
     assert_eq!(clean, 0);
@@ -2037,7 +2039,7 @@ fn a_frame_runs_normally_while_a_dialog_is_open() {
     // touche ou un mouvement de souris ait à la provoquer.
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("choisi.asm");
-    std::fs::write(&path, "section .text\n    hlt\n").unwrap();
+    std::fs::write(&path, "global _start\nsection .text\n_start:\n    hlt\n").unwrap();
     sender.send(Some(path.clone())).unwrap();
 
     let mut output = ctx.run_ui(egui::RawInput::default(), |ui| app.draw(ui));
@@ -2095,7 +2097,7 @@ fn a_picked_folder_opens_the_explorer_on_it() {
 fn the_last_file_is_reopened_at_startup() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("travail.asm");
-    std::fs::write(&path, "section .text\n    hlt\n").unwrap();
+    std::fs::write(&path, "global _start\nsection .text\n_start:\n    hlt\n").unwrap();
 
     let settings = Settings {
         current_file: Some(path.display().to_string()),
@@ -2437,19 +2439,23 @@ fn the_word_under_the_cursor_is_the_one_asked_about() {
 }
 
 /// F1 ouvre la fiche de l'instruction où l'on est, dans l'onglet
-/// d'aide — et le dit quand il n'y en a pas.
+/// d'aide — une fenêtre, et non un onglet de la console : celle-ci porte
+/// ce que le programme dit, pas une fiche d'instruction.
 #[test]
 fn f1_opens_the_entry_for_the_instruction_under_the_cursor() {
     let mut app = NamsdecApp {
         source: "_start:\n    cqo\n".to_owned(),
-        show_console: false,
         ..Default::default()
     };
     app.cursor_byte = 13; // au milieu de « cqo »
     app.dispatch(Action::InstructionHelp);
 
-    assert!(app.show_console, "l'aide ouvre le panneau");
-    assert_eq!(app.console_tab, ConsoleTab::Help);
+    assert!(app.show_help, "l'aide ouvre sa fenêtre");
+    assert_eq!(
+        ConsoleTab::ALL.len(),
+        2,
+        "et la console garde ses deux onglets"
+    );
     let (word, entry) = app.help.clone().expect("une demande d'aide");
     assert_eq!(word, "cqo");
     let entry = entry.expect("cqo doit être documentée");
@@ -2691,8 +2697,11 @@ fn loading_an_exercise_fills_the_editor_without_claiming_a_file() {
     };
     app.load_exercise("namsdec/sum_loop");
 
-    assert!(app.source.contains("sum_loop"), "le programme est chargé");
-    assert!(app.source.contains("BITS 64"));
+    assert!(app.source.contains("boucle"), "le programme est chargé");
+    assert!(
+        app.source.contains("global _start"),
+        "et c'est un programme complet"
+    );
     assert!(app.current_file.is_none(), "un modèle n'est pas un fichier");
     assert!(app.emulator.is_none(), "et rien n'est encore assemblé");
 
@@ -2787,7 +2796,10 @@ fn an_installed_pack_joins_the_built_in_one() {
     assert!(app.source.contains("hlt"));
     assert!(!app.source.contains("add rax"), "c'est bien le mien");
     app.load_exercise("namsdec/sum_loop");
-    assert!(app.source.contains("sum_loop:"), "et celui d'origine aussi");
+    assert!(
+        app.source.contains("add rax, rcx"),
+        "et celui d'origine aussi"
+    );
 
     // Retirée, elle disparaît de la liste et du disque.
     with_data_home(&data, || app.remove_exercises("mes-exos"));
@@ -2867,4 +2879,98 @@ fn an_application_that_was_not_told_where_to_write_writes_nowhere() {
     app.persist_settings_if_changed();
     let written = Settings::load_from(&path);
     assert_eq!(written.show_toolbar, app.show_toolbar);
+}
+
+/// La fenêtre d'aide s'ouvre par le menu Aide comme par F1, et montre la
+/// fiche — pas seulement son titre.
+#[test]
+fn the_help_window_shows_the_entry_it_was_asked_for() {
+    let mut app = NamsdecApp {
+        source: "_start:\n    movzx eax, byte [buf]\n".to_owned(),
+        ..Default::default()
+    };
+    app.cursor_byte = 12; // au milieu de « movzx »
+    app.execute_palette_command(
+        &egui::Context::default(),
+        PaletteCommand::Do(Action::InstructionHelp),
+    );
+
+    let ctx = egui::Context::default();
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 820.0),
+        )),
+        ..Default::default()
+    };
+    let mut painted = String::new();
+    for _ in 0..2 {
+        painted.clear();
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        for clipped in &output.shapes {
+            if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                painted.push_str(text.galley.text());
+                painted.push('|');
+            }
+        }
+        output.textures_delta.clear();
+    }
+
+    assert!(
+        painted.contains("Élargir une valeur"),
+        "le titre de la fiche"
+    );
+    assert!(painted.contains("movsx"), "les mnémoniques de la famille");
+    assert!(
+        painted.contains("Indicateurs écrits"),
+        "et ce qu'elle laisse dans les indicateurs"
+    );
+    // La console, elle, n'a pas gagné d'onglet : ses deux onglets se
+    // suivent. (« Aide » tout court reste le menu, dans la barre.)
+    assert!(painted.contains("|Console|Diagnostics|"), "{painted}");
+}
+
+/// Tout programme livré avec namsdec — celui qui s'ouvre au lancement,
+/// ceux des exercices — doit être un *programme*, pas un extrait : il
+/// déclare son point d'entrée, et ni nasm ni l'éditeur de liens n'ont
+/// rien à en dire.
+///
+/// Sans `global _start`, `ld` choisit une entrée par défaut en
+/// avertissant, l'avertissement était jeté, et l'application démarrait en
+/// silence à un endroit que personne n'avait choisi.
+#[test]
+fn every_program_we_ship_is_a_complete_program() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut programs = vec![("le programme d'accueil", DEFAULT_SOURCE.to_owned())];
+    for exercise in namsdec_exercises::builtin_pack().exercises {
+        programs.push((
+            Box::leak(exercise.id.clone().into_boxed_str()) as &str,
+            exercise.starter_code,
+        ));
+    }
+
+    for (name, source) in programs {
+        assert!(
+            source.contains("global _start"),
+            "{name} ne déclare pas son point d'entrée"
+        );
+        let out = namsdec_asm::assemble(&source, BASE_ADDR)
+            .unwrap_or_else(|e| panic!("{name} ne s'assemble pas : {e}"));
+        assert!(out.diagnostics.is_empty(), "{name} : {:?}", out.diagnostics);
+        // Et il s'arrête : « Exécuter » doit rendre la main.
+        let mut app = NamsdecApp {
+            source: source.clone(),
+            ..Default::default()
+        };
+        app.do_assemble();
+        for _ in 0..1000 {
+            app.do_step();
+        }
+        assert!(
+            app.emulator.as_ref().is_some_and(|e| e.cpu().halted),
+            "{name} ne s'arrête pas"
+        );
+    }
 }

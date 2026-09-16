@@ -1,14 +1,20 @@
-BITS 64
+; Maximum de deux nombres.
+;
+; But : à l'arrêt, RAX doit contenir le plus grand des deux (12). Changez
+; les valeurs de départ et devinez le résultat avant d'exécuter.
+
+global _start
+
 section .text
+_start:
+    mov rax, 7              ; premier nombre
+    mov rbx, 12             ; second nombre
 
-    mov rax, 7      ; premier nombre
-    mov rbx, 12     ; second nombre
     cmp rax, rbx
-    jge already_max
-    mov rax, rbx    ; RBX est plus grand : on le copie dans RAX
-already_max:
-    hlt
+    jge deja_le_plus_grand
+    mov rax, rbx            ; RBX est plus grand : on le copie
+deja_le_plus_grand:
 
-; But : à l'arrêt, RAX doit contenir le plus grand des deux nombres (12).
-; Essayez de changer les valeurs de départ et de deviner le résultat avant
-; d'exécuter pas à pas.
+    ; À essayer ensuite : refaire la même chose sans branchement, avec
+    ; `cmp rax, rbx` suivi de `cmovl rax, rbx`.
+    hlt
