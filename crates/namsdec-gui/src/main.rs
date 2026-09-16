@@ -388,6 +388,10 @@ struct NamsdecApp {
     /// cliquer un diagnostic doit y mener, sans quoi lire le message et
     /// retrouver l'endroit restent deux gestes.
     goto_line: Option<u32>,
+    /// Le code tel qu'il est sur le disque — ou tel qu'il était au
+    /// chargement. Ce qui diverge de lui n'est enregistré nulle part, et
+    /// la barre de statut le dit.
+    saved_source: String,
     /// L'onglet des octets doit-il ramener la ligne courante sous les
     /// yeux ? Posé à chaque pas, consommé au rendu suivant : sans cela,
     /// la vue se recentrerait à chaque frame et l'utilisateur ne pourrait
@@ -834,6 +838,7 @@ impl Default for NamsdecApp {
             watchpoints: Vec::new(),
             run_to: None,
             goto_line: None,
+            saved_source: DEFAULT_SOURCE.to_string(),
             follow_rip: false,
             watched_registers: BTreeSet::new(),
             show_preferences: false,
@@ -1797,6 +1802,7 @@ impl NamsdecApp {
 
         match String::from_utf8(bytes) {
             Ok(text) => {
+                self.saved_source = text.clone();
                 self.source = text;
                 self.current_file = Some(path);
                 self.assemble_state = None;
@@ -1849,6 +1855,7 @@ impl NamsdecApp {
         let addr_to_line = line_to_addr.iter().map(|(l, a)| (*a, *l)).collect();
         let loaded = image.len();
 
+        self.saved_source = listing.clone();
         self.source = listing;
         self.current_file = None;
         self.breakpoint_lines.clear();
@@ -1929,6 +1936,7 @@ impl NamsdecApp {
 
         let addr_to_line = line_to_addr.iter().map(|(l, a)| (*a, *l)).collect();
         let loaded = bytes.len();
+        self.saved_source = listing.clone();
         self.source = listing;
         self.current_file = None;
         self.breakpoint_lines.clear();
@@ -2247,6 +2255,7 @@ impl NamsdecApp {
         match std::fs::write(path, &self.source) {
             Ok(()) => {
                 self.current_file = Some(path.to_path_buf());
+                self.saved_source = self.source.clone();
             }
             Err(e) => {
                 self.status = Status::Error(if self.lang == Lang::Fr {
@@ -3080,6 +3089,7 @@ impl NamsdecApp {
         let Some(exercise) = namsdec_exercises::find(&self.exercise_packs, id) else {
             return;
         };
+        self.saved_source = exercise.starter_code.clone();
         self.source = exercise.starter_code.clone();
         self.current_file = None;
         self.assemble_state = None;
@@ -3280,6 +3290,31 @@ impl NamsdecApp {
             // (version raccourcie — "NASM 3.02", pas la ligne complète de
             // `nasm -v` avec sa date de compilation, hors de propos ici).
             mode_pill_ui(ui, theme, self.editor_mode);
+            ui.separator();
+            // Quel fichier on édite, et s'il reste quelque chose à
+            // enregistrer. Sans cela, rien à l'écran ne distingue un
+            // tampon sauvegardé d'un tampon qui ne l'est pas — et on ne
+            // s'en aperçoit qu'en fermant.
+            let file = self
+                .current_file
+                .as_ref()
+                .and_then(|path| path.file_name())
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_else(|| s.untitled_buffer.to_owned());
+            let modified = self.source != self.saved_source;
+            ui.colored_label(
+                if modified { theme.changed } else { theme.dim },
+                if modified {
+                    format!("{file} •")
+                } else {
+                    file
+                },
+            )
+            .on_hover_text(if modified {
+                s.buffer_modified
+            } else {
+                s.buffer_saved
+            });
             ui.separator();
             // Le message est borné, et tronqué s'il déborde : les
             // compartiments de droite sont posés dans la place qui reste,

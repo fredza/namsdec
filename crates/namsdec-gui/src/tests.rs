@@ -5287,3 +5287,62 @@ boucle:
         app.status
     );
 }
+
+/// La barre de statut dit quel fichier on édite, et s'il reste quelque
+/// chose à enregistrer.
+#[test]
+fn the_status_bar_says_what_is_unsaved() {
+    let dossier = tempfile::tempdir().expect("dossier temporaire");
+    let fichier = dossier.path().join("essai.asm");
+    std::fs::write(&fichier, "global _start\nsection .text\n_start:\nhlt\n").unwrap();
+
+    let mut app = NamsdecApp::default();
+    app.open_file(fichier.clone());
+
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 900.0),
+        )),
+        ..Default::default()
+    };
+    let peindre = |app: &mut NamsdecApp| {
+        let mut painted = String::new();
+        for _ in 0..2 {
+            painted.clear();
+            let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+            for clipped in &output.shapes {
+                if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                    painted.push_str(text.galley.text());
+                    painted.push('|');
+                }
+            }
+            output.textures_delta.clear();
+        }
+        painted
+    };
+
+    // Tout juste ouvert : le nom, sans marque.
+    let painted = peindre(&mut app);
+    assert!(painted.contains("|essai.asm|"), "{painted}");
+
+    // Une frappe, et la marque apparaît.
+    app.source.push_str("    nop\n");
+    let painted = peindre(&mut app);
+    assert!(
+        painted.contains("essai.asm •"),
+        "le tampon modifié doit se voir : {painted}"
+    );
+
+    // Enregistré, elle disparaît.
+    app.do_save();
+    let painted = peindre(&mut app);
+    assert!(!painted.contains("essai.asm •"), "{painted}");
+    assert_eq!(
+        std::fs::read_to_string(&fichier).unwrap(),
+        app.source,
+        "et le disque porte bien ce qu'on voit"
+    );
+}
