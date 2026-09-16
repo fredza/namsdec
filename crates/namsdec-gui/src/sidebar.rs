@@ -304,6 +304,40 @@ impl NamsdecApp {
         if let Some(entry) = namsdec_doc::lookup(mnemonic) {
             ui.colored_label(theme.dim, entry.title.get(self.lang.code()));
         }
+        // Un saut conditionnel : sera-t-il pris, et pourquoi ?
+        //
+        // « Quel saut après quelle comparaison » est l'endroit précis où
+        // l'on se trompe en apprenant — d'autant que `ja` et `jg` disent
+        // tous les deux « plus grand » et ne répondent pas la même chose
+        // sur les mêmes octets. La règle est affichée avec le verdict :
+        // sans elle, on apprend le résultat, pas la raison.
+        let code = instr.condition_code();
+        if let Some(taken) = namsdec_emu::condition_met(code, cpu.flags) {
+            ui.horizontal_wrapped(|ui| {
+                ui.colored_label(
+                    if taken { theme.good } else { theme.dim },
+                    if taken {
+                        s.jump_taken
+                    } else {
+                        s.jump_not_taken
+                    },
+                );
+                if let Some(rule) = namsdec_emu::condition_rule(code) {
+                    ui.colored_label(theme.dim, egui::RichText::new(rule).monospace());
+                }
+                if let Some(signed) = namsdec_emu::condition_signed(code) {
+                    ui.colored_label(
+                        theme.dim,
+                        if signed {
+                            s.jump_signed
+                        } else {
+                            s.jump_unsigned
+                        },
+                    );
+                }
+            });
+        }
+
         let lines = namsdec_emu::explain::operands(cpu, &instr);
         if lines.is_empty() {
             return;

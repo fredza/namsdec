@@ -1724,31 +1724,7 @@ impl Emulator {
     /// iced-x86 les ramène toutes à un même code, et les trois familles
     /// se partagent donc ce seul test.
     fn condition_met(&self, instr: &Instruction) -> bool {
-        let f = &self.cpu.flags;
-        let zf = f.contains(RFlags::ZF);
-        let sf = f.contains(RFlags::SF);
-        let cf = f.contains(RFlags::CF);
-        let of = f.contains(RFlags::OF);
-        let pf = f.contains(RFlags::PF);
-        match instr.condition_code() {
-            ConditionCode::e => zf,
-            ConditionCode::ne => !zf,
-            ConditionCode::b => cf,
-            ConditionCode::ae => !cf,
-            ConditionCode::be => cf || zf,
-            ConditionCode::a => !cf && !zf,
-            ConditionCode::l => sf != of,
-            ConditionCode::ge => sf == of,
-            ConditionCode::le => zf || (sf != of),
-            ConditionCode::g => !zf && (sf == of),
-            ConditionCode::s => sf,
-            ConditionCode::ns => !sf,
-            ConditionCode::o => of,
-            ConditionCode::no => !of,
-            ConditionCode::p => pf,
-            ConditionCode::np => !pf,
-            ConditionCode::None => unreachable!("instruction sans condition"),
-        }
+        condition_met(instr.condition_code(), self.cpu.flags).expect("instruction sans condition")
     }
 
     fn binary_arith(
@@ -2681,6 +2657,82 @@ pub fn register_value(regs: &Registers, reg: Register) -> Option<u64> {
         Width::W32 => regs.get32(r) as u64,
         Width::W16 => regs.get16(r) as u64,
         Width::W8 => regs.get8l(r) as u64,
+    })
+}
+
+/// La condition d'un `jcc`, `setcc` ou `cmovcc` est-elle vraie avec ces
+/// indicateurs ?
+///
+/// Libre, comme [`effective_address`] : l'interface s'en sert pour dire,
+/// *avant* d'exécuter, si le saut sera pris — « quel saut après quelle
+/// comparaison » étant l'endroit précis où l'on se trompe en apprenant.
+///
+/// Rend `None` pour une instruction sans condition.
+pub fn condition_met(code: ConditionCode, flags: RFlags) -> Option<bool> {
+    let zf = flags.contains(RFlags::ZF);
+    let sf = flags.contains(RFlags::SF);
+    let cf = flags.contains(RFlags::CF);
+    let of = flags.contains(RFlags::OF);
+    let pf = flags.contains(RFlags::PF);
+    Some(match code {
+        ConditionCode::e => zf,
+        ConditionCode::ne => !zf,
+        ConditionCode::b => cf,
+        ConditionCode::ae => !cf,
+        ConditionCode::be => cf || zf,
+        ConditionCode::a => !cf && !zf,
+        ConditionCode::l => sf != of,
+        ConditionCode::ge => sf == of,
+        ConditionCode::le => zf || (sf != of),
+        ConditionCode::g => !zf && (sf == of),
+        ConditionCode::s => sf,
+        ConditionCode::ns => !sf,
+        ConditionCode::o => of,
+        ConditionCode::no => !of,
+        ConditionCode::p => pf,
+        ConditionCode::np => !pf,
+        ConditionCode::None => return None,
+    })
+}
+
+/// Les indicateurs que cette condition consulte, et ce que la condition
+/// en fait — écrit comme on l'énonce : `ZF = 1`, `SF = OF`.
+///
+/// C'est la réponse à « pourquoi ce saut est-il pris ? », et elle ne
+/// s'invente pas : `jg` regarde trois indicateurs, `ja` deux, et ce ne
+/// sont pas les mêmes selon qu'on compare des nombres signés ou non.
+pub fn condition_rule(code: ConditionCode) -> Option<&'static str> {
+    Some(match code {
+        ConditionCode::e => "ZF = 1",
+        ConditionCode::ne => "ZF = 0",
+        ConditionCode::b => "CF = 1",
+        ConditionCode::ae => "CF = 0",
+        ConditionCode::be => "CF = 1 ou ZF = 1",
+        ConditionCode::a => "CF = 0 et ZF = 0",
+        ConditionCode::l => "SF ≠ OF",
+        ConditionCode::ge => "SF = OF",
+        ConditionCode::le => "ZF = 1 ou SF ≠ OF",
+        ConditionCode::g => "ZF = 0 et SF = OF",
+        ConditionCode::s => "SF = 1",
+        ConditionCode::ns => "SF = 0",
+        ConditionCode::o => "OF = 1",
+        ConditionCode::no => "OF = 0",
+        ConditionCode::p => "PF = 1",
+        ConditionCode::np => "PF = 0",
+        ConditionCode::None => return None,
+    })
+}
+
+/// La comparaison lit-elle ses opérandes comme signés ?
+///
+/// `ja` et `jg` disent tous les deux « plus grand », et ne donnent pas
+/// la même réponse sur les mêmes octets : c'est l'erreur classique, et
+/// elle mérite d'être dite à l'endroit où on la fait.
+pub fn condition_signed(code: ConditionCode) -> Option<bool> {
+    Some(match code {
+        ConditionCode::l | ConditionCode::ge | ConditionCode::le | ConditionCode::g => true,
+        ConditionCode::b | ConditionCode::ae | ConditionCode::be | ConditionCode::a => false,
+        _ => return None,
     })
 }
 

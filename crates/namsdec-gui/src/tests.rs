@@ -4722,3 +4722,80 @@ ret
         "l'adresse de retour pointe juste après le call, dans _start : {painted}"
     );
 }
+
+/// Devant un saut conditionnel, le panneau dit s'il sera pris, selon
+/// quelle règle, et si la comparaison lit les nombres comme signés.
+#[test]
+fn a_conditional_jump_says_whether_it_will_be_taken() {
+    // 0xff contre 1 : le piège classique. En non signé 0xff est le plus
+    // grand (`ja` pris) ; en signé, c'est -1, donc le plus petit
+    // (`jg` non pris) — mêmes octets, mêmes indicateurs.
+    let peindre = |code: &str, pas: usize| -> String {
+        let mut app = NamsdecApp {
+            source: code.to_owned(),
+            ..Default::default()
+        };
+        app.do_assemble();
+        assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+        for _ in 0..pas {
+            app.do_step();
+        }
+        let ctx = egui::Context::default();
+        app.apply_theme(&ctx);
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1280.0, 900.0),
+            )),
+            ..Default::default()
+        };
+        let mut painted = String::new();
+        for _ in 0..2 {
+            painted.clear();
+            let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+            for clipped in &output.shapes {
+                if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                    painted.push_str(text.galley.text());
+                    painted.push('|');
+                }
+            }
+            output.textures_delta.clear();
+        }
+        painted
+    };
+
+    let source = |saut: &str| {
+        format!(
+            "global _start\nsection .text\n_start:\nmov al, 0xff\ncmp al, 1\n{saut} fin\nhlt\nfin:\nhlt\n"
+        )
+    };
+
+    // Après `mov` et `cmp`, on est arrêté *sur* le saut.
+    let non_signe = peindre(&source("ja"), 2);
+    assert!(
+        non_signe.contains("le saut sera pris"),
+        "0xff > 1 en non signé : {non_signe}"
+    );
+    assert!(
+        non_signe.contains("CF = 0 et ZF = 0"),
+        "la règle doit être dite : {non_signe}"
+    );
+    assert!(
+        non_signe.contains("comparaison non signée"),
+        "et le fait qu'elle ne soit pas signée : {non_signe}"
+    );
+
+    let signe = peindre(&source("jg"), 2);
+    assert!(
+        signe.contains("le saut ne sera pas pris"),
+        "0xff vaut -1 en signé : {signe}"
+    );
+    assert!(
+        signe.contains("comparaison signée"),
+        "c'est toute la différence : {signe}"
+    );
+
+    // Une instruction sans condition ne dit rien de tel.
+    let sans = peindre(&source("ja"), 1);
+    assert!(!sans.contains("le saut"), "{sans}");
+}

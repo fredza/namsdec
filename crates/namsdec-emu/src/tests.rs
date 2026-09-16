@@ -2690,3 +2690,43 @@ malpolie:
     }
     assert!(emu.breaches().is_empty(), "obtenu {:?}", emu.breaches());
 }
+
+/// Les conditions se lisent sans exécuter quoi que ce soit : c'est ce
+/// qui permet à l'interface de dire, avant le pas, si le saut sera pris.
+#[test]
+fn conditions_can_be_read_off_the_flags() {
+    use iced_x86::ConditionCode;
+
+    // 5 - 5 : nul, donc ZF.
+    let égal = RFlags::ZF | RFlags::PF;
+    assert_eq!(condition_met(ConditionCode::e, égal), Some(true));
+    assert_eq!(condition_met(ConditionCode::ne, égal), Some(false));
+    assert_eq!(condition_met(ConditionCode::a, égal), Some(false));
+    assert_eq!(condition_met(ConditionCode::ae, égal), Some(true));
+
+    // 1 - 2 en non signé : emprunt, donc CF ; et en signé, SF ≠ OF.
+    let plus_petit = RFlags::CF | RFlags::SF;
+    assert_eq!(condition_met(ConditionCode::b, plus_petit), Some(true));
+    assert_eq!(condition_met(ConditionCode::l, plus_petit), Some(true));
+    assert_eq!(condition_met(ConditionCode::g, plus_petit), Some(false));
+
+    // Le cas qui piège : 0xff comparé à 1. En non signé 0xff est le plus
+    // grand ; en signé, c'est -1, donc le plus petit. Les indicateurs
+    // sont les mêmes, les deux sauts répondent l'inverse l'un de
+    // l'autre.
+    let ff_contre_1 = RFlags::empty();
+    assert_eq!(condition_met(ConditionCode::a, ff_contre_1), Some(true));
+    assert_eq!(condition_met(ConditionCode::g, ff_contre_1), Some(true));
+
+    // Sans condition, rien à dire.
+    assert_eq!(condition_met(ConditionCode::None, égal), None);
+    assert!(condition_rule(ConditionCode::None).is_none());
+
+    // La règle est celle qu'on énonce, et le signe est dit là où il
+    // change la réponse.
+    assert_eq!(condition_rule(ConditionCode::a), Some("CF = 0 et ZF = 0"));
+    assert_eq!(condition_rule(ConditionCode::g), Some("ZF = 0 et SF = OF"));
+    assert_eq!(condition_signed(ConditionCode::g), Some(true));
+    assert_eq!(condition_signed(ConditionCode::a), Some(false));
+    assert_eq!(condition_signed(ConditionCode::e), None);
+}
