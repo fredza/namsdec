@@ -5475,3 +5475,94 @@ boucle:
     app.dispatch(Action::Find);
     assert!(app.find.is_none());
 }
+
+/// Un travail non enregistré ne disparaît pas parce qu'on a cliqué
+/// ailleurs : l'outil demande d'abord.
+#[test]
+fn unsaved_work_is_not_thrown_away_without_asking() {
+    let dossier = tempfile::tempdir().expect("dossier temporaire");
+    let fichier = dossier.path().join("autre.asm");
+    std::fs::write(&fichier, "global _start\nsection .text\n_start:\nhlt\n").unwrap();
+
+    let mut app = NamsdecApp::default();
+    // Tampon intact : l'ouverture se fait sans rien demander.
+    app.open_file(fichier.clone());
+    assert!(app.pending.is_none());
+    assert!(app.source.contains("_start"), "{}", app.source);
+
+    // Modifié : la même action attend maintenant une réponse.
+    app.source.push_str("    nop\n");
+    let travail = app.source.clone();
+    app.load_exercise("namsdec/registres");
+    assert_eq!(
+        app.pending,
+        Some(Pending::Exercise("namsdec/registres".to_owned()))
+    );
+    assert_eq!(app.source, travail, "rien n'a bougé tant qu'on n'a pas dit");
+
+    // Annuler laisse tout en place.
+    app.pending = None;
+    assert_eq!(app.source, travail);
+
+    // Abandonner fait l'action demandée.
+    app.load_exercise("namsdec/registres");
+    let attendu = app.pending.clone().expect("en attente");
+    app.pending = None;
+    app.perform(attendu);
+    assert_ne!(app.source, travail, "l'exercice a bien été chargé");
+    assert!(!app.buffer_modified(), "et il part d'un tampon propre");
+
+    // Enregistrer d'abord : le fichier reçoit le travail, puis l'action
+    // se fait.
+    app.open_file(fichier.clone());
+    app.source.push_str("    hlt ; ajouté\n");
+    let travail = app.source.clone();
+    app.load_exercise("namsdec/boucle");
+    assert!(app.pending.is_some());
+    app.do_save();
+    assert!(!app.buffer_modified());
+    assert_eq!(std::fs::read_to_string(&fichier).unwrap(), travail);
+}
+
+/// Et la question se pose à l'écran, avec ses trois réponses : une boîte
+/// à deux boutons forcerait à choisir entre perdre son travail et
+/// renoncer à ce qu'on voulait faire.
+#[test]
+fn the_unsaved_question_offers_all_three_answers() {
+    let mut app = NamsdecApp {
+        pending: Some(Pending::Quit),
+        ..Default::default()
+    };
+    app.source.push_str("    nop\n");
+
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 900.0),
+        )),
+        ..Default::default()
+    };
+    let mut painted = String::new();
+    for _ in 0..2 {
+        painted.clear();
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        for clipped in &output.shapes {
+            if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                painted.push_str(text.galley.text());
+                painted.push('|');
+            }
+        }
+        output.textures_delta.clear();
+    }
+
+    let s = strings(Lang::Fr);
+    for réponse in [s.unsaved_save, s.unsaved_discard, s.unsaved_cancel] {
+        assert!(
+            painted.contains(réponse),
+            "« {réponse} » doit être proposé : {painted}"
+        );
+    }
+    assert!(painted.contains(s.unsaved_title), "{painted}");
+}

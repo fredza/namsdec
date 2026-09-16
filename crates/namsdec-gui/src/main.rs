@@ -390,6 +390,11 @@ struct NamsdecApp {
     goto_line: Option<u32>,
     /// La recherche en cours, quand la barre est ouverte.
     find: Option<Find>,
+    /// L'action suspendue en attendant qu'on décide du tampon modifié.
+    pending: Option<Pending>,
+    /// La fermeture a été demandée et accordée : la prochaine demande
+    /// passe sans question.
+    quitting: bool,
     /// Le code tel qu'il est sur le disque — ou tel qu'il était au
     /// chargement. Ce qui diverge de lui n'est enregistré nulle part, et
     /// la barre de statut le dit.
@@ -802,6 +807,17 @@ boucle:
     hlt                 ; arrête la machine en laissant les registres lisibles
 ";
 
+/// Ce qu'on s'apprête à faire, et qui effacerait le tampon.
+///
+/// Gardé de côté le temps de demander : un programme qu'on vient
+/// d'écrire ne disparaît pas parce qu'on a cliqué sur un exercice.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Pending {
+    OpenFile(PathBuf),
+    Exercise(String),
+    Quit,
+}
+
 /// La recherche dans le code : ce qu'on cherche, et où l'on en est.
 ///
 /// Les occurrences sont recalculées à chaque frappe plutôt que
@@ -877,6 +893,8 @@ impl Default for NamsdecApp {
             run_to: None,
             goto_line: None,
             find: None,
+            pending: None,
+            quitting: false,
             saved_source: DEFAULT_SOURCE.to_string(),
             follow_rip: false,
             watched_registers: BTreeSet::new(),
@@ -1827,7 +1845,37 @@ impl NamsdecApp {
     /// traité comme un binaire brut à désassembler, plutôt que rejeté
     /// comme "pas de l'UTF-8" — c'est un atelier de reverse engineering,
     /// ouvrir un binaire doit y mener quelque part.
+    /// Ouvre un fichier — après s'être assuré qu'on ne perd rien.
     fn open_file(&mut self, path: PathBuf) {
+        self.guard(Pending::OpenFile(path));
+    }
+
+    /// Y a-t-il quelque chose à perdre ?
+    ///
+    /// La comparaison se fait sur le texte, pas sur un drapeau : taper
+    /// un caractère puis l'effacer ne met rien en danger.
+    fn buffer_modified(&self) -> bool {
+        self.source != self.saved_source
+    }
+
+    /// Fait l'action, ou demande d'abord.
+    fn guard(&mut self, action: Pending) {
+        if self.buffer_modified() {
+            self.pending = Some(action);
+        } else {
+            self.perform(action);
+        }
+    }
+
+    fn perform(&mut self, action: Pending) {
+        match action {
+            Pending::OpenFile(path) => self.open_file_now(path),
+            Pending::Exercise(id) => self.load_exercise_now(&id),
+            Pending::Quit => self.quitting = true,
+        }
+    }
+
+    fn open_file_now(&mut self, path: PathBuf) {
         let bytes = match std::fs::read(&path) {
             Ok(bytes) => bytes,
             Err(e) => {
@@ -3139,6 +3187,10 @@ impl NamsdecApp {
     /// le fichier de l'utilisateur, et « Enregistrer » ne doit pas écrire
     /// par-dessus celui qu'il avait ouvert.
     fn load_exercise(&mut self, id: &str) {
+        self.guard(Pending::Exercise(id.to_owned()));
+    }
+
+    fn load_exercise_now(&mut self, id: &str) {
         let Some(exercise) = namsdec_exercises::find(&self.exercise_packs, id) else {
             return;
         };
@@ -4199,6 +4251,89 @@ impl NamsdecApp {
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_else(|| strings(self.lang).analysis_title.to_owned());
         Some(namsdec_re::report::markdown(&scan, self.lang.code(), &name))
+    }
+
+    /// La question qui protège un travail non enregistré.
+    ///
+    /// Trois réponses, parce qu'il y en a trois : enregistrer et
+    /// continuer, continuer sans enregistrer, ou ne rien faire du tout.
+    /// Une boîte à deux boutons oblige à choisir entre perdre son
+    /// travail et renoncer à ce qu'on voulait faire.
+    fn unsaved_window_ui(&mut self, ctx: &egui::Context) {
+        let Some(pending) = self.pending.clone() else {
+            return;
+        };
+        let s = strings(self.lang);
+        let theme = self.theme;
+        let mut décision: Option<bool> = None;
+        let mut annuler = false;
+        egui::Window::new(s.unsaved_title)
+            .id(egui::Id::new("unsaved_changes"))
+            .collapsible(false)
+            .resizable(false)
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(ctx.viewport_rect().center())
+            .show(ctx, |ui| {
+                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
+                ui.set_max_width(380.0);
+                ui.label(s.unsaved_question);
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    let save =
+                        egui::Button::new(egui::RichText::new(s.unsaved_save).color(theme.bg))
+                            .fill(theme.accent);
+                    if ui.add(save).clicked() {
+                        décision = Some(true);
+                    }
+                    if ui
+                        .add(
+                            egui::Button::new(s.unsaved_discard)
+                                .stroke(egui::Stroke::new(1.0, theme.bad)),
+                        )
+                        .clicked()
+                    {
+                        décision = Some(false);
+                    }
+                    if ui.button(s.unsaved_cancel).clicked() {
+                        annuler = true;
+                    }
+                });
+            });
+        if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            annuler = true;
+        }
+        if annuler {
+            self.pending = None;
+            return;
+        }
+        let Some(enregistrer) = décision else {
+            return;
+        };
+        if enregistrer {
+            self.do_save();
+            // Un enregistrement qui échoue — disque plein, fichier en
+            // lecture seule — ne doit pas emporter le tampon avec lui.
+            if self.buffer_modified() {
+                return;
+            }
+        }
+        self.pending = None;
+        self.perform(pending);
+    }
+
+    /// Intercepte la fermeture de la fenêtre tant qu'il reste quelque
+    /// chose à enregistrer.
+    fn guard_close(&mut self, ctx: &egui::Context) {
+        if !ctx.input(|i| i.viewport().close_requested()) {
+            return;
+        }
+        if self.quitting || !self.buffer_modified() {
+            return;
+        }
+        // On annule la fermeture et l'on pose la question : le
+        // gestionnaire de fenêtres la reposera quand on aura répondu.
+        ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+        self.pending = Some(Pending::Quit);
     }
 
     /// La fenêtre d'analyse : tous les modules de rétro-ingénierie, avec
@@ -5361,6 +5496,13 @@ impl NamsdecApp {
             };
         }
 
+        self.guard_close(&ctx);
+        // Accordée : on repasse la demande au gestionnaire de fenêtres,
+        // qui l'avait vue refusée.
+        if self.quitting {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+
         let mut spans: Vec<(&'static str, Duration)> = Vec::new();
         let frame_start = Instant::now();
 
@@ -5426,6 +5568,7 @@ impl NamsdecApp {
                 self.exercises_window_ui(&ctx);
             }
             self.command_palette_ui(&ctx);
+            self.unsaved_window_ui(&ctx);
         });
 
         // En dernier : tout réglage changé pendant cette frame, d'où qu'il

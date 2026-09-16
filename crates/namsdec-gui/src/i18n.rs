@@ -60,6 +60,12 @@ pub struct Strings {
 
     // Boutons communs aux boîtes de dialogue
     pub dialog_ok: &'static str,
+    /// La confirmation qui protège un travail non enregistré.
+    pub unsaved_title: &'static str,
+    pub unsaved_question: &'static str,
+    pub unsaved_save: &'static str,
+    pub unsaved_discard: &'static str,
+    pub unsaved_cancel: &'static str,
     pub dialog_quit: &'static str,
 
     // Onglets du panneau latéral / menu Affichage
@@ -369,6 +375,11 @@ const FR: Strings = Strings {
     nasm_not_found: "nasm introuvable",
 
     dialog_ok: "OK",
+    unsaved_title: "Modifications non enregistrées",
+    unsaved_question: "Ce que vous avez écrit n'est enregistré nulle part. Que faire avant de continuer ?",
+    unsaved_save: "Enregistrer",
+    unsaved_discard: "Abandonner",
+    unsaved_cancel: "Annuler",
     dialog_quit: "Quitter",
 
     tab_stack: "Pile",
@@ -634,6 +645,11 @@ const EN: Strings = Strings {
     nasm_not_found: "nasm not found",
 
     dialog_ok: "OK",
+    unsaved_title: "Unsaved changes",
+    unsaved_question: "What you wrote is not stored anywhere. What should happen before going on?",
+    unsaved_save: "Save",
+    unsaved_discard: "Discard",
+    unsaved_cancel: "Cancel",
     dialog_quit: "Quit",
 
     tab_stack: "Stack",
