@@ -1570,6 +1570,78 @@ pub const ENTRIES: &[Entry] = &[
         example: "table incbin \"table.bin\"",
     },
     Entry {
+        kind: Kind::Instruction,
+        names: &["notrack"],
+        title: Text {
+            fr: "Sauter sans vérifier",
+            en: "Jump without checking",
+        },
+        body: Text {
+            fr: "Un préfixe posé devant un saut indirect pour dire au processeur de ne pas exiger d'`endbr64` à l'arrivée. Il n'a de sens que sur une machine où IBT est actif : le compilateur le met là où il sait que la cible est sûre — une table de sauts qu'il a produite lui-même, par exemple. En lire un dans un binaire, c'est voir où les défenses matérielles sont volontairement levées.",
+            en: "A prefix placed before an indirect jump to tell the processor not to require an `endbr64` at the destination. It only means anything on a machine where IBT is on: the compiler puts it where it knows the target is safe — a jump table it produced itself, say. Reading one in a binary shows where the hardware defences are deliberately lifted.",
+        },
+        flags: "",
+        example: "notrack jmp rax",
+    },
+    Entry {
+        kind: Kind::Instruction,
+        names: &[
+            "in", "out", "insb", "insw", "insd", "outsb", "outsw", "outsd",
+        ],
+        title: Text {
+            fr: "Parler aux ports d'entrée-sortie",
+            en: "Talk to the I/O ports",
+        },
+        body: Text {
+            fr: "Les instructions qui parlent au matériel par les ports d'entrée-sortie, hors de la mémoire. Un programme utilisateur n'y a pas droit : sous Linux, elles font une faute de protection générale. On ne les rencontre que dans un noyau, un pilote ou un chargeur d'amorçage — ou parce qu'on lit des données comme du code, ce qui arrive vite au milieu d'une section qui n'en est pas une. namsdec ne les simule pas : on les lit, on ne les exécute pas ici.",
+            en: "The instructions that talk to hardware through the I/O ports, outside memory. A user program is not allowed near them: on Linux they raise a general protection fault. One only meets them in a kernel, a driver or a bootloader — or because data is being read as code, which happens quickly in the middle of a section that is not one. namsdec does not simulate them: they are read here, not run.",
+        },
+        flags: "",
+        example: "in al, dx",
+    },
+    Entry {
+        kind: Kind::Instruction,
+        names: &["movhps", "movlps", "movhpd", "movlpd"],
+        title: Text {
+            fr: "Ne bouger qu'une moitié",
+            en: "Move one half only",
+        },
+        body: Text {
+            fr: "Lisent ou écrivent huit octets dans la moitié *haute* (`movhps`) ou *basse* (`movlps`) d'un registre vectoriel, en laissant l'autre intacte. C'est ainsi qu'on charge deux morceaux venus d'endroits différents dans un même registre — et c'est pourquoi on les voit par paires dans le code des compilateurs. namsdec ne les simule pas : on les lit, on ne les exécute pas ici.",
+            en: "Read or write eight bytes into the *upper* (`movhps`) or *lower* (`movlps`) half of a vector register, leaving the other untouched. That is how two pieces from different places end up in one register — which is why they come in pairs in compiler output. namsdec does not simulate them: they are read here, not run.",
+        },
+        flags: "",
+        example: "movlps xmm0, [rsi]\nmovhps xmm0, [rsi + 8]",
+    },
+    Entry {
+        kind: Kind::Instruction,
+        names: &["packuswb", "packsswb", "packssdw"],
+        title: Text {
+            fr: "Rétrécir en empaquetant",
+            en: "Pack down to a smaller size",
+        },
+        body: Text {
+            fr: "Prennent deux registres de valeurs larges et en font un seul de valeurs deux fois plus étroites, en saturant ce qui ne tient pas — `packuswb` ramène des mots de 16 bits à des octets non signés, en bornant à 0 et 255 plutôt qu'en tronquant. C'est l'opération qui termine presque tout traitement d'image ou de son vectorisé. namsdec ne la simule pas : on la lit, on ne l'exécute pas ici.",
+            en: "Take two registers of wide values and make one of values half as wide, saturating what does not fit — `packuswb` brings 16-bit words down to unsigned bytes, clamping to 0 and 255 rather than truncating. It is the operation that ends almost every vectorised image or sound routine. namsdec does not simulate it: it is read here, not run.",
+        },
+        flags: "",
+        example: "packuswb xmm0, xmm1",
+    },
+    Entry {
+        kind: Kind::Directive,
+        names: &["struc", "endstruc", "istruc", "at", "iend"],
+        title: Text {
+            fr: "Décrire une structure",
+            en: "Describe a structure",
+        },
+        body: Text {
+            fr: "`struc` ouvre une description de structure : chaque champ y réserve sa place avec `resb`, `resq`… et devient une constante — son décalage depuis le début. On écrit ensuite `[rsi + point.x]` plutôt que `[rsi + 8]`, et l'on peut réordonner les champs sans relire tout le programme. `istruc` … `at` … `iend` en pose une, remplie, dans les données.",
+            en: "`struc` opens a structure description: each field reserves its room with `resb`, `resq`… and becomes a constant — its offset from the start. One then writes `[rsi + point.x]` rather than `[rsi + 8]`, and can reorder the fields without re-reading the whole program. `istruc` … `at` … `iend` lays a filled one down in the data.",
+        },
+        flags: "",
+        example: "struc point\n    .x: resq 1\n    .y: resq 1\nendstruc",
+    },
+    Entry {
         kind: Kind::Preprocessor,
         names: &["%define", "%xdefine", "%undef", "%assign"],
         title: Text {

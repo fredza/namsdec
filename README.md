@@ -69,7 +69,7 @@ RPATH — avec, pour chacun, ce que son état change concrètement. Sur
 votre programme comme sur un binaire du système. Le rapport se copie en
 Markdown pour être collé dans un compte rendu ou un cours.
 
-Et aussi : documentation de 109 instructions et directives sous **F1** ou
+Et aussi : documentation de 114 instructions et directives sous **F1** ou
 au survol, autocomplétion qui ne propose que ce qui est documenté,
 retour en arrière pas à pas, points d'arrêt, surveillance d'un registre
 ou d'une adresse, vérification de la convention d'appel (ce qu'une

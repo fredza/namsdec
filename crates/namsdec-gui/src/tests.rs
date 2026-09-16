@@ -3059,10 +3059,24 @@ fn every_documented_example_assembles_and_runs() {
             continue;
         }
 
-        // Et l'interpréteur les exécute. Une fiche qui décrit une
-        // instruction que le moteur refuse serait une promesse en l'air ;
-        // les autres erreurs — une adresse hors bornes, une division par
-        // zéro — viennent des données inventées ici et ne prouvent rien.
+        // Et l'interpréteur les exécute — sauf si la fiche annonce le
+        // contraire. La documentation couvre aussi ce que namsdec ne
+        // simule pas, parce qu'on le lit dans les binaires des autres ;
+        // mais alors elle doit le dire, sans quoi la fiche promet une
+        // exécution qui n'aura pas lieu. Les autres erreurs — une
+        // adresse hors bornes, une division par zéro — viennent des
+        // données inventées ici et ne prouvent rien.
+        let annoncée_non_simulée = entry.body.fr.contains("ne simule pas")
+            || entry.body.fr.contains("ne les simule pas")
+            || entry.body.fr.contains("ne la simule pas");
+        if annoncée_non_simulée {
+            assert!(
+                entry.body.en.contains("does not simulate"),
+                "{} le dit en français et pas en anglais",
+                entry.names[0]
+            );
+            continue;
+        }
         let mut app = NamsdecApp {
             source,
             ..Default::default()
@@ -6037,7 +6051,7 @@ fn the_course_offers_the_next_step() {
 /// Le manuel se consulte aussi pour ce qu'on ne connaît pas encore.
 ///
 /// F1 répond sur le mot où l'on est : encore faut-il savoir quoi
-/// écrire. La fenêtre d'aide cherche maintenant dans les 109 fiches, par
+/// écrire. La fenêtre d'aide cherche maintenant dans les 114 fiches, par
 /// nom comme par titre.
 #[test]
 fn the_manual_can_be_searched_for_what_one_does_not_know_yet() {
@@ -6394,4 +6408,44 @@ fn a_new_line_keeps_the_indentation() {
     };
     let written = serde_json::to_string(&app.settings_snapshot()).unwrap();
     assert!(written.contains("\"auto_indent\":false"), "{written}");
+}
+
+/// Un vrai binaire doit se lire avec F1 sous la main.
+///
+/// La documentation n'est pas faite que pour ce qu'on écrit : en
+/// rétro-ingénierie, on lit le code des autres, et une instruction sans
+/// fiche y est un trou. Mesuré sur un binaire du système — celui qu'on
+/// a sous la main, pas un cas choisi.
+#[test]
+fn a_real_binary_reads_with_the_manual_at_hand() {
+    let Ok(bytes) = std::fs::read("/bin/ls") else {
+        eprintln!("/bin/ls introuvable : test ignoré");
+        return;
+    };
+    let mut app = NamsdecApp::default();
+    app.load_binary(bytes);
+    let state = app.assemble_state.as_ref().expect("chargé");
+
+    let mut sans_fiche: std::collections::BTreeSet<String> = Default::default();
+    for instruction in &state.disasm {
+        let mnemonic = instruction
+            .text
+            .split_whitespace()
+            .next()
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        // `(bad)` : le désassembleur bute sur des octets qui ne sont pas
+        // du code. Ce n'est pas une instruction, et il n'y a pas de
+        // fiche à écrire pour ça.
+        if mnemonic.is_empty() || mnemonic == "(bad)" {
+            continue;
+        }
+        if namsdec_doc::lookup(&mnemonic).is_none() {
+            sans_fiche.insert(mnemonic);
+        }
+    }
+    assert!(
+        sans_fiche.is_empty(),
+        "ces instructions se lisent dans un binaire ordinaire sans pouvoir s'expliquer : {sans_fiche:?}"
+    );
 }
