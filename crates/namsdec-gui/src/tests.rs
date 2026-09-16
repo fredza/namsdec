@@ -3943,3 +3943,69 @@ fn hovering_an_instruction_explains_it() {
         "infobulles éteintes : rien ne doit apparaître"
     );
 }
+
+/// Le bandeau « Prochaine instruction » fait le calcul d'adresse que le
+/// débutant fait de tête : `[tampon + rcx]`, c'est *cette* adresse-là, et
+/// il y a *cette* valeur dedans.
+#[test]
+fn the_next_instruction_resolves_its_operands() {
+    let mut app = NamsdecApp {
+        source: "\
+global _start
+section .data
+tampon: db 0x11, 0x22, 0x33, 0x44
+section .text
+_start:
+mov rcx, 2
+mov al, [tampon + rcx]
+hlt
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+    // Arrêté *sur* le `mov al, [tampon+rcx]`, pas encore exécuté : c'est
+    // là que la résolution sert.
+    app.do_step();
+
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 820.0),
+        )),
+        ..Default::default()
+    };
+    let mut painted = String::new();
+    for _ in 0..2 {
+        painted.clear();
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        for clipped in &output.shapes {
+            if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                painted.push_str(text.galley.text());
+                painted.push('|');
+            }
+        }
+        output.textures_delta.clear();
+    }
+
+    assert!(painted.contains("Prochaine instruction"), "{painted}");
+    // Le désassembleur ne connaît pas les étiquettes — il montre
+    // l'adresse que nasm a mise à leur place.
+    assert!(
+        painted.contains("mov al, [rcx+401000h]"),
+        "l'instruction elle-même doit être montrée : {painted}"
+    );
+    // L'adresse de `tampon` plus deux, et l'octet qui s'y trouve.
+    let emulator = app.emulator.as_ref().unwrap();
+    let rcx = emulator.cpu().regs.get64(namsdec_core::Reg64::Rcx);
+    assert_eq!(rcx, 2, "le premier pas charge RCX");
+    assert!(
+        painted.contains("→ 0x33"),
+        "le contenu de l'adresse calculée doit apparaître : {painted}"
+    );
+    // Et la fiche de l'instruction, en une ligne.
+    assert!(painted.contains("Copier"), "{painted}");
+}

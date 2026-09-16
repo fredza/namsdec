@@ -11,9 +11,12 @@ use std::collections::{BTreeSet, VecDeque};
 
 use iced_x86::{ConditionCode, Instruction, Mnemonic, OpKind, Register};
 use namsdec_core::{
-    Access, Cpu, Memory, RFlags, Reg64, Width, add_with_flags, logic_flags, sub_with_flags,
+    Access, Cpu, Memory, RFlags, Reg64, Registers, Width, add_with_flags, logic_flags,
+    sub_with_flags,
 };
 use thiserror::Error;
+
+pub mod explain;
 
 use regmap::{is_high_byte, map_register};
 
@@ -2614,15 +2617,9 @@ impl Emulator {
     }
 
     fn get_reg(&self, reg: Register) -> Result<u64, EmuError> {
-        let (r, w) = map_register(reg)?;
-        if is_high_byte(reg) {
-            return Ok(u64::from(self.cpu.regs.get8h(r)));
-        }
-        Ok(match w {
-            Width::W64 => self.cpu.regs.get64(r),
-            Width::W32 => self.cpu.regs.get32(r) as u64,
-            Width::W16 => self.cpu.regs.get16(r) as u64,
-            Width::W8 => self.cpu.regs.get8l(r) as u64,
+        register_value(&self.cpu.regs, reg).ok_or(EmuError::UnsupportedRegister {
+            backend: Self::NAME,
+            register: format!("{reg:?}"),
         })
     }
 
@@ -2642,27 +2639,7 @@ impl Emulator {
     }
 
     fn effective_address(&self, instr: &Instruction, op_index: u32) -> Result<u64, EmuError> {
-        let next_ip = instr.next_ip();
-        instr
-            .virtual_address(op_index, 0, |register, _idx, _size| match register {
-                Register::None => Some(0),
-                Register::RIP | Register::EIP => Some(next_ip),
-                // iced réclame aussi le registre de segment : une adresse
-                // virtuelle, c'est la base du segment plus le décalage.
-                // En 64 bits, CS/DS/ES/SS ont une base nulle — c'est le
-                // modèle plat, et c'est ce que Linux donne à un
-                // programme. Sans ce cas, *aucun* opérande mémoire ne se
-                // calculait : `mov [case], rax` échouait avant même de
-                // lire la mémoire.
-                Register::CS | Register::DS | Register::ES | Register::SS => Some(0),
-                // FS et GS, eux, ont une base que le noyau installe (TLS,
-                // canari de pile). namsdec ne la simule pas : mieux vaut
-                // refuser l'instruction que calculer une adresse fausse.
-                Register::FS | Register::GS => None,
-                other => map_register(other)
-                    .ok()
-                    .map(|(r, _)| self.cpu.regs.get64(r)),
-            })
+        effective_address(&self.cpu.regs, instr, op_index)
             .ok_or(EmuError::InvalidInstruction { addr: instr.ip() })
     }
 
@@ -2685,6 +2662,55 @@ impl Emulator {
         }
         Ok(())
     }
+}
+
+/// La valeur d'un registre entier, lue sur sa propre largeur : `eax` rend
+/// quatre octets, `ah` l'octet haut de `rax`.
+///
+/// Libre, comme [`effective_address`] : l'interface montre ces valeurs à
+/// côté de l'instruction qui va les lire, sans tenir de moteur. Rend
+/// `None` pour ce qui n'est pas un registre entier — vectoriels,
+/// segments, registres de contrôle.
+pub fn register_value(regs: &Registers, reg: Register) -> Option<u64> {
+    let (r, w) = map_register(reg).ok()?;
+    if is_high_byte(reg) {
+        return Some(u64::from(regs.get8h(r)));
+    }
+    Some(match w {
+        Width::W64 => regs.get64(r),
+        Width::W32 => regs.get32(r) as u64,
+        Width::W16 => regs.get16(r) as u64,
+        Width::W8 => regs.get8l(r) as u64,
+    })
+}
+
+/// L'adresse que désigne l'opérande mémoire `op_index`, telle que le
+/// processeur la calculerait avec les registres *actuels*.
+///
+/// Libre, et non méthode : l'interface s'en sert pour montrer où pointe
+/// `[rsi + rcx*4 + 8]` **avant** d'exécuter l'instruction, sans avoir à
+/// tenir un moteur complet.
+///
+/// Rend `None` quand l'adresse dépend de FS ou GS — namsdec ne simule
+/// pas la base que le noyau y installe, et une adresse fausse serait
+/// pire que pas d'adresse du tout.
+pub fn effective_address(regs: &Registers, instr: &Instruction, op_index: u32) -> Option<u64> {
+    let next_ip = instr.next_ip();
+    instr.virtual_address(op_index, 0, |register, _idx, _size| match register {
+        Register::None => Some(0),
+        Register::RIP | Register::EIP => Some(next_ip),
+        // iced réclame aussi le registre de segment : une adresse
+        // virtuelle, c'est la base du segment plus le décalage. En 64
+        // bits, CS/DS/ES/SS ont une base nulle — c'est le modèle plat,
+        // et c'est ce que Linux donne à un programme. Sans ce cas,
+        // *aucun* opérande mémoire ne se calculait : `mov [case], rax`
+        // échouait avant même de lire la mémoire.
+        Register::CS | Register::DS | Register::ES | Register::SS => Some(0),
+        // FS et GS, eux, ont une base que le noyau installe (TLS,
+        // canari de pile). namsdec ne la simule pas.
+        Register::FS | Register::GS => None,
+        other => map_register(other).ok().map(|(r, _)| regs.get64(r)),
+    })
 }
 
 fn width_from_bytes(bytes: usize) -> Option<Width> {

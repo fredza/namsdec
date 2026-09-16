@@ -118,6 +118,9 @@ pub struct Strings {
     pub tab_re: &'static str,
     /// Titre du bandeau fixe du panneau latéral (registres + flags).
     pub cpu_state: &'static str,
+    /// Le bandeau qui résout l'instruction sur le point de s'exécuter.
+    pub next_instruction: &'static str,
+    pub next_instruction_done: &'static str,
     /// Le repli qui montre les seize registres vectoriels.
     pub sse_registers: &'static str,
     /// Ce que dit l'infobulle d'un registre SSE.
@@ -358,6 +361,8 @@ const FR: Strings = Strings {
     action_run_to_cursor: "Exécuter jusqu'au curseur",
     tab_re: "RE",
     cpu_state: "État du processeur",
+    next_instruction: "Prochaine instruction",
+    next_instruction_done: "Le programme est terminé.",
     sse_registers: "Registres vectoriels (SSE et AVX)",
     sse_hint: "Tous les bits, puis leur lecture en doubles et en simples. XMM est la moitié basse de YMM.",
     x87_stack: "Pile x87 (flottants, à l'ancienne)",
@@ -573,6 +578,8 @@ const EN: Strings = Strings {
     action_run_to_cursor: "Run to cursor",
     tab_re: "RE",
     cpu_state: "CPU state",
+    next_instruction: "Next instruction",
+    next_instruction_done: "The program has finished.",
     sse_registers: "Vector registers (SSE and AVX)",
     sse_hint: "Every bit, then read as doubles and as singles. XMM is the lower half of YMM.",
     x87_stack: "x87 stack (the old floating point)",

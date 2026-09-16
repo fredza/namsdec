@@ -29,6 +29,22 @@ pub fn decode_one(bytes: &[u8], ip: u64) -> Option<Instruction> {
     }
 }
 
+/// Met en forme une instruction déjà décodée, en syntaxe NASM et espacée
+/// comme on l'écrit à la main : `mov rax, rcx` plutôt que `mov rax,rcx`.
+///
+/// C'est la forme que montre l'interface à côté du code de
+/// l'utilisateur ; les vidages (onglet Octets, listing) gardent la forme
+/// compacte de [`disassemble`], alignée colonne par colonne.
+pub fn format_one(instr: &Instruction) -> String {
+    let mut formatter = NasmFormatter::new();
+    formatter
+        .options_mut()
+        .set_space_after_operand_separator(true);
+    let mut text = String::new();
+    formatter.format(instr, &mut text);
+    text
+}
+
 /// Désassemble `bytes` en supposant qu'ils sont chargés à partir de
 /// `base_addr` (mode 64 bits).
 pub fn disassemble(bytes: &[u8], base_addr: u64) -> Vec<DecodedInstruction> {

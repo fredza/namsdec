@@ -30,6 +30,11 @@ impl NamsdecApp {
         // barre pour aller la rechercher. Une seule zone rend la chose
         // impossible : ce qui dépasse défile, et les onglets restent là
         // où on va les chercher.
+        // Au-dessus de tout, et hors de la zone qui défile : c'est ce
+        // qu'on regarde entre deux pas, et il ne doit jamais falloir
+        // aller le chercher.
+        self.next_instruction_ui(ui);
+
         let visible = ui.available_height();
         egui::ScrollArea::vertical()
             .id_salt("cpu_state")
@@ -155,6 +160,74 @@ impl NamsdecApp {
         if fold.header_response.clicked() {
             self.sse_open = !self.sse_open;
         }
+    }
+
+    /// Ce que l'instruction sur le point de s'exécuter va manipuler.
+    ///
+    /// Le bandeau des registres dit où en est la machine ; celui-ci dit
+    /// ce qui va lui arriver. Entre les deux, tout le travail que le
+    /// débutant fait de tête et rate une fois sur deux : `[rsi+rcx*8+16]`
+    /// désigne *cette* adresse-là, et il y a *cette* valeur dedans.
+    ///
+    /// Posé sous les registres et au-dessus des vectoriels : il se lit
+    /// avec les valeurs qu'il cite, juste au-dessus.
+    fn next_instruction_ui(&mut self, ui: &mut egui::Ui) {
+        let s = strings(self.lang);
+        let theme = self.theme;
+        let Some(emulator) = &self.emulator else {
+            return;
+        };
+        if emulator.cpu().halted {
+            ui.add_space(4.0);
+            ui.colored_label(theme.dim, s.next_instruction_done);
+            return;
+        }
+        let cpu = emulator.cpu();
+        let rip = cpu.regs.rip;
+        // Seize octets : la plus longue instruction x86 possible. Moins
+        // que cela en fin de mémoire, et le décodage échoue tout seul.
+        let window = cpu.mem.peek_bytes(rip, 16).or_else(|_| {
+            cpu.mem
+                .peek_bytes(rip, (cpu.mem.range().end - rip) as usize)
+        });
+        let Ok(window) = window else {
+            return;
+        };
+        let Some(instr) = namsdec_disasm::decode_one(window, rip) else {
+            return;
+        };
+        let text = namsdec_disasm::format_one(&instr);
+
+        ui.add_space(4.0);
+        ui.colored_label(theme.dim, s.next_instruction);
+        ui.horizontal_wrapped(|ui| {
+            ui.colored_label(
+                theme.accent,
+                egui::RichText::new(format!("{rip:#x}")).monospace(),
+            );
+            ui.label(egui::RichText::new(&text).monospace().strong());
+        });
+        // La fiche de l'instruction, en une ligne : « Copier une valeur ».
+        // Le reste est sous F1 — ici, c'est le rappel qui évite d'y aller.
+        let mnemonic = text.split([' ', '\t']).next().unwrap_or_default();
+        if let Some(entry) = namsdec_doc::lookup(mnemonic) {
+            ui.colored_label(theme.dim, entry.title.get(self.lang.code()));
+        }
+        let lines = namsdec_emu::explain::operands(cpu, &instr);
+        if lines.is_empty() {
+            return;
+        }
+        egui::Grid::new("next_instruction_grid")
+            .num_columns(2)
+            .striped(true)
+            .show(ui, |ui| {
+                for line in lines {
+                    ui.colored_label(theme.dim, egui::RichText::new(line.text).monospace());
+                    ui.label(egui::RichText::new(line.value).monospace());
+                    ui.end_row();
+                }
+            });
+        ui.separator();
     }
 
     fn registers_ui(&mut self, ui: &mut egui::Ui) {
