@@ -5566,3 +5566,55 @@ fn the_unsaved_question_offers_all_three_answers() {
     }
     assert!(painted.contains(s.unsaved_title), "{painted}");
 }
+
+/// Tout ce que namsdec sait exécuter doit savoir s'expliquer.
+///
+/// F1 est la réponse à « qu'est-ce que ça fait ? ». Une instruction que
+/// l'interpréteur exécute mais dont la fiche manque laisse la question
+/// sans réponse précisément là où elle se pose : devant du code qui
+/// tourne. L'inverse est permis — on documente des instructions qu'on
+/// ne simule pas encore, parce qu'on les lit dans les binaires des
+/// autres.
+#[test]
+fn everything_the_emulator_runs_has_a_sheet() {
+    // Les mnémoniques nommés dans le moteur, lus dans son source : c'est
+    // la seule liste qui ne puisse pas se désynchroniser de lui.
+    let mut moteur: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    let racine = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../namsdec-emu/src"));
+    for fichier in std::fs::read_dir(racine).expect("les sources du moteur") {
+        let chemin = fichier.expect("une entrée").path();
+        if chemin.extension().is_none_or(|ext| ext != "rs")
+            || chemin.file_name().is_some_and(|nom| nom == "tests.rs")
+        {
+            continue;
+        }
+        let texte = std::fs::read_to_string(&chemin).expect("source lisible");
+        for préfixe in ["M::", "Mnemonic::"] {
+            for morceau in texte.split(préfixe).skip(1) {
+                let nom: String = morceau
+                    .chars()
+                    .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                    .collect();
+                // `Mnemonic::INVALID` et les noms vides ne sont pas des
+                // instructions.
+                if nom.len() > 1 && nom.chars().next().is_some_and(|c| c.is_ascii_uppercase()) {
+                    moteur.insert(nom.to_ascii_lowercase());
+                }
+            }
+        }
+    }
+    assert!(
+        moteur.len() > 300,
+        "la lecture des sources doit trouver les instructions : {}",
+        moteur.len()
+    );
+
+    let manquantes: Vec<&String> = moteur
+        .iter()
+        .filter(|nom| namsdec_doc::lookup(nom).is_none())
+        .collect();
+    assert!(
+        manquantes.is_empty(),
+        "ces instructions s'exécutent sans pouvoir s'expliquer : {manquantes:?}"
+    );
+}

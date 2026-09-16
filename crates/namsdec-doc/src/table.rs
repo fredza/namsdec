@@ -123,7 +123,7 @@ pub const ENTRIES: &[Entry] = &[
     },
     Entry {
         kind: Kind::Instruction,
-        names: &["pushf", "pushfq", "popf", "popfq"],
+        names: &["pushf", "pushfq", "pushfd", "popf", "popfq", "popfd"],
         title: Text {
             fr: "Ranger les indicateurs",
             en: "Save the flags",
@@ -561,7 +561,9 @@ pub const ENTRIES: &[Entry] = &[
     },
     Entry {
         kind: Kind::Instruction,
-        names: &["nop", "pause", "endbr64", "mfence", "lfence", "sfence"],
+        names: &[
+            "nop", "pause", "endbr64", "endbr32", "mfence", "lfence", "sfence",
+        ],
         title: Text {
             fr: "Ne rien faire",
             en: "Do nothing",
@@ -958,7 +960,7 @@ pub const ENTRIES: &[Entry] = &[
     Entry {
         kind: Kind::Instruction,
         names: &[
-            "finit", "fninit", "ffree", "ffreep", "fincstp", "fdecstp", "fnop", "fwait",
+            "finit", "fninit", "ffree", "ffreep", "fincstp", "fdecstp", "fnop", "fwait", "wait",
         ],
         title: Text {
             fr: "Tenir la pile",
