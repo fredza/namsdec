@@ -4363,3 +4363,57 @@ fn the_analysis_window_reports_the_binary_protections() {
         "un programme sans bibliothèque est lié statiquement : {painted}"
     );
 }
+
+/// Le cas qui compte pour la rétro-ingénierie : un binaire qu'on n'a pas
+/// écrit, ouvert depuis le disque. Son analyse doit être celle de *ce*
+/// fichier — PIE, lié dynamiquement, RELRO complet — et non celle du
+/// petit programme d'exemple.
+#[test]
+fn a_binary_from_disk_is_analysed_as_itself() {
+    let Ok(bytes) = std::fs::read("/bin/ls") else {
+        eprintln!("/bin/ls introuvable : test ignoré");
+        return;
+    };
+    let mut app = NamsdecApp {
+        show_analysis: true,
+        ..Default::default()
+    };
+    // Trop gros pour la mémoire simulée — il ne s'exécutera pas ici,
+    // mais il doit s'*analyser*.
+    app.load_binary(bytes);
+
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 1000.0),
+        )),
+        ..Default::default()
+    };
+    let mut painted = String::new();
+    for _ in 0..3 {
+        painted.clear();
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        for clipped in &output.shapes {
+            if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                painted.push_str(text.galley.text());
+                painted.push('|');
+            }
+        }
+        output.textures_delta.clear();
+    }
+
+    assert!(
+        painted.contains("lié dynamiquement"),
+        "un binaire de distribution est lié dynamiquement : {painted}"
+    );
+    assert!(
+        painted.contains("Exécutable relogeable"),
+        "et compilé en PIE : {painted}"
+    );
+    assert!(
+        painted.contains("Bibliothèques réclamées"),
+        "ses bibliothèques doivent être listées : {painted}"
+    );
+}

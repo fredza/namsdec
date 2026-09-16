@@ -1821,6 +1821,17 @@ impl NamsdecApp {
             return;
         }
 
+        // Le fichier entier est gardé de côté avant toute troncature :
+        // l'analyse — protections, sections, symboles — se lit dans ses
+        // en-têtes, et ceux-là ne dépendent pas de ce qui tient dans la
+        // mémoire simulée. Un ELF trop gros pour s'exécuter ici reste
+        // ainsi parfaitement lisible.
+        let file = if bytes.starts_with(b"\x7fELF") {
+            bytes.clone()
+        } else {
+            Vec::new()
+        };
+
         // Borné à la fenêtre mémoire simulée : au-delà, `rebuild_emulator`
         // refuserait le chargement de toute façon, et désassembler
         // plusieurs centaines de kilo-octets pour les jeter ensuite
@@ -1858,7 +1869,7 @@ impl NamsdecApp {
                 // Un binaire brut n'a pas de table de symboles : il n'a
                 // même pas d'en-tête.
                 symbols: Vec::new(),
-                file: Vec::new(),
+                file,
             },
             disasm,
             addr_to_line,
