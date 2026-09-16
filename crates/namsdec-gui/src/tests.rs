@@ -6261,3 +6261,45 @@ ret
     // dans le programme, et le compter noierait les vraies références.
     assert!(xrefs.to(60).is_empty());
 }
+
+/// Les fragments réutilisables expliquent à quoi servent les autres
+/// protections : un programme de dix lignes en contient déjà.
+#[test]
+fn the_analysis_finds_reusable_fragments() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: "\
+global _start
+section .text
+_start:
+call sous
+hlt
+sous:
+pop rdi
+pop rsi
+ret
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+    let state = app.assemble_state.as_ref().unwrap();
+
+    let fragments = namsdec_re::gadgets::from_disasm(&state.disasm, 50);
+    assert!(
+        fragments.iter().any(|g| g.text() == "pop rsi ; ret"),
+        "le fragment le plus simple doit être trouvé : {:?}",
+        fragments.iter().map(|g| g.text()).collect::<Vec<_>>()
+    );
+    // Et celui qui enchaîne les deux `pop`.
+    assert!(
+        fragments
+            .iter()
+            .any(|g| g.text() == "pop rdi ; pop rsi ; ret"),
+        "{:?}",
+        fragments.iter().map(|g| g.text()).collect::<Vec<_>>()
+    );
+}

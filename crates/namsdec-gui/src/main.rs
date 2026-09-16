@@ -26,8 +26,8 @@ use namsdec_disasm::DecodedInstruction;
 use namsdec_emu::{Backend, Emulator, RunStop, StepOverResult, StepResult};
 use namsdec_explorer::{ExplorerAction, FileExplorer};
 use namsdec_re::{
-    BinaryInfoModule, CallsModule, ProtectionsModule, ReContext, ReModuleRegistry, StringsModule,
-    SyscallsModule, XrefsModule,
+    BinaryInfoModule, CallsModule, GadgetsModule, ProtectionsModule, ReContext, ReModuleRegistry,
+    StringsModule, SyscallsModule, XrefsModule,
 };
 use namsdec_theme::Theme;
 
@@ -901,6 +901,9 @@ impl Default for NamsdecApp {
         // qu'on sait ce que le binaire contient, pour décider par où
         // entrer dedans.
         re_registry.register(Box::new(XrefsModule::default()));
+        // Les fragments en dernier : ils n'ont de sens qu'après avoir lu
+        // les protections, dont ils expliquent la raison d'être.
+        re_registry.register(Box::new(GadgetsModule::default()));
 
         Self {
             source: DEFAULT_SOURCE.to_string(),
