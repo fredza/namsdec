@@ -494,6 +494,12 @@ pub trait Backend {
     /// l'avaient trouvé. Vide pour un moteur qui ne regarde pas.
     fn breaches(&self) -> &[AbiBreach];
 
+    /// Combien d'instructions ont été exécutées depuis le départ.
+    ///
+    /// La mesure la plus simple de ce que coûte un programme : deux
+    /// façons d'écrire la même boucle ne donnent pas le même nombre.
+    fn executed(&self) -> u64;
+
     /// Combien de fois chaque adresse a été exécutée depuis le départ.
     ///
     /// C'est le profil du programme : il dit ce qui a tourné cinq fois
@@ -610,6 +616,10 @@ pub struct Emulator {
 impl Backend for Emulator {
     fn name(&self) -> &'static str {
         Self::NAME
+    }
+
+    fn executed(&self) -> u64 {
+        self.ticks
     }
 
     fn visits(&self) -> &BTreeMap<u64, u64> {

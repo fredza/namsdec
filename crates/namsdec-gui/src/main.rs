@@ -4684,6 +4684,7 @@ impl NamsdecApp {
             return;
         };
         let lang = if self.lang == Lang::Fr { "fr" } else { "en" };
+        let mut copié = false;
         egui::ScrollArea::vertical()
             .id_salt("help")
             .auto_shrink([false, false])
@@ -4731,12 +4732,28 @@ impl NamsdecApp {
                     );
                 }
                 ui.add_space(6.0);
-                ui.colored_label(theme.dim, s.help_example);
+                ui.horizontal(|ui| {
+                    ui.colored_label(theme.dim, s.help_example);
+                    // L'exemple se copie : on lit une fiche pour essayer
+                    // ce qu'elle décrit, et le retaper à la main n'ajoute
+                    // rien à ce qu'on en apprend.
+                    if ui
+                        .small_button(s.help_copy_example)
+                        .on_hover_text(s.help_copy_hint)
+                        .clicked()
+                    {
+                        ui.ctx().copy_text(entry.example.to_owned());
+                        copié = true;
+                    }
+                });
                 ui.add(
                     egui::Label::new(egui::RichText::new(entry.example).monospace())
                         .wrap_mode(egui::TextWrapMode::Extend),
                 );
             });
+        if copié {
+            self.status = Status::Note(s.help_example_copied);
+        }
     }
 
     /// Ce que nasm a dit de la source, une ligne par diagnostic.

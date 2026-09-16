@@ -101,11 +101,40 @@ impl NamsdecApp {
         }
     }
 
-    /// Le bandeau fixe : les registres, puis les flags en pastilles.
+    /// Le bandeau fixe : les registres, les flags en pastilles, et ce
+    /// que le programme a coûté jusqu'ici.
     fn cpu_state_ui(&mut self, ui: &mut egui::Ui) {
         self.registers_ui(ui);
         ui.add_space(6.0);
         self.flags_ui(ui);
+        self.cost_ui(ui);
+    }
+
+    /// Combien d'instructions ont tourné depuis le départ.
+    ///
+    /// La mesure la plus simple de ce que coûte un programme, et la
+    /// seule qui permette de comparer deux façons d'écrire la même
+    /// chose : on réécrit sa boucle, on relance, et le nombre baisse —
+    /// ou pas.
+    fn cost_ui(&mut self, ui: &mut egui::Ui) {
+        let s = strings(self.lang);
+        let theme = self.theme;
+        let Some(emulator) = &self.emulator else {
+            return;
+        };
+        let executed = emulator.executed();
+        if executed == 0 {
+            return;
+        }
+        ui.horizontal_wrapped(|ui| {
+            ui.colored_label(theme.dim, s.executed_label);
+            ui.colored_label(
+                ui.visuals().text_color(),
+                egui::RichText::new(group_digits(executed)).monospace(),
+            );
+        })
+        .response
+        .on_hover_text(s.executed_hint);
     }
 
     /// Les seize registres SSE, repliés : un programme sur deux n'en
@@ -1927,4 +1956,20 @@ fn prefix_hint(s: &Strings, prefix: namsdec_disasm::Prefix) -> &'static str {
         P::Segment => s.prefix_segment,
         P::Vex => s.prefix_vex,
     }
+}
+
+/// Un nombre lisible : les milliers séparés par une espace fine.
+///
+/// « 1234567 » ne se lit pas, « 1 234 567 » si — et c'est un nombre
+/// qu'on compare d'un coup d'œil à celui d'avant.
+pub(crate) fn group_digits(value: u64) -> String {
+    let chiffres = value.to_string();
+    let mut out = String::with_capacity(chiffres.len() + chiffres.len() / 3);
+    for (index, c) in chiffres.chars().enumerate() {
+        if index > 0 && (chiffres.len() - index).is_multiple_of(3) {
+            out.push('\u{202f}');
+        }
+        out.push(c);
+    }
+    out
 }

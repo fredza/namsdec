@@ -6079,3 +6079,112 @@ fn the_manual_can_be_searched_for_what_one_does_not_know_yet() {
     let painted = peindre(&mut app);
     assert!(painted.contains("0 fiches"), "{painted}");
 }
+
+/// Le panneau dit ce que le programme a coûté : le nombre d'instructions
+/// exécutées, la seule mesure qui permette de comparer deux façons
+/// d'écrire la même chose.
+#[test]
+fn the_panel_says_how_many_instructions_ran() {
+    assert_eq!(group_digits(7), "7");
+    assert_eq!(group_digits(1234), "1\u{202f}234");
+    assert_eq!(group_digits(1234567), "1\u{202f}234\u{202f}567");
+
+    let mut app = NamsdecApp {
+        source: "\
+global _start
+section .text
+_start:
+mov rcx, 5
+boucle:
+dec rcx
+jnz boucle
+hlt
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 900.0),
+        )),
+        ..Default::default()
+    };
+    let peindre = |app: &mut NamsdecApp| {
+        let mut painted = String::new();
+        for _ in 0..2 {
+            painted.clear();
+            let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+            for clipped in &output.shapes {
+                if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                    painted.push_str(text.galley.text());
+                    painted.push('|');
+                }
+            }
+            output.textures_delta.clear();
+        }
+        painted
+    };
+
+    // Rien n'a tourné : rien à dire.
+    assert!(!peindre(&mut app).contains("Instructions exécutées"));
+
+    app.do_run();
+    for _ in 0..10 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&ctx);
+    }
+    // 1 `mov`, cinq tours de deux instructions, un `hlt` : douze.
+    assert_eq!(app.emulator.as_ref().unwrap().executed(), 12);
+    let painted = peindre(&mut app);
+    assert!(painted.contains("Instructions exécutées"), "{painted}");
+    assert!(painted.contains("12"), "{painted}");
+}
+
+/// L'exemple d'une fiche se copie : on lit une fiche pour essayer ce
+/// qu'elle décrit.
+#[test]
+fn a_sheet_example_can_be_taken_along() {
+    let mut app = NamsdecApp {
+        show_help: true,
+        help: Some(("movzx".to_owned(), namsdec_doc::lookup("movzx"))),
+        ..Default::default()
+    };
+
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 1000.0),
+        )),
+        ..Default::default()
+    };
+    let mut painted = String::new();
+    for _ in 0..2 {
+        painted.clear();
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        for clipped in &output.shapes {
+            if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                painted.push_str(text.galley.text());
+                painted.push('|');
+            }
+        }
+        output.textures_delta.clear();
+    }
+
+    assert!(
+        painted.contains("Copier"),
+        "le bouton doit être là : {painted}"
+    );
+    // Et l'exemple lui-même, qui est ce qu'on copie.
+    let exemple = namsdec_doc::lookup("movzx").unwrap().example;
+    assert!(painted.contains(exemple), "{painted}");
+}
