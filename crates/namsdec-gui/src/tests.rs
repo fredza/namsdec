@@ -3634,3 +3634,100 @@ fn the_bytes_tab_shows_what_each_line_produced() {
     // à son adresse.
     assert!(painted.contains("  4 00400000"), "{painted}");
 }
+
+/// Un message de nasm arrive tel quel, et une phrase dessous dit ce qu'il
+/// veut dire. Le brut reste — c'est lui qu'on colle dans une recherche.
+#[test]
+fn a_nasm_error_comes_with_its_explanation() {
+    if namsdec_asm::find_nasm().is_none() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        // Deux tailles qui ne se rencontrent pas : l'erreur qu'on
+        // ramasse le jour où l'on mélange RAX et EBX.
+        source: "global _start\nsection .text\n_start:\n    mov rax, ebx\n    hlt\n".to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+
+    assert!(
+        matches!(app.status, Status::AssembleFailed),
+        "{:?}",
+        app.status
+    );
+    let diagnostic = app.diagnostics.first().expect("un diagnostic");
+    assert!(
+        diagnostic
+            .message
+            .contains("invalid combination of opcode and operands"),
+        "{}",
+        diagnostic.message
+    );
+
+    let ctx = egui::Context::default();
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 820.0),
+        )),
+        ..Default::default()
+    };
+    let mut painted = String::new();
+    for _ in 0..2 {
+        painted.clear();
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        for clipped in &output.shapes {
+            if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                painted.push_str(text.galley.text());
+                painted.push('|');
+            }
+        }
+        output.textures_delta.clear();
+    }
+
+    assert!(
+        painted.contains("invalid combination of opcode and operands"),
+        "le message brut reste : {painted}"
+    );
+    assert!(
+        painted.contains("mov rax, ebx"),
+        "l'explication doit nommer le cas : {painted}"
+    );
+}
+
+/// Cliquer un diagnostic pose le curseur sur sa ligne : lire le message
+/// et retrouver l'endroit ne sont pas deux gestes.
+#[test]
+fn clicking_a_diagnostic_moves_the_cursor_to_its_line() {
+    let mut app = NamsdecApp {
+        source: "global _start\nsection .text\n_start:\n    hlt\n".to_owned(),
+        ..Default::default()
+    };
+    // Comme si l'on avait cliqué le diagnostic de la ligne 3.
+    app.goto_line = Some(3);
+
+    let ctx = egui::Context::default();
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 820.0),
+        )),
+        ..Default::default()
+    };
+    for _ in 0..2 {
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        output.textures_delta.clear();
+    }
+
+    assert!(app.goto_line.is_none(), "la demande est consommée");
+    let state = egui::TextEdit::load_state(&ctx, editor_id()).expect("l'éditeur a un état");
+    let curseur = state
+        .cursor
+        .char_range()
+        .expect("un curseur")
+        .primary
+        .index
+        .0;
+    // « global _start\n » = 14 caractères, « section .text\n » = 14.
+    assert_eq!(curseur, 28, "le curseur est au début de la ligne 3");
+}

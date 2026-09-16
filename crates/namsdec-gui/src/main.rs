@@ -7,6 +7,7 @@ mod completion;
 mod errors;
 mod i18n;
 mod keybindings;
+mod nasm_errors;
 mod settings;
 mod sidebar;
 mod syntax;
@@ -350,6 +351,10 @@ struct NamsdecApp {
     /// Comment l'onglet Mémoire lit les octets. Réglage utilisateur, donc
     /// enregistré dans `settings.json`.
     memory_format: MemoryFormat,
+    /// La ligne où poser le curseur au prochain rendu de l'éditeur :
+    /// cliquer un diagnostic doit y mener, sans quoi lire le message et
+    /// retrouver l'endroit restent deux gestes.
+    goto_line: Option<u32>,
     /// L'onglet des octets doit-il ramener la ligne courante sous les
     /// yeux ? Posé à chaque pas, consommé au rendu suivant : sans cela,
     /// la vue se recentrerait à chaque frame et l'utilisateur ne pourrait
@@ -767,6 +772,7 @@ impl Default for NamsdecApp {
             mem_addr: BASE_ADDR,
             memory_format: MemoryFormat::Bytes,
             watchpoints: Vec::new(),
+            goto_line: None,
             follow_rip: false,
             watched_registers: BTreeSet::new(),
             show_preferences: false,
@@ -3341,6 +3347,9 @@ impl NamsdecApp {
                             self.cursor_byte = char_to_byte(&self.source, range.primary.index.0);
                         }
                         self.completion_ui(ui, &output);
+                        // Après le `TextEdit` : son état existe, et c'est
+                        // lui qu'on déplace.
+                        self.apply_goto_line(&ui.ctx().clone());
                         let response = output.response.response;
                         if just_entered_insert {
                             response.request_focus();
@@ -3459,6 +3468,33 @@ impl NamsdecApp {
             state.store(ctx, editor_id());
         }
         self.suggestions = None;
+    }
+
+    /// Pose le curseur au début d'une ligne, et y amène la vue.
+    ///
+    /// Appelé au rendu de l'éditeur, une fois seulement : le curseur
+    /// appartient à l'utilisateur, on ne le lui reprend pas à chaque
+    /// frame.
+    fn apply_goto_line(&mut self, ctx: &egui::Context) {
+        let Some(line) = self.goto_line.take() else {
+            return;
+        };
+        let offset: usize = self
+            .source
+            .lines()
+            .take(line.saturating_sub(1) as usize)
+            .map(|l| l.chars().count() + 1)
+            .sum();
+        if let Some(mut state) = egui::TextEdit::load_state(ctx, editor_id()) {
+            state
+                .cursor
+                .set_char_range(Some(egui::text::CCursorRange::one(
+                    egui::text::CCursor::new(offset),
+                )));
+            state.store(ctx, editor_id());
+        }
+        self.editor_mode = EditorMode::Insert;
+        ctx.memory_mut(|m| m.request_focus(editor_id()));
     }
 
     /// Le panneau bas : la console du programme et les diagnostics de
@@ -3606,9 +3642,10 @@ impl NamsdecApp {
     }
 
     /// Ce que nasm a dit de la source, une ligne par diagnostic.
-    fn diagnostics_ui(&self, ui: &mut egui::Ui) {
+    fn diagnostics_ui(&mut self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
         let (lang, theme) = (self.lang, self.theme);
+        let mut goto = None;
         if self.diagnostics.is_empty() {
             ui.colored_label(theme.dim, s.no_diagnostics);
             return;
@@ -3630,9 +3667,27 @@ impl NamsdecApp {
                         (line, Lang::Fr) => format!("ligne {line} — {}", d.message),
                         (line, _) => format!("line {line} — {}", d.message),
                     };
-                    ui.colored_label(color, egui::RichText::new(text).monospace());
+                    // Cliquable quand nasm a nommé une ligne : lire le
+                    // message et retrouver l'endroit sont deux gestes, et
+                    // le second n'a aucune raison d'être manuel.
+                    let response = ui.add(
+                        egui::Label::new(egui::RichText::new(text).monospace().color(color))
+                            .sense(egui::Sense::click()),
+                    );
+                    if d.line > 0 && response.on_hover_text(s.diagnostic_goto).clicked() {
+                        goto = Some(d.line);
+                    }
+                    // Le message brut reste — c'est lui qu'on colle dans
+                    // une recherche —, et l'explication vient dessous.
+                    if let Some(explication) = nasm_errors::explain(lang, &d.message) {
+                        ui.label(prose(ui, theme, explication));
+                        ui.add_space(6.0);
+                    }
                 }
             });
+        if let Some(line) = goto {
+            self.goto_line = Some(line);
+        }
     }
 
     /// La console du programme : ce qu'il a écrit, et de quoi lui donner
