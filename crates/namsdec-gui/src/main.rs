@@ -388,6 +388,8 @@ struct NamsdecApp {
     /// cliquer un diagnostic doit y mener, sans quoi lire le message et
     /// retrouver l'endroit restent deux gestes.
     goto_line: Option<u32>,
+    /// La recherche en cours, quand la barre est ouverte.
+    find: Option<Find>,
     /// Le code tel qu'il est sur le disque — ou tel qu'il était au
     /// chargement. Ce qui diverge de lui n'est enregistré nulle part, et
     /// la barre de statut le dit.
@@ -681,6 +683,7 @@ fn palette_commands(
             s.action_goto_label.to_string(),
             PaletteCommand::Do(Action::GoToLabel),
         ),
+        (s.action_find.to_string(), PaletteCommand::Do(Action::Find)),
         (s.help_about.to_string(), PaletteCommand::ShowAbout),
         (s.analysis_open.to_string(), PaletteCommand::ShowAnalysis),
         (s.vectors_open.to_string(), PaletteCommand::ShowVectors),
@@ -799,6 +802,41 @@ boucle:
     hlt                 ; arrête la machine en laissant les registres lisibles
 ";
 
+/// La recherche dans le code : ce qu'on cherche, et où l'on en est.
+///
+/// Les occurrences sont recalculées à chaque frappe plutôt que
+/// mémorisées : le tampon change sous la recherche — on corrige souvent
+/// ce qu'on vient de trouver — et une liste d'offsets périmée pointerait
+/// à côté.
+#[derive(Default)]
+struct Find {
+    query: String,
+    /// L'occurrence visée, parmi celles que `matches` rend.
+    current: usize,
+    /// La barre vient de s'ouvrir : le champ doit prendre le clavier.
+    just_opened: bool,
+}
+
+/// Les positions, en octets, de toutes les occurrences de `query` dans
+/// `text`, sans tenir compte de la casse.
+///
+/// Sans la casse : on écrit `RAX` dans un source et `rax` dans un
+/// listing désassemblé, et chercher l'un doit trouver l'autre.
+fn find_matches(text: &str, query: &str) -> Vec<usize> {
+    if query.is_empty() {
+        return Vec::new();
+    }
+    let haystack = text.to_lowercase();
+    let needle = query.to_lowercase();
+    // `to_lowercase` peut changer la longueur d'un texte (ß → ss) : les
+    // offsets ne vaudraient plus rien. Le cas ne se présente pas dans un
+    // source assembleur, mais on ne le suppose pas.
+    if haystack.len() != text.len() {
+        return text.match_indices(query).map(|(at, _)| at).collect();
+    }
+    haystack.match_indices(&needle).map(|(at, _)| at).collect()
+}
+
 impl Default for NamsdecApp {
     fn default() -> Self {
         let mut re_registry = ReModuleRegistry::new();
@@ -838,6 +876,7 @@ impl Default for NamsdecApp {
             watchpoints: Vec::new(),
             run_to: None,
             goto_line: None,
+            find: None,
             saved_source: DEFAULT_SOURCE.to_string(),
             follow_rip: false,
             watched_registers: BTreeSet::new(),
@@ -1622,6 +1661,7 @@ impl NamsdecApp {
             Action::InstructionHelp => self.do_instruction_help(),
             Action::RunToCursor => self.do_run_to_cursor(),
             Action::GoToLabel => self.do_goto_label(),
+            Action::Find => self.do_find(),
         }
     }
 
@@ -2330,6 +2370,19 @@ impl NamsdecApp {
             });
 
             ui.menu_button(s.menu_edit, |ui| {
+                if ui
+                    .button(shortcut_hint(
+                        &self.keybindings,
+                        &ui.ctx().clone(),
+                        s.action_find,
+                        Action::Find,
+                    ))
+                    .clicked()
+                {
+                    self.dispatch(Action::Find);
+                    ui.close();
+                }
+                ui.separator();
                 if ui.button(s.edit_copy_code).clicked() {
                     ui.ctx().copy_text(self.source.clone());
                     ui.close();
@@ -3494,6 +3547,10 @@ impl NamsdecApp {
     /// — sinon la gouttière se décale sur une ligne trop longue.
     fn editor_ui(&mut self, ui: &mut egui::Ui) {
         let theme = self.theme;
+        // La barre de recherche, au-dessus du code : elle pousse
+        // l'éditeur d'une ligne plutôt que de flotter par-dessus, pour
+        // ne jamais couvrir ce qu'on vient de trouver.
+        self.find_ui(ui);
         // Modes façon (n)vim : `i`/`I` pour passer en Insertion, `Échap`
         // pour revenir en Normal — désactivé pendant qu'une autre capture
         // de texte est active (palette de commandes, rebind de raccourci)
@@ -3610,6 +3667,34 @@ impl NamsdecApp {
                             .collect();
                         let largeur_ligne = gutter_rect.width() + ui.available_width();
                         let painter = ui.painter();
+
+                        // Les occurrences de la recherche, peintes sous
+                        // le texte : une barre qui compte « 3/7 » sans
+                        // montrer où ils sont ne sert qu'à moitié.
+                        if let Some(find) = &self.find {
+                            let matches = find_matches(&self.source, &find.query);
+                            for (index, at) in matches.iter().enumerate() {
+                                let debut = byte_to_char(&self.source, *at);
+                                let fin = debut + find.query.chars().count();
+                                let gauche =
+                                    galley.pos_from_cursor(egui::text::CCursor::new(debut));
+                                let droite = galley.pos_from_cursor(egui::text::CCursor::new(fin));
+                                // Une occupation à cheval sur deux lignes
+                                // n'existe pas ici : une recherche ne
+                                // contient pas de retour à la ligne.
+                                let rect = egui::Rect::from_min_max(gauche.min, droite.max)
+                                    .translate(
+                                        gutter_rect.min.to_vec2()
+                                            + egui::vec2(gutter_rect.width(), 0.0),
+                                    );
+                                let teinte = if index == find.current {
+                                    theme.accent.gamma_multiply(0.45)
+                                } else {
+                                    theme.accent.gamma_multiply(0.18)
+                                };
+                                painter.rect_filled(rect, 2.0, teinte);
+                            }
+                        }
                         for (i, row) in galley.rows.iter().enumerate() {
                             let line = (i + 1) as u32;
                             let row_rect = row.rect().translate(gutter_rect.min.to_vec2());
@@ -3741,6 +3826,93 @@ impl NamsdecApp {
                     });
                 });
         });
+    }
+
+    /// La barre de recherche : ce qu'on cherche, combien de fois on le
+    /// trouve, et de quoi passer d'une occurrence à l'autre.
+    fn find_ui(&mut self, ui: &mut egui::Ui) {
+        let Some(find) = &mut self.find else {
+            return;
+        };
+        let s = strings(self.lang);
+        let theme = self.theme;
+        let mut query = std::mem::take(&mut find.query);
+        let mut current = find.current;
+        let just_opened = std::mem::take(&mut find.just_opened);
+        let mut fermer = false;
+        let mut aller = just_opened && !query.is_empty();
+
+        let matches = find_matches(&self.source, &query);
+        if matches.is_empty() {
+            current = 0;
+        } else {
+            current %= matches.len();
+        }
+
+        ui.horizontal(|ui| {
+            let champ = ui.add(
+                egui::TextEdit::singleline(&mut query)
+                    .id(find_field_id())
+                    .hint_text(s.find_placeholder)
+                    .desired_width(220.0),
+            );
+            if just_opened {
+                champ.request_focus();
+            }
+            // Entrée avance, Maj+Entrée recule : les deux gestes d'une
+            // barre de recherche, sans quitter le clavier.
+            if champ.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                let arrière = ui.input(|i| i.modifiers.shift);
+                if !matches.is_empty() {
+                    current = if arrière {
+                        (current + matches.len() - 1) % matches.len()
+                    } else {
+                        (current + 1) % matches.len()
+                    };
+                }
+                aller = true;
+                champ.request_focus();
+            }
+            if ui.button("◂").on_hover_text(s.find_previous).clicked() && !matches.is_empty() {
+                current = (current + matches.len() - 1) % matches.len();
+                aller = true;
+            }
+            if ui.button("▸").on_hover_text(s.find_next).clicked() && !matches.is_empty() {
+                current = (current + 1) % matches.len();
+                aller = true;
+            }
+            if matches.is_empty() {
+                ui.colored_label(
+                    if query.is_empty() {
+                        theme.dim
+                    } else {
+                        theme.bad
+                    },
+                    if query.is_empty() {
+                        String::new()
+                    } else {
+                        s.find_none.to_owned()
+                    },
+                );
+            } else {
+                ui.colored_label(theme.dim, format!("{}/{}", current + 1, matches.len()));
+            }
+            if ui.button("✕").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                fermer = true;
+            }
+        });
+
+        if fermer {
+            self.find = None;
+            return;
+        }
+        if let Some(find) = &mut self.find {
+            find.query = query;
+            find.current = current;
+        }
+        if aller {
+            self.goto_match();
+        }
     }
 
     /// L'autocomplétion : ce qu'on pourrait écrire là, et `Alt` pour
@@ -3944,6 +4116,36 @@ impl NamsdecApp {
             ConsoleTab::Output => self.output_ui(ui),
             ConsoleTab::Diagnostics => self.diagnostics_ui(ui),
         }
+    }
+
+    /// Ouvre la barre de recherche, ou la referme si elle est déjà là.
+    ///
+    /// Le mot sous le curseur devient la recherche : neuf fois sur dix
+    /// c'est ce qu'on allait taper, et c'est ce que font les éditeurs
+    /// où l'on a pris l'habitude.
+    fn do_find(&mut self) {
+        if self.find.is_some() {
+            self.find = None;
+            return;
+        }
+        let word = word_at(&self.source, self.cursor_byte).to_owned();
+        self.find = Some(Find {
+            query: word,
+            current: 0,
+            just_opened: true,
+        });
+    }
+
+    /// Va à l'occurrence `current` : la ligne sous les yeux, le curseur
+    /// dessus.
+    fn goto_match(&mut self) {
+        let Some(find) = &self.find else { return };
+        let matches = find_matches(&self.source, &find.query);
+        let Some(at) = matches.get(find.current) else {
+            return;
+        };
+        let line = self.source[..*at].lines().count().max(1) as u32;
+        self.goto_line = Some(line);
     }
 
     /// Va à l'endroit où l'étiquette sous le curseur est définie.
@@ -4674,6 +4876,7 @@ fn action_label(s: &Strings, action: Action) -> &'static str {
         Action::OpenFolder => s.file_open_folder,
         Action::InstructionHelp => s.action_instruction_help,
         Action::GoToLabel => s.action_goto_label,
+        Action::Find => s.action_find,
         Action::RunToCursor => s.action_run_to_cursor,
     }
 }
@@ -5239,6 +5442,10 @@ impl NamsdecApp {
 /// L'éditeur porte un identifiant fixe : l'autocomplétion doit pouvoir
 /// replacer son curseur après avoir écrit, ce qui demande de retrouver
 /// son état.
+fn find_field_id() -> egui::Id {
+    egui::Id::new("find_field")
+}
+
 fn editor_id() -> egui::Id {
     egui::Id::new("editeur")
 }

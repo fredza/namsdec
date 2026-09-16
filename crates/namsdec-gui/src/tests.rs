@@ -5407,3 +5407,71 @@ syscall
         "les quatre octets de l'immédiat vont ensemble : {textes:?}"
     );
 }
+
+/// Ctrl+F cherche dans le code : les occurrences se comptent, se
+/// parcourent, et se voient.
+#[test]
+fn finding_in_the_code_counts_and_walks_the_matches() {
+    let source = "\
+global _start
+section .text
+_start:
+    mov rcx, 3
+boucle:
+    dec rcx
+    jnz boucle
+    hlt
+";
+    // La fonction pure d'abord : sans la casse, et par octets.
+    assert_eq!(
+        find_matches(source, "boucle").len(),
+        2,
+        "l'étiquette et le saut qui y mène"
+    );
+    assert_eq!(
+        find_matches(source, "BOUCLE").len(),
+        2,
+        "la casse est ignorée"
+    );
+    assert!(find_matches(source, "").is_empty());
+    assert!(find_matches(source, "introuvable").is_empty());
+
+    let mut app = NamsdecApp {
+        source: source.to_owned(),
+        // Le curseur sur le `boucle` du `jnz` : c'est lui que Ctrl+F
+        // doit proposer sans qu'on tape.
+        cursor_byte: source.find("jnz boucle").unwrap() + 4,
+        ..Default::default()
+    };
+    app.dispatch(Action::Find);
+    let find = app.find.as_ref().expect("la barre doit s'ouvrir");
+    assert_eq!(find.query, "boucle", "le mot sous le curseur est repris");
+
+    // La barre se dessine, et compte.
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 900.0),
+        )),
+        ..Default::default()
+    };
+    let mut painted = String::new();
+    for _ in 0..2 {
+        painted.clear();
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        for clipped in &output.shapes {
+            if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                painted.push_str(text.galley.text());
+                painted.push('|');
+            }
+        }
+        output.textures_delta.clear();
+    }
+    assert!(painted.contains("1/2"), "deux occurrences : {painted}");
+
+    // Et Ctrl+F referme ce qu'elle avait ouvert.
+    app.dispatch(Action::Find);
+    assert!(app.find.is_none());
+}

@@ -251,6 +251,7 @@ fn action_id(action: Action) -> &'static str {
         Action::InstructionHelp => "instruction_help",
         Action::RunToCursor => "run_to_cursor",
         Action::GoToLabel => "goto_label",
+        Action::Find => "find",
     }
 }
 

@@ -35,10 +35,12 @@ pub enum Action {
     RunToCursor,
     /// Aller à l'étiquette sous le curseur — là où elle est définie.
     GoToLabel,
+    /// Chercher dans le code.
+    Find,
 }
 
 impl Action {
-    pub const ALL: [Action; 14] = [
+    pub const ALL: [Action; 15] = [
         Action::ToggleExplorer,
         Action::Assemble,
         Action::Run,
@@ -53,6 +55,7 @@ impl Action {
         Action::InstructionHelp,
         Action::RunToCursor,
         Action::GoToLabel,
+        Action::Find,
     ];
 }
 
@@ -231,6 +234,11 @@ impl Default for KeyBindings {
         map.insert(
             Action::GoToLabel,
             Chord::Simple(KeyboardShortcut::new(Modifiers::NONE, Key::F12)),
+        );
+        // Ctrl+F : chercher, comme partout ailleurs.
+        map.insert(
+            Action::Find,
+            Chord::Simple(KeyboardShortcut::new(Modifiers::CTRL, Key::F)),
         );
         map.insert(Action::ToggleExplorer, Chord::leader(&[Key::Space, Key::E]));
         Self { map }
