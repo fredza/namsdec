@@ -20,43 +20,50 @@ impl NamsdecApp {
             self.active_tab = SidebarTab::Stack;
         }
 
-        // Tout l'état du processeur — registres et flags, registres
-        // vectoriels, pile x87 — dans **une seule** zone qui défile,
-        // bornée à la moitié du panneau.
-        //
-        // Trois zones bornées séparément ne suffisaient pas : chacune
-        // tenait dans sa moitié, mais leurs hauteurs s'ajoutaient et
-        // poussaient la rangée d'onglets hors du panneau, sans aucune
-        // barre pour aller la rechercher. Une seule zone rend la chose
-        // impossible : ce qui dépasse défile, et les onglets restent là
-        // où on va les chercher.
-        // Au-dessus de tout, et hors de la zone qui défile : c'est ce
+        // Au-dessus de tout, et hors de toute zone qui défile : c'est ce
         // qu'on regarde entre deux pas, et il ne doit jamais falloir
         // aller le chercher.
         self.next_instruction_ui(ui);
 
-        let visible = ui.available_height();
+        // Les registres et les flags sont posés en entier, sans zone de
+        // défilement : leur hauteur est connue — dix-huit valeurs sur
+        // autant de colonnes que le panneau en tient — et une barre au
+        // milieu de l'état du processeur oblige à faire défiler pour
+        // voir R15 ou ZF, en plein pas à pas.
+        //
+        // `show_unindented` : le retrait qu'ajoute un en-tête repliable
+        // vaut une vingtaine de pixels, et une valeur de registre fait
+        // seize chiffres — avec le retrait, la ligne débordait du
+        // panneau.
+        //
+        // `open(Some(...))` plutôt que `default_open(true)` : le premier
+        // impose l'état à chaque frame, le second ne vaut qu'à la toute
+        // première ouverture et laisse ensuite egui ressortir ce qu'il a
+        // retenu de la session précédente.
+        let banner = egui::CollapsingHeader::new(s.cpu_state)
+            .open(Some(self.cpu_state_open))
+            .show_unindented(ui, |ui| self.cpu_state_ui(ui));
+        // L'état imposé prive l'en-tête de son propre clic : on le
+        // reprend ici, sinon le bandeau ne se replierait plus.
+        if banner.header_response.clicked() {
+            self.cpu_state_open = !self.cpu_state_open;
+        }
+
+        // Les vectoriels, eux, peuvent devenir très hauts : seize
+        // registres SSE et huit emplacements x87, soit vingt-quatre
+        // lignes de plus. Dépliés, ils poussaient la rangée d'onglets
+        // hors du panneau sans qu'aucune barre ne dise où elle était
+        // passée. Bornés ici, et à eux seuls : c'est cette zone-là qui
+        // défile, pas l'état du processeur.
+        //
+        // Ce qu'on garde en dessous : la rangée d'onglets et de quoi
+        // lire le début de l'onglet ouvert.
+        const TABS_AND_A_LOOK: f32 = 190.0;
+        let room = (ui.available_height() - TABS_AND_A_LOOK).max(80.0);
         egui::ScrollArea::vertical()
-            .id_salt("cpu_state")
-            .max_height((visible * 0.5).max(120.0))
+            .id_salt("vector_state")
+            .max_height(room)
             .show(ui, |ui| {
-                // `show_unindented` : le retrait qu'ajoute un en-tête
-                // repliable vaut une vingtaine de pixels, et une valeur
-                // de registre fait seize chiffres — avec le retrait, la
-                // ligne débordait du panneau.
-                //
-                // `open(Some(...))` plutôt que `default_open(true)` : le
-                // premier impose l'état à chaque frame, le second ne vaut
-                // qu'à la toute première ouverture et laisse ensuite egui
-                // ressortir ce qu'il a retenu de la session précédente.
-                let banner = egui::CollapsingHeader::new(s.cpu_state)
-                    .open(Some(self.cpu_state_open))
-                    .show_unindented(ui, |ui| self.cpu_state_ui(ui));
-                // L'état imposé prive l'en-tête de son propre clic : on
-                // le reprend ici, sinon le bandeau ne se replierait plus.
-                if banner.header_response.clicked() {
-                    self.cpu_state_open = !self.cpu_state_open;
-                }
                 self.xmm_ui(ui);
                 self.x87_ui(ui);
             });
@@ -238,11 +245,31 @@ impl NamsdecApp {
         let theme = self.theme;
         let regs = &emulator.cpu().regs;
         let changed = changed_registers(self.regs_before.as_ref(), regs);
-        // Dix-sept lignes d'affilée, c'est haut. Le panneau élargi, elles
-        // tiennent sur deux colonnes et le bandeau retrouve la moitié de
-        // sa hauteur — celui qui garde le panneau étroit garde une
-        // colonne, qui défile.
-        let pairs = register_columns(ui.available_width());
+        // Dix-huit valeurs d'affilée, c'est haut. Le panneau élargi,
+        // elles tiennent sur deux colonnes ou plus, et l'état du
+        // processeur se lit d'un coup d'œil au lieu de défiler.
+        //
+        // Deux pixels de garde : une grille plus large que le panneau
+        // ferait *grandir* le panneau, qui en offrirait davantage à la
+        // frame suivante — le panneau s'élargissait alors sans fin.
+        let spacing = ui.spacing().item_spacing.x;
+        let available = ui.available_width() - 2.0;
+        let pair = register_pair_width(ui);
+        // Le blanc minimal entre deux paires : sans lui, seize chiffres
+        // suivis de trois lettres se lisent comme un seul mot
+        // (« …003c RBX »). La cellule vide vaut deux espacements, et la
+        // grille en pose un de chaque côté.
+        let min_gap = spacing * 2.0;
+        let pairs = register_columns(available, pair, min_gap + 2.0 * spacing);
+        // Le reste de la largeur part dans les blancs entre colonnes :
+        // la grille s'appuie alors sur les deux bords du panneau au lieu
+        // de se tasser à gauche.
+        let gap = if pairs > 1 {
+            let filled = pairs as f32 * pair + (2 * pairs - 2) as f32 * spacing;
+            ((available - filled) / (pairs - 1) as f32).max(min_gap)
+        } else {
+            min_gap
+        };
         // Relevé dans la boucle, appliqué après : la grille emprunte
         // `self` en lecture, la surveillance l'écrit.
         let mut clicked: Option<&'static str> = None;
@@ -251,14 +278,13 @@ impl NamsdecApp {
             // Deux cellules par paire, plus une cellule vide entre les
             // paires : c'est elle qui sépare les colonnes.
             .num_columns(3 * pairs - 1)
+            // Sans quoi egui donne à chaque colonne la largeur d'un
+            // bouton — quarante pixels — même pour trois lettres : la
+            // grille réclamait plus que le panneau, qui s'élargissait
+            // pour la contenir, ce qui lui en donnait encore plus.
+            .min_col_width(0.0)
             .striped(true)
             .show(ui, |ui| {
-                // Entre la valeur d'une paire et le nom de la suivante,
-                // l'espacement ordinaire de la grille ne suffit pas :
-                // seize chiffres suivis de trois lettres se lisent comme
-                // un seul mot (« …003c RBX »). Une cellule vide, large de
-                // trois espacements, sépare les deux colonnes.
-                let gap = ui.spacing().item_spacing.x * 3.0;
                 let mut in_row = 0;
                 for (index, (name, value)) in REGISTERS
                     .iter()
@@ -930,18 +956,41 @@ impl NamsdecApp {
     }
 }
 
-/// Combien de paires nom/valeur tiennent côte à côte dans `width`.
+/// Combien de paires nom/valeur tiennent côte à côte dans `width`, une
+/// paire mesurant `pair` et le blanc entre deux paires `gap`.
 ///
-/// Une paire mesure un peu moins de 175 px (trois lettres, seize chiffres
-/// hexadécimaux en chasse fixe, l'espacement de la grille) ; on n'en met
-/// deux que s'il reste de la marge, plutôt que de déborder pour quelques
-/// pixels — un débordement, dans un panneau, ce n'est pas du texte coupé,
-/// c'est la largeur du panneau qui change.
-pub(crate) fn register_columns(width: f32) -> usize {
-    const PAIR: f32 = 175.0;
-    /// Le blanc entre les deux paires, plus la marge du panneau.
-    const GAP: f32 = 30.0;
-    if width >= 2.0 * PAIR + GAP { 2 } else { 1 }
+/// Mesuré, et non estimé : la largeur d'une paire dépend de la police de
+/// chasse fixe et de sa taille, que le thème et le réglage de zoom
+/// changent tous les deux. Une constante en pixels donnait une colonne
+/// unique sur un panneau qui en tenait deux — et le bandeau d'état, deux
+/// fois trop haut, réclamait une barre de défilement.
+///
+/// On n'ajoute une colonne que si elle tient *entièrement* : un
+/// débordement, dans un panneau, ce n'est pas du texte coupé, c'est la
+/// largeur du panneau qui change.
+pub(crate) fn register_columns(width: f32, pair: f32, gap: f32) -> usize {
+    if pair <= 0.0 {
+        return 1;
+    }
+    let columns = ((width + gap) / (pair + gap)).floor() as usize;
+    // Quatre au plus : au-delà, l'œil ne suit plus la ligne jusqu'à la
+    // valeur, et le panneau n'est de toute façon pas fait pour ça.
+    columns.clamp(1, 4)
+}
+
+/// La largeur d'une paire « nom de registre + valeur sur seize chiffres »,
+/// dans la police que l'interface utilise réellement.
+pub(crate) fn register_pair_width(ui: &egui::Ui) -> f32 {
+    let font = egui::TextStyle::Monospace.resolve(ui.style());
+    let width = |text: &str| {
+        ui.painter()
+            .layout_no_wrap(text.to_owned(), font.clone(), egui::Color32::WHITE)
+            .rect
+            .width()
+    };
+    // « RFLAGS » n'est pas dans la grille ; le nom le plus large y fait
+    // trois caractères, et la valeur seize.
+    width("RAX") + ui.spacing().item_spacing.x + width("0000000000000000")
 }
 
 /// Une pastille de flag. Allumée, elle prend la couleur « bon » du thème ;

@@ -1474,20 +1474,42 @@ fn the_two_column_banner_fits_the_panel_it_is_given() {
         widths.iter().all(|w| *w == wide),
         "le panneau doit garder ses {wide} px, obtenu : {widths:?}"
     );
-    assert_eq!(register_columns(wide), 2, "à cette largeur, deux colonnes");
 }
 
-/// La grille des registres passe à deux colonnes quand le panneau
-/// s'élargit, et jamais avant : une paire de trop, et c'est le
-/// panneau lui-même qui s'élargirait pour la contenir.
+/// La grille des registres ajoute une colonne dès qu'elle tient, et
+/// jamais avant : une paire de trop, et c'est le panneau lui-même qui
+/// s'élargirait pour la contenir.
+///
+/// Les largeurs sont celles d'une paire mesurée dans la police réelle —
+/// autour de 157 px pour la police par défaut.
 #[test]
-fn the_register_grid_uses_two_columns_only_when_they_fit() {
-    assert_eq!(register_columns(SIDEBAR_WIDTH), 1, "300 px : une colonne");
-    assert_eq!(register_columns(SIDEBAR_MIN_WIDTH), 1);
-    assert_eq!(register_columns(379.0), 1, "trop juste : une seule");
-    assert_eq!(register_columns(380.0), 2, "la deuxième tient pile");
-    assert_eq!(register_columns(420.0), 2);
-    assert_eq!(register_columns(760.0), 2, "un panneau large en tient deux");
+fn the_register_grid_adds_a_column_only_when_it_fits() {
+    const PAIR: f32 = 157.0;
+    const GAP: f32 = 24.0;
+    assert_eq!(register_columns(SIDEBAR_MIN_WIDTH, PAIR, GAP), 1);
+    assert_eq!(
+        register_columns(337.0, PAIR, GAP),
+        1,
+        "trop juste : une seule"
+    );
+    assert_eq!(
+        register_columns(338.0, PAIR, GAP),
+        2,
+        "la deuxième tient pile"
+    );
+    assert_eq!(register_columns(518.0, PAIR, GAP), 2, "pas encore trois");
+    assert_eq!(
+        register_columns(519.0, PAIR, GAP),
+        3,
+        "la troisième tient pile"
+    );
+    assert_eq!(
+        register_columns(1000.0, PAIR, GAP),
+        4,
+        "jamais plus de quatre"
+    );
+    // Une police introuvable ne doit pas faire diviser par zéro.
+    assert_eq!(register_columns(400.0, 0.0, GAP), 1);
 }
 
 /// La palette ne propose pas la vue RE tant qu'elle est masquée.
@@ -3151,7 +3173,7 @@ fn a_scroll_bar_shows_up_when_there_is_something_to_scroll_and_not_before() {
             for clipped in &output.shapes {
                 if let egui::epaint::Shape::Rect(r) = &clipped.shape {
                     // Une barre de défilement : étroite et haute.
-                    if r.rect.width() < 20.0 && r.rect.height() > 120.0 {
+                    if r.rect.width() < 20.0 && r.rect.height() > 60.0 {
                         barres.push((r.rect.min.x.round(), r.rect.width().round()));
                     }
                 }
@@ -3176,8 +3198,8 @@ fn a_scroll_bar_shows_up_when_there_is_something_to_scroll_and_not_before() {
         "quatre-vingts lignes, elles, en méritent une"
     );
 
-    // Et dans le panneau latéral, tout déplié : la barre doit être là,
-    // sans quoi rien ne dit que les onglets sont plus bas.
+    // Et dans le panneau latéral, les vectoriels dépliés : la barre doit
+    // être là, sans quoi rien ne dit que les onglets sont plus bas.
     if namsdec_asm::find_nasm().is_some() && namsdec_asm::find_linker() {
         let barres = barres_de(court, true);
         assert!(
@@ -4008,4 +4030,82 @@ hlt
     );
     // Et la fiche de l'instruction, en une ligne.
     assert!(painted.contains("Copier"), "{painted}");
+}
+
+/// L'état du processeur tient dans le panneau, sur toute sa largeur, et
+/// ne demande jamais de barre de défilement.
+///
+/// C'est l'affichage qu'on regarde entre deux pas : devoir le faire
+/// défiler pour voir R15 ou ZF coupe la lecture. Les registres sont donc
+/// posés sur autant de colonnes que le panneau en tient — deux à la
+/// largeur par défaut — et hors de toute zone défilante.
+#[test]
+fn the_cpu_state_fills_the_panel_without_a_scroll_bar() {
+    let mut app = NamsdecApp {
+        source: DEFAULT_SOURCE.to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    app.do_step();
+
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 820.0),
+        )),
+        ..Default::default()
+    };
+    let mut registres: Vec<egui::Pos2> = Vec::new();
+    let mut onglet_y = f32::MAX;
+    let mut barres: Vec<egui::Rect> = Vec::new();
+    for _ in 0..4 {
+        registres.clear();
+        barres.clear();
+        onglet_y = f32::MAX;
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        for clipped in &output.shapes {
+            match &clipped.shape {
+                egui::epaint::Shape::Text(text) => match text.galley.text() {
+                    "RAX" | "R15" | "RIP" => registres.push(text.pos),
+                    t if t == strings(Lang::Fr).tab_stack => onglet_y = onglet_y.min(text.pos.y),
+                    _ => {}
+                },
+                egui::epaint::Shape::Rect(r) if r.rect.width() < 20.0 && r.rect.height() > 40.0 => {
+                    barres.push(r.rect);
+                }
+                _ => {}
+            }
+        }
+        output.textures_delta.clear();
+    }
+
+    assert_eq!(registres.len(), 3, "RAX, R15 et RIP doivent être peints");
+    // Deux colonnes : RAX et R15 ne sont pas sur la même ligne, mais RAX
+    // n'est pas seul sur la sienne — la grille occupe la largeur.
+    let colonnes: std::collections::BTreeSet<i32> =
+        registres.iter().map(|p| p.x.round() as i32).collect();
+    assert_eq!(
+        colonnes.len(),
+        2,
+        "les registres doivent tenir sur deux colonnes : {registres:?}"
+    );
+    // La seconde colonne s'appuie sur le bord droit du panneau, à
+    // quelques pixels près : la grille ne se tasse pas à gauche.
+    let droite = *colonnes.iter().next_back().unwrap() as f32;
+    assert!(
+        droite > 1280.0 - SIDEBAR_WIDTH / 2.0,
+        "la seconde colonne doit occuper la moitié droite du panneau : {colonnes:?}"
+    );
+    // Et aucune barre de défilement au-dessus des onglets, là où vit
+    // l'état du processeur.
+    let fautives: Vec<_> = barres
+        .iter()
+        .filter(|r| r.min.x > 1280.0 - SIDEBAR_WIDTH && r.max.y < onglet_y)
+        .collect();
+    assert!(
+        fautives.is_empty(),
+        "l'état du processeur ne doit pas défiler : {fautives:?}"
+    );
 }

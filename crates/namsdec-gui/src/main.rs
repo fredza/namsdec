@@ -65,7 +65,12 @@ const RUN_BATCH_STEPS: u32 = 5_000;
 const RUN_TOTAL_STEPS_CAP: u64 = 50_000_000;
 /// Largeur du panneau latéral à la première ouverture. L'utilisateur la
 /// change ensuite en tirant sur son bord, et egui la retient.
-const SIDEBAR_WIDTH: f32 = 300.0;
+///
+/// De quoi poser les registres sur **deux** colonnes : à 300 px ils
+/// tenaient sur une seule, dix-huit lignes de haut, et l'état du
+/// processeur — ce qu'on regarde entre deux pas — ne se lisait qu'en le
+/// faisant défiler.
+const SIDEBAR_WIDTH: f32 = 380.0;
 /// Hauteur du panneau bas à la première ouverture, puis ses bornes — même
 /// raison que pour le panneau latéral : une hauteur aberrante enregistrée
 /// ne doit pas pouvoir revenir au lancement suivant.
