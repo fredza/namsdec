@@ -6020,3 +6020,62 @@ fn the_course_offers_the_next_step() {
         "le rang de l'étape en cours : {painted}"
     );
 }
+
+/// Le manuel se consulte aussi pour ce qu'on ne connaît pas encore.
+///
+/// F1 répond sur le mot où l'on est : encore faut-il savoir quoi
+/// écrire. La fenêtre d'aide cherche maintenant dans les 109 fiches, par
+/// nom comme par titre.
+#[test]
+fn the_manual_can_be_searched_for_what_one_does_not_know_yet() {
+    let mut app = NamsdecApp {
+        show_help: true,
+        help_query: "mul".to_owned(),
+        ..Default::default()
+    };
+
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 1000.0),
+        )),
+        ..Default::default()
+    };
+    let peindre = |app: &mut NamsdecApp| {
+        let mut painted = String::new();
+        for _ in 0..2 {
+            painted.clear();
+            let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+            for clipped in &output.shapes {
+                if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                    painted.push_str(text.galley.text());
+                    painted.push('|');
+                }
+            }
+            output.textures_delta.clear();
+        }
+        painted
+    };
+
+    let painted = peindre(&mut app);
+    // `mul` trouve la multiplication — et `imul`, et les vectorielles,
+    // qui portent le même mot.
+    assert!(painted.contains("mul"), "{painted}");
+    assert!(
+        painted.contains("fiches"),
+        "le compte doit être dit : {painted}"
+    );
+
+    // Chercher par le titre marche aussi : on ne sait pas toujours le
+    // nom de ce qu'on cherche.
+    app.help_query = "pile".to_owned();
+    let painted = peindre(&mut app);
+    assert!(painted.contains("push"), "{painted}");
+
+    // Et ce qui n'existe pas rend une liste vide, pas une fiche fausse.
+    app.help_query = "zzzz".to_owned();
+    let painted = peindre(&mut app);
+    assert!(painted.contains("0 fiches"), "{painted}");
+}

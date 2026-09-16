@@ -390,6 +390,9 @@ struct NamsdecApp {
     goto_line: Option<u32>,
     /// La recherche en cours, quand la barre est ouverte.
     find: Option<Find>,
+    /// Ce qu'on cherche dans le manuel, quand la fenêtre d'aide est
+    /// ouverte.
+    help_query: String,
     /// L'action suspendue en attendant qu'on décide du tampon modifié.
     pending: Option<Pending>,
     /// La fermeture a été demandée et accordée : la prochaine demande
@@ -920,6 +923,7 @@ impl Default for NamsdecApp {
             run_to: None,
             goto_line: None,
             find: None,
+            help_query: String::new(),
             pending: None,
             quitting: false,
             saved_source: DEFAULT_SOURCE.to_string(),
@@ -4610,8 +4614,68 @@ impl NamsdecApp {
     fn help_ui(&mut self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
         let theme = self.theme;
+        let lang_code = self.lang.code();
+
+        // Un champ de recherche au-dessus de la fiche : sans lui, on ne
+        // peut lire une fiche qu'en écrivant l'instruction dans son
+        // code — ce qui suppose de savoir qu'elle existe. Le manuel se
+        // consulte aussi pour ce qu'on ne connaît pas encore.
+        let mut ouvrir = None;
+        ui.horizontal(|ui| {
+            ui.add(
+                egui::TextEdit::singleline(&mut self.help_query)
+                    .hint_text(s.help_search)
+                    .desired_width(200.0),
+            );
+            if !self.help_query.is_empty() && ui.button("✕").clicked() {
+                self.help_query.clear();
+            }
+        });
+        if !self.help_query.is_empty() {
+            let query = self.help_query.to_lowercase();
+            let trouvées: Vec<&namsdec_doc::Entry> = namsdec_doc::all()
+                .iter()
+                .filter(|entry| {
+                    entry.names.iter().any(|name| name.contains(&query))
+                        || entry.title.get(lang_code).to_lowercase().contains(&query)
+                })
+                .collect();
+            ui.colored_label(theme.dim, format!("{} {}", trouvées.len(), s.help_results));
+            ui.separator();
+            egui::ScrollArea::vertical()
+                .id_salt("help_index")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    for entry in trouvées {
+                        let ligne = ui.horizontal_wrapped(|ui| {
+                            ui.colored_label(
+                                theme.mnemonic,
+                                egui::RichText::new(entry.names[0]).monospace(),
+                            );
+                            ui.label(entry.title.get(lang_code));
+                        });
+                        if ligne
+                            .response
+                            .interact(egui::Sense::click())
+                            .on_hover_text(s.help_open_sheet)
+                            .clicked()
+                        {
+                            ouvrir = Some(entry.names[0]);
+                        }
+                    }
+                });
+            if let Some(name) = ouvrir {
+                self.help = Some((name.to_owned(), namsdec_doc::lookup(name)));
+                self.help_query.clear();
+            }
+            return;
+        }
+
         let Some((word, entry)) = &self.help else {
             ui.colored_label(theme.dim, s.help_empty);
+            // Rien sous le curseur, mais le manuel est là : autant le
+            // dire plutôt que de laisser une fenêtre vide.
+            ui.colored_label(theme.dim, s.help_search_hint);
             return;
         };
         let Some(entry) = entry else {

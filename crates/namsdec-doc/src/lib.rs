@@ -73,6 +73,16 @@ pub struct Entry {
     pub example: &'static str,
 }
 
+/// Toutes les fiches, dans l'ordre où elles sont écrites — celui d'un
+/// manuel : les familles se suivent.
+///
+/// Rendues pour que l'interface puisse en faire un index consultable :
+/// une fiche qu'on ne peut lire qu'en écrivant l'instruction dans son
+/// code n'est pas une documentation, c'est une infobulle.
+pub fn all() -> &'static [Entry] {
+    ENTRIES
+}
+
 /// Combien de fiches namsdec porte, instructions et directives
 /// confondues. Le README l'annonce ; un test le compare.
 pub fn count() -> usize {
