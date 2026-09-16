@@ -37,10 +37,12 @@ pub enum Action {
     GoToLabel,
     /// Chercher dans le code.
     Find,
+    /// Repartir d'un programme neuf.
+    New,
 }
 
 impl Action {
-    pub const ALL: [Action; 15] = [
+    pub const ALL: [Action; 16] = [
         Action::ToggleExplorer,
         Action::Assemble,
         Action::Run,
@@ -56,6 +58,7 @@ impl Action {
         Action::RunToCursor,
         Action::GoToLabel,
         Action::Find,
+        Action::New,
     ];
 }
 
@@ -234,6 +237,11 @@ impl Default for KeyBindings {
         map.insert(
             Action::GoToLabel,
             Chord::Simple(KeyboardShortcut::new(Modifiers::NONE, Key::F12)),
+        );
+        // Ctrl+N : un programme neuf, comme partout ailleurs.
+        map.insert(
+            Action::New,
+            Chord::Simple(KeyboardShortcut::new(Modifiers::CTRL, Key::N)),
         );
         // Ctrl+F : chercher, comme partout ailleurs.
         map.insert(

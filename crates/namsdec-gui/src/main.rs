@@ -813,6 +813,7 @@ boucle:
 /// d'écrire ne disparaît pas parce qu'on a cliqué sur un exercice.
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Pending {
+    New,
     OpenFile(PathBuf),
     Exercise(String),
     Quit,
@@ -852,6 +853,28 @@ fn find_matches(text: &str, query: &str) -> Vec<usize> {
     }
     haystack.match_indices(&needle).map(|(at, _)| at).collect()
 }
+
+/// Le programme que « Nouveau » pose dans l'éditeur.
+///
+/// Pas une page blanche : devant un assembleur, elle est un mur. Il faut
+/// savoir qu'il faut `global _start`, une section de code et une
+/// étiquette de départ — trois choses qu'on n'invente pas. Le squelette
+/// les donne, et se termine par une sortie propre : un programme qui ne
+/// sort pas laisse le processeur exécuter ce qui suit.
+const NEW_PROGRAM: &str = "\
+global _start
+
+section .data
+    ; vos données ici — db, dw, dd, dq
+
+section .text
+_start:
+    ; votre programme ici
+
+    mov rax, 60             ; exit
+    xor edi, edi            ; code de retour 0
+    syscall
+";
 
 impl Default for NamsdecApp {
     fn default() -> Self {
@@ -1680,6 +1703,7 @@ impl NamsdecApp {
             Action::RunToCursor => self.do_run_to_cursor(),
             Action::GoToLabel => self.do_goto_label(),
             Action::Find => self.do_find(),
+            Action::New => self.do_new(),
         }
     }
 
@@ -1845,6 +1869,22 @@ impl NamsdecApp {
     /// traité comme un binaire brut à désassembler, plutôt que rejeté
     /// comme "pas de l'UTF-8" — c'est un atelier de reverse engineering,
     /// ouvrir un binaire doit y mener quelque part.
+    /// Repart d'un programme neuf.
+    fn do_new(&mut self) {
+        self.guard(Pending::New);
+    }
+
+    fn new_program(&mut self) {
+        self.source = NEW_PROGRAM.to_owned();
+        self.saved_source = NEW_PROGRAM.to_owned();
+        self.current_file = None;
+        self.assemble_state = None;
+        self.emulator = None;
+        self.diagnostics.clear();
+        self.breakpoint_lines.clear();
+        self.status = Status::Idle;
+    }
+
     /// Ouvre un fichier — après s'être assuré qu'on ne perd rien.
     fn open_file(&mut self, path: PathBuf) {
         self.guard(Pending::OpenFile(path));
@@ -1869,6 +1909,7 @@ impl NamsdecApp {
 
     fn perform(&mut self, action: Pending) {
         match action {
+            Pending::New => self.new_program(),
             Pending::OpenFile(path) => self.open_file_now(path),
             Pending::Exercise(id) => self.load_exercise_now(&id),
             Pending::Quit => self.quitting = true,
@@ -2366,6 +2407,19 @@ impl NamsdecApp {
         ui.horizontal(|ui| {
             ui.menu_button(s.menu_file, |ui| {
                 let ctx = ui.ctx().clone();
+                if ui
+                    .button(shortcut_hint(
+                        &self.keybindings,
+                        &ctx,
+                        s.file_new,
+                        Action::New,
+                    ))
+                    .clicked()
+                {
+                    self.dispatch(Action::New);
+                    ui.close();
+                }
+                ui.separator();
                 if ui
                     .button(shortcut_hint(
                         &self.keybindings,
@@ -5020,6 +5074,7 @@ fn action_label(s: &Strings, action: Action) -> &'static str {
         Action::InstructionHelp => s.action_instruction_help,
         Action::GoToLabel => s.action_goto_label,
         Action::Find => s.action_find,
+        Action::New => s.file_new,
         Action::RunToCursor => s.action_run_to_cursor,
     }
 }

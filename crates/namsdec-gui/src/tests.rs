@@ -2968,7 +2968,10 @@ fn every_program_we_ship_is_a_complete_program() {
     if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
         return;
     }
-    let mut programs = vec![("le programme d'accueil", DEFAULT_SOURCE.to_owned())];
+    let mut programs = vec![
+        ("le programme d'accueil", DEFAULT_SOURCE.to_owned()),
+        ("le squelette de « Nouveau »", NEW_PROGRAM.to_owned()),
+    ];
     for exercise in namsdec_exercises::builtin_pack().exercises {
         programs.push((
             Box::leak(exercise.id.clone().into_boxed_str()) as &str,
@@ -5730,4 +5733,56 @@ fn the_bytes_tab_follows_execution_in_a_long_program() {
         !painted.contains("00400000"),
         "le début du programme est hors de la vue : {painted}"
     );
+}
+
+/// « Nouveau » donne un programme qui tient debout, pas une page
+/// blanche : devant un assembleur, elle est un mur.
+#[test]
+fn a_new_program_is_ready_to_assemble() {
+    let mut app = NamsdecApp {
+        source: "de quoi salir le tampon".to_owned(),
+        ..Default::default()
+    };
+
+    // Il y a quelque chose à perdre : on demande avant.
+    app.dispatch(Action::New);
+    assert_eq!(app.pending, Some(Pending::New));
+    assert_eq!(app.source, "de quoi salir le tampon");
+
+    // Une fois accordé, le squelette est posé — et il est propre.
+    app.pending = None;
+    app.perform(Pending::New);
+    assert_eq!(app.source, NEW_PROGRAM);
+    assert!(!app.buffer_modified(), "rien à enregistrer d'emblée");
+    assert!(app.current_file.is_none());
+
+    // Les trois choses qu'on n'invente pas devant une page blanche.
+    for attendu in ["global _start", "section .text", "_start:"] {
+        assert!(app.source.contains(attendu), "{}", app.source);
+    }
+    // Et il sort proprement, plutôt que de laisser le processeur
+    // continuer dans ce qui suit.
+    assert!(app.source.contains("mov rax, 60"), "{}", app.source);
+
+    if namsdec_asm::find_nasm().is_some() && namsdec_asm::find_linker() {
+        app.do_assemble();
+        assert!(
+            matches!(app.status, Status::AssembleOk),
+            "le squelette doit s'assembler : {:?}",
+            app.status
+        );
+        app.do_run();
+        let ctx = egui::Context::default();
+        for _ in 0..10 {
+            if !app.running {
+                break;
+            }
+            app.tick_run(&ctx);
+        }
+        assert!(
+            matches!(app.status, Status::Exited { code: 0 }),
+            "et rendre la main avec le code 0 : {:?}",
+            app.status
+        );
+    }
 }
