@@ -6786,3 +6786,197 @@ hlt
     );
     assert!(painted.contains("-2|"), "{painted}");
 }
+
+/// Tout ouvert en même temps, dans les deux langues, avec et sans
+/// programme : rien ne doit paniquer ni disparaître.
+///
+/// Les fenêtres se sont multipliées — analyse, registres étendus, points
+/// d'arrêt, chronologie, exercices, aide, préférences, palette. Chacune
+/// a son test ; ce qu'aucun ne vérifie, c'est ce qui arrive quand elles
+/// sont toutes là en même temps, sur un état incomplet.
+#[test]
+fn every_window_at_once_holds_together() {
+    for lang in [Lang::Fr, Lang::En] {
+        for assemblé in [false, true] {
+            let mut app = NamsdecApp {
+                lang,
+                exercises: true,
+                show_re_tab: true,
+                show_analysis: true,
+                show_vectors: true,
+                show_breakpoints: true,
+                show_timeline: true,
+                show_exercises: true,
+                show_help: true,
+                show_about: true,
+                show_preferences: true,
+                command_palette: Some(CommandPalette::default()),
+                find: Some(Find::default()),
+                ..Default::default()
+            };
+            if assemblé && namsdec_asm::find_nasm().is_some() && namsdec_asm::find_linker() {
+                app.do_assemble();
+                app.do_step();
+                app.breakpoint_lines.insert(7);
+                app.breakpoint_conditions.insert(7, "rcx == 0".to_owned());
+                app.sync_breakpoints();
+            }
+
+            let ctx = egui::Context::default();
+            app.apply_theme(&ctx);
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1280.0, 1000.0),
+                )),
+                ..Default::default()
+            };
+            let mut vus = 0;
+            for _ in 0..3 {
+                let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+                vus = output
+                    .shapes
+                    .iter()
+                    .filter(|clipped| matches!(clipped.shape, egui::epaint::Shape::Text(_)))
+                    .count();
+                output.textures_delta.clear();
+            }
+            assert!(
+                vus > 50,
+                "{lang:?}, assemblé={assemblé} : l'écran est presque vide ({vus} textes)"
+            );
+            // Et les réglages restent relisibles : une fenêtre ouverte
+            // ne doit pas corrompre ce qu'on enregistre.
+            let json = serde_json::to_string(&app.settings_snapshot()).unwrap();
+            let relu: crate::settings::Settings = serde_json::from_str(&json).unwrap();
+            assert_eq!(relu.language, app.lang.code());
+        }
+    }
+}
+
+/// Tout réglage réglé par l'utilisateur doit revenir tel quel à la
+/// session suivante.
+///
+/// Un réglage qu'on pose et qui ne revient pas est pire qu'un réglage
+/// absent : on croit l'avoir posé. Le contrôle porte sur le tour
+/// complet — l'état, écrit en JSON, relu, remis dans une application
+/// neuve — et non sur chaque champ pris à part, parce que c'est le tour
+/// complet qui casse quand on ajoute un champ en oubliant un bout.
+#[test]
+fn every_setting_survives_a_round_trip() {
+    let mut app = NamsdecApp {
+        lang: Lang::En,
+        show_toolbar: false,
+        show_sidebar: false,
+        show_statusbar: false,
+        show_console: false,
+        show_tooltips: false,
+        completion: false,
+        auto_indent: false,
+        exercises: true,
+        show_re_tab: true,
+        memory_format: MemoryFormat::Text,
+        ..Default::default()
+    };
+    app.disabled_packs.insert("namsdec".to_owned());
+    app.current_exercise = Some("namsdec/tableau".to_owned());
+    app.theme = namsdec_theme::all()
+        .into_iter()
+        .find(|theme| theme.id != app.theme.id)
+        .expect("plus d'un thème");
+
+    let json = serde_json::to_string(&app.settings_snapshot()).expect("écriture");
+    let relu: crate::settings::Settings = serde_json::from_str(&json).expect("relecture");
+    let revenu = NamsdecApp::from_settings(relu);
+
+    assert_eq!(revenu.lang, app.lang);
+    assert_eq!(revenu.show_toolbar, app.show_toolbar);
+    assert_eq!(revenu.show_sidebar, app.show_sidebar);
+    assert_eq!(revenu.show_statusbar, app.show_statusbar);
+    assert_eq!(revenu.show_console, app.show_console);
+    assert_eq!(revenu.show_tooltips, app.show_tooltips);
+    assert_eq!(revenu.completion, app.completion);
+    assert_eq!(revenu.auto_indent, app.auto_indent);
+    assert_eq!(revenu.exercises, app.exercises);
+    // `show_re_tab` est délibérément absent des réglages : voir
+    // `the_re_tab_is_absent_at_every_launch_until_it_is_asked_for`. Ce
+    // qu'on vérifie ici, c'est qu'il le reste.
+    assert!(!revenu.show_re_tab, "l'onglet RE ne se persiste pas");
+    assert_eq!(revenu.memory_format, app.memory_format);
+    assert_eq!(revenu.disabled_packs, app.disabled_packs);
+    assert_eq!(revenu.current_exercise, app.current_exercise);
+    assert_eq!(revenu.theme.id, app.theme.id);
+
+    // Un fichier écrit par une version plus ancienne, sans les réglages
+    // récents : ils prennent leur valeur de départ, et rien ne casse.
+    let ancien = r#"{"version":1,"theme":"vscode-dark","language":"fr",
+        "show_toolbar":true,"show_sidebar":true,"show_statusbar":true,
+        "show_console":true,"show_tooltips":true,"completion":true,
+        "memory_format":"bytes"}"#;
+    let relu: crate::settings::Settings = serde_json::from_str(ancien).expect("relecture");
+    assert!(relu.auto_indent, "absent veut dire allumé");
+    assert!(relu.current_exercise.is_none());
+    assert!(relu.disabled_packs.is_empty());
+}
+
+/// Les nouveautés ne doivent pas s'effondrer sur un état dégénéré.
+///
+/// Une chronologie sans programme, une condition posée sur une ligne qui
+/// n'existe pas, un rembobinage sans rien à défaire : ces cas-là
+/// arrivent, et ils doivent être sans conséquence plutôt que fatals.
+#[test]
+fn the_new_views_hold_on_a_degenerate_state() {
+    // Rien du tout : ni source, ni programme assemblé.
+    let mut app = NamsdecApp {
+        source: String::new(),
+        show_timeline: true,
+        show_breakpoints: true,
+        ..Default::default()
+    };
+    app.rewind(5);
+    assert!(app.emulator.is_none());
+    // Une condition sur une ligne qui n'existe pas ne fait rien.
+    app.breakpoint_lines.insert(42);
+    app.breakpoint_conditions.insert(42, "rcx == 0".to_owned());
+    app.sync_breakpoints();
+    assert!(
+        app.breakpoint_holds(0x400000),
+        "sans programme, on s'arrête"
+    );
+
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 900.0),
+        )),
+        ..Default::default()
+    };
+    for _ in 0..2 {
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        output.textures_delta.clear();
+    }
+
+    // Un programme assemblé, puis réinitialisé : la chronologie repart
+    // de zéro plutôt que de montrer un chemin qui n'existe plus.
+    if namsdec_asm::find_nasm().is_some() && namsdec_asm::find_linker() {
+        let mut app = NamsdecApp {
+            source: DEFAULT_SOURCE.to_owned(),
+            ..Default::default()
+        };
+        app.do_assemble();
+        app.do_step();
+        app.do_step();
+        assert!(!app.emulator.as_ref().unwrap().trace().is_empty());
+        app.dispatch(Action::Reset);
+        assert!(
+            app.emulator.as_ref().unwrap().trace().is_empty(),
+            "après réinitialisation, il n'y a plus de chemin parcouru"
+        );
+        // Et rembobiner au-delà du début ne défait rien de plus.
+        app.do_step();
+        app.rewind(1000);
+        assert!(app.emulator.as_ref().unwrap().trace().is_empty());
+    }
+}
