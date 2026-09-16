@@ -486,6 +486,16 @@ struct NamsdecApp {
     show_breakpoints: bool,
     /// La chronologie : le chemin parcouru, pas par pas.
     show_timeline: bool,
+    /// Le panneau de désassemblage, et le moteur qu'il emploie.
+    show_disassembly: bool,
+    disassembler: String,
+    /// Les désassembleurs décrits par des fichiers, trouvés au
+    /// démarrage.
+    disassembler_plugins: Vec<namsdec_disasm::plugin::Plugin>,
+    /// Ce que le dernier plugin lancé a répondu, gardé tant qu'on le
+    /// regarde : relancer un outil extérieur à chaque frame serait
+    /// déraisonnable.
+    plugin_output: Option<(String, String)>,
     /// Ne garder que les pas qui ont changé de direction ou touché la
     /// mémoire. Cinq mille pas ordinaires noient les dix qui comptent.
     timeline_notable_only: bool,
@@ -643,6 +653,7 @@ enum PaletteCommand {
     ShowVectors,
     ShowBreakpoints,
     ShowTimeline,
+    ShowDisassembly,
     SetTheme(&'static Theme),
     SetLang(Lang),
     SaveAs,
@@ -718,6 +729,10 @@ fn palette_commands(
             PaletteCommand::ShowBreakpoints,
         ),
         (s.timeline_open.to_string(), PaletteCommand::ShowTimeline),
+        (
+            s.disassembly_open.to_string(),
+            PaletteCommand::ShowDisassembly,
+        ),
         (
             format!("{}: Français", s.preferences_language),
             PaletteCommand::SetLang(Lang::Fr),
@@ -881,6 +896,13 @@ fn find_matches(text: &str, query: &str) -> Vec<usize> {
     haystack.match_indices(&needle).map(|(at, _)| at).collect()
 }
 
+/// Le moteur de pseudo-code, celui qu'on montre en premier : lire
+/// « RAX = RAX + RCX » avant « add rax, rcx » est le chemin naturel, et
+/// c'est celui que namsdec propose par défaut.
+const PSEUDO_ID: &str = "pseudo";
+/// Le désassembleur natif, en syntaxe NASM — celle qu'on écrit.
+const NASM_ID: &str = "nasm";
+
 /// Le programme que « Nouveau » pose dans l'éditeur.
 ///
 /// Pas une page blanche : devant un assembleur, elle est un mur. Il faut
@@ -981,6 +1003,10 @@ impl Default for NamsdecApp {
             show_vectors: false,
             show_breakpoints: false,
             show_timeline: false,
+            show_disassembly: false,
+            disassembler: PSEUDO_ID.to_owned(),
+            disassembler_plugins: load_disassembler_plugins(),
+            plugin_output: None,
             timeline_notable_only: false,
             exercise_packs: vec![namsdec_exercises::builtin_pack()],
             exercise_files: BTreeMap::new(),
@@ -2308,6 +2334,7 @@ impl NamsdecApp {
             PaletteCommand::ShowVectors => self.show_vectors = true,
             PaletteCommand::ShowBreakpoints => self.show_breakpoints = true,
             PaletteCommand::ShowTimeline => self.show_timeline = true,
+            PaletteCommand::ShowDisassembly => self.show_disassembly = true,
             PaletteCommand::SetTheme(theme) => {
                 self.theme = theme;
                 self.apply_theme(ctx);
@@ -2690,6 +2717,10 @@ impl NamsdecApp {
                 }
                 if ui.button(s.timeline_open).clicked() {
                     self.show_timeline = true;
+                    ui.close();
+                }
+                if ui.button(s.disassembly_open).clicked() {
+                    self.show_disassembly = true;
                     ui.close();
                 }
                 ui.separator();
@@ -4696,6 +4727,165 @@ impl NamsdecApp {
         self.pending = Some(Pending::Quit);
     }
 
+    /// Le panneau de désassemblage : le programme, lu par le moteur
+    /// qu'on a choisi.
+    ///
+    /// Deux moteurs sont livrés — le pseudo-code, qui dit l'instruction
+    /// en clair, et la syntaxe NASM, celle qu'on écrit. D'autres
+    /// s'ajoutent en posant un fichier de description dans le dossier
+    /// des plugins : namsdec appelle alors l'outil et montre ce qu'il
+    /// répond.
+    fn disassembly_window_ui(&mut self, ctx: &egui::Context) {
+        if !self.show_disassembly {
+            return;
+        }
+        let s = strings(self.lang);
+        let theme = self.theme;
+        let lang = self.lang.code();
+        let mut open = true;
+
+        egui::Window::new(s.disassembly_title)
+            .id(egui::Id::new("disassembly_window"))
+            .open(&mut open)
+            .resizable(true)
+            .collapsible(false)
+            .default_size([680.0, 560.0])
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(ctx.viewport_rect().center())
+            .show(ctx, |ui| {
+                // Le choix du moteur, en tête : c'est lui qui décide de
+                // tout ce qu'on lit en dessous.
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(s.disassembly_engine);
+                    ui.selectable_value(
+                        &mut self.disassembler,
+                        PSEUDO_ID.to_owned(),
+                        s.disassembly_pseudo,
+                    );
+                    ui.selectable_value(
+                        &mut self.disassembler,
+                        NASM_ID.to_owned(),
+                        s.disassembly_nasm,
+                    );
+                    for plugin in &self.disassembler_plugins {
+                        ui.selectable_value(
+                            &mut self.disassembler,
+                            plugin.id.clone(),
+                            &plugin.name,
+                        )
+                        .on_hover_text(format!("{} {}", s.disassembly_external, plugin.command));
+                    }
+                });
+                ui.weak(if self.disassembler == PSEUDO_ID {
+                    s.disassembly_pseudo_hint
+                } else {
+                    s.disassembly_nasm_hint
+                });
+                ui.separator();
+
+                let Some(state) = &self.assemble_state else {
+                    ui.weak(s.no_binary_assembled);
+                    return;
+                };
+                if state.disasm.is_empty() {
+                    ui.weak(s.no_binary_assembled);
+                    return;
+                }
+
+                // Un moteur extérieur : on l'appelle sur demande, et
+                // l'on garde sa réponse. Le relancer à chaque frame
+                // reviendrait à lancer un programme soixante fois par
+                // seconde.
+                if let Some(plugin) = self
+                    .disassembler_plugins
+                    .iter()
+                    .find(|plugin| plugin.id == self.disassembler)
+                {
+                    let déjà = self
+                        .plugin_output
+                        .as_ref()
+                        .filter(|(id, _)| *id == plugin.id)
+                        .map(|(_, texte)| texte.clone());
+                    match déjà {
+                        Some(texte) => {
+                            egui::ScrollArea::both()
+                                .id_salt("plugin_output")
+                                .auto_shrink([false, false])
+                                .show(ui, |ui| {
+                                    ui.add(
+                                        egui::Label::new(egui::RichText::new(texte).monospace())
+                                            .wrap_mode(egui::TextWrapMode::Extend),
+                                    );
+                                });
+                        }
+                        None => {
+                            ui.weak(format!("{} {}", s.disassembly_will_run, plugin.command));
+                            if ui.button(s.disassembly_run).clicked() {
+                                let octets = state.output.file.clone();
+                                let octets = if octets.is_empty() {
+                                    state.output.bytes.clone()
+                                } else {
+                                    octets
+                                };
+                                let texte = plugin.run(&octets).unwrap_or_else(|e| format!("{e}"));
+                                self.plugin_output = Some((plugin.id.clone(), texte));
+                            }
+                        }
+                    }
+                    return;
+                }
+                let rip = self.emulator.as_ref().map(|e| e.cpu().regs.rip);
+                let symbols = &state.output.symbols;
+                let pseudo = self.disassembler == PSEUDO_ID;
+                let row_height =
+                    ui.text_style_height(&egui::TextStyle::Monospace) + ui.spacing().item_spacing.y;
+                egui::ScrollArea::vertical()
+                    .id_salt("disassembly_rows")
+                    .auto_shrink([false, false])
+                    .show_rows(ui, row_height, state.disasm.len(), |ui, rows| {
+                        for instruction in &state.disasm[rows] {
+                            // L'étiquette, là où elle tombe : elle donne
+                            // sa structure au listing.
+                            for symbol in symbols.iter().filter(|s| s.addr == instruction.address) {
+                                ui.colored_label(
+                                    theme.label,
+                                    egui::RichText::new(format!("{}:", symbol.name)).monospace(),
+                                );
+                            }
+                            let ici = rip == Some(instruction.address);
+                            let texte =
+                                namsdec_disasm::decode_one(&instruction.bytes, instruction.address)
+                                    .map(|decoded| {
+                                        if pseudo {
+                                            namsdec_disasm::pseudo::of(&decoded, lang)
+                                        } else {
+                                            namsdec_disasm::format_one(&decoded)
+                                        }
+                                    })
+                                    .unwrap_or_else(|| instruction.text.clone());
+                            ui.horizontal(|ui| {
+                                ui.colored_label(
+                                    if ici { theme.accent } else { theme.dim },
+                                    egui::RichText::new(format!("{:08x}", instruction.address))
+                                        .monospace(),
+                                );
+                                ui.add(
+                                    egui::Label::new(egui::RichText::new(texte).monospace().color(
+                                        if ici {
+                                            theme.accent
+                                        } else {
+                                            ui.visuals().text_color()
+                                        },
+                                    ))
+                                    .truncate(),
+                                );
+                            });
+                        }
+                    });
+            });
+        self.show_disassembly = open;
+    }
+
     /// La chronologie : le chemin parcouru, et de quoi y revenir.
     ///
     /// « Comment suis-je arrivé là ? » est la question qu'on pose devant
@@ -6290,6 +6480,7 @@ impl NamsdecApp {
             self.vectors_window_ui(&ctx);
             self.breakpoints_window_ui(&ctx);
             self.timeline_window_ui(&ctx);
+            self.disassembly_window_ui(&ctx);
             self.analysis_window_ui(&ctx);
             if self.exercises {
                 self.exercises_window_ui(&ctx);
@@ -6477,6 +6668,19 @@ const REGISTERS: [(&str, Reg64); 16] = [
 
 /// Où vivent les thèmes installés : à côté des réglages, dans le dossier
 /// de données de l'utilisateur.
+/// Les désassembleurs installés : un fichier JSON par outil, dans le
+/// dossier des plugins.
+///
+/// Rien n'est lancé ici — on lit seulement ce qui est déclaré. Un
+/// désassembleur extérieur *est un programme* : il ne s'exécute que
+/// lorsqu'on le choisit, et le panneau le dit avant.
+fn load_disassembler_plugins() -> Vec<namsdec_disasm::plugin::Plugin> {
+    let Some(dir) = data_dir().map(|dir| dir.join("disassemblers")) else {
+        return Vec::new();
+    };
+    namsdec_disasm::plugin::read_dir(&dir)
+}
+
 fn plugins_dir() -> Option<PathBuf> {
     data_dir().map(|base| base.join("themes"))
 }

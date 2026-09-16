@@ -9,6 +9,9 @@ use iced_x86::{Decoder, DecoderOptions, Formatter, Instruction, NasmFormatter};
 /// Réexportée pour que l'interface puisse la nommer dans ses signatures
 /// sans dépendre elle-même du décodeur : ce qu'elle en fait, elle le
 /// fait toujours en passant par cette crate.
+pub mod plugin;
+pub mod pseudo;
+
 pub use iced_x86::Instruction as Decoded;
 /// Les types du décodeur dont les autres crates ont besoin pour lire une
 /// instruction : la nature d'un opérande, et les registres.

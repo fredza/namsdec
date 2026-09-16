@@ -1282,6 +1282,10 @@ name = "namsdec-disasm"
 version = "0.1.99-beta.2"
 dependencies = [
  "iced-x86",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
 ]
 
 [[package]]

@@ -7456,3 +7456,135 @@ ret
     // haut de RAX étant mis à zéro de toute façon.
     assert!(listing.contains("mov eax, 1"), "{listing}");
 }
+
+/// Le panneau de désassemblage s'ouvre sur le pseudo-code : lire
+/// « RAX = RAX + RCX » avant « add rax, rcx » est le chemin naturel.
+#[test]
+fn the_disassembly_panel_opens_on_pseudo_code() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        show_disassembly: true,
+        source: "\
+global _start
+section .text
+_start:
+mov rax, 0
+mov rcx, 5
+boucle:
+add rax, rcx
+dec rcx
+jnz boucle
+hlt
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    // Le moteur par défaut est le pseudo-code, et non la syntaxe
+    // machine : c'est le premier qu'on veut lire.
+    assert_eq!(app.disassembler, PSEUDO_ID);
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1400.0, 1000.0),
+        )),
+        ..Default::default()
+    };
+    let peindre = |app: &mut NamsdecApp| {
+        let mut painted = String::new();
+        for _ in 0..2 {
+            painted.clear();
+            let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+            for clipped in &output.shapes {
+                if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                    painted.push_str(text.galley.text());
+                    painted.push('|');
+                }
+            }
+            output.textures_delta.clear();
+        }
+        painted
+    };
+
+    let painted = peindre(&mut app);
+    assert!(painted.contains("Désassemblage"), "{painted}");
+    assert!(painted.contains("RAX = RAX + RCX"), "{painted}");
+    assert!(painted.contains("RCX = RCX − 1"), "{painted}");
+    assert!(
+        painted.contains("si différent, aller à"),
+        "le saut dit sa condition : {painted}"
+    );
+    // Les étiquettes structurent le listing.
+    assert!(painted.contains("boucle:"), "{painted}");
+
+    // L'autre moteur montre la syntaxe qu'on écrit.
+    app.disassembler = NASM_ID.to_owned();
+    let painted = peindre(&mut app);
+    assert!(painted.contains("add rax, rcx"), "{painted}");
+    assert!(!painted.contains("RAX = RAX + RCX"), "{painted}");
+}
+
+/// Un désassembleur extérieur ne s'exécute que sur demande, et le
+/// panneau dit ce qu'il va lancer.
+///
+/// C'est la différence avec un thème : un thème est une palette, un
+/// désassembleur de ce genre est un programme. namsdec lit ce qui est
+/// déclaré, l'annonce, et attend un clic.
+#[test]
+fn an_external_disassembler_runs_only_when_asked() {
+    let dossier = tempfile::tempdir().expect("dossier temporaire");
+    std::fs::write(
+        dossier.path().join("cat.json"),
+        r#"{"id":"cat","name":"cat","command":"cat","args":["{file}"]}"#,
+    )
+    .unwrap();
+
+    let plugins = namsdec_disasm::plugin::read_dir(dossier.path());
+    assert_eq!(plugins.len(), 1);
+
+    let mut app = NamsdecApp {
+        show_disassembly: true,
+        disassembler_plugins: plugins,
+        source: DEFAULT_SOURCE.to_owned(),
+        ..Default::default()
+    };
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    app.do_assemble();
+    app.disassembler = "cat".to_owned();
+
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1400.0, 1000.0),
+        )),
+        ..Default::default()
+    };
+    let mut painted = String::new();
+    for _ in 0..2 {
+        painted.clear();
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        for clipped in &output.shapes {
+            if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                painted.push_str(text.galley.text());
+                painted.push('|');
+            }
+        }
+        output.textures_delta.clear();
+    }
+
+    // Rien n'a été lancé : le panneau annonce ce qu'il ferait.
+    assert!(app.plugin_output.is_none(), "rien ne s'exécute tout seul");
+    assert!(painted.contains("programme extérieur"), "{painted}");
+    assert!(painted.contains("cat"), "{painted}");
+    assert!(painted.contains("Lancer"), "{painted}");
+}

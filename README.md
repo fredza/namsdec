@@ -44,6 +44,15 @@ qu'elle est : une adresse de retour, avec son étiquette. Ce qui est
 au-dessus de RSP est grisé — ces octets sont encore là, mais le prochain
 `push` les écrase.
 
+**Un panneau de désassemblage, avec le choix du moteur.** Le pseudo-code
+d'abord — `RAX = RAX + RCX` plutôt que `add rax, rcx`, `si différent,
+aller à boucle` plutôt que `jne` —, la syntaxe NASM ensuite, et les
+outils qu'on installe soi-même : un fichier JSON dans
+`~/.local/share/namsdec/disassemblers/` décrit la commande à lancer
+(`objdump`, `ndisasm`, le vôtre). Ceux-là sont des **programmes** : ils
+ne s'exécutent que sur demande, et le panneau annonce ce qu'il va lancer
+avant de le faire.
+
 **D'où vient cette valeur.** Survoler un registre dit quel pas y a écrit
 en dernier, son rang et sa ligne : « écrit au pas -12, ligne 7 :
 add rax, rcx ». Le chercher à la main veut dire relire son programme à
