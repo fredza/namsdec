@@ -1011,71 +1011,90 @@ impl NamsdecApp {
         // et suivre l'exécution faisait alors glisser la vue vers la
         // droite, cachant l'adresse et le numéro de ligne — les deux
         // colonnes qu'on vient lire.
-        egui::ScrollArea::vertical()
-            .id_salt("bytes_tab")
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                // Un panneau egui adopte la largeur de son contenu, et
-                // dix octets en hexadécimal suivis d'un texte
-                // d'instruction en font beaucoup : sans cette borne,
-                // l'onglet poussait le panneau — et l'éditeur avec.
-                let largeur = ui.available_width();
-                ui.set_max_width(largeur);
-                for instruction in &state.disasm {
-                    let here = rip == Some(instruction.address);
-                    let colour = if here {
-                        theme.accent
-                    } else {
-                        ui.visuals().text_color()
-                    };
-                    let octets = instruction
-                        .bytes
+        // `show_rows` plutôt que tout dessiner : un binaire ouvert fait
+        // quinze mille instructions, et construire quinze mille rangées
+        // pour en montrer trente coûtait une frame entière — près de
+        // cent millisecondes. Toutes les rangées ayant la même hauteur,
+        // egui sait lesquelles sont à l'écran et ne demande que
+        // celles-là.
+        let row_height =
+            ui.text_style_height(&egui::TextStyle::Monospace) + ui.spacing().item_spacing.y;
+        // La ligne à suivre, calculée avant : `show_rows` ne dessine pas
+        // les autres, et `scroll_to_me` ne peut donc pas les atteindre.
+        let suivie = (self.follow_rip)
+            .then(|| {
+                rip.and_then(|rip| {
+                    state
+                        .disasm
                         .iter()
-                        .map(|b| format!("{b:02x}"))
-                        .collect::<Vec<_>>()
-                        .join(" ");
-                    let ligne = state
-                        .addr_to_line
-                        .get(&instruction.address)
-                        .map(|l| format!("{l:>3}"))
-                        .unwrap_or_else(|| "   ".to_owned());
-                    // Deux étiquettes seulement, et la seconde se
-                    // tronque : dans une rangée horizontale, chaque
-                    // étiquette réclame sa largeur entière, et quatre
-                    // colonnes côte à côte poussaient le panneau. Le
-                    // préfixe — ligne, adresse, longueur — a une largeur
-                    // fixe ; tout le reste tient dans ce qui subsiste.
-                    let response = ui.horizontal(|ui| {
-                        ui.set_max_width(largeur);
-                        ui.colored_label(
-                            if here { theme.accent } else { theme.dim },
-                            egui::RichText::new(format!("{ligne} {:08x}", instruction.address))
-                                .monospace(),
-                        );
-                        ui.colored_label(
-                            theme.register,
-                            egui::RichText::new(format!("{:2}", instruction.bytes.len()))
-                                .monospace(),
+                        .position(|instruction| instruction.address == rip)
+                })
+            })
+            .flatten();
+        let mut zone = egui::ScrollArea::vertical()
+            .id_salt("bytes_tab")
+            .auto_shrink([false, false]);
+        if let Some(index) = suivie {
+            // Centrée : on veut voir ce qui précède et ce qui suit
+            // l'instruction courante, pas seulement elle.
+            let milieu = (index as f32 + 0.5) * row_height;
+            zone = zone.vertical_scroll_offset((milieu - ui.available_height() / 2.0).max(0.0));
+        }
+        zone.show_rows(ui, row_height, state.disasm.len(), |ui, rows| {
+            // Un panneau egui adopte la largeur de son contenu, et dix
+            // octets en hexadécimal suivis d'un texte d'instruction en
+            // font beaucoup : sans cette borne, l'onglet poussait le
+            // panneau — et l'éditeur avec.
+            let largeur = ui.available_width();
+            ui.set_max_width(largeur);
+            for instruction in &state.disasm[rows] {
+                let here = rip == Some(instruction.address);
+                let colour = if here {
+                    theme.accent
+                } else {
+                    ui.visuals().text_color()
+                };
+                let octets = instruction
+                    .bytes
+                    .iter()
+                    .map(|b| format!("{b:02x}"))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                let ligne = state
+                    .addr_to_line
+                    .get(&instruction.address)
+                    .map(|l| format!("{l:>3}"))
+                    .unwrap_or_else(|| "   ".to_owned());
+                // Deux étiquettes seulement, et la seconde se tronque :
+                // dans une rangée horizontale, chaque étiquette réclame
+                // sa largeur entière, et quatre colonnes côte à côte
+                // poussaient le panneau. Le préfixe — ligne, adresse,
+                // longueur — a une largeur fixe ; tout le reste tient
+                // dans ce qui subsiste.
+                ui.horizontal(|ui| {
+                    ui.set_max_width(largeur);
+                    ui.colored_label(
+                        if here { theme.accent } else { theme.dim },
+                        egui::RichText::new(format!("{ligne} {:08x}", instruction.address))
+                            .monospace(),
+                    );
+                    ui.colored_label(
+                        theme.register,
+                        egui::RichText::new(format!("{:2}", instruction.bytes.len())).monospace(),
+                    )
+                    .on_hover_text(s.bytes_length_hint);
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(format!("{octets}  {}", instruction.text))
+                                .monospace()
+                                .color(colour),
                         )
-                        .on_hover_text(s.bytes_length_hint);
-                        ui.add(
-                            egui::Label::new(
-                                egui::RichText::new(format!("{octets}  {}", instruction.text))
-                                    .monospace()
-                                    .color(colour),
-                            )
-                            .truncate(),
-                        )
-                        .on_hover_text(&instruction.text);
-                    });
-                    // Suivre l'exécution : la ligne courante revient sous
-                    // les yeux à chaque pas, sans quoi il faudrait la
-                    // chercher à la main dans un long programme.
-                    if here && self.follow_rip {
-                        response.response.scroll_to_me(Some(egui::Align::Center));
-                    }
-                }
-            });
+                        .truncate(),
+                    )
+                    .on_hover_text(&instruction.text);
+                });
+            }
+        });
         self.follow_rip = false;
     }
 

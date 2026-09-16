@@ -5670,3 +5670,64 @@ fn a_large_listing_still_draws_fast() {
         app.source.lines().count()
     );
 }
+
+/// Sur un long programme, l'onglet Octets ramène la ligne courante sous
+/// les yeux à chaque pas.
+///
+/// Il ne dessine plus que les rangées visibles — trente sur quinze
+/// mille —, ce qui veut dire qu'il ne peut plus compter sur egui pour
+/// faire défiler jusqu'à une rangée qu'il n'a pas dessinée : la position
+/// se calcule.
+#[test]
+fn the_bytes_tab_follows_execution_in_a_long_program() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        active_tab: SidebarTab::Bytes,
+        source: format!(
+            "global _start\nsection .text\n_start:\n{}    hlt\n",
+            "    nop\n".repeat(400)
+        ),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+    for _ in 0..300 {
+        app.do_step();
+    }
+    let rip = app.emulator.as_ref().unwrap().cpu().regs.rip;
+
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 900.0),
+        )),
+        ..Default::default()
+    };
+    let mut painted = String::new();
+    for _ in 0..3 {
+        painted.clear();
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        for clipped in &output.shapes {
+            if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                painted.push_str(text.galley.text());
+                painted.push('|');
+            }
+        }
+        output.textures_delta.clear();
+    }
+
+    assert!(
+        painted.contains(&format!("{rip:08x}")),
+        "l'instruction courante ({rip:#x}) doit être à l'écran"
+    );
+    // Et la première, restée loin au-dessus, ne l'est pas : la vue a
+    // bien suivi plutôt que de tout dessiner.
+    assert!(
+        !painted.contains("00400000"),
+        "le début du programme est hors de la vue : {painted}"
+    );
+}
