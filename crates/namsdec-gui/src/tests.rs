@@ -6505,3 +6505,68 @@ hlt
         "celle que personne ne lit n'en a pas — et c'est une information"
     );
 }
+
+/// Le résumé répond à la première question : qu'est-ce que c'est, et
+/// qu'est-ce qu'il y a dedans ?
+///
+/// Tout y est mesuré, jamais déclaré : les fonctions viennent des `call`
+/// relevés, les chaînes des octets lisibles, la nature du fichier de ses
+/// en-têtes.
+#[test]
+fn the_analysis_opens_on_a_summary() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        show_analysis: true,
+        source: "\
+global _start
+section .data
+message: db \"salutations\", 0
+section .text
+_start:
+call ecrire
+hlt
+ecrire:
+mov rsi, message
+ret
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 1000.0),
+        )),
+        ..Default::default()
+    };
+    let mut painted = String::new();
+    for _ in 0..2 {
+        painted.clear();
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        for clipped in &output.shapes {
+            if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                painted.push_str(text.galley.text());
+                painted.push('|');
+            }
+        }
+        output.textures_delta.clear();
+    }
+
+    assert!(painted.contains("En bref"), "{painted}");
+    for attendu in ["Code", "Point d'entrée", "Fonctions", "Chaînes", "Fichier"] {
+        assert!(
+            painted.contains(attendu),
+            "« {attendu} » manque : {painted}"
+        );
+    }
+    // Le fichier est un exécutable à adresse fixe, lié statiquement :
+    // c'est ce que `ld` produit sans options.
+    assert!(painted.contains("EXEC · static"), "{painted}");
+}

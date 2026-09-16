@@ -13,9 +13,10 @@ pub struct StringsModule {
     xrefs: crate::xrefs::Xrefs,
 }
 
-struct Found {
-    addr: u64,
-    text: String,
+/// Une chaîne trouvée : où elle commence, et ce qu'elle dit.
+pub struct Found {
+    pub addr: u64,
+    pub text: String,
 }
 
 /// En dessous de quatre caractères, tout ressemble à une chaîne : deux
@@ -31,7 +32,7 @@ const MAX_FOUND: usize = 200;
 ///
 /// Fonction libre et non méthode : c'est elle qu'on teste, et elle n'a
 /// besoin de rien d'autre que d'octets.
-fn scan(bytes: &[u8], base: u64) -> Vec<Found> {
+pub fn scan(bytes: &[u8], base: u64) -> Vec<Found> {
     let mut out = Vec::new();
     let mut current = String::new();
     let mut start = base;

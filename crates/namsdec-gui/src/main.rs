@@ -888,11 +888,12 @@ _start:
 impl Default for NamsdecApp {
     fn default() -> Self {
         let mut re_registry = ReModuleRegistry::new();
-        // Les protections d'abord : avant de lire ce que fait un binaire,
-        // on regarde comment il est armé — c'est ce qui décide de tout ce
-        // qu'on tentera ensuite.
-        re_registry.register(Box::new(ProtectionsModule::default()));
+        // Le résumé d'abord : de quoi on parle. Puis les protections —
+        // avant de lire ce que fait un binaire, on regarde comment il
+        // est armé, car c'est ce qui décide de tout ce qu'on tentera
+        // ensuite.
         re_registry.register(Box::new(BinaryInfoModule::default()));
+        re_registry.register(Box::new(ProtectionsModule::default()));
         // Puis dans l'ordre où l'on regarde un binaire inconnu : ce qu'il
         // dit (ses chaînes), ce qu'il demande au système, puis comment il
         // est découpé.

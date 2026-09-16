@@ -12,7 +12,7 @@ pub mod gadgets;
 mod gadgets_module;
 mod protections;
 pub mod report;
-mod strings;
+pub mod strings;
 mod syscalls;
 pub mod table;
 pub mod xrefs;
