@@ -3341,6 +3341,17 @@ impl NamsdecApp {
                         );
                         let click_y = gutter_resp.interact_pointer_pos().map(|p| p.y);
                         let mut clicked_line = None;
+                        // Les lignes dont nasm s'est plaint : la console
+                        // les liste, mais c'est ici qu'on écrit, et une
+                        // erreur qu'on ne voit pas là où l'on tape ne
+                        // sert qu'à moitié.
+                        let fautives: BTreeMap<u32, Severity> = self
+                            .diagnostics
+                            .iter()
+                            .filter(|d| d.line > 0)
+                            .map(|d| (d.line, d.severity))
+                            .collect();
+                        let largeur_ligne = gutter_rect.width() + ui.available_width();
                         let painter = ui.painter();
                         for (i, row) in galley.rows.iter().enumerate() {
                             let line = (i + 1) as u32;
@@ -3351,6 +3362,25 @@ impl NamsdecApp {
                                 && row_rect.y_range().contains(y)
                             {
                                 clicked_line = Some(line);
+                            }
+
+                            // Le bandeau d'abord, sous tout le reste.
+                            if let Some(severity) = fautives.get(&line) {
+                                let teinte = if *severity == Severity::Error {
+                                    theme.bad
+                                } else {
+                                    theme.warn
+                                };
+                                painter.rect_filled(
+                                    egui::Rect::from_min_size(
+                                        row_rect.min,
+                                        egui::vec2(largeur_ligne, row_rect.height()),
+                                    ),
+                                    0.0,
+                                    // Assez pour se voir, assez peu pour
+                                    // laisser lire le code par-dessus.
+                                    teinte.gamma_multiply(0.18),
+                                );
                             }
 
                             let is_current = current_line == Some(line);
@@ -3421,6 +3451,7 @@ impl NamsdecApp {
                             self.cursor_byte = char_to_byte(&self.source, range.primary.index.0);
                         }
                         self.completion_ui(ui, &output);
+                        self.hover_help_ui(ui, &output);
                         // Après le `TextEdit` : son état existe, et c'est
                         // lui qu'on déplace.
                         self.apply_goto_line(&ui.ctx().clone());
@@ -3542,6 +3573,46 @@ impl NamsdecApp {
             state.store(ctx, editor_id());
         }
         self.suggestions = None;
+    }
+
+    /// La fiche de l'instruction survolée, en infobulle.
+    ///
+    /// F1 donne la fiche entière ; ceci répond à la question plus petite
+    /// qu'on se pose en lisant — « celle-là, c'est quoi ? » — sans
+    /// quitter la ligne des yeux ni presser quoi que ce soit. Soumis au
+    /// réglage des infobulles : ceux qui les trouvent envahissantes n'en
+    /// veulent pas ici non plus.
+    fn hover_help_ui(&self, ui: &mut egui::Ui, output: &egui::text_edit::TextEditOutput) {
+        if !self.show_tooltips {
+            return;
+        }
+        let Some(pointer) = ui.ctx().pointer_hover_pos() else {
+            return;
+        };
+        if !output.response.response.hovered() {
+            return;
+        }
+        // La position du pointeur dans le texte, puis le mot qui s'y
+        // trouve : le même que celui sur lequel F1 répondrait.
+        let cursor = output.galley.cursor_from_pos(pointer - output.galley_pos);
+        let byte = char_to_byte(&self.source, cursor.index.0);
+        let word = word_at(&self.source, byte);
+        let Some(entry) = namsdec_doc::lookup(word) else {
+            return;
+        };
+        let lang = self.lang.code();
+        let theme = self.theme;
+        output.response.response.clone().show_tooltip_ui(|ui| {
+            ui.set_max_width(420.0);
+            ui.strong(entry.title.get(lang));
+            ui.label(prose(ui, theme, entry.body.get(lang)));
+            if !entry.flags.is_empty() {
+                ui.colored_label(
+                    theme.dim,
+                    format!("{} {}", strings(self.lang).help_flags, entry.flags),
+                );
+            }
+        });
     }
 
     /// Pose le curseur au début d'une ligne, et y amène la vue.

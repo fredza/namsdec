@@ -3828,3 +3828,118 @@ fn run_to_cursor_stops_there_and_leaves_no_breakpoint_behind() {
     }
     assert!(matches!(app.status, Status::Halted), "{:?}", app.status);
 }
+
+/// La ligne fautive se voit dans l'éditeur, là où l'on écrit — pas
+/// seulement dans la console.
+#[test]
+fn the_offending_line_is_marked_in_the_editor() {
+    if namsdec_asm::find_nasm().is_none() {
+        return;
+    }
+    let attendu = namsdec_theme::by_id("vscode-dark").bad.gamma_multiply(0.18);
+    let bandes = |source: &str| -> Vec<(f32, egui::Color32)> {
+        let mut app = NamsdecApp {
+            source: source.to_owned(),
+            ..Default::default()
+        };
+        app.do_assemble();
+        let ctx = egui::Context::default();
+        app.apply_theme(&ctx);
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1280.0, 820.0),
+            )),
+            ..Default::default()
+        };
+        let mut trouvées = Vec::new();
+        for _ in 0..2 {
+            trouvées.clear();
+            let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+            for clipped in &output.shapes {
+                if let egui::epaint::Shape::Rect(r) = &clipped.shape {
+                    // Le bandeau d'une ligne fautive : sa teinte le
+                    // distingue de tout le reste.
+                    if r.fill == attendu {
+                        trouvées.push((r.rect.min.y, r.fill));
+                    }
+                }
+            }
+            output.textures_delta.clear();
+        }
+        trouvées
+    };
+
+    let propre = "global _start\nsection .text\n_start:\n    hlt\n";
+    assert!(
+        bandes(propre).is_empty(),
+        "un programme correct ne porte aucune marque"
+    );
+
+    let fautif = "global _start\nsection .text\n_start:\n    mov rax, ebx\n    hlt\n";
+    let marquées = bandes(fautif);
+    assert_eq!(marquées.len(), 1, "une seule ligne fautive : {marquées:?}");
+}
+
+/// Survoler une instruction dans l'éditeur en donne la fiche, sans rien
+/// presser — et se tait quand les infobulles sont éteintes.
+#[test]
+fn hovering_an_instruction_explains_it() {
+    let source = "global _start\nsection .text\n_start:\n    movzx eax, byte [rsi]\n";
+    let painted = |tooltips: bool| -> String {
+        let mut app = NamsdecApp {
+            source: source.to_owned(),
+            show_tooltips: tooltips,
+            ..Default::default()
+        };
+        let ctx = egui::Context::default();
+        app.apply_theme(&ctx);
+        let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 820.0));
+        let mut texts = Vec::new();
+        let mut pointer = None;
+        for _ in 0..4 {
+            let input = egui::RawInput {
+                screen_rect: Some(screen),
+                events: pointer.map(egui::Event::PointerMoved).into_iter().collect(),
+                ..Default::default()
+            };
+            let mut output = ctx.run_ui(input, |ui| app.draw(ui));
+            texts.clear();
+            for clipped in &output.shapes {
+                if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                    texts.push((text.pos, text.galley.clone()));
+                }
+            }
+            // Le pointeur se pose sur « movzx » une fois l'éditeur dessiné :
+            // sa place se lit dans le galley du code, pas dans des
+            // coordonnées devinées.
+            if pointer.is_none() {
+                let (pos, galley) = texts
+                    .iter()
+                    .find(|(_, g)| g.text().starts_with("global _start"))
+                    .expect("le code doit être dessiné");
+                let row = galley.rows.get(3).expect("quatre lignes de code");
+                pointer = Some(egui::pos2(
+                    pos.x + row.rect().left() + 30.0,
+                    pos.y + row.rect().center().y,
+                ));
+            }
+            output.textures_delta.clear();
+        }
+        texts
+            .iter()
+            .map(|(_, g)| g.text())
+            .collect::<Vec<_>>()
+            .join("|")
+    };
+
+    let avec = painted(true);
+    assert!(
+        avec.contains("Élargir une valeur"),
+        "la fiche de movzx doit apparaître : {avec}"
+    );
+    assert!(
+        !painted(false).contains("Élargir une valeur"),
+        "infobulles éteintes : rien ne doit apparaître"
+    );
+}
