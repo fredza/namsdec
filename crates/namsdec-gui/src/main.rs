@@ -530,6 +530,8 @@ struct NamsdecApp {
     show_tooltips: bool,
     /// L'autocomplétion de l'éditeur (réglage Préférences > Général).
     completion: bool,
+    /// Entrée garde l'indentation de la ligne qu'on quitte.
+    auto_indent: bool,
     /// Ce que l'autocomplétion propose en ce moment, recalculé à chaque
     /// frappe. Rien à enregistrer : c'est l'état d'un instant.
     suggestions: Option<completion::Suggestions>,
@@ -978,6 +980,7 @@ impl Default for NamsdecApp {
             show_console: true,
             show_tooltips: true,
             completion: true,
+            auto_indent: true,
             suggestions: None,
             alt_was_down: false,
             command_palette: None,
@@ -1011,6 +1014,7 @@ impl NamsdecApp {
             show_console: settings.show_console,
             show_tooltips: settings.show_tooltips,
             completion: settings.completion,
+            auto_indent: settings.auto_indent,
             exercises: settings.exercises,
             disabled_packs: settings.disabled_packs.iter().cloned().collect(),
             current_exercise: settings.current_exercise.clone(),
@@ -1096,6 +1100,7 @@ impl NamsdecApp {
             show_console: self.show_console,
             show_tooltips: self.show_tooltips,
             completion: self.completion,
+            auto_indent: self.auto_indent,
             exercises: self.exercises,
             disabled_packs: self.disabled_packs.iter().cloned().collect(),
             current_exercise: self.current_exercise.clone(),
@@ -2781,6 +2786,8 @@ impl NamsdecApp {
         ui.add_space(6.0);
         ui.checkbox(&mut self.completion, s.preferences_completion);
         ui.weak(s.preferences_completion_hint);
+        ui.checkbox(&mut self.auto_indent, s.preferences_auto_indent);
+        ui.weak(s.preferences_auto_indent_hint);
 
         ui.separator();
 
@@ -4031,6 +4038,38 @@ impl NamsdecApp {
                         if let Some(range) = output.cursor_range {
                             self.cursor_pos = line_col(&self.source, range.primary.index.0);
                             self.cursor_byte = char_to_byte(&self.source, range.primary.index.0);
+                            // Entrée garde l'indentation de la ligne
+                            // qu'on quitte. egui insère un `\n` nu ; on
+                            // ajoute les blancs derrière, et l'on avance
+                            // le curseur d'autant.
+                            if self.auto_indent
+                                && output.response.response.has_focus()
+                                && ui.input(|i| i.key_pressed(egui::Key::Enter))
+                                && range.is_empty()
+                            {
+                                let at = self.cursor_byte;
+                                // Le `\n` vient d'être posé : l'indentation
+                                // se lit sur la ligne d'avant.
+                                let indent = newline_indent(
+                                    &self.source[..at.saturating_sub(1)],
+                                    at.saturating_sub(1),
+                                );
+                                let blancs = indent.trim_start_matches('\n');
+                                if !blancs.is_empty() && at <= self.source.len() {
+                                    self.source.insert_str(at, blancs);
+                                    let cible = byte_to_char(&self.source, at + blancs.len());
+                                    if let Some(mut state) =
+                                        egui::TextEdit::load_state(ui.ctx(), editor_id())
+                                    {
+                                        state.cursor.set_char_range(Some(
+                                            egui::text::CCursorRange::one(
+                                                egui::text::CCursor::new(cible),
+                                            ),
+                                        ));
+                                        state.store(ui.ctx(), editor_id());
+                                    }
+                                }
+                            }
                         }
                         self.completion_ui(ui, &output);
                         self.hover_help_ui(ui, &output);
@@ -5125,6 +5164,25 @@ impl NamsdecApp {
 /// Un plafond en pixels — trois cent soixante, trois cent vingt — faisait
 /// défiler quatre thèmes au milieu d'un écran qui en aurait montré
 /// quinze. Celui-ci suit l'écran qu'on a.
+/// Où mène un retour à la ligne qui garde l'indentation courante.
+///
+/// Rend le texte à insérer et de combien le curseur doit avancer. On
+/// écrit l'assembleur en colonnes — les étiquettes à gauche, les
+/// instructions en retrait — et retaper quatre espaces à chaque ligne
+/// use la patience avant d'user le clavier.
+///
+/// L'indentation reprise est celle de la ligne où l'on est, blancs
+/// seulement : ce qui suit appartient au code.
+fn newline_indent(source: &str, cursor: usize) -> String {
+    let cursor = cursor.min(source.len());
+    let line_start = source[..cursor].rfind('\n').map_or(0, |i| i + 1);
+    let indent: String = source[line_start..cursor]
+        .chars()
+        .take_while(|c| *c == ' ' || *c == '\t')
+        .collect();
+    format!("\n{indent}")
+}
+
 /// La ligne où l'étiquette `name` est définie, en comptant à partir de 1.
 ///
 /// Une étiquette se déclare en tête de ligne, suivie de deux points :

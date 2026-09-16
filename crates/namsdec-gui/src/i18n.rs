@@ -211,6 +211,8 @@ pub struct Strings {
     pub preferences_tooltips_hint: &'static str,
     pub preferences_completion: &'static str,
     pub preferences_completion_hint: &'static str,
+    pub preferences_auto_indent: &'static str,
+    pub preferences_auto_indent_hint: &'static str,
     pub completion_accept: &'static str,
 
     // Explorateur de fichiers
@@ -515,6 +517,8 @@ const FR: Strings = Strings {
     preferences_tooltips_hint: "Les bulles d'aide qui apparaissent au survol des boutons.",
     preferences_completion: "Autocomplétion dans l'éditeur",
     preferences_completion_hint: "Propose instructions, registres, directives et étiquettes pendant la frappe. Alt accepte la première.",
+    preferences_auto_indent: "Indentation automatique",
+    preferences_auto_indent_hint: "Entrée garde l'indentation de la ligne qu'on quitte : l'assembleur s'écrit en colonnes.",
     completion_accept: "Alt pour accepter",
 
     explorer_title: "Explorateur",
@@ -799,6 +803,8 @@ const EN: Strings = Strings {
     preferences_tooltips_hint: "The help bubbles shown when hovering over buttons.",
     preferences_completion: "Completion in the editor",
     preferences_completion_hint: "Suggests instructions, registers, directives and labels as you type. Alt accepts the first one.",
+    preferences_auto_indent: "Automatic indentation",
+    preferences_auto_indent_hint: "Enter keeps the indentation of the line being left: assembly is written in columns.",
     completion_accept: "Alt to accept",
 
     explorer_title: "Explorer",

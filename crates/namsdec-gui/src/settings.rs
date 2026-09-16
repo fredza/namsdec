@@ -61,6 +61,9 @@ pub struct Settings {
     pub show_tooltips: bool,
     /// L'autocomplétion de l'éditeur : elle propose, `Alt` accepte.
     pub completion: bool,
+    /// Entrée garde l'indentation de la ligne qu'on quitte.
+    #[serde(default = "vrai")]
+    pub auto_indent: bool,
     /// Le module des exercices. Éteint par défaut : quelqu'un qui écrit
     /// son propre code n'a pas besoin qu'on lui propose des devoirs, et
     /// rien n'apparaît tant qu'il ne le demande pas.
@@ -111,6 +114,7 @@ impl Default for Settings {
             show_tooltips: true,
             completion: true,
             exercises: false,
+            auto_indent: true,
             disabled_packs: Vec::new(),
             current_exercise: None,
             memory_format: "bytes".to_owned(),
@@ -238,6 +242,12 @@ pub fn shortcuts_to_strings(bindings: &KeyBindings) -> BTreeMap<String, String> 
         .iter()
         .map(|(action, chord)| (action_id(*action).to_owned(), chord_to_string(chord)))
         .collect()
+}
+
+/// La valeur d'un réglage absent d'un fichier écrit par une version
+/// plus ancienne : on l'allume, comme il l'est pour qui découvre.
+fn vrai() -> bool {
+    true
 }
 
 /// Identifiant stable d'une action dans le fichier — délibérément distinct

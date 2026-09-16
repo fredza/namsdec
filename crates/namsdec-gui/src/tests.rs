@@ -6364,3 +6364,34 @@ fn the_extra_checks_warn_without_crying_wolf() {
         );
     }
 }
+
+/// Entrée garde l'indentation : l'assembleur s'écrit en colonnes, et
+/// retaper quatre espaces à chaque ligne use la patience avant d'user le
+/// clavier.
+#[test]
+fn a_new_line_keeps_the_indentation() {
+    // La fonction pure, d'abord.
+    assert_eq!(newline_indent("    mov rax, 1", 13), "\n    ");
+    assert_eq!(
+        newline_indent("_start:", 7),
+        "\n",
+        "une étiquette est à gauche"
+    );
+    assert_eq!(
+        newline_indent("\tmov rax, 1", 11),
+        "\n\t",
+        "la tabulation est reprise telle quelle"
+    );
+    // Seuls les blancs sont repris — pas le code.
+    assert_eq!(newline_indent("  add rax", 9), "\n  ");
+    // Au milieu d'une ligne, c'est l'indentation de cette ligne-là.
+    assert_eq!(newline_indent("        hlt", 4), "\n    ");
+
+    // Et le réglage voyage dans settings.json.
+    let app = NamsdecApp {
+        auto_indent: false,
+        ..Default::default()
+    };
+    let written = serde_json::to_string(&app.settings_snapshot()).unwrap();
+    assert!(written.contains("\"auto_indent\":false"), "{written}");
+}
