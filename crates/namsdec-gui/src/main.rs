@@ -486,6 +486,9 @@ struct NamsdecApp {
     pack_to_remove: Option<String>,
     /// Les séries écartées : installées, mais pas proposées.
     disabled_packs: BTreeSet<String>,
+    /// L'exercice chargé en dernier — « où j'en étais » d'une session à
+    /// l'autre.
+    current_exercise: Option<String>,
     /// Où écrire les réglages, ou `None` pour ne les écrire nulle part.
     ///
     /// `None` est le défaut, et c'est délibéré : les réglages se
@@ -948,6 +951,7 @@ impl Default for NamsdecApp {
             exercise_files: BTreeMap::new(),
             pack_to_remove: None,
             disabled_packs: BTreeSet::new(),
+            current_exercise: None,
             settings_file: None,
             cpu_state_open: true,
             console_input: String::new(),
@@ -998,6 +1002,7 @@ impl NamsdecApp {
             completion: settings.completion,
             exercises: settings.exercises,
             disabled_packs: settings.disabled_packs.iter().cloned().collect(),
+            current_exercise: settings.current_exercise.clone(),
             memory_format: MemoryFormat::by_id(&settings.memory_format),
             explorer,
             saved_settings: settings,
@@ -1082,6 +1087,7 @@ impl NamsdecApp {
             completion: self.completion,
             exercises: self.exercises,
             disabled_packs: self.disabled_packs.iter().cloned().collect(),
+            current_exercise: self.current_exercise.clone(),
             memory_format: self.memory_format.id().to_owned(),
             explorer_root: self.explorer.root.as_ref().map(|p| p.display().to_string()),
             current_file: self.current_file.as_ref().map(|p| p.display().to_string()),
@@ -3162,6 +3168,19 @@ impl NamsdecApp {
     /// courant n'a pas été enregistré. Il n'y a pas de correction
     /// automatique : l'énoncé dit ce qu'on doit obtenir, et c'est le
     /// bandeau des registres qui répond.
+    /// Le rang de l'exercice `id` dans sa série, le nombre d'étapes, et
+    /// l'exercice lui-même.
+    fn exercise_rank(&self, id: &str) -> Option<(usize, usize, &namsdec_exercises::Exercise)> {
+        for pack in &self.exercise_packs {
+            for (index, exercise) in pack.exercises.iter().enumerate() {
+                if namsdec_exercises::full_id(pack, exercise) == id {
+                    return Some((index + 1, pack.exercises.len(), exercise));
+                }
+            }
+        }
+        None
+    }
+
     fn exercises_window_ui(&mut self, ctx: &egui::Context) {
         let s = strings(self.lang);
         let theme = self.theme;
@@ -3179,11 +3198,39 @@ impl NamsdecApp {
             // nulle part où aller.
             .default_size([480.0, 520.0])
             .pivot(egui::Align2::CENTER_CENTER)
-            .current_pos(ctx.viewport_rect().center())
+            // `default_pos` et non `current_pos` : la seconde replace la
+            // fenêtre à chaque frame, et l'on ne peut plus la déplacer.
+            .default_pos(ctx.viewport_rect().center())
             .show(ctx, |ui| {
                 ui.label(s.exercises_legend);
+                // L'étape en cours, en tête : douze exercices ne tiennent
+                // pas dans la fenêtre, et « où j'en étais » ne sert à
+                // rien s'il faut le chercher en défilant.
+                if let Some(id) = self.current_exercise.clone()
+                    && let Some((rang, total, exercise)) = self.exercise_rank(&id)
+                {
+                    ui.add_space(6.0);
+                    ui.horizontal_wrapped(|ui| {
+                        ui.colored_label(theme.dim, s.exercises_current);
+                        ui.colored_label(theme.accent, format!("{rang}/{total}"));
+                        ui.strong(exercise.title.get(lang));
+                        if framed_button(ui, theme, s.exercises_resume).clicked() {
+                            load = Some(id.clone());
+                        }
+                    });
+                }
                 ui.add_space(6.0);
+                // La place que la fenêtre laisse vraiment, et pas une
+                // fraction de l'écran : une zone qui se croit plus haute
+                // que sa fenêtre ne défile pas — elle déborde, et ce qui
+                // dépasse est coupé sans qu'aucune barre ne le dise.
+                let room = ui.available_height().max(120.0);
                 egui::ScrollArea::vertical()
+                    .max_height(room)
+                    // `false` en hauteur : une zone qui rétrécit à son
+                    // contenu est aussi haute que ses douze exercices,
+                    // donc ne défile jamais — elle déborde de la fenêtre,
+                    // et ce qui dépasse est coupé.
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
                         for pack in self
@@ -3202,11 +3249,25 @@ impl NamsdecApp {
                             )
                             .id_salt(&pack.id)
                             .default_open(true);
+                            let total = pack.exercises.len();
                             header.show(ui, |ui| {
-                                for exercise in &pack.exercises {
+                                for (index, exercise) in pack.exercises.iter().enumerate() {
+                                    let id = namsdec_exercises::full_id(pack, exercise);
+                                    let en_cours = self.current_exercise.as_deref() == Some(&id);
                                     ui.group(|ui| {
                                         ui.horizontal(|ui| {
+                                            // Le rang dans le parcours : un
+                                            // exercice n'est pas un devoir
+                                            // isolé, il vient après les
+                                            // précédents.
+                                            ui.colored_label(
+                                                theme.dim,
+                                                format!("{}/{total}", index + 1),
+                                            );
                                             ui.strong(exercise.title.get(lang));
+                                            if en_cours {
+                                                ui.colored_label(theme.accent, s.exercises_current);
+                                            }
                                             ui.with_layout(
                                                 egui::Layout::right_to_left(egui::Align::Center),
                                                 |ui| {
@@ -3253,6 +3314,7 @@ impl NamsdecApp {
         let Some(exercise) = namsdec_exercises::find(&self.exercise_packs, id) else {
             return;
         };
+        self.current_exercise = Some(id.to_owned());
         self.saved_source = exercise.starter_code.clone();
         self.source = exercise.starter_code.clone();
         self.current_file = None;

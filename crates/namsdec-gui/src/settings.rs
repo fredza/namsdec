@@ -73,6 +73,13 @@ pub struct Settings {
     /// peut l'être aussi — elle ne s'enlève pas, elle se range.
     #[serde(default)]
     pub disabled_packs: Vec<String>,
+    /// L'exercice chargé en dernier, sous la forme « série/exercice ».
+    ///
+    /// Un parcours de douze étapes se fait en plusieurs fois : au retour,
+    /// l'outil doit pouvoir dire où l'on en était plutôt que de laisser
+    /// chercher.
+    #[serde(default)]
+    pub current_exercise: Option<String>,
     /// Comment l'onglet Mémoire lit les octets : « bytes », « words » ou
     /// « text ».
     pub memory_format: String,
@@ -105,6 +112,7 @@ impl Default for Settings {
             completion: true,
             exercises: false,
             disabled_packs: Vec::new(),
+            current_exercise: None,
             memory_format: "bytes".to_owned(),
             explorer_root: None,
             current_file: None,

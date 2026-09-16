@@ -5899,3 +5899,71 @@ fn the_course_is_discoverable_before_it_is_loaded() {
     // Le texte d'accueil est à l'écran, avec sa mention du parcours.
     assert!(painted.contains("douze exercices"), "{painted}");
 }
+
+/// Le parcours se reprend là où on l'avait laissé.
+///
+/// Douze étapes ne se font pas d'une traite : au retour, l'outil doit
+/// dire où l'on en était plutôt que de laisser chercher. Le rang de
+/// chaque exercice est affiché pour la même raison — un exercice n'est
+/// pas un devoir isolé, il vient après les précédents.
+#[test]
+fn the_course_remembers_where_one_stopped() {
+    let mut app = NamsdecApp {
+        exercises: true,
+        show_exercises: true,
+        ..Default::default()
+    };
+    assert!(app.current_exercise.is_none(), "rien n'a encore été fait");
+
+    app.load_exercise("namsdec/tableau");
+    assert_eq!(app.current_exercise.as_deref(), Some("namsdec/tableau"));
+    // Et le choix part dans les réglages, pour la session suivante.
+    let written = serde_json::to_string(&app.settings_snapshot()).unwrap();
+    assert!(
+        written.contains("\"current_exercise\":\"namsdec/tableau\""),
+        "{written}"
+    );
+
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 1000.0),
+        )),
+        ..Default::default()
+    };
+    // Rouvrir la fenêtre : elle doit se placer sur l'étape en cours.
+    app.show_exercises = true;
+    let mut painted = String::new();
+    for _ in 0..3 {
+        painted.clear();
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        fn collecte(shape: &egui::epaint::Shape, out: &mut String) {
+            match shape {
+                egui::epaint::Shape::Text(text) => {
+                    out.push_str(text.galley.text());
+                    out.push('|');
+                }
+                egui::epaint::Shape::Vec(shapes) => {
+                    for shape in shapes {
+                        collecte(shape, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+        for clipped in &output.shapes {
+            collecte(&clipped.shape, &mut painted);
+        }
+        output.textures_delta.clear();
+    }
+
+    assert!(
+        painted.contains("En cours :"),
+        "l'étape en cours se voit sans avoir à la chercher : {painted}"
+    );
+    // Le rang dans le parcours, aussi : le tableau est la septième des
+    // douze étapes.
+    assert!(painted.contains("7/12"), "{painted}");
+}
