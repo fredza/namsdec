@@ -43,6 +43,8 @@ pub struct Strings {
     pub file_preferences: &'static str,
     pub file_quit: &'static str,
     pub edit_copy_code: &'static str,
+    pub edit_copy_listing: &'static str,
+    pub listing_copied: &'static str,
     pub edit_paste: &'static str,
     pub help_about: &'static str,
 
@@ -399,6 +401,8 @@ const FR: Strings = Strings {
     file_preferences: "Préférences…",
     file_quit: "Quitter",
     edit_copy_code: "Copier le code",
+    edit_copy_listing: "Copier le désassemblage",
+    listing_copied: "Désassemblage copié : adresses, octets et étiquettes compris.",
     edit_paste: "Coller",
     help_about: "À propos…",
 
@@ -708,6 +712,8 @@ const EN: Strings = Strings {
     file_preferences: "Preferences…",
     file_quit: "Quit",
     edit_copy_code: "Copy code",
+    edit_copy_listing: "Copy the disassembly",
+    listing_copied: "Disassembly copied: addresses, bytes and labels included.",
     edit_paste: "Paste",
     help_about: "About…",
 

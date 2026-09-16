@@ -2598,6 +2598,18 @@ impl NamsdecApp {
                     ui.ctx().copy_text(self.source.clone());
                     ui.close();
                 }
+                // Le désassemblage, lui, n'existe qu'après l'assemblage
+                // — et c'est ce qu'on colle dans un compte rendu, pas le
+                // source.
+                ui.add_enabled_ui(self.assemble_state.is_some(), |ui| {
+                    if ui.button(s.edit_copy_listing).clicked() {
+                        if let Some(listing) = self.listing_text() {
+                            ui.ctx().copy_text(listing);
+                            self.status = Status::Note(s.listing_copied);
+                        }
+                        ui.close();
+                    }
+                });
                 if ui.button(s.edit_paste).clicked() {
                     match arboard::Clipboard::new().and_then(|mut c| c.get_text()) {
                         Ok(text) => {
@@ -4539,6 +4551,50 @@ impl NamsdecApp {
         }
         self.help = Some((word.to_owned(), namsdec_doc::lookup(word)));
         self.show_help = true;
+    }
+
+    /// Le désassemblage du programme, en texte, prêt à être collé.
+    ///
+    /// Les étiquettes aux endroits où elles tombent, l'adresse, les
+    /// octets et l'instruction : ce qu'on recopie à la main dans un
+    /// compte rendu quand l'outil ne sait pas le donner.
+    fn listing_text(&self) -> Option<String> {
+        let state = self.assemble_state.as_ref()?;
+        if state.disasm.is_empty() {
+            return None;
+        }
+        let symbols = &state.output.symbols;
+        let mut out = String::new();
+        for instruction in &state.disasm {
+            for symbol in symbols.iter().filter(|s| s.addr == instruction.address) {
+                out.push_str(&format!("\n{}:\n", symbol.name));
+            }
+            let octets = instruction
+                .bytes
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect::<Vec<_>>()
+                .join(" ");
+            let texte = namsdec_disasm::decode_one(&instruction.bytes, instruction.address)
+                .map(|decoded| namsdec_disasm::format_one(&decoded))
+                .unwrap_or_else(|| instruction.text.clone());
+            // Les octets sur une largeur fixe : c'est ce qui rend un
+            // listing lisible en colonnes, et dix octets est le maximum
+            // d'une instruction ordinaire.
+            out.push_str(&format!(
+                "{:08x}  {octets:<30}  {texte}\n",
+                instruction.address
+            ));
+            // La cible nommée, comme dans l'éditeur.
+            if let Some(target) = branch_target(&texte)
+                && let Some(label) = symbol_at(symbols, target)
+            {
+                let fin = out.trim_end().len();
+                out.truncate(fin);
+                out.push_str(&format!("    ; → {label}\n"));
+            }
+        }
+        Some(out)
     }
 
     /// Le rapport d'analyse du binaire chargé, en Markdown.

@@ -7412,3 +7412,47 @@ hlt
     // Le `jmp fin`, qui va en avant, n'en est pas une.
     assert!(boucles.iter().all(|(cible, _)| *cible == boucle));
 }
+
+/// Le désassemblage se copie, étiquettes comprises.
+///
+/// C'est ce qu'on colle dans un compte rendu ou un message — pas le
+/// source, que l'autre a peut-être déjà.
+#[test]
+fn the_disassembly_can_be_taken_away() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    // Rien à copier tant que rien n'est assemblé.
+    assert!(NamsdecApp::default().listing_text().is_none());
+
+    let mut app = NamsdecApp {
+        source: "\
+global _start
+section .text
+_start:
+call sous
+hlt
+sous:
+mov rax, 1
+ret
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+
+    let listing = app.listing_text().expect("un programme assemblé");
+    assert!(listing.contains("_start:"), "{listing}");
+    assert!(listing.contains("sous:"), "{listing}");
+    assert!(
+        listing.contains("; → sous"),
+        "l'appel nomme sa cible : {listing}"
+    );
+    // Les octets y sont, en colonne.
+    assert!(listing.contains("c3"), "le `ret` et ses octets : {listing}");
+    // Et l'instruction est écrite comme on l'écrit — ici telle que nasm
+    // l'a encodée : `mov rax, 1` devient `mov eax, 1`, cinq octets, le
+    // haut de RAX étant mis à zéro de toute façon.
+    assert!(listing.contains("mov eax, 1"), "{listing}");
+}
