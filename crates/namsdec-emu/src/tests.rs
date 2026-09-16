@@ -2773,15 +2773,15 @@ fn the_trace_follows_the_path_and_unwinds_with_it() {
     let départ = emu.cpu.regs.rip;
 
     emu.run(100).unwrap();
-    let trace: Vec<u64> = emu.trace().iter().copied().collect();
+    let trace: Vec<Step> = emu.trace().iter().copied().collect();
     // Le premier pas est le point d'entrée, et la trace compte autant
     // d'entrées que d'instructions exécutées.
-    assert_eq!(trace.first(), Some(&départ));
+    assert_eq!(trace.first().map(|step| step.addr), Some(départ));
     assert_eq!(trace.len() as u64, emu.executed());
     // La boucle laisse sa marque : la même adresse revient.
-    let corps = trace[1];
+    let corps = trace[1].addr;
     assert!(
-        trace.iter().filter(|addr| **addr == corps).count() >= 2,
+        trace.iter().filter(|step| step.addr == corps).count() >= 2,
         "le corps de boucle passe plusieurs fois : {trace:x?}"
     );
 
@@ -2790,5 +2790,47 @@ fn the_trace_follows_the_path_and_unwinds_with_it() {
     assert!(emu.step_back());
     assert_eq!(emu.trace().len(), avant - 1);
     // Ce qui reste est bien le début du chemin, pas une autre liste.
-    assert_eq!(emu.trace().front(), Some(&départ));
+    assert_eq!(emu.trace().front().map(|step| step.addr), Some(départ));
+}
+
+/// Le chemin parcouru dit ce que chaque pas a fait, pas seulement où il
+/// était.
+///
+/// Cent adresses se ressemblent toutes ; ce qu'on cherche dans une
+/// chronologie, ce sont les moments où le programme a changé de
+/// direction ou touché autre chose que ses registres.
+#[test]
+fn the_trace_says_what_each_step_did() {
+    let mut emu = load_only(
+        "global _start\nsection .data\ncase: dq 0\nsection .text\n_start:\n\
+         mov rax, 1\ncmp rax, 2\nje ailleurs\nmov [case], rax\ncall sous\nhlt\n\
+         sous:\nret\nailleurs:\nhlt\n",
+        &[],
+    );
+    emu.run(50).unwrap();
+    let kinds: Vec<StepKind> = emu.trace().iter().map(|step| step.kind).collect();
+
+    // Un `je` qui ne saute pas est un pas ordinaire : le montrer comme
+    // un saut ferait lire un chemin qui n'a pas été pris.
+    assert!(
+        !kinds.contains(&StepKind::Jump),
+        "aucun saut n'a été pris : {kinds:?}"
+    );
+    assert!(
+        kinds.contains(&StepKind::Write),
+        "le `mov [case], rax` écrit"
+    );
+    assert!(kinds.contains(&StepKind::Call), "et le `call` appelle");
+    assert!(kinds.contains(&StepKind::Return), "le `ret` revient");
+
+    // Avec le saut pris, cette fois.
+    let mut emu = load_only(
+        "global _start\nsection .text\n_start:\nmov rax, 2\ncmp rax, 2\nje fin\nhlt\nfin:\nhlt\n",
+        &[],
+    );
+    emu.run(50).unwrap();
+    assert!(
+        emu.trace().iter().any(|step| step.kind == StepKind::Jump),
+        "le saut, lui, a bien été pris"
+    );
 }

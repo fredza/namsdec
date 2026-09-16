@@ -4658,7 +4658,7 @@ impl NamsdecApp {
 
         // Relevé avant la fenêtre : elle emprunte `self` en écriture
         // pour poser le retour en arrière.
-        let pas: Vec<(usize, u64)> = self
+        let pas: Vec<(usize, namsdec_emu::Step)> = self
             .emulator
             .as_ref()
             .map(|emulator| emulator.trace().iter().copied().enumerate().collect())
@@ -4689,7 +4689,8 @@ impl NamsdecApp {
                     .auto_shrink([false, false])
                     .stick_to_bottom(true)
                     .show_rows(ui, row_height, total, |ui, rows| {
-                        for (index, addr) in &pas[rows] {
+                        for (index, pas) in &pas[rows] {
+                            let addr = &pas.addr;
                             // Le rang par rapport à maintenant : le
                             // dernier pas est « -1 », celui d'avant
                             // « -2 ». C'est ainsi qu'on le pense.
@@ -4712,6 +4713,11 @@ impl NamsdecApp {
                             let réponse = ui
                                 .horizontal(|ui| {
                                     ui.colored_label(theme.dim, format!("-{recul}"));
+                                    // Ce que le pas a fait, en une
+                                    // marque : c'est ce qu'on cherche des
+                                    // yeux en parcourant un chemin.
+                                    let (marque, couleur, quoi) = step_mark(s, pas.kind, theme);
+                                    ui.colored_label(couleur, marque).on_hover_text(quoi);
                                     ui.monospace(format!("{addr:#010x}"));
                                     match ligne {
                                         Some(ligne) => {
@@ -5451,6 +5457,26 @@ impl NamsdecApp {
 /// Un plafond en pixels — trois cent soixante, trois cent vingt — faisait
 /// défiler quatre thèmes au milieu d'un écran qui en aurait montré
 /// quinze. Celui-ci suit l'écran qu'on a.
+/// La marque d'un pas : un signe, sa couleur, et ce qu'il veut dire.
+///
+/// Un signe et non un mot : la colonne reste étroite, et l'on repère un
+/// appel ou une écriture en parcourant la liste plutôt qu'en la lisant.
+fn step_mark(
+    s: &Strings,
+    kind: namsdec_emu::StepKind,
+    theme: &'static Theme,
+) -> (&'static str, egui::Color32, &'static str) {
+    use namsdec_emu::StepKind as K;
+    match kind {
+        K::Plain => (" ", theme.dim, s.step_plain),
+        K::Call => ("→", theme.accent, s.step_call),
+        K::Return => ("←", theme.accent, s.step_return),
+        K::Jump => ("↷", theme.warn, s.step_jump),
+        K::Syscall => ("!", theme.good, s.step_syscall),
+        K::Write => ("✎", theme.changed, s.step_write),
+    }
+}
+
 /// Où mène un retour à la ligne qui garde l'indentation courante.
 ///
 /// Rend le texte à insérer et de combien le curseur doit avancer. On

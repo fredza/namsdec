@@ -6724,7 +6724,7 @@ hlt
     assert!(!app.running, "le programme doit s'arrêter");
 
     let emulator = app.emulator.as_ref().unwrap();
-    let trace: Vec<u64> = emulator.trace().iter().copied().collect();
+    let trace: Vec<namsdec_emu::Step> = emulator.trace().iter().copied().collect();
     assert_eq!(trace.len() as u64, emulator.executed());
     assert_eq!(
         emulator.cpu().regs.get64(namsdec_core::Reg64::Rax),
@@ -6978,5 +6978,84 @@ fn the_new_views_hold_on_a_degenerate_state() {
         app.do_step();
         app.rewind(1000);
         assert!(app.emulator.as_ref().unwrap().trace().is_empty());
+    }
+}
+
+/// La chronologie dit ce que chaque pas a fait, d'un signe.
+///
+/// Cent adresses se ressemblent ; ce qu'on cherche en parcourant un
+/// chemin, ce sont les appels, les sauts pris et les écritures.
+#[test]
+fn the_timeline_marks_what_each_step_did() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        show_timeline: true,
+        source: "\
+global _start
+section .data
+case: dq 0
+section .text
+_start:
+mov rax, 1
+mov [case], rax
+call sous
+hlt
+sous:
+ret
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+    let ctx = egui::Context::default();
+    app.do_run();
+    for _ in 0..10 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&ctx);
+    }
+
+    let kinds: Vec<namsdec_emu::StepKind> = app
+        .emulator
+        .as_ref()
+        .unwrap()
+        .trace()
+        .iter()
+        .map(|step| step.kind)
+        .collect();
+    assert!(kinds.contains(&namsdec_emu::StepKind::Write), "{kinds:?}");
+    assert!(kinds.contains(&namsdec_emu::StepKind::Call), "{kinds:?}");
+    assert!(kinds.contains(&namsdec_emu::StepKind::Return), "{kinds:?}");
+
+    // Et les marques se peignent.
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 1000.0),
+        )),
+        ..Default::default()
+    };
+    let mut painted = String::new();
+    for _ in 0..2 {
+        painted.clear();
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        for clipped in &output.shapes {
+            if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                painted.push_str(text.galley.text());
+                painted.push('|');
+            }
+        }
+        output.textures_delta.clear();
+    }
+    for marque in ["→", "←", "✎"] {
+        assert!(
+            painted.contains(marque),
+            "la marque « {marque} » doit apparaître : {painted}"
+        );
     }
 }

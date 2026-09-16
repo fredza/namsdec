@@ -507,7 +507,7 @@ pub trait Backend {
     /// celle-ci dit *dans quel ordre* le programme est passé — ce qui
     /// répond à « comment suis-je arrivé là ? », la question qu'on pose
     /// devant un état qu'on n'attendait pas.
-    fn trace(&self) -> &VecDeque<u64>;
+    fn trace(&self) -> &VecDeque<Step>;
 
     /// Combien de fois chaque adresse a été exécutée depuis le départ.
     ///
@@ -535,6 +535,37 @@ pub trait Backend {
     /// lui-même. `None` tant qu'il tourne, ou s'il s'est arrêté sur `hlt`
     /// — qui arrête la machine sans rien rendre.
     fn exit_code(&self) -> Option<i64>;
+}
+
+/// Ce qu'un pas a fait, au-delà d'avancer.
+///
+/// Une chronologie d'adresses se lit mal : cent lignes se ressemblent
+/// toutes. Ce qu'on y cherche, ce sont les moments où le programme a
+/// changé de direction ou touché autre chose que ses registres — et ce
+/// sont eux qu'on veut voir sans les déchiffrer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StepKind {
+    /// Rien de particulier : un calcul, une copie de registre.
+    Plain,
+    /// Un appel : on est entré dans une sous-routine.
+    Call,
+    /// Un retour : on en est sorti.
+    Return,
+    /// Un saut effectivement pris — un `jcc` qui ne saute pas est un pas
+    /// ordinaire, et c'est bien la distinction qui compte.
+    Jump,
+    /// Un appel système.
+    Syscall,
+    /// Le pas a écrit en mémoire.
+    Write,
+}
+
+/// Un pas du chemin parcouru.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Step {
+    /// L'adresse de l'instruction exécutée.
+    pub addr: u64,
+    pub kind: StepKind,
 }
 
 /// La taille d'une page. `brk` travaille par pages sous Linux, et
@@ -624,7 +655,7 @@ pub struct Emulator {
     /// revenir en arrière, et pas plus : une chronologie qui montrerait
     /// des pas qu'on ne peut plus défaire ne serait pas une chronologie,
     /// seulement une liste.
-    trace: VecDeque<u64>,
+    trace: VecDeque<Step>,
 }
 
 impl Backend for Emulator {
@@ -636,7 +667,7 @@ impl Backend for Emulator {
         self.ticks
     }
 
-    fn trace(&self) -> &VecDeque<u64> {
+    fn trace(&self) -> &VecDeque<Step> {
         &self.trace
     }
 
@@ -1025,6 +1056,17 @@ impl Emulator {
             self.step_back();
             self.cpu.regs.rip = rip_before;
             return Err(e);
+        }
+
+        // Ce que ce pas aura été : su seulement maintenant, RIP ayant
+        // bougé ou non, et le journal disant s'il a écrit.
+        let wrote = self
+            .history
+            .back()
+            .is_some_and(|undo| !undo.memory.is_empty());
+        let kind = classify_step(&instr, rip_before, self.cpu.regs.rip, wrote);
+        if let Some(step) = self.trace.back_mut() {
+            step.kind = kind;
         }
 
         Ok(if self.cpu.halted {
@@ -2432,8 +2474,12 @@ impl Emulator {
             self.trace.pop_front();
         }
         // La trace suit l'historique page pour page : c'est ce qui
-        // permet de cliquer sur un pas et d'y revenir vraiment.
-        self.trace.push_back(self.cpu.regs.rip);
+        // permet de cliquer sur un pas et d'y revenir vraiment. Sa
+        // nature, elle, ne se connaît qu'une fois le pas fait.
+        self.trace.push_back(Step {
+            addr: self.cpu.regs.rip,
+            kind: StepKind::Plain,
+        });
         self.history.push_back(Undo {
             regs: self.cpu.regs.clone(),
             flags: self.cpu.flags,
@@ -2692,6 +2738,35 @@ impl Emulator {
         }
         Ok(())
     }
+}
+
+/// Ce qu'un pas aura été, une fois fait.
+///
+/// La distinction qui compte est celle du saut : un `jcc` qui ne saute
+/// pas est un pas ordinaire, et le montrer comme un saut ferait lire un
+/// chemin qui n'a pas été pris.
+fn classify_step(instr: &Instruction, before: u64, after: u64, wrote: bool) -> StepKind {
+    use iced_x86::FlowControl;
+    match instr.flow_control() {
+        FlowControl::Call | FlowControl::IndirectCall => return StepKind::Call,
+        FlowControl::Return => return StepKind::Return,
+        // Pris ou pas : c'est RIP qui le dit, et lui seul.
+        FlowControl::UnconditionalBranch
+        | FlowControl::IndirectBranch
+        | FlowControl::ConditionalBranch
+            if after != before.wrapping_add(instr.len() as u64) =>
+        {
+            return StepKind::Jump;
+        }
+        _ => {}
+    }
+    if instr.mnemonic() == Mnemonic::Syscall {
+        return StepKind::Syscall;
+    }
+    if wrote {
+        return StepKind::Write;
+    }
+    StepKind::Plain
 }
 
 /// La valeur d'un registre entier, lue sur sa propre largeur : `eax` rend
