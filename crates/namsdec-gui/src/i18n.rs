@@ -103,6 +103,9 @@ pub struct Strings {
     pub help_flags: &'static str,
     pub help_no_flags: &'static str,
     pub help_example: &'static str,
+    /// Ce qu'est la fiche, quand ce n'est pas une instruction.
+    pub help_kind_directive: &'static str,
+    pub help_kind_preprocessor: &'static str,
     pub action_instruction_help: &'static str,
     pub tab_re: &'static str,
     /// Titre du bandeau fixe du panneau latéral (registres + flags).
@@ -336,6 +339,8 @@ const FR: Strings = Strings {
     help_flags: "Indicateurs écrits :",
     help_no_flags: "aucun",
     help_example: "Exemple",
+    help_kind_directive: "Directive de NASM : elle ne s'exécute pas, elle décide de ce qui sera écrit.",
+    help_kind_preprocessor: "Préprocesseur : remplacé avant l'assemblage, il n'en reste rien à l'exécution.",
     action_instruction_help: "Aide sur l'instruction",
     tab_re: "RE",
     cpu_state: "État du processeur",
@@ -543,6 +548,8 @@ const EN: Strings = Strings {
     help_flags: "Flags written:",
     help_no_flags: "none",
     help_example: "Example",
+    help_kind_directive: "A NASM directive: it does not execute, it decides what gets written.",
+    help_kind_preprocessor: "Preprocessor: replaced before assembly, nothing of it is left at run time.",
     action_instruction_help: "Instruction help",
     tab_re: "RE",
     cpu_state: "CPU state",

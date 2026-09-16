@@ -1,13 +1,16 @@
 //! La table des fiches, une par famille d'instructions.
 //!
 //! Écrite à la main et rangée par sujet : déplacer, calculer, brancher,
-//! puis les chaînes, le x87 et le vectoriel. L'ordre n'a d'importance
-//! que pour qui relit le fichier — la recherche passe par un index.
+//! puis les chaînes, le x87 et le vectoriel — et à la fin le langage de
+//! NASM lui-même, directives et préprocesseur, qui ne s'exécute pas mais
+//! décide de ce qui sera écrit. L'ordre n'a d'importance que pour qui
+//! relit le fichier : la recherche passe par un index.
 
-use crate::{Entry, Text};
+use crate::{Entry, Kind, Text};
 
 pub const ENTRIES: &[Entry] = &[
     Entry {
+        kind: Kind::Instruction,
         names: &["mov"],
         title: Text {
             fr: "Copier une valeur",
@@ -21,6 +24,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "mov rax, 5\nmov eax, 5      ; RAX vaut 5 : le haut est effacé",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["movzx", "movsx", "movsxd"],
         title: Text {
             fr: "Élargir une valeur",
@@ -34,6 +38,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "movzx eax, byte [buf]   ; 0xff -> 255\nmovsx eax, byte [buf]   ; 0xff -> -1",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["lea"],
         title: Text {
             fr: "Calculer une adresse",
@@ -47,6 +52,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "lea rax, [rbx + rcx*4 + 8]",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["xchg"],
         title: Text {
             fr: "Échanger",
@@ -60,6 +66,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "xchg rax, rbx",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["xadd"],
         title: Text {
             fr: "Échanger puis additionner",
@@ -73,6 +80,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "lock xadd [compteur], rax   ; rax reçoit l'ancienne valeur",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["cmpxchg"],
         title: Text {
             fr: "Comparer et échanger",
@@ -86,6 +94,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "mov rax, attendu\ncmpxchg [verrou], rbx",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["bswap", "movbe"],
         title: Text {
             fr: "Retourner les octets",
@@ -99,6 +108,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "mov eax, 0x11223344\nbswap eax               ; 0x44332211",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["push", "pop"],
         title: Text {
             fr: "Empiler, dépiler",
@@ -112,6 +122,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "push rbp\npop rbp",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["pushf", "pushfq", "popf", "popfq"],
         title: Text {
             fr: "Ranger les indicateurs",
@@ -125,6 +136,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "pushfq\n; … un calcul qui écrase les indicateurs\npopfq",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["add", "sub"],
         title: Text {
             fr: "Additionner, soustraire",
@@ -138,6 +150,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "add rax, rbx\nsub rax, 1",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["adc", "sbb"],
         title: Text {
             fr: "Additionner avec la retenue",
@@ -151,6 +164,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "add rax, rcx\nadc rdx, rbx        ; la retenue remonte",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["inc", "dec"],
         title: Text {
             fr: "Incrémenter, décrémenter",
@@ -164,6 +178,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "inc rcx\ndec rdx",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["neg"],
         title: Text {
             fr: "Changer de signe",
@@ -177,6 +192,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "neg rax",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["cmp"],
         title: Text {
             fr: "Comparer",
@@ -190,6 +206,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "cmp rax, rbx\njg plus_grand",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["mul", "imul"],
         title: Text {
             fr: "Multiplier",
@@ -203,6 +220,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "imul rax, rbx, 3    ; rax = rbx * 3\nmul rbx             ; RDX:RAX = RAX * RBX",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["div", "idiv"],
         title: Text {
             fr: "Diviser",
@@ -216,6 +234,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "mov rax, -17\ncqo\nidiv rbx",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["mulx"],
         title: Text {
             fr: "Multiplier sans indicateurs",
@@ -229,6 +248,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "mov rdx, [a]          ; le multiplicande, implicite\nmulx r9, r8, [b]      ; r9:r8 = a * b",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["and", "or", "xor", "not"],
         title: Text {
             fr: "Opérations bit à bit",
@@ -242,6 +262,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "and rax, 0xff       ; ne garder que l'octet bas\nxor rax, rax        ; mettre à zéro",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["test"],
         title: Text {
             fr: "Tester des bits",
@@ -255,6 +276,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "test rax, rax\njz nul",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["andn"],
         title: Text {
             fr: "ET avec le complément",
@@ -268,6 +290,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "mov rbx, [masque]\nandn rax, rbx, [valeur]   ; rax = ~masque & valeur",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["shl", "sal", "shr", "sar"],
         title: Text {
             fr: "Décaler",
@@ -281,6 +304,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "shl rax, 3          ; rax * 8\nsar rax, 1          ; rax / 2, signe compris",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["rol", "ror", "rcl", "rcr"],
         title: Text {
             fr: "Tourner",
@@ -294,6 +318,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "rol al, 1\nrcr rax, 1          ; la retenue entre par le haut",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["shld", "shrd"],
         title: Text {
             fr: "Décalage double",
@@ -307,6 +332,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "shld rdx, rax, 4    ; les quatre bits hauts de rax entrent dans rdx",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["shlx", "shrx", "sarx", "rorx"],
         title: Text {
             fr: "Décaler sans indicateurs",
@@ -320,6 +346,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "shlx rax, rbx, rcx  ; rbx décalé de rcx, dans rax",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["bt", "bts", "btr", "btc"],
         title: Text {
             fr: "Le bit désigné",
@@ -333,6 +360,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "bts qword [drapeaux], rax\njc était_déjà_posé",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["bsf", "bsr"],
         title: Text {
             fr: "Chercher un bit",
@@ -346,6 +374,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "bsf rax, rbx        ; le premier bit posé de rbx",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["tzcnt", "lzcnt"],
         title: Text {
             fr: "Compter les zéros",
@@ -359,6 +388,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "tzcnt rax, rbx",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["popcnt"],
         title: Text {
             fr: "Compter les bits posés",
@@ -372,6 +402,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "popcnt rax, rbx",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["blsi", "blsr", "blsmsk"],
         title: Text {
             fr: "Le bit bas isolé",
@@ -385,6 +416,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "blsr rax, rbx       ; rbx sans son bit bas",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["bextr", "bzhi"],
         title: Text {
             fr: "Extraire des bits",
@@ -398,6 +430,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "mov rcx, 0x0804     ; huit bits à partir du quatrième\nbextr rax, rbx, rcx",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["cbw", "cwde", "cdqe"],
         title: Text {
             fr: "Élargir l'accumulateur",
@@ -411,6 +444,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "mov al, -5\ncbw                 ; AX vaut -5",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["cwd", "cdq", "cqo"],
         title: Text {
             fr: "Préparer une division signée",
@@ -424,6 +458,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "mov rax, -17\ncqo\nidiv rbx",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["jmp"],
         title: Text {
             fr: "Sauter",
@@ -437,6 +472,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "jmp fin\njmp [table + rax*8]",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &[
             "je", "jz", "jne", "jnz", "jb", "jnae", "jc", "jnb", "jae", "jnc", "jbe", "jna", "ja",
             "jnbe", "jl", "jnge", "jge", "jnl", "jle", "jng", "jg", "jnle", "js", "jns", "jo",
@@ -454,6 +490,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "cmp rax, rbx\nja plus_grand       ; non signé\njg plus_grand       ; signé",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["loop", "loope", "loopz", "loopne", "loopnz"],
         title: Text {
             fr: "Boucler sur RCX",
@@ -467,6 +504,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "mov rcx, 10\nboucle:\n    loop boucle",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["jrcxz", "jecxz"],
         title: Text {
             fr: "Sauter si le compteur est nul",
@@ -480,6 +518,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "jrcxz fini\nboucle:\n    loop boucle",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["call", "ret"],
         title: Text {
             fr: "Appeler, revenir",
@@ -493,6 +532,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "call somme\n; …\nsomme:\n    ret",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["enter", "leave"],
         title: Text {
             fr: "Le cadre de pile",
@@ -506,6 +546,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "enter 32, 0\n; … 32 octets de variables locales\nleave\nret",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["hlt"],
         title: Text {
             fr: "Arrêter la machine",
@@ -519,6 +560,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "hlt",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["nop", "pause", "endbr64", "mfence", "lfence", "sfence"],
         title: Text {
             fr: "Ne rien faire",
@@ -532,6 +574,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "nop\nendbr64",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["int3", "ud2"],
         title: Text {
             fr: "S'arrêter exprès",
@@ -545,6 +588,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "int3\nud2",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["syscall"],
         title: Text {
             fr: "Appeler le système",
@@ -558,6 +602,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "mov rax, 1          ; write\nmov rdi, 1          ; sortie standard\nsyscall",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &[
             "seta", "setae", "setb", "setbe", "setc", "setnc", "sete", "setg", "setge", "setl",
             "setle", "setne", "setno", "setnp", "setns", "setnz", "seto", "setp", "sets", "setz",
@@ -574,6 +619,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "cmp rax, rbx\nsetg al             ; al = 1 si rax > rbx",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &[
             "cmova", "cmovae", "cmovb", "cmovbe", "cmovc", "cmove", "cmovg", "cmovge", "cmovl",
             "cmovle", "cmovnc", "cmovne", "cmovno", "cmovnp", "cmovns", "cmovnz", "cmovo", "cmovp",
@@ -591,6 +637,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "cmp rax, rbx\ncmovg rax, rbx      ; garder le plus petit",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["clc", "stc", "cmc", "cld", "std"],
         title: Text {
             fr: "Poser un indicateur",
@@ -604,6 +651,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "cld\nrep movsb",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["lahf", "sahf"],
         title: Text {
             fr: "Les indicateurs dans AH",
@@ -617,6 +665,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "fstsw ax\nsahf\nja plus_grand",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["movsb", "movsw", "movsq"],
         title: Text {
             fr: "Copier un élément",
@@ -630,6 +679,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "mov rcx, 100\nrep movsb           ; copier 100 octets",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["stosb", "stosw", "stosd", "stosq"],
         title: Text {
             fr: "Écrire un élément",
@@ -643,6 +693,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "mov al, 0\nmov rcx, 64\nrep stosb           ; effacer 64 octets",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["lodsb", "lodsw", "lodsd", "lodsq"],
         title: Text {
             fr: "Lire un élément",
@@ -656,6 +707,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "lodsb\ntest al, al",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["scasb", "scasw", "scasd", "scasq"],
         title: Text {
             fr: "Chercher un élément",
@@ -669,6 +721,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "mov al, 0\nmov rcx, 256\nrepne scasb",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["cmpsb", "cmpsw", "cmpsd", "cmpsq"],
         title: Text {
             fr: "Comparer deux éléments",
@@ -682,6 +735,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "mov rcx, 16\nrepe cmpsb\nje identiques",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["rep", "repe", "repz", "repne", "repnz"],
         title: Text {
             fr: "Répéter",
@@ -695,6 +749,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "mov rcx, 100\nrep movsb",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["xlatb"],
         title: Text {
             fr: "Traduire par une table",
@@ -708,6 +763,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "mov rbx, table\nmov al, 2\nxlatb               ; al = table[2]",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["cpuid"],
         title: Text {
             fr: "Interroger le processeur",
@@ -721,6 +777,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "xor eax, eax\ncpuid",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["rdtsc", "rdtscp"],
         title: Text {
             fr: "Lire l'horloge",
@@ -734,6 +791,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "rdtsc\nmov r8, rax",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["fld", "fild"],
         title: Text {
             fr: "Empiler un nombre",
@@ -747,6 +805,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "fld qword [x]\nfild dword [n]",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &[
             "fld1", "fldz", "fldpi", "fldl2e", "fldl2t", "fldlg2", "fldln2",
         ],
@@ -762,6 +821,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "fldpi\nfld1",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["fst", "fstp", "fist", "fistp", "fisttp"],
         title: Text {
             fr: "Ranger le sommet",
@@ -775,6 +835,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "fstp qword [résultat]\nfistp dword [entier]",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["fxch"],
         title: Text {
             fr: "Échanger deux cases",
@@ -788,6 +849,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "fxch st1",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &[
             "fadd", "faddp", "fiadd", "fsub", "fsubp", "fsubr", "fsubrp", "fisub", "fisubr",
             "fmul", "fmulp", "fimul", "fdiv", "fdivp", "fdivr", "fdivrp", "fidiv", "fidivr",
@@ -804,6 +866,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "fld qword [a]\nfld qword [b]\nfaddp               ; a + b, et la pile redescend",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &[
             "fchs", "fabs", "fsqrt", "frndint", "fscale", "fprem", "fprem1",
         ],
@@ -819,6 +882,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "fld qword [x]\nfabs\nfsqrt",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &[
             "fsin", "fcos", "fsincos", "fptan", "fpatan", "fyl2x", "f2xm1",
         ],
@@ -834,6 +898,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "fldpi\nfld1\nfld1\nfaddp\nfdivp               ; pi/2\nfsin                ; 1",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &[
             "fcom", "fcomp", "fcompp", "fucom", "fucomp", "fucompp", "ftst",
         ],
@@ -849,6 +914,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "fcom st1\nfstsw ax\nsahf\nja plus_grand",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["fcomi", "fcomip", "fucomi", "fucomip"],
         title: Text {
             fr: "Comparer, directement",
@@ -862,6 +928,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "fcomip st1\nja plus_grand",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["fxam"],
         title: Text {
             fr: "Examiner le sommet",
@@ -875,6 +942,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "fxam\nfstsw ax",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["fstsw", "fnstsw", "fstcw", "fnstcw", "fldcw"],
         title: Text {
             fr: "Le mot d'état, le mot de contrôle",
@@ -888,6 +956,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "fstsw ax",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &[
             "finit", "fninit", "ffree", "ffreep", "fincstp", "fdecstp", "fnop", "fwait",
         ],
@@ -903,6 +972,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "finit",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["movss", "vmovss", "vmovsd"],
         title: Text {
             fr: "Déplacer un seul flottant",
@@ -916,6 +986,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "movsd xmm0, [x]     ; le haut de xmm0 passe à zéro\nmovsd xmm0, xmm1    ; le haut de xmm0 est préservé",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &[
             "movaps", "movapd", "movups", "movupd", "movdqa", "movdqu", "vmovaps", "vmovapd",
             "vmovups", "vmovupd", "vmovdqa", "vmovdqu",
@@ -932,6 +1003,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "movaps xmm0, [vecteur]\nvmovups ymm1, [non_aligné]",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["movd", "movq", "vmovd", "vmovq"],
         title: Text {
             fr: "Passer d'un fichier à l'autre",
@@ -945,6 +1017,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "movq xmm0, rax\nmovd eax, xmm0",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &[
             "addss", "addsd", "subss", "subsd", "mulss", "mulsd", "divss", "divsd", "vaddss",
             "vaddsd", "vsubss", "vsubsd", "vmulss", "vmulsd", "vdivss", "vdivsd",
@@ -961,6 +1034,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "movsd xmm0, [a]\naddsd xmm0, [b]",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &[
             "addps", "addpd", "subps", "subpd", "mulps", "mulpd", "divps", "divpd", "vaddps",
             "vaddpd", "vsubps", "vsubpd", "vmulps", "vmulpd", "vdivps", "vdivpd",
@@ -977,6 +1051,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "vmovaps ymm0, [huit_valeurs]\nvaddps ymm0, ymm0, ymm1     ; huit additions",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &[
             "minss", "minsd", "maxss", "maxsd", "minps", "minpd", "maxps", "maxpd", "vminss",
             "vminsd", "vmaxss", "vmaxsd", "vminps", "vminpd", "vmaxps", "vmaxpd",
@@ -993,6 +1068,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "maxsd xmm0, xmm1",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &[
             "sqrtss", "sqrtsd", "sqrtps", "sqrtpd", "vsqrtss", "vsqrtsd", "vsqrtps", "vsqrtpd",
         ],
@@ -1008,6 +1084,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "sqrtsd xmm0, xmm1",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &[
             "comiss", "comisd", "ucomiss", "ucomisd", "vcomiss", "vcomisd", "vucomiss", "vucomisd",
         ],
@@ -1023,6 +1100,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "comisd xmm0, xmm1\nja plus_grand\njp non_comparable   ; un NaN",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["cvtsi2ss", "cvtsi2sd", "vcvtsi2ss", "vcvtsi2sd"],
         title: Text {
             fr: "D'un entier vers un flottant",
@@ -1036,6 +1114,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "mov rax, 5\ncvtsi2sd xmm0, rax",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &[
             "cvttss2si",
             "cvttsd2si",
@@ -1058,6 +1137,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "cvttsd2si rax, xmm0",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["cvtss2sd", "cvtsd2ss", "vcvtss2sd", "vcvtsd2ss"],
         title: Text {
             fr: "Changer de précision",
@@ -1071,6 +1151,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "cvtss2sd xmm0, xmm1",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &[
             "xorps", "xorpd", "pxor", "andps", "andpd", "pand", "orps", "orpd", "por", "andnps",
             "andnpd", "pandn", "vxorps", "vxorpd", "vpxor", "vandps", "vandpd", "vpand", "vorps",
@@ -1088,6 +1169,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "pxor xmm0, xmm0     ; mise à zéro\nandps xmm1, [masque_signe]",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &[
             "paddb", "paddw", "paddd", "paddq", "psubb", "psubw", "psubd", "psubq", "vpaddb",
             "vpaddw", "vpaddd", "vpaddq", "vpsubb", "vpsubw", "vpsubd", "vpsubq",
@@ -1104,6 +1186,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "paddb xmm0, xmm1    ; seize additions d'octets",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &[
             "pcmpeqb", "pcmpeqw", "pcmpeqd", "pcmpgtb", "pcmpgtw", "pcmpgtd", "vpcmpeqb",
             "vpcmpeqw", "vpcmpeqd", "vpcmpgtb", "vpcmpgtw", "vpcmpgtd",
@@ -1120,6 +1203,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "pcmpeqb xmm0, xmm1\npmovmskb eax, xmm0",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &[
             "psllw", "pslld", "psllq", "psrlw", "psrld", "psrlq", "psraw", "psrad", "vpsllw",
             "vpslld", "vpsllq", "vpsrlw", "vpsrld", "vpsrlq", "vpsraw", "vpsrad",
@@ -1136,6 +1220,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "psllq xmm0, 4",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["pslldq", "psrldq", "vpslldq", "vpsrldq"],
         title: Text {
             fr: "Décaler par octets",
@@ -1149,6 +1234,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "pslldq xmm0, 4      ; tout remonte de quatre octets",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &[
             "pmovmskb",
             "movmskps",
@@ -1169,6 +1255,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "pcmpeqb xmm0, xmm1\npmovmskb eax, xmm0\ntest eax, eax",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &[
             "pshufd", "shufps", "shufpd", "vpshufd", "vshufps", "vshufpd",
         ],
@@ -1184,6 +1271,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "pshufd xmm0, xmm1, 00_01_10_11b  ; ordre inversé",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["movhlps", "movlhps", "vmovhlps", "vmovlhps"],
         title: Text {
             fr: "Échanger les moitiés",
@@ -1197,6 +1285,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "movhlps xmm0, xmm1",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &[
             "punpcklbw",
             "punpcklwd",
@@ -1235,6 +1324,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "punpcklbw xmm0, xmm1",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &[
             "vbroadcastss",
             "vbroadcastsd",
@@ -1255,6 +1345,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "vbroadcastss ymm0, [facteur]\nvmulps ymm1, ymm1, ymm0",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &[
             "vinsertf128",
             "vinserti128",
@@ -1277,6 +1368,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "vextractf128 xmm0, ymm1, 1   ; la moitié haute\nvperm2f128 ymm0, ymm1, ymm1, 1",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["vzeroupper", "vzeroall"],
         title: Text {
             fr: "Nettoyer avant du SSE",
@@ -1290,6 +1382,7 @@ pub const ENTRIES: &[Entry] = &[
         example: "vzeroupper\nret",
     },
     Entry {
+        kind: Kind::Instruction,
         names: &["movsd"],
         title: Text {
             fr: "movsd : deux instructions, un seul nom",
@@ -1301,5 +1394,261 @@ pub const ENTRIES: &[Entry] = &[
         },
         flags: "",
         example: "rep movsd           ; la chaîne : quatre octets à la fois\nmovsd xmm0, [x]     ; le flottant",
+    },
+    Entry {
+        kind: Kind::Directive,
+        names: &["section", "segment"],
+        title: Text {
+            fr: "Découper le programme",
+            en: "Split the program",
+        },
+        body: Text {
+            fr: "Ouvre une section : `.text` pour le code, `.data` pour les données écrites d'avance, `.bss` pour celles qu'on veut à zéro. Chacune reçoit ses droits — namsdec refuse d'écrire dans `.text` et d'exécuter `.data`, comme un vrai système.",
+            en: "Opens a section: `.text` for code, `.data` for data written in advance, `.bss` for data you want zeroed. Each gets its rights — namsdec refuses to write into `.text` or execute `.data`, like a real system.",
+        },
+        flags: "",
+        example: "section .data\n    total dq 0\n\nsection .text",
+    },
+    Entry {
+        kind: Kind::Directive,
+        names: &["global", "extern", "common"],
+        title: Text {
+            fr: "Ce qui sort, ce qui entre",
+            en: "What leaves, what comes in",
+        },
+        body: Text {
+            fr: "`global` rend un nom visible depuis l'extérieur — c'est ainsi que `ld` trouve `_start`, sans quoi il choisit un point d'entrée à votre place en avertissant. `extern` annonce un nom défini ailleurs.",
+            en: "`global` makes a name visible from outside — this is how `ld` finds `_start`; without it, it picks an entry point for you and says so. `extern` announces a name defined elsewhere.",
+        },
+        flags: "",
+        example: "global _start\nextern printf",
+    },
+    Entry {
+        kind: Kind::Directive,
+        names: &["db", "dw", "dd", "dq", "dt", "do", "dy", "dz"],
+        title: Text {
+            fr: "Écrire des octets",
+            en: "Write bytes",
+        },
+        body: Text {
+            fr: "Posent des valeurs dans le fichier : `db` un octet, `dw` deux, `dd` quatre, `dq` huit, `dt` dix. Ce ne sont pas des instructions — rien ne s'exécute, les octets sont simplement là. `db` accepte aussi du texte, un caractère par octet.",
+            en: "Put values into the file: `db` one byte, `dw` two, `dd` four, `dq` eight, `dt` ten. These are not instructions — nothing executes, the bytes are simply there. `db` also takes text, one character per byte.",
+        },
+        flags: "",
+        example: "message db \"salut\", 10, 0\nnombres dd 1, 2, 3\npi      dq 3.14159",
+    },
+    Entry {
+        kind: Kind::Directive,
+        names: &[
+            "resb", "resw", "resd", "resq", "rest", "reso", "resy", "resz",
+        ],
+        title: Text {
+            fr: "Réserver sans écrire",
+            en: "Reserve without writing",
+        },
+        body: Text {
+            fr: "Réservent de la place sans rien y mettre : le fichier ne grossit pas, la mémoire est à zéro au démarrage. C'est ce qui distingue `.bss` de `.data` — un tampon d'un mégaoctet coûte un mégaoctet de fichier avec `db`, et rien du tout avec `resb`.",
+            en: "Reserve room without putting anything in it: the file does not grow, and the memory is zero at startup. That is what separates `.bss` from `.data` — a one-megabyte buffer costs a megabyte of file with `db`, and nothing at all with `resb`.",
+        },
+        flags: "",
+        example: "section .bss\n    tampon_lu resb 1024\n    restant resq 1",
+    },
+    Entry {
+        kind: Kind::Directive,
+        names: &["times"],
+        title: Text {
+            fr: "Répéter",
+            en: "Repeat",
+        },
+        body: Text {
+            fr: "Répète ce qui suit un nombre de fois. Avec `db`, c'est la façon de remplir une zone ; avec une instruction, de poser du remplissage. Le nombre peut être une expression, y compris `$` — c'est ainsi qu'on complète un secteur de démarrage à 512 octets.",
+            en: "Repeats what follows a number of times. With `db` it fills a region; with an instruction it lays down padding. The count can be an expression, `$` included — that is how a boot sector is padded to 512 bytes.",
+        },
+        flags: "",
+        example: "remplissage times 16 db 0\n            times 4 nop",
+    },
+    Entry {
+        kind: Kind::Directive,
+        names: &["equ"],
+        title: Text {
+            fr: "Donner un nom à une valeur",
+            en: "Name a value",
+        },
+        body: Text {
+            fr: "Associe un nom à une valeur, calculée à l'assemblage. Contrairement à `db`, rien n'est écrit en mémoire : le nom est remplacé par sa valeur partout où il paraît. C'est la constante de l'assembleur.",
+            en: "Binds a name to a value, computed at assembly time. Unlike `db`, nothing is written to memory: the name is replaced by its value wherever it appears. This is the assembler's constant.",
+        },
+        flags: "",
+        example: "phrase  db \"salut\", 10\ntaille  equ $ - phrase",
+    },
+    Entry {
+        kind: Kind::Directive,
+        names: &["$", "$$"],
+        title: Text {
+            fr: "Où en est l'assembleur",
+            en: "Where the assembler is",
+        },
+        body: Text {
+            fr: "`$` vaut l'adresse de la ligne courante, `$$` celle du début de la section. `$ - message` donne donc le nombre d'octets écrits depuis l'étiquette : la longueur d'une chaîne, sans la compter à la main ni la corriger quand on la change.",
+            en: "`$` is the address of the current line, `$$` the start of the section. So `$ - message` gives the number of bytes written since that label: the length of a string, without counting by hand or fixing it when the string changes.",
+        },
+        flags: "",
+        example: "phrase  db \"salut\", 10\ntaille  equ $ - phrase",
+    },
+    Entry {
+        kind: Kind::Directive,
+        names: &[
+            "byte", "word", "dword", "qword", "tword", "oword", "yword", "zword",
+        ],
+        title: Text {
+            fr: "Dire la taille",
+            en: "State the size",
+        },
+        body: Text {
+            fr: "Quand l'adresse seule ne dit pas combien d'octets écrire — `mov [x], 1` : un octet ? huit ? — c'est à vous de le préciser. NASM refuse plutôt que de deviner, et il a raison.",
+            en: "When the address alone does not say how many bytes to write — `mov [x], 1`: one byte? eight? — you have to say. NASM refuses rather than guess, and it is right to.",
+        },
+        flags: "",
+        example: "mov byte [buf], 1\nmov qword [n], 42\nmovzx eax, word [buf]",
+    },
+    Entry {
+        kind: Kind::Directive,
+        names: &["default", "rel", "abs", "wrt"],
+        title: Text {
+            fr: "Adressage relatif ou absolu",
+            en: "Relative or absolute addressing",
+        },
+        body: Text {
+            fr: "`default rel` fait calculer les adresses par rapport à RIP : c'est ce qu'écrit tout le monde aujourd'hui, et ce qu'exige un exécutable relogeable. Sans cette ligne, nasm 3 avertit à chaque accès mémoire par étiquette.",
+            en: "`default rel` makes addresses count from RIP: this is what everyone writes today, and what a relocatable executable requires. Without that line, nasm 3 warns on every label-based memory access.",
+        },
+        flags: "",
+        example: "default rel\n\nsection .text\n    mov rax, [valeur]",
+    },
+    Entry {
+        kind: Kind::Directive,
+        names: &["align", "alignb"],
+        title: Text {
+            fr: "Aligner",
+            en: "Align",
+        },
+        body: Text {
+            fr: "Avance jusqu'à la prochaine adresse multiple de n. Indispensable avant `movaps` ou `vmovaps`, qui exigent 16 ou 32 octets d'alignement et faute sinon — sur un vrai processeur, pas ici.",
+            en: "Advances to the next address that is a multiple of n. Needed before `movaps` or `vmovaps`, which require 16- or 32-byte alignment and fault otherwise — on a real processor, not here.",
+        },
+        flags: "",
+        example: "align 32\nquatre dd 1.0, 2.0, 3.0, 4.0",
+    },
+    Entry {
+        kind: Kind::Directive,
+        names: &["bits", "use16", "use32", "use64"],
+        title: Text {
+            fr: "Largeur du mode",
+            en: "Mode width",
+        },
+        body: Text {
+            fr: "Dit à l'assembleur en quel mode le code tournera : 16, 32 ou 64 bits. Avec `nasm -f elf64`, c'est déjà 64 bits — `BITS 64` n'y ajoute rien, et on peut l'omettre.",
+            en: "Tells the assembler which mode the code will run in: 16, 32 or 64 bits. With `nasm -f elf64` it is already 64 — `BITS 64` adds nothing and can be left out.",
+        },
+        flags: "",
+        example: "bits 64",
+    },
+    Entry {
+        kind: Kind::Directive,
+        names: &["incbin"],
+        title: Text {
+            fr: "Inclure un fichier tel quel",
+            en: "Include a file as is",
+        },
+        body: Text {
+            fr: "Recopie un fichier dans la sortie, octet pour octet : une image, une police, une table. Rien n'est interprété.",
+            en: "Copies a file into the output, byte for byte: an image, a font, a table. Nothing is interpreted.",
+        },
+        flags: "",
+        example: "table incbin \"table.bin\"",
+    },
+    Entry {
+        kind: Kind::Preprocessor,
+        names: &["%define", "%xdefine", "%undef", "%assign"],
+        title: Text {
+            fr: "Remplacer avant d'assembler",
+            en: "Replace before assembling",
+        },
+        body: Text {
+            fr: "Le préprocesseur remplace du texte *avant* que l'assembleur ne voie quoi que ce soit. `%define` prend des arguments, comme une macro du C ; `%assign` calcule sa valeur tout de suite. Rien de tout cela n'existe encore à l'exécution.",
+            en: "The preprocessor replaces text *before* the assembler sees anything. `%define` takes arguments, like a C macro; `%assign` computes its value right away. None of it still exists at run time.",
+        },
+        flags: "",
+        example: "%define TAILLE 64\n%define double(x) ((x) * 2)\n    mov rax, TAILLE",
+    },
+    Entry {
+        kind: Kind::Preprocessor,
+        names: &["%macro", "%endmacro", "%imacro", "%unmacro"],
+        title: Text {
+            fr: "Écrire une fois, poser partout",
+            en: "Write once, place anywhere",
+        },
+        body: Text {
+            fr: "Une macro est du texte à recopier, avec des arguments numérotés `%1`, `%2`. Elle ne coûte pas d'appel — les instructions sont écrites sur place — mais elle ne partage rien non plus : deux usages font deux copies.",
+            en: "A macro is text to be copied, with numbered arguments `%1`, `%2`. It costs no call — the instructions are written in place — but it shares nothing either: two uses make two copies.",
+        },
+        flags: "",
+        example: "%macro afficher 2\n    mov rsi, %1\n    mov rdx, %2\n%endmacro",
+    },
+    Entry {
+        kind: Kind::Preprocessor,
+        names: &["%include"],
+        title: Text {
+            fr: "Inclure un autre fichier",
+            en: "Include another file",
+        },
+        body: Text {
+            fr: "Recopie un fichier source à cet endroit, avant l'assemblage. C'est ainsi qu'on partage des macros et des constantes entre plusieurs programmes.",
+            en: "Copies a source file in at this point, before assembly. This is how macros and constants are shared between programs.",
+        },
+        flags: "",
+        example: "%include \"macros.inc\"",
+    },
+    Entry {
+        kind: Kind::Preprocessor,
+        names: &["%if", "%ifdef", "%ifndef", "%elif", "%else", "%endif"],
+        title: Text {
+            fr: "Assembler ou non",
+            en: "Assemble, or not",
+        },
+        body: Text {
+            fr: "Choisit ce qui sera assemblé. Ce qui est écarté n'existe pas dans le fichier produit — ce n'est pas un `if` d'exécution, c'est une décision prise à l'assemblage.",
+            en: "Chooses what gets assembled. What is left out does not exist in the produced file — this is not a run-time `if`, it is a decision made at assembly time.",
+        },
+        flags: "",
+        example: "%ifdef DEBUG\n    mov rax, 1\n%endif",
+    },
+    Entry {
+        kind: Kind::Preprocessor,
+        names: &["%rep", "%endrep", "%exitrep"],
+        title: Text {
+            fr: "Répéter du texte",
+            en: "Repeat text",
+        },
+        body: Text {
+            fr: "Répète un bloc au moment de l'assemblage — là où `times` répète une seule ligne. Utile pour dérouler une boucle ou fabriquer une table.",
+            en: "Repeats a block at assembly time — where `times` repeats a single line. Useful to unroll a loop or build a table.",
+        },
+        flags: "",
+        example: "%rep 4\n    nop\n%endrep",
+    },
+    Entry {
+        kind: Kind::Preprocessor,
+        names: &["%error", "%warning", "%fatal"],
+        title: Text {
+            fr: "Se plaindre à l'assemblage",
+            en: "Complain at assembly time",
+        },
+        body: Text {
+            fr: "Fait dire quelque chose à l'assembleur, et arrêter au besoin. C'est le seul moyen de vérifier une hypothèse avant que le programme n'existe.",
+            en: "Makes the assembler say something, and stop if needed. It is the only way to check an assumption before the program exists.",
+        },
+        flags: "",
+        example: "%ifndef TAILLE\n%error \"TAILLE n'est pas définie\"\n%endif",
     },
 ];

@@ -3007,8 +3007,16 @@ fn every_documented_example_assembles_and_runs() {
     let epilogue = "\n    hlt\nplus_grand:\nfin:\nnul:\nfini:\nidentiques:\n\
         non_comparable:\nétait_déjà_posé:\n    hlt\n";
 
+    // Trois exemples ne peuvent pas s'assembler seuls, et c'est ce
+    // qu'ils montrent : deux nomment un fichier qui n'existe que chez
+    // celui qui l'écrit, le troisième provoque une erreur exprès.
+    const SANS_FICHIER: [&str; 3] = ["incbin", "%include", "%error"];
+
     let mut fautifs = Vec::new();
     for entry in namsdec_doc::ENTRIES {
+        if SANS_FICHIER.contains(&entry.names[0]) {
+            continue;
+        }
         let source = format!("{prelude}{}{epilogue}", entry.example);
         if let Err(e) = namsdec_asm::assemble(&source, BASE_ADDR) {
             let détail = match &e {
@@ -3519,4 +3527,42 @@ fn watching_a_register_stops_the_run_when_it_changes() {
         app.tick_run(&ctx);
     }
     assert!(matches!(app.status, Status::Halted), "{:?}", app.status);
+}
+
+/// F1 documente aussi le langage de NASM, pas seulement le processeur :
+/// `times`, `equ`, `$`, `%macro` sont ce sur quoi on bute en écrivant, et
+/// ils n'ont rien à voir avec ce que le processeur exécute.
+#[test]
+fn the_help_covers_the_assembler_language_too() {
+    for (mot, attendu) in [
+        ("times", "Répéter"),
+        ("equ", "Donner un nom à une valeur"),
+        ("db", "Écrire des octets"),
+        ("resb", "Réserver sans écrire"),
+        ("$", "Où en est l'assembleur"),
+        ("%macro", "Écrire une fois, poser partout"),
+        ("%define", "Remplacer avant d'assembler"),
+        ("qword", "Dire la taille"),
+        ("global", "Ce qui sort, ce qui entre"),
+    ] {
+        let entry =
+            namsdec_doc::lookup(mot).unwrap_or_else(|| panic!("« {mot} » n'est pas documenté"));
+        assert_eq!(entry.title.fr, attendu, "pour « {mot} »");
+        assert_ne!(
+            entry.kind,
+            namsdec_doc::Kind::Instruction,
+            "« {mot} » n'est pas une instruction"
+        );
+    }
+
+    // Et l'autocomplétion, elle, ne propose que des instructions : une
+    // directive n'a rien à faire dans une liste de mnémoniques.
+    let proposés = completion::mnemonics();
+    assert!(proposés.contains(&"mov"));
+    for directive in ["times", "equ", "db", "%macro", "qword"] {
+        assert!(
+            !proposés.contains(&directive),
+            "« {directive} » est proposé comme une instruction"
+        );
+    }
 }

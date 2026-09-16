@@ -3549,17 +3549,31 @@ impl NamsdecApp {
                 ui.add_space(2.0);
                 ui.label(prose(ui, theme, entry.body.get(lang)));
                 ui.add_space(6.0);
-                ui.horizontal_wrapped(|ui| {
-                    ui.colored_label(theme.dim, s.help_flags);
-                    if entry.flags.is_empty() {
-                        ui.colored_label(theme.dim, s.help_no_flags);
-                    } else {
-                        ui.colored_label(
-                            theme.register,
-                            egui::RichText::new(entry.flags).monospace(),
-                        );
-                    }
-                });
+                // Les indicateurs ne concernent que les instructions :
+                // une directive ne s'exécute pas, elle n'en touche aucun,
+                // et l'écrire reviendrait à laisser croire qu'elle
+                // pourrait.
+                if entry.kind == namsdec_doc::Kind::Instruction {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.colored_label(theme.dim, s.help_flags);
+                        if entry.flags.is_empty() {
+                            ui.colored_label(theme.dim, s.help_no_flags);
+                        } else {
+                            ui.colored_label(
+                                theme.register,
+                                egui::RichText::new(entry.flags).monospace(),
+                            );
+                        }
+                    });
+                } else {
+                    ui.colored_label(
+                        theme.dim,
+                        match entry.kind {
+                            namsdec_doc::Kind::Directive => s.help_kind_directive,
+                            _ => s.help_kind_preprocessor,
+                        },
+                    );
+                }
                 ui.add_space(6.0);
                 ui.colored_label(theme.dim, s.help_example);
                 ui.add(
@@ -4542,6 +4556,12 @@ fn word_at(text: &str, byte: usize) -> &str {
         c.is_alphanumeric() || c == '_' || c == '.'
     }
     let byte = byte.min(text.len());
+    // `$` et `$$` ne sont pas des mots au sens des lettres, mais ce sont
+    // bien des choses sur lesquelles on demande de l'aide : l'adresse
+    // courante et le début de la section.
+    if let Some(dollars) = dollars_at(text, byte) {
+        return dollars;
+    }
     // Reculer jusqu'au début du mot, avancer jusqu'à sa fin.
     let start = text[..byte]
         .char_indices()
@@ -4557,10 +4577,26 @@ fn word_at(text: &str, byte: usize) -> &str {
             .map(|(i, c)| i + c.len_utf8())
             .last()
             .unwrap_or(0);
+    // Un `%` devant fait partie du nom : `%macro`, `%define`. Le
+    // préprocesseur est un langage à part entière, et c'est là qu'on
+    // demande ce qu'il fait.
+    let start = if text[..start].ends_with('%') {
+        start - 1
+    } else {
+        start
+    };
     // Un point *devant* fait partie du nom (`.boucle`) ; un point
     // derrière est de la ponctuation — « … avant idiv. » dans un
     // commentaire ne demande pas d'aide sur « idiv. ».
     text[start..end].trim_end_matches('.')
+}
+
+/// `$` ou `$$` sous le curseur, s'il y en a un.
+fn dollars_at(text: &str, byte: usize) -> Option<&str> {
+    let before = &text[..byte];
+    let start = before.len() - before.chars().rev().take_while(|c| *c == '$').count();
+    let end = byte + text[byte..].chars().take_while(|c| *c == '$').count();
+    (end > start).then(|| &text[start..end])
 }
 
 fn char_to_byte(text: &str, chars: usize) -> usize {

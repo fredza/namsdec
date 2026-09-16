@@ -39,9 +39,28 @@ impl Text {
     }
 }
 
-/// La fiche d'une famille d'instructions.
+/// Ce que la fiche décrit.
+///
+/// Apprendre l'assembleur, c'est apprendre deux langages à la fois :
+/// celui du processeur — les instructions — et celui de l'assembleur, qui
+/// n'exécute rien mais décide de ce qui sera écrit dans le fichier. Les
+/// confondre est la première difficulté : `mov` s'exécute, `db` non.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Kind {
+    /// Une instruction du processeur.
+    Instruction,
+    /// Une directive de NASM : elle produit des octets ou range le
+    /// programme, elle ne s'exécute pas.
+    Directive,
+    /// Le préprocesseur : ce qui est remplacé *avant* l'assemblage.
+    Preprocessor,
+}
+
+/// La fiche d'une famille d'instructions, d'une directive ou d'une
+/// construction du préprocesseur.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Entry {
+    pub kind: Kind,
     /// Les mnémoniques que la fiche couvre, en minuscules.
     pub names: &'static [&'static str],
     pub title: Text,
@@ -62,10 +81,18 @@ pub fn lookup(mnemonic: &str) -> Option<&'static Entry> {
 
 /// Tous les mnémoniques documentés, triés — c'est-à-dire tout ce que
 /// namsdec sait exécuter et nommer.
+///
+/// Les instructions seulement : une directive n'a rien à faire dans une
+/// liste de propositions en tête d'instruction, et l'autocomplétion en
+/// propose déjà par ailleurs, au bon endroit.
 pub fn mnemonics() -> &'static [&'static str] {
     static ALL: OnceLock<Vec<&'static str>> = OnceLock::new();
     ALL.get_or_init(|| {
-        let mut names: Vec<&'static str> = index().keys().copied().collect();
+        let mut names: Vec<&'static str> = ENTRIES
+            .iter()
+            .filter(|entry| entry.kind == Kind::Instruction)
+            .flat_map(|entry| entry.names.iter().copied())
+            .collect();
         names.sort_unstable();
         names
     })
