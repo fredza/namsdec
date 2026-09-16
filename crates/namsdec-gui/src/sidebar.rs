@@ -406,6 +406,7 @@ impl NamsdecApp {
         // `self` en lecture, la surveillance l'écrit.
         let mut clicked: Option<&'static str> = None;
         let s = strings(self.lang);
+        let lang = self.lang;
         egui::Grid::new("registers_grid")
             // Deux cellules par paire, plus une cellule vide entre les
             // paires : c'est elle qui sépare les colonnes.
@@ -461,10 +462,19 @@ impl NamsdecApp {
                             clicked = Some(name);
                         }
                     }
-                    ui.colored_label(
-                        color,
-                        egui::RichText::new(format!("{value:016x}")).monospace(),
-                    );
+                    // La valeur porte toutes ses lectures : combien ça
+                    // fait en décimal, quel caractère, quels octets en
+                    // mémoire. C'est la question qui fait ouvrir une
+                    // calculatrice ailleurs.
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(format!("{value:016x}"))
+                                .monospace()
+                                .color(color),
+                        )
+                        .sense(egui::Sense::hover()),
+                    )
+                    .on_hover_text(readings::of(lang, value));
                     in_row += 1;
                     if in_row == pairs {
                         ui.end_row();
@@ -549,6 +559,7 @@ impl NamsdecApp {
     /// que cela se voie plutôt que de s'apprendre à ses dépens.
     fn stack_words_ui(&self, ui: &mut egui::Ui, emulator: &dyn Backend) {
         let s = strings(self.lang);
+        let lang = self.lang;
         let theme = self.theme;
         let regs = &emulator.cpu().regs;
         let rsp = regs.get64(Reg64::Rsp);
@@ -601,7 +612,8 @@ impl NamsdecApp {
                     ui.colored_label(
                         colour,
                         egui::RichText::new(format!("{value:016x}")).monospace(),
-                    );
+                    )
+                    .on_hover_text(readings::of(lang, value));
                     // Le repère : d'abord ce que l'adresse *est* pour le
                     // processeur, puis ce que la valeur veut dire.
                     let mut note = String::new();

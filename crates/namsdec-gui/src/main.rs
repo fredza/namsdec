@@ -8,6 +8,7 @@ mod errors;
 mod i18n;
 mod keybindings;
 mod nasm_errors;
+mod readings;
 mod settings;
 mod sidebar;
 mod syntax;
