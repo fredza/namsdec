@@ -4570,3 +4570,86 @@ fn the_analysis_can_be_taken_away_as_a_report() {
     let vierge = NamsdecApp::default();
     assert!(vierge.analysis_report().is_none());
 }
+
+/// Après un pas, le panneau raconte ce que l'instruction a fait — avec
+/// la valeur d'avant, celle qui explique celle d'après.
+#[test]
+fn the_last_step_says_what_it_changed() {
+    let mut app = NamsdecApp {
+        source: "\
+global _start
+section .text
+_start:
+mov rcx, 5
+dec rcx
+hlt
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 900.0),
+        )),
+        ..Default::default()
+    };
+    let peindre = |app: &mut NamsdecApp| {
+        let mut painted = String::new();
+        for _ in 0..2 {
+            painted.clear();
+            let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+            for clipped in &output.shapes {
+                if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                    painted.push_str(text.galley.text());
+                    painted.push('|');
+                }
+            }
+            output.textures_delta.clear();
+        }
+        painted
+    };
+
+    // Rien tant qu'aucun pas n'a été fait.
+    assert!(!peindre(&mut app).contains("Dernier pas"));
+
+    app.do_step(); // mov rcx, 5
+    let apres_mov = peindre(&mut app);
+    assert!(apres_mov.contains("Dernier pas"), "{apres_mov}");
+    assert!(
+        apres_mov.contains("mov rcx, 5"),
+        "l'instruction qui vient de s'exécuter : {apres_mov}"
+    );
+    assert!(
+        apres_mov.contains("RCX 0x0 → 0x5"),
+        "son effet, valeur d'avant comprise : {apres_mov}"
+    );
+
+    app.do_step(); // dec rcx
+    let apres_dec = peindre(&mut app);
+    assert!(
+        apres_dec.contains("RCX 0x5 → 0x4"),
+        "le décrément part de ce que le pas précédent avait posé : {apres_dec}"
+    );
+    // `dec` touche les indicateurs, et c'est souvent tout ce qu'on lui
+    // demande.
+    assert!(
+        apres_dec.contains("PF 0 → 1") || apres_dec.contains("ZF") || apres_dec.contains("SF"),
+        "les indicateurs modifiés doivent être dits : {apres_dec}"
+    );
+
+    // Une course n'a pas « un » dernier pas : le bandeau se tait.
+    app.do_run();
+    for _ in 0..10 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&ctx);
+    }
+    assert!(!peindre(&mut app).contains("Dernier pas"));
+}

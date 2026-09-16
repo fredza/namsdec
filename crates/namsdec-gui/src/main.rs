@@ -350,6 +350,14 @@ struct NamsdecApp {
     /// fait *voir* ce qu'une instruction fait, et gdb lui-même laisse
     /// l'utilisateur comparer de tête.
     regs_before: Option<namsdec_core::Registers>,
+    /// Les indicateurs avant le dernier pas : ce sont eux qu'on relit
+    /// après un `cmp`, et savoir qu'ils *ont changé* ne suffit pas —
+    /// c'est la valeur d'avant qui explique celle d'après.
+    flags_before: Option<RFlags>,
+    /// L'instruction que le dernier pas vient d'exécuter : son adresse et
+    /// son texte. `None` après un Run, un retour en arrière ou une
+    /// réinitialisation — il n'y a plus « un » dernier pas à montrer.
+    last_step: Option<(u64, String)>,
     /// Les octets de la fenêtre mémoire avant le dernier pas, pour
     /// mettre en avant ceux qui ont changé.
     mem_before: Option<Vec<u8>>,
@@ -802,6 +810,8 @@ impl Default for NamsdecApp {
             assemble_state: None,
             emulator: None,
             regs_before: None,
+            flags_before: None,
+            last_step: None,
             mem_before: None,
             re_registry,
             status: Status::Idle,
@@ -1124,6 +1134,7 @@ impl NamsdecApp {
 
     fn remember_registers(&mut self) {
         self.regs_before = self.emulator.as_ref().map(|e| e.cpu().regs.clone());
+        self.flags_before = self.emulator.as_ref().map(|e| e.cpu().flags);
         // Et la fenêtre mémoire qu'on regarde : mettre en avant ce qui a
         // changé vaut pour elle autant que pour les registres, et cent
         // vingt-huit octets copiés à chaque pas ne coûtent rien.
@@ -1190,6 +1201,8 @@ impl NamsdecApp {
         // Un programme qui vient d'être chargé n'a pas de passé : rien à
         // mettre en avant tant qu'il n'a pas avancé d'un pas.
         self.regs_before = None;
+        self.flags_before = None;
+        self.last_step = None;
         self.mem_before = None;
         let mut emulator = Emulator::new(cpu);
         // Le tas commence après l'image du programme et monte vers la
@@ -1266,8 +1279,25 @@ impl NamsdecApp {
         self.re_registry.on_step(&ctx);
     }
 
+    /// Retient l'instruction que le pas qui commence va exécuter.
+    ///
+    /// Prise *avant* le pas : après, RIP a bougé, et l'instruction qu'on
+    /// vient de faire n'est plus sous le pointeur. C'est elle qui donne
+    /// son sens à ce qui a changé — « RCX 0x5 → 0x4 » ne veut rien dire
+    /// sans le `dec rcx` qui l'a fait.
+    fn remember_step(&mut self) {
+        self.last_step = self.emulator.as_ref().and_then(|emulator| {
+            let cpu = emulator.cpu();
+            let rip = cpu.regs.rip;
+            let window = cpu.mem.peek_bytes(rip, 16).ok()?;
+            let instr = namsdec_disasm::decode_one(window, rip)?;
+            Some((rip, namsdec_disasm::format_one(&instr)))
+        });
+    }
+
     fn do_step(&mut self) {
         self.remember_registers();
+        self.remember_step();
         self.follow_execution();
         // Avancer d'un pas, c'est reprendre la main : un Run suspendu
         // faute d'entrée ne doit pas repartir tout seul à la saisie
@@ -1296,6 +1326,9 @@ impl NamsdecApp {
         if self.emulator.is_none() {
             return;
         }
+        // Une course n'a pas « un » dernier pas : le bandeau se tait
+        // plutôt que de montrer la première instruction d'un millier.
+        self.last_step = None;
         // Photographie prise au départ : à l'arrêt suivant — un point
         // d'arrêt, un `hlt` — le bandeau montre tout ce que la course a
         // changé, et non le seul dernier pas.
@@ -1313,6 +1346,7 @@ impl NamsdecApp {
     /// demandait jusqu'ici de poser un point, de courir, puis de penser à
     /// le retirer.
     fn do_run_to_cursor(&mut self) {
+        self.last_step = None;
         let Some(state) = &self.assemble_state else {
             return;
         };
@@ -1421,6 +1455,8 @@ impl NamsdecApp {
     /// avant désigne exactement ce qu'on vient d'annuler.
     fn do_step_back(&mut self) {
         self.follow_execution();
+        // Le pas qu'on défait n'est plus le dernier pas fait.
+        self.last_step = None;
         // Un Run suspendu ne repart pas tout seul après un retour en
         // arrière : c'est l'utilisateur qui tient la main, comme pour un
         // pas ordinaire.
@@ -1438,6 +1474,8 @@ impl NamsdecApp {
             // Rien à défaire : on le dit plutôt que de ne rien faire.
             self.status = Status::NothingToUndo;
             self.regs_before = None;
+            self.flags_before = None;
+            self.last_step = None;
             self.mem_before = None;
         }
     }
@@ -1445,6 +1483,7 @@ impl NamsdecApp {
     fn do_step_over(&mut self) {
         self.follow_execution();
         self.remember_registers();
+        self.remember_step();
         // Même raison que dans `do_step`.
         self.resume_run_after_input = false;
         let Some(emulator) = &mut self.emulator else {

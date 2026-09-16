@@ -10,6 +10,18 @@
 
 use super::*;
 
+/// Les six indicateurs qu'on lit après une opération, dans l'ordre où le
+/// processeur les range. Partagés par les pastilles du bandeau et le
+/// récit du dernier pas : les deux doivent parler des mêmes.
+const FLAG_BITS: [(&str, RFlags); 6] = [
+    ("CF", RFlags::CF),
+    ("PF", RFlags::PF),
+    ("AF", RFlags::AF),
+    ("ZF", RFlags::ZF),
+    ("SF", RFlags::SF),
+    ("OF", RFlags::OF),
+];
+
 impl NamsdecApp {
     pub(crate) fn sidebar_ui(&mut self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
@@ -24,6 +36,7 @@ impl NamsdecApp {
         // qu'on regarde entre deux pas, et il ne doit jamais falloir
         // aller le chercher.
         self.next_instruction_ui(ui);
+        self.last_step_ui(ui);
 
         // Les registres et les flags sont posés en entier, sans zone de
         // défilement : leur hauteur est connue — dix-huit valeurs sur
@@ -154,6 +167,69 @@ impl NamsdecApp {
                 }
                 ui.end_row();
             });
+    }
+
+    /// Ce que le dernier pas a fait : l'instruction, et ce qu'elle a
+    /// changé — avec la valeur d'avant.
+    ///
+    /// Le bandeau des registres colore ce qui a bougé ; savoir *qu'*une
+    /// valeur a changé ne dit pas d'où elle vient. `RCX 0x5 → 0x4` sous
+    /// un `dec rcx`, c'est l'instruction et son effet dans la même
+    /// phrase, et c'est comme cela qu'on apprend ce que fait une
+    /// instruction.
+    fn last_step_ui(&mut self, ui: &mut egui::Ui) {
+        let s = strings(self.lang);
+        let theme = self.theme;
+        let (Some((addr, text)), Some(emulator)) = (&self.last_step, &self.emulator) else {
+            return;
+        };
+        let Some(before) = &self.regs_before else {
+            return;
+        };
+        let now = &emulator.cpu().regs;
+        // RIP est écarté : il change à chaque instruction, le dire à
+        // chaque pas noierait ce qui compte.
+        let mut changes: Vec<String> = REGISTERS
+            .iter()
+            .filter(|&&(_, reg)| before.get64(reg) != now.get64(reg))
+            .map(|&(name, reg)| format!("{name} {:#x} → {:#x}", before.get64(reg), now.get64(reg)))
+            .collect();
+        // Les indicateurs, un par un : après un `cmp`, ce sont eux le
+        // résultat — l'instruction ne touche aucun registre.
+        if let Some(flags_before) = self.flags_before {
+            let flags_now = emulator.cpu().flags;
+            for (name, bit) in FLAG_BITS {
+                if flags_before.contains(bit) != flags_now.contains(bit) {
+                    changes.push(format!(
+                        "{name} {} → {}",
+                        u8::from(flags_before.contains(bit)),
+                        u8::from(flags_now.contains(bit))
+                    ));
+                }
+            }
+        }
+
+        ui.add_space(4.0);
+        ui.horizontal_wrapped(|ui| {
+            ui.colored_label(theme.dim, s.last_step);
+            ui.colored_label(
+                theme.dim,
+                egui::RichText::new(format!("{addr:#x}")).monospace(),
+            );
+            ui.label(egui::RichText::new(text).monospace());
+        });
+        if changes.is_empty() {
+            // Une instruction peut ne rien changer de visible — un saut,
+            // un `nop`. Le dire vaut mieux que de laisser croire qu'on a
+            // oublié de regarder.
+            ui.colored_label(theme.dim, s.last_step_nothing);
+            return;
+        }
+        ui.horizontal_wrapped(|ui| {
+            for change in changes {
+                ui.colored_label(theme.changed, egui::RichText::new(change).monospace());
+            }
+        });
     }
 
     /// La ligne qui mène aux registres étendus.
