@@ -187,6 +187,59 @@ pub fn asm(lang: Lang, error: &AsmError) -> String {
 
 /// Les refus à l'installation d'un thème. Ils doivent dire quoi corriger
 /// dans le fichier : c'est tout ce que l'utilisateur peut faire.
+/// Les refus à l'installation d'une série d'exercices, dans la langue de
+/// l'interface.
+pub fn exercise_pack(lang: Lang, error: &namsdec_exercises::pack::PackError) -> String {
+    use namsdec_exercises::pack::PackError as E;
+    let fr = lang == Lang::Fr;
+    match error {
+        E::Io(e) => {
+            if fr {
+                format!("fichier illisible : {e}")
+            } else {
+                format!("cannot read the file: {e}")
+            }
+        }
+        E::Format(e) => {
+            if fr {
+                format!("ce n'est pas un fichier d'exercices valide : {e}")
+            } else {
+                format!("this is not a valid exercise file: {e}")
+            }
+        }
+        E::BadId(id) => {
+            if fr {
+                format!(
+                    "l'identifiant ne doit contenir que des lettres, des chiffres ou des tirets : {id}"
+                )
+            } else {
+                format!("the identifier must be made of letters, digits or dashes: {id}")
+            }
+        }
+        E::Empty => {
+            if fr {
+                "cette série ne contient aucun exercice".to_owned()
+            } else {
+                "this pack contains no exercise".to_owned()
+            }
+        }
+        E::NoCode(id) => {
+            if fr {
+                format!("l'exercice « {id} » n'a pas de programme de départ")
+            } else {
+                format!("the exercise \"{id}\" has no starting program")
+            }
+        }
+        E::DuplicateId(id) => {
+            if fr {
+                format!("deux exercices portent l'identifiant « {id} »")
+            } else {
+                format!("two exercises share the identifier \"{id}\"")
+            }
+        }
+    }
+}
+
 pub fn plugin(lang: Lang, error: &namsdec_theme::PluginError) -> String {
     use namsdec_theme::PluginError as E;
     let fr = lang == Lang::Fr;

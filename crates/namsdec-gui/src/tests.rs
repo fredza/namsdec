@@ -2689,7 +2689,7 @@ fn loading_an_exercise_fills_the_editor_without_claiming_a_file() {
         current_file: Some(std::path::PathBuf::from("/tmp/le-mien.asm")),
         ..Default::default()
     };
-    app.load_exercise("sum_loop");
+    app.load_exercise("namsdec/sum_loop");
 
     assert!(app.source.contains("sum_loop"), "le programme est chargé");
     assert!(app.source.contains("BITS 64"));
@@ -2698,7 +2698,7 @@ fn loading_an_exercise_fills_the_editor_without_claiming_a_file() {
 
     // Un identifiant inconnu ne casse rien et ne touche pas au tampon.
     let before = app.source.clone();
-    app.load_exercise("n-existe-pas");
+    app.load_exercise("namsdec/n-existe-pas");
     assert_eq!(app.source, before);
 }
 
@@ -2715,4 +2715,125 @@ fn the_palette_offers_the_exercises_only_when_the_module_is_loaded() {
     };
     assert!(!labels(false).contains(&s.exercises_open.to_string()));
     assert!(labels(true).contains(&s.exercises_open.to_string()));
+}
+
+/// Le dossier de données est une variable d'environnement, donc partagée
+/// par tous les tests du binaire. Ceux qui y touchent prennent ce verrou :
+/// sans lui, deux tests en parallèle se volent le dossier de l'autre.
+static DATA_HOME: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Détourne le dossier de données vers `dir` le temps du test, pour que
+/// rien ne soit écrit chez l'utilisateur.
+fn with_data_home<T>(dir: &std::path::Path, body: impl FnOnce() -> T) -> T {
+    let _guard = DATA_HOME.lock().unwrap_or_else(|e| e.into_inner());
+    let previous = std::env::var_os("XDG_DATA_HOME");
+    unsafe { std::env::set_var("XDG_DATA_HOME", dir) };
+    let result = body();
+    match previous {
+        Some(value) => unsafe { std::env::set_var("XDG_DATA_HOME", value) },
+        None => unsafe { std::env::remove_var("XDG_DATA_HOME") },
+    }
+    result
+}
+
+/// Une série installée depuis le disque s'ajoute à celle qui est livrée,
+/// sans la remplacer — et chaque exercice reste identifiable par sa
+/// série, deux d'entre elles pouvant nommer le leur pareil.
+#[test]
+fn an_installed_pack_joins_the_built_in_one() {
+    let dir = tempfile::tempdir().expect("un dossier temporaire");
+    let path = dir.path().join("mes-exos.json");
+    std::fs::write(
+        &path,
+        r#"{
+            "id": "mes-exos",
+            "name": "Mes exercices",
+            "exercises": [
+                {
+                    "id": "sum_loop",
+                    "title": "Le mien",
+                    "description": "À moi.",
+                    "code": "BITS 64\nsection .text\n    hlt\n"
+                }
+            ]
+        }"#,
+    )
+    .unwrap();
+
+    // Le dossier de données est celui du test : rien n'est écrit chez
+    // l'utilisateur.
+    let data = dir.path().join("data");
+    let mut app = NamsdecApp {
+        exercises: true,
+        ..Default::default()
+    };
+    with_data_home(&data, || app.install_exercises(&path));
+    assert!(
+        app.plugin_note.as_ref().is_some_and(|n| n.ok),
+        "installation refusée : {:?}",
+        app.plugin_note.as_ref().map(|n| &n.text)
+    );
+    assert_eq!(
+        app.exercise_packs.len(),
+        2,
+        "la série livrée est toujours là"
+    );
+    assert!(data.join("namsdec/exercises/mes-exos.json").is_file());
+
+    // Les deux « sum_loop » ne se confondent pas.
+    app.load_exercise("mes-exos/sum_loop");
+    assert!(app.source.contains("hlt"));
+    assert!(!app.source.contains("add rax"), "c'est bien le mien");
+    app.load_exercise("namsdec/sum_loop");
+    assert!(app.source.contains("sum_loop:"), "et celui d'origine aussi");
+
+    // Retirée, elle disparaît de la liste et du disque.
+    with_data_home(&data, || app.remove_exercises("mes-exos"));
+    assert_eq!(app.exercise_packs.len(), 1);
+    assert!(!data.join("namsdec/exercises/mes-exos.json").exists());
+    assert!(namsdec_exercises::find(&app.exercise_packs, "mes-exos/sum_loop").is_none());
+}
+
+/// Une série qui se donne l'identifiant de celle d'origine est refusée :
+/// sans quoi elle ferait disparaître les exercices livrés sans que
+/// personne ne l'ait demandé.
+#[test]
+fn a_pack_cannot_take_the_name_of_the_built_in_one() {
+    let dir = tempfile::tempdir().expect("un dossier temporaire");
+    let path = dir.path().join("faux.json");
+    std::fs::write(
+        &path,
+        r#"{"id":"namsdec","name":"Faux","exercises":[
+            {"id":"a","title":"A","description":"B","code":"BITS 64\nhlt\n"}]}"#,
+    )
+    .unwrap();
+    let mut app = NamsdecApp::default();
+    with_data_home(&dir.path().join("data"), || app.install_exercises(&path));
+    assert!(
+        app.plugin_note.as_ref().is_some_and(|n| !n.ok),
+        "elle doit être refusée"
+    );
+    assert_eq!(app.exercise_packs.len(), 1);
+    assert!(app.exercise_files.is_empty());
+}
+
+/// Un fichier qui n'est pas une série est refusé en le disant, dans la
+/// langue de l'interface, et rien n'est copié.
+#[test]
+fn a_file_that_is_not_a_pack_is_refused_in_plain_words() {
+    let dir = tempfile::tempdir().expect("un dossier temporaire");
+    let path = dir.path().join("pas-une-serie.json");
+    std::fs::write(&path, "{ ceci n'est pas du JSON").unwrap();
+    let data = dir.path().join("data");
+    let mut app = NamsdecApp::default();
+    with_data_home(&data, || app.install_exercises(&path));
+    let note = app.plugin_note.as_ref().expect("un compte rendu");
+    assert!(!note.ok);
+    assert!(
+        note.text
+            .starts_with("ce n'est pas un fichier d'exercices valide"),
+        "{}",
+        note.text
+    );
+    assert!(!data.join("namsdec/exercises").exists(), "rien n'est copié");
 }

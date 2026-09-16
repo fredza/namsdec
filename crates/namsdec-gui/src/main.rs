@@ -403,6 +403,15 @@ struct NamsdecApp {
     exercises: bool,
     /// La fenêtre qui liste les exercices.
     show_exercises: bool,
+    /// Les séries chargées : celle livrée avec l'application, puis celles
+    /// installées depuis le disque, dans l'ordre où on les a trouvées.
+    exercise_packs: Vec<namsdec_exercises::Pack>,
+    /// D'où vient chaque série installée — ce qui rend son retrait
+    /// possible. La série livrée n'y figure pas : elle n'est nulle part
+    /// sur le disque, et ne se retire pas.
+    exercise_files: BTreeMap<String, PathBuf>,
+    /// La série qu'on s'apprête à retirer, en attente de confirmation.
+    pack_to_remove: Option<String>,
     /// Le bandeau d'état est-il déployé ? Vrai à chaque lancement, et
     /// **hors de `settings.json`** comme `show_re_tab` : egui garde
     /// normalement l'état des en-têtes repliables d'une session à
@@ -475,6 +484,8 @@ enum FileDialogKind {
     SaveAs,
     /// Choisir un fichier de thème à installer.
     AddTheme,
+    /// Choisir une série d'exercices à installer.
+    AddExercises,
 }
 
 /// Le compte rendu de la dernière installation de plugin.
@@ -733,6 +744,9 @@ impl Default for NamsdecApp {
             show_re_tab: false,
             exercises: false,
             show_exercises: false,
+            exercise_packs: vec![namsdec_exercises::builtin_pack()],
+            exercise_files: BTreeMap::new(),
+            pack_to_remove: None,
             cpu_state_open: true,
             console_input: String::new(),
             resume_run_after_input: false,
@@ -1332,7 +1346,9 @@ impl NamsdecApp {
         let (sender, result) = mpsc::channel();
         std::thread::spawn(move || {
             let picked = match kind {
-                FileDialogKind::OpenFile | FileDialogKind::AddTheme => dialog.pick_file(),
+                FileDialogKind::OpenFile
+                | FileDialogKind::AddTheme
+                | FileDialogKind::AddExercises => dialog.pick_file(),
                 FileDialogKind::OpenFolder => dialog.pick_folder(),
                 FileDialogKind::SaveAs => dialog.save_file(),
             };
@@ -1355,6 +1371,7 @@ impl NamsdecApp {
             // interdire d'en choisir un autre : c'est la lecture qui
             // tranche, pas l'extension.
             FileDialogKind::AddTheme => dialog.add_filter(s.filter_theme, &["json"]),
+            FileDialogKind::AddExercises => dialog.add_filter(s.filter_exercises, &["json"]),
             FileDialogKind::OpenFile => dialog
                 .add_filter(s.filter_asm, &["asm", "nasm", "s", "inc"])
                 .add_filter(
@@ -1408,6 +1425,7 @@ impl NamsdecApp {
             }
             FileDialogKind::SaveAs => self.write_to(&path),
             FileDialogKind::AddTheme => self.install_theme(&path, ctx),
+            FileDialogKind::AddExercises => self.install_exercises(&path),
         }
     }
 
@@ -2343,6 +2361,14 @@ impl NamsdecApp {
             self.spawn_file_dialog(FileDialogKind::AddTheme);
         }
         ui.weak(s.plugins_add_hint);
+
+        // Les séries d'exercices s'installent de la même façon : un
+        // fichier JSON, copié dans le dossier de données, relu au
+        // lancement suivant. Même page, même gestes.
+        ui.add_space(10.0);
+        ui.separator();
+        ui.label(egui::RichText::new(s.exercises_packs_title).color(theme.dim));
+        self.exercise_packs_ui(ui);
         // Sans thème installé, rien ne porte de bouton « Retirer » : la
         // page le dit, plutôt que de laisser croire qu'il manque quelque
         // chose.
@@ -2357,6 +2383,49 @@ impl NamsdecApp {
             let colour = if note.ok { theme.good } else { theme.bad };
             ui.colored_label(colour, &note.text);
         }
+    }
+
+    /// La liste des séries installées, avec de quoi en ajouter et en
+    /// retirer. La série livrée avec l'application n'y figure pas : on ne
+    /// retire pas ce qui n'a pas été installé.
+    fn exercise_packs_ui(&mut self, ui: &mut egui::Ui) {
+        let s = strings(self.lang);
+        let theme = self.theme;
+        if self.exercise_files.is_empty() {
+            ui.weak(s.exercises_packs_none);
+        }
+        let installed: Vec<(String, String, usize)> = self
+            .exercise_packs
+            .iter()
+            .filter(|pack| self.exercise_files.contains_key(&pack.id))
+            .map(|pack| (pack.id.clone(), pack.name.clone(), pack.exercises.len()))
+            .collect();
+        for (id, name, count) in installed {
+            ui.horizontal(|ui| {
+                ui.label(format!("{name} ({count})"));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if framed_button(ui, theme, s.plugins_remove).clicked() {
+                        self.pack_to_remove = Some(id.clone());
+                    }
+                });
+            });
+        }
+        if let Some(id) = self.pack_to_remove.clone() {
+            ui.colored_label(theme.warn, format!("{} {id}", s.plugins_remove_question));
+            ui.horizontal(|ui| {
+                if framed_button(ui, theme, s.plugins_remove_yes).clicked() {
+                    self.remove_exercises(&id);
+                    self.pack_to_remove = None;
+                }
+                if framed_button(ui, theme, s.plugins_remove_no).clicked() {
+                    self.pack_to_remove = None;
+                }
+            });
+        }
+        if framed_button(ui, theme, s.exercises_packs_add).clicked() {
+            self.spawn_file_dialog(FileDialogKind::AddExercises);
+        }
+        ui.weak(s.exercises_packs_hint);
     }
 
     /// Retire un thème installé : son fichier est supprimé, et le thème
@@ -2410,6 +2479,83 @@ impl NamsdecApp {
             .clone()
     }
 
+    /// Installe une série d'exercices choisie sur le disque.
+    ///
+    /// Lue d'abord, copiée ensuite : une série illisible est refusée en
+    /// le disant, et rien n'est écrit dans le dossier des données.
+    fn install_exercises(&mut self, path: &Path) {
+        let s = strings(self.lang);
+        let note = match namsdec_exercises::pack::read(path) {
+            Err(e) => PluginNote {
+                ok: false,
+                text: errors::exercise_pack(self.lang, &e),
+            },
+            Ok(pack) => {
+                if pack.id == namsdec_exercises::BUILTIN_ID {
+                    // Le nom de la série livrée est pris : la laisser
+                    // écraser ferait disparaître les exercices d'origine
+                    // sans que personne ne l'ait demandé.
+                    PluginNote {
+                        ok: false,
+                        text: format!("{} ({})", s.exercises_id_taken, pack.id),
+                    }
+                } else {
+                    let name = pack.name.clone();
+                    let id = pack.id.clone();
+                    match copy_into_dir(path, exercises_dir()) {
+                        Err(e) => PluginNote {
+                            ok: false,
+                            text: format!("{} ({e})", s.plugins_added_not_kept),
+                        },
+                        Ok(destination) => {
+                            // Une série réinstallée remplace la
+                            // précédente au lieu de s'ajouter à côté.
+                            self.exercise_packs.retain(|p| p.id != id);
+                            self.exercise_packs.push(pack);
+                            self.exercise_files.insert(id, destination);
+                            PluginNote {
+                                ok: true,
+                                text: format!("{} — {name}", s.plugins_added),
+                            }
+                        }
+                    }
+                }
+            }
+        };
+        self.plugin_note = Some(note);
+    }
+
+    /// Retire une série installée : son fichier est supprimé, et elle
+    /// quitte la liste. La série livrée avec l'application n'est pas
+    /// concernée — elle n'est nulle part sur le disque.
+    fn remove_exercises(&mut self, id: &str) {
+        let s = strings(self.lang);
+        let Some(path) = self.exercise_files.get(id).cloned() else {
+            return;
+        };
+        if let Err(e) = std::fs::remove_file(&path)
+            && e.kind() != std::io::ErrorKind::NotFound
+        {
+            self.plugin_note = Some(PluginNote {
+                ok: false,
+                text: format!("{} ({e})", s.plugins_remove_failed),
+            });
+            return;
+        }
+        let name = self
+            .exercise_packs
+            .iter()
+            .find(|p| p.id == id)
+            .map(|p| p.name.clone())
+            .unwrap_or_else(|| id.to_owned());
+        self.exercise_packs.retain(|p| p.id != id);
+        self.exercise_files.remove(id);
+        self.plugin_note = Some(PluginNote {
+            ok: true,
+            text: format!("{} — {name}", s.plugins_removed),
+        });
+    }
+
     /// La liste des exercices : un titre, ce qu'on y cherche, et de quoi
     /// le charger dans l'éditeur.
     ///
@@ -2434,25 +2580,41 @@ impl NamsdecApp {
             .show(ctx, |ui| {
                 ui.label(s.exercises_legend);
                 ui.add_space(6.0);
-                for exercise in namsdec_exercises::builtin_exercises() {
-                    ui.group(|ui| {
-                        ui.horizontal(|ui| {
-                            ui.strong(exercise.title.get(lang));
-                            ui.with_layout(
-                                egui::Layout::right_to_left(egui::Align::Center),
-                                |ui| {
-                                    if framed_button(ui, theme, s.exercises_load).clicked() {
-                                        load = Some(exercise.id);
-                                    }
-                                },
-                            );
-                        });
-                        ui.label(exercise.description.get(lang));
+                egui::ScrollArea::vertical()
+                    .max_height(420.0)
+                    .show(ui, |ui| {
+                        for pack in &self.exercise_packs {
+                            // Le nom de la série au-dessus de ses
+                            // exercices : on doit pouvoir dire d'où vient
+                            // celui qu'on charge, surtout quand deux
+                            // séries installées traitent du même sujet.
+                            ui.colored_label(theme.dim, &pack.name);
+                            for exercise in &pack.exercises {
+                                ui.group(|ui| {
+                                    ui.horizontal(|ui| {
+                                        ui.strong(exercise.title.get(lang));
+                                        ui.with_layout(
+                                            egui::Layout::right_to_left(egui::Align::Center),
+                                            |ui| {
+                                                if framed_button(ui, theme, s.exercises_load)
+                                                    .clicked()
+                                                {
+                                                    load = Some(namsdec_exercises::full_id(
+                                                        pack, exercise,
+                                                    ));
+                                                }
+                                            },
+                                        );
+                                    });
+                                    ui.label(exercise.description.get(lang));
+                                });
+                            }
+                            ui.add_space(4.0);
+                        }
                     });
-                }
             });
         if let Some(id) = load {
-            self.load_exercise(id);
+            self.load_exercise(&id);
             open = false;
         }
         self.show_exercises = open;
@@ -2464,10 +2626,10 @@ impl NamsdecApp {
     /// le fichier de l'utilisateur, et « Enregistrer » ne doit pas écrire
     /// par-dessus celui qu'il avait ouvert.
     fn load_exercise(&mut self, id: &str) {
-        let Some(exercise) = namsdec_exercises::by_id(id) else {
+        let Some(exercise) = namsdec_exercises::find(&self.exercise_packs, id) else {
             return;
         };
-        self.source = exercise.starter_code.to_owned();
+        self.source = exercise.starter_code.clone();
         self.current_file = None;
         self.assemble_state = None;
         self.emulator = None;
@@ -4288,20 +4450,40 @@ const REGISTERS: [(&str, Reg64); 16] = [
 /// Où vivent les thèmes installés : à côté des réglages, dans le dossier
 /// de données de l'utilisateur.
 fn plugins_dir() -> Option<PathBuf> {
+    data_dir().map(|base| base.join("themes"))
+}
+
+/// Le dossier de données de l'application : ce que l'utilisateur y ajoute
+/// — thèmes, séries d'exercices — y reste d'une version à l'autre.
+fn data_dir() -> Option<PathBuf> {
     let base = std::env::var_os("XDG_DATA_HOME")
         .map(PathBuf::from)
         .filter(|p| p.is_absolute())
         .or_else(|| {
             std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local").join("share"))
         })?;
-    Some(base.join("namsdec").join("themes"))
+    Some(base.join("namsdec"))
+}
+
+/// Où vivent les séries d'exercices installées. À côté des thèmes, et
+/// pour la même raison : ce sont des données que l'utilisateur ajoute, et
+/// elles doivent survivre à une mise à jour de l'application.
+fn exercises_dir() -> Option<PathBuf> {
+    data_dir().map(|base| base.join("exercises"))
 }
 
 /// Recopie le fichier de thème dans le dossier des plugins, pour qu'il
 /// revienne au lancement suivant. Un fichier déjà installé est écrasé :
 /// c'est la version qu'on vient de choisir qui fait foi.
 fn copy_into_plugins(path: &Path) -> std::io::Result<PathBuf> {
-    let dir = plugins_dir().ok_or_else(|| {
+    copy_into_dir(path, plugins_dir())
+}
+
+/// Recopie un fichier dans un dossier de données, en le créant au besoin.
+/// Un fichier déjà installé est écrasé : c'est la version qu'on vient de
+/// choisir qui fait foi.
+fn copy_into_dir(path: &Path, dir: Option<PathBuf>) -> std::io::Result<PathBuf> {
+    let dir = dir.ok_or_else(|| {
         std::io::Error::other("aucun dossier de données (ni XDG_DATA_HOME ni HOME)")
     })?;
     std::fs::create_dir_all(&dir)?;
@@ -4314,6 +4496,44 @@ fn copy_into_plugins(path: &Path) -> std::io::Result<PathBuf> {
         std::fs::copy(path, &destination)?;
     }
     Ok(destination)
+}
+
+/// Charge les séries d'exercices déjà installées. Comme pour les thèmes :
+/// un fichier illisible est nommé dans le compte rendu et n'empêche pas
+/// les autres de se charger.
+fn load_installed_exercises() -> (
+    Vec<namsdec_exercises::Pack>,
+    BTreeMap<String, PathBuf>,
+    Vec<String>,
+) {
+    let mut packs = Vec::new();
+    let mut files = BTreeMap::new();
+    let mut failures = Vec::new();
+    let Some(dir) = exercises_dir() else {
+        return (packs, files, failures);
+    };
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return (packs, files, failures);
+    };
+    let mut paths: Vec<PathBuf> = entries
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "json"))
+        .collect();
+    paths.sort();
+    for path in paths {
+        match namsdec_exercises::pack::read(&path) {
+            Ok(pack) if pack.id != namsdec_exercises::BUILTIN_ID => {
+                files.insert(pack.id.clone(), path);
+                packs.push(pack);
+            }
+            // Une série qui se fait passer pour celle d'origine est
+            // ignorée plutôt que de la remplacer en silence.
+            Ok(pack) => failures.push(format!("{} : {}", path.display(), pack.id)),
+            Err(e) => failures.push(format!("{} : {e}", path.display())),
+        }
+    }
+    (packs, files, failures)
 }
 
 /// Charge les thèmes déjà installés. Appelé une fois au démarrage.
@@ -4503,9 +4723,15 @@ fn main() -> eframe::Result<()> {
             // Les thèmes installés sont chargés *avant* les réglages :
             // celui que l'utilisateur avait choisi peut être l'un d'eux,
             // et `by_id` doit pouvoir le retrouver.
-            let (theme_files, failures) = load_installed_themes();
+            let (theme_files, mut failures) = load_installed_themes();
+            let (packs, exercise_files, pack_failures) = load_installed_exercises();
+            failures.extend(pack_failures);
             let mut app = NamsdecApp::from_settings(Settings::load());
             app.theme_files = theme_files;
+            // Les séries installées viennent après celle d'origine, qui
+            // reste en tête : c'est là qu'on commence.
+            app.exercise_packs.extend(packs);
+            app.exercise_files = exercise_files;
             if !failures.is_empty() {
                 app.plugin_note = Some(PluginNote {
                     ok: false,

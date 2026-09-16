@@ -193,6 +193,13 @@ pub struct Strings {
     pub exercises_title: &'static str,
     pub exercises_legend: &'static str,
     pub exercises_load: &'static str,
+    /// Les séries installées depuis le disque.
+    pub exercises_packs_title: &'static str,
+    pub exercises_packs_add: &'static str,
+    pub exercises_packs_hint: &'static str,
+    pub exercises_packs_none: &'static str,
+    pub exercises_id_taken: &'static str,
+    pub filter_exercises: &'static str,
 
     // Boîte Préférences
     pub preferences_title: &'static str,
@@ -380,6 +387,12 @@ const FR: Strings = Strings {
     exercises_title: "Exercices",
     exercises_legend: "Chaque exercice se charge dans l'éditeur, avec son but écrit en commentaire. Il n'y a pas de correction automatique : c'est le bandeau des registres qui répond.",
     exercises_load: "Charger",
+    exercises_packs_title: "Séries d'exercices",
+    exercises_packs_add: "Ajouter une série…",
+    exercises_packs_hint: "Un fichier JSON : un identifiant, un nom, et la liste des exercices avec leur programme de départ.",
+    exercises_packs_none: "Aucune série installée — seule celle livrée avec namsdec est proposée.",
+    exercises_id_taken: "cet identifiant est celui de la série livrée avec namsdec",
+    filter_exercises: "Série d'exercices (JSON)",
 
     preferences_title: "Préférences",
     preferences_tab_general: "Général",
@@ -563,6 +576,12 @@ const EN: Strings = Strings {
     exercises_title: "Exercises",
     exercises_legend: "Each exercise loads into the editor with its goal written in a comment. There is no automatic marking: the register banner is the answer.",
     exercises_load: "Load",
+    exercises_packs_title: "Exercise packs",
+    exercises_packs_add: "Add a pack…",
+    exercises_packs_hint: "A JSON file: an identifier, a name, and the list of exercises with their starting program.",
+    exercises_packs_none: "No pack installed — only the one shipped with namsdec is offered.",
+    exercises_id_taken: "that identifier belongs to the pack shipped with namsdec",
+    filter_exercises: "Exercise pack (JSON)",
 
     preferences_title: "Preferences",
     preferences_tab_general: "General",
