@@ -4534,3 +4534,39 @@ fn a_binary_from_disk_is_analysed_as_itself() {
         "ses bibliothèques doivent être listées : {painted}"
     );
 }
+
+/// Ce que namsdec comprend d'un binaire doit pouvoir sortir de namsdec :
+/// le rapport se copie en Markdown, explications comprises, et dit d'où
+/// il vient.
+#[test]
+fn the_analysis_can_be_taken_away_as_a_report() {
+    let mut app = NamsdecApp {
+        source: DEFAULT_SOURCE.to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+
+    let report = app
+        .analysis_report()
+        .expect("un programme assemblé s'analyse");
+    assert!(report.contains("# Analyse du binaire"), "{report}");
+    assert!(report.contains("PIE"), "{report}");
+    assert!(
+        report.contains("Ce que cela change"),
+        "un tableau d'états sans explications n'apprend rien : {report}"
+    );
+    assert!(
+        report.contains("namsdec (MIT)"),
+        "le rapport dit d'où il vient et sous quelle licence : {report}"
+    );
+
+    // Et en anglais, c'est le même rapport dans l'autre langue.
+    app.lang = Lang::En;
+    let english = app.analysis_report().unwrap();
+    assert!(english.contains("# Binary analysis"), "{english}");
+    assert!(english.contains("What it changes"), "{english}");
+
+    // Rien à analyser tant que rien n'est chargé.
+    let vierge = NamsdecApp::default();
+    assert!(vierge.analysis_report().is_none());
+}

@@ -9,6 +9,7 @@ mod binary_info;
 mod calls;
 pub mod elf_scan;
 mod protections;
+pub mod report;
 mod strings;
 mod syscalls;
 

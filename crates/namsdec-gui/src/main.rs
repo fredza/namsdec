@@ -278,6 +278,9 @@ enum Status {
     Breakpoint(u64),
     StepLimit,
     NasmMissing,
+    /// Une confirmation ordinaire : quelque chose a été fait, et il n'y
+    /// a rien de plus à en dire qu'une phrase.
+    Note(&'static str),
     Error(String),
 }
 
@@ -3338,6 +3341,9 @@ impl NamsdecApp {
             Status::NasmMissing => {
                 ui.colored_label(theme.bad, s.status_nasm_missing);
             }
+            Status::Note(text) => {
+                ui.colored_label(theme.good, *text);
+            }
             Status::Error(msg) => {
                 ui.colored_label(
                     theme.bad,
@@ -3805,6 +3811,22 @@ impl NamsdecApp {
         self.show_help = true;
     }
 
+    /// Le rapport d'analyse du binaire chargé, en Markdown.
+    ///
+    /// `None` quand il n'y a rien à analyser — pas de binaire, ou un
+    /// tampon brut qui n'est pas un ELF.
+    fn analysis_report(&self) -> Option<String> {
+        let state = self.assemble_state.as_ref()?;
+        let scan = namsdec_re::elf_scan::scan(&state.output.file)?;
+        let name = self
+            .current_file
+            .as_ref()
+            .and_then(|path| path.file_name())
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_else(|| strings(self.lang).analysis_title.to_owned());
+        Some(namsdec_re::report::markdown(&scan, self.lang.code(), &name))
+    }
+
     /// La fenêtre d'analyse : tous les modules de rétro-ingénierie, avec
     /// la place de s'exprimer.
     ///
@@ -3829,7 +3851,20 @@ impl NamsdecApp {
             .pivot(egui::Align2::CENTER_CENTER)
             .default_pos(ctx.viewport_rect().center())
             .show(ctx, |ui| {
-                ui.weak(s.analysis_hint);
+                ui.horizontal_wrapped(|ui| {
+                    ui.weak(s.analysis_hint);
+                });
+                // Ce qu'on a compris d'un binaire ne vaut que si on peut
+                // le transmettre : le rapport part en Markdown, prêt à
+                // coller dans un compte rendu ou un support de cours.
+                ui.horizontal(|ui| {
+                    if ui.button(s.analysis_copy).clicked()
+                        && let Some(report) = self.analysis_report()
+                    {
+                        ui.ctx().copy_text(report);
+                        self.status = Status::Note(s.analysis_copied);
+                    }
+                });
                 ui.separator();
                 egui::ScrollArea::vertical()
                     .auto_shrink([false, false])

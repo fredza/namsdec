@@ -119,6 +119,8 @@ pub struct Strings {
     /// Titre du bandeau fixe du panneau latéral (registres + flags).
     pub cpu_state: &'static str,
     /// Le bandeau qui résout l'instruction sur le point de s'exécuter.
+    pub analysis_copy: &'static str,
+    pub analysis_copied: &'static str,
     pub vectors_open: &'static str,
     pub vectors_title: &'static str,
     pub vectors_hint: &'static str,
@@ -367,6 +369,8 @@ const FR: Strings = Strings {
     action_run_to_cursor: "Exécuter jusqu'au curseur",
     tab_re: "RE",
     cpu_state: "État du processeur",
+    analysis_copy: "Copier le rapport",
+    analysis_copied: "Rapport copié : il se colle tel quel dans un compte rendu ou un cours.",
     vectors_open: "Registres étendus (SSE, AVX, x87)…",
     vectors_title: "Registres étendus",
     vectors_hint: "Les seize registres vectoriels et la pile x87, dans une fenêtre où ils tiennent en entier.",
@@ -590,6 +594,8 @@ const EN: Strings = Strings {
     action_run_to_cursor: "Run to cursor",
     tab_re: "RE",
     cpu_state: "CPU state",
+    analysis_copy: "Copy the report",
+    analysis_copied: "Report copied: it pastes as it is into a write-up or a lesson.",
     vectors_open: "Extended registers (SSE, AVX, x87)…",
     vectors_title: "Extended registers",
     vectors_hint: "The sixteen vector registers and the x87 stack, in a window that fits them whole.",
