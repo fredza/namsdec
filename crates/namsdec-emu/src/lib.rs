@@ -509,6 +509,15 @@ pub trait Backend {
     /// le sait : il garde les registres d'avant chaque pas.
     fn last_write_to(&self, reg: Reg64) -> Option<usize>;
 
+    /// Le pas qui a écrit à cette adresse pour la dernière fois.
+    ///
+    /// La même question que pour un registre, posée à la mémoire : « qui
+    /// a mis ça là ? ». Elle est plus difficile encore à la main, parce
+    /// qu'une écriture mémoire ne laisse aucune trace visible dans le
+    /// code — il faut relire chaque instruction en se demandant où elle
+    /// pointait.
+    fn last_write_to_memory(&self, addr: u64) -> Option<usize>;
+
     /// Le chemin parcouru : l'adresse de chaque pas qu'on peut encore
     /// défaire, du plus ancien au plus récent.
     ///
@@ -678,6 +687,22 @@ impl Backend for Emulator {
 
     fn trace(&self) -> &VecDeque<Step> {
         &self.trace
+    }
+
+    fn last_write_to_memory(&self, addr: u64) -> Option<usize> {
+        // Le journal garde, pour chaque pas, les octets d'avant et leur
+        // adresse : celui qui couvre l'adresse cherchée est celui qui a
+        // écrit dessus.
+        self.history
+            .iter()
+            .enumerate()
+            .rev()
+            .find_map(|(index, undo)| {
+                undo.memory
+                    .iter()
+                    .any(|(start, bytes)| (*start..*start + bytes.len() as u64).contains(&addr))
+                    .then_some(index)
+            })
     }
 
     fn last_write_to(&self, reg: Reg64) -> Option<usize> {

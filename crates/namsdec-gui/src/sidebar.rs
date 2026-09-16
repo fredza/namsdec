@@ -519,10 +519,22 @@ impl NamsdecApp {
     /// Rendue en clair — « écrit il y a 12 pas, ligne 7 : add rax, rcx »
     /// — parce que c'est la phrase qu'on se dit en cherchant.
     pub(crate) fn last_write_line(&self, name: &str) -> Option<String> {
-        let s = strings(self.lang);
         let reg = register_by_name(name)?;
+        let rang = self.emulator.as_ref()?.last_write_to(reg)?;
+        self.step_description(rang)
+    }
+
+    /// D'où vient ce qui est en mémoire à cette adresse.
+    pub(crate) fn last_memory_write_line(&self, addr: u64) -> Option<String> {
+        let rang = self.emulator.as_ref()?.last_write_to_memory(addr)?;
+        self.step_description(rang)
+    }
+
+    /// Le pas numéro `rang`, dit en clair : de combien on remonte, à
+    /// quelle ligne, et quelle instruction.
+    fn step_description(&self, rang: usize) -> Option<String> {
+        let s = strings(self.lang);
         let emulator = self.emulator.as_ref()?;
-        let rang = emulator.last_write_to(reg)?;
         let pas = emulator.trace().get(rang)?;
         let recul = emulator.trace().len() - rang;
         let state = self.assemble_state.as_ref();
@@ -1374,6 +1386,12 @@ impl NamsdecApp {
             .collect();
         self.watchpoints_ui(ui, &watched);
         ui.colored_label(theme.dim, quartier);
+        // Qui a écrit là : la même question que pour un registre, en
+        // plus difficile à la main — une écriture mémoire ne laisse rien
+        // de visible dans le code.
+        if let Some(provenance) = self.last_memory_write_line(self.mem_addr) {
+            ui.colored_label(theme.accent, provenance);
+        }
         match coloré {
             Some(job) => {
                 egui::ScrollArea::both()

@@ -7192,3 +7192,123 @@ hlt
     // Ni un nom qui n'est pas un registre général.
     assert!(app.last_write_line("XMM0").is_none());
 }
+
+/// L'onglet Mémoire dit qui a écrit à l'adresse qu'on regarde.
+#[test]
+fn the_memory_tab_says_who_wrote_there() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        active_tab: SidebarTab::Memory,
+        source: "\
+global _start
+section .data
+case: dq 0
+section .text
+_start:
+mov rax, 7
+mov [case], rax
+hlt
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+    let case = app
+        .assemble_state
+        .as_ref()
+        .unwrap()
+        .output
+        .symbols
+        .iter()
+        .find(|s| s.name == "case")
+        .expect("l'étiquette existe")
+        .addr;
+    app.mem_addr = case;
+
+    // Avant l'exécution, personne n'a écrit : rien à dire.
+    assert!(app.last_memory_write_line(case).is_none());
+
+    let ctx = egui::Context::default();
+    app.do_run();
+    for _ in 0..10 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&ctx);
+    }
+
+    let texte = app
+        .last_memory_write_line(case)
+        .expect("le `mov [case], rax` a écrit là");
+    assert!(texte.contains("ligne 7"), "{texte}");
+
+    // Et cela se peint dans l'onglet.
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 1000.0),
+        )),
+        ..Default::default()
+    };
+    let mut painted = String::new();
+    for _ in 0..2 {
+        painted.clear();
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        for clipped in &output.shapes {
+            if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                painted.push_str(text.galley.text());
+                painted.push('|');
+            }
+        }
+        output.textures_delta.clear();
+    }
+    assert!(painted.contains("Écrit au pas"), "{painted}");
+}
+
+/// Depuis la chronologie, le clic droit mène à la ligne dans l'éditeur.
+///
+/// Lire le code d'un pas et rembobiner jusqu'à lui sont deux gestes
+/// différents : le second défait le travail de l'exécution, le premier
+/// ne touche à rien.
+#[test]
+fn the_timeline_can_point_at_the_source_without_rewinding() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        show_timeline: true,
+        source: DEFAULT_SOURCE.to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    let ctx = egui::Context::default();
+    app.do_run();
+    for _ in 0..10 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&ctx);
+    }
+    let chemin = app.emulator.as_ref().unwrap().trace().len();
+
+    // Le clic droit se simule par ce qu'il déclenche : la ligne visée,
+    // sans rembobinage.
+    app.goto_line = app
+        .assemble_state
+        .as_ref()
+        .and_then(|state| state.addr_to_line.values().copied().next());
+    assert!(app.goto_line.is_some());
+    assert_eq!(
+        app.emulator.as_ref().unwrap().trace().len(),
+        chemin,
+        "voir une ligne ne défait rien"
+    );
+
+    // Le rembobinage, lui, raccourcit le chemin.
+    app.rewind(2);
+    assert_eq!(app.emulator.as_ref().unwrap().trace().len(), chemin - 2);
+}

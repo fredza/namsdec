@@ -4659,6 +4659,7 @@ impl NamsdecApp {
         let theme = self.theme;
         let mut open = true;
         let mut revenir = None;
+        let mut aller = None;
 
         // Relevé avant la fenêtre : elle emprunte `self` en écriture
         // pour poser le retour en arrière.
@@ -4761,12 +4762,18 @@ impl NamsdecApp {
                                     );
                                 })
                                 .response;
-                            if réponse
+                            let réponse = réponse
                                 .interact(egui::Sense::click())
-                                .on_hover_text(s.timeline_go_back)
-                                .clicked()
-                            {
+                                .on_hover_text(s.timeline_go_back);
+                            if réponse.clicked() {
                                 revenir = Some(recul);
+                            }
+                            // Le clic droit mène à la ligne dans
+                            // l'éditeur, sans toucher à l'exécution :
+                            // lire le code d'un pas et rembobiner
+                            // jusqu'à lui sont deux gestes différents.
+                            if réponse.secondary_clicked() {
+                                aller = ligne;
                             }
                         }
                     });
@@ -4774,6 +4781,9 @@ impl NamsdecApp {
 
         if let Some(recul) = revenir {
             self.rewind(recul);
+        }
+        if let Some(ligne) = aller {
+            self.goto_line = Some(ligne);
         }
         self.show_timeline = open;
     }

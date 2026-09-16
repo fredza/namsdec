@@ -2871,3 +2871,30 @@ fn the_last_write_to_a_register_can_be_found() {
     assert!(rang > 0, "rang {rang}");
     assert_eq!(emu.trace()[rang].kind, StepKind::Plain);
 }
+
+/// La même question posée à la mémoire : qui a écrit à cette adresse ?
+///
+/// Plus difficile encore à la main qu'avec un registre : une écriture
+/// mémoire ne laisse rien de visible dans le code, il faut relire chaque
+/// instruction en se demandant où elle pointait.
+#[test]
+fn the_last_write_to_an_address_can_be_found() {
+    let mut emu = load_only(
+        "global _start\nsection .data\ncase: dq 0\nautre: dq 0\nsection .text\n_start:\n\
+         mov rax, 7\nmov [case], rax\nmov rbx, 9\nmov [autre], rbx\nmov qword [case], 1\nhlt\n",
+        &[],
+    );
+    emu.run(50).unwrap();
+
+    // L'adresse de `case` : deux écritures, on veut la dernière.
+    let case = 0x401000;
+    let rang = emu
+        .last_write_to_memory(case)
+        .expect("quelqu'un a écrit là");
+    // Le dernier `mov qword [case], 1` est le cinquième pas (rang 4).
+    assert_eq!(rang, 4, "trace : {:x?}", emu.trace());
+    assert_eq!(emu.trace()[rang].kind, StepKind::Write);
+
+    // Une adresse à laquelle personne n'a touché ne rend rien.
+    assert_eq!(emu.last_write_to_memory(0x40ff00), None);
+}
