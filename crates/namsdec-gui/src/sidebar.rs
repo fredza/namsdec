@@ -1386,11 +1386,15 @@ impl NamsdecApp {
             binary: &state.output.file,
             lang: self.lang.code(),
         };
+        // Chaque module dans un repli, ouvert : six panneaux à la suite
+        // font une longue page, et l'on ne les consulte pas tous en même
+        // temps. Ouverts par défaut — une liste qu'il faut déplier pour
+        // savoir ce qu'elle contient n'aide personne la première fois.
         for module in self.re_registry.iter_mut() {
-            ui.group(|ui| {
-                ui.strong(module.title(ctx.lang));
-                module.ui(ui, &ctx);
-            });
+            egui::CollapsingHeader::new(module.title(ctx.lang))
+                .id_salt(module.id())
+                .default_open(true)
+                .show(ui, |ui| module.ui(ui, &ctx));
         }
     }
 }

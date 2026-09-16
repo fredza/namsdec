@@ -6188,3 +6188,76 @@ fn a_sheet_example_can_be_taken_along() {
     let exemple = namsdec_doc::lookup("movzx").unwrap().example;
     assert!(painted.contains(exemple), "{painted}");
 }
+
+/// Les références croisées répondent à la première question qu'on pose
+/// d'un binaire : qui appelle quoi, et qui pointe où.
+///
+/// Sur un programme assemblé pour de vrai, avec ses adresses réelles —
+/// c'est là que les fausses références se voient, pas sur des octets
+/// écrits à la main.
+#[test]
+fn the_analysis_shows_who_calls_what() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: "\
+global _start
+section .data
+message: db \"salut\", 10
+section .text
+_start:
+call ecrire
+call ecrire
+mov rax, 60
+hlt
+ecrire:
+mov rsi, message
+ret
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+    let state = app.assemble_state.as_ref().expect("assemblé");
+
+    let début = state.output.load_addr;
+    let xrefs = namsdec_re::xrefs::scan(&state.disasm, début..début + 0x2000);
+
+    // `ecrire` est appelée deux fois : c'est une fonction, et c'est par
+    // là qu'on entre dans le binaire.
+    let fonctions = xrefs.functions();
+    assert_eq!(fonctions.len(), 1, "{fonctions:?}");
+    let (adresse, appels) = fonctions[0];
+    assert_eq!(appels, 2);
+    let ecrire = state
+        .output
+        .symbols
+        .iter()
+        .find(|symbol| symbol.name == "ecrire")
+        .expect("l'étiquette existe");
+    assert_eq!(
+        adresse, ecrire.addr,
+        "la fonction trouvée est bien `ecrire`"
+    );
+
+    // Et `message` est désignée par le `mov rsi, message`.
+    let message = state
+        .output
+        .symbols
+        .iter()
+        .find(|symbol| symbol.name == "message")
+        .expect("l'étiquette existe");
+    let vers_message = xrefs.to(message.addr);
+    assert!(
+        vers_message
+            .iter()
+            .any(|r| r.kind == namsdec_re::xrefs::Kind::Address),
+        "qui lit la chaîne ? {vers_message:?}"
+    );
+
+    // Le 60 de `mov rax, 60` n'est pas une adresse : il ne tombe pas
+    // dans le programme, et le compter noierait les vraies références.
+    assert!(xrefs.to(60).is_empty());
+}

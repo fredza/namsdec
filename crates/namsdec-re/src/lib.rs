@@ -13,12 +13,15 @@ pub mod report;
 mod strings;
 mod syscalls;
 pub mod table;
+pub mod xrefs;
+mod xrefs_module;
 
 pub use binary_info::BinaryInfoModule;
 pub use calls::CallsModule;
 pub use protections::ProtectionsModule;
 pub use strings::StringsModule;
 pub use syscalls::SyscallsModule;
+pub use xrefs_module::XrefsModule;
 
 use namsdec_core::Cpu;
 use namsdec_disasm::DecodedInstruction;

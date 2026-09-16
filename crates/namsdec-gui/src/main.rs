@@ -27,7 +27,7 @@ use namsdec_emu::{Backend, Emulator, RunStop, StepOverResult, StepResult};
 use namsdec_explorer::{ExplorerAction, FileExplorer};
 use namsdec_re::{
     BinaryInfoModule, CallsModule, ProtectionsModule, ReContext, ReModuleRegistry, StringsModule,
-    SyscallsModule,
+    SyscallsModule, XrefsModule,
 };
 use namsdec_theme::Theme;
 
@@ -897,6 +897,10 @@ impl Default for NamsdecApp {
         re_registry.register(Box::new(StringsModule::default()));
         re_registry.register(Box::new(SyscallsModule::default()));
         re_registry.register(Box::new(CallsModule::default()));
+        // Les références croisées en dernier : elles se lisent une fois
+        // qu'on sait ce que le binaire contient, pour décider par où
+        // entrer dedans.
+        re_registry.register(Box::new(XrefsModule::default()));
 
         Self {
             source: DEFAULT_SOURCE.to_string(),
@@ -4520,7 +4524,9 @@ impl NamsdecApp {
             .open(&mut open)
             .resizable(true)
             .collapsible(false)
-            .default_size([560.0, 640.0])
+            // Six modules à la suite : la fenêtre part plus haute que
+            // large, et se redimensionne.
+            .default_size([620.0, 760.0])
             .pivot(egui::Align2::CENTER_CENTER)
             .default_pos(ctx.viewport_rect().center())
             .show(ctx, |ui| {

@@ -52,6 +52,11 @@ d'écrire à 0x400000 : elle est dans .text ». Dessous : *le code et les
 constantes sont en lecture seule, ce qui change pendant l'exécution va
 dans `section .data`*.
 
+**Qui appelle quoi.** Les références croisées relèvent, pour chaque
+adresse, qui l'appelle, qui y saute et qui la désigne. Une adresse qu'un
+`call` vise est une fonction, même dépouillée de son nom — et celle qui
+est appelée de partout est celle par laquelle on commence à lire.
+
 **Les protections d'un binaire.** PIE, NX, RELRO, canari de pile,
 FORTIFY, IBT et pile fantôme, segments W+X, symboles, bibliothèques,
 RPATH — avec, pour chacun, ce que son état change concrètement. Sur
