@@ -1,5 +1,5 @@
 use iced_x86::Register;
-use namsdec_core::{Reg64, Width};
+use namsdec_core::{Reg64, RegXmm, Width};
 
 use crate::EmuError;
 
@@ -14,6 +14,18 @@ pub fn is_high_byte(reg: Register) -> bool {
         reg,
         Register::AH | Register::BH | Register::CH | Register::DH
     )
+}
+
+/// Le registre SSE correspondant, s'il en est un.
+///
+/// Séparé de `map_register` parce que ce n'est pas la même machine : un
+/// XMM ne se range pas dans un registre général, ne porte pas de largeur
+/// au sens de `Width`, et ne sert à aucune des instructions entières.
+pub fn map_xmm(reg: Register) -> Option<RegXmm> {
+    if !reg.is_xmm() {
+        return None;
+    }
+    RegXmm::ALL.get(reg.number()).copied()
 }
 
 pub fn map_register(reg: Register) -> Result<(Reg64, Width), EmuError> {

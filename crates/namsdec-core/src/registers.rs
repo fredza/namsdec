@@ -21,15 +21,80 @@ pub enum Reg64 {
     R15,
 }
 
+/// Les seize registres vectoriels de SSE, larges de 128 bits.
+///
+/// C'est là que se fait tout le calcul flottant du x86-64 moderne : la
+/// pile du 8087 n'est plus utilisée que par du code ancien, et l'ABI
+/// System V passe les flottants dans XMM0 à XMM7.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[repr(usize)]
+pub enum RegXmm {
+    Xmm0,
+    Xmm1,
+    Xmm2,
+    Xmm3,
+    Xmm4,
+    Xmm5,
+    Xmm6,
+    Xmm7,
+    Xmm8,
+    Xmm9,
+    Xmm10,
+    Xmm11,
+    Xmm12,
+    Xmm13,
+    Xmm14,
+    Xmm15,
+}
+
+impl RegXmm {
+    pub const ALL: [RegXmm; 16] = [
+        RegXmm::Xmm0,
+        RegXmm::Xmm1,
+        RegXmm::Xmm2,
+        RegXmm::Xmm3,
+        RegXmm::Xmm4,
+        RegXmm::Xmm5,
+        RegXmm::Xmm6,
+        RegXmm::Xmm7,
+        RegXmm::Xmm8,
+        RegXmm::Xmm9,
+        RegXmm::Xmm10,
+        RegXmm::Xmm11,
+        RegXmm::Xmm12,
+        RegXmm::Xmm13,
+        RegXmm::Xmm14,
+        RegXmm::Xmm15,
+    ];
+
+    /// Le numéro du registre, tel qu'il s'écrit : `xmm5` pour 5.
+    pub fn index(self) -> usize {
+        self as usize
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct Registers {
     gpr: [u64; 16],
+    /// Les registres SSE. Ils ne se mélangent pas aux généraux : ni les
+    /// mêmes instructions, ni les mêmes tailles, ni le même usage.
+    xmm: [u128; 16],
     pub rip: u64,
 }
 
 impl Registers {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Un registre SSE entier — 128 bits, deux flottants doubles ou
+    /// quatre simples selon ce qu'on y a mis.
+    pub fn get_xmm(&self, r: RegXmm) -> u128 {
+        self.xmm[r as usize]
+    }
+
+    pub fn set_xmm(&mut self, r: RegXmm, v: u128) {
+        self.xmm[r as usize] = v;
     }
 
     pub fn get64(&self, r: Reg64) -> u64 {

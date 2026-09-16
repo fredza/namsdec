@@ -13,7 +13,7 @@ use namsdec_core::{
 };
 use thiserror::Error;
 
-use regmap::{is_high_byte, map_register};
+use regmap::{is_high_byte, map_register, map_xmm};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -205,6 +205,132 @@ fn is_string_operation(instr: &Instruction) -> bool {
     })
 }
 
+/// Le sens d'un décalage vectoriel.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PackedShift {
+    Left,
+    Right,
+    /// Celui qui recopie le bit de signe.
+    Arithmetic,
+}
+
+/// Le masque d'un élément de `bits` bits.
+fn lane_mask(bits: usize) -> u64 {
+    if bits >= 64 {
+        u64::MAX
+    } else {
+        (1u64 << bits) - 1
+    }
+}
+
+/// Ce qu'une instruction flottante calcule.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum FpOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Min,
+    Max,
+    /// Le seul unaire : il ne lit que la source.
+    Sqrt,
+}
+
+/// Simple précision (32 bits) ou double (64) : la même opération, sur
+/// deux formats dont l'un perd plus que l'autre.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum FpWidth {
+    Single,
+    Double,
+}
+
+impl FpOp {
+    fn apply64(self, a: f64, b: f64) -> f64 {
+        match self {
+            FpOp::Add => a + b,
+            FpOp::Sub => a - b,
+            FpOp::Mul => a * b,
+            FpOp::Div => a / b,
+            // `minsd`/`maxsd` rendent la *source* dès que la comparaison
+            // est fausse — un NaN, une égalité — et c'est exactement ce
+            // que fait cette écriture-là.
+            FpOp::Min => {
+                if a < b {
+                    a
+                } else {
+                    b
+                }
+            }
+            FpOp::Max => {
+                if a > b {
+                    a
+                } else {
+                    b
+                }
+            }
+            FpOp::Sqrt => b.sqrt(),
+        }
+    }
+
+    /// La même chose en simple précision. Calculée en `f32`, et non en
+    /// `f64` puis arrondie : l'arrondi intermédiaire n'est pas le même,
+    /// et c'est précisément ce qu'on vient apprendre ici.
+    fn apply32(self, a: f32, b: f32) -> f32 {
+        match self {
+            FpOp::Add => a + b,
+            FpOp::Sub => a - b,
+            FpOp::Mul => a * b,
+            FpOp::Div => a / b,
+            FpOp::Min => {
+                if a < b {
+                    a
+                } else {
+                    b
+                }
+            }
+            FpOp::Max => {
+                if a > b {
+                    a
+                } else {
+                    b
+                }
+            }
+            FpOp::Sqrt => b.sqrt(),
+        }
+    }
+}
+
+/// L'arrondi au plus proche, l'impair tranché vers le pair — le mode par
+/// défaut du processeur, celui que `cvtsd2si` applique.
+fn round_even(value: f64) -> f64 {
+    let rounded = value.round();
+    if (value - value.trunc()).abs() == 0.5 && rounded % 2.0 != 0.0 {
+        rounded - value.signum()
+    } else {
+        rounded
+    }
+}
+
+/// Le résultat entier d'une conversion. Hors bornes ou NaN, le
+/// processeur rend « l'entier indéfini » : le plus petit négatif de la
+/// largeur demandée. Une valeur reconnaissable, plutôt qu'un repli
+/// silencieux sur zéro.
+fn to_integer(value: f64, w: Width) -> u64 {
+    let (min, max, indefinite) = match w {
+        Width::W64 => (i64::MIN as f64, i64::MAX as f64, i64::MIN as u64),
+        _ => (
+            f64::from(i32::MIN),
+            f64::from(i32::MAX),
+            u64::from(i32::MIN as u32),
+        ),
+    };
+    if value.is_nan() || value < min || value > max {
+        indefinite
+    } else {
+        value as i64 as u64
+    }
+}
+
 /// Le sens d'une rotation, et si elle passe par la retenue — auquel cas
 /// le registre tourne sur un bit de plus que sa largeur.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -258,6 +384,15 @@ fn read_bytes(mem: &namsdec_core::Memory, addr: u64, len: usize) -> u64 {
         value = (value << 8) | u64::from(byte);
     }
     value
+}
+
+/// Le masque des `bytes` octets du bas d'un registre XMM.
+fn scalar_mask(bytes: usize) -> u128 {
+    if bytes >= 16 {
+        u128::MAX
+    } else {
+        (1u128 << (bytes * 8)) - 1
+    }
 }
 
 /// Étend `value`, large de `w`, sur 64 bits en recopiant son bit de signe.
@@ -1487,6 +1622,220 @@ impl Emulator {
             // le désordre. Elles restent légales, et ne font rien.
             M::Pause | M::Mfence | M::Lfence | M::Sfence | M::Endbr64 | M::Endbr32 => {}
 
+            // --- SSE : le calcul flottant ----------------------------
+            // Le x86-64 moderne ne se sert plus de la pile du 8087 : les
+            // flottants vivent dans les seize registres XMM, un par un
+            // (« scalaire ») ou quatre à la fois (« paqueté »).
+            M::Movss => self.move_scalar(instr, 4)?,
+            M::Movsd => self.move_scalar(instr, 8)?,
+            M::Movaps | M::Movapd | M::Movups | M::Movupd | M::Movdqa | M::Movdqu => {
+                let v = self.read_xmm_op(instr, 1)?;
+                self.write_xmm_op(instr, 0, v)?;
+            }
+            M::Movd => self.move_between_files(instr, 4)?,
+            M::Movq => self.move_between_files(instr, 8)?,
+
+            M::Addss => self.scalar_fp(instr, FpOp::Add, FpWidth::Single)?,
+            M::Addsd => self.scalar_fp(instr, FpOp::Add, FpWidth::Double)?,
+            M::Subss => self.scalar_fp(instr, FpOp::Sub, FpWidth::Single)?,
+            M::Subsd => self.scalar_fp(instr, FpOp::Sub, FpWidth::Double)?,
+            M::Mulss => self.scalar_fp(instr, FpOp::Mul, FpWidth::Single)?,
+            M::Mulsd => self.scalar_fp(instr, FpOp::Mul, FpWidth::Double)?,
+            M::Divss => self.scalar_fp(instr, FpOp::Div, FpWidth::Single)?,
+            M::Divsd => self.scalar_fp(instr, FpOp::Div, FpWidth::Double)?,
+            M::Minss => self.scalar_fp(instr, FpOp::Min, FpWidth::Single)?,
+            M::Minsd => self.scalar_fp(instr, FpOp::Min, FpWidth::Double)?,
+            M::Maxss => self.scalar_fp(instr, FpOp::Max, FpWidth::Single)?,
+            M::Maxsd => self.scalar_fp(instr, FpOp::Max, FpWidth::Double)?,
+            M::Sqrtss => self.scalar_fp(instr, FpOp::Sqrt, FpWidth::Single)?,
+            M::Sqrtsd => self.scalar_fp(instr, FpOp::Sqrt, FpWidth::Double)?,
+
+            M::Addps => self.packed_fp(instr, FpOp::Add, FpWidth::Single)?,
+            M::Addpd => self.packed_fp(instr, FpOp::Add, FpWidth::Double)?,
+            M::Subps => self.packed_fp(instr, FpOp::Sub, FpWidth::Single)?,
+            M::Subpd => self.packed_fp(instr, FpOp::Sub, FpWidth::Double)?,
+            M::Mulps => self.packed_fp(instr, FpOp::Mul, FpWidth::Single)?,
+            M::Mulpd => self.packed_fp(instr, FpOp::Mul, FpWidth::Double)?,
+            M::Divps => self.packed_fp(instr, FpOp::Div, FpWidth::Single)?,
+            M::Divpd => self.packed_fp(instr, FpOp::Div, FpWidth::Double)?,
+            M::Minps => self.packed_fp(instr, FpOp::Min, FpWidth::Single)?,
+            M::Minpd => self.packed_fp(instr, FpOp::Min, FpWidth::Double)?,
+            M::Maxps => self.packed_fp(instr, FpOp::Max, FpWidth::Single)?,
+            M::Maxpd => self.packed_fp(instr, FpOp::Max, FpWidth::Double)?,
+            M::Sqrtps => self.packed_fp(instr, FpOp::Sqrt, FpWidth::Single)?,
+            M::Sqrtpd => self.packed_fp(instr, FpOp::Sqrt, FpWidth::Double)?,
+
+            // `comiss` et `ucomiss` ne diffèrent que par l'exception
+            // qu'un NaN signalant déclenche — et il n'y a pas
+            // d'exception flottante ici.
+            M::Comiss | M::Ucomiss => self.compare_fp(instr, FpWidth::Single)?,
+            M::Comisd | M::Ucomisd => self.compare_fp(instr, FpWidth::Double)?,
+
+            M::Cvtsi2ss | M::Cvtsi2sd => {
+                let w = self.src_width(instr, 1)?;
+                let value = sign_extend(self.read_op(instr, 1)?, w) as i64;
+                let dest = self.read_xmm_op(instr, 0)?;
+                let low = if instr.mnemonic() == M::Cvtsi2ss {
+                    u128::from((value as f32).to_bits())
+                } else {
+                    u128::from((value as f64).to_bits())
+                };
+                let kept = if instr.mnemonic() == M::Cvtsi2ss {
+                    dest & !0xffff_ffffu128
+                } else {
+                    dest & !0xffff_ffff_ffff_ffffu128
+                };
+                self.write_xmm_op(instr, 0, kept | low)?;
+            }
+            M::Cvttss2si | M::Cvtss2si | M::Cvttsd2si | M::Cvtsd2si => {
+                let src = self.read_xmm_op(instr, 1)?;
+                let single = matches!(instr.mnemonic(), M::Cvttss2si | M::Cvtss2si);
+                let value = if single {
+                    f64::from(f32::from_bits(src as u32))
+                } else {
+                    f64::from_bits(src as u64)
+                };
+                let truncate = matches!(instr.mnemonic(), M::Cvttss2si | M::Cvttsd2si);
+                let rounded = if truncate {
+                    value.trunc()
+                } else {
+                    round_even(value)
+                };
+                let w = self.dest_width(instr)?;
+                self.write_op(instr, 0, to_integer(rounded, w))?;
+            }
+            M::Cvtss2sd => {
+                let src = f32::from_bits(self.read_xmm_op(instr, 1)? as u32);
+                let dest = self.read_xmm_op(instr, 0)?;
+                let low = u128::from(f64::from(src).to_bits());
+                self.write_xmm_op(instr, 0, (dest & !0xffff_ffff_ffff_ffffu128) | low)?;
+            }
+            M::Cvtsd2ss => {
+                let src = f64::from_bits(self.read_xmm_op(instr, 1)? as u64);
+                let dest = self.read_xmm_op(instr, 0)?;
+                let low = u128::from((src as f32).to_bits());
+                self.write_xmm_op(instr, 0, (dest & !0xffff_ffffu128) | low)?;
+            }
+
+            // Les opérations bit à bit sur 128 bits. `xorps xmm0, xmm0`
+            // et `pxor xmm0, xmm0` sont la façon habituelle de remettre
+            // un registre à zéro.
+            M::Xorps | M::Xorpd | M::Pxor => self.bitwise_xmm(instr, |a, b| a ^ b)?,
+            M::Andps | M::Andpd | M::Pand => self.bitwise_xmm(instr, |a, b| a & b)?,
+            M::Orps | M::Orpd | M::Por => self.bitwise_xmm(instr, |a, b| a | b)?,
+            M::Andnps | M::Andnpd | M::Pandn => self.bitwise_xmm(instr, |a, b| !a & b)?,
+
+            // --- SSE entier : les mêmes registres, sans virgule -------
+            M::Paddb => self.packed_int(instr, 1, |a, b| a.wrapping_add(b))?,
+            M::Paddw => self.packed_int(instr, 2, |a, b| a.wrapping_add(b))?,
+            M::Paddd => self.packed_int(instr, 4, |a, b| a.wrapping_add(b))?,
+            M::Paddq => self.packed_int(instr, 8, |a, b| a.wrapping_add(b))?,
+            M::Psubb => self.packed_int(instr, 1, |a, b| a.wrapping_sub(b))?,
+            M::Psubw => self.packed_int(instr, 2, |a, b| a.wrapping_sub(b))?,
+            M::Psubd => self.packed_int(instr, 4, |a, b| a.wrapping_sub(b))?,
+            M::Psubq => self.packed_int(instr, 8, |a, b| a.wrapping_sub(b))?,
+            // Une comparaison qui ne touche aucun indicateur : elle rend
+            // un masque, tout à 1 là où c'est vrai. C'est ce masque qu'on
+            // combine ensuite avec `pand`.
+            M::Pcmpeqb => self.packed_int(instr, 1, |a, b| if a == b { !0 } else { 0 })?,
+            M::Pcmpeqw => self.packed_int(instr, 2, |a, b| if a == b { !0 } else { 0 })?,
+            M::Pcmpeqd => self.packed_int(instr, 4, |a, b| if a == b { !0 } else { 0 })?,
+            M::Pcmpgtb => self.packed_signed_gt(instr, 1)?,
+            M::Pcmpgtw => self.packed_signed_gt(instr, 2)?,
+            M::Pcmpgtd => self.packed_signed_gt(instr, 4)?,
+
+            M::Psllw => self.packed_shift(instr, 2, PackedShift::Left)?,
+            M::Pslld => self.packed_shift(instr, 4, PackedShift::Left)?,
+            M::Psllq => self.packed_shift(instr, 8, PackedShift::Left)?,
+            M::Psrlw => self.packed_shift(instr, 2, PackedShift::Right)?,
+            M::Psrld => self.packed_shift(instr, 4, PackedShift::Right)?,
+            M::Psrlq => self.packed_shift(instr, 8, PackedShift::Right)?,
+            M::Psraw => self.packed_shift(instr, 2, PackedShift::Arithmetic)?,
+            M::Psrad => self.packed_shift(instr, 4, PackedShift::Arithmetic)?,
+            // Celles-ci décalent le registre entier, par octets.
+            M::Pslldq | M::Psrldq => {
+                let value = self.read_xmm_op(instr, 0)?;
+                let bytes = (self.read_op(instr, 1)? as u32).min(16) * 8;
+                let result = if bytes >= 128 {
+                    0
+                } else if instr.mnemonic() == M::Pslldq {
+                    value << bytes
+                } else {
+                    value >> bytes
+                };
+                self.write_xmm_op(instr, 0, result)?;
+            }
+
+            // Rassembler les bits de signe : c'est ainsi qu'on ramène le
+            // résultat d'une comparaison vectorielle dans un registre
+            // général, pour sauter dessus.
+            M::Pmovmskb | M::Movmskps | M::Movmskpd => {
+                let src = self.read_xmm_op(instr, 1)?;
+                let (count, step) = match instr.mnemonic() {
+                    M::Pmovmskb => (16, 8),
+                    M::Movmskps => (4, 32),
+                    _ => (2, 64),
+                };
+                let mut mask = 0u64;
+                for lane in 0..count {
+                    let sign = (src >> (lane * step + step - 1)) & 1;
+                    mask |= (sign as u64) << lane;
+                }
+                self.write_op(instr, 0, mask)?;
+            }
+
+            // Remettre les éléments dans un autre ordre.
+            M::Pshufd => {
+                let src = self.read_xmm_op(instr, 1)?;
+                let control = self.read_op(instr, 2)?;
+                let mut out = 0u128;
+                for lane in 0..4 {
+                    let from = (control >> (lane * 2)) & 3;
+                    let value = (src >> (from * 32)) & u128::from(u32::MAX);
+                    out |= value << (lane * 32);
+                }
+                self.write_xmm_op(instr, 0, out)?;
+            }
+            M::Shufps | M::Shufpd => {
+                let dest = self.read_xmm_op(instr, 0)?;
+                let src = self.read_xmm_op(instr, 1)?;
+                let control = self.read_op(instr, 2)?;
+                let out = if instr.mnemonic() == M::Shufps {
+                    let mut out = 0u128;
+                    for lane in 0..4 {
+                        // Les deux éléments bas viennent de la
+                        // destination, les deux hauts de la source.
+                        let from = (control >> (lane * 2)) & 3;
+                        let taken = if lane < 2 { dest } else { src };
+                        out |= ((taken >> (from * 32)) & u128::from(u32::MAX)) << (lane * 32);
+                    }
+                    out
+                } else {
+                    let low = (dest >> ((control & 1) * 64)) & u128::from(u64::MAX);
+                    let high = (src >> (((control >> 1) & 1) * 64)) & u128::from(u64::MAX);
+                    low | (high << 64)
+                };
+                self.write_xmm_op(instr, 0, out)?;
+            }
+            M::Movhlps | M::Movlhps => {
+                let dest = self.read_xmm_op(instr, 0)?;
+                let src = self.read_xmm_op(instr, 1)?;
+                let out = if instr.mnemonic() == M::Movhlps {
+                    (dest & !u128::from(u64::MAX)) | (src >> 64)
+                } else {
+                    (dest & u128::from(u64::MAX)) | (src << 64)
+                };
+                self.write_xmm_op(instr, 0, out)?;
+            }
+            M::Punpcklbw => self.unpack(instr, 1, false)?,
+            M::Punpcklwd => self.unpack(instr, 2, false)?,
+            M::Punpckldq | M::Unpcklps => self.unpack(instr, 4, false)?,
+            M::Punpcklqdq | M::Unpcklpd => self.unpack(instr, 8, false)?,
+            M::Punpckhbw => self.unpack(instr, 1, true)?,
+            M::Punpckhwd => self.unpack(instr, 2, true)?,
+            M::Punpckhdq | M::Unpckhps => self.unpack(instr, 4, true)?,
+            M::Punpckhqdq | M::Unpckhpd => self.unpack(instr, 8, true)?,
+
             M::Jmp => {
                 self.cpu.regs.rip = self.branch_target(instr)?;
             }
@@ -1798,6 +2147,297 @@ impl Emulator {
         self.cpu.flags.apply_arith(flags);
         self.write_op(instr, 0, result)?;
         Ok(())
+    }
+
+    /// Lit un opérande SSE : un registre XMM entier, ou les 4, 8 ou 16
+    /// octets que l'instruction va chercher en mémoire.
+    fn read_xmm_op(&self, instr: &Instruction, op_index: u32) -> Result<u128, EmuError> {
+        match instr.op_kind(op_index) {
+            OpKind::Register => {
+                let reg = instr.op_register(op_index);
+                map_xmm(reg)
+                    .map(|r| self.cpu.regs.get_xmm(r))
+                    .ok_or_else(|| EmuError::UnsupportedRegister {
+                        backend: Self::NAME,
+                        register: format!("{reg:?}"),
+                    })
+            }
+            OpKind::Memory => {
+                let addr = self.effective_address(instr, op_index)?;
+                let bytes = instr.memory_size().size().min(16);
+                let raw = self.cpu.mem.bytes_at(addr, bytes)?;
+                let mut buf = [0u8; 16];
+                buf[..bytes].copy_from_slice(raw);
+                Ok(u128::from_le_bytes(buf))
+            }
+            other => Err(EmuError::UnsupportedOperand {
+                backend: Self::NAME,
+                role: OperandRole::Read,
+                kind: format!("{other:?}"),
+            }),
+        }
+    }
+
+    fn write_xmm_op(
+        &mut self,
+        instr: &Instruction,
+        op_index: u32,
+        value: u128,
+    ) -> Result<(), EmuError> {
+        match instr.op_kind(op_index) {
+            OpKind::Register => {
+                let reg = instr.op_register(op_index);
+                match map_xmm(reg) {
+                    Some(r) => {
+                        self.cpu.regs.set_xmm(r, value);
+                        Ok(())
+                    }
+                    None => Err(EmuError::UnsupportedRegister {
+                        backend: Self::NAME,
+                        register: format!("{reg:?}"),
+                    }),
+                }
+            }
+            OpKind::Memory => {
+                let addr = self.effective_address(instr, op_index)?;
+                let bytes = instr.memory_size().size().min(16);
+                self.record_memory(addr, bytes);
+                self.cpu
+                    .mem
+                    .write_bytes(addr, &value.to_le_bytes()[..bytes])?;
+                Ok(())
+            }
+            other => Err(EmuError::UnsupportedOperand {
+                backend: Self::NAME,
+                role: OperandRole::Write,
+                kind: format!("{other:?}"),
+            }),
+        }
+    }
+
+    /// `movss`/`movsd` : un seul flottant se déplace, et ce qui arrive au
+    /// reste du registre dépend d'où il vient. Depuis la mémoire, le haut
+    /// est mis à zéro ; depuis un autre XMM, il est préservé — une
+    /// asymétrie du jeu d'instructions, pas un choix d'ici.
+    fn move_scalar(&mut self, instr: &Instruction, bytes: usize) -> Result<(), EmuError> {
+        let mask = scalar_mask(bytes);
+        let src = self.read_xmm_op(instr, 1)?;
+        if instr.op_kind(0) == OpKind::Memory {
+            return self.write_xmm_op(instr, 0, src & mask);
+        }
+        let keep_high = instr.op_kind(1) == OpKind::Register;
+        let dest = if keep_high {
+            self.read_xmm_op(instr, 0)? & !mask
+        } else {
+            0
+        };
+        self.write_xmm_op(instr, 0, dest | (src & mask))
+    }
+
+    /// `movd`/`movq` : le passage entre les deux familles de registres.
+    /// Ce qui entre dans un XMM en efface le reste ; ce qui en sort est
+    /// tronqué à la largeur demandée.
+    fn move_between_files(&mut self, instr: &Instruction, bytes: usize) -> Result<(), EmuError> {
+        let mask = scalar_mask(bytes);
+        let dest_is_xmm =
+            instr.op_kind(0) == OpKind::Register && map_xmm(instr.op_register(0)).is_some();
+        let src_is_xmm =
+            instr.op_kind(1) == OpKind::Register && map_xmm(instr.op_register(1)).is_some();
+
+        if dest_is_xmm {
+            let value = if src_is_xmm {
+                self.read_xmm_op(instr, 1)?
+            } else {
+                u128::from(self.read_op(instr, 1)?)
+            };
+            return self.write_xmm_op(instr, 0, value & mask);
+        }
+        let value = (self.read_xmm_op(instr, 1)? & mask) as u64;
+        if instr.op_kind(0) == OpKind::Memory {
+            self.write_xmm_op(instr, 0, u128::from(value))
+        } else {
+            self.write_op(instr, 0, value)
+        }
+    }
+
+    /// Une opération flottante sur le seul élément du bas. Le reste du
+    /// registre ne bouge pas : c'est ce qui distingue `addsd` d'`addpd`.
+    fn scalar_fp(&mut self, instr: &Instruction, op: FpOp, w: FpWidth) -> Result<(), EmuError> {
+        let dest = self.read_xmm_op(instr, 0)?;
+        let src = self.read_xmm_op(instr, 1)?;
+        let low = match w {
+            FpWidth::Single => {
+                let r = op.apply32(f32::from_bits(dest as u32), f32::from_bits(src as u32));
+                u128::from(r.to_bits())
+            }
+            FpWidth::Double => {
+                let r = op.apply64(f64::from_bits(dest as u64), f64::from_bits(src as u64));
+                u128::from(r.to_bits())
+            }
+        };
+        let mask = scalar_mask(if w == FpWidth::Single { 4 } else { 8 });
+        self.write_xmm_op(instr, 0, (dest & !mask) | low)
+    }
+
+    /// La même opération sur tout le registre à la fois : quatre
+    /// flottants simples, ou deux doubles. C'est là tout l'intérêt de
+    /// SSE — un seul ordre, plusieurs calculs.
+    fn packed_fp(&mut self, instr: &Instruction, op: FpOp, w: FpWidth) -> Result<(), EmuError> {
+        let dest = self.read_xmm_op(instr, 0)?;
+        let src = self.read_xmm_op(instr, 1)?;
+        let mut out = 0u128;
+        match w {
+            FpWidth::Single => {
+                for lane in 0..4 {
+                    let a = f32::from_bits((dest >> (lane * 32)) as u32);
+                    let b = f32::from_bits((src >> (lane * 32)) as u32);
+                    out |= u128::from(op.apply32(a, b).to_bits()) << (lane * 32);
+                }
+            }
+            FpWidth::Double => {
+                for lane in 0..2 {
+                    let a = f64::from_bits((dest >> (lane * 64)) as u64);
+                    let b = f64::from_bits((src >> (lane * 64)) as u64);
+                    out |= u128::from(op.apply64(a, b).to_bits()) << (lane * 64);
+                }
+            }
+        }
+        self.write_xmm_op(instr, 0, out)
+    }
+
+    /// `comisd` et ses variantes rangent le résultat de la comparaison
+    /// dans ZF, PF et CF — et non dans les indicateurs de signe, qu'un
+    /// `jg` irait lire pour rien. D'où les `ja`/`jb` qu'on voit après du
+    /// code flottant : ce sont les tests *non signés* qui conviennent.
+    fn compare_fp(&mut self, instr: &Instruction, w: FpWidth) -> Result<(), EmuError> {
+        let a = self.read_xmm_op(instr, 0)?;
+        let b = self.read_xmm_op(instr, 1)?;
+        let (x, y) = match w {
+            FpWidth::Single => (
+                f64::from(f32::from_bits(a as u32)),
+                f64::from(f32::from_bits(b as u32)),
+            ),
+            FpWidth::Double => (f64::from_bits(a as u64), f64::from_bits(b as u64)),
+        };
+        let mut flags = RFlags::empty();
+        if x.is_nan() || y.is_nan() {
+            // « Non ordonné » : les trois indicateurs à 1 d'un coup, ce
+            // qu'aucune comparaison entière ne produit jamais.
+            flags |= RFlags::ZF | RFlags::PF | RFlags::CF;
+        } else if x < y {
+            flags |= RFlags::CF;
+        } else if x == y {
+            flags |= RFlags::ZF;
+        }
+        self.cpu.flags.apply_arith(flags);
+        Ok(())
+    }
+
+    fn bitwise_xmm(
+        &mut self,
+        instr: &Instruction,
+        op: impl Fn(u128, u128) -> u128,
+    ) -> Result<(), EmuError> {
+        let a = self.read_xmm_op(instr, 0)?;
+        let b = self.read_xmm_op(instr, 1)?;
+        self.write_xmm_op(instr, 0, op(a, b))
+    }
+
+    /// Une opération entière élément par élément, sur des morceaux de
+    /// `bytes` octets. Seize additions d'un seul ordre pour `paddb`.
+    fn packed_int(
+        &mut self,
+        instr: &Instruction,
+        bytes: usize,
+        op: impl Fn(u64, u64) -> u64,
+    ) -> Result<(), EmuError> {
+        let a = self.read_xmm_op(instr, 0)?;
+        let b = self.read_xmm_op(instr, 1)?;
+        let bits = bytes * 8;
+        let mask = lane_mask(bits);
+        let mut out = 0u128;
+        for lane in 0..(16 / bytes) {
+            let shift = lane * bits;
+            let x = (a >> shift) as u64 & mask;
+            let y = (b >> shift) as u64 & mask;
+            out |= u128::from(op(x, y) & mask) << shift;
+        }
+        self.write_xmm_op(instr, 0, out)
+    }
+
+    /// `pcmpgt*` : la comparaison est *signée*, contrairement à
+    /// `pcmpeq*` pour qui la question ne se pose pas.
+    fn packed_signed_gt(&mut self, instr: &Instruction, bytes: usize) -> Result<(), EmuError> {
+        let w = width_from_bytes(bytes).ok_or(EmuError::UnsupportedOperandSize {
+            backend: Self::NAME,
+            bytes,
+        })?;
+        self.packed_int(instr, bytes, move |a, b| {
+            if (sign_extend(a, w) as i64) > (sign_extend(b, w) as i64) {
+                !0
+            } else {
+                0
+            }
+        })
+    }
+
+    /// Les décalages vectoriels : un seul compte, appliqué à tous les
+    /// éléments. Au-delà de la largeur, le résultat est nul (ou tout à
+    /// signe pour `psra*`), et non « ce qui reste » comme sur un registre
+    /// général.
+    fn packed_shift(
+        &mut self,
+        instr: &Instruction,
+        bytes: usize,
+        kind: PackedShift,
+    ) -> Result<(), EmuError> {
+        let count = if matches!(instr.op_kind(1), OpKind::Immediate8) {
+            self.read_op(instr, 1)?
+        } else {
+            self.read_xmm_op(instr, 1)? as u64
+        };
+        let bits = (bytes * 8) as u64;
+        let w = width_from_bytes(bytes).ok_or(EmuError::UnsupportedOperandSize {
+            backend: Self::NAME,
+            bytes,
+        })?;
+        let a = self.read_xmm_op(instr, 0)?;
+        let mask = lane_mask(bits as usize);
+        let mut out = 0u128;
+        for lane in 0..(16 / bytes) {
+            let shift = lane * bits as usize;
+            let x = (a >> shift) as u64 & mask;
+            let value = match kind {
+                PackedShift::Left if count < bits => (x << count) & mask,
+                PackedShift::Right if count < bits => x >> count,
+                PackedShift::Arithmetic => {
+                    let signed = sign_extend(x, w) as i64;
+                    (signed >> count.min(bits - 1)) as u64 & mask
+                }
+                _ => 0,
+            };
+            out |= u128::from(value) << shift;
+        }
+        self.write_xmm_op(instr, 0, out)
+    }
+
+    /// Entrelacer les éléments de deux registres, en partant du bas ou du
+    /// haut. C'est ce qui sert à élargir des octets en mots, et à
+    /// transposer.
+    fn unpack(&mut self, instr: &Instruction, bytes: usize, high: bool) -> Result<(), EmuError> {
+        let a = self.read_xmm_op(instr, 0)?;
+        let b = self.read_xmm_op(instr, 1)?;
+        let bits = bytes * 8;
+        let mask = u128::from(lane_mask(bits));
+        let lanes = 16 / bytes;
+        let first = if high { lanes / 2 } else { 0 };
+        let mut out = 0u128;
+        for step in 0..(lanes / 2) {
+            let from = (first + step) * bits;
+            out |= ((a >> from) & mask) << (step * 2 * bits);
+            out |= ((b >> from) & mask) << ((step * 2 + 1) * bits);
+        }
+        self.write_xmm_op(instr, 0, out)
     }
 
     /// Empile huit octets : RSP descend, puis la valeur s'écrit.
@@ -4507,5 +5147,265 @@ _start:
         assert_eq!(&vendor, b"namsdec emu\0", "obtenu {vendor:?}");
         assert_eq!(emu.cpu.regs.get64(Reg64::R11), 0, "aucune feuille au-delà");
         assert_eq!(emu.cpu.regs.get64(Reg64::R12), 0, "aucun bit de capacité");
+    }
+    /// Le calcul flottant du x86-64 : il se fait dans les registres XMM,
+    /// un nombre à la fois, et les résultats se comparent avec des tests
+    /// *non signés* parce que `comisd` écrit dans CF et ZF.
+    #[test]
+    fn scalar_floating_point_computes_and_compares() {
+        let emu = run_program(
+            "\
+section .data
+    deux    dq 2.0
+    trois   dq 3.0
+    demi    dd 0.5
+
+section .text
+    global _start
+_start:
+    movsd xmm0, [deux]
+    movsd xmm1, [trois]
+    addsd xmm0, xmm1        ; 5.0
+    movq rax, xmm0
+
+    movsd xmm2, [trois]
+    mulsd xmm2, xmm2        ; 9.0
+    sqrtsd xmm2, xmm2       ; 3.0
+    movq rbx, xmm2
+
+    movss xmm3, [demi]
+    addss xmm3, xmm3        ; 1.0 en simple précision
+    movd ecx, xmm3
+
+    movsd xmm4, [deux]
+    comisd xmm4, [trois]    ; 2 < 3 : CF = 1
+    setb r8b
+    comisd xmm4, [deux]     ; égal : ZF = 1
+    sete r9b
+
+    mov r11, 5
+    cvtsi2sd xmm5, r11      ; 5 -> 5.0
+    cvttsd2si rdx, xmm5     ; et retour
+    pxor xmm6, xmm6         ; la façon habituelle de remettre à zéro
+    movq rsi, xmm6
+    hlt
+",
+            &[],
+        );
+        assert_eq!(f64::from_bits(emu.cpu.regs.get64(Reg64::Rax)), 5.0, "addsd");
+        assert_eq!(
+            f64::from_bits(emu.cpu.regs.get64(Reg64::Rbx)),
+            3.0,
+            "sqrtsd"
+        );
+        assert_eq!(
+            f32::from_bits(emu.cpu.regs.get32(Reg64::Rcx)),
+            1.0,
+            "addss en simple précision"
+        );
+        assert_eq!(emu.cpu.regs.get8l(Reg64::R8), 1, "comisd : plus petit");
+        assert_eq!(emu.cpu.regs.get8l(Reg64::R9), 1, "comisd : égal");
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rdx), 5, "cvttsd2si");
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rsi), 0, "pxor remet à zéro");
+    }
+
+    /// Un NaN n'est ni plus petit, ni égal, ni plus grand : `comisd` le
+    /// dit en posant les trois indicateurs d'un coup — « non ordonné ».
+    #[test]
+    fn a_nan_comparison_is_unordered() {
+        let emu = run_program(
+            "\
+section .data
+    pasnombre dq 0x7ff8000000000000
+    un        dq 1.0
+
+section .text
+    global _start
+_start:
+    movsd xmm0, [pasnombre]
+    movsd xmm1, [un]
+    comisd xmm0, xmm1
+    setp r8b                ; PF : non ordonné
+    setz r9b
+    setc r10b
+    hlt
+",
+            &[],
+        );
+        assert_eq!(emu.cpu.regs.get8l(Reg64::R8), 1, "PF signale le NaN");
+        assert_eq!(emu.cpu.regs.get8l(Reg64::R9), 1);
+        assert_eq!(emu.cpu.regs.get8l(Reg64::R10), 1);
+    }
+
+    /// `addps` fait quatre additions d'un seul ordre — c'est toute la
+    /// raison d'être des registres larges.
+    #[test]
+    fn packed_arithmetic_computes_four_at_once() {
+        let emu = run_program(
+            "\
+section .data
+    align 16
+    quatre dd 1.0, 2.0, 3.0, 4.0
+    unites dd 1.0, 1.0, 1.0, 1.0
+    sortie times 16 db 0
+
+section .text
+    global _start
+_start:
+    movaps xmm0, [quatre]
+    movaps xmm1, [unites]
+    addps xmm0, xmm1        ; 2, 3, 4, 5
+    movaps [sortie], xmm0
+
+    movss xmm2, [sortie]
+    movd eax, xmm2
+    movss xmm3, [sortie + 12]
+    movd ebx, xmm3
+    hlt
+",
+            &[],
+        );
+        assert_eq!(f32::from_bits(emu.cpu.regs.get32(Reg64::Rax)), 2.0);
+        assert_eq!(f32::from_bits(emu.cpu.regs.get32(Reg64::Rbx)), 5.0);
+    }
+
+    /// Le haut d'un registre XMM ne bouge pas quand on n'écrit que son
+    /// bas — sauf en venant de la mémoire, où `movsd` met le reste à
+    /// zéro. Une asymétrie du jeu d'instructions, et une source d'erreurs
+    /// classique.
+    #[test]
+    fn a_scalar_move_only_touches_what_it_must() {
+        let emu = run_program(
+            "\
+section .data
+    align 16
+    motifs dq 0x1111111111111111, 0x2222222222222222
+    un     dq 1.0
+    sortie times 16 db 0
+
+section .text
+    global _start
+_start:
+    movaps xmm0, [motifs]
+    movsd xmm0, [un]        ; depuis la mémoire : le haut passe à zéro
+    movaps [sortie], xmm0
+    mov rax, [sortie]
+    mov rbx, [sortie + 8]
+
+    movaps xmm1, [motifs]
+    movsd xmm2, [un]
+    movsd xmm1, xmm2        ; entre registres : le haut est préservé
+    movaps [sortie], xmm1
+    mov rcx, [sortie]
+    mov rdx, [sortie + 8]
+    hlt
+",
+            &[],
+        );
+        assert_eq!(f64::from_bits(emu.cpu.regs.get64(Reg64::Rax)), 1.0);
+        assert_eq!(
+            emu.cpu.regs.get64(Reg64::Rbx),
+            0,
+            "la mémoire efface le haut"
+        );
+        assert_eq!(f64::from_bits(emu.cpu.regs.get64(Reg64::Rcx)), 1.0);
+        assert_eq!(
+            emu.cpu.regs.get64(Reg64::Rdx),
+            0x2222_2222_2222_2222,
+            "un registre le laisse en place"
+        );
+    }
+    /// SSE entier : seize additions d'un ordre, une comparaison qui rend
+    /// un masque, et `pmovmskb` qui ramène le résultat dans un registre
+    /// général — la chaîne complète d'un `memchr` vectoriel.
+    #[test]
+    fn packed_integers_add_compare_and_report() {
+        let emu = run_program(
+            "\
+section .data
+    align 16
+    a       times 16 db 1
+    b       times 16 db 2
+    cible   db 'n','a','m','s','d','e','c',0,0,0,0,0,0,0,0,0
+    lettres times 16 db 'm'
+    sortie  times 16 db 0
+
+section .text
+    global _start
+_start:
+    movdqa xmm0, [a]
+    movdqa xmm1, [b]
+    paddb xmm0, xmm1        ; seize fois 3
+    movdqa [sortie], xmm0
+    movzx rax, byte [sortie]
+
+    movdqa xmm2, [cible]
+    movdqa xmm3, [lettres]
+    pcmpeqb xmm2, xmm3      ; le 'm' de « nams » : troisième octet
+    pmovmskb ebx, xmm2
+
+    movdqa xmm4, [a]
+    psllq xmm4, 4           ; chaque moitié décalée de quatre bits
+    movq rcx, xmm4
+
+    movdqa xmm5, [a]
+    punpcklbw xmm5, xmm5    ; des octets entrelacés avec eux-mêmes
+    movq rdx, xmm5
+    hlt
+",
+            &[],
+        );
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rax), 3, "paddb");
+        assert_eq!(
+            emu.cpu.regs.get64(Reg64::Rbx),
+            0b100,
+            "pcmpeqb puis pmovmskb"
+        );
+        assert_eq!(
+            emu.cpu.regs.get64(Reg64::Rcx),
+            0x0101_0101_0101_0101u64 << 4,
+            "psllq décale les deux moitiés"
+        );
+        assert_eq!(
+            emu.cpu.regs.get64(Reg64::Rdx),
+            0x0101_0101_0101_0101,
+            "punpcklbw"
+        );
+    }
+
+    /// `pshufd` remet les quatre éléments dans l'ordre qu'on veut, et
+    /// `movhlps` ramène le haut d'un registre en bas — deux façons
+    /// d'atteindre ce que les instructions scalaires ne voient pas.
+    #[test]
+    fn shuffles_reach_the_upper_half() {
+        let emu = run_program(
+            "\
+section .data
+    align 16
+    quatre dd 10, 20, 30, 40
+    sortie times 16 db 0
+
+section .text
+    global _start
+_start:
+    movdqa xmm0, [quatre]
+    pshufd xmm1, xmm0, 00_01_10_11b   ; ordre inversé : 40, 30, 20, 10
+    movdqa [sortie], xmm1
+    mov eax, [sortie]
+    mov ebx, [sortie + 12]
+
+    movhlps xmm2, xmm0      ; le haut de xmm0 (30, 40) passe en bas
+    movq rcx, xmm2
+    hlt
+",
+            &[],
+        );
+        assert_eq!(emu.cpu.regs.get32(Reg64::Rax), 40, "pshufd a inversé");
+        assert_eq!(emu.cpu.regs.get32(Reg64::Rbx), 10);
+        assert_eq!(
+            emu.cpu.regs.get64(Reg64::Rcx),
+            (40u64 << 32) | 30,
+            "movhlps"
+        );
     }
 }

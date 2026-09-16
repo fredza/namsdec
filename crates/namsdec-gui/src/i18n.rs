@@ -74,6 +74,10 @@ pub struct Strings {
     pub tab_re: &'static str,
     /// Titre du bandeau fixe du panneau latéral (registres + flags).
     pub cpu_state: &'static str,
+    /// Le repli qui montre les seize registres vectoriels.
+    pub sse_registers: &'static str,
+    /// Ce que dit l'infobulle d'un registre SSE.
+    pub sse_hint: &'static str,
 
     // Menu Affichage — visibilité des panneaux
     pub view_toolbar: &'static str,
@@ -253,6 +257,8 @@ const FR: Strings = Strings {
     tab_diagnostics: "Diagnostics",
     tab_re: "RE",
     cpu_state: "État du processeur",
+    sse_registers: "Registres SSE (flottants)",
+    sse_hint: "Les 128 bits, puis leur lecture en deux doubles et en quatre simples",
 
     view_toolbar: "Barre d'outils",
     view_sidebar: "Panneau latéral",
@@ -417,6 +423,8 @@ const EN: Strings = Strings {
     tab_diagnostics: "Diagnostics",
     tab_re: "RE",
     cpu_state: "CPU state",
+    sse_registers: "SSE registers (floating point)",
+    sse_hint: "All 128 bits, then read as two doubles and as four singles",
 
     view_toolbar: "Toolbar",
     view_sidebar: "Side Panel",

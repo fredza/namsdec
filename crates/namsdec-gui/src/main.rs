@@ -2924,6 +2924,9 @@ impl NamsdecApp {
         if banner.header_response.clicked() {
             self.cpu_state_open = !self.cpu_state_open;
         }
+        // Hors du bandeau, et non dedans : celui-ci est borné en hauteur
+        // et défile, un repli posé à sa suite serait sous la pliure.
+        self.xmm_ui(ui);
 
         ui.separator();
         ui.horizontal_wrapped(|ui| {
@@ -2959,6 +2962,62 @@ impl NamsdecApp {
         self.registers_ui(ui);
         ui.add_space(6.0);
         self.flags_ui(ui);
+    }
+
+    /// Les seize registres SSE, repliés : un programme sur deux n'en
+    /// touche aucun, et ils prennent seize lignes de plus.
+    ///
+    /// Ce qu'on montre d'eux est leur moitié basse — celle où vit un
+    /// flottant scalaire — suivie de sa valeur décimale, parce que
+    /// personne ne lit `4014000000000000` comme « 5 ». Le reste est dans
+    /// l'infobulle.
+    fn xmm_ui(&self, ui: &mut egui::Ui) {
+        let s = strings(self.lang);
+        let Some(emulator) = &self.emulator else {
+            return;
+        };
+        let theme = self.theme;
+        let regs = &emulator.cpu().regs;
+        let changed = changed_registers(self.regs_before.as_ref(), regs);
+        egui::CollapsingHeader::new(egui::RichText::new(s.sse_registers).color(theme.dim))
+            .id_salt("xmm_registers")
+            .default_open(false)
+            .show(ui, |ui| {
+                // Bornée et défilante, comme le bandeau au-dessus :
+                // seize lignes de plus repousseraient les onglets hors
+                // de la fenêtre, et c'est eux qu'on va chercher ensuite.
+                egui::ScrollArea::vertical()
+                    .id_salt("xmm_scroll")
+                    .max_height(ui.available_height() * 0.5)
+                    .show(ui, |ui| {
+                        egui::Grid::new("xmm_grid")
+                            .num_columns(3)
+                            .striped(true)
+                            .show(ui, |ui| {
+                                for (name, reg) in XMM_REGISTERS {
+                                    let value = regs.get_xmm(reg);
+                                    let color = if changed.contains(&name) {
+                                        theme.changed
+                                    } else {
+                                        ui.visuals().text_color()
+                                    };
+                                    let low = value as u64;
+                                    ui.colored_label(color, egui::RichText::new(name).monospace());
+                                    ui.colored_label(
+                                        color,
+                                        egui::RichText::new(format!("{low:016x}")).monospace(),
+                                    )
+                                    .on_hover_text(xmm_tooltip(s, value));
+                                    ui.colored_label(
+                                        theme.dim,
+                                        egui::RichText::new(short_float(f64::from_bits(low)))
+                                            .monospace(),
+                                    );
+                                    ui.end_row();
+                                }
+                            });
+                    });
+            });
     }
 
     /// Le panneau bas : la console du programme et les diagnostics de
@@ -4378,7 +4437,77 @@ fn changed_registers(
         .iter()
         .filter(|&&(_, reg)| before.get64(reg) != now.get64(reg))
         .map(|&(name, _)| name)
+        .chain(
+            XMM_REGISTERS
+                .iter()
+                .filter(|&&(_, reg)| before.get_xmm(reg) != now.get_xmm(reg))
+                .map(|&(name, _)| name),
+        )
         .collect()
+}
+
+/// Les seize registres SSE, dans l'ordre de leur numéro.
+const XMM_REGISTERS: [(&str, namsdec_core::RegXmm); 16] = {
+    use namsdec_core::RegXmm::*;
+    [
+        ("XMM0", Xmm0),
+        ("XMM1", Xmm1),
+        ("XMM2", Xmm2),
+        ("XMM3", Xmm3),
+        ("XMM4", Xmm4),
+        ("XMM5", Xmm5),
+        ("XMM6", Xmm6),
+        ("XMM7", Xmm7),
+        ("XMM8", Xmm8),
+        ("XMM9", Xmm9),
+        ("XMM10", Xmm10),
+        ("XMM11", Xmm11),
+        ("XMM12", Xmm12),
+        ("XMM13", Xmm13),
+        ("XMM14", Xmm14),
+        ("XMM15", Xmm15),
+    ]
+};
+
+/// Un flottant écrit court, pour tenir dans une colonne : six décimales
+/// au plus, sans les zéros qui traînent, et la notation scientifique dès
+/// que le nombre sort de ce qu'on lit d'un coup d'œil — un flottant
+/// simple précision relu comme un double, par exemple, donne un
+/// dix-millième de rien qu'aucune écriture décimale ne rend lisible.
+///
+/// Un registre vide ne dit rien du tout : seize « = 0 » sur seize lignes
+/// n'apprennent rien que les chiffres d'à côté ne disent déjà.
+fn short_float(value: f64) -> String {
+    if value == 0.0 {
+        return String::new();
+    }
+    if !value.is_finite() {
+        return format!("= {value}");
+    }
+    let magnitude = value.abs();
+    if !(1e-4..1e12).contains(&magnitude) {
+        return format!("= {value:.3e}");
+    }
+    let text = format!("{value:.6}");
+    let text = text.trim_end_matches('0').trim_end_matches('.');
+    format!("= {text}")
+}
+
+/// Les 128 bits d'un registre SSE, puis leur lecture en flottants.
+fn xmm_tooltip(s: &Strings, value: u128) -> String {
+    let doubles: Vec<String> = (0..2)
+        .map(|lane| format!("{}", f64::from_bits((value >> (lane * 64)) as u64)))
+        .collect();
+    let singles: Vec<String> = (0..4)
+        .map(|lane| format!("{}", f32::from_bits((value >> (lane * 32)) as u32)))
+        .collect();
+    format!(
+        "{}\n{:032x}\n[{}]\n[{}]",
+        s.sse_hint,
+        value,
+        doubles.join(", "),
+        singles.join(", ")
+    )
 }
 
 /// Combien de paires nom/valeur tiennent côte à côte dans `width`.
@@ -7212,6 +7341,29 @@ _start:
         assert!(
             painted.contains("4096 / "),
             "il doit dire ce qui est pris sur ce qui reste"
+        );
+    }
+    /// Un registre SSE qui change se met en avant comme un registre
+    /// général : c'est la même question — qu'est-ce que ce pas a fait ?
+    #[test]
+    fn a_changed_xmm_register_stands_out_like_the_others() {
+        let before = namsdec_core::Registers::new();
+        let mut now = before.clone();
+        now.set_xmm(namsdec_core::RegXmm::Xmm3, 5.0f64.to_bits().into());
+        assert_eq!(changed_registers(Some(&before), &now), ["XMM3"]);
+
+        // Et la valeur se lit en clair à côté des chiffres.
+        assert_eq!(short_float(5.0), "= 5");
+        assert_eq!(short_float(0.0), "", "un registre vide ne dit rien");
+        assert_eq!(
+            short_float(5.0 / 9.0),
+            "= 0.555556",
+            "six décimales au plus"
+        );
+        assert_eq!(
+            short_float(f64::from_bits(1.0f32.to_bits().into())),
+            "= 5.264e-315",
+            "un simple précision relu comme un double reste lisible"
         );
     }
 }
