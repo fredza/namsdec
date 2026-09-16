@@ -12,7 +12,7 @@
 //! place est dans une fonction qui reçoit l'erreur, pas dans une table.
 
 use namsdec_asm::AsmError;
-use namsdec_core::MemError;
+use namsdec_core::{Access, MemError};
 use namsdec_emu::{EmuError, OperandRole};
 
 use crate::i18n::Lang;
@@ -122,6 +122,40 @@ pub fn mem(lang: Lang, error: &MemError) -> String {
                 format!("accès mémoire hors de la fenêtre simulée, à l'adresse {addr:#x}")
             } else {
                 format!("memory access outside the simulated window, at {addr:#x}")
+            }
+        }
+        // Le défaut de segmentation, dit en clair : l'adresse existe dans
+        // la fenêtre, mais rien n'y est projeté — ni programme, ni pile,
+        // ni tas.
+        MemError::Unmapped { addr } => {
+            if lang == Lang::Fr {
+                format!(
+                    "rien n'est projeté à l'adresse {addr:#x} : ni le programme, ni la pile, ni le tas"
+                )
+            } else {
+                format!(
+                    "nothing is mapped at {addr:#x}: not the program, not the stack, not the heap"
+                )
+            }
+        }
+        MemError::Protection {
+            addr,
+            needed,
+            region,
+        } => {
+            let fr = lang == Lang::Fr;
+            let verbe = match (needed, fr) {
+                (Access::Read, true) => "lire",
+                (Access::Read, false) => "read",
+                (Access::Write, true) => "écrire à",
+                (Access::Write, false) => "write to",
+                (Access::Execute, true) => "exécuter",
+                (Access::Execute, false) => "execute",
+            };
+            if fr {
+                format!("interdit d'{verbe} l'adresse {addr:#x} : elle est dans {region}")
+            } else {
+                format!("not allowed to {verbe} {addr:#x}: it lives in {region}")
             }
         }
     }

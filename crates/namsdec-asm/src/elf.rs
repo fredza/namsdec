@@ -23,6 +23,10 @@ pub struct Section {
     pub data: Vec<u8>,
     pub size: usize,
     pub executable: bool,
+    /// `.data` et `.bss` s'écrivent ; `.text` et `.rodata` non. C'est ce
+    /// qui permet de refuser à un programme d'écrire dans son propre
+    /// code plutôt que de le laisser faire en silence.
+    pub writable: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -32,6 +36,7 @@ pub struct Elf {
 }
 
 const SHF_ALLOC: u64 = 0x2;
+const SHF_WRITE: u64 = 0x1;
 const SHF_EXECINSTR: u64 = 0x4;
 /// `.bss` : la section occupe de la mémoire mais rien dans le fichier.
 const SHT_NOBITS: u32 = 8;
@@ -116,6 +121,7 @@ pub fn parse(bytes: &[u8]) -> Option<Elf> {
             data,
             size,
             executable: flags & SHF_EXECINSTR != 0,
+            writable: flags & SHF_WRITE != 0,
         });
     }
 

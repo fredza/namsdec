@@ -1058,6 +1058,36 @@ impl NamsdecApp {
             self.emulator = None;
             return;
         }
+        // Les droits : ce qui sépare un programme qui plante proprement
+        // d'un programme qui écrit dans son propre code sans que personne
+        // ne le dise.
+        //
+        // Seulement si l'on sait où sont les sections : un binaire brut
+        // ouvert depuis le disque n'en déclare aucune, et inventer des
+        // droits pour lui reviendrait à refuser ce qu'on ne comprend pas.
+        if !state.output.sections.is_empty() {
+            for section in &state.output.sections {
+                let perms = namsdec_core::Perms {
+                    read: true,
+                    write: section.writable,
+                    execute: section.executable,
+                };
+                mem.map(
+                    section.addr..section.addr + section.size as u64,
+                    perms,
+                    region_label(section),
+                );
+            }
+            // La pile : on y écrit, on n'y exécute pas. C'est la
+            // protection qui a mis fin aux débordements de tampon des
+            // années 90.
+            mem.map(
+                HEAP_LIMIT..BASE_ADDR + MEM_SIZE as u64,
+                namsdec_core::Perms::DATA,
+                "stack",
+            );
+        }
+
         let mut cpu = namsdec_core::Cpu::new(mem);
         // Le point d'entrée de l'ELF, et non le premier octet chargé : sur
         // un programme qui commence par `.data`, ce sont deux adresses
@@ -1606,6 +1636,7 @@ impl NamsdecApp {
                         addr: section.addr,
                         size: section.size,
                         executable: section.executable,
+                        writable: section.writable,
                     })
                     .collect(),
                 bytes: image,
@@ -4532,6 +4563,25 @@ fn data_dir() -> Option<PathBuf> {
             std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local").join("share"))
         })?;
     Some(base.join("namsdec"))
+}
+
+/// Le nom sous lequel annoncer une section dans un message de faute.
+///
+/// Les quatre noms usuels passent tels quels ; une section au nom exotique
+/// est annoncée par ce qu'elle *est* — du code, des données, de la donnée
+/// en lecture seule. Le message doit pouvoir être écrit dans les deux
+/// langues, et un nom venu du fichier ne peut pas l'être : il n'a pas de
+/// durée de vie statique, et il ne se traduit pas.
+fn region_label(section: &namsdec_asm::Section) -> &'static str {
+    match section.name.as_str() {
+        ".text" => ".text",
+        ".data" => ".data",
+        ".bss" => ".bss",
+        ".rodata" => ".rodata",
+        _ if section.executable => ".text",
+        _ if section.writable => ".data",
+        _ => ".rodata",
+    }
 }
 
 /// Où vivent les séries d'exercices installées. À côté des thèmes, et

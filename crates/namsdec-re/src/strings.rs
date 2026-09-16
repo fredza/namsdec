@@ -80,7 +80,7 @@ impl ReModule for StringsModule {
     fn on_binary_loaded(&mut self, ctx: &ReContext) {
         let range = ctx.cpu.mem.range();
         let len = (range.end - range.start) as usize;
-        self.found = match ctx.cpu.mem.bytes_at(range.start, len) {
+        self.found = match ctx.cpu.mem.peek_bytes(range.start, len) {
             Ok(bytes) => scan(bytes, range.start),
             Err(_) => Vec::new(),
         };

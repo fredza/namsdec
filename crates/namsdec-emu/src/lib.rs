@@ -11,7 +11,7 @@ use std::collections::{BTreeSet, VecDeque};
 
 use iced_x86::{ConditionCode, Instruction, Mnemonic, OpKind, Register};
 use namsdec_core::{
-    Cpu, Memory, RFlags, Reg64, Width, add_with_flags, logic_flags, sub_with_flags,
+    Access, Cpu, Memory, RFlags, Reg64, Width, add_with_flags, logic_flags, sub_with_flags,
 };
 use thiserror::Error;
 
@@ -284,10 +284,12 @@ enum ShiftKind {
 /// Lit `len` octets (1 à 8) en petit-boutien. Hors de la fenêtre
 /// simulée, rend zéro : une zone surveillée qu'on ne peut pas lire ne
 /// change jamais, plutôt que de faire échouer l'exécution.
+/// Lit une valeur pour la *montrer* — un point de surveillance, un
+/// vidage. Sans contrôle de droits : regarder n'est pas accéder.
 fn read_bytes(mem: &namsdec_core::Memory, addr: u64, len: usize) -> u64 {
     let mut value = 0u64;
     for i in (0..len).rev() {
-        let byte = mem.read_u8(addr.wrapping_add(i as u64)).unwrap_or(0);
+        let byte = mem.peek_u8(addr.wrapping_add(i as u64)).unwrap_or(0);
         value = (value << 8) | u64::from(byte);
     }
     value
@@ -646,6 +648,7 @@ impl Emulator {
             current: start,
             limit,
         };
+        self.map_heap();
     }
 
     /// Le tas, tel que `brk` l'a laissé.
@@ -667,11 +670,32 @@ impl Emulator {
                 // de laisser un programme fautif retrouver ses données.
                 let len = (self.heap.current - requested) as usize;
                 self.record_memory(requested, len);
-                let _ = self.cpu.mem.write_bytes(requested, &vec![0u8; len]);
+                let _ = self.cpu.mem.poke(requested, &vec![0u8; len]);
             }
             self.heap.current = requested;
+            // La zone projetée suit la rupture : au-delà, il n'y a rien,
+            // et y toucher est une faute — exactement ce qui arrive quand
+            // on oublie de demander la place avant de s'en servir.
+            self.map_heap();
         }
         self.heap.current
+    }
+
+    /// (Re)déclare la zone du tas d'après la rupture courante.
+    ///
+    /// Seulement si la mémoire est déjà découpée en zones : déclarer
+    /// celle du tas dans un bloc qui n'en a aucune rendrait tout le reste
+    /// — le programme lui-même — inadressable. Les droits sont une
+    /// décision de celui qui charge, pas un effet de bord de `brk`.
+    fn map_heap(&mut self) {
+        if !self.cpu.mem.has_regions() {
+            return;
+        }
+        self.cpu.mem.map(
+            self.heap.start..self.heap.current,
+            namsdec_core::Perms::DATA,
+            "heap",
+        );
     }
 
     /// L'appel système Linux x86-64 : le numéro est dans RAX, les
@@ -2308,7 +2332,7 @@ impl Emulator {
         if self.history.is_empty() {
             return;
         }
-        let Ok(old) = self.cpu.mem.bytes_at(addr, len) else {
+        let Ok(old) = self.cpu.mem.peek_bytes(addr, len) else {
             return;
         };
         let old = old.to_vec();
@@ -2331,7 +2355,10 @@ impl Emulator {
         // Dans l'ordre inverse des écritures : deux écritures au même
         // endroit doivent se défaire en commençant par la dernière.
         for (addr, bytes) in undo.memory.iter().rev() {
-            let _ = self.cpu.mem.write_bytes(*addr, bytes);
+            // Défaire, c'est remettre ce qui était là : les droits ne
+            // s'appliquent qu'au programme, pas au journal qui le
+            // rembobine.
+            let _ = self.cpu.mem.poke(*addr, bytes);
         }
         self.cpu.regs = undo.regs;
         self.cpu.flags = undo.flags;
@@ -2343,6 +2370,7 @@ impl Emulator {
         }
         self.input_closed = undo.input_closed;
         self.heap = undo.heap;
+        self.map_heap();
         self.ticks = undo.ticks;
         match undo.frames {
             FrameChange::None => {}
@@ -2505,8 +2533,16 @@ fn fetch_window(mem: &Memory, addr: u64) -> Result<&[u8], EmuError> {
     if addr < range.start || addr >= range.end {
         return Err(EmuError::InvalidInstruction { addr });
     }
+    // Le droit d'*exécuter*, et non celui de lire : c'est ce qui
+    // distingue « sauter dans ses données » de « lire ses données ». Un
+    // seul octet suffit à le dire — l'instruction peut déborder sur la
+    // zone suivante, et c'est le premier qui compte.
+    mem.check(addr, 1, Access::Execute)?;
     let avail = (range.end - addr).min(16) as usize;
-    mem.bytes_at(addr, avail)
+    // `peek_bytes` : les octets d'une instruction se lisent même dans une
+    // zone qui n'accorde pas la lecture. Un processeur exécute du code
+    // « exécutable seulement » sans broncher.
+    mem.peek_bytes(addr, avail)
         .map_err(|_| EmuError::InvalidInstruction { addr })
 }
 

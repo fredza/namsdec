@@ -3177,3 +3177,147 @@ fn a_scroll_bar_shows_up_when_there_is_something_to_scroll_and_not_before() {
         );
     }
 }
+
+/// Un programme ne peut pas écrire dans son propre code, ni exécuter ses
+/// données, ni toucher ce qui n'est projeté nulle part — et chaque refus
+/// se lit en français, avec l'adresse et la zone en cause.
+///
+/// C'est la leçon que namsdec ne savait pas donner : « pourquoi ça
+/// segfault » restait invisible, le programme écrivait dans `.text` et
+/// continuait comme si de rien n'était.
+#[test]
+fn a_program_cannot_write_its_own_code_or_run_its_data() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let faute = |source: &str| -> String {
+        let mut app = NamsdecApp {
+            source: source.to_owned(),
+            ..Default::default()
+        };
+        app.do_assemble();
+        for _ in 0..40 {
+            app.do_step();
+            if let Status::Error(message) = &app.status {
+                return message.clone();
+            }
+        }
+        String::new()
+    };
+
+    // Écrire dans le code.
+    let message =
+        faute("global _start\nsection .text\n_start:\n    mov byte [_start], 0x90\n    hlt\n");
+    assert!(
+        message.contains("interdit d'écrire") && message.contains(".text"),
+        "obtenu : {message}"
+    );
+
+    // Sauter dans les données.
+    let message = faute(
+        "global _start\nsection .data\n    tampon times 8 db 0\n\
+         section .text\n_start:\n    jmp tampon\n",
+    );
+    assert!(
+        message.contains("interdit d'exécuter") && message.contains(".data"),
+        "obtenu : {message}"
+    );
+
+    // Écrire là où il n'y a rien : le défaut de segmentation, dit en
+    // clair.
+    let message = faute(
+        "global _start\nsection .text\n_start:\n    mov rax, 0x407000\n\
+         \x20   mov qword [rax], 1\n    hlt\n",
+    );
+    assert!(message.contains("rien n'est projeté"), "obtenu : {message}");
+
+    // Et un programme honnête tourne toujours : il écrit dans ses
+    // données, lit son code, et s'arrête.
+    let message = faute(
+        "global _start\nsection .data\n    n dq 0\nsection .text\n_start:\n\
+         \x20   mov qword [n], 42\n    mov rax, [n]\n    hlt\n",
+    );
+    assert!(
+        message.is_empty(),
+        "un programme correct ne doit rien déclencher : {message}"
+    );
+}
+
+/// Le tas n'existe que jusqu'à la rupture : au-delà, il n'y a rien, même
+/// si l'adresse est dans la fenêtre. C'est ce qui apprend à demander la
+/// place avant de s'en servir.
+#[test]
+fn the_heap_exists_only_up_to_the_break() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: "global _start\nsection .text\n_start:\n\
+             \x20   mov rax, 12\n    xor rdi, rdi\n    syscall\n\
+             \x20   mov r12, rax\n\
+             \x20   mov qword [r12], 1      ; rien n'est encore alloué\n    hlt\n"
+            .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    for _ in 0..20 {
+        app.do_step();
+    }
+    let Status::Error(message) = &app.status else {
+        panic!(
+            "écrire avant d'avoir demandé doit échouer : {:?}",
+            app.status
+        );
+    };
+    assert!(message.contains("rien n'est projeté"), "obtenu : {message}");
+
+    // Avec le brk qui va bien, la même écriture passe.
+    app.source = "global _start\nsection .text\n_start:\n\
+         \x20   mov rax, 12\n    xor rdi, rdi\n    syscall\n    mov r12, rax\n\
+         \x20   lea rdi, [rax + 4096]\n    mov rax, 12\n    syscall\n\
+         \x20   mov qword [r12], 1\n    hlt\n"
+        .to_owned();
+    app.do_assemble();
+    for _ in 0..20 {
+        app.do_step();
+    }
+    assert!(
+        matches!(app.status, Status::Halted),
+        "obtenu : {:?}",
+        app.status
+    );
+}
+
+/// L'onglet Mémoire dit à quelle zone appartient l'adresse regardée, et
+/// avec quels droits : on lit la protection avant de se la voir opposer.
+#[test]
+fn the_memory_tab_names_the_region_and_its_rights() {
+    let s = strings(Lang::Fr);
+    let mut mem = namsdec_core::Memory::new(BASE_ADDR, 0x4000);
+    // Sans zone déclarée, rien à dire : un binaire brut n'a pas de
+    // sections, et inventer des droits serait mentir.
+    assert_eq!(region_line(s, &mem, BASE_ADDR), "");
+
+    mem.map(
+        BASE_ADDR..BASE_ADDR + 0x1000,
+        namsdec_core::Perms::TEXT,
+        ".text",
+    );
+    mem.map(
+        BASE_ADDR + 0x1000..BASE_ADDR + 0x2000,
+        namsdec_core::Perms::DATA,
+        ".data",
+    );
+    assert_eq!(
+        region_line(s, &mem, BASE_ADDR),
+        ".text · lecture, exécution"
+    );
+    assert_eq!(
+        region_line(s, &mem, BASE_ADDR + 0x1000),
+        ".data · lecture, écriture"
+    );
+    assert_eq!(
+        region_line(s, &mem, BASE_ADDR + 0x3000),
+        "rien n'est projeté ici"
+    );
+}

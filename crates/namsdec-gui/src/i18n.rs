@@ -144,6 +144,11 @@ pub struct Strings {
     pub memory_address_label: &'static str,
     /// Le champ Adresse refuse ce qui n'est pas une adresse, et le dit.
     pub memory_address_invalid: &'static str,
+    /// Les droits de la zone qu'on regarde, dans l'onglet Mémoire.
+    pub perms_read: &'static str,
+    pub perms_write: &'static str,
+    pub perms_execute: &'static str,
+    pub perms_unmapped: &'static str,
     pub memory_address_hint: &'static str,
     pub memory_format_bytes: &'static str,
     pub memory_format_words: &'static str,
@@ -349,6 +354,10 @@ const FR: Strings = Strings {
 
     memory_address_label: "Adresse :",
     memory_address_invalid: "Ce n'est pas une adresse : des chiffres hexadécimaux, un registre, ou une somme des deux.",
+    perms_read: "lecture",
+    perms_write: "écriture",
+    perms_execute: "exécution",
+    perms_unmapped: "rien n'est projeté ici",
     memory_address_hint: "Hexadécimal, ou un registre : rsp, rsi+10, rip-8, rbx+rcx*4. Tout est en hexadécimal, décalages compris.",
     memory_format_bytes: "Octets",
     memory_format_words: "Mots",
@@ -542,6 +551,10 @@ const EN: Strings = Strings {
 
     memory_address_label: "Address:",
     memory_address_invalid: "Not an address: hexadecimal digits, a register, or a sum of both.",
+    perms_read: "read",
+    perms_write: "write",
+    perms_execute: "execute",
+    perms_unmapped: "nothing is mapped here",
     memory_address_hint: "Hexadecimal, or a register: rsp, rsi+10, rip-8, rbx+rcx*4. Everything is hexadecimal, offsets included.",
     memory_format_bytes: "Bytes",
     memory_format_words: "Words",

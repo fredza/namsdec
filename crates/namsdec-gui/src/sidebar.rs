@@ -540,8 +540,13 @@ impl NamsdecApp {
         // Le vidage est calculé *avant* la liste : celle-ci peut retirer
         // une zone, donc emprunter `self` en écriture, et l'émulateur
         // n'est plus disponible à ce moment-là.
+        // Ce que l'adresse regardée *est* : quelle zone, avec quels
+        // droits. La protection devient ainsi une chose qu'on lit avant
+        // de se faire refuser un accès, et non seulement une punition.
+        let mem = &emulator.cpu().mem;
+        let quartier = region_line(s, mem, self.mem_addr);
         let dump = read_memory(
-            &emulator.cpu().mem,
+            mem,
             self.mem_addr,
             self.memory_format,
             s.address_out_of_range,
@@ -552,6 +557,7 @@ impl NamsdecApp {
             .map(|point| (point.addr, point.value()))
             .collect();
         self.watchpoints_ui(ui, &watched);
+        ui.colored_label(theme.dim, quartier);
         hexdump_ui(ui, "memory_dump", &dump);
 
         // Poser la zone en dernier : `sync_watchpoints` emprunte
@@ -658,6 +664,32 @@ pub(crate) fn changed_registers(
                 }),
         )
         .collect()
+}
+
+/// La zone qui contient cette adresse, et ses droits : « .data · lecture,
+/// écriture ». Pour les adresses qui n'appartiennent à rien, on le dit —
+/// c'est souvent la réponse qu'on cherchait.
+pub(crate) fn region_line(s: &Strings, mem: &namsdec_core::Memory, addr: u64) -> String {
+    if !mem.has_regions() {
+        return String::new();
+    }
+    let Some(perms) = mem.perms_at(addr) else {
+        return s.perms_unmapped.to_owned();
+    };
+    let mut droits = Vec::new();
+    if perms.read {
+        droits.push(s.perms_read);
+    }
+    if perms.write {
+        droits.push(s.perms_write);
+    }
+    if perms.execute {
+        droits.push(s.perms_execute);
+    }
+    match mem.region_name(addr) {
+        Some(nom) => format!("{nom} · {}", droits.join(", ")),
+        None => droits.join(", "),
+    }
 }
 
 /// Un flottant écrit court, pour tenir dans une colonne : six décimales
@@ -784,7 +816,7 @@ pub(crate) fn safe_hexdump(
         return out_of_range.to_string();
     }
     let len = len.min((range.end - addr) as usize);
-    match mem.bytes_at(addr, len) {
+    match mem.peek_bytes(addr, len) {
         Ok(bytes) => hexdump(bytes, addr),
         Err(_) => out_of_range.to_string(),
     }
@@ -866,14 +898,14 @@ pub(crate) fn read_memory(
         MemoryFormat::Bytes => safe_hexdump(mem, addr, 128, out_of_range),
         MemoryFormat::Words => {
             let len = (16 * 8).min(available & !7);
-            match mem.bytes_at(addr, len) {
+            match mem.peek_bytes(addr, len) {
                 Ok(bytes) => words_dump(bytes, addr),
                 Err(_) => out_of_range.to_string(),
             }
         }
         MemoryFormat::Text => {
             let len = 256.min(available);
-            match mem.bytes_at(addr, len) {
+            match mem.peek_bytes(addr, len) {
                 Ok(bytes) => text_dump(bytes),
                 Err(_) => out_of_range.to_string(),
             }

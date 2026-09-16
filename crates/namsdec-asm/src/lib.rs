@@ -65,6 +65,9 @@ pub struct Section {
     pub addr: u64,
     pub size: usize,
     pub executable: bool,
+    /// La section s'écrit-elle ? `.data` et `.bss` oui, `.text` et
+    /// `.rodata` non.
+    pub writable: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -223,6 +226,7 @@ pub fn assemble(source: &str, base_addr: u64) -> Result<AssembleOutput, AsmError
                 addr: s.addr,
                 size: s.size,
                 executable: s.executable,
+                writable: s.writable,
             })
             .collect(),
         diagnostics,
@@ -558,6 +562,7 @@ _start:
                     data: Vec::new(),
                     size: 0x20,
                     executable: true,
+                    writable: false,
                 },
                 elf::Section {
                     name: ".data".to_owned(),
@@ -565,6 +570,7 @@ _start:
                     data: Vec::new(),
                     size: 0x10,
                     executable: false,
+                    writable: true,
                 },
             ],
         };
