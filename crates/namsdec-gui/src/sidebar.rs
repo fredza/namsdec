@@ -939,17 +939,6 @@ impl NamsdecApp {
     }
 
     fn re_ui(&mut self, ui: &mut egui::Ui) {
-        let s = strings(self.lang);
-        let (Some(emulator), Some(state)) = (&self.emulator, &self.assemble_state) else {
-            ui.label(s.no_binary_assembled);
-            return;
-        };
-        let ctx = ReContext {
-            cpu: emulator.cpu(),
-            disasm: &state.disasm,
-            source: &self.source,
-            lang: self.lang.code(),
-        };
         // Défilement vertical seulement : les modules posent des widgets
         // ordinaires, qui prennent la largeur qu'on leur laisse. Dans une
         // zone qui défile aussi horizontalement, cette largeur n'a plus
@@ -960,13 +949,34 @@ impl NamsdecApp {
             // mesure. Sans cette limite, le panneau adopte la largeur du
             // plus long et pousse l'éditeur hors de la fenêtre.
             ui.set_max_width(ui.available_width());
-            for module in self.re_registry.iter_mut() {
-                ui.group(|ui| {
-                    ui.strong(module.title(ctx.lang));
-                    module.ui(ui, &ctx);
-                });
-            }
+            self.re_modules_ui(ui);
         });
+    }
+
+    /// Les modules de rétro-ingénierie, les uns sous les autres.
+    ///
+    /// Posés ici sans zone de défilement : l'onglet du panneau et la
+    /// fenêtre d'analyse ont chacun la leur, et deux zones imbriquées ne
+    /// défilent bien ni l'une ni l'autre.
+    pub(crate) fn re_modules_ui(&mut self, ui: &mut egui::Ui) {
+        let s = strings(self.lang);
+        let (Some(emulator), Some(state)) = (&self.emulator, &self.assemble_state) else {
+            ui.label(s.no_binary_assembled);
+            return;
+        };
+        let ctx = ReContext {
+            cpu: emulator.cpu(),
+            disasm: &state.disasm,
+            source: &self.source,
+            binary: &state.output.file,
+            lang: self.lang.code(),
+        };
+        for module in self.re_registry.iter_mut() {
+            ui.group(|ui| {
+                ui.strong(module.title(ctx.lang));
+                module.ui(ui, &ctx);
+            });
+        }
     }
 }
 

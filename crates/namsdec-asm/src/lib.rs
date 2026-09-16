@@ -59,6 +59,13 @@ pub struct AssembleOutput {
     /// Les étiquettes du programme, triées par adresse : de quoi montrer
     /// « tampon+2 » là où le processeur ne voit que 0x401002.
     pub symbols: Vec<elf::Symbol>,
+    /// Le fichier ELF lui-même, tel que `ld` l'a écrit.
+    ///
+    /// L'image chargée (`bytes`) n'en garde que ce qui va en mémoire :
+    /// les en-têtes de programme, la table dynamique et les tables de
+    /// symboles n'y sont pas, et ce sont elles qui disent comment le
+    /// binaire est protégé.
+    pub file: Vec<u8>,
 }
 
 /// Une section chargeable, telle que l'appelant en a besoin.
@@ -211,7 +218,8 @@ pub fn assemble(source: &str, base_addr: u64) -> Result<AssembleOutput, AsmError
             }),
     );
 
-    let elf = elf::parse(&fs::read(&program_path)?).ok_or(AsmError::UnreadableProgram)?;
+    let file = fs::read(&program_path)?;
+    let elf = elf::parse(&file).ok_or(AsmError::UnreadableProgram)?;
     let (load_addr, bytes) = elf.image().ok_or(AsmError::UnreadableProgram)?;
 
     let listing = fs::read_to_string(&listing_path).unwrap_or_default();
@@ -235,6 +243,7 @@ pub fn assemble(source: &str, base_addr: u64) -> Result<AssembleOutput, AsmError
         diagnostics,
         line_to_addr,
         symbols: elf.symbols,
+        file,
     })
 }
 

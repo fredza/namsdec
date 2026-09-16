@@ -7,11 +7,14 @@
 
 mod binary_info;
 mod calls;
+pub mod elf_scan;
+mod protections;
 mod strings;
 mod syscalls;
 
 pub use binary_info::BinaryInfoModule;
 pub use calls::CallsModule;
+pub use protections::ProtectionsModule;
 pub use strings::StringsModule;
 pub use syscalls::SyscallsModule;
 
@@ -26,6 +29,14 @@ pub struct ReContext<'a> {
     pub cpu: &'a Cpu,
     pub disasm: &'a [DecodedInstruction],
     pub source: &'a str,
+    /// Le fichier tel qu'il est sur le disque — en-têtes ELF compris.
+    ///
+    /// L'image chargée en mémoire ne suffit pas à tout : les protections
+    /// d'un binaire se lisent dans ses en-têtes de programme et sa table
+    /// dynamique, qui ne sont projetées nulle part. Vide quand le
+    /// fichier d'origine n'est pas connu (un tampon brut désassemblé,
+    /// par exemple).
+    pub binary: &'a [u8],
     /// La langue de l'interface, en code ISO (« fr », « en »).
     ///
     /// Contrairement aux messages d'erreur, qu'une crate métier rend en

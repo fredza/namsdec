@@ -4305,3 +4305,61 @@ fn an_address_past_its_label_is_not_named() {
     assert_eq!(symbol_at(&symbols, 0x401010).as_deref(), Some("suite"));
     assert_eq!(symbol_at(&symbols, 0x401011), None);
 }
+
+/// La fenêtre d'analyse montre les protections du binaire assemblé :
+/// PIE, NX, RELRO, canari, segments — et ce que chacune change.
+#[test]
+fn the_analysis_window_reports_the_binary_protections() {
+    let mut app = NamsdecApp {
+        source: DEFAULT_SOURCE.to_owned(),
+        show_analysis: true,
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 1000.0),
+        )),
+        ..Default::default()
+    };
+    let mut painted = String::new();
+    for _ in 0..3 {
+        painted.clear();
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        for clipped in &output.shapes {
+            if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                painted.push_str(text.galley.text());
+                painted.push('|');
+            }
+        }
+        output.textures_delta.clear();
+    }
+
+    assert!(painted.contains("Protections du binaire"), "{painted}");
+    for attendu in [
+        "PIE",
+        "NX",
+        "RELRO",
+        "Canari de pile",
+        "Symboles",
+        "Segments",
+        "LOAD",
+    ] {
+        assert!(
+            painted.contains(attendu),
+            "« {attendu} » doit figurer dans l'analyse : {painted}"
+        );
+    }
+    // Et les verdicts doivent être ceux du vrai fichier, pas un texte
+    // fixe : `ld` sans `-pie`, sans bibliothèque, donne un exécutable à
+    // adresse fixe et lié statiquement.
+    assert!(
+        painted.contains("lié statiquement"),
+        "un programme sans bibliothèque est lié statiquement : {painted}"
+    );
+}

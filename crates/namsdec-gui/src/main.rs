@@ -24,7 +24,8 @@ use namsdec_disasm::DecodedInstruction;
 use namsdec_emu::{Backend, Emulator, RunStop, StepOverResult, StepResult};
 use namsdec_explorer::{ExplorerAction, FileExplorer};
 use namsdec_re::{
-    BinaryInfoModule, CallsModule, ReContext, ReModuleRegistry, StringsModule, SyscallsModule,
+    BinaryInfoModule, CallsModule, ProtectionsModule, ReContext, ReModuleRegistry, StringsModule,
+    SyscallsModule,
 };
 use namsdec_theme::Theme;
 
@@ -442,6 +443,9 @@ struct NamsdecApp {
     /// sa sortie, les diagnostics de nasm —, et une fiche d'instruction
     /// n'en fait pas partie.
     show_help: bool,
+    /// La fenêtre d'analyse du binaire — les modules de rétro-ingénierie
+    /// dans une fenêtre à eux, où ils ont la place de tout dire.
+    show_analysis: bool,
     /// Les séries chargées : celle livrée avec l'application, puis celles
     /// installées depuis le disque, dans l'ordre où on les a trouvées.
     exercise_packs: Vec<namsdec_exercises::Pack>,
@@ -593,6 +597,7 @@ enum PaletteCommand {
     /// Ouvrir la liste des exercices — seulement quand le module est
     /// chargé, sans quoi la commande n'est pas proposée.
     ShowExercises,
+    ShowAnalysis,
     SetTheme(&'static Theme),
     SetLang(Lang),
     SaveAs,
@@ -656,6 +661,7 @@ fn palette_commands(
             PaletteCommand::Do(Action::InstructionHelp),
         ),
         (s.help_about.to_string(), PaletteCommand::ShowAbout),
+        (s.analysis_open.to_string(), PaletteCommand::ShowAnalysis),
         (
             format!("{}: Français", s.preferences_language),
             PaletteCommand::SetLang(Lang::Fr),
@@ -774,10 +780,14 @@ boucle:
 impl Default for NamsdecApp {
     fn default() -> Self {
         let mut re_registry = ReModuleRegistry::new();
+        // Les protections d'abord : avant de lire ce que fait un binaire,
+        // on regarde comment il est armé — c'est ce qui décide de tout ce
+        // qu'on tentera ensuite.
+        re_registry.register(Box::new(ProtectionsModule::default()));
         re_registry.register(Box::new(BinaryInfoModule::default()));
-        // Dans l'ordre où l'on regarde un binaire inconnu : ce qu'il dit
-        // (ses chaînes), ce qu'il demande au système, puis comment il est
-        // découpé.
+        // Puis dans l'ordre où l'on regarde un binaire inconnu : ce qu'il
+        // dit (ses chaînes), ce qu'il demande au système, puis comment il
+        // est découpé.
         re_registry.register(Box::new(StringsModule::default()));
         re_registry.register(Box::new(SyscallsModule::default()));
         re_registry.register(Box::new(CallsModule::default()));
@@ -825,6 +835,7 @@ impl Default for NamsdecApp {
             exercises: false,
             show_exercises: false,
             show_help: false,
+            show_analysis: false,
             exercise_packs: vec![namsdec_exercises::builtin_pack()],
             exercise_files: BTreeMap::new(),
             pack_to_remove: None,
@@ -1199,6 +1210,7 @@ impl NamsdecApp {
             cpu: emulator.cpu(),
             disasm: &state.disasm,
             source: &self.source,
+            binary: &state.output.file,
             lang: self.lang.code(),
         };
         self.re_registry.on_binary_loaded(&ctx);
@@ -1248,6 +1260,7 @@ impl NamsdecApp {
             cpu: emulator.cpu(),
             disasm: &state.disasm,
             source: &self.source,
+            binary: &state.output.file,
             lang: self.lang.code(),
         };
         self.re_registry.on_step(&ctx);
@@ -1784,6 +1797,9 @@ impl NamsdecApp {
                 // adresses aussi bien ici que pour un programme qu'on
                 // vient d'assembler soi-même.
                 symbols: elf.symbols.clone(),
+                // Le fichier entier : l'analyse des protections se fait
+                // sur ses en-têtes, pas sur l'image chargée.
+                file: bytes.to_vec(),
             },
             disasm,
             addr_to_line,
@@ -1842,6 +1858,7 @@ impl NamsdecApp {
                 // Un binaire brut n'a pas de table de symboles : il n'a
                 // même pas d'en-tête.
                 symbols: Vec::new(),
+                file: Vec::new(),
             },
             disasm,
             addr_to_line,
@@ -1954,6 +1971,7 @@ impl NamsdecApp {
             PaletteCommand::ShowPreferences => self.open_preferences(),
             PaletteCommand::ShowAbout => self.show_about = true,
             PaletteCommand::ShowExercises => self.show_exercises = true,
+            PaletteCommand::ShowAnalysis => self.show_analysis = true,
             PaletteCommand::SetTheme(theme) => {
                 self.theme = theme;
                 self.apply_theme(ctx);
@@ -2277,6 +2295,16 @@ impl NamsdecApp {
                         ui.close();
                     }
                 });
+                ui.separator();
+                // L'analyse du binaire dans sa propre fenêtre : le
+                // panneau latéral est trop étroit et trop court pour une
+                // liste de protections, de segments et de chaînes — et
+                // l'onglet RE est masqué par défaut, donc invisible pour
+                // qui ne sait pas qu'il existe.
+                if ui.button(s.analysis_open).clicked() {
+                    self.show_analysis = true;
+                    ui.close();
+                }
                 // Le module des exercices n'existe pour l'interface que
                 // s'il a été demandé : sans cela, pas d'entrée, pas de
                 // fenêtre, rien.
@@ -3771,6 +3799,39 @@ impl NamsdecApp {
     /// oublie : une instruction qui n'en touche aucun n'est pas la même
     /// qu'une qui les écrase tous, et le saut qui suit ne lira pas la
     /// même chose.
+    /// La fenêtre d'analyse : tous les modules de rétro-ingénierie, avec
+    /// la place de s'exprimer.
+    ///
+    /// Les mêmes modules qu'à l'onglet RE, au même instant et sur le même
+    /// binaire — mais l'onglet fait trois cent quatre-vingts pixels de
+    /// large et cent cinquante de haut, ce qui suffit pour une liste de
+    /// registres et pas pour une carte de segments.
+    fn analysis_window_ui(&mut self, ctx: &egui::Context) {
+        if !self.show_analysis {
+            return;
+        }
+        let s = strings(self.lang);
+        let mut open = true;
+        egui::Window::new(s.analysis_title)
+            // Un identifiant explicite : le titre change avec la langue,
+            // et la fenêtre perdrait sa position en passant à l'anglais.
+            .id(egui::Id::new("analysis_window"))
+            .open(&mut open)
+            .resizable(true)
+            .collapsible(false)
+            .default_size([560.0, 640.0])
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(ctx.viewport_rect().center())
+            .show(ctx, |ui| {
+                ui.weak(s.analysis_hint);
+                ui.separator();
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| self.re_modules_ui(ui));
+            });
+        self.show_analysis = open;
+    }
+
     fn help_window_ui(&mut self, ctx: &egui::Context) {
         let s = strings(self.lang);
         let mut open = self.show_help;
@@ -4821,6 +4882,7 @@ impl NamsdecApp {
             self.preferences_window_ui(&ctx);
             self.about_window_ui(&ctx);
             self.help_window_ui(&ctx);
+            self.analysis_window_ui(&ctx);
             if self.exercises {
                 self.exercises_window_ui(&ctx);
             }

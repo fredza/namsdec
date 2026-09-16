@@ -1,0 +1,524 @@
+//! Ce qu'un ELF64 dit de lui-même : comment il sera chargé, et ce qui le
+//! protège.
+//!
+//! C'est la lecture qu'on fait d'un binaire qu'on n'a pas écrit — celle
+//! de `checksec`, `readelf -l`, `file`. Elle ne charge rien et n'exécute
+//! rien : elle relit les en-têtes, les segments, la table dynamique et
+//! les symboles, et en tire ce qui change la façon de l'attaquer ou de
+//! le défendre.
+//!
+//! Distincte de `namsdec_asm::elf`, qui lit le strict nécessaire pour
+//! charger *notre* sortie de `ld` en mémoire simulée. Ici les exigences
+//! sont inverses : on suppose un fichier hostile ou inconnu, rien n'est
+//! obligatoire, et chaque absence est elle-même une information.
+
+/// Ce que le fichier est.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Kind {
+    /// Un objet à lier (`.o`).
+    Relocatable,
+    /// Un exécutable à adresse fixe.
+    Executable,
+    /// Position-indépendant : exécutable PIE ou bibliothèque partagée.
+    Shared,
+    Core,
+    Other(u16),
+}
+
+/// L'état de la zone de données relogeables après le démarrage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Relro {
+    /// Rien n'est repassé en lecture seule.
+    None,
+    /// La zone existe, mais la table des sauts (`.got.plt`) reste
+    /// inscriptible : une écriture arbitraire peut encore la détourner.
+    Partial,
+    /// Toutes les relocations sont résolues au démarrage, puis la zone
+    /// passe en lecture seule.
+    Full,
+}
+
+/// Un segment tel que le noyau le projettera.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Segment {
+    pub kind: &'static str,
+    /// Où le segment commence dans le fichier : c'est par là qu'on
+    /// retrouve dans les octets ce que le programme verra à `vaddr`.
+    pub offset: u64,
+    pub vaddr: u64,
+    pub filesz: u64,
+    pub memsz: u64,
+    pub read: bool,
+    pub write: bool,
+    pub execute: bool,
+}
+
+impl Segment {
+    /// Les trois droits d'un coup : `r-x`, `rw-`.
+    pub fn rights(&self) -> String {
+        format!(
+            "{}{}{}",
+            if self.read { 'r' } else { '-' },
+            if self.write { 'w' } else { '-' },
+            if self.execute { 'x' } else { '-' }
+        )
+    }
+}
+
+/// Tout ce que l'en-tête et les tables racontent du binaire.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Scan {
+    pub class64: bool,
+    pub little_endian: bool,
+    pub kind: Kind,
+    pub machine: &'static str,
+    pub entry: u64,
+    /// L'interpréteur réclamé (`/lib64/ld-linux-x86-64.so.2`), s'il y en
+    /// a un. Son absence veut dire « lié statiquement ».
+    pub interpreter: Option<String>,
+    /// Le segment de pile est-il non exécutable ? `None` quand le
+    /// fichier n'en déclare pas — le noyau décide alors seul, et
+    /// historiquement il l'a rendue exécutable.
+    pub nx: Option<bool>,
+    pub relro: Relro,
+    /// Le programme vérifie-t-il un canari de pile au retour de ses
+    /// fonctions ?
+    pub canary: bool,
+    /// Les fonctions à bornes vérifiées (`__memcpy_chk`…) que le
+    /// compilateur a mises à la place des originales.
+    pub fortified: Vec<String>,
+    /// Aucune table de symboles : le binaire a été dépouillé.
+    pub stripped: bool,
+    /// Les bibliothèques réclamées au chargement.
+    pub needed: Vec<String>,
+    pub runpath: Option<String>,
+    pub rpath: Option<String>,
+    pub segments: Vec<Segment>,
+    /// Le nombre de symboles lisibles, toutes tables confondues.
+    pub symbol_count: usize,
+}
+
+impl Scan {
+    /// Le binaire est-il chargé à une adresse imposée par lui ?
+    ///
+    /// Un exécutable `DYN` est relogeable : le noyau le pose où il veut,
+    /// et les adresses changent à chaque exécution (ASLR). Un `EXEC` a
+    /// ses adresses écrites en dur — celles qu'on lit dans le
+    /// désassemblage sont celles qu'il aura.
+    pub fn pie(&self) -> bool {
+        self.kind == Kind::Shared
+    }
+
+    /// Un segment à la fois inscriptible et exécutable : de quoi écrire
+    /// du code puis sauter dedans, sans avoir à contourner quoi que ce
+    /// soit.
+    pub fn writable_executable(&self) -> Vec<&Segment> {
+        self.segments
+            .iter()
+            .filter(|s| s.write && s.execute)
+            .collect()
+    }
+
+    pub fn dynamic(&self) -> bool {
+        self.interpreter.is_some()
+    }
+}
+
+const PT_LOAD: u32 = 1;
+const PT_DYNAMIC: u32 = 2;
+const PT_INTERP: u32 = 3;
+const PT_NOTE: u32 = 4;
+const PT_PHDR: u32 = 6;
+const PT_TLS: u32 = 7;
+const PT_GNU_EH_FRAME: u32 = 0x6474_e550;
+const PT_GNU_STACK: u32 = 0x6474_e551;
+const PT_GNU_RELRO: u32 = 0x6474_e552;
+const PT_GNU_PROPERTY: u32 = 0x6474_e553;
+
+const DT_NULL: u64 = 0;
+const DT_NEEDED: u64 = 1;
+const DT_STRTAB: u64 = 5;
+const DT_BIND_NOW: u64 = 24;
+const DT_RPATH: u64 = 15;
+const DT_RUNPATH: u64 = 29;
+const DT_FLAGS: u64 = 30;
+const DT_FLAGS_1: u64 = 0x6fff_fffb;
+const DF_BIND_NOW: u64 = 0x8;
+const DF_1_NOW: u64 = 0x1;
+
+const SHT_SYMTAB: u32 = 2;
+const SHT_DYNSYM: u32 = 11;
+
+fn u16_at(bytes: &[u8], at: usize) -> Option<u16> {
+    Some(u16::from_le_bytes(bytes.get(at..at + 2)?.try_into().ok()?))
+}
+
+fn u32_at(bytes: &[u8], at: usize) -> Option<u32> {
+    Some(u32::from_le_bytes(bytes.get(at..at + 4)?.try_into().ok()?))
+}
+
+fn u64_at(bytes: &[u8], at: usize) -> Option<u64> {
+    Some(u64::from_le_bytes(bytes.get(at..at + 8)?.try_into().ok()?))
+}
+
+/// La chaîne terminée par zéro qui commence à `at`.
+fn string_at(bytes: &[u8], at: usize) -> Option<String> {
+    let rest = bytes.get(at..)?;
+    let end = rest.iter().position(|&b| b == 0)?;
+    Some(String::from_utf8_lossy(&rest[..end]).into_owned())
+}
+
+fn segment_kind(kind: u32) -> &'static str {
+    match kind {
+        PT_LOAD => "LOAD",
+        PT_DYNAMIC => "DYNAMIC",
+        PT_INTERP => "INTERP",
+        PT_NOTE => "NOTE",
+        PT_PHDR => "PHDR",
+        PT_TLS => "TLS",
+        PT_GNU_EH_FRAME => "GNU_EH_FRAME",
+        PT_GNU_STACK => "GNU_STACK",
+        PT_GNU_RELRO => "GNU_RELRO",
+        PT_GNU_PROPERTY => "GNU_PROPERTY",
+        _ => "?",
+    }
+}
+
+fn machine_name(machine: u16) -> &'static str {
+    match machine {
+        0x3e => "x86-64",
+        0x03 => "x86 (32 bits)",
+        0xb7 => "AArch64",
+        0x28 => "ARM",
+        0xf3 => "RISC-V",
+        _ => "?",
+    }
+}
+
+/// Lit le binaire. Rend `None` si ce n'est pas un ELF64 petit-boutiste —
+/// le seul format que namsdec exécute.
+pub fn scan(bytes: &[u8]) -> Option<Scan> {
+    if bytes.get(..4)? != b"\x7fELF" {
+        return None;
+    }
+    let class64 = *bytes.get(4)? == 2;
+    let little_endian = *bytes.get(5)? == 1;
+    if !class64 || !little_endian {
+        return None;
+    }
+
+    let kind = match u16_at(bytes, 0x10)? {
+        1 => Kind::Relocatable,
+        2 => Kind::Executable,
+        3 => Kind::Shared,
+        4 => Kind::Core,
+        other => Kind::Other(other),
+    };
+    let machine = machine_name(u16_at(bytes, 0x12)?);
+    let entry = u64_at(bytes, 0x18)?;
+
+    let phoff = u64_at(bytes, 0x20)? as usize;
+    let phentsize = u16_at(bytes, 0x36)? as usize;
+    let phnum = u16_at(bytes, 0x38)? as usize;
+
+    let mut segments = Vec::new();
+    let mut interpreter = None;
+    let mut nx = None;
+    let mut relro = Relro::None;
+    let mut dynamic_at = None;
+    for index in 0..phnum {
+        let header = phoff.checked_add(index.checked_mul(phentsize)?)?;
+        let Some(kind) = u32_at(bytes, header) else {
+            break;
+        };
+        let flags = u32_at(bytes, header + 0x04)?;
+        let offset = u64_at(bytes, header + 0x08)?;
+        let vaddr = u64_at(bytes, header + 0x10)?;
+        let filesz = u64_at(bytes, header + 0x20)?;
+        let memsz = u64_at(bytes, header + 0x28)?;
+        match kind {
+            PT_INTERP => {
+                interpreter = string_at(bytes, offset as usize);
+            }
+            // Les droits du segment de pile *sont* la réponse : le noyau
+            // donne à la pile ceux que le fichier demande ici.
+            PT_GNU_STACK => nx = Some(flags & 1 == 0),
+            PT_GNU_RELRO => relro = Relro::Partial,
+            PT_DYNAMIC => dynamic_at = Some((offset as usize, filesz as usize)),
+            _ => {}
+        }
+        segments.push(Segment {
+            kind: segment_kind(kind),
+            offset,
+            vaddr,
+            filesz,
+            memsz,
+            read: flags & 4 != 0,
+            write: flags & 2 != 0,
+            execute: flags & 1 != 0,
+        });
+    }
+
+    let mut needed = Vec::new();
+    let mut runpath = None;
+    let mut rpath = None;
+    if let Some((offset, size)) = dynamic_at {
+        let dyn_info = read_dynamic(bytes, offset, size, &segments);
+        needed = dyn_info.needed;
+        runpath = dyn_info.runpath;
+        rpath = dyn_info.rpath;
+        // La zone relogeable ne sert vraiment qu'une fois toutes les
+        // relocations faites au démarrage : sinon la table des sauts
+        // reste inscriptible, et c'est elle qu'on détourne.
+        if relro == Relro::Partial && dyn_info.bind_now {
+            relro = Relro::Full;
+        }
+    }
+
+    let symbols = read_symbols(bytes).unwrap_or_default();
+    let canary = symbols.iter().any(|name| name == "__stack_chk_fail");
+    let mut fortified: Vec<String> = symbols
+        .iter()
+        .filter(|name| name.ends_with("_chk") && *name != "__stack_chk_fail")
+        .cloned()
+        .collect();
+    fortified.sort();
+    fortified.dedup();
+
+    Some(Scan {
+        class64,
+        little_endian,
+        kind,
+        machine,
+        entry,
+        interpreter,
+        nx,
+        relro,
+        canary,
+        fortified,
+        stripped: !has_symtab(bytes).unwrap_or(false),
+        needed,
+        runpath,
+        rpath,
+        segments,
+        symbol_count: symbols.len(),
+    })
+}
+
+#[derive(Default)]
+struct Dynamic {
+    needed: Vec<String>,
+    runpath: Option<String>,
+    rpath: Option<String>,
+    bind_now: bool,
+}
+
+/// La table dynamique : ce que le chargeur devra faire avant de rendre la
+/// main au programme.
+fn read_dynamic(bytes: &[u8], offset: usize, size: usize, segments: &[Segment]) -> Dynamic {
+    let mut info = Dynamic::default();
+    let mut strtab = None;
+    let mut wanted: Vec<(u64, u64)> = Vec::new();
+    let mut at = offset;
+    while at + 16 <= offset + size {
+        let Some(tag) = u64_at(bytes, at) else { break };
+        let Some(value) = u64_at(bytes, at + 8) else {
+            break;
+        };
+        at += 16;
+        if tag == DT_NULL {
+            break;
+        }
+        match tag {
+            DT_STRTAB => strtab = Some(value),
+            DT_BIND_NOW => info.bind_now = true,
+            DT_FLAGS if value & DF_BIND_NOW != 0 => info.bind_now = true,
+            DT_FLAGS_1 if value & DF_1_NOW != 0 => info.bind_now = true,
+            DT_NEEDED | DT_RUNPATH | DT_RPATH => wanted.push((tag, value)),
+            _ => {}
+        }
+    }
+    // Les noms sont des décalages dans une table qu'on ne connaît que
+    // par son adresse virtuelle : il faut la retrouver dans le fichier.
+    let Some(strtab) = strtab.and_then(|addr| file_offset(addr, segments)) else {
+        return info;
+    };
+    for (tag, value) in wanted {
+        let Some(text) = string_at(bytes, strtab + value as usize) else {
+            continue;
+        };
+        match tag {
+            DT_NEEDED => info.needed.push(text),
+            DT_RUNPATH => info.runpath = Some(text),
+            DT_RPATH => info.rpath = Some(text),
+            _ => {}
+        }
+    }
+    info
+}
+
+/// L'adresse virtuelle `addr`, ramenée à sa place dans le fichier.
+fn file_offset(addr: u64, segments: &[Segment]) -> Option<usize> {
+    // Les segments gardent leur `vaddr` et leur taille ; le décalage
+    // fichier se retrouve en cherchant le LOAD qui contient l'adresse.
+    // On refait le calcul à partir de `p_offset`, conservé implicitement
+    // par la différence vaddr - offset, constante dans un LOAD.
+    segments
+        .iter()
+        .find(|s| s.kind == "LOAD" && addr >= s.vaddr && addr < s.vaddr + s.filesz)
+        .map(|s| (addr - s.vaddr + s.offset) as usize)
+}
+
+/// Les noms de toutes les tables de symboles présentes — `.symtab` quand
+/// le binaire n'est pas dépouillé, `.dynsym` toujours pour un binaire
+/// dynamique.
+fn read_symbols(bytes: &[u8]) -> Option<Vec<String>> {
+    let shoff = u64_at(bytes, 0x28)? as usize;
+    let shentsize = u16_at(bytes, 0x3a)? as usize;
+    let shnum = u16_at(bytes, 0x3c)? as usize;
+    let mut names = Vec::new();
+    for index in 0..shnum {
+        let header = shoff.checked_add(index.checked_mul(shentsize)?)?;
+        let kind = u32_at(bytes, header + 0x04)?;
+        if kind != SHT_SYMTAB && kind != SHT_DYNSYM {
+            continue;
+        }
+        let strtab = u32_at(bytes, header + 0x28)? as usize;
+        let strtab_header = shoff.checked_add(strtab.checked_mul(shentsize)?)?;
+        let str_offset = u64_at(bytes, strtab_header + 0x18)? as usize;
+        let offset = u64_at(bytes, header + 0x18)? as usize;
+        let size = u64_at(bytes, header + 0x20)? as usize;
+        let entry_size = u64_at(bytes, header + 0x38)? as usize;
+        if entry_size == 0 {
+            continue;
+        }
+        for at in (offset..offset.checked_add(size)?).step_by(entry_size) {
+            let Some(name_offset) = u32_at(bytes, at) else {
+                break;
+            };
+            if let Some(name) = string_at(bytes, str_offset + name_offset as usize)
+                && !name.is_empty()
+            {
+                names.push(name);
+            }
+        }
+    }
+    Some(names)
+}
+
+fn has_symtab(bytes: &[u8]) -> Option<bool> {
+    let shoff = u64_at(bytes, 0x28)? as usize;
+    let shentsize = u16_at(bytes, 0x3a)? as usize;
+    let shnum = u16_at(bytes, 0x3c)? as usize;
+    for index in 0..shnum {
+        let header = shoff.checked_add(index.checked_mul(shentsize)?)?;
+        if u32_at(bytes, header + 0x04)? == SHT_SYMTAB {
+            return Some(true);
+        }
+    }
+    Some(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// L'ELF que `ld` produit pour un programme d'apprentissage : pas de
+    /// PIE, pas de bibliothèque, pas de canari — et c'est exactement ce
+    /// qu'on veut lire à l'écran plutôt que de le supposer.
+    #[test]
+    fn a_hand_written_program_shows_what_it_has_and_what_it_lacks() {
+        let Ok(elf) = build("global _start\nsection .text\n_start:\n    hlt\n") else {
+            eprintln!("nasm ou ld absent : test ignoré");
+            return;
+        };
+        let scan = scan(&elf).expect("un ELF64 produit par ld");
+        assert_eq!(scan.kind, Kind::Executable);
+        assert_eq!(scan.machine, "x86-64");
+        assert!(
+            !scan.pie(),
+            "ld sans -pie donne un exécutable à adresse fixe"
+        );
+        assert!(!scan.dynamic(), "rien à charger : pas d'interpréteur");
+        assert!(scan.needed.is_empty());
+        assert!(!scan.canary, "personne n'a posé de canari ici");
+        assert!(!scan.stripped, "les étiquettes du source sont encore là");
+        assert!(
+            scan.segments.iter().any(|s| s.kind == "LOAD" && s.execute),
+            "il faut bien un segment de code : {:?}",
+            scan.segments
+        );
+    }
+
+    /// Le système en a de vrais sous la main : `/bin/ls` est compilé avec
+    /// tout ce qu'une distribution active aujourd'hui.
+    #[test]
+    fn a_system_binary_shows_its_hardening() {
+        let Ok(bytes) = std::fs::read("/bin/ls") else {
+            eprintln!("/bin/ls introuvable : test ignoré");
+            return;
+        };
+        let Some(scan) = scan(&bytes) else {
+            eprintln!("/bin/ls n'est pas un ELF64 ici : test ignoré");
+            return;
+        };
+        assert!(scan.pie(), "les distributions compilent /bin/ls en PIE");
+        assert!(scan.dynamic(), "et le lient dynamiquement");
+        assert!(
+            scan.needed.iter().any(|lib| lib.starts_with("libc.")),
+            "il réclame la libc : {:?}",
+            scan.needed
+        );
+        assert_eq!(scan.nx, Some(true), "pile non exécutable");
+        assert_eq!(scan.relro, Relro::Full, "RELRO complet");
+        assert!(
+            scan.writable_executable().is_empty(),
+            "aucun segment W+X dans un binaire de distribution"
+        );
+    }
+
+    /// Ce qui n'est pas un ELF64 est refusé net, plutôt que lu de
+    /// travers : un binaire brut désassemblé n'a pas d'en-tête du tout.
+    #[test]
+    fn anything_else_is_refused() {
+        assert!(scan(b"").is_none());
+        assert!(scan(b"MZ\x90\x00").is_none(), "un exécutable Windows");
+        // Un ELF32 : bon nombre magique, mauvaise classe.
+        let mut elf32 = b"\x7fELF".to_vec();
+        elf32.push(1);
+        elf32.extend(std::iter::repeat_n(0u8, 60));
+        assert!(scan(&elf32).is_none());
+    }
+
+    /// Assemble et lie un programme, et rend le fichier ELF.
+    fn build(source: &str) -> Result<Vec<u8>, ()> {
+        use std::process::Command;
+        let dir = std::env::temp_dir().join(format!("namsdec-scan-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).map_err(|_| ())?;
+        let asm = dir.join("p.asm");
+        let obj = dir.join("p.o");
+        let bin = dir.join("p");
+        std::fs::write(&asm, source).map_err(|_| ())?;
+        let nasm = Command::new("nasm")
+            .args(["-f", "elf64", "-o"])
+            .arg(&obj)
+            .arg(&asm)
+            .status()
+            .map_err(|_| ())?;
+        if !nasm.success() {
+            return Err(());
+        }
+        let ld = Command::new("ld")
+            .arg("-o")
+            .arg(&bin)
+            .arg(&obj)
+            .status()
+            .map_err(|_| ())?;
+        if !ld.success() {
+            return Err(());
+        }
+        let bytes = std::fs::read(&bin).map_err(|_| ())?;
+        let _ = std::fs::remove_dir_all(&dir);
+        Ok(bytes)
+    }
+}

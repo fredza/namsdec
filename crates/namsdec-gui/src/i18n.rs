@@ -119,6 +119,9 @@ pub struct Strings {
     /// Titre du bandeau fixe du panneau latéral (registres + flags).
     pub cpu_state: &'static str,
     /// Le bandeau qui résout l'instruction sur le point de s'exécuter.
+    pub analysis_open: &'static str,
+    pub analysis_title: &'static str,
+    pub analysis_hint: &'static str,
     pub next_instruction: &'static str,
     pub next_instruction_done: &'static str,
     /// Le repli qui montre les seize registres vectoriels.
@@ -361,6 +364,9 @@ const FR: Strings = Strings {
     action_run_to_cursor: "Exécuter jusqu'au curseur",
     tab_re: "RE",
     cpu_state: "État du processeur",
+    analysis_open: "Analyse du binaire…",
+    analysis_title: "Analyse du binaire",
+    analysis_hint: "Ce que le fichier dit de lui-même : ses protections, ses chaînes, ses appels système.",
     next_instruction: "Prochaine instruction",
     next_instruction_done: "Le programme est terminé.",
     sse_registers: "Registres vectoriels (SSE et AVX)",
@@ -578,6 +584,9 @@ const EN: Strings = Strings {
     action_run_to_cursor: "Run to cursor",
     tab_re: "RE",
     cpu_state: "CPU state",
+    analysis_open: "Analyse the binary…",
+    analysis_title: "Binary analysis",
+    analysis_hint: "What the file says about itself: its protections, its strings, its system calls.",
     next_instruction: "Next instruction",
     next_instruction_done: "The program has finished.",
     sse_registers: "Vector registers (SSE and AVX)",

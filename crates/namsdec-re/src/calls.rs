@@ -141,6 +141,7 @@ mod tests {
             cpu: &cpu,
             disasm: &disasm,
             source: "",
+            binary: &[],
             lang: "en",
         };
         let mut module = CallsModule::default();

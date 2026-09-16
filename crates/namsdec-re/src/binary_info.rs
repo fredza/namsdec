@@ -64,6 +64,7 @@ mod tests {
             cpu: &cpu,
             disasm: &disasm,
             source: "",
+            binary: &[],
             lang: "fr",
         };
 

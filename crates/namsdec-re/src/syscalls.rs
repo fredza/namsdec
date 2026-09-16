@@ -195,6 +195,7 @@ mod tests {
             cpu: &cpu,
             disasm: &disasm,
             source: "",
+            binary: &[],
             lang: "fr",
         };
         let mut module = SyscallsModule::default();
@@ -219,6 +220,7 @@ mod tests {
             cpu: &cpu,
             disasm: &disasm,
             source: "",
+            binary: &[],
             lang: "fr",
         };
         let mut module = SyscallsModule::default();
