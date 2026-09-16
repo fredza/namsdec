@@ -3731,3 +3731,100 @@ fn clicking_a_diagnostic_moves_the_cursor_to_its_line() {
     // « global _start\n » = 14 caractères, « section .text\n » = 14.
     assert_eq!(curseur, 28, "le curseur est au début de la ligne 3");
 }
+
+/// Les octets qui viennent de changer ressortent dans le vidage, comme un
+/// registre dans le bandeau : c'est ce qui répond à « qu'est-ce que cette
+/// instruction a écrit ? » sans relire seize octets un à un.
+#[test]
+fn the_memory_dump_highlights_what_just_changed() {
+    let ctx = egui::Context::default();
+    let theme = namsdec_theme::by_id("vscode-dark");
+    let mut job = None;
+    let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+        let avant = [0u8; 8];
+        let maintenant = [0u8, 0, 0x42, 0, 0, 0, 0, 0];
+        job = Some(hexdump_job(ui, theme, &maintenant, 0x400000, Some(&avant)));
+    });
+    output.textures_delta.clear();
+    let job = job.expect("un vidage");
+
+    // Le troisième octet, et lui seul, porte la couleur du changement —
+    // deux fois : en hexadécimal et dans la colonne de texte.
+    let changés: Vec<&str> = job
+        .sections
+        .iter()
+        .filter(|section| section.format.color == theme.changed)
+        .map(|section| &job.text[section.byte_range.start.0..section.byte_range.end.0])
+        .collect();
+    assert_eq!(changés, ["42 ", "B"], "obtenu {changés:?}");
+
+    // Sans point de comparaison — au chargement, avant le premier pas —
+    // rien n'est mis en avant.
+    let mut job = None;
+    let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+        job = Some(hexdump_job(ui, theme, &[0u8, 0, 0x42], 0x400000, None));
+    });
+    output.textures_delta.clear();
+    assert!(
+        job.expect("un vidage")
+            .sections
+            .iter()
+            .all(|section| section.format.color != theme.changed)
+    );
+}
+
+/// « Exécuter jusqu'ici » : le curseur sur une ligne, et l'on y va — sans
+/// poser un point d'arrêt puis penser à le retirer.
+#[test]
+fn run_to_cursor_stops_there_and_leaves_no_breakpoint_behind() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: "global _start\nsection .text\n_start:\n\
+             \x20   mov rax, 1\n    mov rbx, 2\n\
+             \x20   ; un commentaire, qui ne produit rien\n\
+             \x20   mov rcx, 3\n    hlt\n"
+            .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+
+    // Le curseur sur la ligne du commentaire : « aller là » veut dire
+    // « aller à ce qui suit », sinon la commande ne ferait rien.
+    app.cursor_pos = (6, 1);
+    app.dispatch(Action::RunToCursor);
+    let ctx = egui::Context::default();
+    for _ in 0..10 {
+        app.tick_run(&ctx);
+    }
+
+    let emu = app.emulator.as_ref().expect("un émulateur");
+    assert_eq!(
+        emu.cpu().regs.get64(Reg64::Rbx),
+        2,
+        "les deux premières instructions ont tourné"
+    );
+    assert_eq!(
+        emu.cpu().regs.get64(Reg64::Rcx),
+        0,
+        "et l'on s'est arrêté avant la troisième"
+    );
+    assert!(
+        matches!(app.status, Status::Breakpoint(_)),
+        "{:?}",
+        app.status
+    );
+
+    // Le point d'arrêt du voyage n'a pas survécu : relancer va au bout.
+    assert!(app.run_to.is_none());
+    assert!(
+        app.breakpoint_lines.is_empty(),
+        "aucun point d'arrêt n'appartient à l'utilisateur"
+    );
+    app.do_run();
+    for _ in 0..10 {
+        app.tick_run(&ctx);
+    }
+    assert!(matches!(app.status, Status::Halted), "{:?}", app.status);
+}

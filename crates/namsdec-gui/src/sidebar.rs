@@ -776,6 +776,18 @@ impl NamsdecApp {
         // de se faire refuser un accès, et non seulement une punition.
         let mem = &emulator.cpu().mem;
         let quartier = region_line(s, mem, self.mem_addr);
+        // En octets, le vidage est mis en forme ici pour pouvoir colorer
+        // ce qui vient de changer ; les deux autres formats restent du
+        // texte simple.
+        let coloré = (self.memory_format == MemoryFormat::Bytes)
+            .then(|| {
+                let taille =
+                    (mem.range().end.saturating_sub(self.mem_addr) as usize).min(MEMORY_WINDOW);
+                mem.peek_bytes(self.mem_addr, taille).ok().map(|bytes| {
+                    hexdump_job(ui, theme, bytes, self.mem_addr, self.mem_before.as_deref())
+                })
+            })
+            .flatten();
         let dump = read_memory(
             mem,
             self.mem_addr,
@@ -789,7 +801,17 @@ impl NamsdecApp {
             .collect();
         self.watchpoints_ui(ui, &watched);
         ui.colored_label(theme.dim, quartier);
-        hexdump_ui(ui, "memory_dump", &dump);
+        match coloré {
+            Some(job) => {
+                egui::ScrollArea::both()
+                    .id_salt("memory_dump")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        ui.add(egui::Label::new(job).wrap_mode(egui::TextWrapMode::Extend));
+                    });
+            }
+            None => hexdump_ui(ui, "memory_dump", &dump),
+        }
 
         // Poser la zone en dernier : `sync_watchpoints` emprunte
         // l'émulateur en écriture, et il est lu jusqu'ici.
@@ -1062,6 +1084,77 @@ pub(crate) fn safe_hexdump(
         Ok(bytes) => hexdump(bytes, addr),
         Err(_) => out_of_range.to_string(),
     }
+}
+
+/// Le même vidage, mais en couleur : les octets qui ont changé depuis le
+/// pas précédent ressortent.
+///
+/// C'est le tour qui marche le mieux sur les registres — voir d'un coup
+/// d'œil ce que la dernière instruction a fait —, et la mémoire n'avait
+/// pas de raison d'y échapper. Sans lui, on relit seize octets en
+/// cherchant lequel a bougé.
+pub(crate) fn hexdump_job(
+    ui: &egui::Ui,
+    theme: &'static Theme,
+    bytes: &[u8],
+    base_addr: u64,
+    before: Option<&[u8]>,
+) -> egui::text::LayoutJob {
+    let font = egui::TextStyle::Monospace.resolve(ui.style());
+    let plain = egui::TextFormat {
+        font_id: font.clone(),
+        color: ui.visuals().text_color(),
+        ..Default::default()
+    };
+    let dim = egui::TextFormat {
+        color: theme.dim,
+        ..plain.clone()
+    };
+    let changed = egui::TextFormat {
+        color: theme.changed,
+        ..plain.clone()
+    };
+    let mut job = egui::text::LayoutJob::default();
+    let a_changé = |index: usize, byte: u8| -> bool {
+        before.is_some_and(|b| b.get(index).is_some_and(|old| *old != byte))
+    };
+
+    for (line, chunk) in bytes.chunks(16).enumerate() {
+        let start = line * 16;
+        job.append(
+            &format!("{:08x}  ", base_addr + start as u64),
+            0.0,
+            dim.clone(),
+        );
+        for (i, byte) in chunk.iter().enumerate() {
+            let format = if a_changé(start + i, *byte) {
+                changed.clone()
+            } else {
+                plain.clone()
+            };
+            job.append(&format!("{byte:02x} "), 0.0, format);
+        }
+        // Les lignes incomplètes gardent la colonne de texte alignée.
+        for _ in chunk.len()..16 {
+            job.append("   ", 0.0, plain.clone());
+        }
+        job.append(" ", 0.0, plain.clone());
+        for (i, byte) in chunk.iter().enumerate() {
+            let lisible = if (0x20..0x7f).contains(byte) {
+                *byte as char
+            } else {
+                '.'
+            };
+            let format = if a_changé(start + i, *byte) {
+                changed.clone()
+            } else {
+                dim.clone()
+            };
+            job.append(&lisible.to_string(), 0.0, format);
+        }
+        job.append("\n", 0.0, plain.clone());
+    }
+    job
 }
 
 pub(crate) fn hexdump(bytes: &[u8], base_addr: u64) -> String {

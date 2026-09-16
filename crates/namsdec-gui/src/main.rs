@@ -43,6 +43,9 @@ const STACK_TOP: u64 = BASE_ADDR + MEM_SIZE as u64 - 0x100;
 /// l'onglet Mémoire qui prend le relais — avec son champ d'adresse, qui
 /// sait aller n'importe où.
 const HEAP_DUMP_BYTES: usize = 256;
+/// Combien d'octets l'onglet Mémoire montre d'un coup — et donc combien
+/// on garde d'un pas à l'autre pour savoir lesquels ont changé.
+const MEMORY_WINDOW: usize = 128;
 /// La place réservée, à droite de la barre de statut, aux trois
 /// compartiments qui s'y rangent : la version de nasm, la position du
 /// curseur, et la ligne où l'exécution est arrêtée.
@@ -338,6 +341,9 @@ struct NamsdecApp {
     /// fait *voir* ce qu'une instruction fait, et gdb lui-même laisse
     /// l'utilisateur comparer de tête.
     regs_before: Option<namsdec_core::Registers>,
+    /// Les octets de la fenêtre mémoire avant le dernier pas, pour
+    /// mettre en avant ceux qui ont changé.
+    mem_before: Option<Vec<u8>>,
     re_registry: ReModuleRegistry,
     status: Status,
     diagnostics: Vec<Diagnostic>,
@@ -351,6 +357,11 @@ struct NamsdecApp {
     /// Comment l'onglet Mémoire lit les octets. Réglage utilisateur, donc
     /// enregistré dans `settings.json`.
     memory_format: MemoryFormat,
+    /// L'adresse où s'arrêter pour un « exécuter jusqu'ici » : un point
+    /// d'arrêt posé le temps d'une course, et retiré dès qu'elle
+    /// s'achève. Il n'appartient pas à l'utilisateur, il ne doit donc pas
+    /// survivre à ce qu'il a servi à faire.
+    run_to: Option<u64>,
     /// La ligne où poser le curseur au prochain rendu de l'éditeur :
     /// cliquer un diagnostic doit y mener, sans quoi lire le message et
     /// retrouver l'endroit restent deux gestes.
@@ -763,6 +774,7 @@ impl Default for NamsdecApp {
             assemble_state: None,
             emulator: None,
             regs_before: None,
+            mem_before: None,
             re_registry,
             status: Status::Idle,
             diagnostics: Vec::new(),
@@ -772,6 +784,7 @@ impl Default for NamsdecApp {
             mem_addr: BASE_ADDR,
             memory_format: MemoryFormat::Bytes,
             watchpoints: Vec::new(),
+            run_to: None,
             goto_line: None,
             follow_rip: false,
             watched_registers: BTreeSet::new(),
@@ -1083,6 +1096,14 @@ impl NamsdecApp {
 
     fn remember_registers(&mut self) {
         self.regs_before = self.emulator.as_ref().map(|e| e.cpu().regs.clone());
+        // Et la fenêtre mémoire qu'on regarde : mettre en avant ce qui a
+        // changé vaut pour elle autant que pour les registres, et cent
+        // vingt-huit octets copiés à chaque pas ne coûtent rien.
+        self.mem_before = self
+            .emulator
+            .as_ref()
+            .and_then(|e| e.cpu().mem.peek_bytes(self.mem_addr, MEMORY_WINDOW).ok())
+            .map(<[u8]>::to_vec);
     }
 
     fn rebuild_emulator(&mut self) {
@@ -1141,6 +1162,7 @@ impl NamsdecApp {
         // Un programme qui vient d'être chargé n'a pas de passé : rien à
         // mettre en avant tant qu'il n'a pas avancé d'un pas.
         self.regs_before = None;
+        self.mem_before = None;
         let mut emulator = Emulator::new(cpu);
         // Le tas commence après l'image du programme et monte vers la
         // pile : c'est la disposition d'un vrai processus, et c'est elle
@@ -1254,9 +1276,47 @@ impl NamsdecApp {
         self.status = Status::Running;
     }
 
+    /// Exécute jusqu'à la ligne du curseur.
+    ///
+    /// Un point d'arrêt pour un seul voyage : le geste qu'on fait vingt
+    /// fois par heure en apprenant — « va jusque-là et montre-moi » —
+    /// demandait jusqu'ici de poser un point, de courir, puis de penser à
+    /// le retirer.
+    fn do_run_to_cursor(&mut self) {
+        let Some(state) = &self.assemble_state else {
+            return;
+        };
+        // La ligne du curseur, ou la première en dessous qui produise du
+        // code : on pose souvent le curseur sur une ligne vide ou sur un
+        // commentaire, et « aller là » veut alors dire « aller à ce qui
+        // suit ».
+        let from = self.cursor_pos.0 as u32;
+        let Some((_, &addr)) = state.output.line_to_addr.range(from..).next() else {
+            return;
+        };
+        let mut points = self
+            .breakpoint_lines
+            .iter()
+            .filter_map(|l| state.output.line_to_addr.get(l).copied())
+            .collect::<BTreeSet<u64>>();
+        points.insert(addr);
+        if let Some(emulator) = &mut self.emulator {
+            emulator.set_breakpoints(points);
+        }
+        self.run_to = Some(addr);
+        self.do_run();
+    }
+
     /// À appeler une fois par frame. N'avance que si un Run est en cours.
     fn tick_run(&mut self, ctx: &egui::Context) {
         if !self.running {
+            // La course finie, le point d'arrêt d'un seul voyage s'en va
+            // avec elle : il n'appartient pas à l'utilisateur, et le
+            // laisser là ferait s'arrêter la course suivante à un endroit
+            // que personne n'a demandé.
+            if self.run_to.take().is_some() {
+                self.sync_breakpoints();
+            }
             return;
         }
         let Some(emulator) = &mut self.emulator else {
@@ -1348,6 +1408,7 @@ impl NamsdecApp {
             // Rien à défaire : on le dit plutôt que de ne rien faire.
             self.status = Status::NothingToUndo;
             self.regs_before = None;
+            self.mem_before = None;
         }
     }
 
@@ -1441,6 +1502,7 @@ impl NamsdecApp {
             Action::OpenFile => self.do_open_file_dialog(),
             Action::OpenFolder => self.do_open_folder(),
             Action::InstructionHelp => self.do_instruction_help(),
+            Action::RunToCursor => self.do_run_to_cursor(),
         }
     }
 
@@ -2117,6 +2179,18 @@ impl NamsdecApp {
                     }
                     if ui.button(s.action_run).clicked() {
                         self.dispatch(Action::Run);
+                        ui.close();
+                    }
+                    if ui
+                        .button(shortcut_hint(
+                            &self.keybindings,
+                            &ui.ctx().clone(),
+                            s.action_run_to_cursor,
+                            Action::RunToCursor,
+                        ))
+                        .clicked()
+                    {
+                        self.dispatch(Action::RunToCursor);
                         ui.close();
                     }
                     ui.add_enabled_ui(self.running, |ui| {
@@ -4021,6 +4095,7 @@ fn action_label(s: &Strings, action: Action) -> &'static str {
         Action::OpenFile => s.file_open_file,
         Action::OpenFolder => s.file_open_folder,
         Action::InstructionHelp => s.action_instruction_help,
+        Action::RunToCursor => s.action_run_to_cursor,
     }
 }
 

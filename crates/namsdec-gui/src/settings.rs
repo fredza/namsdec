@@ -249,6 +249,7 @@ fn action_id(action: Action) -> &'static str {
         Action::OpenFile => "open_file",
         Action::OpenFolder => "open_folder",
         Action::InstructionHelp => "instruction_help",
+        Action::RunToCursor => "run_to_cursor",
     }
 }
 

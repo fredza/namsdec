@@ -114,6 +114,7 @@ pub struct Strings {
     pub help_kind_directive: &'static str,
     pub help_kind_preprocessor: &'static str,
     pub action_instruction_help: &'static str,
+    pub action_run_to_cursor: &'static str,
     pub tab_re: &'static str,
     /// Titre du bandeau fixe du panneau latéral (registres + flags).
     pub cpu_state: &'static str,
@@ -354,6 +355,7 @@ const FR: Strings = Strings {
     help_kind_directive: "Directive de NASM : elle ne s'exécute pas, elle décide de ce qui sera écrit.",
     help_kind_preprocessor: "Préprocesseur : remplacé avant l'assemblage, il n'en reste rien à l'exécution.",
     action_instruction_help: "Aide sur l'instruction",
+    action_run_to_cursor: "Exécuter jusqu'au curseur",
     tab_re: "RE",
     cpu_state: "État du processeur",
     sse_registers: "Registres vectoriels (SSE et AVX)",
@@ -568,6 +570,7 @@ const EN: Strings = Strings {
     help_kind_directive: "A NASM directive: it does not execute, it decides what gets written.",
     help_kind_preprocessor: "Preprocessor: replaced before assembly, nothing of it is left at run time.",
     action_instruction_help: "Instruction help",
+    action_run_to_cursor: "Run to cursor",
     tab_re: "RE",
     cpu_state: "CPU state",
     sse_registers: "Vector registers (SSE and AVX)",

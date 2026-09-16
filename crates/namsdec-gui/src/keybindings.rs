@@ -31,10 +31,12 @@ pub enum Action {
     OpenFolder,
     /// Ouvrir la fiche de l'instruction sous le curseur.
     InstructionHelp,
+    /// Exécuter jusqu'à la ligne où se trouve le curseur.
+    RunToCursor,
 }
 
 impl Action {
-    pub const ALL: [Action; 12] = [
+    pub const ALL: [Action; 13] = [
         Action::ToggleExplorer,
         Action::Assemble,
         Action::Run,
@@ -47,6 +49,7 @@ impl Action {
         Action::OpenFile,
         Action::OpenFolder,
         Action::InstructionHelp,
+        Action::RunToCursor,
     ];
 }
 
@@ -213,6 +216,12 @@ impl Default for KeyBindings {
         map.insert(
             Action::InstructionHelp,
             Chord::Simple(KeyboardShortcut::new(Modifiers::NONE, Key::F1)),
+        );
+        // « Exécuter jusqu'ici » : on pose le curseur sur une ligne et
+        // l'on y va, sans poser puis retirer un point d'arrêt.
+        map.insert(
+            Action::RunToCursor,
+            Chord::Simple(KeyboardShortcut::new(Modifiers::CTRL, Key::F10)),
         );
         map.insert(Action::ToggleExplorer, Chord::leader(&[Key::Space, Key::E]));
         Self { map }
