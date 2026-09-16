@@ -2839,3 +2839,32 @@ fn a_file_that_is_not_a_pack_is_refused_in_plain_words() {
     );
     assert!(!data.join("namsdec/exercises").exists(), "rien n'est copié");
 }
+
+/// Les réglages ne s'écrivent que si on a dit où. C'est ce qui empêche
+/// un test — qui dessine l'application, laquelle sauvegarde à chaque
+/// frame — d'écraser le fichier de l'utilisateur avec les valeurs par
+/// défaut d'une application neuve. C'est arrivé.
+#[test]
+fn an_application_that_was_not_told_where_to_write_writes_nowhere() {
+    let app = NamsdecApp::default();
+    assert!(
+        app.settings_file.is_none(),
+        "une application de test n'écrit nulle part"
+    );
+
+    // Dessinée, elle ne doit toucher à aucun fichier.
+    let dir = tempfile::tempdir().expect("un dossier temporaire");
+    let path = dir.path().join("settings.json");
+    let mut app = NamsdecApp::default();
+    let ctx = egui::Context::default();
+    let mut output = ctx.run_ui(egui::RawInput::default(), |ui| app.draw(ui));
+    output.textures_delta.clear();
+    assert!(!path.exists());
+
+    // Le chemin donné, en revanche, le changement part sur le disque.
+    app.settings_file = Some(path.clone());
+    app.show_toolbar = !app.show_toolbar;
+    app.persist_settings_if_changed();
+    let written = Settings::load_from(&path);
+    assert_eq!(written.show_toolbar, app.show_toolbar);
+}

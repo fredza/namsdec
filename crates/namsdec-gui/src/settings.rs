@@ -152,13 +152,6 @@ impl Settings {
         settings_path().map(Self::load_from).unwrap_or_default()
     }
 
-    /// Écrit le fichier, en créant `~/.config/namsdec` au besoin.
-    pub fn save(&self) -> std::io::Result<()> {
-        let path = settings_path()
-            .ok_or_else(|| std::io::Error::other("aucun dossier de configuration utilisable"))?;
-        self.save_to(&path)
-    }
-
     /// Le chemin est un paramètre plutôt qu'une constante interne : c'est
     /// ce qui rend l'aller-retour testable sans toucher aux variables
     /// d'environnement du processus (`set_var` n'est pas sûr entre

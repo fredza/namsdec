@@ -412,6 +412,14 @@ struct NamsdecApp {
     exercise_files: BTreeMap<String, PathBuf>,
     /// La série qu'on s'apprête à retirer, en attente de confirmation.
     pack_to_remove: Option<String>,
+    /// Où écrire les réglages, ou `None` pour ne les écrire nulle part.
+    ///
+    /// `None` est le défaut, et c'est délibéré : les réglages se
+    /// sauvegardent à chaque frame, et un test qui dessine l'application
+    /// écrasait donc le fichier de l'utilisateur — avec les valeurs par
+    /// défaut, puisqu'un test part d'une application neuve. Seul le
+    /// lancement réel donne ce chemin.
+    settings_file: Option<PathBuf>,
     /// Le bandeau d'état est-il déployé ? Vrai à chaque lancement, et
     /// **hors de `settings.json`** comme `show_re_tab` : egui garde
     /// normalement l'état des en-têtes repliables d'une session à
@@ -747,6 +755,7 @@ impl Default for NamsdecApp {
             exercise_packs: vec![namsdec_exercises::builtin_pack()],
             exercise_files: BTreeMap::new(),
             pack_to_remove: None,
+            settings_file: None,
             cpu_state_open: true,
             console_input: String::new(),
             resume_run_after_input: false,
@@ -843,7 +852,10 @@ impl NamsdecApp {
     /// ne doit pas écrire sur le disque, sinon les tests qui la
     /// construisent écraseraient la configuration de la machine.
     fn save_settings_now(&mut self) {
-        if let Err(e) = self.saved_settings.save() {
+        let Some(path) = self.settings_file.clone() else {
+            return;
+        };
+        if let Err(e) = self.saved_settings.save_to(&path) {
             self.status = Status::Error(if self.lang == Lang::Fr {
                 format!("impossible d'enregistrer les réglages : {e}")
             } else {
@@ -886,11 +898,14 @@ impl NamsdecApp {
     /// écriture qui échoue est signalée une seule fois (l'instantané est
     /// mis à jour quoi qu'il arrive) plutôt que retentée à chaque frame.
     fn persist_settings_if_changed(&mut self) {
+        let Some(path) = self.settings_file.clone() else {
+            return;
+        };
         let current = self.settings_snapshot();
         if current == self.saved_settings {
             return;
         }
-        let result = current.save();
+        let result = current.save_to(&path);
         self.saved_settings = current;
         if let Err(e) = result {
             self.status = Status::Error(if self.lang == Lang::Fr {
@@ -4742,6 +4757,9 @@ fn main() -> eframe::Result<()> {
             let (packs, exercise_files, pack_failures) = load_installed_exercises();
             failures.extend(pack_failures);
             let mut app = NamsdecApp::from_settings(Settings::load());
+            // Le seul endroit qui donne ce chemin : c'est ici que
+            // l'application devient celle qui écrit vraiment.
+            app.settings_file = settings::settings_path();
             app.theme_files = theme_files;
             // Les séries installées viennent après celle d'origine, qui
             // reste en tête : c'est là qu'on commence.
