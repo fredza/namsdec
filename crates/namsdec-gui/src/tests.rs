@@ -4880,3 +4880,77 @@ syscall
         "le dernier appel se lit aussi bien : {painted}"
     );
 }
+
+/// Quand le programme se heurte à une protection mémoire, le panneau ne
+/// se contente pas de le constater : il dit par où reprendre.
+#[test]
+fn a_memory_fault_says_what_to_do_about_it() {
+    let mut app = NamsdecApp {
+        // Écrire dans son propre code : l'erreur que fait tout débutant
+        // qui met ses données dans `.text`.
+        source: "\
+global _start
+section .text
+_start:
+mov byte [_start], 0x90
+hlt
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+    app.do_step();
+    assert!(
+        matches!(app.status, Status::Error(_)),
+        "écrire dans .text doit échouer : {:?}",
+        app.status
+    );
+
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 900.0),
+        )),
+        ..Default::default()
+    };
+    let mut painted = String::new();
+    for _ in 0..2 {
+        painted.clear();
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        for clipped in &output.shapes {
+            if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                painted.push_str(text.galley.text());
+                painted.push('|');
+            }
+        }
+        output.textures_delta.clear();
+    }
+
+    assert!(
+        painted.contains("section .data"),
+        "le conseil doit dire où mettre ce qui change : {painted}"
+    );
+
+    // Et il disparaît quand on repart de zéro : il parlait de cette
+    // erreur-là. (Refaire le pas, lui, refait la même faute — et le
+    // conseil vaut toujours.)
+    app.dispatch(Action::Reset);
+    let painted = {
+        let mut painted = String::new();
+        for _ in 0..2 {
+            painted.clear();
+            let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+            for clipped in &output.shapes {
+                if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                    painted.push_str(text.galley.text());
+                }
+            }
+            output.textures_delta.clear();
+        }
+        painted
+    };
+    assert!(!painted.contains("section .data"), "{painted}");
+}

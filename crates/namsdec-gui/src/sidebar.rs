@@ -37,6 +37,7 @@ impl NamsdecApp {
         // aller le chercher.
         self.next_instruction_ui(ui);
         self.last_step_ui(ui);
+        self.advice_ui(ui);
 
         // Les registres et les flags sont posés en entier, sans zone de
         // défilement : leur hauteur est connue — dix-huit valeurs sur
@@ -274,6 +275,29 @@ impl NamsdecApp {
         });
     }
 
+    /// Le conseil qui accompagne une erreur d'exécution.
+    ///
+    /// Le message d'erreur constate — « interdit d'écrire à 0x401000 :
+    /// elle est dans .text ». Le conseil dit par où reprendre, et c'est
+    /// lui qu'on cherche quand on apprend. Il tient dans le panneau,
+    /// sous l'instruction qui a échoué, plutôt que dans la barre de
+    /// statut, qui n'a de place que pour une ligne tronquée.
+    fn advice_ui(&mut self, ui: &mut egui::Ui) {
+        let Some(advice) = self.error_advice else {
+            return;
+        };
+        let theme = self.theme;
+        ui.add_space(4.0);
+        egui::Frame::new()
+            .fill(theme.bad.gamma_multiply(0.12))
+            .inner_margin(egui::Margin::symmetric(8, 6))
+            .corner_radius(4.0)
+            .show(ui, |ui| {
+                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
+                ui.colored_label(theme.text, advice);
+            });
+    }
+
     /// La ligne qui mène aux registres étendus.
     ///
     /// Un lien plutôt qu'un repli : ce que l'on déplie dans un panneau,
@@ -504,15 +528,26 @@ impl NamsdecApp {
                     };
                     let response = ui
                         .add(egui::Label::new(étiquette.color(color)).sense(egui::Sense::click()));
-                    if name != "RIP" {
-                        let response = response.on_hover_text(if watched {
+                    // Le rôle du registre, d'abord : le processeur ne le
+                    // connaît pas — RBX et R12 lui sont identiques —, et
+                    // rien dans le code ne le rappelle. Puis ce que le
+                    // clic ferait.
+                    let response = response.on_hover_ui(|ui| {
+                        ui.strong(name);
+                        ui.label(roles::of(lang, name));
+                        ui.add_space(4.0);
+                        ui.weak(if name == "RIP" {
+                            s.register_rip_hint
+                        } else if watched {
                             s.register_unwatch_hint
                         } else {
                             s.register_watch_hint
                         });
-                        if response.clicked() {
-                            clicked = Some(name);
-                        }
+                    });
+                    // RIP ne se surveille pas : il change à chaque
+                    // instruction, s'arrêter dessus n'apprendrait rien.
+                    if name != "RIP" && response.clicked() {
+                        clicked = Some(name);
                     }
                     // La valeur porte toutes ses lectures : combien ça
                     // fait en décimal, quel caractère, quels octets en

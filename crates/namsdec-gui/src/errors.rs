@@ -104,6 +104,106 @@ pub fn emu(lang: Lang, error: &EmuError) -> String {
     }
 }
 
+/// Ce qu'il y a à faire, quand l'erreur appelle un geste précis.
+///
+/// Le message dit ce qui s'est passé ; celui-ci dit par où reprendre.
+/// C'est la différence entre « accès interdit à 0x401000 » et « `.text`
+/// n'est pas inscriptible : vos données vont dans `section .data` » —
+/// la première phrase constate, la seconde apprend.
+///
+/// `None` quand l'erreur se suffit à elle-même : répéter le message
+/// d'une autre façon n'aide personne.
+pub fn advice(lang: Lang, error: &EmuError) -> Option<&'static str> {
+    let fr = lang == Lang::Fr;
+    Some(match error {
+        EmuError::Mem(MemError::Protection { needed, .. }) => match (needed, fr) {
+            (Access::Write, true) => {
+                "Cette zone n'est pas inscriptible. Le code (`section .text`) et les \
+                 constantes (`.rodata`) sont en lecture seule : ce qui doit changer \
+                 pendant l'exécution va dans `section .data` ou `section .bss`."
+            }
+            (Access::Write, false) => {
+                "This region is not writable. Code (`section .text`) and constants \
+                 (`.rodata`) are read-only: whatever changes while running belongs in \
+                 `section .data` or `section .bss`."
+            }
+            (Access::Execute, true) => {
+                "On ne saute pas dans des données. Vérifiez l'adresse du saut ou du \
+                 `ret` : une adresse de retour écrasée sur la pile mène exactement ici."
+            }
+            (Access::Execute, false) => {
+                "One does not jump into data. Check the jump or `ret` target: a return \
+                 address smashed on the stack lands exactly here."
+            }
+            (Access::Read, true) => {
+                "Cette zone ne se lit pas. C'est rare — vérifiez le registre qui a \
+                 servi d'adresse."
+            }
+            (Access::Read, false) => {
+                "This region cannot be read. That is rare — check the register used as \
+                 an address."
+            }
+        },
+        EmuError::Mem(MemError::Unmapped { .. }) => {
+            if fr {
+                "Rien n'est projeté à cette adresse. Le plus souvent, le registre qui \
+                 sert d'adresse vaut 0 ou n'a jamais été chargé : regardez sa valeur \
+                 dans le bandeau, juste au-dessus."
+            } else {
+                "Nothing is mapped at this address. Most often the register used as an \
+                 address is 0 or was never loaded: check its value in the banner above."
+            }
+        }
+        EmuError::Mem(MemError::OutOfBounds { .. }) => {
+            if fr {
+                "L'adresse sort de la mémoire simulée. Un décalage de tableau trop \
+                 grand, ou une adresse calculée à partir d'un registre non initialisé."
+            } else {
+                "The address falls outside the simulated memory. An array index gone \
+                 too far, or an address computed from an uninitialised register."
+            }
+        }
+        EmuError::DivideByZero { .. } => {
+            if fr {
+                "Le diviseur vaut zéro. Le processeur lève une exception matérielle : \
+                 c'est au programme de tester le diviseur avant `div` ou `idiv`."
+            } else {
+                "The divisor is zero. The processor raises a hardware exception: it is \
+                 the program's job to test the divisor before `div` or `idiv`."
+            }
+        }
+        EmuError::DivideOverflow { .. } => {
+            if fr {
+                "`div` divise RDX:RAX, pas RAX seul. Mettez RDX à zéro (`xor rdx, rdx`) \
+                 avant une division non signée sur 64 bits — ou utilisez `cqo` pour une \
+                 division signée."
+            } else {
+                "`div` divides RDX:RAX, not RAX alone. Zero RDX (`xor rdx, rdx`) before \
+                 an unsigned 64-bit division — or use `cqo` for a signed one."
+            }
+        }
+        EmuError::UnsupportedSyscall { .. } => {
+            if fr {
+                "namsdec ne simule pas cet appel système : il n'y a pas de vrai noyau \
+                 derrière. Les appels simulés sont `read`, `write`, `brk` et `exit`."
+            } else {
+                "namsdec does not simulate this system call: there is no real kernel \
+                 behind it. The simulated ones are `read`, `write`, `brk` and `exit`."
+            }
+        }
+        EmuError::InvalidInstruction { .. } => {
+            if fr {
+                "Ces octets ne forment pas une instruction. On y arrive en sautant au \
+                 milieu d'une instruction, ou dans des données."
+            } else {
+                "These bytes do not form an instruction. One gets here by jumping into \
+                 the middle of an instruction, or into data."
+            }
+        }
+        _ => return None,
+    })
+}
+
 fn operand_role(lang: Lang, role: OperandRole) -> &'static str {
     match (role, lang) {
         (OperandRole::Destination, Lang::Fr) => "de destination",
@@ -335,6 +435,45 @@ mod tests {
         let en = emu(Lang::En, &error);
         assert!(en.contains("namsdec") && en.contains("Cpuid"), "{en}");
         assert_ne!(fr, en, "les deux langues doivent donner deux phrases");
+    }
+
+    /// Une erreur d'exécution ne se contente pas de constater : elle dit
+    /// par où reprendre, et ce conseil dépend de ce qui manquait.
+    #[test]
+    fn a_protection_error_says_where_the_data_belongs() {
+        let write = EmuError::Mem(MemError::Protection {
+            addr: 0x401000,
+            needed: Access::Write,
+            region: ".text",
+        });
+        let fr = advice(Lang::Fr, &write).expect("écrire dans du code appelle un conseil");
+        assert!(fr.contains("section .data"), "{fr}");
+        assert!(advice(Lang::En, &write).unwrap().contains("section .data"));
+
+        let exec = EmuError::Mem(MemError::Protection {
+            addr: 0x402000,
+            needed: Access::Execute,
+            region: ".data",
+        });
+        assert!(advice(Lang::Fr, &exec).unwrap().contains("ret"));
+
+        // La division : l'erreur classique est d'oublier RDX.
+        assert!(
+            advice(Lang::Fr, &EmuError::DivideOverflow { addr: 0 })
+                .unwrap()
+                .contains("RDX"),
+        );
+        // Et ce qui n'appelle aucun geste n'invente pas de conseil.
+        assert!(
+            advice(
+                Lang::Fr,
+                &EmuError::UnsupportedRegister {
+                    backend: "namsdec",
+                    register: "CR0".to_owned(),
+                }
+            )
+            .is_none()
+        );
     }
 
     /// Le `Display` des crates métier reste anglais quoi qu'il arrive :

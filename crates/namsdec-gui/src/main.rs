@@ -9,6 +9,7 @@ mod i18n;
 mod keybindings;
 mod nasm_errors;
 mod readings;
+mod roles;
 mod settings;
 mod sidebar;
 mod syntax;
@@ -355,6 +356,9 @@ struct NamsdecApp {
     /// après un `cmp`, et savoir qu'ils *ont changé* ne suffit pas —
     /// c'est la valeur d'avant qui explique celle d'après.
     flags_before: Option<RFlags>,
+    /// Le conseil qui accompagne la dernière erreur d'exécution : par où
+    /// reprendre, quand l'erreur appelle un geste précis.
+    error_advice: Option<&'static str>,
     /// L'instruction que le dernier pas vient d'exécuter : son adresse et
     /// son texte. `None` après un Run, un retour en arrière ou une
     /// réinitialisation — il n'y a plus « un » dernier pas à montrer.
@@ -812,6 +816,7 @@ impl Default for NamsdecApp {
             emulator: None,
             regs_before: None,
             flags_before: None,
+            error_advice: None,
             last_step: None,
             mem_before: None,
             re_registry,
@@ -1204,6 +1209,7 @@ impl NamsdecApp {
         self.regs_before = None;
         self.flags_before = None;
         self.last_step = None;
+        self.error_advice = None;
         self.mem_before = None;
         let mut emulator = Emulator::new(cpu);
         // Le tas commence après l'image du programme et monte vers la
@@ -1299,6 +1305,9 @@ impl NamsdecApp {
     fn do_step(&mut self) {
         self.remember_registers();
         self.remember_step();
+        // Le conseil vaut pour l'erreur qui vient de se produire : au pas
+        // suivant, il parlerait d'autre chose.
+        self.error_advice = None;
         self.follow_execution();
         // Avancer d'un pas, c'est reprendre la main : un Run suspendu
         // faute d'entrée ne doit pas repartir tout seul à la saisie
@@ -1315,7 +1324,11 @@ impl NamsdecApp {
             }
             Ok(StepResult::NeedsInput) => self.status = Status::WaitingForInput,
             Ok(StepResult::Continued) => {}
-            Err(e) => self.status = Status::Error(errors::emu(self.lang, &e)),
+            Err(e) => {
+                self.error_advice = errors::advice(self.lang, &e);
+                self.error_advice = errors::advice(self.lang, &e);
+                self.status = Status::Error(errors::emu(self.lang, &e));
+            }
         }
         self.notify_step();
     }
@@ -1330,6 +1343,7 @@ impl NamsdecApp {
         // Une course n'a pas « un » dernier pas : le bandeau se tait
         // plutôt que de montrer la première instruction d'un millier.
         self.last_step = None;
+        self.error_advice = None;
         // Photographie prise au départ : à l'arrêt suivant — un point
         // d'arrêt, un `hlt` — le bandeau montre tout ce que la course a
         // changé, et non le seul dernier pas.
@@ -1348,6 +1362,7 @@ impl NamsdecApp {
     /// le retirer.
     fn do_run_to_cursor(&mut self) {
         self.last_step = None;
+        self.error_advice = None;
         let Some(state) = &self.assemble_state else {
             return;
         };
@@ -1424,6 +1439,7 @@ impl NamsdecApp {
             }
             Err(e) => {
                 self.running = false;
+                self.error_advice = errors::advice(self.lang, &e);
                 self.status = Status::Error(errors::emu(self.lang, &e));
             }
         }
@@ -1477,6 +1493,7 @@ impl NamsdecApp {
             self.regs_before = None;
             self.flags_before = None;
             self.last_step = None;
+            self.error_advice = None;
             self.mem_before = None;
         }
     }
@@ -1502,7 +1519,11 @@ impl NamsdecApp {
             Ok(StepOverResult::StepLimit) => self.status = Status::StepLimit,
             Ok(StepOverResult::NeedsInput) => self.status = Status::WaitingForInput,
             Ok(StepOverResult::Stepped | StepOverResult::SteppedOverCall) => {}
-            Err(e) => self.status = Status::Error(errors::emu(self.lang, &e)),
+            Err(e) => {
+                self.error_advice = errors::advice(self.lang, &e);
+                self.error_advice = errors::advice(self.lang, &e);
+                self.status = Status::Error(errors::emu(self.lang, &e));
+            }
         }
         self.notify_step();
     }
