@@ -396,6 +396,13 @@ struct NamsdecApp {
     /// settings.json » ; la case de Préférences > Modules le rallume pour
     /// la session en cours.
     show_re_tab: bool,
+    /// Le module des exercices : éteint tant qu'on ne le demande pas, et
+    /// alors une entrée dans le menu Outils, rien de plus. Persisté,
+    /// contrairement à l'onglet RE : c'est une case qu'on coche une fois,
+    /// pas un affichage qu'on fait apparaître le temps d'un coup d'œil.
+    exercises: bool,
+    /// La fenêtre qui liste les exercices.
+    show_exercises: bool,
     /// Le bandeau d'état est-il déployé ? Vrai à chaque lancement, et
     /// **hors de `settings.json`** comme `show_re_tab` : egui garde
     /// normalement l'état des en-têtes repliables d'une session à
@@ -505,6 +512,9 @@ enum PaletteCommand {
     Do(Action),
     ShowPreferences,
     ShowAbout,
+    /// Ouvrir la liste des exercices — seulement quand le module est
+    /// chargé, sans quoi la commande n'est pas proposée.
+    ShowExercises,
     SetTheme(&'static Theme),
     SetLang(Lang),
     SaveAs,
@@ -521,7 +531,11 @@ enum PaletteCommand {
 /// désactivable : proposer « Affichage : RE » quand l'onglet est masqué
 /// revenait à offrir un raccourci qui le rallume — et le rallumage
 /// était persisté, donc définitif.
-fn palette_commands(s: &Strings, show_re_tab: bool) -> Vec<(String, PaletteCommand)> {
+fn palette_commands(
+    s: &Strings,
+    show_re_tab: bool,
+    exercises: bool,
+) -> Vec<(String, PaletteCommand)> {
     let mut commands = vec![
         (
             s.action_assemble.to_string(),
@@ -611,6 +625,12 @@ fn palette_commands(s: &Strings, show_re_tab: bool) -> Vec<(String, PaletteComma
         (s.file_quit.to_string(), PaletteCommand::Quit),
     ];
 
+    // Le module des exercices n'entre dans la palette que s'il est
+    // chargé : proposer une commande qui n'ouvre rien n'aide personne.
+    if exercises {
+        commands.push((s.exercises_open.to_string(), PaletteCommand::ShowExercises));
+    }
+
     if show_re_tab {
         commands.push((
             format!("{}: {}", s.menu_view, s.tab_re),
@@ -633,6 +653,7 @@ struct PreferencesSnapshot {
     theme: &'static Theme,
     lang: Lang,
     show_re_tab: bool,
+    exercises: bool,
     show_tooltips: bool,
     keybindings: KeyBindings,
 }
@@ -646,9 +667,11 @@ enum PreferencesTab {
 }
 
 /// Programme de départ affiché au lancement, pour ouvrir sur un exemple
-/// qui fonctionne plutôt qu'un éditeur vide. namsdec-exercises n'est
-/// volontairement pas utilisé ici : les exercices deviendront un module
-/// séparé, ajoutable indépendamment de la coquille de base.
+/// qui fonctionne plutôt qu'un éditeur vide.
+///
+/// Ce n'est pas un exercice : ceux-là sont un module à part, éteint tant
+/// qu'on ne le demande pas, et l'application doit s'ouvrir sur quelque
+/// chose qui marche même quand il ne l'est pas.
 const DEFAULT_SOURCE: &str = "\
 BITS 64
 section .text
@@ -708,6 +731,8 @@ impl Default for NamsdecApp {
             help: None,
             preferences_tab: PreferencesTab::General,
             show_re_tab: false,
+            exercises: false,
+            show_exercises: false,
             cpu_state_open: true,
             console_input: String::new(),
             resume_run_after_input: false,
@@ -755,6 +780,7 @@ impl NamsdecApp {
             show_console: settings.show_console,
             show_tooltips: settings.show_tooltips,
             completion: settings.completion,
+            exercises: settings.exercises,
             memory_format: MemoryFormat::by_id(&settings.memory_format),
             explorer,
             saved_settings: settings,
@@ -834,6 +860,7 @@ impl NamsdecApp {
             show_console: self.show_console,
             show_tooltips: self.show_tooltips,
             completion: self.completion,
+            exercises: self.exercises,
             memory_format: self.memory_format.id().to_owned(),
             explorer_root: self.explorer.root.as_ref().map(|p| p.display().to_string()),
             current_file: self.current_file.as_ref().map(|p| p.display().to_string()),
@@ -1700,6 +1727,7 @@ impl NamsdecApp {
             PaletteCommand::Do(action) => self.dispatch(action),
             PaletteCommand::ShowPreferences => self.open_preferences(),
             PaletteCommand::ShowAbout => self.show_about = true,
+            PaletteCommand::ShowExercises => self.show_exercises = true,
             PaletteCommand::SetTheme(theme) => {
                 self.theme = theme;
                 self.apply_theme(ctx);
@@ -1735,7 +1763,7 @@ impl NamsdecApp {
             return;
         }
         let s = strings(self.lang);
-        let commands = palette_commands(s, self.show_re_tab);
+        let commands = palette_commands(s, self.show_re_tab, self.exercises);
 
         let (mut query, mut selected) = {
             let p = self.command_palette.as_ref().unwrap();
@@ -1962,6 +1990,16 @@ impl NamsdecApp {
                         ui.close();
                     }
                 });
+                // Le module des exercices n'existe pour l'interface que
+                // s'il a été demandé : sans cela, pas d'entrée, pas de
+                // fenêtre, rien.
+                if self.exercises {
+                    ui.separator();
+                    if ui.button(s.exercises_open).clicked() {
+                        self.show_exercises = true;
+                        ui.close();
+                    }
+                }
             });
 
             ui.menu_button(s.menu_view, |ui| {
@@ -2042,6 +2080,7 @@ impl NamsdecApp {
                 theme: self.theme,
                 lang: self.lang,
                 show_re_tab: self.show_re_tab,
+                exercises: self.exercises,
                 show_tooltips: self.show_tooltips,
                 keybindings: self.keybindings.clone(),
             });
@@ -2060,6 +2099,7 @@ impl NamsdecApp {
             self.theme = snapshot.theme;
             self.lang = snapshot.lang;
             self.show_re_tab = snapshot.show_re_tab;
+            self.exercises = snapshot.exercises;
             self.show_tooltips = snapshot.show_tooltips;
             self.keybindings = snapshot.keybindings;
             self.apply_theme(ctx);
@@ -2224,6 +2264,8 @@ impl NamsdecApp {
             .show(ui, |ui| {
                 self.modules_ui(ui);
                 ui.checkbox(&mut self.show_re_tab, s.show_re_tab_checkbox);
+                ui.checkbox(&mut self.exercises, s.exercises_checkbox);
+                ui.weak(s.exercises_hint);
             });
     }
 
@@ -2366,6 +2408,72 @@ impl NamsdecApp {
                 ctx.load_texture("offrir-un-repas", image, egui::TextureOptions::LINEAR)
             })
             .clone()
+    }
+
+    /// La liste des exercices : un titre, ce qu'on y cherche, et de quoi
+    /// le charger dans l'éditeur.
+    ///
+    /// Charger remplace le tampon — d'où l'avertissement quand le fichier
+    /// courant n'a pas été enregistré. Il n'y a pas de correction
+    /// automatique : l'énoncé dit ce qu'on doit obtenir, et c'est le
+    /// bandeau des registres qui répond.
+    fn exercises_window_ui(&mut self, ctx: &egui::Context) {
+        let s = strings(self.lang);
+        let theme = self.theme;
+        let lang = self.lang.code();
+        let mut open = self.show_exercises;
+        let mut load = None;
+        egui::Window::new(s.exercises_title)
+            .id(egui::Id::new("exercises_window"))
+            .open(&mut open)
+            .resizable(true)
+            .collapsible(false)
+            .default_width(460.0)
+            .pivot(egui::Align2::CENTER_CENTER)
+            .current_pos(ctx.viewport_rect().center())
+            .show(ctx, |ui| {
+                ui.label(s.exercises_legend);
+                ui.add_space(6.0);
+                for exercise in namsdec_exercises::builtin_exercises() {
+                    ui.group(|ui| {
+                        ui.horizontal(|ui| {
+                            ui.strong(exercise.title.get(lang));
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    if framed_button(ui, theme, s.exercises_load).clicked() {
+                                        load = Some(exercise.id);
+                                    }
+                                },
+                            );
+                        });
+                        ui.label(exercise.description.get(lang));
+                    });
+                }
+            });
+        if let Some(id) = load {
+            self.load_exercise(id);
+            open = false;
+        }
+        self.show_exercises = open;
+    }
+
+    /// Met le programme de départ d'un exercice dans l'éditeur.
+    ///
+    /// `current_file` repart à zéro : ce qui est chargé est un modèle, pas
+    /// le fichier de l'utilisateur, et « Enregistrer » ne doit pas écrire
+    /// par-dessus celui qu'il avait ouvert.
+    fn load_exercise(&mut self, id: &str) {
+        let Some(exercise) = namsdec_exercises::by_id(id) else {
+            return;
+        };
+        self.source = exercise.starter_code.to_owned();
+        self.current_file = None;
+        self.assemble_state = None;
+        self.emulator = None;
+        self.diagnostics.clear();
+        self.breakpoint_lines.clear();
+        self.status = Status::Idle;
     }
 
     fn about_window_ui(&mut self, ctx: &egui::Context) {
@@ -4020,6 +4128,9 @@ impl NamsdecApp {
         timed(&mut spans, "fenêtres", || {
             self.preferences_window_ui(&ctx);
             self.about_window_ui(&ctx);
+            if self.exercises {
+                self.exercises_window_ui(&ctx);
+            }
             self.command_palette_ui(&ctx);
         });
 

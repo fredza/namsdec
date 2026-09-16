@@ -61,6 +61,11 @@ pub struct Settings {
     pub show_tooltips: bool,
     /// L'autocomplétion de l'éditeur : elle propose, `Alt` accepte.
     pub completion: bool,
+    /// Le module des exercices. Éteint par défaut : quelqu'un qui écrit
+    /// son propre code n'a pas besoin qu'on lui propose des devoirs, et
+    /// rien n'apparaît tant qu'il ne le demande pas.
+    #[serde(default)]
+    pub exercises: bool,
     /// Comment l'onglet Mémoire lit les octets : « bytes », « words » ou
     /// « text ».
     pub memory_format: String,
@@ -91,6 +96,7 @@ impl Default for Settings {
             show_console: true,
             show_tooltips: true,
             completion: true,
+            exercises: false,
             memory_format: "bytes".to_owned(),
             explorer_root: None,
             current_file: None,

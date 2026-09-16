@@ -186,6 +186,13 @@ pub struct Strings {
     pub module_core_detail: &'static str,
     pub modules_legend: &'static str,
     pub show_re_tab_checkbox: &'static str,
+    /// Le module des exercices : la case, l'entrée de menu, la fenêtre.
+    pub exercises_checkbox: &'static str,
+    pub exercises_hint: &'static str,
+    pub exercises_open: &'static str,
+    pub exercises_title: &'static str,
+    pub exercises_legend: &'static str,
+    pub exercises_load: &'static str,
 
     // Boîte Préférences
     pub preferences_title: &'static str,
@@ -367,6 +374,12 @@ const FR: Strings = Strings {
     module_core_detail: "Registres, indicateurs (RFLAGS), mémoire simulée, état CPU.",
     modules_legend: "Vert = sain/actif · Rouge = problème · Bleu = actif, des données à afficher · Gris = inactif pour l'instant.",
     show_re_tab_checkbox: "Afficher l'onglet RE dans la barre latérale",
+    exercises_checkbox: "Charger le module des exercices",
+    exercises_hint: "Ajoute « Exercices… » au menu Outils. Rien n'apparaît tant que la case est décochée.",
+    exercises_open: "Exercices…",
+    exercises_title: "Exercices",
+    exercises_legend: "Chaque exercice se charge dans l'éditeur, avec son but écrit en commentaire. Il n'y a pas de correction automatique : c'est le bandeau des registres qui répond.",
+    exercises_load: "Charger",
 
     preferences_title: "Préférences",
     preferences_tab_general: "Général",
@@ -544,6 +557,12 @@ const EN: Strings = Strings {
     module_core_detail: "Registers, flags (RFLAGS), simulated memory, CPU state.",
     modules_legend: "Green = healthy/active · Red = problem · Blue = active, has data to show · Gray = inactive for now.",
     show_re_tab_checkbox: "Show the RE tab in the sidebar",
+    exercises_checkbox: "Load the exercises module",
+    exercises_hint: "Adds \"Exercises…\" to the Tools menu. Nothing shows up while the box is unchecked.",
+    exercises_open: "Exercises…",
+    exercises_title: "Exercises",
+    exercises_legend: "Each exercise loads into the editor with its goal written in a comment. There is no automatic marking: the register banner is the answer.",
+    exercises_load: "Load",
 
     preferences_title: "Preferences",
     preferences_tab_general: "General",

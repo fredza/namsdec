@@ -1323,6 +1323,7 @@ dependencies = [
  "namsdec-disasm",
  "namsdec-doc",
  "namsdec-emu",
+ "namsdec-exercises",
  "namsdec-explorer",
  "namsdec-re",
  "namsdec-theme",

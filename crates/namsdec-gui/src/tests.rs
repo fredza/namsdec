@@ -1498,7 +1498,7 @@ fn the_register_grid_uses_two_columns_only_when_they_fit() {
 fn the_palette_offers_the_re_view_only_when_it_is_visible() {
     let s = strings(Lang::Fr);
     let labels = |show_re_tab| -> Vec<String> {
-        palette_commands(s, show_re_tab)
+        palette_commands(s, show_re_tab, false)
             .into_iter()
             .map(|(label, _)| label)
             .collect()
@@ -2610,4 +2610,109 @@ fn a_long_status_message_does_not_run_under_the_right_hand_side() {
         message.max.x <= nasm.min.x,
         "le message ({message:?}) mord sur la droite ({nasm:?})"
     );
+}
+/// Le module des exercices ne se charge que si on le demande : sans la
+/// case cochée, rien de lui n'existe dans l'interface.
+#[test]
+fn the_exercises_module_stays_out_of_the_way_until_it_is_asked_for() {
+    let app = NamsdecApp::default();
+    assert!(!app.exercises, "éteint au premier lancement");
+
+    let ctx = egui::Context::default();
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 820.0),
+        )),
+        ..Default::default()
+    };
+    let painted = |app: &mut NamsdecApp| {
+        let mut texts = String::new();
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        for clipped in &output.shapes {
+            if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                texts.push_str(text.galley.text());
+                texts.push('|');
+            }
+        }
+        output.textures_delta.clear();
+        texts
+    };
+
+    let mut app = NamsdecApp {
+        show_exercises: true,
+        ..Default::default()
+    };
+    assert!(
+        !painted(&mut app).contains("Somme d'une boucle"),
+        "la fenêtre ne s'ouvre pas tant que le module est éteint"
+    );
+
+    app.exercises = true;
+    // Deux frames : egui pose la fenêtre à la première, la peint à la
+    // seconde.
+    painted(&mut app);
+    assert!(
+        painted(&mut app).contains("Somme d'une boucle"),
+        "et elle s'ouvre quand il est allumé"
+    );
+}
+
+/// Le choix est gardé d'une session à l'autre — contrairement à l'onglet
+/// RE, c'est une case qu'on coche une fois.
+#[test]
+fn asking_for_the_exercises_is_remembered() {
+    let app = NamsdecApp {
+        exercises: true,
+        ..Default::default()
+    };
+    let written = serde_json::to_string(&app.settings_snapshot()).unwrap();
+    assert!(written.contains("\"exercises\":true"), "{written}");
+
+    // Et un fichier de réglages écrit par une version plus ancienne, qui
+    // ne connaît pas le réglage, ne fait pas échouer la lecture.
+    let older = r#"{"version":2,"theme":"vscode-dark","language":"fr","show_toolbar":true,
+        "show_sidebar":true,"show_statusbar":true,"show_console":true,"show_tooltips":true,
+        "completion":true,"memory_format":"bytes","explorer_root":null,"current_file":null,
+        "shortcuts":{}}"#;
+    let settings: Settings = serde_json::from_str(older).expect("les anciens réglages se relisent");
+    assert!(!settings.exercises, "et le module reste éteint");
+}
+
+/// Charger un exercice met son programme dans l'éditeur, et rien de plus :
+/// pas de fichier courant, donc « Enregistrer » n'écrase pas celui qu'on
+/// avait ouvert.
+#[test]
+fn loading_an_exercise_fills_the_editor_without_claiming_a_file() {
+    let mut app = NamsdecApp {
+        exercises: true,
+        current_file: Some(std::path::PathBuf::from("/tmp/le-mien.asm")),
+        ..Default::default()
+    };
+    app.load_exercise("sum_loop");
+
+    assert!(app.source.contains("sum_loop"), "le programme est chargé");
+    assert!(app.source.contains("BITS 64"));
+    assert!(app.current_file.is_none(), "un modèle n'est pas un fichier");
+    assert!(app.emulator.is_none(), "et rien n'est encore assemblé");
+
+    // Un identifiant inconnu ne casse rien et ne touche pas au tampon.
+    let before = app.source.clone();
+    app.load_exercise("n-existe-pas");
+    assert_eq!(app.source, before);
+}
+
+/// Et la commande qui ouvre les exercices n'existe que si le module est
+/// chargé : proposer une commande qui n'ouvre rien n'aide personne.
+#[test]
+fn the_palette_offers_the_exercises_only_when_the_module_is_loaded() {
+    let s = strings(Lang::Fr);
+    let labels = |exercises| -> Vec<String> {
+        palette_commands(s, false, exercises)
+            .into_iter()
+            .map(|(label, _)| label)
+            .collect()
+    };
+    assert!(!labels(false).contains(&s.exercises_open.to_string()));
+    assert!(labels(true).contains(&s.exercises_open.to_string()));
 }
