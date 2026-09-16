@@ -3630,6 +3630,7 @@ fn the_bytes_tab_shows_what_each_line_produced() {
             "longueur {longueur} : {painted}"
         );
     }
-    // Et le lien avec la source : la ligne de chaque instruction.
-    assert!(painted.contains("  4|"), "{painted}");
+    // Et le lien avec la source : la ligne de chaque instruction, collée
+    // à son adresse.
+    assert!(painted.contains("  4 00400000"), "{painted}");
 }

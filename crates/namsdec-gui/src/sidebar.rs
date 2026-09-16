@@ -546,6 +546,12 @@ impl NamsdecApp {
             .id_salt("bytes_tab")
             .auto_shrink([false, false])
             .show(ui, |ui| {
+                // Un panneau egui adopte la largeur de son contenu, et
+                // dix octets en hexadécimal suivis d'un texte
+                // d'instruction en font beaucoup : sans cette borne,
+                // l'onglet poussait le panneau — et l'éditeur avec.
+                let largeur = ui.available_width();
+                ui.set_max_width(largeur);
                 for instruction in &state.disasm {
                     let here = rip == Some(instruction.address);
                     let colour = if here {
@@ -564,31 +570,30 @@ impl NamsdecApp {
                         .get(&instruction.address)
                         .map(|l| format!("{l:>3}"))
                         .unwrap_or_else(|| "   ".to_owned());
+                    // Deux étiquettes seulement, et la seconde se
+                    // tronque : dans une rangée horizontale, chaque
+                    // étiquette réclame sa largeur entière, et quatre
+                    // colonnes côte à côte poussaient le panneau. Le
+                    // préfixe — ligne, adresse, longueur — a une largeur
+                    // fixe ; tout le reste tient dans ce qui subsiste.
                     let response = ui.horizontal(|ui| {
-                        // La ligne source d'abord : c'est par elle qu'on
-                        // fait le lien avec ce qu'on a écrit.
-                        ui.colored_label(theme.dim, egui::RichText::new(ligne).monospace());
+                        ui.set_max_width(largeur);
                         ui.colored_label(
                             if here { theme.accent } else { theme.dim },
-                            egui::RichText::new(format!("{:08x}", instruction.address)).monospace(),
+                            egui::RichText::new(format!("{ligne} {:08x}", instruction.address))
+                                .monospace(),
                         );
-                        // Le nombre d'octets, à côté des octets : c'est
-                        // lui qu'on compare d'une ligne à l'autre.
                         ui.colored_label(
                             theme.register,
                             egui::RichText::new(format!("{:2}", instruction.bytes.len()))
                                 .monospace(),
                         )
                         .on_hover_text(s.bytes_length_hint);
-                        ui.colored_label(colour, egui::RichText::new(octets).monospace());
-                        // Le texte de l'instruction en dernier, et
-                        // tronqué : c'est la colonne dont on se passe le
-                        // mieux, puisqu'elle est déjà dans l'éditeur.
                         ui.add(
                             egui::Label::new(
-                                egui::RichText::new(&instruction.text)
+                                egui::RichText::new(format!("{octets}  {}", instruction.text))
                                     .monospace()
-                                    .color(theme.dim),
+                                    .color(colour),
                             )
                             .truncate(),
                         )
