@@ -1204,7 +1204,18 @@ impl NamsdecApp {
         // droits. La protection devient ainsi une chose qu'on lit avant
         // de se faire refuser un accès, et non seulement une punition.
         let mem = &emulator.cpu().mem;
-        let quartier = region_line(s, mem, self.mem_addr);
+        // L'étiquette d'abord, quand il y en a une : on cherche
+        // « message », pas « 0x402000 », et c'est sous ce nom-là qu'on
+        // l'a écrit dans le source.
+        let symbols = self
+            .assemble_state
+            .as_ref()
+            .map(|state| state.output.symbols.as_slice())
+            .unwrap_or_default();
+        let quartier = match symbol_at(symbols, self.mem_addr) {
+            Some(label) => format!("{label} · {}", region_line(s, mem, self.mem_addr)),
+            None => region_line(s, mem, self.mem_addr),
+        };
         // En octets, le vidage est mis en forme ici pour pouvoir colorer
         // ce qui vient de changer ; les deux autres formats restent du
         // texte simple.

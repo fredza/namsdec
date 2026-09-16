@@ -5084,3 +5084,99 @@ fn the_readme_tells_the_truth() {
         "mmap n'est pas simulé, et le README le dit"
     );
 }
+
+/// L'onglet Mémoire nomme ce qu'on regarde : l'étiquette du source, la
+/// zone et ses droits — pas seulement une adresse.
+#[test]
+fn the_memory_tab_names_what_it_shows() {
+    let mut app = NamsdecApp {
+        source: "\
+global _start
+section .data
+message: db \"salut\", 10
+section .text
+_start:
+hlt
+"
+        .to_owned(),
+        active_tab: SidebarTab::Memory,
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+
+    // On va voir l'étiquette, comme on le ferait en tapant son nom.
+    let message = app
+        .assemble_state
+        .as_ref()
+        .unwrap()
+        .output
+        .symbols
+        .iter()
+        .find(|symbol| symbol.name == "message")
+        .expect("l'étiquette est dans l'ELF")
+        .addr;
+    app.mem_addr = message;
+
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 900.0),
+        )),
+        ..Default::default()
+    };
+    let mut painted = String::new();
+    for _ in 0..2 {
+        painted.clear();
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        for clipped in &output.shapes {
+            if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                painted.push_str(text.galley.text());
+                painted.push('|');
+            }
+        }
+        output.textures_delta.clear();
+    }
+
+    assert!(
+        painted.contains("message · "),
+        "l'étiquette doit précéder la zone : {painted}"
+    );
+    assert!(
+        painted.contains("écriture"),
+        "et les droits de .data avec : {painted}"
+    );
+}
+
+/// `int 0x80` est le piège du vieux tutoriel : namsdec ne le simule pas,
+/// et dit pourquoi plutôt que de refuser une instruction de plus.
+#[test]
+fn the_old_32_bit_interface_is_explained() {
+    let mut app = NamsdecApp {
+        source: "\
+global _start
+section .text
+_start:
+mov eax, 4
+int 0x80
+hlt
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+    app.do_step(); // mov eax, 4
+    app.do_step(); // int 0x80 → refusé
+
+    assert!(
+        matches!(app.status, Status::Error(_)),
+        "l'instruction n'est pas simulée : {:?}",
+        app.status
+    );
+    let advice = app.error_advice.expect("et elle appelle une explication");
+    assert!(advice.contains("syscall"), "{advice}");
+    assert!(advice.contains("32 bits"), "{advice}");
+}

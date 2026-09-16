@@ -191,6 +191,22 @@ pub fn advice(lang: Lang, error: &EmuError) -> Option<&'static str> {
                  behind it. The simulated ones are `read`, `write`, `brk` and `exit`."
             }
         }
+        // Le piège du vieux tutoriel : `int 0x80` est l'interface des
+        // programmes 32 bits. Elle existe encore, mais ce n'est pas
+        // celle d'un programme 64 bits — et les numéros d'appels n'y
+        // sont même pas les mêmes.
+        EmuError::UnsupportedInstruction { mnemonic, .. } if mnemonic == "Int" => {
+            if fr {
+                "`int 0x80` est l'ancienne interface, celle des programmes 32 bits. \
+                 En 64 bits, on écrit `syscall` — et attention, les numéros ne sont pas \
+                 les mêmes d'une interface à l'autre : `write` vaut 4 en 32 bits, 1 en \
+                 64 bits."
+            } else {
+                "`int 0x80` is the old interface, the one 32-bit programs use. In 64-bit \
+                 code one writes `syscall` — and beware, the call numbers differ between \
+                 the two: `write` is 4 on 32-bit, 1 on 64-bit."
+            }
+        }
         EmuError::InvalidInstruction { .. } => {
             if fr {
                 "Ces octets ne forment pas une instruction. On y arrive en sautant au \
@@ -463,6 +479,14 @@ mod tests {
                 .unwrap()
                 .contains("RDX"),
         );
+        // Le vieux tutoriel 32 bits, reconnu par son instruction.
+        let old_school = EmuError::UnsupportedInstruction {
+            backend: "namsdec",
+            mnemonic: "Int".to_owned(),
+        };
+        assert!(advice(Lang::Fr, &old_school).unwrap().contains("syscall"));
+        assert!(advice(Lang::En, &old_school).unwrap().contains("32-bit"));
+
         // Et ce qui n'appelle aucun geste n'invente pas de conseil.
         assert!(
             advice(
