@@ -382,6 +382,17 @@ pub enum RunStop {
         old: u64,
         new: u64,
     },
+    /// Un registre surveillé a changé de valeur.
+    ///
+    /// La mémoire n'est pas le seul endroit où l'on attend quelque
+    /// chose : « arrête-toi quand RAX change » est la question qu'on se
+    /// pose le plus souvent en apprenant, et elle n'a pas de réponse dans
+    /// un point d'arrêt — on ne sait pas *où* la poser.
+    RegisterChanged {
+        register: &'static str,
+        old: u64,
+        new: u64,
+    },
     StepLimit,
     /// Suspendu en attendant l'entrée standard (voir
     /// `StepResult::NeedsInput`). L'exécution reprend d'elle-même une fois
@@ -441,6 +452,11 @@ pub trait Backend {
 
     fn breakpoints(&self) -> &BTreeSet<u64>;
     fn set_breakpoints(&mut self, breakpoints: BTreeSet<u64>);
+
+    /// Les registres à surveiller : l'exécution s'arrête quand l'un
+    /// d'eux change.
+    fn set_watched_registers(&mut self, registers: &[(&'static str, Reg64)]);
+    fn watched_registers(&self) -> &[(&'static str, Reg64, u64)];
 
     /// Les zones à surveiller — adresse et longueur (1 à 8 octets).
     /// Poser un point de surveillance l'arme sur l'état courant.
@@ -568,6 +584,8 @@ pub struct Emulator {
     frames: Vec<Frame>,
     /// Les zones surveillées.
     watchpoints: Vec<Watchpoint>,
+    /// Les registres surveillés, avec la valeur vue au dernier armement.
+    watched_registers: Vec<(&'static str, Reg64, u64)>,
     /// Le tas, tel que `brk` l'a laissé.
     heap: Heap,
     /// Les entorses à la convention d'appel relevées jusqu'ici.
@@ -596,6 +614,14 @@ impl Backend for Emulator {
 
     fn set_watchpoints(&mut self, points: &[(u64, usize)]) {
         Emulator::set_watchpoints(self, points);
+    }
+
+    fn set_watched_registers(&mut self, registers: &[(&'static str, Reg64)]) {
+        Emulator::set_watched_registers(self, registers);
+    }
+
+    fn watched_registers(&self) -> &[(&'static str, Reg64, u64)] {
+        Emulator::watched_registers(self)
     }
 
     fn watchpoints(&self) -> &[Watchpoint] {
@@ -676,6 +702,7 @@ impl Emulator {
             history: VecDeque::new(),
             frames: Vec::new(),
             watchpoints: Vec::new(),
+            watched_registers: Vec::new(),
             // Pas de tas tant que personne n'a dit où le mettre : seul
             // celui qui a chargé le programme sait où son image finit.
             // `brk` se comporte alors comme sous un système à court de
@@ -1026,6 +1053,9 @@ impl Emulator {
             // vient voir, fût-elle la dernière du programme.
             if let Some((addr, old, new)) = self.triggered_watchpoint() {
                 return Ok(RunStop::Watchpoint { addr, old, new });
+            }
+            if let Some((register, old, new)) = self.changed_register() {
+                return Ok(RunStop::RegisterChanged { register, old, new });
             }
             if self.cpu.halted {
                 return Ok(RunStop::Halted);
@@ -2447,6 +2477,7 @@ impl Emulator {
         // Revenir en arrière ne déclenche pas les points de
         // surveillance : ils regardent ce qui vient, pas ce qu'on défait.
         self.rearm_watchpoints();
+        self.rearm_registers();
         true
     }
 
@@ -2507,6 +2538,43 @@ impl Emulator {
 
     pub fn watchpoints(&self) -> &[Watchpoint] {
         &self.watchpoints
+    }
+
+    /// Remplace les registres surveillés, et les arme sur l'état courant :
+    /// surveiller un registre, c'est dire « préviens-moi s'il change **à
+    /// partir de maintenant** ».
+    pub fn set_watched_registers(&mut self, registers: &[(&'static str, Reg64)]) {
+        self.watched_registers = registers
+            .iter()
+            .map(|&(name, reg)| (name, reg, self.cpu.regs.get64(reg)))
+            .collect();
+    }
+
+    /// Les registres surveillés, avec leur valeur au dernier armement.
+    pub fn watched_registers(&self) -> &[(&'static str, Reg64, u64)] {
+        &self.watched_registers
+    }
+
+    /// Le premier registre surveillé qui a changé depuis le dernier
+    /// passage. Réarme au passage, comme pour la mémoire.
+    fn changed_register(&mut self) -> Option<(&'static str, u64, u64)> {
+        for index in 0..self.watched_registers.len() {
+            let (name, reg, old) = self.watched_registers[index];
+            let new = self.cpu.regs.get64(reg);
+            if new != old {
+                self.watched_registers[index].2 = new;
+                return Some((name, old, new));
+            }
+        }
+        None
+    }
+
+    /// Réarme les registres surveillés sur l'état courant, sans rien
+    /// signaler — après un retour en arrière, c'est d'ici qu'on repart.
+    fn rearm_registers(&mut self) {
+        for entry in &mut self.watched_registers {
+            entry.2 = self.cpu.regs.get64(entry.1);
+        }
     }
 
     /// Réarme les zones surveillées sur l'état courant, sans rien

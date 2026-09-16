@@ -3467,3 +3467,56 @@ fn the_built_in_pack_is_a_course_in_order() {
         );
     }
 }
+
+/// Surveiller un registre : l'exécution s'arrête quand il change, sans
+/// qu'on ait eu à deviner quelle instruction le ferait.
+///
+/// Un point d'arrêt répond à « arrête-toi *là* ». La question qu'on se
+/// pose en apprenant est « qui écrit dans RAX ? », et elle n'a pas de
+/// point d'arrêt possible : on ignore justement où.
+#[test]
+fn watching_a_register_stops_the_run_when_it_changes() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: "global _start\nsection .text\n_start:\n\
+             \x20   mov rcx, 3\n    mov rbx, 7\n    mov rax, 42\n    hlt\n"
+            .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+
+    // Surveiller RAX, comme un clic sur son nom dans le bandeau.
+    app.watched_registers.insert("RAX");
+    app.sync_watchpoints();
+
+    app.do_run();
+    let ctx = egui::Context::default();
+    for _ in 0..10 {
+        app.tick_run(&ctx);
+    }
+
+    match app.status {
+        Status::RegisterChanged { register, old, new } => {
+            assert_eq!(register, "RAX");
+            assert_eq!((old, new), (0, 42));
+        }
+        autre => panic!("l'exécution devait s'arrêter sur RAX : {autre:?}"),
+    }
+    // Et elle s'est arrêtée *à* l'instruction fautive, pas à la fin.
+    assert!(
+        app.emulator.as_ref().is_some_and(|e| !e.cpu().halted),
+        "le programme n'est pas allé jusqu'au hlt"
+    );
+
+    // Ne plus surveiller : le programme va au bout.
+    app.watched_registers.remove("RAX");
+    app.do_assemble();
+    app.sync_watchpoints();
+    app.do_run();
+    for _ in 0..10 {
+        app.tick_run(&ctx);
+    }
+    assert!(matches!(app.status, Status::Halted), "{:?}", app.status);
+}

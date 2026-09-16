@@ -86,7 +86,7 @@ impl NamsdecApp {
     }
 
     /// Le bandeau fixe : les registres, puis les flags en pastilles.
-    fn cpu_state_ui(&self, ui: &mut egui::Ui) {
+    fn cpu_state_ui(&mut self, ui: &mut egui::Ui) {
         self.registers_ui(ui);
         ui.add_space(6.0);
         self.flags_ui(ui);
@@ -156,7 +156,7 @@ impl NamsdecApp {
         }
     }
 
-    fn registers_ui(&self, ui: &mut egui::Ui) {
+    fn registers_ui(&mut self, ui: &mut egui::Ui) {
         let Some(emulator) = &self.emulator else {
             ui.label(strings(self.lang).no_binary_assembled);
             return;
@@ -169,6 +169,10 @@ impl NamsdecApp {
         // sa hauteur — celui qui garde le panneau étroit garde une
         // colonne, qui défile.
         let pairs = register_columns(ui.available_width());
+        // Relevé dans la boucle, appliqué après : la grille emprunte
+        // `self` en lecture, la surveillance l'écrit.
+        let mut clicked: Option<&'static str> = None;
+        let s = strings(self.lang);
         egui::Grid::new("registers_grid")
             // Deux cellules par paire, plus une cellule vide entre les
             // paires : c'est elle qui sépare les colonnes.
@@ -200,7 +204,31 @@ impl NamsdecApp {
                     } else {
                         ui.visuals().text_color()
                     };
-                    ui.colored_label(color, egui::RichText::new(name).monospace());
+                    // Le nom du registre est cliquable : il pose une
+                    // surveillance. « Arrête-toi quand RAX change » n'a
+                    // pas de point d'arrêt possible — on ignore où
+                    // l'écriture aura lieu, c'est justement la question.
+                    // Un point d'arrêt se pose dans la gouttière, celui-ci
+                    // se pose sur le registre lui-même.
+                    let watched = self.watched_registers.contains(&name);
+                    let étiquette = egui::RichText::new(name).monospace();
+                    let étiquette = if watched {
+                        étiquette.underline()
+                    } else {
+                        étiquette
+                    };
+                    let response = ui
+                        .add(egui::Label::new(étiquette.color(color)).sense(egui::Sense::click()));
+                    if name != "RIP" {
+                        let response = response.on_hover_text(if watched {
+                            s.register_unwatch_hint
+                        } else {
+                            s.register_watch_hint
+                        });
+                        if response.clicked() {
+                            clicked = Some(name);
+                        }
+                    }
                     ui.colored_label(
                         color,
                         egui::RichText::new(format!("{value:016x}")).monospace(),
@@ -223,6 +251,13 @@ impl NamsdecApp {
                     ui.end_row();
                 }
             });
+
+        if let Some(name) = clicked {
+            if !self.watched_registers.remove(name) {
+                self.watched_registers.insert(name);
+            }
+            self.sync_watchpoints();
+        }
     }
 
     fn flags_ui(&self, ui: &mut egui::Ui) {

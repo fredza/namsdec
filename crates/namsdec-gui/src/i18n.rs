@@ -167,6 +167,9 @@ pub struct Strings {
     pub memory_format_text: &'static str,
     pub memory_go_hint: &'static str,
     pub memory_watch_hint: &'static str,
+    /// Cliquer sur le nom d'un registre le surveille.
+    pub register_watch_hint: &'static str,
+    pub register_unwatch_hint: &'static str,
     pub watchpoints_title: &'static str,
     pub watchpoints_remove: &'static str,
 
@@ -384,6 +387,8 @@ const FR: Strings = Strings {
     memory_format_text: "Texte",
     memory_go_hint: "Afficher la mémoire à cette adresse (ou Entrée)",
     memory_watch_hint: "Surveiller ces huit octets : l'exécution s'arrêtera quand ils changeront",
+    register_watch_hint: "Surveiller ce registre : l'exécution s'arrêtera quand il changera",
+    register_unwatch_hint: "Ne plus surveiller ce registre",
     watchpoints_title: "Zones surveillées",
     watchpoints_remove: "Ne plus surveiller",
 
@@ -589,6 +594,8 @@ const EN: Strings = Strings {
     memory_format_text: "Text",
     memory_go_hint: "Show memory at this address (or press Enter)",
     memory_watch_hint: "Watch these eight bytes: execution stops when they change",
+    register_watch_hint: "Watch this register: execution stops when it changes",
+    register_unwatch_hint: "Stop watching this register",
     watchpoints_title: "Watched areas",
     watchpoints_remove: "Stop watching",
 

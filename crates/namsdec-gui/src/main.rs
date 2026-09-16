@@ -236,6 +236,13 @@ enum Status {
         old: u64,
         new: u64,
     },
+    /// Un registre surveillé a changé : la question « qui écrit dans
+    /// RAX ? » a sa réponse à l'écran.
+    RegisterChanged {
+        register: &'static str,
+        old: u64,
+        new: u64,
+    },
     /// Le dernier pas vient d'être défait.
     SteppedBack,
     /// Il n'y avait plus rien à défaire.
@@ -339,6 +346,11 @@ struct NamsdecApp {
     /// Comment l'onglet Mémoire lit les octets. Réglage utilisateur, donc
     /// enregistré dans `settings.json`.
     memory_format: MemoryFormat,
+    /// Les registres surveillés, par leur nom tel qu'il s'affiche.
+    /// L'exécution s'arrête quand l'un d'eux change — « qui écrit dans
+    /// RAX ? » est une question qu'un point d'arrêt ne sait pas poser,
+    /// puisqu'on ignore justement *où* le poser.
+    watched_registers: BTreeSet<&'static str>,
     /// Les zones surveillées : adresse et longueur. Elles appartiennent
     /// au programme en cours, pas aux réglages — un point posé sur
     /// `0x401000` n'a aucun sens pour le binaire suivant.
@@ -742,6 +754,7 @@ impl Default for NamsdecApp {
             mem_addr: BASE_ADDR,
             memory_format: MemoryFormat::Bytes,
             watchpoints: Vec::new(),
+            watched_registers: BTreeSet::new(),
             show_preferences: false,
             prefs_snapshot: None,
             show_about: false,
@@ -1136,8 +1149,16 @@ impl NamsdecApp {
     /// l'état courant.
     fn sync_watchpoints(&mut self) {
         let points = self.watchpoints.clone();
+        // Les registres suivent le même chemin : la liste vit dans
+        // l'application, le moteur la reçoit et l'arme sur l'état courant.
+        let registers: Vec<(&'static str, Reg64)> = REGISTERS
+            .iter()
+            .filter(|(name, _)| self.watched_registers.contains(name))
+            .copied()
+            .collect();
         if let Some(emulator) = &mut self.emulator {
             emulator.set_watchpoints(&points);
+            emulator.set_watched_registers(&registers);
         }
     }
 
@@ -1229,6 +1250,11 @@ impl NamsdecApp {
             Ok(RunStop::Watchpoint { addr, old, new }) => {
                 self.running = false;
                 self.status = Status::Watchpoint { addr, old, new };
+                self.back_to_command_mode();
+            }
+            Ok(RunStop::RegisterChanged { register, old, new }) => {
+                self.running = false;
+                self.status = Status::RegisterChanged { register, old, new };
                 self.back_to_command_mode();
             }
             Ok(RunStop::NeedsInput) => {
@@ -3032,6 +3058,17 @@ impl NamsdecApp {
                     },
                 );
             }
+            Status::RegisterChanged { register, old, new } => {
+                status_dot(ui, theme.changed);
+                ui.colored_label(
+                    theme.changed,
+                    if lang == Lang::Fr {
+                        format!("Surveillance : {register} est passé de {old:#x} à {new:#x}")
+                    } else {
+                        format!("Watch: {register} went from {old:#x} to {new:#x}")
+                    },
+                );
+            }
             Status::SteppedBack => {
                 ui.colored_label(theme.accent, s.status_stepped_back);
             }
@@ -3970,11 +4007,20 @@ fn icon_square_button(
     let (rect, response) = ui.allocate_exact_size(egui::vec2(side, side), egui::Sense::click());
     if ui.is_rect_visible(rect) {
         let visuals = ui.style().interact(&response);
+        // Un cadre, toujours : au repos, le thème rend le fond des
+        // boutons transparent et le liseré invisible — deux icônes
+        // posées à côté d'un champ passaient alors pour de la décoration.
+        // Un bouton doit se voir sans qu'on ait à le survoler.
+        let stroke = if visuals.bg_stroke.width > 0.0 {
+            visuals.bg_stroke
+        } else {
+            egui::Stroke::new(1.0, ui.visuals().weak_text_color())
+        };
         ui.painter().rect(
             rect,
             visuals.corner_radius,
             visuals.weak_bg_fill,
-            visuals.bg_stroke,
+            stroke,
             egui::StrokeKind::Inside,
         );
         icon(ui.painter(), rect.shrink(5.0), visuals.text_color());
