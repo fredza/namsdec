@@ -500,6 +500,15 @@ pub trait Backend {
     /// façons d'écrire la même boucle ne donnent pas le même nombre.
     fn executed(&self) -> u64;
 
+    /// Le chemin parcouru : l'adresse de chaque pas qu'on peut encore
+    /// défaire, du plus ancien au plus récent.
+    ///
+    /// Le compteur de passages dit *combien de fois* une ligne a tourné ;
+    /// celle-ci dit *dans quel ordre* le programme est passé — ce qui
+    /// répond à « comment suis-je arrivé là ? », la question qu'on pose
+    /// devant un état qu'on n'attendait pas.
+    fn trace(&self) -> &VecDeque<u64>;
+
     /// Combien de fois chaque adresse a été exécutée depuis le départ.
     ///
     /// C'est le profil du programme : il dit ce qui a tourné cinq fois
@@ -611,6 +620,11 @@ pub struct Emulator {
     ticks: u64,
     /// Combien de fois chaque adresse a été exécutée.
     visits: BTreeMap<u64, u64>,
+    /// Le chemin parcouru, pas par pas — aussi loin que l'on peut
+    /// revenir en arrière, et pas plus : une chronologie qui montrerait
+    /// des pas qu'on ne peut plus défaire ne serait pas une chronologie,
+    /// seulement une liste.
+    trace: VecDeque<u64>,
 }
 
 impl Backend for Emulator {
@@ -620,6 +634,10 @@ impl Backend for Emulator {
 
     fn executed(&self) -> u64 {
         self.ticks
+    }
+
+    fn trace(&self) -> &VecDeque<u64> {
+        &self.trace
     }
 
     fn visits(&self) -> &BTreeMap<u64, u64> {
@@ -740,6 +758,7 @@ impl Emulator {
             },
             ticks: 0,
             visits: BTreeMap::new(),
+            trace: VecDeque::new(),
             breaches: Vec::new(),
             cpu,
         }
@@ -2410,7 +2429,11 @@ impl Emulator {
     fn begin_undo(&mut self) {
         if self.history.len() >= HISTORY_LIMIT {
             self.history.pop_front();
+            self.trace.pop_front();
         }
+        // La trace suit l'historique page pour page : c'est ce qui
+        // permet de cliquer sur un pas et d'y revenir vraiment.
+        self.trace.push_back(self.cpu.regs.rip);
         self.history.push_back(Undo {
             regs: self.cpu.regs.clone(),
             flags: self.cpu.flags,
@@ -2453,6 +2476,9 @@ impl Emulator {
         let Some(undo) = self.history.pop_back() else {
             return false;
         };
+        // La trace se défait avec l'historique : ce qui n'est plus
+        // défaisable n'a plus à figurer dans le chemin parcouru.
+        self.trace.pop_back();
         // Dans l'ordre inverse des écritures : deux écritures au même
         // endroit doivent se défaire en commençant par la dernière.
         for (addr, bytes) in undo.memory.iter().rev() {

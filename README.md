@@ -71,7 +71,7 @@ Markdown pour être collé dans un compte rendu ou un cours.
 
 Et aussi : documentation de 114 instructions et directives sous **F1** ou
 au survol, autocomplétion qui ne propose que ce qui est documenté,
-retour en arrière pas à pas, points d'arrêt — avec condition (`rcx == 0`), surveillance d'un registre
+une chronologie où l'on clique un pas passé pour y revenir (registres, indicateurs et mémoire avec), points d'arrêt — avec condition (`rcx == 0`), surveillance d'un registre
 ou d'une adresse, vérification de la convention d'appel (ce qu'une
 sous-routine a emprunté sans le rendre), mémoire protégée par les droits
 réels des sections, tas simulé avec `brk`, SSE/AVX et pile x87.

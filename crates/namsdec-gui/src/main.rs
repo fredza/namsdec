@@ -484,6 +484,8 @@ struct NamsdecApp {
     show_vectors: bool,
     /// La fenêtre des points d'arrêt et de leurs conditions.
     show_breakpoints: bool,
+    /// La chronologie : le chemin parcouru, pas par pas.
+    show_timeline: bool,
     /// Les séries chargées : celle livrée avec l'application, puis celles
     /// installées depuis le disque, dans l'ordre où on les a trouvées.
     exercise_packs: Vec<namsdec_exercises::Pack>,
@@ -637,6 +639,7 @@ enum PaletteCommand {
     ShowAnalysis,
     ShowVectors,
     ShowBreakpoints,
+    ShowTimeline,
     SetTheme(&'static Theme),
     SetLang(Lang),
     SaveAs,
@@ -711,6 +714,7 @@ fn palette_commands(
             s.breakpoints_open.to_string(),
             PaletteCommand::ShowBreakpoints,
         ),
+        (s.timeline_open.to_string(), PaletteCommand::ShowTimeline),
         (
             format!("{}: Français", s.preferences_language),
             PaletteCommand::SetLang(Lang::Fr),
@@ -974,6 +978,7 @@ impl Default for NamsdecApp {
             show_analysis: false,
             show_vectors: false,
             show_breakpoints: false,
+            show_timeline: false,
             exercise_packs: vec![namsdec_exercises::builtin_pack()],
             exercise_files: BTreeMap::new(),
             pack_to_remove: None,
@@ -2299,6 +2304,7 @@ impl NamsdecApp {
             PaletteCommand::ShowAnalysis => self.show_analysis = true,
             PaletteCommand::ShowVectors => self.show_vectors = true,
             PaletteCommand::ShowBreakpoints => self.show_breakpoints = true,
+            PaletteCommand::ShowTimeline => self.show_timeline = true,
             PaletteCommand::SetTheme(theme) => {
                 self.theme = theme;
                 self.apply_theme(ctx);
@@ -2665,6 +2671,10 @@ impl NamsdecApp {
                 }
                 if ui.button(s.breakpoints_open).clicked() {
                     self.show_breakpoints = true;
+                    ui.close();
+                }
+                if ui.button(s.timeline_open).clicked() {
+                    self.show_timeline = true;
                     ui.close();
                 }
                 ui.separator();
@@ -4627,6 +4637,140 @@ impl NamsdecApp {
         self.pending = Some(Pending::Quit);
     }
 
+    /// La chronologie : le chemin parcouru, et de quoi y revenir.
+    ///
+    /// « Comment suis-je arrivé là ? » est la question qu'on pose devant
+    /// un état qu'on n'attendait pas, et aucun compteur n'y répond : il
+    /// faut l'ordre des pas. Revenir en arrière d'un pas à la fois y
+    /// répond mal aussi — on cherche un endroit, pas un pas.
+    ///
+    /// Chaque ligne est un pas qu'on peut vraiment défaire : cliquer
+    /// dessus rembobine le programme jusque-là, mémoire et registres
+    /// compris.
+    fn timeline_window_ui(&mut self, ctx: &egui::Context) {
+        if !self.show_timeline {
+            return;
+        }
+        let s = strings(self.lang);
+        let theme = self.theme;
+        let mut open = true;
+        let mut revenir = None;
+
+        // Relevé avant la fenêtre : elle emprunte `self` en écriture
+        // pour poser le retour en arrière.
+        let pas: Vec<(usize, u64)> = self
+            .emulator
+            .as_ref()
+            .map(|emulator| emulator.trace().iter().copied().enumerate().collect())
+            .unwrap_or_default();
+
+        egui::Window::new(s.timeline_title)
+            .id(egui::Id::new("timeline_window"))
+            .open(&mut open)
+            .resizable(true)
+            .collapsible(false)
+            .default_size([520.0, 420.0])
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(ctx.viewport_rect().center())
+            .show(ctx, |ui| {
+                if pas.is_empty() {
+                    ui.weak(s.timeline_empty);
+                    return;
+                }
+                ui.weak(s.timeline_hint);
+                ui.separator();
+                let row_height =
+                    ui.text_style_height(&egui::TextStyle::Monospace) + ui.spacing().item_spacing.y;
+                let total = pas.len();
+                // Cinq mille pas : on ne dessine que ce qui est à
+                // l'écran, comme pour l'onglet Octets.
+                egui::ScrollArea::vertical()
+                    .id_salt("timeline_rows")
+                    .auto_shrink([false, false])
+                    .stick_to_bottom(true)
+                    .show_rows(ui, row_height, total, |ui, rows| {
+                        for (index, addr) in &pas[rows] {
+                            // Le rang par rapport à maintenant : le
+                            // dernier pas est « -1 », celui d'avant
+                            // « -2 ». C'est ainsi qu'on le pense.
+                            let recul = total - index;
+                            let ligne = self
+                                .assemble_state
+                                .as_ref()
+                                .and_then(|state| state.addr_to_line.get(addr).copied());
+                            let texte = self
+                                .assemble_state
+                                .as_ref()
+                                .and_then(|state| {
+                                    state
+                                        .disasm
+                                        .iter()
+                                        .find(|instruction| instruction.address == *addr)
+                                })
+                                .map(|instruction| instruction.text.clone())
+                                .unwrap_or_default();
+                            let réponse = ui
+                                .horizontal(|ui| {
+                                    ui.colored_label(theme.dim, format!("-{recul}"));
+                                    ui.monospace(format!("{addr:#010x}"));
+                                    match ligne {
+                                        Some(ligne) => {
+                                            ui.colored_label(theme.accent, format!("{ligne}"))
+                                        }
+                                        None => ui.colored_label(theme.dim, " "),
+                                    };
+                                    ui.add(
+                                        egui::Label::new(egui::RichText::new(texte).monospace())
+                                            .truncate(),
+                                    );
+                                })
+                                .response;
+                            if réponse
+                                .interact(egui::Sense::click())
+                                .on_hover_text(s.timeline_go_back)
+                                .clicked()
+                            {
+                                revenir = Some(recul);
+                            }
+                        }
+                    });
+            });
+
+        if let Some(recul) = revenir {
+            self.rewind(recul);
+        }
+        self.show_timeline = open;
+    }
+
+    /// Rembobine de `pas` pas : autant de retours en arrière, d'un coup.
+    ///
+    /// Le moteur ne sait défaire qu'un pas à la fois — c'est ce qui rend
+    /// chaque retour exact, mémoire comprise. Les enchaîner ici évite de
+    /// demander à l'utilisateur de cliquer mille fois pour reculer de
+    /// mille.
+    fn rewind(&mut self, pas: usize) {
+        let Some(emulator) = &mut self.emulator else {
+            return;
+        };
+        let mut faits = 0;
+        for _ in 0..pas {
+            if !emulator.step_back() {
+                break;
+            }
+            faits += 1;
+        }
+        if faits == 0 {
+            return;
+        }
+        self.running = false;
+        self.regs_before = None;
+        self.flags_before = None;
+        self.last_step = None;
+        self.error_advice = None;
+        self.follow_execution();
+        self.status = Status::SteppedBack;
+    }
+
     /// Les points d'arrêt, avec leur condition.
     ///
     /// Un point d'arrêt se pose d'un clic dans la gouttière ; sa
@@ -6021,6 +6165,7 @@ impl NamsdecApp {
             self.help_window_ui(&ctx);
             self.vectors_window_ui(&ctx);
             self.breakpoints_window_ui(&ctx);
+            self.timeline_window_ui(&ctx);
             self.analysis_window_ui(&ctx);
             if self.exercises {
                 self.exercises_window_ui(&ctx);

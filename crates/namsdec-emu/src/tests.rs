@@ -2757,3 +2757,38 @@ fn counting_visits_stays_cheap() {
     );
     println!("PERF {elapsed:?} pour ~4 000 000 d'instructions");
 }
+
+/// Le chemin parcouru se lit dans l'ordre, et se défait avec lui.
+///
+/// Le compteur de passages dit combien de fois une ligne a tourné ; la
+/// trace dit dans quel ordre le programme est passé — et chacun de ses
+/// pas doit être un pas qu'on peut vraiment défaire, sans quoi cliquer
+/// dessus ne mènerait nulle part.
+#[test]
+fn the_trace_follows_the_path_and_unwinds_with_it() {
+    let mut emu = load_only(
+        "global _start\nsection .text\n_start:\nmov rcx, 2\nboucle:\ndec rcx\njnz boucle\nhlt\n",
+        &[],
+    );
+    let départ = emu.cpu.regs.rip;
+
+    emu.run(100).unwrap();
+    let trace: Vec<u64> = emu.trace().iter().copied().collect();
+    // Le premier pas est le point d'entrée, et la trace compte autant
+    // d'entrées que d'instructions exécutées.
+    assert_eq!(trace.first(), Some(&départ));
+    assert_eq!(trace.len() as u64, emu.executed());
+    // La boucle laisse sa marque : la même adresse revient.
+    let corps = trace[1];
+    assert!(
+        trace.iter().filter(|addr| **addr == corps).count() >= 2,
+        "le corps de boucle passe plusieurs fois : {trace:x?}"
+    );
+
+    // Et revenir en arrière raccourcit le chemin d'autant.
+    let avant = emu.trace().len();
+    assert!(emu.step_back());
+    assert_eq!(emu.trace().len(), avant - 1);
+    // Ce qui reste est bien le début du chemin, pas une autre liste.
+    assert_eq!(emu.trace().front(), Some(&départ));
+}

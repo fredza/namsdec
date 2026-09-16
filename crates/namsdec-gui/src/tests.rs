@@ -4262,6 +4262,11 @@ fn the_cpu_state_fills_the_panel_without_a_scroll_bar() {
 /// défilement, tant que l'écran le permet — et ses lignes occupent
 /// toute sa largeur.
 ///
+/// « Tant que l'écran le permet » est la clause qui compte : une
+/// quarantaine de commandes ne tiennent pas dans huit cents pixels, et
+/// une barre a alors sa place. Ce qu'on refuse, c'est la barre sur un
+/// écran qui aurait pu tout montrer.
+///
 /// Elle avait une hauteur figée de 340 px : la liste défilait dans une
 /// fenêtre à moitié vide, et sa barre tombait au milieu parce que la
 /// zone se serrait à gauche.
@@ -4276,7 +4281,7 @@ fn the_command_palette_shows_everything_it_can_without_scrolling() {
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 1000.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -6676,4 +6681,108 @@ hlt
         "{:?}",
         app.status
     );
+}
+
+/// La chronologie répond à « comment suis-je arrivé là ? », et permet
+/// d'y retourner.
+///
+/// Revenir d'un pas à la fois répond mal : on cherche un endroit, pas un
+/// pas. Cliquer sur une ligne rembobine tout — registres, indicateurs,
+/// mémoire.
+#[test]
+fn the_timeline_shows_the_path_and_goes_back_to_it() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        show_timeline: true,
+        source: "\
+global _start
+section .text
+_start:
+mov rcx, 4
+boucle:
+dec rcx
+jnz boucle
+mov rax, 7
+hlt
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+
+    let ctx = egui::Context::default();
+    app.do_run();
+    for _ in 0..10 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&ctx);
+    }
+    assert!(!app.running, "le programme doit s'arrêter");
+
+    let emulator = app.emulator.as_ref().unwrap();
+    let trace: Vec<u64> = emulator.trace().iter().copied().collect();
+    assert_eq!(trace.len() as u64, emulator.executed());
+    assert_eq!(
+        emulator.cpu().regs.get64(namsdec_core::Reg64::Rax),
+        7,
+        "à l'arrivée, RAX vaut 7"
+    );
+
+    // Revenir de trois pas : on repasse avant le `mov rax, 7`.
+    app.rewind(3);
+    let emulator = app.emulator.as_ref().unwrap();
+    assert_eq!(
+        emulator.cpu().regs.get64(namsdec_core::Reg64::Rax),
+        0,
+        "le `mov rax, 7` a été défait"
+    );
+    assert_eq!(
+        emulator.trace().len(),
+        trace.len() - 3,
+        "et le chemin s'est raccourci d'autant"
+    );
+    assert!(
+        matches!(app.status, Status::SteppedBack),
+        "{:?}",
+        app.status
+    );
+
+    // Reculer plus loin que le chemin ne va pas plus loin que son début.
+    app.rewind(10_000);
+    assert!(app.emulator.as_ref().unwrap().trace().is_empty());
+
+    // Et la fenêtre montre bien le chemin quand il y en a un.
+    app.do_assemble();
+    app.do_step();
+    app.do_step();
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 1000.0),
+        )),
+        ..Default::default()
+    };
+    let mut painted = String::new();
+    for _ in 0..2 {
+        painted.clear();
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        for clipped in &output.shapes {
+            if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                painted.push_str(text.galley.text());
+                painted.push('|');
+            }
+        }
+        output.textures_delta.clear();
+    }
+    assert!(painted.contains("Chronologie"), "{painted}");
+    assert!(
+        painted.contains("-1|"),
+        "le dernier pas est « -1 » : {painted}"
+    );
+    assert!(painted.contains("-2|"), "{painted}");
 }
