@@ -232,6 +232,48 @@ impl NamsdecApp {
         });
     }
 
+    /// L'appel système sur le point d'être fait, écrit comme on
+    /// l'écrirait en C : `write(fd = 1, buf = 0x402000 → "salut\n",
+    /// count = 6)`.
+    ///
+    /// Le numéro est dans RAX, les arguments dans RDI, RSI, RDX, R10, R8
+    /// et R9 — et surtout pas RCX, que `syscall` écrase, ce qui est
+    /// l'erreur qu'on fait en venant des appels de fonction.
+    fn syscall_ui(&self, ui: &mut egui::Ui, cpu: &namsdec_core::Cpu) {
+        let s = strings(self.lang);
+        let theme = self.theme;
+        let number = cpu.regs.get64(Reg64::Rax);
+        let Some(call) = namsdec_re::table::syscall(number) else {
+            ui.colored_label(theme.dim, format!("{} {number}", s.syscall_unknown));
+            return;
+        };
+
+        let mut text = format!("{}(", call.name);
+        for (index, name) in call.args.iter().enumerate() {
+            let Some(reg) = SYSCALL_ARGS.get(index) else {
+                break;
+            };
+            let value = cpu.regs.get64(*reg);
+            if index > 0 {
+                text.push_str(", ");
+            }
+            text.push_str(&format!("{name} = {value:#x}"));
+            // Un tampon qu'on peut lire vaut mieux que son adresse :
+            // c'est le texte que le programme est sur le point d'écrire.
+            if let Some(extrait) = peek_text(cpu, name, value, &cpu.regs) {
+                text.push_str(&format!(" → {extrait}"));
+            }
+        }
+        text.push(')');
+
+        ui.horizontal_wrapped(|ui| {
+            ui.colored_label(theme.accent, egui::RichText::new(text).monospace());
+            if !call.simulated {
+                ui.colored_label(theme.warn, s.syscall_not_simulated);
+            }
+        });
+    }
+
     /// La ligne qui mène aux registres étendus.
     ///
     /// Un lien plutôt qu'un repli : ce que l'on déplie dans un panneau,
@@ -304,6 +346,16 @@ impl NamsdecApp {
         if let Some(entry) = namsdec_doc::lookup(mnemonic) {
             ui.colored_label(theme.dim, entry.title.get(self.lang.code()));
         }
+        // Un `syscall` : lequel, et avec quoi ?
+        //
+        // L'instruction ne porte aucun opérande — tout est dans les
+        // registres, selon une convention qu'il faut connaître par cœur
+        // ou chercher ailleurs. C'est le genre de chose qu'un atelier
+        // d'apprentissage doit dire à l'endroit où la question se pose.
+        if text.trim() == "syscall" {
+            self.syscall_ui(ui, cpu);
+        }
+
         // Un saut conditionnel : sera-t-il pris, et pourquoi ?
         //
         // « Quel saut après quelle comparaison » est l'endroit précis où
@@ -1712,4 +1764,46 @@ pub(crate) fn address_field_width(ui: &egui::Ui) -> f32 {
 /// c'est par lui qu'un test retrouve sa largeur.
 pub(crate) fn memory_address_id() -> egui::Id {
     egui::Id::new("memory_address")
+}
+
+/// Les registres d'arguments d'un appel système, dans l'ordre. Jumeaux
+/// des noms de `namsdec_re::table::ARGUMENT_REGISTERS`.
+const SYSCALL_ARGS: [Reg64; 6] = [
+    Reg64::Rdi,
+    Reg64::Rsi,
+    Reg64::Rdx,
+    Reg64::R10,
+    Reg64::R8,
+    Reg64::R9,
+];
+
+/// Le texte pointé par un argument qui en porte un — le `buf` d'un
+/// `write`, le chemin d'un `open`.
+///
+/// Rendu entre guillemets et écourté : on veut reconnaître ce qui va
+/// être écrit, pas le relire en entier.
+fn peek_text(
+    cpu: &namsdec_core::Cpu,
+    name: &str,
+    addr: u64,
+    regs: &namsdec_core::Registers,
+) -> Option<String> {
+    if !matches!(name, "buf" | "chemin") {
+        return None;
+    }
+    // La longueur demandée quand elle existe (le `count` d'un write),
+    // bornée à ce qui tient sur une ligne.
+    let count = regs.get64(Reg64::Rdx).clamp(1, 24) as usize;
+    let bytes = cpu.mem.peek_bytes(addr, count).ok()?;
+    let readable: String = bytes
+        .iter()
+        .take_while(|&&b| b != 0)
+        .map(|&b| match b {
+            b'\n' => "\\n".to_owned(),
+            b'\t' => "\\t".to_owned(),
+            b if b.is_ascii_graphic() || b == b' ' => (b as char).to_string(),
+            _ => "·".to_owned(),
+        })
+        .collect();
+    (!readable.is_empty()).then(|| format!("\"{readable}\""))
 }

@@ -4799,3 +4799,84 @@ fn a_conditional_jump_says_whether_it_will_be_taken() {
     let sans = peindre(&source("ja"), 1);
     assert!(!sans.contains("le saut"), "{sans}");
 }
+
+/// Devant un `syscall`, le panneau dit lequel et avec quoi : le nom de
+/// l'appel, ses arguments nommés, et le texte que le tampon contient.
+#[test]
+fn a_syscall_is_spelled_out_before_it_runs() {
+    let mut app = NamsdecApp {
+        source: "\
+global _start
+section .data
+message: db \"salut\", 10
+section .text
+_start:
+mov rax, 1
+mov rdi, 1
+mov rsi, message
+mov rdx, 6
+syscall
+mov rax, 60
+mov rdi, 0
+syscall
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+    // Les quatre `mov` faits, on est arrêté *sur* le `syscall`.
+    for _ in 0..4 {
+        app.do_step();
+    }
+
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 900.0),
+        )),
+        ..Default::default()
+    };
+    let peindre = |app: &mut NamsdecApp| {
+        let mut painted = String::new();
+        for _ in 0..2 {
+            painted.clear();
+            let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+            for clipped in &output.shapes {
+                if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                    painted.push_str(text.galley.text());
+                    painted.push('|');
+                }
+            }
+            output.textures_delta.clear();
+        }
+        painted
+    };
+
+    let painted = peindre(&mut app);
+    assert!(
+        painted.contains("write(fd = 0x1"),
+        "l'appel doit être nommé, ses arguments aussi : {painted}"
+    );
+    assert!(
+        painted.contains("count = 0x6"),
+        "le troisième argument vient de RDX : {painted}"
+    );
+    assert!(
+        painted.contains("salut"),
+        "et le tampon montre ce qui va être écrit : {painted}"
+    );
+
+    // L'`exit` de la fin, une fois le write passé et les deux `mov`
+    // suivants faits.
+    for _ in 0..3 {
+        app.do_step();
+    }
+    let painted = peindre(&mut app);
+    assert!(
+        painted.contains("exit(code = 0x0)"),
+        "le dernier appel se lit aussi bien : {painted}"
+    );
+}

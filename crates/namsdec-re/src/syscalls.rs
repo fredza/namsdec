@@ -24,53 +24,7 @@ struct Call {
 /// deviner serait mentir.
 const LOOK_BACK: usize = 12;
 
-/// Le nom d'un appel système Linux x86-64, et si namsdec le simule.
-fn syscall_name(number: u64) -> Option<&'static str> {
-    Some(match number {
-        0 => "read",
-        1 => "write",
-        2 => "open",
-        3 => "close",
-        4 => "stat",
-        5 => "fstat",
-        8 => "lseek",
-        9 => "mmap",
-        10 => "mprotect",
-        11 => "munmap",
-        12 => "brk",
-        13 => "rt_sigaction",
-        16 => "ioctl",
-        20 => "writev",
-        22 => "pipe",
-        23 => "select",
-        32 => "dup",
-        35 => "nanosleep",
-        39 => "getpid",
-        41 => "socket",
-        42 => "connect",
-        57 => "fork",
-        59 => "execve",
-        60 => "exit",
-        61 => "wait4",
-        62 => "kill",
-        63 => "uname",
-        79 => "getcwd",
-        83 => "mkdir",
-        87 => "unlink",
-        96 => "gettimeofday",
-        102 => "getuid",
-        201 => "time",
-        231 => "exit_group",
-        257 => "openat",
-        _ => return None,
-    })
-}
-
-/// Ceux que l'interpréteur exécute vraiment. Le dire évite la surprise
-/// d'un programme qui s'arrête au milieu.
-fn is_simulated(number: u64) -> bool {
-    matches!(number, 0 | 1 | 12 | 60 | 231)
-}
+use crate::table::{is_simulated, syscall_name};
 
 /// Le numéro chargé dans RAX juste avant `index`, s'il est écrit en clair.
 fn number_before(disasm: &[namsdec_disasm::DecodedInstruction], index: usize) -> Option<u64> {

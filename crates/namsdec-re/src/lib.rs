@@ -12,6 +12,7 @@ mod protections;
 pub mod report;
 mod strings;
 mod syscalls;
+pub mod table;
 
 pub use binary_info::BinaryInfoModule;
 pub use calls::CallsModule;
