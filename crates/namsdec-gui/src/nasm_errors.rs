@@ -24,6 +24,51 @@ struct Explanation {
 
 const EXPLANATIONS: &[Explanation] = &[
     Explanation {
+        needle: "instruction expected",
+        fr: "Ce mot n'est pas une instruction connue : une faute de frappe (`mv` pour `mov`), ou une étiquette à laquelle il manque ses deux-points. Une ligne d'assembleur commence par une étiquette, une instruction ou une directive, jamais par autre chose.",
+        en: "That word is not a known instruction: a typo (`mv` for `mov`), or a label missing its colon. A line of assembly starts with a label, an instruction or a directive, never with anything else.",
+    },
+    Explanation {
+        needle: "initialize memory in bss",
+        fr: "`.bss` est la section des données *non initialisées* : elle n'occupe rien dans le fichier, seulement en mémoire. On y réserve de la place avec `resb`, `resw`, `resq` — pas avec `db`, qui écrit des octets. Ce que vous donnez ici est ignoré.",
+        en: "`.bss` is the section of *uninitialised* data: it takes no room in the file, only in memory. Space is reserved there with `resb`, `resw`, `resq` — not with `db`, which writes bytes. What you gave here is ignored.",
+    },
+    Explanation {
+        needle: "exceeds bounds",
+        fr: "La valeur ne tient pas dans la taille demandée : 300 ne tient pas dans un octet (0 à 255), et un déplacement d'adresse ne tient que sur 32 bits. Choisissez une taille plus large, ou passez par un registre.",
+        en: "The value does not fit the size asked for: 300 does not fit in a byte (0 to 255), and an address displacement only holds 32 bits. Use a wider size, or go through a register.",
+    },
+    Explanation {
+        needle: "times value",
+        fr: "`times` répète ce qui suit, et ne peut donc pas répéter un nombre négatif de fois. Le calcul qui donne ce nombre est faux — souvent un `$ - étiquette` où l'étiquette est déclarée après, ou dans une autre section.",
+        en: "`times` repeats what follows, so it cannot repeat a negative number of times. The expression giving that number is wrong — often a `$ - label` where the label comes later, or lives in another section.",
+    },
+    Explanation {
+        needle: "unterminated string",
+        fr: "Il manque le guillemet fermant. NASM lit jusqu'à la fin de la ligne et ce qui suit devient une chaîne, d'où les erreurs qui s'enchaînent en dessous.",
+        en: "The closing quote is missing. NASM reads to the end of the line and what follows becomes part of the string, hence the errors that pile up below.",
+    },
+    Explanation {
+        needle: "inconsistently redefined",
+        fr: "Cette étiquette est définie deux fois. Chaque nom ne désigne qu'un endroit : renommez l'une des deux, ou supprimez la copie — on tombe souvent dessus après avoir dupliqué un bloc.",
+        en: "That label is defined twice. Each name designates one place: rename one of them, or remove the copy — this usually turns up after duplicating a block.",
+    },
+    Explanation {
+        needle: "invalid 64-bit effective address",
+        fr: "Cette forme d'adresse n'existe pas. Le facteur d'échelle ne peut être que 1, 2, 4 ou 8 — `[rbx + rcx*3]` est refusé —, et l'on ne peut pas mettre deux bases. Décomposez le calcul avec un `lea` ou une addition.",
+        en: "That address form does not exist. The scale can only be 1, 2, 4 or 8 — `[rbx + rcx*3]` is refused — and there cannot be two bases. Break the computation up with a `lea` or an addition.",
+    },
+    Explanation {
+        needle: "relocation truncated to fit",
+        fr: "L'éditeur de liens ne peut pas écrire cette adresse : elle ne tient pas dans les 32 bits que l'instruction lui laisse. C'est le signe d'un adressage absolu là où il faut du relatif — `default rel` en tête du fichier, ou `lea rax, [étiquette]` plutôt que `mov rax, étiquette`.",
+        en: "The linker cannot write that address: it does not fit in the 32 bits the instruction leaves it. That is the sign of absolute addressing where relative is needed — `default rel` at the top of the file, or `lea rax, [label]` instead of `mov rax, label`.",
+    },
+    Explanation {
+        needle: "multiple definition",
+        fr: "Ce symbole est défini dans deux fichiers à la fois. Un seul programme, un seul `_start` : c'est l'éditeur de liens qui le dit, et il ne peut pas choisir à votre place.",
+        en: "That symbol is defined in two files at once. One program, one `_start`: the linker is saying so, and it cannot choose for you.",
+    },
+    Explanation {
         needle: "not defined",
         fr: "Ce nom n'existe nulle part dans le programme : une étiquette mal orthographiée, ou une section oubliée. Vérifiez l'orthographe, et que l'étiquette est bien suivie de deux-points là où elle est définie.",
         en: "That name exists nowhere in the program: a misspelt label, or a forgotten section. Check the spelling, and that the label is followed by a colon where it is defined.",
@@ -90,8 +135,8 @@ const EXPLANATIONS: &[Explanation] = &[
     },
     Explanation {
         needle: "comma expected",
-        fr: "Il manque une virgule entre deux opérandes, ou il y en a une de trop.",
-        en: "A comma is missing between two operands, or there is one too many.",
+        fr: "Il manque une virgule entre deux opérandes, ou il y en a une de trop. En assembleur, la destination vient d'abord, puis la source : `mov rax, rbx` met RBX dans RAX.",
+        en: "A comma is missing between two operands, or there is one too many. In assembly the destination comes first, then the source: `mov rax, rbx` puts RBX into RAX.",
     },
     Explanation {
         needle: "expression syntax error",
@@ -136,12 +181,47 @@ mod tests {
             "/usr/bin/ld: warning: cannot find entry symbol _start; defaulting to 0000000000400080",
             "undefined reference to `printf'",
             "label `boucle' inconsistently redefined",
+            // Relevés sur nasm 3.02 en provoquant chaque faute.
+            "instruction expected, found `mv rax'",
+            "attempt to initialize memory in BSS section `.bss': ignored [-w+other]",
+            "byte exceeds bounds [-w+number-overflow]",
+            "dword displacement exceeds bounds [-w+number-overflow]",
+            "TIMES value -1 is negative",
+            "unterminated string (missing `\"') [-w+pp-open-string]",
+            "invalid 64-bit effective address",
+            "/usr/bin/ld: relocation truncated to fit: R_X86_64_32S against `.data'",
+            "/usr/bin/ld: multiple definition of `_start'",
         ] {
             assert!(
                 explain(Lang::Fr, message).is_some(),
                 "sans explication : {message}"
             );
             assert!(explain(Lang::En, message).is_some(), "{message}");
+        }
+    }
+
+    /// Chaque explication doit dire quoi faire, pas seulement traduire
+    /// le message : c'est ce qui la distingue d'un dictionnaire.
+    #[test]
+    fn every_explanation_says_what_to_do() {
+        for explanation in EXPLANATIONS {
+            for texte in [explanation.fr, explanation.en] {
+                assert!(
+                    texte.len() > 80,
+                    "trop courte pour expliquer quoi que ce soit : {texte}"
+                );
+            }
+            assert_ne!(
+                explanation.fr, explanation.en,
+                "les deux langues doivent dire la même chose autrement"
+            );
+            // Le repère se cherche en minuscules : un `needle` qui en
+            // contient d'autres ne trouverait jamais rien.
+            assert_eq!(
+                explanation.needle,
+                explanation.needle.to_lowercase(),
+                "le repère doit être en minuscules"
+            );
         }
     }
 
