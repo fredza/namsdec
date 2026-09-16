@@ -139,14 +139,17 @@ enum SidebarTab {
     Stack,
     Memory,
     Heap,
+    /// Ce que chaque ligne a produit comme octets.
+    Bytes,
     Re,
 }
 
 impl SidebarTab {
-    const ALL: [SidebarTab; 4] = [
+    const ALL: [SidebarTab; 5] = [
         SidebarTab::Stack,
         SidebarTab::Memory,
         SidebarTab::Heap,
+        SidebarTab::Bytes,
         SidebarTab::Re,
     ];
 
@@ -155,6 +158,7 @@ impl SidebarTab {
             SidebarTab::Stack => s.tab_stack,
             SidebarTab::Memory => s.tab_memory,
             SidebarTab::Heap => s.tab_heap,
+            SidebarTab::Bytes => s.tab_bytes,
             SidebarTab::Re => s.tab_re,
         }
     }
@@ -346,6 +350,11 @@ struct NamsdecApp {
     /// Comment l'onglet Mémoire lit les octets. Réglage utilisateur, donc
     /// enregistré dans `settings.json`.
     memory_format: MemoryFormat,
+    /// L'onglet des octets doit-il ramener la ligne courante sous les
+    /// yeux ? Posé à chaque pas, consommé au rendu suivant : sans cela,
+    /// la vue se recentrerait à chaque frame et l'utilisateur ne pourrait
+    /// plus la faire défiler lui-même.
+    follow_rip: bool,
     /// Les registres surveillés, par leur nom tel qu'il s'affiche.
     /// L'exécution s'arrête quand l'un d'eux change — « qui écrit dans
     /// RAX ? » est une question qu'un point d'arrêt ne sait pas poser,
@@ -635,6 +644,10 @@ fn palette_commands(
             PaletteCommand::GoTab(SidebarTab::Heap),
         ),
         (
+            format!("{}: {}", s.menu_view, s.tab_bytes),
+            PaletteCommand::GoTab(SidebarTab::Bytes),
+        ),
+        (
             format!("{}: {}", s.menu_view, s.tab_output),
             PaletteCommand::GoConsoleTab(ConsoleTab::Output),
         ),
@@ -754,6 +767,7 @@ impl Default for NamsdecApp {
             mem_addr: BASE_ADDR,
             memory_format: MemoryFormat::Bytes,
             watchpoints: Vec::new(),
+            follow_rip: false,
             watched_registers: BTreeSet::new(),
             show_preferences: false,
             prefs_snapshot: None,
@@ -1056,6 +1070,11 @@ impl NamsdecApp {
 
     /// Retient l'état des registres avant de laisser le programme
     /// avancer.
+    /// Ramène la ligne courante sous les yeux au prochain rendu.
+    fn follow_execution(&mut self) {
+        self.follow_rip = true;
+    }
+
     fn remember_registers(&mut self) {
         self.regs_before = self.emulator.as_ref().map(|e| e.cpu().regs.clone());
     }
@@ -1191,6 +1210,7 @@ impl NamsdecApp {
 
     fn do_step(&mut self) {
         self.remember_registers();
+        self.follow_execution();
         // Avancer d'un pas, c'est reprendre la main : un Run suspendu
         // faute d'entrée ne doit pas repartir tout seul à la saisie
         // suivante, sans quoi la ligne tapée pour ce pas-ci relancerait
@@ -1304,6 +1324,7 @@ impl NamsdecApp {
     /// photographie est prise *avant* de reculer, si bien que la mise en
     /// avant désigne exactement ce qu'on vient d'annuler.
     fn do_step_back(&mut self) {
+        self.follow_execution();
         // Un Run suspendu ne repart pas tout seul après un retour en
         // arrière : c'est l'utilisateur qui tient la main, comme pour un
         // pas ordinaire.
@@ -1325,6 +1346,7 @@ impl NamsdecApp {
     }
 
     fn do_step_over(&mut self) {
+        self.follow_execution();
         self.remember_registers();
         // Même raison que dans `do_step`.
         self.resume_run_after_input = false;

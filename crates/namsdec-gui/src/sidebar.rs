@@ -81,6 +81,7 @@ impl NamsdecApp {
             SidebarTab::Stack => self.stack_ui(ui),
             SidebarTab::Memory => self.memory_ui(ui),
             SidebarTab::Heap => self.heap_ui(ui),
+            SidebarTab::Bytes => self.bytes_ui(ui),
             SidebarTab::Re => self.re_ui(ui),
         }
     }
@@ -504,6 +505,104 @@ impl NamsdecApp {
                 ui.colored_label(theme.dim, depuis);
             });
         }
+    }
+
+    /// Ce que l'assembleur a produit : une ligne par instruction, avec
+    /// son adresse, ses octets, et la ligne source d'où elle vient.
+    ///
+    /// C'est la moitié du métier qu'aucun bandeau de registres ne montre.
+    /// On y voit d'un coup d'œil pourquoi `mov eax, 1` fait cinq octets
+    /// et `mov rax, 1` dix, ce que coûte un préfixe REX, et que
+    /// `xor eax, eax` tient en deux octets là où `mov eax, 0` en demande
+    /// cinq — trois choses qu'on peut lire dix fois sans les retenir, et
+    /// qu'une colonne de chiffres apprend en une.
+    fn bytes_ui(&mut self, ui: &mut egui::Ui) {
+        let s = strings(self.lang);
+        let theme = self.theme;
+        let Some(state) = &self.assemble_state else {
+            ui.label(s.no_binary_assembled);
+            return;
+        };
+        let rip = self.emulator.as_ref().map(|e| e.cpu().regs.rip);
+
+        let total: usize = state.disasm.iter().map(|i| i.bytes.len()).sum();
+        ui.colored_label(
+            theme.dim,
+            format!(
+                "{} {} · {} {}",
+                state.disasm.len(),
+                s.bytes_instructions,
+                total,
+                s.bytes_octets
+            ),
+        );
+        ui.add_space(4.0);
+
+        // Verticale seulement : `scroll_to_me` recentre *les deux* axes,
+        // et suivre l'exécution faisait alors glisser la vue vers la
+        // droite, cachant l'adresse et le numéro de ligne — les deux
+        // colonnes qu'on vient lire.
+        egui::ScrollArea::vertical()
+            .id_salt("bytes_tab")
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                for instruction in &state.disasm {
+                    let here = rip == Some(instruction.address);
+                    let colour = if here {
+                        theme.accent
+                    } else {
+                        ui.visuals().text_color()
+                    };
+                    let octets = instruction
+                        .bytes
+                        .iter()
+                        .map(|b| format!("{b:02x}"))
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    let ligne = state
+                        .addr_to_line
+                        .get(&instruction.address)
+                        .map(|l| format!("{l:>3}"))
+                        .unwrap_or_else(|| "   ".to_owned());
+                    let response = ui.horizontal(|ui| {
+                        // La ligne source d'abord : c'est par elle qu'on
+                        // fait le lien avec ce qu'on a écrit.
+                        ui.colored_label(theme.dim, egui::RichText::new(ligne).monospace());
+                        ui.colored_label(
+                            if here { theme.accent } else { theme.dim },
+                            egui::RichText::new(format!("{:08x}", instruction.address)).monospace(),
+                        );
+                        // Le nombre d'octets, à côté des octets : c'est
+                        // lui qu'on compare d'une ligne à l'autre.
+                        ui.colored_label(
+                            theme.register,
+                            egui::RichText::new(format!("{:2}", instruction.bytes.len()))
+                                .monospace(),
+                        )
+                        .on_hover_text(s.bytes_length_hint);
+                        ui.colored_label(colour, egui::RichText::new(octets).monospace());
+                        // Le texte de l'instruction en dernier, et
+                        // tronqué : c'est la colonne dont on se passe le
+                        // mieux, puisqu'elle est déjà dans l'éditeur.
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(&instruction.text)
+                                    .monospace()
+                                    .color(theme.dim),
+                            )
+                            .truncate(),
+                        )
+                        .on_hover_text(&instruction.text);
+                    });
+                    // Suivre l'exécution : la ligne courante revient sous
+                    // les yeux à chaque pas, sans quoi il faudrait la
+                    // chercher à la main dans un long programme.
+                    if here && self.follow_rip {
+                        response.response.scroll_to_me(Some(egui::Align::Center));
+                    }
+                }
+            });
+        self.follow_rip = false;
     }
 
     /// Les zones surveillées, avec leur valeur courante et de quoi les

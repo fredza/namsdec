@@ -1913,7 +1913,7 @@ fn the_re_tab_is_absent_at_every_launch_until_it_is_asked_for() {
         .filter(|tab| app.show_re_tab || **tab != SidebarTab::Re)
         .map(|tab| tab.label(strings(Lang::Fr)))
         .collect();
-    assert_eq!(shown, ["Pile", "Mémoire", "Tas"]);
+    assert_eq!(shown, ["Pile", "Mémoire", "Tas", "Octets"]);
 
     // Ce qu'on coche dans Préférences vaut pour la session, et ne
     // part pas dans les réglages enregistrés.
@@ -3565,4 +3565,71 @@ fn the_help_covers_the_assembler_language_too() {
             "« {directive} » est proposé comme une instruction"
         );
     }
+}
+
+/// L'onglet Octets montre ce que l'assembleur a produit : une ligne par
+/// instruction, son adresse, sa longueur, ses octets — et la ligne source
+/// d'où elle vient.
+///
+/// C'est là qu'on voit, sans qu'on ait à l'expliquer, ce que coûte ce
+/// qu'on écrit — et ce que nasm choisit parfois pour vous : `mov rax, 1`
+/// devient `mov eax, 1` et tient en cinq octets, puisque le haut de RAX
+/// sera mis à zéro de toute façon. Il faut un négatif pour voir la forme
+/// à sept octets, et une grande constante pour celle à dix.
+#[test]
+fn the_bytes_tab_shows_what_each_line_produced() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        active_tab: SidebarTab::Bytes,
+        source: "global _start\nsection .text\n_start:\n\
+             \x20   mov rax, 1\n    mov rax, -1\n\
+             \x20   mov rax, 0x1122334455667788\n    xor eax, eax\n    hlt\n"
+            .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+
+    let ctx = egui::Context::default();
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1400.0, 900.0),
+        )),
+        ..Default::default()
+    };
+    let mut painted = String::new();
+    for _ in 0..2 {
+        painted.clear();
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        for clipped in &output.shapes {
+            if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                painted.push_str(text.galley.text());
+                painted.push('|');
+            }
+        }
+        output.textures_delta.clear();
+    }
+
+    // Les octets eux-mêmes.
+    assert!(
+        painted.contains("b8 01 00 00 00"),
+        "mov rax, 1 tient en cinq octets : {painted}"
+    );
+    assert!(painted.contains("48 c7 c0 ff ff ff ff"), "{painted}");
+    assert!(
+        painted.contains("48 b8 88 77 66 55 44 33 22 11"),
+        "{painted}"
+    );
+    assert!(painted.contains("31 c0"), "{painted}");
+    // Les longueurs, qui sont tout l'intérêt : 5, 7, 10, 2.
+    for longueur in [" 5|", " 7|", "10|", " 2|"] {
+        assert!(
+            painted.contains(longueur),
+            "longueur {longueur} : {painted}"
+        );
+    }
+    // Et le lien avec la source : la ligne de chaque instruction.
+    assert!(painted.contains("  4|"), "{painted}");
 }
