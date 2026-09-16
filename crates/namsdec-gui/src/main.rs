@@ -2540,7 +2540,7 @@ impl NamsdecApp {
         ui.label(s.modules_legend);
         ui.add_space(6.0);
         egui::ScrollArea::vertical()
-            .max_height(360.0)
+            .max_height(window_room(ui))
             .show(ui, |ui| {
                 self.modules_ui(ui);
                 ui.checkbox(&mut self.show_re_tab, s.show_re_tab_checkbox);
@@ -2565,7 +2565,7 @@ impl NamsdecApp {
         ui.add_space(6.0);
 
         egui::ScrollArea::vertical()
-            .max_height(320.0)
+            .max_height(window_room(ui))
             .show(ui, |ui| {
                 let themes = namsdec_theme::all();
                 let card_width = theme_card_width(ui, &themes, s.plugins_active);
@@ -4201,6 +4201,16 @@ impl NamsdecApp {
 /// style de l'appli rend les boutons plats au repos, ce qui convient aux
 /// barres d'outils mais laisserait les boutons d'une boîte de dialogue
 /// se confondre avec du texte.
+/// Ce qu'une liste posée dans une fenêtre flottante peut prendre en
+/// hauteur : une bonne moitié de l'écran.
+///
+/// Un plafond en pixels — trois cent soixante, trois cent vingt — faisait
+/// défiler quatre thèmes au milieu d'un écran qui en aurait montré
+/// quinze. Celui-ci suit l'écran qu'on a.
+fn window_room(ui: &egui::Ui) -> f32 {
+    (ui.ctx().input(|i| i.content_rect()).height() * 0.55).max(240.0)
+}
+
 fn dialog_buttons(ui: &mut egui::Ui, theme: &Theme, s: &Strings) -> Option<bool> {
     let mut result = None;
     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
