@@ -4109,3 +4109,120 @@ fn the_cpu_state_fills_the_panel_without_a_scroll_bar() {
         "l'état du processeur ne doit pas défiler : {fautives:?}"
     );
 }
+
+/// La palette de commandes montre tout ce qu'elle a, sans barre de
+/// défilement, tant que l'écran le permet — et ses lignes occupent
+/// toute sa largeur.
+///
+/// Elle avait une hauteur figée de 340 px : la liste défilait dans une
+/// fenêtre à moitié vide, et sa barre tombait au milieu parce que la
+/// zone se serrait à gauche.
+#[test]
+fn the_command_palette_shows_everything_it_can_without_scrolling() {
+    let mut app = NamsdecApp {
+        command_palette: Some(CommandPalette::default()),
+        ..Default::default()
+    };
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 1000.0),
+        )),
+        ..Default::default()
+    };
+
+    let mut barres: Vec<egui::Rect> = Vec::new();
+    let mut premiere = None;
+    let mut derniere = None;
+    for _ in 0..3 {
+        barres.clear();
+        premiere = None;
+        derniere = None;
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        for clipped in &output.shapes {
+            match &clipped.shape {
+                egui::epaint::Shape::Text(text) => {
+                    let s = strings(Lang::Fr);
+                    if text.galley.text() == s.action_assemble {
+                        premiere = Some(text.pos);
+                    }
+                    if text.galley.text() == s.file_quit {
+                        derniere = Some(text.pos);
+                    }
+                }
+                egui::epaint::Shape::Rect(r) if r.rect.width() < 20.0 && r.rect.height() > 40.0 => {
+                    barres.push(r.rect);
+                }
+                _ => {}
+            }
+        }
+        output.textures_delta.clear();
+    }
+
+    // La première et la dernière commande sont toutes les deux peintes :
+    // rien n'est resté sous le bord.
+    assert!(premiere.is_some(), "la première commande doit être visible");
+    assert!(
+        derniere.is_some(),
+        "la dernière commande aussi : c'est tout l'objet du changement"
+    );
+    // Et aucune barre de défilement dans la palette — elle est centrée,
+    // donc au milieu de l'écran.
+    let fautives: Vec<_> = barres
+        .iter()
+        .filter(|r| r.min.x > 400.0 && r.max.x < 900.0)
+        .collect();
+    assert!(
+        fautives.is_empty(),
+        "la palette ne doit pas défiler quand tout tient : {fautives:?}"
+    );
+}
+
+/// Filtrée, la palette rétrécit : quatre thèmes ne se lisent pas au
+/// milieu d'une fenêtre de huit cents pixels.
+#[test]
+fn the_command_palette_shrinks_to_what_it_shows() {
+    let cadre = |query: &str| -> f32 {
+        let mut app = NamsdecApp {
+            command_palette: Some(CommandPalette {
+                query: query.to_owned(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let ctx = egui::Context::default();
+        app.apply_theme(&ctx);
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1280.0, 1000.0),
+            )),
+            ..Default::default()
+        };
+        let mut hauteur = 0.0f32;
+        for _ in 0..3 {
+            hauteur = 0.0;
+            let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+            for clipped in &output.shapes {
+                if let egui::epaint::Shape::Rect(r) = &clipped.shape {
+                    // Le cadre de la palette : large, et centré.
+                    if r.rect.width() > 400.0 && r.rect.width() < 700.0 {
+                        hauteur = hauteur.max(r.rect.height());
+                    }
+                }
+            }
+            output.textures_delta.clear();
+        }
+        hauteur
+    };
+
+    let tout = cadre("");
+    let filtre = cadre("Thème");
+    assert!(tout > 400.0, "la palette entière est haute : {tout}");
+    assert!(
+        filtre < tout / 2.0,
+        "filtrée, elle doit se replier : {filtre} contre {tout}"
+    );
+}

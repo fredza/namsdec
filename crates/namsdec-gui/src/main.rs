@@ -568,6 +568,18 @@ struct PendingDialog {
 struct CommandPalette {
     query: String,
     selected: usize,
+    /// La hauteur qu'a réellement prise **une ligne** de la liste, à la
+    /// frame précédente.
+    ///
+    /// Une fenêtre auto-dimensionnée ne donne pas à son contenu la
+    /// hauteur qu'il demande : la liste se retrouvait bornée à trois
+    /// cents pixels et défilait au milieu d'un écran vide. On lui donne
+    /// donc une hauteur explicite — le nombre de commandes affichées
+    /// fois la hauteur d'une ligne, plafonné à la place disponible.
+    ///
+    /// Une ligne plutôt que le tout : ainsi la fenêtre suit le filtrage
+    /// dans la frame même où l'on tape, au lieu d'une frame plus tard.
+    row: Option<f32>,
 }
 
 /// Tout ce que la palette de commandes (Ctrl+Maj+P) peut déclencher —
@@ -1972,9 +1984,9 @@ impl NamsdecApp {
         let s = strings(self.lang);
         let commands = palette_commands(s, self.show_re_tab, self.exercises);
 
-        let (mut query, mut selected) = {
+        let (mut query, mut selected, measured_row) = {
             let p = self.command_palette.as_ref().unwrap();
-            (p.query.clone(), p.selected)
+            (p.query.clone(), p.selected, p.row)
         };
 
         let query_lower = query.to_lowercase();
@@ -1993,13 +2005,34 @@ impl NamsdecApp {
         let mut close = false;
         let mut execute: Option<PaletteCommand> = None;
 
+        // Ce que la palette peut occuper en hauteur : tout ce qui reste
+        // sous son ancrage, moins une marge en bas. Une hauteur figée
+        // laissait la liste défiler dans une fenêtre à moitié vide, sur
+        // un écran qui l'aurait affichée en entier.
+        const TOP: f32 = 48.0;
+        const BOTTOM_MARGIN: f32 = 24.0;
+        let screen = ctx.input(|i| i.content_rect()).height();
+        let room = (screen - TOP - BOTTOM_MARGIN).max(180.0);
+        // La place du champ de saisie, du séparateur et des marges de la
+        // fenêtre, au-dessus de la liste.
+        const HEAD: f32 = 64.0;
+        // Avant la première mesure, une estimation : une ligne par
+        // commande, à la hauteur d'un élément cliquable.
+        let style = ctx.style_of(ctx.theme());
+        let row =
+            measured_row.unwrap_or(style.spacing.interact_size.y + style.spacing.item_spacing.y);
+        let shown = filtered.len().max(1) as f32;
+        let list = (shown * row).min(room - HEAD);
+
         egui::Window::new("command_palette")
             .id(egui::Id::new("command_palette"))
             .title_bar(false)
             .resizable(false)
             .collapsible(false)
-            .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 80.0))
-            .fixed_size(egui::vec2(480.0, 340.0))
+            .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, TOP))
+            // Largeur figée, hauteur libre : la fenêtre descend jusqu'à
+            // la dernière commande et s'arrête là.
+            .fixed_size(egui::vec2(520.0, list + HEAD))
             .show(ctx, |ui| {
                 let text_response = ui.add(
                     egui::TextEdit::singleline(&mut query)
@@ -2010,18 +2043,46 @@ impl NamsdecApp {
                     text_response.request_focus();
                 }
                 ui.separator();
-                egui::ScrollArea::vertical()
-                    .max_height(280.0)
+                let area = egui::ScrollArea::vertical()
+                    .max_height(list)
+                    // `false` en largeur : la liste s'étale sur toute la
+                    // palette, sinon elle se serre à gauche et sa barre
+                    // de défilement — quand il en faut une — tombe au
+                    // milieu de la fenêtre.
+                    .auto_shrink([false, true])
                     .show(ui, |ui| {
+                        // Des lignes un peu plus serrées que la normale :
+                        // une palette est une liste qu'on parcourt des
+                        // yeux, et chaque pixel gagné par ligne, c'est
+                        // une commande de plus qui reste à l'écran au
+                        // lieu de passer sous une barre de défilement.
+                        ui.spacing_mut().item_spacing.y = 3.0;
+                        ui.spacing_mut().button_padding.y = 3.0;
                         if filtered.is_empty() {
                             ui.weak(s.palette_no_match);
                         }
                         for (i, (label, cmd)) in filtered.iter().enumerate() {
-                            if ui.selectable_label(i == selected, label.as_str()).clicked() {
+                            // Pleine largeur : la ligne entière se
+                            // surligne et se clique, pas seulement son
+                            // texte.
+                            let item = ui.add(
+                                egui::Button::selectable(i == selected, label.as_str())
+                                    .min_size(egui::vec2(ui.available_width(), 0.0)),
+                            );
+                            // Les flèches déplacent la sélection ; si la
+                            // liste défile, elle doit suivre.
+                            if i == selected && !filtered.is_empty() {
+                                item.scroll_to_me(None);
+                            }
+                            if item.clicked() {
                                 execute = Some(*cmd);
                             }
                         }
                     });
+                // Ce qu'une ligne prend vraiment, pour la frame suivante.
+                if let Some(p) = &mut self.command_palette {
+                    p.row = Some(area.content_size.y / shown);
+                }
             });
 
         ctx.input(|i| {
