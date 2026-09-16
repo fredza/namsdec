@@ -7059,3 +7059,88 @@ ret
         );
     }
 }
+
+/// Le filtre de la chronologie garde les pas qui comptent, et le rang
+/// reste celui du chemin entier.
+///
+/// Cinq mille pas ordinaires noient les dix qui comptent. Mais si le
+/// rang affiché suivait la liste filtrée, cliquer dessus rembobinerait
+/// du mauvais nombre de pas : c'est le chemin qui compte, pas ce qu'on
+/// en montre.
+#[test]
+fn the_timeline_filter_keeps_the_true_ranks() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        show_timeline: true,
+        timeline_notable_only: true,
+        source: "\
+global _start
+section .text
+_start:
+mov rax, 1
+mov rbx, 2
+mov rcx, 3
+call sous
+hlt
+sous:
+ret
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+    let ctx = egui::Context::default();
+    app.do_run();
+    for _ in 0..10 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&ctx);
+    }
+
+    let trace = app.emulator.as_ref().unwrap().trace();
+    let total = trace.len();
+    let notables: Vec<(usize, namsdec_emu::Step)> = trace
+        .iter()
+        .copied()
+        .enumerate()
+        .filter(|(_, pas)| pas.kind != namsdec_emu::StepKind::Plain)
+        .collect();
+    // Le `call` et le `ret` — les trois `mov` ne sont pas notables.
+    assert_eq!(notables.len(), 2, "{notables:?}");
+    // Et leurs rangs sont ceux du chemin entier : le `call` est le
+    // quatrième pas, pas le premier de la liste filtrée.
+    assert_eq!(notables[0].0, 3, "le `call` est le quatrième pas");
+    assert!(notables[1].0 < total);
+
+    // À l'écran, la case est cochée et le chemin filtré s'affiche.
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 1000.0),
+        )),
+        ..Default::default()
+    };
+    let mut painted = String::new();
+    for _ in 0..2 {
+        painted.clear();
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        for clipped in &output.shapes {
+            if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                painted.push_str(text.galley.text());
+                painted.push('|');
+            }
+        }
+        output.textures_delta.clear();
+    }
+    assert!(painted.contains("Seulement appels"), "{painted}");
+    // Le recul affiché pour le `call` : total - 3.
+    assert!(
+        painted.contains(&format!("-{}", total - 3)),
+        "le rang affiché doit être celui du chemin : {painted}"
+    );
+}

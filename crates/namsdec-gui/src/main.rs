@@ -486,6 +486,9 @@ struct NamsdecApp {
     show_breakpoints: bool,
     /// La chronologie : le chemin parcouru, pas par pas.
     show_timeline: bool,
+    /// Ne garder que les pas qui ont changé de direction ou touché la
+    /// mémoire. Cinq mille pas ordinaires noient les dix qui comptent.
+    timeline_notable_only: bool,
     /// Les séries chargées : celle livrée avec l'application, puis celles
     /// installées depuis le disque, dans l'ordre où on les a trouvées.
     exercise_packs: Vec<namsdec_exercises::Pack>,
@@ -979,6 +982,7 @@ impl Default for NamsdecApp {
             show_vectors: false,
             show_breakpoints: false,
             show_timeline: false,
+            timeline_notable_only: false,
             exercise_packs: vec![namsdec_exercises::builtin_pack()],
             exercise_files: BTreeMap::new(),
             pack_to_remove: None,
@@ -4658,10 +4662,23 @@ impl NamsdecApp {
 
         // Relevé avant la fenêtre : elle emprunte `self` en écriture
         // pour poser le retour en arrière.
+        // Le rang est celui du chemin entier, même quand on n'en montre
+        // qu'une partie : « revenir à ce pas » doit rembobiner du bon
+        // nombre de pas, filtre ou pas filtre.
         let pas: Vec<(usize, namsdec_emu::Step)> = self
             .emulator
             .as_ref()
-            .map(|emulator| emulator.trace().iter().copied().enumerate().collect())
+            .map(|emulator| {
+                emulator
+                    .trace()
+                    .iter()
+                    .copied()
+                    .enumerate()
+                    .filter(|(_, pas)| {
+                        !self.timeline_notable_only || pas.kind != namsdec_emu::StepKind::Plain
+                    })
+                    .collect()
+            })
             .unwrap_or_default();
 
         egui::Window::new(s.timeline_title)
@@ -4674,21 +4691,34 @@ impl NamsdecApp {
             .default_pos(ctx.viewport_rect().center())
             .show(ctx, |ui| {
                 if pas.is_empty() {
-                    ui.weak(s.timeline_empty);
+                    ui.weak(if self.timeline_notable_only {
+                        s.timeline_nothing_notable
+                    } else {
+                        s.timeline_empty
+                    });
                     return;
                 }
                 ui.weak(s.timeline_hint);
+                ui.horizontal(|ui| {
+                    ui.checkbox(&mut self.timeline_notable_only, s.timeline_notable);
+                });
                 ui.separator();
                 let row_height =
                     ui.text_style_height(&egui::TextStyle::Monospace) + ui.spacing().item_spacing.y;
-                let total = pas.len();
+                // Le nombre de pas du chemin, et non celui des lignes
+                // montrées : c'est de lui que se compte le recul.
+                let total = self
+                    .emulator
+                    .as_ref()
+                    .map(|emulator| emulator.trace().len())
+                    .unwrap_or(0);
                 // Cinq mille pas : on ne dessine que ce qui est à
                 // l'écran, comme pour l'onglet Octets.
                 egui::ScrollArea::vertical()
                     .id_salt("timeline_rows")
                     .auto_shrink([false, false])
                     .stick_to_bottom(true)
-                    .show_rows(ui, row_height, total, |ui, rows| {
+                    .show_rows(ui, row_height, pas.len(), |ui, rows| {
                         for (index, pas) in &pas[rows] {
                             let addr = &pas.addr;
                             // Le rang par rapport à maintenant : le
