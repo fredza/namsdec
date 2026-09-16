@@ -5618,3 +5618,55 @@ fn everything_the_emulator_runs_has_a_sheet() {
         "ces instructions s'exécutent sans pouvoir s'expliquer : {manquantes:?}"
     );
 }
+
+/// Un binaire ouvert fait quinze mille lignes, et l'éditeur doit rester
+/// utilisable dessus.
+///
+/// Deux choses coûtaient une frame entière : recolorer tout le texte à
+/// chaque passage — deux fois par frame, pour la gouttière puis pour le
+/// champ — et peindre un numéro de ligne pour chacune des quinze mille,
+/// quand trente sont à l'écran.
+#[test]
+fn a_large_listing_still_draws_fast() {
+    let Ok(bytes) = std::fs::read("/bin/ls") else {
+        eprintln!("/bin/ls introuvable : test ignoré");
+        return;
+    };
+    let mut app = NamsdecApp::default();
+    app.load_binary(bytes);
+    assert!(
+        app.source.lines().count() > 5_000,
+        "le listing doit être gros pour que la mesure ait un sens : {}",
+        app.source.lines().count()
+    );
+
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 900.0),
+        )),
+        ..Default::default()
+    };
+    // Une frame pour chauffer les caches, puis la mesure.
+    let mut premier = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+    premier.textures_delta.clear();
+
+    let start = std::time::Instant::now();
+    const FRAMES: u32 = 5;
+    for _ in 0..FRAMES {
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        output.textures_delta.clear();
+    }
+    let par_frame = start.elapsed() / FRAMES;
+    // Large : en debug la mesure est plusieurs fois plus lente qu'en
+    // release, et une machine chargée l'est encore plus. Le seuil
+    // attrape une régression d'ordre de grandeur — celle qui rendrait
+    // l'éditeur saccadé — pas une variation de quelques pour cent.
+    assert!(
+        par_frame < std::time::Duration::from_millis(100),
+        "une frame prend {par_frame:?} sur {} lignes",
+        app.source.lines().count()
+    );
+}

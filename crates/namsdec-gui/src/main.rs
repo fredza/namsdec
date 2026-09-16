@@ -3747,9 +3747,17 @@ impl NamsdecApp {
                                 painter.rect_filled(rect, 2.0, teinte);
                             }
                         }
+                        // Quinze mille lignes dans un binaire ouvert :
+                        // peindre un numéro pour chacune coûte une frame
+                        // entière, alors que trente sont à l'écran. On
+                        // s'en tient à ce que la zone montre.
+                        let visible_rect = ui.clip_rect();
                         for (i, row) in galley.rows.iter().enumerate() {
                             let line = (i + 1) as u32;
                             let row_rect = row.rect().translate(gutter_rect.min.to_vec2());
+                            if !row_rect.intersects(visible_rect) {
+                                continue;
+                            }
 
                             if gutter_resp.clicked()
                                 && let Some(y) = click_y
@@ -5928,8 +5936,41 @@ fn editor_rows(visible_height: f32, row_height: f32) -> usize {
 /// un numéro par ligne rendue — se décalait d'autant : c'est ce qui
 /// arrivait dès que l'éditeur devenait étroit.
 fn layout_code(ui: &egui::Ui, theme: &'static Theme, text: &str) -> std::sync::Arc<egui::Galley> {
+    use std::hash::{Hash, Hasher};
+
+    // La coloration d'un binaire désassemblé — quinze mille lignes —
+    // prend une dizaine de millisecondes, et la mise en page autant.
+    // C'est refait au moins deux fois par frame : une fois pour la
+    // gouttière, une fois par le champ de texte. Tant que ni le texte,
+    // ni le thème, ni la taille de la police ne changent, le résultat
+    // est le même : on le garde.
+    thread_local! {
+        static CACHE: std::cell::RefCell<Option<(u64, std::sync::Arc<egui::Galley>)>> =
+            const { std::cell::RefCell::new(None) };
+    }
+
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    text.hash(&mut hasher);
+    (theme as *const Theme as usize).hash(&mut hasher);
+    // Le zoom change la taille de la police sans toucher au texte.
+    let size = egui::TextStyle::Monospace.resolve(ui.style()).size;
+    size.to_bits().hash(&mut hasher);
+    let key = hasher.finish();
+
+    if let Some(galley) = CACHE.with(|cache| {
+        cache
+            .borrow()
+            .as_ref()
+            .filter(|(cached, _)| *cached == key)
+            .map(|(_, galley)| galley.clone())
+    }) {
+        return galley;
+    }
+
     let job = syntax::highlight(ui, theme, text, f32::INFINITY);
-    ui.fonts_mut(|f| f.layout_job(job))
+    let galley = ui.fonts_mut(|f| f.layout_job(job));
+    CACHE.with(|cache| *cache.borrow_mut() = Some((key, galley.clone())));
+    galley
 }
 
 /// Désassemble les sections exécutables, et elles seules.
