@@ -6,8 +6,14 @@
 //! mécanisme avant la phase 2.
 
 mod binary_info;
+mod calls;
+mod strings;
+mod syscalls;
 
 pub use binary_info::BinaryInfoModule;
+pub use calls::CallsModule;
+pub use strings::StringsModule;
+pub use syscalls::SyscallsModule;
 
 use namsdec_core::Cpu;
 use namsdec_disasm::DecodedInstruction;
@@ -20,13 +26,28 @@ pub struct ReContext<'a> {
     pub cpu: &'a Cpu,
     pub disasm: &'a [DecodedInstruction],
     pub source: &'a str,
+    /// La langue de l'interface, en code ISO (« fr », « en »).
+    ///
+    /// Contrairement aux messages d'erreur, qu'une crate métier rend en
+    /// anglais et que l'interface traduit, ce qu'un module de RE affiche
+    /// *est* son contenu : il n'y a personne au-dessus pour le traduire.
+    /// L'interface dit donc la langue, et le module écrit dedans.
+    pub lang: &'a str,
+}
+
+impl ReContext<'_> {
+    /// Le texte de la langue courante.
+    pub fn t(&self, fr: &'static str, en: &'static str) -> &'static str {
+        if self.lang.starts_with("fr") { fr } else { en }
+    }
 }
 
 pub trait ReModule {
     /// Identifiant stable (pour retrouver/désactiver un module).
     fn id(&self) -> &'static str;
-    /// Titre affiché sur l'onglet du panneau.
-    fn title(&self) -> &'static str;
+    /// Titre affiché en tête du panneau du module, dans la langue
+    /// demandée.
+    fn title(&self, lang: &str) -> &'static str;
 
     /// Appelé après un (ré)assemblage réussi, avant la première exécution.
     fn on_binary_loaded(&mut self, _ctx: &ReContext) {}
@@ -66,8 +87,8 @@ impl ReModuleRegistry {
 
     /// Titres des modules enregistrés, dans l'ordre d'enregistrement —
     /// utilisé par la vue d'ensemble de l'interface graphique.
-    pub fn titles(&self) -> Vec<&'static str> {
-        self.modules.iter().map(|m| m.title()).collect()
+    pub fn titles(&self, lang: &str) -> Vec<&'static str> {
+        self.modules.iter().map(|m| m.title(lang)).collect()
     }
 
     pub fn on_binary_loaded(&mut self, ctx: &ReContext) {

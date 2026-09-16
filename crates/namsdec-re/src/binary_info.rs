@@ -16,8 +16,12 @@ impl ReModule for BinaryInfoModule {
         "binary_info"
     }
 
-    fn title(&self) -> &'static str {
-        "BinaryInfo"
+    fn title(&self, lang: &str) -> &'static str {
+        if lang.starts_with("fr") {
+            "Le binaire"
+        } else {
+            "The binary"
+        }
     }
 
     fn on_binary_loaded(&mut self, ctx: &ReContext) {
@@ -26,10 +30,23 @@ impl ReModule for BinaryInfoModule {
         self.instruction_count = ctx.disasm.len();
     }
 
-    fn ui(&mut self, ui: &mut egui::Ui, _ctx: &ReContext) {
-        ui.label(format!("Taille : {} octets", self.size));
-        ui.label(format!("Adresse d'entrée : {:#x}", self.entry));
-        ui.label(format!("Instructions : {}", self.instruction_count));
+    fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
+        ui.label(format!(
+            "{} {} {}",
+            ctx.t("Taille :", "Size:"),
+            self.size,
+            ctx.t("octets", "bytes")
+        ));
+        ui.label(format!(
+            "{} {:#x}",
+            ctx.t("Adresse d'entrée :", "Entry address:"),
+            self.entry
+        ));
+        ui.label(format!(
+            "{} {}",
+            ctx.t("Instructions :", "Instructions:"),
+            self.instruction_count
+        ));
     }
 }
 
@@ -47,6 +64,7 @@ mod tests {
             cpu: &cpu,
             disasm: &disasm,
             source: "",
+            lang: "fr",
         };
 
         let mut module = BinaryInfoModule::default();

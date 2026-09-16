@@ -13,7 +13,7 @@
 //! le point d'entrée, au lieu de supposer que le programme commence au
 //! premier octet.
 
-mod elf;
+pub mod elf;
 
 use std::collections::BTreeMap;
 use std::fs;

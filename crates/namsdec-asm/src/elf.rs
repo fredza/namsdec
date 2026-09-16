@@ -2,13 +2,15 @@
 //! un programme en mémoire simulée et relier ses lignes source à des
 //! adresses.
 //!
-//! Volontairement minimal, et volontairement ici plutôt que dans une
-//! crate d'analyse : on ne lit pas un binaire quelconque venu du disque,
-//! on relit la sortie de l'éditeur de liens qu'on vient d'appeler
-//! soi-même. Les seules choses à en tirer sont le point d'entrée et les
-//! sections à charger. Le vrai support ELF de la phase 2 (reverse
-//! engineering) aura d'autres exigences — symboles, relocations, formats
-//! malformés — et sa place est dans `namsdec-re`.
+//! Volontairement minimal : le point d'entrée et les sections à charger,
+//! rien de plus. Écrit pour relire la sortie de l'éditeur de liens qu'on
+//! vient d'appeler soi-même, il sert aussi à ouvrir un ELF64 venu du
+//! disque — un binaire qu'on n'a pas produit se charge alors à *son*
+//! adresse, avec *son* point d'entrée, au lieu d'être désassemblé depuis
+//! son en-tête comme s'il s'agissait de code.
+//!
+//! Ce qu'il ne lit pas — symboles, relocations, formats abîmés — reste du
+//! ressort de `namsdec-re`, qui a d'autres exigences.
 
 /// Une section chargeable du programme lié.
 #[derive(Debug, Clone, PartialEq, Eq)]

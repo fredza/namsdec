@@ -21,7 +21,9 @@ use namsdec_core::{RFlags, Reg64};
 use namsdec_disasm::DecodedInstruction;
 use namsdec_emu::{Backend, Emulator, RunStop, StepOverResult, StepResult};
 use namsdec_explorer::{ExplorerAction, FileExplorer};
-use namsdec_re::{BinaryInfoModule, ReContext, ReModuleRegistry};
+use namsdec_re::{
+    BinaryInfoModule, CallsModule, ReContext, ReModuleRegistry, StringsModule, SyscallsModule,
+};
 use namsdec_theme::Theme;
 
 use i18n::{Lang, Strings, strings};
@@ -39,6 +41,10 @@ const STACK_TOP: u64 = BASE_ADDR + MEM_SIZE as u64 - 0x100;
 /// l'onglet Mémoire qui prend le relais — avec son champ d'adresse, qui
 /// sait aller n'importe où.
 const HEAP_DUMP_BYTES: usize = 256;
+/// La place réservée, à droite de la barre de statut, aux trois
+/// compartiments qui s'y rangent : la version de nasm, la position du
+/// curseur, et la ligne où l'exécution est arrêtée.
+const STATUS_RIGHT_ROOM: f32 = 340.0;
 const HEAP_LIMIT: u64 = BASE_ADDR + MEM_SIZE as u64 - 0x2000;
 // Le tas monte, la pile descend : ce qui les sépare doit rester assez
 // grand pour que la seconde ne soit jamais écrasée par le premier. Une
@@ -659,6 +665,12 @@ impl Default for NamsdecApp {
     fn default() -> Self {
         let mut re_registry = ReModuleRegistry::new();
         re_registry.register(Box::new(BinaryInfoModule::default()));
+        // Dans l'ordre où l'on regarde un binaire inconnu : ce qu'il dit
+        // (ses chaînes), ce qu'il demande au système, puis comment il est
+        // découpé.
+        re_registry.register(Box::new(StringsModule::default()));
+        re_registry.register(Box::new(SyscallsModule::default()));
+        re_registry.register(Box::new(CallsModule::default()));
 
         Self {
             source: DEFAULT_SOURCE.to_string(),
@@ -1001,6 +1013,7 @@ impl NamsdecApp {
             cpu: emulator.cpu(),
             disasm: &state.disasm,
             source: &self.source,
+            lang: self.lang.code(),
         };
         self.re_registry.on_binary_loaded(&ctx);
 
@@ -1041,6 +1054,7 @@ impl NamsdecApp {
             cpu: emulator.cpu(),
             disasm: &state.disasm,
             source: &self.source,
+            lang: self.lang.code(),
         };
         self.re_registry.on_step(&ctx);
     }
@@ -1460,7 +1474,86 @@ impl NamsdecApp {
     /// `current_file` est délibérément remis à zéro : le tampon affiché
     /// est reconstruit, pas le contenu du fichier, et un Ctrl+S distrait
     /// ne doit pas écraser le binaire par son propre désassemblage.
+    /// Ouvre un ELF64 : ses sections vont à *leur* adresse, son point
+    /// d'entrée est celui qu'il déclare, et seul le code est désassemblé.
+    ///
+    /// Sans cela, un vrai binaire commençait par seize octets d'en-tête
+    /// lus comme des instructions : le listing ouvrait sur du charabia, et
+    /// l'exécution démarrait dessus.
+    ///
+    /// Rend `false` si ce n'en est pas un — à l'appelant de retomber sur
+    /// le désassemblage brut.
+    fn load_elf(&mut self, bytes: &[u8]) -> bool {
+        let Some(elf) = namsdec_asm::elf::parse(bytes) else {
+            return false;
+        };
+        let Some((load_addr, image)) = elf.image() else {
+            return false;
+        };
+        if image.len() > MEM_SIZE {
+            return false;
+        }
+
+        // Le listing ne montre que les sections exécutables : le reste est
+        // de la donnée, et la donnée désassemblée ne veut rien dire.
+        let mut disasm = Vec::new();
+        for section in elf.sections.iter().filter(|s| s.executable) {
+            disasm.extend(namsdec_disasm::disassemble(&section.data, section.addr));
+        }
+        disasm.sort_by_key(|instruction| instruction.address);
+
+        let mut listing = String::new();
+        let mut line_to_addr = BTreeMap::new();
+        for (index, instruction) in disasm.iter().enumerate() {
+            line_to_addr.insert((index + 1) as u32, instruction.address);
+            listing.push_str(&instruction.text);
+            listing.push('\n');
+        }
+        let addr_to_line = line_to_addr.iter().map(|(l, a)| (*a, *l)).collect();
+        let loaded = image.len();
+
+        self.source = listing;
+        self.current_file = None;
+        self.breakpoint_lines.clear();
+        self.diagnostics.clear();
+        self.assemble_state = Some(AssembleState {
+            output: namsdec_asm::AssembleOutput {
+                load_addr,
+                entry: elf.entry,
+                sections: elf
+                    .sections
+                    .iter()
+                    .map(|section| namsdec_asm::Section {
+                        name: section.name.clone(),
+                        addr: section.addr,
+                        size: section.size,
+                        executable: section.executable,
+                    })
+                    .collect(),
+                bytes: image,
+                diagnostics: Vec::new(),
+                line_to_addr,
+            },
+            disasm,
+            addr_to_line,
+        });
+        self.rebuild_emulator();
+        if !matches!(self.status, Status::Error(_)) {
+            self.status = Status::BinaryLoaded {
+                bytes: loaded,
+                truncated: false,
+            };
+        }
+        true
+    }
+
     fn load_binary(&mut self, mut bytes: Vec<u8>) {
+        // Un ELF64 dit lui-même où il va et par où il commence : autant
+        // l'écouter.
+        if self.load_elf(&bytes) {
+            return;
+        }
+
         // Borné à la fenêtre mémoire simulée : au-delà, `rebuild_emulator`
         // refuserait le chargement de toute façon, et désassembler
         // plusieurs centaines de kilo-octets pour les jeter ensuite
@@ -2466,7 +2559,16 @@ impl NamsdecApp {
             // `nasm -v` avec sa date de compilation, hors de propos ici).
             mode_pill_ui(ui, theme, self.editor_mode);
             ui.separator();
-            self.status_message_ui(ui);
+            // Le message est borné, et tronqué s'il déborde : les
+            // compartiments de droite sont posés dans la place qui reste,
+            // et un message long — le nom d'un fichier chargé, une erreur
+            // de l'éditeur de liens — leur passait dessus, texte sur
+            // texte.
+            ui.scope(|ui| {
+                ui.set_max_width((ui.available_width() - STATUS_RIGHT_ROOM).max(80.0));
+                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
+                self.status_message_ui(ui);
+            });
 
             // Compartiments de droite, remplis de droite à gauche :
             // nasm, puis la position du curseur, puis — seulement quand un
@@ -3793,15 +3895,21 @@ impl NamsdecApp {
             cpu: emulator.cpu(),
             disasm: &state.disasm,
             source: &self.source,
+            lang: self.lang.code(),
         };
         // Défilement vertical seulement : les modules posent des widgets
         // ordinaires, qui prennent la largeur qu'on leur laisse. Dans une
         // zone qui défile aussi horizontalement, cette largeur n'a plus
         // de fin.
         egui::ScrollArea::vertical().show(ui, |ui| {
+            // Les modules écrivent ce qu'ils ont trouvé — une adresse, une
+            // chaîne, une liste d'appelants — et rien ne borne ce que ça
+            // mesure. Sans cette limite, le panneau adopte la largeur du
+            // plus long et pousse l'éditeur hors de la fenêtre.
+            ui.set_max_width(ui.available_width());
             for module in self.re_registry.iter_mut() {
                 ui.group(|ui| {
-                    ui.strong(module.title());
+                    ui.strong(module.title(ctx.lang));
                     module.ui(ui, &ctx);
                 });
             }
@@ -3907,7 +4015,7 @@ impl NamsdecApp {
             &emu_status,
         );
 
-        let titles = self.re_registry.titles();
+        let titles = self.re_registry.titles(self.lang.code());
         let re_status = if titles.is_empty() {
             s.no_re_module_registered.to_string()
         } else if fr {
@@ -7772,5 +7880,107 @@ _start:
             "le texte ordinaire est d'une seule police"
         );
         assert_ne!(fonts[0], fonts[1], "le code est dans une autre");
+    }
+    /// Ouvrir un vrai ELF : ses sections vont à leur adresse, et le
+    /// listing commence à son point d'entrée — pas sur son en-tête, qui
+    /// n'est pas du code et ne se lit pas comme tel.
+    #[test]
+    fn an_elf_is_opened_where_it_says_to_be() {
+        if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+            return;
+        }
+        // Un vrai binaire, fabriqué par la vraie chaîne d'outils, puis
+        // ouvert comme n'importe quel fichier trouvé sur le disque.
+        let dir = tempfile::tempdir().expect("un dossier temporaire");
+        let asm = dir.path().join("p.asm");
+        std::fs::write(
+            &asm,
+            "section .data\n    msg db \"salut\", 0\n\
+             section .text\n    global _start\n_start:\n\
+             \x20   mov rax, 60\n    xor rdi, rdi\n    syscall\n",
+        )
+        .unwrap();
+        let object = dir.path().join("p.o");
+        let program = dir.path().join("p");
+        assert!(
+            std::process::Command::new("nasm")
+                .args(["-f", "elf64", "-o"])
+                .arg(&object)
+                .arg(&asm)
+                .status()
+                .expect("nasm")
+                .success()
+        );
+        assert!(
+            std::process::Command::new("ld")
+                .arg("-o")
+                .arg(&program)
+                .arg(&object)
+                .status()
+                .expect("ld")
+                .success()
+        );
+
+        let mut app = NamsdecApp::default();
+        app.load_binary(std::fs::read(&program).unwrap());
+
+        let state = app.assemble_state.as_ref().expect("un binaire chargé");
+        assert!(
+            !state.output.sections.is_empty(),
+            "les sections de l'ELF sont connues"
+        );
+        assert_eq!(
+            state.disasm.first().map(|i| i.address),
+            Some(state.output.entry),
+            "le désassemblage commence au code, à l'entrée déclarée"
+        );
+        // Et la première ligne du listing est une instruction, pas les
+        // octets « 7f 45 4c 46 » de l'en-tête lus comme telle.
+        let first = app.source.lines().next().unwrap_or_default();
+        assert!(first.contains("mov"), "listing : {first}");
+    }
+    /// Un message de statut long ne passe pas sous les compartiments de
+    /// droite : il est tronqué avant de les atteindre. Sans cela, le nom
+    /// d'un binaire chargé s'imprimait par-dessus « Lig 1, Col 1 ».
+    #[test]
+    fn a_long_status_message_does_not_run_under_the_right_hand_side() {
+        let mut app = NamsdecApp {
+            status: Status::Error("erreur ".repeat(40)),
+            ..Default::default()
+        };
+        let ctx = egui::Context::default();
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1280.0, 820.0),
+            )),
+            ..Default::default()
+        };
+        let mut message = None;
+        let mut nasm = None;
+        for _ in 0..2 {
+            message = None;
+            nasm = None;
+            let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+            for clipped in &output.shapes {
+                if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                    let content = text.galley.text();
+                    let rect = egui::Rect::from_min_size(text.pos, text.galley.size());
+                    if content.contains("erreur erreur") {
+                        message = Some(rect);
+                    } else if content.starts_with("NASM") || content.contains("nasm") {
+                        nasm = Some(rect);
+                    }
+                }
+            }
+            output.textures_delta.clear();
+        }
+
+        let message = message.expect("le message de statut est peint");
+        let nasm = nasm.expect("le compartiment de droite est peint");
+        assert!(
+            message.max.x <= nasm.min.x,
+            "le message ({message:?}) mord sur la droite ({nasm:?})"
+        );
     }
 }

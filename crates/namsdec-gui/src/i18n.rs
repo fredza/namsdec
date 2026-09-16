@@ -13,6 +13,18 @@ pub enum Lang {
     En,
 }
 
+impl Lang {
+    /// Le code ISO de la langue, pour les crates qui portent elles-mêmes
+    /// leur texte — la documentation des instructions, les modules de
+    /// rétro-ingénierie — et qui n'ont pas à connaître cet énuméré.
+    pub fn code(self) -> &'static str {
+        match self {
+            Lang::Fr => "fr",
+            Lang::En => "en",
+        }
+    }
+}
+
 pub struct Strings {
     // Barre de menus
     pub menu_file: &'static str,

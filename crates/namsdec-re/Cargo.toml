@@ -7,4 +7,5 @@ license.workspace = true
 [dependencies]
 namsdec-core.workspace = true
 namsdec-disasm.workspace = true
+iced-x86.workspace = true
 egui.workspace = true
