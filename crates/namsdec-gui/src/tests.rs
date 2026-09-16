@@ -5244,3 +5244,46 @@ ret
         "la ligne du point d'entrée porte son instruction, pas l'étiquette : {texte_ligne:?}"
     );
 }
+
+/// F12 sur une étiquette mène à l'endroit où elle est définie.
+#[test]
+fn going_to_a_label_lands_on_its_definition() {
+    let source = "\
+global _start
+section .text
+_start:
+    mov rcx, 3
+boucle:
+    dec rcx
+    jnz boucle
+    hlt
+";
+    // La fonction pure, d'abord : c'est elle qui décide.
+    assert_eq!(label_line(source, "boucle"), Some(5));
+    assert_eq!(label_line(source, "_start"), Some(3));
+    // Ce qui n'est pas une définition n'en est pas une : le `boucle` du
+    // `jnz` ne compte pas, et un nom plus long non plus.
+    assert_eq!(label_line(source, "bouclette"), None);
+    assert_eq!(label_line(source, "hlt"), None);
+
+    let mut app = NamsdecApp {
+        source: source.to_owned(),
+        // Le curseur sur le `boucle` du `jnz`, en ligne 7.
+        cursor_byte: source.find("jnz boucle").unwrap() + 4,
+        ..Default::default()
+    };
+    app.dispatch(Action::GoToLabel);
+    assert_eq!(app.goto_line, Some(5), "F12 doit mener à `boucle:`");
+
+    // Sur un mot qui n'est pas une étiquette, l'outil le dit plutôt que
+    // de ne rien faire.
+    app.goto_line = None;
+    app.cursor_byte = source.find("mov rcx").unwrap();
+    app.dispatch(Action::GoToLabel);
+    assert_eq!(app.goto_line, None);
+    assert!(
+        matches!(app.status, Status::Note(_)),
+        "une touche qui ne répond pas laisse croire qu'elle n'existe pas : {:?}",
+        app.status
+    );
+}

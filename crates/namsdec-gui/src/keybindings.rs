@@ -33,10 +33,12 @@ pub enum Action {
     InstructionHelp,
     /// Exécuter jusqu'à la ligne où se trouve le curseur.
     RunToCursor,
+    /// Aller à l'étiquette sous le curseur — là où elle est définie.
+    GoToLabel,
 }
 
 impl Action {
-    pub const ALL: [Action; 13] = [
+    pub const ALL: [Action; 14] = [
         Action::ToggleExplorer,
         Action::Assemble,
         Action::Run,
@@ -50,6 +52,7 @@ impl Action {
         Action::OpenFolder,
         Action::InstructionHelp,
         Action::RunToCursor,
+        Action::GoToLabel,
     ];
 }
 
@@ -222,6 +225,12 @@ impl Default for KeyBindings {
         map.insert(
             Action::RunToCursor,
             Chord::Simple(KeyboardShortcut::new(Modifiers::CTRL, Key::F10)),
+        );
+        // F12 : « aller à la définition », la touche qu'un éditeur de
+        // code donne à ce geste depuis toujours.
+        map.insert(
+            Action::GoToLabel,
+            Chord::Simple(KeyboardShortcut::new(Modifiers::NONE, Key::F12)),
         );
         map.insert(Action::ToggleExplorer, Chord::leader(&[Key::Space, Key::E]));
         Self { map }

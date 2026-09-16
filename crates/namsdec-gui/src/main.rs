@@ -673,6 +673,10 @@ fn palette_commands(
             s.action_instruction_help.to_string(),
             PaletteCommand::Do(Action::InstructionHelp),
         ),
+        (
+            s.action_goto_label.to_string(),
+            PaletteCommand::Do(Action::GoToLabel),
+        ),
         (s.help_about.to_string(), PaletteCommand::ShowAbout),
         (s.analysis_open.to_string(), PaletteCommand::ShowAnalysis),
         (s.vectors_open.to_string(), PaletteCommand::ShowVectors),
@@ -1612,6 +1616,7 @@ impl NamsdecApp {
             Action::OpenFolder => self.do_open_folder(),
             Action::InstructionHelp => self.do_instruction_help(),
             Action::RunToCursor => self.do_run_to_cursor(),
+            Action::GoToLabel => self.do_goto_label(),
         }
     }
 
@@ -2464,6 +2469,20 @@ impl NamsdecApp {
                 // mais encore faut-il savoir que F1 fait quelque chose.
                 if ui.button(s.action_instruction_help).clicked() {
                     self.dispatch(Action::InstructionHelp);
+                    ui.close();
+                }
+                // Même raison : un raccourci qu'on ne connaît pas
+                // n'existe pas.
+                if ui
+                    .button(shortcut_hint(
+                        &self.keybindings,
+                        &ui.ctx().clone(),
+                        s.action_goto_label,
+                        Action::GoToLabel,
+                    ))
+                    .clicked()
+                {
+                    self.dispatch(Action::GoToLabel);
                     ui.close();
                 }
                 ui.separator();
@@ -3892,6 +3911,29 @@ impl NamsdecApp {
         }
     }
 
+    /// Va à l'endroit où l'étiquette sous le curseur est définie.
+    ///
+    /// Sur un programme d'une centaine de lignes, `jne boucle` et
+    /// `boucle:` ne tiennent plus dans le même écran, et retrouver l'un
+    /// depuis l'autre se fait à la molette. C'est le « aller à la
+    /// définition » de n'importe quel éditeur de code, appliqué à la
+    /// seule chose qui en a une ici : une étiquette.
+    fn do_goto_label(&mut self) {
+        let word = word_at(&self.source, self.cursor_byte);
+        if word.is_empty() {
+            return;
+        }
+        match label_line(&self.source, word) {
+            Some(line) => {
+                self.goto_line = Some(line);
+                self.status = Status::Idle;
+            }
+            // Le dire plutôt que de ne rien faire : une touche qui ne
+            // répond pas laisse croire qu'elle n'existe pas.
+            None => self.status = Status::Note(strings(self.lang).goto_label_unknown),
+        }
+    }
+
     /// Cherche la fiche du mot sous le curseur et l'ouvre.
     ///
     /// Sous le curseur, et non « le premier mot de la ligne » : on demande
@@ -4456,6 +4498,21 @@ impl NamsdecApp {
 /// Un plafond en pixels — trois cent soixante, trois cent vingt — faisait
 /// défiler quatre thèmes au milieu d'un écran qui en aurait montré
 /// quinze. Celui-ci suit l'écran qu'on a.
+/// La ligne où l'étiquette `name` est définie, en comptant à partir de 1.
+///
+/// Une étiquette se déclare en tête de ligne, suivie de deux points :
+/// `boucle:`. Ce qui apparaît ailleurs — dans un `jmp`, dans un
+/// commentaire — n'est pas une définition et ne compte pas.
+fn label_line(source: &str, name: &str) -> Option<u32> {
+    source.lines().enumerate().find_map(|(index, line)| {
+        let trimmed = line.trim_start();
+        let rest = trimmed.strip_prefix(name)?;
+        // `boucle:` et non `bouclette:` — le nom doit s'arrêter là.
+        let rest = rest.trim_start();
+        rest.starts_with(':').then_some(index as u32 + 1)
+    })
+}
+
 /// Le listing d'un binaire ouvert : les instructions, avec les étiquettes
 /// que sa table des symboles porte encore.
 ///
@@ -4581,6 +4638,7 @@ fn action_label(s: &Strings, action: Action) -> &'static str {
         Action::OpenFile => s.file_open_file,
         Action::OpenFolder => s.file_open_folder,
         Action::InstructionHelp => s.action_instruction_help,
+        Action::GoToLabel => s.action_goto_label,
         Action::RunToCursor => s.action_run_to_cursor,
     }
 }
