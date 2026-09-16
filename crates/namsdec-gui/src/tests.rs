@@ -5346,3 +5346,64 @@ fn the_status_bar_says_what_is_unsaved() {
         "et le disque porte bien ce qu'on voit"
     );
 }
+
+/// Les octets de l'instruction sont découpés par rôle : un préfixe n'est
+/// pas un opcode, et un immédiat encore moins.
+#[test]
+fn the_bytes_of_an_instruction_are_split_by_role() {
+    let mut app = NamsdecApp {
+        source: "\
+global _start
+section .text
+_start:
+mov rax, rbx
+mov eax, 42
+syscall
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 900.0),
+        )),
+        ..Default::default()
+    };
+    let peindre = |app: &mut NamsdecApp| {
+        let mut textes = Vec::new();
+        for _ in 0..2 {
+            textes.clear();
+            let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+            for clipped in &output.shapes {
+                if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                    textes.push(text.galley.text().to_owned());
+                }
+            }
+            output.textures_delta.clear();
+        }
+        textes
+    };
+
+    // `mov rax, rbx` s'encode 48 89 d8 : le REX.W à part, l'opcode à
+    // part, l'octet d'adressage à part.
+    let textes = peindre(&mut app);
+    assert!(textes.iter().any(|t| t == "48"), "{textes:?}");
+    assert!(textes.iter().any(|t| t == "89"), "{textes:?}");
+    assert!(textes.iter().any(|t| t == "d8"), "{textes:?}");
+    // Et surtout : pas d'un seul tenant.
+    assert!(!textes.iter().any(|t| t == "48 89 d8"), "{textes:?}");
+
+    // `mov eax, 42` : l'immédiat forme un groupe à lui seul.
+    app.do_step();
+    let textes = peindre(&mut app);
+    assert!(
+        textes.iter().any(|t| t == "2a 00 00 00"),
+        "les quatre octets de l'immédiat vont ensemble : {textes:?}"
+    );
+}

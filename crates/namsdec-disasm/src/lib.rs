@@ -4,6 +4,13 @@
 
 use iced_x86::{Decoder, DecoderOptions, Formatter, Instruction, NasmFormatter};
 
+/// L'instruction décodée, telle que la rend [`decode_one`].
+///
+/// Réexportée pour que l'interface puisse la nommer dans ses signatures
+/// sans dépendre elle-même du décodeur : ce qu'elle en fait, elle le
+/// fait toujours en passant par cette crate.
+pub use iced_x86::Instruction as Decoded;
+
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Debug, Clone)]
@@ -104,5 +111,216 @@ mod tests {
         assert_eq!(out[2].text, "add rax,rcx");
         assert_eq!(out[5].address, 0x400012); // hlt
         assert_eq!(out[5].text, "hlt");
+    }
+}
+
+/// Les champs d'une instruction déjà décodée, dans les octets qui la
+/// portent.
+///
+/// C'est la forme qu'appelle l'interface : elle tient une `Instruction`
+/// rendue par [`decode_one`] et la fenêtre d'octets d'où elle vient, et
+/// n'a pas à savoir compter les immédiats.
+pub fn fields_of(instr: &Instruction, window: &[u8]) -> Vec<(std::ops::Range<usize>, Field)> {
+    let len = instr.len().min(window.len());
+    fields(&window[..len], immediate_len(instr))
+}
+
+/// La taille, en octets, de la valeur écrite en clair dans
+/// l'instruction. Zéro quand il n'y en a pas.
+fn immediate_len(instr: &Instruction) -> usize {
+    use iced_x86::OpKind;
+    (0..instr.op_count())
+        .map(|index| match instr.op_kind(index) {
+            OpKind::Immediate8
+            | OpKind::Immediate8_2nd
+            | OpKind::Immediate8to16
+            | OpKind::Immediate8to32
+            | OpKind::Immediate8to64 => 1,
+            OpKind::Immediate16 => 2,
+            OpKind::Immediate32 | OpKind::Immediate32to64 => 4,
+            OpKind::Immediate64 => 8,
+            _ => 0,
+        })
+        .sum()
+}
+
+/// Le rôle d'un groupe d'octets dans une instruction encodée.
+///
+/// Une instruction x86 n'est pas un bloc : c'est une suite de champs,
+/// chacun avec son travail. Les distinguer, c'est passer de « 48 89 d8 »
+/// à « opérandes 64 bits, `mov` registre vers registre, RBX vers RAX ».
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Field {
+    /// Un préfixe, avec ce qu'il change.
+    Prefix(Prefix),
+    /// L'opcode : l'instruction elle-même, sur un à trois octets.
+    OpCode,
+    /// ModRM, SIB et le déplacement : *où* l'instruction va chercher ses
+    /// opérandes.
+    Addressing,
+    /// La valeur écrite en clair dans l'instruction.
+    Immediate,
+}
+
+/// Les préfixes qu'on rencontre en lisant du code 64 bits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Prefix {
+    /// `REX.W` : l'instruction travaille sur 64 bits.
+    RexW,
+    /// Un REX sans W : il donne accès aux registres R8 à R15, et aux
+    /// octets bas de RSI, RDI, RSP, RBP.
+    Rex,
+    /// `66` : opérandes de 16 bits.
+    OperandSize,
+    /// `67` : adresses de 32 bits.
+    AddressSize,
+    /// `F3` : `rep`, ou une instruction SSE à part entière.
+    Rep,
+    /// `F2` : `repne`, même remarque.
+    Repne,
+    /// `F0` : `lock`, l'opération devient atomique.
+    Lock,
+    /// Un préfixe de segment (`fs:`, `gs:`…).
+    Segment,
+    /// `C4`/`C5` : l'encodage VEX des instructions AVX.
+    Vex,
+}
+
+/// Découpe les octets d'une instruction en champs.
+///
+/// Approximatif par construction sur un point : le milieu — ModRM, SIB,
+/// déplacement — n'est pas décomposé plus finement, parce qu'il faudrait
+/// pour cela la table des opcodes complète. Les préfixes, l'opcode et
+/// l'immédiat, eux, se lisent sans table, et ce sont ceux qui expliquent
+/// ce qu'on voit.
+pub fn fields(bytes: &[u8], immediate_len: usize) -> Vec<(std::ops::Range<usize>, Field)> {
+    let mut out = Vec::new();
+    let mut at = 0usize;
+
+    // Les préfixes viennent en premier, en nombre quelconque ; REX doit
+    // être le dernier avant l'opcode.
+    while at < bytes.len() {
+        let prefix = match bytes[at] {
+            0xf0 => Prefix::Lock,
+            0xf2 => Prefix::Repne,
+            0xf3 => Prefix::Rep,
+            0x66 => Prefix::OperandSize,
+            0x67 => Prefix::AddressSize,
+            0x2e | 0x36 | 0x3e | 0x26 | 0x64 | 0x65 => Prefix::Segment,
+            b @ 0x40..=0x4f => {
+                // Le bit W est celui de poids 3 : c'est lui qui fait
+                // passer l'instruction en 64 bits.
+                let kind = if b & 0x08 != 0 {
+                    Prefix::RexW
+                } else {
+                    Prefix::Rex
+                };
+                out.push((at..at + 1, Field::Prefix(kind)));
+                at += 1;
+                break;
+            }
+            0xc5 => {
+                // VEX court : deux octets, opcode compris dans la suite.
+                out.push((at..at + 2, Field::Prefix(Prefix::Vex)));
+                at += 2;
+                break;
+            }
+            0xc4 => {
+                out.push((at..at + 3, Field::Prefix(Prefix::Vex)));
+                at += 3;
+                break;
+            }
+            _ => break,
+        };
+        out.push((at..at + 1, Field::Prefix(prefix)));
+        at += 1;
+    }
+
+    // L'opcode : un octet, ou deux à trois quand il commence par 0F.
+    let opcode_start = at;
+    if bytes.get(at) == Some(&0x0f) {
+        at += 1;
+        if matches!(bytes.get(at), Some(0x38) | Some(0x3a)) {
+            at += 1;
+        }
+    }
+    if at < bytes.len() {
+        at += 1;
+    }
+    if at > opcode_start {
+        out.push((opcode_start..at, Field::OpCode));
+    }
+
+    // L'immédiat se prend par la fin : sa longueur est connue, et ce qui
+    // reste entre l'opcode et lui est l'adressage.
+    let immediate_start = bytes.len().saturating_sub(immediate_len);
+    if immediate_len > 0 && immediate_start >= at {
+        if immediate_start > at {
+            out.push((at..immediate_start, Field::Addressing));
+        }
+        out.push((immediate_start..bytes.len(), Field::Immediate));
+    } else if at < bytes.len() {
+        out.push((at..bytes.len(), Field::Addressing));
+    }
+    out
+}
+
+#[cfg(test)]
+mod encoding_tests {
+    use super::*;
+
+    /// Les cas qu'on rencontre dès le premier programme.
+    #[test]
+    fn the_first_instructions_split_into_their_fields() {
+        // 48 89 d8 : REX.W, opcode 89, ModRM d8.
+        assert_eq!(
+            fields(&[0x48, 0x89, 0xd8], 0),
+            vec![
+                (0..1, Field::Prefix(Prefix::RexW)),
+                (1..2, Field::OpCode),
+                (2..3, Field::Addressing),
+            ]
+        );
+        // b8 2a 00 00 00 : opcode seul, puis quatre octets d'immédiat.
+        assert_eq!(
+            fields(&[0xb8, 0x2a, 0x00, 0x00, 0x00], 4),
+            vec![(0..1, Field::OpCode), (1..5, Field::Immediate)]
+        );
+        // 0f 05 : `syscall`, opcode sur deux octets, rien d'autre.
+        assert_eq!(fields(&[0x0f, 0x05], 0), vec![(0..2, Field::OpCode)]);
+    }
+
+    /// Un REX sans W ne dit pas la même chose qu'un REX.W : le premier
+    /// ouvre les registres R8 à R15, le second passe en 64 bits.
+    #[test]
+    fn rex_with_and_without_w_are_different_things() {
+        assert_eq!(
+            fields(&[0x41, 0x89, 0xc0], 0)[0],
+            (0..1, Field::Prefix(Prefix::Rex))
+        );
+        assert_eq!(
+            fields(&[0x49, 0x89, 0xc0], 0)[0],
+            (0..1, Field::Prefix(Prefix::RexW))
+        );
+    }
+
+    /// Un préfixe de répétition, puis l'opcode : `rep movsb`.
+    #[test]
+    fn a_repeat_prefix_is_told_from_the_opcode() {
+        assert_eq!(
+            fields(&[0xf3, 0xa4], 0),
+            vec![(0..1, Field::Prefix(Prefix::Rep)), (1..2, Field::OpCode)]
+        );
+    }
+
+    /// Des octets vides ne font pas paniquer : le découpage d'une
+    /// instruction tronquée rend ce qu'il peut.
+    #[test]
+    fn nothing_in_nothing_out() {
+        assert!(fields(&[], 0).is_empty());
+        assert_eq!(
+            fields(&[0x48], 0),
+            vec![(0..1, Field::Prefix(Prefix::RexW))]
+        );
     }
 }

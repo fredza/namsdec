@@ -298,6 +298,40 @@ impl NamsdecApp {
             });
     }
 
+    /// Les octets de l'instruction, colorés par rôle, chacun expliqué au
+    /// survol.
+    ///
+    /// `48 89 d8` cesse d'être un bloc : un préfixe qui dit « 64 bits »,
+    /// un opcode qui dit « mov », un octet d'adressage qui dit « de RBX
+    /// vers RAX ».
+    fn encoding_ui(&self, ui: &mut egui::Ui, instr: &namsdec_disasm::Decoded, window: &[u8]) {
+        let s = strings(self.lang);
+        let theme = self.theme;
+        let champs = namsdec_disasm::fields_of(instr, window);
+        if champs.is_empty() {
+            return;
+        }
+        let bytes = window;
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing.x = 6.0;
+            for (range, field) in champs {
+                let (couleur, explication) = match field {
+                    namsdec_disasm::Field::Prefix(prefix) => (theme.warn, prefix_hint(s, prefix)),
+                    namsdec_disasm::Field::OpCode => (theme.accent, s.field_opcode),
+                    namsdec_disasm::Field::Addressing => (theme.good, s.field_addressing),
+                    namsdec_disasm::Field::Immediate => (theme.changed, s.field_immediate),
+                };
+                let texte = bytes[range]
+                    .iter()
+                    .map(|b| format!("{b:02x}"))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                ui.colored_label(couleur, egui::RichText::new(texte).monospace())
+                    .on_hover_text(explication);
+            }
+        });
+    }
+
     /// La ligne qui mène aux registres étendus.
     ///
     /// Un lien plutôt qu'un repli : ce que l'on déplie dans un panneau,
@@ -370,6 +404,12 @@ impl NamsdecApp {
         if let Some(entry) = namsdec_doc::lookup(mnemonic) {
             ui.colored_label(theme.dim, entry.title.get(self.lang.code()));
         }
+        // Les octets, découpés par rôle : un préfixe n'est pas un
+        // opcode, et une instruction x86 se lit comme une suite de
+        // champs. C'est ce qu'on apprend en lisant un manuel Intel, et
+        // ce qu'aucun désassembleur ne montre.
+        self.encoding_ui(ui, &instr, window);
+
         // Un `syscall` : lequel, et avec quoi ?
         //
         // L'instruction ne porte aucun opérande — tout est dans les
@@ -1852,4 +1892,20 @@ fn peek_text(
         })
         .collect();
     (!readable.is_empty()).then(|| format!("\"{readable}\""))
+}
+
+/// L'explication d'un préfixe, dans la langue de l'interface.
+fn prefix_hint(s: &Strings, prefix: namsdec_disasm::Prefix) -> &'static str {
+    use namsdec_disasm::Prefix as P;
+    match prefix {
+        P::RexW => s.prefix_rex_w,
+        P::Rex => s.prefix_rex,
+        P::OperandSize => s.prefix_operand_size,
+        P::AddressSize => s.prefix_address_size,
+        P::Rep => s.prefix_rep,
+        P::Repne => s.prefix_repne,
+        P::Lock => s.prefix_lock,
+        P::Segment => s.prefix_segment,
+        P::Vex => s.prefix_vex,
+    }
 }
