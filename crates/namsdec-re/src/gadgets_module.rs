@@ -18,6 +18,9 @@ pub struct GadgetsModule {
     found: Vec<Gadget>,
     /// Combien il y en avait en tout, avant la coupe.
     total: usize,
+    /// Ce qu'on cherche parmi eux : on ne parcourt pas une liste de
+    /// fragments, on y cherche celui qui met un argument en place.
+    query: String,
 }
 
 impl ReModule for GadgetsModule {
@@ -63,7 +66,30 @@ impl ReModule for GadgetsModule {
             return;
         }
         ui.add_space(4.0);
-        ui.label(if self.total > self.found.len() {
+        ui.horizontal(|ui| {
+            ui.add(
+                egui::TextEdit::singleline(&mut self.query)
+                    .hint_text(ctx.t("chercher — « pop rdi »…", "search — \"pop rdi\"…"))
+                    .desired_width(160.0),
+            );
+            if !self.query.is_empty() && ui.small_button("✕").clicked() {
+                self.query.clear();
+            }
+        });
+        let query = self.query.to_lowercase();
+        let montrés: Vec<&Gadget> = self
+            .found
+            .iter()
+            .filter(|gadget| query.is_empty() || gadget.text().to_lowercase().contains(&query))
+            .collect();
+        ui.label(if !query.is_empty() {
+            format!(
+                "{} / {} {}",
+                montrés.len(),
+                self.found.len(),
+                ctx.t("montrés", "shown")
+            )
+        } else if self.total > self.found.len() {
             format!(
                 "{} {} ({} {})",
                 self.total,
@@ -79,11 +105,51 @@ impl ReModule for GadgetsModule {
             .striped(true)
             .min_col_width(0.0)
             .show(ui, |ui| {
-                for gadget in &self.found {
+                for gadget in &montrés {
                     ui.monospace(format!("{:#x}", gadget.addr));
                     ui.monospace(gadget.text());
                     ui.end_row();
                 }
             });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use namsdec_core::{Cpu, Memory};
+
+    /// Le filtre sert à trouver le fragment qu'on cherche — « pop rdi »
+    /// met un argument en place, et c'est celui-là qu'on veut.
+    #[test]
+    fn the_filter_finds_the_fragment_one_is_after() {
+        // pop rdi ; ret, puis pop rsi ; ret.
+        let bytes: &[u8] = &[0x5f, 0xc3, 0x5e, 0xc3];
+        let disasm = namsdec_disasm::disassemble(bytes, 0x400000);
+        let mut mem = Memory::new(0x400000, 0x100);
+        mem.load(0x400000, bytes).unwrap();
+        let cpu = Cpu::new(mem);
+        let ctx = ReContext {
+            cpu: &cpu,
+            disasm: &disasm,
+            source: "",
+            binary: &[],
+            lang: "fr",
+        };
+
+        let mut module = GadgetsModule::default();
+        module.on_binary_loaded(&ctx);
+        assert!(module.found.len() >= 2, "{:?}", module.found);
+
+        // Le filtre est une simple recherche dans le texte du fragment :
+        // c'est ce qu'on teste, le rendu n'y ajoutant rien.
+        module.query = "pop rdi".to_owned();
+        let montrés: Vec<&Gadget> = module
+            .found
+            .iter()
+            .filter(|gadget| gadget.text().to_lowercase().contains(&module.query))
+            .collect();
+        assert_eq!(montrés.len(), 1, "{montrés:?}");
+        assert_eq!(montrés[0].text(), "pop rdi ; ret");
     }
 }
