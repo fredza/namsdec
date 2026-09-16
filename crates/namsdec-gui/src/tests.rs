@@ -3596,8 +3596,12 @@ fn a_pack_can_be_set_aside_without_being_uninstalled() {
     );
 }
 
-/// Le parcours livré est un parcours : huit étapes dans l'ordre où l'on
-/// apprend, chacune avec son but écrit dans le programme.
+/// Le parcours livré est un parcours : douze étapes dans l'ordre où
+/// l'on apprend, chacune avec son but écrit dans le programme.
+///
+/// L'ordre n'est pas décoratif. On lit les registres avant d'écrire une
+/// boucle, on sait boucler avant de parcourir un tableau, et l'on a vu
+/// une chaîne avant de l'écrire sur la sortie.
 #[test]
 fn the_built_in_pack_is_a_course_in_order() {
     let pack = namsdec_exercises::builtin_pack();
@@ -3607,8 +3611,12 @@ fn the_built_in_pack_is_a_course_in_order() {
         [
             "registres",
             "boucle",
+            "bits",
             "comparer",
+            "multiplier",
             "memoire",
+            "tableau",
+            "chaine",
             "pile",
             "appels",
             "sortie",
@@ -5048,9 +5056,9 @@ fn the_readme_tells_the_truth() {
     );
 
     let exercices = namsdec_exercises::builtin_pack().exercises.len();
-    assert_eq!(exercices, 8, "le parcours livré compte huit exercices");
+    assert_eq!(exercices, 12, "le parcours livré compte douze exercices");
     assert!(
-        readme.contains("parcours de huit exercices"),
+        readme.contains("parcours de douze exercices"),
         "le README doit annoncer le bon nombre d'exercices"
     );
     // Les crates listées dans le tableau existent toutes.
@@ -5784,5 +5792,62 @@ fn a_new_program_is_ready_to_assemble() {
             "et rendre la main avec le code 0 : {:?}",
             app.status
         );
+    }
+}
+
+/// Les exercices qui annoncent un résultat doivent le donner.
+///
+/// « But : RAX doit valoir 15 » est une promesse faite à quelqu'un qui
+/// apprend : s'il obtient autre chose, il cherchera son erreur là où il
+/// n'y en a pas. On exécute donc le programme de départ et l'on vérifie
+/// ce qu'il annonce.
+#[test]
+fn the_exercises_deliver_what_they_promise() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    // Ce que chaque exercice doit avoir dans ses registres à l'arrêt,
+    // tel que son propre commentaire l'annonce.
+    let attendus: &[(&str, &[(Reg64, u64)])] = &[
+        ("boucle", &[(Reg64::Rax, 15)]),
+        ("bits", &[(Reg64::Rax, 40), (Reg64::Rbx, 1)]),
+        ("multiplier", &[(Reg64::Rax, 7), (Reg64::Rdx, 1)]),
+        ("chaine", &[(Reg64::Rcx, 5)]),
+        ("tableau", &[(Reg64::Rax, 100)]),
+    ];
+
+    let packs = [namsdec_exercises::builtin_pack()];
+    for (id, registres) in attendus {
+        let exercise = namsdec_exercises::find(&packs, &format!("namsdec/{id}"))
+            .unwrap_or_else(|| panic!("l'exercice {id} existe"));
+
+        let mut app = NamsdecApp {
+            source: exercise.starter_code.clone(),
+            ..Default::default()
+        };
+        app.do_assemble();
+        assert!(
+            matches!(app.status, Status::AssembleOk),
+            "{id} ne s'assemble pas : {:?}",
+            app.status
+        );
+        app.do_run();
+        let ctx = egui::Context::default();
+        for _ in 0..50 {
+            if !app.running {
+                break;
+            }
+            app.tick_run(&ctx);
+        }
+        assert!(!app.running, "{id} ne rend pas la main");
+
+        let regs = &app.emulator.as_ref().unwrap().cpu().regs;
+        for (reg, valeur) in *registres {
+            assert_eq!(
+                regs.get64(*reg),
+                *valeur,
+                "{id} : {reg:?} devrait valoir {valeur}, et son commentaire le promet"
+            );
+        }
     }
 }

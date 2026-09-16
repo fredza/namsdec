@@ -110,6 +110,18 @@ pub fn builtin_pack() -> Pack {
                 starter_code: include_str!("../exercises/boucle.asm").to_owned(),
             },
             Exercise {
+                id: "bits".to_owned(),
+                title: Text {
+                    fr: "Les bits, un par un".to_owned(),
+                    en: "Bits, one at a time".to_owned(),
+                },
+                description: Text {
+                    fr: "Décaler, masquer, poser, tester. `shl` multiplie par deux autant de fois qu'on le lui demande, `and` garde des bits, `or` en pose, `test` demande « ce bit est-il mis ? » sans rien abîmer. Survolez RAX : sa lecture binaire montre les bits bouger.".to_owned(),
+                    en: "Shift, mask, set, test. `shl` doubles as many times as asked, `and` keeps bits, `or` sets them, `test` asks \"is this bit set?\" without damaging anything. Hover RAX: its binary reading shows the bits move.".to_owned(),
+                },
+                starter_code: include_str!("../exercises/bits.asm").to_owned(),
+            },
+            Exercise {
                 id: "comparer".to_owned(),
                 title: Text {
                     fr: "Comparer, et choisir".to_owned(),
@@ -122,6 +134,18 @@ pub fn builtin_pack() -> Pack {
                 starter_code: include_str!("../exercises/comparer.asm").to_owned(),
             },
             Exercise {
+                id: "multiplier".to_owned(),
+                title: Text {
+                    fr: "Multiplier et diviser".to_owned(),
+                    en: "Multiply and divide".to_owned(),
+                },
+                description: Text {
+                    fr: "Les deux opérations qui travaillent sur une paire de registres : `mul` écrit RDX:RAX, `div` la lit. Retirez le `xor rdx, rdx` pour voir ce qui arrive quand on oublie la moitié haute du dividende — c'est l'erreur classique.".to_owned(),
+                    en: "The two operations that work on a register pair: `mul` writes RDX:RAX, `div` reads it. Remove the `xor rdx, rdx` to see what happens when the high half of the dividend is forgotten — the classic mistake.".to_owned(),
+                },
+                starter_code: include_str!("../exercises/multiplier.asm").to_owned(),
+            },
+            Exercise {
                 id: "memoire".to_owned(),
                 title: Text {
                     fr: "Lire et écrire en mémoire".to_owned(),
@@ -132,6 +156,30 @@ pub fn builtin_pack() -> Pack {
                     en: "Four bytes at once, a single byte widened with zeroes, and indexed addressing base + offset. Open the Memory tab and type \"rdi\" in the address field to follow what changes.".to_owned(),
                 },
                 starter_code: include_str!("../exercises/memoire.asm").to_owned(),
+            },
+            Exercise {
+                id: "tableau".to_owned(),
+                title: Text {
+                    fr: "Un tableau, et son indice".to_owned(),
+                    en: "An array, and its index".to_owned(),
+                },
+                description: Text {
+                    fr: "`[base + indice*taille]` est l'adressage qui fait exister les tableaux. Arrêté sur le `add`, le bandeau montre l'adresse que le calcul désigne et la valeur qui s'y trouve, avant même de la lire.".to_owned(),
+                    en: "`[base + index*size]` is the addressing that makes arrays exist. Stopped on the `add`, the banner shows the address the computation points at and the value sitting there, before it is even read.".to_owned(),
+                },
+                starter_code: include_str!("../exercises/tableau.asm").to_owned(),
+            },
+            Exercise {
+                id: "chaine".to_owned(),
+                title: Text {
+                    fr: "Parcourir une chaîne".to_owned(),
+                    en: "Walk a string".to_owned(),
+                },
+                description: Text {
+                    fr: "Une chaîne n'est qu'une suite d'octets ; ce qui en marque la fin est une convention — ici un zéro final. `movzx` lit un octet en l'élargissant par des zéros, pour que la comparaison porte bien sur ce qu'on a lu.".to_owned(),
+                    en: "A string is just a run of bytes; what marks its end is a convention — here a trailing zero. `movzx` reads a byte widening it with zeroes, so the comparison is about what was actually read.".to_owned(),
+                },
+                starter_code: include_str!("../exercises/chaine.asm").to_owned(),
             },
             Exercise {
                 id: "pile".to_owned(),
@@ -214,9 +262,9 @@ mod tests {
     #[test]
     fn every_builtin_exercise_is_complete_and_stops() {
         let pack = builtin_pack();
-        // Un parcours, pas une poignée : huit étapes, et chacune
-        // s'appuie sur la précédente.
-        assert_eq!(pack.exercises.len(), 8);
+        // Un parcours, pas une poignée : douze étapes, et chacune
+        // s'appuie sur les précédentes.
+        assert_eq!(pack.exercises.len(), 12);
         for exercise in &pack.exercises {
             assert!(!exercise.id.is_empty());
             assert!(!exercise.title.fr.is_empty() && !exercise.title.en.is_empty());
