@@ -792,6 +792,7 @@ enum PreferencesTab {
 /// chose qui marche même quand il ne l'est pas.
 const DEFAULT_SOURCE: &str = "\
 ; Bienvenue dans namsdec. Assemblez (Ctrl+Maj+B), puis avancez pas à pas.
+; Un parcours de douze exercices vous attend : Préférences > Modules.
 
 global _start
 
@@ -2563,15 +2564,19 @@ impl NamsdecApp {
                     self.show_vectors = true;
                     ui.close();
                 }
-                // Le module des exercices n'existe pour l'interface que
-                // s'il a été demandé : sans cela, pas d'entrée, pas de
-                // fenêtre, rien.
+                ui.separator();
+                // Le module des exercices se charge à la demande. Mais
+                // une porte qu'on ne voit pas n'existe pas : l'entrée
+                // reste visible, grisée, et dit où l'ouvrir. Sans cela,
+                // un débutant ne saura jamais qu'il y a un parcours.
                 if self.exercises {
-                    ui.separator();
                     if ui.button(s.exercises_open).clicked() {
                         self.show_exercises = true;
                         ui.close();
                     }
+                } else {
+                    ui.add_enabled(false, egui::Button::new(s.exercises_open))
+                        .on_disabled_hover_text(s.exercises_where);
                 }
             });
 

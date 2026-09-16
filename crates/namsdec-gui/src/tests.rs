@@ -5851,3 +5851,51 @@ fn the_exercises_deliver_what_they_promise() {
         }
     }
 }
+
+/// Le parcours se voit même quand son module n'est pas chargé.
+///
+/// Un module qu'on active si on le désire, soit — mais une porte qu'on
+/// ne voit pas n'existe pas. Quelqu'un qui débute ne devinera pas qu'il
+/// y a douze exercices derrière un réglage.
+#[test]
+fn the_course_is_discoverable_before_it_is_loaded() {
+    let mut app = NamsdecApp::default();
+    assert!(!app.exercises, "le module est éteint au départ");
+    // Le programme d'accueil dit où aller.
+    assert!(
+        app.source.contains("Préférences > Modules"),
+        "{}",
+        app.source
+    );
+
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 900.0),
+        )),
+        // Le menu Outils ouvert : c'est là que l'entrée vit.
+        events: vec![egui::Event::PointerButton {
+            pos: egui::pos2(0.0, 0.0),
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers: egui::Modifiers::NONE,
+        }],
+        ..Default::default()
+    };
+    let mut painted = String::new();
+    for _ in 0..2 {
+        painted.clear();
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        for clipped in &output.shapes {
+            if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                painted.push_str(text.galley.text());
+                painted.push('|');
+            }
+        }
+        output.textures_delta.clear();
+    }
+    // Le texte d'accueil est à l'écran, avec sa mention du parcours.
+    assert!(painted.contains("douze exercices"), "{painted}");
+}
