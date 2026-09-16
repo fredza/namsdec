@@ -5024,3 +5024,63 @@ hlt
     }
     assert!(painted.contains("×5"), "{painted}");
 }
+
+/// Le README annonce des chiffres : ils doivent rester vrais.
+///
+/// C'est la page que voient ceux à qui l'on partage l'outil, et une
+/// promesse fausse y coûte plus cher qu'ailleurs. Les chiffres qu'on
+/// peut vérifier le sont ici, pour qu'ils vieillissent avec le code.
+#[test]
+fn the_readme_tells_the_truth() {
+    let readme = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../README.md"))
+        .expect("le README est à la racine du dépôt");
+
+    let fiches = namsdec_doc::count();
+    assert!(
+        readme.contains(&format!("{fiches} instructions et directives")),
+        "le README annonce un autre nombre de fiches que les {fiches} existantes"
+    );
+
+    let exercices = namsdec_exercises::builtin_pack().exercises.len();
+    assert_eq!(exercices, 8, "le parcours livré compte huit exercices");
+    assert!(
+        readme.contains("parcours de huit exercices"),
+        "le README doit annoncer le bon nombre d'exercices"
+    );
+    // Les crates listées dans le tableau existent toutes.
+    for crate_name in [
+        "namsdec-core",
+        "namsdec-asm",
+        "namsdec-disasm",
+        "namsdec-emu",
+        "namsdec-re",
+        "namsdec-doc",
+        "namsdec-exercises",
+        "namsdec-theme",
+        "namsdec-explorer",
+        "namsdec-gui",
+    ] {
+        assert!(
+            readme.contains(crate_name),
+            "le tableau des crates oublie {crate_name}"
+        );
+        assert!(
+            std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../"))
+                .join(crate_name)
+                .is_dir(),
+            "{crate_name} est annoncée mais n'existe pas"
+        );
+    }
+    // Et les limites annoncées le sont toujours : les appels système
+    // simulés sont bien ceux-là, ni plus ni moins.
+    for simulé in [0u64, 1, 12, 60] {
+        assert!(
+            namsdec_re::table::is_simulated(simulé),
+            "l'appel {simulé} est annoncé comme simulé"
+        );
+    }
+    assert!(
+        !namsdec_re::table::is_simulated(9),
+        "mmap n'est pas simulé, et le README le dit"
+    );
+}

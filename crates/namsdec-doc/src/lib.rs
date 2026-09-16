@@ -73,6 +73,12 @@ pub struct Entry {
     pub example: &'static str,
 }
 
+/// Combien de fiches namsdec porte, instructions et directives
+/// confondues. Le README l'annonce ; un test le compare.
+pub fn count() -> usize {
+    ENTRIES.len()
+}
+
 /// La fiche qui décrit ce mnémonique, quelle que soit sa casse.
 pub fn lookup(mnemonic: &str) -> Option<&'static Entry> {
     let lower = mnemonic.to_ascii_lowercase();
