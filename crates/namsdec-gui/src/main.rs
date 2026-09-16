@@ -4272,11 +4272,11 @@ impl NamsdecApp {
                 aller = true;
                 champ.request_focus();
             }
-            if ui.button("◂").on_hover_text(s.find_previous).clicked() && !matches.is_empty() {
+            if ui.button("<").on_hover_text(s.find_previous).clicked() && !matches.is_empty() {
                 current = (current + matches.len() - 1) % matches.len();
                 aller = true;
             }
-            if ui.button("▸").on_hover_text(s.find_next).clicked() && !matches.is_empty() {
+            if ui.button(">").on_hover_text(s.find_next).clicked() && !matches.is_empty() {
                 current = (current + 1) % matches.len();
                 aller = true;
             }
@@ -4296,7 +4296,7 @@ impl NamsdecApp {
             } else {
                 ui.colored_label(theme.dim, format!("{}/{}", current + 1, matches.len()));
             }
-            if ui.button("✕").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            if ui.button("x").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                 fermer = true;
             }
         });
@@ -4622,7 +4622,7 @@ impl NamsdecApp {
             {
                 let fin = out.trim_end().len();
                 out.truncate(fin);
-                out.push_str(&format!("    ; → {label}\n"));
+                out.push_str(&format!("    ; -> {label}\n"));
             }
         }
         Some(out)
@@ -5118,7 +5118,7 @@ impl NamsdecApp {
                             );
                             ui.colored_label(theme.bad, s.breakpoints_condition_bad);
                         }
-                        if ui.button("✕").on_hover_text(s.breakpoints_remove).clicked() {
+                        if ui.button("x").on_hover_text(s.breakpoints_remove).clicked() {
                             retirer = Some(ligne);
                         }
                     });
@@ -5261,7 +5261,7 @@ impl NamsdecApp {
                     .hint_text(s.help_search)
                     .desired_width(200.0),
             );
-            if !self.help_query.is_empty() && ui.button("✕").clicked() {
+            if !self.help_query.is_empty() && ui.button("x").clicked() {
                 self.help_query.clear();
             }
         });
@@ -5756,12 +5756,12 @@ fn step_mark(
 ) -> (&'static str, egui::Color32, &'static str) {
     use namsdec_emu::StepKind as K;
     match kind {
-        K::Plain => (" ", theme.dim, s.step_plain),
-        K::Call => ("→", theme.accent, s.step_call),
-        K::Return => ("←", theme.accent, s.step_return),
-        K::Jump => ("↷", theme.warn, s.step_jump),
-        K::Syscall => ("!", theme.good, s.step_syscall),
-        K::Write => ("✎", theme.changed, s.step_write),
+        K::Plain => ("   ", theme.dim, s.step_plain),
+        K::Call => ("app", theme.accent, s.step_call),
+        K::Return => ("ret", theme.accent, s.step_return),
+        K::Jump => ("saut", theme.warn, s.step_jump),
+        K::Syscall => ("sys", theme.good, s.step_syscall),
+        K::Write => ("écr", theme.changed, s.step_write),
     }
 }
 
@@ -5837,7 +5837,7 @@ fn annotated_listing(
         if let Some(target) = branch_target(&instruction.text)
             && let Some(label) = symbol_at(symbols, target)
         {
-            listing.push_str(&format!("    ; → {label}"));
+            listing.push_str(&format!("    ; -> {label}"));
         }
         listing.push('\n');
         line += 1;

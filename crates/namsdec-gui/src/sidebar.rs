@@ -222,7 +222,7 @@ impl NamsdecApp {
         let mut changes: Vec<String> = REGISTERS
             .iter()
             .filter(|&&(_, reg)| before.get64(reg) != now.get64(reg))
-            .map(|&(name, reg)| format!("{name} {:#x} → {:#x}", before.get64(reg), now.get64(reg)))
+            .map(|&(name, reg)| format!("{name} {:#x} -> {:#x}", before.get64(reg), now.get64(reg)))
             .collect();
         // Les indicateurs, un par un : après un `cmp`, ce sont eux le
         // résultat — l'instruction ne touche aucun registre.
@@ -231,7 +231,7 @@ impl NamsdecApp {
             for (name, bit) in FLAG_BITS {
                 if flags_before.contains(bit) != flags_now.contains(bit) {
                     changes.push(format!(
-                        "{name} {} → {}",
+                        "{name} {} -> {}",
                         u8::from(flags_before.contains(bit)),
                         u8::from(flags_now.contains(bit))
                     ));
@@ -291,7 +291,7 @@ impl NamsdecApp {
             // Un tampon qu'on peut lire vaut mieux que son adresse :
             // c'est le texte que le programme est sur le point d'écrire.
             if let Some(extrait) = peek_text(cpu, name, value, &cpu.regs) {
-                text.push_str(&format!(" → {extrait}"));
+                text.push_str(&format!(" -> {extrait}"));
             }
         }
         text.push(')');
@@ -831,13 +831,13 @@ impl NamsdecApp {
                     // processeur, puis ce que la valeur veut dire.
                     let mut note = String::new();
                     if addr == rsp {
-                        note.push_str("← RSP");
+                        note.push_str("<- RSP");
                     }
                     if addr == rbp && rbp != 0 {
                         if !note.is_empty() {
                             note.push_str(", ");
                         }
-                        note.push_str("← RBP");
+                        note.push_str("<- RBP");
                     }
                     if code.iter().any(|range| range.contains(&value)) {
                         if !note.is_empty() {
@@ -1247,7 +1247,7 @@ impl NamsdecApp {
         // Le sommet : là où l'exécution se trouve en ce moment.
         let rip = emulator.cpu().regs.rip;
         ui.horizontal(|ui| {
-            ui.colored_label(theme.accent, "▸");
+            ui.colored_label(theme.accent, ">");
             ui.monospace(position(rip));
         });
 
@@ -1258,7 +1258,7 @@ impl NamsdecApp {
         }
         for frame in frames.iter().rev() {
             ui.horizontal(|ui| {
-                ui.colored_label(theme.dim, "└");
+                ui.colored_label(theme.dim, "\\_");
                 ui.monospace(position(frame.call_site));
             });
         }

@@ -110,7 +110,7 @@ fn memory_value(cpu: &Cpu, instr: &Instruction, index: u32) -> Option<String> {
         let mut buf = [0u8; 8];
         buf[..size].copy_from_slice(bytes);
         let value = u64::from_le_bytes(buf);
-        shown.push_str(&format!(" → {:#0width$x}", value, width = size * 2 + 2));
+        shown.push_str(&format!(" -> {:#0width$x}", value, width = size * 2 + 2));
     }
     Some(shown)
 }
@@ -164,7 +164,7 @@ mod tests {
         cpu.mem.poke(0x401010, &[0x7f]).unwrap();
         let instr = namsdec_disasm::decode_one(&bytes, 0x400000).unwrap();
         let lines = operands(&cpu, &instr);
-        assert_eq!(lines[1].value, "0x401010 → 0x7f", "{:?}", lines[1]);
+        assert_eq!(lines[1].value, "0x401010 -> 0x7f", "{:?}", lines[1]);
     }
 
     /// Une immédiate écrite en hexadécimal se relit en décimal ; une

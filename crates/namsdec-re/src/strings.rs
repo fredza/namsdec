@@ -107,7 +107,7 @@ impl ReModule for StringsModule {
                     .hint_text(ctx.t("chercher…", "search…"))
                     .desired_width(140.0),
             );
-            if !self.query.is_empty() && ui.small_button("✕").clicked() {
+            if !self.query.is_empty() && ui.small_button("x").clicked() {
                 self.query.clear();
             }
         });
@@ -146,7 +146,7 @@ impl ReModule for StringsModule {
                     ui.horizontal(|ui| {
                         ui.monospace(format!("{:08x}", found.addr));
                         if let Some(première) = vers.first() {
-                            ui.weak(format!("← {:#x}", première.from)).on_hover_text(
+                            ui.weak(format!("<- {:#x}", première.from)).on_hover_text(
                                 if vers.len() > 1 {
                                     format!("{} {}", vers.len(), ctx.t("références", "references"))
                                 } else {

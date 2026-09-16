@@ -72,7 +72,7 @@ impl ReModule for GadgetsModule {
                     .hint_text(ctx.t("chercher — « pop rdi »…", "search — \"pop rdi\"…"))
                     .desired_width(160.0),
             );
-            if !self.query.is_empty() && ui.small_button("✕").clicked() {
+            if !self.query.is_empty() && ui.small_button("x").clicked() {
                 self.query.clear();
             }
         });

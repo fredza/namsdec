@@ -4173,7 +4173,7 @@ hlt
     let rcx = emulator.cpu().regs.get64(namsdec_core::Reg64::Rcx);
     assert_eq!(rcx, 2, "le premier pas charge RCX");
     assert!(
-        painted.contains("→ 0x33"),
+        painted.contains("-> 0x33"),
         "le contenu de l'adresse calculée doit apparaître : {painted}"
     );
     // Et la fiche de l'instruction, en une ligne.
@@ -4662,14 +4662,14 @@ hlt
         "l'instruction qui vient de s'exécuter : {apres_mov}"
     );
     assert!(
-        apres_mov.contains("RCX 0x0 → 0x5"),
+        apres_mov.contains("RCX 0x0 -> 0x5"),
         "son effet, valeur d'avant comprise : {apres_mov}"
     );
 
     app.do_step(); // dec rcx
     let apres_dec = peindre(&mut app);
     assert!(
-        apres_dec.contains("RCX 0x5 → 0x4"),
+        apres_dec.contains("RCX 0x5 -> 0x4"),
         "le décrément part de ce que le pas précédent avait posé : {apres_dec}"
     );
     // `dec` touche les indicateurs, et c'est souvent tout ce qu'on lui
@@ -4738,11 +4738,11 @@ ret
     }
 
     assert!(
-        painted.contains("← RSP"),
+        painted.contains("<- RSP"),
         "RSP doit être repéré : {painted}"
     );
     assert!(
-        painted.contains("← RBP") || painted.contains("RSP, ← RBP"),
+        painted.contains("<- RBP") || painted.contains("RSP, <- RBP"),
         "RBP aussi, une fois le cadre posé : {painted}"
     );
     assert!(
@@ -5268,7 +5268,7 @@ ret
     );
     // Et l'appel dit qui il appelle.
     assert!(
-        app.source.contains("; → sous"),
+        app.source.contains("; -> sous"),
         "le `call` doit nommer sa cible : {}",
         app.source
     );
@@ -7052,7 +7052,7 @@ ret
         }
         output.textures_delta.clear();
     }
-    for marque in ["→", "←", "✎"] {
+    for marque in ["app", "ret", "écr"] {
         assert!(
             painted.contains(marque),
             "la marque « {marque} » doit apparaître : {painted}"
@@ -7446,7 +7446,7 @@ ret
     assert!(listing.contains("_start:"), "{listing}");
     assert!(listing.contains("sous:"), "{listing}");
     assert!(
-        listing.contains("; → sous"),
+        listing.contains("; -> sous"),
         "l'appel nomme sa cible : {listing}"
     );
     // Les octets y sont, en colonne.
@@ -7587,4 +7587,101 @@ fn an_external_disassembler_runs_only_when_asked() {
     assert!(painted.contains("programme extérieur"), "{painted}");
     assert!(painted.contains("cat"), "{painted}");
     assert!(painted.contains("Lancer"), "{painted}");
+}
+
+/// Tout ce que l'interface écrit doit exister dans sa police.
+///
+/// Un caractère absent est peint en carré vide — ce qui, à l'écran,
+/// ressemble à un bogue et ne se voit pas en relisant le code. La police
+/// livrée avec egui ne couvre ni les flèches, ni les pictogrammes : on
+/// s'en tient donc à ce qu'elle a, et ce test le vérifie plutôt que de
+/// compter sur la vigilance.
+///
+/// La méthode : un caractère de la zone privée Unicode, qu'aucune police
+/// ne connaît, sert de témoin. Tout ce qui mesure exactement sa largeur
+/// est rendu par le même carré.
+#[test]
+fn every_glyph_the_interface_writes_exists_in_its_font() {
+    let ctx = egui::Context::default();
+    let app = NamsdecApp::default();
+    app.apply_theme(&ctx);
+
+    // Les textes de l'interface, lus dans leurs fichiers : c'est la
+    // seule façon de n'en oublier aucun, y compris les marques écrites
+    // à même le code des panneaux.
+    let sources = [
+        include_str!("i18n.rs"),
+        include_str!("main.rs"),
+        include_str!("sidebar.rs"),
+        include_str!("errors.rs"),
+        include_str!("roles.rs"),
+        include_str!("readings.rs"),
+        include_str!("nasm_errors.rs"),
+        include_str!("condition.rs"),
+        include_str!("../../namsdec-re/src/strings.rs"),
+        include_str!("../../namsdec-re/src/protections.rs"),
+        include_str!("../../namsdec-re/src/xrefs_module.rs"),
+        include_str!("../../namsdec-re/src/gadgets_module.rs"),
+        include_str!("../../namsdec-re/src/binary_info.rs"),
+        include_str!("../../namsdec-disasm/src/pseudo.rs"),
+    ];
+
+    // Les littéraux de chaîne seulement : ce qui est dans un
+    // commentaire n'est jamais peint, et les sources en contiennent
+    // beaucoup — flèches, symboles, caractères d'exemple.
+    let mut affichés = String::new();
+    for source in sources {
+        for ligne in source.lines() {
+            let taillée = ligne.trim_start();
+            if taillée.starts_with("//") {
+                continue;
+            }
+            let mut dans_chaîne = false;
+            let mut échappé = false;
+            for c in ligne.chars() {
+                match c {
+                    '\\' if dans_chaîne => échappé = !échappé,
+                    '"' if !échappé => dans_chaîne = !dans_chaîne,
+                    _ => {
+                        if dans_chaîne {
+                            affichés.push(c);
+                        }
+                        échappé = false;
+                    }
+                }
+            }
+        }
+    }
+
+    let mut manquants: std::collections::BTreeSet<char> = Default::default();
+    let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+        // En chasse fixe, tous les caractères ont la même largeur : la
+        // mesure n'y distingue rien. La famille proportionnelle partage
+        // les mêmes polices de repli, et c'est donc elle qui répond.
+        let font = egui::TextStyle::Body.resolve(ui.style());
+        let largeur = |c: char| {
+            ui.painter()
+                .layout_no_wrap(c.to_string(), font.clone(), egui::Color32::WHITE)
+                .rect
+                .width()
+        };
+        // Un caractère de la zone privée Unicode : aucune police ne le
+        // connaît, et tout ce qui mesure exactement sa largeur est rendu
+        // par le même carré.
+        let témoin = largeur('\u{e000}');
+        for c in affichés.chars() {
+            if c.is_ascii() || c.is_whitespace() {
+                continue;
+            }
+            if largeur(c) == témoin {
+                manquants.insert(c);
+            }
+        }
+    });
+    output.textures_delta.clear();
+
+    assert!(
+        manquants.is_empty(),
+        "ces caractères seront peints en carré vide : {manquants:?}"
+    );
 }
