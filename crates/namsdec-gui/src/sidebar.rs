@@ -20,40 +20,41 @@ impl NamsdecApp {
             self.active_tab = SidebarTab::Stack;
         }
 
-        // Le bandeau d'état, en haut et toujours là : registres et flags
-        // sont ce qu'on surveille en avançant instruction par
-        // instruction, les faire réapparaître par un onglet coupait le
-        // geste en deux. Repliable quand même — un binaire ouvert pour
-        // être lu n'a pas besoin d'un processeur en marche.
-        // `show_unindented` : le retrait qu'ajoute un en-tête repliable
-        // vaut une vingtaine de pixels, et une valeur de registre fait
-        // seize chiffres — avec le retrait, la ligne débordait du panneau.
-        // `open(Some(...))` plutôt que `default_open(true)` : le premier
-        // impose l'état à chaque frame, le second ne vaut qu'à la toute
-        // première ouverture et laisse ensuite egui ressortir ce qu'il a
-        // retenu de la session précédente.
-        let banner = egui::CollapsingHeader::new(s.cpu_state)
-            .open(Some(self.cpu_state_open))
-            .show_unindented(ui, |ui| {
-                // Seize registres et RIP font une colonne haute : bornée à
-                // la moitié du panneau, elle défile pour son compte au
-                // lieu de repousser les onglets hors de vue sur une
-                // fenêtre courte. Tant qu'il y a la place, aucune barre
-                // n'apparaît.
-                egui::ScrollArea::vertical()
-                    .id_salt("cpu_state")
-                    .max_height(ui.available_height() * 0.6)
-                    .show(ui, |ui| self.cpu_state_ui(ui));
+        // Tout l'état du processeur — registres et flags, registres
+        // vectoriels, pile x87 — dans **une seule** zone qui défile,
+        // bornée à la moitié du panneau.
+        //
+        // Trois zones bornées séparément ne suffisaient pas : chacune
+        // tenait dans sa moitié, mais leurs hauteurs s'ajoutaient et
+        // poussaient la rangée d'onglets hors du panneau, sans aucune
+        // barre pour aller la rechercher. Une seule zone rend la chose
+        // impossible : ce qui dépasse défile, et les onglets restent là
+        // où on va les chercher.
+        let visible = ui.available_height();
+        egui::ScrollArea::vertical()
+            .id_salt("cpu_state")
+            .max_height((visible * 0.5).max(120.0))
+            .show(ui, |ui| {
+                // `show_unindented` : le retrait qu'ajoute un en-tête
+                // repliable vaut une vingtaine de pixels, et une valeur
+                // de registre fait seize chiffres — avec le retrait, la
+                // ligne débordait du panneau.
+                //
+                // `open(Some(...))` plutôt que `default_open(true)` : le
+                // premier impose l'état à chaque frame, le second ne vaut
+                // qu'à la toute première ouverture et laisse ensuite egui
+                // ressortir ce qu'il a retenu de la session précédente.
+                let banner = egui::CollapsingHeader::new(s.cpu_state)
+                    .open(Some(self.cpu_state_open))
+                    .show_unindented(ui, |ui| self.cpu_state_ui(ui));
+                // L'état imposé prive l'en-tête de son propre clic : on
+                // le reprend ici, sinon le bandeau ne se replierait plus.
+                if banner.header_response.clicked() {
+                    self.cpu_state_open = !self.cpu_state_open;
+                }
+                self.xmm_ui(ui);
+                self.x87_ui(ui);
             });
-        // L'état imposé prive l'en-tête de son propre clic : on le
-        // reprend ici, sinon le bandeau ne se replierait plus du tout.
-        if banner.header_response.clicked() {
-            self.cpu_state_open = !self.cpu_state_open;
-        }
-        // Hors du bandeau, et non dedans : celui-ci est borné en hauteur
-        // et défile, un repli posé à sa suite serait sous la pliure.
-        self.xmm_ui(ui);
-        self.x87_ui(ui);
 
         ui.separator();
         ui.horizontal_wrapped(|ui| {
@@ -98,7 +99,7 @@ impl NamsdecApp {
     /// flottant scalaire — suivie de sa valeur décimale, parce que
     /// personne ne lit `4014000000000000` comme « 5 ». Le reste est dans
     /// l'infobulle.
-    fn xmm_ui(&self, ui: &mut egui::Ui) {
+    fn xmm_ui(&mut self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
         let Some(emulator) = &self.emulator else {
             return;
@@ -106,57 +107,53 @@ impl NamsdecApp {
         let theme = self.theme;
         let regs = &emulator.cpu().regs;
         let changed = changed_registers(self.regs_before.as_ref(), regs);
-        egui::CollapsingHeader::new(egui::RichText::new(s.sse_registers).color(theme.dim))
-            .id_salt("xmm_registers")
-            .default_open(false)
-            .show(ui, |ui| {
-                // Bornée et défilante, comme le bandeau au-dessus :
-                // seize lignes de plus repousseraient les onglets hors
-                // de la fenêtre, et c'est eux qu'on va chercher ensuite.
-                egui::ScrollArea::vertical()
-                    .id_salt("xmm_scroll")
-                    .max_height(ui.available_height() * 0.5)
-                    .show(ui, |ui| {
-                        egui::Grid::new("xmm_grid")
-                            .num_columns(3)
-                            .striped(true)
-                            .show(ui, |ui| {
-                                for (name, reg) in XMM_REGISTERS {
-                                    let value = regs.get_ymm(reg);
-                                    let color = if changed.contains(&name) {
-                                        theme.changed
-                                    } else {
-                                        ui.visuals().text_color()
-                                    };
-                                    let low = value[0] as u64;
-                                    let shown = vector_name(name, value);
-                                    ui.colored_label(color, egui::RichText::new(shown).monospace());
-                                    ui.colored_label(
-                                        color,
-                                        egui::RichText::new(format!("{low:016x}")).monospace(),
-                                    )
-                                    .on_hover_text(xmm_tooltip(s, value));
-                                    // La lecture décimale n'a de sens que
-                                    // si le registre contient *un* nombre :
-                                    // lire le bas d'un vecteur de quatre
-                                    // flottants simples comme un double
-                                    // donne un nombre qui n'existe nulle
-                                    // part. Le détail est dans l'infobulle.
-                                    let scalar = value[1] == 0 && value[0] >> 64 == 0;
-                                    let reading = if scalar {
-                                        short_float(f64::from_bits(low))
-                                    } else {
-                                        String::new()
-                                    };
-                                    ui.colored_label(
-                                        theme.dim,
-                                        egui::RichText::new(reading).monospace(),
-                                    );
-                                    ui.end_row();
-                                }
-                            });
-                    });
-            });
+        let fold =
+            egui::CollapsingHeader::new(egui::RichText::new(s.sse_registers).color(theme.dim))
+                .id_salt("xmm_registers")
+                .open(Some(self.sse_open))
+                .show(ui, |ui| {
+                    egui::Grid::new("xmm_grid")
+                        .num_columns(3)
+                        .striped(true)
+                        .show(ui, |ui| {
+                            for (name, reg) in XMM_REGISTERS {
+                                let value = regs.get_ymm(reg);
+                                let color = if changed.contains(&name) {
+                                    theme.changed
+                                } else {
+                                    ui.visuals().text_color()
+                                };
+                                let low = value[0] as u64;
+                                let shown = vector_name(name, value);
+                                ui.colored_label(color, egui::RichText::new(shown).monospace());
+                                ui.colored_label(
+                                    color,
+                                    egui::RichText::new(format!("{low:016x}")).monospace(),
+                                )
+                                .on_hover_text(xmm_tooltip(s, value));
+                                // La lecture décimale n'a de sens que
+                                // si le registre contient *un* nombre :
+                                // lire le bas d'un vecteur de quatre
+                                // flottants simples comme un double
+                                // donne un nombre qui n'existe nulle
+                                // part. Le détail est dans l'infobulle.
+                                let scalar = value[1] == 0 && value[0] >> 64 == 0;
+                                let reading = if scalar {
+                                    short_float(f64::from_bits(low))
+                                } else {
+                                    String::new()
+                                };
+                                ui.colored_label(
+                                    theme.dim,
+                                    egui::RichText::new(reading).monospace(),
+                                );
+                                ui.end_row();
+                            }
+                        });
+                });
+        if fold.header_response.clicked() {
+            self.sse_open = !self.sse_open;
+        }
     }
 
     fn registers_ui(&self, ui: &mut egui::Ui) {
@@ -340,7 +337,7 @@ impl NamsdecApp {
     /// ce que le programme écrit : `fadd st2` compte à partir du sommet,
     /// et c'est de là que vient la moitié des erreurs quand on découvre
     /// cette machine.
-    fn x87_ui(&self, ui: &mut egui::Ui) {
+    fn x87_ui(&mut self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
         let Some(emulator) = &self.emulator else {
             return;
@@ -348,9 +345,9 @@ impl NamsdecApp {
         let theme = self.theme;
         let regs = &emulator.cpu().regs;
         let changed = changed_registers(self.regs_before.as_ref(), regs);
-        egui::CollapsingHeader::new(egui::RichText::new(s.x87_stack).color(theme.dim))
+        let fold = egui::CollapsingHeader::new(egui::RichText::new(s.x87_stack).color(theme.dim))
             .id_salt("x87_stack")
-            .default_open(false)
+            .open(Some(self.x87_open))
             .show(ui, |ui| {
                 egui::Grid::new("x87_grid")
                     .num_columns(2)
@@ -377,6 +374,9 @@ impl NamsdecApp {
                         }
                     });
             });
+        if fold.header_response.clicked() {
+            self.x87_open = !self.x87_open;
+        }
     }
 
     /// Les zones surveillées, avec leur valeur courante et de quoi les

@@ -425,6 +425,12 @@ struct NamsdecApp {
     /// cachés, sans qu'on sache pourquoi. Il se replie toujours à la
     /// main, le temps de la session.
     cpu_state_open: bool,
+    /// Les deux replis qui suivent le bandeau : leur état est à nous pour
+    /// la même raison que le sien — égaré une fois dans la mémoire
+    /// d'egui, il rouvrait l'application sur un panneau que personne
+    /// n'avait plié.
+    sse_open: bool,
+    x87_open: bool,
     /// Fenêtre flottante indépendante (crate `namsdec-explorer`), ouverte
     /// directement par son raccourci — elle ne fait pas partie des
     /// panneaux de la mise en page et n'apparaît donc pas dans le groupe
@@ -759,6 +765,8 @@ impl Default for NamsdecApp {
             pack_to_remove: None,
             settings_file: None,
             cpu_state_open: true,
+            sse_open: false,
+            x87_open: false,
             console_input: String::new(),
             resume_run_after_input: false,
             explorer: FileExplorer::default(),
@@ -953,6 +961,13 @@ impl NamsdecApp {
             style.spacing.item_spacing = egui::vec2(8.0, 6.0);
             style.spacing.button_padding = egui::vec2(10.0, 5.0);
             style.spacing.window_margin = egui::Margin::from(12);
+            // Des barres de défilement qui prennent leur place, au lieu
+            // de flotter par-dessus le contenu et de s'effacer dès que la
+            // souris s'en va : flottantes, elles n'apparaissaient qu'au
+            // survol, et rien ne disait qu'il y avait quelque chose de
+            // plus bas. Elles restent affichées seulement quand il y a de
+            // quoi défiler.
+            style.spacing.scroll.floating = false;
         });
     }
 

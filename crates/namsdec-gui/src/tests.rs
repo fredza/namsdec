@@ -3054,3 +3054,126 @@ fn every_documented_example_assembles_and_runs() {
     }
     assert!(fautifs.is_empty(), "{}", fautifs.join("\n"));
 }
+
+/// Les onglets du panneau restent atteignables, quoi qu'on déplie.
+///
+/// Le bandeau, les registres vectoriels et la pile x87 étaient bornés
+/// chacun de son côté : chacun tenait dans sa moitié de panneau, mais
+/// leurs hauteurs s'ajoutaient et la rangée d'onglets passait sous le
+/// bord — sans barre de défilement pour aller la rechercher.
+#[test]
+fn nothing_unfolded_can_push_the_tabs_out_of_the_panel() {
+    let mut app = NamsdecApp {
+        // Tout ouvert, et un programme chargé pour que chaque section ait
+        // quelque chose à montrer.
+        cpu_state_open: true,
+        sse_open: true,
+        x87_open: true,
+        source: DEFAULT_SOURCE.to_owned(),
+        ..Default::default()
+    };
+    if namsdec_asm::find_nasm().is_some() && namsdec_asm::find_linker() {
+        app.do_assemble();
+    }
+
+    // Une fenêtre courte, celle qui pose problème.
+    let ctx = egui::Context::default();
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 700.0),
+        )),
+        ..Default::default()
+    };
+    let mut painted = String::new();
+    for _ in 0..3 {
+        painted.clear();
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        for clipped in &output.shapes {
+            if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                painted.push_str(text.galley.text());
+                painted.push('|');
+            }
+        }
+        output.textures_delta.clear();
+    }
+
+    let s = strings(Lang::Fr);
+    for onglet in [s.tab_stack, s.tab_memory, s.tab_heap] {
+        assert!(
+            painted.contains(onglet),
+            "l'onglet « {onglet} » est hors du panneau : {painted}"
+        );
+    }
+}
+/// Une barre de défilement quand il y a de quoi défiler, et pas avant.
+///
+/// Les deux moitiés comptent autant : une barre permanente sous un
+/// fichier de quatre lignes gêne, et une barre qui n'apparaît qu'au
+/// survol — ce que fait egui par défaut, avec des barres flottantes —
+/// laisse croire qu'il n'y a rien de plus bas. Elles prennent leur place
+/// et ne s'affichent que si elles servent.
+#[test]
+fn a_scroll_bar_shows_up_when_there_is_something_to_scroll_and_not_before() {
+    let barres_de = |source: String, ouvert: bool| -> Vec<(f32, f32)> {
+        let mut app = NamsdecApp {
+            source,
+            cpu_state_open: ouvert,
+            sse_open: ouvert,
+            x87_open: ouvert,
+            ..Default::default()
+        };
+        if ouvert && namsdec_asm::find_nasm().is_some() && namsdec_asm::find_linker() {
+            app.do_assemble();
+        }
+        let ctx = egui::Context::default();
+        app.apply_theme(&ctx);
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1280.0, 820.0),
+            )),
+            ..Default::default()
+        };
+        let mut barres = Vec::new();
+        for _ in 0..3 {
+            barres.clear();
+            let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+            for clipped in &output.shapes {
+                if let egui::epaint::Shape::Rect(r) = &clipped.shape {
+                    // Une barre de défilement : étroite et haute.
+                    if r.rect.width() < 20.0 && r.rect.height() > 120.0 {
+                        barres.push((r.rect.min.x.round(), r.rect.width().round()));
+                    }
+                }
+            }
+            output.textures_delta.clear();
+        }
+        barres
+    };
+
+    let court = "global _start\nsection .text\n_start:\n    hlt\n".to_owned();
+    assert!(
+        barres_de(court.clone(), false).is_empty(),
+        "quatre lignes ne méritent pas de barre"
+    );
+
+    let long = format!(
+        "global _start\nsection .text\n_start:\n{}    hlt\n",
+        "    nop\n".repeat(80)
+    );
+    assert!(
+        !barres_de(long, false).is_empty(),
+        "quatre-vingts lignes, elles, en méritent une"
+    );
+
+    // Et dans le panneau latéral, tout déplié : la barre doit être là,
+    // sans quoi rien ne dit que les onglets sont plus bas.
+    if namsdec_asm::find_nasm().is_some() && namsdec_asm::find_linker() {
+        let barres = barres_de(court, true);
+        assert!(
+            barres.iter().any(|(x, _)| *x > 900.0),
+            "pas de barre dans le panneau d'état : {barres:?}"
+        );
+    }
+}
