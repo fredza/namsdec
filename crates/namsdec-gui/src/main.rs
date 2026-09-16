@@ -409,6 +409,8 @@ struct NamsdecApp {
     exercise_files: BTreeMap<String, PathBuf>,
     /// La série qu'on s'apprête à retirer, en attente de confirmation.
     pack_to_remove: Option<String>,
+    /// Les séries écartées : installées, mais pas proposées.
+    disabled_packs: BTreeSet<String>,
     /// Où écrire les réglages, ou `None` pour ne les écrire nulle part.
     ///
     /// `None` est le défaut, et c'est délibéré : les réglages se
@@ -763,6 +765,7 @@ impl Default for NamsdecApp {
             exercise_packs: vec![namsdec_exercises::builtin_pack()],
             exercise_files: BTreeMap::new(),
             pack_to_remove: None,
+            disabled_packs: BTreeSet::new(),
             settings_file: None,
             cpu_state_open: true,
             sse_open: false,
@@ -814,6 +817,7 @@ impl NamsdecApp {
             show_tooltips: settings.show_tooltips,
             completion: settings.completion,
             exercises: settings.exercises,
+            disabled_packs: settings.disabled_packs.iter().cloned().collect(),
             memory_format: MemoryFormat::by_id(&settings.memory_format),
             explorer,
             saved_settings: settings,
@@ -897,6 +901,7 @@ impl NamsdecApp {
             show_tooltips: self.show_tooltips,
             completion: self.completion,
             exercises: self.exercises,
+            disabled_packs: self.disabled_packs.iter().cloned().collect(),
             memory_format: self.memory_format.id().to_owned(),
             explorer_root: self.explorer.root.as_ref().map(|p| p.display().to_string()),
             current_file: self.current_file.as_ref().map(|p| p.display().to_string()),
@@ -2457,17 +2462,39 @@ impl NamsdecApp {
         if self.exercise_files.is_empty() {
             ui.weak(s.exercises_packs_none);
         }
-        let installed: Vec<(String, String, usize)> = self
+        // Toutes les séries, celle qui est livrée comprise : chacune
+        // s'écarte d'une case. Écarter n'est pas désinstaller — on garde
+        // le fichier, on cesse seulement de proposer son contenu, et
+        // c'est ce qu'on veut d'une série qu'on a finie.
+        let listed: Vec<(String, String, usize, bool)> = self
             .exercise_packs
             .iter()
-            .filter(|pack| self.exercise_files.contains_key(&pack.id))
-            .map(|pack| (pack.id.clone(), pack.name.clone(), pack.exercises.len()))
+            .map(|pack| {
+                (
+                    pack.id.clone(),
+                    pack.name.clone(),
+                    pack.exercises.len(),
+                    self.exercise_files.contains_key(&pack.id),
+                )
+            })
             .collect();
-        for (id, name, count) in installed {
+        for (id, name, count, installed) in listed {
             ui.horizontal(|ui| {
-                ui.label(format!("{name} ({count})"));
+                let mut active = !self.disabled_packs.contains(&id);
+                if ui
+                    .checkbox(&mut active, format!("{name} ({count})"))
+                    .changed()
+                {
+                    if active {
+                        self.disabled_packs.remove(&id);
+                    } else {
+                        self.disabled_packs.insert(id.clone());
+                    }
+                }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if framed_button(ui, theme, s.plugins_remove).clicked() {
+                    // Seule une série installée se retire : celle qui est
+                    // livrée n'est nulle part sur le disque.
+                    if installed && framed_button(ui, theme, s.plugins_remove).clicked() {
                         self.pack_to_remove = Some(id.clone());
                     }
                 });
@@ -2653,7 +2680,11 @@ impl NamsdecApp {
                 egui::ScrollArea::vertical()
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
-                        for pack in &self.exercise_packs {
+                        for pack in self
+                            .exercise_packs
+                            .iter()
+                            .filter(|pack| !self.disabled_packs.contains(&pack.id))
+                        {
                             // Une série par repli : on doit pouvoir dire
                             // d'où vient l'exercice qu'on charge, et
                             // ranger celles qu'on n'utilise pas. Ouvertes
@@ -2683,7 +2714,12 @@ impl NamsdecApp {
                                                 },
                                             );
                                         });
-                                        ui.label(exercise.description.get(lang));
+                                        // Les morceaux de code de l'énoncé
+                                        // s'écrivent en chasse fixe, comme
+                                        // dans les fiches d'instructions.
+                                        let texte =
+                                            prose(ui, theme, exercise.description.get(lang));
+                                        ui.label(texte);
                                     });
                                 }
                             });

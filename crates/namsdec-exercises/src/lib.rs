@@ -73,47 +73,113 @@ pub struct Pack {
 /// L'identifiant de la série livrée avec l'application.
 pub const BUILTIN_ID: &str = "namsdec";
 
-/// Les exercices livrés avec l'application, dans l'ordre où les faire.
+/// Les exercices livrés avec l'application, **dans l'ordre où les faire**.
+///
+/// Un parcours, et non une collection : chacun suppose le précédent et
+/// n'introduit qu'une chose. Registres, boucle, comparaison, mémoire,
+/// pile, appels, système, protection — c'est l'ordre dans lequel un
+/// programme en assembleur se construit, et celui dans lequel on bute
+/// sur les difficultés.
 pub fn builtin_pack() -> Pack {
     Pack {
         id: BUILTIN_ID.to_owned(),
         name: "namsdec".to_owned(),
         exercises: vec![
             Exercise {
-                id: "sum_loop".to_owned(),
+                id: "registres".to_owned(),
                 title: Text {
-                    fr: "Somme d'une boucle".to_owned(),
-                    en: "Sum of a loop".to_owned(),
+                    fr: "Registres et largeurs".to_owned(),
+                    en: "Registers and widths".to_owned(),
                 },
                 description: Text {
-                    fr: "Additionner 5+4+3+2+1 avec une boucle add/dec/jnz. À l'arrêt, RAX doit valoir 15.".to_owned(),
-                    en: "Add 5+4+3+2+1 with an add/dec/jnz loop. At the halt, RAX must hold 15.".to_owned(),
+                    fr: "Écrire un registre 32 bits met à zéro la moitié haute de RAX ; écrire 16 ou 8 bits la laisse. Avancez pas à pas et regardez le bandeau : c'est la source de bogue numéro un quand on débute.".to_owned(),
+                    en: "Writing a 32-bit register zeroes the upper half of RAX; writing 16 or 8 bits leaves it. Step through it and watch the banner: this is the number one source of bugs when starting out.".to_owned(),
                 },
-                starter_code: include_str!("../exercises/sum_loop.asm").to_owned(),
+                starter_code: include_str!("../exercises/registres.asm").to_owned(),
             },
             Exercise {
-                id: "register_widths".to_owned(),
+                id: "boucle".to_owned(),
                 title: Text {
-                    fr: "Largeurs de registres".to_owned(),
-                    en: "Register widths".to_owned(),
+                    fr: "Une boucle qui compte".to_owned(),
+                    en: "A loop that counts".to_owned(),
                 },
                 description: Text {
-                    fr: "Écrire un registre 32 bits met à zéro le haut de RAX ; écrire 16 ou 8 bits le préserve. Avancez pas à pas et regardez RAX dans le bandeau.".to_owned(),
-                    en: "Writing a 32-bit register zeroes the upper half of RAX; writing 16 or 8 bits preserves it. Step through it and watch RAX in the banner.".to_owned(),
+                    fr: "Additionner 5+4+3+2+1. `dec` laisse une trace dans les indicateurs, `jnz` la lit : c'est toute la mécanique d'une boucle. À l'arrêt, RAX doit valoir 15.".to_owned(),
+                    en: "Add 5+4+3+2+1. `dec` leaves a trace in the flags and `jnz` reads it: that is the whole machinery of a loop. At the halt, RAX must hold 15.".to_owned(),
                 },
-                starter_code: include_str!("../exercises/register_widths.asm").to_owned(),
+                starter_code: include_str!("../exercises/boucle.asm").to_owned(),
             },
             Exercise {
-                id: "max_of_two".to_owned(),
+                id: "comparer".to_owned(),
                 title: Text {
-                    fr: "Maximum de deux nombres".to_owned(),
-                    en: "Maximum of two numbers".to_owned(),
+                    fr: "Comparer, et choisir".to_owned(),
+                    en: "Compare, and choose".to_owned(),
                 },
                 description: Text {
-                    fr: "Comparer deux valeurs avec cmp/jge et garder la plus grande. Essayez ensuite de refaire la même chose avec cmovg, sans branchement.".to_owned(),
-                    en: "Compare two values with cmp/jge and keep the larger. Then try the same thing with cmovg, without a branch.".to_owned(),
+                    fr: "Garder le plus grand de deux nombres. Puis changez -3 en 3 : `jg` lit SF et OF pour des nombres signés, `ja` lirait CF pour des non signés — et avec un négatif, les deux ne répondent pas la même chose.".to_owned(),
+                    en: "Keep the larger of two numbers. Then change -3 into 3: `jg` reads SF and OF for signed numbers, `ja` would read CF for unsigned ones — and with a negative value the two do not answer the same.".to_owned(),
                 },
-                starter_code: include_str!("../exercises/max_of_two.asm").to_owned(),
+                starter_code: include_str!("../exercises/comparer.asm").to_owned(),
+            },
+            Exercise {
+                id: "memoire".to_owned(),
+                title: Text {
+                    fr: "Lire et écrire en mémoire".to_owned(),
+                    en: "Read and write memory".to_owned(),
+                },
+                description: Text {
+                    fr: "Quatre octets d'un coup, un seul octet élargi par des zéros, et l'adressage indexé base + décalage. Ouvrez l'onglet Mémoire et tapez « rdi » dans le champ d'adresse pour suivre ce qui change.".to_owned(),
+                    en: "Four bytes at once, a single byte widened with zeroes, and indexed addressing base + offset. Open the Memory tab and type \"rdi\" in the address field to follow what changes.".to_owned(),
+                },
+                starter_code: include_str!("../exercises/memoire.asm").to_owned(),
+            },
+            Exercise {
+                id: "pile".to_owned(),
+                title: Text {
+                    fr: "La pile".to_owned(),
+                    en: "The stack".to_owned(),
+                },
+                description: Text {
+                    fr: "`push` descend RSP de huit et y écrit, `pop` fait l'inverse. La pile rend dans l'ordre inverse : deux `push` suivis de deux `pop` échangent deux registres. À vous de les remettre à l'endroit.".to_owned(),
+                    en: "`push` lowers RSP by eight and writes there, `pop` does the opposite. The stack gives back in reverse: two pushes followed by two pops swap two registers. Put them back the right way round.".to_owned(),
+                },
+                starter_code: include_str!("../exercises/pile.asm").to_owned(),
+            },
+            Exercise {
+                id: "appels".to_owned(),
+                title: Text {
+                    fr: "Appeler, et rendre ce qu'on doit".to_owned(),
+                    en: "Call, and give back what you borrowed".to_owned(),
+                },
+                description: Text {
+                    fr: "Les arguments passent par RDI et RSI, le résultat revient dans RAX. Mais cette routine écrase RBX sans le rendre : l'onglet Pile le signale. Ajoutez le `push`/`pop` qui manque et l'entorse disparaît.".to_owned(),
+                    en: "Arguments travel in RDI and RSI, the result comes back in RAX. But this routine keeps RBX without giving it back: the Stack tab says so. Add the missing push/pop and the breach disappears.".to_owned(),
+                },
+                starter_code: include_str!("../exercises/appels.asm").to_owned(),
+            },
+            Exercise {
+                id: "sortie".to_owned(),
+                title: Text {
+                    fr: "Parler au système".to_owned(),
+                    en: "Talk to the system".to_owned(),
+                },
+                description: Text {
+                    fr: "`write` pour afficher, `exit` pour finir : le numéro dans RAX, les arguments dans RDI, RSI, RDX. Le programme s'arrête pour l'instant sur un `hlt` — remplacez-le par un vrai exit(0).".to_owned(),
+                    en: "`write` to print, `exit` to finish: the number in RAX, the arguments in RDI, RSI, RDX. The program stops on a `hlt` for now — replace it with a real exit(0).".to_owned(),
+                },
+                starter_code: include_str!("../exercises/sortie.asm").to_owned(),
+            },
+            Exercise {
+                id: "protection".to_owned(),
+                title: Text {
+                    fr: "Ce qu'on n'a pas le droit de faire".to_owned(),
+                    en: "What you are not allowed to do".to_owned(),
+                },
+                description: Text {
+                    fr: "Trois refus à comprendre : écrire dans son propre code, exécuter ses données, écrire là où rien n'est projeté. Exécutez, lisez le message, commentez la ligne fautive, recommencez.".to_owned(),
+                    en: "Three refusals to understand: writing into your own code, executing your data, writing where nothing is mapped. Run it, read the message, comment out the offending line, run it again.".to_owned(),
+                },
+                starter_code: include_str!("../exercises/protection.asm").to_owned(),
             },
         ],
     }
@@ -148,7 +214,9 @@ mod tests {
     #[test]
     fn every_builtin_exercise_is_complete_and_stops() {
         let pack = builtin_pack();
-        assert_eq!(pack.exercises.len(), 3);
+        // Un parcours, pas une poignée : huit étapes, et chacune
+        // s'appuie sur la précédente.
+        assert_eq!(pack.exercises.len(), 8);
         for exercise in &pack.exercises {
             assert!(!exercise.id.is_empty());
             assert!(!exercise.title.fr.is_empty() && !exercise.title.en.is_empty());
@@ -177,11 +245,11 @@ mod tests {
     #[test]
     fn an_exercise_is_found_by_its_full_identifier() {
         let packs = vec![builtin_pack()];
-        let found = find(&packs, "namsdec/sum_loop").expect("l'exercice existe");
-        assert_eq!(found.id, "sum_loop");
-        assert_eq!(full_id(&packs[0], found), "namsdec/sum_loop");
+        let found = find(&packs, "namsdec/boucle").expect("l'exercice existe");
+        assert_eq!(found.id, "boucle");
+        assert_eq!(full_id(&packs[0], found), "namsdec/boucle");
         // Le nom seul ne suffit pas : deux séries peuvent le porter.
-        assert!(find(&packs, "sum_loop").is_none());
-        assert!(find(&packs, "autre/sum_loop").is_none());
+        assert!(find(&packs, "boucle").is_none());
+        assert!(find(&packs, "autre/boucle").is_none());
     }
 }

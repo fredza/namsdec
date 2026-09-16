@@ -2650,7 +2650,7 @@ fn the_exercises_module_stays_out_of_the_way_until_it_is_asked_for() {
         ..Default::default()
     };
     assert!(
-        !painted(&mut app).contains("Somme d'une boucle"),
+        !painted(&mut app).contains("Une boucle qui compte"),
         "la fenêtre ne s'ouvre pas tant que le module est éteint"
     );
 
@@ -2659,7 +2659,7 @@ fn the_exercises_module_stays_out_of_the_way_until_it_is_asked_for() {
     // seconde.
     painted(&mut app);
     assert!(
-        painted(&mut app).contains("Somme d'une boucle"),
+        painted(&mut app).contains("Une boucle qui compte"),
         "et elle s'ouvre quand il est allumé"
     );
 }
@@ -2695,7 +2695,7 @@ fn loading_an_exercise_fills_the_editor_without_claiming_a_file() {
         current_file: Some(std::path::PathBuf::from("/tmp/le-mien.asm")),
         ..Default::default()
     };
-    app.load_exercise("namsdec/sum_loop");
+    app.load_exercise("namsdec/boucle");
 
     assert!(app.source.contains("boucle"), "le programme est chargé");
     assert!(
@@ -2759,7 +2759,7 @@ fn an_installed_pack_joins_the_built_in_one() {
             "name": "Mes exercices",
             "exercises": [
                 {
-                    "id": "sum_loop",
+                    "id": "boucle",
                     "title": "Le mien",
                     "description": "À moi.",
                     "code": "BITS 64\nsection .text\n    hlt\n"
@@ -2792,10 +2792,10 @@ fn an_installed_pack_joins_the_built_in_one() {
     assert!(data.join("namsdec/exercises/mes-exos.json").is_file());
 
     // Les deux « sum_loop » ne se confondent pas.
-    app.load_exercise("mes-exos/sum_loop");
+    app.load_exercise("mes-exos/boucle");
     assert!(app.source.contains("hlt"));
     assert!(!app.source.contains("add rax"), "c'est bien le mien");
-    app.load_exercise("namsdec/sum_loop");
+    app.load_exercise("namsdec/boucle");
     assert!(
         app.source.contains("add rax, rcx"),
         "et celui d'origine aussi"
@@ -2805,7 +2805,7 @@ fn an_installed_pack_joins_the_built_in_one() {
     with_data_home(&data, || app.remove_exercises("mes-exos"));
     assert_eq!(app.exercise_packs.len(), 1);
     assert!(!data.join("namsdec/exercises/mes-exos.json").exists());
-    assert!(namsdec_exercises::find(&app.exercise_packs, "mes-exos/sum_loop").is_none());
+    assert!(namsdec_exercises::find(&app.exercise_packs, "mes-exos/boucle").is_none());
 }
 
 /// Une série qui se donne l'identifiant de celle d'origine est refusée :
@@ -2959,7 +2959,9 @@ fn every_program_we_ship_is_a_complete_program() {
         let out = namsdec_asm::assemble(&source, BASE_ADDR)
             .unwrap_or_else(|e| panic!("{name} ne s'assemble pas : {e}"));
         assert!(out.diagnostics.is_empty(), "{name} : {:?}", out.diagnostics);
-        // Et il s'arrête : « Exécuter » doit rendre la main.
+        // Et il rend la main : soit il s'arrête, soit il bute sur une
+        // faute — un exercice peut très bien être fait pour en montrer
+        // une. Ce qu'on refuse, c'est le programme qui tourne sans fin.
         let mut app = NamsdecApp {
             source: source.clone(),
             ..Default::default()
@@ -2968,10 +2970,9 @@ fn every_program_we_ship_is_a_complete_program() {
         for _ in 0..1000 {
             app.do_step();
         }
-        assert!(
-            app.emulator.as_ref().is_some_and(|e| e.cpu().halted),
-            "{name} ne s'arrête pas"
-        );
+        let arrêté = app.emulator.as_ref().is_some_and(|e| e.cpu().halted)
+            || matches!(app.status, Status::Error(_));
+        assert!(arrêté, "{name} ne rend jamais la main");
     }
 }
 /// Les quatre-vingt-onze exemples des fiches d'instructions s'assemblent,
@@ -3385,4 +3386,84 @@ malpolie:
     assert!(painted.contains("RBX"), "{painted}");
     // Et d'où partait l'appel, en ligne de source — pas en hexadécimal.
     assert!(painted.contains("appelée depuis ligne 8"), "{painted}");
+}
+
+/// Une série s'écarte sans se désinstaller : le fichier reste, son
+/// contenu cesse d'être proposé. Y compris celle qui est livrée avec
+/// l'application, qui ne s'enlève pas mais se range.
+#[test]
+fn a_pack_can_be_set_aside_without_being_uninstalled() {
+    let mut app = NamsdecApp {
+        exercises: true,
+        show_exercises: true,
+        ..Default::default()
+    };
+    let ctx = egui::Context::default();
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 900.0),
+        )),
+        ..Default::default()
+    };
+    let painted = |app: &mut NamsdecApp| {
+        let mut texts = String::new();
+        for _ in 0..2 {
+            texts.clear();
+            let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+            for clipped in &output.shapes {
+                if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                    texts.push_str(text.galley.text());
+                    texts.push('|');
+                }
+            }
+            output.textures_delta.clear();
+        }
+        texts
+    };
+
+    assert!(painted(&mut app).contains("Une boucle qui compte"));
+
+    app.disabled_packs
+        .insert(namsdec_exercises::BUILTIN_ID.to_owned());
+    assert!(
+        !painted(&mut app).contains("Une boucle qui compte"),
+        "écartée, la série ne se propose plus"
+    );
+
+    // Mais elle est toujours là, et le choix part dans les réglages.
+    assert_eq!(app.exercise_packs.len(), 1, "rien n'a été désinstallé");
+    let written = serde_json::to_string(&app.settings_snapshot()).unwrap();
+    assert!(
+        written.contains("\"disabled_packs\":[\"namsdec\"]"),
+        "{written}"
+    );
+}
+
+/// Le parcours livré est un parcours : huit étapes dans l'ordre où l'on
+/// apprend, chacune avec son but écrit dans le programme.
+#[test]
+fn the_built_in_pack_is_a_course_in_order() {
+    let pack = namsdec_exercises::builtin_pack();
+    let ids: Vec<&str> = pack.exercises.iter().map(|e| e.id.as_str()).collect();
+    assert_eq!(
+        ids,
+        [
+            "registres",
+            "boucle",
+            "comparer",
+            "memoire",
+            "pile",
+            "appels",
+            "sortie",
+            "protection"
+        ]
+    );
+    for exercise in &pack.exercises {
+        assert!(
+            exercise.starter_code.contains("; But :"),
+            "{} ne dit pas ce qu'on cherche",
+            exercise.id
+        );
+    }
 }

@@ -1,7 +1,9 @@
 ; Largeurs de registres.
 ;
-; But : observer, pas à pas, que RAX perd sa moitié haute et que RBX la
-; garde. Avancez avec Step Into et regardez le bandeau des registres.
+; But : avancer pas à pas et regarder RAX, RBX, RCX dans le bandeau.
+; Écrire un registre 32 bits met à zéro la moitié haute ; écrire 16 ou
+; 8 bits laisse le reste intact. C'est la source de bogue numéro un
+; quand on débute.
 
 global _start
 

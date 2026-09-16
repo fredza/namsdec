@@ -66,6 +66,13 @@ pub struct Settings {
     /// rien n'apparaît tant qu'il ne le demande pas.
     #[serde(default)]
     pub exercises: bool,
+    /// Les séries d'exercices qu'on ne veut pas voir, par identifiant.
+    ///
+    /// Écartées et non désinstallées : on garde le fichier, on cesse
+    /// seulement de le proposer. Celle qui est livrée avec l'application
+    /// peut l'être aussi — elle ne s'enlève pas, elle se range.
+    #[serde(default)]
+    pub disabled_packs: Vec<String>,
     /// Comment l'onglet Mémoire lit les octets : « bytes », « words » ou
     /// « text ».
     pub memory_format: String,
@@ -97,6 +104,7 @@ impl Default for Settings {
             show_tooltips: true,
             completion: true,
             exercises: false,
+            disabled_packs: Vec::new(),
             memory_format: "bytes".to_owned(),
             explorer_root: None,
             current_file: None,
