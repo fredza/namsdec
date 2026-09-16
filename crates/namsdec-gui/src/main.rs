@@ -1840,13 +1840,7 @@ impl NamsdecApp {
         }
         disasm.sort_by_key(|instruction| instruction.address);
 
-        let mut listing = String::new();
-        let mut line_to_addr = BTreeMap::new();
-        for (index, instruction) in disasm.iter().enumerate() {
-            line_to_addr.insert((index + 1) as u32, instruction.address);
-            listing.push_str(&instruction.text);
-            listing.push('\n');
-        }
+        let (listing, line_to_addr) = annotated_listing(&disasm, &elf.symbols);
         let addr_to_line = line_to_addr.iter().map(|(l, a)| (*a, *l)).collect();
         let loaded = image.len();
 
@@ -4462,6 +4456,67 @@ impl NamsdecApp {
 /// Un plafond en pixels — trois cent soixante, trois cent vingt — faisait
 /// défiler quatre thèmes au milieu d'un écran qui en aurait montré
 /// quinze. Celui-ci suit l'écran qu'on a.
+/// Le listing d'un binaire ouvert : les instructions, avec les étiquettes
+/// que sa table des symboles porte encore.
+///
+/// Un désassemblage brut est une colonne d'instructions sans début ni
+/// fin : on ne voit pas où une fonction commence, et un `call 401030h`
+/// ne dit pas *qui* est appelé. Les étiquettes rendent au binaire la
+/// structure que le source avait — c'est la première chose qu'on
+/// reconstitue à la main en lisant du code qu'on n'a pas écrit.
+///
+/// Rend le texte et la table ligne → adresse : les lignes d'étiquette
+/// n'y figurent pas, elles ne portent aucune instruction.
+fn annotated_listing(
+    disasm: &[DecodedInstruction],
+    symbols: &[namsdec_asm::elf::Symbol],
+) -> (String, BTreeMap<u32, u64>) {
+    let mut listing = String::new();
+    let mut line_to_addr = BTreeMap::new();
+    let mut line = 1u32;
+    for instruction in disasm {
+        // Une étiquette qui commence ici : elle prend sa ligne, précédée
+        // d'une ligne vide — sauf tout en haut, où elle ferait un trou.
+        for symbol in symbols.iter().filter(|s| s.addr == instruction.address) {
+            if line > 1 {
+                listing.push('\n');
+                line += 1;
+            }
+            listing.push_str(&symbol.name);
+            listing.push_str(":\n");
+            line += 1;
+        }
+        line_to_addr.insert(line, instruction.address);
+        listing.push_str(&instruction.text);
+        // La cible d'un saut ou d'un appel, nommée en commentaire : le
+        // nombre reste — c'est lui qui est dans les octets — mais on
+        // sait enfin où il mène.
+        if let Some(target) = branch_target(&instruction.text)
+            && let Some(label) = symbol_at(symbols, target)
+        {
+            listing.push_str(&format!("    ; → {label}"));
+        }
+        listing.push('\n');
+        line += 1;
+    }
+    (listing, line_to_addr)
+}
+
+/// L'adresse que vise un saut ou un appel, lue dans le texte que le
+/// désassembleur a écrit (`call 401030h`, `jne 400012h`).
+///
+/// Par le texte plutôt qu'en redécodant : c'est ce texte-là qui est
+/// affiché, et l'étiquette doit nommer ce qu'il montre.
+fn branch_target(text: &str) -> Option<u64> {
+    let (mnemonic, operand) = text.split_once(' ')?;
+    if !(mnemonic.starts_with('j') || mnemonic == "call" || mnemonic.starts_with("loop")) {
+        return None;
+    }
+    let operand = operand.trim();
+    let hex = operand.strip_suffix('h')?;
+    u64::from_str_radix(hex, 16).ok()
+}
+
 /// L'étiquette qui nomme `addr`, telle qu'on l'a écrite dans le source :
 /// `tampon`, ou `tampon+2` deux octets plus loin.
 ///

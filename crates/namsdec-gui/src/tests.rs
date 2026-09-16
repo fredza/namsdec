@@ -2590,9 +2590,12 @@ fn an_elf_is_opened_where_it_says_to_be() {
         Some(state.output.entry),
         "le désassemblage commence au code, à l'entrée déclarée"
     );
-    // Et la première ligne du listing est une instruction, pas les
-    // octets « 7f 45 4c 46 » de l'en-tête lus comme telle.
-    let first = app.source.lines().next().unwrap_or_default();
+    // Et le listing commence par l'étiquette du point d'entrée, suivie
+    // de sa première instruction — pas par les octets « 7f 45 4c 46 »
+    // de l'en-tête lus comme une instruction.
+    let mut lines = app.source.lines();
+    assert_eq!(lines.next(), Some("_start:"), "listing : {}", app.source);
+    let first = lines.next().unwrap_or_default();
     assert!(first.contains("mov"), "listing : {first}");
 }
 /// Un message de statut long ne passe pas sous les compartiments de
@@ -5179,4 +5182,65 @@ hlt
     let advice = app.error_advice.expect("et elle appelle une explication");
     assert!(advice.contains("syscall"), "{advice}");
     assert!(advice.contains("32 bits"), "{advice}");
+}
+
+/// Ouvrir un binaire en donne un listing structuré : les fonctions
+/// portent leur nom, et chaque saut dit où il va.
+#[test]
+fn an_opened_binary_gets_its_labels_back() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        eprintln!("nasm ou ld absent : test ignoré");
+        return;
+    }
+    // Un vrai programme, assemblé et lié, puis rouvert comme un binaire
+    // qu'on n'aurait pas écrit.
+    let out = namsdec_asm::assemble(
+        "\
+global _start
+section .text
+_start:
+call sous
+hlt
+sous:
+mov rax, 1
+ret
+",
+        0x400000,
+    )
+    .expect("assemblage");
+
+    let mut app = NamsdecApp::default();
+    assert!(app.load_elf(&out.file), "l'ELF doit se charger");
+
+    // Les étiquettes du source sont revenues dans le listing.
+    assert!(
+        app.source.contains("_start:"),
+        "le point d'entrée porte son nom : {}",
+        app.source
+    );
+    assert!(
+        app.source.contains("sous:"),
+        "la sous-routine aussi : {}",
+        app.source
+    );
+    // Et l'appel dit qui il appelle.
+    assert!(
+        app.source.contains("; → sous"),
+        "le `call` doit nommer sa cible : {}",
+        app.source
+    );
+
+    // La gouttière reste juste : la ligne marquée pendant l'exécution
+    // est celle de l'instruction, pas celle d'une étiquette.
+    let state = app.assemble_state.as_ref().unwrap();
+    let ligne_entree = state.addr_to_line[&out.entry];
+    let texte_ligne = app
+        .source
+        .lines()
+        .nth(ligne_entree as usize - 1)
+        .expect("la ligne existe");
+    assert!(
+        texte_ligne.starts_with("call"),
+        "la ligne du point d'entrée porte son instruction, pas l'étiquette : {texte_ligne:?}"
+    );
 }
