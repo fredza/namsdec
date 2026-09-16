@@ -3168,6 +3168,26 @@ impl NamsdecApp {
     /// courant n'a pas été enregistré. Il n'y a pas de correction
     /// automatique : l'énoncé dit ce qu'on doit obtenir, et c'est le
     /// bandeau des registres qui répond.
+    /// L'exercice qui suit `id` dans sa série : son identifiant et son
+    /// titre. `None` pour le dernier — un parcours a une fin.
+    fn exercise_after(&self, id: &str) -> Option<(String, String)> {
+        for pack in &self.exercise_packs {
+            let Some(position) = pack
+                .exercises
+                .iter()
+                .position(|exercise| namsdec_exercises::full_id(pack, exercise) == id)
+            else {
+                continue;
+            };
+            let suivant = pack.exercises.get(position + 1)?;
+            return Some((
+                namsdec_exercises::full_id(pack, suivant),
+                suivant.title.get(self.lang.code()).to_owned(),
+            ));
+        }
+        None
+    }
+
     /// Le rang de l'exercice `id` dans sa série, le nombre d'étapes, et
     /// l'exercice lui-même.
     fn exercise_rank(&self, id: &str) -> Option<(usize, usize, &namsdec_exercises::Exercise)> {
@@ -3210,12 +3230,23 @@ impl NamsdecApp {
                     && let Some((rang, total, exercise)) = self.exercise_rank(&id)
                 {
                     ui.add_space(6.0);
+                    // L'étape suivante, quand il y en a une : un parcours
+                    // se suit, et aller à la suite ne doit pas demander
+                    // de retrouver son rang dans une liste.
+                    let suivante = self.exercise_after(&id);
                     ui.horizontal_wrapped(|ui| {
                         ui.colored_label(theme.dim, s.exercises_current);
                         ui.colored_label(theme.accent, format!("{rang}/{total}"));
                         ui.strong(exercise.title.get(lang));
                         if framed_button(ui, theme, s.exercises_resume).clicked() {
                             load = Some(id.clone());
+                        }
+                        if let Some((suivant_id, titre)) = &suivante
+                            && framed_button(ui, theme, s.exercises_next)
+                                .on_hover_text(titre)
+                                .clicked()
+                        {
+                            load = Some(suivant_id.clone());
                         }
                     });
                 }

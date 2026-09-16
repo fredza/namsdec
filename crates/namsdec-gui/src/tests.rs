@@ -5967,3 +5967,56 @@ fn the_course_remembers_where_one_stopped() {
     // douze étapes.
     assert!(painted.contains("7/12"), "{painted}");
 }
+
+/// Un parcours se suit : l'étape suivante est à un clic, sans avoir à
+/// retrouver son rang dans une liste de douze.
+#[test]
+fn the_course_offers_the_next_step() {
+    let mut app = NamsdecApp {
+        exercises: true,
+        ..Default::default()
+    };
+
+    // Depuis le premier, la suite est le deuxième.
+    app.load_exercise("namsdec/registres");
+    let (suivant, titre) = app
+        .exercise_after("namsdec/registres")
+        .expect("il y a une suite");
+    assert_eq!(suivant, "namsdec/boucle");
+    assert!(!titre.is_empty());
+
+    // Le dernier n'en a pas : un parcours a une fin, et l'outil ne
+    // propose pas d'aller au-delà.
+    assert!(app.exercise_after("namsdec/protection").is_none());
+    // Un identifiant inconnu non plus.
+    assert!(app.exercise_after("namsdec/ceci-nexiste-pas").is_none());
+
+    // Et le bouton mène bien à l'étape suivante.
+    app.show_exercises = true;
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 1000.0),
+        )),
+        ..Default::default()
+    };
+    let mut painted = String::new();
+    for _ in 0..2 {
+        painted.clear();
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        for clipped in &output.shapes {
+            if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                painted.push_str(text.galley.text());
+                painted.push('|');
+            }
+        }
+        output.textures_delta.clear();
+    }
+    assert!(painted.contains("Étape suivante"), "{painted}");
+    assert!(
+        painted.contains("1/12"),
+        "le rang de l'étape en cours : {painted}"
+    );
+}
