@@ -90,6 +90,27 @@ impl Xrefs {
             .collect()
     }
 
+    /// Les boucles : un saut qui revient en arrière, et d'où il part.
+    ///
+    /// C'est la définition la plus simple qui soit juste — un saut vers
+    /// une adresse déjà passée ferme un chemin, et ce chemin est une
+    /// boucle. Elle ne dit pas *combien de fois* on y tourne : cela ne
+    /// se sait qu'en exécutant, et le compteur de passages de la
+    /// gouttière est là pour ça.
+    pub fn loops(&self) -> Vec<(u64, u64)> {
+        let mut found: Vec<(u64, u64)> = self
+            .to
+            .iter()
+            .flat_map(|(target, refs)| {
+                refs.iter()
+                    .filter(move |r| r.kind == Kind::Jump && r.from >= *target)
+                    .map(move |r| (*target, r.from))
+            })
+            .collect();
+        found.sort_unstable();
+        found
+    }
+
     pub fn is_empty(&self) -> bool {
         self.to.is_empty()
     }
@@ -232,6 +253,21 @@ mod tests {
         let bytes = [0xbe, 0x3c, 0x00, 0x00, 0x00];
         let xrefs = scan(&disassemble(&bytes, 0x400000), 0x400000..0x402000);
         assert!(xrefs.is_empty(), "{xrefs:?}");
+    }
+
+    /// Une boucle, c'est un saut qui revient en arrière.
+    #[test]
+    fn a_backward_jump_closes_a_loop() {
+        // 0x400000: 90        nop
+        // 0x400001: eb fd     jmp 0x400000   (en arrière)
+        // 0x400003: eb 00     jmp 0x400005   (en avant)
+        let bytes = [0x90, 0xeb, 0xfd, 0xeb, 0x00];
+        let xrefs = scan(&disassemble(&bytes, 0x400000), 0x400000..0x401000);
+        assert_eq!(
+            xrefs.loops(),
+            vec![(0x400000, 0x400001)],
+            "seul le saut en arrière ferme un chemin"
+        );
     }
 
     /// Un appel dont la cible est dans un registre ne dit rien d'ici :

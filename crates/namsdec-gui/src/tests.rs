@@ -7359,3 +7359,56 @@ ret
     // Aucune n'est dans les deux listes.
     assert!(!étiquettes.contains(&fonctions[0].0));
 }
+
+/// Les boucles se voient sans exécuter : un saut qui revient en arrière
+/// ferme un chemin.
+///
+/// C'est ce qui explique qu'un programme de dix lignes exécute des
+/// milliers d'instructions — et la gouttière, elle, dit combien de fois
+/// on y tourne.
+#[test]
+fn the_analysis_finds_the_loops() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: "\
+global _start
+section .text
+_start:
+mov rcx, 3
+boucle:
+dec rcx
+jnz boucle
+jmp fin
+hlt
+fin:
+hlt
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+    let state = app.assemble_state.as_ref().unwrap();
+    let début = state.output.load_addr;
+    let xrefs = namsdec_re::xrefs::scan(&state.disasm, début..début + 0x2000);
+
+    let boucles = xrefs.loops();
+    assert_eq!(
+        boucles.len(),
+        1,
+        "un seul saut revient en arrière : {boucles:?}"
+    );
+    // Et c'est bien `boucle:` qu'il vise.
+    let boucle = state
+        .output
+        .symbols
+        .iter()
+        .find(|s| s.name == "boucle")
+        .expect("l'étiquette existe")
+        .addr;
+    assert_eq!(boucles[0].0, boucle);
+    // Le `jmp fin`, qui va en avant, n'en est pas une.
+    assert!(boucles.iter().all(|(cible, _)| *cible == boucle));
+}

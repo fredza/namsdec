@@ -11,6 +11,9 @@ pub struct StringsModule {
     /// Qui désigne quoi : c'est ce qui fait la différence entre une
     /// liste de chaînes et une piste à suivre.
     xrefs: crate::xrefs::Xrefs,
+    /// Ce qu'on cherche parmi elles. Deux cents chaînes se parcourent
+    /// mal ; on sait en général ce qu'on veut y trouver.
+    query: String,
 }
 
 /// Une chaîne trouvée : où elle commence, et ce qu'elle dit.
@@ -98,19 +101,44 @@ impl ReModule for StringsModule {
             ui.label(ctx.t("Aucune chaîne trouvée.", "No string found."));
             return;
         }
-        ui.label(format!(
-            "{} {}",
-            self.found.len(),
-            ctx.t(
-                "chaînes d'au moins quatre caractères",
-                "strings of at least four characters"
+        ui.horizontal(|ui| {
+            ui.add(
+                egui::TextEdit::singleline(&mut self.query)
+                    .hint_text(ctx.t("chercher…", "search…"))
+                    .desired_width(140.0),
+            );
+            if !self.query.is_empty() && ui.small_button("✕").clicked() {
+                self.query.clear();
+            }
+        });
+        let query = self.query.to_lowercase();
+        let montrées: Vec<&Found> = self
+            .found
+            .iter()
+            .filter(|found| query.is_empty() || found.text.to_lowercase().contains(&query))
+            .collect();
+        ui.label(if query.is_empty() {
+            format!(
+                "{} {}",
+                self.found.len(),
+                ctx.t(
+                    "chaînes d'au moins quatre caractères",
+                    "strings of at least four characters"
+                )
             )
-        ));
+        } else {
+            format!(
+                "{} / {} {}",
+                montrées.len(),
+                self.found.len(),
+                ctx.t("chaînes", "strings")
+            )
+        });
         egui::ScrollArea::vertical()
             .id_salt("re_strings")
             .max_height(220.0)
             .show(ui, |ui| {
-                for found in &self.found {
+                for found in &montrées {
                     // Qui la désigne ? Une chaîne à laquelle personne ne
                     // fait référence est souvent du texte mort — un
                     // reste de bibliothèque, un nom de section.

@@ -108,6 +108,27 @@ impl ReModule for XrefsModule {
             }
         }
 
+        // Les boucles : ce qui explique qu'un programme de dix lignes
+        // exécute des milliers d'instructions.
+        let boucles = self.xrefs.loops();
+        if !boucles.is_empty() {
+            ui.add_space(4.0);
+            ui.strong(format!("{} {}", boucles.len(), ctx.t("boucles", "loops")));
+            ui.weak(ctx.t(
+                "Un saut qui revient en arrière ferme un chemin. Combien de fois on y \
+                 tourne ne se sait qu'en exécutant : la gouttière le compte.",
+                "A jump going backwards closes a path. How many times one goes round is \
+                 only known by running it: the gutter counts that.",
+            ));
+            for (cible, depuis) in &boucles {
+                ui.horizontal(|ui| {
+                    ui.monospace(format!("{cible:#x}"));
+                    ui.weak(ctx.t("bouclée depuis", "looped from"));
+                    ui.monospace(format!("{depuis:#x}"));
+                });
+            }
+        }
+
         // Les étiquettes : ce qu'on saute sans y entrer. Leur nombre
         // dit combien de boucles et de branches porte le programme.
         let étiquettes = self.xrefs.labels().len();
