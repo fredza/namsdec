@@ -3321,3 +3321,68 @@ fn the_memory_tab_names_the_region_and_its_rights() {
         "rien n'est projeté ici"
     );
 }
+
+/// L'onglet Pile montre la convention d'appel — par où passent les
+/// arguments, ce qu'une routine doit rendre — et nomme celles qui ne l'ont
+/// pas respectée.
+#[test]
+fn the_stack_tab_teaches_the_calling_convention_and_checks_it() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        active_tab: SidebarTab::Stack,
+        source: "\
+global _start
+
+section .text
+_start:
+    mov rdi, 1
+    mov rsi, 2
+    mov rbx, 7
+    call malpolie
+    hlt
+
+malpolie:
+    mov rbx, 42             ; empruntée, jamais rendue
+    ret
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    for _ in 0..20 {
+        app.do_step();
+    }
+
+    let ctx = egui::Context::default();
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 900.0),
+        )),
+        ..Default::default()
+    };
+    let mut painted = String::new();
+    for _ in 0..2 {
+        painted.clear();
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        for clipped in &output.shapes {
+            if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                painted.push_str(text.galley.text());
+                painted.push('|');
+            }
+        }
+        output.textures_delta.clear();
+    }
+
+    // L'aide-mémoire : les six registres d'arguments, dans l'ordre.
+    assert!(painted.contains("RDI|0x1|RSI|0x2"), "{painted}");
+    assert!(painted.contains("Convention d'appel"), "{painted}");
+    // Et la vérification, sur ce programme-ci.
+    assert!(painted.contains("Entorses relevées"), "{painted}");
+    assert!(painted.contains("n'a pas rendu"), "{painted}");
+    assert!(painted.contains("RBX"), "{painted}");
+    // Et d'où partait l'appel, en ligne de source — pas en hexadécimal.
+    assert!(painted.contains("appelée depuis ligne 8"), "{painted}");
+}

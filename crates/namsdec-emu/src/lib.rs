@@ -116,6 +116,53 @@ pub struct Frame {
     pub return_addr: u64,
     /// RSP juste après l'empilement de l'adresse de retour.
     pub rsp: u64,
+    /// Les registres que l'appelé doit rendre intacts, tels qu'ils
+    /// étaient au moment de l'appel.
+    ///
+    /// C'est la moitié de la convention d'appel que personne ne vérifie :
+    /// l'autre — par où passent les arguments — se lit dans les
+    /// registres, celle-ci ne se voit qu'en comparant avant et après.
+    preserved: [u64; PRESERVED.len()],
+}
+
+/// Les registres que l'ABI System V confie à l'appelé : il peut s'en
+/// servir, à condition de les rendre comme il les a trouvés.
+pub const PRESERVED: [(&str, Reg64); 6] = [
+    ("RBX", Reg64::Rbx),
+    ("RBP", Reg64::Rbp),
+    ("R12", Reg64::R12),
+    ("R13", Reg64::R13),
+    ("R14", Reg64::R14),
+    ("R15", Reg64::R15),
+];
+
+/// Les registres par lesquels passent les six premiers arguments, dans
+/// l'ordre.
+pub const ARGUMENTS: [(&str, Reg64); 6] = [
+    ("RDI", Reg64::Rdi),
+    ("RSI", Reg64::Rsi),
+    ("RDX", Reg64::Rdx),
+    ("RCX", Reg64::Rcx),
+    ("R8", Reg64::R8),
+    ("R9", Reg64::R9),
+];
+
+/// Une entorse à la convention d'appel, relevée au retour d'une
+/// sous-routine.
+///
+/// Ce n'est pas une faute d'exécution — le programme continue, et un
+/// programme qui n'appelle personne d'autre que lui-même peut très bien
+/// s'en passer. C'est une remarque : le jour où cette routine sera
+/// appelée par du code écrit par quelqu'un d'autre, elle cassera.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AbiBreach {
+    /// D'où partait l'appel.
+    pub call_site: u64,
+    /// La sous-routine fautive.
+    pub entry: u64,
+    /// Ce qu'elle n'a pas rendu : un registre à préserver, ou « RSP »
+    /// quand la pile ne revient pas où elle était.
+    pub register: &'static str,
 }
 
 /// Ce qu'un pas a fait à la pile des appels, pour pouvoir le défaire.
@@ -155,6 +202,9 @@ struct Undo {
     /// Le compteur d'instructions d'avant : `rdtsc` doit rendre deux fois
     /// la même valeur si on rejoue deux fois le même pas.
     ticks: u64,
+    /// Combien d'entorses avaient été relevées : revenir en arrière sur
+    /// un `ret` doit retirer celle qu'il a signalée.
+    breaches: usize,
 }
 
 /// Combien de pas on peut défaire. Au-delà, les plus anciens sont
@@ -421,6 +471,10 @@ pub trait Backend {
     /// monter. Un moteur qui n'en simule pas rend un tas vide.
     fn heap(&self) -> Heap;
 
+    /// Ce que les sous-routines revenues n'ont pas rendu comme elles
+    /// l'avaient trouvé. Vide pour un moteur qui ne regarde pas.
+    fn breaches(&self) -> &[AbiBreach];
+
     /// Ce que le programme a écrit sur sa sortie standard depuis le
     /// démarrage.
     fn output(&self) -> &[u8];
@@ -516,6 +570,8 @@ pub struct Emulator {
     watchpoints: Vec<Watchpoint>,
     /// Le tas, tel que `brk` l'a laissé.
     heap: Heap,
+    /// Les entorses à la convention d'appel relevées jusqu'ici.
+    breaches: Vec<AbiBreach>,
     /// Combien d'instructions ont été exécutées depuis le chargement.
     /// C'est ce que rend `rdtsc` : le temps qu'on peut mesurer ici.
     ticks: u64,
@@ -578,6 +634,10 @@ impl Backend for Emulator {
         Emulator::heap(self)
     }
 
+    fn breaches(&self) -> &[AbiBreach] {
+        Emulator::breaches(self)
+    }
+
     fn output(&self) -> &[u8] {
         &self.output
     }
@@ -626,6 +686,7 @@ impl Emulator {
                 limit: end,
             },
             ticks: 0,
+            breaches: Vec::new(),
             cpu,
         }
     }
@@ -1588,6 +1649,7 @@ impl Emulator {
                     entry: target,
                     return_addr: ret_addr,
                     rsp: new_rsp,
+                    preserved: PRESERVED.map(|(_, reg)| self.cpu.regs.get64(reg)),
                 });
                 if let Some(undo) = self.history.back_mut() {
                     undo.frames = FrameChange::Pushed;
@@ -1604,10 +1666,11 @@ impl Emulator {
                 // sous-routine, ou une pile bricolée à la main — ne
                 // dépile rien : la chaîne ne prétend pas savoir ce
                 // qu'elle n'a pas vu.
-                if let Some(frame) = self.frames.pop()
-                    && let Some(undo) = self.history.back_mut()
-                {
-                    undo.frames = FrameChange::Popped(frame);
+                if let Some(frame) = self.frames.pop() {
+                    self.check_convention(&frame);
+                    if let Some(undo) = self.history.back_mut() {
+                        undo.frames = FrameChange::Popped(frame);
+                    }
                 }
             }
             M::Hlt => {
@@ -2323,6 +2386,7 @@ impl Emulator {
             frames: FrameChange::None,
             heap: self.heap,
             ticks: self.ticks,
+            breaches: self.breaches.len(),
         });
     }
 
@@ -2372,6 +2436,7 @@ impl Emulator {
         self.heap = undo.heap;
         self.map_heap();
         self.ticks = undo.ticks;
+        self.breaches.truncate(undo.breaches);
         match undo.frames {
             FrameChange::None => {}
             FrameChange::Pushed => {
@@ -2388,6 +2453,42 @@ impl Emulator {
     /// Les appels en cours, du plus ancien au plus récent.
     pub fn frames(&self) -> &[Frame] {
         &self.frames
+    }
+
+    /// Ce que les sous-routines déjà revenues n'ont pas respecté.
+    pub fn breaches(&self) -> &[AbiBreach] {
+        &self.breaches
+    }
+
+    /// Au retour d'une sous-routine : a-t-elle rendu ce qu'elle devait ?
+    ///
+    /// Les registres confiés par la convention, et la pile — un `push`
+    /// sans `pop` ne se voit pas autrement qu'ici, et c'est la faute la
+    /// plus coûteuse à chercher soi-même.
+    fn check_convention(&mut self, frame: &Frame) {
+        for (index, (name, reg)) in PRESERVED.iter().enumerate() {
+            if self.cpu.regs.get64(*reg) != frame.preserved[index] {
+                self.note_breach(frame, name);
+            }
+        }
+        // À cet instant, RSP a déjà dépilé l'adresse de retour : il doit
+        // valoir ce qu'il valait juste avant l'appel.
+        if self.cpu.regs.get64(Reg64::Rsp) != frame.rsp.wrapping_add(8) {
+            self.note_breach(frame, "RSP");
+        }
+    }
+
+    fn note_breach(&mut self, frame: &Frame, register: &'static str) {
+        let breach = AbiBreach {
+            call_site: frame.call_site,
+            entry: frame.entry,
+            register,
+        };
+        // Une boucle qui appelle mille fois la même routine fautive n'a
+        // rien à dire de plus la millième fois.
+        if !self.breaches.contains(&breach) {
+            self.breaches.push(breach);
+        }
     }
 
     /// Remplace les zones surveillées, et les arme sur l'état courant :

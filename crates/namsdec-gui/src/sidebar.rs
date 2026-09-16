@@ -251,12 +251,24 @@ impl NamsdecApp {
             ui.label(s.no_binary_assembled);
             return;
         };
-        self.call_chain_ui(ui, emulator.as_ref());
-        ui.separator();
-
+        // Tout l'onglet dans une zone qui défile : la chaîne des appels,
+        // l'aide-mémoire de la convention et les entorses relevées font
+        // déjà plus d'une hauteur de panneau, et le vidage de la pile
+        // vient après. Sans cela, ce qui dépasse est simplement coupé.
         let addr = emulator.cpu().regs.get64(Reg64::Rsp).saturating_sub(16);
         let dump = safe_hexdump(&emulator.cpu().mem, addr, 64, s.address_out_of_range);
-        hexdump_ui(ui, "stack_dump", &dump);
+        egui::ScrollArea::vertical()
+            .id_salt("stack_tab")
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                self.call_chain_ui(ui, emulator.as_ref());
+                ui.separator();
+                self.abi_ui(ui, emulator.as_ref());
+                ui.separator();
+                // Horizontal seulement : le défilement vertical est celui
+                // de l'onglet, deux imbriqués se disputeraient la molette.
+                hexdump_wide(ui, "stack_dump", &dump);
+            });
     }
 
     /// Le tas : ce que `brk` a donné au programme, et ce qu'il en reste.
@@ -376,6 +388,86 @@ impl NamsdecApp {
             });
         if fold.header_response.clicked() {
             self.x87_open = !self.x87_open;
+        }
+    }
+
+    /// La convention d'appel : par où passent les arguments, où revient
+    /// le résultat, ce qu'une sous-routine doit rendre intact — et ce
+    /// qu'elle n'a pas rendu.
+    ///
+    /// Les deux premières lignes sont un aide-mémoire, celui qu'on
+    /// cherche dans un tableau au dos d'un livre. La troisième est ce
+    /// qu'aucun livre ne peut donner : la vérification, faite sur *ce*
+    /// programme, en comparant l'avant et l'après de chaque appel.
+    fn abi_ui(&self, ui: &mut egui::Ui, emulator: &dyn Backend) {
+        let s = strings(self.lang);
+        let theme = self.theme;
+        let regs = &emulator.cpu().regs;
+        ui.label(egui::RichText::new(s.abi_title).color(theme.dim));
+
+        // Des lignes qui se replient, et non une grille : six registres
+        // et leurs valeurs ne tiennent pas sur une ligne de panneau, et
+        // une cellule de grille qui se replie déborde sur la ligne
+        // suivante — le texte s'y imprimait par-dessus.
+        ui.horizontal_wrapped(|ui| {
+            ui.colored_label(theme.dim, s.abi_arguments);
+            for (index, (name, reg)) in namsdec_emu::ARGUMENTS.iter().enumerate() {
+                let value = regs.get64(*reg);
+                // Le numéro de l'argument compte autant que le nom du
+                // registre : c'est lui qu'on cherche.
+                ui.colored_label(theme.register, egui::RichText::new(*name).monospace())
+                    .on_hover_text(format!("{} {}", index + 1, s.abi_arguments));
+                ui.colored_label(
+                    if value == 0 { theme.dim } else { theme.text },
+                    egui::RichText::new(format!("{value:#x}")).monospace(),
+                );
+            }
+        });
+        ui.horizontal_wrapped(|ui| {
+            ui.colored_label(theme.dim, s.abi_result);
+            ui.colored_label(
+                theme.text,
+                egui::RichText::new(format!("RAX {:#x}", regs.get64(Reg64::Rax))).monospace(),
+            );
+        });
+        ui.horizontal_wrapped(|ui| {
+            ui.colored_label(theme.dim, s.abi_preserved);
+            for (name, _) in namsdec_emu::PRESERVED {
+                ui.colored_label(theme.dim, egui::RichText::new(name).monospace());
+            }
+        });
+
+        let entorses = emulator.breaches();
+        if entorses.is_empty() {
+            return;
+        }
+        ui.add_space(4.0);
+        ui.colored_label(theme.warn, s.abi_breaches);
+        for entorse in entorses {
+            let quoi = if entorse.register == "RSP" {
+                s.abi_breach_stack.to_owned()
+            } else {
+                format!("{} {}", s.abi_breach_line, entorse.register)
+            };
+            ui.horizontal_wrapped(|ui| {
+                ui.colored_label(
+                    theme.warn,
+                    egui::RichText::new(format!("{:#x}", entorse.entry)).monospace(),
+                );
+                ui.colored_label(theme.warn, quoi);
+                // La ligne source quand on la connaît, l'adresse sinon :
+                // « appelée depuis la ligne 14 » se cherche des yeux,
+                // « appelée depuis 0x400014 » beaucoup moins.
+                let depuis = match self
+                    .assemble_state
+                    .as_ref()
+                    .and_then(|state| state.addr_to_line.get(&entorse.call_site).copied())
+                {
+                    Some(line) => format!("({} {} {line})", s.abi_called_from, s.call_chain_line),
+                    None => format!("({} {:#x})", s.abi_called_from, entorse.call_site),
+                };
+                ui.colored_label(theme.dim, depuis);
+            });
         }
     }
 
@@ -789,6 +881,17 @@ pub(crate) fn flag_chip(ui: &mut egui::Ui, theme: &'static Theme, name: &str, on
 /// octets et leur transcription font bien plus large que le panneau,
 /// et la ligne était jusqu'ici coupée net sans moyen d'aller voir la
 /// suite.
+/// Un vidage qui ne défile qu'en largeur : à poser dans une zone qui
+/// défile déjà en hauteur.
+pub(crate) fn hexdump_wide(ui: &mut egui::Ui, id: &str, dump: &str) {
+    egui::ScrollArea::horizontal().id_salt(id).show(ui, |ui| {
+        ui.add(
+            egui::Label::new(egui::RichText::new(dump).monospace())
+                .wrap_mode(egui::TextWrapMode::Extend),
+        );
+    });
+}
+
 pub(crate) fn hexdump_ui(ui: &mut egui::Ui, id: &str, dump: &str) {
     egui::ScrollArea::both()
         .id_salt(id)

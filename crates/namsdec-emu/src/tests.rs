@@ -2573,3 +2573,120 @@ hlt
     assert_eq!(emu.cpu.regs.get64(Reg64::Rcx), 40, "vpermq a inversé");
     assert_eq!(emu.cpu.regs.get64(Reg64::Rdx), 80, "vpaddq sur 256 bits");
 }
+
+/// La convention d'appel, vérifiée : une sous-routine qui écrase un
+/// registre confié — ou qui laisse la pile de travers — est signalée au
+/// retour, en nommant lequel.
+///
+/// Ce n'est pas une faute d'exécution : le programme continue. C'est la
+/// remarque qu'on ne peut pas se faire soi-même sans comparer l'avant et
+/// l'après, et c'est ce qui casse le jour où quelqu'un d'autre appelle la
+/// routine.
+#[test]
+fn a_subroutine_that_does_not_give_back_what_it_borrowed_is_named() {
+    let emu = run_program(
+        "\
+global _start
+
+section .text
+_start:
+    push rax                ; de quoi laisser jeter un mot à la dernière
+    mov rbx, 1
+    mov r12, 2
+    call polie
+    call malpolie
+    call déséquilibrée
+    hlt
+
+polie:
+    push rbx
+    mov rbx, 99             ; empruntée, puis rendue
+    pop rbx
+    ret
+
+malpolie:
+    mov rbx, 42             ; écrasée, et jamais rendue
+    ret
+
+déséquilibrée:
+    pop rax                 ; l'adresse de retour
+    add rsp, 8              ; et un mot de l'appelant, jeté au passage
+    push rax
+    ret                     ; elle revient bien, mais la pile a bougé
+",
+        &[],
+    );
+
+    let entorses = emu.breaches();
+    let registres: Vec<&str> = entorses.iter().map(|b| b.register).collect();
+    assert!(
+        registres.contains(&"RBX"),
+        "la routine malpolie doit être signalée : {entorses:?}"
+    );
+    assert!(
+        !registres.contains(&"R12"),
+        "R12 n'a pas bougé : {entorses:?}"
+    );
+    // La routine polie ne figure nulle part.
+    let polies = entorses
+        .iter()
+        .filter(|b| b.register == "RBX")
+        .collect::<Vec<_>>();
+    assert_eq!(polies.len(), 1, "une seule routine fautive : {entorses:?}");
+}
+
+/// Une pile qui ne revient pas où elle était : le `push` sans `pop`, la
+/// faute la plus longue à chercher soi-même.
+#[test]
+fn a_stack_left_crooked_is_reported() {
+    let mut emu = load_only(
+        "\
+global _start
+
+section .text
+_start:
+    call oublieuse
+    hlt
+
+oublieuse:
+    push rax                ; jamais dépilé
+    ret
+",
+        &[],
+    );
+    // `ret` dépile le `rax` empilé au lieu de l'adresse de retour : le
+    // programme part ailleurs. L'entorse est relevée au passage — et
+    // c'est elle qui explique ce qui vient d'arriver.
+    let _ = emu.run(100);
+    assert!(
+        emu.breaches().iter().any(|b| b.register == "RSP"),
+        "obtenu {:?}",
+        emu.breaches()
+    );
+}
+
+/// Revenir en arrière sur un `ret` retire la remarque qu'il a produite.
+#[test]
+fn stepping_back_takes_back_the_remark() {
+    let mut emu = load_only(
+        "\
+global _start
+
+section .text
+_start:
+    call malpolie
+    hlt
+
+malpolie:
+    mov rbx, 42
+    ret
+",
+        &[],
+    );
+    emu.run(100).expect("exécution");
+    assert_eq!(emu.breaches().len(), 1);
+    while emu.can_step_back() {
+        emu.step_back();
+    }
+    assert!(emu.breaches().is_empty(), "obtenu {:?}", emu.breaches());
+}
