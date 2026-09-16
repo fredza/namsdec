@@ -27,8 +27,8 @@ use namsdec_disasm::DecodedInstruction;
 use namsdec_emu::{Backend, Emulator, RunStop, StepOverResult, StepResult};
 use namsdec_explorer::{ExplorerAction, FileExplorer};
 use namsdec_re::{
-    BinaryInfoModule, CallsModule, GadgetsModule, ProtectionsModule, ReContext, ReModuleRegistry,
-    StringsModule, SyscallsModule, XrefsModule,
+    BinaryInfoModule, GadgetsModule, ProtectionsModule, ReContext, ReModuleRegistry, StringsModule,
+    SyscallsModule, XrefsModule,
 };
 use namsdec_theme::Theme;
 
@@ -917,7 +917,6 @@ impl Default for NamsdecApp {
         // est découpé.
         re_registry.register(Box::new(StringsModule::default()));
         re_registry.register(Box::new(SyscallsModule::default()));
-        re_registry.register(Box::new(CallsModule::default()));
         // Les références croisées en dernier : elles se lisent une fois
         // qu'on sait ce que le binaire contient, pour décider par où
         // entrer dedans.
@@ -4715,6 +4714,9 @@ impl NamsdecApp {
                     .unwrap_or(0);
                 // Cinq mille pas : on ne dessine que ce qui est à
                 // l'écran, comme pour l'onglet Octets.
+                // Collée au bas : le dernier pas est celui qu'on regarde
+                // entre deux avancées, et le chercher à chaque fois
+                // reviendrait à faire défiler cinq mille lignes.
                 egui::ScrollArea::vertical()
                     .id_salt("timeline_rows")
                     .auto_shrink([false, false])

@@ -7312,3 +7312,50 @@ fn the_timeline_can_point_at_the_source_without_rewinding() {
     app.rewind(2);
     assert_eq!(app.emulator.as_ref().unwrap().trace().len(), chemin - 2);
 }
+
+/// Les étiquettes se distinguent des fonctions : on entre dans une
+/// fonction, on revient d'une fonction ; une étiquette appartient à
+/// celle qui la contient.
+#[test]
+fn jump_targets_are_not_mistaken_for_functions() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: "\
+global _start
+section .text
+_start:
+mov rcx, 3
+boucle:
+dec rcx
+jnz boucle
+call sous
+hlt
+sous:
+ret
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+    let state = app.assemble_state.as_ref().unwrap();
+    let début = state.output.load_addr;
+    let xrefs = namsdec_re::xrefs::scan(&state.disasm, début..début + 0x2000);
+
+    let fonctions = xrefs.functions();
+    let étiquettes = xrefs.labels();
+    assert_eq!(
+        fonctions.len(),
+        1,
+        "seule `sous` est appelée : {fonctions:?}"
+    );
+    assert_eq!(
+        étiquettes.len(),
+        1,
+        "et seule `boucle` est sautée : {étiquettes:?}"
+    );
+    // Aucune n'est dans les deux listes.
+    assert!(!étiquettes.contains(&fonctions[0].0));
+}

@@ -138,7 +138,7 @@ Un workspace Rust, une crate par responsabilité :
 | `namsdec-asm` | appel de nasm et de ld, lecture de l'ELF produit |
 | `namsdec-disasm` | désassemblage x86-64 (iced-x86), syntaxe NASM |
 | `namsdec-emu` | l'interpréteur : entiers, SSE/AVX, x87, appels système |
-| `namsdec-re` | rétro-ingénierie : protections, chaînes, appels, syscalls |
+| `namsdec-re` | rétro-ingénierie : protections, références croisées, chaînes, appels système, fragments ROP |
 | `namsdec-doc` | les fiches d'instructions et de directives |
 | `namsdec-exercises` | les séries d'exercices et leur format |
 | `namsdec-theme` | les thèmes, y compris ceux installés depuis le disque |

@@ -108,6 +108,20 @@ impl ReModule for XrefsModule {
             }
         }
 
+        // Les étiquettes : ce qu'on saute sans y entrer. Leur nombre
+        // dit combien de boucles et de branches porte le programme.
+        let étiquettes = self.xrefs.labels().len();
+        if étiquettes > 0 {
+            ui.add_space(4.0);
+            ui.weak(format!(
+                "{étiquettes} {}",
+                ctx.t(
+                    "étiquettes — débuts de boucle et de branche",
+                    "labels — starts of loops and branches"
+                )
+            ));
+        }
+
         // Ce que le programme désigne sans l'appeler : ses données. Le
         // compte suffit ici — le détail est dans le panneau des chaînes,
         // qui les montre avec leur contenu.

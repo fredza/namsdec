@@ -72,6 +72,24 @@ impl Xrefs {
         found
     }
 
+    /// Les adresses qu'un saut vise sans qu'aucun appel ne les vise :
+    /// les débuts de boucle et de branche, ce qu'un désassembleur
+    /// appelle des étiquettes.
+    ///
+    /// Distinguées des fonctions : on entre dans une fonction, on
+    /// revient d'une fonction ; une étiquette, elle, appartient à celle
+    /// qui la contient.
+    pub fn labels(&self) -> Vec<u64> {
+        self.to
+            .iter()
+            .filter(|(_, refs)| {
+                refs.iter().any(|r| r.kind == Kind::Jump)
+                    && !refs.iter().any(|r| r.kind == Kind::Call)
+            })
+            .map(|(addr, _)| *addr)
+            .collect()
+    }
+
     pub fn is_empty(&self) -> bool {
         self.to.is_empty()
     }
@@ -183,8 +201,11 @@ mod tests {
             "et un saut"
         );
 
-        // Et c'est donc une fonction, appelée deux fois.
+        // Et c'est donc une fonction, appelée deux fois — et non une
+        // étiquette, bien qu'un saut la vise aussi : on entre dans une
+        // fonction, on revient d'une fonction.
         assert_eq!(xrefs.functions(), vec![(0x40000a, 2)]);
+        assert!(xrefs.labels().is_empty());
     }
 
     /// Une adresse chargée dans un registre est une référence aux

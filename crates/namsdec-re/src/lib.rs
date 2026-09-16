@@ -6,7 +6,6 @@
 //! mécanisme avant la phase 2.
 
 mod binary_info;
-mod calls;
 pub mod elf_scan;
 pub mod gadgets;
 mod gadgets_module;
@@ -19,7 +18,6 @@ pub mod xrefs;
 mod xrefs_module;
 
 pub use binary_info::BinaryInfoModule;
-pub use calls::CallsModule;
 pub use gadgets_module::GadgetsModule;
 pub use protections::ProtectionsModule;
 pub use strings::StringsModule;
