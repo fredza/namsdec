@@ -4944,8 +4944,18 @@ hlt
     }
 
     assert!(
-        painted.contains("section .data"),
+        painted.contains("Cette zone n'est pas inscriptible"),
         "le conseil doit dire où mettre ce qui change : {painted}"
+    );
+    // Et namsdec l'avait dit avant même d'exécuter : le contrôle
+    // d'après-assemblage voit l'écriture dans `.text`, l'adresse étant
+    // dans l'encodage.
+    assert!(
+        app.diagnostics
+            .iter()
+            .any(|d| d.message.contains("not writable")),
+        "l'avertissement doit précéder l'exécution : {:?}",
+        app.diagnostics
     );
 
     // Et il disparaît quand on repart de zéro : il parlait de cette
@@ -4966,7 +4976,10 @@ hlt
         }
         painted
     };
-    assert!(!painted.contains("section .data"), "{painted}");
+    assert!(
+        !painted.contains("Cette zone n'est pas inscriptible"),
+        "{painted}"
+    );
 }
 
 /// La gouttière compte les passages : une boucle qui tourne cinq fois se
@@ -6302,4 +6315,52 @@ ret
         "{:?}",
         fragments.iter().map(|g| g.text()).collect::<Vec<_>>()
     );
+}
+
+/// Le contrôle d'après-assemblage prévient de ce que nasm ne dit pas,
+/// et se tait sur les programmes corrects.
+///
+/// Un avertissement faux est pire que pas d'avertissement : il apprend
+/// à ignorer les avertissements.
+#[test]
+fn the_extra_checks_warn_without_crying_wolf() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let diagnostics = |source: &str| -> Vec<namsdec_asm::Diagnostic> {
+        let mut app = NamsdecApp {
+            source: source.to_owned(),
+            ..Default::default()
+        };
+        app.do_assemble();
+        app.diagnostics.clone()
+    };
+
+    // Un programme qui ne s'arrête pas : le processeur continuerait dans
+    // ce qui suit son code.
+    let sans_fin = diagnostics("global _start\nsection .text\n_start:\n    mov rax, 1\n");
+    assert!(
+        sans_fin
+            .iter()
+            .any(|d| d.message.contains("run off the end")),
+        "{sans_fin:?}"
+    );
+
+    // Les programmes livrés avec l'application, eux, ne doivent
+    // déclencher aucun avertissement : ce sont les modèles.
+    let mut modèles = vec![("accueil", DEFAULT_SOURCE), ("nouveau", NEW_PROGRAM)];
+    let pack = namsdec_exercises::builtin_pack();
+    for exercise in &pack.exercises {
+        // Sauf celui qui met une faute en scène exprès.
+        if exercise.id != "protection" {
+            modèles.push((exercise.id.as_str(), exercise.starter_code.as_str()));
+        }
+    }
+    for (nom, source) in modèles {
+        let found = diagnostics(source);
+        assert!(
+            found.is_empty(),
+            "« {nom} » ne doit rien déclencher : {found:?}"
+        );
+    }
 }

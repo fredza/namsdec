@@ -47,6 +47,12 @@ au-dessus de RSP est grisé — ces octets sont encore là, mais le prochain
 **Combien de fois chaque ligne a tourné.** `×5` dans la gouttière en face
 du corps de boucle, rien en face de la ligne que le saut enjambe.
 
+**Ce que nasm ne dit pas.** Deux fautes passent l'assemblage sans un mot
+et ne se voient qu'à l'exécution — ou pas du tout : un programme que rien
+n'arrête, qui continue dans ce qui suit son code, et une écriture à une
+adresse fixe qui tombe dans une zone en lecture seule. namsdec relit le
+programme lié et les signale comme des avertissements, avec leur ligne.
+
 **Ce qu'il faut faire quand ça plante.** Le message dit « interdit
 d'écrire à 0x400000 : elle est dans .text ». Dessous : *le code et les
 constantes sont en lecture seule, ce qui change pendant l'exécution va

@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+namsdec-disasm.workspace = true
 thiserror.workspace = true
 tempfile.workspace = true
 regex.workspace = true

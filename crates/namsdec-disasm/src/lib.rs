@@ -10,6 +10,9 @@ use iced_x86::{Decoder, DecoderOptions, Formatter, Instruction, NasmFormatter};
 /// sans dépendre elle-même du décodeur : ce qu'elle en fait, elle le
 /// fait toujours en passant par cette crate.
 pub use iced_x86::Instruction as Decoded;
+/// Les types du décodeur dont les autres crates ont besoin pour lire une
+/// instruction : la nature d'un opérande, et les registres.
+pub use iced_x86::{OpKind, Register};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 

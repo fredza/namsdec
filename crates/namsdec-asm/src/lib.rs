@@ -14,6 +14,7 @@
 //! premier octet.
 
 pub mod elf;
+pub mod lint;
 
 use std::collections::BTreeMap;
 use std::fs;

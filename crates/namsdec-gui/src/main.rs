@@ -1199,6 +1199,11 @@ impl NamsdecApp {
                 let disasm = disassemble_code(&output);
                 let addr_to_line = output.line_to_addr.iter().map(|(l, a)| (*a, *l)).collect();
                 self.diagnostics = output.diagnostics.clone();
+                // Ce que nasm ne dit pas : un programme qui ne s'arrête
+                // pas, une écriture dans une zone en lecture seule. Ces
+                // deux fautes-là passent l'assemblage sans un mot et ne
+                // se manifestent qu'à l'exécution — ou pire, pas du tout.
+                self.diagnostics.extend(namsdec_asm::lint::check(&output));
                 self.assemble_state = Some(AssembleState {
                     output,
                     disasm,
