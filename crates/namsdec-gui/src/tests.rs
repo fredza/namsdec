@@ -6570,3 +6570,110 @@ ret
     // c'est ce que `ld` produit sans options.
     assert!(painted.contains("EXEC · static"), "{painted}");
 }
+
+/// Un point d'arrêt conditionnel attrape le tour qu'on cherche.
+///
+/// Dans une boucle de cinq cents tours, s'arrêter à chaque passage n'est
+/// pas déboguer, c'est une punition : la condition fait le tri.
+#[test]
+fn a_conditional_breakpoint_catches_the_turn_one_is_after() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: "\
+global _start
+section .text
+_start:
+mov rcx, 500
+boucle:
+dec rcx
+jnz boucle
+hlt
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+
+    // Un point d'arrêt sur le corps de boucle, qui passe cinq cents
+    // fois — mais on ne veut que le dernier tour.
+    app.breakpoint_lines.insert(6);
+    app.breakpoint_conditions.insert(6, "rcx == 1".to_owned());
+    app.sync_breakpoints();
+
+    let ctx = egui::Context::default();
+    app.do_run();
+    for _ in 0..20 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&ctx);
+    }
+
+    assert!(
+        matches!(app.status, Status::Breakpoint(_)),
+        "l'arrêt doit avoir eu lieu : {:?}",
+        app.status
+    );
+    let rcx = app
+        .emulator
+        .as_ref()
+        .unwrap()
+        .cpu()
+        .regs
+        .get64(namsdec_core::Reg64::Rcx);
+    assert_eq!(rcx, 1, "et au tour qu'on avait demandé, pas au premier");
+
+    // Sans condition, le même point d'arrêt s'arrête dès le premier
+    // passage.
+    let mut app = NamsdecApp {
+        source: app.source.clone(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    app.breakpoint_lines.insert(6);
+    app.sync_breakpoints();
+    app.do_run();
+    for _ in 0..20 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&ctx);
+    }
+    assert_eq!(
+        app.emulator
+            .as_ref()
+            .unwrap()
+            .cpu()
+            .regs
+            .get64(namsdec_core::Reg64::Rcx),
+        500,
+        "le premier passage, RCX n'a pas encore été décrémenté"
+    );
+
+    // Une condition illisible n'empêche pas l'arrêt : une faute de
+    // frappe qui rendrait un point d'arrêt muet serait pire que tout.
+    let mut app = NamsdecApp {
+        source: app.source.clone(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    app.breakpoint_lines.insert(6);
+    app.breakpoint_conditions
+        .insert(6, "rxc === zéro".to_owned());
+    app.sync_breakpoints();
+    app.do_run();
+    for _ in 0..20 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&ctx);
+    }
+    assert!(
+        matches!(app.status, Status::Breakpoint(_)),
+        "{:?}",
+        app.status
+    );
+}

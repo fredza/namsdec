@@ -4,6 +4,7 @@
 //! en affichant les panneaux des modules `ReModule` enregistrés.
 
 mod completion;
+mod condition;
 mod errors;
 mod i18n;
 mod keybindings;
@@ -332,6 +333,9 @@ struct NamsdecApp {
     lang: Lang,
     nasm_info: Option<namsdec_asm::NasmInfo>,
     breakpoint_lines: BTreeSet<u32>,
+    /// Les conditions d'arrêt, par ligne : « arrête-toi là, mais
+    /// seulement si… ». Une ligne sans entrée s'arrête toujours.
+    breakpoint_conditions: BTreeMap<u32, String>,
     assemble_state: Option<AssembleState>,
     /// Texte en cours de saisie dans la console, pas encore envoyé au
     /// programme. Donnée de session et non réglage : elle n'a aucun sens
@@ -478,6 +482,8 @@ struct NamsdecApp {
     show_analysis: bool,
     /// La fenêtre des registres étendus : SSE, AVX et la pile x87.
     show_vectors: bool,
+    /// La fenêtre des points d'arrêt et de leurs conditions.
+    show_breakpoints: bool,
     /// Les séries chargées : celle livrée avec l'application, puis celles
     /// installées depuis le disque, dans l'ordre où on les a trouvées.
     exercise_packs: Vec<namsdec_exercises::Pack>,
@@ -630,6 +636,7 @@ enum PaletteCommand {
     ShowExercises,
     ShowAnalysis,
     ShowVectors,
+    ShowBreakpoints,
     SetTheme(&'static Theme),
     SetLang(Lang),
     SaveAs,
@@ -700,6 +707,10 @@ fn palette_commands(
         (s.help_about.to_string(), PaletteCommand::ShowAbout),
         (s.analysis_open.to_string(), PaletteCommand::ShowAnalysis),
         (s.vectors_open.to_string(), PaletteCommand::ShowVectors),
+        (
+            s.breakpoints_open.to_string(),
+            PaletteCommand::ShowBreakpoints,
+        ),
         (
             format!("{}: Français", s.preferences_language),
             PaletteCommand::SetLang(Lang::Fr),
@@ -914,6 +925,7 @@ impl Default for NamsdecApp {
             lang: Lang::Fr,
             nasm_info: namsdec_asm::find_nasm(),
             breakpoint_lines: BTreeSet::new(),
+            breakpoint_conditions: BTreeMap::new(),
             assemble_state: None,
             emulator: None,
             regs_before: None,
@@ -961,6 +973,7 @@ impl Default for NamsdecApp {
             show_help: false,
             show_analysis: false,
             show_vectors: false,
+            show_breakpoints: false,
             exercise_packs: vec![namsdec_exercises::builtin_pack()],
             exercise_files: BTreeMap::new(),
             pack_to_remove: None,
@@ -1394,6 +1407,31 @@ impl NamsdecApp {
         }
     }
 
+    /// Ce point d'arrêt doit-il arrêter, cette fois-ci ?
+    ///
+    /// Sans condition, oui, toujours. Avec une condition qu'on ne sait
+    /// pas lire, oui aussi : un point d'arrêt qui ne s'arrête jamais à
+    /// cause d'une faute de frappe est pire qu'un point d'arrêt qui
+    /// s'arrête trop.
+    fn breakpoint_holds(&self, addr: u64) -> bool {
+        let Some(state) = &self.assemble_state else {
+            return true;
+        };
+        let Some(line) = state.addr_to_line.get(&addr) else {
+            return true;
+        };
+        let Some(texte) = self.breakpoint_conditions.get(line) else {
+            return true;
+        };
+        let Some(condition) = condition::parse(texte) else {
+            return true;
+        };
+        let Some(emulator) = &self.emulator else {
+            return true;
+        };
+        condition.holds(&emulator.cpu().regs)
+    }
+
     fn sync_breakpoints(&mut self) {
         let Some(state) = &self.assemble_state else {
             return;
@@ -1535,19 +1573,51 @@ impl NamsdecApp {
             }
             return;
         }
+        // Un point d'arrêt dont la condition est fausse ne doit pas
+        // coûter une frame : la course reprend tout de suite, dans le
+        // budget de pas de cette frame-ci. Sans cela, traverser une
+        // boucle de cinq cents tours demanderait cinq cents frames —
+        // huit secondes à ne rien voir bouger.
+        let mut budget = RUN_BATCH_STEPS;
+        let arrêt = loop {
+            let Some(emulator) = &mut self.emulator else {
+                self.running = false;
+                return;
+            };
+            let avant = emulator.executed();
+            let arrêt = emulator.run(budget);
+            let consommés = self
+                .emulator
+                .as_ref()
+                .map(|e| e.executed().saturating_sub(avant))
+                .unwrap_or(0);
+            budget = budget.saturating_sub(consommés.min(u64::from(budget)) as u32);
+            match &arrêt {
+                Ok(RunStop::Breakpoint(addr)) if !self.breakpoint_holds(*addr) && budget > 0 => {
+                    continue;
+                }
+                _ => break arrêt,
+            }
+        };
         let Some(emulator) = &mut self.emulator else {
             self.running = false;
             return;
         };
-        match emulator.run(RUN_BATCH_STEPS) {
+        match arrêt {
             Ok(RunStop::Halted) => {
                 self.running = false;
                 self.status = halted_status(emulator.as_ref());
                 self.back_to_command_mode();
             }
             Ok(RunStop::Breakpoint(addr)) => {
-                self.running = false;
-                self.status = Status::Breakpoint(addr);
+                // La condition décide. Fausse, la course reprend sans
+                // que personne n'ait à cliquer : c'est tout l'objet d'un
+                // point d'arrêt conditionnel dans une boucle de mille
+                // tours.
+                if self.breakpoint_holds(addr) {
+                    self.running = false;
+                    self.status = Status::Breakpoint(addr);
+                }
             }
             Ok(RunStop::Watchpoint { addr, old, new }) => {
                 self.running = false;
@@ -2228,6 +2298,7 @@ impl NamsdecApp {
             PaletteCommand::ShowExercises => self.show_exercises = true,
             PaletteCommand::ShowAnalysis => self.show_analysis = true,
             PaletteCommand::ShowVectors => self.show_vectors = true,
+            PaletteCommand::ShowBreakpoints => self.show_breakpoints = true,
             PaletteCommand::SetTheme(theme) => {
                 self.theme = theme;
                 self.apply_theme(ctx);
@@ -2590,6 +2661,10 @@ impl NamsdecApp {
                 }
                 if ui.button(s.vectors_open).clicked() {
                     self.show_vectors = true;
+                    ui.close();
+                }
+                if ui.button(s.breakpoints_open).clicked() {
+                    self.show_breakpoints = true;
                     ui.close();
                 }
                 ui.separator();
@@ -4552,6 +4627,73 @@ impl NamsdecApp {
         self.pending = Some(Pending::Quit);
     }
 
+    /// Les points d'arrêt, avec leur condition.
+    ///
+    /// Un point d'arrêt se pose d'un clic dans la gouttière ; sa
+    /// condition, elle, s'écrit — et il faut bien un endroit pour cela.
+    /// La liste dit aussi lesquels sont posés, ce que la gouttière ne
+    /// montre que ligne par ligne.
+    fn breakpoints_window_ui(&mut self, ctx: &egui::Context) {
+        if !self.show_breakpoints {
+            return;
+        }
+        let s = strings(self.lang);
+        let theme = self.theme;
+        let mut open = true;
+        let mut retirer = None;
+        egui::Window::new(s.breakpoints_title)
+            .id(egui::Id::new("breakpoints_window"))
+            .open(&mut open)
+            .resizable(true)
+            .collapsible(false)
+            .default_size([480.0, 320.0])
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(ctx.viewport_rect().center())
+            .show(ctx, |ui| {
+                if self.breakpoint_lines.is_empty() {
+                    ui.weak(s.breakpoints_empty);
+                    return;
+                }
+                ui.weak(s.breakpoints_hint);
+                ui.separator();
+                let lignes: Vec<u32> = self.breakpoint_lines.iter().copied().collect();
+                for ligne in lignes {
+                    ui.horizontal(|ui| {
+                        ui.colored_label(theme.accent, format!("{} {ligne}", s.breakpoints_line));
+                        let texte = self.breakpoint_conditions.entry(ligne).or_default();
+                        let réponse = ui.add(
+                            egui::TextEdit::singleline(texte)
+                                .id(egui::Id::new(("bp_cond", ligne)))
+                                .hint_text(s.breakpoints_condition_hint)
+                                .font(egui::TextStyle::Monospace)
+                                .desired_width(180.0),
+                        );
+                        // Le refus se voit sur le champ : une condition
+                        // qu'on ne sait pas lire ne filtre rien, et il
+                        // vaut mieux le dire que de laisser croire.
+                        if !texte.trim().is_empty() && condition::parse(texte).is_none() {
+                            ui.painter().rect_stroke(
+                                réponse.rect,
+                                ui.visuals().widgets.inactive.corner_radius,
+                                egui::Stroke::new(1.0, theme.bad),
+                                egui::StrokeKind::Inside,
+                            );
+                            ui.colored_label(theme.bad, s.breakpoints_condition_bad);
+                        }
+                        if ui.button("✕").on_hover_text(s.breakpoints_remove).clicked() {
+                            retirer = Some(ligne);
+                        }
+                    });
+                }
+            });
+        if let Some(ligne) = retirer {
+            self.breakpoint_lines.remove(&ligne);
+            self.breakpoint_conditions.remove(&ligne);
+            self.sync_breakpoints();
+        }
+        self.show_breakpoints = open;
+    }
+
     /// La fenêtre d'analyse : tous les modules de rétro-ingénierie, avec
     /// la place de s'exprimer.
     ///
@@ -5878,6 +6020,7 @@ impl NamsdecApp {
             self.about_window_ui(&ctx);
             self.help_window_ui(&ctx);
             self.vectors_window_ui(&ctx);
+            self.breakpoints_window_ui(&ctx);
             self.analysis_window_ui(&ctx);
             if self.exercises {
                 self.exercises_window_ui(&ctx);
