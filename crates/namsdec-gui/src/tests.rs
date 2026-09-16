@@ -4954,3 +4954,73 @@ hlt
     };
     assert!(!painted.contains("section .data"), "{painted}");
 }
+
+/// La gouttière compte les passages : une boucle qui tourne cinq fois se
+/// voit, et une ligne jamais atteinte aussi.
+#[test]
+fn the_gutter_counts_how_many_times_each_line_ran() {
+    let mut app = NamsdecApp {
+        source: "\
+global _start
+section .text
+_start:
+mov rcx, 5
+boucle:
+dec rcx
+jnz boucle
+jmp fin
+mov rax, 1
+fin:
+hlt
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+
+    // Rien n'a tourné : pas de colonne, pas de compteur.
+    assert!(app.line_visits().is_empty());
+
+    let ctx = egui::Context::default();
+    app.do_run();
+    for _ in 0..20 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&ctx);
+    }
+
+    let passages = app.line_visits();
+    assert_eq!(passages.get(&4), Some(&1), "le `mov rcx, 5` : une fois");
+    assert_eq!(passages.get(&6), Some(&5), "le corps de boucle : cinq fois");
+    assert_eq!(passages.get(&7), Some(&5), "et son saut autant");
+    assert_eq!(
+        passages.get(&9),
+        None,
+        "la ligne sautée n'a jamais tourné, et ça se voit : {passages:?}"
+    );
+
+    // Et le compteur se peint bien dans la gouttière.
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 900.0),
+        )),
+        ..Default::default()
+    };
+    let mut painted = String::new();
+    for _ in 0..2 {
+        painted.clear();
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        for clipped in &output.shapes {
+            if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                painted.push_str(text.galley.text());
+                painted.push('|');
+            }
+        }
+        output.textures_delta.clear();
+    }
+    assert!(painted.contains("×5"), "{painted}");
+}

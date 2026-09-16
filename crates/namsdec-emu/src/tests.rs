@@ -2730,3 +2730,30 @@ fn conditions_can_be_read_off_the_flags() {
     assert_eq!(condition_signed(ConditionCode::a), Some(false));
     assert_eq!(condition_signed(ConditionCode::e), None);
 }
+
+/// Le compteur de passages ne doit pas changer l'ordre de grandeur d'une
+/// exécution, et sa carte ne doit pas grandir avec elle : une entrée par
+/// adresse, pas par pas.
+#[test]
+fn counting_visits_stays_cheap() {
+    let mut emu = load_only(
+        "global _start\nsection .text\n_start:\nmov rcx, 2000000\nboucle:\ndec rcx\njnz boucle\nhlt\n",
+        &[],
+    );
+    let start = std::time::Instant::now();
+    emu.run(50_000_000).unwrap();
+    let elapsed = start.elapsed();
+    assert_eq!(
+        emu.visits().get(&emu.cpu.regs.rip),
+        None,
+        "l'adresse d'arrêt n'a pas encore été exécutée deux fois"
+    );
+    // Quatre entrées au plus — le `mov`, le corps, le saut, le `hlt` —
+    // quelle que soit la durée : c'est ce qui garde le coût borné.
+    assert!(emu.visits().len() <= 8, "{}", emu.visits().len());
+    assert!(
+        elapsed < std::time::Duration::from_secs(30),
+        "quatre millions d'instructions en {elapsed:?}"
+    );
+    println!("PERF {elapsed:?} pour ~4 000 000 d'instructions");
+}

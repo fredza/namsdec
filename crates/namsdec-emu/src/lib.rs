@@ -7,7 +7,7 @@ mod regmap;
 mod vector;
 mod x87;
 
-use std::collections::{BTreeSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use iced_x86::{ConditionCode, Instruction, Mnemonic, OpKind, Register};
 use namsdec_core::{
@@ -494,6 +494,13 @@ pub trait Backend {
     /// l'avaient trouvé. Vide pour un moteur qui ne regarde pas.
     fn breaches(&self) -> &[AbiBreach];
 
+    /// Combien de fois chaque adresse a été exécutée depuis le départ.
+    ///
+    /// C'est le profil du programme : il dit ce qui a tourné cinq fois
+    /// et ce qui n'a jamais tourné du tout — la boucle qu'on croyait
+    /// écrire, la branche qu'on croyait prendre.
+    fn visits(&self) -> &BTreeMap<u64, u64>;
+
     /// Ce que le programme a écrit sur sa sortie standard depuis le
     /// démarrage.
     fn output(&self) -> &[u8];
@@ -596,11 +603,17 @@ pub struct Emulator {
     /// Combien d'instructions ont été exécutées depuis le chargement.
     /// C'est ce que rend `rdtsc` : le temps qu'on peut mesurer ici.
     ticks: u64,
+    /// Combien de fois chaque adresse a été exécutée.
+    visits: BTreeMap<u64, u64>,
 }
 
 impl Backend for Emulator {
     fn name(&self) -> &'static str {
         Self::NAME
+    }
+
+    fn visits(&self) -> &BTreeMap<u64, u64> {
+        &self.visits
     }
 
     fn cpu(&self) -> &Cpu {
@@ -716,6 +729,7 @@ impl Emulator {
                 limit: end,
             },
             ticks: 0,
+            visits: BTreeMap::new(),
             breaches: Vec::new(),
             cpu,
         }
@@ -966,6 +980,10 @@ impl Emulator {
         self.begin_undo();
         self.cpu.regs.rip = instr.next_ip();
         self.ticks = self.ticks.wrapping_add(1);
+        // Un compteur par adresse, pas par pas : la carte ne grandit
+        // jamais au-delà du nombre d'instructions du programme, quelle
+        // que soit la durée de l'exécution.
+        *self.visits.entry(rip_before).or_insert(0) += 1;
         if let Err(e) = self.execute(&instr) {
             // L'instruction n'a pas eu lieu : RIP doit rester dessus.
             // Sinon chaque tentative suivante avançait d'un cran — et

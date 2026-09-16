@@ -1138,6 +1138,24 @@ impl NamsdecApp {
         self.follow_rip = true;
     }
 
+    /// Combien de fois chaque ligne source a été exécutée.
+    ///
+    /// L'émulateur compte par adresse ; une ligne en produit parfois
+    /// plusieurs, et c'est la ligne qu'on lit. Vide tant que rien n'a
+    /// tourné — auquel cas la gouttière ne réserve aucune place.
+    fn line_visits(&self) -> BTreeMap<u32, u64> {
+        let (Some(emulator), Some(state)) = (&self.emulator, &self.assemble_state) else {
+            return BTreeMap::new();
+        };
+        let mut par_ligne: BTreeMap<u32, u64> = BTreeMap::new();
+        for (addr, count) in emulator.visits() {
+            if let Some(line) = state.addr_to_line.get(addr) {
+                *par_ligne.entry(*line).or_insert(0) += count;
+            }
+        }
+        par_ligne
+    }
+
     fn remember_registers(&mut self) {
         self.regs_before = self.emulator.as_ref().map(|e| e.cpu().regs.clone());
         self.flags_before = self.emulator.as_ref().map(|e| e.cpu().flags);
@@ -3516,8 +3534,18 @@ impl NamsdecApp {
                         // commence exactement où la gouttière s'arrête.
                         const GUTTER_PAD: f32 = 16.0;
                         const GUTTER_WIDTH: f32 = 38.0 + GUTTER_PAD;
+                        // Combien de fois chaque ligne a tourné. C'est le
+                        // profil du programme : la boucle qu'on croyait
+                        // écrire a-t-elle tourné cinq fois, ou une seule ?
+                        // La branche qu'on croyait prendre a-t-elle
+                        // seulement été atteinte ? Rien d'autre à l'écran
+                        // ne répond à ça.
+                        let passages = self.line_visits();
+                        // La colonne ne prend de la place que lorsqu'il y
+                        // a quelque chose à y mettre.
+                        let compteur = if passages.is_empty() { 0.0 } else { 44.0 };
                         let (gutter_rect, gutter_resp) = ui.allocate_exact_size(
-                            egui::vec2(GUTTER_WIDTH, galley.rect.height().max(1.0)),
+                            egui::vec2(GUTTER_WIDTH + compteur, galley.rect.height().max(1.0)),
                             egui::Sense::click(),
                         );
                         let click_y = gutter_resp.interact_pointer_pos().map(|p| p.y);
@@ -3591,6 +3619,18 @@ impl NamsdecApp {
                                 font_id.clone(),
                                 color,
                             );
+                            // Le compteur de passages, à gauche du numéro
+                            // et plus discret que lui : c'est une mesure,
+                            // pas une adresse.
+                            if let Some(count) = passages.get(&line) {
+                                painter.text(
+                                    egui::pos2(gutter_rect.left() + 30.0, row_rect.center().y),
+                                    egui::Align2::LEFT_CENTER,
+                                    format!("×{count}"),
+                                    font_id.clone(),
+                                    theme.dim,
+                                );
+                            }
                         }
                         if let Some(line) = clicked_line {
                             if self.breakpoint_lines.contains(&line) {
