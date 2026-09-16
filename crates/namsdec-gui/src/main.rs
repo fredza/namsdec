@@ -2927,6 +2927,7 @@ impl NamsdecApp {
         // Hors du bandeau, et non dedans : celui-ci est borné en hauteur
         // et défile, un repli posé à sa suite serait sous la pliure.
         self.xmm_ui(ui);
+        self.x87_ui(ui);
 
         ui.separator();
         ui.horizontal_wrapped(|ui| {
@@ -3428,6 +3429,52 @@ impl NamsdecApp {
         }
         ui.add_space(4.0);
         hexdump_ui(ui, "heap_dump", &dump);
+    }
+
+    /// La pile du coprocesseur : huit cases en anneau, du sommet vers le
+    /// bas.
+    ///
+    /// Montrer `st0` à `st7` plutôt que l'ordre physique, c'est montrer
+    /// ce que le programme écrit : `fadd st2` compte à partir du sommet,
+    /// et c'est de là que vient la moitié des erreurs quand on découvre
+    /// cette machine.
+    fn x87_ui(&self, ui: &mut egui::Ui) {
+        let s = strings(self.lang);
+        let Some(emulator) = &self.emulator else {
+            return;
+        };
+        let theme = self.theme;
+        let regs = &emulator.cpu().regs;
+        let changed = changed_registers(self.regs_before.as_ref(), regs);
+        egui::CollapsingHeader::new(egui::RichText::new(s.x87_stack).color(theme.dim))
+            .id_salt("x87_stack")
+            .default_open(false)
+            .show(ui, |ui| {
+                egui::Grid::new("x87_grid")
+                    .num_columns(2)
+                    .striped(true)
+                    .show(ui, |ui| {
+                        for (index, name) in X87_SLOTS.iter().enumerate() {
+                            let occupied = regs.x87.is_occupied(index);
+                            let color = if changed.contains(name) {
+                                theme.changed
+                            } else if occupied {
+                                ui.visuals().text_color()
+                            } else {
+                                theme.dim
+                            };
+                            ui.colored_label(color, egui::RichText::new(*name).monospace());
+                            let text = if occupied {
+                                format!("{}", regs.x87.get(index))
+                            } else {
+                                s.x87_empty.to_owned()
+                            };
+                            ui.colored_label(color, egui::RichText::new(text).monospace())
+                                .on_hover_text(s.x87_hint);
+                            ui.end_row();
+                        }
+                    });
+            });
     }
 
     /// Les zones surveillées, avec leur valeur courante et de quoi les
@@ -4443,6 +4490,19 @@ fn changed_registers(
                 .filter(|&&(_, reg)| before.get_xmm(reg) != now.get_xmm(reg))
                 .map(|&(name, _)| name),
         )
+        .chain(
+            X87_SLOTS
+                .iter()
+                .copied()
+                .enumerate()
+                .filter_map(|(i, name)| {
+                    // Une case qui se vide ou se remplit a changé autant qu'une
+                    // case dont la valeur bouge : c'est tout l'intérêt d'une pile.
+                    let moved = before.x87.get(i) != now.x87.get(i)
+                        || before.x87.is_occupied(i) != now.x87.is_occupied(i);
+                    moved.then_some(name)
+                }),
+        )
         .collect()
 }
 
@@ -4468,6 +4528,10 @@ const XMM_REGISTERS: [(&str, namsdec_core::RegXmm); 16] = {
         ("XMM15", Xmm15),
     ]
 };
+
+/// Les huit cases de la pile du x87, nommées comme le programme les
+/// désigne : relativement au sommet.
+const X87_SLOTS: [&str; 8] = ["ST0", "ST1", "ST2", "ST3", "ST4", "ST5", "ST6", "ST7"];
 
 /// Un flottant écrit court, pour tenir dans une colonne : six décimales
 /// au plus, sans les zéros qui traînent, et la notation scientifique dès
@@ -7365,5 +7429,14 @@ _start:
             "= 5.264e-315",
             "un simple précision relu comme un double reste lisible"
         );
+    }
+    /// Une case de la pile x87 qui se remplit se met en avant comme un
+    /// registre : empiler *est* un changement d'état.
+    #[test]
+    fn a_pushed_x87_slot_stands_out() {
+        let before = namsdec_core::Registers::new();
+        let mut now = before.clone();
+        now.x87.push(3.5);
+        assert_eq!(changed_registers(Some(&before), &now), ["ST0"]);
     }
 }

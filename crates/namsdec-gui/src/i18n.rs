@@ -78,6 +78,11 @@ pub struct Strings {
     pub sse_registers: &'static str,
     /// Ce que dit l'infobulle d'un registre SSE.
     pub sse_hint: &'static str,
+    /// Le repli qui montre la pile du coprocesseur.
+    pub x87_stack: &'static str,
+    /// Ce qu'on écrit dans une case inoccupée.
+    pub x87_empty: &'static str,
+    pub x87_hint: &'static str,
 
     // Menu Affichage — visibilité des panneaux
     pub view_toolbar: &'static str,
@@ -259,6 +264,9 @@ const FR: Strings = Strings {
     cpu_state: "État du processeur",
     sse_registers: "Registres SSE (flottants)",
     sse_hint: "Les 128 bits, puis leur lecture en deux doubles et en quatre simples",
+    x87_stack: "Pile x87 (flottants, à l'ancienne)",
+    x87_empty: "—",
+    x87_hint: "Huit cases en anneau : fld empile, st0 est le sommet. Les valeurs sont simulées en double précision, là où le x87 calcule sur 80 bits.",
 
     view_toolbar: "Barre d'outils",
     view_sidebar: "Panneau latéral",
@@ -425,6 +433,9 @@ const EN: Strings = Strings {
     cpu_state: "CPU state",
     sse_registers: "SSE registers (floating point)",
     sse_hint: "All 128 bits, then read as two doubles and as four singles",
+    x87_stack: "x87 stack (the old floating point)",
+    x87_empty: "—",
+    x87_hint: "Eight slots in a ring: fld pushes, st0 is the top. Values are simulated in double precision, where the x87 computes on 80 bits.",
 
     view_toolbar: "Toolbar",
     view_sidebar: "Side Panel",

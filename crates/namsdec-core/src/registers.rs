@@ -73,12 +73,116 @@ impl RegXmm {
     }
 }
 
+/// La pile du coprocesseur 8087 : huit registres en anneau, désignés
+/// *relativement* au sommet — `st0` est le sommet, `st1` celui d'en
+/// dessous, et un `fld` fait tout descendre d'un cran.
+///
+/// Les valeurs sont gardées en double précision, là où un vrai x87
+/// calcule sur 80 bits. C'est une approximation, et elle est assumée :
+/// simuler le format étendu demanderait une arithmétique logicielle
+/// entière, pour un écart qui n'apparaît qu'au-delà du quinzième chiffre.
+/// Ce que le x87 enseigne — une pile au lieu de registres nommés, des
+/// comparaisons qui répondent dans un mot d'état — est intact.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct X87 {
+    /// Les huit cases, dans l'ordre physique.
+    slots: [f64; 8],
+    /// Laquelle est le sommet.
+    top: usize,
+    /// Une case vide n'est pas une case à zéro : `fld` sur une pile
+    /// pleine est une erreur, et un débogueur doit pouvoir le montrer.
+    occupied: [bool; 8],
+    /// Les quatre bits de condition du mot d'état (C0, C1, C2, C3), là
+    /// où `fcom` range le résultat d'une comparaison et d'où `fstsw ax`
+    /// le tire.
+    pub status: u16,
+}
+
+impl X87 {
+    /// Le masque des quatre bits de condition dans le mot d'état.
+    pub const C0: u16 = 1 << 8;
+    pub const C1: u16 = 1 << 9;
+    pub const C2: u16 = 1 << 10;
+    pub const C3: u16 = 1 << 14;
+
+    /// La case physique derrière `st(i)`.
+    fn slot(&self, i: usize) -> usize {
+        (self.top + i) % 8
+    }
+
+    /// Le contenu de `st(i)`. Une case vide rend zéro plutôt que de
+    /// paniquer : l'émulateur signale la pile vide autrement.
+    pub fn get(&self, i: usize) -> f64 {
+        self.slots[self.slot(i)]
+    }
+
+    pub fn set(&mut self, i: usize, value: f64) {
+        let slot = self.slot(i);
+        self.slots[slot] = value;
+        self.occupied[slot] = true;
+    }
+
+    pub fn is_occupied(&self, i: usize) -> bool {
+        self.occupied[self.slot(i)]
+    }
+
+    /// Combien de cases sont prises.
+    pub fn depth(&self) -> usize {
+        self.occupied.iter().filter(|o| **o).count()
+    }
+
+    /// Empile : le sommet descend d'un cran, et la valeur s'y écrit.
+    pub fn push(&mut self, value: f64) {
+        self.top = (self.top + 7) % 8;
+        self.slots[self.top] = value;
+        self.occupied[self.top] = true;
+    }
+
+    /// Dépile le sommet et le rend.
+    pub fn pop(&mut self) -> f64 {
+        let value = self.slots[self.top];
+        self.occupied[self.top] = false;
+        self.top = (self.top + 1) % 8;
+        value
+    }
+
+    /// Fait tourner l'anneau sans rien écrire (`fincstp`/`fdecstp`).
+    pub fn rotate(&mut self, forward: bool) {
+        self.top = if forward {
+            (self.top + 1) % 8
+        } else {
+            (self.top + 7) % 8
+        };
+    }
+
+    /// Marque une case comme libre, sans déplacer le sommet (`ffree`).
+    pub fn free(&mut self, i: usize) {
+        let slot = self.slot(i);
+        self.occupied[slot] = false;
+    }
+
+    /// Le mot d'état tel que `fstsw` le rend : les bits de condition,
+    /// plus le numéro du sommet sur trois bits.
+    pub fn status_word(&self) -> u16 {
+        self.status | ((self.top as u16) << 11)
+    }
+
+    /// Remet le coprocesseur à neuf : pile vide, conditions effacées.
+    pub fn reset(&mut self) {
+        *self = Self::default();
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct Registers {
     gpr: [u64; 16],
     /// Les registres SSE. Ils ne se mélangent pas aux généraux : ni les
     /// mêmes instructions, ni les mêmes tailles, ni le même usage.
     xmm: [u128; 16],
+    /// La pile du 8087, que les programmes d'apprentissage utilisent
+    /// encore — c'est par elle que la plupart des cours font leur premier
+    /// calcul à virgule.
+    pub x87: X87,
     pub rip: u64,
 }
 
