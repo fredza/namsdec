@@ -1,0 +1,2613 @@
+//! Les tests de l'interface.
+//!
+//! Ils dessinent l'application dans un contexte egui sans fenêtre et
+//! regardent ce qui est *peint* : la largeur qu'un panneau prend, les
+//! textes posés, les cadres des boutons. C'est ce qui permet de vérifier
+//! une mise en page sans capture d'écran et sans clic simulé.
+//!
+//! Sortis de `main.rs`, qui portait autant de tests que de code.
+
+use super::*;
+// Le panneau latéral a ses propres fonctions : les tests les
+// nomment sans préfixe, comme avant leur déménagement.
+use crate::sidebar::*;
+
+/// Le programme type qu'on écrit en apprenant l'assembleur sous
+/// Linux : deux sections, un `_start`, des appels système. Il doit
+/// s'assembler, démarrer à `_start` — et non au premier octet chargé,
+/// qui appartient à `.data` — relier chaque ligne à la bonne adresse,
+/// écrire son message et se terminer sur son propre code de sortie.
+#[test]
+fn a_two_section_linux_program_prints_its_message_and_exits() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+
+    let source = "\
+section .data
+message db \"Je parle maintenant au processeur !\", 10
+longueur equ $ - message
+
+section .text
+global _start
+_start:
+mov rax, 1
+mov rdi, 1
+mov rsi, message
+mov rdx, longueur
+syscall
+
+mov rax, 60
+xor rdi, rdi
+syscall
+";
+    let mut app = NamsdecApp {
+        source: source.to_owned(),
+        ..Default::default()
+    };
+
+    app.do_assemble();
+    assert!(
+        matches!(app.status, Status::AssembleOk),
+        "l'assemblage doit réussir, obtenu : {:?}",
+        app.status
+    );
+
+    let line_to_addr = app
+        .assemble_state
+        .as_ref()
+        .unwrap()
+        .output
+        .line_to_addr
+        .clone();
+    assert_ne!(
+        line_to_addr[&2], line_to_addr[&8],
+        "une ligne de `.data` et une ligne de `.text` ne peuvent pas partager une adresse"
+    );
+    assert_eq!(
+        app.emulator.as_ref().unwrap().cpu().regs.rip,
+        line_to_addr[&8],
+        "l'exécution démarre à `_start`"
+    );
+
+    // Exécution complète : le programme parle, puis sort de lui-même.
+    app.do_run();
+    for _ in 0..10 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&egui::Context::default());
+    }
+
+    let emulator = app.emulator.as_ref().expect("un émulateur chargé");
+    assert_eq!(
+        String::from_utf8_lossy(emulator.output()),
+        "Je parle maintenant au processeur !\n",
+        "le message doit être arrivé sur la sortie"
+    );
+    assert_eq!(emulator.exit_code(), Some(0));
+    assert!(
+        matches!(app.status, Status::Exited { code: 0 }),
+        "la barre de statut doit dire que le programme s'est terminé, obtenu : {:?}",
+        app.status
+    );
+}
+
+/// Un programme allé jusqu'au bout n'a plus rien à exécuter : les
+/// commandes d'exécution deviennent inertes — au clavier comme au
+/// bouton, sans quoi le raccourci ferait ce que le bouton grisé
+/// refuse — et l'éditeur revient en mode commande, comme gdb rend la
+/// main après la fin du programme.
+#[test]
+fn a_finished_program_disables_execution_and_returns_to_command_mode() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+
+    let mut app = NamsdecApp {
+        source: "\
+section .text
+global _start
+_start:
+mov rax, 60
+mov rdi, 2
+syscall
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    // L'utilisateur était en train d'écrire quand il a lancé.
+    app.editor_mode = EditorMode::Insert;
+    assert!(app.can_execute(), "avant de lancer, tout est disponible");
+
+    app.do_run();
+    for _ in 0..10 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&egui::Context::default());
+    }
+
+    assert!(app.program_finished());
+    assert!(
+        !app.can_execute(),
+        "Exécuter, Step Into et Step Over n'ont plus de sens"
+    );
+    assert_eq!(
+        app.editor_mode,
+        EditorMode::Normal,
+        "la fin du programme rend la main aux commandes"
+    );
+
+    // Le raccourci doit obéir à la même règle que le bouton : RIP ne
+    // bouge plus, et le statut de fin reste affiché.
+    let rip = app.emulator.as_ref().unwrap().cpu().regs.rip;
+    app.dispatch(Action::StepInto);
+    app.dispatch(Action::StepOver);
+    app.dispatch(Action::Run);
+    assert_eq!(app.emulator.as_ref().unwrap().cpu().regs.rip, rip);
+    assert!(
+        matches!(app.status, Status::Exited { code: 2 }),
+        "obtenu {:?}",
+        app.status
+    );
+
+    // Réinitialiser, en revanche, doit rester possible : c'est
+    // justement ce qu'on veut faire ensuite.
+    app.dispatch(Action::Reset);
+    assert!(app.can_execute(), "après Réinitialiser, on peut relancer");
+}
+
+/// Avancer d'un pas ne doit pas ouvrir la saisie.
+///
+/// `Espace s i` et `Espace n i` se terminent par `i` — la touche qui,
+/// dans l'éditeur, fait passer en mode Insertion. Sans précaution, un
+/// pas d'exécution laissait donc l'éditeur en Insertion, et la frappe
+/// suivante s'écrivait dans le code au lieu de piloter l'exécution.
+#[test]
+fn stepping_with_a_leader_sequence_stays_in_normal_mode() {
+    for sequence in [
+        [egui::Key::Space, egui::Key::S, egui::Key::I],
+        [egui::Key::Space, egui::Key::N, egui::Key::I],
+    ] {
+        let mut app = NamsdecApp::default();
+        assert_eq!(app.editor_mode, EditorMode::Normal);
+
+        let ctx = egui::Context::default();
+        let events = sequence
+            .iter()
+            .map(|key| egui::Event::Key {
+                key: *key,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            })
+            .collect();
+        let input = egui::RawInput {
+            events,
+            ..Default::default()
+        };
+
+        // Une frame complète, dans l'ordre réel : le dispatcher lit
+        // les touches, puis l'éditeur relit les mêmes évènements.
+        let mut action = None;
+        let mut output = ctx.run_ui(input, |ui| {
+            action = app.dispatcher.poll(ui.ctx(), &app.keybindings, false);
+            app.editor_ui(ui);
+        });
+        output.textures_delta.clear();
+
+        assert!(action.is_some(), "la séquence {sequence:?} doit agir");
+        assert_eq!(
+            app.editor_mode,
+            EditorMode::Normal,
+            "après {sequence:?}, l'éditeur doit rester en mode commande"
+        );
+    }
+}
+
+/// Le cas réel : les touches d'une séquence arrivent sur des frames
+/// séparées, une par frappe, avec relâchement — et non toutes dans le
+/// même lot d'évènements comme lorsqu'on tape très vite.
+#[test]
+fn stepping_stays_in_normal_mode_across_separate_frames() {
+    for sequence in [
+        [egui::Key::Space, egui::Key::S, egui::Key::I],
+        [egui::Key::Space, egui::Key::N, egui::Key::I],
+    ] {
+        let mut app = NamsdecApp::default();
+        let ctx = egui::Context::default();
+
+        for key in sequence {
+            let input = egui::RawInput {
+                events: vec![
+                    egui::Event::Key {
+                        key,
+                        physical_key: None,
+                        pressed: true,
+                        repeat: false,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                    egui::Event::Key {
+                        key,
+                        physical_key: None,
+                        pressed: false,
+                        repeat: false,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ],
+                ..Default::default()
+            };
+            // La frame entière, telle qu'eframe l'exécute : dispatch
+            // des raccourcis, panneaux, éditeur.
+            let mut output = ctx.run_ui(input, |ui| app.draw(ui));
+            output.textures_delta.clear();
+        }
+
+        assert_eq!(
+            app.editor_mode,
+            EditorMode::Normal,
+            "après {sequence:?} tapée touche par touche"
+        );
+    }
+}
+
+/// Le vrai parcours : on écrit du code (mode Insertion), on en sort
+/// par Échap, puis on lance un pas au clavier. C'est là que le
+/// raccourci doit fonctionner — et surtout ne pas rouvrir la saisie.
+#[test]
+fn stepping_works_after_leaving_insert_mode() {
+    let mut app = NamsdecApp::default();
+    let ctx = egui::Context::default();
+
+    let stroke = |key| {
+        vec![
+            egui::Event::Key {
+                key,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            },
+            egui::Event::Key {
+                key,
+                physical_key: None,
+                pressed: false,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            },
+        ]
+    };
+    let frame = |app: &mut NamsdecApp, key| {
+        let input = egui::RawInput {
+            events: stroke(key),
+            ..Default::default()
+        };
+        let mut output = ctx.run_ui(input, |ui| app.draw(ui));
+        output.textures_delta.clear();
+    };
+
+    // `i` ouvre la saisie, Échap la referme.
+    frame(&mut app, egui::Key::I);
+    assert_eq!(app.editor_mode, EditorMode::Insert, "`i` ouvre la saisie");
+    frame(&mut app, egui::Key::Escape);
+    assert_eq!(app.editor_mode, EditorMode::Normal, "Échap la referme");
+
+    // Puis la séquence de pas, touche par touche.
+    for key in [egui::Key::Space, egui::Key::S, egui::Key::I] {
+        frame(&mut app, key);
+    }
+
+    assert_eq!(
+        app.editor_mode,
+        EditorMode::Normal,
+        "`Espace s i` après une édition ne doit pas rouvrir la saisie"
+    );
+}
+
+/// Mais `i` tapé seul, lui, ouvre toujours la saisie : seule la touche
+/// qui a servi à un raccourci est retirée à l'éditeur.
+#[test]
+fn plain_i_still_enters_insert_mode() {
+    let mut app = NamsdecApp::default();
+    let ctx = egui::Context::default();
+    let input = egui::RawInput {
+        events: vec![egui::Event::Key {
+            key: egui::Key::I,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        }],
+        ..Default::default()
+    };
+
+    let mut output = ctx.run_ui(input, |ui| {
+        app.dispatcher.poll(ui.ctx(), &app.keybindings, false);
+        app.editor_ui(ui);
+    });
+    output.textures_delta.clear();
+
+    assert_eq!(app.editor_mode, EditorMode::Insert);
+}
+
+/// Un programme qui lit son entrée puis la répète : il doit se
+/// suspendre pour de bon en attendant, puis repartir tout seul dès que
+/// l'utilisateur a tapé quelque chose — l'interface, elle, ne bloque
+/// jamais.
+#[test]
+fn a_program_waits_for_console_input_then_echoes_it() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+
+    let mut app = NamsdecApp {
+        source: "\
+section .bss
+tampon resb 32
+
+section .text
+global _start
+_start:
+mov rax, 0
+mov rdi, 0
+mov rsi, tampon
+mov rdx, 32
+syscall
+
+mov rdx, rax
+mov rax, 1
+mov rdi, 1
+mov rsi, tampon
+syscall
+
+mov rax, 60
+xor rdi, rdi
+syscall
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(
+        matches!(app.status, Status::AssembleOk),
+        "obtenu {:?}",
+        app.status
+    );
+
+    let ctx = egui::Context::default();
+    app.do_run();
+    for _ in 0..10 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&ctx);
+    }
+
+    assert!(
+        matches!(app.status, Status::WaitingForInput),
+        "le programme doit attendre son entrée, obtenu {:?}",
+        app.status
+    );
+    assert!(!app.running, "l'exécution est suspendue, pas en cours");
+    assert!(
+        app.emulator.as_ref().unwrap().output().is_empty(),
+        "il n'a encore rien écrit : il n'a rien lu"
+    );
+
+    // L'utilisateur tape sa réponse et valide.
+    app.send_input(Some("bonjour".to_owned()));
+    assert!(app.running, "un Exécuter suspendu doit repartir tout seul");
+
+    for _ in 0..10 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&ctx);
+    }
+
+    assert_eq!(
+        String::from_utf8_lossy(app.emulator.as_ref().unwrap().output()),
+        "bonjour\n",
+        "le programme répète ce qu'on lui a donné, saut de ligne compris"
+    );
+    assert!(matches!(app.status, Status::Exited { code: 0 }));
+}
+
+/// Fermer l'entrée débloque un programme qui lit jusqu'au bout, au
+/// lieu de le laisser attendre pour toujours.
+#[test]
+fn ending_the_input_releases_a_waiting_program() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+
+    let mut app = NamsdecApp {
+        source: "\
+section .bss
+tampon resb 16
+
+section .text
+global _start
+_start:
+mov rax, 0
+mov rdi, 0
+mov rsi, tampon
+mov rdx, 16
+syscall
+hlt
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+
+    let ctx = egui::Context::default();
+    app.do_run();
+    for _ in 0..10 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&ctx);
+    }
+    assert!(matches!(app.status, Status::WaitingForInput));
+
+    // « Fin d'entrée » : `read` rend 0 et le programme continue.
+    app.send_input(None);
+    for _ in 0..10 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&ctx);
+    }
+
+    assert!(
+        app.program_finished(),
+        "le programme doit être allé au bout"
+    );
+    assert_eq!(
+        app.emulator.as_ref().unwrap().cpu().regs.get64(Reg64::Rax),
+        0,
+        "`read` rend une fin de fichier"
+    );
+}
+
+/// Une largeur de panneau aberrante, héritée d'une session où la
+/// mise en page s'était emballée, ne doit pas survivre : egui garde
+/// cette largeur d'un lancement à l'autre, et elle revenait telle
+/// quelle — panneau latéral sur toute la fenêtre, éditeur réduit à
+/// une colonne de quelques caractères. Les bornes la ramènent dans le
+/// raisonnable dès la première frame.
+#[test]
+fn an_absurd_stored_sidebar_width_is_brought_back() {
+    let mut app = NamsdecApp::default();
+    let ctx = egui::Context::default();
+    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 820.0));
+
+    // Ce que le bug avait laissé dans `app.ron` : le panneau part du
+    // cent-unième pixel et va jusqu'au bord droit.
+    ctx.data_mut(|d| {
+        d.insert_persisted(
+            egui::Id::new("sidebar"),
+            egui::containers::PanelState {
+                outer_rect: egui::Rect::from_min_max(
+                    egui::pos2(100.0, 0.0),
+                    egui::pos2(1280.0, 820.0),
+                ),
+            },
+        );
+    });
+
+    let input = egui::RawInput {
+        screen_rect: Some(screen),
+        ..Default::default()
+    };
+    let mut output = ctx.run_ui(input, |ui| app.draw(ui));
+    output.textures_delta.clear();
+
+    let width = egui::containers::PanelState::load(&ctx, egui::Id::new("sidebar"))
+        .expect("le panneau latéral est affiché")
+        .outer_rect
+        .width();
+    assert!(
+        width <= screen.width() * SIDEBAR_MAX_FRACTION,
+        "le panneau doit laisser au moins la moitié de la fenêtre à l'éditeur, \
+         obtenu : {width}"
+    );
+    assert!(width >= SIDEBAR_MIN_WIDTH, "obtenu : {width}");
+}
+
+/// Les vignettes de thème ont toutes la même largeur, celle que
+/// dicte le nom le plus long — c'est ce qui fait tomber les boutons
+/// « Retirer » les uns sous les autres, au lieu de les décaler au
+/// gré de la longueur des noms.
+#[test]
+fn theme_cards_share_a_width_set_by_the_longest_name() {
+    let ctx = egui::Context::default();
+    let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+        // « Tokyo Night » est plus court que « VS Code Light+ ».
+        let court = [&namsdec_theme::TOKYO_NIGHT];
+        let long = [&namsdec_theme::TOKYO_NIGHT, &namsdec_theme::VSCODE_LIGHT];
+
+        let avec_court = theme_card_width(ui, &court, "actif");
+        let avec_long = theme_card_width(ui, &long, "actif");
+        assert!(
+            avec_long > avec_court,
+            "un nom plus long élargit toutes les vignettes : {avec_long} contre {avec_court}"
+        );
+
+        // Le même jeu de thèmes donne toujours la même largeur, quel
+        // que soit l'ordre : c'est ce qui les aligne.
+        let inverse = [&namsdec_theme::VSCODE_LIGHT, &namsdec_theme::TOKYO_NIGHT];
+        assert_eq!(avec_long, theme_card_width(ui, &inverse, "actif"));
+
+        // Et le mot « actif » compte : il s'affiche à droite du nom,
+        // dans la vignette.
+        assert!(theme_card_width(ui, &long, "actif") > avec_long - 1.0);
+        assert!(
+            theme_card_width(ui, &long, "actuellement actif") > avec_long,
+            "un mot plus long élargit la vignette d'autant"
+        );
+    });
+    output.textures_delta.clear();
+}
+
+/// Les boutons « Retirer » tombent les uns sous les autres, quelle
+/// que soit la longueur des noms — c'est ce qu'on attend d'une liste,
+/// et ce qu'un nom court aurait défait si la vignette s'y ajustait.
+#[test]
+fn the_remove_buttons_line_up_whatever_the_names() {
+    // Deux thèmes installés, aux noms de longueurs très différentes.
+    let dir = tempfile::tempdir().unwrap();
+    let sample = std::fs::read_to_string(EXTERNAL_ABYSS).unwrap_or_else(|_| return_sample());
+    let mut app = NamsdecApp::default();
+    for (id, name) in [("court-a", "Ab"), ("long-a", "Un nom vraiment très long")] {
+        let file = sample
+            .replace("\"abyss\"", &format!("\"{id}\""))
+            .replace("\"Abyss\"", &format!("\"{name}\""));
+        let path = dir.path().join(format!("{id}.json"));
+        std::fs::write(&path, &file).unwrap();
+        let theme = namsdec_theme::plugin::read(&path).expect("thème de test");
+        if namsdec_theme::install(theme).is_ok() {
+            app.theme_files.insert(id.to_owned(), path);
+        }
+    }
+
+    let ctx = egui::Context::default();
+    ctx.set_visuals(app.theme.visuals());
+    let mut left_edges = Vec::new();
+    let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+        app.preferences_plugins_ui(ui);
+    });
+    for clipped in &output.shapes {
+        // Les cadres des boutons, et eux seuls (voir `framed_button`).
+        if let egui::epaint::Shape::Rect(rect) = &clipped.shape
+            && rect.stroke.width >= 1.0
+            && rect.stroke.color == app.theme.dim
+        {
+            left_edges.push(rect.rect.min.x);
+        }
+    }
+    output.textures_delta.clear();
+
+    // Deux « Retirer » plus le bouton d'ajout, qui commence à gauche.
+    assert!(left_edges.len() >= 3, "obtenu {left_edges:?}");
+    let mut removes: Vec<f32> = left_edges.iter().copied().filter(|x| *x > 100.0).collect();
+    removes.sort_by(f32::total_cmp);
+    removes.dedup();
+    assert_eq!(
+        removes.len(),
+        1,
+        "les boutons « Retirer » doivent partager une abscisse, obtenu {removes:?}"
+    );
+
+    for id in ["court-a", "long-a"] {
+        namsdec_theme::uninstall(id);
+    }
+}
+
+/// Un bouton de cette page doit se *voir* sans qu'on le survole.
+///
+/// Le thème met les boutons à plat au repos — bon pour les barres,
+/// désastreux dans une boîte de dialogue : « Ajouter un thème… » se
+/// lisait comme une phrase, et personne n'allait cliquer dessus. On
+/// compare donc ce que les deux dessinent : le bouton ordinaire ne
+/// trace aucun cadre, le nôtre en trace un.
+#[test]
+fn a_framed_button_draws_the_outline_a_flat_one_does_not() {
+    let outlines = |framed: bool| {
+        let ctx = egui::Context::default();
+        ctx.set_visuals(DEFAULT_THEME.visuals());
+        let mut count = 0;
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            if framed {
+                framed_button(ui, DEFAULT_THEME, "Ajouter un thème…");
+            } else {
+                let _ = ui.button("Ajouter un thème…");
+            }
+        });
+        for clipped in &output.shapes {
+            if let egui::epaint::Shape::Rect(rect) = &clipped.shape
+                && rect.stroke.width >= 1.0
+                && rect.stroke.color == DEFAULT_THEME.dim
+            {
+                count += 1;
+            }
+        }
+        output.textures_delta.clear();
+        count
+    };
+
+    assert_eq!(
+        outlines(false),
+        0,
+        "un bouton ordinaire reste plat au repos"
+    );
+    assert_eq!(outlines(true), 1, "le nôtre porte son cadre");
+}
+
+/// Retirer un thème installé : son fichier disparaît, il quitte la
+/// liste, et les thèmes d'origine ne sont jamais concernés — ils ne
+/// figurent pas dans la table des fichiers, donc aucun bouton ne les
+/// propose.
+#[test]
+fn removing_an_installed_theme_deletes_its_file_and_frees_the_id() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("jetable.namsdec-theme.json");
+    let file = std::fs::read_to_string(EXTERNAL_ABYSS)
+        .unwrap_or_else(|_| return_sample())
+        .replace("\"abyss\"", "\"abyss-a-retirer\"");
+    std::fs::write(&path, &file).unwrap();
+
+    let theme = namsdec_theme::plugin::read(&path).expect("le thème se lit");
+    let installed = namsdec_theme::install(theme).expect("installation");
+
+    let mut app = NamsdecApp {
+        theme: installed,
+        ..Default::default()
+    };
+    app.theme_files
+        .insert("abyss-a-retirer".to_owned(), path.clone());
+    // Un thème d'origine n'a pas de fichier : rien ne peut le retirer.
+    assert!(!app.theme_files.contains_key(DEFAULT_THEME.id));
+
+    app.remove_theme("abyss-a-retirer", &egui::Context::default());
+
+    assert!(!path.exists(), "le fichier est supprimé");
+    assert!(
+        !namsdec_theme::all()
+            .iter()
+            .any(|t| t.id == "abyss-a-retirer"),
+        "et le thème quitte la liste"
+    );
+    assert!(app.theme_files.is_empty());
+    assert_eq!(
+        app.theme.id, DEFAULT_THEME.id,
+        "le thème actif ayant disparu, on retombe sur celui d'origine"
+    );
+    let note = app.plugin_note.as_ref().expect("un compte rendu");
+    assert!(note.ok, "{}", note.text);
+}
+
+/// Le fichier d'exemple, ou une copie minimale quand le plugin n'est
+/// pas sur cette machine : le test ne dépend pas de ce qui traîne
+/// hors du dépôt.
+fn return_sample() -> String {
+    include_str!("../../namsdec-theme/tests/abyss.json").to_owned()
+}
+
+/// Installe réellement le thème d'exemple, par le chemin de code du
+/// bouton « Ajouter un thème… », dans le dossier de plugins de
+/// l'utilisateur courant.
+///
+/// Marqué `ignore` : il écrit hors du dépôt, personne ne veut de ça
+/// en lançant la suite. Il se lance à la main —
+/// `cargo test -p namsdec-gui -- --ignored --exact` — et se défait
+/// avec `uninstalls_the_external_theme_for_real`.
+#[test]
+#[ignore = "écrit dans le dossier de plugins de l'utilisateur"]
+fn installs_the_external_theme_for_real() {
+    let path = std::path::Path::new(EXTERNAL_ABYSS);
+    assert!(path.exists(), "le plugin doit être là : {EXTERNAL_ABYSS}");
+
+    let mut app = NamsdecApp::default();
+    let before = app.theme.id;
+    // Exactement ce que le bouton appelle.
+    app.install_theme(path, &egui::Context::default());
+
+    let note = app.plugin_note.as_ref().expect("un compte rendu");
+    assert!(note.ok, "l'installation doit réussir : {}", note.text);
+    assert_eq!(app.theme.id, "abyss", "et le thème est appliqué aussitôt");
+    assert_ne!(before, app.theme.id);
+
+    let installed = plugins_dir()
+        .expect("un dossier de données")
+        .join("abyss.namsdec-theme.json");
+    assert!(installed.exists(), "le fichier est recopié : {installed:?}");
+}
+
+/// Le retrait par le bouton, pour de vrai : même fonction que celle
+/// que la confirmation appelle, sur le fichier réellement installé.
+/// `ignore` pour la même raison que son jumeau.
+#[test]
+#[ignore = "écrit dans le dossier de plugins de l'utilisateur"]
+fn removes_the_external_theme_for_real() {
+    let dir = plugins_dir().expect("un dossier de données");
+    let installed = dir.join("abyss.namsdec-theme.json");
+    assert!(installed.exists(), "à lancer après l'installation");
+
+    // Tel qu'au démarrage : les thèmes du dossier sont chargés, et
+    // c'est de là que le bouton tient le chemin du fichier.
+    let (theme_files, failures) = load_installed_themes();
+    assert!(failures.is_empty(), "{failures:?}");
+    let mut app = NamsdecApp {
+        theme_files,
+        ..Default::default()
+    };
+    assert!(
+        app.theme_files.contains_key("abyss"),
+        "le thème installé doit être retrouvé, avec son fichier"
+    );
+
+    app.remove_theme("abyss", &egui::Context::default());
+
+    let note = app.plugin_note.as_ref().expect("un compte rendu");
+    assert!(note.ok, "{}", note.text);
+    assert!(!installed.exists(), "le fichier est supprimé");
+    assert!(!namsdec_theme::all().iter().any(|t| t.id == "abyss"));
+    if dir.read_dir().is_ok_and(|mut d| d.next().is_none()) {
+        let _ = std::fs::remove_dir(&dir);
+    }
+}
+
+/// Le pendant du précédent : retire le fichier installé et vérifie
+/// qu'il ne reste rien.
+#[test]
+#[ignore = "écrit dans le dossier de plugins de l'utilisateur"]
+fn uninstalls_the_external_theme_for_real() {
+    let dir = plugins_dir().expect("un dossier de données");
+    let installed = dir.join("abyss.namsdec-theme.json");
+    if installed.exists() {
+        std::fs::remove_file(&installed).expect("le retrait du fichier");
+    }
+    assert!(!installed.exists());
+    // Un dossier vide ne sert à rien : on le retire aussi, pour ne
+    // laisser aucune trace.
+    if dir.read_dir().is_ok_and(|mut d| d.next().is_none()) {
+        let _ = std::fs::remove_dir(&dir);
+    }
+}
+
+/// Le thème d'exemple livré à côté du dépôt s'installe : lu,
+/// enregistré, retrouvé par son identifiant, et proposé dans la
+/// liste comme les thèmes d'origine.
+///
+/// Il n'est pas *copié* ici : ce test lit un fichier, il n'a rien à
+/// faire dans le dossier de plugins de qui exécute la suite.
+#[test]
+fn an_external_theme_file_installs_and_joins_the_list() {
+    let path = std::path::Path::new(EXTERNAL_ABYSS);
+    if !path.exists() {
+        // Le plugin vit hors du dépôt : sur une autre machine, ce
+        // test n'a rien à vérifier.
+        return;
+    }
+    let theme = namsdec_theme::plugin::read(path).expect("le thème doit se lire");
+    assert_eq!(theme.name, "Abyss");
+
+    let before = namsdec_theme::all().len();
+    let installed = match namsdec_theme::install(theme) {
+        Ok(installed) => installed,
+        // Un autre test de ce binaire l'a déjà installé : la liste
+        // est partagée par tout le processus.
+        Err(_) => namsdec_theme::by_id("abyss"),
+    };
+    assert_eq!(installed.id, "abyss");
+    assert!(namsdec_theme::all().len() >= before);
+    assert!(
+        std::ptr::eq(namsdec_theme::by_id("abyss"), installed),
+        "il se retrouve par son identifiant, comme un thème d'origine"
+    );
+
+    // Et un identifiant déjà pris est refusé : deux thèmes qui
+    // répondent au même nom rendraient le réglage imprévisible.
+    let again = namsdec_theme::plugin::read(path).unwrap();
+    assert!(matches!(
+        namsdec_theme::install(again),
+        Err(namsdec_theme::PluginError::DuplicateId(_))
+    ));
+}
+
+/// Accepter écrit le candidat *tel qu'il est*, casse comprise : une
+/// étiquette vient de la source, et NASM distingue `Boucle` de
+/// `boucle`. Compléter derrière ce qui est tapé écrivait une
+/// étiquette qui n'existe pas.
+#[test]
+fn accepting_a_label_keeps_the_case_it_was_defined_with() {
+    let mut app = NamsdecApp {
+        source: "Boucle:\n    dec rcx\n    jnz bo".to_owned(),
+        ..Default::default()
+    };
+    let suggestions = completion::suggest(&app.source, app.source.len()).expect("des propositions");
+    assert_eq!(suggestions.accepted(), Some("Boucle"));
+
+    app.accept_completion(&egui::Context::default(), &suggestions);
+    assert!(
+        app.source.ends_with("jnz Boucle"),
+        "obtenu {:?}",
+        app.source
+    );
+}
+
+/// L'autocomplétion se règle, et le réglage est enregistré : c'est
+/// une préférence de travail, pas une humeur du moment.
+#[test]
+fn completion_can_be_turned_off_and_the_choice_is_kept() {
+    assert!(NamsdecApp::default().completion, "proposée par défaut");
+    assert!(Settings::default().completion);
+
+    let app = NamsdecApp {
+        completion: false,
+        ..Default::default()
+    };
+    let written = serde_json::to_string(&app.settings_snapshot()).unwrap();
+    assert!(written.contains("\"completion\":false"), "{written}");
+
+    // Et un fichier qui l'éteint la rend éteinte au lancement.
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("settings.json");
+    std::fs::write(&path, r#"{"version": 2, "completion": false}"#).unwrap();
+    let app = NamsdecApp::from_settings(Settings::load_from(&path));
+    assert!(!app.completion);
+}
+
+/// Accepter une proposition écrit ce qu'il manque, là où il faut —
+/// et rien d'autre. Le tampon reste ce que l'utilisateur a tapé
+/// jusqu'à ce qu'il accepte.
+#[test]
+fn accepting_a_suggestion_writes_only_what_was_missing() {
+    let mut app = NamsdecApp {
+        source: "section .text\n_start:\n    mo".to_owned(),
+        ..Default::default()
+    };
+    let suggestions = completion::suggest(&app.source, app.source.len()).expect("des propositions");
+    assert_eq!(suggestions.candidates[0].text, "mov");
+
+    app.accept_completion(&egui::Context::default(), &suggestions);
+    assert_eq!(app.source, "section .text\n_start:\n    mov");
+    assert!(app.suggestions.is_none(), "la liste se referme");
+
+    // Au milieu d'une ligne, l'insertion se fait à la place du mot,
+    // sans toucher à ce qui suit.
+    let mut app = NamsdecApp {
+        source: "    mo rax, 1".to_owned(),
+        ..Default::default()
+    };
+    let suggestions = completion::suggest(&app.source, 6).expect("des propositions");
+    app.accept_completion(&egui::Context::default(), &suggestions);
+    assert_eq!(app.source, "    mov rax, 1");
+}
+
+/// L'éditeur réclame juste la hauteur visible — ni vingt-quatre
+/// lignes en dur, qui donnaient une barre de défilement verticale sur
+/// un fichier de six lignes, ni la hauteur du texte, qui aurait rendu
+/// le clic inactif sous la dernière ligne.
+#[test]
+fn the_editor_asks_for_the_height_it_can_show() {
+    // Vingt lignes de vingt pixels tiennent dans quatre cents.
+    assert_eq!(editor_rows(400.0, 20.0), 20);
+    // On arrondit vers le bas : une ligne à moitié visible ne compte
+    // pas, sinon elle déborde et la barre revient.
+    assert_eq!(editor_rows(409.0, 20.0), 20);
+    // Jamais zéro ligne, et jamais de division par zéro.
+    assert_eq!(editor_rows(5.0, 20.0), 1);
+    assert_eq!(editor_rows(400.0, 0.0), 1);
+}
+
+/// L'éditeur ne réclame que la largeur de son code — jamais
+/// l'infini, qui laissait la zone de défilement croire qu'il y avait
+/// toujours quelque chose à atteindre à droite, barre horizontale
+/// comprise, sous trois lignes de vingt caractères.
+#[test]
+fn the_editor_asks_for_the_width_of_its_code() {
+    // Code étroit : on prend la place offerte, ni plus (rien à
+    // faire défiler) ni moins (le clic reste actif jusqu'au bord).
+    assert_eq!(editor_width(120.0, 800.0), 800.0);
+    // Code plus large : c'est lui qui donne la mesure, et la barre
+    // horizontale a alors une raison d'être.
+    assert_eq!(editor_width(2400.0, 800.0), 2400.0);
+    assert!(editor_width(2400.0, 800.0).is_finite(), "jamais l'infini");
+}
+
+/// Un numéro de la règle par ligne de code, quelle que soit la
+/// largeur de l'éditeur. La gouttière compte une ligne rendue pour un
+/// numéro : si le texte se repliait, une ligne source en occupait
+/// plusieurs et la numérotation se décalait de tout ce qui précède.
+#[test]
+fn the_ruler_stays_line_for_line_however_narrow_the_editor() {
+    let source = format!(
+        "section .text\n    mov rax, 1 ; {}\n    hlt\n",
+        "un commentaire à rallonge ".repeat(20)
+    );
+    let ctx = egui::Context::default();
+    let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+        // Un éditeur réduit à une colonne étroite, comme lorsque le
+        // panneau latéral avait tout pris.
+        ui.set_max_width(80.0);
+        let galley = layout_code(ui, DEFAULT_THEME, &source);
+        assert_eq!(
+            galley.rows.len(),
+            // `split` et non `lines` : le retour à la ligne final
+            // ouvre une ligne de plus, que l'éditeur numérote aussi.
+            source.split('\n').count(),
+            "une ligne source doit rester une ligne rendue"
+        );
+    });
+    output.textures_delta.clear();
+}
+
+/// Un pas à pas reprend la main sur un Run suspendu faute d'entrée.
+///
+/// Le drapeau « reprendre le Run dès que l'entrée arrive » ne tombait
+/// qu'à l'appel suivant de Exécuter. Un Run bloqué sur `read`, un Stop
+/// sans effet (il ne regardait que `running`, faux pendant l'attente),
+/// puis un Step Into : la ligne tapée pour ce pas-là relançait le
+/// programme jusqu'au bout au lieu d'avancer d'une instruction.
+#[test]
+fn stepping_takes_over_a_run_that_was_waiting_for_input() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: "\
+section .bss
+tampon resb 32
+
+section .text
+global _start
+_start:
+mov rax, 0
+mov rdi, 0
+mov rsi, tampon
+mov rdx, 32
+syscall
+hlt
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+
+    let ctx = egui::Context::default();
+    app.do_run();
+    for _ in 0..10 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&ctx);
+    }
+    assert!(matches!(app.status, Status::WaitingForInput));
+    assert!(app.resume_run_after_input, "le Run attend de repartir");
+
+    // L'utilisateur reprend la main instruction par instruction.
+    app.do_step();
+    app.send_input(Some("oui".to_owned()));
+
+    assert!(
+        !app.running,
+        "la saisie ne doit pas relancer le programme : c'est un pas à pas"
+    );
+    assert!(!app.resume_run_after_input);
+}
+
+/// Une saisie qui n'est pas une adresse laisse le vidage là où il
+/// est. Avant, la moindre frappe de trop — `0x40_1000`, un `g` qui
+/// traîne, un champ à moitié effacé — renvoyait l'affichage au début
+/// du programme sans un mot d'explication.
+#[test]
+fn an_unparsable_address_keeps_the_one_on_screen() {
+    assert_eq!(validated_address(0x401000, "0x400500", None), 0x400500);
+    assert_eq!(
+        validated_address(0x401000, "400500", None),
+        0x400500,
+        "le 0x est facultatif"
+    );
+    assert_eq!(validated_address(0x401000, "truc", None), 0x401000);
+    assert_eq!(validated_address(0x401000, "0x40_1000", None), 0x401000);
+    assert_eq!(validated_address(0x401000, "", None), 0x401000);
+}
+
+/// Et l'affichage d'une frame entière avec une saisie invalide ne
+/// déplace rien de lui-même : il faut valider (Entrée ou le bouton).
+#[test]
+fn typing_alone_does_not_move_the_memory_view() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        active_tab: SidebarTab::Memory,
+        mem_addr: 0x401000,
+        mem_addr_input: "pas une adresse".to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+
+    let ctx = egui::Context::default();
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 820.0),
+        )),
+        ..Default::default()
+    };
+    for _ in 0..2 {
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        output.textures_delta.clear();
+    }
+
+    assert_eq!(
+        app.mem_addr, 0x401000,
+        "le vidage reste sur la dernière adresse validée"
+    );
+}
+
+/// Les infobulles s'éteignent pour toute l'application, explorateur
+/// compris : c'est le style d'egui qui porte le réglage, pas chaque
+/// appel à `on_hover_text`.
+#[test]
+fn tooltips_can_be_turned_off_and_back_on() {
+    let mut app = NamsdecApp {
+        show_tooltips: false,
+        ..Default::default()
+    };
+    let ctx = egui::Context::default();
+    let frame = |app: &mut NamsdecApp, ctx: &egui::Context| {
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| app.draw(ui));
+        output.textures_delta.clear();
+    };
+
+    frame(&mut app, &ctx);
+    for theme in [egui::Theme::Dark, egui::Theme::Light] {
+        let interaction = &ctx.style_of(theme).interaction;
+        assert!(
+            interaction.tooltip_delay.is_infinite(),
+            "aucune bulle ne doit arriver à échéance"
+        );
+        assert_eq!(
+            interaction.tooltip_grace_time, 0.0,
+            "ni passer par le délai de grâce"
+        );
+    }
+
+    app.show_tooltips = true;
+    frame(&mut app, &ctx);
+    assert_eq!(
+        ctx.style_of(egui::Theme::Dark).interaction.tooltip_delay,
+        TOOLTIP_DELAY
+    );
+}
+
+/// Le champ Adresse comprend les registres, et une petite
+/// arithmétique autour : c'est ce qui permet de suivre un pointeur
+/// qu'on a sous les yeux dans le bandeau, sans recopier seize
+/// chiffres à la main.
+#[test]
+fn the_address_field_understands_registers_and_arithmetic() {
+    let mut regs = namsdec_core::Registers::default();
+    regs.set64(Reg64::Rsp, 0x40ff00);
+    regs.set64(Reg64::Rsi, 0x401000);
+    regs.set64(Reg64::Rcx, 4);
+    regs.rip = 0x400020;
+    let at = |expr: &str| eval_address(expr, Some(&regs));
+
+    // Ce qui marchait déjà marche toujours.
+    assert_eq!(at("0x401000"), Some(0x401000));
+    assert_eq!(at("401000"), Some(0x401000), "le 0x reste facultatif");
+
+    // Les registres, RIP compris.
+    assert_eq!(at("rsp"), Some(0x40ff00));
+    assert_eq!(at("RSI"), Some(0x401000), "la casse est indifférente");
+    assert_eq!(at("rip"), Some(0x400020));
+
+    // L'arithmétique, en hexadécimal de bout en bout.
+    assert_eq!(
+        at("rsi+10"),
+        Some(0x401010),
+        "les décalages aussi sont hexa"
+    );
+    assert_eq!(at("rsp-8"), Some(0x40fef8));
+    assert_eq!(
+        at(" rsi + rcx * 4 "),
+        Some(0x401010),
+        "l'indexation d'un tableau"
+    );
+    assert_eq!(at("rsp-8+8"), Some(0x40ff00));
+
+    // Et ce qui n'est pas une adresse est refusé, plutôt que deviné.
+    assert_eq!(at("truc"), None);
+    assert_eq!(at("rsi+"), None, "une somme inachevée");
+    assert_eq!(at(""), None);
+    assert_eq!(at("rax*"), None);
+
+    // Sans processeur chargé, les registres n'ont pas de valeur : le
+    // champ le dit au lieu d'inventer un zéro.
+    assert_eq!(eval_address("rsp", None), None);
+    assert_eq!(eval_address("0x401000", None), Some(0x401000));
+}
+
+/// Les trois lectures de la mémoire disent trois choses différentes
+/// des mêmes octets.
+#[test]
+fn the_three_memory_formats_read_the_same_bytes_differently() {
+    let mut mem = namsdec_core::Memory::new(BASE_ADDR, 0x1000);
+    // « Hi », un octet nul, puis un mot de huit octets valant 1.
+    mem.load(BASE_ADDR, b"Hi\0\0\0\0\0\0\x01\0\0\0\0\0\0\0")
+        .unwrap();
+
+    let bytes = read_memory(&mem, BASE_ADDR, MemoryFormat::Bytes, "hors bornes");
+    assert!(bytes.contains("48 69"), "l'hexadécimal brut : {bytes}");
+
+    let words = read_memory(&mem, BASE_ADDR, MemoryFormat::Words, "hors bornes");
+    let second = words.lines().nth(1).expect("un deuxième mot");
+    assert!(
+        second.ends_with("  1") && second.contains("0000000000000001"),
+        "le mot suivant, en hexa et en décimal : {second}"
+    );
+
+    let text = read_memory(&mem, BASE_ADDR, MemoryFormat::Text, "hors bornes");
+    assert!(
+        text.starts_with("Hi"),
+        "le texte s'arrête au premier nul : {text}"
+    );
+    assert!(!text.contains("48"), "et ne montre plus d'hexadécimal");
+
+    // Hors de la fenêtre simulée, les trois le disent.
+    for format in MemoryFormat::ALL {
+        assert_eq!(
+            read_memory(&mem, 0xdead_beef, format, "hors bornes"),
+            "hors bornes"
+        );
+    }
+}
+
+/// Le champ « Adresse » a la largeur d'une adresse, pas celle du
+/// panneau. Un champ de saisie egui réclame par défaut toute la place
+/// disponible : sur un panneau large, celui-ci s'étirait sur des
+/// centaines de pixels pour dix-huit caractères.
+#[test]
+fn the_address_field_is_as_wide_as_an_address_not_as_the_panel() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 820.0));
+
+    // La même vue dans un panneau étroit, puis dans un panneau deux
+    // fois plus large.
+    let field_width = |sidebar_width: f32| {
+        let mut app = NamsdecApp {
+            active_tab: SidebarTab::Memory,
+            ..Default::default()
+        };
+        app.do_assemble();
+        let ctx = egui::Context::default();
+        ctx.data_mut(|d| {
+            d.insert_persisted(
+                egui::Id::new("sidebar"),
+                egui::containers::PanelState {
+                    outer_rect: egui::Rect::from_min_max(
+                        egui::pos2(screen.right() - sidebar_width, 0.0),
+                        egui::pos2(screen.right(), screen.bottom()),
+                    ),
+                },
+            );
+        });
+        let input = egui::RawInput {
+            screen_rect: Some(screen),
+            ..Default::default()
+        };
+        for _ in 0..2 {
+            let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+            output.textures_delta.clear();
+        }
+        let sidebar = egui::containers::PanelState::load(&ctx, egui::Id::new("sidebar"))
+            .expect("le panneau latéral est affiché")
+            .outer_rect;
+        let field = ctx
+            .read_response(memory_address_id())
+            .expect("le champ Adresse est affiché")
+            .rect;
+        assert!(
+            field.right() <= sidebar.right() + 1.0,
+            "le champ ne doit pas dépasser le panneau ({} contre {})",
+            field.right(),
+            sidebar.right()
+        );
+        (sidebar.width(), field.width())
+    };
+
+    let (narrow_panel, narrow_field) = field_width(300.0);
+    let (wide_panel, wide_field) = field_width(620.0);
+
+    assert!(
+        wide_panel > narrow_panel,
+        "les deux panneaux doivent différer"
+    );
+    assert_eq!(
+        narrow_field, wide_field,
+        "le champ doit garder sa taille quand le panneau s'élargit"
+    );
+    assert!(
+        wide_field < wide_panel * 0.6,
+        "et rester un champ d'adresse, pas une barre : {wide_field} px"
+    );
+}
+
+/// La console vit maintenant dans le panneau bas, sur toute la
+/// largeur de la fenêtre : c'est ce qui lui rend les 80 colonnes
+/// qu'un programme suppose quand il écrit, là où le panneau latéral
+/// n'en offrait que trente-quatre. Sa saisie reste collée en bas,
+/// même quand le programme a beaucoup écrit.
+#[test]
+fn the_console_panel_spans_the_window_and_keeps_its_input_at_the_bottom() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: "section .data\n    msg db \"beaucoup de sortie\", 10\n\
+                 \x20   len equ $ - msg\nsection .text\n    global _start\n_start:\n\
+                 \x20   mov rcx, 40\nboucle:\n    push rcx\n    mov rax, 1\n\
+                 \x20   mov rdi, 1\n    mov rsi, msg\n    mov rdx, len\n    syscall\n\
+                 \x20   pop rcx\n    dec rcx\n    jnz boucle\n    hlt\n"
+            .to_owned(),
+        console_tab: ConsoleTab::Output,
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(
+        matches!(app.status, Status::AssembleOk),
+        "obtenu : {:?}",
+        app.status
+    );
+    app.do_run();
+
+    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 820.0));
+    let ctx = egui::Context::default();
+    let input = egui::RawInput {
+        screen_rect: Some(screen),
+        ..Default::default()
+    };
+    // Deux frames : la première pose les panneaux, la seconde les
+    // montre à leur vraie place.
+    for _ in 0..2 {
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        output.textures_delta.clear();
+    }
+
+    assert!(
+        !app.emulator.as_ref().unwrap().output().is_empty(),
+        "le programme doit avoir écrit quelque chose"
+    );
+    let console = egui::containers::PanelState::load(&ctx, egui::Id::new("console"))
+        .expect("le panneau de la console est affiché")
+        .outer_rect;
+    let console_input = egui::containers::PanelState::load(&ctx, egui::Id::new("console_input"))
+        .expect("la saisie de la console est affichée")
+        .outer_rect;
+
+    assert_eq!(
+        console.width(),
+        screen.width(),
+        "la console prend toute la largeur, panneau latéral compris"
+    );
+    assert!(
+        console.height() <= screen.height() * CONSOLE_MAX_FRACTION,
+        "sans jamais dévorer l'éditeur, obtenu : {}",
+        console.height()
+    );
+    // À la marge intérieure du panneau près.
+    assert!(
+        (console.bottom() - console_input.bottom()).abs() <= 8.0,
+        "la saisie doit toucher le bas du panneau ({} contre {})",
+        console_input.bottom(),
+        console.bottom()
+    );
+}
+
+/// Un assemblage qui échoue amène ses diagnostics sous les yeux :
+/// le panneau bas s'ouvre sur l'onglet qui les porte. La barre de
+/// statut dit « Erreur d'assemblage » — encore faut-il pouvoir lire
+/// laquelle. Et quand l'erreur est corrigée, la place revient à la
+/// console, d'où repart l'exécution.
+#[test]
+fn a_failed_assembly_brings_up_its_diagnostics() {
+    if namsdec_asm::find_nasm().is_none() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: "section .text\n    mov rax, pasunregistre\n".to_owned(),
+        show_console: false,
+        ..Default::default()
+    };
+
+    app.do_assemble();
+    assert!(
+        matches!(app.status, Status::AssembleFailed),
+        "{:?}",
+        app.status
+    );
+    assert!(app.show_console, "le panneau bas doit s'ouvrir");
+    assert_eq!(app.console_tab, ConsoleTab::Diagnostics);
+
+    app.source = "section .text\n    hlt\n".to_owned();
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+    assert_eq!(
+        app.console_tab,
+        ConsoleTab::Output,
+        "plus de diagnostic : la console reprend la place"
+    );
+}
+
+/// Les diagnostics de nasm ont quitté la barre de statut pour l'onglet
+/// Diagnostics : la barre ne doit plus grandir quand l'assemblage
+/// échoue. Elle s'étirait jusqu'à cinq lignes, en bas de la fenêtre,
+/// pour une liste qu'on n'y lisait pas.
+#[test]
+fn diagnostics_no_longer_swell_the_status_bar() {
+    if namsdec_asm::find_nasm().is_none() {
+        return;
+    }
+    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 820.0));
+    let height_of_status_bar = |source: &str| {
+        let mut app = NamsdecApp {
+            source: source.to_owned(),
+            ..Default::default()
+        };
+        app.do_assemble();
+        let ctx = egui::Context::default();
+        let input = egui::RawInput {
+            screen_rect: Some(screen),
+            ..Default::default()
+        };
+        for _ in 0..2 {
+            let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+            output.textures_delta.clear();
+        }
+        let bar = egui::containers::PanelState::load(&ctx, egui::Id::new("statusbar"))
+            .expect("la barre de statut est affichée")
+            .outer_rect
+            .height();
+        (app.diagnostics.len(), bar)
+    };
+
+    let (clean, clean_height) = height_of_status_bar("section .text\n    hlt\n");
+    let (broken, broken_height) = height_of_status_bar(
+        "section .text\n    mov rax, pasunregistre\n    mov rbx, pasnonplus\n",
+    );
+
+    assert_eq!(clean, 0);
+    assert!(broken >= 2, "obtenu {broken} diagnostic(s)");
+    assert_eq!(
+        clean_height, broken_height,
+        "la barre de statut doit garder sa hauteur, diagnostics ou pas"
+    );
+}
+
+/// Le bandeau montre les seize registres généraux et RIP : un
+/// programme qui travaille dans R8 ou R12 doit pouvoir être suivi
+/// comme un autre.
+#[test]
+fn the_cpu_banner_shows_every_general_register() {
+    use std::collections::BTreeSet;
+    let names: BTreeSet<&str> = REGISTERS.iter().map(|&(name, _)| name).collect();
+    assert_eq!(names.len(), 16, "seize registres, sans doublon");
+    for expected in [
+        "RAX", "RBX", "RCX", "RDX", "RSI", "RDI", "RSP", "RBP", "R8", "R9", "R10", "R11", "R12",
+        "R13", "R14", "R15",
+    ] {
+        assert!(names.contains(expected), "{expected} manque au bandeau");
+    }
+
+    // Et chaque nom désigne bien son registre : une valeur écrite
+    // dans l'un doit ressortir sous le bon nom.
+    let mut regs = namsdec_core::Registers::default();
+    for (index, &(_, reg)) in REGISTERS.iter().enumerate() {
+        regs.set64(reg, 0x1000 + index as u64);
+    }
+    for (index, &(name, reg)) in REGISTERS.iter().enumerate() {
+        assert_eq!(
+            regs.get64(reg),
+            0x1000 + index as u64,
+            "{name} ne lit pas son propre registre"
+        );
+    }
+}
+
+/// Le bandeau sur deux colonnes doit tenir dans le panneau élargi
+/// sans le pousser — et sans casser : la cellule qui sépare les deux
+/// colonnes est une cellule *allouée*, pas un `add_space`, qu'egui
+/// refuse dans une grille.
+#[test]
+fn the_two_column_banner_fits_the_panel_it_is_given() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 820.0));
+    let wide = 620.0;
+    let mut app = NamsdecApp::default();
+    app.do_assemble();
+    assert!(app.emulator.is_some(), "il faut un processeur à montrer");
+
+    let ctx = egui::Context::default();
+    ctx.data_mut(|d| {
+        d.insert_persisted(
+            egui::Id::new("sidebar"),
+            egui::containers::PanelState {
+                outer_rect: egui::Rect::from_min_max(
+                    egui::pos2(screen.right() - wide, 0.0),
+                    egui::pos2(screen.right(), screen.bottom()),
+                ),
+            },
+        );
+    });
+    let input = egui::RawInput {
+        screen_rect: Some(screen),
+        ..Default::default()
+    };
+    let mut widths = Vec::new();
+    for _ in 0..3 {
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        output.textures_delta.clear();
+        widths.push(
+            egui::containers::PanelState::load(&ctx, egui::Id::new("sidebar"))
+                .expect("le panneau latéral est affiché")
+                .outer_rect
+                .width(),
+        );
+    }
+    assert!(
+        widths.iter().all(|w| *w == wide),
+        "le panneau doit garder ses {wide} px, obtenu : {widths:?}"
+    );
+    assert_eq!(register_columns(wide), 2, "à cette largeur, deux colonnes");
+}
+
+/// La grille des registres passe à deux colonnes quand le panneau
+/// s'élargit, et jamais avant : une paire de trop, et c'est le
+/// panneau lui-même qui s'élargirait pour la contenir.
+#[test]
+fn the_register_grid_uses_two_columns_only_when_they_fit() {
+    assert_eq!(register_columns(SIDEBAR_WIDTH), 1, "300 px : une colonne");
+    assert_eq!(register_columns(SIDEBAR_MIN_WIDTH), 1);
+    assert_eq!(register_columns(379.0), 1, "trop juste : une seule");
+    assert_eq!(register_columns(380.0), 2, "la deuxième tient pile");
+    assert_eq!(register_columns(420.0), 2);
+    assert_eq!(register_columns(760.0), 2, "un panneau large en tient deux");
+}
+
+/// La palette ne propose pas la vue RE tant qu'elle est masquée.
+///
+/// Elle la proposait toujours, et s'y rendre *allumait* le réglage —
+/// enregistré dans la foulée. Un aller-retour dans la palette
+/// suffisait donc à faire réapparaître l'onglet pour de bon, sans
+/// être passé par Préférences.
+#[test]
+fn the_palette_offers_the_re_view_only_when_it_is_visible() {
+    let s = strings(Lang::Fr);
+    let labels = |show_re_tab| -> Vec<String> {
+        palette_commands(s, show_re_tab)
+            .into_iter()
+            .map(|(label, _)| label)
+            .collect()
+    };
+    let entry = format!("{}: {}", s.menu_view, s.tab_re);
+
+    assert!(
+        !labels(false).contains(&entry),
+        "onglet masqué : la commande n'a pas à être offerte"
+    );
+    assert!(labels(true).contains(&entry), "onglet visible : elle l'est");
+
+    // Et s'y rendre ne touche plus au réglage.
+    let mut app = NamsdecApp {
+        show_re_tab: false,
+        ..Default::default()
+    };
+    let ctx = egui::Context::default();
+    app.execute_palette_command(&ctx, PaletteCommand::GoTab(SidebarTab::Re));
+    assert!(
+        !app.show_re_tab,
+        "aller quelque part ne doit pas activer une vue désactivée"
+    );
+}
+
+/// La boîte « À propos » s'ouvre au centre, porte le lien de la
+/// licence, le bouton de don et celui de mise à jour — lequel dit
+/// franchement que rien n'est branché derrière.
+#[test]
+fn the_about_box_is_centred_and_carries_its_three_offers() {
+    let mut app = NamsdecApp {
+        show_about: true,
+        ..Default::default()
+    };
+    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 820.0));
+    let ctx = egui::Context::default();
+    let input = egui::RawInput {
+        screen_rect: Some(screen),
+        ..Default::default()
+    };
+    for _ in 0..2 {
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        output.textures_delta.clear();
+    }
+
+    let window = egui::AreaState::load(&ctx, about_window_id()).expect("la boîte est affichée");
+    let rect = window.rect();
+    let offset = rect.center() - screen.center();
+    assert!(
+        offset.length() < 1.0,
+        "la boîte doit être centrée, écart : {offset:?}"
+    );
+
+    // Le lien de licence pointe sur le texte de la MIT, et celui du
+    // don sur une adresse https (fictive pour l'instant).
+    assert!(MIT_LICENSE_URL.starts_with("https://"));
+    assert!(
+        DONATION_URL.is_empty() || DONATION_URL.starts_with("https://"),
+        "un lien de don renseigné doit être une adresse https"
+    );
+
+    // L'illustration embarquée fait bien la taille annoncée : quatre
+    // octets par pixel, sur un carré de `TREAT_IMAGE_SIDE`. Un
+    // fichier régénéré à une autre dimension ferait paniquer
+    // `ColorImage::from_rgba_unmultiplied` à l'ouverture de la boîte.
+    assert_eq!(
+        TREAT_IMAGE.len(),
+        TREAT_IMAGE_SIDE * TREAT_IMAGE_SIDE * 4,
+        "assets/offrir-un-repas.rgba ne correspond plus à TREAT_IMAGE_SIDE"
+    );
+
+    // Le bouton de mise à jour ne prétend rien : il lève seulement la
+    // note « pas encore branché », qui ne survit pas à la fermeture.
+    app.about_update_clicked = true;
+    app.show_about = false;
+    let mut output = ctx.run_ui(input, |ui| app.draw(ui));
+    output.textures_delta.clear();
+    assert!(
+        !app.about_update_clicked,
+        "la note se referme avec la boîte"
+    );
+}
+
+/// La chaîne des appels nomme les lignes source, pas seulement des
+/// adresses : c'est ce qui la rend lisible pour quelqu'un qui apprend
+/// — « appelé depuis la ligne 4 », et non « 0x400000 ».
+#[test]
+fn the_call_chain_names_source_lines() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: "\
+section .text
+global _start
+_start:
+call externe
+hlt
+
+externe:
+call interne
+ret
+
+interne:
+mov rax, 1
+ret
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+
+    app.do_step(); // call externe
+    app.do_step(); // call interne
+
+    let state = app.assemble_state.as_ref().expect("un binaire assemblé");
+    let frames = app.emulator.as_ref().unwrap().frames();
+    assert_eq!(frames.len(), 2, "deux appels imbriqués");
+
+    // Les deux sites d'appel se traduisent en lignes du source : le
+    // `call externe` de la ligne 4, le `call interne` de la ligne 8.
+    let lines: Vec<u32> = frames
+        .iter()
+        .map(|f| state.addr_to_line[&f.call_site])
+        .collect();
+    assert_eq!(lines, [4, 8], "obtenu {lines:?}");
+
+    // Et le pas arrière défait la chaîne comme le reste.
+    app.do_step_back();
+    assert_eq!(app.emulator.as_ref().unwrap().frames().len(), 1);
+}
+
+/// Le pas arrière rend la main à l'utilisateur et met en avant ce
+/// que le pas défait avait changé — la photographie est prise avant
+/// de reculer, donc la couleur désigne exactement ce qu'on annule.
+#[test]
+fn stepping_back_shows_what_it_undid() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: "\
+section .text
+global _start
+_start:
+mov rax, 7
+mov rbx, 9
+hlt
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    app.do_step(); // mov rax, 7
+    app.do_step(); // mov rbx, 9
+    assert_eq!(
+        app.emulator.as_ref().unwrap().cpu().regs.get64(Reg64::Rbx),
+        9
+    );
+
+    app.do_step_back();
+    assert!(
+        matches!(app.status, Status::SteppedBack),
+        "{:?}",
+        app.status
+    );
+    assert_eq!(
+        app.emulator.as_ref().unwrap().cpu().regs.get64(Reg64::Rbx),
+        0,
+        "RBX est revenu à ce qu'il était"
+    );
+    assert_eq!(
+        changed_registers(
+            app.regs_before.as_ref(),
+            &app.emulator.as_ref().unwrap().cpu().regs
+        ),
+        ["RBX"],
+        "et c'est lui que le bandeau montre"
+    );
+
+    // Jusqu'au début du programme, puis plus rien.
+    while app.emulator.as_ref().unwrap().can_step_back() {
+        app.do_step_back();
+    }
+    assert_eq!(
+        app.emulator.as_ref().unwrap().cpu().regs.get64(Reg64::Rax),
+        0
+    );
+    app.do_step_back();
+    assert!(
+        matches!(app.status, Status::NothingToUndo),
+        "au début, il le dit plutôt que de ne rien faire : {:?}",
+        app.status
+    );
+}
+
+/// Une zone surveillée arrête l'exécution et le dit : l'adresse, la
+/// valeur d'avant, celle d'après. C'est l'information qu'on attendait
+/// en posant le point — sans elle, l'arrêt ne servirait à rien.
+#[test]
+fn a_watched_area_stops_the_run_and_says_what_changed() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: "\
+section .data
+compteur dq 0
+
+section .text
+global _start
+_start:
+mov rax, 42
+mov [compteur], rax
+mov rbx, 7
+hlt
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+
+    let compteur = app
+        .assemble_state
+        .as_ref()
+        .unwrap()
+        .output
+        .sections
+        .iter()
+        .find(|s| s.name == ".data")
+        .expect("une section .data")
+        .addr;
+
+    // Comme le bouton « Surveiller » : l'adresse entre dans la liste,
+    // et le moteur l'arme sur l'état courant.
+    app.watchpoints.push((compteur, 8));
+    app.sync_watchpoints();
+
+    let ctx = egui::Context::default();
+    app.do_run();
+    for _ in 0..10 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&ctx);
+    }
+
+    match app.status {
+        Status::Watchpoint { addr, old, new } => {
+            assert_eq!(addr, compteur);
+            assert_eq!((old, new), (0, 42));
+        }
+        ref other => panic!("attendu un arrêt sur surveillance, obtenu {other:?}"),
+    }
+    assert!(!app.running, "l'exécution est suspendue");
+    assert_eq!(
+        app.emulator.as_ref().unwrap().cpu().regs.get64(Reg64::Rbx),
+        0,
+        "arrêté juste après l'écriture, avant la suite"
+    );
+
+    // Et le réassemblage garde la zone : on corrige son programme
+    // sans avoir à reposer ses points.
+    app.do_assemble();
+    assert_eq!(app.emulator.as_ref().unwrap().watchpoints().len(), 1);
+}
+
+/// Le bandeau met en avant les registres que la dernière avancée a
+/// changés — c'est ce qui fait *voir* ce qu'une instruction fait,
+/// sans comparer seize valeurs de tête à chaque pas.
+#[test]
+fn the_banner_points_out_what_the_last_step_changed() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: "\
+section .text
+global _start
+_start:
+mov rax, 7
+mov rbx, 9
+add rax, rbx
+hlt
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+
+    let changed = |app: &NamsdecApp| {
+        changed_registers(
+            app.regs_before.as_ref(),
+            &app.emulator.as_ref().unwrap().cpu().regs,
+        )
+    };
+
+    // Rien n'a encore bougé : le bandeau reste uni.
+    assert!(
+        changed(&app).is_empty(),
+        "un programme jamais exécuté n'a rien changé"
+    );
+
+    app.do_step(); // mov rax, 7
+    assert_eq!(changed(&app), ["RAX"]);
+
+    app.do_step(); // mov rbx, 9
+    assert_eq!(changed(&app), ["RBX"], "seul le dernier pas compte");
+
+    app.do_step(); // add rax, rbx
+    assert_eq!(changed(&app), ["RAX"]);
+
+    // Et une exécution complète montre tout ce qu'elle a changé,
+    // depuis son départ.
+    app.do_assemble();
+    let ctx = egui::Context::default();
+    app.do_run();
+    for _ in 0..10 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&ctx);
+    }
+    assert_eq!(changed(&app), ["RAX", "RBX"]);
+}
+
+/// Le bandeau d'état s'ouvre déployé à chaque lancement.
+///
+/// egui retient l'état des en-têtes repliables d'une session à
+/// l'autre : replié une fois, il revenait replié, registres cachés,
+/// sans que rien ne dise pourquoi. La mesure porte sur ce qui suit le
+/// bandeau — le champ Adresse de l'onglet Mémoire descend de toute la
+/// hauteur des registres quand ils sont là.
+#[test]
+fn the_cpu_banner_opens_deployed() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    assert!(
+        NamsdecApp::default().cpu_state_open,
+        "déployé par défaut, sans rien avoir à régler"
+    );
+
+    let top_of_address_field = |open: bool| {
+        let mut app = NamsdecApp {
+            active_tab: SidebarTab::Memory,
+            cpu_state_open: open,
+            ..Default::default()
+        };
+        app.do_assemble();
+        let ctx = egui::Context::default();
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1280.0, 820.0),
+            )),
+            ..Default::default()
+        };
+        for _ in 0..2 {
+            let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+            output.textures_delta.clear();
+        }
+        ctx.read_response(memory_address_id())
+            .expect("le champ Adresse est affiché")
+            .rect
+            .top()
+    };
+
+    assert!(
+        top_of_address_field(true) > top_of_address_field(false) + 100.0,
+        "déployé, le bandeau doit occuper la place des registres"
+    );
+}
+
+/// L'onglet RE n'apparaît dans la barre latérale que si on l'a
+/// demandé, **et seulement pour la session en cours**.
+///
+/// Il ouvre un module de reverse engineering encore à l'état
+/// d'ébauche. Tant que le « oui » était enregistré dans
+/// `settings.json`, il suffisait de l'avoir donné une fois — ou de
+/// l'avoir donné sans le vouloir, ce que la commande « Affichage :
+/// RE » de la palette faisait au passage — pour le retrouver à tous
+/// les lancements suivants, sans savoir d'où il venait.
+#[test]
+fn the_re_tab_is_absent_at_every_launch_until_it_is_asked_for() {
+    assert!(!NamsdecApp::default().show_re_tab, "application par défaut");
+
+    // Un fichier de réglages n'a plus voix au chapitre, même celui
+    // d'une version qui écrivait encore ce champ.
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("settings.json");
+    std::fs::write(
+        &path,
+        r#"{"version": 2, "show_re_tab": true, "language": "fr"}"#,
+    )
+    .unwrap();
+    let settings = Settings::load_from(&path);
+    let app = NamsdecApp::from_settings(settings);
+    assert!(
+        !app.show_re_tab,
+        "un ancien fichier ne doit plus pouvoir rallumer l'onglet"
+    );
+
+    // Et la rangée d'onglets ne le propose pas.
+    let shown: Vec<&str> = SidebarTab::ALL
+        .iter()
+        .filter(|tab| app.show_re_tab || **tab != SidebarTab::Re)
+        .map(|tab| tab.label(strings(Lang::Fr)))
+        .collect();
+    assert_eq!(shown, ["Pile", "Mémoire", "Tas"]);
+
+    // Ce qu'on coche dans Préférences vaut pour la session, et ne
+    // part pas dans les réglages enregistrés.
+    let app = NamsdecApp {
+        show_re_tab: true,
+        ..Default::default()
+    };
+    let written = serde_json::to_string(&app.settings_snapshot()).unwrap();
+    assert!(
+        !written.contains("show_re_tab"),
+        "le champ n'a plus à être écrit : {written}"
+    );
+}
+
+/// Le panneau latéral garde la largeur qu'on lui a donnée, quel que
+/// soit l'onglet ouvert et ce qu'il contient.
+///
+/// La ligne de saisie de la Console devinait sa largeur (« la place
+/// disponible moins 120 px ») et débordait de quelques pixels. Or un
+/// panneau egui retient comme largeur celle de son contenu : le
+/// débordement d'une frame devenait la largeur de la suivante, qui
+/// débordait à son tour. Ouvrir l'onglet Console élargissait donc le
+/// panneau de 28 px par frame — soixante fois par seconde — jusqu'à
+/// ce qu'il occupe la fenêtre, éditeur compris. Et comme egui
+/// enregistre cette largeur, elle revenait telle quelle au lancement
+/// suivant.
+#[test]
+fn no_sidebar_tab_widens_the_panel() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    // De quoi remplir chaque onglet : un programme qui tourne (donc
+    // des registres, une pile, une sortie), une longue ligne de
+    // sortie, et une longue ligne tapée dans la console.
+    let source = format!(
+        "section .data\n    msg db \"{}\", 10\n    len equ $ - msg\n\
+         section .text\n    global _start\n_start:\n\
+         \x20   mov rax, 1\n    mov rdi, 1\n    mov rsi, msg\n    mov rdx, len\n\
+         \x20   syscall\n    hlt\n",
+        "texte bien trop long pour la largeur du panneau ".repeat(6)
+    );
+
+    for tab in SidebarTab::ALL {
+        let mut app = NamsdecApp {
+            source: source.clone(),
+            // Même l'onglet RE, masqué par défaut, ne doit pas
+            // pousser la rangée d'onglets au-delà du panneau.
+            show_re_tab: true,
+            console_input: "x".repeat(300),
+            active_tab: tab,
+            ..Default::default()
+        };
+        app.do_assemble();
+        app.do_run();
+
+        let ctx = egui::Context::default();
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1280.0, 820.0),
+            )),
+            ..Default::default()
+        };
+        let mut widths = Vec::new();
+        for _ in 0..4 {
+            let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+            output.textures_delta.clear();
+            widths.push(
+                egui::containers::PanelState::load(&ctx, egui::Id::new("sidebar"))
+                    .expect("le panneau latéral est affiché")
+                    .outer_rect
+                    .width(),
+            );
+        }
+
+        let name = tab.label(strings(Lang::Fr));
+        assert!(
+            widths.iter().all(|w| *w == SIDEBAR_WIDTH),
+            "l'onglet {name} doit laisser le panneau à {SIDEBAR_WIDTH} px, obtenu : {widths:?}"
+        );
+    }
+}
+
+/// Le sélecteur natif de `rfd` est bloquant : appelé depuis la frame,
+/// il arrêtait la boucle d'évènements tout le temps que l'utilisateur
+/// passait à chercher son fichier, et le compositeur finissait par
+/// proposer de « forcer à quitter » une application qui attendait
+/// simplement. Il tourne maintenant sur un thread : tant qu'il n'a pas
+/// répondu, les frames continuent de s'enchaîner, et l'application
+/// redemande elle-même à être réveillée — aucun évènement n'arrive
+/// plus sur la fenêtre pendant qu'une boîte modale est ouverte.
+#[test]
+fn a_frame_runs_normally_while_a_dialog_is_open() {
+    let (sender, result) = mpsc::channel();
+    let mut app = NamsdecApp {
+        pending_dialog: Some(PendingDialog {
+            kind: FileDialogKind::OpenFile,
+            result,
+        }),
+        ..Default::default()
+    };
+
+    let ctx = egui::Context::default();
+    let mut output = ctx.run_ui(egui::RawInput::default(), |ui| app.draw(ui));
+    output.textures_delta.clear();
+
+    assert!(
+        app.pending_dialog.is_some(),
+        "la boîte est toujours ouverte, on l'attend encore"
+    );
+    let repaint_delay = output
+        .viewport_output
+        .values()
+        .map(|v| v.repaint_delay)
+        .min()
+        .expect("une frame produit toujours une sortie de viewport");
+    assert!(
+        repaint_delay <= DIALOG_POLL_INTERVAL,
+        "la frame suivante doit venir d'elle-même, obtenu : {repaint_delay:?}"
+    );
+
+    // Et le chemin choisi est repris à la frame suivante, sans qu'une
+    // touche ou un mouvement de souris ait à la provoquer.
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("choisi.asm");
+    std::fs::write(&path, "section .text\n    hlt\n").unwrap();
+    sender.send(Some(path.clone())).unwrap();
+
+    let mut output = ctx.run_ui(egui::RawInput::default(), |ui| app.draw(ui));
+    output.textures_delta.clear();
+
+    assert!(app.pending_dialog.is_none(), "la boîte est refermée");
+    assert_eq!(app.current_file.as_deref(), Some(path.as_path()));
+    assert!(app.source.contains("hlt"), "obtenu : {:?}", app.source);
+}
+
+/// Une boîte refermée sans rien choisir ne doit toucher à rien : ni au
+/// tampon, ni au fichier courant.
+#[test]
+fn a_cancelled_dialog_changes_nothing() {
+    let (sender, result) = mpsc::channel();
+    let mut app = NamsdecApp {
+        pending_dialog: Some(PendingDialog {
+            kind: FileDialogKind::OpenFile,
+            result,
+        }),
+        ..Default::default()
+    };
+    let source = app.source.clone();
+    sender.send(None).unwrap();
+
+    app.poll_file_dialog(&egui::Context::default());
+
+    assert!(app.pending_dialog.is_none());
+    assert_eq!(app.current_file, None);
+    assert_eq!(app.source, source);
+}
+
+/// Le dossier choisi ouvre l'explorateur dessus, comme le faisait
+/// l'appel bloquant d'avant.
+#[test]
+fn a_picked_folder_opens_the_explorer_on_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = NamsdecApp::default();
+
+    app.finish_file_dialog(
+        FileDialogKind::OpenFolder,
+        dir.path().to_path_buf(),
+        &egui::Context::default(),
+    );
+
+    assert_eq!(app.explorer.root.as_deref(), Some(dir.path()));
+    assert!(app.show_explorer, "l'explorateur s'ouvre sur ce dossier");
+    assert!(app.explorer_focused, "et prend le clavier");
+}
+
+/// Le fichier sur lequel on travaillait se rouvre au lancement
+/// suivant. C'est bien le **chemin** qui est enregistré : le contenu
+/// relu est celui du disque, y compris s'il a changé entre-temps.
+#[test]
+fn the_last_file_is_reopened_at_startup() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("travail.asm");
+    std::fs::write(&path, "section .text\n    hlt\n").unwrap();
+
+    let settings = Settings {
+        current_file: Some(path.display().to_string()),
+        ..Default::default()
+    };
+    let app = NamsdecApp::from_settings(settings);
+
+    assert_eq!(app.current_file.as_deref(), Some(path.as_path()));
+    assert!(app.source.contains("hlt"), "obtenu : {:?}", app.source);
+
+    // Modifié à l'extérieur : c'est la version du disque qui revient,
+    // pas une copie gardée dans les réglages.
+    std::fs::write(&path, "section .text\n    nop\n").unwrap();
+    let app = NamsdecApp::from_settings(Settings {
+        current_file: Some(path.display().to_string()),
+        ..Default::default()
+    });
+    assert!(app.source.contains("nop"));
+}
+
+/// Un fichier déplacé ou supprimé entre deux lancements ne doit ni
+/// empêcher de démarrer, ni accueillir l'utilisateur par une erreur.
+#[test]
+fn a_vanished_file_falls_back_to_the_example_program() {
+    let dir = tempfile::tempdir().unwrap();
+    let settings = Settings {
+        current_file: Some(dir.path().join("jamais-ecrit.asm").display().to_string()),
+        ..Default::default()
+    };
+
+    let app = NamsdecApp::from_settings(settings);
+
+    assert_eq!(app.current_file, None, "le chemin périmé est oublié");
+    assert_eq!(app.source, DEFAULT_SOURCE);
+    assert!(
+        !matches!(app.status, Status::Error(_)),
+        "démarrer ne doit pas afficher d'erreur, obtenu {:?}",
+        app.status
+    );
+}
+
+/// Le fichier ouvert part bien dans les réglages — et son contenu,
+/// lui, n'y va jamais.
+#[test]
+fn settings_record_the_path_and_never_the_source() {
+    let mut app = NamsdecApp {
+        source: "section .text\n    mov rax, 1234\n".to_owned(),
+        current_file: Some(PathBuf::from("/tmp/projet/travail.asm")),
+        ..Default::default()
+    };
+    let snapshot = app.settings_snapshot();
+
+    assert_eq!(
+        snapshot.current_file.as_deref(),
+        Some("/tmp/projet/travail.asm")
+    );
+    let written = serde_json::to_string(&snapshot).unwrap();
+    assert!(
+        !written.contains("1234"),
+        "le programme ne doit pas se retrouver dans les réglages : {written}"
+    );
+
+    // Un tampon sans fichier (binaire désassemblé, exemple de départ)
+    // n'enregistre aucun chemin.
+    app.current_file = None;
+    assert_eq!(app.settings_snapshot().current_file, None);
+}
+
+/// Ouvrir un binaire doit mener quelque part : un vrai programme
+/// passé par nasm, relu comme des octets bruts, doit remplir
+/// l'éditeur d'un listing, donner la correspondance ligne <-> adresse
+/// dont dépend la gouttière, et produire un émulateur capable
+/// d'avancer.
+#[test]
+fn opening_a_raw_binary_disassembles_and_boots_the_emulator() {
+    let Some(_nasm) = namsdec_asm::find_nasm() else {
+        // Pas de nasm ici : ce test vérifie un aller-retour à travers
+        // l'assembleur réel, il n'a rien à prouver sans lui.
+        return;
+    };
+    let output = namsdec_asm::assemble(
+        "BITS 64\nsection .text\n    mov rax, 7\n    hlt\n",
+        BASE_ADDR,
+    )
+    .expect("le programme de test doit s'assembler");
+
+    let mut app = NamsdecApp::default();
+    app.load_binary(output.bytes);
+
+    assert!(
+        app.source.contains("mov"),
+        "le listing désassemblé doit remplir l'éditeur, obtenu : {:?}",
+        app.source
+    );
+    assert_eq!(
+        app.current_file, None,
+        "le tampon est reconstruit : pas de fichier à réécrire dessus"
+    );
+
+    let state = app.assemble_state.as_ref().expect("un état chargé");
+    assert_eq!(
+        state.output.line_to_addr.get(&1).copied(),
+        Some(BASE_ADDR),
+        "la première ligne du listing est la première instruction"
+    );
+    assert_eq!(
+        app.current_line(),
+        Some(1),
+        "RIP au départ doit se refléter sur la ligne 1 de la gouttière"
+    );
+
+    app.do_step();
+    assert_eq!(
+        app.emulator.as_ref().unwrap().cpu().regs.get64(Reg64::Rax),
+        7,
+        "le binaire chargé doit s'exécuter pas à pas comme un programme assemblé"
+    );
+}
+
+/// L'explorateur ne doit jamais s'ouvrir sur "Aucun dossier ouvert" :
+/// il y a toujours le répertoire de travail à montrer, et une boîte
+/// de dialogue de plus avant de voir l'arborescence n'a pas lieu
+/// d'être.
+#[test]
+fn the_explorer_always_opens_on_a_folder() {
+    let app = NamsdecApp::from_settings(Settings::default());
+    assert!(
+        app.explorer.root.is_some(),
+        "au démarrage, sans réglage enregistré"
+    );
+
+    // Et si la racine disparaît en cours de route, la rouvrir en
+    // retrouve une plutôt que d'afficher l'invite vide.
+    let mut app = NamsdecApp::default();
+    app.explorer.root = None;
+    app.dispatch(Action::ToggleExplorer);
+    assert!(app.show_explorer);
+    assert!(
+        app.explorer.root.is_some(),
+        "ouvrir l'explorateur doit lui donner un dossier"
+    );
+}
+
+/// Un dossier enregistré qui n'existe plus (projet déplacé, clé USB
+/// retirée) ne doit pas laisser l'explorateur sur une racine morte.
+#[test]
+fn a_stale_saved_folder_falls_back_to_the_working_directory() {
+    let settings = Settings {
+        explorer_root: Some("/ce/chemin/n/existe/pas".to_owned()),
+        ..Default::default()
+    };
+    let app = NamsdecApp::from_settings(settings);
+    let root = app.explorer.root.expect("une racine de repli");
+    assert!(root.is_dir(), "la racine de repli doit exister : {root:?}");
+}
+
+#[test]
+fn cursor_position_counts_characters_not_bytes() {
+    let text = "mov rax, 0\nsum_loop:\n    add rax, rcx";
+
+    assert_eq!(line_col(text, 0), (1, 1), "début du texte");
+    assert_eq!(line_col(text, 4), (1, 5), "milieu de la première ligne");
+    // Index 11 = juste après le '\n' : début de la ligne 2.
+    assert_eq!(line_col(text, 11), (2, 1), "après un saut de ligne");
+    assert_eq!(
+        line_col(text, text.chars().count()),
+        (3, 17),
+        "fin du texte"
+    );
+
+    // Des caractères non-ASCII ne doivent pas décaler la colonne :
+    // egui compte des caractères, pas des octets.
+    assert_eq!(line_col("éàü|", 3), (1, 4), "trois caractères accentués");
+}
+
+/// Un fichier plus gros que la mémoire simulée est tronqué plutôt que
+/// rejeté — et le statut le dit, au lieu de laisser croire que tout a
+/// été chargé.
+#[test]
+fn oversized_binaries_are_truncated_not_rejected() {
+    let mut app = NamsdecApp::default();
+    app.load_binary(vec![0x90; MEM_SIZE + 1024]); // que des `nop`
+
+    match app.status {
+        Status::BinaryLoaded { bytes, truncated } => {
+            assert_eq!(bytes, MEM_SIZE);
+            assert!(truncated);
+        }
+        _ => panic!("un binaire trop gros doit tout de même se charger"),
+    }
+}
+/// L'onglet Tas montre la frontière que `brk` déplace. Aucun registre
+/// ne la porte : sans l'émulateur qui la tient, ni l'utilisateur ni un
+/// débogueur ne sauraient où la chercher.
+#[test]
+fn the_heap_tab_shows_the_break_the_program_moved() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        active_tab: SidebarTab::Heap,
+        source: "\
+section .text
+global _start
+_start:
+mov rax, 12
+xor rdi, rdi
+syscall
+mov rdi, rax
+add rdi, 4096
+mov rax, 12
+syscall
+hlt
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+
+    let heap = app.emulator.as_ref().unwrap().heap();
+    assert_eq!(heap.len(), 0, "rien n'est demandé avant de tourner");
+
+    for _ in 0..10 {
+        app.do_step();
+    }
+    let heap = app.emulator.as_ref().unwrap().heap();
+    assert_eq!(heap.len(), 4096, "le programme a pris 4 Kio");
+
+    let ctx = egui::Context::default();
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 820.0),
+        )),
+        ..Default::default()
+    };
+    let mut painted = String::new();
+    for _ in 0..2 {
+        painted.clear();
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        for clipped in &output.shapes {
+            if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                painted.push_str(text.galley.text());
+                painted.push('\n');
+            }
+        }
+        output.textures_delta.clear();
+    }
+
+    for expected in [
+        format!("{:#x}", heap.start()),
+        format!("{:#x}", heap.current()),
+        format!("{:#x}", heap.limit()),
+    ] {
+        assert!(
+            painted.contains(&expected),
+            "l'onglet doit montrer {expected} ; peint : {painted}"
+        );
+    }
+    assert!(
+        painted.contains("4096 / "),
+        "il doit dire ce qui est pris sur ce qui reste"
+    );
+}
+/// Un registre SSE qui change se met en avant comme un registre
+/// général : c'est la même question — qu'est-ce que ce pas a fait ?
+#[test]
+fn a_changed_xmm_register_stands_out_like_the_others() {
+    let before = namsdec_core::Registers::new();
+    let mut now = before.clone();
+    now.set_xmm(namsdec_core::RegXmm::Xmm3, 5.0f64.to_bits().into());
+    assert_eq!(changed_registers(Some(&before), &now), ["XMM3"]);
+
+    // Et la valeur se lit en clair à côté des chiffres.
+    assert_eq!(short_float(5.0), "= 5");
+    assert_eq!(short_float(0.0), "", "un registre vide ne dit rien");
+    assert_eq!(
+        short_float(5.0 / 9.0),
+        "= 0.555556",
+        "six décimales au plus"
+    );
+    assert_eq!(
+        short_float(f64::from_bits(1.0f32.to_bits().into())),
+        "= 5.264e-315",
+        "un simple précision relu comme un double reste lisible"
+    );
+}
+/// Une case de la pile x87 qui se remplit se met en avant comme un
+/// registre : empiler *est* un changement d'état.
+#[test]
+fn a_pushed_x87_slot_stands_out() {
+    let before = namsdec_core::Registers::new();
+    let mut now = before.clone();
+    now.x87.push(3.5);
+    assert_eq!(changed_registers(Some(&before), &now), ["ST0"]);
+}
+/// AVX élargit les registres sans les renommer : `xmm1` est la moitié
+/// basse de `ymm1`. Le panneau doit le dire — et une moitié haute qui
+/// change est un changement comme un autre.
+#[test]
+fn a_register_with_an_upper_half_is_shown_as_ymm() {
+    let before = namsdec_core::Registers::new();
+    let mut now = before.clone();
+    now.set_ymm(namsdec_core::RegXmm::Xmm1, [0, 1]);
+    assert_eq!(
+        changed_registers(Some(&before), &now),
+        ["XMM1"],
+        "la moitié haute compte"
+    );
+
+    assert_eq!(vector_name("XMM1", [7, 0]), "XMM1");
+    assert_eq!(vector_name("XMM1", [7, 1]), "YMM1", "il y a plus à voir");
+    let tip = xmm_tooltip(strings(Lang::Fr), [7, 1]);
+    assert!(
+        tip.contains(&format!("{:032x}{:032x}", 1u128, 7u128)),
+        "les 256 bits, la haute d'abord : {tip}"
+    );
+}
+/// Le mot sous le curseur : c'est lui qu'on documente, pas le premier
+/// de la ligne. On demande aussi bien ce que fait `movzx` que le
+/// `rep` qui le précède.
+#[test]
+fn the_word_under_the_cursor_is_the_one_asked_about() {
+    let source = "    rep movsb\n_start:\n    mov rax, 1\n";
+    // Au milieu d'un mot, à son début, à sa fin.
+    assert_eq!(word_at(source, 6), "rep");
+    assert_eq!(word_at(source, 4), "rep");
+    assert_eq!(word_at(source, 7), "rep", "juste après, on est dedans");
+    assert_eq!(word_at(source, 9), "movsb");
+    // Les noms d'étiquettes gardent leur souligné et leur point.
+    assert_eq!(word_at("_start:\n", 3), "_start");
+    assert_eq!(word_at("    jmp .boucle\n", 12), ".boucle");
+    // Mais un point de ponctuation n'en fait pas partie.
+    assert_eq!(word_at("; … avant idiv.\n", 15), "idiv");
+    // Dans le blanc, il n'y a pas de mot.
+    assert_eq!(word_at(source, 0), "");
+    // Et hors bornes, pas de panique.
+    assert_eq!(word_at(source, 9_999), "");
+}
+
+/// F1 ouvre la fiche de l'instruction où l'on est, dans l'onglet
+/// d'aide — et le dit quand il n'y en a pas.
+#[test]
+fn f1_opens_the_entry_for_the_instruction_under_the_cursor() {
+    let mut app = NamsdecApp {
+        source: "_start:\n    cqo\n".to_owned(),
+        show_console: false,
+        ..Default::default()
+    };
+    app.cursor_byte = 13; // au milieu de « cqo »
+    app.dispatch(Action::InstructionHelp);
+
+    assert!(app.show_console, "l'aide ouvre le panneau");
+    assert_eq!(app.console_tab, ConsoleTab::Help);
+    let (word, entry) = app.help.clone().expect("une demande d'aide");
+    assert_eq!(word, "cqo");
+    let entry = entry.expect("cqo doit être documentée");
+    assert!(entry.names.contains(&"cdq"), "la fiche couvre la famille");
+    assert!(
+        entry.body.fr.contains("idiv"),
+        "et dit à quoi elle sert : {}",
+        entry.body.fr
+    );
+
+    // Un mot qui n'est pas une instruction : on le dit, sans fiche.
+    app.source = "_start:\n    truc\n".to_owned();
+    app.cursor_byte = 14;
+    app.dispatch(Action::InstructionHelp);
+    let (word, entry) = app.help.clone().expect("une demande d'aide");
+    assert_eq!(word, "truc");
+    assert!(entry.is_none());
+}
+
+/// L'autocomplétion et l'aide lisent la même liste : une instruction
+/// proposée est une instruction qu'on sait expliquer.
+#[test]
+fn everything_proposed_can_be_explained() {
+    for name in completion::mnemonics() {
+        assert!(
+            namsdec_doc::lookup(name).is_some(),
+            "« {name} » est proposé sans fiche"
+        );
+    }
+    assert!(completion::mnemonics().len() > 400);
+}
+/// Les morceaux de code d'une fiche s'écrivent en chasse fixe, et
+/// l'accent grave qui les marque ne s'affiche pas.
+#[test]
+fn code_inside_an_explanation_is_written_as_code() {
+    let ctx = egui::Context::default();
+    let mut job = None;
+    let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+        job = Some(prose(
+            ui,
+            namsdec_theme::by_id("vscode-dark"),
+            "préparer `rdx` avant",
+        ));
+    });
+    output.textures_delta.clear();
+    let job = job.expect("un texte mis en forme");
+    assert_eq!(job.text, "préparer rdx avant", "pas d'accent grave affiché");
+    assert_eq!(job.sections.len(), 3);
+    let fonts: Vec<_> = job
+        .sections
+        .iter()
+        .map(|s| s.format.font_id.family.clone())
+        .collect();
+    assert_eq!(
+        fonts[0], fonts[2],
+        "le texte ordinaire est d'une seule police"
+    );
+    assert_ne!(fonts[0], fonts[1], "le code est dans une autre");
+}
+/// Ouvrir un vrai ELF : ses sections vont à leur adresse, et le
+/// listing commence à son point d'entrée — pas sur son en-tête, qui
+/// n'est pas du code et ne se lit pas comme tel.
+#[test]
+fn an_elf_is_opened_where_it_says_to_be() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    // Un vrai binaire, fabriqué par la vraie chaîne d'outils, puis
+    // ouvert comme n'importe quel fichier trouvé sur le disque.
+    let dir = tempfile::tempdir().expect("un dossier temporaire");
+    let asm = dir.path().join("p.asm");
+    std::fs::write(
+        &asm,
+        "section .data\n    msg db \"salut\", 0\n\
+         section .text\n    global _start\n_start:\n\
+         \x20   mov rax, 60\n    xor rdi, rdi\n    syscall\n",
+    )
+    .unwrap();
+    let object = dir.path().join("p.o");
+    let program = dir.path().join("p");
+    assert!(
+        std::process::Command::new("nasm")
+            .args(["-f", "elf64", "-o"])
+            .arg(&object)
+            .arg(&asm)
+            .status()
+            .expect("nasm")
+            .success()
+    );
+    assert!(
+        std::process::Command::new("ld")
+            .arg("-o")
+            .arg(&program)
+            .arg(&object)
+            .status()
+            .expect("ld")
+            .success()
+    );
+
+    let mut app = NamsdecApp::default();
+    app.load_binary(std::fs::read(&program).unwrap());
+
+    let state = app.assemble_state.as_ref().expect("un binaire chargé");
+    assert!(
+        !state.output.sections.is_empty(),
+        "les sections de l'ELF sont connues"
+    );
+    assert_eq!(
+        state.disasm.first().map(|i| i.address),
+        Some(state.output.entry),
+        "le désassemblage commence au code, à l'entrée déclarée"
+    );
+    // Et la première ligne du listing est une instruction, pas les
+    // octets « 7f 45 4c 46 » de l'en-tête lus comme telle.
+    let first = app.source.lines().next().unwrap_or_default();
+    assert!(first.contains("mov"), "listing : {first}");
+}
+/// Un message de statut long ne passe pas sous les compartiments de
+/// droite : il est tronqué avant de les atteindre. Sans cela, le nom
+/// d'un binaire chargé s'imprimait par-dessus « Lig 1, Col 1 ».
+#[test]
+fn a_long_status_message_does_not_run_under_the_right_hand_side() {
+    let mut app = NamsdecApp {
+        status: Status::Error("erreur ".repeat(40)),
+        ..Default::default()
+    };
+    let ctx = egui::Context::default();
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 820.0),
+        )),
+        ..Default::default()
+    };
+    let mut message = None;
+    let mut nasm = None;
+    for _ in 0..2 {
+        message = None;
+        nasm = None;
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        for clipped in &output.shapes {
+            if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                let content = text.galley.text();
+                let rect = egui::Rect::from_min_size(text.pos, text.galley.size());
+                if content.contains("erreur erreur") {
+                    message = Some(rect);
+                } else if content.starts_with("NASM") || content.contains("nasm") {
+                    nasm = Some(rect);
+                }
+            }
+        }
+        output.textures_delta.clear();
+    }
+
+    let message = message.expect("le message de statut est peint");
+    let nasm = nasm.expect("le compartiment de droite est peint");
+    assert!(
+        message.max.x <= nasm.min.x,
+        "le message ({message:?}) mord sur la droite ({nasm:?})"
+    );
+}
