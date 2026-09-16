@@ -2768,10 +2768,12 @@ fn an_installed_pack_joins_the_built_in_one() {
         ..Default::default()
     };
     with_data_home(&data, || app.install_exercises(&path));
+    let note = app.plugin_note.as_ref().expect("un compte rendu");
+    assert!(note.ok, "installation refusée : {}", note.text);
     assert!(
-        app.plugin_note.as_ref().is_some_and(|n| n.ok),
-        "installation refusée : {:?}",
-        app.plugin_note.as_ref().map(|n| &n.text)
+        note.text.starts_with("Série installée"),
+        "une série n'est pas un thème : {}",
+        note.text
     );
     assert_eq!(
         app.exercise_packs.len(),

@@ -202,4 +202,3 @@ mod tests {
         assert!(matches!(parse(&twice), Err(PackError::DuplicateId(_))));
     }
 }
-

@@ -2411,7 +2411,10 @@ impl NamsdecApp {
             });
         }
         if let Some(id) = self.pack_to_remove.clone() {
-            ui.colored_label(theme.warn, format!("{} {id}", s.plugins_remove_question));
+            ui.colored_label(
+                theme.warn,
+                format!("{} {id}", s.exercises_pack_remove_question),
+            );
             ui.horizontal(|ui| {
                 if framed_button(ui, theme, s.plugins_remove_yes).clicked() {
                     self.remove_exercises(&id);
@@ -2460,7 +2463,7 @@ impl NamsdecApp {
         }
         self.plugin_note = Some(PluginNote {
             ok: true,
-            text: format!("{} — {name}", s.plugins_removed),
+            text: format!("{} — {name}", s.exercises_pack_removed),
         });
     }
 
@@ -2505,7 +2508,7 @@ impl NamsdecApp {
                     match copy_into_dir(path, exercises_dir()) {
                         Err(e) => PluginNote {
                             ok: false,
-                            text: format!("{} ({e})", s.plugins_added_not_kept),
+                            text: format!("{} ({e})", s.exercises_pack_not_kept),
                         },
                         Ok(destination) => {
                             // Une série réinstallée remplace la
@@ -2515,7 +2518,7 @@ impl NamsdecApp {
                             self.exercise_files.insert(id, destination);
                             PluginNote {
                                 ok: true,
-                                text: format!("{} — {name}", s.plugins_added),
+                                text: format!("{} — {name}", s.exercises_pack_added),
                             }
                         }
                     }
@@ -2574,41 +2577,53 @@ impl NamsdecApp {
             .open(&mut open)
             .resizable(true)
             .collapsible(false)
-            .default_width(460.0)
+            // Une taille de départ franche plutôt qu'une fenêtre qui
+            // s'étire avec son contenu : deux séries installées la
+            // faisaient déborder de l'écran, et la troisième n'avait
+            // nulle part où aller.
+            .default_size([480.0, 520.0])
             .pivot(egui::Align2::CENTER_CENTER)
             .current_pos(ctx.viewport_rect().center())
             .show(ctx, |ui| {
                 ui.label(s.exercises_legend);
                 ui.add_space(6.0);
                 egui::ScrollArea::vertical()
-                    .max_height(420.0)
+                    .auto_shrink([false, false])
                     .show(ui, |ui| {
                         for pack in &self.exercise_packs {
-                            // Le nom de la série au-dessus de ses
-                            // exercices : on doit pouvoir dire d'où vient
-                            // celui qu'on charge, surtout quand deux
-                            // séries installées traitent du même sujet.
-                            ui.colored_label(theme.dim, &pack.name);
-                            for exercise in &pack.exercises {
-                                ui.group(|ui| {
-                                    ui.horizontal(|ui| {
-                                        ui.strong(exercise.title.get(lang));
-                                        ui.with_layout(
-                                            egui::Layout::right_to_left(egui::Align::Center),
-                                            |ui| {
-                                                if framed_button(ui, theme, s.exercises_load)
-                                                    .clicked()
-                                                {
-                                                    load = Some(namsdec_exercises::full_id(
-                                                        pack, exercise,
-                                                    ));
-                                                }
-                                            },
-                                        );
+                            // Une série par repli : on doit pouvoir dire
+                            // d'où vient l'exercice qu'on charge, et
+                            // ranger celles qu'on n'utilise pas. Ouvertes
+                            // par défaut — une liste qu'il faut déplier
+                            // pour voir ce qu'elle contient n'aide
+                            // personne le premier jour.
+                            let header = egui::CollapsingHeader::new(
+                                egui::RichText::new(&pack.name).color(theme.dim),
+                            )
+                            .id_salt(&pack.id)
+                            .default_open(true);
+                            header.show(ui, |ui| {
+                                for exercise in &pack.exercises {
+                                    ui.group(|ui| {
+                                        ui.horizontal(|ui| {
+                                            ui.strong(exercise.title.get(lang));
+                                            ui.with_layout(
+                                                egui::Layout::right_to_left(egui::Align::Center),
+                                                |ui| {
+                                                    if framed_button(ui, theme, s.exercises_load)
+                                                        .clicked()
+                                                    {
+                                                        load = Some(namsdec_exercises::full_id(
+                                                            pack, exercise,
+                                                        ));
+                                                    }
+                                                },
+                                            );
+                                        });
+                                        ui.label(exercise.description.get(lang));
                                     });
-                                    ui.label(exercise.description.get(lang));
-                                });
-                            }
+                                }
+                            });
                             ui.add_space(4.0);
                         }
                     });

@@ -199,6 +199,12 @@ pub struct Strings {
     pub exercises_packs_hint: &'static str,
     pub exercises_packs_none: &'static str,
     pub exercises_id_taken: &'static str,
+    /// Les comptes rendus propres aux séries : « thème installé » ne veut
+    /// rien dire d'une série d'exercices.
+    pub exercises_pack_added: &'static str,
+    pub exercises_pack_not_kept: &'static str,
+    pub exercises_pack_removed: &'static str,
+    pub exercises_pack_remove_question: &'static str,
     pub filter_exercises: &'static str,
 
     // Boîte Préférences
@@ -392,6 +398,10 @@ const FR: Strings = Strings {
     exercises_packs_hint: "Un fichier JSON : un identifiant, un nom, et la liste des exercices avec leur programme de départ.",
     exercises_packs_none: "Aucune série installée — seule celle livrée avec namsdec est proposée.",
     exercises_id_taken: "cet identifiant est celui de la série livrée avec namsdec",
+    exercises_pack_added: "Série installée",
+    exercises_pack_not_kept: "Série lue, mais pas recopiée : elle ne reviendra pas au prochain lancement",
+    exercises_pack_removed: "Série retirée",
+    exercises_pack_remove_question: "Supprimer le fichier de cette série ?",
     filter_exercises: "Série d'exercices (JSON)",
 
     preferences_title: "Préférences",
@@ -581,6 +591,10 @@ const EN: Strings = Strings {
     exercises_packs_hint: "A JSON file: an identifier, a name, and the list of exercises with their starting program.",
     exercises_packs_none: "No pack installed — only the one shipped with namsdec is offered.",
     exercises_id_taken: "that identifier belongs to the pack shipped with namsdec",
+    exercises_pack_added: "Pack installed",
+    exercises_pack_not_kept: "Pack read, but not copied: it will not come back next time",
+    exercises_pack_removed: "Pack removed",
+    exercises_pack_remove_question: "Delete this pack's file?",
     filter_exercises: "Exercise pack (JSON)",
 
     preferences_title: "Preferences",
