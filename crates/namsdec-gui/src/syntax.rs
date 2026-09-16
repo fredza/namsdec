@@ -36,7 +36,8 @@ pub const REGISTERS: &[&str] = &[
     "cs", "ds", "es", "fs", "gs", "ss", // flottants et vectoriels
     "st0", "st1", "st2", "st3", "st4", "st5", "st6", "st7", "xmm0", "xmm1", "xmm2", "xmm3", "xmm4",
     "xmm5", "xmm6", "xmm7", "xmm8", "xmm9", "xmm10", "xmm11", "xmm12", "xmm13", "xmm14", "xmm15",
-    "ymm0", "ymm1", "ymm2", "ymm3", "ymm4", "ymm5", "ymm6", "ymm7",
+    "ymm0", "ymm1", "ymm2", "ymm3", "ymm4", "ymm5", "ymm6", "ymm7", "ymm8", "ymm9", "ymm10",
+    "ymm11", "ymm12", "ymm13", "ymm14", "ymm15",
 ];
 
 /// Les mots que NASM comprend lui-même : directives, tailles, opérateurs

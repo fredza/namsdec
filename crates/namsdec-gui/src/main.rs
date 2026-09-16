@@ -2996,23 +2996,35 @@ impl NamsdecApp {
                             .striped(true)
                             .show(ui, |ui| {
                                 for (name, reg) in XMM_REGISTERS {
-                                    let value = regs.get_xmm(reg);
+                                    let value = regs.get_ymm(reg);
                                     let color = if changed.contains(&name) {
                                         theme.changed
                                     } else {
                                         ui.visuals().text_color()
                                     };
-                                    let low = value as u64;
-                                    ui.colored_label(color, egui::RichText::new(name).monospace());
+                                    let low = value[0] as u64;
+                                    let shown = vector_name(name, value);
+                                    ui.colored_label(color, egui::RichText::new(shown).monospace());
                                     ui.colored_label(
                                         color,
                                         egui::RichText::new(format!("{low:016x}")).monospace(),
                                     )
                                     .on_hover_text(xmm_tooltip(s, value));
+                                    // La lecture décimale n'a de sens que
+                                    // si le registre contient *un* nombre :
+                                    // lire le bas d'un vecteur de quatre
+                                    // flottants simples comme un double
+                                    // donne un nombre qui n'existe nulle
+                                    // part. Le détail est dans l'infobulle.
+                                    let scalar = value[1] == 0 && value[0] >> 64 == 0;
+                                    let reading = if scalar {
+                                        short_float(f64::from_bits(low))
+                                    } else {
+                                        String::new()
+                                    };
                                     ui.colored_label(
                                         theme.dim,
-                                        egui::RichText::new(short_float(f64::from_bits(low)))
-                                            .monospace(),
+                                        egui::RichText::new(reading).monospace(),
                                     );
                                     ui.end_row();
                                 }
@@ -4487,7 +4499,7 @@ fn changed_registers(
         .chain(
             XMM_REGISTERS
                 .iter()
-                .filter(|&&(_, reg)| before.get_xmm(reg) != now.get_xmm(reg))
+                .filter(|&&(_, reg)| before.get_ymm(reg) != now.get_ymm(reg))
                 .map(|&(name, _)| name),
         )
         .chain(
@@ -4557,18 +4569,51 @@ fn short_float(value: f64) -> String {
     format!("= {text}")
 }
 
-/// Les 128 bits d'un registre SSE, puis leur lecture en flottants.
-fn xmm_tooltip(s: &Strings, value: u128) -> String {
-    let doubles: Vec<String> = (0..2)
-        .map(|lane| format!("{}", f64::from_bits((value >> (lane * 64)) as u64)))
+/// Le nom sous lequel montrer un registre vectoriel.
+///
+/// Le même registre en porte deux : `xmm3` ne désigne que sa moitié
+/// basse, `ymm3` le tout. Écrire « YMM » dès que la moitié haute contient
+/// quelque chose, c'est dire qu'il y a là plus que la ligne n'en montre —
+/// et rappeler au passage qu'il s'agit des mêmes bits.
+fn vector_name(name: &str, value: [u128; 2]) -> String {
+    if value[1] == 0 {
+        name.to_owned()
+    } else {
+        name.replacen("XMM", "YMM", 1)
+    }
+}
+
+/// Tous les bits d'un registre vectoriel, puis leur lecture en flottants.
+fn xmm_tooltip(s: &Strings, value: [u128; 2]) -> String {
+    // La moitié haute n'est montrée que si elle sert : un registre resté
+    // en 128 bits n'a pas à traîner seize zéros de plus.
+    let wide = value[1] != 0;
+    let halves = if wide { 2 } else { 1 };
+    let doubles: Vec<String> = (0..halves * 2)
+        .map(|lane| {
+            format!(
+                "{}",
+                f64::from_bits((value[lane / 2] >> ((lane % 2) * 64)) as u64)
+            )
+        })
         .collect();
-    let singles: Vec<String> = (0..4)
-        .map(|lane| format!("{}", f32::from_bits((value >> (lane * 32)) as u32)))
+    let singles: Vec<String> = (0..halves * 4)
+        .map(|lane| {
+            format!(
+                "{}",
+                f32::from_bits((value[lane / 4] >> ((lane % 4) * 32)) as u32)
+            )
+        })
         .collect();
+    let bits = if wide {
+        format!("{:032x}{:032x}", value[1], value[0])
+    } else {
+        format!("{:032x}", value[0])
+    };
     format!(
-        "{}\n{:032x}\n[{}]\n[{}]",
+        "{}\n{}\n[{}]\n[{}]",
         s.sse_hint,
-        value,
+        bits,
         doubles.join(", "),
         singles.join(", ")
     )
@@ -7438,5 +7483,27 @@ _start:
         let mut now = before.clone();
         now.x87.push(3.5);
         assert_eq!(changed_registers(Some(&before), &now), ["ST0"]);
+    }
+    /// AVX élargit les registres sans les renommer : `xmm1` est la moitié
+    /// basse de `ymm1`. Le panneau doit le dire — et une moitié haute qui
+    /// change est un changement comme un autre.
+    #[test]
+    fn a_register_with_an_upper_half_is_shown_as_ymm() {
+        let before = namsdec_core::Registers::new();
+        let mut now = before.clone();
+        now.set_ymm(namsdec_core::RegXmm::Xmm1, [0, 1]);
+        assert_eq!(
+            changed_registers(Some(&before), &now),
+            ["XMM1"],
+            "la moitié haute compte"
+        );
+
+        assert_eq!(vector_name("XMM1", [7, 0]), "XMM1");
+        assert_eq!(vector_name("XMM1", [7, 1]), "YMM1", "il y a plus à voir");
+        let tip = xmm_tooltip(strings(Lang::Fr), [7, 1]);
+        assert!(
+            tip.contains(&format!("{:032x}{:032x}", 1u128, 7u128)),
+            "les 256 bits, la haute d'abord : {tip}"
+        );
     }
 }

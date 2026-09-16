@@ -13,7 +13,7 @@ use namsdec_core::{
 };
 use thiserror::Error;
 
-use regmap::{is_high_byte, map_register, map_xmm};
+use regmap::{is_high_byte, map_register, map_vector};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -462,6 +462,181 @@ fn read_bytes(mem: &namsdec_core::Memory, addr: u64, len: usize) -> u64 {
         value = (value << 8) | u64::from(byte);
     }
     value
+}
+
+/// Une valeur vectorielle : deux moitiés de 128 bits, la basse d'abord.
+/// La haute n'existe que pour AVX — une instruction SSE ne la voit pas.
+type Vector = [u128; 2];
+
+/// L'instruction laisse-t-elle la moitié haute du registre de
+/// destination où elle est ? Oui pour SSE, non pour AVX, et c'est
+/// l'encodage qui tranche, pas la largeur écrite.
+fn keeps_upper_half(instr: &Instruction) -> bool {
+    instr.encoding() == iced_x86::EncodingKind::Legacy
+}
+
+/// Les indices des deux sources d'une instruction vectorielle.
+///
+/// SSE écrit dans sa première source — `addpd xmm0, xmm1` fait
+/// `xmm0 += xmm1` —, AVX ajoute une destination devant : `vaddpd ymm0,
+/// ymm1, ymm2`. `extra` compte les opérandes qui suivent les sources,
+/// c'est-à-dire l'immédiat des instructions qui en portent un.
+fn sources(instr: &Instruction, extra: u32) -> (u32, u32) {
+    let count = instr.op_count().saturating_sub(extra);
+    if count >= 3 {
+        (count - 2, count - 1)
+    } else {
+        (0, count.saturating_sub(1))
+    }
+}
+
+/// Une opération flottante sur le seul élément du bas ; le reste du
+/// registre vient de la première source.
+fn fp_scalar(a: u128, b: u128, op: FpOp, w: FpWidth) -> u128 {
+    let (mask, low) = match w {
+        FpWidth::Single => (
+            scalar_mask(4),
+            u128::from(
+                op.apply32(f32::from_bits(a as u32), f32::from_bits(b as u32))
+                    .to_bits(),
+            ),
+        ),
+        FpWidth::Double => (
+            scalar_mask(8),
+            u128::from(
+                op.apply64(f64::from_bits(a as u64), f64::from_bits(b as u64))
+                    .to_bits(),
+            ),
+        ),
+    };
+    (a & !mask) | low
+}
+
+/// La même opération sur tout le registre à la fois : quatre flottants
+/// simples ou deux doubles par moitié. C'est là tout l'intérêt de ces
+/// registres — un seul ordre, plusieurs calculs.
+fn fp_packed(a: u128, b: u128, op: FpOp, w: FpWidth) -> u128 {
+    let mut out = 0u128;
+    match w {
+        FpWidth::Single => {
+            for lane in 0..4 {
+                let x = f32::from_bits((a >> (lane * 32)) as u32);
+                let y = f32::from_bits((b >> (lane * 32)) as u32);
+                out |= u128::from(op.apply32(x, y).to_bits()) << (lane * 32);
+            }
+        }
+        FpWidth::Double => {
+            for lane in 0..2 {
+                let x = f64::from_bits((a >> (lane * 64)) as u64);
+                let y = f64::from_bits((b >> (lane * 64)) as u64);
+                out |= u128::from(op.apply64(x, y).to_bits()) << (lane * 64);
+            }
+        }
+    }
+    out
+}
+
+/// Une opération entière élément par élément, sur des morceaux de
+/// `bytes` octets : seize additions d'un seul ordre pour `paddb`.
+fn int_lanes(a: u128, b: u128, bytes: usize, op: impl Fn(u64, u64) -> u64) -> u128 {
+    let bits = bytes * 8;
+    let mask = lane_mask(bits);
+    let mut out = 0u128;
+    for lane in 0..(16 / bytes) {
+        let shift = lane * bits;
+        let x = (a >> shift) as u64 & mask;
+        let y = (b >> shift) as u64 & mask;
+        out |= u128::from(op(x, y) & mask) << shift;
+    }
+    out
+}
+
+/// `pcmpgt*` : la comparaison est *signée*, contrairement à `pcmpeq*`
+/// pour qui la question ne se pose pas.
+fn signed_gt_lanes(a: u128, b: u128, bytes: usize) -> u128 {
+    let Some(w) = width_from_bytes(bytes) else {
+        return 0;
+    };
+    int_lanes(a, b, bytes, move |x, y| {
+        if (sign_extend(x, w) as i64) > (sign_extend(y, w) as i64) {
+            !0
+        } else {
+            0
+        }
+    })
+}
+
+/// Un décalage vectoriel. Au-delà de la largeur d'un élément le résultat
+/// est nul — ou tout à signe pour `psra*` —, et non « ce qui reste »
+/// comme sur un registre général.
+fn shift_lanes(a: u128, count: u64, bytes: usize, kind: PackedShift) -> u128 {
+    let bits = (bytes * 8) as u64;
+    let Some(w) = width_from_bytes(bytes) else {
+        return 0;
+    };
+    let mask = lane_mask(bits as usize);
+    let mut out = 0u128;
+    for lane in 0..(16 / bytes) {
+        let shift = lane * bits as usize;
+        let x = (a >> shift) as u64 & mask;
+        let value = match kind {
+            PackedShift::Left if count < bits => (x << count) & mask,
+            PackedShift::Right if count < bits => x >> count,
+            PackedShift::Arithmetic => {
+                let signed = sign_extend(x, w) as i64;
+                (signed >> count.min(bits - 1)) as u64 & mask
+            }
+            _ => 0,
+        };
+        out |= u128::from(value) << shift;
+    }
+    out
+}
+
+/// Entrelacer les éléments de deux registres, en partant du bas ou du
+/// haut. C'est ce qui sert à élargir des octets en mots, et à transposer.
+fn unpack_lanes(a: u128, b: u128, bytes: usize, high: bool) -> u128 {
+    let bits = bytes * 8;
+    let mask = u128::from(lane_mask(bits));
+    let lanes = 16 / bytes;
+    let first = if high { lanes / 2 } else { 0 };
+    let mut out = 0u128;
+    for step in 0..(lanes / 2) {
+        let from = (first + step) * bits;
+        out |= ((a >> from) & mask) << (step * 2 * bits);
+        out |= ((b >> from) & mask) << ((step * 2 + 1) * bits);
+    }
+    out
+}
+
+/// `pshufd` : les quatre mots de 32 bits remis dans l'ordre que
+/// l'immédiat désigne, deux bits par élément.
+fn shuffle_dwords(src: u128, control: u64) -> u128 {
+    let mut out = 0u128;
+    for lane in 0..4 {
+        let from = (control >> (lane * 2)) & 3;
+        out |= ((src >> (from * 32)) & u128::from(u32::MAX)) << (lane * 32);
+    }
+    out
+}
+
+/// `shufps` : les deux éléments bas viennent de la première source, les
+/// deux hauts de la seconde.
+fn shuffle_singles(a: u128, b: u128, control: u64) -> u128 {
+    let mut out = 0u128;
+    for lane in 0..4 {
+        let from = (control >> (lane * 2)) & 3;
+        let taken = if lane < 2 { a } else { b };
+        out |= ((taken >> (from * 32)) & u128::from(u32::MAX)) << (lane * 32);
+    }
+    out
+}
+
+/// `shufpd` : un bit par élément, et le même partage entre les sources.
+fn shuffle_doubles(a: u128, b: u128, control: u64) -> u128 {
+    let low = (a >> ((control & 1) * 64)) & u128::from(u64::MAX);
+    let high = (b >> (((control >> 1) & 1) * 64)) & u128::from(u64::MAX);
+    low | (high << 64)
 }
 
 /// Le masque des `bytes` octets du bas d'un registre XMM.
@@ -1700,80 +1875,169 @@ impl Emulator {
             // le désordre. Elles restent légales, et ne font rien.
             M::Pause | M::Mfence | M::Lfence | M::Sfence | M::Endbr64 | M::Endbr32 => {}
 
-            // --- SSE : le calcul flottant ----------------------------
+            // --- SSE et AVX : le calcul vectoriel --------------------
             // Le x86-64 moderne ne se sert plus de la pile du 8087 : les
-            // flottants vivent dans les seize registres XMM, un par un
-            // (« scalaire ») ou quatre à la fois (« paqueté »).
-            M::Movss => self.move_scalar(instr, 4)?,
-            M::Movsd => self.move_scalar(instr, 8)?,
-            M::Movaps | M::Movapd | M::Movups | M::Movupd | M::Movdqa | M::Movdqu => {
-                let v = self.read_xmm_op(instr, 1)?;
-                self.write_xmm_op(instr, 0, v)?;
+            // flottants vivent dans les registres vectoriels, un par un
+            // (« scalaire ») ou plusieurs à la fois (« paqueté »).
+            //
+            // SSE et AVX partagent tout sauf l'encodage : AVX nomme une
+            // destination séparée, va jusqu'à 256 bits, et remet à zéro
+            // ce qu'il n'écrit pas. Les deux passent donc par les mêmes
+            // fonctions, et `sources` fait la différence.
+            M::Movss | M::Vmovss => self.move_scalar(instr, 4)?,
+            M::Movsd | M::Vmovsd => self.move_scalar(instr, 8)?,
+            M::Movaps
+            | M::Movapd
+            | M::Movups
+            | M::Movupd
+            | M::Movdqa
+            | M::Movdqu
+            | M::Vmovaps
+            | M::Vmovapd
+            | M::Vmovups
+            | M::Vmovupd
+            | M::Vmovdqa
+            | M::Vmovdqu => {
+                let src = self.read_vec_op(instr, instr.op_count() - 1)?;
+                let wide = self.is_wide(instr);
+                self.write_vec_op(instr, 0, [src[0], if wide { src[1] } else { 0 }])?;
             }
-            M::Movd => self.move_between_files(instr, 4)?,
-            M::Movq => self.move_between_files(instr, 8)?,
+            M::Movd | M::Vmovd => self.move_between_files(instr, 4)?,
+            M::Movq | M::Vmovq => self.move_between_files(instr, 8)?,
 
-            M::Addss => self.scalar_fp(instr, FpOp::Add, FpWidth::Single)?,
-            M::Addsd => self.scalar_fp(instr, FpOp::Add, FpWidth::Double)?,
-            M::Subss => self.scalar_fp(instr, FpOp::Sub, FpWidth::Single)?,
-            M::Subsd => self.scalar_fp(instr, FpOp::Sub, FpWidth::Double)?,
-            M::Mulss => self.scalar_fp(instr, FpOp::Mul, FpWidth::Single)?,
-            M::Mulsd => self.scalar_fp(instr, FpOp::Mul, FpWidth::Double)?,
-            M::Divss => self.scalar_fp(instr, FpOp::Div, FpWidth::Single)?,
-            M::Divsd => self.scalar_fp(instr, FpOp::Div, FpWidth::Double)?,
-            M::Minss => self.scalar_fp(instr, FpOp::Min, FpWidth::Single)?,
-            M::Minsd => self.scalar_fp(instr, FpOp::Min, FpWidth::Double)?,
-            M::Maxss => self.scalar_fp(instr, FpOp::Max, FpWidth::Single)?,
-            M::Maxsd => self.scalar_fp(instr, FpOp::Max, FpWidth::Double)?,
-            M::Sqrtss => self.scalar_fp(instr, FpOp::Sqrt, FpWidth::Single)?,
-            M::Sqrtsd => self.scalar_fp(instr, FpOp::Sqrt, FpWidth::Double)?,
+            M::Addss | M::Vaddss => {
+                self.vector_binary(instr, |a, b| fp_scalar(a, b, FpOp::Add, FpWidth::Single))?
+            }
+            M::Addsd | M::Vaddsd => {
+                self.vector_binary(instr, |a, b| fp_scalar(a, b, FpOp::Add, FpWidth::Double))?
+            }
+            M::Subss | M::Vsubss => {
+                self.vector_binary(instr, |a, b| fp_scalar(a, b, FpOp::Sub, FpWidth::Single))?
+            }
+            M::Subsd | M::Vsubsd => {
+                self.vector_binary(instr, |a, b| fp_scalar(a, b, FpOp::Sub, FpWidth::Double))?
+            }
+            M::Mulss | M::Vmulss => {
+                self.vector_binary(instr, |a, b| fp_scalar(a, b, FpOp::Mul, FpWidth::Single))?
+            }
+            M::Mulsd | M::Vmulsd => {
+                self.vector_binary(instr, |a, b| fp_scalar(a, b, FpOp::Mul, FpWidth::Double))?
+            }
+            M::Divss | M::Vdivss => {
+                self.vector_binary(instr, |a, b| fp_scalar(a, b, FpOp::Div, FpWidth::Single))?
+            }
+            M::Divsd | M::Vdivsd => {
+                self.vector_binary(instr, |a, b| fp_scalar(a, b, FpOp::Div, FpWidth::Double))?
+            }
+            M::Minss | M::Vminss => {
+                self.vector_binary(instr, |a, b| fp_scalar(a, b, FpOp::Min, FpWidth::Single))?
+            }
+            M::Minsd | M::Vminsd => {
+                self.vector_binary(instr, |a, b| fp_scalar(a, b, FpOp::Min, FpWidth::Double))?
+            }
+            M::Maxss | M::Vmaxss => {
+                self.vector_binary(instr, |a, b| fp_scalar(a, b, FpOp::Max, FpWidth::Single))?
+            }
+            M::Maxsd | M::Vmaxsd => {
+                self.vector_binary(instr, |a, b| fp_scalar(a, b, FpOp::Max, FpWidth::Double))?
+            }
+            M::Sqrtss | M::Vsqrtss => {
+                self.vector_binary(instr, |a, b| fp_scalar(a, b, FpOp::Sqrt, FpWidth::Single))?
+            }
+            M::Sqrtsd | M::Vsqrtsd => {
+                self.vector_binary(instr, |a, b| fp_scalar(a, b, FpOp::Sqrt, FpWidth::Double))?
+            }
 
-            M::Addps => self.packed_fp(instr, FpOp::Add, FpWidth::Single)?,
-            M::Addpd => self.packed_fp(instr, FpOp::Add, FpWidth::Double)?,
-            M::Subps => self.packed_fp(instr, FpOp::Sub, FpWidth::Single)?,
-            M::Subpd => self.packed_fp(instr, FpOp::Sub, FpWidth::Double)?,
-            M::Mulps => self.packed_fp(instr, FpOp::Mul, FpWidth::Single)?,
-            M::Mulpd => self.packed_fp(instr, FpOp::Mul, FpWidth::Double)?,
-            M::Divps => self.packed_fp(instr, FpOp::Div, FpWidth::Single)?,
-            M::Divpd => self.packed_fp(instr, FpOp::Div, FpWidth::Double)?,
-            M::Minps => self.packed_fp(instr, FpOp::Min, FpWidth::Single)?,
-            M::Minpd => self.packed_fp(instr, FpOp::Min, FpWidth::Double)?,
-            M::Maxps => self.packed_fp(instr, FpOp::Max, FpWidth::Single)?,
-            M::Maxpd => self.packed_fp(instr, FpOp::Max, FpWidth::Double)?,
-            M::Sqrtps => self.packed_fp(instr, FpOp::Sqrt, FpWidth::Single)?,
-            M::Sqrtpd => self.packed_fp(instr, FpOp::Sqrt, FpWidth::Double)?,
+            M::Addps | M::Vaddps => {
+                self.vector_binary(instr, |a, b| fp_packed(a, b, FpOp::Add, FpWidth::Single))?
+            }
+            M::Addpd | M::Vaddpd => {
+                self.vector_binary(instr, |a, b| fp_packed(a, b, FpOp::Add, FpWidth::Double))?
+            }
+            M::Subps | M::Vsubps => {
+                self.vector_binary(instr, |a, b| fp_packed(a, b, FpOp::Sub, FpWidth::Single))?
+            }
+            M::Subpd | M::Vsubpd => {
+                self.vector_binary(instr, |a, b| fp_packed(a, b, FpOp::Sub, FpWidth::Double))?
+            }
+            M::Mulps | M::Vmulps => {
+                self.vector_binary(instr, |a, b| fp_packed(a, b, FpOp::Mul, FpWidth::Single))?
+            }
+            M::Mulpd | M::Vmulpd => {
+                self.vector_binary(instr, |a, b| fp_packed(a, b, FpOp::Mul, FpWidth::Double))?
+            }
+            M::Divps | M::Vdivps => {
+                self.vector_binary(instr, |a, b| fp_packed(a, b, FpOp::Div, FpWidth::Single))?
+            }
+            M::Divpd | M::Vdivpd => {
+                self.vector_binary(instr, |a, b| fp_packed(a, b, FpOp::Div, FpWidth::Double))?
+            }
+            M::Minps | M::Vminps => {
+                self.vector_binary(instr, |a, b| fp_packed(a, b, FpOp::Min, FpWidth::Single))?
+            }
+            M::Minpd | M::Vminpd => {
+                self.vector_binary(instr, |a, b| fp_packed(a, b, FpOp::Min, FpWidth::Double))?
+            }
+            M::Maxps | M::Vmaxps => {
+                self.vector_binary(instr, |a, b| fp_packed(a, b, FpOp::Max, FpWidth::Single))?
+            }
+            M::Maxpd | M::Vmaxpd => {
+                self.vector_binary(instr, |a, b| fp_packed(a, b, FpOp::Max, FpWidth::Double))?
+            }
+            M::Sqrtps | M::Vsqrtps => {
+                self.vector_binary(instr, |a, b| fp_packed(a, b, FpOp::Sqrt, FpWidth::Single))?
+            }
+            M::Sqrtpd | M::Vsqrtpd => {
+                self.vector_binary(instr, |a, b| fp_packed(a, b, FpOp::Sqrt, FpWidth::Double))?
+            }
 
             // `comiss` et `ucomiss` ne diffèrent que par l'exception
             // qu'un NaN signalant déclenche — et il n'y a pas
             // d'exception flottante ici.
-            M::Comiss | M::Ucomiss => self.compare_fp(instr, FpWidth::Single)?,
-            M::Comisd | M::Ucomisd => self.compare_fp(instr, FpWidth::Double)?,
-
-            M::Cvtsi2ss | M::Cvtsi2sd => {
-                let w = self.src_width(instr, 1)?;
-                let value = sign_extend(self.read_op(instr, 1)?, w) as i64;
-                let dest = self.read_xmm_op(instr, 0)?;
-                let low = if instr.mnemonic() == M::Cvtsi2ss {
-                    u128::from((value as f32).to_bits())
-                } else {
-                    u128::from((value as f64).to_bits())
-                };
-                let kept = if instr.mnemonic() == M::Cvtsi2ss {
-                    dest & !0xffff_ffffu128
-                } else {
-                    dest & !0xffff_ffff_ffff_ffffu128
-                };
-                self.write_xmm_op(instr, 0, kept | low)?;
+            M::Comiss | M::Ucomiss | M::Vcomiss | M::Vucomiss => {
+                self.compare_fp(instr, FpWidth::Single)?
             }
-            M::Cvttss2si | M::Cvtss2si | M::Cvttsd2si | M::Cvtsd2si => {
-                let src = self.read_xmm_op(instr, 1)?;
-                let single = matches!(instr.mnemonic(), M::Cvttss2si | M::Cvtss2si);
+            M::Comisd | M::Ucomisd | M::Vcomisd | M::Vucomisd => {
+                self.compare_fp(instr, FpWidth::Double)?
+            }
+
+            M::Cvtsi2ss | M::Cvtsi2sd | M::Vcvtsi2ss | M::Vcvtsi2sd => {
+                let last = instr.op_count() - 1;
+                let w = self.src_width(instr, last)?;
+                let value = sign_extend(self.read_op(instr, last)?, w) as i64;
+                let single = matches!(instr.mnemonic(), M::Cvtsi2ss | M::Vcvtsi2ss);
+                let (mask, low) = if single {
+                    (scalar_mask(4), u128::from((value as f32).to_bits()))
+                } else {
+                    (scalar_mask(8), u128::from((value as f64).to_bits()))
+                };
+                // Le haut vient de la première source : la destination
+                // elle-même en SSE, l'opérande du milieu en AVX.
+                let upper = self.read_vec_op(instr, if instr.op_count() >= 3 { 1 } else { 0 })?[0];
+                self.write_vec_op(instr, 0, [(upper & !mask) | low, 0])?;
+            }
+            M::Cvttss2si
+            | M::Cvtss2si
+            | M::Cvttsd2si
+            | M::Cvtsd2si
+            | M::Vcvttss2si
+            | M::Vcvtss2si
+            | M::Vcvttsd2si
+            | M::Vcvtsd2si => {
+                let src = self.read_vec_op(instr, 1)?[0];
+                let single = matches!(
+                    instr.mnemonic(),
+                    M::Cvttss2si | M::Cvtss2si | M::Vcvttss2si | M::Vcvtss2si
+                );
                 let value = if single {
                     f64::from(f32::from_bits(src as u32))
                 } else {
                     f64::from_bits(src as u64)
                 };
-                let truncate = matches!(instr.mnemonic(), M::Cvttss2si | M::Cvttsd2si);
+                let truncate = matches!(
+                    instr.mnemonic(),
+                    M::Cvttss2si | M::Cvttsd2si | M::Vcvttss2si | M::Vcvttsd2si
+                );
                 let rounded = if truncate {
                     value.trunc()
                 } else {
@@ -1782,137 +2046,242 @@ impl Emulator {
                 let w = self.dest_width(instr)?;
                 self.write_op(instr, 0, to_integer(rounded, w))?;
             }
-            M::Cvtss2sd => {
-                let src = f32::from_bits(self.read_xmm_op(instr, 1)? as u32);
-                let dest = self.read_xmm_op(instr, 0)?;
+            M::Cvtss2sd | M::Vcvtss2sd => {
+                let last = instr.op_count() - 1;
+                let src = f32::from_bits(self.read_vec_op(instr, last)?[0] as u32);
+                let upper = self.read_vec_op(instr, if instr.op_count() >= 3 { 1 } else { 0 })?[0];
                 let low = u128::from(f64::from(src).to_bits());
-                self.write_xmm_op(instr, 0, (dest & !0xffff_ffff_ffff_ffffu128) | low)?;
+                self.write_vec_op(instr, 0, [(upper & !scalar_mask(8)) | low, 0])?;
             }
-            M::Cvtsd2ss => {
-                let src = f64::from_bits(self.read_xmm_op(instr, 1)? as u64);
-                let dest = self.read_xmm_op(instr, 0)?;
+            M::Cvtsd2ss | M::Vcvtsd2ss => {
+                let last = instr.op_count() - 1;
+                let src = f64::from_bits(self.read_vec_op(instr, last)?[0] as u64);
+                let upper = self.read_vec_op(instr, if instr.op_count() >= 3 { 1 } else { 0 })?[0];
                 let low = u128::from((src as f32).to_bits());
-                self.write_xmm_op(instr, 0, (dest & !0xffff_ffffu128) | low)?;
+                self.write_vec_op(instr, 0, [(upper & !scalar_mask(4)) | low, 0])?;
             }
 
-            // Les opérations bit à bit sur 128 bits. `xorps xmm0, xmm0`
-            // et `pxor xmm0, xmm0` sont la façon habituelle de remettre
-            // un registre à zéro.
-            M::Xorps | M::Xorpd | M::Pxor => self.bitwise_xmm(instr, |a, b| a ^ b)?,
-            M::Andps | M::Andpd | M::Pand => self.bitwise_xmm(instr, |a, b| a & b)?,
-            M::Orps | M::Orpd | M::Por => self.bitwise_xmm(instr, |a, b| a | b)?,
-            M::Andnps | M::Andnpd | M::Pandn => self.bitwise_xmm(instr, |a, b| !a & b)?,
+            // Les opérations bit à bit. `xorps xmm0, xmm0` et
+            // `pxor xmm0, xmm0` sont la façon habituelle de remettre un
+            // registre à zéro.
+            M::Xorps | M::Xorpd | M::Pxor | M::Vxorps | M::Vxorpd | M::Vpxor => {
+                self.vector_binary(instr, |a, b| a ^ b)?
+            }
+            M::Andps | M::Andpd | M::Pand | M::Vandps | M::Vandpd | M::Vpand => {
+                self.vector_binary(instr, |a, b| a & b)?
+            }
+            M::Orps | M::Orpd | M::Por | M::Vorps | M::Vorpd | M::Vpor => {
+                self.vector_binary(instr, |a, b| a | b)?
+            }
+            M::Andnps | M::Andnpd | M::Pandn | M::Vandnps | M::Vandnpd | M::Vpandn => {
+                self.vector_binary(instr, |a, b| !a & b)?
+            }
 
-            // --- SSE entier : les mêmes registres, sans virgule -------
-            M::Paddb => self.packed_int(instr, 1, |a, b| a.wrapping_add(b))?,
-            M::Paddw => self.packed_int(instr, 2, |a, b| a.wrapping_add(b))?,
-            M::Paddd => self.packed_int(instr, 4, |a, b| a.wrapping_add(b))?,
-            M::Paddq => self.packed_int(instr, 8, |a, b| a.wrapping_add(b))?,
-            M::Psubb => self.packed_int(instr, 1, |a, b| a.wrapping_sub(b))?,
-            M::Psubw => self.packed_int(instr, 2, |a, b| a.wrapping_sub(b))?,
-            M::Psubd => self.packed_int(instr, 4, |a, b| a.wrapping_sub(b))?,
-            M::Psubq => self.packed_int(instr, 8, |a, b| a.wrapping_sub(b))?,
+            // --- Le vectoriel entier ---------------------------------
+            M::Paddb | M::Vpaddb => {
+                self.vector_binary(instr, |a, b| int_lanes(a, b, 1, u64::wrapping_add))?
+            }
+            M::Paddw | M::Vpaddw => {
+                self.vector_binary(instr, |a, b| int_lanes(a, b, 2, u64::wrapping_add))?
+            }
+            M::Paddd | M::Vpaddd => {
+                self.vector_binary(instr, |a, b| int_lanes(a, b, 4, u64::wrapping_add))?
+            }
+            M::Paddq | M::Vpaddq => {
+                self.vector_binary(instr, |a, b| int_lanes(a, b, 8, u64::wrapping_add))?
+            }
+            M::Psubb | M::Vpsubb => {
+                self.vector_binary(instr, |a, b| int_lanes(a, b, 1, u64::wrapping_sub))?
+            }
+            M::Psubw | M::Vpsubw => {
+                self.vector_binary(instr, |a, b| int_lanes(a, b, 2, u64::wrapping_sub))?
+            }
+            M::Psubd | M::Vpsubd => {
+                self.vector_binary(instr, |a, b| int_lanes(a, b, 4, u64::wrapping_sub))?
+            }
+            M::Psubq | M::Vpsubq => {
+                self.vector_binary(instr, |a, b| int_lanes(a, b, 8, u64::wrapping_sub))?
+            }
             // Une comparaison qui ne touche aucun indicateur : elle rend
             // un masque, tout à 1 là où c'est vrai. C'est ce masque qu'on
             // combine ensuite avec `pand`.
-            M::Pcmpeqb => self.packed_int(instr, 1, |a, b| if a == b { !0 } else { 0 })?,
-            M::Pcmpeqw => self.packed_int(instr, 2, |a, b| if a == b { !0 } else { 0 })?,
-            M::Pcmpeqd => self.packed_int(instr, 4, |a, b| if a == b { !0 } else { 0 })?,
-            M::Pcmpgtb => self.packed_signed_gt(instr, 1)?,
-            M::Pcmpgtw => self.packed_signed_gt(instr, 2)?,
-            M::Pcmpgtd => self.packed_signed_gt(instr, 4)?,
-
-            M::Psllw => self.packed_shift(instr, 2, PackedShift::Left)?,
-            M::Pslld => self.packed_shift(instr, 4, PackedShift::Left)?,
-            M::Psllq => self.packed_shift(instr, 8, PackedShift::Left)?,
-            M::Psrlw => self.packed_shift(instr, 2, PackedShift::Right)?,
-            M::Psrld => self.packed_shift(instr, 4, PackedShift::Right)?,
-            M::Psrlq => self.packed_shift(instr, 8, PackedShift::Right)?,
-            M::Psraw => self.packed_shift(instr, 2, PackedShift::Arithmetic)?,
-            M::Psrad => self.packed_shift(instr, 4, PackedShift::Arithmetic)?,
-            // Celles-ci décalent le registre entier, par octets.
-            M::Pslldq | M::Psrldq => {
-                let value = self.read_xmm_op(instr, 0)?;
-                let bytes = (self.read_op(instr, 1)? as u32).min(16) * 8;
-                let result = if bytes >= 128 {
-                    0
-                } else if instr.mnemonic() == M::Pslldq {
-                    value << bytes
-                } else {
-                    value >> bytes
-                };
-                self.write_xmm_op(instr, 0, result)?;
+            M::Pcmpeqb | M::Vpcmpeqb => self.vector_binary(instr, |a, b| {
+                int_lanes(a, b, 1, |x, y| if x == y { !0 } else { 0 })
+            })?,
+            M::Pcmpeqw | M::Vpcmpeqw => self.vector_binary(instr, |a, b| {
+                int_lanes(a, b, 2, |x, y| if x == y { !0 } else { 0 })
+            })?,
+            M::Pcmpeqd | M::Vpcmpeqd => self.vector_binary(instr, |a, b| {
+                int_lanes(a, b, 4, |x, y| if x == y { !0 } else { 0 })
+            })?,
+            M::Pcmpgtb | M::Vpcmpgtb => {
+                self.vector_binary(instr, |a, b| signed_gt_lanes(a, b, 1))?
+            }
+            M::Pcmpgtw | M::Vpcmpgtw => {
+                self.vector_binary(instr, |a, b| signed_gt_lanes(a, b, 2))?
+            }
+            M::Pcmpgtd | M::Vpcmpgtd => {
+                self.vector_binary(instr, |a, b| signed_gt_lanes(a, b, 4))?
             }
 
-            // Rassembler les bits de signe : c'est ainsi qu'on ramène le
-            // résultat d'une comparaison vectorielle dans un registre
-            // général, pour sauter dessus.
-            M::Pmovmskb | M::Movmskps | M::Movmskpd => {
-                let src = self.read_xmm_op(instr, 1)?;
-                let (count, step) = match instr.mnemonic() {
-                    M::Pmovmskb => (16, 8),
-                    M::Movmskps => (4, 32),
-                    _ => (2, 64),
-                };
-                let mut mask = 0u64;
-                for lane in 0..count {
-                    let sign = (src >> (lane * step + step - 1)) & 1;
-                    mask |= (sign as u64) << lane;
-                }
-                self.write_op(instr, 0, mask)?;
+            M::Psllw | M::Vpsllw => self.packed_shift(instr, 2, PackedShift::Left)?,
+            M::Pslld | M::Vpslld => self.packed_shift(instr, 4, PackedShift::Left)?,
+            M::Psllq | M::Vpsllq => self.packed_shift(instr, 8, PackedShift::Left)?,
+            M::Psrlw | M::Vpsrlw => self.packed_shift(instr, 2, PackedShift::Right)?,
+            M::Psrld | M::Vpsrld => self.packed_shift(instr, 4, PackedShift::Right)?,
+            M::Psrlq | M::Vpsrlq => self.packed_shift(instr, 8, PackedShift::Right)?,
+            M::Psraw | M::Vpsraw => self.packed_shift(instr, 2, PackedShift::Arithmetic)?,
+            M::Psrad | M::Vpsrad => self.packed_shift(instr, 4, PackedShift::Arithmetic)?,
+            // Celles-ci décalent par octets, et chaque moitié de 128 bits
+            // pour son compte : AVX n'a pas élargi le décalage, il l'a
+            // dédoublé.
+            M::Pslldq | M::Psrldq | M::Vpslldq | M::Vpsrldq => {
+                let last = instr.op_count() - 1;
+                let bits = (self.read_op(instr, last)? as u32).min(16) * 8;
+                let left = matches!(instr.mnemonic(), M::Pslldq | M::Vpslldq);
+                self.vector_binary_extra(instr, 1, move |_, b| {
+                    if bits >= 128 {
+                        0
+                    } else if left {
+                        b << bits
+                    } else {
+                        b >> bits
+                    }
+                })?;
             }
+
+            M::Pmovmskb | M::Vpmovmskb => self.move_sign_mask(instr, 8)?,
+            M::Movmskps | M::Vmovmskps => self.move_sign_mask(instr, 32)?,
+            M::Movmskpd | M::Vmovmskpd => self.move_sign_mask(instr, 64)?,
 
             // Remettre les éléments dans un autre ordre.
-            M::Pshufd => {
-                let src = self.read_xmm_op(instr, 1)?;
+            M::Pshufd | M::Vpshufd => {
+                let control = self.read_op(instr, instr.op_count() - 1)?;
+                self.vector_binary_extra(instr, 1, move |_, b| shuffle_dwords(b, control))?;
+            }
+            M::Shufps | M::Vshufps => {
+                let control = self.read_op(instr, instr.op_count() - 1)?;
+                self.vector_binary_extra(instr, 1, move |a, b| shuffle_singles(a, b, control))?;
+            }
+            M::Shufpd | M::Vshufpd => {
+                let control = self.read_op(instr, instr.op_count() - 1)?;
+                self.vector_binary_extra(instr, 1, move |a, b| shuffle_doubles(a, b, control))?;
+            }
+            M::Movhlps | M::Vmovhlps => {
+                self.vector_binary(instr, |a, b| (a & !u128::from(u64::MAX)) | (b >> 64))?
+            }
+            M::Movlhps | M::Vmovlhps => {
+                self.vector_binary(instr, |a, b| (a & u128::from(u64::MAX)) | (b << 64))?
+            }
+            M::Punpcklbw | M::Vpunpcklbw => {
+                self.vector_binary(instr, |a, b| unpack_lanes(a, b, 1, false))?
+            }
+            M::Punpcklwd | M::Vpunpcklwd => {
+                self.vector_binary(instr, |a, b| unpack_lanes(a, b, 2, false))?
+            }
+            M::Punpckldq | M::Unpcklps | M::Vpunpckldq | M::Vunpcklps => {
+                self.vector_binary(instr, |a, b| unpack_lanes(a, b, 4, false))?
+            }
+            M::Punpcklqdq | M::Unpcklpd | M::Vpunpcklqdq | M::Vunpcklpd => {
+                self.vector_binary(instr, |a, b| unpack_lanes(a, b, 8, false))?
+            }
+            M::Punpckhbw | M::Vpunpckhbw => {
+                self.vector_binary(instr, |a, b| unpack_lanes(a, b, 1, true))?
+            }
+            M::Punpckhwd | M::Vpunpckhwd => {
+                self.vector_binary(instr, |a, b| unpack_lanes(a, b, 2, true))?
+            }
+            M::Punpckhdq | M::Unpckhps | M::Vpunpckhdq | M::Vunpckhps => {
+                self.vector_binary(instr, |a, b| unpack_lanes(a, b, 4, true))?
+            }
+            M::Punpckhqdq | M::Unpckhpd | M::Vpunpckhqdq | M::Vunpckhpd => {
+                self.vector_binary(instr, |a, b| unpack_lanes(a, b, 8, true))?
+            }
+
+            // --- Ce qu'AVX ajoute, et qui n'a pas d'équivalent SSE ----
+            // Un élément recopié partout : c'est ainsi qu'on multiplie un
+            // vecteur entier par un scalaire.
+            M::Vbroadcastss
+            | M::Vbroadcastsd
+            | M::Vpbroadcastb
+            | M::Vpbroadcastw
+            | M::Vpbroadcastd
+            | M::Vpbroadcastq => {
+                let src = self.read_vec_op(instr, 1)?[0];
+                let bytes = match instr.mnemonic() {
+                    M::Vpbroadcastb => 1,
+                    M::Vpbroadcastw => 2,
+                    M::Vbroadcastss | M::Vpbroadcastd => 4,
+                    _ => 8,
+                };
+                let element = src & scalar_mask(bytes);
+                let mut half = 0u128;
+                for lane in 0..(16 / bytes) {
+                    half |= element << (lane * bytes * 8);
+                }
+                let wide = self.is_wide(instr);
+                self.write_vec_op(instr, 0, [half, if wide { half } else { 0 }])?;
+            }
+            // Les deux moitiés d'un registre 256 bits ne se parlent pas
+            // d'elles-mêmes : il faut les instructions qui les nomment.
+            M::Vinsertf128 | M::Vinserti128 => {
+                let dest = self.read_vec_op(instr, 1)?;
+                let src = self.read_vec_op(instr, 2)?[0];
+                let high = self.read_op(instr, 3)? & 1 == 1;
+                let out = if high { [dest[0], src] } else { [src, dest[1]] };
+                self.write_vec_op(instr, 0, out)?;
+            }
+            M::Vextractf128 | M::Vextracti128 => {
+                let src = self.read_vec_op(instr, 1)?;
+                let high = self.read_op(instr, 2)? & 1 == 1;
+                let taken = if high { src[1] } else { src[0] };
+                self.write_vec_op(instr, 0, [taken, 0])?;
+            }
+            M::Vperm2f128 | M::Vperm2i128 => {
+                let a = self.read_vec_op(instr, 1)?;
+                let b = self.read_vec_op(instr, 2)?;
+                let control = self.read_op(instr, 3)?;
+                let pick = |selector: u64| -> u128 {
+                    if selector & 0b1000 != 0 {
+                        return 0;
+                    }
+                    match selector & 3 {
+                        0 => a[0],
+                        1 => a[1],
+                        2 => b[0],
+                        _ => b[1],
+                    }
+                };
+                let out = [pick(control & 0xf), pick((control >> 4) & 0xf)];
+                self.write_vec_op(instr, 0, out)?;
+            }
+            M::Vpermq | M::Vpermpd => {
+                let src = self.read_vec_op(instr, 1)?;
                 let control = self.read_op(instr, 2)?;
-                let mut out = 0u128;
+                let quad = |index: u64| -> u128 {
+                    let half = src[(index / 2) as usize];
+                    (half >> ((index % 2) * 64)) & u128::from(u64::MAX)
+                };
+                let mut out = [0u128; 2];
                 for lane in 0..4 {
                     let from = (control >> (lane * 2)) & 3;
-                    let value = (src >> (from * 32)) & u128::from(u32::MAX);
-                    out |= value << (lane * 32);
+                    out[lane / 2] |= quad(from) << ((lane % 2) * 64);
                 }
-                self.write_xmm_op(instr, 0, out)?;
+                self.write_vec_op(instr, 0, out)?;
             }
-            M::Shufps | M::Shufpd => {
-                let dest = self.read_xmm_op(instr, 0)?;
-                let src = self.read_xmm_op(instr, 1)?;
-                let control = self.read_op(instr, 2)?;
-                let out = if instr.mnemonic() == M::Shufps {
-                    let mut out = 0u128;
-                    for lane in 0..4 {
-                        // Les deux éléments bas viennent de la
-                        // destination, les deux hauts de la source.
-                        let from = (control >> (lane * 2)) & 3;
-                        let taken = if lane < 2 { dest } else { src };
-                        out |= ((taken >> (from * 32)) & u128::from(u32::MAX)) << (lane * 32);
-                    }
-                    out
-                } else {
-                    let low = (dest >> ((control & 1) * 64)) & u128::from(u64::MAX);
-                    let high = (src >> (((control >> 1) & 1) * 64)) & u128::from(u64::MAX);
-                    low | (high << 64)
-                };
-                self.write_xmm_op(instr, 0, out)?;
+            // Remettre les moitiés hautes à zéro avant de repasser à du
+            // code SSE : sans elle, le processeur paie une pénalité à
+            // chaque transition. Ici, elle ne coûte rien — mais elle doit
+            // faire ce qu'elle dit.
+            M::Vzeroupper | M::Vzeroall => {
+                let all = instr.mnemonic() == M::Vzeroall;
+                for reg in namsdec_core::RegXmm::ALL {
+                    let value = self.cpu.regs.get_ymm(reg);
+                    self.cpu
+                        .regs
+                        .set_ymm(reg, if all { [0, 0] } else { [value[0], 0] });
+                }
             }
-            M::Movhlps | M::Movlhps => {
-                let dest = self.read_xmm_op(instr, 0)?;
-                let src = self.read_xmm_op(instr, 1)?;
-                let out = if instr.mnemonic() == M::Movhlps {
-                    (dest & !u128::from(u64::MAX)) | (src >> 64)
-                } else {
-                    (dest & u128::from(u64::MAX)) | (src << 64)
-                };
-                self.write_xmm_op(instr, 0, out)?;
-            }
-            M::Punpcklbw => self.unpack(instr, 1, false)?,
-            M::Punpcklwd => self.unpack(instr, 2, false)?,
-            M::Punpckldq | M::Unpcklps => self.unpack(instr, 4, false)?,
-            M::Punpcklqdq | M::Unpcklpd => self.unpack(instr, 8, false)?,
-            M::Punpckhbw => self.unpack(instr, 1, true)?,
-            M::Punpckhwd => self.unpack(instr, 2, true)?,
-            M::Punpckhdq | M::Unpckhps => self.unpack(instr, 4, true)?,
-            M::Punpckhqdq | M::Unpckhpd => self.unpack(instr, 8, true)?,
 
             // --- x87 : la pile du 8087 -------------------------------
             // Huit registres en anneau, désignés par rapport au sommet.
@@ -2443,14 +2812,15 @@ impl Emulator {
         Ok(())
     }
 
-    /// Lit un opérande SSE : un registre XMM entier, ou les 4, 8 ou 16
-    /// octets que l'instruction va chercher en mémoire.
-    fn read_xmm_op(&self, instr: &Instruction, op_index: u32) -> Result<u128, EmuError> {
+    /// Lit un opérande vectoriel : un registre (les 256 bits, dont la
+    /// moitié haute ne vaut que pour AVX) ou ce que l'instruction va
+    /// chercher en mémoire, de quatre à trente-deux octets.
+    fn read_vec_op(&self, instr: &Instruction, op_index: u32) -> Result<Vector, EmuError> {
         match instr.op_kind(op_index) {
             OpKind::Register => {
                 let reg = instr.op_register(op_index);
-                map_xmm(reg)
-                    .map(|r| self.cpu.regs.get_xmm(r))
+                map_vector(reg)
+                    .map(|r| self.cpu.regs.get_ymm(r))
                     .ok_or_else(|| EmuError::UnsupportedRegister {
                         backend: Self::NAME,
                         register: format!("{reg:?}"),
@@ -2458,11 +2828,16 @@ impl Emulator {
             }
             OpKind::Memory => {
                 let addr = self.effective_address(instr, op_index)?;
-                let bytes = instr.memory_size().size().min(16);
+                let bytes = instr.memory_size().size().min(32);
                 let raw = self.cpu.mem.bytes_at(addr, bytes)?;
-                let mut buf = [0u8; 16];
+                let mut buf = [0u8; 32];
                 buf[..bytes].copy_from_slice(raw);
-                Ok(u128::from_le_bytes(buf))
+                let (chunks, _) = buf.as_chunks::<16>();
+                let mut halves = [0u128; 2];
+                for (half, chunk) in halves.iter_mut().zip(chunks) {
+                    *half = u128::from_le_bytes(*chunk);
+                }
+                Ok(halves)
             }
             other => Err(EmuError::UnsupportedOperand {
                 backend: Self::NAME,
@@ -2472,18 +2847,29 @@ impl Emulator {
         }
     }
 
-    fn write_xmm_op(
+    /// Écrit un opérande vectoriel.
+    ///
+    /// Sur un registre, ce qu'il advient de la moitié haute ne dépend pas
+    /// de la valeur écrite mais de l'*encodage* : une instruction SSE la
+    /// laisse où elle est, une instruction AVX la remet à zéro. C'est la
+    /// règle qu'on oublie en mélangeant les deux jeux.
+    fn write_vec_op(
         &mut self,
         instr: &Instruction,
         op_index: u32,
-        value: u128,
+        value: Vector,
     ) -> Result<(), EmuError> {
         match instr.op_kind(op_index) {
             OpKind::Register => {
                 let reg = instr.op_register(op_index);
-                match map_xmm(reg) {
+                match map_vector(reg) {
                     Some(r) => {
-                        self.cpu.regs.set_xmm(r, value);
+                        if keeps_upper_half(instr) {
+                            self.cpu.regs.set_xmm(r, value[0]);
+                        } else {
+                            let high = if reg.is_ymm() { value[1] } else { 0 };
+                            self.cpu.regs.set_ymm(r, [value[0], high]);
+                        }
                         Ok(())
                     }
                     None => Err(EmuError::UnsupportedRegister {
@@ -2494,11 +2880,12 @@ impl Emulator {
             }
             OpKind::Memory => {
                 let addr = self.effective_address(instr, op_index)?;
-                let bytes = instr.memory_size().size().min(16);
+                let bytes = instr.memory_size().size().min(32);
+                let mut buf = [0u8; 32];
+                buf[..16].copy_from_slice(&value[0].to_le_bytes());
+                buf[16..].copy_from_slice(&value[1].to_le_bytes());
                 self.record_memory(addr, bytes);
-                self.cpu
-                    .mem
-                    .write_bytes(addr, &value.to_le_bytes()[..bytes])?;
+                self.cpu.mem.write_bytes(addr, &buf[..bytes])?;
                 Ok(())
             }
             other => Err(EmuError::UnsupportedOperand {
@@ -2509,94 +2896,99 @@ impl Emulator {
         }
     }
 
+    /// L'opération travaille-t-elle sur 256 bits ? La destination le dit.
+    fn is_wide(&self, instr: &Instruction) -> bool {
+        match instr.op_kind(0) {
+            OpKind::Register => instr.op_register(0).is_ymm(),
+            OpKind::Memory => instr.memory_size().size() > 16,
+            _ => false,
+        }
+    }
+
+    /// Le cœur de toutes les instructions vectorielles à deux sources :
+    /// la même opération appliquée à chaque moitié de 128 bits.
+    ///
+    /// Elle sert aux deux jeux. SSE écrit dans sa première source (`addpd
+    /// xmm0, xmm1`), AVX nomme une destination à part (`vaddpd ymm0,
+    /// ymm1, ymm2`) : `sources` dit lesquelles lire, et le reste est
+    /// identique — c'est bien la même machine, avec un encodage plus
+    /// large.
+    fn vector_binary(
+        &mut self,
+        instr: &Instruction,
+        f: impl Fn(u128, u128) -> u128,
+    ) -> Result<(), EmuError> {
+        self.vector_binary_extra(instr, 0, f)
+    }
+
+    /// La même chose quand l'instruction porte en plus un immédiat, qui
+    /// ne compte pas parmi les sources.
+    fn vector_binary_extra(
+        &mut self,
+        instr: &Instruction,
+        extra: u32,
+        f: impl Fn(u128, u128) -> u128,
+    ) -> Result<(), EmuError> {
+        let (first, second) = sources(instr, extra);
+        let a = self.read_vec_op(instr, first)?;
+        let b = self.read_vec_op(instr, second)?;
+        let wide = self.is_wide(instr);
+        let out = [f(a[0], b[0]), if wide { f(a[1], b[1]) } else { 0 }];
+        self.write_vec_op(instr, 0, out)
+    }
+
     /// `movss`/`movsd` : un seul flottant se déplace, et ce qui arrive au
-    /// reste du registre dépend d'où il vient. Depuis la mémoire, le haut
-    /// est mis à zéro ; depuis un autre XMM, il est préservé — une
-    /// asymétrie du jeu d'instructions, pas un choix d'ici.
+    /// reste du registre dépend d'où il vient. Depuis la mémoire, tout le
+    /// reste est mis à zéro ; depuis un autre registre, le haut est
+    /// préservé — une asymétrie du jeu d'instructions, pas un choix
+    /// d'ici. AVX en fait une troisième opérande explicite.
     fn move_scalar(&mut self, instr: &Instruction, bytes: usize) -> Result<(), EmuError> {
         let mask = scalar_mask(bytes);
-        let src = self.read_xmm_op(instr, 1)?;
+        let last = instr.op_count() - 1;
         if instr.op_kind(0) == OpKind::Memory {
-            return self.write_xmm_op(instr, 0, src & mask);
+            let src = self.read_vec_op(instr, last)?;
+            return self.write_vec_op(instr, 0, [src[0] & mask, 0]);
         }
-        let keep_high = instr.op_kind(1) == OpKind::Register;
-        let dest = if keep_high {
-            self.read_xmm_op(instr, 0)? & !mask
-        } else {
+        if instr.op_count() >= 3 {
+            // `vmovss xmm0, xmm1, xmm2` : le haut vient de la première
+            // source, l'élément du bas de la seconde.
+            let upper = self.read_vec_op(instr, 1)?[0] & !mask;
+            let low = self.read_vec_op(instr, 2)?[0] & mask;
+            return self.write_vec_op(instr, 0, [upper | low, 0]);
+        }
+        let src = self.read_vec_op(instr, last)?[0] & mask;
+        let upper = if instr.op_kind(last) == OpKind::Memory {
             0
+        } else {
+            self.read_vec_op(instr, 0)?[0] & !mask
         };
-        self.write_xmm_op(instr, 0, dest | (src & mask))
+        self.write_vec_op(instr, 0, [upper | src, 0])
     }
 
     /// `movd`/`movq` : le passage entre les deux familles de registres.
-    /// Ce qui entre dans un XMM en efface le reste ; ce qui en sort est
-    /// tronqué à la largeur demandée.
+    /// Ce qui entre dans un registre vectoriel en efface le reste ; ce qui
+    /// en sort est tronqué à la largeur demandée.
     fn move_between_files(&mut self, instr: &Instruction, bytes: usize) -> Result<(), EmuError> {
         let mask = scalar_mask(bytes);
-        let dest_is_xmm =
-            instr.op_kind(0) == OpKind::Register && map_xmm(instr.op_register(0)).is_some();
-        let src_is_xmm =
-            instr.op_kind(1) == OpKind::Register && map_xmm(instr.op_register(1)).is_some();
+        let dest_is_vector =
+            instr.op_kind(0) == OpKind::Register && map_vector(instr.op_register(0)).is_some();
+        let src_is_vector =
+            instr.op_kind(1) == OpKind::Register && map_vector(instr.op_register(1)).is_some();
 
-        if dest_is_xmm {
-            let value = if src_is_xmm {
-                self.read_xmm_op(instr, 1)?
+        if dest_is_vector {
+            let value = if src_is_vector {
+                self.read_vec_op(instr, 1)?[0]
             } else {
                 u128::from(self.read_op(instr, 1)?)
             };
-            return self.write_xmm_op(instr, 0, value & mask);
+            return self.write_vec_op(instr, 0, [value & mask, 0]);
         }
-        let value = (self.read_xmm_op(instr, 1)? & mask) as u64;
+        let value = (self.read_vec_op(instr, 1)?[0] & mask) as u64;
         if instr.op_kind(0) == OpKind::Memory {
-            self.write_xmm_op(instr, 0, u128::from(value))
+            self.write_vec_op(instr, 0, [u128::from(value), 0])
         } else {
             self.write_op(instr, 0, value)
         }
-    }
-
-    /// Une opération flottante sur le seul élément du bas. Le reste du
-    /// registre ne bouge pas : c'est ce qui distingue `addsd` d'`addpd`.
-    fn scalar_fp(&mut self, instr: &Instruction, op: FpOp, w: FpWidth) -> Result<(), EmuError> {
-        let dest = self.read_xmm_op(instr, 0)?;
-        let src = self.read_xmm_op(instr, 1)?;
-        let low = match w {
-            FpWidth::Single => {
-                let r = op.apply32(f32::from_bits(dest as u32), f32::from_bits(src as u32));
-                u128::from(r.to_bits())
-            }
-            FpWidth::Double => {
-                let r = op.apply64(f64::from_bits(dest as u64), f64::from_bits(src as u64));
-                u128::from(r.to_bits())
-            }
-        };
-        let mask = scalar_mask(if w == FpWidth::Single { 4 } else { 8 });
-        self.write_xmm_op(instr, 0, (dest & !mask) | low)
-    }
-
-    /// La même opération sur tout le registre à la fois : quatre
-    /// flottants simples, ou deux doubles. C'est là tout l'intérêt de
-    /// SSE — un seul ordre, plusieurs calculs.
-    fn packed_fp(&mut self, instr: &Instruction, op: FpOp, w: FpWidth) -> Result<(), EmuError> {
-        let dest = self.read_xmm_op(instr, 0)?;
-        let src = self.read_xmm_op(instr, 1)?;
-        let mut out = 0u128;
-        match w {
-            FpWidth::Single => {
-                for lane in 0..4 {
-                    let a = f32::from_bits((dest >> (lane * 32)) as u32);
-                    let b = f32::from_bits((src >> (lane * 32)) as u32);
-                    out |= u128::from(op.apply32(a, b).to_bits()) << (lane * 32);
-                }
-            }
-            FpWidth::Double => {
-                for lane in 0..2 {
-                    let a = f64::from_bits((dest >> (lane * 64)) as u64);
-                    let b = f64::from_bits((src >> (lane * 64)) as u64);
-                    out |= u128::from(op.apply64(a, b).to_bits()) << (lane * 64);
-                }
-            }
-        }
-        self.write_xmm_op(instr, 0, out)
     }
 
     /// `comisd` et ses variantes rangent le résultat de la comparaison
@@ -2604,8 +2996,8 @@ impl Emulator {
     /// `jg` irait lire pour rien. D'où les `ja`/`jb` qu'on voit après du
     /// code flottant : ce sont les tests *non signés* qui conviennent.
     fn compare_fp(&mut self, instr: &Instruction, w: FpWidth) -> Result<(), EmuError> {
-        let a = self.read_xmm_op(instr, 0)?;
-        let b = self.read_xmm_op(instr, 1)?;
+        let a = self.read_vec_op(instr, 0)?[0];
+        let b = self.read_vec_op(instr, 1)?[0];
         let (x, y) = match w {
             FpWidth::Single => (
                 f64::from(f32::from_bits(a as u32)),
@@ -2627,111 +3019,52 @@ impl Emulator {
         Ok(())
     }
 
-    fn bitwise_xmm(
-        &mut self,
-        instr: &Instruction,
-        op: impl Fn(u128, u128) -> u128,
-    ) -> Result<(), EmuError> {
-        let a = self.read_xmm_op(instr, 0)?;
-        let b = self.read_xmm_op(instr, 1)?;
-        self.write_xmm_op(instr, 0, op(a, b))
-    }
-
-    /// Une opération entière élément par élément, sur des morceaux de
-    /// `bytes` octets. Seize additions d'un seul ordre pour `paddb`.
-    fn packed_int(
-        &mut self,
-        instr: &Instruction,
-        bytes: usize,
-        op: impl Fn(u64, u64) -> u64,
-    ) -> Result<(), EmuError> {
-        let a = self.read_xmm_op(instr, 0)?;
-        let b = self.read_xmm_op(instr, 1)?;
-        let bits = bytes * 8;
-        let mask = lane_mask(bits);
-        let mut out = 0u128;
-        for lane in 0..(16 / bytes) {
-            let shift = lane * bits;
-            let x = (a >> shift) as u64 & mask;
-            let y = (b >> shift) as u64 & mask;
-            out |= u128::from(op(x, y) & mask) << shift;
-        }
-        self.write_xmm_op(instr, 0, out)
-    }
-
-    /// `pcmpgt*` : la comparaison est *signée*, contrairement à
-    /// `pcmpeq*` pour qui la question ne se pose pas.
-    fn packed_signed_gt(&mut self, instr: &Instruction, bytes: usize) -> Result<(), EmuError> {
-        let w = width_from_bytes(bytes).ok_or(EmuError::UnsupportedOperandSize {
-            backend: Self::NAME,
-            bytes,
-        })?;
-        self.packed_int(instr, bytes, move |a, b| {
-            if (sign_extend(a, w) as i64) > (sign_extend(b, w) as i64) {
-                !0
-            } else {
-                0
-            }
-        })
-    }
-
-    /// Les décalages vectoriels : un seul compte, appliqué à tous les
-    /// éléments. Au-delà de la largeur, le résultat est nul (ou tout à
-    /// signe pour `psra*`), et non « ce qui reste » comme sur un registre
-    /// général.
+    /// Les décalages vectoriels : un seul compte — lu dans un immédiat ou
+    /// dans le bas d'un registre — appliqué à tous les éléments.
     fn packed_shift(
         &mut self,
         instr: &Instruction,
         bytes: usize,
         kind: PackedShift,
     ) -> Result<(), EmuError> {
-        let count = if matches!(instr.op_kind(1), OpKind::Immediate8) {
-            self.read_op(instr, 1)?
+        let last = instr.op_count() - 1;
+        let count = if matches!(instr.op_kind(last), OpKind::Immediate8) {
+            self.read_op(instr, last)?
         } else {
-            self.read_xmm_op(instr, 1)? as u64
+            self.read_vec_op(instr, last)?[0] as u64
         };
-        let bits = (bytes * 8) as u64;
-        let w = width_from_bytes(bytes).ok_or(EmuError::UnsupportedOperandSize {
-            backend: Self::NAME,
-            bytes,
-        })?;
-        let a = self.read_xmm_op(instr, 0)?;
-        let mask = lane_mask(bits as usize);
-        let mut out = 0u128;
-        for lane in 0..(16 / bytes) {
-            let shift = lane * bits as usize;
-            let x = (a >> shift) as u64 & mask;
-            let value = match kind {
-                PackedShift::Left if count < bits => (x << count) & mask,
-                PackedShift::Right if count < bits => x >> count,
-                PackedShift::Arithmetic => {
-                    let signed = sign_extend(x, w) as i64;
-                    (signed >> count.min(bits - 1)) as u64 & mask
-                }
-                _ => 0,
-            };
-            out |= u128::from(value) << shift;
-        }
-        self.write_xmm_op(instr, 0, out)
+        let (_, source) = sources(instr, 1);
+        let a = self.read_vec_op(instr, source)?;
+        let wide = self.is_wide(instr);
+        let out = [
+            shift_lanes(a[0], count, bytes, kind),
+            if wide {
+                shift_lanes(a[1], count, bytes, kind)
+            } else {
+                0
+            },
+        ];
+        self.write_vec_op(instr, 0, out)
     }
 
-    /// Entrelacer les éléments de deux registres, en partant du bas ou du
-    /// haut. C'est ce qui sert à élargir des octets en mots, et à
-    /// transposer.
-    fn unpack(&mut self, instr: &Instruction, bytes: usize, high: bool) -> Result<(), EmuError> {
-        let a = self.read_xmm_op(instr, 0)?;
-        let b = self.read_xmm_op(instr, 1)?;
-        let bits = bytes * 8;
-        let mask = u128::from(lane_mask(bits));
-        let lanes = 16 / bytes;
-        let first = if high { lanes / 2 } else { 0 };
-        let mut out = 0u128;
-        for step in 0..(lanes / 2) {
-            let from = (first + step) * bits;
-            out |= ((a >> from) & mask) << (step * 2 * bits);
-            out |= ((b >> from) & mask) << ((step * 2 + 1) * bits);
+    /// Rassembler les bits de signe dans un registre général : c'est
+    /// ainsi qu'on ramène le résultat d'une comparaison vectorielle
+    /// là où un saut conditionnel peut le lire.
+    fn move_sign_mask(&mut self, instr: &Instruction, step: usize) -> Result<(), EmuError> {
+        let src = self.read_vec_op(instr, 1)?;
+        let wide = instr.op_kind(1) == OpKind::Register && instr.op_register(1).is_ymm();
+        let per_half = 128 / step;
+        let mut mask = 0u64;
+        for (index, half) in src.iter().enumerate() {
+            if index == 1 && !wide {
+                break;
+            }
+            for lane in 0..per_half {
+                let sign = (half >> (lane * step + step - 1)) & 1;
+                mask |= (sign as u64) << (index * per_half + lane);
+            }
         }
-        self.write_xmm_op(instr, 0, out)
+        self.write_op(instr, 0, mask)
     }
 
     /// La valeur d'un opérande flottant : une case de la pile, ou ce que
@@ -5974,5 +6307,147 @@ _start:
             "sin(pi/2)"
         );
         assert_eq!(f64::from_bits(emu.cpu.regs.get64(Reg64::Rcx)), 1.0);
+    }
+    /// AVX : les mêmes registres, deux fois plus larges. Huit additions
+    /// flottantes d'un seul ordre.
+    #[test]
+    fn avx_computes_eight_at_a_time() {
+        let emu = run_program(
+            "\
+section .data
+    align 32
+    huit   dd 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0
+    uns    dd 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0
+    sortie times 32 db 0
+
+section .text
+    global _start
+_start:
+    vmovaps ymm0, [huit]
+    vmovaps ymm1, [uns]
+    vaddps ymm2, ymm0, ymm1     ; 2, 3, 4, 5, 6, 7, 8, 9
+    vmovaps [sortie], ymm2
+    mov eax, [sortie]           ; le premier
+    mov ebx, [sortie + 28]      ; le dernier
+
+    ; AVX ne détruit pas ses sources : la destination est à part.
+    vmovaps [sortie], ymm0
+    mov ecx, [sortie]
+    hlt
+",
+            &[],
+        );
+        assert_eq!(f32::from_bits(emu.cpu.regs.get32(Reg64::Rax)), 2.0);
+        assert_eq!(f32::from_bits(emu.cpu.regs.get32(Reg64::Rbx)), 9.0);
+        assert_eq!(
+            f32::from_bits(emu.cpu.regs.get32(Reg64::Rcx)),
+            1.0,
+            "la source est intacte"
+        );
+    }
+
+    /// La règle qui surprend tout le monde : écrire dans `xmm3` avec une
+    /// instruction AVX remet à zéro la moitié haute de `ymm3`, alors que
+    /// la même écriture en SSE la laisse intacte. Ce sont pourtant les
+    /// mêmes bits.
+    #[test]
+    fn a_vex_write_clears_the_upper_half_where_sse_leaves_it() {
+        let emu = run_program(
+            "\
+section .data
+    align 32
+    huit   dd 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0
+    uns    dd 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0
+    sortie times 32 db 0
+
+section .text
+    global _start
+_start:
+    vmovaps ymm3, [huit]
+    movaps xmm3, [uns]          ; SSE : le haut de ymm3 survit
+    vextractf128 xmm4, ymm3, 1
+    vmovaps [sortie], xmm4
+    mov eax, [sortie]           ; 5.0
+
+    vmovaps ymm3, [huit]
+    vmovaps xmm3, [uns]         ; AVX 128 bits : le haut passe à zéro
+    vextractf128 xmm5, ymm3, 1
+    vmovaps [sortie], xmm5
+    mov ebx, [sortie]           ; 0
+
+    vmovaps ymm6, [huit]
+    vzeroupper                  ; et voilà comment on nettoie avant du SSE
+    vextractf128 xmm7, ymm6, 1
+    vmovaps [sortie], xmm7
+    mov ecx, [sortie]
+    hlt
+",
+            &[],
+        );
+        assert_eq!(
+            f32::from_bits(emu.cpu.regs.get32(Reg64::Rax)),
+            5.0,
+            "une écriture SSE laisse le haut"
+        );
+        assert_eq!(
+            emu.cpu.regs.get32(Reg64::Rbx),
+            0,
+            "une écriture VEX l'efface"
+        );
+        assert_eq!(emu.cpu.regs.get32(Reg64::Rcx), 0, "vzeroupper aussi");
+    }
+
+    /// Les instructions propres à AVX : recopier un élément partout, et
+    /// déplacer les moitiés de 128 bits, qui ne se parlent pas d'
+    /// elles-mêmes.
+    #[test]
+    fn avx_broadcasts_and_moves_its_halves() {
+        let emu = run_program(
+            "\
+section .data
+    align 32
+    sept   dd 7.0
+    huit   dd 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0
+    quatre dq 10, 20, 30, 40
+    sortie times 32 db 0
+
+section .text
+    global _start
+_start:
+    vbroadcastss ymm0, [sept]   ; huit fois 7
+    vmovaps [sortie], ymm0
+    mov eax, [sortie + 16]
+
+    ; Les deux moitiés échangées : 5,6,7,8 en bas.
+    vmovaps ymm1, [huit]
+    vperm2f128 ymm2, ymm1, ymm1, 0x01
+    vmovaps [sortie], ymm2
+    mov ebx, [sortie]
+
+    ; Et les quatre quadruples mots remis dans l'ordre inverse.
+    vmovdqa ymm3, [quatre]
+    vpermq ymm4, ymm3, 00_01_10_11b
+    vmovdqa [sortie], ymm4
+    mov rcx, [sortie]
+
+    vpaddq ymm5, ymm3, ymm3     ; l'entier marche aussi sur 256 bits
+    vmovdqa [sortie], ymm5
+    mov rdx, [sortie + 24]
+    hlt
+",
+            &[],
+        );
+        assert_eq!(
+            f32::from_bits(emu.cpu.regs.get32(Reg64::Rax)),
+            7.0,
+            "diffusé jusque dans la moitié haute"
+        );
+        assert_eq!(
+            f32::from_bits(emu.cpu.regs.get32(Reg64::Rbx)),
+            5.0,
+            "vperm2f128 a échangé les moitiés"
+        );
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rcx), 40, "vpermq a inversé");
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rdx), 80, "vpaddq sur 256 bits");
     }
 }

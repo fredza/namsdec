@@ -21,7 +21,13 @@ pub enum Reg64 {
     R15,
 }
 
-/// Les seize registres vectoriels de SSE, larges de 128 bits.
+/// Les seize registres vectoriels, larges de 256 bits depuis AVX.
+///
+/// Le même registre porte deux noms selon ce qu'on en prend : `xmm3`
+/// désigne la moitié basse, `ymm3` le tout. Ce sont bien les mêmes bits,
+/// et c'est ce qui rend la règle d'AVX si facile à oublier — une
+/// instruction VEX remet la moitié haute à zéro, une instruction SSE la
+/// laisse intacte.
 ///
 /// C'est là que se fait tout le calcul flottant du x86-64 moderne : la
 /// pile du 8087 n'est plus utilisée que par du code ancien, et l'ABI
@@ -176,9 +182,11 @@ impl X87 {
 #[derive(Clone, Debug, Default)]
 pub struct Registers {
     gpr: [u64; 16],
-    /// Les registres SSE. Ils ne se mélangent pas aux généraux : ni les
-    /// mêmes instructions, ni les mêmes tailles, ni le même usage.
-    xmm: [u128; 16],
+    /// Les registres vectoriels, en deux moitiés de 128 bits : la basse
+    /// est `xmm`, les deux ensemble sont `ymm`. Ils ne se mélangent pas
+    /// aux généraux — ni les mêmes instructions, ni les mêmes tailles,
+    /// ni le même usage.
+    xmm: [[u128; 2]; 16],
     /// La pile du 8087, que les programmes d'apprentissage utilisent
     /// encore — c'est par elle que la plupart des cours font leur premier
     /// calcul à virgule.
@@ -191,13 +199,25 @@ impl Registers {
         Self::default()
     }
 
-    /// Un registre SSE entier — 128 bits, deux flottants doubles ou
-    /// quatre simples selon ce qu'on y a mis.
+    /// La moitié basse — celle que nomme `xmm` : 128 bits, deux flottants
+    /// doubles ou quatre simples selon ce qu'on y a mis.
     pub fn get_xmm(&self, r: RegXmm) -> u128 {
+        self.xmm[r as usize][0]
+    }
+
+    /// Écrit la moitié basse **sans toucher à la haute** : c'est ce que
+    /// fait une instruction SSE, et c'est de là que vient le coût des
+    /// transitions entre code SSE et code AVX sur un vrai processeur.
+    pub fn set_xmm(&mut self, r: RegXmm, v: u128) {
+        self.xmm[r as usize][0] = v;
+    }
+
+    /// Le registre entier, moitié basse d'abord.
+    pub fn get_ymm(&self, r: RegXmm) -> [u128; 2] {
         self.xmm[r as usize]
     }
 
-    pub fn set_xmm(&mut self, r: RegXmm, v: u128) {
+    pub fn set_ymm(&mut self, r: RegXmm, v: [u128; 2]) {
         self.xmm[r as usize] = v;
     }
 

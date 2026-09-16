@@ -16,13 +16,18 @@ pub fn is_high_byte(reg: Register) -> bool {
     )
 }
 
-/// Le registre SSE correspondant, s'il en est un.
+/// Le registre vectoriel correspondant, s'il en est un.
+///
+/// `xmm5` et `ymm5` rendent le même : ce sont les mêmes bits, vus sur
+/// 128 ou sur 256. Ce qui les distingue — ce qu'il advient de la moitié
+/// haute — se décide à l'écriture, pas ici.
 ///
 /// Séparé de `map_register` parce que ce n'est pas la même machine : un
-/// XMM ne se range pas dans un registre général, ne porte pas de largeur
-/// au sens de `Width`, et ne sert à aucune des instructions entières.
-pub fn map_xmm(reg: Register) -> Option<RegXmm> {
-    if !reg.is_xmm() {
+/// registre vectoriel ne se range pas dans un registre général, ne porte
+/// pas de largeur au sens de `Width`, et ne sert à aucune des
+/// instructions entières.
+pub fn map_vector(reg: Register) -> Option<RegXmm> {
+    if !reg.is_xmm() && !reg.is_ymm() {
         return None;
     }
     RegXmm::ALL.get(reg.number()).copied()
