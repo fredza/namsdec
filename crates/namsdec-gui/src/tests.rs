@@ -6449,3 +6449,59 @@ fn a_real_binary_reads_with_the_manual_at_hand() {
         "ces instructions se lisent dans un binaire ordinaire sans pouvoir s'expliquer : {sans_fiche:?}"
     );
 }
+
+/// Une chaîne, c'est une piste : le panneau dit qui la désigne.
+///
+/// « mot de passe » quelque part dans les données ne dit rien ; « mot de
+/// passe, lu ici » dit par où entrer dans le programme.
+#[test]
+fn a_string_says_who_points_at_it() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        show_analysis: true,
+        source: "\
+global _start
+section .data
+message: db \"salutations\", 0
+oublie:  db \"personne ne me lit\", 0
+section .text
+_start:
+mov rsi, message
+hlt
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+    let state = app.assemble_state.as_ref().unwrap();
+
+    let message = state
+        .output
+        .symbols
+        .iter()
+        .find(|s| s.name == "message")
+        .expect("l'étiquette existe")
+        .addr;
+    let oublie = state
+        .output
+        .symbols
+        .iter()
+        .find(|s| s.name == "oublie")
+        .expect("l'étiquette existe")
+        .addr;
+
+    let mémoire = app.emulator.as_ref().unwrap().cpu().mem.range();
+    let xrefs = namsdec_re::xrefs::scan(&state.disasm, mémoire);
+
+    assert!(
+        !xrefs.to(message).is_empty(),
+        "la chaîne utilisée doit avoir sa référence"
+    );
+    assert!(
+        xrefs.to(oublie).is_empty(),
+        "celle que personne ne lit n'en a pas — et c'est une information"
+    );
+}

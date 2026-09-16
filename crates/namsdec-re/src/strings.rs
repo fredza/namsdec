@@ -8,6 +8,9 @@ use crate::{ReContext, ReModule};
 #[derive(Default)]
 pub struct StringsModule {
     found: Vec<Found>,
+    /// Qui désigne quoi : c'est ce qui fait la différence entre une
+    /// liste de chaînes et une piste à suivre.
+    xrefs: crate::xrefs::Xrefs,
 }
 
 struct Found {
@@ -84,6 +87,9 @@ impl ReModule for StringsModule {
             Ok(bytes) => scan(bytes, range.start),
             Err(_) => Vec::new(),
         };
+        // « Mot de passe » quelque part dans les données ne dit rien ;
+        // « mot de passe, lu ici » dit par où entrer.
+        self.xrefs = crate::xrefs::scan(ctx.disasm, range);
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
@@ -104,8 +110,21 @@ impl ReModule for StringsModule {
             .max_height(220.0)
             .show(ui, |ui| {
                 for found in &self.found {
+                    // Qui la désigne ? Une chaîne à laquelle personne ne
+                    // fait référence est souvent du texte mort — un
+                    // reste de bibliothèque, un nom de section.
+                    let vers = self.xrefs.to(found.addr);
                     ui.horizontal(|ui| {
                         ui.monospace(format!("{:08x}", found.addr));
+                        if let Some(première) = vers.first() {
+                            ui.weak(format!("← {:#x}", première.from)).on_hover_text(
+                                if vers.len() > 1 {
+                                    format!("{} {}", vers.len(), ctx.t("références", "references"))
+                                } else {
+                                    ctx.t("désignée ici", "pointed at here").to_owned()
+                                },
+                            );
+                        }
                         // Tronquée, et entière dans l'infobulle : une
                         // chaîne peut faire trois cents caractères, et le
                         // panneau prendrait sa largeur.

@@ -207,6 +207,25 @@ pub fn advice(lang: Lang, error: &EmuError) -> Option<&'static str> {
                  the two: `write` is 4 on 32-bit, 1 on 64-bit."
             }
         }
+        // Une instruction que namsdec ne simule pas : dire où lire ce
+        // qu'elle fait vaut mieux que de s'arrêter sur un refus. La
+        // documentation, elle, la couvre — c'est tout l'intérêt de
+        // documenter ce qu'on n'exécute pas.
+        EmuError::UnsupportedInstruction { mnemonic, .. }
+            if namsdec_doc::lookup(mnemonic).is_some() =>
+        {
+            if fr {
+                "namsdec ne simule pas cette instruction, mais il sait ce qu'elle fait : \
+                 posez le curseur dessus et appuyez sur F1. L'interpréteur couvre ce qu'on \
+                 écrit pour apprendre, la documentation couvre aussi ce qu'on lit dans les \
+                 binaires des autres."
+            } else {
+                "namsdec does not simulate this instruction, but it knows what it does: \
+                 put the cursor on it and press F1. The interpreter covers what one writes \
+                 to learn; the documentation also covers what one reads in other people's \
+                 binaries."
+            }
+        }
         EmuError::InvalidInstruction { .. } => {
             if fr {
                 "Ces octets ne forment pas une instruction. On y arrive en sautant au \
@@ -479,6 +498,26 @@ mod tests {
                 .unwrap()
                 .contains("RDX"),
         );
+        // Une instruction documentée mais non simulée : on renvoie à sa
+        // fiche plutôt que de laisser sur un refus.
+        let documentée = EmuError::UnsupportedInstruction {
+            backend: "namsdec",
+            mnemonic: "Movlps".to_owned(),
+        };
+        assert!(advice(Lang::Fr, &documentée).unwrap().contains("F1"));
+        // Et une instruction qu'on ne documente pas non plus n'invente
+        // rien.
+        assert!(
+            advice(
+                Lang::Fr,
+                &EmuError::UnsupportedInstruction {
+                    backend: "namsdec",
+                    mnemonic: "Vpconflictd".to_owned(),
+                }
+            )
+            .is_none()
+        );
+
         // Le vieux tutoriel 32 bits, reconnu par son instruction.
         let old_school = EmuError::UnsupportedInstruction {
             backend: "namsdec",
