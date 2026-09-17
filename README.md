@@ -238,6 +238,10 @@ sans avertissement, et s'exécuter jusqu'au bout.
 - AVX-512, FMA, les ports `in`/`out` et `cmpxchg16b` ne sont pas
   implémentés.
 
+## Journal des versions
+
+Ce qui change d'une version à l'autre est dans [CHANGELOG.md](CHANGELOG.md).
+
 ## Licence
 
 MIT. Voir [LICENSE](LICENSE).

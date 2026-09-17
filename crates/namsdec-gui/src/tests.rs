@@ -8839,6 +8839,31 @@ fn a_pre_release_says_so_and_a_release_says_nothing() {
     }
 }
 
+/// Le journal des versions parle bien de la version qu'on compile.
+///
+/// Un journal en retard d'une version est pire que pas de journal : il
+/// dit que rien n'a changé alors que tout a bougé.
+#[test]
+fn the_changelog_covers_the_version_being_built() {
+    let changelog = include_str!("../../../CHANGELOG.md");
+    assert!(
+        changelog.contains(&format!("## {APP_VERSION} ")),
+        "le journal ne mentionne pas {APP_VERSION}"
+    );
+    // La version courante vient en tête : c'est là qu'on la cherche.
+    let première = changelog
+        .lines()
+        .find(|ligne| ligne.starts_with("## "))
+        .unwrap_or_default();
+    assert!(
+        première.contains(APP_VERSION),
+        "la version en tête du journal est « {première} »"
+    );
+    // Et le README y renvoie.
+    let readme = include_str!("../../../README.md");
+    assert!(readme.contains("CHANGELOG.md"));
+}
+
 /// La mémoire montre sa carte : où commence le code, où finit la pile,
 /// ce que le tas occupe, avec les droits de chacun.
 ///
