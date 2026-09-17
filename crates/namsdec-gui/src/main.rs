@@ -1782,6 +1782,11 @@ impl NamsdecApp {
                     addr_to_line,
                 });
                 self.note_program_io();
+                // Et ce que namsdec ne saura pas faire : un appel
+                // système qu'il ne simule pas arrête le programme au
+                // milieu. Le dire à l'assemblage, avec sa ligne, évite
+                // de chercher pourquoi l'exécution s'interrompt là.
+                self.diagnostics.extend(self.unsimulated_syscalls());
                 self.status = Status::AssembleOk;
                 self.rebuild_emulator();
             }
@@ -1828,6 +1833,44 @@ impl NamsdecApp {
     /// L'émulateur compte par adresse ; une ligne en produit parfois
     /// plusieurs, et c'est la ligne qu'on lit. Vide tant que rien n'a
     /// tourné — auquel cas la gouttière ne réserve aucune place.
+    /// Les appels système que le programme contient et que namsdec
+    /// n'exécute pas.
+    ///
+    /// `mmap`, `open`, `fork` : namsdec les nomme mais ne les fait pas —
+    /// il n'a ni fichiers ni processus à offrir. Un programme qui en
+    /// contient un s'arrête dessus, et rien dans le code ne le laisse
+    /// deviner. C'est exactement le genre de chose qu'un atelier doit
+    /// dire avant, pas pendant.
+    fn unsimulated_syscalls(&self) -> Vec<namsdec_asm::Diagnostic> {
+        let Some(state) = &self.assemble_state else {
+            return Vec::new();
+        };
+        namsdec_re::syscalls::scan(&state.disasm)
+            .into_iter()
+            .filter_map(|call| {
+                let number = call.number?;
+                if namsdec_re::table::is_simulated(number) {
+                    return None;
+                }
+                let nom = namsdec_re::table::syscall_name(number)?;
+                let line = state.addr_to_line.get(&call.addr).copied().unwrap_or(0);
+                Some(namsdec_asm::Diagnostic {
+                    line,
+                    severity: namsdec_asm::Severity::Warning,
+                    message: if self.lang == Lang::Fr {
+                        format!(
+                            "namsdec ne simule pas l'appel système {nom} ({number}) : le programme s'arrêtera ici. Le binaire exporté, lui, le fera pour de vrai."
+                        )
+                    } else {
+                        format!(
+                            "namsdec does not simulate the {nom} ({number}) system call: the program will stop here. The exported binary will really do it."
+                        )
+                    },
+                })
+            })
+            .collect()
+    }
+
     /// Relit ce que le programme chargé demande au monde extérieur.
     ///
     /// Une fois par programme, et non à chaque image : remonter le

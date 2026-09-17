@@ -66,6 +66,11 @@ un classement : le nombre de passages, la part du total, la ligne
 elle-même, et un clic qui y emmène. La bande dit où ça chauffe ; le
 classement dit de combien, et se copie en texte.
 
+**Ce que namsdec ne fera pas.** `mmap`, `open`, `fork` : ces appels
+système sont nommés mais pas exécutés — namsdec n'a ni fichiers ni
+processus à offrir. Le programme qui en contient un s'arrêterait dessus
+sans prévenir : c'est dit à l'assemblage, avec la ligne.
+
 **Ce que nasm ne dit pas.** Deux fautes passent l'assemblage sans un mot
 et ne se voient qu'à l'exécution — ou pas du tout : un programme que rien
 n'arrête, qui continue dans ce qui suit son code, et une écriture à une

@@ -12307,3 +12307,64 @@ fn the_console_offers_input_only_to_programs_that_read() {
         "un programme qui lit garde de quoi lui parler :\n{peint}"
     );
 }
+
+/// Un appel système que namsdec ne simule pas se dit à l'assemblage.
+///
+/// `mmap`, `open`, `fork` : namsdec les nomme mais ne les fait pas — il
+/// n'a ni fichiers ni processus à offrir. Un programme qui en contient
+/// un s'arrête dessus, et rien dans le code ne le laisse deviner. Le
+/// dire avant, avec sa ligne, vaut mieux que de le découvrir au milieu
+/// d'une exécution.
+#[test]
+fn an_unsimulated_syscall_is_announced_before_it_stops_the_program() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: "global _start\nsection .text\n_start:\n\
+                 \x20   mov rax, 9\n    xor rdi, rdi\n    mov rsi, 4096\n\
+                 \x20   mov rdx, 3\n    mov r10, 34\n    mov r8, -1\n\
+                 \x20   xor r9, r9\n    syscall\n    hlt\n"
+            .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+
+    let dit: Vec<&namsdec_asm::Diagnostic> = app
+        .diagnostics
+        .iter()
+        .filter(|d| d.message.contains("mmap"))
+        .collect();
+    assert_eq!(
+        dit.len(),
+        1,
+        "mmap doit être annoncé une fois : {:?}",
+        app.diagnostics
+    );
+    assert_eq!(
+        dit[0].severity,
+        Severity::Warning,
+        "un avertissement, pas une erreur"
+    );
+    assert_eq!(
+        dit[0].line, 11,
+        "et la ligne du syscall, pour y aller d'un clic"
+    );
+
+    // Un programme qui ne fait qu'écrire et sortir n'a rien à s'entendre
+    // dire : `write` et `exit` sont exécutés pour de vrai.
+    let mut sage = NamsdecApp {
+        source: DEFAULT_SOURCE.to_owned(),
+        ..Default::default()
+    };
+    sage.do_assemble();
+    assert!(
+        !sage
+            .diagnostics
+            .iter()
+            .any(|d| d.message.contains("ne simule pas")),
+        "rien à signaler ici : {:?}",
+        sage.diagnostics
+    );
+}

@@ -211,6 +211,9 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
   recherche coupé en deux. Ce qui cède, désormais, c'est le détail de la
   prochaine instruction, qui se replie d'un clic. L'onglet RE mène en
   outre à la fenêtre d'analyse, où tout se lit déplié.
+- Un appel système que namsdec ne simule pas — `mmap`, `open`, `fork` —
+  est annoncé dès l'assemblage, avec sa ligne : le programme s'arrêtait
+  dessus sans que rien ne l'ait laissé prévoir.
 - La console ne tend plus un champ de saisie à un programme qui ne lit
   rien : elle relit son code, et la saisie n'apparaît que s'il contient
   un `read` — ou dès qu'il en réclame une. Vide, elle dit aussi
