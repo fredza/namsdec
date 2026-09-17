@@ -234,6 +234,12 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
 - Le travail se fait dans un fil à part : l'interface reste utilisable, et
   un outil qui ne rend pas la main au bout de deux minutes est réellement
   arrêté, pas attendu.
+- Ce qui tourne se voit à deux endroits : une **barre de progression dans
+  la barre d'état**, et le **titre de la fenêtre** — donc la barre des
+  tâches du système, où l'on regarde quand on a changé d'application. La
+  progression est celle du temps accordé, seule chose qu'un programme
+  extérieur nous laisse savoir ; quand rien ne borne, la barre avance
+  toute seule plutôt que d'inventer un pourcentage.
 
 **Lire un binaire qu'on n'a pas écrit**
 - Un module **Fonctions** : le `main` d'un binaire dépouillé, retrouvé

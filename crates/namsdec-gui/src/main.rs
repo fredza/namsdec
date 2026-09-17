@@ -139,11 +139,50 @@ const DONATION_URL: &str = "https://example.com/namsdec/offrir-un-repas";
 const TOOLTIP_DELAY: f32 = 0.5;
 const TOOLTIP_GRACE_TIME: f32 = 0.2;
 /// En deçà, le panneau ne montrerait plus rien de lisible.
+/// Un travail qui se fait pendant qu'on continue à travailler.
+///
+/// Le fil d'à côté est invisible : sans un mot quelque part, on ne sait
+/// ni que quelque chose tourne, ni depuis combien de temps, ni combien
+/// de temps encore. Trois questions auxquelles cette structure répond.
+#[derive(Clone)]
+struct BackgroundJob {
+    /// Ce qui tourne, dit en un mot.
+    label: String,
+    started: std::time::Instant,
+    /// Le délai au bout duquel on arrêtera l'outil, quand il y en a un.
+    ///
+    /// C'est la **seule** progression honnête qu'on puisse montrer : un
+    /// programme extérieur ne dit pas où il en est. Le temps écoulé sur
+    /// le temps accordé, lui, est vrai — et c'est ce qui intéresse,
+    /// puisque c'est ce qui décide de l'abandon.
+    limit: Option<std::time::Duration>,
+}
+
+impl BackgroundJob {
+    /// La part du temps accordé qui s'est écoulée, quand elle a un sens.
+    fn fraction(&self) -> Option<f32> {
+        let limite = self.limit?.as_secs_f32();
+        (limite > 0.0).then(|| (self.started.elapsed().as_secs_f32() / limite).clamp(0.0, 1.0))
+    }
+
+    /// « 12 s sur 2 min », ou simplement « 12 s » quand rien ne borne.
+    fn timing(&self) -> String {
+        let écoulé = self.started.elapsed().as_secs();
+        match self.limit {
+            Some(limite) => format!("{écoulé} s / {} s", limite.as_secs()),
+            None => format!("{écoulé} s"),
+        }
+    }
+}
+
 /// Le temps qu'on laisse à un décompilateur.
 ///
 /// Un désassembleur répond en un souffle ; un décompilateur reconstruit
 /// des structures de contrôle et peut y passer une demi-minute. Au-delà,
 /// c'est qu'il ne rendra pas la main : on l'arrête, et on le dit.
+/// Le nom de la fenêtre, tel que la barre des tâches l'affiche.
+const APP_NAME: &str = "Namsdec";
+
 const DECOMPILER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
 
 /// Un fichier d'exemple, montré quand aucun outil n'est installé.
@@ -795,6 +834,13 @@ struct NamsdecApp {
     decompiler: String,
     /// Le travail en cours, et ce qu'il a rendu.
     decompile_job: Option<mpsc::Receiver<Result<String, String>>>,
+    /// Ce qui tourne à côté, pour la barre d'état et le titre de la
+    /// fenêtre : un seul travail à la fois suffit à ce que namsdec fait.
+    job: Option<BackgroundJob>,
+    /// Le titre posé en dernier, pour ne pas le réécrire à chaque image :
+    /// un `ViewportCommand` par frame réveille le gestionnaire de
+    /// fenêtres pour rien.
+    window_title: Option<String>,
     decompile_result: Option<Result<String, String>>,
     /// Ce qui a été décompilé : de quoi dire « ce texte parle d'un autre
     /// programme » quand on en a changé depuis.
@@ -1620,6 +1666,8 @@ impl Default for NamsdecApp {
             decompilers: Vec::new(),
             decompiler: String::new(),
             decompile_job: None,
+            job: None,
+            window_title: None,
             decompile_result: None,
             decompiled_from: None,
             update_result: None,
@@ -5679,6 +5727,31 @@ impl NamsdecApp {
         }
     }
 
+    /// Porte l'avancement jusque dans la barre des tâches du système.
+    ///
+    /// Un gestionnaire de fenêtres n'a pas de notion de progression —
+    /// aucune qui soit portable, en tout cas : ce que GNOME, KDE et XFCE
+    /// affichent tous, c'est le **titre de la fenêtre**. On y écrit donc
+    /// le pourcentage, et il apparaît là où l'on regarde quand on a
+    /// changé d'application : dans la barre des tâches, à côté du nom.
+    ///
+    /// Le titre est remis en place dès que le travail s'achève : une
+    /// application qui reste marquée « 100 % » indéfiniment fait douter
+    /// de tout ce qu'elle affiche.
+    fn reflect_job_in_title(&mut self, ctx: &egui::Context) {
+        let voulu = match &self.job {
+            Some(job) => match job.fraction() {
+                Some(part) => format!("{APP_NAME} — {} {:.0} %", job.label, part * 100.0),
+                None => format!("{APP_NAME} — {}", job.label),
+            },
+            None => APP_NAME.to_owned(),
+        };
+        if self.window_title.as_deref() != Some(voulu.as_str()) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Title(voulu.clone()));
+            self.window_title = Some(voulu);
+        }
+    }
+
     /// Lance l'outil choisi sur le programme lié, dans un fil à part.
     fn start_decompile(&mut self) {
         if self.decompile_job.is_some() {
@@ -5712,6 +5785,11 @@ impl NamsdecApp {
             let _ = sender.send(réponse);
         });
         self.decompile_job = Some(receiver);
+        self.job = Some(BackgroundJob {
+            label: strings(self.lang).job_decompiling.to_owned(),
+            started: std::time::Instant::now(),
+            limit: Some(DECOMPILER_TIMEOUT),
+        });
     }
 
     /// Relève ce que l'outil a rendu, s'il a fini.
@@ -5722,6 +5800,7 @@ impl NamsdecApp {
         match receiver.try_recv() {
             Ok(réponse) => {
                 self.decompile_job = None;
+                self.job = None;
                 self.decompile_result = Some(réponse);
             }
             Err(TryRecvError::Empty) => {
@@ -5971,6 +6050,14 @@ impl NamsdecApp {
             let _ = sender.send(réponse);
         });
         self.update_check = Some(receiver);
+        // Une recherche de mise à jour ne dit pas non plus où elle en
+        // est, et rien ne la borne : on montre qu'elle tourne, et depuis
+        // combien de temps. Une barre qui avancerait au hasard mentirait.
+        self.job = Some(BackgroundJob {
+            label: strings(self.lang).job_checking_update.to_owned(),
+            started: std::time::Instant::now(),
+            limit: None,
+        });
     }
 
     /// Relève la réponse de la recherche, si elle est arrivée.
@@ -5981,6 +6068,7 @@ impl NamsdecApp {
         match receiver.try_recv() {
             Ok(réponse) => {
                 self.update_check = None;
+                self.job = None;
                 let s = strings(self.lang);
                 self.update_result = Some(match réponse {
                     Ok(release) => Ok(namsdec_update::verdict(APP_VERSION, release)),
@@ -6004,6 +6092,7 @@ impl NamsdecApp {
             Err(TryRecvError::Empty) => ctx.request_repaint_after(DIALOG_POLL_INTERVAL),
             Err(TryRecvError::Disconnected) => {
                 self.update_check = None;
+                self.job = None;
                 self.update_result = Some(Err(strings(self.lang).about_update_failed.to_owned()));
             }
         }
@@ -6140,6 +6229,33 @@ impl NamsdecApp {
                 format!("{keys} — waiting for next key…")
             };
             ui.colored_label(theme.accent, text);
+        }
+
+        // Ce qui tourne à côté, tout à gauche : c'est la première chose
+        // qu'on veut voir quand on se demande si l'outil est parti.
+        if let Some(job) = &self.job {
+            ui.horizontal(|ui| {
+                let barre = match job.fraction() {
+                    // Une progression vraie : le temps écoulé sur le
+                    // temps accordé. C'est ce qui décide de l'abandon,
+                    // donc c'est ce qui intéresse.
+                    Some(part) => egui::ProgressBar::new(part).desired_width(150.0).text(
+                        egui::RichText::new(format!("{} — {}", job.label, job.timing())).small(),
+                    ),
+                    // Rien ne borne : une barre qui avance toute seule
+                    // dit « ça travaille » sans prétendre savoir combien
+                    // il reste.
+                    None => egui::ProgressBar::new(0.0)
+                        .animate(true)
+                        .desired_width(150.0)
+                        .text(
+                            egui::RichText::new(format!("{} — {}", job.label, job.timing()))
+                                .small(),
+                        ),
+                };
+                ui.add(barre);
+                ui.separator();
+            });
         }
 
         ui.horizontal(|ui| {
@@ -10577,6 +10693,7 @@ impl NamsdecApp {
         self.poll_file_dialog(&ctx);
         self.poll_update_check(&ctx);
         self.poll_decompile(&ctx);
+        self.reflect_job_in_title(&ctx);
         // Au retour dans la fenêtre : un autre programme a pu passer par
         // là — un `git checkout`, un éditeur, un `sed`. On regarde à ce
         // moment-là, et non à chaque image : c'est un accès au disque.
@@ -11325,7 +11442,7 @@ fn main() -> eframe::Result<()> {
         ..Default::default()
     };
     eframe::run_native(
-        "Namsdec",
+        APP_NAME,
         options,
         Box::new(|cc| {
             // Les thèmes installés sont chargés *avant* les réglages :

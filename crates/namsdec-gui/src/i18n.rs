@@ -270,6 +270,10 @@ pub struct Strings {
     pub provenance_static: &'static str,
     /// Le module de décompilation : son activation, sa fenêtre, et tout
     /// ce qu'il faut dire avant de lancer un programme extérieur.
+    /// Ce qui tourne à côté, nommé dans la barre d'état et dans le titre
+    /// de la fenêtre.
+    pub job_decompiling: &'static str,
+    pub job_checking_update: &'static str,
     pub decompiler_checkbox: &'static str,
     pub decompiler_hint: &'static str,
     pub decompiler_title: &'static str,
@@ -830,6 +834,8 @@ const FR: Strings = Strings {
     disk_reload: "Recharger",
     disk_keep: "Garder ce que j'ai écrit",
     provenance_static: "D'où elle vient, en remontant le code :",
+    job_decompiling: "Décompilation",
+    job_checking_update: "Recherche d'une mise à jour",
     decompiler_checkbox: "Décompilation par un outil extérieur",
     decompiler_hint: "Ce module n'affiche pas : il lance un programme que vous avez installé. Rien ne s'exécute tant que vous ne cliquez pas, et la commande est écrite avant d'être lancée.",
     decompiler_title: "Décompiler — outil extérieur",
@@ -1355,6 +1361,8 @@ const EN: Strings = Strings {
     disk_reload: "Reload",
     disk_keep: "Keep what I wrote",
     provenance_static: "Where it comes from, reading the code backwards:",
+    job_decompiling: "Decompiling",
+    job_checking_update: "Looking for an update",
     decompiler_checkbox: "Decompilation through an external tool",
     decompiler_hint: "This module does not display: it runs a program you installed. Nothing executes until you click, and the command is written out before it is launched.",
     decompiler_title: "Decompile — external tool",

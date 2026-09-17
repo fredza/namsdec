@@ -14033,3 +14033,78 @@ fn a_tool_that_never_finishes_is_stopped() {
         "et l'on dit qu'il a été arrêté : {erreur}"
     );
 }
+
+/// Ce qui tourne à côté se voit : dans la barre d'état, et jusque dans
+/// la barre des tâches du système.
+///
+/// Un fil d'exécution est invisible. Sans un mot quelque part, on ne
+/// sait ni que quelque chose tourne, ni depuis combien de temps, ni
+/// combien de temps encore avant l'abandon. La progression montrée est
+/// celle du **temps accordé** — la seule qu'un programme extérieur nous
+/// laisse connaître, et la seule qui décide de quelque chose.
+#[test]
+fn a_background_job_shows_its_progress_where_one_looks() {
+    let mut app = NamsdecApp {
+        show_statusbar: true,
+        ..Default::default()
+    };
+    // Rien ne tourne : rien ne s'affiche, et le titre reste le nom.
+    let peint = paint(&mut app);
+    assert!(
+        !peint.contains(strings(Lang::Fr).job_decompiling),
+        "aucun travail, aucun bruit :\n{peint}"
+    );
+
+    // Un travail borné : la barre montre une part vraie, et le texte dit
+    // le temps écoulé sur le temps accordé.
+    app.job = Some(BackgroundJob {
+        label: strings(Lang::Fr).job_decompiling.to_owned(),
+        started: std::time::Instant::now() - std::time::Duration::from_secs(30),
+        limit: Some(std::time::Duration::from_secs(120)),
+    });
+    let part = app.job.as_ref().and_then(BackgroundJob::fraction);
+    assert!(
+        part.is_some_and(|p| (p - 0.25).abs() < 0.02),
+        "trente secondes sur deux minutes : un quart, obtenu {part:?}"
+    );
+    let peint = paint(&mut app);
+    assert!(
+        peint.contains(strings(Lang::Fr).job_decompiling),
+        "la barre d'état nomme ce qui tourne :\n{peint}"
+    );
+    assert!(
+        peint.contains("30 s / 120 s"),
+        "avec le temps écoulé sur le temps accordé :\n{peint}"
+    );
+
+    // Un travail que rien ne borne : pas de fraction inventée.
+    app.job = Some(BackgroundJob {
+        label: strings(Lang::Fr).job_checking_update.to_owned(),
+        started: std::time::Instant::now(),
+        limit: None,
+    });
+    assert_eq!(
+        app.job.as_ref().and_then(BackgroundJob::fraction),
+        None,
+        "sans limite, aucune progression ne peut être honnête"
+    );
+
+    // Et le titre de la fenêtre porte l'avancement : c'est lui que la
+    // barre des tâches du système affiche.
+    let ctx = egui::Context::default();
+    app.job = Some(BackgroundJob {
+        label: "Décompilation".to_owned(),
+        started: std::time::Instant::now() - std::time::Duration::from_secs(60),
+        limit: Some(std::time::Duration::from_secs(120)),
+    });
+    app.reflect_job_in_title(&ctx);
+    let titre = app.window_title.clone().expect("un titre a été posé");
+    assert!(titre.contains("50 %"), "{titre}");
+    assert!(titre.starts_with("Namsdec"), "{titre}");
+
+    // Le travail fini, le titre revient à ce qu'il était : une
+    // application marquée « 100 % » pour toujours fait douter du reste.
+    app.job = None;
+    app.reflect_job_in_title(&ctx);
+    assert_eq!(app.window_title.as_deref(), Some("Namsdec"));
+}

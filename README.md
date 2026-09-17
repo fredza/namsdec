@@ -53,7 +53,9 @@ le module s'active à la main, la fenêtre s'ouvre à la demande, et
 **la commande est écrite en toutes lettres avant d'être lancée**. Le
 travail se fait à côté — l'interface ne se fige pas —, et un outil qui ne
 rend pas la main au bout de deux minutes est arrêté plutôt qu'attendu
-sans fin.
+sans fin. L'avancement se lit dans la barre d'état **et dans le titre de
+la fenêtre**, donc dans la barre des tâches du système : « Namsdec —
+Décompilation 45 % ».
 
 **Un panneau de désassemblage, avec le choix du moteur.** Le pseudo-code
 d'abord — `RAX = RAX + RCX` plutôt que `add rax, rcx`, `si différent,
