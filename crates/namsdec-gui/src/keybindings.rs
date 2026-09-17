@@ -48,10 +48,15 @@ pub enum Action {
     Find,
     /// Repartir d'un programme neuf.
     New,
+    /// Passer d'un fichier ouvert au suivant, au précédent, ou fermer
+    /// celui qu'on regarde.
+    NextTab,
+    PreviousTab,
+    CloseTab,
 }
 
 impl Action {
-    pub const ALL: [Action; 19] = [
+    pub const ALL: [Action; 22] = [
         Action::ToggleExplorer,
         Action::Assemble,
         Action::Run,
@@ -71,6 +76,9 @@ impl Action {
         Action::GoToLabel,
         Action::Find,
         Action::New,
+        Action::NextTab,
+        Action::PreviousTab,
+        Action::CloseTab,
     ];
 }
 
@@ -254,6 +262,24 @@ impl Default for KeyBindings {
         map.insert(
             Action::New,
             Chord::Simple(KeyboardShortcut::new(Modifiers::CTRL, Key::N)),
+        );
+        // Ctrl+Tab et Ctrl+Maj+Tab : d'un fichier ouvert au suivant,
+        // comme dans tous les éditeurs — et Ctrl+W ferme celui qu'on
+        // regarde.
+        map.insert(
+            Action::NextTab,
+            Chord::Simple(KeyboardShortcut::new(Modifiers::CTRL, Key::Tab)),
+        );
+        map.insert(
+            Action::PreviousTab,
+            Chord::Simple(KeyboardShortcut::new(
+                Modifiers::CTRL.plus(Modifiers::SHIFT),
+                Key::Tab,
+            )),
+        );
+        map.insert(
+            Action::CloseTab,
+            Chord::Simple(KeyboardShortcut::new(Modifiers::CTRL, Key::W)),
         );
         // Ctrl+F : chercher, comme partout ailleurs.
         map.insert(

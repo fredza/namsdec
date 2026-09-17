@@ -575,6 +575,46 @@ impl EditorMode {
     }
 }
 
+/// Un fichier ouvert, tel qu'on l'a laissé.
+///
+/// namsdec ne tient qu'un seul jeu de champs de travail — la source,
+/// l'émulateur, les points d'arrêt — parce que tout, de la gouttière au
+/// panneau latéral, les lit directement. Passer d'un fichier à l'autre
+/// range donc l'état courant ici et déplie celui d'en face : le
+/// programme retrouve son curseur, ses points d'arrêt, et l'exécution
+/// arrêtée au pas où on l'avait laissée.
+struct OpenTab {
+    path: Option<PathBuf>,
+    source: String,
+    saved_source: String,
+    cursor_byte: usize,
+    cursor_pos: (usize, usize),
+    breakpoint_lines: BTreeSet<u32>,
+    breakpoint_conditions: BTreeMap<u32, String>,
+    assemble_state: Option<AssembleState>,
+    emulator: Option<Box<dyn Backend>>,
+    diagnostics: Vec<Diagnostic>,
+    current_exercise: Option<String>,
+    program_reads: bool,
+    program_writes: bool,
+}
+
+impl OpenTab {
+    /// Le nom qui s'écrit sur l'onglet : celui du fichier, ou « sans
+    /// titre » tant qu'il n'en a pas.
+    fn label(&self, s: &Strings) -> String {
+        self.path
+            .as_ref()
+            .and_then(|p| p.file_name())
+            .map(|nom| nom.to_string_lossy().into_owned())
+            .unwrap_or_else(|| s.untitled_buffer.to_owned())
+    }
+
+    fn modifié(&self) -> bool {
+        self.source != self.saved_source
+    }
+}
+
 struct AssembleState {
     output: namsdec_asm::AssembleOutput,
     disasm: Vec<DecodedInstruction>,
@@ -920,6 +960,18 @@ struct NamsdecApp {
     /// deux.
     explorer_focused: bool,
     current_file: Option<PathBuf>,
+    /// Les autres fichiers ouverts, rangés tels qu'on les a laissés.
+    /// L'onglet actif n'y est pas : c'est l'état de travail lui-même.
+    tabs: Vec<OpenTab>,
+    /// Vrai le temps de rouvrir les fichiers de la séance précédente.
+    ///
+    /// Rouvrir n'est pas ouvrir : la liste des fichiers récents garde
+    /// l'ordre dans lequel *on* les a demandés, et non celui dans lequel
+    /// l'application les a rechargés au démarrage.
+    restoring_session: bool,
+    /// Le rang de l'onglet actif parmi les autres — c'est-à-dire
+    /// l'endroit où l'état courant se range quand on en change.
+    active_tab_index: usize,
     show_toolbar: bool,
     show_sidebar: bool,
     show_statusbar: bool,
@@ -1226,6 +1278,20 @@ fn palette_commands(
             format!("{}: {}", s.menu_view, s.tab_profile),
             PaletteCommand::GoConsoleTab(ConsoleTab::Profile),
         ),
+        // Les fichiers ouverts : d'un onglet au suivant, et la fermeture
+        // de celui qu'on regarde.
+        (
+            s.action_next_tab.to_string(),
+            PaletteCommand::Do(Action::NextTab),
+        ),
+        (
+            s.action_previous_tab.to_string(),
+            PaletteCommand::Do(Action::PreviousTab),
+        ),
+        (
+            s.action_close_tab.to_string(),
+            PaletteCommand::Do(Action::CloseTab),
+        ),
         (
             s.palette_toggle_toolbar.to_string(),
             PaletteCommand::ToggleToolbar,
@@ -1294,7 +1360,7 @@ enum PreferencesTab {
 /// chose qui marche même quand il ne l'est pas.
 const DEFAULT_SOURCE: &str = "\
 ; Bienvenue dans namsdec. Assemblez (Ctrl+Maj+B), puis avancez pas à pas.
-; Un parcours de quarante-quatre exercices vous attend : Préférences > Modules.
+; Un parcours de quarante-sept exercices vous attend : Préférences > Modules.
 
 global _start
 
@@ -1317,7 +1383,6 @@ boucle:
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Pending {
     New,
-    OpenFile(PathBuf),
     Exercise(String),
     Quit,
 }
@@ -1532,6 +1597,9 @@ impl Default for NamsdecApp {
             explorer_just_opened: false,
             explorer_focused: false,
             current_file: None,
+            tabs: Vec::new(),
+            restoring_session: false,
+            active_tab_index: 0,
             show_toolbar: true,
             show_sidebar: true,
             show_statusbar: true,
@@ -1620,11 +1688,37 @@ impl NamsdecApp {
             self.current_file = None;
             return;
         };
+        self.restoring_session = true;
         self.open_file(path);
+        self.restoring_session = false;
         if matches!(self.status, Status::Error(_)) {
             self.current_file = None;
             self.source = DEFAULT_SOURCE.to_owned();
             self.status = Status::Idle;
+        }
+        // Puis les autres fichiers de la dernière séance, dans leur
+        // ordre. Ceux qui ont disparu du disque sont simplement passés :
+        // une erreur au démarrage pour un fichier déplacé hier
+        // n'apprendrait rien à personne.
+        let autres: Vec<PathBuf> = self
+            .saved_settings
+            .open_files
+            .iter()
+            .map(PathBuf::from)
+            .filter(|path| path.is_file() && Some(path.as_path()) != self.current_file.as_deref())
+            .collect();
+        // On revient ensuite sur celui qu'on regardait : ouvrir les
+        // autres a déplacé l'onglet actif.
+        let actif = self.current_file.clone();
+        self.restoring_session = true;
+        for path in autres {
+            self.open_file(path);
+        }
+        self.restoring_session = false;
+        if let Some(actif) = actif
+            && let Some(rang) = self.tab_index_of(&actif)
+        {
+            self.go_to_tab(rang);
         }
     }
 
@@ -1696,6 +1790,15 @@ impl NamsdecApp {
                 .collect(),
             explorer_root: self.explorer.root.as_ref().map(|p| p.display().to_string()),
             current_file: self.current_file.as_ref().map(|p| p.display().to_string()),
+            // Les autres onglets, dans leur ordre : au lancement
+            // suivant, on retrouve les fichiers sur lesquels on
+            // travaillait, et non le seul dernier.
+            open_files: self
+                .tabs
+                .iter()
+                .filter_map(|tab| tab.path.as_ref())
+                .map(|p| p.display().to_string())
+                .collect(),
             shortcuts: settings::shortcuts_to_strings(&self.keybindings),
         }
     }
@@ -2505,6 +2608,9 @@ impl NamsdecApp {
             Action::GoToLabel => self.do_goto_label(),
             Action::Find => self.do_find(),
             Action::New => self.do_new(),
+            Action::NextTab => self.cycle_tab(1),
+            Action::PreviousTab => self.cycle_tab(-1),
+            Action::CloseTab => self.close_tab(self.active_tab_index),
         }
     }
 
@@ -2758,12 +2864,209 @@ impl NamsdecApp {
     /// traité comme un binaire brut à désassembler, plutôt que rejeté
     /// comme "pas de l'UTF-8" — c'est un atelier de reverse engineering,
     /// ouvrir un binaire doit y mener quelque part.
+    /// L'état de travail, rangé tel quel pour y revenir.
+    fn take_tab(&mut self) -> OpenTab {
+        OpenTab {
+            path: self.current_file.take(),
+            source: std::mem::take(&mut self.source),
+            saved_source: std::mem::take(&mut self.saved_source),
+            cursor_byte: self.cursor_byte,
+            cursor_pos: self.cursor_pos,
+            breakpoint_lines: std::mem::take(&mut self.breakpoint_lines),
+            breakpoint_conditions: std::mem::take(&mut self.breakpoint_conditions),
+            assemble_state: self.assemble_state.take(),
+            emulator: self.emulator.take(),
+            diagnostics: std::mem::take(&mut self.diagnostics),
+            current_exercise: self.current_exercise.take(),
+            program_reads: self.program_reads,
+            program_writes: self.program_writes,
+        }
+    }
+
+    /// Et l'inverse : l'onglet redevient le fichier de travail.
+    fn restore_tab(&mut self, tab: OpenTab) {
+        self.current_file = tab.path;
+        self.source = tab.source;
+        self.saved_source = tab.saved_source;
+        self.cursor_byte = tab.cursor_byte;
+        self.cursor_pos = tab.cursor_pos;
+        self.breakpoint_lines = tab.breakpoint_lines;
+        self.breakpoint_conditions = tab.breakpoint_conditions;
+        self.assemble_state = tab.assemble_state;
+        self.emulator = tab.emulator;
+        self.diagnostics = tab.diagnostics;
+        self.current_exercise = tab.current_exercise;
+        self.program_reads = tab.program_reads;
+        self.program_writes = tab.program_writes;
+        // Ce qui n'appartient qu'au moment présent, et non au fichier :
+        // une course en train de tourner, la photographie du dernier
+        // pas, le curseur qu'on voulait poser ailleurs.
+        self.running = false;
+        self.last_step = None;
+        self.error_advice = None;
+        self.regs_before = None;
+        self.flags_before = None;
+        self.mem_before = None;
+        self.status = Status::Idle;
+        // L'éditeur doit remettre le curseur là où il était : il ne le
+        // fait qu'à la demande, sinon il le laisse où la souris l'a
+        // posé.
+        self.goto_line = Some(self.cursor_pos.0.max(1) as u32);
+    }
+
+    /// Tous les onglets dans l'ordre, l'actif à sa place.
+    ///
+    /// L'actif n'est pas rangé dans la liste — c'est l'état de travail
+    /// lui-même —, mais la barre d'onglets, elle, doit les montrer tous
+    /// à leur rang.
+    fn tab_labels(&self) -> Vec<(String, bool)> {
+        let s = strings(self.lang);
+        let actif = (
+            self.current_file
+                .as_ref()
+                .and_then(|p| p.file_name())
+                .map(|nom| nom.to_string_lossy().into_owned())
+                .unwrap_or_else(|| s.untitled_buffer.to_owned()),
+            self.buffer_modified(),
+        );
+        let mut out: Vec<(String, bool)> = self
+            .tabs
+            .iter()
+            .map(|tab| (tab.label(s), tab.modifié()))
+            .collect();
+        out.insert(self.active_tab_index.min(out.len()), actif);
+        out
+    }
+
+    /// Passe à l'onglet de rang `index`, en rangeant celui qu'on quitte.
+    fn go_to_tab(&mut self, index: usize) {
+        if index == self.active_tab_index || index > self.tabs.len() {
+            return;
+        }
+        // On retire d'abord la cible, puis on range l'actif à sa place :
+        // l'ordre des onglets ne change pas sous les doigts.
+        let cible = if index < self.active_tab_index {
+            self.tabs.remove(index)
+        } else {
+            self.tabs.remove(index - 1)
+        };
+        let courant = self.take_tab();
+        self.tabs
+            .insert(self.active_tab_index.min(self.tabs.len()), courant);
+        self.active_tab_index = index;
+        self.restore_tab(cible);
+    }
+
+    /// D'un onglet au suivant, en bouclant.
+    ///
+    /// Boucler plutôt que buter : on parcourt trois fichiers avec la
+    /// même touche, sans avoir à se demander où l'on est dans la file.
+    fn cycle_tab(&mut self, pas: i32) {
+        let total = self.tabs.len() + 1;
+        if total < 2 {
+            return;
+        }
+        let courant = self.active_tab_index as i32;
+        let cible = (courant + pas).rem_euclid(total as i32) as usize;
+        self.go_to_tab(cible);
+    }
+
+    /// Ferme l'onglet de rang `index`.
+    ///
+    /// Le dernier ne se ferme pas : une fenêtre d'éditeur sans éditeur
+    /// n'a rien à montrer. Fermer celui-là revient à repartir d'un
+    /// programme neuf, ce que Fichier ▸ Nouveau fait déjà.
+    fn close_tab(&mut self, index: usize) {
+        if self.tabs.is_empty() {
+            return;
+        }
+        if index == self.active_tab_index {
+            // On s'installe sur le voisin, puis on ferme celui qu'on
+            // vient de quitter.
+            let voisin = if index == 0 { 1 } else { index - 1 };
+            self.go_to_tab(voisin);
+            let rang = if index > self.active_tab_index {
+                index - 1
+            } else {
+                index
+            };
+            self.tabs.remove(rang);
+            if self.active_tab_index > index {
+                self.active_tab_index -= 1;
+            }
+            return;
+        }
+        let rang = if index < self.active_tab_index {
+            index
+        } else {
+            index - 1
+        };
+        self.tabs.remove(rang);
+        if index < self.active_tab_index {
+            self.active_tab_index -= 1;
+        }
+    }
+
+    /// Ouvre un fichier dans un nouvel onglet, ou revient à celui qui le
+    /// montre déjà.
+    fn open_in_new_tab(&mut self, path: PathBuf) {
+        if let Some(rang) = self.tab_index_of(&path) {
+            // Déjà ouvert : on y retourne. Et il remonte quand même
+            // parmi les récents — c'est bien le fichier qu'on vient de
+            // demander, qu'il ait fallu le lire ou non.
+            self.note_recent(&path);
+            self.go_to_tab(rang);
+            return;
+        }
+        // Un tampon vierge — pas de fichier, rien de tapé — n'a rien à
+        // garder : le fichier demandé prend sa place au lieu d'ouvrir un
+        // onglet « sans titre » que personne n'a demandé.
+        if self.current_file.is_none() && !self.buffer_modified() {
+            self.open_file_now(path);
+            return;
+        }
+        // Sinon l'onglet courant est rangé tel quel, et le nouveau prend
+        // sa place juste après : on ouvre un fichier à côté de celui
+        // qu'on lisait, pas au bout de la file.
+        let courant = self.take_tab();
+        let insertion = self.active_tab_index.min(self.tabs.len());
+        self.tabs.insert(insertion, courant);
+        self.active_tab_index = insertion + 1;
+        self.open_file_now(path);
+    }
+
+    /// Le rang de l'onglet qui montre ce fichier, s'il y en a un.
+    fn tab_index_of(&self, path: &Path) -> Option<usize> {
+        if self.current_file.as_deref() == Some(path) {
+            return Some(self.active_tab_index);
+        }
+        let position = self
+            .tabs
+            .iter()
+            .position(|tab| tab.path.as_deref() == Some(path))?;
+        Some(if position >= self.active_tab_index {
+            position + 1
+        } else {
+            position
+        })
+    }
+
     /// Repart d'un programme neuf.
     fn do_new(&mut self) {
         self.guard(Pending::New);
     }
 
+    /// Un programme neuf, dans son propre onglet.
+    ///
+    /// Le fichier en cours reste ouvert à côté : « nouveau » veut dire
+    /// « un de plus », et non « à la place de ».
     fn new_program(&mut self) {
+        if self.current_file.is_some() || self.buffer_modified() {
+            let courant = self.take_tab();
+            let insertion = self.active_tab_index.min(self.tabs.len());
+            self.tabs.insert(insertion, courant);
+            self.active_tab_index = insertion + 1;
+        }
         self.source = NEW_PROGRAM.to_owned();
         self.saved_source = NEW_PROGRAM.to_owned();
         self.current_file = None;
@@ -2774,9 +3077,13 @@ impl NamsdecApp {
         self.status = Status::Idle;
     }
 
-    /// Ouvre un fichier — après s'être assuré qu'on ne perd rien.
+    /// Ouvre un fichier dans son propre onglet.
+    ///
+    /// Plus de question à poser avant : le fichier en cours n'est pas
+    /// remplacé, il attend dans son onglet avec ses modifications, son
+    /// curseur et ses points d'arrêt.
     fn open_file(&mut self, path: PathBuf) {
-        self.guard(Pending::OpenFile(path));
+        self.open_in_new_tab(path);
     }
 
     /// Y a-t-il quelque chose à perdre ?
@@ -2799,7 +3106,6 @@ impl NamsdecApp {
     fn perform(&mut self, action: Pending) {
         match action {
             Pending::New => self.new_program(),
-            Pending::OpenFile(path) => self.open_file_now(path),
             Pending::Exercise(id) => self.load_exercise_now(&id),
             Pending::Quit => self.quitting = true,
         }
@@ -2813,6 +3119,9 @@ impl NamsdecApp {
 
     /// Note un fichier comme récemment ouvert.
     fn note_recent(&mut self, path: &Path) {
+        if self.restoring_session {
+            return;
+        }
         // Le même fichier ne s'y met pas deux fois : il remonte.
         self.recent_files.retain(|autre| autre != path);
         self.recent_files.insert(0, path.to_path_buf());
@@ -3407,6 +3716,34 @@ impl NamsdecApp {
                 {
                     self.dispatch(Action::OpenFolder);
                     ui.close();
+                }
+                // Fermer le fichier qu'on regarde : le geste existe dans
+                // la barre d'onglets, mais il se cherche d'abord ici.
+                if !self.tabs.is_empty() {
+                    if ui
+                        .button(shortcut_hint(
+                            &self.keybindings,
+                            &ctx,
+                            s.action_close_tab,
+                            Action::CloseTab,
+                        ))
+                        .clicked()
+                    {
+                        self.dispatch(Action::CloseTab);
+                        ui.close();
+                    }
+                    if ui
+                        .button(shortcut_hint(
+                            &self.keybindings,
+                            &ctx,
+                            s.action_next_tab,
+                            Action::NextTab,
+                        ))
+                        .clicked()
+                    {
+                        self.dispatch(Action::NextTab);
+                        ui.close();
+                    }
                 }
                 // Les derniers ouverts : on retravaille le même fichier
                 // trois fois dans une séance, et le sélecteur natif
@@ -4438,7 +4775,7 @@ impl NamsdecApp {
             .default_pos(ctx.viewport_rect().center())
             .show(ctx, |ui| {
                 ui.label(s.exercises_legend);
-                // L'étape en cours, en tête : quarante-quatre exercices ne tiennent
+                // L'étape en cours, en tête : quarante-sept exercices ne tiennent
                 // pas dans la fenêtre, et « où j'en étais » ne sert à
                 // rien s'il faut le chercher en défilant.
                 if let Some(id) = self.current_exercise.clone()
@@ -4491,7 +4828,7 @@ impl NamsdecApp {
                 egui::ScrollArea::vertical()
                     .max_height(room)
                     // `false` en hauteur : une zone qui rétrécit à son
-                    // contenu est aussi haute que ses quarante-quatre exercices,
+                    // contenu est aussi haute que ses quarante-sept exercices,
                     // donc ne défile jamais — elle déborde de la fenêtre,
                     // et ce qui dépasse est coupé.
                     .auto_shrink([false, false])
@@ -5410,6 +5747,9 @@ impl NamsdecApp {
 
     fn editor_ui(&mut self, ui: &mut egui::Ui) {
         let theme = self.theme;
+        // Les fichiers ouverts, en tête : on passe de l'un à l'autre
+        // sans rien perdre de ce qu'on faisait sur les autres.
+        self.tabs_bar_ui(ui);
         // La barre de recherche, au-dessus du code : elle pousse
         // l'éditeur d'une ligne plutôt que de flotter par-dessus, pour
         // ne jamais couvrir ce qu'on vient de trouver.
@@ -5756,6 +6096,68 @@ impl NamsdecApp {
 
     /// La barre de recherche : ce qu'on cherche, combien de fois on le
     /// trouve, et de quoi passer d'une occurrence à l'autre.
+    /// La barre des fichiers ouverts.
+    ///
+    /// Un onglet par fichier, le nom raccourci quand il est long — mais
+    /// par le milieu, jamais par la fin : `long_nom_de_prog…` et
+    /// `long_nom_de_prog2…` se ressemblent trop, alors que
+    /// `long_n…rog.asm` et `long_n…og2.asm` se distinguent. Le point dit
+    /// ce qui n'est pas enregistré, et la croix ferme.
+    ///
+    /// Un seul fichier ouvert : pas de barre. Elle n'apprend rien tant
+    /// qu'il n'y a rien à choisir, et l'éditeur gagne sa hauteur.
+    fn tabs_bar_ui(&mut self, ui: &mut egui::Ui) {
+        if self.tabs.is_empty() {
+            return;
+        }
+        let theme = self.theme;
+        let s = strings(self.lang);
+        let mut aller = None;
+        let mut fermer = None;
+        egui::ScrollArea::horizontal()
+            .id_salt("tabs_bar")
+            .auto_shrink([false, true])
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    for (rang, (nom, modifié)) in self.tab_labels().into_iter().enumerate() {
+                        let actif = rang == self.active_tab_index;
+                        let étiquette = format!(
+                            "{}{}",
+                            raccourcir_nom(&nom, 18),
+                            if modifié { " •" } else { "" }
+                        );
+                        let texte = egui::RichText::new(étiquette).color(if actif {
+                            theme.text
+                        } else {
+                            theme.dim
+                        });
+                        if ui
+                            .selectable_label(actif, texte)
+                            .on_hover_text(&nom)
+                            .clicked()
+                        {
+                            aller = Some(rang);
+                        }
+                        if ui
+                            .small_button("×")
+                            .on_hover_text(s.tab_close_hint)
+                            .clicked()
+                        {
+                            fermer = Some(rang);
+                        }
+                        ui.add_space(6.0);
+                    }
+                });
+            });
+        ui.add_space(2.0);
+        if let Some(rang) = aller {
+            self.go_to_tab(rang);
+        }
+        if let Some(rang) = fermer {
+            self.close_tab(rang);
+        }
+    }
+
     fn find_ui(&mut self, ui: &mut egui::Ui) {
         let Some(find) = &mut self.find else {
             return;
@@ -8182,6 +8584,27 @@ fn newline_indent(source: &str, cursor: usize) -> String {
     format!("\n{indent}")
 }
 
+/// Un nom de fichier raccourci **par le milieu**.
+///
+/// Couper la fin ferait de `boucle_imbriquee.asm` et
+/// `boucle_imbriquee_2.asm` deux onglets identiques ; garder le début et
+/// la fin garde l'extension et ce qui distingue — c'est ce que font les
+/// éditeurs qui affichent des chemins longs.
+fn raccourcir_nom(nom: &str, maximum: usize) -> String {
+    let lettres: Vec<char> = nom.chars().collect();
+    if lettres.len() <= maximum {
+        return nom.to_owned();
+    }
+    // Un caractère de moins pour le signe de coupure lui-même.
+    let reste = maximum.saturating_sub(1);
+    let fin = reste / 2;
+    let début = reste - fin;
+    let mut out: String = lettres[..début].iter().collect();
+    out.push('…');
+    out.extend(&lettres[lettres.len() - fin..]);
+    out
+}
+
 /// Le texte de la ligne `ligne`, en comptant à partir de 1, débarrassé
 /// de son indentation.
 ///
@@ -8597,6 +9020,9 @@ fn action_label(s: &Strings, action: Action) -> &'static str {
         Action::GoToLabel => s.action_goto_label,
         Action::Find => s.action_find,
         Action::New => s.file_new,
+        Action::NextTab => s.action_next_tab,
+        Action::PreviousTab => s.action_previous_tab,
+        Action::CloseTab => s.action_close_tab,
         Action::RunToCursor => s.action_run_to_cursor,
         Action::RunToCall => s.action_run_to_call,
         Action::RunToReturn => s.action_run_to_return,

@@ -6435,7 +6435,7 @@ fn the_course_is_discoverable_before_it_is_loaded() {
         output.textures_delta.clear();
     }
     // Le texte d'accueil est à l'écran, avec sa mention du parcours.
-    assert!(painted.contains("quarante-quatre exercices"), "{painted}");
+    assert!(painted.contains("quarante-sept exercices"), "{painted}");
 }
 
 /// Le parcours se reprend là où on l'avait laissé.
@@ -12815,4 +12815,170 @@ fn reading_code_as_text_says_why_it_looks_like_nothing() {
         Lang::Fr,
     );
     assert!(lu.contains("Chaîne vide"), "{lu}");
+}
+
+/// Plusieurs fichiers ouverts à la fois, chacun là où on l'a laissé.
+///
+/// C'est la promesse des onglets : on passe d'un fichier à l'autre sans
+/// rien perdre — ni le texte tapé, ni le curseur, ni les points d'arrêt,
+/// ni l'exécution arrêtée au pas où on l'avait laissée.
+#[test]
+fn several_files_stay_open_each_where_it_was_left() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let un = dir.path().join("un.asm");
+    let deux = dir.path().join("deux.asm");
+    std::fs::write(&un, DEFAULT_SOURCE).unwrap();
+    std::fs::write(
+        &deux,
+        "global _start\nsection .text\n_start:\n    mov rax, 7\n    hlt\n",
+    )
+    .unwrap();
+
+    let mut app = NamsdecApp::default();
+    app.open_file(un.clone());
+    assert_eq!(app.current_file.as_deref(), Some(un.as_path()));
+    // Le premier fichier chasse le tampon vierge plutôt que de s'ajouter
+    // à lui : on n'ouvre pas deux onglets en en demandant un.
+    assert!(app.tabs.is_empty(), "un seul fichier, un seul onglet");
+
+    // Le premier prend de l'avance : assemblé, un pas fait, un point
+    // d'arrêt posé, le curseur quelque part.
+    app.do_assemble();
+    app.do_step();
+    app.breakpoint_lines.insert(4);
+    app.cursor_byte = 12;
+    let rip_du_premier = app.emulator.as_ref().expect("chargé").cpu().regs.rip;
+
+    app.open_file(deux.clone());
+    assert_eq!(app.current_file.as_deref(), Some(deux.as_path()));
+    assert_eq!(app.tabs.len(), 1, "le premier attend dans son onglet");
+    assert_eq!(app.active_tab_index, 1, "le nouveau se range juste après");
+    assert!(
+        app.emulator.is_none() && app.breakpoint_lines.is_empty(),
+        "le nouveau fichier part de rien, et non de l'état du précédent"
+    );
+
+    // On tape dans le second sans l'enregistrer, puis on repart.
+    app.source.push_str("    ; une note\n");
+    app.go_to_tab(0);
+    assert_eq!(app.current_file.as_deref(), Some(un.as_path()));
+    assert_eq!(
+        app.cursor_byte, 12,
+        "le curseur revient là où on l'avait laissé"
+    );
+    assert!(app.breakpoint_lines.contains(&4), "et les points d'arrêt");
+    assert_eq!(
+        app.emulator
+            .as_ref()
+            .expect("toujours chargé")
+            .cpu()
+            .regs
+            .rip,
+        rip_du_premier,
+        "l'exécution reprend au pas où elle s'était arrêtée"
+    );
+
+    // Et le second n'a rien perdu non plus.
+    app.go_to_tab(1);
+    assert!(
+        app.source.contains("; une note"),
+        "ce qu'on avait tapé sans l'enregistrer est toujours là"
+    );
+    assert!(app.buffer_modified(), "et il se sait modifié");
+
+    // Fermer revient au voisin, sans toucher au reste.
+    app.close_tab(1);
+    assert!(app.tabs.is_empty());
+    assert_eq!(app.current_file.as_deref(), Some(un.as_path()));
+
+    // Le dernier ne se ferme pas : un éditeur sans fichier n'a rien à
+    // montrer, et Fichier ▸ Nouveau est là pour repartir de zéro.
+    app.close_tab(0);
+    assert_eq!(app.current_file.as_deref(), Some(un.as_path()));
+}
+
+/// Les fichiers ouverts reviennent au lancement suivant.
+#[test]
+fn the_open_files_come_back_next_time() {
+    let dir = tempfile::tempdir().unwrap();
+    let un = dir.path().join("un.asm");
+    let deux = dir.path().join("deux.asm");
+    for chemin in [&un, &deux] {
+        std::fs::write(chemin, "global _start\nsection .text\n_start:\n    hlt\n").unwrap();
+    }
+
+    let mut app = NamsdecApp::default();
+    app.open_file(un.clone());
+    app.open_file(deux.clone());
+    let écrit = serde_json::to_string(&app.settings_snapshot()).unwrap();
+    assert!(écrit.contains("open_files"), "{écrit}");
+
+    let relu = NamsdecApp::from_settings(serde_json::from_str(&écrit).unwrap());
+    assert_eq!(
+        relu.current_file.as_deref(),
+        Some(deux.as_path()),
+        "on revient sur le fichier qu'on regardait"
+    );
+    assert_eq!(relu.tabs.len(), 1, "et l'autre est rouvert à côté");
+    assert_eq!(relu.tabs[0].path.as_deref(), Some(un.as_path()));
+    // Rouvrir n'est pas ouvrir : l'ordre des récents ne doit pas s'en
+    // trouver bouleversé.
+    assert_eq!(relu.recent_files, app.recent_files);
+}
+
+/// Un nom long se raccourcit par le milieu, jamais par la fin.
+///
+/// `boucle_imbriquee.asm` et `boucle_imbriquee_2.asm` coupés à la fin
+/// donnent deux onglets identiques ; en gardant le début et la fin, on
+/// garde l'extension et ce qui les distingue.
+#[test]
+fn a_long_file_name_is_shortened_in_the_middle() {
+    assert_eq!(raccourcir_nom("court.asm", 18), "court.asm");
+    let a = raccourcir_nom("boucle_imbriquee.asm", 18);
+    let b = raccourcir_nom("boucle_imbriquee_2.asm", 18);
+    assert_ne!(a, b, "deux noms voisins restent distincts : {a} / {b}");
+    assert!(a.ends_with(".asm") && b.ends_with(".asm"), "{a} / {b}");
+    assert!(
+        a.chars().count() <= 18 && b.chars().count() <= 18,
+        "{a} / {b}"
+    );
+    assert!(a.contains('…') && b.contains('…'));
+}
+
+/// La barre d'onglets montre les fichiers ouverts, et le point de ce qui
+/// n'est pas enregistré.
+#[test]
+fn the_tab_bar_shows_the_open_files() {
+    let dir = tempfile::tempdir().unwrap();
+    let un = dir.path().join("un.asm");
+    let deux = dir.path().join("deux.asm");
+    for chemin in [&un, &deux] {
+        std::fs::write(chemin, "global _start\nsection .text\n_start:\n    hlt\n").unwrap();
+    }
+    let mut app = NamsdecApp::default();
+    app.open_file(un);
+    app.open_file(deux);
+    app.source.push_str("; modifié\n");
+
+    let peint = paint(&mut app);
+    assert!(peint.contains("un.asm"), "{peint}");
+    assert!(
+        peint.contains("deux.asm •"),
+        "le point dit ce qui n'est pas enregistré : {peint}"
+    );
+
+    // Un seul fichier : pas de barre du tout — elle n'apprend rien tant
+    // qu'il n'y a rien à choisir.
+    let mut seul = NamsdecApp::default();
+    let peint = paint(&mut seul);
+    // La croix de fermeture n'apparaît qu'avec la barre : c'est elle
+    // qui dit si la barre est là, « sans titre » se lisant par ailleurs
+    // dans la barre de titre et celle d'état.
+    assert!(
+        !peint.contains('×'),
+        "pas de barre d'onglets pour un seul fichier : {peint}"
+    );
 }

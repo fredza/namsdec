@@ -150,6 +150,12 @@ pub struct Settings {
     /// peut l'éditer avec autre chose, et en recopier une version dans les
     /// réglages ne ferait qu'y entretenir un double périmé.
     pub current_file: Option<String>,
+    /// Les autres fichiers ouverts au moment où l'on a quitté, dans
+    /// l'ordre des onglets — leurs **chemins**, pour les mêmes raisons
+    /// que ci-dessus. Ce qu'on y avait tapé sans l'enregistrer n'y est
+    /// pas : il n'a jamais quitté la mémoire.
+    #[serde(default)]
+    pub open_files: Vec<String>,
     /// Identifiant d'action -> raccourci, en texte.
     pub shortcuts: BTreeMap<String, String>,
 }
@@ -186,6 +192,7 @@ impl Default for Settings {
             memory_follow: fixe_par_défaut(),
             explorer_root: None,
             current_file: None,
+            open_files: Vec::new(),
             shortcuts: shortcuts_to_strings(&KeyBindings::default()),
         }
     }
@@ -352,6 +359,9 @@ fn action_id(action: Action) -> &'static str {
         Action::GoToLabel => "goto_label",
         Action::Find => "find",
         Action::New => "new",
+        Action::NextTab => "next_tab",
+        Action::PreviousTab => "previous_tab",
+        Action::CloseTab => "close_tab",
     }
 }
 

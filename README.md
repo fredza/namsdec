@@ -58,6 +58,15 @@ en dernier, son rang et sa ligne : « écrit au pas -12, ligne 7 :
 add rax, rcx ». Le chercher à la main veut dire relire son programme à
 l'envers, et se tromper une fois sur deux dès qu'il y a une boucle.
 
+**Plusieurs fichiers ouverts à la fois.** Une barre d'onglets au-dessus
+de l'éditeur, le nom raccourci par le milieu quand il est long — pour que
+`boucle_i…ee.asm` et `boucle_i…e_2.asm` restent deux fichiers
+différents —, un point sur ce qui n'est pas enregistré. Chaque onglet
+garde **tout** ce qu'on y faisait : le texte tapé, le curseur, les points
+d'arrêt, et l'exécution arrêtée au pas où on l'avait laissée. Ctrl+Tab
+passe au suivant, Ctrl+W ferme, et les fichiers reviennent au lancement
+d'après.
+
 **Où le programme passe son temps.** Une bande de chaleur dans la
 gouttière — verte pour une ligne parcourue une fois, rouge pour la plus
 chaude, jaune et orange entre les deux — avec le compte exact au survol

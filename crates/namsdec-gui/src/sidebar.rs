@@ -139,10 +139,6 @@ impl NamsdecApp {
         // de deux lignes ne montre rien, et ce qui cède alors est le
         // détail de la prochaine instruction, qui se replie d'un clic.
         let voulue = laissée.clamp(SIDEBAR_TAB_MIN.min(plafond), plafond);
-        eprintln!(
-            "SONDE total={total} bandeau={} laissée={laissée} plafond={plafond} voulue={voulue}",
-            self.sidebar_banner_height
-        );
         let id = egui::Id::new("sidebar_tab");
         if self.sidebar_tab_height.is_none() {
             let état = egui::containers::panel::PanelState {

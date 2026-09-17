@@ -218,6 +218,21 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
   coût et le lien des registres étendus se superposaient à l'onglet, les
   deux illisibles. Le bandeau tient maintenant dans une seule zone qui
   coupe net, et la barre n'apparaît que sur une fenêtre trop courte.
+**Plusieurs fichiers à la fois**
+- Une barre d'onglets au-dessus de l'éditeur : un onglet par fichier, le
+  nom raccourci par le milieu quand il est long, un point sur ce qui
+  n'est pas enregistré, une croix pour fermer. Elle n'apparaît qu'à
+  partir du deuxième fichier.
+- Chaque onglet garde ce qu'on y faisait : le texte, le curseur, les
+  points d'arrêt et leurs conditions, l'exercice en cours, et
+  l'exécution arrêtée au pas où on l'avait laissée. Y revenir, c'est
+  reprendre la phrase au milieu.
+- Ouvrir un fichier ne demande donc plus si l'on veut perdre le
+  précédent : il attend dans son onglet. Ctrl+Tab passe au suivant,
+  Ctrl+Maj+Tab au précédent, Ctrl+W ferme.
+- Les fichiers ouverts reviennent au lancement suivant — leurs chemins,
+  jamais leur contenu, comme pour le reste.
+
 - La mémoire lue « en Texte » s'explique : `<b8><01>` suivi de `\0` ne
   disait ni que le zéro arrêtait la lecture, ni que ces octets n'étaient
   pas du texte, ni où se trouvait le message cherché. Elle dit maintenant
