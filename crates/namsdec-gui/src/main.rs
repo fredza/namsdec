@@ -726,6 +726,9 @@ struct NamsdecApp {
     /// lancement suivant.
     cyclic_len: String,
     cyclic_find: String,
+    /// Ce qu'on cherche parmi les exercices. Trente-six étapes se
+    /// parcourent mal quand on sait déjà ce qu'on veut revoir.
+    exercise_query: String,
     /// Ce qu'on cherche dans la mémoire, et sous quelle forme. Une
     /// saisie de travail, comme l'adresse du vidage.
     mem_search: String,
@@ -1414,6 +1417,7 @@ impl Default for NamsdecApp {
             // d'apprentissage sans noyer la fenêtre.
             cyclic_len: "100".to_owned(),
             cyclic_find: String::new(),
+            exercise_query: String::new(),
             mem_search: String::new(),
             mem_search_kind: SearchKind::Text,
             editing_register: None,
@@ -4185,7 +4189,20 @@ impl NamsdecApp {
             else {
                 continue;
             };
-            let suivant = pack.exercises.get(position + 1)?;
+            // La prochaine **non réussie**, et non la suivante dans la
+            // liste : reprendre un parcours ne doit pas obliger à
+            // repasser sur ce qu'on a déjà fait. À défaut — tout est
+            // réussi jusqu'au bout —, celle qui suit.
+            let suivant = pack
+                .exercises
+                .iter()
+                .skip(position + 1)
+                .find(|exercise| {
+                    !self
+                        .exercises_done
+                        .contains(&namsdec_exercises::full_id(pack, exercise))
+                })
+                .or_else(|| pack.exercises.get(position + 1))?;
             return Some((
                 namsdec_exercises::full_id(pack, suivant),
                 suivant.title.get(self.lang.code()).to_owned(),
@@ -4258,6 +4275,23 @@ impl NamsdecApp {
                     });
                 }
                 ui.add_space(6.0);
+                // De quoi retrouver une étape : trente-six titres se
+                // parcourent mal quand on sait déjà lequel on veut
+                // revoir. La recherche porte sur le titre et sur
+                // l'énoncé — on se souvient rarement du nom exact, plus
+                // souvent de ce qu'on y faisait.
+                ui.horizontal(|ui| {
+                    ui.colored_label(theme.dim, s.exercises_search);
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.exercise_query)
+                            .desired_width(200.0)
+                            .hint_text(s.exercises_search_hint),
+                    );
+                    if !self.exercise_query.is_empty() && ui.small_button("x").clicked() {
+                        self.exercise_query.clear();
+                    }
+                });
+                ui.add_space(4.0);
                 // La place que la fenêtre laisse vraiment, et pas une
                 // fraction de l'écran : une zone qui se croit plus haute
                 // que sa fenêtre ne défile pas — elle déborde, et ce qui
@@ -4319,7 +4353,18 @@ impl NamsdecApp {
                             let total = pack.exercises.len();
                             header.show(ui, |ui| {
                                 let mut palier = None;
+                                let cherché = self.exercise_query.to_lowercase();
                                 for (index, exercise) in pack.exercises.iter().enumerate() {
+                                    if !cherché.is_empty() {
+                                        let titre = exercise.title.get(lang).to_lowercase();
+                                        let énoncé = exercise.description.get(lang).to_lowercase();
+                                        if !titre.contains(&cherché)
+                                            && !énoncé.contains(&cherché)
+                                            && !exercise.id.contains(&cherché)
+                                        {
+                                            continue;
+                                        }
+                                    }
                                     // Le palier, en tête de son groupe :
                                     // le parcours va de la découverte à
                                     // la maîtrise, et le dire évite de
@@ -5929,6 +5974,17 @@ impl NamsdecApp {
         let Some((_, true)) = self.exercise_goal() else {
             return;
         };
+        // Un but atteint sans avoir rien exécuté n'est pas une
+        // solution : « rax == 0 » est vrai avant le premier pas, et
+        // remettre à zéro suffisait à s'attribuer un score de zéro
+        // instruction — imbattable, et faux. On exige que le programme
+        // ait tourné *et* qu'il soit allé jusqu'à son arrêt.
+        let Some(emulator) = &self.emulator else {
+            return;
+        };
+        if emulator.executed() == 0 || !emulator.cpu().halted {
+            return;
+        }
         let Some(id) = self.current_exercise.clone() else {
             return;
         };

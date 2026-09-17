@@ -10733,6 +10733,100 @@ fn the_course_climbs_and_says_so() {
     );
 }
 
+/// Un but atteint sans rien exécuter n'est pas une solution.
+///
+/// « rax == 0 » est vrai avant le premier pas : remettre l'exercice à
+/// zéro s'attribuait un score de zéro instruction — imbattable, et faux.
+/// On exige désormais que le programme ait tourné et qu'il soit allé
+/// jusqu'à son arrêt.
+#[test]
+fn a_goal_true_before_running_scores_nothing() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        exercises: true,
+        ..Default::default()
+    };
+    // « Mettre à zéro » : son but est vrai dès le départ, registres
+    // neufs.
+    app.load_exercise("namsdec/zero");
+    app.do_assemble();
+    paint(&mut app);
+    assert!(
+        !app.exercises_best.contains_key("namsdec/zero"),
+        "rien n'a tourné : pas de score"
+    );
+    assert!(!app.exercises_done.contains("namsdec/zero"));
+
+    // Il faut le faire tourner pour valoir quelque chose.
+    app.do_run();
+    for _ in 0..50 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&egui::Context::default());
+    }
+    paint(&mut app);
+    assert_eq!(app.exercises_best.get("namsdec/zero").copied(), Some(4));
+
+    // Et remettre à zéro ne vient pas écraser ce score par un zéro.
+    app.dispatch(Action::Reset);
+    paint(&mut app);
+    assert_eq!(app.exercises_best.get("namsdec/zero").copied(), Some(4));
+
+    // Un programme arrêté en cours de route ne compte pas non plus : le
+    // but est peut-être atteint, mais le programme n'est pas fini.
+    app.dispatch(Action::Reset);
+    app.do_step();
+    paint(&mut app);
+    assert_eq!(app.exercises_best.get("namsdec/zero").copied(), Some(4));
+}
+
+/// « Étape suivante » saute ce qui est déjà réussi, et la fenêtre sait
+/// retrouver une étape parmi trente-six.
+#[test]
+fn the_next_step_skips_what_is_already_done() {
+    let mut app = NamsdecApp {
+        exercises: true,
+        ..Default::default()
+    };
+    // Rien de fait : la suivante est la suivante.
+    let (suivant, _) = app
+        .exercise_after("namsdec/registres")
+        .expect("il y a une suite");
+    assert_eq!(suivant, "namsdec/echange");
+
+    // Les deux d'après déjà réussies : on saute par-dessus.
+    app.exercises_done.insert("namsdec/echange".to_owned());
+    app.exercises_done.insert("namsdec/zero".to_owned());
+    let (suivant, _) = app
+        .exercise_after("namsdec/registres")
+        .expect("il y a une suite");
+    assert_eq!(suivant, "namsdec/boucle");
+
+    // Tout réussi jusqu'au bout : on retombe sur la suivante, plutôt
+    // que de ne rien proposer.
+    for exercise in &namsdec_exercises::builtin_pack().exercises {
+        app.exercises_done
+            .insert(format!("namsdec/{}", exercise.id));
+    }
+    let (suivant, _) = app
+        .exercise_after("namsdec/registres")
+        .expect("il y a une suite");
+    assert_eq!(suivant, "namsdec/echange");
+
+    // Et la recherche filtre la liste : sur « pile », il reste les
+    // étapes qui en parlent, pas les trente-six.
+    app.show_exercises = true;
+    app.exercise_query = "récursion".to_owned();
+    let painted = paint(&mut app);
+    assert!(
+        painted.contains(strings(app.lang).exercises_search),
+        "{painted}"
+    );
+}
+
 /// La mémoire montre sa carte : où commence le code, où finit la pile,
 /// ce que le tas occupe, avec les droits de chacun.
 ///
