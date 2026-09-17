@@ -7685,3 +7685,117 @@ fn every_glyph_the_interface_writes_exists_in_its_font() {
         "ces caractères seront peints en carré vide : {manquants:?}"
     );
 }
+
+/// Le pseudo-code doit couvrir ce qu'on lit vraiment dans un binaire.
+///
+/// Mesuré sur un binaire du système, pas sur des cas choisis : ce qui
+/// n'est pas traduit tombe dans le repli NASM, ce qui reste honnête mais
+/// n'apprend rien. Le seuil est large — il attrape une régression, pas
+/// une variation de quelques instructions.
+#[test]
+fn the_pseudo_code_covers_a_real_binary() {
+    let Ok(bytes) = std::fs::read("/bin/ls") else {
+        eprintln!("/bin/ls introuvable : test ignoré");
+        return;
+    };
+    let mut app = NamsdecApp::default();
+    app.load_binary(bytes);
+    let state = app.assemble_state.as_ref().expect("chargé");
+
+    let mut total = 0usize;
+    let mut traduites = 0usize;
+    for instruction in &state.disasm {
+        let Some(decoded) = namsdec_disasm::decode_one(&instruction.bytes, instruction.address)
+        else {
+            continue;
+        };
+        total += 1;
+        // Le repli rend la forme NASM telle quelle : c'est à cela qu'on
+        // reconnaît une instruction qu'on ne sait pas dire.
+        if namsdec_disasm::pseudo::of(&decoded, "fr") != namsdec_disasm::format_one(&decoded) {
+            traduites += 1;
+        }
+    }
+    assert!(total > 5_000, "le binaire doit être gros : {total}");
+    let part = traduites as f32 / total as f32;
+    assert!(
+        part > 0.95,
+        "seulement {traduites} instructions sur {total} se disent en clair ({:.0} %)",
+        part * 100.0
+    );
+}
+
+/// Le panneau de désassemblage se cherche et suit l'exécution.
+#[test]
+fn the_disassembly_panel_searches_and_follows() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        show_disassembly: true,
+        source: "\
+global _start
+section .text
+_start:
+mov rax, 1
+mov rbx, 2
+call sous
+hlt
+sous:
+mov rcx, 3
+ret
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1400.0, 1000.0),
+        )),
+        ..Default::default()
+    };
+    let peindre = |app: &mut NamsdecApp| {
+        let mut painted = String::new();
+        for _ in 0..2 {
+            painted.clear();
+            let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+            for clipped in &output.shapes {
+                if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                    painted.push_str(text.galley.text());
+                    painted.push('|');
+                }
+            }
+            output.textures_delta.clear();
+        }
+        painted
+    };
+
+    // Sans recherche, tout est là — en pseudo-code, et sur les
+    // registres que nasm a réellement encodés : `mov rax, 1` tient en
+    // cinq octets sous la forme `mov eax, 1`.
+    let painted = peindre(&mut app);
+    assert!(painted.contains("EAX = 1"), "{painted}");
+    assert!(painted.contains("ECX = 3"), "{painted}");
+    assert!(
+        painted.contains("appeler"),
+        "l'appel se dit en clair : {painted}"
+    );
+
+    // Une recherche filtre.
+    app.disassembly_query = "ECX".to_owned();
+    let painted = peindre(&mut app);
+    assert!(painted.contains("ECX = 3"), "{painted}");
+    assert!(!painted.contains("EAX = 1"), "{painted}");
+
+    // Chercher une étiquette la trouve, bien qu'elle ne soit pas dans le
+    // texte de l'instruction.
+    app.disassembly_query = "sous".to_owned();
+    let painted = peindre(&mut app);
+    assert!(painted.contains("sous:"), "{painted}");
+}

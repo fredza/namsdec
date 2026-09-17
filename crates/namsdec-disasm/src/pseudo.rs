@@ -124,6 +124,222 @@ pub fn of(instr: &Instruction, lang: &str) -> String {
                 "system call (the number is in RAX)".to_owned()
             }
         }
+        Mnemonic::Adc => {
+            if fr {
+                format!("{} = {} + {} + retenue", op(0), op(0), op(1))
+            } else {
+                format!("{} = {} + {} + carry", op(0), op(0), op(1))
+            }
+        }
+        Mnemonic::Sbb => {
+            if fr {
+                format!("{} = {} − {} − retenue", op(0), op(0), op(1))
+            } else {
+                format!("{} = {} − {} − borrow", op(0), op(0), op(1))
+            }
+        }
+        Mnemonic::Bt => {
+            if fr {
+                format!("tester le bit {} de {}", op(1), op(0))
+            } else {
+                format!("test bit {} of {}", op(1), op(0))
+            }
+        }
+        Mnemonic::Bts | Mnemonic::Btr | Mnemonic::Btc => {
+            let quoi = match (m, fr) {
+                (Mnemonic::Bts, true) => "mettre à 1",
+                (Mnemonic::Bts, false) => "set",
+                (Mnemonic::Btr, true) => "mettre à 0",
+                (Mnemonic::Btr, false) => "clear",
+                (_, true) => "inverser",
+                (_, false) => "flip",
+            };
+            if fr {
+                format!("{quoi} le bit {} de {}", op(1), op(0))
+            } else {
+                format!("{quoi} bit {} of {}", op(1), op(0))
+            }
+        }
+        // Les cibles de saut indirect : un marqueur, pas un calcul.
+        Mnemonic::Endbr64 | Mnemonic::Endbr32 => {
+            if fr {
+                "cible de saut indirect autorisée (IBT)".to_owned()
+            } else {
+                "valid indirect-jump target (IBT)".to_owned()
+            }
+        }
+        // Les copies vectorielles : ce qui compte est la taille, et
+        // l'alignement quand il est exigé.
+        Mnemonic::Movdqa
+        | Mnemonic::Movdqu
+        | Mnemonic::Movaps
+        | Mnemonic::Movups
+        | Mnemonic::Movapd
+        | Mnemonic::Movupd
+        | Mnemonic::Movq
+        | Mnemonic::Movd
+        | Mnemonic::Movss
+        | Mnemonic::Movsd => {
+            let taille = vector_width(instr);
+            let aligné = matches!(m, Mnemonic::Movdqa | Mnemonic::Movaps | Mnemonic::Movapd);
+            let note = match (aligné, fr) {
+                (true, true) => "  (adresse alignée exigée)",
+                (true, false) => "  (aligned address required)",
+                (false, _) => "",
+            };
+            format!("{} = {}  ({taille}){note}", op(0), op(1))
+        }
+        Mnemonic::Pxor => format!("{} = {} OU-exclusif {}", op(0), op(0), op(1)),
+        Mnemonic::Por => format!("{} = {} OU {}", op(0), op(0), op(1)),
+        Mnemonic::Pand => format!("{} = {} ET {}", op(0), op(0), op(1)),
+        Mnemonic::Pandn => {
+            if fr {
+                format!("{} = (NON {}) ET {}", op(0), op(0), op(1))
+            } else {
+                format!("{} = (NOT {}) AND {}", op(0), op(0), op(1))
+            }
+        }
+        Mnemonic::Comiss | Mnemonic::Comisd | Mnemonic::Ucomiss | Mnemonic::Ucomisd => {
+            if fr {
+                format!("comparer {} et {} (flottants)", op(0), op(1))
+            } else {
+                format!("compare {} and {} (floating point)", op(0), op(1))
+            }
+        }
+        Mnemonic::Cdqe | Mnemonic::Cwde | Mnemonic::Cbw => {
+            if fr {
+                "élargir la moitié basse en gardant son signe".to_owned()
+            } else {
+                "widen the low half keeping its sign".to_owned()
+            }
+        }
+        Mnemonic::Cqo | Mnemonic::Cdq | Mnemonic::Cwd => {
+            if fr {
+                "étendre le signe dans RDX, avant une division signée".to_owned()
+            } else {
+                "spread the sign into RDX, before a signed division".to_owned()
+            }
+        }
+        Mnemonic::Rol | Mnemonic::Ror => {
+            let sens = match (m, fr) {
+                (Mnemonic::Rol, true) => "vers la gauche",
+                (Mnemonic::Rol, false) => "left",
+                (_, true) => "vers la droite",
+                (_, false) => "right",
+            };
+            if fr {
+                format!(
+                    "{} = {} tourné de {} bits {sens} (les bits sortis rentrent de l'autre côté)",
+                    op(0),
+                    op(0),
+                    op(1)
+                )
+            } else {
+                format!(
+                    "{} = {} rotated {} bits {sens} (bits leaving one end come back at the other)",
+                    op(0),
+                    op(0),
+                    op(1)
+                )
+            }
+        }
+        Mnemonic::Bswap => {
+            if fr {
+                format!("{} = ses octets dans l'ordre inverse", op(0))
+            } else {
+                format!("{} = its bytes in reverse order", op(0))
+            }
+        }
+        // Les comparaisons vectorielles : chaque paquet devient tout à
+        // 1 ou tout à 0, et c'est ce masque qu'on utilise ensuite.
+        Mnemonic::Pcmpeqb
+        | Mnemonic::Pcmpeqw
+        | Mnemonic::Pcmpeqd
+        | Mnemonic::Pcmpeqq
+        | Mnemonic::Pcmpgtb
+        | Mnemonic::Pcmpgtw
+        | Mnemonic::Pcmpgtd
+        | Mnemonic::Pcmpgtq => {
+            let comparaison = if format!("{m:?}").contains("eq") {
+                if fr { "égaux" } else { "equal" }
+            } else if fr {
+                "plus grand"
+            } else {
+                "greater"
+            };
+            if fr {
+                format!(
+                    "{} = masque : paquets {comparaison} à {} -> tous les bits à 1",
+                    op(0),
+                    op(1)
+                )
+            } else {
+                format!(
+                    "{} = mask: packs {comparaison} to {} -> all bits set",
+                    op(0),
+                    op(1)
+                )
+            }
+        }
+        // Les additions et multiplications flottantes ou par paquets :
+        // la même opération, appliquée à plusieurs valeurs d'un coup.
+        Mnemonic::Addss
+        | Mnemonic::Addsd
+        | Mnemonic::Addps
+        | Mnemonic::Addpd
+        | Mnemonic::Paddb
+        | Mnemonic::Paddw
+        | Mnemonic::Paddd
+        | Mnemonic::Paddq => {
+            format!("{} = {} + {}", op(0), op(0), op(1))
+        }
+        Mnemonic::Subss
+        | Mnemonic::Subsd
+        | Mnemonic::Subps
+        | Mnemonic::Subpd
+        | Mnemonic::Psubb
+        | Mnemonic::Psubw
+        | Mnemonic::Psubd
+        | Mnemonic::Psubq => {
+            format!("{} = {} − {}", op(0), op(0), op(1))
+        }
+        Mnemonic::Mulss | Mnemonic::Mulsd | Mnemonic::Mulps | Mnemonic::Mulpd => {
+            format!("{} = {} × {}", op(0), op(0), op(1))
+        }
+        Mnemonic::Divss | Mnemonic::Divsd | Mnemonic::Divps | Mnemonic::Divpd => {
+            format!("{} = {} ÷ {}", op(0), op(0), op(1))
+        }
+        // Les conversions : d'un entier vers un flottant, ou l'inverse —
+        // et dans ce sens, la troncature ou l'arrondi changent le
+        // résultat, ce que le nom seul ne dit pas.
+        Mnemonic::Cvtsi2ss | Mnemonic::Cvtsi2sd => {
+            if fr {
+                format!("{} = {} converti en flottant", op(0), op(1))
+            } else {
+                format!("{} = {} converted to floating point", op(0), op(1))
+            }
+        }
+        Mnemonic::Cvttss2si | Mnemonic::Cvttsd2si => {
+            if fr {
+                format!("{} = {} tronqué en entier", op(0), op(1))
+            } else {
+                format!("{} = {} truncated to an integer", op(0), op(1))
+            }
+        }
+        Mnemonic::Cvtss2si | Mnemonic::Cvtsd2si => {
+            if fr {
+                format!("{} = {} arrondi en entier", op(0), op(1))
+            } else {
+                format!("{} = {} rounded to an integer", op(0), op(1))
+            }
+        }
+        Mnemonic::Cvtss2sd | Mnemonic::Cvtsd2ss => {
+            if fr {
+                format!("{} = {} dans l'autre précision", op(0), op(1))
+            } else {
+                format!("{} = {} in the other precision", op(0), op(1))
+            }
+        }
         Mnemonic::Nop => {
             if fr {
                 "ne rien faire".to_owned()
@@ -155,6 +371,35 @@ pub fn of(instr: &Instruction, lang: &str) -> String {
             // paraphrase approximative serait pire que la forme
             // d'origine, qui au moins est exacte.
             nasm(instr)
+        }
+    }
+}
+
+/// La largeur d'une copie vectorielle, dite en octets : c'est ce qui
+/// distingue `movq` de `movdqa`, et c'est tout ce qui compte pour lire.
+fn vector_width(instr: &Instruction) -> &'static str {
+    match instr.memory_size().size() {
+        4 => "4 octets",
+        8 => "8 octets",
+        16 => "16 octets",
+        32 => "32 octets",
+        64 => "64 octets",
+        // Registre à registre : la largeur se lit sur le registre.
+        _ => {
+            let reg = if instr.op0_kind() == OpKind::Register {
+                instr.op0_register()
+            } else {
+                instr.op1_register()
+            };
+            if reg.is_zmm() {
+                "64 octets"
+            } else if reg.is_ymm() {
+                "32 octets"
+            } else if reg.is_xmm() {
+                "16 octets"
+            } else {
+                "8 octets"
+            }
         }
     }
 }

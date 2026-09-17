@@ -489,6 +489,8 @@ struct NamsdecApp {
     /// Le panneau de désassemblage, et le moteur qu'il emploie.
     show_disassembly: bool,
     disassembler: String,
+    /// Ce qu'on cherche dans le listing.
+    disassembly_query: String,
     /// Les désassembleurs décrits par des fichiers, trouvés au
     /// démarrage.
     disassembler_plugins: Vec<namsdec_disasm::plugin::Plugin>,
@@ -896,6 +898,13 @@ fn find_matches(text: &str, query: &str) -> Vec<usize> {
     haystack.match_indices(&needle).map(|(at, _)| at).collect()
 }
 
+/// Une ligne du panneau de désassemblage : l'adresse, et ce que le
+/// moteur choisi en dit.
+struct Ligne {
+    address: u64,
+    texte: String,
+}
+
 /// Le moteur de pseudo-code, celui qu'on montre en premier : lire
 /// « RAX = RAX + RCX » avant « add rax, rcx » est le chemin naturel, et
 /// c'est celui que namsdec propose par défaut.
@@ -1005,6 +1014,7 @@ impl Default for NamsdecApp {
             show_timeline: false,
             show_disassembly: false,
             disassembler: PSEUDO_ID.to_owned(),
+            disassembly_query: String::new(),
             disassembler_plugins: load_disassembler_plugins(),
             plugin_output: None,
             timeline_notable_only: false,
@@ -4837,51 +4847,100 @@ impl NamsdecApp {
                 let rip = self.emulator.as_ref().map(|e| e.cpu().regs.rip);
                 let symbols = &state.output.symbols;
                 let pseudo = self.disassembler == PSEUDO_ID;
+
+                // Ce qu'on cherche : une étiquette, un registre, une
+                // adresse. Le listing d'un binaire fait quinze mille
+                // lignes, et l'on sait ce qu'on y cherche.
+                ui.horizontal(|ui| {
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.disassembly_query)
+                            .hint_text(s.find_placeholder)
+                            .desired_width(200.0),
+                    );
+                    if !self.disassembly_query.is_empty() && ui.button("x").clicked() {
+                        self.disassembly_query.clear();
+                    }
+                });
+                let query = self.disassembly_query.to_lowercase();
+
+                // Le texte de chaque ligne est calculé ici, pour que la
+                // recherche porte sur ce qu'on lit et non sur la forme
+                // d'un autre moteur.
+                let lignes: Vec<Ligne> = state
+                    .disasm
+                    .iter()
+                    .map(|instruction| Ligne {
+                        address: instruction.address,
+                        texte: namsdec_disasm::decode_one(&instruction.bytes, instruction.address)
+                            .map(|decoded| {
+                                if pseudo {
+                                    namsdec_disasm::pseudo::of(&decoded, lang)
+                                } else {
+                                    namsdec_disasm::format_one(&decoded)
+                                }
+                            })
+                            .unwrap_or_else(|| instruction.text.clone()),
+                    })
+                    .filter(|ligne| {
+                        query.is_empty()
+                            || ligne.texte.to_lowercase().contains(&query)
+                            || format!("{:08x}", ligne.address).contains(&query)
+                            || symbols.iter().any(|symbol| {
+                                symbol.addr == ligne.address
+                                    && symbol.name.to_lowercase().contains(&query)
+                            })
+                    })
+                    .collect();
+                if !query.is_empty() {
+                    ui.weak(format!("{} / {}", lignes.len(), state.disasm.len()));
+                }
+
                 let row_height =
                     ui.text_style_height(&egui::TextStyle::Monospace) + ui.spacing().item_spacing.y;
-                egui::ScrollArea::vertical()
+                // Suivre l'exécution, comme l'onglet Octets — sauf
+                // pendant une recherche, où c'est elle qui commande.
+                let suivie = (query.is_empty() && self.follow_rip)
+                    .then(|| {
+                        rip.and_then(|rip| lignes.iter().position(|ligne| ligne.address == rip))
+                    })
+                    .flatten();
+                let mut zone = egui::ScrollArea::vertical()
                     .id_salt("disassembly_rows")
-                    .auto_shrink([false, false])
-                    .show_rows(ui, row_height, state.disasm.len(), |ui, rows| {
-                        for instruction in &state.disasm[rows] {
-                            // L'étiquette, là où elle tombe : elle donne
-                            // sa structure au listing.
-                            for symbol in symbols.iter().filter(|s| s.addr == instruction.address) {
-                                ui.colored_label(
-                                    theme.label,
-                                    egui::RichText::new(format!("{}:", symbol.name)).monospace(),
-                                );
-                            }
-                            let ici = rip == Some(instruction.address);
-                            let texte =
-                                namsdec_disasm::decode_one(&instruction.bytes, instruction.address)
-                                    .map(|decoded| {
-                                        if pseudo {
-                                            namsdec_disasm::pseudo::of(&decoded, lang)
-                                        } else {
-                                            namsdec_disasm::format_one(&decoded)
-                                        }
-                                    })
-                                    .unwrap_or_else(|| instruction.text.clone());
-                            ui.horizontal(|ui| {
-                                ui.colored_label(
-                                    if ici { theme.accent } else { theme.dim },
-                                    egui::RichText::new(format!("{:08x}", instruction.address))
-                                        .monospace(),
-                                );
-                                ui.add(
-                                    egui::Label::new(egui::RichText::new(texte).monospace().color(
-                                        if ici {
-                                            theme.accent
-                                        } else {
-                                            ui.visuals().text_color()
-                                        },
-                                    ))
-                                    .truncate(),
-                                );
-                            });
+                    .auto_shrink([false, false]);
+                if let Some(index) = suivie {
+                    let milieu = (index as f32 + 0.5) * row_height;
+                    zone = zone
+                        .vertical_scroll_offset((milieu - ui.available_height() / 2.0).max(0.0));
+                }
+                zone.show_rows(ui, row_height, lignes.len(), |ui, rows| {
+                    for ligne in &lignes[rows] {
+                        // L'étiquette, là où elle tombe : elle donne sa
+                        // structure au listing.
+                        for symbol in symbols.iter().filter(|s| s.addr == ligne.address) {
+                            ui.colored_label(
+                                theme.label,
+                                egui::RichText::new(format!("{}:", symbol.name)).monospace(),
+                            );
                         }
-                    });
+                        let ici = rip == Some(ligne.address);
+                        ui.horizontal(|ui| {
+                            ui.colored_label(
+                                if ici { theme.accent } else { theme.dim },
+                                egui::RichText::new(format!("{:08x}", ligne.address)).monospace(),
+                            );
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(&ligne.texte).monospace().color(if ici {
+                                        theme.accent
+                                    } else {
+                                        ui.visuals().text_color()
+                                    }),
+                                )
+                                .truncate(),
+                            );
+                        });
+                    }
+                });
             });
         self.show_disassembly = open;
     }
