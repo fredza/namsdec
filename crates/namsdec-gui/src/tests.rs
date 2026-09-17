@@ -8798,6 +8798,47 @@ fn the_memory_tab_follows_the_register_it_is_told_to() {
     assert_eq!(MemFollow::by_id("n'importe quoi"), MemFollow::Fixed);
 }
 
+/// Une préversion le dit dans sa boîte « À propos », et le bandeau
+/// disparaît de lui-même le jour où elle n'en est plus une.
+///
+/// Un avertissement qu'il faut penser à retirer à la main finit toujours
+/// par mentir : celui-ci est lu dans le numéro de version.
+#[test]
+fn a_pre_release_says_so_and_a_release_says_nothing() {
+    // Ce que SemVer appelle une préversion : ce qui suit le tiret.
+    assert_eq!(prerelease("0.2.1-beta.2"), Some("beta.2"));
+    assert_eq!(prerelease("1.0.0-rc.1"), Some("rc.1"));
+    assert_eq!(prerelease("0.2.1-alpha"), Some("alpha"));
+    // Une version définitive n'a rien à annoncer, métadonnée de
+    // compilation comprise.
+    assert_eq!(prerelease("0.2.1"), None);
+    assert_eq!(prerelease("1.0.0+20260917"), None);
+
+    // Et la version d'aujourd'hui, telle qu'elle est : le bandeau est
+    // là, avec ce qu'il faut dire.
+    let mut app = NamsdecApp {
+        show_about: true,
+        ..Default::default()
+    };
+    let painted = paint(&mut app);
+    let s = strings(app.lang);
+    if let Some(étiquette) = prerelease(APP_VERSION) {
+        assert!(
+            painted.contains(&format!("{} — {étiquette}", s.about_beta_title)),
+            "{painted}"
+        );
+        // Le texte dit ce qu'il faut savoir : que les réglages peuvent
+        // bouger, et que les erreurs se disent.
+        assert!(s.about_beta_body.contains("réglages"));
+        assert!(strings(Lang::En).about_beta_body.contains("settings"));
+    } else {
+        assert!(
+            !painted.contains(s.about_beta_title),
+            "version définitive : aucun bandeau à afficher"
+        );
+    }
+}
+
 /// La mémoire montre sa carte : où commence le code, où finit la pile,
 /// ce que le tas occupe, avec les droits de chacun.
 ///

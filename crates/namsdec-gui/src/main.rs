@@ -132,6 +132,27 @@ const DIALOG_POLL_INTERVAL: Duration = Duration::from_millis(100);
 /// Numéro de version SemVer — ne JAMAIS le monter sans l'accord explicite
 /// de l'utilisateur (voir memory: feedback_version_bump_approval).
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// Le nom de la préversion, quand il y en a une : « beta.2 », « rc.1 ».
+///
+/// Lu dans le numéro de version lui-même, jamais écrit à la main : le
+/// jour où `Cargo.toml` passe à une version stable, le bandeau qui
+/// prévient disparaît tout seul. Un avertissement qu'il faut penser à
+/// retirer finit toujours par mentir.
+///
+/// ```ignore
+/// assert_eq!(prerelease("0.2.1-beta.2"), Some("beta.2"));
+/// assert_eq!(prerelease("0.2.1"), None);
+/// ```
+fn prerelease(version: &str) -> Option<&str> {
+    // SemVer : ce qui suit le premier tiret est la préversion, ce qui
+    // suit un `+` est la métadonnée de compilation et n'en fait pas
+    // partie.
+    let reste = version.split('+').next().unwrap_or(version);
+    let étiquette = reste.split_once('-')?.1;
+    (!étiquette.is_empty()).then_some(étiquette)
+}
+
 /// Date de compilation (YYYYMMDD), calculée par build.rs — se met à jour
 /// seule, aucune approbation requise contrairement à APP_VERSION.
 const BUILD_DATE: &str = env!("NAMSDEC_BUILD_DATE");
@@ -4052,6 +4073,31 @@ impl NamsdecApp {
                     s.about_build_word
                 ));
                 ui.label(s.about_description);
+
+                // Le bandeau des préversions : il dit ce qu'on tient
+                // entre les mains, et disparaît de lui-même le jour où
+                // la version n'en est plus une.
+                if let Some(étiquette) = prerelease(APP_VERSION) {
+                    ui.add_space(6.0);
+                    egui::Frame::new()
+                        .fill(theme.warn.gamma_multiply(0.15))
+                        .stroke(egui::Stroke::new(1.0, theme.warn))
+                        .inner_margin(egui::Margin::symmetric(10, 8))
+                        .corner_radius(4.0)
+                        .show(ui, |ui| {
+                            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
+                            ui.colored_label(
+                                theme.warn,
+                                egui::RichText::new(format!(
+                                    "{} — {étiquette}",
+                                    s.about_beta_title
+                                ))
+                                .strong(),
+                            );
+                            ui.add_space(2.0);
+                            ui.colored_label(theme.text, s.about_beta_body);
+                        });
+                }
 
                 ui.separator();
                 ui.label(s.about_license);
