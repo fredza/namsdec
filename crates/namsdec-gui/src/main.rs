@@ -4227,8 +4227,14 @@ impl NamsdecApp {
         self.update_result = None;
         let (sender, receiver) = mpsc::channel();
         std::thread::spawn(move || {
-            let réponse = namsdec_update::fetch_latest(namsdec_update::OWNER, namsdec_update::REPO)
-                .map_err(|e| e.to_string());
+            // Une préversion accepte d'en voir d'autres ; une version
+            // définitive ne se voit proposer que du définitif.
+            let réponse = namsdec_update::fetch_latest(
+                namsdec_update::OWNER,
+                namsdec_update::REPO,
+                prerelease(APP_VERSION).is_some(),
+            )
+            .map_err(|e| e.to_string());
             // Si la fenêtre s'est fermée entre-temps, plus personne
             // n'attend : l'envoi échoue et le thread s'achève là.
             let _ = sender.send(réponse);

@@ -79,16 +79,30 @@ pub enum UpdateError {
 /// et une attente de trente secondes ferait croire à un gel.
 const TIMEOUT: Duration = Duration::from_secs(8);
 
-/// L'adresse de l'API pour la dernière version publiée.
-pub fn latest_url(owner: &str, repo: &str) -> String {
-    format!("https://api.github.com/repos/{owner}/{repo}/releases/latest")
+/// L'adresse de l'API pour les versions publiées.
+///
+/// La liste, et non `releases/latest` : **ce dernier ignore les
+/// préversions**. Tant qu'un dépôt ne publie que des bêtas, il répond
+/// 404 comme s'il n'avait jamais rien publié — ce qui est exactement ce
+/// qui est arrivé ici, et ce qui aurait fait dire au programme qu'il
+/// n'existait aucune version alors qu'elle était là.
+pub fn releases_url(owner: &str, repo: &str) -> String {
+    format!("https://api.github.com/repos/{owner}/{repo}/releases?per_page=20")
 }
 
 /// Demande à GitHub la dernière version publiée.
 ///
+/// `allow_prerelease` dit si les bêtas comptent : qui en fait tourner
+/// une veut savoir qu'une bêta plus récente existe ; qui a une version
+/// définitive n'a pas à se voir proposer un essai.
+///
 /// Bloquant : à appeler depuis un thread, jamais depuis la boucle de
 /// rendu. Rien n'est envoyé d'autre que la requête elle-même.
-pub fn fetch_latest(owner: &str, repo: &str) -> Result<Release, UpdateError> {
+pub fn fetch_latest(
+    owner: &str,
+    repo: &str,
+    allow_prerelease: bool,
+) -> Result<Release, UpdateError> {
     let config = ureq::Agent::config_builder()
         .timeout_global(Some(TIMEOUT))
         // GitHub refuse les requêtes sans agent, et le nôtre dit qui
@@ -97,7 +111,7 @@ pub fn fetch_latest(owner: &str, repo: &str) -> Result<Release, UpdateError> {
         .build();
     let agent: ureq::Agent = config.into();
     let mut response = agent
-        .get(&latest_url(owner, repo))
+        .get(&releases_url(owner, repo))
         .header("Accept", "application/vnd.github+json")
         .call()
         .map_err(|e| match e {
@@ -109,7 +123,40 @@ pub fn fetch_latest(owner: &str, repo: &str) -> Result<Release, UpdateError> {
         .body_mut()
         .read_to_string()
         .map_err(|e| UpdateError::Network(e.to_string()))?;
-    parse_release(&body)
+    pick_latest(&parse_releases(&body)?, allow_prerelease).ok_or(UpdateError::NoRelease)
+}
+
+/// Lit la liste des versions publiées.
+///
+/// Les brouillons sont écartés : ils ne sont visibles que de ceux qui
+/// peuvent les publier, et proposer une version que personne ne peut
+/// prendre n'aide pas.
+pub fn parse_releases(body: &str) -> Result<Vec<Release>, UpdateError> {
+    let value: serde_json::Value =
+        serde_json::from_str(body).map_err(|_| UpdateError::Malformed)?;
+    let liste = value.as_array().ok_or(UpdateError::Malformed)?;
+    Ok(liste
+        .iter()
+        .filter(|entrée| {
+            !entrée
+                .get("draft")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+        })
+        .filter_map(|entrée| read_release(entrée).ok())
+        .collect())
+}
+
+/// La plus haute des versions, selon ce qu'on accepte.
+pub fn pick_latest(releases: &[Release], allow_prerelease: bool) -> Option<Release> {
+    releases
+        .iter()
+        // Une préversion n'est proposée qu'à qui en fait déjà tourner
+        // une : on ne pousse personne vers un essai sans le lui avoir
+        // demandé.
+        .filter(|release| allow_prerelease || !release.prerelease)
+        .max_by(|a, b| compare(&a.version, &b.version))
+        .cloned()
 }
 
 /// Lit la réponse de GitHub.
@@ -120,6 +167,11 @@ pub fn fetch_latest(owner: &str, repo: &str) -> Result<Release, UpdateError> {
 pub fn parse_release(body: &str) -> Result<Release, UpdateError> {
     let value: serde_json::Value =
         serde_json::from_str(body).map_err(|_| UpdateError::Malformed)?;
+    read_release(&value)
+}
+
+/// Une version, lue dans l'objet que GitHub en donne.
+fn read_release(value: &serde_json::Value) -> Result<Release, UpdateError> {
     // GitHub répond 404 avec un corps JSON quand rien n'est publié : la
     // forme est correcte, l'étiquette manque.
     let tag = value
@@ -327,14 +379,49 @@ mod tests {
         ));
     }
 
-    /// L'adresse interrogée est celle de l'API publique, et rien
-    /// d'autre : pas de paramètre, pas de jeton, rien à envoyer.
+    /// La liste des versions, telle que GitHub la rend — et la règle
+    /// qui décide laquelle proposer.
+    ///
+    /// `releases/latest` ne suffisait pas : il **ignore les
+    /// préversions**, et répond 404 pour un dépôt qui n'a publié que des
+    /// bêtas. Le programme aurait dit « aucune version publiée » devant
+    /// une version bien présente.
     #[test]
-    fn the_address_asked_is_the_public_api() {
-        assert_eq!(
-            latest_url(OWNER, REPO),
-            "https://api.github.com/repos/fredza/namsdec/releases/latest"
-        );
-        assert!(!latest_url(OWNER, REPO).contains('?'));
+    fn a_list_of_releases_is_read_and_the_right_one_chosen() {
+        // La forme exacte que rend l'API, telle qu'on l'a relevée sur le
+        // dépôt : un tableau, le plus récent en tête.
+        let body = r#"[
+            {"tag_name":"v0.3.0-beta.1","prerelease":true,"draft":false,
+             "name":"beta 1","html_url":"https://example.invalid/b1"},
+            {"tag_name":"v0.2.9","prerelease":false,"draft":false,
+             "name":"0.2.9","html_url":"https://example.invalid/029"},
+            {"tag_name":"v9.9.9","prerelease":false,"draft":true,
+             "name":"brouillon","html_url":"https://example.invalid/draft"}
+        ]"#;
+        let liste = parse_releases(body).expect("une liste lisible");
+        // Le brouillon est écarté : personne d'autre ne peut le prendre.
+        assert_eq!(liste.len(), 2, "{liste:?}");
+
+        // Qui fait tourner une bêta veut savoir qu'une bêta plus récente
+        // existe.
+        let pour_beta = pick_latest(&liste, true).expect("une version");
+        assert_eq!(pour_beta.tag, "v0.3.0-beta.1");
+        // Qui a une version définitive ne se voit pas proposer d'essai.
+        let pour_stable = pick_latest(&liste, false).expect("une version");
+        assert_eq!(pour_stable.tag, "v0.2.9");
+
+        // Et une liste vide ne rend rien plutôt que d'inventer.
+        assert!(pick_latest(&[], true).is_none());
+        assert!(parse_releases("{}").is_err());
+    }
+
+    /// L'adresse interrogée est la liste, pas `latest` — et elle demande
+    /// une page bornée.
+    #[test]
+    fn the_address_asks_for_the_list() {
+        let url = releases_url(OWNER, REPO);
+        assert!(url.starts_with("https://api.github.com/repos/fredza/namsdec/releases"));
+        assert!(url.contains("per_page="), "{url}");
+        assert!(!url.contains("/latest"), "{url}");
     }
 }

@@ -62,7 +62,9 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
 - « Rechercher une mise à jour » est branché sur les versions publiées du
   dépôt : comparaison SemVer complète (préversions comprises), et un lien
   vers la version trouvée. Rien n'est envoyé, rien n'est installé — la
-  mise à jour reste un geste.
+  mise à jour reste un geste. La liste des versions est interrogée, et
+  non `releases/latest`, qui **ignore les préversions** et répond 404 à
+  un dépôt qui n'a publié que des bêtas.
 - Le dépôt sait publier : une étiquette `v…` déclenche la compilation, les
   vérifications et la publication du binaire avec sa somme SHA-256.
 

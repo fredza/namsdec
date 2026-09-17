@@ -246,8 +246,9 @@ sans avertissement, et s'exécuter jusqu'au bout.
 
 ### Les mises à jour
 
-« À propos ▸ Rechercher une mise à jour » demande à GitHub la dernière
-version publiée et compare avec la vôtre — rien n'est envoyé, rien n'est
+« À propos ▸ Rechercher une mise à jour » demande à GitHub les versions
+publiées et compare avec la vôtre — une préversion en accepte d'autres,
+une version définitive ne se voit proposer que du définitif — rien n'est envoyé, rien n'est
 téléchargé, rien n'est installé. La mise à jour se fait à la main :
 
 ```sh
