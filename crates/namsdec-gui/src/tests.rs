@@ -8696,6 +8696,82 @@ fn the_palette_offers_every_action_there_is() {
     }
 }
 
+/// Ce que la table annonce comme simulé, l'interpréteur le fait
+/// vraiment — et ce qu'elle annonce comme non simulé, il le refuse.
+///
+/// Deux listes vivent dans deux crates : celle qui *nomme* les appels
+/// et celle qui les *exécute*. Rien n'empêche l'une d'avancer sans
+/// l'autre, sinon ceci — et l'écart se paierait d'un panneau qui
+/// promet un appel qui s'arrête, ou qui décourage d'en tenter un qui
+/// marche.
+#[test]
+fn what_the_table_calls_simulated_really_runs() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    // Un tampon pour ceux qui écrivent quelque part, et des arguments
+    // inoffensifs : ce qu'on teste est le refus, pas le résultat.
+    let programme = |numéro: u64| {
+        format!(
+            "\
+default rel
+global _start
+
+section .bss
+tampon: resb 64
+
+section .text
+_start:
+    mov rax, {numéro}
+    lea rdi, [tampon]
+    lea rsi, [tampon]
+    mov rdx, 8
+    syscall
+    hlt
+"
+        )
+    };
+
+    for numéro in 0u64..=400 {
+        let Some(call) = namsdec_re::table::syscall(numéro) else {
+            continue;
+        };
+        // `read` attend l'entrée, `exit` arrête : les deux répondent,
+        // mais pas par un registre — leur cas est couvert ailleurs.
+        if matches!(numéro, 0 | 60 | 231) {
+            continue;
+        }
+        let mut app = NamsdecApp {
+            source: programme(numéro),
+            ..Default::default()
+        };
+        app.do_assemble();
+        assert!(
+            matches!(app.status, Status::AssembleOk),
+            "{} : {:?}",
+            call.name,
+            app.status
+        );
+        app.do_step();
+        app.do_step();
+        app.do_step();
+        app.do_step();
+        app.do_step();
+        let refusé = match &app.status {
+            Status::Error(message) => message.contains(&numéro.to_string()),
+            _ => false,
+        };
+        assert_eq!(
+            refusé,
+            !call.simulated,
+            "{} ({numéro}) : la table dit simulé={}, l'interpréteur dit {}",
+            call.name,
+            call.simulated,
+            if refusé { "non" } else { "oui" }
+        );
+    }
+}
+
 /// La mémoire montre sa carte : où commence le code, où finit la pile,
 /// ce que le tas occupe, avec les droits de chacun.
 ///
