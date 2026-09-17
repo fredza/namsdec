@@ -83,7 +83,7 @@ RPATH, et les fonctions qu'il emprunte — chaque entrée de la table de
 liaison retrouve son nom, avec le nombre d'appels qui y mènent — avec,
 pour chacun, ce que son état change concrètement. Sur
 votre programme comme sur un binaire du système. Le rapport se copie en
-Markdown pour être collé dans un compte rendu ou un cours.
+Markdown, ou s'enregistre, pour être collé dans un compte rendu ou un cours.
 
 Et aussi : documentation de 140 instructions, directives et notions sous **F1** ou
 au survol — avec sommaire, renvois d'une fiche à l'autre et export du

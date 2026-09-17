@@ -3046,6 +3046,30 @@ fn a_sheet_leads_to_the_sheets_it_mentions() {
     }
 }
 
+/// F1 répond aussi dans le listing d'un binaire : le mot sous le curseur
+/// y est souvent une fonction empruntée, pas une instruction.
+#[test]
+fn asking_about_a_borrowed_function_gets_an_answer() {
+    let mut app = NamsdecApp {
+        source: "_start:\n    call strcpy@plt\n".to_owned(),
+        show_help: true,
+        ..Default::default()
+    };
+    // Le curseur au milieu de « strcpy@plt ».
+    app.cursor_byte = app.source.find("strcpy").unwrap() + 3;
+    app.do_instruction_help();
+
+    let painted = paint(&mut app);
+    // Ce qu'elle fait, et pourquoi on la regarde en premier.
+    assert!(painted.contains("Copie une chaîne"), "{painted}");
+    assert!(painted.contains(strings(app.lang).help_watch), "{painted}");
+    // Et non le message qui dit qu'on ne connaît pas ce mot.
+    assert!(
+        !painted.contains(strings(app.lang).help_unknown),
+        "{painted}"
+    );
+}
+
 /// Le manuel s'annonce par son compte de fiches. Un compte faux dans une
 /// documentation qui apprend à compter serait un comble : il se vérifie.
 #[test]

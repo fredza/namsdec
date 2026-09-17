@@ -5721,6 +5721,22 @@ impl NamsdecApp {
             return;
         };
         let Some(entry) = entry else {
+            // Pas d'instruction de ce nom — mais dans le listing d'un
+            // binaire, le mot sous le curseur est souvent une fonction
+            // empruntée. F1 doit répondre là aussi.
+            if let Some(note) = namsdec_re::libc::explain(word) {
+                ui.horizontal_wrapped(|ui| {
+                    ui.colored_label(theme.mnemonic, egui::RichText::new(word).monospace());
+                    if note.watch {
+                        ui.colored_label(theme.changed, s.help_watch);
+                    }
+                });
+                ui.add_space(4.0);
+                ui.label(prose(ui, theme, note.text(self.lang.code())));
+                ui.add_space(6.0);
+                ui.colored_label(theme.dim, s.help_kind_borrowed);
+                return;
+            }
             ui.colored_label(theme.bad, format!("{} : {word}", s.help_unknown));
             ui.colored_label(theme.dim, s.help_unknown_hint);
             return;
