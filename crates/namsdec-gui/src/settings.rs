@@ -145,6 +145,14 @@ pub struct Settings {
     /// l'accorde pas à la place de quelqu'un.
     #[serde(default)]
     pub decompiler_module: bool,
+    /// Le module qui va chercher les outils et les construit.
+    ///
+    /// Faux par défaut, comme le précédent, et pour une raison plus
+    /// forte encore : cocher cette case autorise namsdec à télécharger
+    /// du code et à l'exécuter. Ce réglage ne se devine pas, il se
+    /// prend.
+    #[serde(default)]
+    pub installer_module: bool,
     /// L'outil de décompilation choisi, par identifiant.
     #[serde(default)]
     pub decompiler: String,
@@ -200,6 +208,7 @@ impl Default for Settings {
             console_height: None,
             sidebar_tab_height: None,
             decompiler_module: false,
+            installer_module: false,
             decompiler: String::new(),
             memory_follow: fixe_par_défaut(),
             explorer_root: None,

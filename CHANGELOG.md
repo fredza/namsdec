@@ -23,6 +23,28 @@ fichiers à la fois, et brancher les outils du métier.
   connaît : un argument ne peut pas diverger entre ce que namsdec lance
   et ce que le dépôt propose de copier.
 
+**Aller chercher les outils, et les construire**
+- namsdec sait maintenant installer **Rizin + rz-ghidra** et **RetDec**
+  lui-même : le premier se compile dans son dossier, le second se
+  télécharge depuis ses versions publiées. Un module à part, éteint par
+  défaut, et qui ne s'allume que sous celui de la décompilation.
+- Ce module ne se contente pas de lancer un programme : il télécharge du
+  code et l'exécute. La fenêtre montre donc **la recette entière avant
+  que rien ne parte** — d'où cela vient, ce que cela coûte, où cela sera
+  posé, et chaque commande telle qu'elle sera lancée. Puis le journal
+  s'écrit en direct, commande par commande, avec ce qu'elles répondent.
+- Trois limites tenues par des tests : aucune étape n'appelle `sudo`,
+  aucune ne passe par un interpréteur de commandes, et rien n'est produit
+  hors de `~/.local/share/namsdec/tools/`.
+- L'empreinte SHA-256 de ce qui est téléchargé est calculée et affichée,
+  pour être comparée à celle que publie le projet — plutôt que confrontée
+  à une constante que personne n'aurait vérifiée.
+- **Le binaire n'en grossit pas** : 61 Ko, soit 0,34 %. Rien n'est
+  embarqué — `curl` télécharge, `tar` extrait, `meson` et `cmake`
+  construisent, comme `nasm` et `ld` assemblent déjà. Un test refuse
+  qu'une bibliothèque de téléchargement ou d'archive rejoigne le
+  programme.
+
 **Ouvrir un vrai binaire**
 - La mémoire simulée ne fait plus soixante-quatre kilo-octets : elle
   s'adapte au programme chargé. Un binaire de trois cent mille octets n'y

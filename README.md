@@ -44,6 +44,18 @@ qu'elle est : une adresse de retour, avec son étiquette. Ce qui est
 au-dessus de RSP est grisé — ces octets sont encore là, mais le prochain
 `push` les écrase.
 
+**Et namsdec peut aller le chercher.** Rizin + rz-ghidra se compile,
+RetDec se télécharge : Préférences ▸ Modules ▸ « Aller chercher les outils
+et les construire », puis **Installer…**. Ce module est éteint par défaut,
+et plus franchement que les autres — les autres affichent, celui-ci
+télécharge du code et l'exécute. La fenêtre montre donc **la recette
+entière avant que rien ne parte**, et le journal s'écrit en direct.
+Aucune étape n'appelle `sudo`, aucune ne passe par un interpréteur de
+commandes, et rien n'est posé hors de
+`~/.local/share/namsdec/tools/`. Le binaire n'en grossit pas :
+`curl` télécharge, `tar` extrait, `meson` et `cmake` construisent — comme
+`nasm` et `ld` assemblent déjà.
+
 **Un décompilateur, si vous en avez un.** Le module **Décompilation**
 (Préférences ▸ Modules, éteint par défaut) lance l'outil de votre choix.
 Cinq sont connus d'avance — `objdump`, `ndisasm`, le pseudo-code de

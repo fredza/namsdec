@@ -14514,3 +14514,150 @@ fn the_decompilers_come_with_their_installation_instructions() {
         "la nuance qui coûte une soirée doit être dite"
     );
 }
+
+/// Aller chercher un outil ne se fait pas tout seul, et jamais sans
+/// l'avoir montré.
+///
+/// Ce module-ci ne se contente pas de lancer un programme installé : il
+/// **télécharge du code et l'exécute**. Les verrous sont donc plus
+/// nombreux, et ce test les compte : le module de décompilation d'abord,
+/// celui-ci ensuite, la fenêtre qui montre le plan, et seulement alors
+/// un bouton.
+#[test]
+fn fetching_a_tool_never_happens_by_itself() {
+    let app = NamsdecApp::default();
+    assert!(
+        !app.show_installer_module,
+        "éteint tant que personne ne l'allume"
+    );
+    assert!(app.install_job.is_none() && app.install_plan.is_none());
+
+    // Demander le plan sans avoir allumé le module ne montre rien.
+    let mut app = NamsdecApp {
+        install_plan: Some("retdec".to_owned()),
+        ..Default::default()
+    };
+    let peint = paint(&mut app);
+    assert!(
+        !peint.contains(strings(Lang::Fr).install_title),
+        "la fenêtre reste fermée :\n{peint}"
+    );
+    assert!(app.install_job.is_none(), "et rien n'a été lancé");
+
+    // Module allumé : la fenêtre montre le plan — d'où ça vient, ce que
+    // ça coûte, où ça va, et chaque commande.
+    let mut app = NamsdecApp {
+        show_decompiler_module: true,
+        show_installer_module: true,
+        install_plan: Some("retdec".to_owned()),
+        ..Default::default()
+    };
+    let peint = paint(&mut app);
+    for attendu in [
+        strings(Lang::Fr).install_warning,
+        strings(Lang::Fr).install_plan,
+        "github.com/avast/retdec",
+        "sha256sum",
+    ] {
+        assert!(
+            peint.contains(attendu),
+            "« {attendu} » doit se lire avant tout lancement :\n{peint}"
+        );
+    }
+    assert!(
+        app.install_job.is_none(),
+        "montrer le plan n'est pas l'exécuter"
+    );
+}
+
+/// Ce que les recettes s'interdisent, et qui compte plus que ce
+/// qu'elles font.
+#[test]
+fn a_recipe_stays_inside_namsdec_and_shows_everything() {
+    let data = std::path::Path::new("/tmp/namsdec-essai");
+    for outil in ["retdec", "rizin-ghidra"] {
+        let recette = namsdec_disasm::install::recipe_for(outil, data).expect("une recette existe");
+
+        // Tout ce qui est produit reste sous le dossier de namsdec :
+        // rien dans /usr, rien qui demande des droits.
+        assert!(
+            recette
+                .produces
+                .starts_with(namsdec_disasm::install::tools_dir(data)),
+            "{} sort du dossier de namsdec",
+            recette.produces.display()
+        );
+        for étape in &recette.steps {
+            assert_ne!(étape.command, "sudo", "{}", étape.line());
+            // Chaque étape sait dire ce qu'elle fait, dans les deux
+            // langues : une commande sans explication n'est pas montrée,
+            // elle est infligée.
+            assert!(
+                !étape.about_fr.is_empty() && !étape.about_en.is_empty(),
+                "{} n'explique pas ce qu'elle fait",
+                étape.line()
+            );
+        }
+    }
+
+    // Et ce qu'on ne sait pas installer ne s'invente pas.
+    assert!(
+        namsdec_disasm::install::recipe_for("objdump", data).is_none(),
+        "objdump vient des paquets du système, pas de namsdec"
+    );
+}
+
+/// Le module d'installation n'alourdit pas le programme.
+///
+/// C'était la condition posée : pouvoir aller chercher Rizin et RetDec
+/// sans que namsdec grossisse. La réponse tient dans une règle — **rien
+/// n'est embarqué**. Les téléchargements passent par `curl`,
+/// l'extraction par `tar`, la compilation par `meson` et `cmake` : ce
+/// sont des commandes du système, exactement comme `nasm` et `ld`.
+/// Aucune bibliothèque de plus, donc aucun octet de plus que le code qui
+/// décrit les recettes.
+#[test]
+fn installing_tools_adds_no_dependency_to_the_binary() {
+    let racine = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    // Aucune crate de téléchargement, d'archive ou de compilation n'a
+    // rejoint le programme.
+    let workspace = std::fs::read_to_string(racine.join("Cargo.toml")).expect("Cargo.toml");
+    for interdite in [
+        "reqwest", "hyper", "flate2", "tar =", "zip", "xz2", "git2", "cmake", "curl =",
+    ] {
+        assert!(
+            !workspace.contains(interdite),
+            "« {interdite} » alourdirait le binaire : le module doit passer par les \
+             commandes du système"
+        );
+    }
+
+    // Et les recettes n'appellent que des programmes du système.
+    let data = std::path::Path::new("/tmp/x");
+    let mut appelés: std::collections::BTreeSet<String> = Default::default();
+    for outil in ["retdec", "rizin-ghidra"] {
+        let recette = namsdec_disasm::install::recipe_for(outil, data).expect("une recette");
+        for étape in &recette.steps {
+            appelés.insert(étape.command.clone());
+        }
+    }
+    for commande in &appelés {
+        assert!(
+            [
+                "mkdir",
+                "curl",
+                "sha256sum",
+                "tar",
+                "rm",
+                "git",
+                "meson",
+                "ninja",
+                "cmake",
+                "env"
+            ]
+            .contains(&commande.as_str()),
+            "« {commande} » n'est pas un outil du système attendu"
+        );
+    }
+}

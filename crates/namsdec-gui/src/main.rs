@@ -168,6 +168,27 @@ const DONATION_URL: &str = "https://example.com/namsdec/offrir-un-repas";
 const TOOLTIP_DELAY: f32 = 0.5;
 const TOOLTIP_GRACE_TIME: f32 = 0.2;
 /// En deçà, le panneau ne montrerait plus rien de lisible.
+/// Une installation en cours : ce qu'elle fait, et ce qu'elle a dit.
+///
+/// Le journal est gardé en entier. Une installation qui échoue à la
+/// septième étape sur huit n'apprend rien si l'on n'a que la dernière
+/// ligne : ce qu'on veut lire, c'est ce que la commande a répondu.
+struct InstallJob {
+    tool: String,
+    /// Les étapes, pour dire où l'on en est.
+    total: usize,
+    done: usize,
+    /// Ce que les commandes ont écrit, dans l'ordre.
+    log: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    /// Fini ? Et si oui, comment.
+    outcome: std::sync::Arc<std::sync::Mutex<Option<Result<PathBuf, String>>>>,
+    /// Combien d'étapes sont passées, vu depuis le fil de travail.
+    progress: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    /// Mis à vrai pour demander l'arrêt : le fil s'arrête à la fin de
+    /// l'étape en cours plutôt qu'au milieu d'une décompression.
+    cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
 /// Un travail qui se fait pendant qu'on continue à travailler.
 ///
 /// Le fil d'à côté est invisible : sans un mot quelque part, on ne sait
@@ -869,6 +890,18 @@ struct NamsdecApp {
     /// fait sur un thread, parce qu'une requête réseau dans la boucle de
     /// rendu fige la fenêtre le temps du voyage.
     update_check: Option<mpsc::Receiver<Result<namsdec_update::Release, String>>>,
+    /// Le module d'installation d'outils : éteint par défaut, et plus
+    /// franchement encore que les autres.
+    ///
+    /// Les autres modules affichent ; celui-ci **télécharge et exécute du
+    /// code venu d'Internet**. C'est une décision, pas une commodité :
+    /// elle se prend une fois, en connaissance de cause, et se défait de
+    /// la même façon.
+    show_installer_module: bool,
+    /// La recette en cours d'exécution, et ce qu'elle a donné.
+    install_job: Option<InstallJob>,
+    /// L'outil dont on regarde la recette, avant de rien lancer.
+    install_plan: Option<String>,
     /// Le module de décompilation : éteint par défaut.
     ///
     /// Il ne s'agit pas d'un affichage de plus, mais de la **permission
@@ -1506,6 +1539,7 @@ fn palette_commands(
 
 struct PreferencesSnapshot {
     decompiler_module: bool,
+    installer_module: bool,
     theme: &'static Theme,
     lang: Lang,
     show_re_tab: bool,
@@ -1717,6 +1751,9 @@ impl Default for NamsdecApp {
             treat_texture: None,
             icon_texture: None,
             update_check: None,
+            show_installer_module: false,
+            install_job: None,
+            install_plan: None,
             show_decompiler_module: false,
             show_decompiler: false,
             decompilers: Vec::new(),
@@ -1856,6 +1893,7 @@ impl NamsdecApp {
             console_height: settings.console_height.map(|h| h as f32),
             sidebar_tab_height: settings.sidebar_tab_height.map(|h| h as f32),
             show_decompiler_module: settings.decompiler_module,
+            show_installer_module: settings.installer_module,
             decompiler: settings.decompiler.clone(),
             sidebar_banner_height: 0.0,
             sidebar_tab_last: SIDEBAR_TAB_MIN,
@@ -1983,6 +2021,7 @@ impl NamsdecApp {
             console_height: self.console_height.map(|h| h.round() as u32),
             sidebar_tab_height: self.sidebar_tab_height.map(|h| h.round() as u32),
             decompiler_module: self.show_decompiler_module,
+            installer_module: self.show_installer_module,
             decompiler: self.decompiler.clone(),
             system_titlebar: self.system_titlebar,
             heat_legend: self.heat_legend,
@@ -4627,6 +4666,7 @@ impl NamsdecApp {
                 show_re_tab: self.show_re_tab,
                 exercises: self.exercises,
                 decompiler_module: self.show_decompiler_module,
+                installer_module: self.show_installer_module,
                 show_tooltips: self.show_tooltips,
                 keybindings: self.keybindings.clone(),
             });
@@ -4647,6 +4687,7 @@ impl NamsdecApp {
             self.show_re_tab = snapshot.show_re_tab;
             self.exercises = snapshot.exercises;
             self.show_decompiler_module = snapshot.decompiler_module;
+            self.show_installer_module = snapshot.installer_module;
             self.show_tooltips = snapshot.show_tooltips;
             self.keybindings = snapshot.keybindings;
             self.apply_theme(ctx);
@@ -4835,6 +4876,14 @@ impl NamsdecApp {
                 // avant de cocher, pas après.
                 ui.checkbox(&mut self.show_decompiler_module, s.decompiler_checkbox);
                 ui.weak(s.decompiler_hint);
+                // Et celui-ci va plus loin encore : il télécharge et
+                // construit. Il ne s'allume que sous l'autre, parce
+                // qu'installer un décompilateur sans pouvoir s'en servir
+                // n'aurait aucun sens.
+                ui.add_enabled_ui(self.show_decompiler_module, |ui| {
+                    ui.checkbox(&mut self.show_installer_module, s.installer_checkbox);
+                    ui.weak(s.installer_hint);
+                });
                 if self.show_decompiler_module && self.decompilers.is_empty() {
                     ui.colored_label(self.theme.warn, s.decompiler_none_installed);
                 }
@@ -4872,6 +4921,7 @@ impl NamsdecApp {
             self.decompilers.iter().map(|p| p.id.clone()).collect();
         let mut à_installer = None;
         let mut à_retirer = None;
+        let mut plan = None;
 
         egui::Grid::new("outils_connus")
             .num_columns(4)
@@ -4926,13 +4976,25 @@ impl NamsdecApp {
                     } else {
                         ui.label("");
                     }
-                    if installés.contains(&outil.plugin.id) {
-                        if framed_button(ui, theme, s.tools_remove).clicked() {
-                            à_retirer = Some(outil.plugin.id.clone());
+                    ui.horizontal(|ui| {
+                        if installés.contains(&outil.plugin.id) {
+                            if framed_button(ui, theme, s.tools_remove).clicked() {
+                                à_retirer = Some(outil.plugin.id.clone());
+                            }
+                        } else if framed_button(ui, theme, s.tools_declare).clicked() {
+                            à_installer = Some(outil.plugin.clone());
                         }
-                    } else if framed_button(ui, theme, s.tools_declare).clicked() {
-                        à_installer = Some(outil.plugin.clone());
-                    }
+                        // Aller le chercher : seulement pour ce qu'on
+                        // sait construire, seulement si le module est
+                        // allumé, et seulement si le programme manque.
+                        if self.show_installer_module
+                            && dispo != Availability::Ready
+                            && recette_existe(&outil.plugin.id)
+                            && framed_button(ui, theme, s.install_button).clicked()
+                        {
+                            plan = Some(outil.plugin.id.clone());
+                        }
+                    });
                     ui.end_row();
                 }
             });
@@ -4942,6 +5004,188 @@ impl NamsdecApp {
         }
         if let Some(id) = à_retirer {
             self.undeclare_tool(&id);
+        }
+        if let Some(id) = plan {
+            self.install_plan = Some(id);
+        }
+    }
+
+    /// La fenêtre qui montre une recette, avant que rien ne soit lancé.
+    ///
+    /// C'est le cœur de ce module : ce qu'on va exécuter est écrit là,
+    /// commande par commande, avec d'où cela vient, ce que cela coûte et
+    /// où cela sera posé. Le bouton n'est qu'en dessous.
+    fn installer_window_ui(&mut self, ctx: &egui::Context) {
+        let Some(outil) = self.install_plan.clone() else {
+            return;
+        };
+        if !self.show_installer_module {
+            self.install_plan = None;
+            return;
+        }
+        let s = strings(self.lang);
+        let theme = self.theme;
+        let fr = self.lang == Lang::Fr;
+        let Some(data) = data_dir() else {
+            self.install_plan = None;
+            return;
+        };
+        let Some(recette) = namsdec_disasm::install::recipe_for(&outil, &data) else {
+            self.plugin_note = Some(PluginNote {
+                ok: false,
+                text: s.install_no_recipe.to_owned(),
+            });
+            self.install_plan = None;
+            return;
+        };
+        let manquants = namsdec_disasm::install::missing_requirements(&recette);
+
+        let mut ouverte = true;
+        let mut lancer = false;
+        let mut arrêter = false;
+        egui::Window::new(format!("{} — {outil}", s.install_title))
+            .id(egui::Id::new("installer_window"))
+            .open(&mut ouverte)
+            .resizable(true)
+            .collapsible(false)
+            .default_size([680.0, 520.0])
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(ctx.viewport_rect().center())
+            .show(ctx, |ui| {
+                // L'avertissement d'abord : c'est la seule chose qu'on
+                // ne peut pas défaire une fois le bouton pressé.
+                egui::Frame::new()
+                    .fill(theme.warn.gamma_multiply(0.12))
+                    .inner_margin(egui::Margin::symmetric(9, 7))
+                    .corner_radius(4.0)
+                    .show(ui, |ui| {
+                        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
+                        ui.colored_label(theme.warn, s.install_warning);
+                    });
+                ui.add_space(6.0);
+
+                egui::Grid::new("install_facts")
+                    .num_columns(2)
+                    .min_col_width(0.0)
+                    .show(ui, |ui| {
+                        for (titre, valeur) in [
+                            (s.install_source, recette.source.to_owned()),
+                            (
+                                s.install_cost,
+                                if fr { recette.cost_fr } else { recette.cost_en }.to_owned(),
+                            ),
+                            (s.install_where, recette.produces.display().to_string()),
+                            (s.install_requires, recette.requires.join(", ")),
+                        ] {
+                            ui.colored_label(theme.dim, titre);
+                            ui.label(valeur);
+                            ui.end_row();
+                        }
+                    });
+                if !manquants.is_empty() {
+                    ui.colored_label(
+                        theme.bad,
+                        format!("{} {}", s.install_missing, manquants.join(", ")),
+                    );
+                }
+
+                ui.add_space(6.0);
+                ui.colored_label(theme.dim, s.install_plan);
+                egui::ScrollArea::vertical()
+                    .id_salt("install_steps")
+                    .max_height(180.0)
+                    .show(ui, |ui| {
+                        for (rang, étape) in recette.steps.iter().enumerate() {
+                            ui.horizontal_wrapped(|ui| {
+                                ui.colored_label(theme.dim, format!("{}.", rang + 1));
+                                ui.label(if fr {
+                                    &étape.about_fr
+                                } else {
+                                    &étape.about_en
+                                });
+                            });
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(format!("   {}", étape.line()))
+                                        .monospace()
+                                        .small()
+                                        .color(theme.text),
+                                )
+                                .selectable(true),
+                            );
+                        }
+                    });
+
+                ui.separator();
+                let en_cours = self
+                    .install_job
+                    .as_ref()
+                    .is_some_and(|job| job.tool == outil);
+                ui.horizontal_wrapped(|ui| {
+                    if en_cours {
+                        ui.spinner();
+                        if let Some(job) = &self.install_job {
+                            ui.add(
+                                egui::ProgressBar::new(job.done as f32 / job.total.max(1) as f32)
+                                    .desired_width(180.0)
+                                    .text(format!("{} / {}", job.done, job.total)),
+                            );
+                        }
+                        ui.colored_label(theme.dim, s.install_running);
+                        if framed_button(ui, theme, s.install_cancel).clicked() {
+                            arrêter = true;
+                        }
+                    } else {
+                        ui.add_enabled_ui(manquants.is_empty(), |ui| {
+                            lancer = ui
+                                .add(
+                                    egui::Button::new(
+                                        egui::RichText::new(s.install_start).color(theme.bg),
+                                    )
+                                    .fill(theme.accent),
+                                )
+                                .clicked();
+                        });
+                    }
+                });
+
+                // Le journal : ce que les commandes ont répondu, dans
+                // l'ordre, en entier.
+                if let Some(job) = &self.install_job
+                    && job.tool == outil
+                {
+                    let lignes = job.log.lock().expect("le journal").clone();
+                    if !lignes.is_empty() {
+                        ui.add_space(4.0);
+                        egui::ScrollArea::vertical()
+                            .id_salt("install_log")
+                            .auto_shrink([false, false])
+                            .stick_to_bottom(true)
+                            .show(ui, |ui| {
+                                for ligne in &lignes {
+                                    let couleur = if ligne.starts_with('$') {
+                                        theme.accent
+                                    } else {
+                                        theme.dim
+                                    };
+                                    ui.colored_label(
+                                        couleur,
+                                        egui::RichText::new(ligne).monospace().small(),
+                                    );
+                                }
+                            });
+                    }
+                }
+            });
+
+        if lancer {
+            self.start_install(recette);
+        }
+        if arrêter && let Some(job) = &self.install_job {
+            job.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+        if !ouverte {
+            self.install_plan = None;
         }
     }
 
@@ -5880,6 +6124,160 @@ impl NamsdecApp {
         if let Some(ligne) = aller {
             self.goto_line = Some(ligne);
         }
+    }
+
+    /// Lance la recette d'un outil, étape par étape, dans un fil à part.
+    ///
+    /// Chaque commande est écrite dans le journal **avant** d'être
+    /// lancée, puis ce qu'elle répond y est ajouté : on lit donc ce qui
+    /// se passe pendant que ça se passe, et non un compte rendu écrit
+    /// après coup par le programme qui l'a fait.
+    fn start_install(&mut self, recette: namsdec_disasm::install::Recipe) {
+        use std::sync::atomic::{AtomicBool, AtomicUsize};
+        use std::sync::{Arc, Mutex};
+        if self.install_job.is_some() {
+            return;
+        }
+        let log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let outcome = Arc::new(Mutex::new(None));
+        let progress = Arc::new(AtomicUsize::new(0));
+        let cancel = Arc::new(AtomicBool::new(false));
+        let total = recette.steps.len();
+
+        let (journal, résultat, avancement, arrêt) = (
+            Arc::clone(&log),
+            Arc::clone(&outcome),
+            Arc::clone(&progress),
+            Arc::clone(&cancel),
+        );
+        let attendu = recette.produces.clone();
+        let étapes = recette.steps.clone();
+        std::thread::spawn(move || {
+            use std::sync::atomic::Ordering;
+            for (rang, étape) in étapes.iter().enumerate() {
+                if arrêt.load(Ordering::Relaxed) {
+                    *résultat.lock().expect("le journal") =
+                        Some(Err("arrêté à la demande".to_owned()));
+                    return;
+                }
+                journal
+                    .lock()
+                    .expect("le journal")
+                    .push(format!("$ {}", étape.line()));
+                let mut commande = std::process::Command::new(&étape.command);
+                commande.args(&étape.args);
+                if let Some(dir) = &étape.cwd {
+                    commande.current_dir(dir);
+                }
+                match commande.output() {
+                    Ok(sortie) => {
+                        let mut lignes = journal.lock().expect("le journal");
+                        for flux in [&sortie.stdout, &sortie.stderr] {
+                            for ligne in String::from_utf8_lossy(flux).lines() {
+                                lignes.push(ligne.to_owned());
+                            }
+                        }
+                        if !sortie.status.success() {
+                            let code = sortie
+                                .status
+                                .code()
+                                .map(|c| c.to_string())
+                                .unwrap_or_else(|| "?".to_owned());
+                            drop(lignes);
+                            *résultat.lock().expect("le résultat") =
+                                Some(Err(format!("« {} » a échoué (code {code})", étape.line())));
+                            return;
+                        }
+                    }
+                    Err(e) => {
+                        journal.lock().expect("le journal").push(e.to_string());
+                        *résultat.lock().expect("le résultat") =
+                            Some(Err(format!("« {} » : {e}", étape.line())));
+                        return;
+                    }
+                }
+                avancement.store(rang + 1, Ordering::Relaxed);
+            }
+            // Le programme attendu est-il vraiment là ? Une suite de
+            // commandes qui réussissent ne prouve pas qu'on a obtenu ce
+            // qu'on cherchait.
+            *résultat.lock().expect("le résultat") = Some(if attendu.is_file() {
+                Ok(attendu)
+            } else {
+                Err(format!(
+                    "les commandes ont réussi, mais {} n'existe pas",
+                    attendu.display()
+                ))
+            });
+        });
+
+        self.install_job = Some(InstallJob {
+            tool: recette.tool.to_owned(),
+            total,
+            done: 0,
+            log,
+            outcome,
+            progress,
+            cancel,
+        });
+        self.job = Some(BackgroundJob {
+            label: format!("{} {}", strings(self.lang).job_installing, recette.tool),
+            started: std::time::Instant::now(),
+            // Une progression vraie : les étapes faites sur les étapes à
+            // faire. Le temps, lui, ne veut rien dire ici — une
+            // compilation ne se prévoit pas.
+            limit: None,
+        });
+    }
+
+    /// Relève où en est l'installation, et conclut quand elle a fini.
+    fn poll_install(&mut self, ctx: &egui::Context) {
+        use std::sync::atomic::Ordering;
+        let Some(job) = &mut self.install_job else {
+            return;
+        };
+        job.done = job.progress.load(Ordering::Relaxed);
+        let fini = job.outcome.lock().expect("le résultat").take();
+        match fini {
+            Some(Ok(programme)) => {
+                let outil = job.tool.clone();
+                self.install_job = None;
+                self.job = None;
+                self.declare_installed_tool(&outil, &programme);
+            }
+            Some(Err(raison)) => {
+                self.install_job = None;
+                self.job = None;
+                self.plugin_note = Some(PluginNote {
+                    ok: false,
+                    text: format!("{} {raison}", strings(self.lang).install_failed),
+                });
+            }
+            None => ctx.request_repaint_after(std::time::Duration::from_millis(250)),
+        }
+    }
+
+    /// Déclare l'outil qu'on vient d'installer, avec le chemin exact du
+    /// programme obtenu.
+    ///
+    /// Le chemin absolu plutôt que le nom : ce qu'on vient de poser n'est
+    /// pas dans le PATH, et il n'a pas à y être — namsdec sait où il l'a
+    /// mis.
+    fn declare_installed_tool(&mut self, outil: &str, programme: &Path) {
+        let s = strings(self.lang);
+        let Some(mut plugin) = namsdec_disasm::known::all()
+            .into_iter()
+            .find(|connu| connu.plugin.id == outil)
+            .map(|connu| connu.plugin)
+        else {
+            return;
+        };
+        plugin.command = programme.display().to_string();
+        self.declare_tool(&plugin);
+        self.plugin_note = Some(PluginNote {
+            ok: true,
+            text: format!("{} {}", s.install_done, plugin.name),
+        });
     }
 
     /// La fenêtre de décompilation : un outil extérieur, sur demande.
@@ -11005,6 +11403,7 @@ impl NamsdecApp {
         self.poll_file_dialog(&ctx);
         self.poll_update_check(&ctx);
         self.poll_decompile(&ctx);
+        self.poll_install(&ctx);
         self.reflect_job_in_title(&ctx);
         // Au retour dans la fenêtre : un autre programme a pu passer par
         // là — un `git checkout`, un éditeur, un `sed`. On regarde à ce
@@ -11206,6 +11605,7 @@ impl NamsdecApp {
             self.timeline_window_ui(&ctx);
             self.flow_window_ui(&ctx);
             self.decompiler_window_ui(&ctx);
+            self.installer_window_ui(&ctx);
             self.disassembly_window_ui(&ctx);
             self.cyclic_window_ui(&ctx);
             self.analysis_window_ui(&ctx);
@@ -11449,6 +11849,14 @@ fn region_label(section: &namsdec_asm::Section) -> &'static str {
 /// séparés : les uns rendent des instructions, les autres du
 /// pseudo-code, et l'on ne choisit pas dans la même liste selon la
 /// question qu'on se pose.
+/// namsdec sait-il aller chercher cet outil lui-même ?
+///
+/// Non pour ceux qui viennent des paquets du système : les installer
+/// demanderait `sudo`, et namsdec ne le prendra pas.
+fn recette_existe(outil: &str) -> bool {
+    data_dir().is_some_and(|dir| namsdec_disasm::install::recipe_for(outil, &dir).is_some())
+}
+
 fn decompilers_dir() -> Option<PathBuf> {
     data_dir().map(|base| base.join("decompilers"))
 }

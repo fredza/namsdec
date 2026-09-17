@@ -26,7 +26,38 @@ de la fenêtre.
 
 ---
 
-## Installer les décompilateurs
+## Laisser namsdec s'en charger
+
+Depuis la 0.2.4-beta.1, namsdec sait aller chercher **Rizin + rz-ghidra**
+et **RetDec** lui-même : Préférences ▸ Modules ▸ « Aller chercher les
+outils et les construire », puis le bouton **Installer…** à côté de
+l'outil, dans Préférences ▸ Outils.
+
+Ce module est éteint par défaut, et plus franchement que les autres :
+les autres affichent, celui-ci **télécharge du code depuis Internet et
+l'exécute**. Trois règles l'encadrent :
+
+- **Tout est montré avant d'être fait.** La fenêtre liste les commandes,
+  dans l'ordre, telles qu'elles seront lancées — puis chacune est
+  réaffichée au moment où elle part, avec ce qu'elle répond.
+- **Rien ne sort du dossier de namsdec.** Pas de `sudo`, rien dans
+  `/usr` : tout va dans `~/.local/share/namsdec/tools/`, et se retire en
+  effaçant ce dossier.
+- **Rien n'est embarqué.** `curl` télécharge, `tar` extrait, `meson` et
+  `cmake` construisent. namsdec appelle les outils du système, comme il
+  le fait déjà pour `nasm` et `ld` — le programme n'en grossit pas.
+
+L'empreinte SHA-256 de ce qui est téléchargé est **calculée et
+affichée** : comparez-la à celle que publie le projet. Elle n'est pas
+comparée à une valeur écrite dans namsdec, parce qu'une constante que
+personne n'a vérifiée serait pire qu'une absence.
+
+Ce que namsdec **ne fera pas** : installer un paquet du système. `dnf` et
+`apt` demandent des droits d'administrateur, et il ne les prendra pas.
+Pour `radare2`, `objdump` et `ndisasm`, la commande est affichée et c'est
+à vous de la taper — voir ci-dessous.
+
+## Installer les décompilateurs à la main
 
 ### radare2 — le plus simple, aucun greffon
 
