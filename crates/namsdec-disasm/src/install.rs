@@ -58,6 +58,14 @@ pub struct Recipe {
     pub produces: PathBuf,
     /// D'où vient ce qu'on télécharge, pour que ce soit vérifiable.
     pub source: &'static str,
+    /// Ce que cet outil apporte, et ce qu'il ne fait pas.
+    ///
+    /// Une fenêtre d'installation qui ne dit que « voulez-vous
+    /// installer ? » demande un acte de foi. Celle-ci explique ce qu'on
+    /// va gagner — c'est aussi la seule occasion d'apprendre la
+    /// différence entre désassembler et décompiler.
+    pub teaches_fr: &'static str,
+    pub teaches_en: &'static str,
 }
 
 /// Où les outils installés par namsdec vivent.
@@ -75,7 +83,12 @@ pub fn tools_dir(data_dir: &Path) -> PathBuf {
 /// automatiquement ce qu'un dépôt publie exécute demain autre chose que
 /// ce qu'elle a montré aujourd'hui.
 const RETDEC_VERSION: &str = "v5.0";
-const RETDEC_ARCHIVE: &str = "retdec-v5.0-linux-64b.tar.xz";
+/// Le nom exact du fichier publié.
+///
+/// Relevé sur la page des versions, pas deviné : la première écriture de
+/// cette recette portait `retdec-v5.0-linux-64b.tar.xz`, qui n'existe
+/// pas — l'installation aurait téléchargé une page d'erreur.
+const RETDEC_ARCHIVE: &str = "RetDec-v5.0-Linux-Release.tar.xz";
 
 /// La recette de RetDec : une version publiée, décompressée.
 ///
@@ -85,20 +98,38 @@ const RETDEC_ARCHIVE: &str = "retdec-v5.0-linux-64b.tar.xz";
 fn retdec(data: &Path) -> Recipe {
     let racine = tools_dir(data);
     let archive = racine.join(RETDEC_ARCHIVE);
+    // L'archive n'a pas de dossier racine : elle contient `bin/`,
+    // `share/`… directement. Sans un dossier à nous où l'extraire, elle
+    // se répandrait dans celui des outils.
+    let destination = racine.join("retdec");
     Recipe {
         tool: "retdec",
         requires: vec!["curl", "tar", "sha256sum"],
-        cost_fr: "Environ 200 Mo à télécharger, deux minutes selon la ligne. Rien à compiler.",
-        cost_en: "About 200 MB to download, a couple of minutes depending on your line. \
-                  Nothing to compile.",
+        cost_fr: "180 Mo à télécharger, et 1,5 Go une fois décompressé — dont 1,1 Go de \
+                  signatures et de motifs, qui sont ce qui permet à RetDec de reconnaître les \
+                  fonctions de bibliothèque. Deux à cinq minutes selon la ligne. Rien à compiler.",
+        cost_en: "180 MB to download, and 1.5 GB once unpacked — 1.1 GB of it signatures and \
+                  patterns, which are what lets RetDec recognise library functions. Two to five \
+                  minutes depending on your line. Nothing to compile.",
         source: "https://github.com/avast/retdec/releases",
+        teaches_fr: "Un décompilateur ne traduit pas les instructions une à une : il reconstruit \
+                     des boucles, des conditions, des variables — la forme qu'avait le programme \
+                     avant d'être compilé. RetDec rend du C qu'un compilateur accepte. Ce qu'il \
+                     ne rend pas : les noms d'origine, les commentaires, et la certitude que \
+                     c'était écrit ainsi. Un décompilateur propose une lecture, il ne restitue \
+                     pas la source.",
+        teaches_en: "A decompiler does not translate instructions one by one: it rebuilds loops, \
+                     conditions and variables — the shape the program had before it was compiled. \
+                     RetDec returns C a compiler accepts. What it does not return: the original \
+                     names, the comments, and any certainty that it was written that way. A \
+                     decompiler offers a reading; it does not restore the source.",
         produces: racine.join("retdec/bin/retdec-decompiler"),
         steps: vec![
             Step {
-                about_fr: "Créer le dossier des outils".into(),
-                about_en: "Create the tools directory".into(),
+                about_fr: "Créer le dossier qui recevra RetDec".into(),
+                about_en: "Create the directory that will hold RetDec".into(),
                 command: "mkdir".into(),
-                args: vec!["-p".into(), racine.display().to_string()],
+                args: vec!["-p".into(), destination.display().to_string()],
                 cwd: None,
             },
             Step {
@@ -110,6 +141,10 @@ fn retdec(data: &Path) -> Recipe {
                     // échouer sur une page d'erreur au lieu de
                     // l'enregistrer comme si c'était l'archive.
                     "-fL".into(),
+                    // `-#` remplace le tableau de chiffres par une
+                    // jauge d'une ligne, réécrite avec un retour
+                    // chariot : c'est ce que le journal sait afficher.
+                    "-#".into(),
                     "--proto".into(),
                     "=https".into(),
                     "-o".into(),
@@ -140,7 +175,7 @@ fn retdec(data: &Path) -> Recipe {
                     "xf".into(),
                     archive.display().to_string(),
                     "-C".into(),
-                    racine.display().to_string(),
+                    destination.display().to_string(),
                 ],
                 cwd: None,
             },
@@ -179,6 +214,15 @@ fn rizin(data: &Path) -> Recipe {
         cost_en: "A build: count ten to twenty minutes and a few hundred megabytes. Nothing is \
                   installed outside namsdec's own directory.",
         source: "https://github.com/rizinorg/rizin et https://github.com/rizinorg/rz-ghidra",
+        teaches_fr: "Rizin lit et analyse un binaire ; c'est son greffon rz-ghidra qui décompile, \
+                     avec le moteur de Ghidra — celui de la NSA, publié en 2019, et la référence \
+                     libre du domaine. D'où les deux constructions : l'outil, puis la pièce qui \
+                     lui manque. C'est aussi pourquoi « Rizin est installé » ne veut pas dire \
+                     « on peut décompiler ».",
+        teaches_en: "Rizin reads and analyses a binary; its rz-ghidra plugin is what decompiles, \
+                     using Ghidra's engine — the NSA's, released in 2019, and the field's free \
+                     reference. Hence the two builds: the tool, then the piece it lacks. It is \
+                     also why « Rizin is installed » does not mean « we can decompile ».",
         produces: préfixe.join("bin/rizin"),
         steps: vec![
             Step {
@@ -387,5 +431,82 @@ mod tests {
     fn an_unknown_tool_has_no_recipe() {
         assert!(recipe_for("objdump", Path::new("/tmp/x")).is_none());
         assert!(recipe_for("ce-qui-nexiste-pas", Path::new("/tmp/x")).is_none());
+    }
+}
+
+#[cfg(test)]
+mod reachability {
+    use super::*;
+
+    /// Ce qu'une recette télécharge existe vraiment.
+    ///
+    /// La première écriture de la recette de RetDec nommait un fichier
+    /// qui n'a jamais été publié : `curl` aurait rapporté une page
+    /// d'erreur, `tar` s'en serait plaint, et l'utilisateur aurait cru à
+    /// un défaut de sa machine. Une adresse écrite de mémoire n'est pas
+    /// une adresse ; celle-ci est vérifiée.
+    ///
+    /// Le test ne tourne que si le réseau répond, et ne télécharge rien :
+    /// il demande les en-têtes. Sans réseau, il se tait plutôt que
+    /// d'échouer — un test qui casse dans un train n'apprend rien.
+    #[test]
+    fn what_a_recipe_downloads_really_exists() {
+        let Some(curl) = crate::known::program_path("curl") else {
+            return;
+        };
+        let data = Path::new("/tmp/namsdec-verif");
+        for outil in ["retdec"] {
+            let recette = recipe_for(outil, data).expect("une recette");
+            let Some(étape) = recette.steps.iter().find(|é| é.command == "curl") else {
+                continue;
+            };
+            let url = étape.args.last().expect("une adresse").clone();
+            let sortie = std::process::Command::new(&curl)
+                // `-I` : les en-têtes seulement. On vérifie qu'il y a
+                // quelque chose au bout, pas qu'on peut le rapatrier.
+                .args(["-fsIL", "--max-time", "20", "--proto", "=https", &url])
+                .output();
+            let Ok(sortie) = sortie else { return };
+            if !sortie.status.success() && sortie.stdout.is_empty() {
+                // Pas de réseau : on ne conclut rien.
+                return;
+            }
+            let entêtes = String::from_utf8_lossy(&sortie.stdout);
+            assert!(
+                entêtes.contains("200"),
+                "{url} ne répond pas 200 : la recette téléchargerait une page d'erreur\n{entêtes}"
+            );
+        }
+    }
+
+    /// Et les dépôts qu'une recette clone existent aussi.
+    #[test]
+    fn what_a_recipe_clones_really_exists() {
+        let Some(git) = crate::known::program_path("git") else {
+            return;
+        };
+        let data = Path::new("/tmp/namsdec-verif");
+        let recette = recipe_for("rizin-ghidra", data).expect("une recette");
+        for étape in recette.steps.iter().filter(|é| é.command == "git") {
+            let dépôt = étape
+                .args
+                .iter()
+                .find(|a| a.starts_with("https://"))
+                .expect("une adresse de dépôt");
+            let sortie = std::process::Command::new(&git)
+                .args(["ls-remote", "--exit-code", dépôt, "HEAD"])
+                .output();
+            let Ok(sortie) = sortie else { return };
+            // Sans réseau, `git` se plaint autrement qu'en disant que le
+            // dépôt n'existe pas : on ne conclut que sur ce cas-là.
+            let erreur = String::from_utf8_lossy(&sortie.stderr).to_lowercase();
+            if erreur.contains("could not resolve") || erreur.contains("network") {
+                return;
+            }
+            assert!(
+                sortie.status.success(),
+                "{dépôt} est introuvable : la recette échouerait au clonage\n{erreur}"
+            );
+        }
     }
 }

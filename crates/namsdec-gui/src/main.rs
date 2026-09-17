@@ -925,6 +925,23 @@ struct NamsdecApp {
     /// fenêtres pour rien.
     window_title: Option<String>,
     decompile_result: Option<Result<String, String>>,
+    /// Le texte rendu, découpé une fois pour toutes.
+    ///
+    /// RetDec rend deux millions de caractères pour un petit crackme.
+    /// En un seul bloc de texte, egui remet tout en page à chaque image
+    /// et la fenêtre se fige : on découpe, et l'on ne peint que les
+    /// lignes qui tiennent à l'écran.
+    decompile_lines: Vec<String>,
+    /// Les lignes qui ouvrent une fonction : où sauter, et sous quel nom.
+    decompile_functions: Vec<(usize, String)>,
+    /// Ce qu'on cherche dans le texte rendu.
+    decompile_filter: String,
+    /// Le filtre déjà appliqué, et les lignes qu'il retient : recalculer
+    /// soixante mille lignes à chaque image se sent sous les doigts.
+    decompile_filter_applied: String,
+    decompile_visible: Vec<usize>,
+    /// La ligne où sauter à la prochaine image.
+    decompile_goto: Option<usize>,
     /// Ce qui a été décompilé : de quoi dire « ce texte parle d'un autre
     /// programme » quand on en a changé depuis.
     decompiled_from: Option<String>,
@@ -1762,6 +1779,12 @@ impl Default for NamsdecApp {
             job: None,
             window_title: None,
             decompile_result: None,
+            decompile_lines: Vec::new(),
+            decompile_functions: Vec::new(),
+            decompile_filter: String::new(),
+            decompile_filter_applied: String::new(),
+            decompile_visible: Vec::new(),
+            decompile_goto: None,
             decompiled_from: None,
             update_result: None,
             keybindings: KeyBindings::default(),
@@ -5043,95 +5066,239 @@ impl NamsdecApp {
         let mut ouverte = true;
         let mut lancer = false;
         let mut arrêter = false;
-        egui::Window::new(format!("{} — {outil}", s.install_title))
+        let en_cours = self
+            .install_job
+            .as_ref()
+            .is_some_and(|job| job.tool == outil);
+        let fait = self.install_job.as_ref().map(|job| job.done).unwrap_or(0);
+
+        egui::Window::new(format!("{} — {}", s.install_title, recette.tool))
             .id(egui::Id::new("installer_window"))
             .open(&mut ouverte)
             .resizable(true)
             .collapsible(false)
-            .default_size([680.0, 520.0])
+            .default_size([700.0, 620.0])
             .pivot(egui::Align2::CENTER_CENTER)
             .default_pos(ctx.viewport_rect().center())
             .show(ctx, |ui| {
-                // L'avertissement d'abord : c'est la seule chose qu'on
-                // ne peut pas défaire une fois le bouton pressé.
-                egui::Frame::new()
-                    .fill(theme.warn.gamma_multiply(0.12))
-                    .inner_margin(egui::Margin::symmetric(9, 7))
-                    .corner_radius(4.0)
+                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
+                // La zone qui défile s'arrête avant le bas : sans cette
+                // borne, elle prend toute la hauteur offerte et pousse
+                // la barre d'action — l'avertissement et le bouton —
+                // hors de l'écran.
+                egui::ScrollArea::vertical()
+                    .id_salt("installer_page")
+                    .auto_shrink([false, true])
+                    .max_height(ctx.viewport_rect().height() * 0.55)
                     .show(ui, |ui| {
-                        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
-                        ui.colored_label(theme.warn, s.install_warning);
-                    });
-                ui.add_space(6.0);
+                        // --- Ce qu'on va gagner ----------------------
+                        // D'abord la leçon, ensuite la mécanique : une
+                        // fenêtre qui ne dit que « voulez-vous
+                        // installer ? » demande un acte de foi.
+                        encadré(ui, theme.accent, |ui| {
+                            ui.label(
+                                egui::RichText::new(s.install_what_for)
+                                    .strong()
+                                    .color(theme.accent),
+                            );
+                            ui.add_space(3.0);
+                            ui.label(if fr {
+                                recette.teaches_fr
+                            } else {
+                                recette.teaches_en
+                            });
+                        });
+                        ui.add_space(8.0);
 
-                egui::Grid::new("install_facts")
-                    .num_columns(2)
-                    .min_col_width(0.0)
-                    .show(ui, |ui| {
-                        for (titre, valeur) in [
-                            (s.install_source, recette.source.to_owned()),
+                        // --- Les faits, en quatre lignes lisibles ----
+                        //
+                        // Pas de Grid ici : une cellule de grille laisse
+                        // le texte s'étendre à l'infini vers la droite,
+                        // et une phrase longue — le coût, justement —
+                        // sort de la fenêtre sans jamais revenir à la
+                        // ligne. Une colonne de titres à largeur fixe,
+                        // puis une valeur qui se replie dans ce qui
+                        // reste : c'est ce qui se lit.
+                        for (rang, (titre, valeur, mono)) in [
+                            (s.install_source, recette.source.to_owned(), false),
                             (
                                 s.install_cost,
                                 if fr { recette.cost_fr } else { recette.cost_en }.to_owned(),
+                                false,
                             ),
-                            (s.install_where, recette.produces.display().to_string()),
-                            (s.install_requires, recette.requires.join(", ")),
-                        ] {
-                            ui.colored_label(theme.dim, titre);
-                            ui.label(valeur);
-                            ui.end_row();
-                        }
-                    });
-                if !manquants.is_empty() {
-                    ui.colored_label(
-                        theme.bad,
-                        format!("{} {}", s.install_missing, manquants.join(", ")),
-                    );
-                }
-
-                ui.add_space(6.0);
-                ui.colored_label(theme.dim, s.install_plan);
-                egui::ScrollArea::vertical()
-                    .id_salt("install_steps")
-                    .max_height(180.0)
-                    .show(ui, |ui| {
-                        for (rang, étape) in recette.steps.iter().enumerate() {
-                            ui.horizontal_wrapped(|ui| {
-                                ui.colored_label(theme.dim, format!("{}.", rang + 1));
-                                ui.label(if fr {
-                                    &étape.about_fr
-                                } else {
-                                    &étape.about_en
+                            (
+                                s.install_where,
+                                recette.produces.display().to_string(),
+                                true,
+                            ),
+                            (s.install_requires, recette.requires.join(", "), true),
+                        ]
+                        .into_iter()
+                        .enumerate()
+                        {
+                            let fond = if rang % 2 == 0 {
+                                theme.text.gamma_multiply(0.04)
+                            } else {
+                                egui::Color32::TRANSPARENT
+                            };
+                            egui::Frame::new()
+                                .fill(fond)
+                                .inner_margin(egui::Margin::symmetric(6, 4))
+                                .show(ui, |ui| {
+                                    ui.set_width(ui.available_width());
+                                    ui.horizontal_top(|ui| {
+                                        ui.allocate_ui_with_layout(
+                                            egui::vec2(150.0, 0.0),
+                                            egui::Layout::top_down(egui::Align::RIGHT),
+                                            |ui| {
+                                                ui.colored_label(theme.dim, titre);
+                                            },
+                                        );
+                                        let texte = egui::RichText::new(valeur);
+                                        ui.add(
+                                            egui::Label::new(if mono {
+                                                texte.monospace().small()
+                                            } else {
+                                                texte
+                                            })
+                                            .wrap()
+                                            .selectable(true),
+                                        );
+                                    });
                                 });
-                            });
-                            ui.add(
-                                egui::Label::new(
-                                    egui::RichText::new(format!("   {}", étape.line()))
-                                        .monospace()
-                                        .small()
-                                        .color(theme.text),
-                                )
-                                .selectable(true),
+                        }
+                        if !manquants.is_empty() {
+                            ui.add_space(4.0);
+                            ui.colored_label(
+                                theme.bad,
+                                format!("{} {}", s.install_missing, manquants.join(", ")),
                             );
                         }
+                        ui.add_space(8.0);
+
+                        // --- Le plan, étape par étape ----------------
+                        ui.label(egui::RichText::new(s.install_plan).strong());
+                        ui.add_space(4.0);
+                        for (rang, étape) in recette.steps.iter().enumerate() {
+                            // Chaque étape porte son état : faite, en
+                            // cours, à venir. C'est ce qui transforme
+                            // une liste en compte rendu.
+                            let (marque, couleur) = if !en_cours {
+                                ("•", theme.dim)
+                            } else if rang < fait {
+                                ("v", theme.good)
+                            } else if rang == fait {
+                                (">", theme.accent)
+                            } else {
+                                ("•", theme.dim)
+                            };
+                            ui.horizontal(|ui| {
+                                ui.colored_label(
+                                    couleur,
+                                    egui::RichText::new(marque).monospace().strong(),
+                                );
+                                ui.vertical(|ui| {
+                                    ui.label(
+                                        egui::RichText::new(format!(
+                                            "{}. {}",
+                                            rang + 1,
+                                            if fr {
+                                                &étape.about_fr
+                                            } else {
+                                                &étape.about_en
+                                            }
+                                        ))
+                                        .color(
+                                            if rang == fait && en_cours {
+                                                theme.text
+                                            } else {
+                                                theme.dim
+                                            },
+                                        ),
+                                    );
+                                    ui.add(
+                                        egui::Label::new(
+                                            egui::RichText::new(étape.line())
+                                                .monospace()
+                                                .small()
+                                                .color(theme.dim),
+                                        )
+                                        .selectable(true),
+                                    );
+                                });
+                            });
+                            ui.add_space(3.0);
+                        }
+
+                        // --- Le journal, quand ça tourne -------------
+                        if let Some(job) = &self.install_job
+                            && job.tool == outil
+                        {
+                            let lignes = job.log.lock().expect("le journal").clone();
+                            if !lignes.is_empty() {
+                                ui.add_space(6.0);
+                                egui::CollapsingHeader::new(s.install_log)
+                                    .id_salt("install_log_fold")
+                                    .default_open(true)
+                                    .show(ui, |ui| {
+                                        egui::Frame::new()
+                                            .fill(ui.visuals().extreme_bg_color)
+                                            .inner_margin(egui::Margin::same(6))
+                                            .corner_radius(4.0)
+                                            .show(ui, |ui| {
+                                                egui::ScrollArea::vertical()
+                                                    .id_salt("install_log")
+                                                    .max_height(180.0)
+                                                    .auto_shrink([false, false])
+                                                    .stick_to_bottom(true)
+                                                    .show(ui, |ui| {
+                                                        for ligne in &lignes {
+                                                            let couleur = if ligne.starts_with('$')
+                                                            {
+                                                                theme.accent
+                                                            } else {
+                                                                theme.dim
+                                                            };
+                                                            ui.colored_label(
+                                                                couleur,
+                                                                egui::RichText::new(ligne)
+                                                                    .monospace()
+                                                                    .small(),
+                                                            );
+                                                        }
+                                                    });
+                                            });
+                                    });
+                            }
+                        }
                     });
 
+                // --- Ce qu'on fait, tout en bas et toujours visible --
+                //
+                // L'avertissement voisine le bouton : plus haut, il
+                // serait sorti de l'écran au moment de cliquer, et un
+                // avertissement qu'on ne lit pas n'en est pas un.
+                ui.add_space(6.0);
+                encadré(ui, theme.warn, |ui| {
+                    ui.colored_label(theme.warn, s.install_warning);
+                });
                 ui.separator();
-                let en_cours = self
-                    .install_job
-                    .as_ref()
-                    .is_some_and(|job| job.tool == outil);
                 ui.horizontal_wrapped(|ui| {
                     if en_cours {
                         ui.spinner();
-                        if let Some(job) = &self.install_job {
-                            ui.add(
-                                egui::ProgressBar::new(job.done as f32 / job.total.max(1) as f32)
-                                    .desired_width(180.0)
-                                    .text(format!("{} / {}", job.done, job.total)),
-                            );
-                        }
                         ui.colored_label(theme.dim, s.install_running);
+                        ui.add(
+                            egui::ProgressBar::new(fait as f32 / recette.steps.len().max(1) as f32)
+                                .desired_width(200.0)
+                                .text(
+                                    egui::RichText::new(format!(
+                                        "{} / {}",
+                                        fait,
+                                        recette.steps.len()
+                                    ))
+                                    .small(),
+                                ),
+                        );
                         if framed_button(ui, theme, s.install_cancel).clicked() {
                             arrêter = true;
                         }
@@ -5140,42 +5307,17 @@ impl NamsdecApp {
                             lancer = ui
                                 .add(
                                     egui::Button::new(
-                                        egui::RichText::new(s.install_start).color(theme.bg),
+                                        egui::RichText::new(s.install_start)
+                                            .strong()
+                                            .color(theme.bg),
                                     )
                                     .fill(theme.accent),
                                 )
                                 .clicked();
                         });
+                        ui.colored_label(theme.dim, s.install_nothing_yet);
                     }
                 });
-
-                // Le journal : ce que les commandes ont répondu, dans
-                // l'ordre, en entier.
-                if let Some(job) = &self.install_job
-                    && job.tool == outil
-                {
-                    let lignes = job.log.lock().expect("le journal").clone();
-                    if !lignes.is_empty() {
-                        ui.add_space(4.0);
-                        egui::ScrollArea::vertical()
-                            .id_salt("install_log")
-                            .auto_shrink([false, false])
-                            .stick_to_bottom(true)
-                            .show(ui, |ui| {
-                                for ligne in &lignes {
-                                    let couleur = if ligne.starts_with('$') {
-                                        theme.accent
-                                    } else {
-                                        theme.dim
-                                    };
-                                    ui.colored_label(
-                                        couleur,
-                                        egui::RichText::new(ligne).monospace().small(),
-                                    );
-                                }
-                            });
-                    }
-                }
             });
 
         if lancer {
@@ -6165,36 +6307,67 @@ impl NamsdecApp {
                     .expect("le journal")
                     .push(format!("$ {}", étape.line()));
                 let mut commande = std::process::Command::new(&étape.command);
-                commande.args(&étape.args);
+                commande
+                    .args(&étape.args)
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::piped());
                 if let Some(dir) = &étape.cwd {
                     commande.current_dir(dir);
                 }
-                match commande.output() {
-                    Ok(sortie) => {
-                        let mut lignes = journal.lock().expect("le journal");
-                        for flux in [&sortie.stdout, &sortie.stderr] {
-                            for ligne in String::from_utf8_lossy(flux).lines() {
-                                lignes.push(ligne.to_owned());
-                            }
-                        }
-                        if !sortie.status.success() {
-                            let code = sortie
-                                .status
-                                .code()
-                                .map(|c| c.to_string())
-                                .unwrap_or_else(|| "?".to_owned());
-                            drop(lignes);
-                            *résultat.lock().expect("le résultat") =
-                                Some(Err(format!("« {} » a échoué (code {code})", étape.line())));
-                            return;
-                        }
-                    }
+                // On lance l'enfant plutôt que d'attendre sa sortie
+                // complète : un téléchargement de 180 Mo ou une
+                // compilation de quinze minutes doivent s'écrire au fur
+                // et à mesure, et pouvoir s'arrêter avant la fin.
+                let mut enfant = match commande.spawn() {
+                    Ok(enfant) => enfant,
                     Err(e) => {
                         journal.lock().expect("le journal").push(e.to_string());
                         *résultat.lock().expect("le résultat") =
                             Some(Err(format!("« {} » : {e}", étape.line())));
                         return;
                     }
+                };
+                let mut lecteurs = Vec::new();
+                if let Some(flux) = enfant.stdout.take() {
+                    lecteurs.push(lire_flux(flux, Arc::clone(&journal)));
+                }
+                if let Some(flux) = enfant.stderr.take() {
+                    lecteurs.push(lire_flux(flux, Arc::clone(&journal)));
+                }
+                let statut = loop {
+                    if arrêt.load(Ordering::Relaxed) {
+                        let _ = enfant.kill();
+                        let _ = enfant.wait();
+                        journal
+                            .lock()
+                            .expect("le journal")
+                            .push("(arrêté)".to_owned());
+                        *résultat.lock().expect("le résultat") =
+                            Some(Err("arrêté à la demande".to_owned()));
+                        return;
+                    }
+                    match enfant.try_wait() {
+                        Ok(Some(statut)) => break statut,
+                        Ok(None) => std::thread::sleep(std::time::Duration::from_millis(100)),
+                        Err(e) => {
+                            *résultat.lock().expect("le résultat") =
+                                Some(Err(format!("« {} » : {e}", étape.line())));
+                            return;
+                        }
+                    }
+                };
+                for lecteur in lecteurs {
+                    let _ = lecteur.join();
+                }
+                if !statut.success() {
+                    let code = statut
+                        .code()
+                        .map(|c| c.to_string())
+                        .unwrap_or_else(|| "?".to_owned());
+                    *résultat.lock().expect("le résultat") =
+                        Some(Err(format!("« {} » a échoué (code {code})", étape.line())));
+                    return;
                 }
                 avancement.store(rang + 1, Ordering::Relaxed);
             }
@@ -6228,6 +6401,15 @@ impl NamsdecApp {
             // compilation ne se prévoit pas.
             limit: None,
         });
+    }
+
+    /// Où en est l'installation, pour la barre d'état : « 3 / 8 ».
+    ///
+    /// La fenêtre peut être fermée pendant qu'une compilation tourne :
+    /// l'avancement doit se lire ailleurs qu'en la rouvrant.
+    fn install_progress(&self) -> Option<(usize, usize)> {
+        let job = self.install_job.as_ref()?;
+        Some((job.done, job.total))
     }
 
     /// Relève où en est l'installation, et conclut quand elle a fini.
@@ -6411,17 +6593,126 @@ impl NamsdecApp {
                 }
                 ui.separator();
                 match &self.decompile_result {
-                    Some(Ok(texte)) => {
-                        egui::ScrollArea::both()
-                            .auto_shrink([false, false])
-                            .show(ui, |ui| {
-                                ui.add(
-                                    egui::Label::new(
-                                        egui::RichText::new(texte).monospace().color(theme.text),
-                                    )
-                                    .selectable(true),
-                                );
-                            });
+                    Some(Ok(_)) => {
+                        // Une barre de lecture : chercher un mot, sauter
+                        // à une fonction, savoir combien de lignes on a
+                        // sous les yeux.
+                        ui.horizontal_wrapped(|ui| {
+                            ui.colored_label(theme.dim, s.decompiler_find);
+                            ui.add(
+                                egui::TextEdit::singleline(&mut self.decompile_filter)
+                                    .desired_width(200.0)
+                                    .hint_text(s.decompiler_find_hint),
+                            );
+                            if !self.decompile_functions.is_empty() {
+                                egui::ComboBox::from_id_salt("decompile_functions")
+                                    .selected_text(format!(
+                                        "{} ({})",
+                                        s.decompiler_functions,
+                                        self.decompile_functions.len()
+                                    ))
+                                    .show_ui(ui, |ui| {
+                                        for (rang, titre) in self.decompile_functions.clone() {
+                                            if ui.selectable_label(false, &titre).clicked() {
+                                                self.decompile_filter.clear();
+                                                self.decompile_goto = Some(rang);
+                                            }
+                                        }
+                                    });
+                            }
+                            ui.colored_label(
+                                theme.dim,
+                                format!(
+                                    "{} / {} {}",
+                                    self.decompile_visible.len(),
+                                    self.decompile_lines.len(),
+                                    s.decompiler_lines
+                                ),
+                            );
+                        });
+                        ui.add_space(4.0);
+
+                        // Le filtre ne se recalcule qu'au changement.
+                        if self.decompile_filter != self.decompile_filter_applied {
+                            let cherché = self.decompile_filter.to_lowercase();
+                            self.decompile_visible = if cherché.is_empty() {
+                                (0..self.decompile_lines.len()).collect()
+                            } else {
+                                self.decompile_lines
+                                    .iter()
+                                    .enumerate()
+                                    .filter(|(_, ligne)| ligne.to_lowercase().contains(&cherché))
+                                    .map(|(rang, _)| rang)
+                                    .collect()
+                            };
+                            self.decompile_filter_applied = self.decompile_filter.clone();
+                            // Pas de « decompile_goto = None » ici :
+                            // sauter à une fonction efface justement le
+                            // filtre, et le saut passerait à la trappe.
+                        }
+
+                        // Une ligne = une galette de texte, numéro
+                        // compris : deux widgets par ligne coûteraient
+                        // une espace verticale de plus, et le saut
+                        // tomberait à côté.
+                        let police = egui::TextStyle::Monospace.resolve(ui.style());
+                        // `show_rows` veut la hauteur d'une ligne **sans**
+                        // l'espace qui la sépare de la suivante : il
+                        // l'ajoute lui-même. Le saut, lui, se calcule sur
+                        // le pas complet. Confondre les deux décale
+                        // l'arrivée, d'autant plus qu'on descend loin.
+                        let ligne_seule = ui.ctx().fonts_mut(|f| f.row_height(&police));
+                        let hauteur = ligne_seule + ui.spacing().item_spacing.y;
+                        let mut zone = egui::ScrollArea::both()
+                            .id_salt("decompile_text")
+                            .auto_shrink([false, false]);
+                        // Sauter à une fonction : la zone n'a pas de
+                        // « aller à la ligne n », mais toutes les lignes
+                        // font la même hauteur, alors le calcul suffit.
+                        if let Some(rang) = self.decompile_goto.take() {
+                            let place = self
+                                .decompile_visible
+                                .iter()
+                                .position(|&l| l >= rang)
+                                .unwrap_or(0);
+                            zone = zone.vertical_scroll_offset(place as f32 * hauteur);
+                        }
+                        let largeur =
+                            (self.decompile_lines.len().max(1) as f32).log10() as usize + 1;
+                        zone.show_rows(
+                            ui,
+                            ligne_seule,
+                            self.decompile_visible.len(),
+                            |ui, plage| {
+                                for place in plage {
+                                    let rang = self.decompile_visible[place];
+                                    let mut texte = egui::text::LayoutJob::default();
+                                    texte.append(
+                                        &format!("{:>largeur$} ", rang + 1),
+                                        0.0,
+                                        egui::TextFormat {
+                                            font_id: police.clone(),
+                                            color: theme.dim,
+                                            ..Default::default()
+                                        },
+                                    );
+                                    texte.append(
+                                        &self.decompile_lines[rang],
+                                        0.0,
+                                        egui::TextFormat {
+                                            font_id: police.clone(),
+                                            color: theme.text,
+                                            ..Default::default()
+                                        },
+                                    );
+                                    ui.add(
+                                        egui::Label::new(texte)
+                                            .wrap_mode(egui::TextWrapMode::Extend)
+                                            .selectable(true),
+                                    );
+                                }
+                            },
+                        );
                     }
                     Some(Err(erreur)) => {
                         ui.colored_label(theme.bad, erreur);
@@ -6502,6 +6793,31 @@ impl NamsdecApp {
         });
     }
 
+    /// Découpe le texte rendu et repère les fonctions qu'il contient.
+    ///
+    /// La règle est volontairement simple — une ligne sans indentation
+    /// qui ouvre une accolade après une parenthèse — parce qu'elle vaut
+    /// pour le C de RetDec comme pour le pseudo-code de Rizin. Une
+    /// heuristique qui se lit en deux lignes vaut mieux qu'un analyseur
+    /// qui se trompe sans le dire.
+    fn index_decompilation(&mut self, texte: &str) {
+        self.decompile_lines = texte.lines().map(str::to_owned).collect();
+        self.decompile_functions = self
+            .decompile_lines
+            .iter()
+            .enumerate()
+            .filter(|(_, ligne)| {
+                let nu = !ligne.starts_with(' ') && !ligne.starts_with('\t');
+                nu && ligne.contains('(') && ligne.trim_end().ends_with('{')
+            })
+            .map(|(rang, ligne)| (rang, ligne.trim_end_matches(['{', ' ']).to_owned()))
+            .collect();
+        self.decompile_filter.clear();
+        self.decompile_filter_applied.clear();
+        self.decompile_visible = (0..self.decompile_lines.len()).collect();
+        self.decompile_goto = None;
+    }
+
     /// Relève ce que l'outil a rendu, s'il a fini.
     fn poll_decompile(&mut self, ctx: &egui::Context) {
         let Some(receiver) = &self.decompile_job else {
@@ -6511,6 +6827,9 @@ impl NamsdecApp {
             Ok(réponse) => {
                 self.decompile_job = None;
                 self.job = None;
+                if let Ok(texte) = &réponse {
+                    self.index_decompilation(texte);
+                }
                 self.decompile_result = Some(réponse);
             }
             Err(TryRecvError::Empty) => {
@@ -6945,7 +7264,13 @@ impl NamsdecApp {
         // qu'on veut voir quand on se demande si l'outil est parti.
         if let Some(job) = &self.job {
             ui.horizontal(|ui| {
-                let barre = match job.fraction() {
+                // Une installation compte ses étapes : c'est une
+                // progression vraie, là où le temps ne dirait rien.
+                let étapes = self.install_progress();
+                let barre = match étapes
+                    .map(|(f, t)| f as f32 / t.max(1) as f32)
+                    .or_else(|| job.fraction())
+                {
                     // Une progression vraie : le temps écoulé sur le
                     // temps accordé. C'est ce qui décide de l'abandon,
                     // donc c'est ce qui intéresse.
@@ -10424,6 +10749,67 @@ fn flow_route_ui(
         ui.colored_label(theme.dim, s.flow_route_others);
     }
     ui.add_space(2.0);
+}
+
+/// Recopie un flux d'un programme en cours dans le journal, ligne à ligne.
+///
+/// Deux subtilités : on lit par blocs, sans attendre la fin du programme,
+/// et l'on coupe aussi bien sur `\r` que sur `\n`. C'est ce second point
+/// qui rend la jauge de `curl` lisible : elle réécrit sa ligne avec un
+/// retour chariot, alors on réécrit la dernière ligne du journal au lieu
+/// d'en empiler mille.
+fn lire_flux(
+    mut flux: impl std::io::Read + Send + 'static,
+    journal: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+) -> std::thread::JoinHandle<()> {
+    std::thread::spawn(move || {
+        let mut ligne = Vec::new();
+        let mut bloc = [0u8; 4096];
+        let mut réécrire = false;
+        loop {
+            let lu = match flux.read(&mut bloc) {
+                Ok(0) | Err(_) => break,
+                Ok(n) => n,
+            };
+            for &octet in &bloc[..lu] {
+                if octet != b'\n' && octet != b'\r' {
+                    ligne.push(octet);
+                    continue;
+                }
+                let texte = String::from_utf8_lossy(&ligne).trim_end().to_owned();
+                ligne.clear();
+                if !texte.is_empty() {
+                    let mut lignes = journal.lock().expect("le journal");
+                    match lignes.last_mut() {
+                        Some(dernière) if réécrire => *dernière = texte,
+                        _ => lignes.push(texte),
+                    }
+                    // Un journal de compilation tient des dizaines de
+                    // milliers de lignes : on garde la fin, qui est ce
+                    // qu'on lit quand ça casse.
+                    if lignes.len() > 2000 {
+                        lignes.drain(..500);
+                    }
+                }
+                réécrire = octet == b'\r';
+            }
+        }
+    })
+}
+
+/// Un encadré teinté, pour ce qui doit se lire avant le reste.
+///
+/// Un filet de couleur à gauche plutôt qu'un cadre complet : une pleine
+/// boîte enferme, un filet désigne.
+fn encadré(ui: &mut egui::Ui, couleur: egui::Color32, contenu: impl FnOnce(&mut egui::Ui)) {
+    egui::Frame::new()
+        .fill(couleur.gamma_multiply(0.10))
+        .inner_margin(egui::Margin::symmetric(10, 8))
+        .corner_radius(4.0)
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            contenu(ui);
+        });
 }
 
 /// La pointe d'une flèche, à `bout`, dans la direction `sens`.

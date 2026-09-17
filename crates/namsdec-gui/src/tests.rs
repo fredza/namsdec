@@ -13958,6 +13958,79 @@ fn the_decompiler_never_runs_on_its_own() {
     assert!(app.decompile_job.is_none(), "rien n'a été lancé");
 }
 
+/// Deux millions de caractères se lisent, se cherchent et se parcourent.
+///
+/// RetDec rend soixante mille lignes de C pour un petit crackme. Ce test
+/// tient trois promesses : on ne peint que ce qui tient à l'écran — sinon
+/// la fenêtre se fige —, les fonctions sont repérées, et le filtre réduit
+/// vraiment ce qu'on regarde.
+#[test]
+fn a_huge_decompilation_stays_readable() {
+    let mut texte = String::new();
+    for i in 0..20_000 {
+        texte.push_str(&format!("int32_t function_{i:05x}(int32_t a) {{\n"));
+        texte.push_str("    return a + 1;\n");
+        texte.push_str("}\n");
+    }
+    let dernière = "function_04e1f";
+
+    let mut app = NamsdecApp {
+        show_decompiler_module: true,
+        show_decompiler: true,
+        decompilers: vec![namsdec_disasm::plugin::Plugin {
+            id: "essai".to_owned(),
+            name: "Essai".to_owned(),
+            command: "wc".to_owned(),
+            args: vec!["-c".to_owned(), "{file}".to_owned()],
+            install: None,
+        }],
+        decompiler: "essai".to_owned(),
+        ..Default::default()
+    };
+    app.index_decompilation(&texte);
+    app.decompile_result = Some(Ok(texte));
+
+    assert_eq!(
+        app.decompile_functions.len(),
+        20_000,
+        "chaque fonction ouvre une ligne sans indentation"
+    );
+    assert_eq!(app.decompile_lines.len(), 60_000);
+
+    let peint = paint(&mut app);
+    assert!(
+        peint.contains("function_00000"),
+        "le début se lit :\n{}",
+        &peint[..peint.len().min(2000)]
+    );
+    assert!(
+        !peint.contains(dernière),
+        "mais pas la soixante-millième ligne : on ne peint que l'écran"
+    );
+
+    // Le filtre ne garde que ce qu'on cherche, et le compte le dit.
+    app.decompile_filter = "function_04e1f".to_owned();
+    let peint = paint(&mut app);
+    assert_eq!(
+        app.decompile_visible.len(),
+        1,
+        "une seule ligne porte ce nom"
+    );
+    assert!(
+        peint.contains(dernière),
+        "et c'est elle qu'on voit maintenant"
+    );
+
+    // Sauter à une fonction remet le texte entier, à la bonne hauteur.
+    app.decompile_filter.clear();
+    app.decompile_goto = Some(app.decompile_functions[10_000].0);
+    let peint = paint(&mut app);
+    assert!(
+        peint.contains("function_02710"),
+        "le saut amène où l'on a cliqué :\n{peint}"
+    );
+}
+
 /// Avec un outil installé, la commande est écrite avant d'être lancée —
 /// et « Lancer » la lance vraiment.
 #[test]
@@ -14554,7 +14627,17 @@ fn fetching_a_tool_never_happens_by_itself() {
     };
     let peint = paint(&mut app);
     for attendu in [
+        // La leçon d'abord : à quoi sert un décompilateur.
+        strings(Lang::Fr).install_what_for,
+        "il ne restitue pas la source",
+        // Puis les faits. Le coût est une phrase longue : s'il manque,
+        // c'est qu'il file hors de la fenêtre au lieu de se replier.
+        strings(Lang::Fr).install_cost,
+        "180 Mo à télécharger",
+        strings(Lang::Fr).install_where,
+        // L'avertissement et le bouton, tout en bas et toujours peints.
         strings(Lang::Fr).install_warning,
+        strings(Lang::Fr).install_start,
         strings(Lang::Fr).install_plan,
         "github.com/avast/retdec",
         "sha256sum",

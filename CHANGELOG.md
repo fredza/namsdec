@@ -39,11 +39,37 @@ fichiers à la fois, et brancher les outils du métier.
 - L'empreinte SHA-256 de ce qui est téléchargé est calculée et affichée,
   pour être comparée à celle que publie le projet — plutôt que confrontée
   à une constante que personne n'aurait vérifiée.
+- L'adresse de l'archive de RetDec était **inventée** : le nom du fichier
+  publié n'est pas celui que j'avais écrit, et `curl` rapportait un 404
+  au lieu d'un décompilateur. Corrigé, vérifié de bout en bout — 180 Mo
+  téléchargés, archive sans dossier racine, `retdec-decompiler` obtenu,
+  puis lancé sur le crackme avec exactement les arguments que namsdec
+  emploie : trente secondes, deux millions de caractères de C. Deux tests
+  demandent désormais à GitHub si l'adresse et les dépôts existent
+  vraiment, et se taisent sans réseau plutôt que d'échouer.
+- La fenêtre d'installation **enseigne avant de proposer** : ce qu'un
+  décompilateur reconstruit et ce qu'il ne rendra jamais, pourquoi c'est
+  le greffon `rz-ghidra` qui décompile et non Rizin seul. Puis les faits,
+  puis l'avertissement — posé contre le bouton, là où on le lit —, puis
+  le plan dont chaque étape porte son état : faite, en cours, à venir.
+- **Annuler annule vraiment** : l'étape en cours est tuée, au lieu
+  d'attendre la fin d'un téléchargement de 180 Mo ou d'une compilation de
+  quinze minutes. Et le journal s'écrit pendant que ça tourne — la jauge
+  de `curl` comprise, qui réécrit sa ligne au lieu d'en empiler mille.
 - **Le binaire n'en grossit pas** : 61 Ko, soit 0,34 %. Rien n'est
   embarqué — `curl` télécharge, `tar` extrait, `meson` et `cmake`
   construisent, comme `nasm` et `ld` assemblent déjà. Un test refuse
   qu'une bibliothèque de téléchargement ou d'archive rejoigne le
   programme.
+
+**Lire ce que la décompilation rend**
+- RetDec rend deux millions de caractères pour un petit crackme. En un
+  seul bloc de texte, egui remettait tout en page à chaque image : la
+  fenêtre se figeait. On ne peint plus que les lignes qui tiennent à
+  l'écran — soixante mille lignes se parcourent sans à-coup.
+- Avec de quoi s'y retrouver : un **filtre** qui ne garde que les lignes
+  cherchées en disant combien elles sont, une liste des **fonctions**
+  repérées pour y sauter, et des numéros de ligne dans la marge.
 
 **Ouvrir un vrai binaire**
 - La mémoire simulée ne fait plus soixante-quatre kilo-octets : elle
