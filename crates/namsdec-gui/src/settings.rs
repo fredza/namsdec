@@ -132,6 +132,12 @@ pub struct Settings {
     /// de pixel qu'une poignée de souris laisse derrière elle.
     #[serde(default)]
     pub console_height: Option<u32>,
+    /// La hauteur, en pixels, de la part du panneau latéral réservée au
+    /// contenu de l'onglet — Pile, Mémoire, Tas, Octets, RE — quand la
+    /// poignée a été tirée. Absente, cette part est ce que le bandeau
+    /// laisse.
+    #[serde(default)]
+    pub sidebar_tab_height: Option<u32>,
     /// Ce que l'onglet Mémoire suit pas à pas : « fixed », « rsp » ou
     /// « rip ».
     #[serde(default = "fixe_par_défaut")]
@@ -176,6 +182,7 @@ impl Default for Settings {
             heat_legend: true,
             system_titlebar: false,
             console_height: None,
+            sidebar_tab_height: None,
             memory_follow: fixe_par_défaut(),
             explorer_root: None,
             current_file: None,

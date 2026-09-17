@@ -140,6 +140,20 @@ const TOOLTIP_DELAY: f32 = 0.5;
 const TOOLTIP_GRACE_TIME: f32 = 0.2;
 /// En deçà, le panneau ne montrerait plus rien de lisible.
 const SIDEBAR_MIN_WIDTH: f32 = 200.0;
+
+/// La hauteur minimale laissée au contenu de l'onglet du panneau
+/// latéral — Pile, Mémoire, Tas, Octets, RE.
+///
+/// Le bandeau du haut grandit avec ce qu'il montre : une instruction
+/// détaillée, le dernier pas, dix-huit registres. Sur un panneau étroit,
+/// il finissait par tout prendre et l'onglet se réduisait à son titre et
+/// à deux lignes — l'analyse d'un binaire à travers une meurtrière. Ce
+/// plancher lui garantit de quoi être lu.
+const SIDEBAR_TAB_MIN: f32 = 220.0;
+
+/// Et ce qui reste au-dessus de l'état du processeur, quoi qu'il
+/// arrive : de quoi lire la prochaine instruction, même repliée.
+const SIDEBAR_BANNER_MIN: f32 = 90.0;
 /// Et au-delà de cette part de la fenêtre, il mangerait l'éditeur. La
 /// borne vaut aussi réparation : egui garde la largeur du panneau d'une
 /// session à l'autre, donc une largeur aberrante — héritée d'un bug de
@@ -784,6 +798,19 @@ struct NamsdecApp {
     /// retenue et l'ajustement cesse : on ne lutte pas contre la main
     /// de celui qui travaille.
     console_height: Option<f32>,
+    /// La part du panneau latéral laissée au contenu de l'onglet, quand
+    /// la poignée a été tirée. `None` : elle suit ce que le bandeau
+    /// laisse, sans jamais descendre sous [`SIDEBAR_TAB_MIN`].
+    sidebar_tab_height: Option<f32>,
+    /// La hauteur qu'a prise le bandeau — prochaine instruction, dernier
+    /// pas, état du processeur — à l'image précédente. Mesurée, parce
+    /// qu'on doit poser la part de l'onglet *avant* de dessiner le
+    /// bandeau, et qu'elle change avec ce qui est replié.
+    sidebar_banner_height: f32,
+    /// Et la hauteur qu'a prise l'état du processeur, lui aussi mesuré :
+    /// il est ancré au-dessus de l'onglet, et sa place n'est pas à
+    /// prendre.
+    sidebar_cpu_height: f32,
     /// Ce qu'on s'apprête à écrire dans la mémoire, à la main.
     ///
     /// Le pendant de l'édition d'un registre : poser une valeur dans un
@@ -1443,6 +1470,9 @@ impl Default for NamsdecApp {
             system_titlebar: false,
             decorations_applied: None,
             console_height: None,
+            sidebar_tab_height: None,
+            sidebar_banner_height: 0.0,
+            sidebar_cpu_height: 0.0,
             mem_poke: String::new(),
             show_disassembly: false,
             disassembler: PSEUDO_ID.to_owned(),
@@ -1517,6 +1547,9 @@ impl NamsdecApp {
             memory_format: MemoryFormat::by_id(&settings.memory_format),
             memory_follow: MemFollow::by_id(&settings.memory_follow),
             console_height: settings.console_height.map(|h| h as f32),
+            sidebar_tab_height: settings.sidebar_tab_height.map(|h| h as f32),
+            sidebar_banner_height: 0.0,
+            sidebar_cpu_height: 0.0,
             system_titlebar: settings.system_titlebar,
             heat_legend: settings.heat_legend,
             exercises_done: settings.exercises_done.iter().cloned().collect(),
@@ -1613,6 +1646,7 @@ impl NamsdecApp {
             memory_format: self.memory_format.id().to_owned(),
             memory_follow: self.memory_follow.id().to_owned(),
             console_height: self.console_height.map(|h| h.round() as u32),
+            sidebar_tab_height: self.sidebar_tab_height.map(|h| h.round() as u32),
             system_titlebar: self.system_titlebar,
             heat_legend: self.heat_legend,
             exercises_done: self.exercises_done.iter().cloned().collect(),

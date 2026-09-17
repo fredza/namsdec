@@ -202,6 +202,15 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
   Général rend la barre du système à qui la préfère.
 - La boîte « À propos » mène quelque part : namsdec.io, le Discord, le
   dépôt.
+- Le panneau latéral partage sa hauteur au lieu de la donner au premier
+  arrivé : l'état du processeur garde la sienne, entière et sans barre
+  de défilement, et le contenu de l'onglet — Pile, Mémoire, Tas, Octets,
+  RE — a la sienne, avec une poignée pour la régler et un plancher en
+  dessous duquel il ne descend plus. Il sortait jusque-là par le bas du
+  panneau : l'onglet RE se réduisait à son titre et à un champ de
+  recherche coupé en deux. Ce qui cède, désormais, c'est le détail de la
+  prochaine instruction, qui se replie d'un clic. L'onglet RE mène en
+  outre à la fenêtre d'analyse, où tout se lit déplié.
 - La console prend la hauteur de ce qu'elle a à dire : « le programme n'a
   rien écrit » occupait le quart de l'écran, c'est maintenant trois
   lignes. Tirer la poignée reprend la main, et la hauteur choisie est

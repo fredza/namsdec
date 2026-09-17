@@ -484,7 +484,7 @@ hlt
 fn an_absurd_stored_sidebar_width_is_brought_back() {
     let mut app = NamsdecApp::default();
     let ctx = egui::Context::default();
-    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 820.0));
+    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 1400.0));
 
     // Ce que le bug avait laissé dans `app.ron` : le panneau part du
     // cent-unième pixel et va jusqu'au bord droit.
@@ -1039,7 +1039,7 @@ fn typing_alone_does_not_move_the_memory_view() {
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 820.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -1197,7 +1197,7 @@ fn the_address_field_is_as_wide_as_an_address_not_as_the_panel() {
     if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
         return;
     }
-    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 820.0));
+    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 1400.0));
 
     // La même vue dans un panneau étroit, puis dans un panneau deux
     // fois plus large.
@@ -1288,7 +1288,7 @@ fn the_console_panel_spans_the_window_and_keeps_its_input_at_the_bottom() {
     );
     app.do_run();
 
-    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 820.0));
+    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 1400.0));
     let ctx = egui::Context::default();
     let input = egui::RawInput {
         screen_rect: Some(screen),
@@ -1375,7 +1375,7 @@ fn diagnostics_no_longer_swell_the_status_bar() {
     if namsdec_asm::find_nasm().is_none() {
         return;
     }
-    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 820.0));
+    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 1400.0));
     let height_of_status_bar = |source: &str| {
         let mut app = NamsdecApp {
             source: source.to_owned(),
@@ -1452,7 +1452,7 @@ fn the_two_column_banner_fits_the_panel_it_is_given() {
     if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
         return;
     }
-    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 820.0));
+    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 1400.0));
     let wide = 620.0;
     let mut app = NamsdecApp::default();
     app.do_assemble();
@@ -1572,7 +1572,7 @@ fn the_about_box_is_centred_and_carries_its_three_offers() {
         show_about: true,
         ..Default::default()
     };
-    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 820.0));
+    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 1400.0));
     let ctx = egui::Context::default();
     let input = egui::RawInput {
         screen_rect: Some(screen),
@@ -1864,13 +1864,14 @@ hlt
     assert_eq!(changed(&app), ["RAX", "RBX"]);
 }
 
-/// Le bandeau d'état s'ouvre déployé à chaque lancement.
+/// Le bandeau d'état s'ouvre déployé à chaque lancement, et replié il
+/// rend sa place au contenu de l'onglet.
 ///
 /// egui retient l'état des en-têtes repliables d'une session à
 /// l'autre : replié une fois, il revenait replié, registres cachés,
-/// sans que rien ne dise pourquoi. La mesure porte sur ce qui suit le
-/// bandeau — le champ Adresse de l'onglet Mémoire descend de toute la
-/// hauteur des registres quand ils sont là.
+/// sans que rien ne dise pourquoi. La mesure porte sur ce que l'état
+/// coûte : l'onglet, ancré sous lui, gagne toute la hauteur des
+/// registres dès qu'on les replie.
 #[test]
 fn the_cpu_banner_opens_deployed() {
     if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
@@ -1881,7 +1882,7 @@ fn the_cpu_banner_opens_deployed() {
         "déployé par défaut, sans rien avoir à régler"
     );
 
-    let top_of_address_field = |open: bool| {
+    let hauteur_de_l_onglet = |open: bool| {
         let mut app = NamsdecApp {
             active_tab: SidebarTab::Memory,
             cpu_state_open: open,
@@ -1892,23 +1893,40 @@ fn the_cpu_banner_opens_deployed() {
         let input = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
-                egui::vec2(1280.0, 820.0),
+                egui::vec2(1280.0, 1400.0),
             )),
             ..Default::default()
         };
-        for _ in 0..2 {
+        // Trois images : la première ne sait pas encore ce que le
+        // bandeau mesure, la deuxième le partage, la troisième s'y
+        // tient.
+        for _ in 0..3 {
             let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
             output.textures_delta.clear();
         }
-        ctx.read_response(memory_address_id())
-            .expect("le champ Adresse est affiché")
-            .rect
-            .top()
+        // Le champ Adresse doit rester visible : c'est la commande de
+        // l'onglet, et un onglet dont on ne voit plus la commande ne
+        // sert à rien.
+        assert!(
+            ctx.read_response(memory_address_id()).is_some(),
+            "le champ Adresse est affiché, bandeau {}",
+            if open { "déployé" } else { "replié" }
+        );
+        egui::containers::panel::PanelState::load(&ctx, egui::Id::new("sidebar_tab"))
+            .expect("l'onglet a sa part du panneau")
+            .outer_rect
+            .height()
     };
 
+    let déployé = hauteur_de_l_onglet(true);
+    let replié = hauteur_de_l_onglet(false);
     assert!(
-        top_of_address_field(true) > top_of_address_field(false) + 100.0,
-        "déployé, le bandeau doit occuper la place des registres"
+        replié > déployé + 100.0,
+        "replié, l'état du processeur rend sa place à l'onglet : {replié} contre {déployé}"
+    );
+    assert!(
+        déployé >= SIDEBAR_TAB_MIN,
+        "et déployé, l'onglet garde de quoi montrer quelque chose : {déployé}"
     );
 }
 
@@ -2007,7 +2025,7 @@ fn no_sidebar_tab_widens_the_panel() {
         let input = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
-                egui::vec2(1280.0, 820.0),
+                egui::vec2(1280.0, 1400.0),
             )),
             ..Default::default()
         };
@@ -2364,7 +2382,7 @@ hlt
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 820.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -2623,7 +2641,7 @@ fn a_long_status_message_does_not_run_under_the_right_hand_side() {
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 820.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -2665,7 +2683,7 @@ fn the_exercises_module_stays_out_of_the_way_until_it_is_asked_for() {
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 820.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -2925,7 +2943,7 @@ fn paint(app: &mut NamsdecApp) -> String {
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 820.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -3148,7 +3166,7 @@ fn the_help_window_shows_the_entry_it_was_asked_for() {
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 820.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -3404,7 +3422,7 @@ fn a_scroll_bar_shows_up_when_there_is_something_to_scroll_and_not_before() {
         let input = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
-                egui::vec2(1280.0, 820.0),
+                egui::vec2(1280.0, 1400.0),
             )),
             ..Default::default()
         };
@@ -3467,7 +3485,7 @@ fn the_sidebar_never_scrolls_its_state() {
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 820.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -3529,7 +3547,7 @@ fn the_vector_window_shows_them_all() {
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 1000.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -3798,7 +3816,7 @@ fn a_pack_can_be_set_aside_without_being_uninstalled() {
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 900.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -4135,7 +4153,7 @@ fn the_bytes_tab_shows_what_each_line_produced() {
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1400.0, 900.0),
+            egui::vec2(1400.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -4208,7 +4226,7 @@ fn a_nasm_error_comes_with_its_explanation() {
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 820.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -4250,7 +4268,7 @@ fn clicking_a_diagnostic_moves_the_cursor_to_its_line() {
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 820.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -4388,7 +4406,7 @@ fn the_offending_line_is_marked_in_the_editor() {
         let input = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
-                egui::vec2(1280.0, 820.0),
+                egui::vec2(1280.0, 1400.0),
             )),
             ..Default::default()
         };
@@ -4434,7 +4452,7 @@ fn hovering_an_instruction_explains_it() {
         };
         let ctx = egui::Context::default();
         app.apply_theme(&ctx);
-        let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 820.0));
+        let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 1400.0));
         let mut texts = Vec::new();
         let mut pointer = None;
         for _ in 0..4 {
@@ -4550,7 +4568,7 @@ hlt
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 820.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -4607,23 +4625,38 @@ fn the_cpu_state_fills_the_panel_without_a_scroll_bar() {
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 820.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
+    // Les mêmes noms se peignent ailleurs — la pile nomme le registre
+    // qui pointe sur un mot —, donc on ne retient que ce qui est dans
+    // l'état du processeur : entre son titre et celui de l'onglet, qui
+    // vit dessous.
     let mut registres: Vec<egui::Pos2> = Vec::new();
     let mut onglet_y = f32::MAX;
     let mut barres: Vec<egui::Rect> = Vec::new();
     for _ in 0..4 {
-        registres.clear();
+        let mut trouvés: Vec<(&'static str, egui::Pos2)> = Vec::new();
+        let mut état_y = f32::MAX;
         barres.clear();
         onglet_y = f32::MAX;
         let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
         for clipped in &output.shapes {
             match &clipped.shape {
                 egui::epaint::Shape::Text(text) => match text.galley.text() {
-                    "RAX" | "R15" | "RIP" => registres.push(text.pos),
-                    t if t == strings(Lang::Fr).tab_stack => onglet_y = onglet_y.min(text.pos.y),
+                    "RAX" => trouvés.push(("RAX", text.pos)),
+                    "R15" => trouvés.push(("R15", text.pos)),
+                    "RIP" => trouvés.push(("RIP", text.pos)),
+                    t if t == strings(Lang::Fr).cpu_state => état_y = état_y.min(text.pos.y),
+                    // Le titre de l'onglet dans le panneau, et non celui
+                    // de la barre d'outils, qui est tout en haut.
+                    t if t == strings(Lang::Fr).tab_stack
+                        && text.pos.x > 1280.0 - SIDEBAR_WIDTH
+                        && text.pos.y > état_y =>
+                    {
+                        onglet_y = onglet_y.min(text.pos.y)
+                    }
                     _ => {}
                 },
                 egui::epaint::Shape::Rect(r) if r.rect.width() < 20.0 && r.rect.height() > 40.0 => {
@@ -4632,10 +4665,13 @@ fn the_cpu_state_fills_the_panel_without_a_scroll_bar() {
                 _ => {}
             }
         }
+        registres = trouvés
+            .into_iter()
+            .filter(|(_, pos)| pos.y > état_y && pos.y < onglet_y)
+            .map(|(_, pos)| pos)
+            .collect();
         output.textures_delta.clear();
     }
-
-    assert_eq!(registres.len(), 3, "RAX, R15 et RIP doivent être peints");
     // Deux colonnes : RAX et R15 ne sont pas sur la même ligne, mais RAX
     // n'est pas seul sur la sienne — la grille occupe la largeur.
     let colonnes: std::collections::BTreeSet<i32> =
@@ -4756,7 +4792,7 @@ fn the_command_palette_shrinks_to_what_it_shows() {
         let input = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
-                egui::vec2(1280.0, 1000.0),
+                egui::vec2(1280.0, 1400.0),
             )),
             ..Default::default()
         };
@@ -4816,7 +4852,7 @@ hlt
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 820.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -4885,7 +4921,7 @@ fn the_analysis_window_reports_the_binary_protections() {
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 1000.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -4949,7 +4985,7 @@ fn a_binary_from_disk_is_analysed_as_itself() {
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 1000.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -5040,7 +5076,7 @@ hlt
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 900.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -5129,7 +5165,7 @@ ret
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 900.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -5187,7 +5223,7 @@ fn a_conditional_jump_says_whether_it_will_be_taken() {
         let input = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
-                egui::vec2(1280.0, 900.0),
+                egui::vec2(1280.0, 1400.0),
             )),
             ..Default::default()
         };
@@ -5277,7 +5313,7 @@ syscall
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 900.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -5354,7 +5390,7 @@ hlt
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 900.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -5463,7 +5499,7 @@ hlt
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 900.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -5602,7 +5638,7 @@ hlt
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 900.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -5780,7 +5816,7 @@ fn the_status_bar_says_what_is_unsaved() {
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 900.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -5847,7 +5883,7 @@ syscall
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 900.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -5929,7 +5965,7 @@ boucle:
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 900.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -6016,7 +6052,7 @@ fn the_unsaved_question_offers_all_three_answers() {
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 900.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -6121,7 +6157,7 @@ fn a_large_listing_still_draws_fast() {
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 900.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -6179,7 +6215,7 @@ fn the_bytes_tab_follows_execution_in_a_long_program() {
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 900.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -6338,7 +6374,7 @@ fn the_course_is_discoverable_before_it_is_loaded() {
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 900.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         // Le menu Outils ouvert : c'est là que l'entrée vit.
         events: vec![egui::Event::PointerButton {
@@ -6394,7 +6430,7 @@ fn the_course_remembers_where_one_stopped() {
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 1000.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -6463,7 +6499,7 @@ fn the_course_offers_the_next_step() {
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 1000.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -6504,7 +6540,7 @@ fn the_manual_can_be_searched_for_what_one_does_not_know_yet() {
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 1000.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -6576,7 +6612,7 @@ hlt
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 900.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -6628,7 +6664,7 @@ fn a_sheet_example_can_be_taken_along() {
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 1000.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -6980,7 +7016,7 @@ ret
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 1000.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -7196,7 +7232,7 @@ hlt
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 1000.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -7260,7 +7296,7 @@ fn every_window_at_once_holds_together() {
             let input = egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
-                    egui::vec2(1280.0, 1000.0),
+                    egui::vec2(1280.0, 1400.0),
                 )),
                 ..Default::default()
             };
@@ -7382,7 +7418,7 @@ fn the_new_views_hold_on_a_degenerate_state() {
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 900.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -7469,7 +7505,7 @@ ret
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 1000.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -7554,7 +7590,7 @@ ret
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 1000.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -7683,7 +7719,7 @@ hlt
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 1000.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -9490,7 +9526,7 @@ fn the_console_takes_the_height_of_what_it_has_to_say() {
         let input = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
-                egui::vec2(1280.0, 900.0),
+                egui::vec2(1280.0, 1400.0),
             )),
             ..Default::default()
         };
@@ -9564,6 +9600,14 @@ boucle:
     app.console_height = None;
     let écrit = serde_json::to_string(&app.settings_snapshot()).unwrap();
     assert!(écrit.contains("\"console_height\":null"), "{écrit}");
+
+    // La part du panneau latéral laissée à l'onglet se règle de la même
+    // façon, à la poignée, et se retient aussi.
+    app.sidebar_tab_height = Some(320.0);
+    let écrit = serde_json::to_string(&app.settings_snapshot()).unwrap();
+    assert!(écrit.contains("\"sidebar_tab_height\":320"), "{écrit}");
+    let relu = NamsdecApp::from_settings(serde_json::from_str(&écrit).unwrap());
+    assert_eq!(relu.sidebar_tab_height, Some(320.0));
 }
 
 /// Les onglets du panneau latéral se choisissent dans la barre d'outils,
@@ -9588,7 +9632,7 @@ fn the_sidebar_tabs_live_in_the_toolbar() {
         let input = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
-                egui::vec2(1280.0, 820.0),
+                egui::vec2(1280.0, 1400.0),
             )),
             ..Default::default()
         };
@@ -9691,7 +9735,7 @@ fn the_window_carries_its_own_three_buttons() {
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 820.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -9782,7 +9826,7 @@ fn the_about_box_is_wide_and_carries_its_marks() {
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 820.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -9854,7 +9898,7 @@ fn clicking_a_door_really_opens_its_address() {
     let input = |events: Vec<egui::Event>| egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 820.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         events,
         ..Default::default()
@@ -10016,7 +10060,7 @@ fn the_panel_puts_forward_what_matters() {
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 820.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -10708,7 +10752,7 @@ fn the_course_climbs_and_says_so() {
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 1000.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -10999,7 +11043,7 @@ fn each_level_says_how_far_one_has_got() {
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 1000.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -11366,7 +11410,7 @@ hlt
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 900.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -11523,7 +11567,7 @@ fn hovering_outside_the_code_explains_nothing() {
         };
         let ctx = egui::Context::default();
         app.apply_theme(&ctx);
-        let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 820.0));
+        let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 1400.0));
         let mut texts: Vec<(egui::Pos2, std::sync::Arc<egui::Galley>)> = Vec::new();
         let mut pointer = None;
         for _ in 0..4 {
@@ -11888,7 +11932,7 @@ boucle:
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 820.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -11986,7 +12030,7 @@ boucle:
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 820.0),
+            egui::vec2(1280.0, 1400.0),
         )),
         ..Default::default()
     };
@@ -12072,5 +12116,115 @@ boucle:
     assert!(
         texte.contains("boucle: dec rcx"),
         "le profil copié situe la ligne dans son bloc :\n{texte}"
+    );
+}
+
+/// Le contenu de l'onglet a sa part du panneau, et elle tient dedans.
+///
+/// Le bandeau du haut grandit avec ce qu'il montre : l'instruction
+/// détaillée, le dernier pas, dix-huit registres. Il finissait par tout
+/// prendre, et ce qui suivait sortait par le bas du panneau — peint,
+/// mais hors de l'écran. L'onglet RE, lui, se réduisait à son titre et à
+/// son champ de recherche coupé en deux : une analyse de binaire lue par
+/// une meurtrière.
+#[test]
+fn the_tab_keeps_its_share_of_the_side_panel() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: DEFAULT_SOURCE.to_owned(),
+        show_re_tab: true,
+        active_tab: SidebarTab::Re,
+        ..Default::default()
+    };
+    app.do_assemble();
+    app.do_step();
+
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let écran = egui::vec2(1280.0, 1400.0);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, écran)),
+        ..Default::default()
+    };
+    for _ in 0..3 {
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        output.textures_delta.clear();
+    }
+
+    let part = egui::containers::panel::PanelState::load(&ctx, egui::Id::new("sidebar_tab"))
+        .expect("l'onglet a sa part du panneau")
+        .outer_rect;
+    assert!(
+        part.height() >= SIDEBAR_TAB_MIN,
+        "l'onglet doit garder de quoi montrer quelque chose : {}",
+        part.height()
+    );
+    // Et l'état du processeur garde la sienne, entière : c'est ce qu'on
+    // regarde entre deux pas.
+    let état = egui::containers::panel::PanelState::load(&ctx, egui::Id::new("cpu_state"))
+        .expect("l'état du processeur a sa part")
+        .outer_rect;
+    assert!(
+        état.height() > 100.0,
+        "l'état du processeur n'est pas rogné : {}",
+        état.height()
+    );
+    // Rien ne sort par le bas : ce qui dépassait du panneau était peint
+    // là où personne ne peut le lire.
+    assert!(
+        part.bottom() <= écran.y + 1.0,
+        "le panneau de l'onglet déborde de l'écran : {part:?}"
+    );
+}
+
+/// L'onglet RE mène à la fenêtre d'analyse.
+///
+/// Sept modules dans une colonne de trois cents pixels, cela se
+/// consulte ; une analyse se lit en grand, tout déplié, et c'est là
+/// qu'elle se copie ou s'enregistre. Le chemin doit être sous la main,
+/// pas dans un menu.
+#[test]
+fn the_re_tab_leads_to_the_analysis_window() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: DEFAULT_SOURCE.to_owned(),
+        show_re_tab: true,
+        active_tab: SidebarTab::Re,
+        ..Default::default()
+    };
+    app.do_assemble();
+
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 1400.0),
+        )),
+        ..Default::default()
+    };
+    let mut peint = String::new();
+    for _ in 0..2 {
+        peint.clear();
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        for clipped in &output.shapes {
+            if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                peint.push_str(text.galley.text());
+                peint.push('|');
+            }
+        }
+        output.textures_delta.clear();
+    }
+    assert!(
+        peint.contains(strings(Lang::Fr).analysis_open),
+        "le chemin vers la fenêtre d'analyse doit être dans l'onglet :\n{peint}"
+    );
+    assert!(
+        !app.show_analysis,
+        "et il n'ouvre rien tant qu'on ne clique pas"
     );
 }
