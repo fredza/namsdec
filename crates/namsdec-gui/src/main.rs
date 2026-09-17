@@ -39,6 +39,35 @@ use settings::Settings;
 
 const BASE_ADDR: u64 = 0x400000;
 const MEM_SIZE: usize = 0x10000;
+
+/// Ce que la mémoire simulée accepte de couvrir, au plus.
+///
+/// Soixante-quatre kilo-octets suffisent à un exercice, et ne suffisent
+/// à aucun vrai binaire : un programme de trois cent mille octets n'y
+/// entrait pas, namsdec retombait alors sur un désassemblage brut aux
+/// adresses décalées, et l'on croyait lire le programme qu'on venait
+/// d'ouvrir. La fenêtre s'adapte donc à ce qu'on charge — jusqu'à cette
+/// borne, au-delà de laquelle on refuse en le disant plutôt que
+/// d'allouer un gigaoctet.
+const MEM_MAX: usize = 256 * 1024 * 1024;
+
+/// La fenêtre de mémoire simulée pour un programme donné.
+///
+/// Un exercice — chargé à `BASE_ADDR`, quelques centaines d'octets —
+/// retrouve exactement la fenêtre d'avant : même base, même taille, même
+/// sommet de pile. Un binaire ouvert, lui, étend la fenêtre jusqu'à
+/// couvrir son image, en gardant la pile tout en haut.
+fn memory_window(load_addr: u64, image_len: usize) -> (u64, usize, u64) {
+    let début = load_addr.min(BASE_ADDR);
+    // La fin couvre l'image **et** la fenêtre historique : ainsi la pile
+    // d'un exercice ne bouge pas d'un octet, quoi qu'on ait chargé.
+    let fin = (load_addr + image_len as u64).max(BASE_ADDR + MEM_SIZE as u64);
+    // Arrondi à la page : une fenêtre qui s'arrête au milieu d'une page
+    // n'a de sens pour personne.
+    let fin = fin.div_ceil(0x1000) * 0x1000;
+    let taille = (fin - début) as usize;
+    (début, taille, fin - 0x100)
+}
 /// Le sommet de la pile : tout en haut de la fenêtre simulée, moins de
 /// quoi laisser une adresse de retour lisible au-dessus.
 const STACK_TOP: u64 = BASE_ADDR + MEM_SIZE as u64 - 0x100;
@@ -689,6 +718,27 @@ struct AssembleState {
     output: namsdec_asm::AssembleOutput,
     disasm: Vec<DecodedInstruction>,
     addr_to_line: BTreeMap<u64, u32>,
+    /// Ce programme vient-il d'un binaire ouvert, plutôt que d'un source
+    /// qu'on a écrit ?
+    ///
+    /// La différence compte à deux endroits. Réassembler un listing issu
+    /// d'un binaire produit un programme qui n'a plus ses données, ses
+    /// relocations ni sa table de liaison : il part dans le décor à la
+    /// première instruction qui lit quelque chose. Et un binaire lié
+    /// dynamiquement ne peut pas s'exécuter ici, faute des fonctions
+    /// qu'il emprunte.
+    from_binary: Option<LoadedBinary>,
+}
+
+/// Ce qu'on sait d'un binaire ouvert, et qui change ce qu'on peut en
+/// faire.
+#[derive(Clone, Default)]
+struct LoadedBinary {
+    /// Les bibliothèques qu'il réclame au chargement. Non vide : il ne
+    /// tournera pas ici.
+    needed: Vec<String>,
+    /// Le chargeur qu'il demande, quand il en demande un.
+    interpreter: Option<String>,
 }
 
 struct NamsdecApp {
@@ -1470,6 +1520,12 @@ enum PreferencesTab {
     Shortcuts,
     Modules,
     Plugins,
+    /// Les désassembleurs et décompilateurs extérieurs.
+    ///
+    /// Un onglet à eux, et non une section au bas des plugins : c'est là
+    /// qu'on vient chercher « où sont mes outils », et une section qu'il
+    /// faut trouver en faisant défiler n'existe pas.
+    Tools,
 }
 
 /// Programme de départ affiché au lancement, pour ouvrir sur un exemple
@@ -2023,7 +2079,28 @@ impl NamsdecApp {
         });
     }
 
+    /// Ce tampon vient-il d'un binaire ouvert ?
+    ///
+    /// Un listing produit par le désassemblage n'est pas un source : il
+    /// n'a ni les données, ni les relocations, ni la table de liaison du
+    /// programme d'origine. Le réassembler donne un exécutable qui part
+    /// dans le décor à la première instruction qui lit quelque chose.
+    fn buffer_came_from_a_binary(&self) -> bool {
+        self.assemble_state
+            .as_ref()
+            .is_some_and(|state| state.from_binary.is_some())
+            && !self.buffer_modified()
+    }
+
     fn do_assemble(&mut self) {
+        // Réassembler un listing de binaire est presque toujours une
+        // erreur de geste — un Ctrl+Maj+B par habitude. On le dit, et
+        // l'on ne touche à rien : ce qui est chargé vaut mieux que ce
+        // qu'on en referait.
+        if self.buffer_came_from_a_binary() {
+            self.status = Status::Error(strings(self.lang).binary_no_reassemble.to_owned());
+            return;
+        }
         self.assemble_once();
         self.show_diagnostics_if_any();
     }
@@ -2058,6 +2135,8 @@ impl NamsdecApp {
                     output,
                     disasm,
                     addr_to_line,
+                    // Ce programme-ci vient d'un source : il est à nous.
+                    from_binary: None,
                 });
                 self.note_program_io();
                 // Et ce que namsdec ne saura pas faire : un appel
@@ -2207,7 +2286,14 @@ impl NamsdecApp {
         let Some(state) = &self.assemble_state else {
             return;
         };
-        let mut mem = namsdec_core::Memory::new(BASE_ADDR, MEM_SIZE);
+        let (base, taille, sommet) =
+            memory_window(state.output.load_addr, state.output.bytes.len());
+        if taille > MEM_MAX {
+            self.status = Status::Error(strings(self.lang).binary_too_large.to_string());
+            self.emulator = None;
+            return;
+        }
+        let mut mem = namsdec_core::Memory::new(base, taille);
         // `load_addr` plutôt que `BASE_ADDR` : le programme lié dit
         // lui-même où ses sections doivent se trouver, et `.data` n'est
         // pas collée derrière `.text` mais sur la page suivante.
@@ -2243,7 +2329,7 @@ impl NamsdecApp {
             // protection qui a mis fin aux débordements de tampon des
             // années 90.
             mem.map(
-                HEAP_LIMIT..BASE_ADDR + MEM_SIZE as u64,
+                HEAP_LIMIT..sommet + 0x100,
                 namsdec_core::Perms::DATA,
                 "stack",
             );
@@ -2254,7 +2340,7 @@ impl NamsdecApp {
         // un programme qui commence par `.data`, ce sont deux adresses
         // différentes.
         cpu.regs.rip = state.output.entry;
-        cpu.regs.set64(Reg64::Rsp, STACK_TOP);
+        cpu.regs.set64(Reg64::Rsp, sommet);
 
         // Un programme qui vient d'être chargé n'a pas de passé : rien à
         // mettre en avant tant qu'il n'a pas avancé d'un pas.
@@ -3465,7 +3551,9 @@ impl NamsdecApp {
         let Some((load_addr, image)) = elf.image() else {
             return false;
         };
-        if image.len() > MEM_SIZE {
+        // La fenêtre s'adapte au programme : ce qui est refusé, c'est
+        // ce qui dépasse ce qu'une machine accepte d'allouer.
+        if memory_window(load_addr, image.len()).1 > MEM_MAX {
             return false;
         }
 
@@ -3519,6 +3607,17 @@ impl NamsdecApp {
             },
             disasm,
             addr_to_line,
+            // Un ELF ouvert : on retient ce qu'il réclame au chargement,
+            // car c'est ce qui décide s'il peut tourner ici.
+            // Ce que le fichier réclame au chargement se lit dans sa
+            // table dynamique, que seul le scan complet parcourt.
+            from_binary: Some(match namsdec_re::elf_scan::scan(bytes) {
+                Some(scan) => LoadedBinary {
+                    needed: scan.needed,
+                    interpreter: scan.interpreter,
+                },
+                None => LoadedBinary::default(),
+            }),
         });
         self.note_program_io();
         // Un objet non lié — un `.o` — n'a ni point d'entrée ni adresse
@@ -3537,6 +3636,33 @@ impl NamsdecApp {
                 bytes: loaded,
                 truncated: false,
             };
+        }
+        // Un binaire lié dynamiquement se lit et s'analyse très bien ;
+        // il ne s'exécute pas ici, faute des fonctions qu'il emprunte.
+        // Le dire maintenant vaut mieux que de le laisser découvrir sur
+        // un « rien n'est projeté à cette adresse » au premier appel,
+        // qui parle de mémoire là où le problème est ailleurs.
+        if let Some(chargé) = self
+            .assemble_state
+            .as_ref()
+            .and_then(|state| state.from_binary.as_ref())
+            && (!chargé.needed.is_empty() || chargé.interpreter.is_some())
+        {
+            let s = strings(self.lang);
+            self.status = Status::Note(s.binary_dynamic);
+            self.diagnostics.push(namsdec_asm::Diagnostic {
+                line: 0,
+                severity: namsdec_asm::Severity::Warning,
+                message: format!(
+                    "{} {}",
+                    s.binary_dynamic,
+                    if chargé.needed.is_empty() {
+                        chargé.interpreter.clone().unwrap_or_default()
+                    } else {
+                        chargé.needed.join(", ")
+                    }
+                ),
+            });
         }
         true
     }
@@ -3622,6 +3748,9 @@ impl NamsdecApp {
             },
             disasm,
             addr_to_line,
+            // Un tampon brut désassemblé : pas de bibliothèque à
+            // réclamer, mais il vient bien d'un binaire.
+            from_binary: Some(LoadedBinary::default()),
         });
         self.note_program_io();
         self.rebuild_emulator();
@@ -4543,6 +4672,7 @@ impl NamsdecApp {
                         (PreferencesTab::Shortcuts, s.preferences_tab_shortcuts),
                         (PreferencesTab::Modules, s.preferences_tab_modules),
                         (PreferencesTab::Plugins, s.preferences_tab_plugins),
+                        (PreferencesTab::Tools, s.preferences_tab_tools),
                     ] {
                         ui.selectable_value(&mut self.preferences_tab, tab, label);
                     }
@@ -4553,6 +4683,7 @@ impl NamsdecApp {
                     PreferencesTab::Shortcuts => self.preferences_shortcuts_ui(ui),
                     PreferencesTab::Modules => self.preferences_modules_ui(ui),
                     PreferencesTab::Plugins => self.preferences_plugins_ui(ui),
+                    PreferencesTab::Tools => self.preferences_tools_ui(ui),
                 }
                 ui.separator();
                 close_keeping = dialog_buttons(ui, theme, s);
@@ -4708,6 +4839,14 @@ impl NamsdecApp {
             });
     }
 
+    /// L'onglet des outils : tout ce qui vient d'ailleurs et s'exécute.
+    fn preferences_tools_ui(&mut self, ui: &mut egui::Ui) {
+        egui::ScrollArea::vertical()
+            .id_salt("preferences_tools")
+            .auto_shrink([false, false])
+            .show(ui, |ui| self.known_tools_ui(ui));
+    }
+
     /// Les outils d'analyse connus : présents ou non, et déclarables
     /// d'un clic.
     ///
@@ -4733,40 +4872,58 @@ impl NamsdecApp {
         let mut à_retirer = None;
 
         egui::Grid::new("outils_connus")
-            .num_columns(3)
+            .num_columns(4)
             .min_col_width(0.0)
             .striped(true)
             .show(ui, |ui| {
                 for outil in namsdec_disasm::known::all() {
                     let dispo = outil.availability();
-                    // Ce que la machine en dit : un rond, une couleur,
-                    // une phrase au survol. C'est la première chose à
-                    // savoir avant de choisir.
                     let (couleur, état) = match dispo {
                         Availability::Ready => (theme.good, s.tools_ready),
                         Availability::Incomplete => (theme.warn, s.tools_incomplete),
                         Availability::Missing => (theme.dim, s.tools_missing),
                     };
-                    ui.vertical(|ui| {
-                        ui.label(egui::RichText::new(&outil.plugin.name).strong());
-                        ui.weak(if fr { outil.about_fr } else { outil.about_en });
-                        if dispo != Availability::Ready
-                            && let Some(besoin) = if fr { outil.needs_fr } else { outil.needs_en }
-                        {
-                            ui.colored_label(theme.warn, format!("{} {besoin}", s.tools_needs));
-                        }
-                        if dispo == Availability::Missing
-                            && let Some(comment) = &outil.plugin.install
-                        {
+                    // Une ligne par outil, et le détail au survol : cinq
+                    // outils décrits sur quatre lignes chacun dépassaient
+                    // la fenêtre, et l'on ne voyait que le premier.
+                    let quoi = if fr { outil.about_fr } else { outil.about_en };
+                    let manque = if fr { outil.needs_fr } else { outil.needs_en };
+                    ui.label(egui::RichText::new(&outil.plugin.name).strong())
+                        .on_hover_ui(|ui| {
+                            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
+                            ui.set_max_width(320.0);
+                            ui.label(quoi);
+                            if let Some(besoin) = manque {
+                                ui.add_space(4.0);
+                                ui.colored_label(theme.warn, format!("{} {besoin}", s.tools_needs));
+                            }
+                            ui.add_space(4.0);
                             ui.colored_label(
                                 theme.dim,
-                                egui::RichText::new(format!("{} {comment}", s.tools_install))
-                                    .monospace()
-                                    .small(),
+                                egui::RichText::new(format!(
+                                    "{} {}",
+                                    outil.plugin.command,
+                                    outil.plugin.args.join(" ")
+                                ))
+                                .monospace()
+                                .small(),
                             );
-                        }
-                    });
+                        });
                     ui.colored_label(couleur, état);
+                    // Ce qu'il faut taper, à côté de l'état : c'est la
+                    // seule chose utile quand l'outil manque, et elle ne
+                    // sert à rien quand il est là.
+                    if dispo == Availability::Missing {
+                        ui.colored_label(
+                            theme.dim,
+                            egui::RichText::new(outil.plugin.install.clone().unwrap_or_default())
+                                .monospace()
+                                .small(),
+                        )
+                        .on_hover_text(s.tools_install);
+                    } else {
+                        ui.label("");
+                    }
                     if installés.contains(&outil.plugin.id) {
                         if framed_button(ui, theme, s.tools_remove).clicked() {
                             à_retirer = Some(outil.plugin.id.clone());
@@ -4853,6 +5010,19 @@ impl NamsdecApp {
     /// jour où d'autres s'installent, ils se contentent d'allonger la
     /// liste — rien ici n'est écrit par thème.
     fn preferences_plugins_ui(&mut self, ui: &mut egui::Ui) {
+        // Toute la page défile d'un seul tenant. Auparavant, seule la
+        // liste des thèmes le faisait : ce qui venait après — les outils
+        // d'analyse, les séries d'exercices — se retrouvait poussé hors
+        // de la fenêtre, présent mais invisible. Une section qu'on ne
+        // peut pas atteindre n'existe pas.
+        egui::ScrollArea::vertical()
+            .id_salt("preferences_plugins")
+            .auto_shrink([false, false])
+            .show(ui, |ui| self.plugins_page_ui(ui));
+    }
+
+    /// Le contenu de la page des plugins, dans l'ordre où on le lit.
+    fn plugins_page_ui(&mut self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
         // Le thème *de l'interface*, à ne pas confondre avec ceux que la
         // page liste — nommés `listed` plus bas pour cette raison.
@@ -4863,9 +5033,8 @@ impl NamsdecApp {
         ui.weak(s.plugins_themes_hint);
         ui.add_space(6.0);
 
-        egui::ScrollArea::vertical()
-            .max_height(window_room(ui))
-            .show(ui, |ui| {
+        {
+            {
                 let themes = namsdec_theme::all();
                 let card_width = theme_card_width(ui, &themes, s.plugins_active);
                 for listed in themes {
@@ -4890,7 +5059,8 @@ impl NamsdecApp {
                     });
                     ui.add_space(4.0);
                 }
-            });
+            }
+        }
 
         // Le retrait attend une confirmation : supprimer un fichier ne
         // se fait pas d'un seul clic, surtout à côté de celui qui
@@ -4922,12 +5092,6 @@ impl NamsdecApp {
             self.spawn_file_dialog(FileDialogKind::AddTheme);
         }
         ui.weak(s.plugins_add_hint);
-
-        // Les outils d'analyse : même page, mêmes gestes, mais une
-        // différence qu'on ne cache pas — ceux-là sont des programmes.
-        ui.add_space(10.0);
-        ui.separator();
-        self.known_tools_ui(ui);
 
         // Les séries d'exercices s'installent de la même façon : un
         // fichier JSON, copié dans le dossier de données, relu au

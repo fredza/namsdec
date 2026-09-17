@@ -273,6 +273,8 @@ pub struct Strings {
     /// Ce qui tourne à côté, nommé dans la barre d'état et dans le titre
     /// de la fenêtre.
     /// Les outils d'analyse connus, dans l'onglet Plugins.
+    /// L'onglet des outils, dans les préférences.
+    pub preferences_tab_tools: &'static str,
     pub tools_title: &'static str,
     pub tools_legend: &'static str,
     pub tools_ready: &'static str,
@@ -542,6 +544,10 @@ pub struct Strings {
     pub binary_export_failed: &'static str,
     pub binary_none: &'static str,
     pub binary_not_linked: &'static str,
+    /// Ce qu'on dit d'un binaire lié dynamiquement, et d'un listing
+    /// qu'on s'apprête à réassembler par mégarde.
+    pub binary_dynamic: &'static str,
+    pub binary_no_reassemble: &'static str,
     pub assemble_commands: &'static str,
     pub assemble_commands_copy: &'static str,
     pub assemble_commands_hint: &'static str,
@@ -848,6 +854,7 @@ const FR: Strings = Strings {
     disk_reload: "Recharger",
     disk_keep: "Garder ce que j'ai écrit",
     provenance_static: "D'où elle vient, en remontant le code :",
+    preferences_tab_tools: "Outils",
     tools_title: "Désassembleurs et décompilateurs",
     tools_legend: "Déclarer un outil écrit un fichier de quelques lignes : namsdec ne télécharge rien et ne lance rien avant que vous ne le demandiez. Le module « Décompilation » doit être allumé pour s'en servir.",
     tools_ready: "installé",
@@ -1090,6 +1097,8 @@ const FR: Strings = Strings {
     binary_exported: "Binaire écrit (exécutable)",
     binary_export_failed: "Le binaire n'a pas pu être écrit",
     binary_none: "Rien à exporter : assemblez d'abord",
+    binary_dynamic: "Ce binaire est lié dynamiquement : namsdec le lit, le désassemble et l'analyse, mais ne peut pas l'exécuter — les fonctions qu'il emprunte vivent dans des bibliothèques que l'interpréteur n'a pas. Bibliothèques réclamées :",
+    binary_no_reassemble: "Ce listing vient d'un binaire ouvert : le réassembler donnerait un programme sans ses données ni sa table de liaison. Rien n'a été touché — modifiez le texte si vous voulez vraiment en faire un source.",
     binary_not_linked: "Objet non lié : ses sections n'ont pas encore d'adresse et il n'a pas de point d'entrée. Il se lit et s'analyse, mais ne s'exécute pas — liez-le : ld -Ttext 0x400000 -o programme fichier.o",
     assemble_commands: "Les deux commandes lancées :",
     assemble_commands_copy: "Copier",
@@ -1388,6 +1397,7 @@ const EN: Strings = Strings {
     disk_reload: "Reload",
     disk_keep: "Keep what I wrote",
     provenance_static: "Where it comes from, reading the code backwards:",
+    preferences_tab_tools: "Tools",
     tools_title: "Disassemblers and decompilers",
     tools_legend: "Declaring a tool writes a few-line file: namsdec downloads nothing and runs nothing until you ask. The « Decompilation » module must be on to use them.",
     tools_ready: "installed",
@@ -1630,6 +1640,8 @@ const EN: Strings = Strings {
     binary_exported: "Binary written (executable)",
     binary_export_failed: "The binary could not be written",
     binary_none: "Nothing to export: assemble first",
+    binary_dynamic: "This binary is dynamically linked: namsdec reads, disassembles and analyses it, but cannot run it — the functions it borrows live in libraries the interpreter does not have. Libraries required:",
+    binary_no_reassemble: "This listing comes from an opened binary: reassembling it would give a program without its data or its linkage table. Nothing was touched — edit the text if you really mean to turn it into a source.",
     binary_not_linked: "Unlinked object: its sections have no address yet and it has no entry point. It reads and analyses, but does not run — link it: ld -Ttext 0x400000 -o program file.o",
     assemble_commands: "The two commands run:",
     assemble_commands_copy: "Copy",

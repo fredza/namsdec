@@ -223,6 +223,25 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
   coût et le lien des registres étendus se superposaient à l'onglet, les
   deux illisibles. Le bandeau tient maintenant dans une seule zone qui
   coupe net, et la barre n'apparaît que sur une fenêtre trop courte.
+**Ouvrir un vrai binaire**
+- La mémoire simulée ne fait plus soixante-quatre kilo-octets : elle
+  s'adapte au programme chargé. Un binaire de trois cent mille octets n'y
+  entrait pas, namsdec retombait sur un désassemblage brut tassé à
+  `0x400000`, et l'on croyait lire le fichier ouvert alors que toutes les
+  adresses étaient décalées. Un exercice, lui, retrouve exactement la
+  fenêtre d'avant — même base, même taille, même sommet de pile.
+- Un binaire **lié dynamiquement** le dit dès son ouverture : il se lit,
+  se désassemble et s'analyse, mais ne s'exécute pas ici — les fonctions
+  qu'il emprunte ne sont pas là. Mieux vaut l'apprendre au chargement que
+  sur un « rien n'est projeté à cette adresse » au premier appel.
+- **Réassembler le listing d'un binaire** est refusé, en le disant : cela
+  donnait un programme sans ses données ni sa table de liaison, qui
+  partait dans le décor à la première lecture.
+- Les outils d'analyse ont **leur propre onglet** dans les préférences,
+  et une ligne chacun : ils étaient au bas de la page des plugins, sur
+  quatre lignes, et seul le premier entrait dans la fenêtre — Rizin et
+  RetDec étaient là sans que personne puisse les voir.
+
 **Un module de décompilation, chargé à la demande**
 - Cinq outils connus d'avance, avec les arguments qui marchent :
   `objdump`, `ndisasm`, le pseudo-code de `radare2`, **Rizin + rz-ghidra**

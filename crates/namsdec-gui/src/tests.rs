@@ -9491,21 +9491,30 @@ fn opening_a_binary_shows_its_code_not_its_header() {
     app.load_binary(bytes);
     let state = app.assemble_state.as_ref().expect("chargé");
 
-    // Le listing ne commence plus au premier octet du fichier.
+    // Le listing commence à une section exécutable, et non à l'octet
+    // zéro du fichier — qui porte « \x7fELF », pas des instructions.
+    let elf_entier = namsdec_re::elf_scan::scan(&state.output.file).expect("un ELF");
+    let exécutables: Vec<&namsdec_re::elf_scan::SectionInfo> = elf_entier
+        .sections
+        .iter()
+        .filter(|s| s.execute && !s.nobits && s.size > 0)
+        .collect();
     let première = state.disasm.first().expect("du code").address;
     assert!(
-        première > BASE_ADDR,
-        "le listing part encore de l'en-tête : {première:#x}"
+        exécutables
+            .iter()
+            .any(|s| première >= s.addr && première < s.addr + s.size),
+        "le listing ne commence pas dans du code : {première:#x}"
     );
 
     // Et tout ce qu'il montre tombe dans une section exécutable du
     // fichier — c'est la définition de « c'est du code ».
-    let elf = namsdec_re::elf_scan::scan(&state.output.file).expect("un ELF");
-    let plages: Vec<(u64, u64)> = elf
-        .sections
+    // Les adresses sont celles que le fichier déclare, désormais : la
+    // fenêtre mémoire s'adapte au programme au lieu de le tasser à
+    // `BASE_ADDR`, ce qui décalait tout.
+    let plages: Vec<(u64, u64)> = exécutables
         .iter()
-        .filter(|s| s.execute && !s.nobits)
-        .map(|s| (BASE_ADDR + s.offset, BASE_ADDR + s.offset + s.size))
+        .map(|s| (s.addr, s.addr + s.size))
         .collect();
     for instruction in &state.disasm {
         assert!(
@@ -14194,4 +14203,144 @@ fn the_tools_say_whether_this_machine_has_them() {
         rizin.needs_fr.is_some() && rizin.needs_en.is_some(),
         "la pièce manquante doit être nommée dans les deux langues"
     );
+}
+
+/// L'onglet Outils montre les cinq, et non le premier.
+///
+/// Ils tenaient sur quatre lignes chacun : seul objdump entrait dans la
+/// fenêtre, et Rizin et RetDec étaient là sans que personne puisse les
+/// voir. Une ligne par outil, le détail au survol — et l'on trouve ce
+/// qu'on est venu chercher.
+#[test]
+fn the_tools_tab_shows_every_tool_not_just_the_first() {
+    let mut app = NamsdecApp {
+        show_preferences: true,
+        preferences_tab: PreferencesTab::Tools,
+        ..Default::default()
+    };
+    let peint = paint(&mut app);
+    for attendu in ["objdump", "ndisasm", "radare2", "Rizin", "RetDec"] {
+        assert!(
+            peint.contains(attendu),
+            "« {attendu} » doit se lire dans l'onglet Outils :\n{peint}"
+        );
+    }
+    // Et ce qu'il faut taper pour obtenir ce qui manque.
+    assert!(
+        peint.contains("dnf install rizin") || peint.contains("retdec"),
+        "la façon d'obtenir un outil absent doit se lire :\n{peint}"
+    );
+}
+
+/// Un binaire lié dynamiquement le dit dès qu'on l'ouvre.
+///
+/// Il se lit, se désassemble et s'analyse très bien ; il ne s'exécute
+/// pas ici, faute des fonctions qu'il emprunte. Le dire au chargement
+/// vaut mieux que de le laisser découvrir sur un « rien n'est projeté à
+/// cette adresse » au premier appel — un message qui parle de mémoire là
+/// où le problème est ailleurs.
+#[test]
+fn a_dynamically_linked_binary_says_it_cannot_run_here() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    // Un binaire du système fait l'affaire : tous sont liés à la libc.
+    let Ok(octets) = std::fs::read("/bin/ls") else {
+        return;
+    };
+    let mut app = NamsdecApp::default();
+    assert!(app.load_elf(&octets), "l'ELF se charge");
+
+    // Le chargement réussit — c'est bien le but : on vient le lire.
+    assert!(app.assemble_state.is_some(), "le programme est chargé");
+    assert!(
+        !app.assemble_state
+            .as_ref()
+            .expect("chargé")
+            .disasm
+            .is_empty(),
+        "et désassemblé"
+    );
+
+    // Mais namsdec prévient, et nomme les bibliothèques réclamées.
+    let dit = matches!(&app.status, Status::Note(texte) if texte.contains("dynamiquement"));
+    assert!(dit, "l'avertissement doit être posé : {:?}", app.status);
+    assert!(
+        app.diagnostics
+            .iter()
+            .any(|d| d.message.contains("libc") || d.message.contains("ld-linux")),
+        "avec ce qu'il réclame : {:?}",
+        app.diagnostics
+    );
+
+    // Et réassembler ce listing ne détruit pas ce qui est chargé.
+    let avant = app.assemble_state.as_ref().expect("chargé").disasm.len();
+    app.do_assemble();
+    assert!(
+        matches!(&app.status, Status::Error(texte) if texte.contains("vient d'un binaire")),
+        "le réassemblage doit être refusé en le disant : {:?}",
+        app.status
+    );
+    assert_eq!(
+        app.assemble_state
+            .as_ref()
+            .expect("toujours chargé")
+            .disasm
+            .len(),
+        avant,
+        "et rien ne doit avoir bougé"
+    );
+}
+
+/// Un vrai binaire tient dans la mémoire simulée, à ses vraies adresses.
+///
+/// La fenêtre faisait soixante-quatre kilo-octets : un programme de
+/// trois cent mille octets n'y entrait pas, namsdec retombait sur un
+/// désassemblage brut tassé à `BASE_ADDR`, et l'on croyait lire le
+/// fichier qu'on venait d'ouvrir alors que toutes les adresses étaient
+/// décalées.
+#[test]
+fn a_real_binary_loads_at_the_addresses_it_declares() {
+    // Un binaire du système fait l'affaire : aucun n'entre dans
+    // soixante-quatre kilo-octets.
+    let Ok(octets) = std::fs::read("/bin/ls") else {
+        return;
+    };
+    let mut app = NamsdecApp::default();
+    assert!(
+        app.load_elf(&octets),
+        "un binaire de cette taille se charge"
+    );
+
+    let state = app.assemble_state.as_ref().expect("chargé");
+    let elf = namsdec_re::elf_scan::scan(&state.output.file).expect("un ELF");
+
+    // Le point d'entrée déclaré par le fichier est bien celui qu'on a.
+    assert_eq!(
+        state.output.entry, elf.entry,
+        "le point d'entrée est celui du fichier, pas un décalage"
+    );
+    // Et l'émulateur peut lire à cette adresse : la fenêtre la couvre.
+    let emulator = app.emulator.as_ref().expect("un émulateur");
+    assert!(
+        emulator.cpu().mem.peek_bytes(elf.entry, 4).is_ok(),
+        "le point d'entrée {:#x} doit être dans la mémoire simulée",
+        elf.entry
+    );
+    assert_eq!(
+        emulator.cpu().regs.rip,
+        elf.entry,
+        "et l'exécution commencerait là"
+    );
+
+    // La fenêtre s'est bien élargie, sans déplacer la pile des exercices.
+    let (base, taille, sommet) = memory_window(state.output.load_addr, state.output.bytes.len());
+    assert!(taille > MEM_SIZE, "la fenêtre s'adapte : {taille:#x}");
+    assert!(base <= elf.entry && elf.entry < base + taille as u64);
+    assert!(sommet > 0, "la pile est quelque part");
+
+    // Et un programme ordinaire — un exercice — retrouve exactement la
+    // fenêtre d'avant : même base, même taille, même sommet de pile.
+    let (base, taille, sommet) = memory_window(BASE_ADDR, 0x200);
+    assert_eq!((base, taille, sommet), (BASE_ADDR, MEM_SIZE, STACK_TOP));
 }
