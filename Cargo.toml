@@ -24,7 +24,10 @@ namsdec-explorer = { path = "crates/namsdec-explorer" }
 namsdec-update = { path = "crates/namsdec-update" }
 
 egui = "0.36"
-eframe = { version = "0.36", default-features = false, features = ["default_fonts", "glow", "persistence", "wayland", "x11"] }
+# `links` : sans elle, `open_url` ne fait **rien** — les liens de la
+# boîte « À propos » et des fenêtres d'analyse s'enfonçaient en silence.
+# Elle fait partie des `default` d'eframe, que nous n'activons pas.
+eframe = { version = "0.36", default-features = false, features = ["default_fonts", "glow", "links", "persistence", "wayland", "x11"] }
 egui_extras = "0.36"
 egui_code_editor = "0.4"
 arboard = "3"

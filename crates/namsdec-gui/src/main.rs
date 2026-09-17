@@ -93,6 +93,19 @@ const CONSOLE_MAX_FRACTION: f32 = 0.6;
 /// magick offrir-un-repas.png -depth 8 RGBA:offrir-un-repas.rgba
 /// ```
 const TREAT_IMAGE: &[u8] = include_bytes!("../assets/offrir-un-repas.rgba");
+/// L'icône de l'application, en pixels bruts — 128 x 128, la même que
+/// celle du lanceur. Embarquée comme la vignette ci-dessus, et pour la
+/// même raison : pas de décodeur à traîner pour une image.
+///
+/// ```text
+/// magick assets/icons/namsdec-128.png -depth 8 RGBA:crates/namsdec-gui/assets/namsdec-128.rgba
+/// ```
+const APP_ICON: &[u8] = include_bytes!("../assets/namsdec-128.rgba");
+const APP_ICON_SIDE: usize = 128;
+/// La taille à laquelle la boîte « À propos » la montre, et la largeur
+/// de la boîte elle-même.
+const APP_ICON_SHOWN: f32 = 88.0;
+const ABOUT_WIDTH: f32 = 560.0;
 const TREAT_IMAGE_SIDE: usize = 128;
 /// Taille d'affichage dans la boîte : l'image est embarquée deux fois
 /// plus grande, pour rester nette sur un écran à forte densité.
@@ -635,6 +648,8 @@ struct NamsdecApp {
     /// L'illustration du bouton de don, montée en texture à la première
     /// ouverture de la boîte puis gardée.
     treat_texture: Option<egui::TextureHandle>,
+    /// L'icône de l'application, même histoire.
+    icon_texture: Option<egui::TextureHandle>,
     /// La recherche de mise à jour en cours, s'il y en a une : elle se
     /// fait sur un thread, parce qu'une requête réseau dans la boucle de
     /// rendu fige la fenêtre le temps du voyage.
@@ -1342,6 +1357,7 @@ impl Default for NamsdecApp {
             prefs_snapshot: None,
             show_about: false,
             treat_texture: None,
+            icon_texture: None,
             update_check: None,
             update_result: None,
             keybindings: KeyBindings::default(),
@@ -3874,6 +3890,20 @@ impl NamsdecApp {
             .clone()
     }
 
+    /// L'icône de l'application, montée en texture à la première
+    /// ouverture de la boîte puis gardée.
+    fn app_icon_texture(&mut self, ctx: &egui::Context) -> egui::TextureHandle {
+        self.icon_texture
+            .get_or_insert_with(|| {
+                let image = egui::ColorImage::from_rgba_unmultiplied(
+                    [APP_ICON_SIDE, APP_ICON_SIDE],
+                    APP_ICON,
+                );
+                ctx.load_texture("namsdec-icon", image, egui::TextureOptions::LINEAR)
+            })
+            .clone()
+    }
+
     /// Installe une série d'exercices choisie sur le disque.
     ///
     /// Lue d'abord, copiée ensuite : une série illisible est refusée en
@@ -4196,52 +4226,85 @@ impl NamsdecApp {
             // de la fenêtre.
             .pivot(egui::Align2::CENTER_CENTER)
             .current_pos(ctx.viewport_rect().center())
+            // Large : trois boutons, un bandeau de préversion et une
+            // recherche de mise à jour ne tiennent pas dans une colonne
+            // de trois cents pixels sans se replier en accordéon.
+            .default_width(ABOUT_WIDTH)
+            .min_width(ABOUT_WIDTH)
             .show(ctx, |ui| {
-                // L'en-tête : le nom en grand, la version à côté et non
-                // en dessous — c'est une précision, pas une deuxième
-                // information.
+                ui.set_min_width(ABOUT_WIDTH - 24.0);
+                // L'en-tête : l'icône de l'application à gauche — la
+                // même que celle du lanceur —, et à droite ce qu'elle
+                // est, ce qu'elle vaut, ce qu'elle fait.
+                let icône = self.app_icon_texture(ctx);
                 ui.horizontal(|ui| {
-                    ui.heading(egui::RichText::new("namsdec").strong());
-                    ui.colored_label(
-                        theme.dim,
-                        egui::RichText::new(format!("v{APP_VERSION}")).monospace(),
-                    )
-                    .on_hover_text(format!("{} {BUILD_DATE}", s.about_build_word));
+                    ui.add(
+                        egui::Image::new(egui::load::SizedTexture::from_handle(&icône))
+                            .fit_to_exact_size(egui::vec2(APP_ICON_SHOWN, APP_ICON_SHOWN))
+                            .corner_radius(12),
+                    );
+                    ui.add_space(12.0);
+                    ui.vertical(|ui| {
+                        ui.horizontal(|ui| {
+                            ui.heading(egui::RichText::new("namsdec").strong().size(28.0));
+                            ui.colored_label(
+                                theme.dim,
+                                egui::RichText::new(format!("v{APP_VERSION}")).monospace(),
+                            )
+                            .on_hover_text(format!("{} {BUILD_DATE}", s.about_build_word));
+                        });
+                        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
+                        ui.colored_label(theme.dim, s.about_description);
+                        ui.add_space(8.0);
+                        // Les trois portes du projet : le site, le
+                        // salon, le dépôt. Chacune avec sa marque —
+                        // dessinée, donc de la couleur du thème et nette
+                        // à toute taille.
+                        ui.horizontal_wrapped(|ui| {
+                            for (label, url, infobulle, dessin) in [
+                                (
+                                    s.about_site,
+                                    SITE_URL,
+                                    s.about_site_hint,
+                                    chrome::icon_globe
+                                        as fn(&egui::Painter, egui::Rect, egui::Color32),
+                                ),
+                                (
+                                    s.about_discord,
+                                    DISCORD_URL,
+                                    s.about_discord_hint,
+                                    chrome::icon_discord,
+                                ),
+                                (
+                                    s.about_github,
+                                    GITHUB_URL,
+                                    s.about_github_hint,
+                                    chrome::icon_github,
+                                ),
+                            ] {
+                                if link_button_ui(ui, theme, label, dessin)
+                                    .on_hover_text(format!("{infobulle}\n{url}"))
+                                    .clicked()
+                                {
+                                    ui.ctx().open_url(egui::OpenUrl::new_tab(url));
+                                }
+                            }
+                        });
+                    });
                 });
-                ui.colored_label(theme.dim, s.about_description);
-                ui.add_space(8.0);
-
-                // Les trois portes du projet, côte à côte : le site, le
-                // salon, le dépôt. Des boutons et non des liens en
-                // toutes lettres — on cherche où cliquer, pas une
-                // adresse à recopier.
-                ui.horizontal_wrapped(|ui| {
-                    for (label, url, infobulle) in [
-                        (s.about_site, SITE_URL, s.about_site_hint),
-                        (s.about_discord, DISCORD_URL, s.about_discord_hint),
-                        (s.about_github, GITHUB_URL, s.about_github_hint),
-                    ] {
-                        if ui
-                            .add(egui::Button::new(label).corner_radius(6))
-                            .on_hover_text(format!("{infobulle}\n{url}"))
-                            .clicked()
-                        {
-                            ui.ctx().open_url(egui::OpenUrl::new_tab(url));
-                        }
-                    }
-                });
+                ui.add_space(10.0);
 
                 // Le bandeau des préversions : il dit ce qu'on tient
                 // entre les mains, et disparaît de lui-même le jour où
                 // la version n'en est plus une.
                 if let Some(étiquette) = prerelease(APP_VERSION) {
-                    ui.add_space(6.0);
                     egui::Frame::new()
                         .fill(theme.warn.gamma_multiply(0.15))
                         .stroke(egui::Stroke::new(1.0, theme.warn))
-                        .inner_margin(egui::Margin::symmetric(10, 8))
-                        .corner_radius(4.0)
+                        .inner_margin(egui::Margin::symmetric(12, 10))
+                        .corner_radius(8.0)
                         .show(ui, |ui| {
+                            ui.set_min_width(ABOUT_WIDTH - 60.0);
                             ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
                             ui.colored_label(
                                 theme.warn,
@@ -4251,9 +4314,10 @@ impl NamsdecApp {
                                 ))
                                 .strong(),
                             );
-                            ui.add_space(2.0);
+                            ui.add_space(4.0);
                             ui.colored_label(theme.text, s.about_beta_body);
                         });
+                    ui.add_space(10.0);
                 }
 
                 ui.add_space(6.0);
@@ -7371,6 +7435,52 @@ fn ligne_sous(galley: &egui::Galley, gutter_rect: egui::Rect, pos: egui::Pos2) -
                 .contains(pos.y)
         })
         .map(|index| index as u32 + 1)
+}
+
+/// Un bouton de lien : une marque dessinée, puis son nom.
+///
+/// Fait à la main plutôt qu'avec `Button::image_and_text` : ces marques
+/// sont peintes, pas chargées, et elles doivent prendre la couleur du
+/// texte du bouton — celle qui change au survol.
+fn link_button_ui(
+    ui: &mut egui::Ui,
+    theme: &'static Theme,
+    label: &str,
+    dessin: fn(&egui::Painter, egui::Rect, egui::Color32),
+) -> egui::Response {
+    let police = egui::TextStyle::Button.resolve(ui.style());
+    let galley = ui
+        .painter()
+        .layout_no_wrap(label.to_owned(), police, theme.text);
+    const MARQUE: f32 = 16.0;
+    const AIR: f32 = 8.0;
+    let taille = egui::vec2(
+        MARQUE + AIR + galley.size().x + 24.0,
+        galley.size().y.max(MARQUE) + 12.0,
+    );
+    let (rect, réponse) = ui.allocate_exact_size(taille, egui::Sense::click());
+    let visuals = ui.style().interact(&réponse);
+    ui.painter().rect_filled(rect, 6.0, visuals.weak_bg_fill);
+    ui.painter().rect_stroke(
+        rect,
+        6.0,
+        egui::Stroke::new(1.0, visuals.bg_stroke.color),
+        egui::StrokeKind::Inside,
+    );
+    let marque = egui::Rect::from_center_size(
+        egui::pos2(rect.left() + 12.0 + MARQUE * 0.5, rect.center().y),
+        egui::vec2(MARQUE, MARQUE),
+    );
+    dessin(ui.painter(), marque, visuals.text_color());
+    ui.painter().galley(
+        egui::pos2(
+            marque.right() + AIR,
+            rect.center().y - galley.size().y * 0.5,
+        ),
+        galley,
+        visuals.text_color(),
+    );
+    réponse
 }
 
 /// Les entrées de la table de liaison, en étiquettes du listing.

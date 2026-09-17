@@ -9660,6 +9660,146 @@ fn the_window_carries_its_own_three_buttons() {
     assert!(écrit.contains("\"system_titlebar\":true"), "{écrit}");
 }
 
+/// La boîte « À propos » est large, porte l'icône de l'application, et
+/// ses trois portes ont chacune leur marque.
+///
+/// Une colonne de trois cents pixels repliait les boutons en accordéon
+/// et coupait le bandeau de préversion en tranches.
+#[test]
+fn the_about_box_is_wide_and_carries_its_marks() {
+    let mut app = NamsdecApp {
+        show_about: true,
+        ..Default::default()
+    };
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 820.0),
+        )),
+        ..Default::default()
+    };
+    let mut cadres: Vec<egui::Rect> = Vec::new();
+    let mut images = 0usize;
+    for _ in 0..3 {
+        cadres.clear();
+        images = 0;
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        for clipped in &output.shapes {
+            match &clipped.shape {
+                egui::epaint::Shape::Rect(forme) if forme.rect.width() > 400.0 => {
+                    cadres.push(forme.rect);
+                }
+                egui::epaint::Shape::Mesh(_) => images += 1,
+                egui::epaint::Shape::Rect(forme) if forme.brush.is_some() => images += 1,
+                _ => {}
+            }
+        }
+        output.textures_delta.clear();
+    }
+    assert!(
+        cadres.iter().any(|rect| rect.width() >= ABOUT_WIDTH - 24.0),
+        "la boîte doit faire au moins {ABOUT_WIDTH} de large : {cadres:?}"
+    );
+    // L'icône de l'application : une image, et non un carré de couleur.
+    assert!(images > 0, "l'icône n'est pas peinte");
+
+    // Les trois portes sont là, avec leurs adresses.
+    let painted = paint(&mut app);
+    let s = strings(app.lang);
+    for porte in [s.about_site, s.about_discord, s.about_github] {
+        assert!(painted.contains(porte), "{painted}");
+    }
+    // Et le bandeau de préversion n'a pas disparu dans la refonte.
+    if prerelease(APP_VERSION).is_some() {
+        assert!(painted.contains(s.about_beta_title), "{painted}");
+    }
+}
+
+/// Un clic sur une porte du projet ouvre vraiment son adresse.
+///
+/// Les trois boutons ne faisaient rien : `open_url` d'eframe est derrière
+/// la fonctionnalité `links`, que nous n'activions pas — elle fait partie
+/// des `default` que le projet désactive pour choisir son moteur de
+/// rendu. Le clic partait, la commande aussi, et personne ne l'écoutait.
+#[test]
+fn clicking_a_door_really_opens_its_address() {
+    // La fonctionnalité est demandée : sans elle, rien de ce qui suit
+    // n'arriverait jusqu'au navigateur.
+    let manifeste = include_str!("../../../Cargo.toml");
+    let ligne = manifeste
+        .lines()
+        .find(|ligne| ligne.starts_with("eframe = "))
+        .expect("eframe est déclarée");
+    assert!(
+        ligne.contains("\"links\""),
+        "sans `links`, `open_url` ne fait rien : {ligne}"
+    );
+
+    // Et le clic envoie bien la commande d'ouverture, avec la bonne
+    // adresse.
+    let mut app = NamsdecApp {
+        show_about: true,
+        ..Default::default()
+    };
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let input = |events: Vec<egui::Event>| egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 820.0),
+        )),
+        events,
+        ..Default::default()
+    };
+    // Deux images pour poser la fenêtre, puis on cherche où est le
+    // bouton « Site » avant de cliquer dessus.
+    let mut position = None;
+    for _ in 0..3 {
+        let mut output = ctx.run_ui(input(Vec::new()), |ui| app.draw(ui));
+        for clipped in &output.shapes {
+            if let egui::epaint::Shape::Text(forme) = &clipped.shape
+                && forme.galley.text() == strings(app.lang).about_site
+            {
+                position = Some(forme.pos + forme.galley.size() * 0.5);
+            }
+        }
+        output.textures_delta.clear();
+    }
+    let position = position.expect("le bouton « Site » est peint");
+    let clic = vec![
+        egui::Event::PointerMoved(position),
+        egui::Event::PointerButton {
+            pos: position,
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers: egui::Modifiers::NONE,
+        },
+        egui::Event::PointerButton {
+            pos: position,
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers: egui::Modifiers::NONE,
+        },
+    ];
+    let mut output = ctx.run_ui(input(clic), |ui| app.draw(ui));
+    output.textures_delta.clear();
+    let demandée = output
+        .platform_output
+        .commands
+        .iter()
+        .find_map(|commande| match commande {
+            egui::OutputCommand::OpenUrl(open) => Some(open.url.clone()),
+            _ => None,
+        });
+    assert_eq!(
+        demandée,
+        Some(SITE_URL.to_owned()),
+        "le clic doit demander l'ouverture du site"
+    );
+}
+
 /// La mémoire montre sa carte : où commence le code, où finit la pile,
 /// ce que le tas occupe, avec les droits de chacun.
 ///

@@ -69,6 +69,10 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
   vérifications et la publication du binaire avec sa somme SHA-256.
 
 **Corrigé**
+- Aucun lien ne s'ouvrait : `open_url` d'eframe est derrière la
+  fonctionnalité `links`, que le projet n'activait pas. Les boutons de
+  la boîte « À propos », le lien de la licence et celui d'une version
+  publiée partaient dans le vide.
 - Les références aux données relatives à RIP étaient toutes perdues :
   iced résout déjà l'adresse, et y rajouter `next_ip` l'envoyait hors du
   programme. « Qui lit cette chaîne ? » ne répondait rien pour aucun
