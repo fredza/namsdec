@@ -1969,6 +1969,7 @@ impl NamsdecApp {
             self.mem_addr,
             self.memory_format,
             s.address_out_of_range,
+            self.lang,
         );
         let watched: Vec<(u64, u64)> = emulator
             .watchpoints()
@@ -2782,25 +2783,128 @@ pub(crate) fn words_dump(bytes: &[u8], base_addr: u64) -> String {
     out
 }
 
-/// Le texte jusqu'au premier octet nul — ce qu'un `write` enverrait.
-/// Les octets qui ne forment pas un caractère lisible sont montrés tels
-/// quels, entre chevrons, plutôt que remplacés par un point : leur valeur
-/// est justement ce qu'on vient vérifier.
-pub(crate) fn text_dump(bytes: &[u8]) -> String {
-    let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
+/// La mémoire lue comme du texte : la chaîne qui commence ici, puis ce
+/// que la fenêtre contient de lisible.
+///
+/// Deux questions se posent devant un tampon, et elles n'ont pas la même
+/// réponse. « Qu'est-ce que `write` va envoyer ? » : la chaîne qui
+/// commence à cette adresse et s'arrête au premier octet nul, comme le
+/// C la définit. « Où est donc mon message ? » : les suites lisibles de
+/// la fenêtre, avec leur adresse, comme le fait `strings`.
+///
+/// Les octets illisibles sont montrés entre chevrons plutôt que
+/// remplacés par un point : leur valeur est justement ce qu'on vient
+/// vérifier. Mais quand il n'y a rien de lisible du tout — on regarde du
+/// code, et `<b8><01>` n'apprend rien à personne — on le dit avec des
+/// mots.
+pub(crate) fn text_dump(bytes: &[u8], addr: u64, lang: Lang) -> String {
+    let fr = lang == Lang::Fr;
+    let fin = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
+    let chaîne = &bytes[..fin];
+    let lisibles = chaîne.iter().filter(|b| est_lisible(**b)).count();
     let mut out = String::new();
-    for &b in &bytes[..end] {
+
+    if fin == 0 {
+        out.push_str(if fr {
+            "Chaîne vide : le premier octet est un zéro.
+"
+        } else {
+            "Empty string: the first byte is a zero.
+"
+        });
+    } else {
+        out.push_str(&format!(
+            "{addr:#010x}  {}
+",
+            échapper(chaîne)
+        ));
+        let unité = if fr { "octet" } else { "byte" };
+        let pluriel = if fin > 1 { "s" } else { "" };
+        if fin < bytes.len() {
+            out.push_str(&if fr {
+                format!(
+                    "{fin} {unité}{pluriel}, puis un zéro : c'est là que `write` s'arrêterait.
+"
+                )
+            } else {
+                format!(
+                    "{fin} {unité}{pluriel}, then a zero: that is where `write` would stop.
+"
+                )
+            });
+        }
+        // Le diagnostic qui manquait : dire que ce n'est pas du texte,
+        // plutôt que de laisser lire `<b8><01>` et se demander pourquoi.
+        if lisibles * 2 < fin {
+            out.push_str(if fr {
+                "Ces octets ne forment pas du texte — c'est du code ou des nombres.                  Lisez-les en Octets.
+"
+            } else {
+                "These bytes are not text — they are code or numbers. Read them as Bytes.
+"
+            });
+        }
+    }
+
+    // Et ce que la fenêtre contient de lisible, où qu'il soit : c'est la
+    // réponse à « où est donc mon message ? », qu'on se pose dès que le
+    // tampon regardé n'est pas le bon.
+    let trouvées = suites_lisibles(bytes, addr, 4);
+    if !trouvées.is_empty() && !(trouvées.len() == 1 && trouvées[0].0 == addr) {
+        out.push('\n');
+        out.push_str(if fr {
+            "Texte lisible dans les octets qui suivent :\n"
+        } else {
+            "Readable text in the bytes that follow:\n"
+        });
+        for (at, texte) in trouvées {
+            out.push_str(&format!("{at:#010x}  {texte}\n"));
+        }
+    }
+    out
+}
+
+/// Un octet qu'on peut lire à l'écran : l'ASCII imprimable, plus les deux
+/// blancs qui structurent un texte.
+fn est_lisible(b: u8) -> bool {
+    matches!(b, 0x20..=0x7e | b'\n' | b'\t')
+}
+
+/// Les octets d'une chaîne, avec les illisibles entre chevrons.
+fn échapper(bytes: &[u8]) -> String {
+    let mut out = String::new();
+    for &b in bytes {
         match b {
-            b'\n' => out.push_str("\\n\n"),
+            b'\n' => out.push_str("\\n"),
             b'\t' => out.push_str("\\t"),
             0x20..=0x7e => out.push(b as char),
             other => out.push_str(&format!("<{other:02x}>")),
         }
     }
-    if end == 0 {
-        out.push_str("(vide)");
-    } else if end < bytes.len() {
-        out.push_str("\n\\0");
+    out
+}
+
+/// Les suites d'au moins `minimum` caractères lisibles, avec leur
+/// adresse — le `strings` de la fenêtre qu'on regarde.
+fn suites_lisibles(bytes: &[u8], base: u64, minimum: usize) -> Vec<(u64, String)> {
+    let mut out = Vec::new();
+    let mut début = 0usize;
+    let mut courante = 0usize;
+    for (index, &b) in bytes.iter().enumerate() {
+        if est_lisible(b) {
+            if courante == 0 {
+                début = index;
+            }
+            courante += 1;
+            continue;
+        }
+        if courante >= minimum {
+            out.push((base + début as u64, échapper(&bytes[début..index])));
+        }
+        courante = 0;
+    }
+    if courante >= minimum {
+        out.push((base + début as u64, échapper(&bytes[début..])));
     }
     out
 }
@@ -2816,6 +2920,7 @@ pub(crate) fn read_memory(
     addr: u64,
     format: MemoryFormat,
     out_of_range: &str,
+    lang: Lang,
 ) -> String {
     let range = mem.range();
     if addr < range.start || addr >= range.end {
@@ -2834,7 +2939,7 @@ pub(crate) fn read_memory(
         MemoryFormat::Text => {
             let len = 256.min(available);
             match mem.peek_bytes(addr, len) {
-                Ok(bytes) => text_dump(bytes),
+                Ok(bytes) => text_dump(bytes, addr, lang),
                 Err(_) => out_of_range.to_string(),
             }
         }

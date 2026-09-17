@@ -1147,22 +1147,38 @@ fn the_memory_formats_read_the_same_bytes_differently() {
     mem.load(BASE_ADDR, b"Hi\0\0\0\0\0\0\x01\0\0\0\0\0\0\0")
         .unwrap();
 
-    let bytes = read_memory(&mem, BASE_ADDR, MemoryFormat::Bytes, "hors bornes");
+    let bytes = read_memory(
+        &mem,
+        BASE_ADDR,
+        MemoryFormat::Bytes,
+        "hors bornes",
+        Lang::Fr,
+    );
     assert!(bytes.contains("48 69"), "l'hexadécimal brut : {bytes}");
 
-    let words = read_memory(&mem, BASE_ADDR, MemoryFormat::Words, "hors bornes");
+    let words = read_memory(
+        &mem,
+        BASE_ADDR,
+        MemoryFormat::Words,
+        "hors bornes",
+        Lang::Fr,
+    );
     let second = words.lines().nth(1).expect("un deuxième mot");
     assert!(
         second.ends_with("  1") && second.contains("0000000000000001"),
         "le mot suivant, en hexa et en décimal : {second}"
     );
 
-    let text = read_memory(&mem, BASE_ADDR, MemoryFormat::Text, "hors bornes");
+    let text = read_memory(&mem, BASE_ADDR, MemoryFormat::Text, "hors bornes", Lang::Fr);
+    let première = text.lines().next().expect("une ligne");
     assert!(
-        text.starts_with("Hi"),
-        "le texte s'arrête au premier nul : {text}"
+        première.contains("Hi") && !première.contains("48"),
+        "le texte s'arrête au premier nul, sans hexadécimal : {text}"
     );
-    assert!(!text.contains("48"), "et ne montre plus d'hexadécimal");
+    assert!(
+        text.contains("puis un zéro"),
+        "et il dit où `write` s'arrêterait : {text}"
+    );
 
     // Et les pointeurs : le mot de huit octets qui vaut 1 ne pointe
     // nulle part, mais celui qu'on pose ici mène à « Hi ».
@@ -1172,7 +1188,13 @@ fn the_memory_formats_read_the_same_bytes_differently() {
         "test",
     );
     mem.write_u64(BASE_ADDR + 0x100, BASE_ADDR).unwrap();
-    let chaîne = read_memory(&mem, BASE_ADDR + 0x100, MemoryFormat::Chain, "hors bornes");
+    let chaîne = read_memory(
+        &mem,
+        BASE_ADDR + 0x100,
+        MemoryFormat::Chain,
+        "hors bornes",
+        Lang::Fr,
+    );
     let première = chaîne.lines().next().expect("une ligne");
     assert!(
         première.contains(&format!("{BASE_ADDR:016x}")) && première.contains("\"Hi\""),
@@ -1182,7 +1204,7 @@ fn the_memory_formats_read_the_same_bytes_differently() {
     // Hors de la fenêtre simulée, les quatre le disent.
     for format in MemoryFormat::ALL {
         assert_eq!(
-            read_memory(&mem, 0xdead_beef, format, "hors bornes"),
+            read_memory(&mem, 0xdead_beef, format, "hors bornes", Lang::Fr),
             "hors bornes"
         );
     }
@@ -11246,6 +11268,7 @@ _start:
         rsp,
         MemoryFormat::Chain,
         "hors de la mémoire",
+        Lang::Fr,
     );
     assert!(dump.contains("\"salut\""), "{dump}");
     assert_eq!(dump.lines().count(), 8, "huit mots, comme telescope");
@@ -12732,4 +12755,64 @@ fn an_eight_byte_value_is_never_cut_by_the_edge_of_the_panel() {
             "un panneau de {panneau} laisse passer des valeurs sous le bord : {coupées:?}"
         );
     }
+}
+
+/// Lire du code « en Texte » doit s'expliquer, pas laisser deviner.
+///
+/// À `_start`, les octets sont `b8 01 00 00 00` : deux illisibles, puis
+/// un zéro qui termine la chaîne. On lisait donc « <b8><01> » et « \0 »,
+/// sans un mot pour dire que ce n'était pas du texte, que le zéro
+/// arrêtait la lecture, ni où se trouvait le message qu'on cherchait.
+#[test]
+fn reading_code_as_text_says_why_it_looks_like_nothing() {
+    let mut mem = namsdec_core::Memory::new(BASE_ADDR, 0x1000);
+    // `mov eax, 1`, puis de quoi remplir, puis un vrai message.
+    mem.load(BASE_ADDR, b"\xb8\x01\x00\x00\x00").unwrap();
+    mem.load(BASE_ADDR + 0x20, b"salut, monde\n\0").unwrap();
+
+    let lu = read_memory(&mem, BASE_ADDR, MemoryFormat::Text, "hors bornes", Lang::Fr);
+    // Ce que `write` enverrait : deux octets, montrés tels quels.
+    assert!(lu.contains("<b8><01>"), "{lu}");
+    assert!(
+        lu.contains("2 octets, puis un zéro"),
+        "le zéro qui arrête la lecture doit être nommé : {lu}"
+    );
+    assert!(
+        lu.contains("ne forment pas du texte"),
+        "et l'on doit dire que ce n'en est pas : {lu}"
+    );
+    // Et le message qui suit, avec son adresse : c'est la question
+    // suivante, et elle n'avait pas de réponse.
+    assert!(
+        lu.contains(&format!("{:#010x}", BASE_ADDR + 0x20)) && lu.contains("salut, monde"),
+        "le texte lisible de la fenêtre doit être listé : {lu}"
+    );
+
+    // Sur du vrai texte, rien de tout cela : la chaîne, et c'est tout.
+    let lu = read_memory(
+        &mem,
+        BASE_ADDR + 0x20,
+        MemoryFormat::Text,
+        "hors bornes",
+        Lang::Fr,
+    );
+    assert!(lu.contains("salut, monde"), "{lu}");
+    assert!(
+        !lu.contains("ne forment pas du texte"),
+        "ici c'en est, et il ne faut pas dire le contraire : {lu}"
+    );
+    assert!(
+        !lu.contains("Texte lisible dans les octets qui suivent"),
+        "et rien à chercher ailleurs quand on est déjà dessus : {lu}"
+    );
+
+    // Un premier octet nul : la chaîne est vide, et c'est une réponse.
+    let lu = read_memory(
+        &mem,
+        BASE_ADDR + 0x100,
+        MemoryFormat::Text,
+        "hors bornes",
+        Lang::Fr,
+    );
+    assert!(lu.contains("Chaîne vide"), "{lu}");
 }

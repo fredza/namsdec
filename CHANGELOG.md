@@ -218,6 +218,11 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
   coût et le lien des registres étendus se superposaient à l'onglet, les
   deux illisibles. Le bandeau tient maintenant dans une seule zone qui
   coupe net, et la barre n'apparaît que sur une fenêtre trop courte.
+- La mémoire lue « en Texte » s'explique : `<b8><01>` suivi de `\0` ne
+  disait ni que le zéro arrêtait la lecture, ni que ces octets n'étaient
+  pas du texte, ni où se trouvait le message cherché. Elle dit maintenant
+  les trois — et liste, avec leurs adresses, les suites lisibles de la
+  fenêtre, comme `strings`.
 - La pile ne coupe plus ses valeurs au bord du panneau : elle défile de
   côté, et sur un panneau étroit l'adresse laisse la place à l'écart
   depuis RSP (`+0x10`, `-0x08`) — plus court, et il dit quelque chose de
