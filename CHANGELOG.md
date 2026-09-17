@@ -53,7 +53,15 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
 - Chaque exercice montre les fiches que son propre code emploie.
 - F1 répond aussi sur une fonction empruntée.
 
-**Le parcours passe à trente étapes, rangées par difficulté**
+**Le parcours passe à trente-six étapes, rangées par difficulté**
+- Six de plus : « Mettre à zéro, trois façons » (sept octets contre deux,
+  et pourquoi les binaires sont pleins de `xor`), « La boucle que le
+  processeur connaît » (`loop`, et pourquoi elle a disparu), « La même
+  adresse, quatre lectures » (byte/word/dword/qword), « Chercher dans un
+  tableau » (et la sortie qu'on oublie), « Deux chaînes sont-elles les
+  mêmes ? » (`repe cmpsb`), « Ce qu'une fonction a le droit d'abîmer »
+  (la convention d'appel, avec l'entorse que namsdec relève).
+
 - Quatre paliers, nommés par ce qu'on y fait : **Découverte** (ce que le
   processeur est), **Pratique** (ce qu'il manipule), **Structures** (ce
   qu'on construit avec), **Maîtrise** (ce qui l'entoure). La liste les

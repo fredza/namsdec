@@ -3945,7 +3945,7 @@ fn an_exercise_points_at_the_sheets_it_uses() {
     );
 }
 
-/// Le parcours livré est un parcours : trente étapes dans l'ordre où
+/// Le parcours livré est un parcours : trente-six étapes dans l'ordre où
 /// l'on apprend, chacune avec son but écrit dans le programme.
 ///
 /// L'ordre n'est pas décoratif. On lit les registres avant d'écrire une
@@ -3960,7 +3960,9 @@ fn the_built_in_pack_is_a_course_in_order() {
         [
             "registres",
             "echange",
+            "zero",
             "boucle",
+            "compteur",
             "bits",
             "comparer",
             "signe",
@@ -3968,16 +3970,20 @@ fn the_built_in_pack_is_a_course_in_order() {
             "multiplier",
             "division",
             "memoire",
+            "tailles",
             "boutisme",
             "donnees",
             "tableau",
+            "recherche",
             "adresses",
             "chaine",
             "chaines",
+            "comparer_chaines",
             "macros",
             "branchements",
             "pile",
             "appels",
+            "convention",
             "recursion",
             "cadre",
             "sortie",
@@ -5497,9 +5503,12 @@ fn the_readme_tells_the_truth() {
     );
 
     let exercices = namsdec_exercises::builtin_pack().exercises.len();
-    assert_eq!(exercices, 30, "le parcours livré compte trente exercices");
+    assert_eq!(
+        exercices, 36,
+        "le parcours livré compte trente-six exercices"
+    );
     assert!(
-        readme.contains("parcours de trente exercices"),
+        readme.contains("parcours de trente-six exercices"),
         "le README doit annoncer le bon nombre d'exercices"
     );
     // Les crates listées dans le tableau existent toutes.
@@ -6301,7 +6310,7 @@ fn the_exercises_deliver_what_they_promise() {
 ///
 /// Un module qu'on active si on le désire, soit — mais une porte qu'on
 /// ne voit pas n'existe pas. Quelqu'un qui débute ne devinera pas qu'il
-/// y a trente exercices derrière un réglage.
+/// y a trente-six exercices derrière un réglage.
 #[test]
 fn the_course_is_discoverable_before_it_is_loaded() {
     let mut app = NamsdecApp::default();
@@ -6342,7 +6351,7 @@ fn the_course_is_discoverable_before_it_is_loaded() {
         output.textures_delta.clear();
     }
     // Le texte d'accueil est à l'écran, avec sa mention du parcours.
-    assert!(painted.contains("trente exercices"), "{painted}");
+    assert!(painted.contains("trente-six exercices"), "{painted}");
 }
 
 /// Le parcours se reprend là où on l'avait laissé.
@@ -6408,13 +6417,13 @@ fn the_course_remembers_where_one_stopped() {
         painted.contains("En cours :"),
         "l'étape en cours se voit sans avoir à la chercher : {painted}"
     );
-    // Le rang dans le parcours, aussi : le tableau est la treizième des
-    // trente étapes.
-    assert!(painted.contains("13/30"), "{painted}");
+    // Le rang dans le parcours, aussi : le tableau est la seizième des
+    // trente-six étapes.
+    assert!(painted.contains("16/36"), "{painted}");
 }
 
 /// Un parcours se suit : l'étape suivante est à un clic, sans avoir à
-/// retrouver son rang dans une liste de trente.
+/// retrouver son rang dans une liste de trente-six.
 #[test]
 fn the_course_offers_the_next_step() {
     let mut app = NamsdecApp {
@@ -6461,7 +6470,7 @@ fn the_course_offers_the_next_step() {
     }
     assert!(painted.contains("Étape suivante"), "{painted}");
     assert!(
-        painted.contains("1/30"),
+        painted.contains("1/36"),
         "le rang de l'étape en cours : {painted}"
     );
 }
@@ -8976,7 +8985,7 @@ fn every_goal_is_readable_and_on_the_right_side() {
     }
     // Ce que le programme livré fait déjà : on le regarde tourner et on
     // comprend ce qui s'est passé.
-    const DÉMONSTRATIONS: [&str; 22] = [
+    const DÉMONSTRATIONS: [&str; 27] = [
         "boucle",
         "bits",
         "memoire",
@@ -8999,10 +9008,15 @@ fn every_goal_is_readable_and_on_the_right_side() {
         "decalages",
         "branchements",
         "simd",
+        "zero",
+        "compteur",
+        "tailles",
+        "recherche",
+        "comparer_chaines",
     ];
     // Ce qu'il reste à faire : le but n'est pas atteint tant qu'on n'a
     // pas écrit ce qui manque.
-    const À_FAIRE: [&str; 2] = ["pile", "division"];
+    const À_FAIRE: [&str; 3] = ["pile", "division", "convention"];
 
     for (id, attendu) in DÉMONSTRATIONS
         .iter()
@@ -10129,7 +10143,7 @@ fn a_solved_exercise_stays_solved() {
     app.show_exercises = true;
     let painted = paint(&mut app);
     assert!(
-        painted.contains(&format!("1/30 {}", strings(app.lang).exercises_done_count)),
+        painted.contains(&format!("1/36 {}", strings(app.lang).exercises_done_count)),
         "{painted}"
     );
 }
@@ -10484,9 +10498,15 @@ fn every_budget_is_one_a_program_can_hold() {
     }
     // Les deux exercices à faire : le budget vise la solution que
     // l'énoncé demande, et la voici.
-    let corrections: [(&str, &str, &str); 2] = [
+    let corrections: [(&str, &str, &str); 3] = [
         ("division", "mov rdx, 99", "xor rdx, rdx"),
         ("pile", "    hlt", "    xchg rax, rbx\n    hlt"),
+        // La fonction honnête : elle met RBX de côté et le rend.
+        (
+            "convention",
+            "triche:\n    mov rbx, 99",
+            "triche:\n    push rbx\n    mov rbx, 99",
+        ),
     ];
 
     for exercise in &namsdec_exercises::builtin_pack().exercises {
@@ -10496,6 +10516,14 @@ fn every_budget_is_one_a_program_can_hold() {
             if exercise.id == id {
                 source = source.replace(avant, après);
             }
+        }
+        // La deuxième moitié de la correction de « convention » : le
+        // `pop` qui rend ce que le `push` a mis de côté.
+        if exercise.id == "convention" {
+            source = source.replace(
+                "    add rax, rbx\n    ret",
+                "    add rax, rbx\n    pop rbx\n    ret",
+            );
         }
         let mut app = NamsdecApp {
             source,

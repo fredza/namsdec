@@ -203,6 +203,21 @@ pub fn builtin_pack() -> Pack {
                 level: Level::Discovery,
             },
             Exercise {
+                id: "zero".to_owned(),
+                title: Text {
+                    fr: "Mettre à zéro, trois façons".to_owned(),
+                    en: "Zeroing, three ways".to_owned(),
+                },
+                description: Text {
+                    fr: "`mov rax, 0` écrit le zéro en toutes lettres : sept octets. `xor eax, eax` en fait deux, et met bien RAX entier à zéro — écrire dans une moitié 32 bits efface la haute. C'est pour cela qu'un binaire compilé est rempli de `xor` là où le source disait « = 0 ». Ouvrez l'onglet Octets et comparez.".to_owned(),
+                    en: "`mov rax, 0` spells the zero out: seven bytes. `xor eax, eax` takes two, and does zero all of RAX — writing a 32-bit half clears the upper one. That is why a compiled binary is full of `xor` where the source said \"= 0\". Open the Bytes tab and compare.".to_owned(),
+                },
+                starter_code: include_str!("../exercises/zero.asm").to_owned(),
+                goal: vec!["rax == 0".to_owned(), "rbx == 0".to_owned(), "rcx == 0".to_owned()],
+                par: Some(4),
+                level: Level::Discovery,
+            },
+            Exercise {
                 id: "boucle".to_owned(),
                 title: Text {
                     fr: "Une boucle qui compte".to_owned(),
@@ -215,6 +230,21 @@ pub fn builtin_pack() -> Pack {
                 starter_code: include_str!("../exercises/boucle.asm").to_owned(),
                 goal: vec!["rax == 0xf".to_owned()],
                 par: Some(18),
+                level: Level::Discovery,
+            },
+            Exercise {
+                id: "compteur".to_owned(),
+                title: Text {
+                    fr: "La boucle que le processeur connaît".to_owned(),
+                    en: "The loop the processor knows".to_owned(),
+                },
+                description: Text {
+                    fr: "`loop` décrémente RCX et saute si le résultat n'est pas nul : deux instructions en une, et RCX imposé. Elle date d'une époque où chaque octet comptait — et elle a disparu du code moderne, parce que `dec` suivi de `jnz` va plus vite. Le compteur d'instructions ne le dit pas : il compte les instructions, pas le temps, et c'est justement sa limite.".to_owned(),
+                    en: "`loop` decrements RCX and jumps if the result is not zero: two instructions in one, with RCX imposed. It dates from a time when every byte counted — and it has vanished from modern code, because `dec` then `jnz` is faster. The instruction count will not tell you: it counts instructions, not time, and that is exactly its limit.".to_owned(),
+                },
+                starter_code: include_str!("../exercises/compteur.asm").to_owned(),
+                goal: vec!["rax == 0xf".to_owned()],
+                par: Some(13),
                 level: Level::Discovery,
             },
             Exercise {
@@ -323,6 +353,21 @@ pub fn builtin_pack() -> Pack {
                 level: Level::Practice,
             },
             Exercise {
+                id: "tailles".to_owned(),
+                title: Text {
+                    fr: "La même adresse, quatre lectures".to_owned(),
+                    en: "One address, four readings".to_owned(),
+                },
+                description: Text {
+                    fr: "Une adresse ne dit pas combien d'octets lire : c'est l'instruction qui décide — `byte`, `word`, `dword`, `qword`. Et ce que chacune rapporte redit le petit-boutisme sous un autre angle : deux octets lus à la même adresse donnent 0x2211, pas 0x1122. Notez au passage que `mov ecx` efface le haut de RCX, et `movzx` élargit avec des zéros.".to_owned(),
+                    en: "An address does not say how many bytes to read: the instruction does — `byte`, `word`, `dword`, `qword`. And what each brings back restates little-endianness from another angle: two bytes at the same address give 0x2211, not 0x1122. Note in passing that `mov ecx` clears the top of RCX, and `movzx` widens with zeroes.".to_owned(),
+                },
+                starter_code: include_str!("../exercises/tailles.asm").to_owned(),
+                goal: vec!["rax == 0x11".to_owned(), "rbx == 0x2211".to_owned(), "rcx == 0x44332211".to_owned(), "rdx == 0x8877665544332211".to_owned()],
+                par: Some(5),
+                level: Level::Practice,
+            },
+            Exercise {
                 id: "boutisme".to_owned(),
                 title: Text {
                     fr: "L'ordre des octets".to_owned(),
@@ -368,6 +413,21 @@ pub fn builtin_pack() -> Pack {
                 level: Level::Practice,
             },
             Exercise {
+                id: "recherche".to_owned(),
+                title: Text {
+                    fr: "Chercher dans un tableau".to_owned(),
+                    en: "Searching an array".to_owned(),
+                },
+                description: Text {
+                    fr: "Trois choses : un indice qui avance, une comparaison, et **deux** sorties — trouvé, ou arrivé au bout. Rater la seconde donne une boucle qui lit au-delà du tableau, et c'est ainsi qu'on lit la mémoire du voisin. Cherchez une valeur absente pour voir si votre boucle s'arrête proprement : c'est le cas qu'on oublie.".to_owned(),
+                    en: "Three things: an index that advances, a comparison, and **two** ways out — found, or run off the end. Missing the second gives a loop that reads past the array, which is how one ends up reading the neighbour's memory. Search for a value that is not there to see whether your loop stops cleanly: that is the case one forgets.".to_owned(),
+                },
+                starter_code: include_str!("../exercises/recherche.asm").to_owned(),
+                goal: vec!["rax == 3".to_owned(), "rbx == 1".to_owned()],
+                par: Some(29),
+                level: Level::Practice,
+            },
+            Exercise {
                 id: "adresses".to_owned(),
                 title: Text {
                     fr: "Calculer une adresse".to_owned(),
@@ -410,6 +470,21 @@ pub fn builtin_pack() -> Pack {
                 starter_code: include_str!("../exercises/chaines.asm").to_owned(),
                 goal: vec!["rax == 0x73".to_owned(), "rbx == 0x74".to_owned()],
                 par: Some(13),
+                level: Level::Structures,
+            },
+            Exercise {
+                id: "comparer_chaines".to_owned(),
+                title: Text {
+                    fr: "Deux chaînes sont-elles les mêmes ?".to_owned(),
+                    en: "Are two strings the same?".to_owned(),
+                },
+                description: Text {
+                    fr: "`repe cmpsb` compare octet par octet tant qu'ils sont égaux ; à la sortie, `ZF` dit si l'on s'est arrêté sur une différence ou parce qu'il n'y avait plus rien à comparer. C'est `memcmp` en trois instructions — la vraie en fait seize à la fois, avec SSE.".to_owned(),
+                    en: "`repe cmpsb` compares byte by byte while they are equal; on exit, `ZF` says whether one stopped on a difference or ran out of bytes. This is `memcmp` in three instructions — the real one does sixteen at a time, with SSE.".to_owned(),
+                },
+                starter_code: include_str!("../exercises/comparer_chaines.asm").to_owned(),
+                goal: vec!["rax == 1".to_owned(), "rbx == 0".to_owned()],
+                par: Some(22),
                 level: Level::Structures,
             },
             Exercise {
@@ -470,6 +545,21 @@ pub fn builtin_pack() -> Pack {
                 starter_code: include_str!("../exercises/appels.asm").to_owned(),
                 goal: vec!["rax == 7".to_owned()],
                 par: Some(9),
+                level: Level::Structures,
+            },
+            Exercise {
+                id: "convention".to_owned(),
+                title: Text {
+                    fr: "Ce qu'une fonction a le droit d'abîmer".to_owned(),
+                    en: "What a function may damage".to_owned(),
+                },
+                description: Text {
+                    fr: "La convention partage les registres en deux : ceux qu'une fonction écrase librement, et ceux qu'elle doit rendre intacts — RBX, RBP, R12 à R15. Personne ne l'impose, le processeur s'en moque, mais tout le monde s'y tient, sinon plus rien ne s'appelle. Celle-ci triche : namsdec le dit dans l'onglet Pile. Rendez-la honnête et regardez l'entorse disparaître.".to_owned(),
+                    en: "The convention splits the registers in two: those a function may clobber freely, and those it must hand back intact — RBX, RBP, R12 to R15. Nobody enforces it, the processor could not care less, but everyone abides by it, or nothing can call anything. This one cheats: namsdec says so in the Stack tab. Make it honest and watch the breach disappear.".to_owned(),
+                },
+                starter_code: include_str!("../exercises/convention.asm").to_owned(),
+                goal: vec!["rbx == 7".to_owned()],
+                par: Some(10),
                 level: Level::Structures,
             },
             Exercise {
@@ -655,9 +745,9 @@ mod tests {
     #[test]
     fn every_builtin_exercise_is_complete_and_stops() {
         let pack = builtin_pack();
-        // Un parcours, pas une poignée : trente étapes, et chacune
+        // Un parcours, pas une poignée : trente-six étapes, et chacune
         // s'appuie sur les précédentes.
-        assert_eq!(pack.exercises.len(), 30);
+        assert_eq!(pack.exercises.len(), 36);
         for exercise in &pack.exercises {
             assert!(!exercise.id.is_empty());
             assert!(!exercise.title.fr.is_empty() && !exercise.title.en.is_empty());
