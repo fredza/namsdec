@@ -138,6 +138,11 @@ Les raccourcis sont dans Préférences ▸ Raccourcis, et se changent.
 
 ### Les exercices
 
+Onze des seize exercices portent un **but vérifiable** (`rax == 0xf`) :
+le bandeau de l'état du processeur dit « atteint » ou « pas encore », au
+lieu de laisser vérifier à l'œil. Une série installée peut en porter
+aussi — champ `goal` du fichier JSON.
+
 Un parcours de seize exercices est livré avec le programme — registres,
 boucle, bits, comparaison, multiplication, division, ordre des octets,
 signé ou non, mémoire, tableaux, chaînes, pile, appels, sortie,

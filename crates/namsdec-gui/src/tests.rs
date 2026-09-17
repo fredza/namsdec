@@ -8864,6 +8864,142 @@ fn the_changelog_covers_the_version_being_built() {
     assert!(readme.contains("CHANGELOG.md"));
 }
 
+/// Le but d'un exercice se vérifie tout seul : l'énoncé dit « RAX doit
+/// valoir 15 », et la machine sait comparer.
+///
+/// Un élève qui vérifie à l'œil se trompe de registre, ou lit du
+/// décimal là où il y a de l'hexadécimal. Le verdict s'affiche là où
+/// l'on regarde déjà les valeurs.
+#[test]
+fn an_exercise_says_whether_its_goal_is_reached() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        exercises: true,
+        ..Default::default()
+    };
+    // Sans exercice chargé, rien à dire.
+    assert!(app.exercise_goal().is_none());
+
+    app.load_exercise("namsdec/boucle");
+    assert_eq!(app.current_exercise.as_deref(), Some("namsdec/boucle"));
+    // Chargé mais pas assemblé : toujours rien — on ne reproche pas son
+    // échec à quelqu'un qui n'a rien lancé.
+    assert!(app.exercise_goal().is_none());
+
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+    let (conditions, atteint) = app.exercise_goal().expect("un but à vérifier");
+    assert_eq!(conditions, vec!["rax == 0xf".to_owned()]);
+    assert!(!atteint, "le programme n'a pas encore tourné");
+
+    // Il tourne, et le but est atteint : 5+4+3+2+1 = 15.
+    app.do_run();
+    for _ in 0..50 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&egui::Context::default());
+    }
+    let (_, atteint) = app.exercise_goal().expect("un but à vérifier");
+    assert!(
+        atteint,
+        "RAX = {:#x}",
+        app.emulator.as_ref().unwrap().cpu().regs.get64(Reg64::Rax)
+    );
+    let painted = paint(&mut app);
+    assert!(
+        painted.contains(strings(app.lang).goal_reached),
+        "{painted}"
+    );
+}
+
+/// Chaque but annoncé se lit, et le programme livré est du bon côté :
+/// une démonstration l'atteint d'emblée, un travail ne l'atteint pas.
+///
+/// Un but qu'aucune exécution ne satisfait ferait mentir le verdict ; un
+/// but déjà atteint dans un exercice à faire ne demanderait rien. Les
+/// deux listes disent donc, noir sur blanc, ce que chaque étape attend
+/// de celui qui la fait.
+#[test]
+fn every_goal_is_readable_and_on_the_right_side() {
+    for exercise in &namsdec_exercises::builtin_pack().exercises {
+        for texte in &exercise.goal {
+            assert!(
+                condition::parse(texte).is_some(),
+                "{} : « {texte} » ne se lit pas",
+                exercise.id
+            );
+        }
+    }
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    // Ce que le programme livré fait déjà : on le regarde tourner et on
+    // comprend ce qui s'est passé.
+    const DÉMONSTRATIONS: [&str; 9] = [
+        "boucle",
+        "bits",
+        "memoire",
+        "tableau",
+        "chaine",
+        "appels",
+        "multiplier",
+        "boutisme",
+        "signe",
+    ];
+    // Ce qu'il reste à faire : le but n'est pas atteint tant qu'on n'a
+    // pas écrit ce qui manque.
+    const À_FAIRE: [&str; 2] = ["pile", "division"];
+
+    for (id, attendu) in DÉMONSTRATIONS
+        .iter()
+        .map(|id| (*id, true))
+        .chain(À_FAIRE.iter().map(|id| (*id, false)))
+    {
+        let mut app = NamsdecApp {
+            exercises: true,
+            ..Default::default()
+        };
+        app.load_exercise(&format!("namsdec/{id}"));
+        app.do_assemble();
+        app.do_run();
+        for _ in 0..200 {
+            if !app.running {
+                break;
+            }
+            app.tick_run(&egui::Context::default());
+        }
+        let (conditions, atteint) = app
+            .exercise_goal()
+            .unwrap_or_else(|| panic!("{id} : aucun but"));
+        assert_eq!(
+            atteint,
+            attendu,
+            "{id} : {conditions:?} — attendu {}",
+            if attendu {
+                "atteint d'emblée"
+            } else {
+                "à atteindre soi-même"
+            }
+        );
+    }
+
+    // Et chaque exercice du parcours est dans l'une des deux listes, ou
+    // n'a pas de but : personne n'est oublié en chemin.
+    for exercise in &namsdec_exercises::builtin_pack().exercises {
+        let classé = DÉMONSTRATIONS.contains(&exercise.id.as_str())
+            || À_FAIRE.contains(&exercise.id.as_str());
+        assert_eq!(
+            classé,
+            !exercise.goal.is_empty(),
+            "{} : un but non classé, ou un classement sans but",
+            exercise.id
+        );
+    }
+}
+
 /// La mémoire montre sa carte : où commence le code, où finit la pile,
 /// ce que le tas occupe, avec les droits de chacun.
 ///

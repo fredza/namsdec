@@ -49,6 +49,11 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
 - Chaque exercice montre les fiches que son propre code emploie.
 - F1 répond aussi sur une fonction empruntée.
 
+**Vérifier ce qu'on a fait**
+- Onze exercices portent un but en conditions (`rax == 0xf`), vérifié
+  sur les registres : le bandeau dit « atteint » ou « pas encore ». Une
+  série installée peut en porter aussi (champ `goal`).
+
 **Tenue**
 - Un bandeau dit, dans « À propos », que la version est une préversion.
   Il est lu dans le numéro de version et disparaîtra de lui-même.

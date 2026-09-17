@@ -79,6 +79,11 @@ struct ExerciseFile {
     /// Le programme de départ. Nommé `code` et non `starter_code` :
     /// c'est un fichier qu'un humain écrit à la main.
     code: String,
+    /// Le but, en conditions — `["rax == 15"]`. Facultatif : une série
+    /// écrite avant que cela existe reste lisible, et un exercice qui
+    /// se regarde n'a pas de but à vérifier.
+    #[serde(default)]
+    goal: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -135,6 +140,7 @@ pub fn parse(text: &str) -> Result<Pack, PackError> {
             title: exercise.title.into(),
             description: exercise.description.into(),
             starter_code: exercise.code,
+            goal: exercise.goal,
         });
     }
 

@@ -5183,6 +5183,31 @@ impl NamsdecApp {
         self.help = Some((word.to_owned(), namsdec_doc::lookup(word)));
     }
 
+    /// Où en est le but de l'exercice en cours.
+    ///
+    /// `None` quand aucun exercice n'est chargé, qu'il n'a pas de but
+    /// vérifiable, ou qu'aucun programme ne tourne : on ne dit pas
+    /// « pas atteint » à quelqu'un qui n'a encore rien lancé.
+    ///
+    /// Le but est une liste de conditions — la grammaire des points
+    /// d'arrêt conditionnels — et elles doivent toutes tenir.
+    fn exercise_goal(&self) -> Option<(Vec<String>, bool)> {
+        let id = self.current_exercise.as_deref()?;
+        let exercise = namsdec_exercises::find(&self.exercise_packs, id)?;
+        if exercise.goal.is_empty() {
+            return None;
+        }
+        let emulator = self.emulator.as_ref()?;
+        let regs = &emulator.cpu().regs;
+        // Une condition qu'on ne sait pas lire ne vaut pas « atteint » :
+        // mieux vaut un but qu'on n'atteint jamais qu'un faux succès.
+        let atteint = exercise
+            .goal
+            .iter()
+            .all(|texte| condition::parse(texte).is_some_and(|c| c.holds(regs)));
+        Some((exercise.goal.clone(), atteint))
+    }
+
     /// L'état du processeur, en texte : ce qu'on colle pour demander de
     /// l'aide, ou dans un compte rendu de TP.
     ///

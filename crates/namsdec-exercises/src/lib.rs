@@ -59,6 +59,15 @@ pub struct Exercise {
     pub description: Text,
     /// Le programme de départ, à charger dans l'éditeur.
     pub starter_code: String,
+    /// Le but, en conditions vérifiables — `rax == 15`, `rdx == 3`.
+    ///
+    /// Toutes doivent tenir à l'arrêt du programme. La grammaire est
+    /// celle des points d'arrêt conditionnels : une valeur, une
+    /// comparaison, une valeur. Vide quand l'exercice est une
+    /// démonstration à regarder plutôt qu'un but à atteindre — dire
+    /// « atteint » d'un exercice qui ne demande rien n'apprendrait
+    /// rien.
+    pub goal: Vec<String>,
 }
 
 /// Une série d'exercices : celle qui est livrée, ou une installée depuis
@@ -96,6 +105,7 @@ pub fn builtin_pack() -> Pack {
                     en: "Writing a 32-bit register zeroes the upper half of RAX; writing 16 or 8 bits leaves it. Step through it and watch the banner: this is the number one source of bugs when starting out.".to_owned(),
                 },
                 starter_code: include_str!("../exercises/registres.asm").to_owned(),
+                goal: Vec::new(),
             },
             Exercise {
                 id: "boucle".to_owned(),
@@ -108,6 +118,7 @@ pub fn builtin_pack() -> Pack {
                     en: "Add 5+4+3+2+1. `dec` leaves a trace in the flags and `jnz` reads it: that is the whole machinery of a loop. At the halt, RAX must hold 15.".to_owned(),
                 },
                 starter_code: include_str!("../exercises/boucle.asm").to_owned(),
+                goal: vec!["rax == 0xf".to_owned()],
             },
             Exercise {
                 id: "bits".to_owned(),
@@ -120,6 +131,7 @@ pub fn builtin_pack() -> Pack {
                     en: "Shift, mask, set, test. `shl` doubles as many times as asked, `and` keeps bits, `or` sets them, `test` asks \"is this bit set?\" without damaging anything. Hover RAX: its binary reading shows the bits move.".to_owned(),
                 },
                 starter_code: include_str!("../exercises/bits.asm").to_owned(),
+                goal: vec!["rax == 0x28".to_owned(), "rbx == 1".to_owned()],
             },
             Exercise {
                 id: "comparer".to_owned(),
@@ -132,6 +144,7 @@ pub fn builtin_pack() -> Pack {
                     en: "Keep the larger of two numbers. Then change -3 into 3: `jg` reads SF and OF for signed numbers, `ja` would read CF for unsigned ones — and with a negative value the two do not answer the same.".to_owned(),
                 },
                 starter_code: include_str!("../exercises/comparer.asm").to_owned(),
+                goal: Vec::new(),
             },
             Exercise {
                 id: "signe".to_owned(),
@@ -144,6 +157,7 @@ pub fn builtin_pack() -> Pack {
                     en: "The same bits, two readings: 0xFFFFFFFFFFFFFFFF is -1 and the largest unsigned integer. `ja` reads CF, `jg` reads SF and OF — on the same comparison, one jumps and the other does not. At the halt, RCX must hold 1 and RDX 0.".to_owned(),
                 },
                 starter_code: include_str!("../exercises/signe.asm").to_owned(),
+                goal: vec!["rcx == 1".to_owned(), "rdx == 0".to_owned()],
             },
             Exercise {
                 id: "multiplier".to_owned(),
@@ -156,6 +170,7 @@ pub fn builtin_pack() -> Pack {
                     en: "The two operations that work on a register pair: `mul` writes RDX:RAX, `div` reads it. Remove the `xor rdx, rdx` to see what happens when the high half of the dividend is forgotten — the classic mistake.".to_owned(),
                 },
                 starter_code: include_str!("../exercises/multiplier.asm").to_owned(),
+                goal: vec!["rax == 7".to_owned(), "rdx == 1".to_owned()],
             },
             Exercise {
                 id: "division".to_owned(),
@@ -168,6 +183,7 @@ pub fn builtin_pack() -> Pack {
                     en: "`div` does not divide RAX but RDX:RAX — whatever sits in RDX is part of the dividend. The program starts with a leftover in RDX: run it, read the refusal, then zero RDX. At the halt, RAX must hold 7 and RDX 3.".to_owned(),
                 },
                 starter_code: include_str!("../exercises/division.asm").to_owned(),
+                goal: vec!["rax == 7".to_owned(), "rdx == 3".to_owned()],
             },
             Exercise {
                 id: "memoire".to_owned(),
@@ -180,6 +196,7 @@ pub fn builtin_pack() -> Pack {
                     en: "Four bytes at once, a single byte widened with zeroes, and indexed addressing base + offset. Open the Memory tab and type \"rdi\" in the address field to follow what changes.".to_owned(),
                 },
                 starter_code: include_str!("../exercises/memoire.asm").to_owned(),
+                goal: vec!["r8 == 0x44332211".to_owned(), "r9 == 0x11".to_owned()],
             },
             Exercise {
                 id: "boutisme".to_owned(),
@@ -192,6 +209,7 @@ pub fn builtin_pack() -> Pack {
                     en: "A 64-bit integer is stored least significant byte first. The byte at the lowest address is therefore not the one written first. Open the Memory window on `valeur` and compare: RCX must hold 0x88 and RDX 0x11.".to_owned(),
                 },
                 starter_code: include_str!("../exercises/boutisme.asm").to_owned(),
+                goal: vec!["rcx == 0x88".to_owned(), "rdx == 0x11".to_owned()],
             },
             Exercise {
                 id: "tableau".to_owned(),
@@ -204,6 +222,7 @@ pub fn builtin_pack() -> Pack {
                     en: "`[base + index*size]` is the addressing that makes arrays exist. Stopped on the `add`, the banner shows the address the computation points at and the value sitting there, before it is even read.".to_owned(),
                 },
                 starter_code: include_str!("../exercises/tableau.asm").to_owned(),
+                goal: vec!["rax == 0x64".to_owned()],
             },
             Exercise {
                 id: "chaine".to_owned(),
@@ -216,6 +235,7 @@ pub fn builtin_pack() -> Pack {
                     en: "A string is just a run of bytes; what marks its end is a convention — here a trailing zero. `movzx` reads a byte widening it with zeroes, so the comparison is about what was actually read.".to_owned(),
                 },
                 starter_code: include_str!("../exercises/chaine.asm").to_owned(),
+                goal: vec!["rcx == 5".to_owned()],
             },
             Exercise {
                 id: "pile".to_owned(),
@@ -228,6 +248,7 @@ pub fn builtin_pack() -> Pack {
                     en: "`push` lowers RSP by eight and writes there, `pop` does the opposite. The stack gives back in reverse: two pushes followed by two pops swap two registers. Put them back the right way round.".to_owned(),
                 },
                 starter_code: include_str!("../exercises/pile.asm").to_owned(),
+                goal: vec!["rax == 1".to_owned(), "rbx == 2".to_owned()],
             },
             Exercise {
                 id: "appels".to_owned(),
@@ -240,6 +261,7 @@ pub fn builtin_pack() -> Pack {
                     en: "Arguments travel in RDI and RSI, the result comes back in RAX. But this routine keeps RBX without giving it back: the Stack tab says so. Add the missing push/pop and the breach disappears.".to_owned(),
                 },
                 starter_code: include_str!("../exercises/appels.asm").to_owned(),
+                goal: vec!["rax == 7".to_owned()],
             },
             Exercise {
                 id: "sortie".to_owned(),
@@ -252,6 +274,7 @@ pub fn builtin_pack() -> Pack {
                     en: "`write` to print, `exit` to finish: the number in RAX, the arguments in RDI, RSI, RDX. The program stops on a `hlt` for now — replace it with a real exit(0).".to_owned(),
                 },
                 starter_code: include_str!("../exercises/sortie.asm").to_owned(),
+                goal: Vec::new(),
             },
             Exercise {
                 id: "debordement".to_owned(),
@@ -264,6 +287,7 @@ pub fn builtin_pack() -> Pack {
                     en: "A sixteen-byte buffer, sixty-four bytes read: the `ret` goes off into the weeds. Generate a cyclic pattern (Tools), feed it to the program, then click RIP in the pattern window — the offset tells you exactly what was overwritten. This is measuring damage, and the reason the stack canary exists.".to_owned(),
                 },
                 starter_code: include_str!("../exercises/debordement.asm").to_owned(),
+                goal: Vec::new(),
             },
             Exercise {
                 id: "protection".to_owned(),
@@ -276,6 +300,7 @@ pub fn builtin_pack() -> Pack {
                     en: "Three refusals to understand: writing into your own code, executing your data, writing where nothing is mapped. Run it, read the message, comment out the offending line, run it again.".to_owned(),
                 },
                 starter_code: include_str!("../exercises/protection.asm").to_owned(),
+                goal: Vec::new(),
             },
         ],
     }

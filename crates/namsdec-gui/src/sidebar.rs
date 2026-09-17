@@ -108,6 +108,38 @@ impl NamsdecApp {
         ui.add_space(6.0);
         self.flags_ui(ui);
         self.cost_ui(ui);
+        self.goal_ui(ui);
+    }
+
+    /// Où en est le but de l'exercice, quand il y en a un.
+    ///
+    /// Un énoncé qui dit « RAX doit valoir 15 » laisse l'élève vérifier
+    /// à l'œil, et se tromper de registre. La machine sait comparer :
+    /// autant qu'elle le dise, là où l'on regarde déjà les valeurs.
+    fn goal_ui(&mut self, ui: &mut egui::Ui) {
+        let s = strings(self.lang);
+        let theme = self.theme;
+        let Some((conditions, atteint)) = self.exercise_goal() else {
+            return;
+        };
+        ui.add_space(4.0);
+        ui.horizontal_wrapped(|ui| {
+            ui.colored_label(theme.dim, s.goal_label);
+            ui.colored_label(
+                if atteint { theme.good } else { theme.dim },
+                egui::RichText::new(conditions.join(", ")).monospace(),
+            );
+            ui.colored_label(
+                if atteint { theme.good } else { theme.warn },
+                if atteint {
+                    s.goal_reached
+                } else {
+                    s.goal_not_yet
+                },
+            );
+        })
+        .response
+        .on_hover_text(s.goal_hint);
     }
 
     /// Combien d'instructions ont tourné depuis le départ.
