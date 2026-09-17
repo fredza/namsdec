@@ -427,6 +427,15 @@ impl NamsdecApp {
             );
             ui.label(egui::RichText::new(&text).monospace().strong());
         });
+        // L'instruction dite en clair, sous sa forme machine : c'est le
+        // même moteur que le panneau de désassemblage, et c'est ici
+        // qu'on en a le plus besoin — devant l'instruction qui va
+        // s'exécuter.
+        let clair = namsdec_disasm::pseudo::of(&instr, self.lang.code());
+        if clair != text {
+            ui.colored_label(theme.good, egui::RichText::new(clair).monospace());
+        }
+
         // La fiche de l'instruction, en une ligne : « Copier une valeur ».
         // Le reste est sous F1 — ici, c'est le rappel qui évite d'y aller.
         let mnemonic = text.split([' ', '\t']).next().unwrap_or_default();

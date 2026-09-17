@@ -7791,11 +7791,86 @@ ret
     app.disassembly_query = "ECX".to_owned();
     let painted = peindre(&mut app);
     assert!(painted.contains("ECX = 3"), "{painted}");
-    assert!(!painted.contains("EAX = 1"), "{painted}");
+    // Le compte des lignes retenues, et la disparition de ce qui ne
+    // correspond pas. (`EAX = 1` reste visible ailleurs : le bandeau du
+    // panneau latéral dit l'instruction courante, filtre ou pas.)
+    assert!(painted.contains("1 / 6"), "{painted}");
+    assert!(
+        !painted.contains("appeler"),
+        "le `call` ne correspond pas à la recherche : {painted}"
+    );
+    // Et les octets sont là, à côté : c'est ce qui distingue un
+    // désassemblage d'une traduction.
+    assert!(painted.contains("b9 03 00 00 00"), "{painted}");
 
     // Chercher une étiquette la trouve, bien qu'elle ne soit pas dans le
     // texte de l'instruction.
     app.disassembly_query = "sous".to_owned();
     let painted = peindre(&mut app);
     assert!(painted.contains("sous:"), "{painted}");
+}
+
+/// Le bandeau dit aussi l'instruction en clair : c'est devant celle qui
+/// va s'exécuter qu'on en a le plus besoin.
+#[test]
+fn the_next_instruction_is_also_said_plainly() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: "\
+global _start
+section .text
+_start:
+mov rcx, 5
+add rcx, 2
+hlt
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    app.do_step(); // arrêté sur le `add`
+
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 900.0),
+        )),
+        ..Default::default()
+    };
+    let mut painted = String::new();
+    for _ in 0..2 {
+        painted.clear();
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        for clipped in &output.shapes {
+            if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                painted.push_str(text.galley.text());
+                painted.push('|');
+            }
+        }
+        output.textures_delta.clear();
+    }
+
+    // La forme machine, et la même chose en clair juste en dessous.
+    assert!(painted.contains("add rcx, 2"), "{painted}");
+    assert!(painted.contains("RCX = RCX + 2"), "{painted}");
+
+    // Et pour ce qui se dit déjà tout seul, on ne répète pas.
+    app.do_step(); // arrêté sur le `hlt`
+    let mut painted = String::new();
+    for _ in 0..2 {
+        painted.clear();
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        for clipped in &output.shapes {
+            if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                painted.push_str(text.galley.text());
+                painted.push('|');
+            }
+        }
+        output.textures_delta.clear();
+    }
+    assert!(painted.contains("arrêter la machine"), "{painted}");
 }

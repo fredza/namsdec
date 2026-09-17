@@ -903,6 +903,9 @@ fn find_matches(text: &str, query: &str) -> Vec<usize> {
 struct Ligne {
     address: u64,
     texte: String,
+    /// Les octets, tels qu'ils sont dans le fichier : c'est ce qui
+    /// distingue un désassemblage d'une traduction.
+    octets: String,
 }
 
 /// Le moteur de pseudo-code, celui qu'on montre en premier : lire
@@ -4753,6 +4756,13 @@ impl NamsdecApp {
         let theme = self.theme;
         let lang = self.lang.code();
         let mut open = true;
+        let mut aller: Option<u32> = None;
+        // Relevée avant la fenêtre : elle emprunte `self` en écriture.
+        let addr_to_line = self
+            .assemble_state
+            .as_ref()
+            .map(|state| state.addr_to_line.clone())
+            .unwrap_or_default();
 
         egui::Window::new(s.disassembly_title)
             .id(egui::Id::new("disassembly_window"))
@@ -4871,6 +4881,12 @@ impl NamsdecApp {
                     .iter()
                     .map(|instruction| Ligne {
                         address: instruction.address,
+                        octets: instruction
+                            .bytes
+                            .iter()
+                            .map(|b| format!("{b:02x}"))
+                            .collect::<Vec<_>>()
+                            .join(" "),
                         texte: namsdec_disasm::decode_one(&instruction.bytes, instruction.address)
                             .map(|decoded| {
                                 if pseudo {
@@ -4923,25 +4939,52 @@ impl NamsdecApp {
                             );
                         }
                         let ici = rip == Some(ligne.address);
-                        ui.horizontal(|ui| {
-                            ui.colored_label(
-                                if ici { theme.accent } else { theme.dim },
-                                egui::RichText::new(format!("{:08x}", ligne.address)).monospace(),
-                            );
-                            ui.add(
-                                egui::Label::new(
-                                    egui::RichText::new(&ligne.texte).monospace().color(if ici {
-                                        theme.accent
-                                    } else {
-                                        ui.visuals().text_color()
-                                    }),
-                                )
-                                .truncate(),
-                            );
-                        });
+                        let rangée = ui
+                            .horizontal(|ui| {
+                                ui.colored_label(
+                                    if ici { theme.accent } else { theme.dim },
+                                    egui::RichText::new(format!("{:08x}", ligne.address))
+                                        .monospace(),
+                                );
+                                // Les octets : ce qui distingue un
+                                // désassemblage d'une traduction. Sur une
+                                // largeur fixe, sinon les colonnes
+                                // dansent d'une ligne à l'autre.
+                                ui.colored_label(
+                                    theme.dim,
+                                    egui::RichText::new(format!("{:<23}", ligne.octets))
+                                        .monospace(),
+                                );
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(&ligne.texte).monospace().color(
+                                            if ici {
+                                                theme.accent
+                                            } else {
+                                                ui.visuals().text_color()
+                                            },
+                                        ),
+                                    )
+                                    .truncate(),
+                                );
+                            })
+                            .response;
+                        // Un clic mène à la ligne source : le listing
+                        // montre ce que le programme *est*, l'éditeur ce
+                        // qu'on a écrit, et l'on passe de l'un à l'autre.
+                        if rangée
+                            .interact(egui::Sense::click())
+                            .on_hover_text(s.disassembly_goto)
+                            .clicked()
+                        {
+                            aller = addr_to_line.get(&ligne.address).copied();
+                        }
                     }
                 });
             });
+        if let Some(ligne) = aller {
+            self.goto_line = Some(ligne);
+        }
         self.show_disassembly = open;
     }
 
