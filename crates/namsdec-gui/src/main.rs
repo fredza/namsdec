@@ -177,6 +177,72 @@ impl SidebarTab {
     }
 }
 
+/// Sous quelle forme on écrit ce qu'on cherche en mémoire.
+///
+/// Trois, parce que ce sont les trois choses qu'on a sous les yeux : un
+/// texte qu'on vient d'écrire, des octets relevés dans un vidage, une
+/// valeur lue dans un registre.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SearchKind {
+    Text,
+    Bytes,
+    Value,
+}
+
+impl SearchKind {
+    const ALL: [SearchKind; 3] = [SearchKind::Text, SearchKind::Bytes, SearchKind::Value];
+
+    fn label(self, s: &Strings) -> &'static str {
+        match self {
+            SearchKind::Text => s.search_text,
+            SearchKind::Bytes => s.search_bytes,
+            SearchKind::Value => s.search_value,
+        }
+    }
+
+    /// Les octets à chercher, tels que la mémoire les porte.
+    ///
+    /// Une valeur est cherchée en petit-boutiste — l'ordre dans lequel
+    /// le processeur l'a écrite — et sur ses octets utiles seulement :
+    /// chercher `1` sur huit octets ne trouverait qu'un mot aligné, là
+    /// où l'on veut l'octet.
+    fn needle(self, saisie: &str) -> Option<Vec<u8>> {
+        let saisie = saisie.trim();
+        if saisie.is_empty() {
+            return None;
+        }
+        match self {
+            SearchKind::Text => Some(saisie.as_bytes().to_vec()),
+            SearchKind::Bytes => {
+                let propre: String = saisie
+                    .chars()
+                    .filter(|c| !c.is_whitespace() && *c != ',' && *c != '-')
+                    .collect();
+                let propre = propre.strip_prefix("0x").unwrap_or(&propre).to_owned();
+                if propre.is_empty() || !propre.len().is_multiple_of(2) {
+                    return None;
+                }
+                (0..propre.len())
+                    .step_by(2)
+                    .map(|i| u8::from_str_radix(&propre[i..i + 2], 16).ok())
+                    .collect()
+            }
+            SearchKind::Value => {
+                let value = match saisie
+                    .strip_prefix("0x")
+                    .or_else(|| saisie.strip_prefix("0X"))
+                {
+                    Some(hex) => u64::from_str_radix(hex, 16).ok()?,
+                    None => saisie.parse::<u64>().ok()?,
+                };
+                let bytes = value.to_le_bytes();
+                let utiles = bytes.iter().rposition(|&b| b != 0).map_or(1, |i| i + 1);
+                Some(bytes[..utiles].to_vec())
+            }
+        }
+    }
+}
+
 /// Comment lire les octets de l'onglet Mémoire.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum MemoryFormat {
@@ -514,6 +580,10 @@ struct NamsdecApp {
     /// lancement suivant.
     cyclic_len: String,
     cyclic_find: String,
+    /// Ce qu'on cherche dans la mémoire, et sous quelle forme. Une
+    /// saisie de travail, comme l'adresse du vidage.
+    mem_search: String,
+    mem_search_kind: SearchKind,
     /// Le panneau de désassemblage, et le moteur qu'il emploie.
     show_disassembly: bool,
     disassembler: String,
@@ -1108,6 +1178,8 @@ impl Default for NamsdecApp {
             // d'apprentissage sans noyer la fenêtre.
             cyclic_len: "100".to_owned(),
             cyclic_find: String::new(),
+            mem_search: String::new(),
+            mem_search_kind: SearchKind::Text,
             show_disassembly: false,
             disassembler: PSEUDO_ID.to_owned(),
             disassembly_query: String::new(),

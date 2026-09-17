@@ -150,10 +150,96 @@ fn text_at(mem: &Memory, addr: u64) -> Option<String> {
     None
 }
 
+/// Chercher une suite d'octets dans toute la mémoire projetée.
+///
+/// C'est le `search` de pwndbg : on a une chaîne, une valeur, une
+/// adresse, et on veut savoir *où* elle se trouve — dans quel tampon,
+/// combien de fois, et si le programme l'a recopiée ailleurs.
+///
+/// Seules les zones lisibles sont parcourues, et les résultats sont
+/// bornés : une recherche qui rendrait dix mille adresses ne se lit pas.
+pub fn search(mem: &Memory, needle: &[u8], limit: usize) -> Vec<u64> {
+    let mut trouvés = Vec::new();
+    if needle.is_empty() {
+        return trouvés;
+    }
+    let zones = if mem.regions().is_empty() {
+        vec![mem.range()]
+    } else {
+        mem.regions()
+            .into_iter()
+            .filter(|region| region.perms.read)
+            .map(|region| region.range)
+            .collect()
+    };
+    for zone in zones {
+        // Bornée à la mémoire réellement allouée : une zone peut être
+        // déclarée au-delà du bloc simulé.
+        let début = zone.start.max(mem.range().start);
+        let fin = zone.end.min(mem.range().end);
+        if fin <= début {
+            continue;
+        }
+        let Ok(bytes) = mem.peek_bytes(début, (fin - début) as usize) else {
+            continue;
+        };
+        for (offset, window) in bytes.windows(needle.len()).enumerate() {
+            if window == needle {
+                trouvés.push(début + offset as u64);
+                if trouvés.len() >= limit {
+                    return trouvés;
+                }
+            }
+        }
+    }
+    trouvés.sort_unstable();
+    trouvés.dedup();
+    trouvés
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use namsdec_core::Perms;
+
+    /// Chercher des octets : la chaîne qu'on vient d'écrire, et rien
+    /// d'autre que ce qui est lisible.
+    #[test]
+    fn a_search_finds_the_bytes_where_they_are() {
+        let mut mem = Memory::new(0x400000, 0x1000);
+        mem.map(0x400000..0x400800, Perms::TEXT, "code");
+        mem.map(0x400800..0x401000, Perms::DATA, "données");
+        mem.load(0x400900, b"salut").unwrap();
+        mem.load(0x400950, b"salut").unwrap();
+
+        assert_eq!(search(&mem, b"salut", 10), vec![0x400900, 0x400950]);
+        // La limite arrête la recherche plutôt que de rendre une liste
+        // qu'on ne lira pas.
+        assert_eq!(search(&mem, b"salut", 1), vec![0x400900]);
+        // Ce qui n'y est pas ne s'y trouve pas.
+        assert!(search(&mem, b"bonjour", 10).is_empty());
+        assert!(search(&mem, b"", 10).is_empty());
+    }
+
+    /// Ce qui n'est pas lisible n'est pas fouillé : on cherche ce qu'un
+    /// programme peut lire, pas ce que le simulateur garde en mémoire.
+    #[test]
+    fn a_search_skips_what_cannot_be_read() {
+        let mut mem = Memory::new(0x400000, 0x1000);
+        mem.load(0x400100, "caché".as_bytes()).unwrap();
+        // Une zone sans droit de lecture : l'écriture est passée par
+        // `load`, qui ne les vérifie pas.
+        mem.map(
+            0x400000..0x401000,
+            Perms {
+                read: false,
+                write: false,
+                execute: false,
+            },
+            "interdit",
+        );
+        assert!(search(&mem, "caché".as_bytes(), 10).is_empty());
+    }
 
     /// Un pointeur vers un pointeur vers une chaîne : les trois maillons
     /// se suivent, et le dernier dit le texte.

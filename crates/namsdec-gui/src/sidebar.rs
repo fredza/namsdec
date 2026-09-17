@@ -1550,6 +1550,95 @@ impl NamsdecApp {
             .iter()
             .map(|point| (point.addr, point.value()))
             .collect();
+        // La carte de la mémoire, comme `vmmap` : où commence le code,
+        // où finit la pile, ce que le tas occupe. Un refus d'accès
+        // n'apprend rien à qui ne sait pas où il se trouvait.
+        let zones = mem.regions();
+        let mut aller = None;
+        if !zones.is_empty() {
+            egui::CollapsingHeader::new(format!("{} ({})", s.memory_map, zones.len()))
+                .id_salt("memory_map")
+                .show(ui, |ui| {
+                    egui::Grid::new("memory_map_grid")
+                        .num_columns(3)
+                        .min_col_width(0.0)
+                        .striped(true)
+                        .show(ui, |ui| {
+                            for zone in &zones {
+                                let dedans = zone.range.contains(&self.mem_addr);
+                                let ligne = ui
+                                    .colored_label(
+                                        if dedans { theme.accent } else { theme.text },
+                                        egui::RichText::new(format!(
+                                            "{:#x}-{:#x}",
+                                            zone.range.start, zone.range.end
+                                        ))
+                                        .monospace(),
+                                    )
+                                    .on_hover_text(s.memory_map_hint);
+                                ui.colored_label(
+                                    theme.register,
+                                    egui::RichText::new(perms_text(zone.perms)).monospace(),
+                                );
+                                ui.colored_label(theme.dim, zone.name);
+                                if ligne.interact(egui::Sense::click()).clicked() {
+                                    aller = Some(zone.range.start);
+                                }
+                                ui.end_row();
+                            }
+                        });
+                });
+        }
+        // Chercher : c'est le `search` de pwndbg. On a une chaîne, une
+        // valeur, une adresse — la question est « où ? », et la réponse
+        // ne s'obtient pas en faisant défiler un vidage.
+        egui::CollapsingHeader::new(s.search_title)
+            .id_salt("memory_search")
+            .show(ui, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    for kind in SearchKind::ALL {
+                        if ui
+                            .selectable_label(self.mem_search_kind == kind, kind.label(s))
+                            .clicked()
+                        {
+                            self.mem_search_kind = kind;
+                        }
+                    }
+                });
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.mem_search)
+                        .font(egui::TextStyle::Monospace)
+                        .desired_width(f32::INFINITY)
+                        .hint_text(s.search_hint),
+                );
+                let Some(needle) = self.mem_search_kind.needle(&self.mem_search) else {
+                    return;
+                };
+                // Vingt-quatre adresses : au-delà, la liste cesse d'être
+                // une réponse.
+                let trouvés = namsdec_emu::telescope::search(mem, &needle, 24);
+                if trouvés.is_empty() {
+                    ui.colored_label(theme.dim, s.search_none);
+                    return;
+                }
+                ui.colored_label(theme.dim, format!("{} {} :", trouvés.len(), s.search_found));
+                for addr in trouvés {
+                    if ui
+                        .add(
+                            egui::Label::new(
+                                egui::RichText::new(format!("{addr:#x}"))
+                                    .monospace()
+                                    .color(theme.accent),
+                            )
+                            .sense(egui::Sense::click()),
+                        )
+                        .on_hover_text(s.search_goto)
+                        .clicked()
+                    {
+                        aller = Some(addr);
+                    }
+                }
+            });
         self.watchpoints_ui(ui, &watched);
         ui.colored_label(theme.dim, quartier);
         // Qui a écrit là : la même question que pour un registre, en
@@ -1568,6 +1657,14 @@ impl NamsdecApp {
                     });
             }
             None => hexdump_ui(ui, "memory_dump", &dump),
+        }
+
+        // Sauter à une zone de la carte : le vidage suit, et le champ
+        // d'adresse avec lui — sans quoi le prochain « Go » ramènerait
+        // là d'où l'on vient.
+        if let Some(addr) = aller {
+            self.mem_addr = addr;
+            self.mem_addr_input = format!("{addr:#x}");
         }
 
         // Poser la zone en dernier : `sync_watchpoints` emprunte
@@ -1711,6 +1808,17 @@ pub(crate) fn changed_registers(
                 }),
         )
         .collect()
+}
+
+/// Les droits d'une zone, à la façon d'un `vmmap` : `rwx`, un tiret pour
+/// ce qui est refusé. Trois caractères se comparent d'un coup d'œil, là
+/// où trois mots demandent de lire.
+pub(crate) fn perms_text(perms: namsdec_core::Perms) -> String {
+    let mut out = String::new();
+    out.push(if perms.read { 'r' } else { '-' });
+    out.push(if perms.write { 'w' } else { '-' });
+    out.push(if perms.execute { 'x' } else { '-' });
+    out
 }
 
 /// La zone qui contient cette adresse, et ses droits : « .data · lecture,

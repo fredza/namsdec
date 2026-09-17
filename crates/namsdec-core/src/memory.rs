@@ -98,10 +98,10 @@ impl Perms {
 /// Une zone projetée : une plage d'adresses, ses droits, et le nom sous
 /// lequel l'annoncer — « .text », « la pile », « le tas ».
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct Region {
-    range: Range<u64>,
-    perms: Perms,
-    name: &'static str,
+pub struct Region {
+    pub range: Range<u64>,
+    pub perms: Perms,
+    pub name: &'static str,
 }
 
 /// Mémoire simulée : un bloc contigu chargé à `base`, découpé en zones
@@ -177,6 +177,28 @@ impl Memory {
             return Some(Perms::ALL);
         }
         self.region_at(addr).map(|region| region.perms)
+    }
+
+    /// Toutes les zones projetées, dans l'ordre des adresses.
+    ///
+    /// C'est la carte du processus simulé : ce que `vmmap` montre d'un
+    /// vrai. Un débutant qui voit « refusé » sans savoir *où* commence
+    /// le code et où finit la pile n'apprend qu'une chose : que la
+    /// machine dit non.
+    ///
+    /// Les recouvrements sont résolus comme à la lecture — la dernière
+    /// zone déclarée gagne — pour que la carte dise ce que la mémoire
+    /// fera vraiment.
+    pub fn regions(&self) -> Vec<Region> {
+        let mut vues: Vec<Region> = Vec::new();
+        for region in self.regions.iter().rev() {
+            if vues.iter().any(|vue| vue.name == region.name) {
+                continue;
+            }
+            vues.push(region.clone());
+        }
+        vues.sort_by_key(|region| region.range.start);
+        vues
     }
 
     /// Le nom de la zone qui contient cette adresse — pour le dire à

@@ -8209,6 +8209,115 @@ fn the_cyclic_pattern_answers_by_how_much() {
     );
 }
 
+/// Chercher en mémoire : « où est cette chaîne ? » ne se répond pas en
+/// faisant défiler un vidage.
+///
+/// Les trois écritures sont celles qu'on a sous les yeux : un texte
+/// qu'on vient d'écrire, des octets relevés dans un vidage, une valeur
+/// lue dans un registre.
+#[test]
+fn memory_can_be_searched_the_three_ways_one_writes_a_needle() {
+    // Le texte, tel quel.
+    assert_eq!(SearchKind::Text.needle("salut"), Some(b"salut".to_vec()));
+    // Les octets, avec ou sans espaces, avec ou sans 0x.
+    assert_eq!(
+        SearchKind::Bytes.needle("48 89 d8"),
+        Some(vec![0x48, 0x89, 0xd8])
+    );
+    assert_eq!(SearchKind::Bytes.needle("0x4889"), Some(vec![0x48, 0x89]));
+    // Un nombre impair de chiffres ne désigne pas des octets.
+    assert_eq!(SearchKind::Bytes.needle("489"), None);
+    assert_eq!(SearchKind::Bytes.needle("zz"), None);
+    // Une valeur : petit-boutiste, sur ses octets utiles.
+    assert_eq!(SearchKind::Value.needle("0x1234"), Some(vec![0x34, 0x12]));
+    assert_eq!(SearchKind::Value.needle("255"), Some(vec![0xff]));
+    // Rien à chercher n'est pas une recherche.
+    assert_eq!(SearchKind::Text.needle("   "), None);
+
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: "\
+global _start
+
+section .data
+message: db \"salut\", 0
+
+section .text
+_start:
+    hlt
+"
+        .to_owned(),
+        active_tab: SidebarTab::Memory,
+        mem_search: "salut".to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+
+    // Et la chaîne se trouve là où le programme l'a écrite.
+    let emulator = app.emulator.as_ref().expect("chargé");
+    let trouvés = namsdec_emu::telescope::search(&emulator.cpu().mem, b"salut", 24);
+    assert_eq!(trouvés.len(), 1, "{trouvés:?}");
+    let symbols = &app.assemble_state.as_ref().unwrap().output.symbols;
+    assert!(
+        symbols
+            .iter()
+            .any(|s| s.name == "message" && s.addr == trouvés[0]),
+        "l'adresse trouvée est celle de `message`"
+    );
+}
+
+/// La mémoire montre sa carte : où commence le code, où finit la pile,
+/// ce que le tas occupe, avec les droits de chacun.
+///
+/// C'est le `vmmap` de pwndbg. Un refus d'accès n'apprend rien à qui ne
+/// sait pas où il se trouvait ; la carte le dit avant.
+#[test]
+fn the_memory_tab_shows_the_map_of_the_process() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: "\
+global _start
+
+section .data
+    tampon times 8 db 0
+
+section .text
+_start:
+    mov rax, 1
+    hlt
+"
+        .to_owned(),
+        active_tab: SidebarTab::Memory,
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+
+    // Les zones existent et se lisent comme un vmmap : trois caractères
+    // de droits par ligne.
+    let emulator = app.emulator.as_ref().expect("chargé");
+    let zones = emulator.cpu().mem.regions();
+    assert!(zones.len() >= 3, "code, données, pile au moins : {zones:?}");
+    let texte: Vec<String> = zones.iter().map(|z| perms_text(z.perms)).collect();
+    assert!(texte.contains(&"r-x".to_owned()), "du code : {texte:?}");
+    assert!(texte.contains(&"rw-".to_owned()), "des données : {texte:?}");
+    // Les zones ne se chevauchent pas dans la carte, et sont triées.
+    for paire in zones.windows(2) {
+        assert!(
+            paire[0].range.start <= paire[1].range.start,
+            "la carte est triée : {zones:?}"
+        );
+    }
+
+    let painted = paint(&mut app);
+    assert!(painted.contains(strings(app.lang).memory_map), "{painted}");
+}
+
 /// La pile suit ses pointeurs : un mot qui pointe une chaîne le dit, un
 /// mot qui pointe du code montre l'instruction.
 ///
