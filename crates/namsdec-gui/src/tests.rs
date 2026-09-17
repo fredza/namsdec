@@ -10107,6 +10107,72 @@ fn a_solved_exercise_stays_solved() {
     );
 }
 
+/// Le programme assemblé sort de l'atelier : un ELF exécutable, celui
+/// que la ligne de commande aurait donné.
+///
+/// Un atelier qui ne laisse rien sortir apprend à se servir de lui, pas
+/// de l'assembleur. Les deux commandes lancées sont affichées avec, pour
+/// pouvoir refaire le travail sans namsdec.
+#[test]
+fn the_assembled_program_can_leave_the_workbench() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let chemin = dir.path().join("programme");
+
+    let mut app = NamsdecApp {
+        source: "\
+global _start
+section .text
+_start:
+    mov rax, 60
+    xor rdi, rdi
+    syscall
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    // Rien d'assemblé : rien à écrire, et le message le dit.
+    app.export_binary(&chemin);
+    assert!(matches!(app.status, Status::Error(_)), "{:?}", app.status);
+    assert!(!chemin.exists());
+
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+    app.export_binary(&chemin);
+    assert!(matches!(app.status, Status::Note(_)), "{:?}", app.status);
+
+    // Un vrai ELF, et exécutable.
+    let octets = std::fs::read(&chemin).unwrap();
+    assert!(octets.starts_with(b"\x7fELF"), "un ELF");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(&chemin).unwrap().permissions().mode();
+        assert_eq!(mode & 0o111, 0o111, "exécutable : {mode:o}");
+    }
+    // Et il tourne pour de vrai, avec le code qu'on lui a écrit.
+    let sortie = std::process::Command::new(&chemin)
+        .status()
+        .expect("le binaire exporté se lance");
+    assert_eq!(sortie.code(), Some(0));
+
+    // Les deux commandes sont dites, et elles sont celles qu'on
+    // taperait.
+    let commandes = namsdec_asm::build_commands("programme.asm", "programme", BASE_ADDR);
+    assert!(commandes[0].contains("nasm -f elf64"));
+    assert!(commandes[1].contains(&format!("-Ttext {BASE_ADDR:#x}")));
+    app.console_tab = ConsoleTab::Diagnostics;
+    app.show_console = true;
+    let painted = paint(&mut app);
+    assert!(
+        painted.contains(strings(app.lang).assemble_commands),
+        "{painted}"
+    );
+    assert!(painted.contains("nasm -f elf64"), "{painted}");
+}
+
 /// La mémoire montre sa carte : où commence le code, où finit la pile,
 /// ce que le tas occupe, avec les droits de chacun.
 ///

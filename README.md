@@ -254,6 +254,22 @@ saisissant la barre, on l'agrandit d'un double-clic, on la
 redimensionne par ses bords. Préférences ▸ Général rend la décoration du
 bureau à qui la préfère — le réglage s'applique sans redémarrer.
 
+### Sortir de l'atelier
+
+Fichier ▸ **Exporter le binaire** écrit le programme tel que `ld` l'a
+produit — un ELF exécutable, celui que la ligne de commande aurait
+donné : il se lance dans un terminal, se lit avec `objdump`, se compare
+avec ce que namsdec en dit. L'onglet Diagnostics affiche les **deux
+commandes réellement lancées**, prêtes à copier :
+
+```sh
+nasm -f elf64 -o programme.o programme.asm
+ld -Ttext 0x400000 -o programme programme.o
+```
+
+Un atelier qui ne laisse rien sortir apprend à se servir de lui, pas de
+l'assembleur.
+
 ### Les mises à jour
 
 « À propos ▸ Rechercher une mise à jour » demande à GitHub les versions

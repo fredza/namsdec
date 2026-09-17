@@ -151,6 +151,28 @@ fn probe_linker() -> bool {
         .is_ok_and(|out| out.status.success())
 }
 
+/// Les deux commandes que namsdec lance pour assembler, telles qu'on les
+/// taperait soi-même.
+///
+/// Écrites pour être lues, et recopiées : `nasm` puis `ld`, avec les
+/// mêmes options que celles employées ici. C'est la réponse à « et si je
+/// veux le faire sans namsdec ? » — qui est la bonne question, et à
+/// laquelle un atelier d'apprentissage doit répondre plutôt que de
+/// garder son tour de main pour lui.
+///
+/// ```
+/// let lignes = namsdec_asm::build_commands("mon.asm", "mon", 0x400000);
+/// assert!(lignes[0].starts_with("nasm -f elf64"));
+/// assert!(lignes[1].contains("-Ttext 0x400000"));
+/// ```
+pub fn build_commands(source: &str, program: &str, base_addr: u64) -> [String; 2] {
+    let objet = format!("{program}.o");
+    [
+        format!("nasm -f elf64 -o {objet} {source}"),
+        format!("ld -Ttext {base_addr:#x} -o {program} {objet}"),
+    ]
+}
+
 /// Assemble `source`, le lie, et rend de quoi le charger en mémoire.
 ///
 /// `base_addr` est imposé à `ld` comme adresse de `.text` : la fenêtre

@@ -61,6 +61,13 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
   sur les registres : le bandeau dit « atteint » ou « pas encore ». Une
   série installée peut en porter aussi (champ `goal`).
 
+**Sortir de l'atelier**
+- Fichier ▸ Exporter le binaire : l'ELF que `ld` a produit, rendu
+  exécutable, celui qu'on lance dans un terminal ou qu'on lit avec
+  `objdump`.
+- L'onglet Diagnostics affiche les deux commandes réellement lancées,
+  prêtes à copier.
+
 **Mises à jour**
 - « Rechercher une mise à jour » est branché sur les versions publiées du
   dépôt : comparaison SemVer complète (préversions comprises), et un lien

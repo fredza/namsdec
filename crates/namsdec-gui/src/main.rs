@@ -909,6 +909,8 @@ enum FileDialogKind {
     ExportManual,
     /// Choisir où écrire le rapport d'analyse du binaire chargé.
     ExportReport,
+    /// Choisir où écrire le programme assemblé, tel que `ld` l'a produit.
+    ExportBinary,
 }
 
 /// Les fiches dont un programme se sert, dans l'ordre où il les emploie.
@@ -2359,7 +2361,8 @@ impl NamsdecApp {
                 FileDialogKind::OpenFolder => dialog.pick_folder(),
                 FileDialogKind::SaveAs
                 | FileDialogKind::ExportManual
-                | FileDialogKind::ExportReport => dialog.save_file(),
+                | FileDialogKind::ExportReport
+                | FileDialogKind::ExportBinary => dialog.save_file(),
             };
             // Si l'application s'est arrêtée entre-temps, le résultat
             // n'intéresse plus personne : l'envoi échoue et le thread
@@ -2394,6 +2397,13 @@ impl NamsdecApp {
             FileDialogKind::ExportManual => dialog
                 .add_filter(s.filter_markdown, &["md"])
                 .set_file_name("namsdec-manuel.md"),
+            FileDialogKind::ExportBinary => dialog.set_file_name(
+                self.current_file
+                    .as_ref()
+                    .and_then(|path| path.file_stem())
+                    .map(|nom| nom.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| "programme".to_owned()),
+            ),
             FileDialogKind::ExportReport => dialog
                 .add_filter(s.filter_markdown, &["md"])
                 // Le nom du fichier analysé, pour ne pas se retrouver
@@ -2452,6 +2462,7 @@ impl NamsdecApp {
             FileDialogKind::AddExercises => self.install_exercises(&path),
             FileDialogKind::ExportManual => self.export_manual(&path),
             FileDialogKind::ExportReport => self.export_report(&path),
+            FileDialogKind::ExportBinary => self.export_binary(&path),
         }
     }
 
@@ -2466,6 +2477,39 @@ impl NamsdecApp {
         match std::fs::write(path, namsdec_doc::markdown(self.lang.code())) {
             Ok(()) => self.status = Status::Note(s.manual_exported),
             Err(e) => self.status = Status::Error(format!("{} : {e}", s.manual_export_failed)),
+        }
+    }
+
+    /// Écrit le programme assemblé, tel que `ld` l'a produit.
+    ///
+    /// L'ELF entier, et exécutable : c'est le même fichier que la ligne
+    /// de commande aurait donné, et il se lance dans un vrai terminal,
+    /// se lit avec `objdump`, se compare avec ce que namsdec en dit.
+    /// Un atelier qui ne laisserait rien sortir apprendrait à se servir
+    /// de lui, pas de l'assembleur.
+    fn export_binary(&mut self, path: &Path) {
+        let s = strings(self.lang);
+        let Some(state) = &self.assemble_state else {
+            self.status = Status::Error(s.binary_none.to_owned());
+            return;
+        };
+        if state.output.file.is_empty() {
+            self.status = Status::Error(s.binary_none.to_owned());
+            return;
+        }
+        match std::fs::write(path, &state.output.file) {
+            Ok(()) => {
+                // Exécutable : un programme qu'il faut penser à rendre
+                // exécutable soi-même n'est pas sorti, il est à moitié
+                // sorti.
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755));
+                }
+                self.status = Status::Note(s.binary_exported);
+            }
+            Err(e) => self.status = Status::Error(format!("{} : {e}", s.binary_export_failed)),
         }
     }
 
@@ -3160,6 +3204,24 @@ impl NamsdecApp {
                     self.do_save_as();
                     ui.close();
                 }
+                // Le programme assemblé, tel que `ld` l'a produit : de
+                // quoi le lancer dans un vrai terminal et le comparer à
+                // ce que namsdec en dit.
+                ui.add_enabled_ui(
+                    self.assemble_state
+                        .as_ref()
+                        .is_some_and(|state| !state.output.file.is_empty()),
+                    |ui| {
+                        if ui
+                            .button(s.file_export_binary)
+                            .on_hover_text(s.file_export_binary_hint)
+                            .clicked()
+                        {
+                            self.spawn_file_dialog(FileDialogKind::ExportBinary);
+                            ui.close();
+                        }
+                    },
+                );
                 ui.separator();
                 if ui.button(s.file_preferences).clicked() {
                     self.open_preferences();
@@ -7080,6 +7142,32 @@ impl NamsdecApp {
         let s = strings(self.lang);
         let (lang, theme) = (self.lang, self.theme);
         let mut goto = None;
+        // Les deux commandes réellement lancées. « Et si je veux le
+        // faire sans namsdec ? » est la bonne question, et un atelier
+        // d'apprentissage y répond au lieu de garder son tour de main
+        // pour lui.
+        let fichier = self
+            .current_file
+            .as_ref()
+            .and_then(|path| path.file_stem())
+            .map(|nom| nom.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "programme".to_owned());
+        let commandes = namsdec_asm::build_commands(&format!("{fichier}.asm"), &fichier, BASE_ADDR);
+        ui.horizontal_wrapped(|ui| {
+            ui.colored_label(theme.dim, s.assemble_commands);
+            if ui
+                .small_button(s.assemble_commands_copy)
+                .on_hover_text(s.assemble_commands_hint)
+                .clicked()
+            {
+                ui.ctx().copy_text(commandes.join("\n"));
+                self.status = Status::Note(s.assemble_commands_copied);
+            }
+        });
+        for commande in &commandes {
+            ui.colored_label(theme.dim, egui::RichText::new(commande).monospace());
+        }
+        ui.separator();
         if self.diagnostics.is_empty() {
             ui.colored_label(theme.dim, s.no_diagnostics);
             return;
