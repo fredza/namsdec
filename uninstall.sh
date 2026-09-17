@@ -50,6 +50,15 @@ done
 
 say "Suppression du binaire"
 rm -f "$BIN_DIR/$APP"
+# Les binaires des préversions, quand on en a essayé une à côté de la
+# version installée. Il n'y en a plus qu'un aujourd'hui, mais une
+# machine qui a connu les deux garderait l'autre sans que personne
+# ne s'en souvienne.
+for reste in "$BIN_DIR/$APP"-beta*; do
+    [ -e "$reste" ] || continue
+    say "Suppression de $(basename "$reste")"
+    rm -f "$reste"
+done
 
 command -v update-desktop-database >/dev/null && update-desktop-database "$DESKTOP_DIR" 2>/dev/null || true
 command -v gtk-update-icon-cache   >/dev/null && gtk-update-icon-cache -qtf "$ICON_DIR" 2>/dev/null || true
