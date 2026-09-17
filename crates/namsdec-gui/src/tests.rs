@@ -9655,6 +9655,18 @@ fn the_window_carries_its_own_three_buttons() {
     let mut x: Vec<f32> = peints.iter().map(|(_, x)| *x).collect();
     x.sort_by(|a, b| a.partial_cmp(b).unwrap());
     assert!(x[0] > 1280.0 * 0.8, "au bout de la barre : {x:?}");
+    // Alignées : le même écart entre les trois, et la dernière ne touche
+    // pas le bord de la fenêtre.
+    let écarts: Vec<f32> = x.windows(2).map(|p| p[1] - p[0]).collect();
+    assert!(
+        (écarts[0] - écarts[1]).abs() < 0.5,
+        "l'écart doit être le même : {écarts:?}"
+    );
+    assert!(
+        x[2] < 1280.0 - 8.0,
+        "la fermeture déborde du cadre : {} pour une fenêtre de 1280",
+        x[2]
+    );
     // Et dans l'ordre : réduire à gauche, fermer à droite. La fermeture
     // à l'extrémité, comme partout ailleurs sous Linux.
     let couleur_à = |abscisse: f32| {

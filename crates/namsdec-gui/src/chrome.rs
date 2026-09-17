@@ -19,7 +19,11 @@ use namsdec_theme::Theme;
 
 /// Le rayon d'un bouton, et l'air autour de lui.
 const BUTTON_RADIUS: f32 = 6.5;
+/// L'écart entre deux pastilles, et l'air qu'on laisse au bord de la
+/// fenêtre. Sans ce dernier, la fermeture se peint à cheval sur le
+/// cadre.
 const BUTTON_SPACING: f32 = 10.0;
+const EDGE_MARGIN: f32 = 10.0;
 
 /// L'épaisseur de la zone qui saisit un bord pour redimensionner.
 ///
@@ -69,87 +73,100 @@ impl WindowButton {
 /// Rend le bouton cliqué, s'il y en a un : l'appelant décide quoi en
 /// faire, parce que fermer la fenêtre passe chez namsdec par la garde du
 /// travail non enregistré.
+///
+/// Les positions sont calculées, pas empilées : la dernière pastille
+/// doit s'arrêter à `EDGE_MARGIN` du bord, et un enchaînement de cases
+/// allouées la poussait dehors — la fermeture se retrouvait à cheval
+/// sur le cadre de la fenêtre.
 pub fn window_buttons_ui(ui: &mut egui::Ui, s: &Strings, maximized: bool) -> Option<WindowButton> {
     let mut cliqué = None;
-    // De gauche à droite, explicitement : le bloc entier est posé dans
-    // un layout qui va de droite à gauche — pour le coller au bord —, et
-    // sans cela les trois pastilles s'y rangeaient à l'envers, la
-    // fermeture au bord gauche.
-    let largeur = (BUTTON_RADIUS * 2.0 + BUTTON_SPACING) * WindowButton::ALL.len() as f32;
-    ui.allocate_ui_with_layout(
-        egui::vec2(largeur, BUTTON_RADIUS * 2.0),
-        egui::Layout::left_to_right(egui::Align::Center),
-        |ui| {
-            for bouton in WindowButton::ALL {
-                let (rect, réponse) = ui.allocate_exact_size(
-                    egui::vec2(BUTTON_RADIUS * 2.0 + BUTTON_SPACING, BUTTON_RADIUS * 2.0),
-                    egui::Sense::click(),
-                );
-                let centre = rect.center();
-                let couleur = bouton.colour();
-                // Éteinte tant que la souris n'est pas dessus : trois
-                // pastilles vives en permanence tirent l'œil hors du code,
-                // qui est ce qu'on est venu lire.
-                let remplissage = if réponse.hovered() {
-                    couleur
-                } else {
-                    couleur.gamma_multiply(0.55)
-                };
-                ui.painter()
-                    .circle_filled(centre, BUTTON_RADIUS, remplissage);
-                // Le signe n'apparaît qu'au survol, comme sur les pastilles
-                // qu'on connaît : la couleur suffit à désigner, le signe
-                // confirme.
-                if réponse.hovered() {
-                    let trait_ = egui::Stroke::new(1.4, egui::Color32::from_black_alpha(190));
-                    let bras = BUTTON_RADIUS * 0.45;
-                    match bouton {
-                        WindowButton::Minimize => {
-                            ui.painter().line_segment(
-                                [
-                                    centre - egui::vec2(bras, 0.0),
-                                    centre + egui::vec2(bras, 0.0),
-                                ],
-                                trait_,
-                            );
-                        }
-                        WindowButton::Maximize => {
-                            let carré = egui::Rect::from_center_size(
-                                centre,
-                                egui::vec2(bras * 1.7, bras * 1.7),
-                            );
-                            ui.painter()
-                                .rect_stroke(carré, 1.0, trait_, egui::StrokeKind::Inside);
-                        }
-                        WindowButton::Close => {
-                            ui.painter().line_segment(
-                                [
-                                    centre - egui::vec2(bras, bras),
-                                    centre + egui::vec2(bras, bras),
-                                ],
-                                trait_,
-                            );
-                            ui.painter().line_segment(
-                                [
-                                    centre - egui::vec2(bras, -bras),
-                                    centre + egui::vec2(bras, -bras),
-                                ],
-                                trait_,
-                            );
-                        }
-                    }
+    let combien = WindowButton::ALL.len() as f32;
+    let largeur =
+        combien * BUTTON_RADIUS * 2.0 + (combien - 1.0) * BUTTON_SPACING + EDGE_MARGIN * 2.0;
+    let (bande, _) = ui.allocate_exact_size(
+        egui::vec2(largeur, BUTTON_RADIUS * 2.0 + 6.0),
+        egui::Sense::hover(),
+    );
+    for (rang, bouton) in WindowButton::ALL.into_iter().enumerate() {
+        // Le premier à `EDGE_MARGIN` du bord gauche de la bande, le
+        // dernier à la même distance du bord droit : l'écart entre les
+        // trois est alors le même, et rien ne déborde.
+        let centre = egui::pos2(
+            bande.left()
+                + EDGE_MARGIN
+                + BUTTON_RADIUS
+                + rang as f32 * (BUTTON_RADIUS * 2.0 + BUTTON_SPACING),
+            bande.center().y,
+        );
+        let cible = egui::Rect::from_center_size(
+            centre,
+            egui::vec2(BUTTON_RADIUS * 2.0 + BUTTON_SPACING, bande.height()),
+        );
+        let réponse = ui.interact(
+            cible,
+            ui.id().with(("window_button", rang)),
+            egui::Sense::click(),
+        );
+        let couleur = bouton.colour();
+        // Éteinte tant que la souris n'est pas dessus : trois pastilles
+        // vives en permanence tirent l'œil hors du code, qui est ce
+        // qu'on est venu lire.
+        let remplissage = if réponse.hovered() {
+            couleur
+        } else {
+            couleur.gamma_multiply(0.55)
+        };
+        ui.painter()
+            .circle_filled(centre, BUTTON_RADIUS, remplissage);
+        // Le signe n'apparaît qu'au survol, comme sur les pastilles
+        // qu'on connaît : la couleur suffit à désigner, le signe
+        // confirme.
+        if réponse.hovered() {
+            let trait_ = egui::Stroke::new(1.4, egui::Color32::from_black_alpha(190));
+            let bras = BUTTON_RADIUS * 0.45;
+            match bouton {
+                WindowButton::Minimize => {
+                    ui.painter().line_segment(
+                        [
+                            centre - egui::vec2(bras, 0.0),
+                            centre + egui::vec2(bras, 0.0),
+                        ],
+                        trait_,
+                    );
                 }
-                let infobulle = if bouton == WindowButton::Maximize && maximized {
-                    s.window_restore
-                } else {
-                    bouton.hint(s)
-                };
-                if réponse.on_hover_text(infobulle).clicked() {
-                    cliqué = Some(bouton);
+                WindowButton::Maximize => {
+                    let carré =
+                        egui::Rect::from_center_size(centre, egui::vec2(bras * 1.7, bras * 1.7));
+                    ui.painter()
+                        .rect_stroke(carré, 1.0, trait_, egui::StrokeKind::Inside);
+                }
+                WindowButton::Close => {
+                    ui.painter().line_segment(
+                        [
+                            centre - egui::vec2(bras, bras),
+                            centre + egui::vec2(bras, bras),
+                        ],
+                        trait_,
+                    );
+                    ui.painter().line_segment(
+                        [
+                            centre - egui::vec2(bras, -bras),
+                            centre + egui::vec2(bras, -bras),
+                        ],
+                        trait_,
+                    );
                 }
             }
-        },
-    );
+        }
+        let infobulle = if bouton == WindowButton::Maximize && maximized {
+            s.window_restore
+        } else {
+            bouton.hint(s)
+        };
+        if réponse.on_hover_text(infobulle).clicked() {
+            cliqué = Some(bouton);
+        }
+    }
     cliqué
 }
 
