@@ -66,6 +66,16 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
 - Le dépôt sait publier : une étiquette `v…` déclenche la compilation, les
   vérifications et la publication du binaire avec sa somme SHA-256.
 
+**Corrigé**
+- Les références aux données relatives à RIP étaient toutes perdues :
+  iced résout déjà l'adresse, et y rajouter `next_ip` l'envoyait hors du
+  programme. « Qui lit cette chaîne ? » ne répondait rien pour aucun
+  programme moderne. L'avertissement du lint sur les écritures en
+  lecture seule ratait le même cas.
+- Ouvrir un binaire montrait son en-tête ELF décodé comme des
+  instructions : le désassemblage part maintenant des sections
+  exécutables que le fichier désigne.
+
 **Tenue**
 - Un bandeau dit, dans « À propos », que la version est une préversion.
   Il est lu dans le numéro de version et disparaîtra de lui-même.
