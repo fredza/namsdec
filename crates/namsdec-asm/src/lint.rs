@@ -244,6 +244,31 @@ mod tests {
         assert_eq!(found[0].line, 6, "la ligne de l'écriture");
     }
 
+    /// La même écriture, en adressage relatif à RIP — celui que produit
+    /// `default rel`, et donc celui de presque tout programme écrit
+    /// aujourd'hui.
+    ///
+    /// Elle passait au travers : l'adresse calculée tombait à côté, et
+    /// l'avertissement ne partait jamais là où il fallait.
+    #[test]
+    fn a_rip_relative_write_into_read_only_memory_is_reported_too() {
+        let Some(out) = build(
+            "default rel\n\
+             global _start\n\
+             section .rodata\n\
+             constante: dq 7\n\
+             section .text\n\
+             _start:\n\
+             \x20   mov qword [constante], 9\n\
+             \x20   hlt\n",
+        ) else {
+            return;
+        };
+        let found = check(&out);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].message.contains("not writable"), "{found:?}");
+    }
+
     /// Lire une constante est permis, et écrire dans `.data` aussi :
     /// un avertissement faux est pire que pas d'avertissement.
     #[test]
