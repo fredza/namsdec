@@ -8018,6 +8018,33 @@ fn every_glyph_the_interface_writes_exists_in_its_font() {
     );
 }
 
+/// Le rapport d'analyse s'écrit aussi sur le disque : un compte rendu se
+/// garde et se relit, ce que le presse-papier ne permet pas.
+#[test]
+fn the_analysis_report_can_be_written_to_a_file() {
+    let Ok(bytes) = std::fs::read("/bin/ls") else {
+        eprintln!("/bin/ls introuvable : test ignoré");
+        return;
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("analyse.md");
+
+    // Sans binaire, rien à écrire, et le message le dit plutôt que de
+    // laisser un fichier vide derrière lui.
+    let mut app = NamsdecApp::default();
+    app.export_report(&path);
+    assert!(matches!(app.status, Status::Error(_)), "{:?}", app.status);
+    assert!(!path.exists(), "aucun fichier n'a été créé");
+
+    app.load_binary(bytes);
+    app.export_report(&path);
+    assert!(matches!(app.status, Status::Note(_)), "{:?}", app.status);
+    let texte = std::fs::read_to_string(&path).unwrap();
+    assert!(texte.starts_with("# Analyse du binaire"));
+    assert!(texte.contains("Fonctions importées"));
+    assert!(texte.contains("malloc"), "avec ce qu'elles font");
+}
+
 /// Le listing d'un binaire du système nomme ce qu'il appelle.
 ///
 /// Sans cela, lire /bin/ls revient à suivre des `call 0x…` vers des

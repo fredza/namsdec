@@ -615,6 +615,8 @@ enum FileDialogKind {
     AddExercises,
     /// Choisir où écrire le manuel entier, en Markdown.
     ExportManual,
+    /// Choisir où écrire le rapport d'analyse du binaire chargé.
+    ExportReport,
 }
 
 /// Les fiches dont un programme se sert, dans l'ordre où il les emploie.
@@ -1949,7 +1951,9 @@ impl NamsdecApp {
                 | FileDialogKind::AddTheme
                 | FileDialogKind::AddExercises => dialog.pick_file(),
                 FileDialogKind::OpenFolder => dialog.pick_folder(),
-                FileDialogKind::SaveAs | FileDialogKind::ExportManual => dialog.save_file(),
+                FileDialogKind::SaveAs
+                | FileDialogKind::ExportManual
+                | FileDialogKind::ExportReport => dialog.save_file(),
             };
             // Si l'application s'est arrêtée entre-temps, le résultat
             // n'intéresse plus personne : l'envoi échoue et le thread
@@ -1984,6 +1988,18 @@ impl NamsdecApp {
             FileDialogKind::ExportManual => dialog
                 .add_filter(s.filter_markdown, &["md"])
                 .set_file_name("namsdec-manuel.md"),
+            FileDialogKind::ExportReport => dialog
+                .add_filter(s.filter_markdown, &["md"])
+                // Le nom du fichier analysé, pour ne pas se retrouver
+                // avec trois rapports qui portent le même nom.
+                .set_file_name(format!(
+                    "{}-analyse.md",
+                    self.current_file
+                        .as_ref()
+                        .and_then(|path| path.file_stem())
+                        .map(|name| name.to_string_lossy().into_owned())
+                        .unwrap_or_else(|| "namsdec".to_owned())
+                )),
             FileDialogKind::OpenFolder | FileDialogKind::SaveAs => dialog,
         }
     }
@@ -2029,6 +2045,7 @@ impl NamsdecApp {
             FileDialogKind::AddTheme => self.install_theme(&path, ctx),
             FileDialogKind::AddExercises => self.install_exercises(&path),
             FileDialogKind::ExportManual => self.export_manual(&path),
+            FileDialogKind::ExportReport => self.export_report(&path),
         }
     }
 
@@ -2043,6 +2060,19 @@ impl NamsdecApp {
         match std::fs::write(path, namsdec_doc::markdown(self.lang.code())) {
             Ok(()) => self.status = Status::Note(s.manual_exported),
             Err(e) => self.status = Status::Error(format!("{} : {e}", s.manual_export_failed)),
+        }
+    }
+
+    /// Écrit le rapport d'analyse dans un fichier Markdown.
+    fn export_report(&mut self, path: &Path) {
+        let s = strings(self.lang);
+        let Some(report) = self.analysis_report() else {
+            self.status = Status::Error(s.analysis_none.to_owned());
+            return;
+        };
+        match std::fs::write(path, report) {
+            Ok(()) => self.status = Status::Note(s.report_saved),
+            Err(e) => self.status = Status::Error(format!("{} : {e}", s.report_save_failed)),
         }
     }
 
@@ -5519,6 +5549,16 @@ impl NamsdecApp {
                     {
                         ui.ctx().copy_text(report);
                         self.status = Status::Note(s.analysis_copied);
+                    }
+                    // Et sur le disque : un compte rendu se garde, se
+                    // relit, s'attache à un courriel. Le presse-papier
+                    // ne survit pas à la fenêtre suivante.
+                    if ui
+                        .button(s.analysis_save)
+                        .on_hover_text(s.analysis_save_hint)
+                        .clicked()
+                    {
+                        self.spawn_file_dialog(FileDialogKind::ExportReport);
                     }
                 });
                 ui.separator();
