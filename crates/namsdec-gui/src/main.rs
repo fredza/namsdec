@@ -4373,12 +4373,41 @@ impl NamsdecApp {
                                     // première.
                                     if palier != Some(exercise.level) {
                                         palier = Some(exercise.level);
-                                        ui.add_space(6.0);
-                                        ui.colored_label(
-                                            theme.accent,
-                                            egui::RichText::new(exercise.level.label(lang))
-                                                .strong(),
-                                        );
+                                        ui.add_space(8.0);
+                                        // Le palier, avec ce qu'il en
+                                        // reste : quarante-quatre
+                                        // étapes se lisent par groupes,
+                                        // et « 8/10 » dit en un coup
+                                        // d'œil où l'on en est.
+                                        let (faits_ici, total_ici) = pack
+                                            .exercises
+                                            .iter()
+                                            .filter(|autre| autre.level == exercise.level)
+                                            .fold((0usize, 0usize), |(faits, total), autre| {
+                                                let id = namsdec_exercises::full_id(pack, autre);
+                                                (
+                                                    faits
+                                                        + usize::from(
+                                                            self.exercises_done.contains(&id),
+                                                        ),
+                                                    total + 1,
+                                                )
+                                            });
+                                        ui.horizontal(|ui| {
+                                            ui.colored_label(
+                                                theme.accent,
+                                                egui::RichText::new(exercise.level.label(lang))
+                                                    .strong(),
+                                            );
+                                            ui.colored_label(
+                                                if faits_ici == total_ici {
+                                                    theme.good
+                                                } else {
+                                                    theme.dim
+                                                },
+                                                format!("{faits_ici}/{total_ici}"),
+                                            );
+                                        });
                                     }
                                     let id = namsdec_exercises::full_id(pack, exercise);
                                     let en_cours = self.current_exercise.as_deref() == Some(&id);

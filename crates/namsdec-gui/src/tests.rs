@@ -10962,6 +10962,73 @@ fn every_instruction_the_course_writes_has_a_sheet() {
     );
 }
 
+/// Chaque palier dit où l'on en est : « Découverte 3/10 ».
+///
+/// Quarante-quatre étapes se lisent par groupes. Un compte global ne dit
+/// pas ce qui reste *ici*, et c'est pourtant la question qu'on se pose
+/// en rouvrant le parcours.
+#[test]
+fn each_level_says_how_far_one_has_got() {
+    let mut app = NamsdecApp {
+        exercises: true,
+        show_exercises: true,
+        ..Default::default()
+    };
+    // Rien de fait : le premier palier est à zéro.
+    let pack = namsdec_exercises::builtin_pack();
+    let combien = |niveau: namsdec_exercises::Level| {
+        pack.exercises
+            .iter()
+            .filter(|exercise| exercise.level == niveau)
+            .count()
+    };
+    let découverte = combien(namsdec_exercises::Level::Discovery);
+
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 1000.0),
+        )),
+        ..Default::default()
+    };
+    let peindre = |app: &mut NamsdecApp| {
+        let mut painted = String::new();
+        for _ in 0..3 {
+            painted.clear();
+            let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+            fn collecte(shape: &egui::epaint::Shape, out: &mut String) {
+                match shape {
+                    egui::epaint::Shape::Text(text) => {
+                        out.push_str(text.galley.text());
+                        out.push('|');
+                    }
+                    egui::epaint::Shape::Vec(shapes) => {
+                        for shape in shapes {
+                            collecte(shape, out);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            for clipped in &output.shapes {
+                collecte(&clipped.shape, &mut painted);
+            }
+            output.textures_delta.clear();
+        }
+        painted
+    };
+    let painted = peindre(&mut app);
+    assert!(painted.contains(&format!("0/{découverte}")), "{painted}");
+
+    // Deux étapes du premier palier réussies : le compte suit.
+    app.exercises_done.insert("namsdec/registres".to_owned());
+    app.exercises_done.insert("namsdec/echange".to_owned());
+    let painted = peindre(&mut app);
+    assert!(painted.contains(&format!("2/{découverte}")), "{painted}");
+}
+
 /// La mémoire montre sa carte : où commence le code, où finit la pile,
 /// ce que le tas occupe, avec les droits de chacun.
 ///
