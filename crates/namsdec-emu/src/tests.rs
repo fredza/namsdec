@@ -2975,3 +2975,72 @@ hlt
         .to_vec();
     assert_eq!(octets, mêmes);
 }
+
+/// La comparaison qui écrit un masque, et non des indicateurs.
+///
+/// `comisd` pose CF et ZF, un nombre à la fois ; `cmppd` écrit le
+/// résultat **dans le registre** — que des uns, ou que des zéros —, et
+/// sur plusieurs valeurs à la fois. C'est ce qui permet de choisir sans
+/// brancher : le masque sert ensuite d'interrupteur à `andpd`.
+///
+/// Les prédicats en `n` méritent leur propre vérification : `cmpnltsd`
+/// n'est pas `cmpgesd`, parce qu'un NaN n'est ni plus petit ni plus
+/// grand — il est *non comparable*, et tout prédicat en `n` répond vrai
+/// devant lui.
+#[test]
+fn packed_comparison_writes_a_mask_and_a_nan_flips_the_n_predicates() {
+    let emu = run_program(
+        "\
+section .data
+paire   dq 1.0, 4.0
+autre   dq 2.0, 2.0
+nan     dq 0x7ff8000000000000
+deux    dq 2.0
+
+section .text
+global _start
+_start:
+movupd xmm0, [paire]
+movupd xmm1, [autre]
+cmpltpd xmm0, xmm1      ; 1<2 vrai, 4<2 faux
+movq rax, xmm0          ; le bas : que des uns
+movhlps xmm2, xmm0
+movq rbx, xmm2          ; le haut : que des zéros
+
+; Le masque sert d'interrupteur : ce qu'il laisse passer, et rien d'autre.
+movupd xmm3, [paire]
+andpd xmm3, xmm0
+movq rcx, xmm3          ; 1.0 conservé
+
+; Un NaN n'est ni plus petit ni plus grand : `lt` est faux, `nlt` vrai.
+movsd xmm4, [nan]
+movsd xmm5, [deux]
+movsd xmm6, xmm4
+cmpltsd xmm6, xmm5
+movq rdx, xmm6          ; faux : zéro
+movsd xmm7, xmm4
+cmpnltsd xmm7, xmm5
+movq rsi, xmm7          ; vrai : que des uns
+hlt
+",
+        &[],
+    );
+    let regs = &emu.cpu().regs;
+    assert_eq!(
+        regs.get64(Reg64::Rax),
+        u64::MAX,
+        "1 < 2 : le masque est plein"
+    );
+    assert_eq!(regs.get64(Reg64::Rbx), 0, "4 < 2 : le masque est vide");
+    assert_eq!(
+        f64::from_bits(regs.get64(Reg64::Rcx)),
+        1.0,
+        "le masque laisse passer ce qu'il désigne, et lui seul"
+    );
+    assert_eq!(regs.get64(Reg64::Rdx), 0, "NaN < 2 est faux");
+    assert_eq!(
+        regs.get64(Reg64::Rsi),
+        u64::MAX,
+        "mais « non plus petit » est vrai devant un NaN : ce n'est pas « plus grand ou égal »"
+    );
+}

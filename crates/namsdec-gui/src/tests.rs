@@ -9464,7 +9464,7 @@ fn what_this_machine_runs_can_be_explained() {
     let mut compte: std::collections::BTreeMap<String, usize> = Default::default();
     let mut lus = 0usize;
     for entry in dir.flatten() {
-        if lus >= 12 {
+        if lus >= 60 {
             break;
         }
         let Ok(meta) = entry.metadata() else { continue };
@@ -9503,11 +9503,13 @@ fn what_this_machine_runs_can_be_explained() {
     }
     assert!(lus > 0, "aucun binaire lu : le test n'a rien prouvé");
 
-    // Cinq fois : ce qui revient, par opposition à ce qu'un seul
-    // programme emploie une seule fois.
+    // Une seule fois suffit désormais : sur soixante binaires du
+    // système, il n'y a plus une instruction que le manuel ne sache
+    // expliquer. L'échantillon a quintuplé et le seuil est tombé à un —
+    // c'est l'exigence la plus forte que ce test puisse porter.
     let manquants: Vec<(&String, &usize)> = compte
         .iter()
-        .filter(|(mnemonic, vues)| **vues >= 5 && namsdec_doc::lookup(mnemonic).is_none())
+        .filter(|(mnemonic, _)| namsdec_doc::lookup(mnemonic).is_none())
         .collect();
     assert!(
         manquants.is_empty(),

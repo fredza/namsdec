@@ -7,6 +7,8 @@
 //! moitié de 128 bits, et `vector_binary` les applique à une moitié ou
 //! aux deux.
 
+use std::cmp::Ordering;
+
 use iced_x86::{Instruction, Mnemonic, OpKind};
 use namsdec_core::RFlags;
 
@@ -180,6 +182,85 @@ fn fp_packed(a: u128, b: u128, op: FpOp, w: FpWidth) -> u128 {
         }
     }
     out
+}
+
+/// Le résultat d'une comparaison flottante SSE, élément par élément :
+/// que des uns quand c'est vrai, que des zéros sinon.
+///
+/// Le prédicat est le même pour toutes les largeurs — c'est l'octet
+/// immédiat de `cmpps xmm0, xmm1, 2`, et les formes nommées comme
+/// `cmplepd` ne sont que des raccourcis d'assembleur pour cet octet-là.
+/// Les quatre prédicats en `n` ne sont pas la négation logique de leur
+/// jumeau : ils rendent vrai quand la comparaison est fausse **ou** que
+/// l'un des deux est un NaN, ce qui n'est pas la même chose.
+fn fp_compare(x: f64, y: f64, predicate: u8) -> bool {
+    let unordered = x.is_nan() || y.is_nan();
+    match predicate & 7 {
+        0 => x == y,
+        1 => x < y,
+        2 => x <= y,
+        3 => unordered,
+        4 => x != y,
+        // « Non plus petit » et « non plus petit ou égal » s'écrivent
+        // avec `partial_cmp` : devant un NaN il n'y a pas d'ordre du
+        // tout, et c'est justement ce qui distingue ces deux prédicats
+        // de `ge` et `gt`.
+        5 => !matches!(x.partial_cmp(&y), Some(Ordering::Less)),
+        6 => !matches!(x.partial_cmp(&y), Some(Ordering::Less | Ordering::Equal)),
+        _ => !unordered,
+    }
+}
+
+/// `cmpps`/`cmppd` : la comparaison qui écrit un masque dans le registre
+/// au lieu de poser des indicateurs.
+fn fp_compare_packed(a: u128, b: u128, predicate: u8, w: FpWidth) -> u128 {
+    let mut out = 0u128;
+    match w {
+        FpWidth::Single => {
+            for lane in 0..4 {
+                let x = f32::from_bits((a >> (lane * 32)) as u32);
+                let y = f32::from_bits((b >> (lane * 32)) as u32);
+                if fp_compare(x as f64, y as f64, predicate) {
+                    out |= u128::from(u32::MAX) << (lane * 32);
+                }
+            }
+        }
+        FpWidth::Double => {
+            for lane in 0..2 {
+                let x = f64::from_bits((a >> (lane * 64)) as u64);
+                let y = f64::from_bits((b >> (lane * 64)) as u64);
+                if fp_compare(x, y, predicate) {
+                    out |= u128::from(u64::MAX) << (lane * 64);
+                }
+            }
+        }
+    }
+    out
+}
+
+/// `cmpss`/`cmpsd` : le même masque, mais sur le seul élément du bas —
+/// le reste du registre est celui de la destination, intact.
+fn fp_compare_scalar(a: u128, b: u128, predicate: u8, w: FpWidth) -> u128 {
+    match w {
+        FpWidth::Single => {
+            let (x, y) = (f32::from_bits(a as u32), f32::from_bits(b as u32));
+            let mask = if fp_compare(x as f64, y as f64, predicate) {
+                u128::from(u32::MAX)
+            } else {
+                0
+            };
+            (a & !u128::from(u32::MAX)) | mask
+        }
+        FpWidth::Double => {
+            let (x, y) = (f64::from_bits(a as u64), f64::from_bits(b as u64));
+            let mask = if fp_compare(x, y, predicate) {
+                u128::from(u64::MAX)
+            } else {
+                0
+            };
+            (a & !u128::from(u64::MAX)) | mask
+        }
+    }
 }
 
 /// Une opération entière élément par élément, sur des morceaux de
@@ -579,6 +660,36 @@ impl Emulator {
             M::Pmovmskb | M::Vpmovmskb => self.move_sign_mask(instr, 8)?,
             M::Movmskps | M::Vmovmskps => self.move_sign_mask(instr, 32)?,
             M::Movmskpd | M::Vmovmskpd => self.move_sign_mask(instr, 64)?,
+
+            // Comparer en écrivant un masque, et non des indicateurs :
+            // l'autre façon de comparer des flottants, celle qui sert à
+            // choisir sans brancher. iced rend le prédicat sous forme
+            // d'immédiat, y compris pour les formes nommées — `cmpltpd`
+            // est décodé comme `cmppd …, 1`.
+            M::Cmpps | M::Vcmpps => {
+                let predicate = self.read_op(instr, instr.op_count() - 1)? as u8;
+                self.vector_binary_extra(instr, 1, move |a, b| {
+                    fp_compare_packed(a, b, predicate, FpWidth::Single)
+                })?;
+            }
+            M::Cmppd | M::Vcmppd => {
+                let predicate = self.read_op(instr, instr.op_count() - 1)? as u8;
+                self.vector_binary_extra(instr, 1, move |a, b| {
+                    fp_compare_packed(a, b, predicate, FpWidth::Double)
+                })?;
+            }
+            M::Cmpss | M::Vcmpss => {
+                let predicate = self.read_op(instr, instr.op_count() - 1)? as u8;
+                self.vector_binary_extra(instr, 1, move |a, b| {
+                    fp_compare_scalar(a, b, predicate, FpWidth::Single)
+                })?;
+            }
+            M::Cmpsd | M::Vcmpsd => {
+                let predicate = self.read_op(instr, instr.op_count() - 1)? as u8;
+                self.vector_binary_extra(instr, 1, move |a, b| {
+                    fp_compare_scalar(a, b, predicate, FpWidth::Double)
+                })?;
+            }
 
             // Remettre les éléments dans un autre ordre.
             M::Pshufd | M::Vpshufd => {

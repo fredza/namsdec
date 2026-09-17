@@ -202,6 +202,13 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
   Général rend la barre du système à qui la préfère.
 - La boîte « À propos » mène quelque part : namsdec.io, le Discord, le
   dépôt.
+- L'interpréteur exécute les comparaisons flottantes en masque —
+  `cmpps`, `cmppd`, `cmpss`, `cmpsd` et leurs formes nommées —, y compris
+  ce que les prédicats en `n` font d'un NaN : `cmpnltsd` n'est pas
+  `cmpgesd`. Une 153ᵉ fiche les explique, et le test qui relit les
+  binaires du système passe à **soixante** programmes avec la plus forte
+  exigence possible : plus une seule instruction, même vue une fois, que
+  le manuel ne sache expliquer.
 - La palette de commandes mène aux **étiquettes du programme** : on tape
   `affiche_nombre`, on y est. Sur deux cents lignes, c'est le « ouvrir
   par son nom » des éditeurs, sans rien de nouveau à retenir.
