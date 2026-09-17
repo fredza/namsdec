@@ -4235,6 +4235,12 @@ impl NamsdecApp {
                     Err(message) if message.contains("no release") => {
                         Err(s.about_update_none.to_owned())
                     }
+                    // Un dépôt privé répond comme un dépôt inexistant :
+                    // le message dit les deux, parce qu'on ne peut pas
+                    // savoir lequel c'est de l'extérieur.
+                    Err(message) if message.contains("not found") => {
+                        Err(s.about_update_private.to_owned())
+                    }
                     Err(message) => Err(format!("{} : {message}", s.about_update_failed)),
                 });
             }

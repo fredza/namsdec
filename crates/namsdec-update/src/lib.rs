@@ -56,6 +56,15 @@ pub enum UpdateError {
     /// GitHub a répondu autre chose qu'un succès.
     #[error("HTTP {0}")]
     Status(u16),
+    /// Ni dépôt ni version à cette adresse.
+    ///
+    /// C'est aussi ce que GitHub répond d'un dépôt **privé** interrogé
+    /// sans jeton : de l'extérieur, un dépôt qu'on n'a pas le droit de
+    /// voir et un dépôt qui n'existe pas se ressemblent — et c'est
+    /// voulu. Le dire ainsi évite de chercher une panne là où il n'y a
+    /// qu'une porte fermée.
+    #[error("repository or release not found (a private repository answers this too)")]
+    NotFound,
     /// La réponse n'a pas la forme attendue.
     #[error("unexpected response")]
     Malformed,
@@ -92,6 +101,7 @@ pub fn fetch_latest(owner: &str, repo: &str) -> Result<Release, UpdateError> {
         .header("Accept", "application/vnd.github+json")
         .call()
         .map_err(|e| match e {
+            ureq::Error::StatusCode(404) => UpdateError::NotFound,
             ureq::Error::StatusCode(code) => UpdateError::Status(code),
             autre => UpdateError::Network(autre.to_string()),
         })?;
@@ -265,6 +275,14 @@ mod tests {
         assert_eq!(release.version, "0.3.0");
         assert!(release.url.ends_with("/v0.3.0"));
         assert!(!release.prerelease);
+    }
+
+    /// Un 404 se dit pour ce qu'il est : personne à cette adresse — ou
+    /// une porte fermée, ce qui se ressemble vu de l'extérieur.
+    #[test]
+    fn a_missing_repository_says_what_it_means() {
+        let message = UpdateError::NotFound.to_string();
+        assert!(message.contains("private"), "{message}");
     }
 
     /// Ce qui n'est pas une version ne devient pas une version.

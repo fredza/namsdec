@@ -491,6 +491,7 @@ pub struct Strings {
     pub about_update_ahead: &'static str,
     pub about_update_none: &'static str,
     pub about_update_failed: &'static str,
+    pub about_update_private: &'static str,
     pub about_update_open: &'static str,
     pub about_update_how: &'static str,
 }
@@ -912,6 +913,7 @@ const FR: Strings = Strings {
     about_update_ahead: "Votre version est plus récente que la dernière publiée",
     about_update_none: "Aucune version n'a encore été publiée dans le dépôt.",
     about_update_failed: "La recherche a échoué",
+    about_update_private: "Le dépôt ne répond pas publiquement : il n'existe pas, ou il est privé. Vu de l'extérieur, les deux se ressemblent.",
     about_update_open: "Voir cette version",
     about_update_how: "La mise à jour se fait à la main : git pull, puis ./install.sh. namsdec ne se remplace jamais tout seul.",
 };
@@ -1333,6 +1335,7 @@ const EN: Strings = Strings {
     about_update_ahead: "Your version is newer than the latest published one",
     about_update_none: "No release has been published in the repository yet.",
     about_update_failed: "The check failed",
+    about_update_private: "The repository does not answer publicly: either it does not exist, or it is private. From the outside the two look alike.",
     about_update_open: "See that release",
     about_update_how: "Updating is done by hand: git pull, then ./install.sh. namsdec never replaces itself.",
 };
