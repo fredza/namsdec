@@ -14,6 +14,12 @@ on:
   # ce soit.
   workflow_dispatch:
 
+# Une publication ne s'annule pas : deux étiquettes poussées coup sur
+# coup doivent produire deux versions, pas une.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: write
 

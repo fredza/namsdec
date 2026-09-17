@@ -8,6 +8,13 @@ on:
     branches: [main]
   pull_request:
 
+# Une poussée de plus rend la précédente sans objet : inutile de faire
+# tourner six fois la même vérification sur six commits d'affilée, et
+# les runners ne sont pas infinis.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
