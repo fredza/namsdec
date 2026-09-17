@@ -7897,18 +7897,32 @@ const HEAT_WIDTH: f32 = 4.0;
 /// convention de toutes les cartes de chaleur, et elle se lit sans
 /// légende.
 fn heat_colour(theme: &'static Theme, count: u64, max: u64) -> egui::Color32 {
-    let échelle = (max.max(1) as f32 + 1.0).ln();
+    // L'échelle couvre l'intervalle observé : une ligne parcourue une
+    // seule fois est au vert pur, la plus chaude au rouge pur. Compter
+    // depuis zéro tassait tout le programme dans le milieu de la rampe.
+    let échelle = (max.max(1) as f32).ln();
     let part = if échelle > 0.0 {
-        ((count as f32 + 1.0).ln() / échelle).clamp(0.0, 1.0)
+        ((count.max(1) as f32).ln() / échelle).clamp(0.0, 1.0)
     } else {
         0.0
     };
-    // Deux segments : du froid au tiède, puis du tiède au chaud.
-    if part < 0.5 {
-        theme.dim.lerp_to_gamma(theme.warn, part * 2.0)
-    } else {
-        theme.warn.lerp_to_gamma(theme.bad, (part - 0.5) * 2.0)
-    }
+    // Vert, jaune, orange, rouge : la rampe qu'on lit sans légende,
+    // celle des cartes de chaleur et des jauges de température. Le vert
+    // dit « passé une fois, rien à voir ici », le rouge « c'est là que
+    // le programme passe son temps ».
+    //
+    // Le jaune et l'orange sont posés en dur et non pris au thème : ce
+    // sont des repères de lecture, pas des couleurs d'interface, et un
+    // thème qui choisirait un « avertissement » violet casserait la
+    // progression sans qu'on comprenne pourquoi.
+    const JAUNE: egui::Color32 = egui::Color32::from_rgb(0xe3, 0xc5, 0x4a);
+    const ORANGE: egui::Color32 = egui::Color32::from_rgb(0xe2, 0x88, 0x3c);
+    let arrêts = [theme.good, JAUNE, ORANGE, theme.bad];
+    // Trois segments entre quatre arrêts.
+    let segments = (arrêts.len() - 1) as f32;
+    let position = part * segments;
+    let index = (position.floor() as usize).min(arrêts.len() - 2);
+    arrêts[index].lerp_to_gamma(arrêts[index + 1], position - index as f32)
 }
 
 /// La ligne qu'un point de l'écran désigne dans la gouttière.

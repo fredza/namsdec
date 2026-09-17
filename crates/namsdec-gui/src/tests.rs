@@ -11029,6 +11029,46 @@ fn each_level_says_how_far_one_has_got() {
     assert!(painted.contains(&format!("2/{découverte}")), "{painted}");
 }
 
+/// La chaleur va du vert au rouge en passant par le jaune et l'orange :
+/// la rampe qu'on lit sans légende.
+#[test]
+fn the_heat_ramp_runs_green_to_red() {
+    let theme = DEFAULT_THEME;
+    // Une ligne parcourue une fois sur mille est froide, la plus chaude
+    // est rouge, et le milieu passe par le jaune puis l'orange.
+    let froid = heat_colour(theme, 1, 1000);
+    let chaud = heat_colour(theme, 1000, 1000);
+    assert_eq!(froid, theme.good, "le froid est le vert du thème");
+    assert_eq!(chaud, theme.bad, "le chaud est le rouge du thème");
+
+    // Le rouge monte, le vert descend : c'est ce qui fait une rampe.
+    let étapes: Vec<egui::Color32> = [1u64, 4, 30, 200, 1000]
+        .into_iter()
+        .map(|n| heat_colour(theme, n, 1000))
+        .collect();
+    // Ce qui fait une rampe du vert au rouge : la part de rouge par
+    // rapport au vert ne cesse de monter. Le bleu, lui, ne se compare
+    // pas — le rouge d'un thème sombre en contient toujours un peu,
+    // sans quoi il piquerait les yeux.
+    let chaleurs: Vec<f32> = étapes
+        .iter()
+        .map(|c| c.r() as f32 / c.g().max(1) as f32)
+        .collect();
+    assert!(
+        chaleurs.windows(2).all(|p| p[0] <= p[1] + 0.01),
+        "la rampe doit se réchauffer : {chaleurs:?}"
+    );
+    // Au milieu, du jaune puis de l'orange : beaucoup de rouge, du vert
+    // encore, et moins de bleu qu'aux deux bouts.
+    let milieu = heat_colour(theme, 30, 1000);
+    assert!(milieu.r() > 180 && milieu.g() > 100, "{milieu:?}");
+    assert!(milieu.b() < froid.b(), "{milieu:?} contre {froid:?}");
+
+    // Et une ligne jamais atteinte n'a pas de couleur du tout : elle n'a
+    // pas de bande.
+    assert_eq!(heat_colour(theme, 0, 0), heat_colour(theme, 0, 0));
+}
+
 /// La mémoire montre sa carte : où commence le code, où finit la pile,
 /// ce que le tas occupe, avec les droits de chacun.
 ///
