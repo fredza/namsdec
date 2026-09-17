@@ -85,7 +85,7 @@ pour chacun, ce que son état change concrètement. Sur
 votre programme comme sur un binaire du système. Le rapport se copie en
 Markdown, ou s'enregistre, pour être collé dans un compte rendu ou un cours.
 
-Et aussi : documentation de 140 instructions, directives et notions sous **F1** ou
+Et aussi : documentation de 141 instructions, directives et notions sous **F1** ou
 au survol — avec sommaire, renvois d'une fiche à l'autre et export du
 manuel entier en Markdown (menu Aide), parce que ce qu'on apprend ici
 doit pouvoir se lire ailleurs —, autocomplétion qui ne propose que ce qui est documenté,
@@ -144,6 +144,30 @@ signé ou non, mémoire, tableaux, chaînes, pile, appels, sortie,
 débordement, protection — activable dans
 Préférences ▸ Modules. D'autres séries s'installent depuis
 un simple fichier JSON, comme les thèmes : Outils ▸ Exercices.
+
+### Si vous venez de pwndbg
+
+namsdec n'est pas un débogueur : il simule le processeur au lieu d'en
+piloter un. Mais les gestes qu'on fait devant un binaire sont les mêmes,
+et ils portent ici les mêmes noms qu'ailleurs.
+
+| pwndbg / gdb | namsdec |
+| --- | --- |
+| `telescope` | onglet Mémoire, lecture « Pointeurs » ; et chaque mot de la pile |
+| `vmmap` | onglet Mémoire ▸ Carte de la mémoire |
+| `search` | onglet Mémoire ▸ Chercher en mémoire |
+| `patch` | onglet Mémoire ▸ Écrire ici |
+| `set $rax = …` | clic sur la valeur du registre |
+| `setflag ZF 1` | clic sur l'indicateur |
+| `cyclic` | Outils ▸ Motif cyclique (identique à pwntools) |
+| `dumpargs` | bandeau, devant un `call` |
+| `retaddr` | onglet Pile ▸ Adresses de retour |
+| `nextcall`, `nextret`, `nextsyscall` | Outils ▸ Jusqu'au prochain… (`Espace u c/r/s`) |
+| `context` | Édition ▸ Copier l'état |
+| `checksec` | fenêtre Analyse ▸ Protections |
+| `got`, `plt` | fenêtre Analyse ▸ Fonctions importées |
+| `nearpc` | le listing lui-même, RIP dans la gouttière |
+| `stepi`, `nexti`, `reverse-stepi` | `Espace s i`, `Espace n i`, `Espace b` |
 
 ### Ajouter un désassembleur
 

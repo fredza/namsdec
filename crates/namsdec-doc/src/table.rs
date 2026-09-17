@@ -1928,6 +1928,20 @@ pub const ENTRIES: &[Entry] = &[
     // laisse le lecteur les deviner.
     Entry {
         kind: Kind::Concept,
+        names: &["pwndbg", "gdb", "debogueur", "débogueur"],
+        title: Text {
+            fr: "Ce qu'un débogueur fait, et ce que namsdec en fait",
+            en: "What a debugger does, and what namsdec does with it",
+        },
+        body: Text {
+            fr: "Un débogueur pilote un vrai processus : il pose des points d'arrêt, lit la mémoire, modifie un registre. namsdec, lui, **simule** le processeur — d'où le retour en arrière, que gdb rend laborieux. Les gestes, eux, sont les mêmes, et portent ici les mêmes noms : `telescope` (suivre un pointeur) est la lecture « Pointeurs » de l'onglet Mémoire, `vmmap` sa carte, `search` sa recherche, `patch` son « Écrire ici » ; `cyclic` est dans Outils, `dumpargs` s'affiche devant chaque `call`, `retaddr` dans l'onglet Pile, `nextcall` dans Outils, `context` sous « Copier l'état », `checksec` dans la fenêtre d'analyse. Apprendre ici, c'est apprendre là-bas.",
+            en: "A debugger drives a real process: it sets breakpoints, reads memory, changes a register. namsdec **simulates** the processor instead — hence stepping backwards, which gdb makes laborious. The gestures are the same, and carry the same names here: `telescope` (following a pointer) is the Memory tab's \"pointers\" reading, `vmmap` its map, `search` its search, `patch` its \"write here\"; `cyclic` lives in Tools, `dumpargs` shows before every `call`, `retaddr` in the Stack tab, `nextcall` in Tools, `context` under \"copy the state\", `checksec` in the analysis window. Learning here is learning there.",
+        },
+        flags: "",
+        example: "; Outils > Motif cyclique, puis Édition > Copier l'état\n    nop",
+    },
+    Entry {
+        kind: Kind::Concept,
         names: &["registre"],
         title: Text {
             fr: "Registre",
