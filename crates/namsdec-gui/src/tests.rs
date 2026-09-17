@@ -2906,6 +2906,83 @@ fn an_application_that_was_not_told_where_to_write_writes_nowhere() {
     assert_eq!(written.show_toolbar, app.show_toolbar);
 }
 
+/// Ce que l'interface écrit vraiment à l'écran, deux images durant —
+/// la première sert à egui pour mesurer, la seconde montre le résultat.
+fn paint(app: &mut NamsdecApp) -> String {
+    let ctx = egui::Context::default();
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 820.0),
+        )),
+        ..Default::default()
+    };
+    let mut painted = String::new();
+    for _ in 0..2 {
+        painted.clear();
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        for clipped in &output.shapes {
+            if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                painted.push_str(text.galley.text());
+                painted.push('|');
+            }
+        }
+        output.textures_delta.clear();
+    }
+    painted
+}
+
+/// Le manuel s'annonce par son compte de fiches. Un compte faux dans une
+/// documentation qui apprend à compter serait un comble : il se vérifie.
+#[test]
+fn the_manual_announces_how_many_sheets_it_really_has() {
+    let combien = namsdec_doc::all().len().to_string();
+    for lang in [Lang::Fr, Lang::En] {
+        let phrase = strings(lang).help_search_hint;
+        assert!(
+            phrase.contains(&combien),
+            "« {phrase} » n'annonce pas les {combien} fiches"
+        );
+    }
+}
+
+/// Sans fiche à montrer, la fenêtre d'aide montre le manuel : ses quatre
+/// familles et les fiches de chacune. Chercher suppose de savoir quoi
+/// chercher ; un sommaire, non.
+#[test]
+fn the_help_window_offers_its_contents_when_no_sheet_is_open() {
+    let mut app = NamsdecApp {
+        show_help: true,
+        ..Default::default()
+    };
+    app.help = None;
+
+    let painted = paint(&mut app);
+
+    let s = strings(app.lang);
+    for famille in [
+        s.help_kind_concepts,
+        s.help_kind_instructions,
+        s.help_kind_directives,
+        s.help_kind_preprocessors,
+    ] {
+        assert!(
+            painted.contains(famille),
+            "le sommaire tait « {famille} »"
+        );
+    }
+    // Et la famille ouverte d'emblée est celle des notions : ce sont
+    // elles qu'on lit quand on ne sait pas encore par où commencer.
+    let notion = namsdec_doc::all()
+        .iter()
+        .find(|e| e.kind == namsdec_doc::Kind::Concept)
+        .expect("au moins une notion");
+    assert!(
+        painted.contains(notion.title.get(app.lang.code())),
+        "les notions devraient être ouvertes : {painted}"
+    );
+}
+
 /// La fenêtre d'aide s'ouvre par le menu Aide comme par F1, et montre la
 /// fiche — pas seulement son titre.
 #[test]

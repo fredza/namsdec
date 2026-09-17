@@ -453,6 +453,9 @@ struct NamsdecApp {
     /// Le mot sur lequel l'aide a été demandée, et sa fiche s'il y en a
     /// une. `None` tant que personne n'a appuyé sur F1.
     help: Option<(String, Option<&'static namsdec_doc::Entry>)>,
+    /// La famille de fiches que montre le sommaire du manuel, faute de
+    /// fiche à lire. Un choix de lecture : il ne va pas sur le disque.
+    help_index_kind: namsdec_doc::Kind,
     preferences_tab: PreferencesTab,
     /// L'onglet RE est-il dans la barre latérale ? **Volontairement hors
     /// de `settings.json`** : il ouvre un module de reverse engineering
@@ -1013,6 +1016,7 @@ impl Default for NamsdecApp {
             cursor_pos: (1, 1),
             cursor_byte: 0,
             help: None,
+            help_index_kind: namsdec_doc::Kind::Concept,
             preferences_tab: PreferencesTab::General,
             show_re_tab: false,
             exercises: false,
@@ -5469,6 +5473,12 @@ impl NamsdecApp {
             if !self.help_query.is_empty() && ui.button("x").clicked() {
                 self.help_query.clear();
             }
+            // De quoi revenir au sommaire : une fiche ouverte ne doit
+            // pas être un cul-de-sac.
+            if self.help.is_some() && ui.button(s.help_index).clicked() {
+                self.help = None;
+                self.help_query.clear();
+            }
         });
         if !self.help_query.is_empty() {
             let query = self.help_query.to_lowercase();
@@ -5511,10 +5521,12 @@ impl NamsdecApp {
         }
 
         let Some((word, entry)) = &self.help else {
+            // Rien sous le curseur : on montre le manuel lui-même. Une
+            // documentation qu'on ne peut que *chercher* suppose qu'on
+            // sache déjà ce qu'on cherche ; un sommaire se parcourt.
             ui.colored_label(theme.dim, s.help_empty);
-            // Rien sous le curseur, mais le manuel est là : autant le
-            // dire plutôt que de laisser une fenêtre vide.
             ui.colored_label(theme.dim, s.help_search_hint);
+            self.help_index_ui(ui);
             return;
         };
         let Some(entry) = entry else {
@@ -5593,6 +5605,71 @@ impl NamsdecApp {
             });
         if copié {
             self.status = Status::Note(s.help_example_copied);
+        }
+    }
+
+    /// Le sommaire du manuel : les familles, dépliables, et leurs
+    /// fiches.
+    ///
+    /// Chercher suppose de savoir quoi chercher. Parcourir, non — et
+    /// c'est ce qu'on fait devant un manuel qu'on découvre.
+    fn help_index_ui(&mut self, ui: &mut egui::Ui) {
+        let s = strings(self.lang);
+        let theme = self.theme;
+        let lang = self.lang.code();
+        let familles = [
+            (namsdec_doc::Kind::Concept, s.help_kind_concepts),
+            (namsdec_doc::Kind::Instruction, s.help_kind_instructions),
+            (namsdec_doc::Kind::Directive, s.help_kind_directives),
+            (namsdec_doc::Kind::Preprocessor, s.help_kind_preprocessors),
+        ];
+
+        // Les quatre familles restent visibles quoi qu'on lise : on ne
+        // découvre pas un sommaire en faisant défiler ce qu'on ne sait
+        // pas encore chercher.
+        ui.horizontal_wrapped(|ui| {
+            for (kind, titre) in familles {
+                let combien = namsdec_doc::all().iter().filter(|e| e.kind == kind).count();
+                ui.selectable_value(
+                    &mut self.help_index_kind,
+                    kind,
+                    format!("{titre} ({combien})"),
+                );
+            }
+        });
+        ui.separator();
+
+        let fiches: Vec<&namsdec_doc::Entry> = namsdec_doc::all()
+            .iter()
+            .filter(|entry| entry.kind == self.help_index_kind)
+            .collect();
+        let mut ouvrir = None;
+        egui::ScrollArea::vertical()
+            .id_salt("help_sommaire")
+            .max_height(window_room(ui))
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                for entry in fiches {
+                    let ligne = ui.horizontal_wrapped(|ui| {
+                        ui.colored_label(
+                            theme.mnemonic,
+                            egui::RichText::new(entry.names[0]).monospace(),
+                        );
+                        ui.colored_label(theme.dim, entry.title.get(lang));
+                    });
+                    if ligne
+                        .response
+                        .interact(egui::Sense::click())
+                        .on_hover_text(s.help_open_sheet)
+                        .clicked()
+                    {
+                        ouvrir = Some(entry.names[0]);
+                    }
+                }
+            });
+
+        if let Some(name) = ouvrir {
+            self.help = Some((name.to_owned(), namsdec_doc::lookup(name)));
         }
     }
 
