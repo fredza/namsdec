@@ -6429,7 +6429,7 @@ fn the_course_offers_the_next_step() {
 /// Le manuel se consulte aussi pour ce qu'on ne connaît pas encore.
 ///
 /// F1 répond sur le mot où l'on est : encore faut-il savoir quoi
-/// écrire. La fenêtre d'aide cherche maintenant dans les 148 fiches, par
+/// écrire. La fenêtre d'aide cherche maintenant dans les 151 fiches, par
 /// nom comme par titre.
 #[test]
 fn the_manual_can_be_searched_for_what_one_does_not_know_yet() {
@@ -9310,6 +9310,75 @@ fn both_languages_say_the_same_things() {
             "{nom} est traduit : à retirer de la liste"
         );
     }
+}
+
+/// Ce qu'on lit dans les binaires de cette machine s'explique, et pas
+/// seulement ce qu'on lit dans `/bin/ls`.
+///
+/// Un manuel vérifié sur un seul fichier documente ce fichier. Celui-ci
+/// passe sur une douzaine de binaires du système et exige une fiche pour
+/// tout mnémonique qui revient — le seuil laisse passer l'exotique isolé,
+/// parce qu'écrire une fiche pour une instruction vue une fois dans une
+/// bibliothèque de compression n'apprend à personne.
+#[test]
+fn what_this_machine_runs_can_be_explained() {
+    let Ok(dir) = std::fs::read_dir("/usr/bin") else {
+        eprintln!("/usr/bin illisible : test ignoré");
+        return;
+    };
+    let mut compte: std::collections::BTreeMap<String, usize> = Default::default();
+    let mut lus = 0usize;
+    for entry in dir.flatten() {
+        if lus >= 12 {
+            break;
+        }
+        let Ok(meta) = entry.metadata() else { continue };
+        if !meta.is_file() || meta.len() > 2 << 20 {
+            continue;
+        }
+        let Ok(bytes) = std::fs::read(entry.path()) else {
+            continue;
+        };
+        if !bytes.starts_with(b"\x7fELF") {
+            continue;
+        }
+        let Some(elf) = namsdec_re::elf_scan::scan(&bytes) else {
+            continue;
+        };
+        lus += 1;
+        for section in elf.sections.iter().filter(|s| s.execute && !s.nobits) {
+            let début = section.offset as usize;
+            let fin = (début + section.size as usize).min(bytes.len());
+            if fin <= début {
+                continue;
+            }
+            for instruction in namsdec_disasm::disassemble(&bytes[début..fin], section.addr) {
+                let mnemonic = instruction
+                    .text
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or_default()
+                    .to_ascii_lowercase();
+                if mnemonic.is_empty() || mnemonic == "(bad)" {
+                    continue;
+                }
+                *compte.entry(mnemonic).or_default() += 1;
+            }
+        }
+    }
+    assert!(lus > 0, "aucun binaire lu : le test n'a rien prouvé");
+
+    // Cinq fois : ce qui revient, par opposition à ce qu'un seul
+    // programme emploie une seule fois.
+    let manquants: Vec<(&String, &usize)> = compte
+        .iter()
+        .filter(|(mnemonic, vues)| **vues >= 5 && namsdec_doc::lookup(mnemonic).is_none())
+        .collect();
+    assert!(
+        manquants.is_empty(),
+        "ces instructions reviennent dans les binaires de cette machine sans pouvoir \
+         s'expliquer : {manquants:?}"
+    );
 }
 
 /// La mémoire montre sa carte : où commence le code, où finit la pile,

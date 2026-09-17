@@ -822,6 +822,55 @@ pub const ENTRIES: &[Entry] = &[
     },
     Entry {
         kind: Kind::Instruction,
+        names: &["pshuflw", "pshufhw"],
+        title: Text {
+            fr: "Remettre des mots dans l'ordre qu'on veut",
+            en: "Put words in whatever order one wants",
+        },
+        body: Text {
+            fr: "La même idée que `pshufd`, mais sur des mots de 16 bits : `pshuflw` réarrange les quatre mots bas d'un registre et laisse les hauts, `pshufhw` fait l'inverse. Le troisième opérande dit, deux bits par mot, d'où chacun vient. On les rencontre dans les routines de texte et de traitement d'images, là où l'ordre des octets est ce qu'on manipule.",
+            en: "The same idea as `pshufd`, on 16-bit words: `pshuflw` rearranges the low four words of a register and leaves the high ones, `pshufhw` does the opposite. The third operand says, two bits per word, where each one comes from. They turn up in text and image routines, where the order of bytes is the thing being handled.",
+        },
+        flags: "aucun",
+        example: "; namsdec ne les simule pas : pshuflw xmm0, xmm1, 0x1b\n    nop",
+    },
+    Entry {
+        kind: Kind::Instruction,
+        names: &["pextrw", "pinsrw", "pextrb", "pinsrb"],
+        title: Text {
+            fr: "Prendre ou poser un seul élément d'un vecteur",
+            en: "Take or put a single element of a vector",
+        },
+        body: Text {
+            fr: "Un registre vectoriel tient huit mots ou seize octets ; ces instructions en lisent ou en écrivent **un seul**, désigné par un numéro écrit dans l'instruction. `pextrw` sort un mot vers un registre ordinaire, `pinsrw` en pose un. C'est ainsi qu'une routine SIMD rend son résultat au code qui l'appelle — après `pcmpeqb` et `pmovmskb`, par exemple.",
+            en: "A vector register holds eight words or sixteen bytes; these read or write exactly **one** of them, picked by a number written into the instruction. `pextrw` moves a word out to an ordinary register, `pinsrw` puts one in. That is how a SIMD routine hands its result back to the code calling it — after `pcmpeqb` and `pmovmskb`, for instance.",
+        },
+        flags: "aucun",
+        example: "; namsdec ne les simule pas : pextrw eax, xmm0, 3\n    nop",
+    },
+    Entry {
+        kind: Kind::Instruction,
+        names: &[
+            "cvtdq2ps",
+            "cvtdq2pd",
+            "cvtps2dq",
+            "cvttps2dq",
+            "cvtpd2dq",
+            "cvttpd2dq",
+        ],
+        title: Text {
+            fr: "Convertir des paquets d'entiers et de flottants",
+            en: "Convert packs of integers and floats",
+        },
+        body: Text {
+            fr: "Les mêmes conversions que `cvtsi2ss` et compagnie, mais sur tout un vecteur à la fois : `dq` veut dire entiers de 32 bits, `ps` flottants simples, `pd` flottants doubles. Le `t` de `cvttps2dq` marque la troncature — on coupe la partie décimale — là où l'absence de `t` arrondit selon le mode en vigueur. C'est la différence entre `(int)x` en C et `lrint(x)`, et elle se paie en résultats qui diffèrent d'une unité.",
+            en: "The same conversions as `cvtsi2ss` and friends, but on a whole vector at a time: `dq` means 32-bit integers, `ps` single floats, `pd` double floats. The `t` in `cvttps2dq` marks truncation — the fractional part is cut — where without it the current rounding mode applies. That is the difference between `(int)x` in C and `lrint(x)`, and it costs results that differ by one.",
+        },
+        flags: "aucun",
+        example: "; namsdec ne les simule pas : cvttps2dq xmm0, xmm1\n    nop",
+    },
+    Entry {
+        kind: Kind::Instruction,
         names: &["cpuid"],
         title: Text {
             fr: "Interroger le processeur",
