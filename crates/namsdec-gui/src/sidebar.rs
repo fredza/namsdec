@@ -71,20 +71,12 @@ impl NamsdecApp {
         // à eux, où ils tiennent en entier.
         self.vectors_link_ui(ui);
 
-        ui.separator();
-        ui.horizontal_wrapped(|ui| {
-            for tab in SidebarTab::ALL {
-                if tab == SidebarTab::Re && !self.show_re_tab {
-                    continue;
-                }
-                if ui
-                    .selectable_label(self.active_tab == tab, tab.label(s))
-                    .clicked()
-                {
-                    self.active_tab = tab;
-                }
-            }
-        });
+        // La rangée d'onglets — Pile, Mémoire, Tas, Octets, RE — est
+        // passée dans la barre d'outils, à droite. Elle vivait ici, tout
+        // en bas du panneau, coincée entre l'état du processeur et le
+        // contenu qu'elle commande : on changeait de vue en visant une
+        // rangée qui descendait ou montait selon la taille du bandeau.
+        // En haut, elle ne bouge plus, et le panneau gagne sa hauteur.
         ui.separator();
         // Chaque vue pose sa propre zone de défilement : un vidage
         // mémoire défile dans les deux sens (seize octets et leur

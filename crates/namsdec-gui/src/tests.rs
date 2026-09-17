@@ -9472,6 +9472,73 @@ boucle:
     assert!(écrit.contains("\"console_height\":null"), "{écrit}");
 }
 
+/// Les onglets du panneau latéral se choisissent dans la barre d'outils,
+/// à droite, et non plus au fond du panneau.
+///
+/// Ils vivaient entre l'état du processeur et leur propre contenu :
+/// selon que le bandeau était déplié ou non, la rangée montait ou
+/// descendait, et l'on visait une cible qui bouge.
+#[test]
+fn the_sidebar_tabs_live_in_the_toolbar() {
+    let mut app = NamsdecApp {
+        show_toolbar: true,
+        show_sidebar: true,
+        show_re_tab: false,
+        ..Default::default()
+    };
+    let s = strings(app.lang);
+    // Où chaque étiquette est peinte, et non dans quel ordre : ce qui
+    // compte est ce qu'on lit de gauche à droite.
+    let abscisse = |app: &mut NamsdecApp, texte: &str| -> Option<f32> {
+        let ctx = egui::Context::default();
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1280.0, 820.0),
+            )),
+            ..Default::default()
+        };
+        let mut trouvée = None;
+        for _ in 0..2 {
+            trouvée = None;
+            let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+            for clipped in &output.shapes {
+                if let egui::epaint::Shape::Text(forme) = &clipped.shape
+                    && forme.galley.text() == texte
+                {
+                    trouvée = Some(forme.pos.x);
+                }
+            }
+            output.textures_delta.clear();
+        }
+        trouvée
+    };
+    let mut x = Vec::new();
+    for label in [s.tab_stack, s.tab_memory, s.tab_heap, s.tab_bytes] {
+        x.push(
+            abscisse(&mut app, label)
+                .unwrap_or_else(|| panic!("l'onglet « {label} » n'est pas peint")),
+        );
+    }
+    assert!(
+        x.windows(2).all(|paire| paire[0] < paire[1]),
+        "de gauche à droite : Pile, Mémoire, Tas, Octets — obtenu {x:?}"
+    );
+    // Et à droite de la barre, pas à gauche : au-delà de sa moitié.
+    assert!(x[0] > 1280.0 / 2.0, "la rangée est à droite : {x:?}");
+    let painted = paint(&mut app);
+    // L'onglet RE ne s'affiche que s'il est demandé.
+    assert!(!painted.contains(s.tab_re), "{painted}");
+    app.show_re_tab = true;
+    assert!(paint(&mut app).contains(s.tab_re));
+
+    // Sans panneau latéral, pas d'onglets : ils commandent ce qu'il
+    // montre, et il ne montre rien.
+    app.show_sidebar = false;
+    let painted = paint(&mut app);
+    assert!(!painted.contains(s.tab_heap), "{painted}");
+}
+
 /// La mémoire montre sa carte : où commence le code, où finit la pile,
 /// ce que le tas occupe, avec les droits de chacun.
 ///

@@ -4392,6 +4392,31 @@ impl NamsdecApp {
                     self.dispatch(Action::Stop);
                 }
             });
+
+            // À droite, ce que le panneau latéral montre : Pile,
+            // Mémoire, Tas, Octets, et RE quand il est demandé. Ces
+            // onglets étaient en bas du panneau, entre l'état du
+            // processeur et leur propre contenu — ils montaient et
+            // descendaient selon la taille du bandeau. Ici, ils sont
+            // toujours au même endroit, et le panneau gagne leur
+            // hauteur.
+            if self.show_sidebar {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    // De droite à gauche : la boucle est inversée pour
+                    // que l'ordre lu reste Pile, Mémoire, Tas, Octets.
+                    for tab in SidebarTab::ALL.iter().rev() {
+                        if *tab == SidebarTab::Re && !self.show_re_tab {
+                            continue;
+                        }
+                        if ui
+                            .selectable_label(self.active_tab == *tab, tab.label(s))
+                            .clicked()
+                        {
+                            self.active_tab = *tab;
+                        }
+                    }
+                });
+            }
         });
     }
 
