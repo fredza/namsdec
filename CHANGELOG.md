@@ -202,6 +202,9 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
   Général rend la barre du système à qui la préfère.
 - La boîte « À propos » mène quelque part : namsdec.io, le Discord, le
   dépôt.
+- Un filet sépare les trois zones du panneau latéral, et Affichage ▸
+  « Panneau latéral partagé tout seul » rend le partage automatique à qui
+  a tiré la poignée une fois.
 - Le panneau latéral partage sa hauteur au lieu de la donner au premier
   arrivé : l'état du processeur garde la sienne, entière et sans barre
   de défilement, et le contenu de l'onglet — Pile, Mémoire, Tas, Octets,

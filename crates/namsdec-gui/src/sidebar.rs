@@ -80,6 +80,7 @@ impl NamsdecApp {
             .frame(egui::Frame::new())
             .show(ui, |ui| {
                 let départ = ui.cursor().top();
+                rule(ui, self.theme);
                 // `show_unindented` : le retrait qu'ajoute un en-tête
                 // repliable vaut une vingtaine de pixels, et une valeur
                 // de registre fait seize chiffres — avec le retrait, la
@@ -177,6 +178,7 @@ impl NamsdecApp {
             .min_size(SIDEBAR_TAB_MIN.min(plafond))
             .max_size(plafond)
             .show(ui, |ui| {
+                rule(ui, self.theme);
                 // Le titre de la vue qu'on regarde. Les onglets sont
                 // montés dans la barre d'outils, et le panneau se
                 // retrouvait à montrer des adresses sans dire de quoi :
@@ -203,6 +205,7 @@ impl NamsdecApp {
         if let Some(rendue) = egui::containers::panel::PanelState::load(ui.ctx(), id)
             .map(|état| état.outer_rect.height())
         {
+            self.sidebar_tab_last = rendue;
             match self.sidebar_tab_height {
                 Some(gardée) if (rendue - gardée).abs() > 1.0 => {
                     self.sidebar_tab_height = Some(rendue);
@@ -2458,6 +2461,21 @@ pub(crate) fn section_toggle(
 /// Toutes les sections du panneau portent le même : sans une facture
 /// commune, un titre en gris clair ressemble à une explication, et l'on
 /// ne sait plus ce qui annonce quoi.
+/// Un filet pleine largeur, du ton des titres de section.
+///
+/// Les trois zones du panneau — ce qui vient, l'état du processeur, la
+/// vue choisie — ont chacune leur place fixe depuis qu'elles se la
+/// partagent. Un trait le dit : sans lui, l'œil cherche où finit l'une
+/// et où commence l'autre à chaque fois que leur contenu change.
+pub(crate) fn rule(ui: &mut egui::Ui, theme: &'static Theme) {
+    ui.add_space(4.0);
+    let (rect, _) =
+        ui.allocate_exact_size(egui::vec2(ui.available_width(), 1.0), egui::Sense::hover());
+    ui.painter()
+        .rect_filled(rect, 0.0, theme.dim.gamma_multiply(0.35));
+    ui.add_space(4.0);
+}
+
 pub(crate) fn section_header(ui: &mut egui::Ui, theme: &'static Theme, titre: &str) {
     ui.add_space(2.0);
     ui.label(egui::RichText::new(titre).strong().color(theme.text));

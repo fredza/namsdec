@@ -821,6 +821,9 @@ struct NamsdecApp {
     /// il est ancré au-dessus de l'onglet, et sa place n'est pas à
     /// prendre.
     sidebar_cpu_height: f32,
+    /// La hauteur qu'a réellement prise la part de l'onglet à la
+    /// dernière image : celle qu'on fige quand on cesse de la calculer.
+    sidebar_tab_last: f32,
     /// Ce qu'on s'apprête à écrire dans la mémoire, à la main.
     ///
     /// Le pendant de l'édition d'un registre : poser une valeur dans un
@@ -1485,6 +1488,7 @@ impl Default for NamsdecApp {
             sidebar_tab_height: None,
             sidebar_banner_height: 0.0,
             sidebar_cpu_height: 0.0,
+            sidebar_tab_last: SIDEBAR_TAB_MIN,
             mem_poke: String::new(),
             show_disassembly: false,
             disassembler: PSEUDO_ID.to_owned(),
@@ -1562,6 +1566,7 @@ impl NamsdecApp {
             sidebar_tab_height: settings.sidebar_tab_height.map(|h| h as f32),
             sidebar_banner_height: 0.0,
             sidebar_cpu_height: 0.0,
+            sidebar_tab_last: SIDEBAR_TAB_MIN,
             system_titlebar: settings.system_titlebar,
             heat_legend: settings.heat_legend,
             exercises_done: settings.exercises_done.iter().cloned().collect(),
@@ -3655,6 +3660,27 @@ impl NamsdecApp {
                         None
                     } else {
                         Some(CONSOLE_HEIGHT)
+                    };
+                }
+                // Et la même chose pour le panneau latéral : une poignée
+                // tirée une fois se reprend, sinon le partage automatique
+                // est perdu pour de bon.
+                let mut partagé = self.sidebar_tab_height.is_none();
+                if ui
+                    .add_enabled(
+                        self.show_sidebar,
+                        egui::Checkbox::new(&mut partagé, s.view_sidebar_auto),
+                    )
+                    .on_hover_text(s.view_sidebar_auto_hint)
+                    .changed()
+                {
+                    // Décochée, la part garde la hauteur qu'elle a
+                    // maintenant : décocher ne doit rien faire sauter
+                    // sous les yeux.
+                    self.sidebar_tab_height = if partagé {
+                        None
+                    } else {
+                        Some(SIDEBAR_TAB_MIN.max(self.sidebar_tab_last))
                     };
                 }
 

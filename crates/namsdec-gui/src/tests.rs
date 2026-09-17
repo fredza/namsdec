@@ -12368,3 +12368,62 @@ fn an_unsimulated_syscall_is_announced_before_it_stops_the_program() {
         sage.diagnostics
     );
 }
+
+/// La part de l'onglet se fige à la poignée, et se rend au partage
+/// automatique.
+///
+/// Une poignée tirée une fois qui ne se reprendrait plus, c'est un
+/// réglage perdu pour de bon : la case d'Affichage doit rendre au
+/// panneau le partage qu'il calcule lui-même, comme pour la console.
+#[test]
+fn the_tab_share_can_be_frozen_and_given_back() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let rendre = |app: &mut NamsdecApp, ctx: &egui::Context| {
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1280.0, 1400.0),
+            )),
+            ..Default::default()
+        };
+        for _ in 0..3 {
+            let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+            output.textures_delta.clear();
+        }
+        egui::containers::panel::PanelState::load(ctx, egui::Id::new("sidebar_tab"))
+            .expect("l'onglet a sa part")
+            .outer_rect
+            .height()
+    };
+
+    let mut app = NamsdecApp {
+        source: DEFAULT_SOURCE.to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let partagée = rendre(&mut app, &ctx);
+
+    // Figée — ce que fait la poignée, et ce que fait la case d'Affichage
+    // qu'on décoche : la part garde sa hauteur, même quand le bandeau se
+    // replie et libère de la place.
+    app.sidebar_tab_height = Some(partagée);
+    app.cpu_state_open = false;
+    let figée = rendre(&mut app, &ctx);
+    assert!(
+        (figée - partagée).abs() < 2.0,
+        "la hauteur choisie est celle qu'on garde : {figée} contre {partagée}"
+    );
+
+    // Rendue au partage : elle suit de nouveau ce que le bandeau laisse,
+    // et le bandeau replié lui en laisse plus qu'au départ.
+    app.sidebar_tab_height = None;
+    let rendue = rendre(&mut app, &ctx);
+    assert!(
+        rendue > partagée,
+        "l'état replié rend sa place à l'onglet : {rendue} contre {partagée}"
+    );
+}
