@@ -14284,6 +14284,36 @@ fn the_tools_say_whether_this_machine_has_them() {
     );
 }
 
+/// Quelle que soit la page, les boutons de la boîte restent à l'écran.
+///
+/// Chaque page avait sa propre zone qui défile, réglée pour prendre
+/// toute la hauteur offerte : la fenêtre s'étirait jusqu'en bas de
+/// l'écran et « OK » et « Quitter » passaient dessous. Une seule zone,
+/// qui s'arrête avant la barre du bas, et le problème ne peut pas
+/// revenir.
+#[test]
+fn every_preferences_page_keeps_its_buttons_on_screen() {
+    for onglet in [
+        PreferencesTab::General,
+        PreferencesTab::Shortcuts,
+        PreferencesTab::Modules,
+        PreferencesTab::Plugins,
+        PreferencesTab::Tools,
+    ] {
+        let mut app = NamsdecApp {
+            show_preferences: true,
+            preferences_tab: onglet,
+            ..Default::default()
+        };
+        let peint = paint(&mut app);
+        assert!(
+            peint.contains(strings(Lang::Fr).dialog_ok)
+                && peint.contains(strings(Lang::Fr).dialog_quit),
+            "OK et Quitter doivent se lire sur chaque page :\n{peint}"
+        );
+    }
+}
+
 /// L'onglet Outils montre les cinq, et non le premier.
 ///
 /// Ils tenaient sur quatre lignes chacun : seul objdump entrait dans la
@@ -14308,6 +14338,23 @@ fn the_tools_tab_shows_every_tool_not_just_the_first() {
     assert!(
         peint.contains("dnf install rizin") || peint.contains("retdec"),
         "la façon d'obtenir un outil absent doit se lire :\n{peint}"
+    );
+    // Les deux états sont dits séparément : « absent » parle du
+    // programme, « namsdec s'en sert » parle de namsdec. Les confondre
+    // était toute la confusion de l'ancienne page.
+    for attendu in [
+        strings(Lang::Fr).tools_state_found,
+        strings(Lang::Fr).tools_state_absent,
+        strings(Lang::Fr).tools_unused,
+    ] {
+        assert!(peint.contains(attendu), "« {attendu} » :\n{peint}");
+    }
+    // Et les boutons de la boîte restent visibles : la page ne prend
+    // plus toute la hauteur de l'écran.
+    assert!(
+        peint.contains(strings(Lang::Fr).dialog_ok)
+            && peint.contains(strings(Lang::Fr).dialog_quit),
+        "OK et Quitter doivent rester à l'écran :\n{peint}"
     );
 }
 

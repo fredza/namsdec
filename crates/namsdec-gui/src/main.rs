@@ -4730,7 +4730,12 @@ impl NamsdecApp {
             // Pas de flèche de repli : replier une boîte de préférences
             // ne laisse qu'un bandeau de titre qui flotte, sans usage.
             .collapsible(false)
-            .default_width(460.0)
+            // Une taille posée, et au centre. Sans taille, egui ouvrait
+            // la boîte là où il restait de la place — trois cent
+            // cinquante pixels de haut, où cinq fiches ne tenaient pas.
+            .default_size([780.0, 760.0])
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(ctx.viewport_rect().center())
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     for (tab, label) in [
@@ -4744,13 +4749,21 @@ impl NamsdecApp {
                     }
                 });
                 ui.separator();
-                match self.preferences_tab {
-                    PreferencesTab::General => self.preferences_general_ui(ui),
-                    PreferencesTab::Shortcuts => self.preferences_shortcuts_ui(ui),
-                    PreferencesTab::Modules => self.preferences_modules_ui(ui),
-                    PreferencesTab::Plugins => self.preferences_plugins_ui(ui),
-                    PreferencesTab::Tools => self.preferences_tools_ui(ui),
-                }
+                // Une seule zone qui défile, et qui s'arrête avant le
+                // bas : les pages avaient chacune la leur, prenant toute
+                // la hauteur offerte, et les boutons OK / Quitter
+                // sortaient de la fenêtre par le bas.
+                egui::ScrollArea::vertical()
+                    .id_salt("preferences_page")
+                    .auto_shrink([false, true])
+                    .max_height((ui.available_height() - 44.0).max(160.0))
+                    .show(ui, |ui| match self.preferences_tab {
+                        PreferencesTab::General => self.preferences_general_ui(ui),
+                        PreferencesTab::Shortcuts => self.preferences_shortcuts_ui(ui),
+                        PreferencesTab::Modules => self.preferences_modules_ui(ui),
+                        PreferencesTab::Plugins => self.preferences_plugins_ui(ui),
+                        PreferencesTab::Tools => self.preferences_tools_ui(ui),
+                    });
                 ui.separator();
                 close_keeping = dialog_buttons(ui, theme, s);
             });
@@ -4886,9 +4899,8 @@ impl NamsdecApp {
         let s = strings(self.lang);
         ui.label(s.modules_legend);
         ui.add_space(6.0);
-        egui::ScrollArea::vertical()
-            .max_height(window_room(ui))
-            .show(ui, |ui| {
+        {
+            {
                 self.modules_ui(ui);
                 ui.checkbox(&mut self.show_re_tab, s.show_re_tab_checkbox);
                 ui.checkbox(&mut self.exercises, s.exercises_checkbox);
@@ -4910,15 +4922,13 @@ impl NamsdecApp {
                 if self.show_decompiler_module && self.decompilers.is_empty() {
                     ui.colored_label(self.theme.warn, s.decompiler_none_installed);
                 }
-            });
+            }
+        }
     }
 
     /// L'onglet des outils : tout ce qui vient d'ailleurs et s'exécute.
     fn preferences_tools_ui(&mut self, ui: &mut egui::Ui) {
-        egui::ScrollArea::vertical()
-            .id_salt("preferences_tools")
-            .auto_shrink([false, false])
-            .show(ui, |ui| self.known_tools_ui(ui));
+        self.known_tools_ui(ui);
     }
 
     /// Les outils d'analyse connus : présents ou non, et déclarables
@@ -4936,93 +4946,176 @@ impl NamsdecApp {
         let theme = self.theme;
         let fr = self.lang == Lang::Fr;
 
-        ui.label(egui::RichText::new(s.tools_title).strong());
-        ui.weak(s.tools_legend);
-        ui.add_space(6.0);
+        ui.label(egui::RichText::new(s.tools_title).strong().size(15.0));
+        ui.add_space(2.0);
+        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
+        ui.colored_label(theme.dim, s.tools_legend);
+        ui.add_space(10.0);
 
-        let installés: std::collections::BTreeSet<String> =
+        let utilisés: std::collections::BTreeSet<String> =
             self.decompilers.iter().map(|p| p.id.clone()).collect();
-        let mut à_installer = None;
+        let mut à_utiliser = None;
         let mut à_retirer = None;
         let mut plan = None;
+        let mut allumer = false;
 
-        egui::Grid::new("outils_connus")
-            .num_columns(4)
-            .min_col_width(0.0)
-            .striped(true)
-            .show(ui, |ui| {
-                for outil in namsdec_disasm::known::all() {
-                    let dispo = outil.availability();
-                    let (couleur, état) = match dispo {
-                        Availability::Ready => (theme.good, s.tools_ready),
-                        Availability::Incomplete => (theme.warn, s.tools_incomplete),
-                        Availability::Missing => (theme.dim, s.tools_missing),
-                    };
-                    // Une ligne par outil, et le détail au survol : cinq
-                    // outils décrits sur quatre lignes chacun dépassaient
-                    // la fenêtre, et l'on ne voyait que le premier.
-                    let quoi = if fr { outil.about_fr } else { outil.about_en };
-                    let manque = if fr { outil.needs_fr } else { outil.needs_en };
-                    ui.label(egui::RichText::new(&outil.plugin.name).strong())
-                        .on_hover_ui(|ui| {
-                            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
-                            ui.set_max_width(320.0);
-                            ui.label(quoi);
-                            if let Some(besoin) = manque {
-                                ui.add_space(4.0);
-                                ui.colored_label(theme.warn, format!("{} {besoin}", s.tools_needs));
+        for outil in namsdec_disasm::known::all() {
+            let dispo = outil.availability();
+            let sert = utilisés.contains(&outil.plugin.id);
+            // Une fiche par outil. La grille d'avant mettait sur une même
+            // ligne un nom, un état, une commande d'installation et deux
+            // boutons : quatre colonnes qui ne s'alignaient pas et dont
+            // aucune n'expliquait les autres.
+            egui::Frame::new()
+                .fill(theme.text.gamma_multiply(0.035))
+                .stroke(egui::Stroke::new(
+                    1.0,
+                    if sert {
+                        theme.accent.gamma_multiply(0.5)
+                    } else {
+                        theme.dim.gamma_multiply(0.3)
+                    },
+                ))
+                .inner_margin(egui::Margin::symmetric(12, 8))
+                .corner_radius(6.0)
+                .show(ui, |ui| {
+                    ui.set_width(ui.available_width());
+
+                    // Le nom, les deux états, et l'action à droite, sur
+                    // une seule ligne : c'est ce qu'on lit en diagonale
+                    // pour savoir où en est un outil.
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new(&outil.plugin.name).strong());
+                        let (couleur, état) = match dispo {
+                            Availability::Ready => (theme.good, s.tools_state_found),
+                            Availability::Incomplete => (theme.warn, s.tools_state_partial),
+                            Availability::Missing => (theme.dim, s.tools_state_absent),
+                        };
+                        pastille(ui, couleur, état);
+                        pastille(
+                            ui,
+                            if sert { theme.accent } else { theme.dim },
+                            if sert { s.tools_in_use } else { s.tools_unused },
+                        );
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if sert {
+                                if framed_button(ui, theme, s.tools_stop).clicked() {
+                                    à_retirer = Some(outil.plugin.id.clone());
+                                }
+                            } else if ui
+                                .add_enabled(
+                                    dispo != Availability::Missing,
+                                    egui::Button::new(
+                                        egui::RichText::new(s.tools_use).color(theme.bg),
+                                    )
+                                    .fill(theme.accent)
+                                    .corner_radius(egui::CornerRadius::from(6)),
+                                )
+                                .clicked()
+                            {
+                                à_utiliser = Some(outil.plugin.clone());
                             }
-                            ui.add_space(4.0);
+                        });
+                    });
+                    ui.add_space(4.0);
+
+                    // À quoi il sert, en clair et non plus au survol.
+                    ui.colored_label(theme.dim, if fr { outil.about_fr } else { outil.about_en });
+
+                    // Ce qui empêche de s'en servir se lit sans rien
+                    // déplier : c'est une panne, pas un détail.
+                    if sert && dispo == Availability::Missing {
+                        ui.add_space(4.0);
+                        ui.colored_label(theme.bad, s.tools_declared_but_missing);
+                    }
+                    if let Some(besoin) = if fr { outil.needs_fr } else { outil.needs_en } {
+                        ui.add_space(4.0);
+                        ui.colored_label(theme.warn, format!("{} {besoin}", s.tools_needs));
+                    }
+
+                    // Le reste se déplie : la commande exacte, et comment
+                    // obtenir ce qui manque. Cinq outils tout déplié, et
+                    // l'on ne voyait déjà plus le troisième.
+                    ui.add_space(2.0);
+                    egui::CollapsingHeader::new(
+                        egui::RichText::new(s.tools_details)
+                            .small()
+                            .color(theme.dim),
+                    )
+                    .id_salt(format!("outil_{}", outil.plugin.id))
+                    // Déplié d'office quand l'outil manque : la façon de
+                    // l'obtenir est alors la seule chose qu'on cherche.
+                    .default_open(dispo != Availability::Ready)
+                    .show(ui, |ui| {
+                        ui.horizontal_wrapped(|ui| {
                             ui.colored_label(
                                 theme.dim,
-                                egui::RichText::new(format!(
-                                    "{} {}",
-                                    outil.plugin.command,
-                                    outil.plugin.args.join(" ")
-                                ))
-                                .monospace()
-                                .small(),
+                                egui::RichText::new(s.tools_command).small(),
+                            );
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(format!(
+                                        "{} {}",
+                                        outil.plugin.command,
+                                        outil.plugin.args.join(" ")
+                                    ))
+                                    .monospace()
+                                    .small()
+                                    .color(theme.text),
+                                )
+                                .selectable(true),
                             );
                         });
-                    ui.colored_label(couleur, état);
-                    // Ce qu'il faut taper, à côté de l'état : c'est la
-                    // seule chose utile quand l'outil manque, et elle ne
-                    // sert à rien quand il est là.
-                    if dispo == Availability::Missing {
-                        ui.colored_label(
-                            theme.dim,
-                            egui::RichText::new(outil.plugin.install.clone().unwrap_or_default())
-                                .monospace()
-                                .small(),
-                        )
-                        .on_hover_text(s.tools_install);
-                    } else {
-                        ui.label("");
-                    }
-                    ui.horizontal(|ui| {
-                        if installés.contains(&outil.plugin.id) {
-                            if framed_button(ui, theme, s.tools_remove).clicked() {
-                                à_retirer = Some(outil.plugin.id.clone());
-                            }
-                        } else if framed_button(ui, theme, s.tools_declare).clicked() {
-                            à_installer = Some(outil.plugin.clone());
-                        }
-                        // Aller le chercher : seulement pour ce qu'on
-                        // sait construire, seulement si le module est
-                        // allumé, et seulement si le programme manque.
-                        if self.show_installer_module
-                            && dispo != Availability::Ready
-                            && recette_existe(&outil.plugin.id)
-                            && framed_button(ui, theme, s.install_button).clicked()
+                        if dispo != Availability::Ready
+                            && let Some(commande) = &outil.plugin.install
                         {
-                            plan = Some(outil.plugin.id.clone());
+                            ui.horizontal_wrapped(|ui| {
+                                ui.colored_label(
+                                    theme.dim,
+                                    egui::RichText::new(s.tools_get_it).small(),
+                                );
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(commande)
+                                            .monospace()
+                                            .small()
+                                            .color(theme.warn),
+                                    )
+                                    .selectable(true),
+                                );
+                            });
                         }
                     });
-                    ui.end_row();
-                }
-            });
 
-        if let Some(plugin) = à_installer {
+                    // Aller le chercher reste une action, pas un détail :
+                    // le bouton ne se replie pas.
+                    if dispo != Availability::Ready && recette_existe(&outil.plugin.id) {
+                        ui.add_space(4.0);
+                        if self.show_installer_module {
+                            if framed_button(ui, theme, s.install_button).clicked() {
+                                plan = Some(outil.plugin.id.clone());
+                            }
+                        } else {
+                            // Le bouton manquait sans un mot : on croyait
+                            // que namsdec ne savait pas installer cet
+                            // outil, alors qu'il attendait une case
+                            // cochée ailleurs.
+                            ui.horizontal_wrapped(|ui| {
+                                ui.colored_label(
+                                    theme.dim,
+                                    egui::RichText::new(s.tools_installer_off).small(),
+                                );
+                                if framed_button(ui, theme, s.tools_turn_on).clicked() {
+                                    allumer = true;
+                                }
+                            });
+                        }
+                    }
+                });
+            ui.add_space(6.0);
+        }
+
+        if let Some(plugin) = à_utiliser {
             self.declare_tool(&plugin);
         }
         if let Some(id) = à_retirer {
@@ -5030,6 +5123,12 @@ impl NamsdecApp {
         }
         if let Some(id) = plan {
             self.install_plan = Some(id);
+        }
+        if allumer {
+            // Installer suppose de pouvoir s'en servir : les deux
+            // modules s'allument ensemble.
+            self.show_decompiler_module = true;
+            self.show_installer_module = true;
         }
     }
 
@@ -5403,10 +5502,7 @@ impl NamsdecApp {
         // d'analyse, les séries d'exercices — se retrouvait poussé hors
         // de la fenêtre, présent mais invisible. Une section qu'on ne
         // peut pas atteindre n'existe pas.
-        egui::ScrollArea::vertical()
-            .id_salt("preferences_plugins")
-            .auto_shrink([false, false])
-            .show(ui, |ui| self.plugins_page_ui(ui));
+        self.plugins_page_ui(ui);
     }
 
     /// Le contenu de la page des plugins, dans l'ordre où on le lit.
@@ -10795,6 +10891,21 @@ fn lire_flux(
             }
         }
     })
+}
+
+/// Une pastille d'état : un mot, teinté, sur un fond de la même teinte.
+///
+/// Un mot coloré seul se lit mal quand il en côtoie un autre de couleur
+/// voisine ; le fond en fait une étiquette, et l'œil compte les
+/// étiquettes avant de les lire.
+fn pastille(ui: &mut egui::Ui, couleur: egui::Color32, texte: &str) {
+    egui::Frame::new()
+        .fill(couleur.gamma_multiply(0.15))
+        .inner_margin(egui::Margin::symmetric(8, 2))
+        .corner_radius(10.0)
+        .show(ui, |ui| {
+            ui.colored_label(couleur, egui::RichText::new(texte).small());
+        });
 }
 
 /// Un encadré teinté, pour ce qui doit se lire avant le reste.

@@ -62,6 +62,26 @@ fichiers à la fois, et brancher les outils du métier.
   qu'une bibliothèque de téléchargement ou d'archive rejoigne le
   programme.
 
+**La page Outils des Préférences, relue**
+- « absent » à côté d'un bouton « Retirer » : la page mélangeait deux
+  choses qui n'ont rien à voir. Chaque outil a maintenant sa fiche, et
+  elle dit les deux séparément — **le programme est là, ou non** ; et
+  **namsdec s'en sert, ou non** — en deux pastilles côte à côte. Les
+  boutons parlent le même langage : « S'en servir », « Ne plus s'en
+  servir ».
+- Ce à quoi sert l'outil se lit sans le survoler. La commande exacte et
+  la façon d'obtenir ce qui manque se déplient — et sont dépliées
+  d'office quand l'outil est absent, puisque c'est alors la seule chose
+  qu'on cherche.
+- Quand namsdec sait installer un outil mais que le module est éteint, il
+  le **dit**, avec le bouton qui l'allume. Avant, le bouton « Installer »
+  n'apparaissait pas et rien n'expliquait pourquoi.
+- **Les boutons OK et Quitter ne sortent plus de la fenêtre.** Chaque page
+  avait sa zone de défilement réglée pour prendre toute la hauteur
+  offerte : la boîte s'étirait jusqu'en bas de l'écran pour cinq lignes de
+  contenu. Une seule zone qui s'arrête avant la barre du bas, une boîte de
+  780 × 760 posée au centre, et un test qui vérifie les cinq pages.
+
 **Lire ce que la décompilation rend**
 - RetDec rend deux millions de caractères pour un petit crackme. En un
   seul bloc de texte, egui remettait tout en page à chaque image : la
