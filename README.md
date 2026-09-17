@@ -89,6 +89,8 @@ Et aussi : documentation de 140 instructions, directives et notions sous **F1** 
 au survol — avec sommaire, renvois d'une fiche à l'autre et export du
 manuel entier en Markdown (menu Aide), parce que ce qu'on apprend ici
 doit pouvoir se lire ailleurs —, autocomplétion qui ne propose que ce qui est documenté,
+motif cyclique de De Bruijn pour savoir de combien un débordement
+dépasse (identique à celui de pwntools, donc comparable),
 une chronologie où l'on clique un pas passé pour y revenir (registres, indicateurs et mémoire avec), points d'arrêt — avec condition (`rcx == 0`), surveillance d'un registre
 ou d'une adresse, vérification de la convention d'appel (ce qu'une
 sous-routine a emprunté sans le rendre), mémoire protégée par les droits

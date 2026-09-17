@@ -505,6 +505,15 @@ struct NamsdecApp {
     show_breakpoints: bool,
     /// La chronologie : le chemin parcouru, pas par pas.
     show_timeline: bool,
+    /// La fenêtre du motif cyclique — celle qui répond à « de combien ça
+    /// déborde ».
+    show_cyclic: bool,
+    /// La longueur demandée, et la valeur qu'on cherche à replacer. Des
+    /// saisies de travail, comme l'adresse du vidage mémoire : elles ne
+    /// vont pas dans `settings.json`, où elles n'auraient aucun sens au
+    /// lancement suivant.
+    cyclic_len: String,
+    cyclic_find: String,
     /// Le panneau de désassemblage, et le moteur qu'il emploie.
     show_disassembly: bool,
     disassembler: String,
@@ -726,6 +735,7 @@ enum PaletteCommand {
     ShowBreakpoints,
     ShowTimeline,
     ShowDisassembly,
+    ShowCyclic,
     SetTheme(&'static Theme),
     SetLang(Lang),
     SaveAs,
@@ -805,6 +815,7 @@ fn palette_commands(
             s.disassembly_open.to_string(),
             PaletteCommand::ShowDisassembly,
         ),
+        (s.cyclic_open.to_string(), PaletteCommand::ShowCyclic),
         (
             format!("{}: Français", s.preferences_language),
             PaletteCommand::SetLang(Lang::Fr),
@@ -1092,6 +1103,11 @@ impl Default for NamsdecApp {
             show_vectors: false,
             show_breakpoints: false,
             show_timeline: false,
+            show_cyclic: false,
+            // Cent, comme pwndbg : de quoi couvrir un tampon
+            // d'apprentissage sans noyer la fenêtre.
+            cyclic_len: "100".to_owned(),
+            cyclic_find: String::new(),
             show_disassembly: false,
             disassembler: PSEUDO_ID.to_owned(),
             disassembly_query: String::new(),
@@ -2484,6 +2500,7 @@ impl NamsdecApp {
             PaletteCommand::ShowVectors => self.show_vectors = true,
             PaletteCommand::ShowBreakpoints => self.show_breakpoints = true,
             PaletteCommand::ShowTimeline => self.show_timeline = true,
+            PaletteCommand::ShowCyclic => self.show_cyclic = true,
             PaletteCommand::ShowDisassembly => self.show_disassembly = true,
             PaletteCommand::SetTheme(theme) => {
                 self.theme = theme;
@@ -2871,6 +2888,14 @@ impl NamsdecApp {
                 }
                 if ui.button(s.disassembly_open).clicked() {
                     self.show_disassembly = true;
+                    ui.close();
+                }
+                if ui
+                    .button(s.cyclic_open)
+                    .on_hover_text(s.cyclic_hint)
+                    .clicked()
+                {
+                    self.show_cyclic = true;
                     ui.close();
                 }
                 ui.separator();
@@ -5287,6 +5312,132 @@ impl NamsdecApp {
     /// Chaque ligne est un pas qu'on peut vraiment défaire : cliquer
     /// dessus rembobine le programme jusque-là, mémoire et registres
     /// compris.
+    /// Le motif cyclique : « de combien ça déborde ».
+    ///
+    /// On remplit l'entrée d'une suite dont toute tranche de quatre
+    /// octets est unique, on laisse le programme déborder, et la valeur
+    /// qu'on retrouve dans RIP dit d'elle-même à quelle distance du
+    /// début du tampon se trouvait l'adresse de retour. Le calcul est
+    /// mécanique — c'est le `cyclic` de pwndbg, et il n'y a aucune
+    /// raison de le faire à la main.
+    fn cyclic_window_ui(&mut self, ctx: &egui::Context) {
+        if !self.show_cyclic {
+            return;
+        }
+        let s = strings(self.lang);
+        let theme = self.theme;
+        let mut open = true;
+        // Relevés avant la fenêtre, qui emprunte `self` en écriture.
+        let registres: Vec<(&'static str, u64)> = self
+            .emulator
+            .as_ref()
+            .map(|emulator| {
+                let regs = &emulator.cpu().regs;
+                vec![
+                    ("RIP", regs.rip),
+                    ("RSP", regs.get64(Reg64::Rsp)),
+                    ("RAX", regs.get64(Reg64::Rax)),
+                ]
+            })
+            .unwrap_or_default();
+        let mut vers_entrée = None;
+
+        egui::Window::new(s.cyclic_title)
+            .open(&mut open)
+            .resizable(true)
+            .default_size([560.0, 400.0])
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(ctx.viewport_rect().center())
+            .show(ctx, |ui| {
+                ui.label(prose(ui, theme, s.cyclic_explain));
+                ui.separator();
+
+                // Engendrer.
+                ui.horizontal(|ui| {
+                    ui.colored_label(theme.dim, s.cyclic_length);
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.cyclic_len)
+                            .font(egui::TextStyle::Monospace)
+                            .desired_width(60.0),
+                    );
+                });
+                // Une longueur qui ne se lit pas ne fait pas disparaître
+                // le motif : elle retombe sur cent.
+                let combien = self
+                    .cyclic_len
+                    .trim()
+                    .parse::<usize>()
+                    .unwrap_or(100)
+                    .clamp(1, 4096);
+                let motif =
+                    String::from_utf8_lossy(&namsdec_re::cyclic::pattern(combien)).into_owned();
+                ui.add(
+                    egui::Label::new(egui::RichText::new(&motif).monospace())
+                        .wrap_mode(egui::TextWrapMode::Wrap),
+                );
+                ui.horizontal_wrapped(|ui| {
+                    if ui.button(s.cyclic_copy).clicked() {
+                        ui.ctx().copy_text(motif.clone());
+                        self.status = Status::Note(s.cyclic_copied);
+                    }
+                    // Le motif sert à être *mangé* par le programme :
+                    // l'envoyer dans l'entrée évite le détour par le
+                    // presse-papier.
+                    if ui
+                        .button(s.cyclic_to_input)
+                        .on_hover_text(s.cyclic_to_input_hint)
+                        .clicked()
+                    {
+                        vers_entrée = Some(motif.clone());
+                    }
+                });
+
+                ui.separator();
+                // Retrouver.
+                ui.colored_label(theme.dim, s.cyclic_find_label);
+                ui.horizontal_wrapped(|ui| {
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.cyclic_find)
+                            .font(egui::TextStyle::Monospace)
+                            .desired_width(180.0)
+                            .hint_text(s.cyclic_find_hint),
+                    );
+                    // Les registres où l'on retrouve le motif après un
+                    // débordement : il n'y a pas à les recopier.
+                    for (name, value) in &registres {
+                        if ui
+                            .small_button(*name)
+                            .on_hover_text(format!("{value:#x}"))
+                            .clicked()
+                        {
+                            self.cyclic_find = format!("{value:#x}");
+                        }
+                    }
+                });
+                match cyclic_offset(&self.cyclic_find) {
+                    Some(offset) => {
+                        ui.colored_label(
+                            theme.good,
+                            format!("{} {offset} ({offset:#x})", s.cyclic_offset),
+                        );
+                        ui.colored_label(theme.dim, s.cyclic_offset_hint);
+                    }
+                    None if self.cyclic_find.trim().is_empty() => {}
+                    None => {
+                        ui.colored_label(theme.warn, s.cyclic_not_found);
+                    }
+                }
+            });
+
+        if let Some(motif) = vers_entrée {
+            self.console_input = motif;
+            self.console_tab = ConsoleTab::Output;
+            self.show_console = true;
+            self.status = Status::Note(s.cyclic_sent);
+        }
+        self.show_cyclic = open;
+    }
+
     fn timeline_window_ui(&mut self, ctx: &egui::Context) {
         if !self.show_timeline {
             return;
@@ -6325,6 +6476,31 @@ fn label_line(source: &str, name: &str) -> Option<u32> {
     })
 }
 
+/// Le décalage d'une valeur écrite à la main dans le champ.
+///
+/// Trois écritures sont acceptées, parce que c'est sous ces trois
+/// formes-là qu'on retrouve le motif : un nombre (`0x6161616c`, ce que
+/// montre un registre), les caractères eux-mêmes (`laaa`, ce que montre
+/// un vidage), et le même nombre en décimal.
+fn cyclic_offset(saisie: &str) -> Option<usize> {
+    let saisie = saisie.trim();
+    if saisie.is_empty() {
+        return None;
+    }
+    if let Some(hex) = saisie
+        .strip_prefix("0x")
+        .or_else(|| saisie.strip_prefix("0X"))
+    {
+        return u64::from_str_radix(hex, 16)
+            .ok()
+            .and_then(namsdec_re::cyclic::offset_of_value);
+    }
+    if let Ok(value) = saisie.parse::<u64>() {
+        return namsdec_re::cyclic::offset_of_value(value);
+    }
+    namsdec_re::cyclic::offset(saisie.as_bytes())
+}
+
 /// Les entrées de la table de liaison, en étiquettes du listing.
 ///
 /// Un `call 0x4010a0` ne dit rien ; le même appel, quand l'adresse porte
@@ -7040,6 +7216,7 @@ impl NamsdecApp {
             self.breakpoints_window_ui(&ctx);
             self.timeline_window_ui(&ctx);
             self.disassembly_window_ui(&ctx);
+            self.cyclic_window_ui(&ctx);
             self.analysis_window_ui(&ctx);
             if self.exercises {
                 self.exercises_window_ui(&ctx);

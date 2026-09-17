@@ -8173,6 +8173,42 @@ quelquepart:
     );
 }
 
+/// Le motif cyclique répond à « de combien ça déborde » : on l'engendre,
+/// on le donne au programme, et la valeur retrouvée dans un registre dit
+/// le décalage.
+#[test]
+fn the_cyclic_pattern_answers_by_how_much() {
+    let mut app = NamsdecApp {
+        show_cyclic: true,
+        ..Default::default()
+    };
+
+    let painted = paint(&mut app);
+    assert!(
+        painted.contains("aaaabaaacaaa"),
+        "le motif est là : {painted}"
+    );
+
+    // La saisie se lit sous les trois formes qu'on a sous les yeux : le
+    // nombre d'un registre, les caractères d'un vidage, le décimal.
+    assert_eq!(cyclic_offset("0x6161616c"), Some(44));
+    assert_eq!(cyclic_offset("laaa"), Some(44));
+    assert_eq!(cyclic_offset(&format!("{}", 0x6161616cu64)), Some(44));
+    // Et ce qui ne vient pas du motif n'obtient pas de décalage.
+    assert_eq!(cyclic_offset("0xdeadbeef"), None);
+    assert_eq!(cyclic_offset(""), None);
+
+    // Le motif va dans l'entrée du programme sans passer par le
+    // presse-papier : c'est là qu'il sert.
+    app.cyclic_len = "24".to_owned();
+    app.console_input.clear();
+    let painted = paint(&mut app);
+    assert!(
+        painted.contains(strings(app.lang).cyclic_to_input),
+        "{painted}"
+    );
+}
+
 /// La pile suit ses pointeurs : un mot qui pointe une chaîne le dit, un
 /// mot qui pointe du code montre l'instruction.
 ///

@@ -6,6 +6,7 @@
 //! mécanisme avant la phase 2.
 
 mod binary_info;
+pub mod cyclic;
 pub mod elf_scan;
 pub mod gadgets;
 mod gadgets_module;
