@@ -176,8 +176,15 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
   passés à droite de la barre d'outils : ils ne montent plus et ne
   descendent plus avec le bandeau, et le panneau gagne leur hauteur.
 - La gouttière peint une bande de chaleur au lieu d'écrire « ×1203 » :
-  l'échelle est logarithmique, le compte exact vient au survol, et la
-  colonne du compteur disparaît avec ses quarante-quatre pixels.
+  l'échelle est logarithmique — vert, jaune, orange, rouge, du parcouru
+  une fois au plus chaud du programme —, le compte exact vient au
+  survol, et la colonne du compteur disparaît avec ses quarante-quatre
+  pixels. Une légende sous l'éditeur donne les valeurs, et Préférences ▸
+  Affichage la retire.
+- Un onglet **Profil**, dans la console, classe les lignes par temps
+  passé dedans : le nombre de passages, la part du total, la ligne
+  elle-même, et un clic qui y emmène. La bande de chaleur dit où ça
+  chauffe ; le profil dit de combien, et se copie en texte.
 - La fenêtre porte ses trois pastilles au bout de la barre de menus, qui
   fait office de barre de titre : une rangée de moins. Réduire à gauche,
   fermer à droite, comme partout ailleurs sous Linux. Préférences ▸

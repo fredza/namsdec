@@ -439,15 +439,25 @@ enum ConsoleTab {
     /// reliés à leur ligne. Ils vivaient sous la barre de statut, où une
     /// liste un peu longue n'avait pas la place d'être lue.
     Diagnostics,
+    /// Où le programme a passé son temps : les lignes classées par
+    /// nombre de passages. La bande de chaleur dans la gouttière dit
+    /// « c'est chaud par là » ; ce classement dit laquelle est la plus
+    /// chaude, de combien, et y emmène d'un clic.
+    Profile,
 }
 
 impl ConsoleTab {
-    const ALL: [ConsoleTab; 2] = [ConsoleTab::Output, ConsoleTab::Diagnostics];
+    const ALL: [ConsoleTab; 3] = [
+        ConsoleTab::Output,
+        ConsoleTab::Diagnostics,
+        ConsoleTab::Profile,
+    ];
 
     fn label(self, s: &Strings) -> &'static str {
         match self {
             ConsoleTab::Output => s.tab_output,
             ConsoleTab::Diagnostics => s.tab_diagnostics,
+            ConsoleTab::Profile => s.tab_profile,
         }
     }
 }
@@ -1152,6 +1162,10 @@ fn palette_commands(
         (
             format!("{}: {}", s.menu_view, s.tab_diagnostics),
             PaletteCommand::GoConsoleTab(ConsoleTab::Diagnostics),
+        ),
+        (
+            format!("{}: {}", s.menu_view, s.tab_profile),
+            PaletteCommand::GoConsoleTab(ConsoleTab::Profile),
         ),
         (
             s.palette_toggle_toolbar.to_string(),
@@ -5869,6 +5883,8 @@ impl NamsdecApp {
                 })
                 .unwrap_or(1),
             ConsoleTab::Diagnostics => self.diagnostics.len().max(1),
+            // Une ligne par ligne chaude, plus l'en-tête et le total.
+            ConsoleTab::Profile => self.line_visits().len().max(1) + 2,
         };
         // Les onglets, le séparateur et les marges du panneau.
         let chrome = ui.text_style_height(&egui::TextStyle::Button) + 28.0;
@@ -5906,6 +5922,7 @@ impl NamsdecApp {
         match self.console_tab {
             ConsoleTab::Output => self.output_ui(ui),
             ConsoleTab::Diagnostics => self.diagnostics_ui(ui),
+            ConsoleTab::Profile => self.profile_ui(ui),
         }
     }
 
@@ -7371,6 +7388,137 @@ impl NamsdecApp {
     }
 
     /// Ce que nasm a dit de la source, une ligne par diagnostic.
+    /// Le profil : où le programme a passé son temps.
+    ///
+    /// La bande de chaleur dans la gouttière répond à « par où ça
+    /// chauffe » d'un coup d'œil, mais elle ne classe pas : deux rouges
+    /// voisins ne disent pas lequel coûte le double de l'autre. Ce
+    /// tableau le dit — le nombre de passages, la part du total, et la
+    /// ligne elle-même — et y emmène d'un clic. C'est ce qu'un
+    /// profileur montre d'un programme, à la seule échelle qui vaille
+    /// ici : la ligne de source.
+    fn profile_ui(&mut self, ui: &mut egui::Ui) {
+        let s = strings(self.lang);
+        let theme = self.theme;
+        let passages = self.line_visits();
+        if passages.is_empty() {
+            ui.colored_label(theme.dim, s.profile_empty);
+            return;
+        }
+        // Le plus chaud d'abord ; à égalité, la ligne la plus haute,
+        // pour que deux exécutions de suite donnent le même ordre.
+        let mut classement: Vec<(u32, u64)> = passages.iter().map(|(l, c)| (*l, *c)).collect();
+        classement.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        let total: u64 = classement.iter().map(|(_, c)| *c).sum();
+        let plus_chaude = classement.first().map_or(1, |(_, c)| *c).max(1);
+
+        ui.horizontal_wrapped(|ui| {
+            ui.colored_label(
+                theme.dim,
+                format!("{} {}", sidebar::group_digits(total), s.profile_total),
+            );
+            if ui.small_button(s.profile_copy).clicked() {
+                ui.ctx().copy_text(self.profile_text(&classement, total));
+                self.status = Status::Note(s.profile_copied);
+            }
+        });
+        ui.colored_label(theme.dim, s.profile_hint);
+        // L'en-tête des colonnes : sans lui, « 12 » et « 4,2 % » se
+        // lisent, mais « 1 204 » se prend pour une adresse.
+        ui.horizontal(|ui| {
+            ui.add_space(8.0 + ui.spacing().item_spacing.x);
+            ui.colored_label(
+                theme.dim,
+                egui::RichText::new(format!(
+                    "{:>5}  {:>9}  {:>7}",
+                    s.line_word, s.profile_count, s.profile_share
+                ))
+                .monospace()
+                .small(),
+            );
+        });
+        ui.separator();
+
+        let mut goto = None;
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                for (ligne, compte) in &classement {
+                    let part = *compte as f32 / total.max(1) as f32;
+                    ui.horizontal(|ui| {
+                        // La pastille reprend exactement la teinte de la
+                        // gouttière : la même ligne a la même couleur
+                        // aux deux endroits, sinon le lien se perd.
+                        let (rect, _) =
+                            ui.allocate_exact_size(egui::vec2(8.0, 12.0), egui::Sense::hover());
+                        ui.painter().rect_filled(
+                            rect,
+                            1.0,
+                            heat_colour(theme, *compte, plus_chaude),
+                        );
+                        ui.colored_label(
+                            theme.dim,
+                            egui::RichText::new(format!("{ligne:>5}")).monospace(),
+                        );
+                        ui.colored_label(
+                            theme.text,
+                            egui::RichText::new(format!("{:>9}", sidebar::group_digits(*compte)))
+                                .monospace(),
+                        );
+                        ui.colored_label(
+                            theme.dim,
+                            egui::RichText::new(format!("{:>5.1} %", part * 100.0)).monospace(),
+                        );
+                        // Une barre proportionnelle : les pourcentages se
+                        // comparent bien plus vite en longueur qu'en
+                        // chiffres.
+                        let (barre, _) =
+                            ui.allocate_exact_size(egui::vec2(60.0, 10.0), egui::Sense::hover());
+                        ui.painter().rect_filled(
+                            egui::Rect::from_min_size(
+                                barre.min,
+                                egui::vec2(barre.width() * part, barre.height()),
+                            ),
+                            1.0,
+                            heat_colour(theme, *compte, plus_chaude),
+                        );
+                        // La ligne elle-même : sans elle, le classement
+                        // renvoie à un numéro qu'il faut aller chercher.
+                        let texte = source_line(&self.source, *ligne);
+                        let réponse = ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(texte).monospace().color(theme.text),
+                            )
+                            .sense(egui::Sense::click())
+                            .truncate(),
+                        );
+                        if réponse.on_hover_text(s.profile_goto).clicked() {
+                            goto = Some(*ligne);
+                        }
+                    });
+                }
+            });
+        if let Some(ligne) = goto {
+            self.goto_line = Some(ligne);
+        }
+    }
+
+    /// Le profil sous forme de texte, pour le presse-papiers : la même
+    /// information, collable dans un message ou un rapport.
+    fn profile_text(&self, classement: &[(u32, u64)], total: u64) -> String {
+        let s = strings(self.lang);
+        let mut out = format!("{} {}\n", sidebar::group_digits(total), s.profile_total);
+        for (ligne, compte) in classement {
+            let part = *compte as f32 / total.max(1) as f32 * 100.0;
+            out.push_str(&format!(
+                "{ligne:>5}  {:>9}  {part:>5.1} %  {}\n",
+                sidebar::group_digits(*compte),
+                source_line(&self.source, *ligne)
+            ));
+        }
+        out
+    }
+
     fn diagnostics_ui(&mut self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
         let (lang, theme) = (self.lang, self.theme);
@@ -7790,6 +7938,21 @@ fn newline_indent(source: &str, cursor: usize) -> String {
     format!("\n{indent}")
 }
 
+/// Le texte de la ligne `ligne`, en comptant à partir de 1, débarrassé
+/// de son indentation.
+///
+/// Le profil aligne ses colonnes lui-même : garder les espaces du début
+/// décalerait chaque ligne d'une profondeur qui n'a plus de sens une
+/// fois sortie du programme.
+fn source_line(source: &str, ligne: u32) -> String {
+    source
+        .lines()
+        .nth(ligne.saturating_sub(1) as usize)
+        .unwrap_or_default()
+        .trim()
+        .to_owned()
+}
+
 /// La ligne où l'étiquette `name` est définie, en comptant à partir de 1.
 ///
 /// Une étiquette se déclare en tête de ligne, suivie de deux points :
@@ -7892,10 +8055,11 @@ const HEAT_WIDTH: f32 = 4.0;
 ///
 /// L'échelle est logarithmique : entre une ligne parcourue une fois et
 /// une autre parcourue mille fois, ce qui compte est l'ordre de
-/// grandeur, pas la différence. Du froid — le gris de ce qui n'a tourné
-/// qu'une fois — au chaud, en passant par l'orange : c'est la
-/// convention de toutes les cartes de chaleur, et elle se lit sans
-/// légende.
+/// grandeur, pas la différence. Du vert d'une ligne traversée une fois
+/// au rouge de celle où le programme s'attarde, en passant par le jaune
+/// et l'orange : c'est la convention de toutes les cartes de chaleur,
+/// et elle se lit sans légende — celle sous l'éditeur donne les
+/// valeurs, l'onglet Profil le classement.
 fn heat_colour(theme: &'static Theme, count: u64, max: u64) -> egui::Color32 {
     // L'échelle couvre l'intervalle observé : une ligne parcourue une
     // seule fois est au vert pur, la plus chaude au rouge pur. Compter

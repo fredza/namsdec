@@ -58,8 +58,13 @@ en dernier, son rang et sa ligne : « écrit au pas -12, ligne 7 :
 add rax, rcx ». Le chercher à la main veut dire relire son programme à
 l'envers, et se tromper une fois sur deux dès qu'il y a une boucle.
 
-**Combien de fois chaque ligne a tourné.** `×5` dans la gouttière en face
-du corps de boucle, rien en face de la ligne que le saut enjambe.
+**Où le programme passe son temps.** Une bande de chaleur dans la
+gouttière — verte pour une ligne parcourue une fois, rouge pour la plus
+chaude, jaune et orange entre les deux — avec le compte exact au survol
+et une légende sous l'éditeur. L'onglet **Profil** de la console en fait
+un classement : le nombre de passages, la part du total, la ligne
+elle-même, et un clic qui y emmène. La bande dit où ça chauffe ; le
+classement dit de combien, et se copie en texte.
 
 **Ce que nasm ne dit pas.** Deux fautes passent l'assemblage sans un mot
 et ne se voient qu'à l'exécution — ou pas du tout : un programme que rien
@@ -327,8 +332,9 @@ program and, at every step, says what the machine is about to do and what
 it just did: the effective address an operand resolves to and the byte
 sitting there, the old value beside the new one, whether a conditional
 jump will be taken and by which rule, a system call written out the way
-you would write it in C, the stack read as a stack, how many times each
-line ran, and what to do when it faults.
+you would write it in C, the stack read as a stack, where it spends its
+time — a heat band in the gutter and a Profile tab ranking the lines —
+and what to do when it faults.
 
 It also reads a binary's armour — PIE, NX, RELRO, stack canary, FORTIFY,
 IBT, W+X segments, symbols, libraries — stating for each what that state

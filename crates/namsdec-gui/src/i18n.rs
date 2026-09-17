@@ -174,6 +174,22 @@ pub struct Strings {
     pub heap_inspect: &'static str,
     pub tab_output: &'static str,
     pub tab_diagnostics: &'static str,
+    /// L'onglet qui classe les lignes par temps passé dedans.
+    pub tab_profile: &'static str,
+    /// Ce que dit le profil tant que rien n'a tourné.
+    pub profile_empty: &'static str,
+    /// La phrase d'en-tête du profil : ce que la liste montre.
+    pub profile_hint: &'static str,
+    /// Les colonnes : le nombre de passages, la part du total.
+    pub profile_count: &'static str,
+    pub profile_share: &'static str,
+    /// Le total, au-dessus de la liste.
+    pub profile_total: &'static str,
+    /// L'infobulle d'une ligne cliquable du profil.
+    pub profile_goto: &'static str,
+    /// Le bouton qui copie le profil, pour le coller dans un rapport.
+    pub profile_copy: &'static str,
+    pub profile_copied: &'static str,
     /// L'infobulle d'un diagnostic cliquable.
     pub diagnostic_goto: &'static str,
     /// La fenêtre d'aide, et ce qu'elle dit.
@@ -670,6 +686,15 @@ const FR: Strings = Strings {
     heap_inspect: "Voir dans Mémoire",
     tab_output: "Console",
     tab_diagnostics: "Diagnostics",
+    tab_profile: "Profil",
+    profile_empty: "Rien n'a encore tourné : exécutez le programme, et cette liste dira où il passe son temps.",
+    profile_hint: "Les lignes du programme, de la plus parcourue à la moins parcourue.",
+    profile_count: "passages",
+    profile_share: "part",
+    profile_total: "instructions exécutées",
+    profile_goto: "Aller à cette ligne",
+    profile_copy: "Copier le profil",
+    profile_copied: "Profil copié : collez-le où vous voulez (Ctrl+V).",
     diagnostic_goto: "Aller à cette ligne",
     help_title: "Aide sur l'instruction",
     help_empty: "Placez le curseur sur une instruction et appuyez sur F1.",
@@ -1132,6 +1157,15 @@ const EN: Strings = Strings {
     heap_inspect: "Show in Memory",
     tab_output: "Console",
     tab_diagnostics: "Diagnostics",
+    tab_profile: "Profile",
+    profile_empty: "Nothing has run yet: execute the program, and this list will say where it spends its time.",
+    profile_hint: "The lines of the program, from the most travelled to the least.",
+    profile_count: "passes",
+    profile_share: "share",
+    profile_total: "instructions executed",
+    profile_goto: "Go to that line",
+    profile_copy: "Copy the profile",
+    profile_copied: "Profile copied: paste it wherever you like (Ctrl+V).",
     diagnostic_goto: "Go to that line",
     help_title: "Instruction help",
     help_empty: "Put the cursor on an instruction and press F1.",

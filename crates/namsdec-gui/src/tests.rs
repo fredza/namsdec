@@ -2487,8 +2487,8 @@ fn f1_opens_the_entry_for_the_instruction_under_the_cursor() {
     assert!(app.show_help, "l'aide ouvre sa fenêtre");
     assert_eq!(
         ConsoleTab::ALL.len(),
-        2,
-        "et la console garde ses deux onglets"
+        3,
+        "et la console garde ses onglets : l'aide est une fenêtre à part"
     );
     let (word, entry) = app.help.clone().expect("une demande d'aide");
     assert_eq!(word, "cqo");
@@ -11768,5 +11768,154 @@ fn every_nasm_directive_has_a_sheet() {
     assert!(
         manquantes.is_empty(),
         "ces mots s'écrivent dans un source sans que namsdec sache les expliquer : {manquantes:?}"
+    );
+}
+
+/// Le profil classe les lignes par temps passé dedans.
+///
+/// La bande de chaleur dit « ça chauffe par là » ; elle ne dit pas
+/// laquelle des trois lignes rouges coûte le double des deux autres.
+/// C'est ce que ce classement doit répondre — et il doit répondre en
+/// pourcentages qui font cent, sinon il ment sur la part de chacune.
+#[test]
+fn the_profile_ranks_the_lines_by_where_the_time_went() {
+    let source = "\
+section .text
+global _start
+_start:
+    mov rcx, 10
+boucle:
+    dec rcx
+    jnz boucle
+    mov rax, 60
+    xor rdi, rdi
+    syscall
+";
+    let mut app = NamsdecApp {
+        source: source.to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    app.do_run();
+    for _ in 0..10 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&egui::Context::default());
+    }
+
+    let passages = app.line_visits();
+    let (corps, saut) = (passages[&6], passages[&7]);
+    assert_eq!(corps, 10, "le corps de la boucle tourne dix fois");
+    assert_eq!(saut, 10, "et le saut qui la referme autant");
+    assert_eq!(passages[&4], 1, "l'initialisation, une seule fois");
+
+    // Le classement : le plus chaud d'abord, et les parts font cent.
+    let mut classement: Vec<(u32, u64)> = passages.iter().map(|(l, c)| (*l, *c)).collect();
+    classement.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    assert_eq!(
+        classement[0].0, 6,
+        "la ligne la plus chaude arrive en tête, obtenu : {classement:?}"
+    );
+    let total: u64 = classement.iter().map(|(_, c)| *c).sum();
+
+    let texte = app.profile_text(&classement, total);
+    // Le texte copié porte la même information que l'écran : le total,
+    // le numéro de ligne, la part, et la ligne elle-même.
+    assert!(texte.contains("instructions exécutées"), "{texte}");
+    assert!(texte.contains("dec rcx"), "{texte}");
+    assert!(texte.contains("jnz boucle"), "{texte}");
+    let parts: Vec<f32> = texte
+        .lines()
+        .skip(1)
+        .filter_map(|l| l.split_whitespace().nth(2))
+        .filter_map(|n| n.replace(',', ".").parse::<f32>().ok())
+        .collect();
+    let somme: f32 = parts.iter().sum();
+    assert!(
+        (somme - 100.0).abs() < 0.5,
+        "les parts doivent faire cent, obtenu {somme} depuis {parts:?}"
+    );
+    // Une ligne jamais atteinte n'a pas de part : `syscall` de sortie
+    // s'exécute, mais rien après.
+    assert!(
+        !passages.contains_key(&11),
+        "rien ne tourne après la fin du programme"
+    );
+}
+
+/// Le profil s'affiche dans la console et emmène à la ligne d'un clic.
+#[test]
+fn the_profile_tab_shows_the_hot_lines_and_leads_to_them() {
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp {
+        source: "\
+section .text
+global _start
+_start:
+    mov rcx, 3
+boucle:
+    dec rcx
+    jnz boucle
+    mov rax, 60
+    xor rdi, rdi
+    syscall
+"
+        .to_owned(),
+        console_tab: ConsoleTab::Profile,
+        show_console: true,
+        ..Default::default()
+    };
+    app.do_assemble();
+    app.do_run();
+    for _ in 0..10 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&egui::Context::default());
+    }
+
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 820.0),
+        )),
+        ..Default::default()
+    };
+    let mut peint = String::new();
+    for _ in 0..2 {
+        peint.clear();
+        let mut output = ctx.run_ui(input.clone(), |ui| app.console_panel_ui(ui));
+        for clipped in &output.shapes {
+            if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                peint.push_str(text.galley.text());
+                peint.push('\n');
+            }
+        }
+        output.textures_delta.clear();
+    }
+    for attendu in ["Profil", "instructions exécutées", "dec rcx", "jnz boucle"] {
+        assert!(
+            peint.contains(attendu),
+            "« {attendu} » manque dans :\n{peint}"
+        );
+    }
+
+    // Un profil vide le dit au lieu de montrer un tableau vide.
+    let mut vierge = NamsdecApp {
+        console_tab: ConsoleTab::Profile,
+        ..Default::default()
+    };
+    let mut vide = String::new();
+    let mut output = ctx.run_ui(input, |ui| vierge.console_panel_ui(ui));
+    for clipped in &output.shapes {
+        if let egui::epaint::Shape::Text(text) = &clipped.shape {
+            vide.push_str(text.galley.text());
+        }
+    }
+    output.textures_delta.clear();
+    assert!(
+        vide.contains("Rien n'a encore tourné"),
+        "le profil vide doit s'expliquer, obtenu :\n{vide}"
     );
 }
