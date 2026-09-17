@@ -2932,6 +2932,43 @@ fn paint(app: &mut NamsdecApp) -> String {
     painted
 }
 
+/// Une fiche ouverte mène aux fiches qu'elle cite : les renvois se
+/// déduisent du texte, donc personne ne peut oublier de les écrire.
+#[test]
+fn a_sheet_leads_to_the_sheets_it_mentions() {
+    let mut app = NamsdecApp {
+        show_help: true,
+        ..Default::default()
+    };
+    app.help = Some(("cmp".to_owned(), namsdec_doc::lookup("cmp")));
+
+    let painted = paint(&mut app);
+
+    assert!(painted.contains(strings(app.lang).help_see_also), "{painted}");
+    // `cmp` parle de `ja`/`jb` : la fiche des sauts conditionnels est à
+    // un clic, sous son premier nom.
+    assert!(painted.contains("|je|"), "{painted}");
+
+    // Et les renvois sont vrais partout : aucune fiche ne se renvoie à
+    // elle-même, et chaque renvoi est une fiche qui existe.
+    for entry in namsdec_doc::all() {
+        for lang in ["fr", "en"] {
+            for autre in namsdec_doc::related(entry, lang) {
+                assert!(
+                    !std::ptr::eq(autre, entry),
+                    "{} se renvoie à elle-même",
+                    entry.names[0]
+                );
+                assert_eq!(
+                    namsdec_doc::lookup(autre.names[0]),
+                    Some(autre),
+                    "renvoi vers une fiche introuvable"
+                );
+            }
+        }
+    }
+}
+
 /// Le manuel s'annonce par son compte de fiches. Un compte faux dans une
 /// documentation qui apprend à compter serait un comble : il se vérifie.
 #[test]

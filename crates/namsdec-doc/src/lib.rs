@@ -88,6 +88,42 @@ pub fn all() -> &'static [Entry] {
     ENTRIES
 }
 
+/// Les fiches vers lesquelles celle-ci renvoie.
+///
+/// Rien n'est saisi à la main : une fiche cite déjà entre accents
+/// graves les mots dont elle parle — `cmp`, `RSP`, `%define` — et ceux
+/// qui ont une fiche en deviennent des renvois. Écrire la liste à part
+/// la condamnerait à vieillir ; la déduire du texte la tient à jour.
+///
+/// ```
+/// let cmp = namsdec_doc::lookup("cmp").unwrap();
+/// let renvois = namsdec_doc::related(cmp, "fr");
+/// // `ja`/`jb` mènent à la fiche des sauts conditionnels, citée une
+/// // seule fois même si le texte en nomme quatre variantes.
+/// assert!(renvois.iter().any(|e| e.names.contains(&"ja")));
+/// // Une fiche ne se renvoie jamais à elle-même.
+/// assert!(!renvois.iter().any(|e| std::ptr::eq(*e, cmp)));
+/// ```
+pub fn related(entry: &'static Entry, lang: &str) -> Vec<&'static Entry> {
+    let mut vus: Vec<&'static Entry> = Vec::new();
+    let texte = entry.body.get(lang);
+    for (i, morceau) in texte.split('`').enumerate() {
+        // Un texte entre accents graves occupe les tranches impaires.
+        if i % 2 == 0 {
+            continue;
+        }
+        // `cmp rax, rbx` cite une instruction : le premier mot suffit.
+        let mot = morceau.split_whitespace().next().unwrap_or(morceau);
+        let mot = mot.trim_end_matches([',', '.', ':', ';']);
+        let Some(autre) = lookup(mot) else { continue };
+        if std::ptr::eq(autre, entry) || vus.iter().any(|v| std::ptr::eq(*v, autre)) {
+            continue;
+        }
+        vus.push(autre);
+    }
+    vus
+}
+
 /// Combien de fiches namsdec porte, instructions et directives
 /// confondues. Le README l'annonce ; un test le compare.
 pub fn count() -> usize {

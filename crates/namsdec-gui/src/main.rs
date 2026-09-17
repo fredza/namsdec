@@ -5536,6 +5536,7 @@ impl NamsdecApp {
         };
         let lang = if self.lang == Lang::Fr { "fr" } else { "en" };
         let mut copié = false;
+        let mut suivante = None;
         egui::ScrollArea::vertical()
             .id_salt("help")
             .auto_shrink([false, false])
@@ -5602,7 +5603,32 @@ impl NamsdecApp {
                     egui::Label::new(egui::RichText::new(entry.example).monospace())
                         .wrap_mode(egui::TextWrapMode::Extend),
                 );
+
+                // Les renvois : les mots que la fiche cite et qui ont
+                // eux-mêmes une fiche. Une notion s'apprend en tirant
+                // sur le fil, pas en lisant une page isolée.
+                let renvois = namsdec_doc::related(entry, lang);
+                if !renvois.is_empty() {
+                    ui.add_space(8.0);
+                    ui.horizontal_wrapped(|ui| {
+                        ui.colored_label(theme.dim, s.help_see_also);
+                        for autre in renvois {
+                            if ui
+                                .small_button(
+                                    egui::RichText::new(autre.names[0]).monospace(),
+                                )
+                                .on_hover_text(autre.title.get(lang))
+                                .clicked()
+                            {
+                                suivante = Some(autre.names[0]);
+                            }
+                        }
+                    });
+                }
             });
+        if let Some(name) = suivante {
+            self.help = Some((name.to_owned(), namsdec_doc::lookup(name)));
+        }
         if copié {
             self.status = Status::Note(s.help_example_copied);
         }
