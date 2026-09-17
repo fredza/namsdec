@@ -5473,6 +5473,7 @@ fn the_readme_tells_the_truth() {
         "namsdec-exercises",
         "namsdec-theme",
         "namsdec-explorer",
+        "namsdec-update",
         "namsdec-gui",
     ] {
         assert!(
@@ -9079,6 +9080,29 @@ fn the_repository_knows_how_to_publish_what_the_check_looks_for() {
     // Le dépôt interrogé est celui qui publie.
     assert_eq!(namsdec_update::OWNER, "fredza");
     assert_eq!(namsdec_update::REPO, "namsdec");
+}
+
+/// Le dépôt sait aussi se vérifier à chaque poussée, pas seulement au
+/// moment de publier.
+///
+/// Publier ce qui n'a pas été vérifié transformerait la vérification en
+/// formalité ; vérifier seulement au moment de publier laisserait `main`
+/// casser sans que personne le sache.
+#[test]
+fn the_repository_checks_itself_on_every_push() {
+    let ci = include_str!("../../../.github/workflows/ci.yml");
+    assert!(ci.contains("branches: [main]"), "{ci}");
+    assert!(ci.contains("pull_request"), "{ci}");
+    for étape in [
+        "cargo fmt --all --check",
+        "cargo clippy --all-targets --all-features -- -D warnings",
+        "cargo test --workspace",
+    ] {
+        assert!(ci.contains(étape), "le CI ne fait pas « {étape} »");
+    }
+    // nasm et ld sont installés : sans eux, la moitié des tests se
+    // taisent au lieu de vérifier quoi que ce soit.
+    assert!(ci.contains("nasm binutils"), "{ci}");
 }
 
 /// La mémoire montre sa carte : où commence le code, où finit la pile,

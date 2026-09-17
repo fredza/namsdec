@@ -212,6 +212,7 @@ Un workspace Rust, une crate par responsabilité :
 | `namsdec-exercises` | les séries d'exercices et leur format |
 | `namsdec-theme` | les thèmes, y compris ceux installés depuis le disque |
 | `namsdec-explorer` | l'explorateur de fichiers |
+| `namsdec-update` | la recherche de version publiée, et la comparaison SemVer |
 | `namsdec-gui` | l'interface (egui / eframe) |
 
 Les crates métier ne connaissent pas la langue de l'interface : leurs
