@@ -10843,6 +10843,125 @@ fn the_next_step_skips_what_is_already_done() {
     );
 }
 
+/// Ce mot est-il un nom de registre, sous n'importe quelle largeur ?
+///
+/// Les seize généraux et leurs moitiés, les vectoriels, la pile x87. Ils
+/// n'ont pas chacun leur fiche — c'est la notion « registre » qui les
+/// explique —, et un test de couverture du manuel n'a pas à les
+/// réclamer.
+fn est_un_registre(mot: &str) -> bool {
+    const CLASSIQUES: [&str; 8] = ["ax", "bx", "cx", "dx", "si", "di", "bp", "sp"];
+    let mot = mot.to_ascii_lowercase();
+    if let Some(reste) = mot.strip_prefix('r') {
+        // r8 … r15, avec leurs suffixes d, w, b.
+        let chiffres = reste.trim_end_matches(['d', 'w', 'b']);
+        if !chiffres.is_empty() && chiffres.chars().all(|c| c.is_ascii_digit()) {
+            return true;
+        }
+    }
+    for base in CLASSIQUES {
+        for forme in [
+            format!("r{base}"),
+            format!("e{base}"),
+            base.to_owned(),
+            format!("{}l", &base[..1]),
+            format!("{}h", &base[..1]),
+            format!("{base}l"),
+        ] {
+            if mot == forme {
+                return true;
+            }
+        }
+    }
+    (mot.starts_with("xmm") || mot.starts_with("ymm") || mot.starts_with("st"))
+        && mot.chars().any(|c| c.is_ascii_digit())
+}
+
+/// Tout ce qu'un exercice écrit s'explique sous F1.
+///
+/// Un parcours qui emploie une instruction que le manuel ignore laisse
+/// l'élève devant un mot qu'aucune aide ne couvre — et c'est justement
+/// l'instruction qu'il vient de rencontrer pour la première fois.
+#[test]
+fn every_instruction_the_course_writes_has_a_sheet() {
+    let pack = namsdec_exercises::builtin_pack();
+    let mut sans_fiche: std::collections::BTreeMap<String, String> = Default::default();
+
+    for exercise in &pack.exercises {
+        // Ce que le fichier définit lui-même : étiquettes, constantes,
+        // macros, noms de données. Ce ne sont pas des instructions, et
+        // le manuel n'a pas à les connaître.
+        let mut siens: std::collections::BTreeSet<String> = Default::default();
+        for ligne in exercise.starter_code.lines() {
+            let ligne = ligne.split(';').next().unwrap_or("").trim();
+            let mut mots = ligne.split_whitespace();
+            let Some(premier) = mots.next() else { continue };
+            if let Some(étiquette) = premier.strip_suffix(':') {
+                siens.insert(étiquette.to_lowercase());
+                continue;
+            }
+            // `nom db …`, `nom equ …`, `nom resb …` : le premier mot est
+            // un nom que ce fichier invente.
+            let deuxième = mots.next().map(str::to_lowercase);
+            if matches!(
+                deuxième.as_deref(),
+                Some(
+                    "db" | "dw" | "dd" | "dq" | "equ" | "resb" | "resw" | "resd" | "resq" | "times"
+                )
+            ) {
+                siens.insert(premier.to_lowercase());
+            }
+            if (premier.eq_ignore_ascii_case("%macro") || premier.eq_ignore_ascii_case("%define"))
+                && let Some(nom) = ligne.split_whitespace().nth(1)
+            {
+                siens.insert(nom.to_lowercase());
+            }
+        }
+
+        for ligne in exercise.starter_code.lines() {
+            let ligne = ligne.split(';').next().unwrap_or("").trim();
+            if ligne.is_empty() {
+                continue;
+            }
+            for mot in ligne.split_whitespace().take(2) {
+                let mot = mot.trim_end_matches([',', ':']).to_lowercase();
+                if mot.is_empty() || siens.contains(&mot) {
+                    continue;
+                }
+                // Un nombre, une adresse, un registre : rien à
+                // documenter ici — les registres ont leur propre fiche,
+                // sous « registre ».
+                if mot.chars().next().is_some_and(|c| c.is_ascii_digit())
+                    || mot.starts_with('[')
+                    || mot.starts_with('\'')
+                    || mot.starts_with('"')
+                    // Un nom de section : `.text`, `.data`, `.bss`. La
+                    // directive `section`, elle, a bien sa fiche.
+                    || mot.starts_with('.')
+                    || est_un_registre(&mot)
+                {
+                    continue;
+                }
+                if namsdec_doc::lookup(&mot).is_none() {
+                    sans_fiche.insert(mot, exercise.id.clone());
+                }
+            }
+        }
+    }
+
+    // Les mots de taille que l'assembleur attend devant un opérande
+    // mémoire : ils appartiennent à la fiche des directives de données,
+    // qui les nomme.
+    let tailles: std::collections::BTreeSet<&str> =
+        ["byte", "word", "dword", "qword"].into_iter().collect();
+    sans_fiche.retain(|mot, _| !tailles.contains(mot.as_str()));
+
+    assert!(
+        sans_fiche.is_empty(),
+        "un exercice écrit ce que le manuel n'explique pas : {sans_fiche:?}"
+    );
+}
+
 /// La mémoire montre sa carte : où commence le code, où finit la pile,
 /// ce que le tas occupe, avec les droits de chacun.
 ///
