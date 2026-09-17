@@ -54,6 +54,11 @@ pub enum Kind {
     Directive,
     /// Le préprocesseur : ce qui est remplacé *avant* l'assemblage.
     Preprocessor,
+    /// Une notion : ce qu'il faut avoir compris pour lire les autres
+    /// fiches. Un registre, une section, la pile, un appel système —
+    /// des mots qu'aucune instruction ne définit et que tout le monde
+    /// emploie.
+    Concept,
 }
 
 /// La fiche d'une famille d'instructions, d'une directive ou d'une

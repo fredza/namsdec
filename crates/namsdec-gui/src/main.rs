@@ -5566,6 +5566,7 @@ impl NamsdecApp {
                         theme.dim,
                         match entry.kind {
                             namsdec_doc::Kind::Directive => s.help_kind_directive,
+                            namsdec_doc::Kind::Concept => s.help_kind_concept,
                             _ => s.help_kind_preprocessor,
                         },
                     );

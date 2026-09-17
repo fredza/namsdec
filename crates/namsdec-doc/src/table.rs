@@ -1725,4 +1725,219 @@ pub const ENTRIES: &[Entry] = &[
         flags: "",
         example: "%ifndef TAILLE\n%error \"TAILLE n'est pas définie\"\n%endif",
     },
+    // --- Les notions -------------------------------------------
+    // Ce qu'aucune instruction ne définit et que toutes supposent :
+    // un registre, une section, la pile, un appel système. Un
+    // manuel d'instructions qui n'explique pas ses propres mots
+    // laisse le lecteur les deviner.
+    Entry {
+        kind: Kind::Concept,
+        names: &["registre"],
+        title: Text {
+            fr: "Registre",
+            en: "Register",
+        },
+        body: Text {
+            fr: "Une case de mémoire à l'intérieur du processeur, la plus rapide qui soit : il y en a seize pour les entiers, chacune de 64 bits, et tout calcul passe par elles. `RAX`, `RBX`, `RCX`… et leurs moitiés : écrire dans `EAX` (32 bits) met à zéro le haut de `RAX`, écrire dans `AX` (16 bits) ou `AL` (8 bits) le laisse. C'est la source de bogue numéro un quand on débute.",
+            en: "A slot of memory inside the processor, the fastest there is: sixteen of them for integers, 64 bits each, and every computation goes through them. `RAX`, `RBX`, `RCX`… and their halves: writing to `EAX` (32 bits) zeroes the top of `RAX`, writing to `AX` (16 bits) or `AL` (8 bits) leaves it. That is the number one source of bugs when starting out.",
+        },
+        flags: "",
+        example: "mov rax, 1\nmov eax, 1      ; met aussi le haut de RAX à zéro",
+    },
+    Entry {
+        kind: Kind::Concept,
+        names: &["indicateur", "flag", "flags", "rflags"],
+        title: Text {
+            fr: "Indicateur",
+            en: "Flag",
+        },
+        body: Text {
+            fr: "Un bit que le processeur met à jour après un calcul, et que le saut suivant lit. `ZF` dit que le résultat est nul, `SF` qu'il est négatif, `CF` qu'il y a eu une retenue (comparaison non signée), `OF` un débordement (comparaison signée). On ne les écrit presque jamais à la main : on les produit avec `cmp` ou `test`, et on les consomme avec un `jcc`.",
+            en: "A bit the processor updates after a computation, which the next jump reads. `ZF` says the result is zero, `SF` that it is negative, `CF` that there was a carry (unsigned comparison), `OF` an overflow (signed comparison). One almost never writes them by hand: they are produced with `cmp` or `test` and consumed by a `jcc`.",
+        },
+        flags: "",
+        example: "cmp rax, rbx\nje egaux        ; saute si ZF vaut 1\negaux:",
+    },
+    Entry {
+        kind: Kind::Concept,
+        names: &["pile", "stack"],
+        title: Text {
+            fr: "La pile",
+            en: "The stack",
+        },
+        body: Text {
+            fr: "Une zone de mémoire où l'on empile et dépile, et qui grandit vers les **adresses basses** : `push` soustrait 8 de `RSP` puis écrit, `pop` lit puis ajoute 8. `call` y dépose l'adresse de retour, `ret` la reprend. Ce qui est au-dessus de `RSP` a été dépilé : les octets sont encore là, mais le prochain `push` les écrase.",
+            en: "A region of memory one pushes onto and pops from, growing towards **lower addresses**: `push` subtracts 8 from `RSP` then writes, `pop` reads then adds 8. `call` leaves the return address there, `ret` takes it back. What sits above `RSP` has been popped: the bytes are still there, but the next push overwrites them.",
+        },
+        flags: "",
+        example: "push rax\npop rbx         ; RBX reçoit ce que RAX contenait",
+    },
+    Entry {
+        kind: Kind::Concept,
+        names: &["tas", "heap", "brk"],
+        title: Text {
+            fr: "Le tas",
+            en: "The heap",
+        },
+        body: Text {
+            fr: "La mémoire qu'un programme demande au noyau pendant qu'il tourne, par l'appel système `brk` : une frontière qu'on déplace, et tout ce qui est en deçà appartient au programme. C'est sur cette frontière que sont bâtis les `malloc` des bibliothèques — il n'y a rien d'autre dessous.",
+            en: "The memory a program asks the kernel for while running, through the `brk` system call: a boundary one moves, and everything below it belongs to the program. The `malloc` of the libraries is built on that boundary — there is nothing else underneath.",
+        },
+        flags: "",
+        example: "mov rax, 12\nmov rdi, 0      ; brk(0) rend la frontière courante\nsyscall",
+    },
+    Entry {
+        kind: Kind::Concept,
+        names: &["notion-section", "sections"],
+        title: Text {
+            fr: "Section",
+            en: "Section",
+        },
+        body: Text {
+            fr: "Un morceau du programme, rangé selon ce qu'on en fait : `.text` contient le code et s'exécute sans pouvoir être écrit, `.data` les données modifiables, `.rodata` les constantes, `.bss` la place réservée mais non initialisée — elle ne pèse rien dans le fichier. Écrire dans une section en lecture seule est refusé à l'exécution.",
+            en: "A piece of the program, filed by what one does with it: `.text` holds the code and runs without being writable, `.data` the changeable data, `.rodata` the constants, `.bss` space reserved but uninitialised — it weighs nothing in the file. Writing to a read-only section is refused at run time.",
+        },
+        flags: "",
+        example: "section .data\nmessage: db \"salut\", 10\n\nsection .text",
+    },
+    Entry {
+        kind: Kind::Concept,
+        names: &["etiquette", "label"],
+        title: Text {
+            fr: "Étiquette",
+            en: "Label",
+        },
+        body: Text {
+            fr: "Un nom donné à une adresse. L'assembleur la remplace par un nombre : `jmp boucle` devient un saut vers une adresse, et `mov rsi, message` charge l'adresse de la donnée — pas la donnée elle-même. Pour lire ce qu'il y a dedans, il faut des crochets : `mov al, [message]`.",
+            en: "A name given to an address. The assembler replaces it by a number: `jmp boucle` becomes a jump to an address, and `mov rsi, message` loads the address of the data — not the data. To read what is in it, brackets are needed: `mov al, [message]`.",
+        },
+        flags: "",
+        example: "mov rsi, message   ; l'adresse\nmov al, [message]  ; l'octet\nmessage: db 65",
+    },
+    Entry {
+        kind: Kind::Concept,
+        names: &["appel", "notion-syscall", "appel système", "noyau"],
+        title: Text {
+            fr: "Appel système",
+            en: "System call",
+        },
+        body: Text {
+            fr: "La seule façon pour un programme de parler au monde extérieur : lire, écrire, obtenir de la mémoire, s'arrêter. Le numéro va dans `RAX`, les arguments dans `RDI`, `RSI`, `RDX`, `R10`, `R8`, `R9` — et non `RCX`, que l'instruction `syscall` écrase —, et la réponse revient dans `RAX`.",
+            en: "The only way a program has of talking to the outside world: read, write, get memory, stop. The number goes in `RAX`, the arguments in `RDI`, `RSI`, `RDX`, `R10`, `R8`, `R9` — not `RCX`, which the `syscall` instruction clobbers — and the answer comes back in `RAX`.",
+        },
+        flags: "",
+        example: "mov rax, 60     ; exit\nxor edi, edi    ; code 0\nsyscall",
+    },
+    Entry {
+        kind: Kind::Concept,
+        names: &["convention", "abi", "system v"],
+        title: Text {
+            fr: "Convention d'appel",
+            en: "Calling convention",
+        },
+        body: Text {
+            fr: "L'accord entre programmes sur qui met quoi où : les six premiers arguments dans `RDI`, `RSI`, `RDX`, `RCX`, `R8`, `R9`, le résultat dans `RAX`. `RBX`, `RBP` et `R12` à `R15` doivent être rendus intacts par la fonction appelée ; les autres, l'appelant les considère perdus. Le processeur n'en sait rien : rien ne l'impose, c'est un accord.",
+            en: "The agreement between programs about who puts what where: the first six arguments in `RDI`, `RSI`, `RDX`, `RCX`, `R8`, `R9`, the result in `RAX`. `RBX`, `RBP` and `R12`–`R15` must be handed back untouched by the callee; the caller writes the others off. The processor knows nothing of this: nothing enforces it, it is an agreement.",
+        },
+        flags: "",
+        example: "mov rdi, 1      ; premier argument\ncall ecrire\nhlt\necrire:\nret",
+    },
+    Entry {
+        kind: Kind::Concept,
+        names: &["adressage", "crochets"],
+        title: Text {
+            fr: "Adressage mémoire",
+            en: "Memory addressing",
+        },
+        body: Text {
+            fr: "Ce qu'il y a entre crochets : `[base + indice*taille + décalage]`. Le processeur fait le calcul pour vous, à condition que la taille soit 1, 2, 4 ou 8 — c'est ce qui fait exister les tableaux. Sans crochets, on manipule le nombre lui-même ; avec, on manipule ce qui se trouve à cette adresse.",
+            en: "What goes between brackets: `[base + index*size + displacement]`. The processor does the arithmetic for you, provided the size is 1, 2, 4 or 8 — that is what makes arrays exist. Without brackets one handles the number itself; with them, what sits at that address.",
+        },
+        flags: "",
+        example: "mov rax, [rsi + rcx*8]",
+    },
+    Entry {
+        kind: Kind::Concept,
+        names: &["boutisme", "endianness", "petit-boutiste"],
+        title: Text {
+            fr: "Ordre des octets",
+            en: "Byte order",
+        },
+        body: Text {
+            fr: "Sur x86, un nombre est écrit en mémoire **octet de poids faible en premier** : `0x1122` occupe les octets `22 11`. C'est pourquoi un vidage hexadécimal ne se lit pas comme le nombre qu'on a écrit, et pourquoi une chaîne, elle, se lit normalement — ses octets ne forment pas un nombre.",
+            en: "On x86 a number is written to memory **least significant byte first**: `0x1122` takes up the bytes `22 11`. That is why a hex dump does not read like the number one wrote, and why a string does read normally — its bytes do not make up a number.",
+        },
+        flags: "",
+        example: "dw 0x1122       ; en mémoire : 22 11",
+    },
+    Entry {
+        kind: Kind::Concept,
+        names: &["immediat", "immédiat"],
+        title: Text {
+            fr: "Valeur immédiate",
+            en: "Immediate value",
+        },
+        body: Text {
+            fr: "Un nombre écrit dans l'instruction elle-même, plutôt que lu ailleurs. Il fait partie des octets du code : c'est pour cela qu'il est limité — une écriture en mémoire n'accepte pas d'immédiat de plus de 32 bits, et il faut passer par un registre.",
+            en: "A number written inside the instruction itself, rather than read from elsewhere. It is part of the code bytes: that is why it is limited — a memory write takes no immediate wider than 32 bits, and one has to go through a register.",
+        },
+        flags: "",
+        example: "mov rax, 42     ; 42 est l'immédiat",
+    },
+    Entry {
+        kind: Kind::Concept,
+        names: &["point d'arret", "breakpoint"],
+        title: Text {
+            fr: "Point d'arrêt",
+            en: "Breakpoint",
+        },
+        body: Text {
+            fr: "Une ligne où l'exécution s'arrête pour qu'on regarde. Dans namsdec, un clic dans la gouttière la pose ; une condition la rend plus utile encore — dans une boucle de mille tours, on ne veut pas s'arrêter mille fois mais au tour où quelque chose va de travers.",
+            en: "A line where execution stops so one can look. In namsdec a click in the gutter sets one; a condition makes it more useful still — in a thousand-turn loop one does not want to stop a thousand times, but at the turn where something goes wrong.",
+        },
+        flags: "",
+        example: "; clic dans la gouttière, puis Outils > Points d'arrêt",
+    },
+    Entry {
+        kind: Kind::Concept,
+        names: &["desassemblage", "désassemblage", "disassembly"],
+        title: Text {
+            fr: "Désassemblage",
+            en: "Disassembly",
+        },
+        body: Text {
+            fr: "L'opération inverse de l'assemblage : retrouver les instructions à partir des octets. Elle n'est jamais parfaite — rien ne distingue du code de données dans un fichier, et commencer la lecture un octet plus loin donne d'autres instructions, parfaitement valables et complètement fausses.",
+            en: "The reverse of assembling: recovering instructions from bytes. It is never perfect — nothing distinguishes code from data in a file, and starting one byte further along yields other instructions, perfectly valid and completely wrong.",
+        },
+        flags: "",
+        example: "; Outils > Désassemblage",
+    },
+    Entry {
+        kind: Kind::Concept,
+        names: &["protection", "nx", "pie", "relro", "canari"],
+        title: Text {
+            fr: "Protections d'un binaire",
+            en: "Binary hardening",
+        },
+        body: Text {
+            fr: "Les défenses qu'un programme emporte avec lui : `NX` (la pile ne s'exécute pas), `PIE` (les adresses changent à chaque exécution), `RELRO` (les tables de liaison passent en lecture seule), le canari de pile (une valeur secrète devant l'adresse de retour). Aucune n'empêche un bogue ; toutes rendent son exploitation plus difficile.",
+            en: "The defences a program carries with it: `NX` (the stack does not execute), `PIE` (addresses change on every run), `RELRO` (linking tables become read-only), the stack canary (a secret value in front of the return address). None prevents a bug; all make exploiting one harder.",
+        },
+        flags: "",
+        example: "; Outils > Analyse du binaire",
+    },
+    Entry {
+        kind: Kind::Concept,
+        names: &["elf", "binaire"],
+        title: Text {
+            fr: "Un binaire ELF",
+            en: "An ELF binary",
+        },
+        body: Text {
+            fr: "Le format des exécutables sous Linux : un en-tête qui dit par où commencer, des segments que le noyau projette en mémoire avec leurs droits, et des tables — symboles, relocations — dont beaucoup disparaissent quand le binaire est dépouillé. Ce qui reste suffit à l'exécuter ; ce qui manque est ce qu'on reconstitue en le lisant.",
+            en: "The executable format on Linux: a header saying where to start, segments the kernel maps into memory with their rights, and tables — symbols, relocations — many of which disappear when the binary is stripped. What remains is enough to run it; what is missing is what one reconstructs by reading it.",
+        },
+        flags: "",
+        example: "; Outils > Analyse du binaire",
+    },
 ];

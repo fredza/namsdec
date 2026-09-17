@@ -5086,7 +5086,7 @@ fn the_readme_tells_the_truth() {
 
     let fiches = namsdec_doc::count();
     assert!(
-        readme.contains(&format!("{fiches} instructions et directives")),
+        readme.contains(&format!("{fiches} instructions, directives et notions")),
         "le README annonce un autre nombre de fiches que les {fiches} existantes"
     );
 
@@ -6059,7 +6059,7 @@ fn the_course_offers_the_next_step() {
 /// Le manuel se consulte aussi pour ce qu'on ne connaît pas encore.
 ///
 /// F1 répond sur le mot où l'on est : encore faut-il savoir quoi
-/// écrire. La fenêtre d'aide cherche maintenant dans les 114 fiches, par
+/// écrire. La fenêtre d'aide cherche maintenant dans les 129 fiches, par
 /// nom comme par titre.
 #[test]
 fn the_manual_can_be_searched_for_what_one_does_not_know_yet() {
@@ -8067,4 +8067,55 @@ fn the_hover_sheet_can_be_turned_off_on_its_own() {
     let ancien: crate::settings::Settings =
         serde_json::from_str(r#"{"version":1,"theme":"vscode-dark","language":"fr"}"#).unwrap();
     assert!(ancien.hover_help);
+}
+
+/// Le manuel explique aussi ses propres mots.
+///
+/// Un manuel d'instructions qui ne dit pas ce qu'est un registre, une
+/// section ou un appel système laisse le lecteur les deviner — or ce
+/// sont eux que toutes les autres fiches emploient.
+#[test]
+fn the_manual_explains_its_own_words() {
+    for mot in [
+        "registre",
+        "indicateur",
+        "pile",
+        "tas",
+        "etiquette",
+        "convention",
+        "adressage",
+        "immediat",
+        "elf",
+    ] {
+        let entry = namsdec_doc::lookup(mot).unwrap_or_else(|| panic!("« {mot} » doit être dit"));
+        assert_eq!(
+            entry.kind,
+            namsdec_doc::Kind::Concept,
+            "« {mot} » est une notion"
+        );
+        assert!(entry.body.fr.len() > 150, "« {mot} » : {}", entry.body.fr);
+        assert!(entry.body.en.len() > 150, "« {mot} »");
+    }
+
+    // Une notion qui porte le nom d'une directive ne la remplace pas :
+    // F1 sur `section` donne la directive, celle qu'on écrit.
+    assert_eq!(
+        namsdec_doc::lookup("section").map(|e| e.kind),
+        Some(namsdec_doc::Kind::Directive)
+    );
+    assert_eq!(
+        namsdec_doc::lookup("notion-section").map(|e| e.kind),
+        Some(namsdec_doc::Kind::Concept)
+    );
+
+    // Et la recherche du manuel trouve les deux : c'est là qu'on
+    // cherche un mot sans savoir ce qu'il est.
+    let trouvées = namsdec_doc::all()
+        .iter()
+        .filter(|entry| {
+            entry.names.iter().any(|n| n.contains("section"))
+                || entry.title.get("fr").to_lowercase().contains("section")
+        })
+        .count();
+    assert!(trouvées >= 2, "la directive et la notion : {trouvées}");
 }
