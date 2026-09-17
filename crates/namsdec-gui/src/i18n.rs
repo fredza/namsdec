@@ -266,6 +266,8 @@ pub struct Strings {
     /// Les trois gestes des onglets, dans les raccourcis et la palette.
     /// La fenêtre du déroulement : son titre, ce qu'elle explique, et
     /// ce qu'elle dit quand il n'y a rien à montrer.
+    /// Ce qui annonce la provenance lue dans le code, faute d'histoire.
+    pub provenance_static: &'static str,
     pub flow_title: &'static str,
     pub flow_open: &'static str,
     pub flow_hint: &'static str,
@@ -797,6 +799,7 @@ const FR: Strings = Strings {
     disk_changed: "Ce fichier a changé sur le disque, et vos modifications ne sont pas enregistrées.",
     disk_reload: "Recharger",
     disk_keep: "Garder ce que j'ai écrit",
+    provenance_static: "D'où elle vient, en remontant le code :",
     flow_title: "Déroulement du programme",
     flow_open: "Déroulement du programme…",
     flow_hint: "Un listing se lit de haut en bas ; un programme, non. Chaque boîte est une suite d'instructions qu'on ne peut qu'entrer par le haut et quitter par le bas.",
@@ -1295,6 +1298,7 @@ const EN: Strings = Strings {
     disk_changed: "This file changed on disk, and your edits are not saved.",
     disk_reload: "Reload",
     disk_keep: "Keep what I wrote",
+    provenance_static: "Where it comes from, reading the code backwards:",
     flow_title: "Program flow",
     flow_open: "Program flow…",
     flow_hint: "A listing reads top to bottom; a program does not. Each box is a run of instructions you can only enter at the top and leave at the bottom.",

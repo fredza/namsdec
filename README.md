@@ -106,6 +106,30 @@ adresse, qui l'appelle, qui y saute et qui la désigne. Une adresse qu'un
 `call` vise est une fonction, même dépouillée de son nom — et celle qui
 est appelée de partout est celle par laquelle on commence à lire.
 
+**Ce que le code fait de remarquable.** Le module **Figures** relève les
+constantes qui sont du texte (`mov ecx, 0x48555648` → `"HVUH"`), les
+contrôles de longueur, les comparaisons déguisées en XOR — `a XOR b` ne
+vaut zéro que si les deux sont égaux, donc la constante *est* la valeur
+attendue —, les comparaisons de chaîne et les tables de sauts. Les
+familles sont rangées **de la plus rare à la plus commune** : dans un
+binaire de soixante mille instructions, mille sept cents tests de nullité
+sont de la ponctuation, et quatre comparaisons par XOR sont une piste.
+
+**Par où commencer à lire.** Le module **Fonctions** retrouve le `main`
+d'un binaire dépouillé — le code d'amorçage passe son adresse à
+`__libc_start_main`, dans RDI — puis découpe le code sur les cibles
+d'appel, avec le nombre d'appelants de chacune. Et les chaînes des
+langages sans zéro final (Rust, Go, Zig) sont **découpées par le code**,
+là où un scan des octets ne lit qu'un pâté : l'adresse y voyage avec sa
+longueur.
+
+**D'où vient cette valeur.** Survoler un registre dit quel pas y a écrit
+en dernier. Quand il n'y a pas d'historique — un binaire qui appelle une
+bibliothèque absente ne s'exécute pas —, namsdec remonte le **code** à
+l'envers jusqu'à la source, en s'arrêtant au premier saut : au-delà,
+plusieurs chemins mènent là, et « la dernière écriture » n'a plus de sens
+unique.
+
 **Les protections d'un binaire.** PIE, NX, RELRO, canari de pile,
 FORTIFY, IBT et pile fantôme, segments W+X, symboles, bibliothèques,
 RPATH, et les fonctions qu'il emprunte — chaque entrée de la table de

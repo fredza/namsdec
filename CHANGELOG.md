@@ -223,6 +223,23 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
   coût et le lien des registres étendus se superposaient à l'onglet, les
   deux illisibles. Le bandeau tient maintenant dans une seule zone qui
   coupe net, et la barre n'apparaît que sur une fenêtre trop courte.
+**Lire un binaire qu'on n'a pas écrit**
+- Un module **Fonctions** : le `main` d'un binaire dépouillé, retrouvé
+  par la convention de démarrage, puis les fonctions découpées sur les
+  cibles d'appel, avec leurs appelants.
+- Les chaînes des langages sans zéro final — Rust, Go, Zig — sont
+  découpées **par le code**, où l'adresse voyage avec sa longueur. Un
+  scan des octets lisait « Error flushing bufferError reading
+  inputIncorrect password » d'un seul tenant.
+- Un module **Figures** : constantes qui sont du texte, contrôles de
+  longueur, comparaisons déguisées en XOR, comparaisons de chaîne,
+  tables de sauts. Rangées de la plus rare à la plus commune — c'est ce
+  classement qui fait sortir une piste d'un binaire de soixante mille
+  instructions.
+- **La provenance lue dans le code** : à défaut d'historique, namsdec
+  remonte les instructions à l'envers jusqu'à la source d'une valeur, et
+  s'arrête au premier saut plutôt que de deviner.
+
 **Un guide de l'utilisateur**
 - Un PDF de neuf pages accompagne la version : installation, prise en
   main, chaque panneau, l'exécution, la mémoire, le manuel, le

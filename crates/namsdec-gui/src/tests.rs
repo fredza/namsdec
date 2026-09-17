@@ -13734,3 +13734,94 @@ fn strings_without_a_final_zero_are_cut_by_the_code_that_uses_them() {
         "et l'on sait d'où l'on s'en sert"
     );
 }
+
+/// Devant un binaire qu'on ne peut pas exécuter, la provenance se lit
+/// quand même — dans le code, à l'envers.
+///
+/// L'historique d'exécution est la meilleure réponse à « d'où vient
+/// cette valeur ». Mais un binaire qui appelle une bibliothèque qu'on
+/// n'a pas ne s'exécute pas : il n'y a pas d'historique, et la seule
+/// voie est de remonter les instructions. C'est ce qu'on fait à la main
+/// devant un listing.
+#[test]
+fn where_a_value_comes_from_can_be_read_in_the_code_itself() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: "\
+global _start
+section .text
+_start:
+    mov rax, 5
+    mov rcx, rax
+    add rcx, 2
+    cmp rcx, 7
+    hlt
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    // Trois pas : on s'arrête sur le `cmp`, sans l'exécuter.
+    for _ in 0..3 {
+        app.do_step();
+    }
+
+    let chaîne = app.static_provenance("rcx");
+    assert!(chaîne.len() >= 3, "{chaîne:?}");
+    assert!(
+        chaîne[0].text.starts_with("add"),
+        "la dernière écriture d'abord : {:?}",
+        chaîne[0]
+    );
+    assert_eq!(
+        chaîne.last().expect("la source").writes,
+        "rax",
+        "et l'on remonte jusqu'à la source : {chaîne:?}"
+    );
+
+    // Ce que le survol du registre montre alors.
+    let peint = paint(&mut app);
+    assert!(peint.contains("RCX"), "{peint}");
+}
+
+/// Les figures du code sortent une comparaison déguisée d'un binaire
+/// entier.
+///
+/// C'est la leçon d'un vrai crackme : `mov ecx, 0x48555648` ne dit rien,
+/// et les mêmes octets lus comme du texte disent « HVUH ». Un XOR nul
+/// veut dire égalité, donc la constante *est* la valeur attendue.
+#[test]
+fn a_disguised_comparison_hands_over_what_it_expects() {
+    // Le cœur d'un crackme, tel qu'il se lit dans le binaire.
+    let bytes: &[u8] = &[
+        0x48, 0x83, 0xFE, 0x07, // cmp rsi, 7
+        0x75, 0x19, // jne
+        0xB9, 0x48, 0x56, 0x55, 0x48, // mov ecx, 0x48555648
+        0x33, 0x0C, 0x03, // xor ecx, [rbx+rax]
+        0xBA, 0x48, 0x41, 0x44, 0x4E, // mov edx, 0x4E444148
+        0x33, 0x54, 0x03, 0x03, // xor edx, [rbx+rax+3]
+        0x09, 0xCA, // or edx, ecx
+        0x74, 0x10, // je
+    ];
+    let disasm = namsdec_disasm::disassemble(bytes, 0x10106);
+    let figures = namsdec_re::patterns::scan(&disasm);
+
+    // La longueur attendue.
+    let longueur = figures
+        .iter()
+        .find(|f| f.pattern == namsdec_re::patterns::Pattern::LengthCheck)
+        .expect("le contrôle de longueur");
+    assert_eq!(longueur.detail, "7");
+
+    // Et les deux morceaux de la valeur attendue, lus en clair.
+    let xors: Vec<&str> = figures
+        .iter()
+        .filter(|f| f.pattern == namsdec_re::patterns::Pattern::XorCompare)
+        .map(|f| f.detail.as_str())
+        .collect();
+    assert_eq!(xors.len(), 2, "{xors:?}");
+    assert!(xors[0].contains("HVUH"), "{xors:?}");
+    assert!(xors[1].contains("HADN"), "{xors:?}");
+}

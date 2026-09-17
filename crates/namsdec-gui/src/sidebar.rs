@@ -868,6 +868,21 @@ impl NamsdecApp {
         self.step_description(rang)
     }
 
+    /// D'où vient cette valeur, **en lisant le code** et non
+    /// l'historique.
+    ///
+    /// L'historique est la meilleure réponse quand il existe : il dit ce
+    /// qui s'est passé. Mais devant un binaire qu'on ne peut pas
+    /// exécuter — il appelle une bibliothèque qu'on n'a pas —, il est
+    /// vide, et la seule voie est de remonter le code à l'envers. C'est
+    /// ce qu'on fait à la main devant un listing ; autant le faire ici.
+    pub(crate) fn static_provenance(&self, name: &str) -> Vec<namsdec_re::provenance::Step> {
+        let (Some(emulator), Some(state)) = (&self.emulator, &self.assemble_state) else {
+            return Vec::new();
+        };
+        namsdec_re::provenance::trace(&state.disasm, emulator.cpu().regs.rip, name)
+    }
+
     /// D'où vient ce qui est en mémoire à cette adresse.
     pub(crate) fn last_memory_write_line(&self, addr: u64) -> Option<String> {
         let rang = self.emulator.as_ref()?.last_write_to_memory(addr)?;
@@ -1016,6 +1031,27 @@ impl NamsdecApp {
                         if let Some(texte) = &provenance {
                             ui.add_space(4.0);
                             ui.colored_label(theme.accent, texte);
+                        }
+                        // À défaut d'historique — un binaire qu'on ne
+                        // peut pas exécuter n'en a pas —, la lecture du
+                        // code à l'envers : la dernière écriture, puis
+                        // ce qui l'a alimentée.
+                        if provenance.is_none() {
+                            let chaîne = self.static_provenance(name);
+                            if !chaîne.is_empty() {
+                                ui.add_space(4.0);
+                                ui.colored_label(theme.dim, s.provenance_static);
+                                for étape in chaîne.iter().take(4) {
+                                    ui.colored_label(
+                                        theme.accent,
+                                        egui::RichText::new(format!(
+                                            "{:#010x}  {}",
+                                            étape.addr, étape.text
+                                        ))
+                                        .monospace(),
+                                    );
+                                }
+                            }
                         }
                         ui.add_space(4.0);
                         ui.weak(if name == "RIP" {

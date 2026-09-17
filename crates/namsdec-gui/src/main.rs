@@ -28,8 +28,8 @@ use namsdec_disasm::DecodedInstruction;
 use namsdec_emu::{Backend, Emulator, RunStop, StepOverResult, StepResult};
 use namsdec_explorer::{ExplorerAction, FileExplorer};
 use namsdec_re::{
-    BinaryInfoModule, FunctionsModule, GadgetsModule, ImportsModule, ProtectionsModule, ReContext,
-    ReModuleRegistry, StringsModule, SyscallsModule, XrefsModule,
+    BinaryInfoModule, FunctionsModule, GadgetsModule, ImportsModule, PatternsModule,
+    ProtectionsModule, ReContext, ReModuleRegistry, StringsModule, SyscallsModule, XrefsModule,
 };
 use namsdec_theme::Theme;
 
@@ -1506,6 +1506,11 @@ impl Default for NamsdecApp {
         // dit (ses chaînes), ce qu'il demande au système, puis comment il
         // est découpé.
         re_registry.register(Box::new(StringsModule::default()));
+        // Ce que le code *fait* de remarquable : les figures, rangées de
+        // la plus rare à la plus commune. C'est ce classement qui fait
+        // sortir une comparaison déguisée d'un binaire de soixante mille
+        // instructions.
+        re_registry.register(Box::new(PatternsModule::default()));
         re_registry.register(Box::new(SyscallsModule::default()));
         // Ce qu'il emprunte : les fonctions d'autrui qu'il appelle. On
         // les lit juste après les appels système, parce que c'est la

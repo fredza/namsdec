@@ -102,6 +102,34 @@ fn main() {
         );
     }
 
+    println!("\n== figures reconnues dans le code");
+    let figures = namsdec_re::patterns::scan(&disasm);
+    use std::collections::BTreeMap;
+    let mut comptes: BTreeMap<String, usize> = BTreeMap::new();
+    for f in &figures {
+        *comptes.entry(format!("{:?}", f.pattern)).or_default() += 1;
+    }
+    for (nom, compte) in &comptes {
+        println!("  {compte:>5}  {nom}");
+    }
+    println!("\n  -- les constantes en texte et les comparaisons par XOR :");
+    for f in figures
+        .iter()
+        .filter(|f| {
+            matches!(f.pattern, namsdec_re::patterns::Pattern::XorCompare)
+                || (matches!(f.pattern, namsdec_re::patterns::Pattern::AsciiConstant)
+                    && f.detail.len() > 12)
+        })
+        .take(14)
+    {
+        let dans = fonctions
+            .iter()
+            .find(|fn_| f.addr >= fn_.start && f.addr <= fn_.last)
+            .map(|fn_| fn_.name())
+            .unwrap_or_else(|| "?".into());
+        println!("  {:#010x} ({dans}) {:?} : {}", f.addr, f.pattern, f.detail);
+    }
+
     // Qui désigne ces chaînes ? C'est la question d'un crackme.
     println!("\n== qui charge l'adresse de ces chaînes ?");
     let plage = elf
