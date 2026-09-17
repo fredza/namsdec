@@ -34,6 +34,10 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
   qui écrivent sans borne. Ces noms deviennent des étiquettes du listing
   (`malloc@plt:`).
 - Les adresses de retour de la pile se listent (`retaddr`).
+- Les chaînes sont cherchées dans les sections de données, comme
+  `strings -d` : le panneau montrait jusque-là des fins de fonctions et
+  s'arrêtait avant d'atteindre les vrais messages. Le rapport en reprend
+  les plus parlantes.
 - Le motif cyclique de De Bruijn (`cyclic`), identique octet pour octet
   à celui de pwntools, avec envoi direct dans l'entrée du programme et
   décalage relu depuis un registre, des caractères ou un nombre.
