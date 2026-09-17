@@ -53,6 +53,16 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
 - Chaque exercice montre les fiches que son propre code emploie.
 - F1 répond aussi sur une fonction empruntée.
 
+**Le parcours passe à vingt et une étapes**
+- « Copier sans boucle » : `rep movsb`, et d'où RSI et RDI tirent leur
+  nom.
+- « Un cadre de pile » : `push rbp` / `mov rbp, rsp` / `sub rsp, 16`, les
+  variables locales lues depuis RBP, et `leave`.
+- « Demander de la mémoire » : `brk`, sur quoi repose tout `malloc`.
+- « Calculer à virgule » : XMM0, `movsd`, `addsd`, et pourquoi le `s`.
+- « Afficher un nombre » : la synthèse — une boucle, `div` et son RDX, la
+  pile, l'arithmétique des caractères et un appel système.
+
 **Vérifier ce qu'on a fait**
 - Un exercice réussi le reste : pastille dans la liste, compte en tête de
   la série, retenus sur le disque. Repartir du programme de départ ne le

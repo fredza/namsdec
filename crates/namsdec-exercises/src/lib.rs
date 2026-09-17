@@ -238,6 +238,19 @@ pub fn builtin_pack() -> Pack {
                 goal: vec!["rcx == 5".to_owned()],
             },
             Exercise {
+                id: "chaines".to_owned(),
+                title: Text {
+                    fr: "Copier sans boucle".to_owned(),
+                    en: "Copying without a loop".to_owned(),
+                },
+                description: Text {
+                    fr: "`rep movsb` copie RCX octets de RSI vers RDI, en une instruction. C'est d'elle que RSI et RDI tirent leur nom — *source index*, *destination index* —, et `cld` dit dans quel sens on avance. Avancez pas à pas : les trois registres bougent ensemble. À l'arrêt, RAX doit valoir 's' (0x73) et RBX 't' (0x74).".to_owned(),
+                    en: "`rep movsb` copies RCX bytes from RSI to RDI in one instruction. That is where RSI and RDI get their names — source index, destination index — and `cld` says which way to walk. Step through it: the three registers move together. At the halt, RAX must hold 's' (0x73) and RBX 't' (0x74).".to_owned(),
+                },
+                starter_code: include_str!("../exercises/chaines.asm").to_owned(),
+                goal: vec!["rax == 0x73".to_owned(), "rbx == 0x74".to_owned()],
+            },
+            Exercise {
                 id: "pile".to_owned(),
                 title: Text {
                     fr: "La pile".to_owned(),
@@ -264,6 +277,19 @@ pub fn builtin_pack() -> Pack {
                 goal: vec!["rax == 7".to_owned()],
             },
             Exercise {
+                id: "cadre".to_owned(),
+                title: Text {
+                    fr: "Un cadre de pile".to_owned(),
+                    en: "A stack frame".to_owned(),
+                },
+                description: Text {
+                    fr: "`push rbp` / `mov rbp, rsp` / `sub rsp, 16` : trois instructions qui donnent à une fonction sa place à elle. Les variables locales se lisent par rapport à RBP, qui ne bouge pas, et non par rapport à RSP, qui bouge à chaque `push`. `leave` défait le tout. À l'arrêt, RAX doit valoir 7 et l'onglet Pile ne rien signaler.".to_owned(),
+                    en: "`push rbp` / `mov rbp, rsp` / `sub rsp, 16`: three instructions that give a function room of its own. Locals are read relative to RBP, which stays put, not RSP, which moves on every push. `leave` undoes it all. At the halt, RAX must hold 7 and the Stack tab must report nothing.".to_owned(),
+                },
+                starter_code: include_str!("../exercises/cadre.asm").to_owned(),
+                goal: vec!["rax == 7".to_owned()],
+            },
+            Exercise {
                 id: "sortie".to_owned(),
                 title: Text {
                     fr: "Parler au système".to_owned(),
@@ -275,6 +301,45 @@ pub fn builtin_pack() -> Pack {
                 },
                 starter_code: include_str!("../exercises/sortie.asm").to_owned(),
                 goal: Vec::new(),
+            },
+            Exercise {
+                id: "tas".to_owned(),
+                title: Text {
+                    fr: "Demander de la mémoire".to_owned(),
+                    en: "Asking for memory".to_owned(),
+                },
+                description: Text {
+                    fr: "Un programme naît avec son code, ses données et sa pile ; le reste se demande. `brk(0)` rend la limite du tas, `brk(plus haut)` la déplace, et entre les deux la mémoire est à vous. C'est là-dessus que repose tout `malloc`. L'onglet Tas montre les trois bornes bouger.".to_owned(),
+                    en: "A program is born with its code, its data and its stack; the rest is asked for. `brk(0)` returns the heap limit, `brk(higher)` moves it, and what lies between is yours. Every `malloc` rests on this. The Heap tab shows the three bounds move.".to_owned(),
+                },
+                starter_code: include_str!("../exercises/tas.asm").to_owned(),
+                goal: vec!["rax == 0x42".to_owned()],
+            },
+            Exercise {
+                id: "flottants".to_owned(),
+                title: Text {
+                    fr: "Calculer à virgule".to_owned(),
+                    en: "Computing with decimals".to_owned(),
+                },
+                description: Text {
+                    fr: "Les entiers vivent dans RAX, les flottants dans XMM0. `movsd` déplace un double, `addsd` en additionne deux, et le `s` veut dire « un seul » — la même instruction sans lui en traiterait deux d'un coup. À l'arrêt, RAX porte les octets de 3.75 ; survolez-le pour la lecture décimale, ou ouvrez « Registres étendus ».".to_owned(),
+                    en: "Integers live in RAX, floats in XMM0. `movsd` moves a double, `addsd` adds two, and the `s` means \"just one\" — the same instruction without it would handle two at once. At the halt, RAX holds the bytes of 3.75; hover it for the decimal reading, or open \"Extended registers\".".to_owned(),
+                },
+                starter_code: include_str!("../exercises/flottants.asm").to_owned(),
+                goal: vec!["rax == 0x400e000000000000".to_owned()],
+            },
+            Exercise {
+                id: "afficher".to_owned(),
+                title: Text {
+                    fr: "Afficher un nombre".to_owned(),
+                    en: "Printing a number".to_owned(),
+                },
+                description: Text {
+                    fr: "La synthèse du parcours : une boucle, `div` et son RDX, la pile, l'arithmétique des caractères et un appel système. Un ordinateur ne connaît pas les chiffres : afficher 1234, c'est le diviser par dix jusqu'à épuisement — les chiffres sortent à l'envers, et la pile les remet à l'endroit. La console doit afficher 1234.".to_owned(),
+                    en: "The course's synthesis: a loop, `div` and its RDX, the stack, character arithmetic and a system call. A computer does not know digits: printing 1234 means dividing by ten until nothing is left — the digits come out backwards, and the stack puts them right. The console must show 1234.".to_owned(),
+                },
+                starter_code: include_str!("../exercises/afficher.asm").to_owned(),
+                goal: vec!["rax == 4".to_owned()],
             },
             Exercise {
                 id: "debordement".to_owned(),
@@ -335,9 +400,9 @@ mod tests {
     #[test]
     fn every_builtin_exercise_is_complete_and_stops() {
         let pack = builtin_pack();
-        // Un parcours, pas une poignée : seize étapes, et chacune
+        // Un parcours, pas une poignée : vingt et une étapes, et chacune
         // s'appuie sur les précédentes.
-        assert_eq!(pack.exercises.len(), 16);
+        assert_eq!(pack.exercises.len(), 21);
         for exercise in &pack.exercises {
             assert!(!exercise.id.is_empty());
             assert!(!exercise.title.fr.is_empty() && !exercise.title.en.is_empty());

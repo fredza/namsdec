@@ -3945,7 +3945,7 @@ fn an_exercise_points_at_the_sheets_it_uses() {
     );
 }
 
-/// Le parcours livré est un parcours : seize étapes dans l'ordre où
+/// Le parcours livré est un parcours : vingt et une étapes dans l'ordre où
 /// l'on apprend, chacune avec son but écrit dans le programme.
 ///
 /// L'ordre n'est pas décoratif. On lit les registres avant d'écrire une
@@ -3969,9 +3969,14 @@ fn the_built_in_pack_is_a_course_in_order() {
             "boutisme",
             "tableau",
             "chaine",
+            "chaines",
             "pile",
             "appels",
+            "cadre",
             "sortie",
+            "tas",
+            "flottants",
+            "afficher",
             "debordement",
             "protection"
         ]
@@ -5483,9 +5488,12 @@ fn the_readme_tells_the_truth() {
     );
 
     let exercices = namsdec_exercises::builtin_pack().exercises.len();
-    assert_eq!(exercices, 16, "le parcours livré compte seize exercices");
+    assert_eq!(
+        exercices, 21,
+        "le parcours livré compte vingt et un exercices"
+    );
     assert!(
-        readme.contains("parcours de seize exercices"),
+        readme.contains("parcours de vingt et un exercices"),
         "le README doit annoncer le bon nombre d'exercices"
     );
     // Les crates listées dans le tableau existent toutes.
@@ -6287,7 +6295,7 @@ fn the_exercises_deliver_what_they_promise() {
 ///
 /// Un module qu'on active si on le désire, soit — mais une porte qu'on
 /// ne voit pas n'existe pas. Quelqu'un qui débute ne devinera pas qu'il
-/// y a seize exercices derrière un réglage.
+/// y a vingt et un exercices derrière un réglage.
 #[test]
 fn the_course_is_discoverable_before_it_is_loaded() {
     let mut app = NamsdecApp::default();
@@ -6328,7 +6336,7 @@ fn the_course_is_discoverable_before_it_is_loaded() {
         output.textures_delta.clear();
     }
     // Le texte d'accueil est à l'écran, avec sa mention du parcours.
-    assert!(painted.contains("seize exercices"), "{painted}");
+    assert!(painted.contains("vingt et un exercices"), "{painted}");
 }
 
 /// Le parcours se reprend là où on l'avait laissé.
@@ -6395,12 +6403,12 @@ fn the_course_remembers_where_one_stopped() {
         "l'étape en cours se voit sans avoir à la chercher : {painted}"
     );
     // Le rang dans le parcours, aussi : le tableau est la dixième des
-    // seize étapes.
-    assert!(painted.contains("10/16"), "{painted}");
+    // vingt et une étapes.
+    assert!(painted.contains("10/21"), "{painted}");
 }
 
 /// Un parcours se suit : l'étape suivante est à un clic, sans avoir à
-/// retrouver son rang dans une liste de seize.
+/// retrouver son rang dans une liste de vingt et un.
 #[test]
 fn the_course_offers_the_next_step() {
     let mut app = NamsdecApp {
@@ -6447,7 +6455,7 @@ fn the_course_offers_the_next_step() {
     }
     assert!(painted.contains("Étape suivante"), "{painted}");
     assert!(
-        painted.contains("1/16"),
+        painted.contains("1/21"),
         "le rang de l'étape en cours : {painted}"
     );
 }
@@ -8962,7 +8970,7 @@ fn every_goal_is_readable_and_on_the_right_side() {
     }
     // Ce que le programme livré fait déjà : on le regarde tourner et on
     // comprend ce qui s'est passé.
-    const DÉMONSTRATIONS: [&str; 9] = [
+    const DÉMONSTRATIONS: [&str; 14] = [
         "boucle",
         "bits",
         "memoire",
@@ -8972,6 +8980,11 @@ fn every_goal_is_readable_and_on_the_right_side() {
         "multiplier",
         "boutisme",
         "signe",
+        "chaines",
+        "cadre",
+        "tas",
+        "flottants",
+        "afficher",
     ];
     // Ce qu'il reste à faire : le but n'est pas atteint tant qu'on n'a
     // pas écrit ce qui manque.
@@ -10102,7 +10115,7 @@ fn a_solved_exercise_stays_solved() {
     app.show_exercises = true;
     let painted = paint(&mut app);
     assert!(
-        painted.contains(&format!("1/16 {}", strings(app.lang).exercises_done_count)),
+        painted.contains(&format!("1/21 {}", strings(app.lang).exercises_done_count)),
         "{painted}"
     );
 }
@@ -10270,6 +10283,84 @@ fn recently_opened_files_come_back_in_the_menu() {
     let disparu = dir.path().join("disparu.asm");
     app.open_file(disparu);
     assert!(matches!(app.status, Status::Error(_)), "{:?}", app.status);
+}
+
+/// Les cinq étapes ajoutées tiennent ce qu'elles montrent : la copie
+/// sans boucle, le cadre de pile, le tas, les flottants, et le nombre
+/// affiché.
+///
+/// Leur but est vérifié ailleurs ; ici on regarde ce qu'elles
+/// *produisent*, parce qu'un exercice sur la mémoire ou sur la console
+/// se juge à ce qu'il laisse derrière lui.
+#[test]
+fn the_five_new_steps_do_what_they_show() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let jouer = |id: &str| -> NamsdecApp {
+        let mut app = NamsdecApp {
+            exercises: true,
+            ..Default::default()
+        };
+        app.load_exercise(&format!("namsdec/{id}"));
+        app.do_assemble();
+        assert!(
+            matches!(app.status, Status::AssembleOk),
+            "{id} : {:?}",
+            app.status
+        );
+        app.do_run();
+        for _ in 0..200 {
+            if !app.running {
+                break;
+            }
+            app.tick_run(&egui::Context::default());
+        }
+        app
+    };
+
+    // `rep movsb` a bien copié la chaîne, zéro final compris.
+    let app = jouer("chaines");
+    let emulator = app.emulator.as_ref().expect("chargé");
+    let copie = app
+        .assemble_state
+        .as_ref()
+        .unwrap()
+        .output
+        .symbols
+        .iter()
+        .find(|s| s.name == "copie")
+        .expect("l'étiquette existe")
+        .addr;
+    let octets = emulator.cpu().mem.peek_bytes(copie, 6).unwrap();
+    assert_eq!(octets, b"salut\0", "la copie est complète");
+    assert_eq!(emulator.cpu().regs.get64(Reg64::Rcx), 0, "RCX décompté");
+
+    // Le cadre de pile est défait proprement : RSP revenu, aucune
+    // entorse à la convention.
+    let app = jouer("cadre");
+    let emulator = app.emulator.as_ref().expect("chargé");
+    assert!(emulator.breaches().is_empty(), "{:?}", emulator.breaches());
+
+    // Le tas a bougé, et la mémoire obtenue s'écrit.
+    let app = jouer("tas");
+    let emulator = app.emulator.as_ref().expect("chargé");
+    let regs = &emulator.cpu().regs;
+    assert!(
+        regs.get64(Reg64::R9) > regs.get64(Reg64::R8),
+        "la rupture est montée"
+    );
+    assert_eq!(emulator.heap().current(), regs.get64(Reg64::R9));
+
+    // Les flottants : 1.5 + 2.25, et la lecture décimale le dit.
+    let app = jouer("flottants");
+    let rax = app.emulator.as_ref().unwrap().cpu().regs.get64(Reg64::Rax);
+    assert_eq!(f64::from_bits(rax), 3.75);
+
+    // Et le nombre s'affiche, dans le bon ordre.
+    let app = jouer("afficher");
+    let sortie = String::from_utf8_lossy(app.emulator.as_ref().unwrap().output()).into_owned();
+    assert_eq!(sortie, "1234", "les chiffres sortent à l'endroit");
 }
 
 /// La mémoire montre sa carte : où commence le code, où finit la pile,
