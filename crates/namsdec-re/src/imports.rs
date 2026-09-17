@@ -242,6 +242,74 @@ mod tests {
         }
     }
 
+    /// Tout ce que la machine a sous la main, pas un binaire choisi.
+    ///
+    /// Un analyseur qui marche sur un exemple et panique sur le
+    /// vingtième fichier venu n'est pas un analyseur. Ce test lit les
+    /// binaires du système jusqu'à concurrence de vingt, et exige que
+    /// chacun rende quelque chose de cohérent — ou rien, ce qui est une
+    /// réponse aussi.
+    #[test]
+    fn every_binary_on_this_machine_is_read_without_flinching() {
+        let Ok(dir) = std::fs::read_dir("/usr/bin") else {
+            eprintln!("/usr/bin illisible : test ignoré");
+            return;
+        };
+        let mut lus = 0usize;
+        for entry in dir.flatten() {
+            if lus >= 20 {
+                break;
+            }
+            let Ok(meta) = entry.metadata() else { continue };
+            // Les gros fichiers ne disent rien de plus et coûtent du
+            // temps de test ; les liens sont suivis par `read`.
+            if !meta.is_file() || meta.len() > 4 << 20 {
+                continue;
+            }
+            let Ok(bytes) = std::fs::read(entry.path()) else {
+                continue;
+            };
+            if !bytes.starts_with(b"\x7fELF") {
+                continue;
+            }
+            lus += 1;
+
+            let imports = scan(&bytes);
+            for import in &imports {
+                assert!(
+                    !import.name.is_empty(),
+                    "{:?} : une entrée sans nom",
+                    entry.path()
+                );
+                assert_eq!(
+                    import.plt % 16,
+                    0,
+                    "{:?} : entrée mal alignée",
+                    entry.path()
+                );
+                assert!(
+                    file_offset(&bytes, import.plt).is_some(),
+                    "{:?} : {} hors de toute section",
+                    entry.path(),
+                    import.name
+                );
+                // Deux entrées ne peuvent pas désigner le même
+                // emplacement de la table globale sous deux noms.
+                assert_eq!(
+                    imports
+                        .iter()
+                        .filter(|autre| autre.got == import.got)
+                        .count(),
+                    1,
+                    "{:?} : {:#x} nommé deux fois",
+                    entry.path(),
+                    import.got
+                );
+            }
+        }
+        assert!(lus > 0, "aucun binaire lu : le test n'a rien prouvé");
+    }
+
     /// Rien à nommer n'est pas une erreur : un tampon quelconque rend
     /// une liste vide plutôt que de paniquer.
     #[test]

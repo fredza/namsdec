@@ -666,6 +666,66 @@ mod tests {
         );
     }
 
+    /// La même exigence pour l'analyse entière : vingt binaires du
+    /// système, lus sans broncher, et ce qu'ils disent doit se tenir.
+    ///
+    /// Un analyseur qui marche sur un exemple et panique sur le
+    /// vingtième fichier venu n'est pas un analyseur.
+    #[test]
+    fn the_whole_scan_holds_on_whatever_this_machine_has() {
+        let Ok(dir) = std::fs::read_dir("/usr/bin") else {
+            eprintln!("/usr/bin illisible : test ignoré");
+            return;
+        };
+        let mut lus = 0usize;
+        for entry in dir.flatten() {
+            if lus >= 20 {
+                break;
+            }
+            let Ok(meta) = entry.metadata() else { continue };
+            if !meta.is_file() || meta.len() > 4 << 20 {
+                continue;
+            }
+            let Ok(bytes) = std::fs::read(entry.path()) else {
+                continue;
+            };
+            let Some(scan) = scan(&bytes) else { continue };
+            lus += 1;
+            let quoi = entry.path();
+
+            // Un ELF64 x86-64 : c'est ce que la machine exécute, et
+            // c'est ce que le scan doit reconnaître.
+            assert!(scan.little_endian, "{quoi:?}");
+            assert!(scan.entry > 0 || scan.kind == Kind::Relocatable, "{quoi:?}");
+            // Les segments et les sections tiennent dans le fichier ou
+            // en mémoire, mais ne racontent pas n'importe quoi.
+            for segment in &scan.segments {
+                assert!(
+                    segment.memsz >= segment.filesz,
+                    "{quoi:?} : un segment plus gros dans le fichier qu'en mémoire"
+                );
+            }
+            for section in &scan.sections {
+                assert!(!section.name.is_empty(), "{quoi:?} : section sans nom");
+            }
+            // Une fonction nommée a une adresse.
+            for function in &scan.functions {
+                assert!(!function.name.is_empty(), "{quoi:?}");
+                assert!(function.addr > 0, "{quoi:?} : {}", function.name);
+            }
+            // Un binaire dynamique réclame au moins une bibliothèque ;
+            // un statique n'a pas d'interpréteur. L'inverse serait le
+            // signe qu'on a mal lu la table dynamique.
+            if scan.interpreter.is_some() {
+                assert!(
+                    !scan.needed.is_empty(),
+                    "{quoi:?} : un interpréteur mais aucune bibliothèque"
+                );
+            }
+        }
+        assert!(lus > 0, "aucun binaire lu : le test n'a rien prouvé");
+    }
+
     /// Un binaire de distribution moderne réclame les défenses du
     /// processeur et porte son empreinte de build ; le nôtre, non — et
     /// c'est une chose de plus qu'on apprend en comparant les deux.
