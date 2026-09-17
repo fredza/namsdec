@@ -8017,6 +8017,44 @@ fn every_glyph_the_interface_writes_exists_in_its_font() {
     );
 }
 
+/// Le listing d'un binaire du système nomme ce qu'il appelle.
+///
+/// Sans cela, lire /bin/ls revient à suivre des `call 0x…` vers des
+/// adresses muettes. Les entrées de la table de liaison portent donc une
+/// étiquette, comme n'importe quel symbole du programme.
+#[test]
+fn the_listing_labels_the_functions_a_binary_calls() {
+    let Ok(bytes) = std::fs::read("/bin/ls") else {
+        eprintln!("/bin/ls introuvable : test ignoré");
+        return;
+    };
+    let mut app = NamsdecApp::default();
+    app.load_binary(bytes);
+
+    let state = app.assemble_state.as_ref().expect("chargé");
+    let noms: Vec<&str> = state
+        .output
+        .symbols
+        .iter()
+        .map(|symbol| symbol.name.as_str())
+        .collect();
+    assert!(noms.contains(&"malloc@plt"), "{} symboles", noms.len());
+    assert!(noms.contains(&"free@plt"));
+    // Et elles sont dans le listing, là où l'œil les cherche.
+    assert!(app.source.contains("malloc@plt:"), "l'étiquette est posée");
+
+    // Chaque étiquette tombe sur une instruction du listing : une
+    // étiquette entre deux lignes n'existerait nulle part.
+    for symbol in &state.output.symbols {
+        assert!(
+            state.addr_to_line.contains_key(&symbol.addr),
+            "{} pointe {:#x}, qui n'est aucune ligne",
+            symbol.name,
+            symbol.addr
+        );
+    }
+}
+
 /// Les fonctions qu'un binaire emprunte se lisent dans la fenêtre
 /// d'analyse, rangées après les appels système : même question, un cran
 /// plus haut — que demande-t-il à ce qui n'est pas lui ?

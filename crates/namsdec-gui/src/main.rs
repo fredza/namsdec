@@ -2213,7 +2213,12 @@ impl NamsdecApp {
         }
         disasm.sort_by_key(|instruction| instruction.address);
 
-        let (listing, line_to_addr) = annotated_listing(&disasm, &elf.symbols);
+        // Les entrées de la table de liaison rejoignent les étiquettes :
+        // lire un binaire, c'est d'abord savoir ce qu'il appelle.
+        let mut symbols = elf.symbols.clone();
+        symbols.extend(plt_labels(bytes, &elf.symbols, Some));
+        symbols.sort_by_key(|symbol| symbol.addr);
+        let (listing, line_to_addr) = annotated_listing(&disasm, &symbols);
         let addr_to_line = line_to_addr.iter().map(|(l, a)| (*a, *l)).collect();
         let loaded = image.len();
 
@@ -2243,7 +2248,7 @@ impl NamsdecApp {
                 // Les étiquettes de l'ELF ouvert : elles nomment les
                 // adresses aussi bien ici que pour un programme qu'on
                 // vient d'assembler soi-même.
-                symbols: elf.symbols.clone(),
+                symbols,
                 // Le fichier entier : l'analyse des protections se fait
                 // sur ses en-têtes, pas sur l'image chargée.
                 file: bytes.to_vec(),
@@ -2288,13 +2293,15 @@ impl NamsdecApp {
 
         let disasm = namsdec_disasm::disassemble(&bytes, BASE_ADDR);
 
-        let mut listing = String::new();
-        let mut line_to_addr = BTreeMap::new();
-        for (index, instruction) in disasm.iter().enumerate() {
-            line_to_addr.insert((index + 1) as u32, instruction.address);
-            listing.push_str(&instruction.text);
-            listing.push('\n');
-        }
+        // Même chose pour un fichier lu tel quel : ses entrées de liaison
+        // se nomment, à ceci près que le listing part du premier octet du
+        // fichier et non des adresses où il se chargerait.
+        let symbols = plt_labels(&file, &[], |plt| {
+            let offset = namsdec_re::imports::file_offset(&file, plt)?;
+            let addr = BASE_ADDR.checked_add(offset)?;
+            (offset < bytes.len() as u64).then_some(addr)
+        });
+        let (listing, line_to_addr) = annotated_listing(&disasm, &symbols);
 
         let addr_to_line = line_to_addr.iter().map(|(l, a)| (*a, *l)).collect();
         let loaded = bytes.len();
@@ -2314,9 +2321,10 @@ impl NamsdecApp {
                 bytes,
                 diagnostics: Vec::new(),
                 line_to_addr,
-                // Un binaire brut n'a pas de table de symboles : il n'a
-                // même pas d'en-tête.
-                symbols: Vec::new(),
+                // Un binaire brut n'a pas de table de symboles ; un ELF
+                // lu tel quel a au moins ses entrées de liaison, qui
+                // nomment ce qu'il appelle.
+                symbols,
                 file,
             },
             disasm,
@@ -6247,6 +6255,39 @@ fn label_line(source: &str, name: &str) -> Option<u32> {
         let rest = rest.trim_start();
         rest.starts_with(':').then_some(index as u32 + 1)
     })
+}
+
+/// Les entrées de la table de liaison, en étiquettes du listing.
+///
+/// Un `call 0x4010a0` ne dit rien ; le même appel, quand l'adresse porte
+/// le nom `malloc@plt`, dit tout. Les entrées deviennent donc des
+/// symboles comme les autres : le listing les écrit, le bandeau les
+/// nomme, et « Aller à une étiquette » les propose.
+///
+/// `place` dit où l'adresse d'une entrée tombe dans ce qui est
+/// désassemblé : telle quelle pour une image chargée à ses adresses
+/// virtuelles, décalée quand c'est le fichier brut qu'on lit.
+fn plt_labels(
+    file: &[u8],
+    existants: &[namsdec_asm::elf::Symbol],
+    place: impl Fn(u64) -> Option<u64>,
+) -> Vec<namsdec_asm::elf::Symbol> {
+    namsdec_re::imports::scan(file)
+        .into_iter()
+        .filter_map(|import| {
+            let addr = place(import.plt)?;
+            // Un nom donné par la table des symboles prime : il vient du
+            // binaire, celui-ci est déduit.
+            if existants.iter().any(|symbol| symbol.addr == addr) {
+                return None;
+            }
+            Some(namsdec_asm::elf::Symbol {
+                name: format!("{}@plt", import.name),
+                addr,
+                size: 0,
+            })
+        })
+        .collect()
 }
 
 /// Le listing d'un binaire ouvert : les instructions, avec les étiquettes
