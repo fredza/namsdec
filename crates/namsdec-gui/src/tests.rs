@@ -8122,6 +8122,57 @@ fn the_listing_labels_the_functions_a_binary_calls() {
     }
 }
 
+/// Devant un `call`, le bandeau dit avec quoi : les registres de la
+/// convention, leurs valeurs suivies comme des pointeurs, et — quand la
+/// fonction appelée est connue — le nom de ses paramètres.
+///
+/// C'est le `dumpargs` de pwndbg, sous les yeux plutôt que sur commande :
+/// « où sont les arguments ? » est la question qu'on se pose chaque fois
+/// qu'on lit un appel.
+#[test]
+fn the_banner_says_what_a_call_is_called_with() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: "\
+default rel
+global _start
+
+section .data
+message: db \"salut\", 0
+
+section .text
+_start:
+    lea rdi, [message]
+    mov rsi, 3
+    call quelquepart
+    hlt
+quelquepart:
+    ret
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+    // Arrêté *sur* le `call`, pas après : c'est là que les arguments
+    // sont en place.
+    app.do_step();
+    app.do_step();
+
+    let painted = paint(&mut app);
+    assert!(
+        painted.contains(strings(app.lang).call_arguments),
+        "{painted}"
+    );
+    assert!(painted.contains("RDI"), "les registres de la convention");
+    assert!(
+        painted.contains("\"salut\""),
+        "et ce que le premier argument désigne : {painted}"
+    );
+}
+
 /// La pile suit ses pointeurs : un mot qui pointe une chaîne le dit, un
 /// mot qui pointe du code montre l'instruction.
 ///

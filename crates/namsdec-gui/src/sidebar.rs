@@ -473,6 +473,18 @@ impl NamsdecApp {
             self.syscall_ui(ui, cpu);
         }
 
+        // Un appel : avec quoi ?
+        //
+        // La convention met les arguments dans six registres, et un
+        // débutant qui lit `call strcpy@plt` ne sait pas lesquels. Quand
+        // la fonction appelée est connue, ses paramètres portent leur
+        // nom ; sinon on montre les registres, ce qui reste la bonne
+        // réponse à « où sont les arguments ? ». C'est le `dumpargs` de
+        // pwndbg, sous les yeux plutôt que sur commande.
+        if instr.flow_control() == namsdec_disasm::FlowControl::Call {
+            self.call_arguments_ui(ui, cpu, &instr);
+        }
+
         // Un saut conditionnel : sera-t-il pris, et pourquoi ?
         //
         // « Quel saut après quelle comparaison » est l'endroit précis où
@@ -549,6 +561,106 @@ impl NamsdecApp {
             self.open_help(&mnemonic);
             self.show_help = true;
         }
+    }
+
+    /// Les arguments de l'appel sur le point d'être fait.
+    ///
+    /// Chaque valeur est suivie comme un pointeur : `0x402000` ne dit
+    /// rien, `0x402000 -> "salut"` dit tout. Les paramètres portent leur
+    /// nom quand la fonction appelée est de celles que namsdec connaît.
+    fn call_arguments_ui(
+        &self,
+        ui: &mut egui::Ui,
+        cpu: &namsdec_core::Cpu,
+        instr: &namsdec_disasm::Decoded,
+    ) {
+        let s = strings(self.lang);
+        let theme = self.theme;
+        let symbols = self
+            .assemble_state
+            .as_ref()
+            .map(|state| state.output.symbols.as_slice())
+            .unwrap_or_default();
+        // Le nom de la cible, quand l'appel en désigne une en clair : un
+        // `call rax` ne dit pas où il va avant d'être exécuté.
+        let cible = (instr.op0_kind() == namsdec_disasm::OpKind::NearBranch64)
+            .then(|| symbol_at(symbols, instr.near_branch_target()))
+            .flatten();
+        let note = cible.as_deref().and_then(namsdec_re::libc::explain);
+        let params = note.map(|note| note.params).unwrap_or_default();
+
+        ui.horizontal_wrapped(|ui| {
+            ui.colored_label(theme.dim, s.call_arguments);
+            if let Some(nom) = &cible {
+                // La signature, écrite comme une page de manuel :
+                // `strcpy(dest, src)`.
+                let signature = if params.is_empty() {
+                    nom.clone()
+                } else {
+                    format!("{nom}({})", params.join(", "))
+                };
+                ui.colored_label(theme.mnemonic, egui::RichText::new(signature).monospace());
+            }
+        });
+        // Autant de lignes que la fonction a de paramètres ; à défaut,
+        // les quatre premiers registres — au-delà, on montrerait surtout
+        // des restes du calcul précédent.
+        let combien = if params.is_empty() {
+            4
+        } else {
+            params.len().min(namsdec_emu::ARGUMENTS.len())
+        };
+        egui::Grid::new("call_arguments")
+            .num_columns(3)
+            .min_col_width(0.0)
+            .striped(true)
+            .show(ui, |ui| {
+                for (index, (name, reg)) in namsdec_emu::ARGUMENTS.iter().enumerate().take(combien)
+                {
+                    let value = cpu.regs.get64(*reg);
+                    ui.colored_label(
+                        theme.register,
+                        egui::RichText::new(match params.get(index) {
+                            Some(param) if *param != "..." => format!("{param} ({name})"),
+                            _ => (*name).to_owned(),
+                        })
+                        .monospace(),
+                    );
+                    ui.colored_label(
+                        if value == 0 { theme.dim } else { theme.text },
+                        egui::RichText::new(format!("{value:#x}")).monospace(),
+                    );
+                    // Ce que la valeur désigne : une chaîne, du code, un
+                    // autre pointeur.
+                    let mut suite = String::new();
+                    match namsdec_emu::telescope::describe(&cpu.mem, value) {
+                        namsdec_emu::telescope::What::Pointer => {
+                            let links = namsdec_emu::telescope::chain(
+                                &cpu.mem,
+                                value,
+                                namsdec_emu::telescope::LIMIT,
+                            );
+                            for link in &links {
+                                suite.push_str(&format!("-> {:#x} ", link.value));
+                            }
+                            if let Some(fin) = chain_end(links.last()) {
+                                suite.push_str(&fin);
+                            }
+                        }
+                        autre => {
+                            if let Some(fin) = chain_end(Some(&namsdec_emu::telescope::Link {
+                                addr: value,
+                                value,
+                                what: autre,
+                            })) {
+                                suite.push_str(&fin);
+                            }
+                        }
+                    }
+                    ui.colored_label(theme.dim, egui::RichText::new(suite).monospace());
+                    ui.end_row();
+                }
+            });
     }
 
     /// D'où vient la valeur d'un registre : le pas qui l'a écrite.

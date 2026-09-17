@@ -79,6 +79,7 @@ pub struct Strings {
     /// qu'une sous-routine doit rendre intact.
     pub abi_title: &'static str,
     pub abi_arguments: &'static str,
+    pub call_arguments: &'static str,
     pub abi_result: &'static str,
     pub abi_preserved: &'static str,
     pub abi_breaches: &'static str,
@@ -471,6 +472,7 @@ const FR: Strings = Strings {
     call_chain_empty: "Aucun appel en cours — on est dans le programme principal.",
     abi_title: "Convention d'appel (System V)",
     abi_arguments: "Arguments",
+    call_arguments: "Appelée avec :",
     abi_result: "Résultat",
     abi_preserved: "À rendre intacts",
     abi_breaches: "Entorses relevées",
@@ -822,6 +824,7 @@ const EN: Strings = Strings {
     call_chain_empty: "No call in progress — this is the main program.",
     abi_title: "Calling convention (System V)",
     abi_arguments: "Arguments",
+    call_arguments: "Called with:",
     abi_result: "Result",
     abi_preserved: "To be given back intact",
     abi_breaches: "Breaches found",

@@ -15,7 +15,7 @@ pub mod pseudo;
 pub use iced_x86::Instruction as Decoded;
 /// Les types du décodeur dont les autres crates ont besoin pour lire une
 /// instruction : la nature d'un opérande, et les registres.
-pub use iced_x86::{OpKind, Register};
+pub use iced_x86::{FlowControl, OpKind, Register};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 

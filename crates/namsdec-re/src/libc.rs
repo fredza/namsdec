@@ -20,6 +20,13 @@ pub struct Note {
     /// verdict sur le programme : c'est l'endroit qu'on regarde en
     /// premier.
     pub watch: bool,
+    /// Le nom de ses paramètres, dans l'ordre où l'ABI les passe.
+    ///
+    /// Gardés tels que les pages de manuel les écrivent — `dest`, `src`,
+    /// `n`, `fd` — dans les deux langues : ce sont des identifiants,
+    /// comme `rdi`, et c'est sous ces noms-là qu'on les retrouvera
+    /// ailleurs. Vide quand la signature ne se résume pas ainsi.
+    pub params: &'static [&'static str],
 }
 
 impl Note {
@@ -37,6 +44,7 @@ const fn note(fr: &'static str, en: &'static str) -> Note {
         fr,
         en,
         watch: false,
+        params: &[],
     }
 }
 
@@ -45,7 +53,13 @@ const fn watch(fr: &'static str, en: &'static str) -> Note {
         fr,
         en,
         watch: true,
+        params: &[],
     }
+}
+
+/// La même note, avec le nom de ses paramètres.
+const fn args(note: Note, params: &'static [&'static str]) -> Note {
+    Note { params, ..note }
 }
 
 /// Ce que fait cette fonction, si namsdec le sait.
@@ -80,248 +94,356 @@ static TABLE: &[(&str, Note)] = &[
     // Mémoire.
     (
         "malloc",
-        note(
-            "Réserve un bloc de mémoire sur le tas et rend son adresse, ou zéro.",
-            "Reserves a block of heap memory and returns its address, or zero.",
+        args(
+            note(
+                "Réserve un bloc de mémoire sur le tas et rend son adresse, ou zéro.",
+                "Reserves a block of heap memory and returns its address, or zero.",
+            ),
+            &["size"],
         ),
     ),
     (
         "calloc",
-        note(
-            "Comme malloc, mais le bloc est rempli de zéros.",
-            "Like malloc, but the block comes filled with zeroes.",
+        args(
+            note(
+                "Comme malloc, mais le bloc est rempli de zéros.",
+                "Like malloc, but the block comes filled with zeroes.",
+            ),
+            &["nmemb", "size"],
         ),
     ),
     (
         "realloc",
-        note(
-            "Change la taille d'un bloc ; l'adresse peut changer avec.",
-            "Changes a block's size; the address may change with it.",
+        args(
+            note(
+                "Change la taille d'un bloc ; l'adresse peut changer avec.",
+                "Changes a block's size; the address may change with it.",
+            ),
+            &["ptr", "size"],
         ),
     ),
     (
         "free",
-        note(
-            "Rend un bloc au tas. L'adresse reste dans le registre, mais ne désigne plus rien.",
-            "Gives a block back to the heap. The address stays in the register but designates nothing.",
+        args(
+            note(
+                "Rend un bloc au tas. L'adresse reste dans le registre, mais ne désigne plus rien.",
+                "Gives a block back to the heap. The address stays in the register but designates nothing.",
+            ),
+            &["ptr"],
         ),
     ),
     (
         "memcpy",
-        note(
-            "Copie n octets d'un endroit à un autre ; les zones ne doivent pas se chevaucher.",
-            "Copies n bytes from one place to another; the regions must not overlap.",
+        args(
+            note(
+                "Copie n octets d'un endroit à un autre ; les zones ne doivent pas se chevaucher.",
+                "Copies n bytes from one place to another; the regions must not overlap.",
+            ),
+            &["dest", "src", "n"],
         ),
     ),
     (
         "memmove",
-        note(
-            "Comme memcpy, mais correct même si les zones se chevauchent.",
-            "Like memcpy, but correct even when the regions overlap.",
+        args(
+            note(
+                "Comme memcpy, mais correct même si les zones se chevauchent.",
+                "Like memcpy, but correct even when the regions overlap.",
+            ),
+            &["dest", "src", "n"],
         ),
     ),
     (
         "memset",
-        note(
-            "Remplit n octets avec la même valeur.",
-            "Fills n bytes with the same value.",
+        args(
+            note(
+                "Remplit n octets avec la même valeur.",
+                "Fills n bytes with the same value.",
+            ),
+            &["s", "c", "n"],
         ),
     ),
     (
         "memcmp",
-        note(
-            "Compare n octets, et rend le signe de leur différence.",
-            "Compares n bytes and returns the sign of their difference.",
+        args(
+            note(
+                "Compare n octets, et rend le signe de leur différence.",
+                "Compares n bytes and returns the sign of their difference.",
+            ),
+            &["s1", "s2", "n"],
         ),
     ),
     // Chaînes.
     (
         "strlen",
-        note(
-            "Compte les octets jusqu'au zéro final — sans lui, elle ne s'arrête pas.",
-            "Counts bytes up to the final zero — without one, it does not stop.",
+        args(
+            note(
+                "Compte les octets jusqu'au zéro final — sans lui, elle ne s'arrête pas.",
+                "Counts bytes up to the final zero — without one, it does not stop.",
+            ),
+            &["s"],
         ),
     ),
     (
         "strcpy",
-        watch(
-            "Copie une chaîne jusqu'à son zéro, sans savoir ce qui tient dans la destination.",
-            "Copies a string up to its zero, with no idea what fits in the destination.",
+        args(
+            watch(
+                "Copie une chaîne jusqu'à son zéro, sans savoir ce qui tient dans la destination.",
+                "Copies a string up to its zero, with no idea what fits in the destination.",
+            ),
+            &["dest", "src"],
         ),
     ),
     (
         "strcat",
-        watch(
-            "Ajoute une chaîne à la fin d'une autre, sans borne non plus.",
-            "Appends a string to another, with no bound either.",
+        args(
+            watch(
+                "Ajoute une chaîne à la fin d'une autre, sans borne non plus.",
+                "Appends a string to another, with no bound either.",
+            ),
+            &["dest", "src"],
         ),
     ),
     (
         "strncpy",
-        note(
-            "Copie au plus n octets — et ne pose pas le zéro final si la source les remplit tous.",
-            "Copies at most n bytes — and writes no final zero if the source fills them all.",
+        args(
+            note(
+                "Copie au plus n octets — et ne pose pas le zéro final si la source les remplit tous.",
+                "Copies at most n bytes — and writes no final zero if the source fills them all.",
+            ),
+            &["dest", "src", "n"],
         ),
     ),
     (
         "strcmp",
-        note(
-            "Compare deux chaînes, et rend le signe de leur différence.",
-            "Compares two strings and returns the sign of their difference.",
+        args(
+            note(
+                "Compare deux chaînes, et rend le signe de leur différence.",
+                "Compares two strings and returns the sign of their difference.",
+            ),
+            &["s1", "s2"],
         ),
     ),
     (
         "strncmp",
-        note(
-            "Compare au plus n octets de deux chaînes.",
-            "Compares at most n bytes of two strings.",
+        args(
+            note(
+                "Compare au plus n octets de deux chaînes.",
+                "Compares at most n bytes of two strings.",
+            ),
+            &["s1", "s2", "n"],
         ),
     ),
     (
         "strdup",
-        note(
-            "Copie une chaîne dans un bloc neuf du tas, qu'il faudra rendre.",
-            "Copies a string into a fresh heap block, which must be given back.",
+        args(
+            note(
+                "Copie une chaîne dans un bloc neuf du tas, qu'il faudra rendre.",
+                "Copies a string into a fresh heap block, which must be given back.",
+            ),
+            &["s"],
         ),
     ),
     (
         "strstr",
-        note(
-            "Cherche une chaîne dans une autre et rend où elle commence.",
-            "Looks for one string inside another and returns where it starts.",
+        args(
+            note(
+                "Cherche une chaîne dans une autre et rend où elle commence.",
+                "Looks for one string inside another and returns where it starts.",
+            ),
+            &["haystack", "needle"],
         ),
     ),
     (
         "strchr",
-        note(
-            "Cherche un octet dans une chaîne.",
-            "Looks for one byte inside a string.",
+        args(
+            note(
+                "Cherche un octet dans une chaîne.",
+                "Looks for one byte inside a string.",
+            ),
+            &["s", "c"],
         ),
     ),
     // Entrées et sorties.
     (
         "printf",
-        note(
-            "Écrit sur la sortie standard en suivant un format. Le format lui-même est lu comme du code.",
-            "Writes to standard output following a format. The format itself is read as code.",
+        args(
+            note(
+                "Écrit sur la sortie standard en suivant un format. Le format lui-même est lu comme du code.",
+                "Writes to standard output following a format. The format itself is read as code.",
+            ),
+            &["format", "..."],
         ),
     ),
     (
         "fprintf",
-        note(
-            "Comme printf, vers un flux choisi.",
-            "Like printf, to a chosen stream.",
+        args(
+            note(
+                "Comme printf, vers un flux choisi.",
+                "Like printf, to a chosen stream.",
+            ),
+            &["stream", "format", "..."],
         ),
     ),
     (
         "sprintf",
-        watch(
-            "Écrit le résultat dans un tampon, sans savoir ce qui y tient.",
-            "Writes the result into a buffer, with no idea what fits.",
+        args(
+            watch(
+                "Écrit le résultat dans un tampon, sans savoir ce qui y tient.",
+                "Writes the result into a buffer, with no idea what fits.",
+            ),
+            &["str", "format", "..."],
         ),
     ),
     (
         "snprintf",
-        note(
-            "Comme sprintf, mais bornée : elle écrit au plus n octets.",
-            "Like sprintf, but bounded: it writes at most n bytes.",
+        args(
+            note(
+                "Comme sprintf, mais bornée : elle écrit au plus n octets.",
+                "Like sprintf, but bounded: it writes at most n bytes.",
+            ),
+            &["str", "size", "format", "..."],
         ),
     ),
     (
         "puts",
-        note(
-            "Écrit une chaîne et un saut de ligne sur la sortie standard.",
-            "Writes a string and a newline to standard output.",
+        args(
+            note(
+                "Écrit une chaîne et un saut de ligne sur la sortie standard.",
+                "Writes a string and a newline to standard output.",
+            ),
+            &["s"],
         ),
     ),
     (
         "fputs",
-        note(
-            "Écrit une chaîne sur un flux, sans saut de ligne.",
-            "Writes a string to a stream, with no newline.",
+        args(
+            note(
+                "Écrit une chaîne sur un flux, sans saut de ligne.",
+                "Writes a string to a stream, with no newline.",
+            ),
+            &["s", "stream"],
         ),
     ),
     (
         "gets",
-        watch(
-            "Lit une ligne sans aucune borne. Retirée du langage C : sa présence date le binaire, ou l'explique.",
-            "Reads a line with no bound whatsoever. Removed from C: its presence dates the binary, or explains it.",
+        args(
+            watch(
+                "Lit une ligne sans aucune borne. Retirée du langage C : sa présence date le binaire, ou l'explique.",
+                "Reads a line with no bound whatsoever. Removed from C: its presence dates the binary, or explains it.",
+            ),
+            &["s"],
         ),
     ),
     (
         "fgets",
-        note(
-            "Lit au plus n-1 octets d'une ligne, et pose le zéro final.",
-            "Reads at most n-1 bytes of a line and writes the final zero.",
+        args(
+            note(
+                "Lit au plus n-1 octets d'une ligne, et pose le zéro final.",
+                "Reads at most n-1 bytes of a line and writes the final zero.",
+            ),
+            &["s", "size", "stream"],
         ),
     ),
     (
         "scanf",
-        watch(
-            "Lit selon un format ; `%s` sans largeur n'a pas de borne.",
-            "Reads following a format; `%s` without a width has no bound.",
+        args(
+            watch(
+                "Lit selon un format ; `%s` sans largeur n'a pas de borne.",
+                "Reads following a format; `%s` without a width has no bound.",
+            ),
+            &["format", "..."],
         ),
     ),
     (
         "sscanf",
-        note(
-            "Comme scanf, en lisant dans une chaîne plutôt que sur l'entrée.",
-            "Like scanf, reading from a string instead of the input.",
+        args(
+            note(
+                "Comme scanf, en lisant dans une chaîne plutôt que sur l'entrée.",
+                "Like scanf, reading from a string instead of the input.",
+            ),
+            &["str", "format", "..."],
         ),
     ),
     (
         "fopen",
-        note(
-            "Ouvre un fichier et rend un flux.",
-            "Opens a file and returns a stream.",
+        args(
+            note(
+                "Ouvre un fichier et rend un flux.",
+                "Opens a file and returns a stream.",
+            ),
+            &["path", "mode"],
         ),
     ),
-    ("fclose", note("Ferme un flux.", "Closes a stream.")),
+    (
+        "fclose",
+        args(note("Ferme un flux.", "Closes a stream."), &["stream"]),
+    ),
     (
         "fread",
-        note(
-            "Lit des éléments depuis un flux.",
-            "Reads items from a stream.",
+        args(
+            note(
+                "Lit des éléments depuis un flux.",
+                "Reads items from a stream.",
+            ),
+            &["ptr", "size", "nmemb", "stream"],
         ),
     ),
     (
         "fwrite",
-        note(
-            "Écrit des éléments sur un flux.",
-            "Writes items to a stream.",
+        args(
+            note(
+                "Écrit des éléments sur un flux.",
+                "Writes items to a stream.",
+            ),
+            &["ptr", "size", "nmemb", "stream"],
         ),
     ),
     (
         "open",
-        note(
-            "Ouvre un fichier et rend un descripteur — l'appel système, sans le flux.",
-            "Opens a file and returns a descriptor — the system call, without the stream.",
+        args(
+            note(
+                "Ouvre un fichier et rend un descripteur — l'appel système, sans le flux.",
+                "Opens a file and returns a descriptor — the system call, without the stream.",
+            ),
+            &["path", "flags"],
         ),
     ),
     (
         "read",
-        note(
-            "Lit au plus n octets depuis un descripteur.",
-            "Reads at most n bytes from a descriptor.",
+        args(
+            note(
+                "Lit au plus n octets depuis un descripteur.",
+                "Reads at most n bytes from a descriptor.",
+            ),
+            &["fd", "buf", "count"],
         ),
     ),
     (
         "write",
-        note(
-            "Écrit n octets sur un descripteur.",
-            "Writes n bytes to a descriptor.",
+        args(
+            note(
+                "Écrit n octets sur un descripteur.",
+                "Writes n bytes to a descriptor.",
+            ),
+            &["fd", "buf", "count"],
         ),
     ),
     (
         "close",
-        note("Ferme un descripteur.", "Closes a descriptor."),
+        args(
+            note("Ferme un descripteur.", "Closes a descriptor."),
+            &["fd"],
+        ),
     ),
     // Le système.
     (
         "exit",
-        note(
-            "Termine le programme avec un code, après avoir vidé les flux.",
-            "Ends the program with a code, after flushing the streams.",
+        args(
+            note(
+                "Termine le programme avec un code, après avoir vidé les flux.",
+                "Ends the program with a code, after flushing the streams.",
+            ),
+            &["status"],
         ),
     ),
     (
@@ -333,16 +455,22 @@ static TABLE: &[(&str, Note)] = &[
     ),
     (
         "system",
-        watch(
-            "Fait exécuter une commande par le shell. Ce qu'on lui passe est du code.",
-            "Has the shell run a command. Whatever is passed to it is code.",
+        args(
+            watch(
+                "Fait exécuter une commande par le shell. Ce qu'on lui passe est du code.",
+                "Has the shell run a command. Whatever is passed to it is code.",
+            ),
+            &["command"],
         ),
     ),
     (
         "execve",
-        watch(
-            "Remplace le programme en cours par un autre.",
-            "Replaces the running program with another one.",
+        args(
+            watch(
+                "Remplace le programme en cours par un autre.",
+                "Replaces the running program with another one.",
+            ),
+            &["path", "argv", "envp"],
         ),
     ),
     (
@@ -354,16 +482,22 @@ static TABLE: &[(&str, Note)] = &[
     ),
     (
         "getenv",
-        note(
-            "Lit une variable d'environnement : une entrée que l'appelant contrôle.",
-            "Reads an environment variable: an input the caller controls.",
+        args(
+            note(
+                "Lit une variable d'environnement : une entrée que l'appelant contrôle.",
+                "Reads an environment variable: an input the caller controls.",
+            ),
+            &["name"],
         ),
     ),
     (
         "setuid",
-        watch(
-            "Change l'identité du processus. Un binaire qui l'appelle mérite un second regard.",
-            "Changes the process identity. A binary calling it deserves a second look.",
+        args(
+            watch(
+                "Change l'identité du processus. Un binaire qui l'appelle mérite un second regard.",
+                "Changes the process identity. A binary calling it deserves a second look.",
+            ),
+            &["uid"],
         ),
     ),
     (
@@ -376,23 +510,32 @@ static TABLE: &[(&str, Note)] = &[
     // Autour.
     (
         "atoi",
-        note(
-            "Convertit une chaîne en entier, sans dire si elle n'en était pas un.",
-            "Converts a string to an integer, without saying if it was not one.",
+        args(
+            note(
+                "Convertit une chaîne en entier, sans dire si elle n'en était pas un.",
+                "Converts a string to an integer, without saying if it was not one.",
+            ),
+            &["nptr"],
         ),
     ),
     (
         "strtol",
-        note(
-            "Convertit une chaîne en entier, et dit où elle s'est arrêtée.",
-            "Converts a string to an integer, and says where it stopped.",
+        args(
+            note(
+                "Convertit une chaîne en entier, et dit où elle s'est arrêtée.",
+                "Converts a string to an integer, and says where it stopped.",
+            ),
+            &["nptr", "endptr", "base"],
         ),
     ),
     (
         "qsort",
-        note(
-            "Trie un tableau en appelant la fonction de comparaison qu'on lui passe.",
-            "Sorts an array by calling the comparison function it is given.",
+        args(
+            note(
+                "Trie un tableau en appelant la fonction de comparaison qu'on lui passe.",
+                "Sorts an array by calling the comparison function it is given.",
+            ),
+            &["base", "nmemb", "size", "compar"],
         ),
     ),
     (
@@ -404,16 +547,22 @@ static TABLE: &[(&str, Note)] = &[
     ),
     (
         "srand",
-        note(
-            "Choisit la graine de rand : la même graine rend la même suite.",
-            "Chooses rand's seed: the same seed gives the same sequence.",
+        args(
+            note(
+                "Choisit la graine de rand : la même graine rend la même suite.",
+                "Chooses rand's seed: the same seed gives the same sequence.",
+            ),
+            &["seed"],
         ),
     ),
     (
         "time",
-        note(
-            "L'heure courante, en secondes.",
-            "The current time, in seconds.",
+        args(
+            note(
+                "L'heure courante, en secondes.",
+                "The current time, in seconds.",
+            ),
+            &["tloc"],
         ),
     ),
     (
@@ -462,6 +611,24 @@ mod tests {
         // Et une fonction bornée ne l'est pas.
         assert!(!explain("snprintf").unwrap().watch);
         assert!(!explain("strncmp").unwrap().watch);
+    }
+
+    /// Les fonctions les plus courantes disent le nom de leurs
+    /// paramètres : c'est ce qui transforme « rdi = 0x402000 » en
+    /// « dest = 0x402000 ».
+    #[test]
+    fn the_common_ones_name_their_parameters() {
+        assert_eq!(explain("strcpy").unwrap().params, ["dest", "src"]);
+        assert_eq!(explain("read@plt").unwrap().params, ["fd", "buf", "count"]);
+        // L'habillage de FORTIFY garde la signature de l'original.
+        assert_eq!(
+            explain("__memcpy_chk").unwrap().params,
+            ["dest", "src", "n"]
+        );
+        // Les variadiques le disent plutôt que de mentir sur le nombre.
+        assert_eq!(explain("printf").unwrap().params, ["format", "..."]);
+        // Et une fonction sans signature connue n'en invente pas.
+        assert!(explain("abort").unwrap().params.is_empty());
     }
 
     /// Chaque entrée dit quelque chose, dans les deux langues.
