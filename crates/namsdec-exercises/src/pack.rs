@@ -18,11 +18,18 @@
 //!       "id": "echange",
 //!       "title": "Échanger deux registres",
 //!       "description": { "fr": "Sans passer par un troisième.", "en": "Without a third one." },
-//!       "code": "BITS 64\nsection .text\n    xor rax, rbx\n    hlt\n"
+//!       "code": "BITS 64\nsection .text\n    xor rax, rbx\n    hlt\n",
+//!       "goal": ["rax == 2", "rbx == 1"]
 //!     }
 //!   ]
 //! }
 //! ```
+//!
+//! `goal` est facultatif : les conditions — la grammaire des points
+//! d'arrêt, **tout en hexadécimal** — que l'état du processeur doit
+//! vérifier pour que l'exercice soit réussi. Sans lui, l'exercice se
+//! regarde ; avec lui, namsdec dit « atteint » ou « pas encore » au lieu
+//! de laisser vérifier à l'œil.
 //!
 //! Un titre ou un énoncé s'écrit au choix en texte simple — le même dans
 //! les deux langues — ou en objet `{ "fr": …, "en": … }`. Traduire est un
@@ -149,6 +156,31 @@ pub fn parse(text: &str) -> Result<Pack, PackError> {
         name: file.name,
         exercises,
     })
+}
+
+#[cfg(test)]
+mod goal_tests {
+    use super::*;
+
+    /// Le but se lit depuis le fichier, et son absence n'est pas une
+    /// erreur : une série écrite avant que cela existe reste lisible.
+    #[test]
+    fn a_pack_may_or_may_not_carry_goals() {
+        let avec = parse(
+            r#"{"id":"s","name":"S","exercises":[
+                 {"id":"e","title":"T","description":"D","code":"hlt\n",
+                  "goal":["rax == 1","rbx == 2"]}]}"#,
+        )
+        .expect("série lisible");
+        assert_eq!(avec.exercises[0].goal, ["rax == 1", "rbx == 2"]);
+
+        let sans = parse(
+            r#"{"id":"s","name":"S","exercises":[
+                 {"id":"e","title":"T","description":"D","code":"hlt\n"}]}"#,
+        )
+        .expect("série lisible sans but");
+        assert!(sans.exercises[0].goal.is_empty());
+    }
 }
 
 #[cfg(test)]
