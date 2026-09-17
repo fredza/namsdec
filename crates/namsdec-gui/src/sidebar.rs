@@ -35,7 +35,15 @@ impl NamsdecApp {
         // Au-dessus de tout, et hors de toute zone qui défile : c'est ce
         // qu'on regarde entre deux pas, et il ne doit jamais falloir
         // aller le chercher.
-        self.next_instruction_ui(ui);
+        // Repliable comme l'état du processeur : sept lignes devant une
+        // instruction qu'on a déjà comprise repoussent le reste du
+        // panneau, et l'on passe son temps à faire défiler.
+        let mut ouvert = self.next_instruction_open;
+        let déplié = section_toggle(ui, self.theme, s.next_instruction, &mut ouvert);
+        self.next_instruction_open = ouvert;
+        if déplié {
+            self.next_instruction_ui(ui);
+        }
         self.last_step_ui(ui);
         self.advice_ui(ui);
 
@@ -447,8 +455,7 @@ impl NamsdecApp {
         };
         let text = namsdec_disasm::format_one(&instr);
 
-        ui.add_space(4.0);
-        section_header(ui, theme, s.next_instruction);
+        ui.add_space(2.0);
         ui.horizontal_wrapped(|ui| {
             ui.colored_label(
                 theme.accent,
@@ -465,10 +472,53 @@ impl NamsdecApp {
             ui.colored_label(theme.good, egui::RichText::new(clair).monospace());
         }
 
+        // Les octets, découpés par rôle : un préfixe n'est pas un
+        // opcode, et une instruction x86 se lit comme une suite de
+        // champs. C'est ce qu'on apprend en lisant un manuel Intel, et
+        // ce qu'aucun désassembleur ne montre.
+        self.encoding_ui(ui, &instr, window);
+
+        // Trois lignes en tout jusqu'ici : où l'on est, ce que
+        // l'instruction dit en clair, et ses octets. Le reste — la
+        // fiche, les opérandes résolus, les arguments d'un appel — est
+        // derrière un repli, qui s'ouvre de lui-même devant ce qui
+        // mérite une explication.
+        let mérite = matches!(
+            instr.flow_control(),
+            namsdec_disasm::FlowControl::Call
+                | namsdec_disasm::FlowControl::IndirectCall
+                | namsdec_disasm::FlowControl::ConditionalBranch
+        ) || instr.mnemonic() == namsdec_disasm::Mnemonic::Syscall;
+        if mérite && self.next_detail_addr != Some(rip) {
+            self.next_detail_open = true;
+        }
+        // Retenu par instruction : sans cela, replier le détail devant
+        // un `call` le rouvrirait à la frame suivante.
+        self.next_detail_addr = Some(rip);
+        let mut détail = self.next_detail_open;
+        let ouvert = ui
+            .horizontal(|ui| {
+                ui.colored_label(theme.dim, if détail { "v" } else { ">" });
+                ui.colored_label(theme.dim, s.next_instruction_detail);
+            })
+            .response
+            .interact(egui::Sense::click())
+            .on_hover_text(s.next_instruction_detail_hint)
+            .clicked();
+        if ouvert {
+            détail = !détail;
+            self.next_detail_open = détail;
+        }
+        let mut fiche = None;
+        if !détail {
+            self.open_requested_sheet(None);
+            ui.separator();
+            return;
+        }
+
         // La fiche de l'instruction, en une ligne : « Copier une valeur ».
         // Le reste est sous F1 — ici, c'est le rappel qui évite d'y aller.
         let mnemonic = text.split([' ', '\t']).next().unwrap_or_default();
-        let mut fiche = None;
         if let Some(entry) = namsdec_doc::lookup(mnemonic) {
             // Et le titre mène à la fiche : on s'arrête sur une
             // instruction parce qu'on ne la comprend pas, et le curseur
@@ -486,11 +536,6 @@ impl NamsdecApp {
                 fiche = Some(mnemonic.to_owned());
             }
         }
-        // Les octets, découpés par rôle : un préfixe n'est pas un
-        // opcode, et une instruction x86 se lit comme une suite de
-        // champs. C'est ce qu'on apprend en lisant un manuel Intel, et
-        // ce qu'aucun désassembleur ne montre.
-        self.encoding_ui(ui, &instr, window);
 
         // Un `syscall` : lequel, et avec quoi ?
         //
@@ -893,12 +938,8 @@ impl NamsdecApp {
                         _ => {
                             let valeur = ui
                                 .add(
-                                    egui::Label::new(
-                                        egui::RichText::new(format!("{value:016x}"))
-                                            .monospace()
-                                            .color(color),
-                                    )
-                                    .sense(egui::Sense::click()),
+                                    egui::Label::new(hex_job(ui, theme, value, color))
+                                        .sense(egui::Sense::click()),
                                 )
                                 .on_hover_ui(|ui| {
                                     ui.label(readings::of(lang, value));
@@ -1174,11 +1215,8 @@ impl NamsdecApp {
                         colour,
                         egui::RichText::new(format!("{addr:#010x}")).monospace(),
                     );
-                    ui.colored_label(
-                        colour,
-                        egui::RichText::new(format!("{value:016x}")).monospace(),
-                    )
-                    .on_hover_text(readings::of(lang, value));
+                    ui.label(hex_job(ui, theme, value, colour))
+                        .on_hover_text(readings::of(lang, value));
                     // Le repère : d'abord ce que l'adresse *est* pour le
                     // processeur, puis ce que la valeur veut dire.
                     let mut note = String::new();
@@ -1975,7 +2013,7 @@ impl NamsdecApp {
             // mesure. Sans cette limite, le panneau adopte la largeur du
             // plus long et pousse l'éditeur hors de la fenêtre.
             ui.set_max_width(ui.available_width());
-            self.re_modules_ui(ui);
+            self.re_modules_ui(ui, false);
         });
     }
 
@@ -1984,7 +2022,11 @@ impl NamsdecApp {
     /// Posés ici sans zone de défilement : l'onglet du panneau et la
     /// fenêtre d'analyse ont chacun la leur, et deux zones imbriquées ne
     /// défilent bien ni l'une ni l'autre.
-    pub(crate) fn re_modules_ui(&mut self, ui: &mut egui::Ui) {
+    /// `tous_ouverts` : la fenêtre d'analyse est faite pour être lue en
+    /// entier, le panneau latéral pour être consulté. Dans l'un on
+    /// déplie tout, dans l'autre on ouvre le résumé et l'on va chercher
+    /// le reste.
+    pub(crate) fn re_modules_ui(&mut self, ui: &mut egui::Ui, tous_ouverts: bool) {
         let s = strings(self.lang);
         let (Some(emulator), Some(state)) = (&self.emulator, &self.assemble_state) else {
             ui.label(s.no_binary_assembled);
@@ -1997,15 +2039,27 @@ impl NamsdecApp {
             binary: &state.output.file,
             lang: self.lang.code(),
         };
-        // Chaque module dans un repli, ouvert : six panneaux à la suite
-        // font une longue page, et l'on ne les consulte pas tous en même
-        // temps. Ouverts par défaut — une liste qu'il faut déplier pour
-        // savoir ce qu'elle contient n'aide personne la première fois.
-        for module in self.re_registry.iter_mut() {
-            egui::CollapsingHeader::new(module.title(ctx.lang))
-                .id_salt(module.id())
-                .default_open(true)
-                .show(ui, |ui| module.ui(ui, &ctx));
+        // Chaque module dans un cadre, et **seul le premier ouvert** :
+        // sept panneaux dépliés font une page de deux mille pixels où
+        // l'on cherche le titre qu'on veut en faisant défiler. Le
+        // premier est le résumé — celui par lequel on commence —, les
+        // autres s'ouvrent quand on va les chercher.
+        let théme = self.theme;
+        for (rang, module) in self.re_registry.iter_mut().enumerate() {
+            egui::Frame::new()
+                .fill(théme.dim.gamma_multiply(0.06))
+                .inner_margin(egui::Margin::symmetric(8, 6))
+                .corner_radius(6.0)
+                .show(ui, |ui| {
+                    ui.set_min_width(ui.available_width());
+                    egui::CollapsingHeader::new(
+                        egui::RichText::new(module.title(ctx.lang)).strong(),
+                    )
+                    .id_salt(module.id())
+                    .default_open(tous_ouverts || rang == 0)
+                    .show_unindented(ui, |ui| module.ui(ui, &ctx));
+                });
+            ui.add_space(4.0);
         }
     }
 }
@@ -2163,6 +2217,79 @@ pub(crate) fn return_addresses(
         addr += 8;
     }
     trouvées
+}
+
+/// Seize chiffres hexadécimaux, les zéros de tête effacés.
+///
+/// `0000000000040ff00` : sur seize chiffres, la valeur en occupe cinq et
+/// le remplissage onze. L'œil doit alors compter les zéros pour trouver
+/// où commence le nombre. Ils restent — aligner les colonnes vaut mieux
+/// que de les faire danser — mais dans une teinte qui les fait passer
+/// derrière, et ce qu'on lit en premier est ce qui compte.
+pub(crate) fn hex_job(
+    ui: &egui::Ui,
+    theme: &'static Theme,
+    value: u64,
+    colour: egui::Color32,
+) -> egui::text::LayoutJob {
+    let texte = format!("{value:016x}");
+    let police = egui::TextStyle::Monospace.resolve(ui.style());
+    let mut job = egui::text::LayoutJob::default();
+    // Tout à zéro : il n'y a rien à mettre en avant, et tout effacer
+    // rendrait la ligne illisible. Le dernier chiffre porte la valeur.
+    let significatifs = texte.len() - texte.chars().take_while(|c| *c == '0').count().min(15);
+    let (zéros, reste) = texte.split_at(texte.len() - significatifs);
+    if !zéros.is_empty() {
+        job.append(
+            zéros,
+            0.0,
+            egui::TextFormat {
+                font_id: police.clone(),
+                color: theme.dim.gamma_multiply(0.45),
+                ..Default::default()
+            },
+        );
+    }
+    job.append(
+        reste,
+        0.0,
+        egui::TextFormat {
+            font_id: police,
+            color: colour,
+            ..Default::default()
+        },
+    );
+    job
+}
+
+/// Le même titre, mais qui se replie.
+///
+/// Rend `true` quand la section est ouverte. Le triangle et le titre
+/// forment une seule cible : viser un triangle de six pixels de côté
+/// n'est pas un geste, c'est une épreuve.
+pub(crate) fn section_toggle(
+    ui: &mut egui::Ui,
+    theme: &'static Theme,
+    titre: &str,
+    ouvert: &mut bool,
+) -> bool {
+    ui.add_space(2.0);
+    let réponse = ui
+        .horizontal(|ui| {
+            ui.colored_label(theme.dim, if *ouvert { "v" } else { ">" });
+            ui.label(egui::RichText::new(titre).strong().color(theme.text));
+        })
+        .response
+        .interact(egui::Sense::click());
+    if réponse.clicked() {
+        *ouvert = !*ouvert;
+    }
+    let (rect, _) =
+        ui.allocate_exact_size(egui::vec2(ui.available_width(), 1.0), egui::Sense::hover());
+    ui.painter()
+        .rect_filled(rect, 0.0, theme.dim.gamma_multiply(0.35));
+    ui.add_space(4.0);
+    *ouvert
 }
 
 /// Le titre d'une section du panneau : un mot en gras, un filet sous

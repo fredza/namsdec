@@ -4465,6 +4465,9 @@ fn the_banner_leads_to_the_sheet_of_the_instruction_it_shows() {
         source: "global _start\nsection .text\n_start:\n    movzx eax, al\n    hlt\n".to_owned(),
         ..Default::default()
     };
+    // Le détail — fiche, opérandes résolus, arguments — est replié
+    // devant une instruction ordinaire : ici, c'est lui qu'on regarde.
+    app.next_detail_open = true;
     app.do_assemble();
     assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
 
@@ -4502,6 +4505,9 @@ hlt
         .to_owned(),
         ..Default::default()
     };
+    // Le détail — fiche, opérandes résolus, arguments — est replié
+    // devant une instruction ordinaire : ici, c'est lui qu'on regarde.
+    app.next_detail_open = true;
     app.do_assemble();
     assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
     // Arrêté *sur* le `mov al, [tampon+rcx]`, pas encore exécuté : c'est
@@ -4767,6 +4773,9 @@ hlt
         .to_owned(),
         ..Default::default()
     };
+    // Le détail — fiche, opérandes résolus, arguments — est replié
+    // devant une instruction ordinaire : ici, c'est lui qu'on regarde.
+    app.next_detail_open = true;
     app.do_assemble();
     assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
     app.do_step();
@@ -9892,6 +9901,78 @@ fn the_sidebar_names_the_view_it_shows() {
     assert_eq!(compte(&mut app, s.tab_heap), 2);
     // Et l'onglet qu'on ne regarde pas n'a que son bouton.
     assert_eq!(compte(&mut app, s.tab_stack), 1);
+}
+
+/// Le panneau se lit d'un coup d'œil : les zéros de tête s'effacent, le
+/// détail d'une instruction se replie, et les modules RE ne s'ouvrent
+/// pas tous à la fois.
+#[test]
+fn the_panel_puts_forward_what_matters() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    // Les zéros de tête sont peints dans une teinte à part : ce qu'on
+    // lit en premier est la valeur, pas le remplissage.
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp::default();
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 820.0),
+        )),
+        ..Default::default()
+    };
+    let mut sections = 0usize;
+    for _ in 0..2 {
+        sections = 0;
+        let mut output = ctx.run_ui(input.clone(), |ui| {
+            let job = hex_job(ui, app.theme, 0x40ff00, app.theme.text);
+            // Deux morceaux : les zéros, puis la valeur.
+            sections = job.sections.len();
+            app.draw(ui);
+        });
+        output.textures_delta.clear();
+    }
+    assert_eq!(sections, 2, "les zéros de tête sont à part");
+    // Une valeur nulle garde un chiffre lisible : tout effacer donnerait
+    // une ligne vide.
+    let mut vides = 0usize;
+    let mut output = ctx.run_ui(input.clone(), |ui| {
+        vides = hex_job(ui, app.theme, 0, app.theme.text).sections.len();
+    });
+    output.textures_delta.clear();
+    assert_eq!(vides, 2, "même à zéro, un chiffre reste lisible");
+
+    // Le détail de l'instruction est replié devant une instruction
+    // ordinaire, et s'ouvre de lui-même devant un appel.
+    app.source = "\
+global _start
+section .text
+_start:
+    mov rax, 1
+    call quelquepart
+    hlt
+quelquepart:
+    ret
+"
+    .to_owned();
+    app.do_assemble();
+    assert!(!app.next_detail_open, "replié au départ");
+    let s = strings(app.lang);
+    let painted = paint(&mut app);
+    assert!(painted.contains(s.next_instruction_detail), "{painted}");
+    assert!(!painted.contains(s.call_arguments), "rien du détail encore");
+
+    app.do_step(); // sur le `call`
+    let painted = paint(&mut app);
+    assert!(app.next_detail_open, "un appel mérite son détail");
+    assert!(painted.contains(s.call_arguments), "{painted}");
+
+    // Et replié à la main, il le reste sur cette instruction-là.
+    app.next_detail_open = false;
+    let painted = paint(&mut app);
+    assert!(!painted.contains(s.call_arguments), "{painted}");
 }
 
 /// La mémoire montre sa carte : où commence le code, où finit la pile,

@@ -92,6 +92,15 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
   instruction ».
 - L'onglet Mémoire tient « Suivre » et les quatre lectures sur une seule
   ligne, au lieu de trois rangées avant le premier octet.
+- Les zéros de tête des valeurs 64 bits passent au second plan :
+  `0000000000` puis `40ff00` en clair. Les colonnes restent alignées, mais
+  l'œil attrape la valeur au lieu de compter le remplissage.
+- Le bloc de la prochaine instruction se replie, et son détail — fiche,
+  opérandes résolus, arguments — est derrière un repli qui s'ouvre de
+  lui-même devant un appel, un saut conditionnel ou un appel système.
+- Les modules de rétro-ingénierie sont dans des cadres, et seul le résumé
+  est ouvert dans le panneau latéral. La fenêtre d'analyse, elle, se lit
+  en entier et les déplie tous.
 - Les onglets du panneau latéral — Pile, Mémoire, Tas, Octets, RE — sont
   passés à droite de la barre d'outils : ils ne montent plus et ne
   descendent plus avec le bandeau, et le panneau gagne leur hauteur.

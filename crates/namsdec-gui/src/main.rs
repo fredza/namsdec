@@ -816,6 +816,18 @@ struct NamsdecApp {
     /// cachés, sans qu'on sache pourquoi. Il se replie toujours à la
     /// main, le temps de la session.
     cpu_state_open: bool,
+    /// Le bloc de la prochaine instruction est-il déployé ? Même règle
+    /// que ci-dessus : l'état d'une session, jamais celui du disque.
+    next_instruction_open: bool,
+    /// Et son détail — la fiche, les opérandes résolus, les arguments
+    /// d'un appel. Fermé au départ, ouvert de lui-même devant ce qui
+    /// mérite d'être expliqué : un appel, un saut conditionnel, un
+    /// appel système.
+    next_detail_open: bool,
+    /// L'adresse à laquelle ce détail s'est ouvert tout seul, pour ne le
+    /// faire qu'une fois par instruction — sinon replier n'aurait aucun
+    /// effet.
+    next_detail_addr: Option<u64>,
     /// Fenêtre flottante indépendante (crate `namsdec-explorer`), ouverte
     /// directement par son raccourci — elle ne fait pas partie des
     /// panneaux de la mise en page et n'apparaît donc pas dans le groupe
@@ -1414,6 +1426,9 @@ impl Default for NamsdecApp {
             current_exercise: None,
             settings_file: None,
             cpu_state_open: true,
+            next_instruction_open: true,
+            next_detail_open: false,
+            next_detail_addr: None,
             console_input: String::new(),
             resume_run_after_input: false,
             explorer: FileExplorer::default(),
@@ -6641,7 +6656,7 @@ impl NamsdecApp {
                 ui.separator();
                 egui::ScrollArea::vertical()
                     .auto_shrink([false, false])
-                    .show(ui, |ui| self.re_modules_ui(ui));
+                    .show(ui, |ui| self.re_modules_ui(ui, true));
             });
         self.show_analysis = open;
     }
