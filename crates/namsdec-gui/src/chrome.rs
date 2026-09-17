@@ -40,14 +40,21 @@ pub enum WindowButton {
 }
 
 impl WindowButton {
-    /// Les trois, de gauche à droite : réduire, agrandir, fermer. La
-    /// fermeture à l'extrémité — c'est là que la main la cherche sous
-    /// Linux comme sous Windows, et c'est le bouton qu'on veut le plus
-    /// loin des deux autres.
+    /// Les trois, de gauche à droite : fermer, réduire, agrandir.
+    ///
+    /// C'est l'ordre des pastilles de macOS, et il va avec leur place —
+    /// au bord gauche de la fenêtre. La fermeture occupe le coin, donc
+    /// l'angle que la souris atteint sans viser : on la lance vers le
+    /// haut à gauche, elle bute, elle y est. Les deux autres sont
+    /// derrière elle, ce qui les met hors de portée d'un geste trop
+    /// rapide — l'inverse de ce qu'on veut pour un bouton qui ferme.
+    ///
+    /// L'ordre compte plus que le côté : c'est la constance de la place
+    /// qui fait qu'on finit par cliquer sans regarder.
     pub const ALL: [WindowButton; 3] = [
+        WindowButton::Close,
         WindowButton::Minimize,
         WindowButton::Maximize,
-        WindowButton::Close,
     ];
 
     /// Sa couleur, celle des pastilles qu'on reconnaît sans les lire.

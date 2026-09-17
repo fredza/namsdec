@@ -386,9 +386,11 @@ sans avertissement, et s'exécuter jusqu'au bout.
 ### La fenêtre
 
 namsdec dessine sa propre barre de titre : les menus en tiennent lieu,
-et les trois pastilles sont au bout, à droite. On déplace la fenêtre en
-saisissant la barre, on l'agrandit d'un double-clic, on la
-redimensionne par ses bords. Préférences ▸ Général rend la décoration du
+et les trois pastilles sont **en tête**, à gauche — fermer, réduire,
+agrandir. La fermeture occupe ainsi le coin de l'écran, l'angle qu'une
+souris lancée sans viser atteint, et les deux autres restent derrière
+elle. On déplace la fenêtre en saisissant la barre, on l'agrandit d'un
+double-clic, on la redimensionne par ses bords. Préférences ▸ Général rend la décoration du
 bureau à qui la préfère — le réglage s'applique sans redémarrer.
 
 ### Sortir de l'atelier

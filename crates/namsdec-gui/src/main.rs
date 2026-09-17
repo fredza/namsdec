@@ -4092,6 +4092,14 @@ impl NamsdecApp {
         let s = strings(self.lang);
         let mut bouton_fenêtre = None;
         ui.horizontal(|ui| {
+            // Les pastilles en tête de la barre : la fermeture occupe
+            // alors le coin de l'écran, l'angle qu'une souris lancée
+            // vers le haut à gauche atteint sans viser.
+            if !self.system_titlebar {
+                let maximisée = ui.input(|i| i.viewport().maximized.unwrap_or(false));
+                bouton_fenêtre = chrome::window_buttons_ui(ui, s, maximisée);
+                ui.add_space(4.0);
+            }
             ui.menu_button(s.menu_file, |ui| {
                 let ctx = ui.ctx().clone();
                 if ui
@@ -4569,32 +4577,26 @@ impl NamsdecApp {
                 }
             });
 
-            // La barre de menus *est* la barre de titre : les pastilles
-            // au bout, et tout ce qui reste entre les deux se saisit
-            // pour déplacer la fenêtre. Une barre de titre du système
-            // par-dessus celle-ci ferait deux rangées pour le même
-            // travail.
+            // La barre de menus *est* la barre de titre : tout ce qui
+            // reste après les menus se saisit pour déplacer la fenêtre,
+            // porte le nom du fichier, et le double-clic l'agrandit. Une
+            // barre de titre du système par-dessus celle-ci ferait deux
+            // rangées pour le même travail.
             if !self.system_titlebar {
                 let maximisée = ui.input(|i| i.viewport().maximized.unwrap_or(false));
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    bouton_fenêtre = chrome::window_buttons_ui(ui, s, maximisée);
-                    // Tout ce qui reste entre les menus et les pastilles
-                    // saisit la fenêtre, porte le nom du fichier, et le
-                    // double-clic l'agrandit.
-                    let fichier = self
-                        .current_file
-                        .as_ref()
-                        .and_then(|path| path.file_name())
-                        .map(|name| name.to_string_lossy().into_owned())
-                        .unwrap_or_else(|| s.untitled_buffer.to_owned());
-                    chrome::title_drag_ui(
-                        ui,
-                        self.theme,
-                        &fichier,
-                        self.source != self.saved_source,
-                        maximisée,
-                    );
-                });
+                let fichier = self
+                    .current_file
+                    .as_ref()
+                    .and_then(|path| path.file_name())
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| s.untitled_buffer.to_owned());
+                chrome::title_drag_ui(
+                    ui,
+                    self.theme,
+                    &fichier,
+                    self.source != self.saved_source,
+                    maximisée,
+                );
             }
         });
         if let Some(bouton) = bouton_fenêtre {

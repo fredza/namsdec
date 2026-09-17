@@ -201,9 +201,11 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
   s'il est dépassé, désigne la ligne par où reprendre. Chaque ligne y
   est nommée par son bloc — « boucle: dec rcx » — pour n'avoir pas à
   retourner dans le programme.
-- La fenêtre porte ses trois pastilles au bout de la barre de menus, qui
-  fait office de barre de titre : une rangée de moins. Réduire à gauche,
-  fermer à droite, comme partout ailleurs sous Linux. Préférences ▸
+- La fenêtre porte ses trois pastilles **en tête** de la barre de menus,
+  qui fait office de barre de titre : une rangée de moins. Fermer,
+  réduire, agrandir — l'ordre de macOS, qui va avec le côté gauche : la
+  fermeture occupe le coin de l'écran, l'angle qu'une souris lancée sans
+  viser atteint, et les deux autres sont derrière elle. Préférences ▸
   Général rend la barre du système à qui la préfère.
 - La boîte « À propos » mène quelque part : namsdec.io, le Discord, le
   dépôt.

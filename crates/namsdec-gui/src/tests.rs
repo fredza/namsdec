@@ -9945,12 +9945,13 @@ fn the_window_carries_its_own_three_buttons() {
     };
     let peints = disques(&mut app);
     assert_eq!(peints.len(), 3, "trois pastilles : {peints:?}");
-    // De gauche à droite : réduire, agrandir, fermer — la fermeture à
-    // l'extrémité, là où la main la cherche.
+    // En tête de barre, à gauche : la fermeture occupe le coin de
+    // l'écran, l'angle qu'une souris lancée vers le haut à gauche
+    // atteint sans viser.
     let mut x: Vec<f32> = peints.iter().map(|(_, x)| *x).collect();
     x.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    assert!(x[0] > 1280.0 * 0.8, "au bout de la barre : {x:?}");
-    // Alignées : le même écart entre les trois, et la dernière ne touche
+    assert!(x[2] < 1280.0 * 0.15, "en tête de la barre : {x:?}");
+    // Alignées : le même écart entre les trois, et la première ne touche
     // pas le bord de la fenêtre.
     let écarts: Vec<f32> = x.windows(2).map(|p| p[1] - p[0]).collect();
     assert!(
@@ -9958,12 +9959,12 @@ fn the_window_carries_its_own_three_buttons() {
         "l'écart doit être le même : {écarts:?}"
     );
     assert!(
-        x[2] < 1280.0 - 8.0,
-        "la fermeture déborde du cadre : {} pour une fenêtre de 1280",
-        x[2]
+        x[0] > 6.0,
+        "la fermeture est collée au bord : {} pour une fenêtre de 1280",
+        x[0]
     );
-    // Et dans l'ordre : réduire à gauche, fermer à droite. La fermeture
-    // à l'extrémité, comme partout ailleurs sous Linux.
+    // Et dans l'ordre : fermer d'abord, puis réduire, puis agrandir —
+    // celui de macOS, qui va avec le côté gauche.
     let couleur_à = |abscisse: f32| {
         peints
             .iter()
@@ -9976,13 +9977,18 @@ fn the_window_carries_its_own_three_buttons() {
     let au_repos = |bouton: chrome::WindowButton| bouton.colour().gamma_multiply(0.55);
     assert_eq!(
         couleur_à(x[0]),
+        au_repos(chrome::WindowButton::Close),
+        "fermer au coin : {peints:?}"
+    );
+    assert_eq!(
+        couleur_à(x[1]),
         au_repos(chrome::WindowButton::Minimize),
-        "réduire à gauche : {peints:?}"
+        "réduire au milieu : {peints:?}"
     );
     assert_eq!(
         couleur_à(x[2]),
-        au_repos(chrome::WindowButton::Close),
-        "fermer à droite : {peints:?}"
+        au_repos(chrome::WindowButton::Maximize),
+        "agrandir en dernier : {peints:?}"
     );
     // Trois couleurs distinctes, et aucune n'est celle du fond.
     let couleurs: std::collections::BTreeSet<[u8; 4]> =
@@ -14343,4 +14349,69 @@ fn a_real_binary_loads_at_the_addresses_it_declares() {
     // fenêtre d'avant : même base, même taille, même sommet de pile.
     let (base, taille, sommet) = memory_window(BASE_ADDR, 0x200);
     assert_eq!((base, taille, sommet), (BASE_ADDR, MEM_SIZE, STACK_TOP));
+}
+
+/// Les pastilles tiennent le coin, et rien ne les bouscule.
+///
+/// « Intelligemment à gauche » veut dire trois choses : la fermeture
+/// occupe le coin — l'angle qu'une souris lancée sans viser atteint —,
+/// les menus commencent après elles sans les toucher, et le nom du
+/// fichier reste au centre de la barre plutôt que collé aux pastilles.
+#[test]
+fn the_window_buttons_hold_the_corner_without_crowding_the_menus() {
+    let mut app = NamsdecApp::default();
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 900.0),
+        )),
+        ..Default::default()
+    };
+
+    let mut pastilles: Vec<f32> = Vec::new();
+    let mut menu_x = f32::MAX;
+    let mut titre_x = 0.0f32;
+    for _ in 0..2 {
+        pastilles.clear();
+        menu_x = f32::MAX;
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        for clipped in &output.shapes {
+            match &clipped.shape {
+                egui::epaint::Shape::Circle(c) if c.radius > 5.0 && c.radius < 9.0 => {
+                    pastilles.push(c.center.x);
+                }
+                egui::epaint::Shape::Text(t) => {
+                    if t.galley.text() == strings(Lang::Fr).menu_file {
+                        menu_x = menu_x.min(t.pos.x);
+                    }
+                    if t.galley.text() == strings(Lang::Fr).untitled_buffer && t.pos.y < 40.0 {
+                        titre_x = t.pos.x;
+                    }
+                }
+                _ => {}
+            }
+        }
+        output.textures_delta.clear();
+    }
+    pastilles.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    assert_eq!(pastilles.len(), 3, "{pastilles:?}");
+
+    // La fermeture au coin, sans y être collée.
+    assert!(
+        (6.0..40.0).contains(&pastilles[0]),
+        "la première pastille tient le coin : {pastilles:?}"
+    );
+    // Le menu Fichier commence après la dernière pastille, et ne la
+    // touche pas : deux cibles voisines se manquent l'une l'autre.
+    assert!(
+        menu_x > pastilles[2] + 8.0,
+        "les menus doivent laisser de l'air : menu à {menu_x}, pastilles {pastilles:?}"
+    );
+    // Et le nom du fichier reste au milieu de la barre, loin des deux.
+    assert!(
+        titre_x > 1280.0 * 0.3,
+        "le nom du fichier reste centré : {titre_x}"
+    );
 }
