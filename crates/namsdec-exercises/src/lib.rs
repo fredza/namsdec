@@ -254,6 +254,18 @@ pub fn builtin_pack() -> Pack {
                 starter_code: include_str!("../exercises/sortie.asm").to_owned(),
             },
             Exercise {
+                id: "debordement".to_owned(),
+                title: Text {
+                    fr: "Ce qu'un tampon trop petit laisse faire".to_owned(),
+                    en: "What a too-small buffer lets through".to_owned(),
+                },
+                description: Text {
+                    fr: "Seize octets de tampon, soixante-quatre octets lus : le `ret` repart dans le décor. Engendrez un motif cyclique (Outils), donnez-le à manger au programme, puis cliquez RIP dans la fenêtre du motif — le décalage vous dit exactement ce qui a été écrasé. C'est la mesure d'un dégât, et la raison d'être du canari de pile.".to_owned(),
+                    en: "A sixteen-byte buffer, sixty-four bytes read: the `ret` goes off into the weeds. Generate a cyclic pattern (Tools), feed it to the program, then click RIP in the pattern window — the offset tells you exactly what was overwritten. This is measuring damage, and the reason the stack canary exists.".to_owned(),
+                },
+                starter_code: include_str!("../exercises/debordement.asm").to_owned(),
+            },
+            Exercise {
                 id: "protection".to_owned(),
                 title: Text {
                     fr: "Ce qu'on n'a pas le droit de faire".to_owned(),
@@ -298,9 +310,9 @@ mod tests {
     #[test]
     fn every_builtin_exercise_is_complete_and_stops() {
         let pack = builtin_pack();
-        // Un parcours, pas une poignée : quinze étapes, et chacune
+        // Un parcours, pas une poignée : seize étapes, et chacune
         // s'appuie sur les précédentes.
-        assert_eq!(pack.exercises.len(), 15);
+        assert_eq!(pack.exercises.len(), 16);
         for exercise in &pack.exercises {
             assert!(!exercise.id.is_empty());
             assert!(!exercise.title.fr.is_empty() && !exercise.title.en.is_empty());

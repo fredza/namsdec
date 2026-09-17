@@ -1033,10 +1033,55 @@ impl NamsdecApp {
                 // repoussaient hors du panneau.
                 self.stack_words_ui(ui, emulator.as_ref());
                 ui.separator();
+                self.return_addresses_ui(ui, emulator.as_ref());
                 self.call_chain_ui(ui, emulator.as_ref());
                 ui.separator();
                 self.abi_ui(ui, emulator.as_ref());
             });
+    }
+
+    /// Toutes les adresses de retour que porte la pile, et pas seulement
+    /// celles des douze mots affichés.
+    ///
+    /// C'est le `retaddr` de pwndbg. Après un débordement, la question
+    /// est « laquelle a été écrasée » — et elle ne se pose que si l'on
+    /// voit la liste entière.
+    fn return_addresses_ui(&self, ui: &mut egui::Ui, emulator: &dyn Backend) {
+        let s = strings(self.lang);
+        let theme = self.theme;
+        let symbols = self
+            .assemble_state
+            .as_ref()
+            .map(|state| state.output.symbols.as_slice())
+            .unwrap_or_default();
+        let trouvées = return_addresses(emulator.cpu(), symbols, 32);
+        if trouvées.is_empty() {
+            return;
+        }
+        egui::CollapsingHeader::new(format!("{} ({})", s.stack_return_addresses, trouvées.len()))
+            .id_salt("stack_retaddr")
+            .show(ui, |ui| {
+                ui.colored_label(theme.dim, s.stack_return_addresses_hint);
+                egui::Grid::new("stack_retaddr_grid")
+                    .num_columns(3)
+                    .min_col_width(0.0)
+                    .striped(true)
+                    .show(ui, |ui| {
+                        for (addr, value, nom) in &trouvées {
+                            ui.colored_label(
+                                theme.dim,
+                                egui::RichText::new(format!("{addr:#010x}")).monospace(),
+                            );
+                            ui.colored_label(
+                                theme.accent,
+                                egui::RichText::new(format!("{value:#x}")).monospace(),
+                            );
+                            ui.colored_label(theme.text, egui::RichText::new(nom).monospace());
+                            ui.end_row();
+                        }
+                    });
+            });
+        ui.separator();
     }
 
     /// La pile, mot par mot, avec ses repères.
@@ -2015,6 +2060,41 @@ pub(crate) fn parse_register_value(saisie: &str) -> Option<u64> {
     } else {
         value
     })
+}
+
+/// Les adresses de retour que porte la pile, de RSP vers le haut.
+///
+/// C'est le `retaddr` de pwndbg : tout mot de la pile qui pointe du code
+/// exécutable. Après un débordement, la question est « laquelle a été
+/// écrasée », et elle ne se pose que devant la liste entière.
+pub(crate) fn return_addresses(
+    cpu: &namsdec_core::Cpu,
+    symbols: &[namsdec_asm::elf::Symbol],
+    limit: usize,
+) -> Vec<(u64, u64, String)> {
+    let rsp = cpu.regs.get64(Reg64::Rsp);
+    // De RSP jusqu'au haut de sa zone : en dessous, c'est ce qui n'a pas
+    // encore été empilé.
+    let sommet = cpu
+        .mem
+        .regions()
+        .into_iter()
+        .find(|region| region.range.contains(&rsp))
+        .map(|region| region.range.end)
+        .unwrap_or_else(|| cpu.mem.range().end);
+    let mut trouvées = Vec::new();
+    let mut addr = rsp;
+    while addr + 8 <= sommet && trouvées.len() < limit {
+        if let Ok(value) = cpu.mem.read_u64(addr)
+            && let namsdec_emu::telescope::What::Code(texte) =
+                namsdec_emu::telescope::describe(&cpu.mem, value)
+        {
+            let nom = symbol_at(symbols, value).unwrap_or(texte);
+            trouvées.push((addr, value, nom));
+        }
+        addr += 8;
+    }
+    trouvées
 }
 
 /// Les droits d'une zone, à la façon d'un `vmmap` : `rwx`, un tiret pour

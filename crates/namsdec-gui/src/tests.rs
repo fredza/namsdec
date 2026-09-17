@@ -3216,7 +3216,9 @@ fn every_program_we_ship_is_a_complete_program() {
         assert!(out.diagnostics.is_empty(), "{name} : {:?}", out.diagnostics);
         // Et il rend la main : soit il s'arrête, soit il bute sur une
         // faute — un exercice peut très bien être fait pour en montrer
-        // une. Ce qu'on refuse, c'est le programme qui tourne sans fin.
+        // une —, soit il attend ce qu'on lui tapera, ce qui est aussi
+        // rendre la main. Ce qu'on refuse, c'est le programme qui tourne
+        // sans fin.
         let mut app = NamsdecApp {
             source: source.clone(),
             ..Default::default()
@@ -3226,7 +3228,7 @@ fn every_program_we_ship_is_a_complete_program() {
             app.do_step();
         }
         let arrêté = app.emulator.as_ref().is_some_and(|e| e.cpu().halted)
-            || matches!(app.status, Status::Error(_));
+            || matches!(app.status, Status::Error(_) | Status::WaitingForInput);
         assert!(arrêté, "{name} ne rend jamais la main");
     }
 }
@@ -3946,7 +3948,7 @@ fn an_exercise_points_at_the_sheets_it_uses() {
     );
 }
 
-/// Le parcours livré est un parcours : quinze étapes dans l'ordre où
+/// Le parcours livré est un parcours : seize étapes dans l'ordre où
 /// l'on apprend, chacune avec son but écrit dans le programme.
 ///
 /// L'ordre n'est pas décoratif. On lit les registres avant d'écrire une
@@ -3973,6 +3975,7 @@ fn the_built_in_pack_is_a_course_in_order() {
             "pile",
             "appels",
             "sortie",
+            "debordement",
             "protection"
         ]
     );
@@ -5457,9 +5460,9 @@ fn the_readme_tells_the_truth() {
     );
 
     let exercices = namsdec_exercises::builtin_pack().exercises.len();
-    assert_eq!(exercices, 15, "le parcours livré compte quinze exercices");
+    assert_eq!(exercices, 16, "le parcours livré compte seize exercices");
     assert!(
-        readme.contains("parcours de quinze exercices"),
+        readme.contains("parcours de seize exercices"),
         "le README doit annoncer le bon nombre d'exercices"
     );
     // Les crates listées dans le tableau existent toutes.
@@ -6257,7 +6260,7 @@ fn the_exercises_deliver_what_they_promise() {
 ///
 /// Un module qu'on active si on le désire, soit — mais une porte qu'on
 /// ne voit pas n'existe pas. Quelqu'un qui débute ne devinera pas qu'il
-/// y a quinze exercices derrière un réglage.
+/// y a seize exercices derrière un réglage.
 #[test]
 fn the_course_is_discoverable_before_it_is_loaded() {
     let mut app = NamsdecApp::default();
@@ -6298,7 +6301,7 @@ fn the_course_is_discoverable_before_it_is_loaded() {
         output.textures_delta.clear();
     }
     // Le texte d'accueil est à l'écran, avec sa mention du parcours.
-    assert!(painted.contains("quinze exercices"), "{painted}");
+    assert!(painted.contains("seize exercices"), "{painted}");
 }
 
 /// Le parcours se reprend là où on l'avait laissé.
@@ -6365,12 +6368,12 @@ fn the_course_remembers_where_one_stopped() {
         "l'étape en cours se voit sans avoir à la chercher : {painted}"
     );
     // Le rang dans le parcours, aussi : le tableau est la dixième des
-    // quinze étapes.
-    assert!(painted.contains("10/15"), "{painted}");
+    // seize étapes.
+    assert!(painted.contains("10/16"), "{painted}");
 }
 
 /// Un parcours se suit : l'étape suivante est à un clic, sans avoir à
-/// retrouver son rang dans une liste de quinze.
+/// retrouver son rang dans une liste de seize.
 #[test]
 fn the_course_offers_the_next_step() {
     let mut app = NamsdecApp {
@@ -6417,7 +6420,7 @@ fn the_course_offers_the_next_step() {
     }
     assert!(painted.contains("Étape suivante"), "{painted}");
     assert!(
-        painted.contains("1/15"),
+        painted.contains("1/16"),
         "le rang de l'étape en cours : {painted}"
     );
 }
@@ -8570,6 +8573,101 @@ _start:
     // Hors de la mémoire simulée, en revanche, il n'y a rien à écrire.
     app.poke_memory(0xdead_beef, &[0]);
     assert!(matches!(app.status, Status::Error(_)), "{:?}", app.status);
+}
+
+/// L'exercice du débordement tient sa promesse, et le motif cyclique y
+/// répond : le décalage annoncé est bien celui qui sépare le tampon de
+/// l'adresse de retour.
+///
+/// C'est la boucle complète — `cyclic`, l'entrée du programme, `RIP`,
+/// l'offset — et elle doit marcher pour de vrai, sans quoi l'énoncé
+/// décrit un outil qui ment.
+#[test]
+fn the_overflow_exercise_is_measured_by_the_cyclic_pattern() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let pack = namsdec_exercises::builtin_pack();
+    let exercice = pack.by_id("debordement").expect("l'étape existe");
+    let mut app = NamsdecApp {
+        source: exercice.starter_code.clone(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+
+    // Le motif, tel que la fenêtre le pose dans l'entrée du programme.
+    let motif = namsdec_re::cyclic::pattern(64);
+    // Comme le bouton de la fenêtre : le motif part dans l'entrée du
+    // programme, suivi du saut de ligne que la console ajoute.
+    app.send_input(Some(String::from_utf8(motif.clone()).unwrap()));
+
+    app.do_run();
+    for _ in 0..200 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&egui::Context::default());
+    }
+
+    // Le `ret` est parti dans le motif : RIP en porte quatre octets.
+    let rip = app.emulator.as_ref().expect("chargé").cpu().regs.rip;
+    let décalage = namsdec_re::cyclic::offset_of_value(rip)
+        .unwrap_or_else(|| panic!("RIP ({rip:#x}) ne vient pas du motif"));
+
+    // Et ce décalage est celui qu'on attend : seize octets de tampon,
+    // puis l'adresse de retour que le `call` avait empilée.
+    assert_eq!(décalage, 16, "seize octets de tampon avant le retour");
+}
+
+/// La pile dit toutes ses adresses de retour, pas seulement celles des
+/// douze mots affichés : après un débordement, la question est
+/// « laquelle a été écrasée ».
+#[test]
+fn the_stack_lists_every_return_address_it_carries() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: "\
+global _start
+
+section .text
+_start:
+    call une
+    hlt
+une:
+    call deux
+    ret
+deux:
+    ret
+"
+        .to_owned(),
+        active_tab: SidebarTab::Stack,
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+    app.do_step(); // call une
+    app.do_step(); // call deux
+
+    // Deux appels imbriqués : deux adresses de retour sur la pile, la
+    // plus récente en premier, chacune nommée par l'étiquette de son
+    // appelant.
+    let emulator = app.emulator.as_ref().expect("chargé");
+    let symbols = app.assemble_state.as_ref().unwrap().output.symbols.clone();
+    let trouvées = return_addresses(emulator.cpu(), &symbols, 32);
+    assert_eq!(trouvées.len(), 2, "{trouvées:?}");
+    assert!(trouvées[0].2.starts_with("une"), "{trouvées:?}");
+    assert!(trouvées[1].2.starts_with("_start"), "{trouvées:?}");
+    assert!(trouvées[0].0 < trouvées[1].0, "de RSP vers le haut");
+
+    // Écrasée par un débordement, elle disparaît de la liste : c'est
+    // exactement ce qu'on vient y lire.
+    app.poke_memory(trouvées[0].0, b"aaaabbbb");
+    let emulator = app.emulator.as_ref().expect("chargé");
+    let après = return_addresses(emulator.cpu(), &symbols, 32);
+    assert_eq!(après.len(), 1, "{après:?}");
 }
 
 /// La mémoire montre sa carte : où commence le code, où finit la pile,
