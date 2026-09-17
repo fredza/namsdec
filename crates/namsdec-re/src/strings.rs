@@ -225,6 +225,10 @@ impl ReModule for StringsModule {
         egui::ScrollArea::vertical()
             .id_salt("re_strings")
             .max_height(220.0)
+            // Toute la largeur du panneau : sans cela, la zone se réduit
+            // à la plus longue ligne *déjà* affichée, et les chaînes
+            // suivantes se tronquent bien avant le bord.
+            .auto_shrink([false, false])
             .show(ui, |ui| {
                 for found in &montrées {
                     // Qui la désigne ? Une chaîne à laquelle personne ne
@@ -242,12 +246,18 @@ impl ReModule for StringsModule {
                                 },
                             );
                         }
-                        // Tronquée, et entière dans l'infobulle : une
-                        // chaîne peut faire trois cents caractères, et le
-                        // panneau prendrait sa largeur.
-                        ui.add(
+                        // Tronquée à la largeur qui *reste*, et entière
+                        // dans l'infobulle : une chaîne peut faire trois
+                        // cents caractères, et le panneau prendrait sa
+                        // largeur. Dimensionnée explicitement, sinon
+                        // `truncate` coupe à la largeur idéale du texte
+                        // et laisse le reste de la ligne vide.
+                        let reste = ui.available_width().max(24.0);
+                        ui.add_sized(
+                            [reste, ui.spacing().interact_size.y],
                             egui::Label::new(egui::RichText::new(&found.text).monospace())
-                                .truncate(),
+                                .truncate()
+                                .halign(egui::Align::LEFT),
                         )
                         .on_hover_text(&found.text);
                     });
@@ -324,6 +334,73 @@ mod tests {
             .collect();
         assert_eq!(désignées.len(), 1, "{désignées:?}");
         assert_eq!(désignées[0].text, "désignée");
+    }
+
+    /// Une chaîne occupe la largeur qu'on lui donne, et se tronque au
+    /// bord du panneau — pas trois centimètres avant.
+    ///
+    /// `truncate` seul coupe à la largeur *idéale* du texte et laisse le
+    /// reste de la ligne vide : dans un panneau de quatre cents pixels,
+    /// les chaînes s'arrêtaient au milieu.
+    #[test]
+    fn a_string_uses_the_width_it_is_given() {
+        let mut module = StringsModule {
+            found: vec![
+                Found {
+                    addr: 0x401000,
+                    text: "abcd".to_owned(),
+                },
+                Found {
+                    addr: 0x401010,
+                    text: "une chaîne bien plus longue que la précédente, pour voir".to_owned(),
+                },
+            ],
+            ..Default::default()
+        };
+        let mem = namsdec_core::Memory::new(0x400000, 0x100);
+        let cpu = namsdec_core::Cpu::new(mem);
+        let ctx = egui::Context::default();
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(400.0, 600.0),
+            )),
+            ..Default::default()
+        };
+        let mut largeurs: Vec<(String, f32)> = Vec::new();
+        for _ in 0..2 {
+            largeurs.clear();
+            let mut output = ctx.run_ui(input.clone(), |ui| {
+                let re = ReContext {
+                    cpu: &cpu,
+                    disasm: &[],
+                    source: "",
+                    binary: &[],
+                    lang: "fr",
+                };
+                module.ui(ui, &re);
+            });
+            for clipped in &output.shapes {
+                if let egui::epaint::Shape::Text(forme) = &clipped.shape {
+                    let texte = forme.galley.text().to_owned();
+                    if texte.starts_with("abcd") || texte.starts_with("une chaîne") {
+                        largeurs.push((texte, forme.galley.size().x));
+                    }
+                }
+            }
+            output.textures_delta.clear();
+        }
+        let longue = largeurs
+            .iter()
+            .find(|(texte, _)| texte.starts_with("une chaîne"))
+            .unwrap_or_else(|| panic!("la longue chaîne n'est pas peinte : {largeurs:?}"));
+        // Elle doit occuper l'essentiel des quatre cents pixels, moins
+        // l'adresse et les marges.
+        assert!(
+            longue.1 > 200.0,
+            "la chaîne s'arrête à {} pixels sur 400",
+            longue.1
+        );
     }
 
     /// Ce qui n'est pas un ELF se lit quand même, du premier octet au

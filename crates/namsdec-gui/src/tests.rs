@@ -9655,6 +9655,28 @@ fn the_window_carries_its_own_three_buttons() {
     let mut x: Vec<f32> = peints.iter().map(|(_, x)| *x).collect();
     x.sort_by(|a, b| a.partial_cmp(b).unwrap());
     assert!(x[0] > 1280.0 * 0.8, "au bout de la barre : {x:?}");
+    // Et dans l'ordre : réduire à gauche, fermer à droite. La fermeture
+    // à l'extrémité, comme partout ailleurs sous Linux.
+    let couleur_à = |abscisse: f32| {
+        peints
+            .iter()
+            .find(|(_, x)| (*x - abscisse).abs() < 0.5)
+            .map(|(couleur, _)| *couleur)
+            .expect("une pastille à cette abscisse")
+    };
+    // Les pastilles sont atténuées tant que la souris n'est pas dessus :
+    // on compare donc à la couleur telle qu'elle est peinte au repos.
+    let au_repos = |bouton: chrome::WindowButton| bouton.colour().gamma_multiply(0.55);
+    assert_eq!(
+        couleur_à(x[0]),
+        au_repos(chrome::WindowButton::Minimize),
+        "réduire à gauche : {peints:?}"
+    );
+    assert_eq!(
+        couleur_à(x[2]),
+        au_repos(chrome::WindowButton::Close),
+        "fermer à droite : {peints:?}"
+    );
     // Trois couleurs distinctes, et aucune n'est celle du fond.
     let couleurs: std::collections::BTreeSet<[u8; 4]> =
         peints.iter().map(|(c, _)| c.to_array()).collect();

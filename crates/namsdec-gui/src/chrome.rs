@@ -36,9 +36,10 @@ pub enum WindowButton {
 }
 
 impl WindowButton {
-    /// Les trois, de gauche à droite. La fermeture à l'extrémité : c'est
-    /// là que la main la cherche sous Linux comme sous Windows, et c'est
-    /// aussi le bouton qu'on veut le plus loin des deux autres.
+    /// Les trois, de gauche à droite : réduire, agrandir, fermer. La
+    /// fermeture à l'extrémité — c'est là que la main la cherche sous
+    /// Linux comme sous Windows, et c'est le bouton qu'on veut le plus
+    /// loin des deux autres.
     pub const ALL: [WindowButton; 3] = [
         WindowButton::Minimize,
         WindowButton::Maximize,
@@ -46,7 +47,7 @@ impl WindowButton {
     ];
 
     /// Sa couleur, celle des pastilles qu'on reconnaît sans les lire.
-    fn colour(self) -> egui::Color32 {
+    pub fn colour(self) -> egui::Color32 {
         match self {
             WindowButton::Minimize => egui::Color32::from_rgb(0xf5, 0xbf, 0x4f),
             WindowButton::Maximize => egui::Color32::from_rgb(0x62, 0xc5, 0x54),
@@ -70,76 +71,85 @@ impl WindowButton {
 /// travail non enregistré.
 pub fn window_buttons_ui(ui: &mut egui::Ui, s: &Strings, maximized: bool) -> Option<WindowButton> {
     let mut cliqué = None;
-    ui.horizontal(|ui| {
-        for bouton in WindowButton::ALL {
-            let (rect, réponse) = ui.allocate_exact_size(
-                egui::vec2(BUTTON_RADIUS * 2.0 + BUTTON_SPACING, BUTTON_RADIUS * 2.0),
-                egui::Sense::click(),
-            );
-            let centre = rect.center();
-            let couleur = bouton.colour();
-            // Éteinte tant que la souris n'est pas dessus : trois
-            // pastilles vives en permanence tirent l'œil hors du code,
-            // qui est ce qu'on est venu lire.
-            let remplissage = if réponse.hovered() {
-                couleur
-            } else {
-                couleur.gamma_multiply(0.55)
-            };
-            ui.painter()
-                .circle_filled(centre, BUTTON_RADIUS, remplissage);
-            // Le signe n'apparaît qu'au survol, comme sur les pastilles
-            // qu'on connaît : la couleur suffit à désigner, le signe
-            // confirme.
-            if réponse.hovered() {
-                let trait_ = egui::Stroke::new(1.4, egui::Color32::from_black_alpha(190));
-                let bras = BUTTON_RADIUS * 0.45;
-                match bouton {
-                    WindowButton::Minimize => {
-                        ui.painter().line_segment(
-                            [
-                                centre - egui::vec2(bras, 0.0),
-                                centre + egui::vec2(bras, 0.0),
-                            ],
-                            trait_,
-                        );
-                    }
-                    WindowButton::Maximize => {
-                        let carré = egui::Rect::from_center_size(
-                            centre,
-                            egui::vec2(bras * 1.7, bras * 1.7),
-                        );
-                        ui.painter()
-                            .rect_stroke(carré, 1.0, trait_, egui::StrokeKind::Inside);
-                    }
-                    WindowButton::Close => {
-                        ui.painter().line_segment(
-                            [
-                                centre - egui::vec2(bras, bras),
-                                centre + egui::vec2(bras, bras),
-                            ],
-                            trait_,
-                        );
-                        ui.painter().line_segment(
-                            [
-                                centre - egui::vec2(bras, -bras),
-                                centre + egui::vec2(bras, -bras),
-                            ],
-                            trait_,
-                        );
+    // De gauche à droite, explicitement : le bloc entier est posé dans
+    // un layout qui va de droite à gauche — pour le coller au bord —, et
+    // sans cela les trois pastilles s'y rangeaient à l'envers, la
+    // fermeture au bord gauche.
+    let largeur = (BUTTON_RADIUS * 2.0 + BUTTON_SPACING) * WindowButton::ALL.len() as f32;
+    ui.allocate_ui_with_layout(
+        egui::vec2(largeur, BUTTON_RADIUS * 2.0),
+        egui::Layout::left_to_right(egui::Align::Center),
+        |ui| {
+            for bouton in WindowButton::ALL {
+                let (rect, réponse) = ui.allocate_exact_size(
+                    egui::vec2(BUTTON_RADIUS * 2.0 + BUTTON_SPACING, BUTTON_RADIUS * 2.0),
+                    egui::Sense::click(),
+                );
+                let centre = rect.center();
+                let couleur = bouton.colour();
+                // Éteinte tant que la souris n'est pas dessus : trois
+                // pastilles vives en permanence tirent l'œil hors du code,
+                // qui est ce qu'on est venu lire.
+                let remplissage = if réponse.hovered() {
+                    couleur
+                } else {
+                    couleur.gamma_multiply(0.55)
+                };
+                ui.painter()
+                    .circle_filled(centre, BUTTON_RADIUS, remplissage);
+                // Le signe n'apparaît qu'au survol, comme sur les pastilles
+                // qu'on connaît : la couleur suffit à désigner, le signe
+                // confirme.
+                if réponse.hovered() {
+                    let trait_ = egui::Stroke::new(1.4, egui::Color32::from_black_alpha(190));
+                    let bras = BUTTON_RADIUS * 0.45;
+                    match bouton {
+                        WindowButton::Minimize => {
+                            ui.painter().line_segment(
+                                [
+                                    centre - egui::vec2(bras, 0.0),
+                                    centre + egui::vec2(bras, 0.0),
+                                ],
+                                trait_,
+                            );
+                        }
+                        WindowButton::Maximize => {
+                            let carré = egui::Rect::from_center_size(
+                                centre,
+                                egui::vec2(bras * 1.7, bras * 1.7),
+                            );
+                            ui.painter()
+                                .rect_stroke(carré, 1.0, trait_, egui::StrokeKind::Inside);
+                        }
+                        WindowButton::Close => {
+                            ui.painter().line_segment(
+                                [
+                                    centre - egui::vec2(bras, bras),
+                                    centre + egui::vec2(bras, bras),
+                                ],
+                                trait_,
+                            );
+                            ui.painter().line_segment(
+                                [
+                                    centre - egui::vec2(bras, -bras),
+                                    centre + egui::vec2(bras, -bras),
+                                ],
+                                trait_,
+                            );
+                        }
                     }
                 }
+                let infobulle = if bouton == WindowButton::Maximize && maximized {
+                    s.window_restore
+                } else {
+                    bouton.hint(s)
+                };
+                if réponse.on_hover_text(infobulle).clicked() {
+                    cliqué = Some(bouton);
+                }
             }
-            let infobulle = if bouton == WindowButton::Maximize && maximized {
-                s.window_restore
-            } else {
-                bouton.hint(s)
-            };
-            if réponse.on_hover_text(infobulle).clicked() {
-                cliqué = Some(bouton);
-            }
-        }
-    });
+        },
+    );
     cliqué
 }
 

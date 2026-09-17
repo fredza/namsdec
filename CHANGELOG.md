@@ -98,6 +98,9 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
 - Le bloc de la prochaine instruction se replie, et son détail — fiche,
   opérandes résolus, arguments — est derrière un repli qui s'ouvre de
   lui-même devant un appel, un saut conditionnel ou un appel système.
+- Une chaîne de l'onglet RE se tronque au bord du panneau, et non à la
+  largeur idéale de son texte : les lignes s'arrêtaient au milieu d'un
+  panneau à moitié vide.
 - Les modules de rétro-ingénierie sont dans des cadres, et seul le résumé
   est ouvert dans le panneau latéral. La fenêtre d'analyse, elle, se lit
   en entier et les déplie tous.
@@ -108,7 +111,8 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
   l'échelle est logarithmique, le compte exact vient au survol, et la
   colonne du compteur disparaît avec ses quarante-quatre pixels.
 - La fenêtre porte ses trois pastilles au bout de la barre de menus, qui
-  fait office de barre de titre : une rangée de moins. Préférences ▸
+  fait office de barre de titre : une rangée de moins. Réduire à gauche,
+  fermer à droite, comme partout ailleurs sous Linux. Préférences ▸
   Général rend la barre du système à qui la préfère.
 - La boîte « À propos » mène quelque part : namsdec.io, le Discord, le
   dépôt.
