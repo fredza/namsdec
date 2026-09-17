@@ -8,6 +8,7 @@
 //! lit en premier.
 
 use crate::imports::{self, Import};
+use crate::libc;
 use crate::{ReContext, ReModule};
 
 #[derive(Default)]
@@ -116,7 +117,8 @@ impl ReModule for ImportsModule {
         for rang in rangs {
             let import = &self.imports[rang];
             let appels = self.appels[rang];
-            ui.horizontal(|ui| {
+            let note = libc::explain(&import.name);
+            ui.horizontal_wrapped(|ui| {
                 ui.monospace(format!("{:#x}", import.plt));
                 ui.strong(&import.name);
                 if appels > 0 {
@@ -129,7 +131,20 @@ impl ReModule for ImportsModule {
                         }
                     ));
                 }
+                // Ce qu'on cherche vraiment en lisant la liste : par où
+                // une entrée peut-elle déborder ? Ce n'est pas un
+                // verdict sur le programme, c'est l'endroit qu'on
+                // regarde en premier.
+                if note.is_some_and(|note| note.watch) {
+                    ui.label(
+                        egui::RichText::new(ctx.t("à regarder", "worth a look"))
+                            .color(egui::Color32::from_rgb(0xd7, 0xba, 0x7d)),
+                    );
+                }
             });
+            if let Some(note) = note {
+                ui.indent(&import.name, |ui| ui.weak(note.text(ctx.lang)));
+            }
         }
     }
 }

@@ -7953,6 +7953,7 @@ fn every_glyph_the_interface_writes_exists_in_its_font() {
         include_str!("../../namsdec-re/src/xrefs_module.rs"),
         include_str!("../../namsdec-re/src/gadgets_module.rs"),
         include_str!("../../namsdec-re/src/imports_module.rs"),
+        include_str!("../../namsdec-re/src/libc.rs"),
         include_str!("../../namsdec-re/src/binary_info.rs"),
         include_str!("../../namsdec-disasm/src/pseudo.rs"),
     ];

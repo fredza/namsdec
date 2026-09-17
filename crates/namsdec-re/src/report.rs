@@ -263,7 +263,16 @@ pub fn markdown(scan: &Scan, bytes: &[u8], lang: &str, name: &str) -> String {
             empruntées.len()
         ));
         for import in &empruntées {
-            out.push_str(&format!("- `{}` — {:#x}\n", import.name, import.plt));
+            out.push_str(&format!("- `{}` — {:#x}", import.name, import.plt));
+            // Ce que fait la fonction, quand namsdec le sait : une liste
+            // de noms suppose qu'on les connaisse déjà.
+            if let Some(note) = crate::libc::explain(&import.name) {
+                out.push_str(&format!(" — {}", note.text(lang)));
+                if note.watch {
+                    out.push_str(&format!(" **({})**", t(lang, "à regarder", "worth a look")));
+                }
+            }
+            out.push('\n');
         }
     }
     for (label, value) in [("RUNPATH", &scan.runpath), ("RPATH", &scan.rpath)] {

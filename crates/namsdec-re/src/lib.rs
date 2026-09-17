@@ -11,6 +11,7 @@ pub mod gadgets;
 mod gadgets_module;
 pub mod imports;
 mod imports_module;
+pub mod libc;
 mod protections;
 pub mod report;
 pub mod strings;
