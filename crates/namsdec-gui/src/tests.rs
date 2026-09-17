@@ -6455,7 +6455,7 @@ fn the_course_offers_the_next_step() {
 /// Le manuel se consulte aussi pour ce qu'on ne connaît pas encore.
 ///
 /// F1 répond sur le mot où l'on est : encore faut-il savoir quoi
-/// écrire. La fenêtre d'aide cherche maintenant dans les 151 fiches, par
+/// écrire. La fenêtre d'aide cherche maintenant dans les 152 fiches, par
 /// nom comme par titre.
 #[test]
 fn the_manual_can_be_searched_for_what_one_does_not_know_yet() {
@@ -10171,6 +10171,58 @@ _start:
         "{painted}"
     );
     assert!(painted.contains("nasm -f elf64"), "{painted}");
+}
+
+/// Ouvrir un fichier objet — un `.o` — se lit et s'analyse, mais ne
+/// s'exécute pas, et namsdec dit pourquoi.
+///
+/// Il s'en plaignait jusqu'ici en parlant de mémoire : « le binaire
+/// dépasse la fenêtre simulée », devant un fichier de 560 octets. La
+/// vraie raison est que `ld` n'est pas passé — aucune section n'a
+/// d'adresse, il n'y a pas de point d'entrée.
+#[test]
+fn an_unlinked_object_reads_but_does_not_run() {
+    if namsdec_asm::find_nasm().is_none() {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let asm = dir.path().join("t.asm");
+    let objet = dir.path().join("t.o");
+    std::fs::write(
+        &asm,
+        "global _start\nsection .text\n_start:\n    mov rax, 60\n    xor rdi, rdi\n    syscall\n",
+    )
+    .unwrap();
+    let ok = std::process::Command::new("nasm")
+        .args(["-f", "elf64", "-o"])
+        .arg(&objet)
+        .arg(&asm)
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if !ok {
+        return;
+    }
+
+    let mut app = NamsdecApp::default();
+    app.load_binary(std::fs::read(&objet).unwrap());
+
+    // Il se lit : le désassemblage est là, avec l'étiquette.
+    let state = app.assemble_state.as_ref().expect("chargé");
+    assert!(!state.disasm.is_empty(), "le code est désassemblé");
+    assert!(app.source.contains("_start:"), "{}", app.source);
+    assert!(state.output.symbols.iter().any(|s| s.name == "_start"));
+
+    // Il ne s'exécute pas, et le message dit pourquoi et quoi faire.
+    assert!(app.emulator.is_none(), "rien à exécuter");
+    let Status::Error(message) = &app.status else {
+        panic!("attendu une explication, obtenu {:?}", app.status);
+    };
+    assert!(message.contains("ld -Ttext"), "{message}");
+    assert!(
+        !message.contains("mémoire"),
+        "la mémoire n'y est pour rien : {message}"
+    );
 }
 
 /// La mémoire montre sa carte : où commence le code, où finit la pile,

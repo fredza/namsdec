@@ -2678,6 +2678,9 @@ impl NamsdecApp {
         let Some(elf) = namsdec_asm::elf::parse(bytes) else {
             return false;
         };
+        // Un fichier de réadressage : aucune section n'a d'adresse, et
+        // il n'y a pas de point d'entrée. `ld` n'est pas encore passé.
+        let relocatable = elf.entry == 0 && elf.sections.iter().all(|section| section.addr == 0);
         let Some((load_addr, image)) = elf.image() else {
             return false;
         };
@@ -2736,6 +2739,16 @@ impl NamsdecApp {
             disasm,
             addr_to_line,
         });
+        // Un objet non lié — un `.o` — n'a ni point d'entrée ni adresse
+        // de section : `ld` ne lui en a pas encore donné. Il se lit et
+        // s'analyse très bien, mais l'exécuter n'a pas de sens, et le
+        // chargeur s'en plaignait jusqu'ici en parlant de mémoire, ce
+        // qui n'expliquait rien.
+        if relocatable {
+            self.emulator = None;
+            self.status = Status::Error(strings(self.lang).binary_not_linked.to_owned());
+            return true;
+        }
         self.rebuild_emulator();
         if !matches!(self.status, Status::Error(_)) {
             self.status = Status::BinaryLoaded {

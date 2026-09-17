@@ -2033,6 +2033,20 @@ pub const ENTRIES: &[Entry] = &[
     // laisse le lecteur les deviner.
     Entry {
         kind: Kind::Concept,
+        names: &["assemblage", "nasm", "ld", "editeur-de-liens", "lier"],
+        title: Text {
+            fr: "D'un texte à un programme : nasm, puis ld",
+            en: "From text to program: nasm, then ld",
+        },
+        body: Text {
+            fr: "Deux outils, deux étapes. **`nasm`** traduit le texte en *fichier objet* (`.o`) : les instructions y sont déjà en octets, mais les adresses ne sont pas encore décidées — une étiquette n'y est qu'un nom dans une table. **`ld`** assemble les objets, choisit où chaque section ira en mémoire, remplace les noms par des adresses et écrit l'ELF exécutable. C'est pourquoi un `.o` s'ouvre et se lit dans namsdec mais ne s'exécute pas : personne ne lui a encore dit où il vivrait.",
+            en: "Two tools, two steps. **`nasm`** turns the text into an *object file* (`.o`): the instructions are already bytes, but no address has been decided — a label there is just a name in a table. **`ld`** puts the objects together, picks where each section will live in memory, replaces the names with addresses and writes the ELF executable. That is why a `.o` opens and reads in namsdec but does not run: nobody has told it where it would live yet.",
+        },
+        flags: "",
+        example: "; nasm -f elf64 -o p.o p.asm ; ld -Ttext 0x400000 -o p p.o\n    nop",
+    },
+    Entry {
+        kind: Kind::Concept,
         names: &["debordement", "débordement", "overflow"],
         title: Text {
             fr: "Le débordement de tampon",

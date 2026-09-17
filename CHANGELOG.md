@@ -79,6 +79,10 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
   vérifications et la publication du binaire avec sa somme SHA-256.
 
 **Corrigé**
+- Ouvrir un fichier objet `.o` se plaignait de la mémoire — « le binaire
+  dépasse la fenêtre simulée » devant cinq cents octets. La vraie raison
+  est que `ld` n'est pas passé : il se lit et s'analyse, mais ne
+  s'exécute pas, et le message le dit avec la commande qui manque.
 - Aucun lien ne s'ouvrait : `open_url` d'eframe est derrière la
   fonctionnalité `links`, que le projet n'activait pas. Les boutons de
   la boîte « À propos », le lien de la licence et celui d'une version
