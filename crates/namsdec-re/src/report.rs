@@ -275,6 +275,30 @@ pub fn markdown(scan: &Scan, bytes: &[u8], lang: &str, name: &str) -> String {
             out.push('\n');
         }
     }
+    // Ce que le binaire dit de lui-même : les chaînes les plus
+    // parlantes. Vingt, pas deux cents — un rapport qu'on ne lit pas
+    // n'en est plus un, et le panneau reste là pour la liste entière.
+    let chaînes = crate::strings::scan_elf(bytes).unwrap_or_default();
+    let parlantes: Vec<&crate::strings::Found> = chaînes
+        .iter()
+        // Les chaînes courtes d'un binaire sont surtout des fragments de
+        // symboles ; celles qui portent un message font au moins huit
+        // caractères, espace compris.
+        .filter(|found| found.text.trim().len() >= 8 && found.text.contains(' '))
+        .take(20)
+        .collect();
+    if !parlantes.is_empty() {
+        out.push_str(&format!(
+            "\n## {}\n\n",
+            t(lang, "Ce qu'il dit", "What it says")
+        ));
+        for found in parlantes {
+            // Le texte tel quel, entre accents graves : une chaîne peut
+            // contenir des caractères qui, en Markdown, veulent dire
+            // autre chose.
+            out.push_str(&format!("- `{}`\n", found.text.replace('`', "'")));
+        }
+    }
     for (label, value) in [("RUNPATH", &scan.runpath), ("RPATH", &scan.rpath)] {
         if let Some(value) = value {
             out.push_str(&format!("\n- {label} : `{value}`\n"));
@@ -374,6 +398,7 @@ mod tests {
             "LOAD",
             "Fonctions importées",
             "malloc",
+            "Ce qu'il dit",
         ] {
             assert!(report.contains(attendu), "« {attendu} » manque :\n{report}");
         }

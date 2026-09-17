@@ -30,6 +30,49 @@ const MIN_LEN: usize = 4;
 /// des milliers, et ce n'est pas une liste de mille entrées qu'on lit.
 const MAX_FOUND: usize = 200;
 
+/// Les chaînes d'un ELF, cherchées **là où elles se trouvent**.
+///
+/// Un binaire commence par du code, et du code contient à foison des
+/// suites d'octets imprimables qui ne veulent rien dire : `[A\A]A^A_]`
+/// n'est pas une chaîne, c'est une fin de fonction. Chercher depuis le
+/// premier octet remplissait donc le panneau de bruit et s'arrêtait
+/// avant d'atteindre `.rodata`, là où sont les vrais messages.
+///
+/// On ne lit donc que les sections qui portent des données : ni le code,
+/// ni celles qui n'occupent rien dans le fichier. C'est ce que fait
+/// `strings -d`, et pour la même raison.
+///
+/// Rend `None` quand ce n'est pas un ELF : l'appelant retombe alors sur
+/// [`scan`], qui lit tout.
+pub fn scan_elf(bytes: &[u8]) -> Option<Vec<Found>> {
+    let elf = crate::elf_scan::scan(bytes)?;
+    let mut out = Vec::new();
+    for section in &elf.sections {
+        if section.execute || section.nobits || section.size == 0 {
+            continue;
+        }
+        let début = section.offset as usize;
+        let fin = début.checked_add(section.size as usize)?;
+        let Some(contenu) = bytes.get(début..fin) else {
+            continue;
+        };
+        // L'adresse virtuelle quand la section en a une ; sinon sa
+        // position dans le fichier, qui reste un repère utilisable.
+        let base = if section.addr != 0 {
+            section.addr
+        } else {
+            section.offset
+        };
+        for found in scan(contenu, base) {
+            out.push(found);
+            if out.len() >= MAX_FOUND {
+                return Some(out);
+            }
+        }
+    }
+    Some(out)
+}
+
 /// Cherche les suites d'octets imprimables dans `bytes`, avec l'adresse
 /// où chacune commence.
 ///
@@ -87,10 +130,16 @@ impl ReModule for StringsModule {
     fn on_binary_loaded(&mut self, ctx: &ReContext) {
         let range = ctx.cpu.mem.range();
         let len = (range.end - range.start) as usize;
-        self.found = match ctx.cpu.mem.peek_bytes(range.start, len) {
-            Ok(bytes) => scan(bytes, range.start),
-            Err(_) => Vec::new(),
-        };
+        // Le fichier d'abord, quand on l'a : ses sections disent où sont
+        // les données, et chercher ailleurs ne rapporte que du code qui
+        // ressemble à du texte. À défaut — un tampon brut, un programme
+        // qu'on vient d'assembler — on lit la mémoire telle quelle.
+        self.found = scan_elf(ctx.binary).unwrap_or_else(|| {
+            match ctx.cpu.mem.peek_bytes(range.start, len) {
+                Ok(bytes) => scan(bytes, range.start),
+                Err(_) => Vec::new(),
+            }
+        });
         // « Mot de passe » quelque part dans les données ne dit rien ;
         // « mot de passe, lu ici » dit par où entrer.
         self.xrefs = crate::xrefs::scan(ctx.disasm, range);
@@ -170,6 +219,56 @@ impl ReModule for StringsModule {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    /// Sur un vrai binaire, les chaînes cherchées dans les données
+    /// valent celles qu'on lirait avec `strings -d` — et non les
+    /// fragments de code qui leur ressemblent.
+    ///
+    /// C'est ce qui manquait : en partant du premier octet du fichier,
+    /// les deux cents premières « chaînes » étaient des fins de
+    /// fonctions, et la recherche s'arrêtait avant d'atteindre les vrais
+    /// messages.
+    #[test]
+    fn a_real_binary_yields_its_data_not_its_code() {
+        let Ok(bytes) = std::fs::read("/bin/ls") else {
+            eprintln!("/bin/ls introuvable : test ignoré");
+            return;
+        };
+        let trouvées = scan_elf(&bytes).expect("un ELF");
+        assert!(!trouvées.is_empty());
+        // L'interpréteur dynamique est une chaîne, et elle est dans une
+        // section de données : c'est le repère le plus sûr qui soit.
+        assert!(
+            trouvées.iter().any(|found| found.text.contains("ld-linux")),
+            "les vraies chaînes ne sont pas atteintes"
+        );
+        // Et les fragments de code ne sont plus là : aucune adresse
+        // trouvée ne tombe dans une section exécutable.
+        let elf = crate::elf_scan::scan(&bytes).expect("un ELF");
+        for found in &trouvées {
+            for section in elf.sections.iter().filter(|s| s.execute) {
+                let fin = section.addr + section.size;
+                assert!(
+                    !(section.addr..fin).contains(&found.addr),
+                    "« {} » vient de {}, qui est du code",
+                    found.text,
+                    section.name
+                );
+            }
+        }
+    }
+
+    /// Ce qui n'est pas un ELF se lit quand même, du premier octet au
+    /// dernier : un tampon brut n'a pas de sections à consulter.
+    #[test]
+    fn a_raw_buffer_is_still_read_whole() {
+        assert!(scan_elf(b"pas un ELF, juste des octets").is_none());
+        let trouvées = scan(b"\x00\x01salut tout le monde\x00", 0x1000);
+        assert_eq!(trouvées.len(), 1);
+        assert_eq!(trouvées[0].text, "salut tout le monde");
+        assert_eq!(trouvées[0].addr, 0x1002);
+    }
     use super::*;
 
     #[test]

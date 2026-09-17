@@ -73,6 +73,15 @@ pub struct SectionInfo {
     pub size: u64,
     pub write: bool,
     pub execute: bool,
+    /// Où la section commence dans le fichier.
+    ///
+    /// Sans lui, on ne peut pas aller lire son contenu : une adresse
+    /// virtuelle ne dit pas où chercher dans les octets qu'on tient.
+    pub offset: u64,
+    /// La section n'occupe rien dans le fichier — `.bss` et ses
+    /// semblables. Son `offset` désigne alors ce qui suit, et lire là
+    /// reviendrait à raconter le contenu du voisin.
+    pub nobits: bool,
 }
 
 /// Une fonction nommée par la table des symboles.
@@ -192,6 +201,8 @@ const GNU_PROPERTY_X86_FEATURE_1_AND: u32 = 0xc000_0002;
 const X86_FEATURE_1_IBT: u32 = 0x1;
 const X86_FEATURE_1_SHSTK: u32 = 0x2;
 const SHT_DYNSYM: u32 = 11;
+/// Une section qui n'occupe rien dans le fichier : `.bss`.
+const SHT_NOBITS: u32 = 8;
 
 fn u16_at(bytes: &[u8], at: usize) -> Option<u16> {
     Some(u16::from_le_bytes(bytes.get(at..at + 2)?.try_into().ok()?))
@@ -487,7 +498,9 @@ fn read_sections(bytes: &[u8]) -> Option<Vec<SectionInfo>> {
         let header = shoff.checked_add(index.checked_mul(shentsize)?)?;
         let name_offset = u32_at(bytes, header)? as usize;
         let flags = u64_at(bytes, header + 0x08)?;
+        let kind = u32_at(bytes, header + 0x04)?;
         let addr = u64_at(bytes, header + 0x10)?;
+        let offset = u64_at(bytes, header + 0x18)?;
         let size = u64_at(bytes, header + 0x20)?;
         let name = string_at(bytes, names_at + name_offset)?;
         if name.is_empty() {
@@ -499,6 +512,8 @@ fn read_sections(bytes: &[u8]) -> Option<Vec<SectionInfo>> {
             size,
             write: flags & 0x1 != 0,
             execute: flags & 0x4 != 0,
+            offset,
+            nobits: kind == SHT_NOBITS,
         });
     }
     Some(sections)
