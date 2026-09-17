@@ -439,8 +439,23 @@ impl NamsdecApp {
         // La fiche de l'instruction, en une ligne : « Copier une valeur ».
         // Le reste est sous F1 — ici, c'est le rappel qui évite d'y aller.
         let mnemonic = text.split([' ', '\t']).next().unwrap_or_default();
+        let mut fiche = None;
         if let Some(entry) = namsdec_doc::lookup(mnemonic) {
-            ui.colored_label(theme.dim, entry.title.get(self.lang.code()));
+            // Et le titre mène à la fiche : on s'arrête sur une
+            // instruction parce qu'on ne la comprend pas, et le curseur
+            // de l'éditeur, lui, est resté où on l'avait laissé.
+            if ui
+                .add(
+                    egui::Label::new(
+                        egui::RichText::new(entry.title.get(self.lang.code())).color(theme.dim),
+                    )
+                    .sense(egui::Sense::click()),
+                )
+                .on_hover_text(s.help_open_sheet)
+                .clicked()
+            {
+                fiche = Some(mnemonic.to_owned());
+            }
         }
         // Les octets, découpés par rôle : un préfixe n'est pas un
         // opcode, et une instruction x86 se lit comme une suite de
@@ -494,6 +509,9 @@ impl NamsdecApp {
 
         let lines = namsdec_emu::explain::operands(cpu, &instr);
         if lines.is_empty() {
+            // La fiche demandée s'ouvre quand même : elle ne dépend pas
+            // des opérandes.
+            self.open_requested_sheet(fiche);
             return;
         }
         // Les étiquettes du programme, pour nommer les adresses : le
@@ -521,6 +539,16 @@ impl NamsdecApp {
                 }
             });
         ui.separator();
+        self.open_requested_sheet(fiche);
+    }
+
+    /// Ouvre la fiche qu'un clic a demandée, une fois les emprunts du
+    /// bandeau relâchés.
+    pub(crate) fn open_requested_sheet(&mut self, mnemonic: Option<String>) {
+        if let Some(mnemonic) = mnemonic {
+            self.open_help(&mnemonic);
+            self.show_help = true;
+        }
     }
 
     /// D'où vient la valeur d'un registre : le pas qui l'a écrite.

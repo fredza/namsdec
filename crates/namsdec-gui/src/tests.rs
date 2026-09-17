@@ -4413,6 +4413,33 @@ fn hovering_an_instruction_explains_it() {
     );
 }
 
+/// Le titre de fiche affiché sous l'instruction courante ouvre la
+/// fiche : on s'arrête sur une instruction parce qu'on ne la comprend
+/// pas, et le curseur de l'éditeur est resté ailleurs.
+#[test]
+fn the_banner_leads_to_the_sheet_of_the_instruction_it_shows() {
+    let mut app = NamsdecApp {
+        source: "global _start\nsection .text\n_start:\n    movzx eax, al\n    hlt\n".to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+
+    // Le bandeau annonce la fiche de l'instruction à venir.
+    let painted = paint(&mut app);
+    let titre = namsdec_doc::lookup("movzx").unwrap().title.fr;
+    assert!(painted.contains(titre), "{painted}");
+
+    // Et le clic sur ce titre l'ouvre, fenêtre comprise.
+    assert!(!app.show_help);
+    app.open_requested_sheet(Some("movzx".to_owned()));
+    assert!(app.show_help);
+    assert_eq!(
+        app.help.as_ref().map(|(mot, _)| mot.as_str()),
+        Some("movzx")
+    );
+}
+
 /// Le bandeau « Prochaine instruction » fait le calcul d'adresse que le
 /// débutant fait de tête : `[tampon + rcx]`, c'est *cette* adresse-là, et
 /// il y a *cette* valeur dedans.
