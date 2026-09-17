@@ -53,7 +53,14 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
 - Chaque exercice montre les fiches que son propre code emploie.
 - F1 répond aussi sur une fonction empruntée.
 
-**Le parcours passe à trente-six étapes, rangées par difficulté**
+**Le parcours passe à quarante-quatre étapes, rangées par difficulté**
+- Huit de plus : les quatre indicateurs provoqués un par un, le
+  complément à deux vu de près, `popcnt` contre la boucle qui compte les
+  bits, la matrice et pourquoi on la parcourt ligne par ligne, `cmov` et
+  la prédiction de branchement, Fibonacci sans un seul `call`, le tableau
+  local sur la pile, et la mise en majuscules — un seul bit d'écart dans
+  la table ASCII.
+
 - Six de plus : « Mettre à zéro, trois façons » (sept octets contre deux,
   et pourquoi les binaires sont pleins de `xor`), « La boucle que le
   processeur connaît » (`loop`, et pourquoi elle a disparu), « La même

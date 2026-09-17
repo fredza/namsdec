@@ -278,6 +278,21 @@ pub fn builtin_pack() -> Pack {
                 level: Level::Discovery,
             },
             Exercise {
+                id: "drapeaux".to_owned(),
+                title: Text {
+                    fr: "Les quatre indicateurs".to_owned(),
+                    en: "The four flags".to_owned(),
+                },
+                description: Text {
+                    fr: "`ZF` : le résultat est nul. `SF` : son bit de poids fort est à un. `CF` : il y a eu une retenue au-delà du registre — le débordement des non signés. `OF` : le signe du résultat est impossible — celui des signés. Les quatre sont provoqués exprès ici, et `setcc` les recopie dans un registre pour qu'on les voie.".to_owned(),
+                    en: "`ZF`: the result is zero. `SF`: its top bit is set. `CF`: a carry ran past the register — unsigned overflow. `OF`: the result's sign is impossible — the signed one. All four are provoked here on purpose, and `setcc` copies them into a register so one can see them.".to_owned(),
+                },
+                starter_code: include_str!("../exercises/drapeaux.asm").to_owned(),
+                goal: vec!["rax == 1".to_owned(), "rbx == 1".to_owned(), "rcx == 1".to_owned(), "rdx == 1".to_owned()],
+                par: Some(17),
+                level: Level::Discovery,
+            },
+            Exercise {
                 id: "signe".to_owned(),
                 title: Text {
                     fr: "Signé ou non signé".to_owned(),
@@ -293,6 +308,21 @@ pub fn builtin_pack() -> Pack {
                 level: Level::Discovery,
             },
             Exercise {
+                id: "negatif".to_owned(),
+                title: Text {
+                    fr: "Un nombre négatif, vu de près".to_owned(),
+                    en: "A negative number, up close".to_owned(),
+                },
+                description: Text {
+                    fr: "Il n'y a pas de bit « moins » : un négatif est le complément à deux de son opposé, et c'est pourquoi -1 s'écrit avec tous les bits à un. L'avantage est énorme — l'addition fonctionne sans rien changer, et le processeur n'a qu'un seul additionneur. Survolez RAX : le même motif de bits vaut -5 ou 18 446 744 073 709 551 611, selon la question qu'on pose.".to_owned(),
+                    en: "There is no \"minus\" bit: a negative is the two's complement of its opposite, which is why -1 is written with every bit set. The gain is enormous — addition works unchanged, and the processor needs only one adder. Hover RAX: the same bit pattern reads as -5 or as 18,446,744,073,709,551,611, depending on the question.".to_owned(),
+                },
+                starter_code: include_str!("../exercises/negatif.asm").to_owned(),
+                goal: vec!["rax == 0xfffffffffffffffb".to_owned(), "rbx == 5".to_owned(), "rcx == 1".to_owned()],
+                par: Some(7),
+                level: Level::Discovery,
+            },
+            Exercise {
                 id: "decalages".to_owned(),
                 title: Text {
                     fr: "Multiplier sans multiplier".to_owned(),
@@ -305,6 +335,21 @@ pub fn builtin_pack() -> Pack {
                 starter_code: include_str!("../exercises/decalages.asm").to_owned(),
                 goal: vec!["rax == 0x28".to_owned(), "rbx == 5".to_owned()],
                 par: Some(9),
+                level: Level::Practice,
+            },
+            Exercise {
+                id: "compter_bits".to_owned(),
+                title: Text {
+                    fr: "Compter les bits à un".to_owned(),
+                    en: "Counting the bits that are set".to_owned(),
+                },
+                description: Text {
+                    fr: "La boucle est évidente : regarder le bit du bas, décaler, recommencer — soixante-quatre tours. `popcnt` fait le même travail en une instruction, parce que le matériel sait le faire. C'est l'exemple type de ce qu'aucun cours d'algorithmique ne donne : la meilleure solution n'est pas un meilleur algorithme, c'est une instruction qui existe. Comparez les deux compteurs.".to_owned(),
+                    en: "The loop is obvious: look at the bottom bit, shift, repeat — sixty-four rounds. `popcnt` does the same work in one instruction, because the hardware knows how. It is the classic case no algorithms course covers: the better solution is not a better algorithm, it is an instruction that exists. Compare the two counts.".to_owned(),
+                },
+                starter_code: include_str!("../exercises/compter_bits.asm").to_owned(),
+                goal: vec!["rax == 5".to_owned(), "rbx == 5".to_owned()],
+                par: Some(63),
                 level: Level::Practice,
             },
             Exercise {
@@ -413,6 +458,21 @@ pub fn builtin_pack() -> Pack {
                 level: Level::Practice,
             },
             Exercise {
+                id: "matrice".to_owned(),
+                title: Text {
+                    fr: "Un tableau à deux dimensions".to_owned(),
+                    en: "A two-dimensional array".to_owned(),
+                },
+                description: Text {
+                    fr: "La mémoire est plate : un tableau à deux dimensions n'existe pas pour le processeur. On le range ligne par ligne et l'on calcule l'adresse soi-même — base + (ligne × largeur + colonne) × taille. De là vient une règle qu'on retrouve partout : parcourir une matrice ligne par ligne va plus vite que colonne par colonne, parce que les octets voisins arrivent ensemble dans le cache.".to_owned(),
+                    en: "Memory is flat: a two-dimensional array does not exist for the processor. One stores it row by row and works out the address oneself — base + (row × width + column) × size. Hence a rule found everywhere: walking a matrix row by row beats column by column, because neighbouring bytes arrive together in the cache.".to_owned(),
+                },
+                starter_code: include_str!("../exercises/matrice.asm").to_owned(),
+                goal: vec!["rax == 0x3c".to_owned(), "rbx == 0x1c2".to_owned()],
+                par: Some(56),
+                level: Level::Practice,
+            },
+            Exercise {
                 id: "recherche".to_owned(),
                 title: Text {
                     fr: "Chercher dans un tableau".to_owned(),
@@ -518,6 +578,21 @@ pub fn builtin_pack() -> Pack {
                 level: Level::Structures,
             },
             Exercise {
+                id: "sans_branche".to_owned(),
+                title: Text {
+                    fr: "Choisir sans sauter".to_owned(),
+                    en: "Choosing without jumping".to_owned(),
+                },
+                description: Text {
+                    fr: "Un processeur devine la suite d'un saut avant de la connaître : juste, le saut est gratuit ; faux, il jette une quinzaine d'étapes commencées. Sur une donnée imprévisible, il se trompe une fois sur deux. `cmovcc` répond à cela — la comparaison a lieu, mais il n'y a rien à deviner. Le prix : les deux valeurs sont calculées. Les deux versions sont dans le programme ; comparez.".to_owned(),
+                    en: "A processor guesses where a jump goes before it knows: guessed right, the jump is free; wrong, it throws away a dozen steps already begun. On unpredictable data it is wrong half the time. `cmovcc` answers that — the comparison happens, but there is nothing to guess. The price: both values get computed. Both versions are in the program; compare.".to_owned(),
+                },
+                starter_code: include_str!("../exercises/sans_branche.asm").to_owned(),
+                goal: vec!["rax == 0x14".to_owned()],
+                par: Some(5),
+                level: Level::Structures,
+            },
+            Exercise {
                 id: "pile".to_owned(),
                 title: Text {
                     fr: "La pile".to_owned(),
@@ -578,6 +653,21 @@ pub fn builtin_pack() -> Pack {
                 level: Level::Structures,
             },
             Exercise {
+                id: "fibonacci".to_owned(),
+                title: Text {
+                    fr: "Fibonacci sans un seul appel".to_owned(),
+                    en: "Fibonacci without a single call".to_owned(),
+                },
+                description: Text {
+                    fr: "La suite qu'on donne toujours en exemple pour la récursion s'écrit ici sans un `call` : deux registres gardent les deux termes précédents, et `xadd` les échange et les additionne d'un coup. Écrivez la version récursive si vous voulez voir le compteur d'instructions exploser — c'est la meilleure démonstration de ce que coûte un mauvais algorithme, et elle tient en six lignes.".to_owned(),
+                    en: "The sequence always used to illustrate recursion is written here without a single `call`: two registers hold the previous two terms, and `xadd` swaps and adds them at once. Write the recursive version if you want to watch the instruction count explode — it is the best demonstration of what a bad algorithm costs, and it fits in six lines.".to_owned(),
+                },
+                starter_code: include_str!("../exercises/fibonacci.asm").to_owned(),
+                goal: vec!["rax == 0x37".to_owned()],
+                par: Some(56),
+                level: Level::Structures,
+            },
+            Exercise {
                 id: "cadre".to_owned(),
                 title: Text {
                     fr: "Un cadre de pile".to_owned(),
@@ -589,6 +679,21 @@ pub fn builtin_pack() -> Pack {
                 },
                 starter_code: include_str!("../exercises/cadre.asm").to_owned(),
                 goal: vec!["rax == 7".to_owned()],
+                par: Some(11),
+                level: Level::Structures,
+            },
+            Exercise {
+                id: "pile_locale".to_owned(),
+                title: Text {
+                    fr: "Un tableau qui vit sur la pile".to_owned(),
+                    en: "An array living on the stack".to_owned(),
+                },
+                description: Text {
+                    fr: "Ce qui ne sert que pendant un appel n'a rien à faire dans `.data` : `sub rsp, 24` réserve trois emplacements, `[rsp]`, `[rsp+8]` et `[rsp+16]` les désignent, `add rsp, 24` les rend. C'est ce que fait un compilateur pour un tableau local — et c'est pourquoi un tableau local trop grand fait déborder la pile là où le même en `.data` ne poserait aucun problème.".to_owned(),
+                    en: "What only serves during a call has no business in `.data`: `sub rsp, 24` reserves three slots, `[rsp]`, `[rsp+8]` and `[rsp+16]` name them, `add rsp, 24` gives them back. That is what a compiler does for a local array — and why an oversized local array overflows the stack where the same one in `.data` would not.".to_owned(),
+                },
+                starter_code: include_str!("../exercises/pile_locale.asm").to_owned(),
+                goal: vec!["rax == 6".to_owned()],
                 par: Some(11),
                 level: Level::Structures,
             },
@@ -683,6 +788,21 @@ pub fn builtin_pack() -> Pack {
                 level: Level::Mastery,
             },
             Exercise {
+                id: "majuscules".to_owned(),
+                title: Text {
+                    fr: "Mettre un texte en majuscules".to_owned(),
+                    en: "Upper-casing a text".to_owned(),
+                },
+                description: Text {
+                    fr: "Une minuscule et sa majuscule ne diffèrent que d'un bit : 'a' vaut 0x61, 'A' vaut 0x41. C'est un choix délibéré de la table ASCII, fait pour que la conversion tienne en une instruction. Attention à ce qui n'est pas une lettre — le saut de ligne vaut 0x0A, et lui retirer 32 donnerait n'importe quoi. C'est exactement ce que fait `toupper`.".to_owned(),
+                    en: "A lower-case letter and its capital differ by a single bit: 'a' is 0x61, 'A' is 0x41. That is a deliberate choice in the ASCII table, made so the conversion fits in one instruction. Mind what is not a letter — a newline is 0x0A, and subtracting 32 from it would give nonsense. This is exactly what `toupper` does.".to_owned(),
+                },
+                starter_code: include_str!("../exercises/majuscules.asm").to_owned(),
+                goal: vec!["rax == 6".to_owned()],
+                par: Some(72),
+                level: Level::Mastery,
+            },
+            Exercise {
                 id: "debordement".to_owned(),
                 title: Text {
                     fr: "Ce qu'un tampon trop petit laisse faire".to_owned(),
@@ -745,9 +865,9 @@ mod tests {
     #[test]
     fn every_builtin_exercise_is_complete_and_stops() {
         let pack = builtin_pack();
-        // Un parcours, pas une poignée : trente-six étapes, et chacune
-        // s'appuie sur les précédentes.
-        assert_eq!(pack.exercises.len(), 36);
+        // Un parcours, pas une poignée : quarante-quatre étapes, et
+        // chacune s'appuie sur les précédentes.
+        assert_eq!(pack.exercises.len(), 44);
         for exercise in &pack.exercises {
             assert!(!exercise.id.is_empty());
             assert!(!exercise.title.fr.is_empty() && !exercise.title.en.is_empty());

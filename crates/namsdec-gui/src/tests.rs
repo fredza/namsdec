@@ -3945,7 +3945,7 @@ fn an_exercise_points_at_the_sheets_it_uses() {
     );
 }
 
-/// Le parcours livré est un parcours : trente-six étapes dans l'ordre où
+/// Le parcours livré est un parcours : quarante-quatre étapes dans l'ordre où
 /// l'on apprend, chacune avec son but écrit dans le programme.
 ///
 /// L'ordre n'est pas décoratif. On lit les registres avant d'écrire une
@@ -3965,8 +3965,11 @@ fn the_built_in_pack_is_a_course_in_order() {
             "compteur",
             "bits",
             "comparer",
+            "drapeaux",
             "signe",
+            "negatif",
             "decalages",
+            "compter_bits",
             "multiplier",
             "division",
             "memoire",
@@ -3974,6 +3977,7 @@ fn the_built_in_pack_is_a_course_in_order() {
             "boutisme",
             "donnees",
             "tableau",
+            "matrice",
             "recherche",
             "adresses",
             "chaine",
@@ -3981,17 +3985,21 @@ fn the_built_in_pack_is_a_course_in_order() {
             "comparer_chaines",
             "macros",
             "branchements",
+            "sans_branche",
             "pile",
             "appels",
             "convention",
             "recursion",
+            "fibonacci",
             "cadre",
+            "pile_locale",
             "sortie",
             "entree",
             "tas",
             "flottants",
             "simd",
             "afficher",
+            "majuscules",
             "debordement",
             "protection",
         ]
@@ -5504,11 +5512,11 @@ fn the_readme_tells_the_truth() {
 
     let exercices = namsdec_exercises::builtin_pack().exercises.len();
     assert_eq!(
-        exercices, 36,
-        "le parcours livré compte trente-six exercices"
+        exercices, 44,
+        "le parcours livré compte quarante-quatre exercices"
     );
     assert!(
-        readme.contains("parcours de trente-six exercices"),
+        readme.contains("parcours de quarante-quatre exercices"),
         "le README doit annoncer le bon nombre d'exercices"
     );
     // Les crates listées dans le tableau existent toutes.
@@ -6310,7 +6318,7 @@ fn the_exercises_deliver_what_they_promise() {
 ///
 /// Un module qu'on active si on le désire, soit — mais une porte qu'on
 /// ne voit pas n'existe pas. Quelqu'un qui débute ne devinera pas qu'il
-/// y a trente-six exercices derrière un réglage.
+/// y a quarante-quatre exercices derrière un réglage.
 #[test]
 fn the_course_is_discoverable_before_it_is_loaded() {
     let mut app = NamsdecApp::default();
@@ -6351,7 +6359,7 @@ fn the_course_is_discoverable_before_it_is_loaded() {
         output.textures_delta.clear();
     }
     // Le texte d'accueil est à l'écran, avec sa mention du parcours.
-    assert!(painted.contains("trente-six exercices"), "{painted}");
+    assert!(painted.contains("quarante-quatre exercices"), "{painted}");
 }
 
 /// Le parcours se reprend là où on l'avait laissé.
@@ -6417,13 +6425,13 @@ fn the_course_remembers_where_one_stopped() {
         painted.contains("En cours :"),
         "l'étape en cours se voit sans avoir à la chercher : {painted}"
     );
-    // Le rang dans le parcours, aussi : le tableau est la seizième des
-    // trente-six étapes.
-    assert!(painted.contains("16/36"), "{painted}");
+    // Le rang dans le parcours, aussi : le tableau est la dix-neuvième
+    // des quarante-quatre étapes.
+    assert!(painted.contains("19/44"), "{painted}");
 }
 
 /// Un parcours se suit : l'étape suivante est à un clic, sans avoir à
-/// retrouver son rang dans une liste de trente-six.
+/// retrouver son rang dans une liste de quarante-quatre.
 #[test]
 fn the_course_offers_the_next_step() {
     let mut app = NamsdecApp {
@@ -6470,7 +6478,7 @@ fn the_course_offers_the_next_step() {
     }
     assert!(painted.contains("Étape suivante"), "{painted}");
     assert!(
-        painted.contains("1/36"),
+        painted.contains("1/44"),
         "le rang de l'étape en cours : {painted}"
     );
 }
@@ -8985,7 +8993,7 @@ fn every_goal_is_readable_and_on_the_right_side() {
     }
     // Ce que le programme livré fait déjà : on le regarde tourner et on
     // comprend ce qui s'est passé.
-    const DÉMONSTRATIONS: [&str; 27] = [
+    const DÉMONSTRATIONS: [&str; 35] = [
         "boucle",
         "bits",
         "memoire",
@@ -9013,6 +9021,14 @@ fn every_goal_is_readable_and_on_the_right_side() {
         "tailles",
         "recherche",
         "comparer_chaines",
+        "drapeaux",
+        "negatif",
+        "compter_bits",
+        "matrice",
+        "sans_branche",
+        "fibonacci",
+        "pile_locale",
+        "majuscules",
     ];
     // Ce qu'il reste à faire : le but n'est pas atteint tant qu'on n'a
     // pas écrit ce qui manque.
@@ -10143,7 +10159,7 @@ fn a_solved_exercise_stays_solved() {
     app.show_exercises = true;
     let painted = paint(&mut app);
     assert!(
-        painted.contains(&format!("1/36 {}", strings(app.lang).exercises_done_count)),
+        painted.contains(&format!("1/44 {}", strings(app.lang).exercises_done_count)),
         "{painted}"
     );
 }

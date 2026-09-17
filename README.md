@@ -138,7 +138,7 @@ Les raccourcis sont dans Préférences ▸ Raccourcis, et se changent.
 
 ### Les exercices
 
-Trente des trente-six exercices portent un **but vérifiable** (`rax == 0xf`) :
+Trente-huit des quarante-quatre exercices portent un **but vérifiable** (`rax == 0xf`) :
 le bandeau de l'état du processeur dit « atteint » ou « pas encore », au
 lieu de laisser vérifier à l'œil. Ce qui a été réussi une fois le reste :
 une pastille dans la liste, un compte en tête de la série, et les deux
@@ -154,17 +154,22 @@ budget annoncé est tenable : promettre un chiffre qu'aucune solution
 n'atteint serait pire que de n'en pas donner. Une série installée peut en porter
 aussi — champ `goal` du fichier JSON.
 
-Un parcours de trente-six exercices est livré avec le programme, rangé
-en quatre paliers de difficulté croissante — **Découverte** (registres,
-échange, mise à zéro, boucles, `loop`, bits, comparaisons, signe),
-**Pratique** (décalages, multiplication, division, mémoire, tailles
-d'opérande, ordre des octets, données déclarées, tableaux, recherche,
-calcul d'adresse), **Structures** (chaînes, instructions de chaîne,
-comparaison de chaînes, macros, table de saut, pile, appels, convention
-d'appel, récursion, cadre de pile), **Maîtrise** (sortie, entrée, tas,
-flottants, SIMD, affichage d'un nombre, débordement, protection) —
-activable dans
-Préférences ▸ Modules. D'autres séries s'installent depuis
+Un parcours de quarante-quatre exercices est livré avec le
+programme, rangé en quatre paliers de difficulté croissante :
+
+- **Découverte** — registres, échange, mise à zéro, boucles, `loop`,
+  bits, comparaisons, indicateurs, signe, nombres négatifs.
+- **Pratique** — décalages, compte de bits, multiplication, division,
+  mémoire, tailles d'opérande, ordre des octets, données déclarées,
+  tableaux, matrices, recherche, calcul d'adresse.
+- **Structures** — chaînes, instructions de chaîne, comparaison de
+  chaînes, macros, table de saut, choix sans branchement, pile,
+  appels, convention d'appel, récursion, Fibonacci, cadre de pile,
+  tableau local.
+- **Maîtrise** — sortie, entrée, tas, flottants, SIMD, affichage d'un
+  nombre, majuscules, débordement, protections.
+
+Activable dans Préférences ▸ Modules. D'autres séries s'installent depuis
 un simple fichier JSON, comme les thèmes : Outils ▸ Exercices.
 
 ### Si vous venez de pwndbg
