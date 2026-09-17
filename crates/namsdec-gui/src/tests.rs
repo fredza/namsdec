@@ -6136,7 +6136,7 @@ fn the_course_offers_the_next_step() {
 /// Le manuel se consulte aussi pour ce qu'on ne connaît pas encore.
 ///
 /// F1 répond sur le mot où l'on est : encore faut-il savoir quoi
-/// écrire. La fenêtre d'aide cherche maintenant dans les 138 fiches, par
+/// écrire. La fenêtre d'aide cherche maintenant dans les 140 fiches, par
 /// nom comme par titre.
 #[test]
 fn the_manual_can_be_searched_for_what_one_does_not_know_yet() {
@@ -8306,6 +8306,21 @@ fn every_nasm_directive_has_a_sheet() {
         "strict",
         "$",
         "$$",
+        // Chapitre 6 : ce que NASM définit de lui-même avant la
+        // première ligne du source.
+        "__?LINE?__",
+        "__?FILE?__",
+        "__?BITS?__",
+        "__?DATE?__",
+        "__?TIME?__",
+        "__?NASM_VERSION_ID?__",
+        "__?OUTPUT_FORMAT?__",
+        // Chapitre 7 : les paquets que `%use` charge sans fichier.
+        "altreg",
+        "smartalign",
+        "fp",
+        "ifunc",
+        "masm",
     ];
     let manquantes: Vec<&str> = attendues
         .into_iter()

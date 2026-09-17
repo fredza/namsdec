@@ -1881,6 +1881,46 @@ pub const ENTRIES: &[Entry] = &[
         flags: "",
         example: "; nasm -f bin : org 0x7c00",
     },
+    Entry {
+        kind: Kind::Preprocessor,
+        // Les fiches se cherchent en minuscules ; NASM, lui, écrit ces
+        // noms en majuscules — le corps de la fiche les donne tels
+        // quels, et F1 sur l'un d'eux tombe ici quand même.
+        names: &[
+            "macros-prédéfinies",
+            "__?line?__",
+            "__?file?__",
+            "__?bits?__",
+            "__?date?__",
+            "__?time?__",
+            "__?nasm_version_id?__",
+            "__?output_format?__",
+        ],
+        title: Text {
+            fr: "Ce que NASM sait de lui-même",
+            en: "What NASM knows about itself",
+        },
+        body: Text {
+            fr: "NASM définit quelques macros avant de lire la première ligne : `__?FILE?__` et `__?LINE?__` disent où l'on se trouve dans la source, `__?BITS?__` le mode en cours, `__?DATE?__` et `__?TIME?__` le moment de l'assemblage, `__?NASM_VERSION_ID?__` la version, `__?OUTPUT_FORMAT?__` le format demandé. Elles servent à laisser une trace dans le binaire, ou à écrire une macro qui s'adapte au mode. Les points d'interrogation font partie du nom : ils empêchent qu'un programme les redéfinisse par mégarde.",
+            en: "NASM defines a few macros before reading the first line: `__?FILE?__` and `__?LINE?__` say where one is in the source, `__?BITS?__` the current mode, `__?DATE?__` and `__?TIME?__` the moment of assembly, `__?NASM_VERSION_ID?__` the version, `__?OUTPUT_FORMAT?__` the requested format. They serve to leave a trace in the binary, or to write a macro that adapts to the mode. The question marks are part of the name: they stop a program from redefining them by accident.",
+        },
+        flags: "",
+        example: "mov eax, __?LINE?__     ; le numéro de cette ligne-ci\n    mov ecx, __?BITS?__     ; 64",
+    },
+    Entry {
+        kind: Kind::Preprocessor,
+        names: &["altreg", "smartalign", "fp", "ifunc", "masm", "paquets"],
+        title: Text {
+            fr: "Les paquets de macros livrés avec NASM",
+            en: "The macro packages shipped with NASM",
+        },
+        body: Text {
+            fr: "`%use` charge un paquet écrit par les auteurs de NASM, sans fichier à trouver. `altreg` donne aux registres leurs noms numérotés (`r0` pour `RAX`, `r1` pour `RCX`…), `smartalign` choisit le remplissage d'`align` selon le processeur visé, `fp` fournit de quoi écrire des flottants remarquables (`__?Infinity?__`, `__?NaN?__`), `ifunc` des fonctions entières que le préprocesseur calcule (`ilog2`), `masm` imite quelques tournures de l'assembleur de Microsoft. On ne paie que ce qu'on demande : sans `%use`, rien de tout cela n'existe.",
+            en: "`%use` loads a package written by NASM's authors, with no file to find. `altreg` gives registers their numbered names (`r0` for `RAX`, `r1` for `RCX`…), `smartalign` picks `align`'s padding according to the targeted processor, `fp` provides notable floating-point values (`__?Infinity?__`, `__?NaN?__`), `ifunc` integer functions the preprocessor computes (`ilog2`), `masm` imitates a few turns of phrase from Microsoft's assembler. One pays only for what one asks: without `%use`, none of it exists.",
+        },
+        flags: "",
+        example: "%use altreg\n    mov r0, 1       ; r0, c'est RAX",
+    },
     // --- Les notions -------------------------------------------
     // Ce qu'aucune instruction ne définit et que toutes supposent :
     // un registre, une section, la pile, un appel système. Un
