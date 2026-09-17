@@ -13609,3 +13609,49 @@ boucle:
         "et l'autre chemin continue"
     );
 }
+
+/// Le guide de l'utilisateur dit la vérité sur la version qu'il décrit.
+///
+/// Un guide qui annonce une autre version que celle du programme, ou
+/// quarante-sept exercices quand il y en a quatre-vingt-seize, est pire
+/// qu'une absence de guide. Son générateur lit donc le dépôt, et ce test
+/// vérifie qu'il n'y a rien d'écrit en dur qui puisse vieillir.
+#[test]
+fn the_user_guide_is_generated_from_what_the_repository_knows() {
+    let racine = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let source = std::fs::read_to_string(racine.join("docs/guide.py"))
+        .expect("le générateur du guide est dans le dépôt");
+
+    // La version, les comptes : lus, jamais recopiés.
+    for lecture in [
+        "Cargo.toml",
+        "packs/namsdec.json",
+        "namsdec-doc/src/table.rs",
+        "keybindings.rs",
+    ] {
+        assert!(
+            source.contains(lecture),
+            "le guide doit tirer ses nombres de {lecture}"
+        );
+    }
+    let version = env!("CARGO_PKG_VERSION");
+    assert!(
+        !source.contains(&format!("\"{version}\"")),
+        "la version ne doit pas être écrite en dur dans le générateur"
+    );
+
+    // Et le PDF livré porte bien la version du jour dans son nom.
+    let guide = racine.join(format!("docs/guide-namsdec-{version}.pdf"));
+    assert!(
+        guide.is_file(),
+        "le guide de la version {version} manque : {}",
+        guide.display()
+    );
+    let octets = std::fs::read(&guide).expect("le guide se lit");
+    assert!(octets.starts_with(b"%PDF-"), "ce n'est pas un PDF");
+    assert!(
+        octets.len() > 10_000,
+        "un guide de {} octets est trop court pour en être un",
+        octets.len()
+    );
+}

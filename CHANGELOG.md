@@ -223,6 +223,15 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
   coût et le lien des registres étendus se superposaient à l'onglet, les
   deux illisibles. Le bandeau tient maintenant dans une seule zone qui
   coupe net, et la barre n'apparaît que sur une fenêtre trop courte.
+**Un guide de l'utilisateur**
+- Un PDF de neuf pages accompagne la version : installation, prise en
+  main, chaque panneau, l'exécution, la mémoire, le manuel, le
+  déroulement, le parcours, la rétro-ingénierie, les raccourcis, les
+  fichiers et les limites connues.
+- Il est produit depuis le dépôt : version, nombre d'exercices, nombre de
+  fiches, nombre de tests et table des raccourcis sont lus dans les
+  sources. Un test refuse qu'une seule de ces valeurs y soit recopiée.
+
 **Le déroulement du programme**
 - Une fenêtre, ouverte par `Espace g`, dessine le graphe des blocs : un
   listing se lit de haut en bas, un programme non. Chaque boîte est une

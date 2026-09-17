@@ -127,6 +127,18 @@ ou d'une adresse, vérification de la convention d'appel (ce qu'une
 sous-routine a emprunté sans le rendre), mémoire protégée par les droits
 réels des sections, tas simulé avec `brk`, SSE/AVX et pile x87.
 
+## Le guide
+
+Un **guide de l'utilisateur en PDF** accompagne chaque version :
+[`docs/guide-namsdec-0.2.1-beta.2.pdf`](docs/guide-namsdec-0.2.1-beta.2.pdf)
+— installation, prise en main, chaque panneau, l'exécution pas à pas, la
+mémoire, le manuel, le déroulement, le parcours, la rétro-ingénierie, les
+raccourcis et les limites connues.
+
+Il est **produit depuis le dépôt** (`python3 docs/guide.py`) : la version,
+le nombre d'exercices, le nombre de fiches et la table des raccourcis
+viennent des sources, jamais d'une copie qui vieillirait.
+
 ## Installer
 
 Il faut **Rust** (`cargo`), **nasm** et **ld** (binutils) :
