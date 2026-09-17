@@ -202,6 +202,9 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
   Général rend la barre du système à qui la préfère.
 - La boîte « À propos » mène quelque part : namsdec.io, le Discord, le
   dépôt.
+- La palette de commandes mène aux **étiquettes du programme** : on tape
+  `affiche_nombre`, on y est. Sur deux cents lignes, c'est le « ouvrir
+  par son nom » des éditeurs, sans rien de nouveau à retenir.
 - Un filet sépare les trois zones du panneau latéral, et Affichage ▸
   « Panneau latéral partagé tout seul » rend le partage automatique à qui
   a tiré la poignée une fois.

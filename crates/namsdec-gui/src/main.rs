@@ -1071,6 +1071,8 @@ enum PaletteCommand {
     SaveAs,
     Quit,
     GoTab(SidebarTab),
+    /// Aller à une étiquette du programme, par son nom.
+    GoLine(u32),
     GoConsoleTab(ConsoleTab),
     ToggleToolbar,
     ToggleSidebar,
@@ -3138,6 +3140,10 @@ impl NamsdecApp {
             PaletteCommand::SetLang(lang) => self.lang = lang,
             PaletteCommand::SaveAs => self.do_save_as(),
             PaletteCommand::Quit => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
+            PaletteCommand::GoLine(line) => {
+                self.goto_line = Some(line);
+                self.status = Status::Idle;
+            }
             PaletteCommand::GoTab(tab) => {
                 // Aucune bascule de réglage ici : la commande n'existe
                 // que pour les vues déjà visibles (voir
@@ -3166,7 +3172,17 @@ impl NamsdecApp {
             return;
         }
         let s = strings(self.lang);
-        let commands = palette_commands(s, self.show_re_tab, self.exercises);
+        let mut commands = palette_commands(s, self.show_re_tab, self.exercises);
+        // Les étiquettes du programme, à la suite : sur deux cents
+        // lignes, « où est donc `affiche_nombre` ? » se répond en tapant
+        // son nom, comme on ouvre un fichier par son nom dans un éditeur.
+        // Rien à retenir de plus : c'est la même palette.
+        commands.extend(source_labels(&self.source).into_iter().map(|(nom, ligne)| {
+            (
+                format!("{} {nom} ({} {ligne})", s.palette_goto_label, s.line_word),
+                PaletteCommand::GoLine(ligne),
+            )
+        }));
 
         let (mut query, mut selected, measured_row) = {
             let p = self.command_palette.as_ref().unwrap();
@@ -8185,6 +8201,28 @@ fn enclosing_label(source: &str, ligne: u32) -> Option<String> {
         let nom = texte.split_whitespace().next()?.strip_suffix(':')?;
         (!nom.is_empty() && !nom.starts_with('.')).then(|| nom.to_owned())
     })
+}
+
+/// Toutes les étiquettes du programme, avec leur ligne, dans l'ordre où
+/// elles apparaissent.
+///
+/// Les mêmes règles que partout ici : en tête de ligne, suivies de deux
+/// points, et les étiquettes locales de nasm — celles qui commencent par
+/// un point — laissées de côté, puisqu'elles ne veulent rien dire hors
+/// de leur bloc.
+fn source_labels(source: &str) -> Vec<(String, u32)> {
+    source
+        .lines()
+        .enumerate()
+        .filter_map(|(index, texte)| {
+            let texte = texte.split(';').next().unwrap_or("");
+            if texte.starts_with([' ', '\t']) {
+                return None;
+            }
+            let nom = texte.split_whitespace().next()?.strip_suffix(':')?;
+            (!nom.is_empty() && !nom.starts_with('.')).then(|| (nom.to_owned(), index as u32 + 1))
+        })
+        .collect()
 }
 
 /// La ligne où l'étiquette `name` est définie, en comptant à partir de 1.

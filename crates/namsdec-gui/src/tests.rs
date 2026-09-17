@@ -12427,3 +12427,139 @@ fn the_tab_share_can_be_frozen_and_given_back() {
         "l'état replié rend sa place à l'onglet : {rendue} contre {partagée}"
     );
 }
+
+/// À toutes les tailles de fenêtre, chaque panneau tient dans l'écran.
+///
+/// Un panneau qui déborde ne se voit pas : egui peint quand même, et le
+/// contenu part sous le bord. C'est ainsi que l'onglet du panneau
+/// latéral se réduisait à son titre sans que rien ne le dise. Le même
+/// piège guette la console, la barre de statut et la légende — d'où ce
+/// tour d'horizon, du portable à l'écran large.
+#[test]
+fn every_panel_fits_the_window_at_any_size() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    for taille in [
+        egui::vec2(1024.0, 600.0),
+        egui::vec2(1280.0, 800.0),
+        egui::vec2(1600.0, 1000.0),
+        egui::vec2(1920.0, 1080.0),
+    ] {
+        let mut app = NamsdecApp {
+            source: DEFAULT_SOURCE.to_owned(),
+            show_re_tab: true,
+            ..Default::default()
+        };
+        app.do_assemble();
+        app.do_step();
+        let ctx = egui::Context::default();
+        app.apply_theme(&ctx);
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, taille)),
+            ..Default::default()
+        };
+        for _ in 0..3 {
+            let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+            output.textures_delta.clear();
+        }
+
+        for nom in [
+            "console",
+            "sidebar",
+            "sidebar_tab",
+            "cpu_state",
+            "statusbar",
+        ] {
+            let Some(état) = egui::containers::panel::PanelState::load(&ctx, egui::Id::new(nom))
+            else {
+                continue;
+            };
+            let rect = état.outer_rect;
+            assert!(
+                rect.height() <= taille.y + 1.0 && rect.width() <= taille.x + 1.0,
+                "{nom} déborde de la fenêtre {taille:?} : {rect:?}"
+            );
+            assert!(
+                rect.height() >= 0.0,
+                "{nom} a une hauteur négative à {taille:?} : {rect:?}"
+            );
+        }
+
+        // Et l'essentiel reste lisible même sur le plus petit écran :
+        // l'instruction qui vient, les registres, la vue choisie.
+        let mut peint = String::new();
+        let mut output = ctx.run_ui(input, |ui| app.draw(ui));
+        for clipped in &output.shapes {
+            if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                peint.push_str(text.galley.text());
+                peint.push('|');
+            }
+        }
+        output.textures_delta.clear();
+        for attendu in [
+            "RIP",
+            strings(Lang::Fr).cpu_state,
+            strings(Lang::Fr).tab_stack,
+        ] {
+            assert!(
+                peint.contains(attendu),
+                "« {attendu} » manque à la taille {taille:?}"
+            );
+        }
+    }
+}
+
+/// La palette mène aux étiquettes du programme, par leur nom.
+///
+/// Sur deux cents lignes, « où est donc `affiche_nombre` ? » se répond
+/// en tapant son nom — comme on ouvre un fichier dans un éditeur. Rien
+/// de nouveau à retenir : c'est la palette qu'on connaît déjà.
+#[test]
+fn the_palette_leads_to_the_labels_of_the_program() {
+    let source = "global _start\nsection .text\n_start:\n    call affiche\n    hlt\n\
+                  affiche:\n.local:\n    ret\n";
+    let étiquettes = source_labels(source);
+    assert_eq!(
+        étiquettes,
+        vec![("_start".to_owned(), 3), ("affiche".to_owned(), 6)],
+        "les étiquettes locales ne comptent pas, ni les lignes indentées"
+    );
+
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp {
+        source: source.to_owned(),
+        command_palette: Some(CommandPalette {
+            query: "affiche".to_owned(),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 1400.0),
+        )),
+        ..Default::default()
+    };
+    let mut peint = String::new();
+    for _ in 0..2 {
+        peint.clear();
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        for clipped in &output.shapes {
+            if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                peint.push_str(text.galley.text());
+                peint.push('|');
+            }
+        }
+        output.textures_delta.clear();
+    }
+    assert!(
+        peint.contains("Aller à : affiche (ligne 6)"),
+        "l'étiquette cherchée doit être proposée :\n{peint}"
+    );
+
+    // Et la commande y emmène.
+    app.execute_palette_command(&ctx, PaletteCommand::GoLine(6));
+    assert_eq!(app.goto_line, Some(6), "la palette pose le curseur là-bas");
+}

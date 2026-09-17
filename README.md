@@ -101,6 +101,7 @@ manuel entier en Markdown (menu Aide), parce que ce qu'on apprend ici
 doit pouvoir se lire ailleurs —, autocomplétion qui ne propose que ce qui est documenté,
 motif cyclique de De Bruijn pour savoir de combien un débordement
 dépasse (identique à celui de pwntools, donc comparable),
+palette de commandes qui mène aussi aux étiquettes du programme (on tape leur nom, on y est),
 une chronologie où l'on clique un pas passé pour y revenir (registres, indicateurs et mémoire avec), registres et indicateurs qui se posent à la main (« et si ZF valait
 1 ? »), points d'arrêt — avec condition (`rcx == 0`), surveillance d'un registre
 ou d'une adresse, vérification de la convention d'appel (ce qu'une
