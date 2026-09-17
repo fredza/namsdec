@@ -24,6 +24,8 @@ use thiserror::Error;
 /// `Display` en anglais, comme les autres erreurs des crates métier.
 #[derive(Debug, Error)]
 pub enum PluginError {
+    #[error("the tool took longer than {0} seconds and was stopped")]
+    TooLong(u64),
     #[error("cannot read the file: {0}")]
     Io(#[from] std::io::Error),
     #[error("this is not a valid disassembler file: {0}")]
@@ -102,6 +104,17 @@ impl Plugin {
     /// n'est en jeu, donc rien de ce que contient un nom de fichier ne
     /// peut être relu comme une commande.
     pub fn run(&self, bytes: &[u8]) -> Result<String, PluginError> {
+        self.run_within(bytes, TIMEOUT)
+    }
+
+    /// La même chose, avec un délai qu'on choisit — et qui est **tenu**.
+    ///
+    /// Un désassembleur répond en un souffle ; un décompilateur peut
+    /// réfléchir une demi-minute, et parfois ne jamais rendre la main.
+    /// On le surveille donc vraiment : passé le délai, le processus est
+    /// tué, et l'on dit qu'il a été tué plutôt que d'attendre pour
+    /// toujours.
+    pub fn run_within(&self, bytes: &[u8], délai: Duration) -> Result<String, PluginError> {
         let dir = tempfile::tempdir()?;
         let file: PathBuf = dir.path().join("program");
         std::fs::write(&file, bytes)?;
@@ -111,25 +124,47 @@ impl Plugin {
             .iter()
             .map(|arg| arg.replace("{file}", &file.to_string_lossy()))
             .collect();
-        let output = Command::new(&self.command).args(&args).output()?;
+        let mut enfant = Command::new(&self.command)
+            .args(&args)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()?;
 
-        // Le temps maximum n'est pas imposable sans fil d'exécution
-        // séparé ; ce qu'on borne ici est ce qu'on lit. La durée est
-        // dite dans la documentation du format, et l'interface prévient
-        // qu'un outil peut tarder.
-        let _ = TIMEOUT;
-        let mut texte = String::from_utf8_lossy(&output.stdout).into_owned();
-        if texte.len() > MAX_OUTPUT {
-            texte.truncate(MAX_OUTPUT);
-            texte.push_str("\n…");
+        // On surveille à petits pas plutôt que d'attendre : c'est la
+        // seule façon, sans bibliothèque supplémentaire, de reprendre la
+        // main sur un outil qui ne la rend pas.
+        let début = std::time::Instant::now();
+        loop {
+            match enfant.try_wait()? {
+                Some(_) => break,
+                None if début.elapsed() >= délai => {
+                    let _ = enfant.kill();
+                    let _ = enfant.wait();
+                    return Err(PluginError::TooLong(délai.as_secs()));
+                }
+                None => std::thread::sleep(Duration::from_millis(50)),
+            }
         }
-        if texte.trim().is_empty() {
-            // Beaucoup d'outils écrivent leurs erreurs sur la sortie
-            // d'erreur : la montrer vaut mieux qu'un panneau vide.
-            texte = String::from_utf8_lossy(&output.stderr).into_owned();
-        }
-        Ok(texte)
+        let output = enfant.wait_with_output()?;
+        Ok(borner(&output.stdout, &output.stderr))
     }
+}
+
+/// Ce qu'on garde de la sortie d'un outil.
+///
+/// La sortie d'erreur remplace la sortie ordinaire quand celle-ci est
+/// vide : beaucoup d'outils y écrivent leur refus, et un panneau vide
+/// n'apprendrait rien.
+fn borner(stdout: &[u8], stderr: &[u8]) -> String {
+    let mut texte = String::from_utf8_lossy(stdout).into_owned();
+    if texte.len() > MAX_OUTPUT {
+        texte.truncate(MAX_OUTPUT);
+        texte.push_str("\n…");
+    }
+    if texte.trim().is_empty() {
+        texte = String::from_utf8_lossy(stderr).into_owned();
+    }
+    texte
 }
 
 #[cfg(test)]

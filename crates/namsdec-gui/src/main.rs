@@ -139,6 +139,32 @@ const DONATION_URL: &str = "https://example.com/namsdec/offrir-un-repas";
 const TOOLTIP_DELAY: f32 = 0.5;
 const TOOLTIP_GRACE_TIME: f32 = 0.2;
 /// En deçà, le panneau ne montrerait plus rien de lisible.
+/// Le temps qu'on laisse à un décompilateur.
+///
+/// Un désassembleur répond en un souffle ; un décompilateur reconstruit
+/// des structures de contrôle et peut y passer une demi-minute. Au-delà,
+/// c'est qu'il ne rendra pas la main : on l'arrête, et on le dit.
+const DECOMPILER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
+
+/// Un fichier d'exemple, montré quand aucun outil n'est installé.
+///
+/// Écrit en toutes lettres plutôt que renvoyé à une documentation : ce
+/// qu'on demande à l'utilisateur, c'est d'autoriser l'exécution d'un
+/// programme, et il doit voir exactement à quoi cela ressemble.
+const DECOMPILER_EXAMPLE: &str = r#"{
+  "id": "objdump",
+  "name": "objdump (désassemblage)",
+  "command": "objdump",
+  "args": ["-d", "-M", "intel", "{file}"]
+}
+
+{
+  "id": "retdec",
+  "name": "RetDec (décompilation en C)",
+  "command": "retdec-decompiler",
+  "args": ["--stdout", "{file}"]
+}"#;
+
 const SIDEBAR_MIN_WIDTH: f32 = 200.0;
 
 /// La largeur au-dessous de laquelle le panneau latéral ne se resserre
@@ -754,6 +780,25 @@ struct NamsdecApp {
     /// fait sur un thread, parce qu'une requête réseau dans la boucle de
     /// rendu fige la fenêtre le temps du voyage.
     update_check: Option<mpsc::Receiver<Result<namsdec_update::Release, String>>>,
+    /// Le module de décompilation : éteint par défaut.
+    ///
+    /// Il ne s'agit pas d'un affichage de plus, mais de la **permission
+    /// de lancer un programme extérieur**. On ne l'accorde pas en
+    /// silence : la case existe, elle est décochée, et rien ne s'exécute
+    /// tant qu'on n'a pas cliqué « Lancer ».
+    show_decompiler_module: bool,
+    /// La fenêtre est-elle ouverte ?
+    show_decompiler: bool,
+    /// Les outils installés dans le dossier des décompilateurs.
+    decompilers: Vec<namsdec_disasm::plugin::Plugin>,
+    /// L'identifiant de celui qu'on a choisi.
+    decompiler: String,
+    /// Le travail en cours, et ce qu'il a rendu.
+    decompile_job: Option<mpsc::Receiver<Result<String, String>>>,
+    decompile_result: Option<Result<String, String>>,
+    /// Ce qui a été décompilé : de quoi dire « ce texte parle d'un autre
+    /// programme » quand on en a changé depuis.
+    decompiled_from: Option<String>,
     /// Ce que la dernière recherche a répondu. Gardé jusqu'à la
     /// fermeture de la boîte : on clique, on lit, on referme.
     update_result: Option<Result<namsdec_update::Verdict, String>>,
@@ -1364,6 +1409,7 @@ fn palette_commands(
 }
 
 struct PreferencesSnapshot {
+    decompiler_module: bool,
     theme: &'static Theme,
     lang: Lang,
     show_re_tab: bool,
@@ -1569,6 +1615,13 @@ impl Default for NamsdecApp {
             treat_texture: None,
             icon_texture: None,
             update_check: None,
+            show_decompiler_module: false,
+            show_decompiler: false,
+            decompilers: Vec::new(),
+            decompiler: String::new(),
+            decompile_job: None,
+            decompile_result: None,
+            decompiled_from: None,
             update_result: None,
             keybindings: KeyBindings::default(),
             dispatcher: Dispatcher::default(),
@@ -1698,6 +1751,8 @@ impl NamsdecApp {
             memory_follow: MemFollow::by_id(&settings.memory_follow),
             console_height: settings.console_height.map(|h| h as f32),
             sidebar_tab_height: settings.sidebar_tab_height.map(|h| h as f32),
+            show_decompiler_module: settings.decompiler_module,
+            decompiler: settings.decompiler.clone(),
             sidebar_banner_height: 0.0,
             sidebar_tab_last: SIDEBAR_TAB_MIN,
             system_titlebar: settings.system_titlebar,
@@ -1823,6 +1878,8 @@ impl NamsdecApp {
             memory_follow: self.memory_follow.id().to_owned(),
             console_height: self.console_height.map(|h| h.round() as u32),
             sidebar_tab_height: self.sidebar_tab_height.map(|h| h.round() as u32),
+            decompiler_module: self.show_decompiler_module,
+            decompiler: self.decompiler.clone(),
             system_titlebar: self.system_titlebar,
             heat_legend: self.heat_legend,
             exercises_done: self.exercises_done.iter().cloned().collect(),
@@ -4154,6 +4211,13 @@ impl NamsdecApp {
                     self.show_flow = true;
                     ui.close();
                 }
+                // La décompilation : une entrée seulement si le module
+                // est allumé. Un menu qui propose ce qui ne se fera pas
+                // ment poliment.
+                if self.show_decompiler_module && ui.button(s.decompiler_open).clicked() {
+                    self.show_decompiler = true;
+                    ui.close();
+                }
                 if ui.button(s.vectors_open).clicked() {
                     self.show_vectors = true;
                     ui.close();
@@ -4383,6 +4447,7 @@ impl NamsdecApp {
                 lang: self.lang,
                 show_re_tab: self.show_re_tab,
                 exercises: self.exercises,
+                decompiler_module: self.show_decompiler_module,
                 show_tooltips: self.show_tooltips,
                 keybindings: self.keybindings.clone(),
             });
@@ -4402,6 +4467,7 @@ impl NamsdecApp {
             self.lang = snapshot.lang;
             self.show_re_tab = snapshot.show_re_tab;
             self.exercises = snapshot.exercises;
+            self.show_decompiler_module = snapshot.decompiler_module;
             self.show_tooltips = snapshot.show_tooltips;
             self.keybindings = snapshot.keybindings;
             self.apply_theme(ctx);
@@ -4582,6 +4648,15 @@ impl NamsdecApp {
                 ui.checkbox(&mut self.show_re_tab, s.show_re_tab_checkbox);
                 ui.checkbox(&mut self.exercises, s.exercises_checkbox);
                 ui.weak(s.exercises_hint);
+                ui.add_space(6.0);
+                // Ce module-ci n'ajoute pas un affichage : il accorde la
+                // permission de lancer un programme extérieur. On le dit
+                // avant de cocher, pas après.
+                ui.checkbox(&mut self.show_decompiler_module, s.decompiler_checkbox);
+                ui.weak(s.decompiler_hint);
+                if self.show_decompiler_module && self.decompilers.is_empty() {
+                    ui.colored_label(self.theme.warn, s.decompiler_none_installed);
+                }
             });
     }
 
@@ -5444,6 +5519,220 @@ impl NamsdecApp {
         self.show_flow = open;
         if let Some(ligne) = aller {
             self.goto_line = Some(ligne);
+        }
+    }
+
+    /// La fenêtre de décompilation : un outil extérieur, sur demande.
+    ///
+    /// Trois précautions, et elles sont le sujet de ce module autant que
+    /// le pseudo-code qu'il affiche :
+    ///
+    /// - **Rien ne s'exécute tout seul.** Le module s'active dans les
+    ///   préférences, la fenêtre s'ouvre à la demande, et l'outil ne part
+    ///   qu'au clic sur « Lancer ».
+    /// - **La commande est annoncée avant d'être lancée**, en toutes
+    ///   lettres : c'est ce que l'on s'apprête à exécuter sur sa propre
+    ///   machine, et l'on doit pouvoir le lire.
+    /// - **Le travail se fait à côté.** Un décompilateur peut réfléchir
+    ///   une demi-minute ; l'interface ne se fige pas, et passé le délai
+    ///   l'outil est arrêté plutôt qu'attendu sans fin.
+    fn decompiler_window_ui(&mut self, ctx: &egui::Context) {
+        if !self.show_decompiler_module || !self.show_decompiler {
+            return;
+        }
+        let s = strings(self.lang);
+        let theme = self.theme;
+        let mut open = self.show_decompiler;
+        let mut lancer = false;
+        egui::Window::new(s.decompiler_title)
+            .id(egui::Id::new("decompiler_window"))
+            .open(&mut open)
+            .resizable(true)
+            .collapsible(false)
+            .default_size([720.0, 520.0])
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(ctx.viewport_rect().center())
+            .show(ctx, |ui| {
+                if self.decompilers.is_empty() {
+                    ui.colored_label(theme.warn, s.decompiler_none_installed);
+                    ui.add_space(4.0);
+                    ui.colored_label(theme.dim, s.decompiler_install_hint);
+                    if let Some(dir) = decompilers_dir() {
+                        ui.colored_label(
+                            theme.dim,
+                            egui::RichText::new(dir.display().to_string()).monospace(),
+                        );
+                    }
+                    ui.add_space(6.0);
+                    ui.colored_label(theme.dim, s.decompiler_example);
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(DECOMPILER_EXAMPLE).monospace().small(),
+                        )
+                        .selectable(true),
+                    );
+                    return;
+                }
+
+                // Le choix de l'outil, retenu d'une session à l'autre.
+                ui.horizontal_wrapped(|ui| {
+                    ui.colored_label(theme.dim, s.decompiler_tool);
+                    let courant = self
+                        .decompilers
+                        .iter()
+                        .find(|outil| outil.id == self.decompiler)
+                        .map(|outil| outil.name.clone())
+                        .unwrap_or_else(|| s.decompiler_choose.to_owned());
+                    egui::ComboBox::from_id_salt("decompiler_choice")
+                        .selected_text(courant)
+                        .show_ui(ui, |ui| {
+                            for outil in &self.decompilers {
+                                ui.selectable_value(
+                                    &mut self.decompiler,
+                                    outil.id.clone(),
+                                    &outil.name,
+                                );
+                            }
+                        });
+                });
+
+                let choisi = self
+                    .decompilers
+                    .iter()
+                    .find(|outil| outil.id == self.decompiler)
+                    .cloned();
+                let Some(outil) = choisi else {
+                    ui.colored_label(theme.dim, s.decompiler_choose_first);
+                    return;
+                };
+
+                // Ce qu'on s'apprête à lancer, en toutes lettres.
+                ui.add_space(4.0);
+                ui.colored_label(theme.dim, s.decompiler_will_run);
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(format!("{} {}", outil.command, outil.args.join(" ")))
+                            .monospace(),
+                    )
+                    .selectable(true),
+                );
+                ui.weak(s.decompiler_file_hint);
+                ui.add_space(6.0);
+
+                ui.horizontal_wrapped(|ui| {
+                    let occupé = self.decompile_job.is_some();
+                    let prêt = self.assemble_state.is_some();
+                    ui.add_enabled_ui(!occupé && prêt, |ui| {
+                        lancer = ui
+                            .add(
+                                egui::Button::new(
+                                    egui::RichText::new(s.decompiler_run).color(theme.bg),
+                                )
+                                .fill(theme.accent),
+                            )
+                            .clicked();
+                    });
+                    if occupé {
+                        ui.spinner();
+                        ui.colored_label(theme.dim, s.decompiler_working);
+                    } else if !prêt {
+                        ui.colored_label(theme.dim, s.decompiler_no_binary);
+                    }
+                    if let Some(Ok(texte)) = &self.decompile_result
+                        && ui.small_button(s.decompiler_copy).clicked()
+                    {
+                        ui.ctx().copy_text(texte.clone());
+                    }
+                });
+
+                // Ce qui a été décompilé, et de quel programme il
+                // s'agissait : sans cela, un texte resté à l'écran passe
+                // pour celui du programme qu'on regarde maintenant.
+                if let Some(origine) = &self.decompiled_from {
+                    ui.weak(format!("{} {origine}", s.decompiler_of));
+                }
+                ui.separator();
+                match &self.decompile_result {
+                    Some(Ok(texte)) => {
+                        egui::ScrollArea::both()
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(texte).monospace().color(theme.text),
+                                    )
+                                    .selectable(true),
+                                );
+                            });
+                    }
+                    Some(Err(erreur)) => {
+                        ui.colored_label(theme.bad, erreur);
+                    }
+                    None => {
+                        ui.colored_label(theme.dim, s.decompiler_idle);
+                    }
+                }
+            });
+        self.show_decompiler = open;
+        if lancer {
+            self.start_decompile();
+        }
+    }
+
+    /// Lance l'outil choisi sur le programme lié, dans un fil à part.
+    fn start_decompile(&mut self) {
+        if self.decompile_job.is_some() {
+            return;
+        }
+        let (Some(state), Some(outil)) = (
+            &self.assemble_state,
+            self.decompilers
+                .iter()
+                .find(|outil| outil.id == self.decompiler)
+                .cloned(),
+        ) else {
+            return;
+        };
+        let octets = state.output.file.clone();
+        self.decompiled_from = Some(
+            self.current_file
+                .as_ref()
+                .and_then(|p| p.file_name())
+                .map(|nom| nom.to_string_lossy().into_owned())
+                .unwrap_or_else(|| strings(self.lang).untitled_buffer.to_owned()),
+        );
+        self.decompile_result = None;
+        let (sender, receiver) = mpsc::channel();
+        std::thread::spawn(move || {
+            let réponse = outil
+                .run_within(&octets, DECOMPILER_TIMEOUT)
+                .map_err(|e| e.to_string());
+            // Personne n'attend plus si la fenêtre est fermée : l'envoi
+            // échoue, et le fil s'achève là.
+            let _ = sender.send(réponse);
+        });
+        self.decompile_job = Some(receiver);
+    }
+
+    /// Relève ce que l'outil a rendu, s'il a fini.
+    fn poll_decompile(&mut self, ctx: &egui::Context) {
+        let Some(receiver) = &self.decompile_job else {
+            return;
+        };
+        match receiver.try_recv() {
+            Ok(réponse) => {
+                self.decompile_job = None;
+                self.decompile_result = Some(réponse);
+            }
+            Err(TryRecvError::Empty) => {
+                // Le fil travaille : on redemande une image, sinon
+                // l'interface s'endort et la réponse attend.
+                ctx.request_repaint_after(std::time::Duration::from_millis(150));
+            }
+            Err(TryRecvError::Disconnected) => {
+                self.decompile_job = None;
+                self.decompile_result = Some(Err(strings(self.lang).decompiler_lost.to_owned()));
+            }
         }
     }
 
@@ -10287,6 +10576,7 @@ impl NamsdecApp {
         // boîte native doit être chargé avant que la frame ne s'affiche.
         self.poll_file_dialog(&ctx);
         self.poll_update_check(&ctx);
+        self.poll_decompile(&ctx);
         // Au retour dans la fenêtre : un autre programme a pu passer par
         // là — un `git checkout`, un éditeur, un `sed`. On regarde à ce
         // moment-là, et non à chaque image : c'est un accès au disque.
@@ -10486,6 +10776,7 @@ impl NamsdecApp {
             self.breakpoints_window_ui(&ctx);
             self.timeline_window_ui(&ctx);
             self.flow_window_ui(&ctx);
+            self.decompiler_window_ui(&ctx);
             self.disassembly_window_ui(&ctx);
             self.cyclic_window_ui(&ctx);
             self.analysis_window_ui(&ctx);
@@ -10721,6 +11012,23 @@ fn region_label(section: &namsdec_asm::Section) -> &'static str {
         _ if section.writable => ".data",
         _ => ".rodata",
     }
+}
+
+/// Où vivent les décompilateurs déclarés par l'utilisateur.
+///
+/// À côté des désassembleurs, et pour la même raison qu'ils en sont
+/// séparés : les uns rendent des instructions, les autres du
+/// pseudo-code, et l'on ne choisit pas dans la même liste selon la
+/// question qu'on se pose.
+fn decompilers_dir() -> Option<PathBuf> {
+    data_dir().map(|base| base.join("decompilers"))
+}
+
+/// Les décompilateurs installés. Lus une fois au démarrage.
+fn load_installed_decompilers() -> Vec<namsdec_disasm::plugin::Plugin> {
+    decompilers_dir()
+        .map(|dir| namsdec_disasm::plugin::read_dir(&dir))
+        .unwrap_or_default()
 }
 
 /// Où vivent les séries d'exercices installées. À côté des thèmes, et
@@ -11035,6 +11343,10 @@ fn main() -> eframe::Result<()> {
             // livrée en tête.
             app.exercise_packs.extend(packs);
             app.exercise_files = exercise_files;
+            // Les décompilateurs déclarés : on lit leur description, on
+            // ne lance rien. Lancer se demande, et se demande deux fois
+            // — la case du module, puis le bouton.
+            app.decompilers = load_installed_decompilers();
             if !failures.is_empty() {
                 app.plugin_note = Some(PluginNote {
                     ok: false,

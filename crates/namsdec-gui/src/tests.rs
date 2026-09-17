@@ -13897,3 +13897,139 @@ refus:
         "avec l'instruction qui décide :\n{peint}"
     );
 }
+
+/// La décompilation ne s'exécute pas toute seule, et le dit avant.
+///
+/// Ce module n'ajoute pas un affichage : il accorde à namsdec la
+/// permission de lancer un programme extérieur. Trois verrous, et ce
+/// test les vérifie tous les trois — la case des préférences, l'entrée
+/// de menu qui n'existe qu'ensuite, et le bouton qui seul déclenche.
+#[test]
+fn the_decompiler_never_runs_on_its_own() {
+    let app = NamsdecApp::default();
+    assert!(
+        !app.show_decompiler_module,
+        "le module est éteint tant que personne ne l'allume"
+    );
+    assert!(app.decompile_job.is_none() && app.decompile_result.is_none());
+
+    // Éteint, la fenêtre ne s'ouvre pas — même si on le demande.
+    let mut app = NamsdecApp {
+        show_decompiler: true,
+        ..Default::default()
+    };
+    let peint = paint(&mut app);
+    assert!(
+        !peint.contains(strings(Lang::Fr).decompiler_title),
+        "la fenêtre reste fermée tant que le module est éteint :\n{peint}"
+    );
+
+    // Allumé mais sans outil installé, la fenêtre explique comment en
+    // installer un, et ne lance rien.
+    let mut app = NamsdecApp {
+        show_decompiler_module: true,
+        show_decompiler: true,
+        ..Default::default()
+    };
+    let peint = paint(&mut app);
+    assert!(
+        peint.contains(strings(Lang::Fr).decompiler_title),
+        "{peint}"
+    );
+    assert!(
+        peint.contains(strings(Lang::Fr).decompiler_none_installed),
+        "{peint}"
+    );
+    assert!(app.decompile_job.is_none(), "rien n'a été lancé");
+}
+
+/// Avec un outil installé, la commande est écrite avant d'être lancée —
+/// et « Lancer » la lance vraiment.
+#[test]
+fn the_decompiler_shows_the_command_then_runs_it() {
+    let outil = namsdec_disasm::plugin::Plugin {
+        id: "essai".to_owned(),
+        name: "Essai".to_owned(),
+        // `wc -c` sur le fichier : un outil qui existe partout, dont la
+        // réponse dépend vraiment du binaire qu'on lui donne.
+        command: "wc".to_owned(),
+        args: vec!["-c".to_owned(), "{file}".to_owned()],
+    };
+    let mut app = NamsdecApp {
+        show_decompiler_module: true,
+        show_decompiler: true,
+        decompilers: vec![outil],
+        decompiler: "essai".to_owned(),
+        source: DEFAULT_SOURCE.to_owned(),
+        ..Default::default()
+    };
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    app.do_assemble();
+
+    // La commande est annoncée, en toutes lettres.
+    let peint = paint(&mut app);
+    assert!(
+        peint.contains("wc -c {file}"),
+        "ce qui sera lancé doit se lire avant de l'être :\n{peint}"
+    );
+    assert!(peint.contains(strings(Lang::Fr).decompiler_run), "{peint}");
+    assert!(app.decompile_result.is_none(), "afficher n'est pas lancer");
+
+    // Et le lancement, lui, rend ce que l'outil a écrit.
+    app.start_decompile();
+    let ctx = egui::Context::default();
+    for _ in 0..200 {
+        app.poll_decompile(&ctx);
+        if app.decompile_result.is_some() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    let réponse = app
+        .decompile_result
+        .as_ref()
+        .expect("l'outil a fini")
+        .as_ref()
+        .expect("sans erreur");
+    // `wc -c` écrit la taille du fichier : c'est bien notre binaire.
+    let taille = app
+        .assemble_state
+        .as_ref()
+        .expect("assemblé")
+        .output
+        .file
+        .len();
+    assert!(
+        réponse.contains(&taille.to_string()),
+        "l'outil a bien reçu le programme lié : {réponse:?} pour {taille} octets"
+    );
+    assert!(app.decompiled_from.is_some(), "on dit de quoi il s'agit");
+}
+
+/// Un outil qui ne rend pas la main est arrêté, et l'on dit pourquoi.
+#[test]
+fn a_tool_that_never_finishes_is_stopped() {
+    let dormeur = namsdec_disasm::plugin::Plugin {
+        id: "dormeur".to_owned(),
+        name: "Dormeur".to_owned(),
+        // `tail -f` suit un fichier sans fin : c'est exactement l'outil
+        // qui ne rend jamais la main, et il existe partout.
+        command: "tail".to_owned(),
+        args: vec!["-f".to_owned(), "{file}".to_owned()],
+    };
+    let début = std::time::Instant::now();
+    let erreur = dormeur
+        .run_within(b"peu importe", std::time::Duration::from_millis(300))
+        .expect_err("l'outil doit être arrêté");
+    assert!(
+        début.elapsed() < std::time::Duration::from_secs(5),
+        "on ne l'a pas attendu : {:?}",
+        début.elapsed()
+    );
+    assert!(
+        erreur.to_string().contains("longer"),
+        "et l'on dit qu'il a été arrêté : {erreur}"
+    );
+}

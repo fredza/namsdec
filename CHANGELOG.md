@@ -223,6 +223,18 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
   coût et le lien des registres étendus se superposaient à l'onglet, les
   deux illisibles. Le bandeau tient maintenant dans une seule zone qui
   coupe net, et la barre n'apparaît que sur une fenêtre trop courte.
+**Un module de décompilation, chargé à la demande**
+- Un outil extérieur — `objdump`, `ndisasm`, RetDec, le vôtre — décrit
+  par un fichier JSON dans `~/.local/share/namsdec/decompilers/`, choisi
+  dans une liste et lancé sur le programme lié.
+- Éteint par défaut, et pour une raison qui est dite : ce module
+  n'affiche pas, il **exécute**. La case des préférences, l'entrée de
+  menu qui n'apparaît qu'ensuite, et le bouton « Lancer » font trois
+  verrous — et la commande complète est écrite avant d'être lancée.
+- Le travail se fait dans un fil à part : l'interface reste utilisable, et
+  un outil qui ne rend pas la main au bout de deux minutes est réellement
+  arrêté, pas attendu.
+
 **Lire un binaire qu'on n'a pas écrit**
 - Un module **Fonctions** : le `main` d'un binaire dépouillé, retrouvé
   par la convention de démarrage, puis les fonctions découpées sur les

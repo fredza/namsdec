@@ -138,6 +138,16 @@ pub struct Settings {
     /// laisse.
     #[serde(default)]
     pub sidebar_tab_height: Option<u32>,
+    /// Le module de décompilation est-il autorisé ?
+    ///
+    /// Faux par défaut, et ce défaut compte : cocher cette case donne à
+    /// namsdec la permission de lancer un programme extérieur. On ne
+    /// l'accorde pas à la place de quelqu'un.
+    #[serde(default)]
+    pub decompiler_module: bool,
+    /// L'outil de décompilation choisi, par identifiant.
+    #[serde(default)]
+    pub decompiler: String,
     /// Ce que l'onglet Mémoire suit pas à pas : « fixed », « rsp » ou
     /// « rip ».
     #[serde(default = "fixe_par_défaut")]
@@ -189,6 +199,8 @@ impl Default for Settings {
             system_titlebar: false,
             console_height: None,
             sidebar_tab_height: None,
+            decompiler_module: false,
+            decompiler: String::new(),
             memory_follow: fixe_par_défaut(),
             explorer_root: None,
             current_file: None,

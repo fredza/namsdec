@@ -44,6 +44,17 @@ qu'elle est : une adresse de retour, avec son étiquette. Ce qui est
 au-dessus de RSP est grisé — ces octets sont encore là, mais le prochain
 `push` les écrase.
 
+**Un décompilateur, si vous en avez un.** Le module **Décompilation**
+(Préférences ▸ Modules, éteint par défaut) lance l'outil de votre choix —
+`objdump`, `ndisasm`, RetDec, celui que vous écrivez — décrit par un
+fichier JSON déposé dans `~/.local/share/namsdec/decompilers/`. Trois
+verrous, parce qu'il s'agit d'exécuter un programme sur votre machine :
+le module s'active à la main, la fenêtre s'ouvre à la demande, et
+**la commande est écrite en toutes lettres avant d'être lancée**. Le
+travail se fait à côté — l'interface ne se fige pas —, et un outil qui ne
+rend pas la main au bout de deux minutes est arrêté plutôt qu'attendu
+sans fin.
+
 **Un panneau de désassemblage, avec le choix du moteur.** Le pseudo-code
 d'abord — `RAX = RAX + RCX` plutôt que `add rax, rcx`, `si différent,
 aller à boucle` plutôt que `jne` —, la syntaxe NASM ensuite, et les
