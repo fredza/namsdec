@@ -1413,7 +1413,7 @@ pub const ENTRIES: &[Entry] = &[
     },
     Entry {
         kind: Kind::Directive,
-        names: &["global", "extern", "common"],
+        names: &["global", "extern", "common", "static", "required"],
         title: Text {
             fr: "Ce qui sort, ce qui entre",
             en: "What leaves, what comes in",
@@ -1515,7 +1515,7 @@ pub const ENTRIES: &[Entry] = &[
     },
     Entry {
         kind: Kind::Directive,
-        names: &["default", "rel", "abs", "wrt"],
+        names: &["default", "rel", "abs", "wrt", "seg", "strict"],
         title: Text {
             fr: "Adressage relatif ou absolu",
             en: "Relative or absolute addressing",
@@ -1643,7 +1643,16 @@ pub const ENTRIES: &[Entry] = &[
     },
     Entry {
         kind: Kind::Preprocessor,
-        names: &["%define", "%xdefine", "%undef", "%assign"],
+        names: &[
+            "%define",
+            "%idefine",
+            "%xdefine",
+            "%ixdefine",
+            "%undef",
+            "%assign",
+            "%iassign",
+            "%clear",
+        ],
         title: Text {
             fr: "Remplacer avant d'assembler",
             en: "Replace before assembling",
@@ -1657,7 +1666,15 @@ pub const ENTRIES: &[Entry] = &[
     },
     Entry {
         kind: Kind::Preprocessor,
-        names: &["%macro", "%endmacro", "%imacro", "%unmacro"],
+        names: &[
+            "%macro",
+            "%endmacro",
+            "%imacro",
+            "%unmacro",
+            "%unimacro",
+            "%exitmacro",
+            "%rotate",
+        ],
         title: Text {
             fr: "Écrire une fois, poser partout",
             en: "Write once, place anywhere",
@@ -1671,7 +1688,7 @@ pub const ENTRIES: &[Entry] = &[
     },
     Entry {
         kind: Kind::Preprocessor,
-        names: &["%include"],
+        names: &["%include", "%pathsearch", "%depend", "%use"],
         title: Text {
             fr: "Inclure un autre fichier",
             en: "Include another file",
@@ -1685,7 +1702,10 @@ pub const ENTRIES: &[Entry] = &[
     },
     Entry {
         kind: Kind::Preprocessor,
-        names: &["%if", "%ifdef", "%ifndef", "%elif", "%else", "%endif"],
+        names: &[
+            "%if", "%ifdef", "%ifndef", "%ifmacro", "%ifctx", "%ifidn", "%ifidni", "%ifid",
+            "%ifnum", "%ifstr", "%iftoken", "%ifempty", "%elif", "%else", "%endif",
+        ],
         title: Text {
             fr: "Assembler ou non",
             en: "Assemble, or not",
@@ -1724,6 +1744,142 @@ pub const ENTRIES: &[Entry] = &[
         },
         flags: "",
         example: "%ifndef TAILLE\n%error \"TAILLE n'est pas définie\"\n%endif",
+    },
+    Entry {
+        kind: Kind::Directive,
+        names: &["absolute"],
+        title: Text {
+            fr: "Décrire sans rien produire",
+            en: "Describe without producing anything",
+        },
+        body: Text {
+            fr: "Ouvre une zone où les étiquettes reçoivent une adresse sans qu'aucun octet ne sorte : on décrit la forme de quelque chose — un en-tête, un bloc que le noyau remplira — pour pouvoir écrire `[rsi + champ]` plutôt que `[rsi + 8]`. `struc` est bâti là-dessus.",
+            en: "Opens a region where labels get addresses without a single byte being emitted: one describes the shape of something — a header, a block the kernel will fill — so as to write `[rsi + field]` rather than `[rsi + 8]`. `struc` is built on it.",
+        },
+        flags: "",
+        example: "absolute 0\n    .compteur: resq 1\n    .taille:   resq 1\nsection .text",
+    },
+    Entry {
+        kind: Kind::Directive,
+        names: &["cpu", "float", "list", "warning", "dollarhex"],
+        title: Text {
+            fr: "Régler l'assembleur",
+            en: "Set the assembler up",
+        },
+        body: Text {
+            fr: "Des directives qui ne produisent rien et changent la façon dont NASM lit la suite. `cpu` refuse ce que le processeur visé ne connaît pas — utile pour ne pas écrire par mégarde une instruction absente de la machine cible. `warning` allume ou éteint une famille d'avertissements, `float` règle l'arrondi des constantes, `list` interrompt le listing le temps d'un bloc.",
+            en: "Directives that produce nothing and change how NASM reads what follows. `cpu` refuses what the target processor does not know — handy for not writing, by accident, an instruction absent from the target machine. `warning` turns a family of warnings on or off, `float` sets the rounding of constants, `list` suspends the listing for a block.",
+        },
+        flags: "",
+        example: "cpu x86-64\nsection .text",
+    },
+    Entry {
+        kind: Kind::Directive,
+        names: &[
+            "prefix", "suffix", "gprefix", "gsuffix", "lprefix", "lsuffix",
+        ],
+        title: Text {
+            fr: "Renommer tous les symboles d'un coup",
+            en: "Rename every symbol at once",
+        },
+        body: Text {
+            fr: "Ajoutent la même chose devant ou derrière chaque symbole produit. C'est ce qui permet de lier un module à un compilateur qui attend des noms décorés — un tiret bas devant, par exemple — sans retoucher le source ligne à ligne.",
+            en: "Add the same thing before or after every symbol emitted. That is what lets a module be linked against a compiler expecting decorated names — a leading underscore, say — without touching the source line by line.",
+        },
+        flags: "",
+        example: "; nasm -f elf64 --prefix _ programme.asm",
+    },
+    Entry {
+        kind: Kind::Preprocessor,
+        names: &[
+            "%defstr",
+            "%idefstr",
+            "%deftok",
+            "%ideftok",
+            "%defalias",
+            "%idefalias",
+            "%undefalias",
+        ],
+        title: Text {
+            fr: "Fabriquer des noms et des chaînes",
+            en: "Make names and strings",
+        },
+        body: Text {
+            fr: "`%defstr` transforme ce qu'on lui donne en chaîne entre guillemets, `%deftok` fait l'inverse — une chaîne redevient du texte que l'assembleur lira comme du code. `%defalias` donne un second nom à une macro, sans la recopier.",
+            en: "`%defstr` turns what it is given into a quoted string, `%deftok` does the reverse — a string becomes text again, which the assembler reads as code. `%defalias` gives a macro a second name, without copying it.",
+        },
+        flags: "",
+        example: "%defstr NOM  programme\nsection .text",
+    },
+    Entry {
+        kind: Kind::Preprocessor,
+        names: &["%strcat", "%strlen", "%substr"],
+        title: Text {
+            fr: "Travailler les chaînes avant l'assemblage",
+            en: "Work on strings before assembly",
+        },
+        body: Text {
+            fr: "Coller, mesurer, découper — pendant la lecture du source, pas à l'exécution. Ce qui en sort est une constante comme une autre : `%strlen` donne un nombre qu'on peut mettre dans un `db`, sans qu'aucune instruction n'ait à compter quoi que ce soit.",
+            en: "Join, measure, cut — while the source is being read, not at run time. What comes out is a constant like any other: `%strlen` gives a number one can put in a `db`, with no instruction having to count anything.",
+        },
+        flags: "",
+        example: "%strlen TAILLE 'salut'\nsection .data\n    taille_du_mot: db TAILLE",
+    },
+    Entry {
+        kind: Kind::Preprocessor,
+        names: &["%push", "%pop", "%repl", "%$", "%$$"],
+        title: Text {
+            fr: "La pile de contextes",
+            en: "The context stack",
+        },
+        body: Text {
+            fr: "De quoi écrire des macros qui s'emboîtent — un `%push` ouvre un contexte, un `%pop` le referme — et donner à leurs étiquettes des noms qui ne se marchent pas dessus. Sans cela, deux appels d'une même macro dans un même fichier définiraient deux fois l'étiquette.",
+            en: "What lets macros nest — a `%push` opens a context, a `%pop` closes it — and gives their labels names that do not tread on each other. Without it, two uses of the same macro in one file would define the same label twice.",
+        },
+        flags: "",
+        example: "%push boucle\n%$debut:\n%pop\nsection .text",
+    },
+    Entry {
+        kind: Kind::Preprocessor,
+        names: &["%arg", "%local", "%stacksize"],
+        title: Text {
+            fr: "Nommer ce qui est sur la pile",
+            en: "Name what is on the stack",
+        },
+        body: Text {
+            fr: "Donnent des noms aux arguments reçus sur la pile et aux variables locales d'une fonction, plutôt que d'écrire `[rbp + 16]` et de recompter à chaque modification. Hérité des conventions 16 et 32 bits, où tout passait par la pile ; en 64 bits, les six premiers arguments arrivent dans des registres.",
+            en: "Give names to arguments received on the stack and to a function's local variables, rather than writing `[rbp + 16]` and recounting on every change. Inherited from the 16- and 32-bit conventions, where everything went through the stack; in 64-bit code the first six arguments arrive in registers.",
+        },
+        flags: "",
+        example: "%stacksize flat64\nsection .text",
+    },
+    Entry {
+        kind: Kind::Preprocessor,
+        names: &["%note", "%pragma", "%line", "%!"],
+        title: Text {
+            fr: "Parler à l'assembleur, ou de lui",
+            en: "Talk to the assembler, or about it",
+        },
+        body: Text {
+            fr: "`%note` écrit une remarque dans le listing, `%pragma` règle un détail de l'assemblage sans erreur si NASM ne le connaît pas, `%line` dit de quel fichier et de quelle ligne vient ce qui suit — ce dont se servent les programmes qui produisent de l'assembleur, pour que les messages d'erreur désignent leur source à eux. `%!` lit une variable d'environnement.",
+            en: "`%note` writes a remark into the listing, `%pragma` sets an assembly detail without erroring if NASM does not know it, `%line` says which file and line what follows comes from — which programs generating assembly use, so error messages point at *their* source. `%!` reads an environment variable.",
+        },
+        flags: "",
+        example: "%pragma list nomacro\nsection .text",
+    },
+    Entry {
+        kind: Kind::Directive,
+        names: &["org"],
+        title: Text {
+            fr: "Dire où le code sera chargé",
+            en: "Say where the code will be loaded",
+        },
+        body: Text {
+            fr: "Fixe l'adresse de départ que l'assembleur suppose pour calculer les étiquettes. Elle sert aux formats sans en-tête — un secteur d'amorçage, une ROM —, là où personne ne dira au programme où il a été mis. Dans un ELF, c'est l'éditeur de liens qui décide : `org` n'y a pas sa place.",
+            en: "Sets the starting address the assembler assumes when working out labels. It is for formats with no header — a boot sector, a ROM — where nobody will tell the program where it was put. In an ELF the linker decides: `org` has no place there.",
+        },
+        flags: "",
+        example: "; nasm -f bin : org 0x7c00",
     },
     // --- Les notions -------------------------------------------
     // Ce qu'aucune instruction ne définit et que toutes supposent :

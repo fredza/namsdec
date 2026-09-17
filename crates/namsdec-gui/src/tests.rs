@@ -6059,7 +6059,7 @@ fn the_course_offers_the_next_step() {
 /// Le manuel se consulte aussi pour ce qu'on ne connaît pas encore.
 ///
 /// F1 répond sur le mot où l'on est : encore faut-il savoir quoi
-/// écrire. La fenêtre d'aide cherche maintenant dans les 129 fiches, par
+/// écrire. La fenêtre d'aide cherche maintenant dans les 138 fiches, par
 /// nom comme par titre.
 #[test]
 fn the_manual_can_be_searched_for_what_one_does_not_know_yet() {
@@ -8118,4 +8118,124 @@ fn the_manual_explains_its_own_words() {
         })
         .count();
     assert!(trouvées >= 2, "la directive et la notion : {trouvées}");
+}
+
+/// Les directives que NASM documente doivent toutes se retrouver ici.
+///
+/// La liste vient du manuel de NASM 3.02 : ce qu'on peut écrire dans un
+/// source et que namsdec ne saurait pas expliquer est un trou, et un
+/// trou qu'on ne découvre qu'en tombant dedans.
+#[test]
+fn every_nasm_directive_has_a_sheet() {
+    // Les directives de l'assembleur, puis celles du préprocesseur, puis
+    // les mots qui n'en sont ni l'un ni l'autre mais qu'on écrit tout
+    // autant : tailles, opérateurs d'adresse, symboles de position.
+    let attendues = [
+        "bits",
+        "use16",
+        "use32",
+        "use64",
+        "default",
+        "section",
+        "segment",
+        "absolute",
+        "extern",
+        "required",
+        "global",
+        "common",
+        "static",
+        "prefix",
+        "suffix",
+        "cpu",
+        "float",
+        "warning",
+        "list",
+        "org",
+        "dollarhex",
+        "%define",
+        "%idefine",
+        "%xdefine",
+        "%defstr",
+        "%deftok",
+        "%defalias",
+        "%undef",
+        "%undefalias",
+        "%macro",
+        "%imacro",
+        "%unmacro",
+        "%assign",
+        "%clear",
+        "%endmacro",
+        "%exitmacro",
+        "%rotate",
+        "%rep",
+        "%endrep",
+        "%exitrep",
+        "%if",
+        "%ifdef",
+        "%ifmacro",
+        "%ifctx",
+        "%ifidn",
+        "%ifid",
+        "%ifnum",
+        "%ifstr",
+        "%iftoken",
+        "%ifempty",
+        "%elif",
+        "%else",
+        "%endif",
+        "%push",
+        "%pop",
+        "%repl",
+        "%include",
+        "%pathsearch",
+        "%depend",
+        "%use",
+        "%strcat",
+        "%strlen",
+        "%substr",
+        "%arg",
+        "%stacksize",
+        "%local",
+        "%error",
+        "%warning",
+        "%fatal",
+        "%note",
+        "%pragma",
+        "%line",
+        "%!",
+        "struc",
+        "endstruc",
+        "istruc",
+        "at",
+        "iend",
+        "align",
+        "alignb",
+        "incbin",
+        "equ",
+        "times",
+        "db",
+        "dw",
+        "dd",
+        "dq",
+        "byte",
+        "word",
+        "dword",
+        "qword",
+        "rel",
+        "abs",
+        "wrt",
+        "seg",
+        "strict",
+        "$",
+        "$$",
+    ];
+    let manquantes: Vec<&str> = attendues
+        .into_iter()
+        .filter(|mot| namsdec_doc::lookup(mot).is_none())
+        .collect();
+    assert!(
+        manquantes.is_empty(),
+        "ces mots s'écrivent dans un source sans que namsdec sache les expliquer : {manquantes:?}"
+    );
 }
