@@ -936,6 +936,22 @@ impl Emulator {
         /// `malloc`, et c'est le seul appel « mémoire » qu'un programme
         /// écrit à la main utilise sans bibliothèque.
         const SYS_BRK: u64 = 12;
+        /// Les quelques appels qui *renseignent* sans rien changer au
+        /// monde. Un programme qui les fait n'attend pas grand-chose,
+        /// mais s'arrêter dessus l'empêcherait d'aller plus loin.
+        const SYS_SCHED_YIELD: u64 = 24;
+        const SYS_NANOSLEEP: u64 = 35;
+        const SYS_GETPID: u64 = 39;
+        const SYS_GETUID: u64 = 102;
+        const SYS_GETEUID: u64 = 107;
+        /// `getrandom` remplit un tampon. Ce que namsdec y met n'est pas
+        /// du hasard : c'est une suite reproductible, sans quoi le même
+        /// programme ne donnerait pas deux fois le même résultat et le
+        /// retour en arrière n'aurait plus de sens.
+        const SYS_GETRANDOM: u64 = 318;
+        /// Le numéro que namsdec rend à `getpid`, toujours le même : un
+        /// programme d'apprentissage doit être reproductible.
+        const FAKE_PID: u64 = 1000;
 
         let number = self.cpu.regs.get64(Reg64::Rax);
         match number {
@@ -965,6 +981,26 @@ impl Emulator {
                 self.exit_code = Some(code as i64);
                 self.cpu.halted = true;
             }
+            // Rien à faire, et c'est la bonne réponse : il n'y a ni
+            // autre fil d'exécution à qui céder la main, ni horloge qui
+            // avance pendant qu'on regarde.
+            SYS_SCHED_YIELD | SYS_NANOSLEEP => {
+                self.cpu.regs.set64(Reg64::Rax, 0);
+            }
+            SYS_GETPID => {
+                self.cpu.regs.set64(Reg64::Rax, FAKE_PID);
+            }
+            SYS_GETUID | SYS_GETEUID => {
+                self.cpu.regs.set64(Reg64::Rax, FAKE_PID);
+            }
+            SYS_GETRANDOM => {
+                // L'appel prend (buf, taille, options) : le tampon est
+                // dans RDI, la taille dans RSI.
+                let buf = self.cpu.regs.get64(Reg64::Rdi);
+                let count = self.cpu.regs.get64(Reg64::Rsi);
+                let written = self.fill_pseudo_random(buf, count)?;
+                self.cpu.regs.set64(Reg64::Rax, written as u64);
+            }
             number => {
                 return Err(EmuError::UnsupportedSyscall {
                     backend: Self::NAME,
@@ -973,6 +1009,33 @@ impl Emulator {
             }
         }
         Ok(())
+    }
+
+    /// Remplit un tampon d'octets **reproductibles**.
+    ///
+    /// Ce n'est pas du hasard, et namsdec ne prétend pas le contraire :
+    /// un générateur semé sur une constante, avancé par le nombre
+    /// d'instructions déjà exécutées. Deux exécutions du même programme
+    /// donnent donc les mêmes octets — ce qui est exactement ce qu'on
+    /// veut d'un atelier où l'on revient en arrière, et exactement ce
+    /// qu'on ne veut pas d'une clé.
+    fn fill_pseudo_random(&mut self, buf: u64, count: u64) -> Result<i64, EmuError> {
+        if count == 0 {
+            return Ok(0);
+        }
+        // Xorshift64 : quatre lignes, aucune dépendance, et une suite
+        // qui ne se répète pas avant longtemps.
+        let mut state = 0x9e37_79b9_7f4a_7c15u64 ^ self.ticks.wrapping_mul(0x2545_f491_4f6c_dd1d);
+        let mut bytes = Vec::with_capacity(count as usize);
+        for _ in 0..count {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            bytes.push(state as u8);
+        }
+        self.record_memory(buf, bytes.len());
+        self.cpu.mem.write_bytes(buf, &bytes)?;
+        Ok(count as i64)
     }
 
     /// `write(fd, buf, count)`. Rend le nombre d'octets écrits, ou un code

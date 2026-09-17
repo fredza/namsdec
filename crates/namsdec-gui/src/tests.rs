@@ -5491,7 +5491,7 @@ fn the_readme_tells_the_truth() {
     }
     // Et les limites annoncées le sont toujours : les appels système
     // simulés sont bien ceux-là, ni plus ni moins.
-    for simulé in [0u64, 1, 12, 60] {
+    for simulé in [0u64, 1, 12, 60, 39, 102, 107, 24, 35, 318] {
         assert!(
             namsdec_re::table::is_simulated(simulé),
             "l'appel {simulé} est annoncé comme simulé"
@@ -5501,6 +5501,9 @@ fn the_readme_tells_the_truth() {
         !namsdec_re::table::is_simulated(9),
         "mmap n'est pas simulé, et le README le dit"
     );
+    for nom in ["getpid", "getrandom", "sched_yield"] {
+        assert!(readme.contains(nom), "le README annonce {nom}");
+    }
 }
 
 /// L'onglet Mémoire nomme ce qu'on regarde : l'étiquette du source, la

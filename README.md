@@ -229,8 +229,12 @@ sans avertissement, et s'exécuter jusqu'au bout.
 - Pas de mode 32 bits, pas d'`int 0x80`.
 - Pas de libc : un programme lié dynamiquement s'analyse, mais ne
   s'exécute pas ici (il n'y a pas de vrai noyau derrière).
-- Les appels système simulés sont `read`, `write`, `brk` et `exit` ; les
-  autres sont nommés et signalés comme non simulés.
+- Les appels système simulés sont `read`, `write`, `brk` et `exit`, plus
+  ceux qui renseignent sans rien changer au monde — `getpid`, `getuid`,
+  `geteuid`, `sched_yield`, `nanosleep`, `getrandom`. Les autres sont
+  nommés et signalés comme non simulés. `getrandom` rend des octets
+  **reproductibles** : c'est ce qu'il faut à un atelier où l'on revient
+  en arrière, et ce qu'il ne faut surtout pas à une clé.
 - AVX-512, FMA, les ports `in`/`out` et `cmpxchg16b` ne sont pas
   implémentés.
 

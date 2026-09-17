@@ -266,16 +266,18 @@ hlt
 /// croire que l'appel a eu lieu.
 #[test]
 fn an_unimplemented_syscall_says_so() {
-    // 39 = `getpid`.
+    // 59 = `execve` : remplacer le programme courant par un autre n'a
+    // aucun sens dans une machine qui n'a ni système de fichiers ni
+    // second processus.
     let mut emu = load_only(
-        "section .text\n    global _start\n_start:\n    mov rax, 39\n    syscall\n    hlt\n",
+        "section .text\n    global _start\n_start:\n    mov rax, 59\n    syscall\n    hlt\n",
         &[],
     );
     let entry = emu.cpu.regs.rip;
 
-    let err = emu.run(100).expect_err("getpid n'est pas simulé");
+    let err = emu.run(100).expect_err("execve n'est pas simulé");
     match err {
-        EmuError::UnsupportedSyscall { number, .. } => assert_eq!(number, 39),
+        EmuError::UnsupportedSyscall { number, .. } => assert_eq!(number, 59),
         other => panic!("attendu UnsupportedSyscall, obtenu {other:?}"),
     }
     assert!(
@@ -2897,4 +2899,79 @@ fn the_last_write_to_an_address_can_be_found() {
 
     // Une adresse à laquelle personne n'a touché ne rend rien.
     assert_eq!(emu.last_write_to_memory(0x40ff00), None);
+}
+
+/// Les appels qui renseignent sans rien changer au monde : `getpid`,
+/// `getuid`, `sched_yield`, `nanosleep`, `getrandom`.
+///
+/// Un programme qui les fait n'attend pas grand-chose, mais s'arrêter
+/// dessus l'empêcherait d'aller plus loin — et c'est là qu'on perd un
+/// débutant qui recopie un bout de code trouvé ailleurs.
+#[test]
+fn the_syscalls_that_only_tell_something_are_answered() {
+    let programme = |numéro: u64| {
+        format!(
+            "\
+section .text
+global _start
+_start:
+mov rax, {numéro}
+syscall
+hlt
+"
+        )
+    };
+
+    // getpid : un numéro, et toujours le même — un atelier où l'on
+    // revient en arrière doit être reproductible.
+    let emu = run_program(&programme(39), &[]);
+    let pid = emu.cpu.regs.get64(Reg64::Rax);
+    assert_ne!(pid, 0, "un PID, pas zéro");
+    let encore = run_program(&programme(39), &[]);
+    assert_eq!(encore.cpu.regs.get64(Reg64::Rax), pid);
+
+    // sched_yield et nanosleep : rien à faire, et c'est la bonne
+    // réponse — il n'y a ni autre fil d'exécution ni horloge ici.
+    for numéro in [24, 35] {
+        let emu = run_program(&programme(numéro), &[]);
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rax), 0, "appel {numéro}");
+        assert!(emu.cpu.halted, "le programme est allé jusqu'au bout");
+    }
+    // getuid et geteuid répondent aussi.
+    for numéro in [102, 107] {
+        let emu = run_program(&programme(numéro), &[]);
+        assert_eq!(emu.cpu.regs.get64(Reg64::Rax), pid, "appel {numéro}");
+    }
+
+    // getrandom remplit un tampon — d'octets reproductibles, et namsdec
+    // ne prétend pas le contraire.
+    let avec_tampon = "\
+section .bss
+tampon resb 16
+
+section .text
+global _start
+_start:
+mov rax, 318
+mov rdi, tampon
+mov rsi, 16
+mov rdx, 0
+syscall
+hlt
+";
+    let emu = run_program(avec_tampon, &[]);
+    assert_eq!(emu.cpu.regs.get64(Reg64::Rax), 16, "seize octets écrits");
+    let tampon = emu.cpu.mem.peek_bytes(emu.cpu.regs.get64(Reg64::Rdi), 16);
+    let octets = tampon.expect("le tampon est lisible").to_vec();
+    assert!(octets.iter().any(|&b| b != 0), "quelque chose a été écrit");
+    // Deux exécutions donnent les mêmes octets : c'est ce qu'on veut
+    // d'un atelier, et ce qu'on ne veut surtout pas d'une clé.
+    let encore = run_program(avec_tampon, &[]);
+    let mêmes = encore
+        .cpu
+        .mem
+        .peek_bytes(encore.cpu.regs.get64(Reg64::Rdi), 16)
+        .unwrap()
+        .to_vec();
+    assert_eq!(octets, mêmes);
 }

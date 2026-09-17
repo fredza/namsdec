@@ -52,6 +52,7 @@ pub fn syscall(number: u64) -> Option<Syscall> {
             "select",
             &["nfds", "lecture", "écriture", "exception", "délai"],
         ),
+        24 => ("sched_yield", &[]),
         32 => ("dup", &["fd"]),
         35 => ("nanosleep", &["durée", "restant"]),
         39 => ("getpid", &[]),
@@ -68,7 +69,9 @@ pub fn syscall(number: u64) -> Option<Syscall> {
         87 => ("unlink", &["chemin"]),
         96 => ("gettimeofday", &["heure", "fuseau"]),
         102 => ("getuid", &[]),
+        107 => ("geteuid", &[]),
         201 => ("time", &["résultat"]),
+        318 => ("getrandom", &["buf", "taille", "options"]),
         231 => ("exit_group", &["code"]),
         257 => ("openat", &["dossier", "chemin", "options", "droits"]),
         _ => return None,
@@ -77,7 +80,14 @@ pub fn syscall(number: u64) -> Option<Syscall> {
         number,
         name,
         args,
-        simulated: matches!(number, 0 | 1 | 12 | 60 | 231),
+        // Ceux que l'interpréteur exécute pour de vrai. Les quatre
+        // premiers font le travail ; les autres renseignent sans rien
+        // changer au monde, et s'arrêter dessus empêcherait seulement
+        // le programme d'aller plus loin.
+        simulated: matches!(
+            number,
+            0 | 1 | 12 | 24 | 35 | 39 | 60 | 102 | 107 | 231 | 318
+        ),
     })
 }
 
