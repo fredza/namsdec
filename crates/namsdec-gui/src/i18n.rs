@@ -484,7 +484,15 @@ pub struct Strings {
     pub about_donate_hint: &'static str,
     pub about_donate_unset: &'static str,
     pub about_check_update: &'static str,
-    pub about_check_update_todo: &'static str,
+    pub about_check_update_hint: &'static str,
+    pub about_update_checking: &'static str,
+    pub about_update_uptodate: &'static str,
+    pub about_update_newer: &'static str,
+    pub about_update_ahead: &'static str,
+    pub about_update_none: &'static str,
+    pub about_update_failed: &'static str,
+    pub about_update_open: &'static str,
+    pub about_update_how: &'static str,
 }
 
 const FR: Strings = Strings {
@@ -897,7 +905,15 @@ const FR: Strings = Strings {
     about_donate_hint: "Si le programme vous est utile, vous pouvez m'offrir un café ou un hamburger.",
     about_donate_unset: "Le lien de don n'est pas encore renseigné (DONATION_URL).",
     about_check_update: "Rechercher une mise à jour",
-    about_check_update_todo: "La recherche de mises à jour n'est pas encore branchée.",
+    about_check_update_hint: "Demande à GitHub la dernière version publiée. Rien n'est envoyé, rien n'est installé.",
+    about_update_checking: "Recherche en cours...",
+    about_update_uptodate: "Vous avez la dernière version publiée.",
+    about_update_newer: "Une version plus récente existe :",
+    about_update_ahead: "Votre version est plus récente que la dernière publiée",
+    about_update_none: "Aucune version n'a encore été publiée dans le dépôt.",
+    about_update_failed: "La recherche a échoué",
+    about_update_open: "Voir cette version",
+    about_update_how: "La mise à jour se fait à la main : git pull, puis ./install.sh. namsdec ne se remplace jamais tout seul.",
 };
 
 const EN: Strings = Strings {
@@ -1310,7 +1326,15 @@ const EN: Strings = Strings {
     about_donate_hint: "If this program is useful to you, you can buy me a coffee or a burger.",
     about_donate_unset: "The donation link is not set yet (DONATION_URL).",
     about_check_update: "Check for updates",
-    about_check_update_todo: "Update checking is not wired up yet.",
+    about_check_update_hint: "Asks GitHub for the latest published release. Nothing is sent, nothing is installed.",
+    about_update_checking: "Checking...",
+    about_update_uptodate: "You have the latest published release.",
+    about_update_newer: "A newer release exists:",
+    about_update_ahead: "Your version is newer than the latest published one",
+    about_update_none: "No release has been published in the repository yet.",
+    about_update_failed: "The check failed",
+    about_update_open: "See that release",
+    about_update_how: "Updating is done by hand: git pull, then ./install.sh. namsdec never replaces itself.",
 };
 
 pub fn strings(lang: Lang) -> &'static Strings {

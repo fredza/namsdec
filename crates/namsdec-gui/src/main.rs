@@ -616,10 +616,13 @@ struct NamsdecApp {
     /// L'illustration du bouton de don, montée en texture à la première
     /// ouverture de la boîte puis gardée.
     treat_texture: Option<egui::TextureHandle>,
-    /// Le bouton « Rechercher une mise à jour » a été cliqué : la boîte
-    /// dit alors franchement que rien n'est branché derrière, plutôt que
-    /// de faire mine de chercher.
-    about_update_clicked: bool,
+    /// La recherche de mise à jour en cours, s'il y en a une : elle se
+    /// fait sur un thread, parce qu'une requête réseau dans la boucle de
+    /// rendu fige la fenêtre le temps du voyage.
+    update_check: Option<mpsc::Receiver<Result<namsdec_update::Release, String>>>,
+    /// Ce que la dernière recherche a répondu. Gardé jusqu'à la
+    /// fermeture de la boîte : on clique, on lit, on referme.
+    update_result: Option<Result<namsdec_update::Verdict, String>>,
     keybindings: KeyBindings,
     dispatcher: Dispatcher,
     rebinding: Option<Rebinding>,
@@ -1299,7 +1302,8 @@ impl Default for NamsdecApp {
             prefs_snapshot: None,
             show_about: false,
             treat_texture: None,
-            about_update_clicked: false,
+            update_check: None,
+            update_result: None,
             keybindings: KeyBindings::default(),
             dispatcher: Dispatcher::default(),
             rebinding: None,
@@ -4051,6 +4055,8 @@ impl NamsdecApp {
         let theme = self.theme;
         let mut open = self.show_about;
         let mut close = false;
+        // Relevé dans la fenêtre, agi après : elle emprunte `self`.
+        let mut lancer_recherche = false;
         egui::Window::new(s.about_title)
             // Un identifiant explicite : sans lui, egui dérive celui de
             // la fenêtre de son *titre*, qui change avec la langue —
@@ -4124,11 +4130,50 @@ impl NamsdecApp {
                 }
 
                 ui.separator();
-                if ui.button(s.about_check_update).clicked() {
-                    self.about_update_clicked = true;
-                }
-                if self.about_update_clicked {
-                    ui.colored_label(theme.warn, s.about_check_update_todo);
+                // La recherche est un geste, jamais un réflexe : rien
+                // n'est demandé à GitHub tant que personne n'a cliqué,
+                // et rien n'est envoyé d'autre que la requête.
+                ui.horizontal_wrapped(|ui| {
+                    ui.add_enabled_ui(self.update_check.is_none(), |ui| {
+                        if ui
+                            .button(s.about_check_update)
+                            .on_hover_text(s.about_check_update_hint)
+                            .clicked()
+                        {
+                            lancer_recherche = true;
+                        }
+                    });
+                    if self.update_check.is_some() {
+                        ui.colored_label(theme.dim, s.about_update_checking);
+                    }
+                });
+                match &self.update_result {
+                    Some(Ok(namsdec_update::Verdict::UpToDate)) => {
+                        ui.colored_label(theme.good, s.about_update_uptodate);
+                    }
+                    Some(Ok(namsdec_update::Verdict::Newer(release))) => {
+                        ui.colored_label(
+                            theme.warn,
+                            format!("{} {}", s.about_update_newer, release.tag),
+                        );
+                        if !release.url.is_empty() {
+                            ui.hyperlink_to(s.about_update_open, &release.url);
+                        }
+                        // Ce que namsdec ne fera pas : se remplacer tout
+                        // seul. Dire comment mettre à jour vaut mieux que
+                        // de le faire dans le dos de celui qui travaille.
+                        ui.colored_label(theme.dim, s.about_update_how);
+                    }
+                    Some(Ok(namsdec_update::Verdict::Ahead(release))) => {
+                        ui.colored_label(
+                            theme.dim,
+                            format!("{} ({})", s.about_update_ahead, release.tag),
+                        );
+                    }
+                    Some(Err(message)) => {
+                        ui.colored_label(theme.bad, message);
+                    }
+                    None => {}
                 }
 
                 ui.separator();
@@ -4141,10 +4186,65 @@ impl NamsdecApp {
                     close = ui.add(ok).clicked();
                 });
             });
+        if lancer_recherche {
+            self.start_update_check();
+        }
         self.show_about = open && !close;
         if !self.show_about {
-            // La note de mise à jour ne survit pas à la fermeture.
-            self.about_update_clicked = false;
+            // La réponse ne survit pas à la fermeture : on rouvre, on
+            // redemande — l'état du dépôt a pu changer entre-temps.
+            self.update_result = None;
+        }
+    }
+
+    /// Demande à GitHub la dernière version publiée, sur un thread.
+    ///
+    /// Une requête réseau dans la boucle de rendu fige la fenêtre le
+    /// temps du voyage ; celle-ci arrive par un canal, relevé à chaque
+    /// frame comme la réponse du sélecteur de fichiers.
+    fn start_update_check(&mut self) {
+        if self.update_check.is_some() {
+            return;
+        }
+        self.update_result = None;
+        let (sender, receiver) = mpsc::channel();
+        std::thread::spawn(move || {
+            let réponse = namsdec_update::fetch_latest(namsdec_update::OWNER, namsdec_update::REPO)
+                .map_err(|e| e.to_string());
+            // Si la fenêtre s'est fermée entre-temps, plus personne
+            // n'attend : l'envoi échoue et le thread s'achève là.
+            let _ = sender.send(réponse);
+        });
+        self.update_check = Some(receiver);
+    }
+
+    /// Relève la réponse de la recherche, si elle est arrivée.
+    fn poll_update_check(&mut self, ctx: &egui::Context) {
+        let Some(receiver) = &self.update_check else {
+            return;
+        };
+        match receiver.try_recv() {
+            Ok(réponse) => {
+                self.update_check = None;
+                let s = strings(self.lang);
+                self.update_result = Some(match réponse {
+                    Ok(release) => Ok(namsdec_update::verdict(APP_VERSION, release)),
+                    // Le cas le plus probable au début de la vie d'un
+                    // dépôt : rien n'a encore été publié. Ce n'est pas
+                    // une panne, et le dire ainsi évite d'inquiéter.
+                    Err(message) if message.contains("no release") => {
+                        Err(s.about_update_none.to_owned())
+                    }
+                    Err(message) => Err(format!("{} : {message}", s.about_update_failed)),
+                });
+            }
+            // Toujours en route : sans ce réveil, la réponse attendrait
+            // le prochain mouvement de souris pour être lue.
+            Err(TryRecvError::Empty) => ctx.request_repaint_after(DIALOG_POLL_INTERVAL),
+            Err(TryRecvError::Disconnected) => {
+                self.update_check = None;
+                self.update_result = Some(Err(strings(self.lang).about_update_failed.to_owned()));
+            }
         }
     }
 
@@ -7575,6 +7675,7 @@ impl NamsdecApp {
         // Avant tout le reste : le fichier qu'on vient de choisir dans la
         // boîte native doit être chargé avant que la frame ne s'affiche.
         self.poll_file_dialog(&ctx);
+        self.poll_update_check(&ctx);
         self.apply_tooltip_setting(&ctx);
         self.tick_run(&ctx);
         if self.rebinding.is_none() {

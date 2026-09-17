@@ -1,0 +1,77 @@
+# Publie une version dès qu'une étiquette `v…` est poussée.
+#
+# Le binaire est compilé ici, pas sur la machine de celui qui l'a
+# étiquetée : ce qui est publié vient d'un environnement qu'on peut
+# décrire. Rien n'est signé pour l'instant — le jour où ça le sera, la
+# somme de contrôle publiée ici servira de point de départ.
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+  # De quoi vérifier que le workflow tient debout sans publier quoi que
+  # ce soit.
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # nasm et ld : namsdec les appelle pour de vrai dans ses tests, et
+      # un binaire publié sans qu'ils soient passés ne prouve rien.
+      - name: Installer nasm et binutils
+        run: sudo apt-get update && sudo apt-get install -y nasm binutils
+
+      # Les dépendances système d'eframe sous Linux.
+      - name: Installer les bibliothèques de fenêtrage
+        run: >
+          sudo apt-get install -y
+          libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev
+          libxkbcommon-dev libssl-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Vérifier la mise en forme
+        run: cargo fmt --all --check
+
+      - name: Clippy, sans indulgence
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Les tests
+        run: cargo test --workspace
+
+      - name: Compiler
+        run: cargo build --release
+
+      # Le nom porte la version : deux fichiers téléchargés ne se
+      # ressemblent pas dans un dossier de téléchargements.
+      - name: Nommer le binaire et calculer sa somme
+        id: paquet
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          nom="namsdec-${version}-x86_64-linux"
+          cp target/release/namsdec-gui "$nom"
+          sha256sum "$nom" > "$nom.sha256"
+          echo "nom=$nom" >> "$GITHUB_OUTPUT"
+
+      - name: Publier
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          # Une étiquette qui porte un tiret est une préversion : c'est
+          # ce que dit SemVer, et c'est ce que GitHub doit afficher.
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true
+          files: |
+            ${{ steps.paquet.outputs.nom }}
+            ${{ steps.paquet.outputs.nom }}.sha256

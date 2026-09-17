@@ -1609,16 +1609,13 @@ fn the_about_box_is_centred_and_carries_its_three_offers() {
         "assets/offrir-un-repas.rgba ne correspond plus à TREAT_IMAGE_SIDE"
     );
 
-    // Le bouton de mise à jour ne prétend rien : il lève seulement la
-    // note « pas encore branché », qui ne survit pas à la fermeture.
-    app.about_update_clicked = true;
+    // La réponse d'une recherche de mise à jour ne survit pas à la
+    // fermeture : on rouvre, on redemande.
+    app.update_result = Some(Err("peu importe".to_owned()));
     app.show_about = false;
     let mut output = ctx.run_ui(input, |ui| app.draw(ui));
     output.textures_delta.clear();
-    assert!(
-        !app.about_update_clicked,
-        "la note se referme avec la boîte"
-    );
+    assert!(app.update_result.is_none(), "la réponse part avec la boîte");
 }
 
 /// La chaîne des appels nomme les lignes source, pas seulement des
@@ -8998,6 +8995,90 @@ fn every_goal_is_readable_and_on_the_right_side() {
             exercise.id
         );
     }
+}
+
+/// La recherche de mise à jour est branchée : elle demande, elle répond,
+/// et elle n'installe rien.
+///
+/// Le réseau n'est pas touché ici — ce que GitHub répond est vérifié
+/// chez `namsdec-update`. Ce qui se vérifie ici, c'est le chemin :
+/// l'état d'attente, le verdict affiché, et la promesse tenue de ne
+/// jamais se remplacer tout seul.
+#[test]
+fn the_update_check_is_wired_and_installs_nothing() {
+    let mut app = NamsdecApp {
+        show_about: true,
+        ..Default::default()
+    };
+    // Rien n'a été demandé tant que personne n'a cliqué.
+    assert!(app.update_check.is_none());
+    assert!(app.update_result.is_none());
+
+    let painted = paint(&mut app);
+    let s = strings(app.lang);
+    assert!(painted.contains(s.about_check_update), "{painted}");
+
+    // Le verdict, tel qu'il s'affiche : plus récent, à jour, devant.
+    let release = |v: &str| namsdec_update::Release {
+        tag: format!("v{v}"),
+        version: v.to_owned(),
+        name: v.to_owned(),
+        url: format!("https://github.com/fredza/namsdec/releases/tag/v{v}"),
+        prerelease: v.contains('-'),
+    };
+    app.update_result = Some(Ok(namsdec_update::verdict(APP_VERSION, release("9.9.9"))));
+    let painted = paint(&mut app);
+    assert!(painted.contains(s.about_update_newer), "{painted}");
+    assert!(painted.contains("v9.9.9"), "{painted}");
+    // Et la façon de mettre à jour est dite : à la main.
+    assert!(painted.contains(s.about_update_how), "{painted}");
+    assert!(s.about_update_how.contains("install.sh"));
+
+    app.update_result = Some(Ok(namsdec_update::verdict(
+        APP_VERSION,
+        release(APP_VERSION),
+    )));
+    let painted = paint(&mut app);
+    assert!(painted.contains(s.about_update_uptodate), "{painted}");
+
+    // Un dépôt qui n'a rien publié n'est pas une panne, et le message
+    // le dit autrement qu'un échec.
+    app.update_result = Some(Err(s.about_update_none.to_owned()));
+    let painted = paint(&mut app);
+    assert!(painted.contains(s.about_update_none), "{painted}");
+
+    // Refermer la boîte oublie la réponse : l'état du dépôt a pu changer
+    // entre deux ouvertures.
+    app.show_about = false;
+    paint(&mut app);
+    assert!(app.update_result.is_none());
+}
+
+/// Ce que la recherche de mise à jour va trouver doit exister : le
+/// dépôt publie ses versions, et la façon de les publier est décrite
+/// dans le dépôt lui-même.
+///
+/// Un bouton qui interroge une API que rien n'alimente ne dit jamais
+/// rien d'autre que « aucune version publiée ».
+#[test]
+fn the_repository_knows_how_to_publish_what_the_check_looks_for() {
+    let workflow = include_str!("../../../.github/workflows/release.yml");
+    // Publié sur étiquette : c'est ce que « dès qu'un build est
+    // publié » veut dire.
+    assert!(workflow.contains("tags:"), "{workflow}");
+    assert!(workflow.contains("softprops/action-gh-release"));
+    // Et pas n'importe quoi : les tests passent avant la publication.
+    assert!(workflow.contains("cargo test --workspace"));
+    assert!(workflow.contains("cargo clippy"));
+    // Une somme de contrôle accompagne le binaire.
+    assert!(workflow.contains("sha256sum"));
+    // Une étiquette à tiret est publiée comme préversion, comme le dit
+    // SemVer et comme le programme le lit.
+    assert!(workflow.contains("prerelease:"));
+
+    // Le dépôt interrogé est celui qui publie.
+    assert_eq!(namsdec_update::OWNER, "fredza");
+    assert_eq!(namsdec_update::REPO, "namsdec");
 }
 
 /// La mémoire montre sa carte : où commence le code, où finit la pile,

@@ -243,6 +243,24 @@ sans avertissement, et s'exécuter jusqu'au bout.
 - AVX-512, FMA, les ports `in`/`out` et `cmpxchg16b` ne sont pas
   implémentés.
 
+### Les mises à jour
+
+« À propos ▸ Rechercher une mise à jour » demande à GitHub la dernière
+version publiée et compare avec la vôtre — rien n'est envoyé, rien n'est
+téléchargé, rien n'est installé. La mise à jour se fait à la main :
+
+```sh
+git pull && ./install.sh
+```
+
+Un atelier qui se réécrit tout seul pendant qu'on travaille dedans n'est
+pas un atelier.
+
+Côté dépôt, pousser une étiquette `v…` compile, vérifie (`fmt`, `clippy`,
+tous les tests) et publie le binaire avec sa somme SHA-256 ; une
+étiquette qui porte un tiret est publiée comme préversion, comme le dit
+SemVer et comme le programme le lit.
+
 ## Journal des versions
 
 Ce qui change d'une version à l'autre est dans [CHANGELOG.md](CHANGELOG.md).

@@ -54,6 +54,14 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
   sur les registres : le bandeau dit « atteint » ou « pas encore ». Une
   série installée peut en porter aussi (champ `goal`).
 
+**Mises à jour**
+- « Rechercher une mise à jour » est branché sur les versions publiées du
+  dépôt : comparaison SemVer complète (préversions comprises), et un lien
+  vers la version trouvée. Rien n'est envoyé, rien n'est installé — la
+  mise à jour reste un geste.
+- Le dépôt sait publier : une étiquette `v…` déclenche la compilation, les
+  vérifications et la publication du binaire avec sa somme SHA-256.
+
 **Tenue**
 - Un bandeau dit, dans « À propos », que la version est une préversion.
   Il est lu dans le numéro de version et disparaîtra de lui-même.
