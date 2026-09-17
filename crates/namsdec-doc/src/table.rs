@@ -766,6 +766,62 @@ pub const ENTRIES: &[Entry] = &[
     },
     Entry {
         kind: Kind::Instruction,
+        names: &["lock"],
+        title: Text {
+            fr: "Rendre une opération indivisible",
+            en: "Make an operation indivisible",
+        },
+        body: Text {
+            fr: "Un préfixe, et non une instruction : il s'écrit devant `add`, `xchg`, `inc`, `cmpxchg` et quelques autres, et garantit que la lecture, le calcul et l'écriture se font d'un seul tenant. Sans lui, deux cœurs qui incrémentent le même compteur peuvent perdre une incrémentation. C'est la brique de tous les verrous.",
+            en: "A prefix, not an instruction: it is written before `add`, `xchg`, `inc`, `cmpxchg` and a few others, and guarantees the read, the computation and the write happen as one. Without it, two cores incrementing the same counter can lose one increment. It is the brick every lock is built from.",
+        },
+        flags: "selon l'instruction préfixée",
+        example: "lock inc qword [compteur]",
+    },
+    Entry {
+        kind: Kind::Instruction,
+        names: &["cs", "ds", "es", "ss", "fs", "gs", "segment-prefix"],
+        title: Text {
+            fr: "Les préfixes de segment",
+            en: "Segment prefixes",
+        },
+        body: Text {
+            fr: "`fs:` et `gs:` changent la base à laquelle une adresse se rapporte. En 64 bits, `CS`, `DS`, `ES` et `SS` ont une base nulle — les écrire ne change rien —, mais `FS` et `GS` restent utilisés : Linux met sous `FS` les données propres au fil d'exécution, dont le canari de pile, et c'est pourquoi on lit `mov rax, [fs:0x28]` au début de tant de fonctions. namsdec ne simule pas cette base : il montre le préfixe et refuse l'accès plutôt que de rendre une adresse fausse.",
+            en: "`fs:` and `gs:` change the base an address is relative to. In 64-bit mode `CS`, `DS`, `ES` and `SS` have a zero base — writing them changes nothing — but `FS` and `GS` remain in use: Linux puts thread-local data under `FS`, the stack canary among it, which is why `mov rax, [fs:0x28]` opens so many functions. namsdec does not simulate that base: it shows the prefix and refuses the access rather than returning a wrong address.",
+        },
+        flags: "aucun",
+        example: "; namsdec ne les simule pas : mov rax, [fs:0x28]\n    nop",
+    },
+    Entry {
+        kind: Kind::Instruction,
+        names: &["o16", "a32", "size-prefix"],
+        title: Text {
+            fr: "Les préfixes de taille",
+            en: "Size prefixes",
+        },
+        body: Text {
+            fr: "Deux octets qui changent la taille de ce qui suit : `66` rend les opérandes de 16 bits, `67` les adresses de 32 bits. Un désassembleur les montre seuls — `o16`, `a32` — quand ils précèdent quelque chose qu'il ne sait pas nommer, ou quand ils ne servent qu'à allonger une instruction pour l'aligner. C'est souvent ce dernier cas : un `nop` de sept octets n'est qu'un `nop` habillé de préfixes.",
+            en: "Two bytes that change the size of what follows: `66` makes operands 16-bit, `67` makes addresses 32-bit. A disassembler shows them alone — `o16`, `a32` — when they precede something it cannot name, or when they only pad an instruction for alignment. That last case is the common one: a seven-byte `nop` is just a `nop` dressed in prefixes.",
+        },
+        flags: "aucun",
+        example: "o16 nop            ; le même nop, un octet de plus",
+    },
+    Entry {
+        kind: Kind::Instruction,
+        names: &["fbld", "fbstp"],
+        title: Text {
+            fr: "Le décimal codé binaire du 8087",
+            en: "The 8087's packed decimal",
+        },
+        body: Text {
+            fr: "`fbld` charge un nombre écrit un chiffre décimal par demi-octet — dix-huit chiffres et un signe, sur dix octets — et `fbstp` le réécrit ainsi. C'est l'héritage des machines comptables, où arrondir en binaire était inacceptable. On les rencontre encore dans du vieux code et dans les bibliothèques de conversion. namsdec ne les simule pas : il les nomme et les explique, comme le reste de ce qu'on lit sans l'exécuter.",
+            en: "`fbld` loads a number written one decimal digit per nibble — eighteen digits and a sign, in ten bytes — and `fbstp` writes one back. It is the legacy of accounting machines, where rounding in binary was unacceptable. They still turn up in old code and in conversion libraries. namsdec does not simulate them: it names and explains them, like the rest of what one reads without running it.",
+        },
+        flags: "aucun",
+        example: "; namsdec ne les simule pas : fbstp [resultat]\n    nop",
+    },
+    Entry {
+        kind: Kind::Instruction,
         names: &["cpuid"],
         title: Text {
             fr: "Interroger le processeur",
