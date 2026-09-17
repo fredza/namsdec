@@ -8461,6 +8461,50 @@ fini:
     );
 }
 
+/// L'état du processeur se copie en texte : c'est ce qu'on colle pour
+/// demander de l'aide, ou dans un compte rendu.
+///
+/// C'est le `context` de pwndbg. Un état qui ne sort pas de l'écran se
+/// recopie à la main, donc mal.
+#[test]
+fn the_processor_state_can_be_copied_as_text() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp::default();
+    // Sans processeur, rien à copier — et l'entrée de menu est grisée.
+    assert!(app.context_text().is_none());
+
+    app.source = "\
+default rel
+global _start
+
+section .data
+message: db \"salut\", 0
+
+section .text
+_start:
+    lea rax, [message]
+    push rax
+    mov rbx, 7
+    hlt
+"
+    .to_owned();
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+    app.do_step();
+    app.do_step();
+    app.do_step();
+
+    let contexte = app.context_text().expect("un état à copier");
+    assert!(contexte.starts_with("namsdec "), "{contexte}");
+    assert!(contexte.contains("RIP 0x"), "où l'on est : {contexte}");
+    assert!(contexte.contains("RBX 0000000000000007"), "{contexte}");
+    assert!(contexte.contains("ZF "), "les indicateurs : {contexte}");
+    // La pile est suivie comme ailleurs : le mot empilé pointe la chaîne.
+    assert!(contexte.contains("\"salut\""), "{contexte}");
+}
+
 /// La mémoire montre sa carte : où commence le code, où finit la pile,
 /// ce que le tas occupe, avec les droits de chacun.
 ///

@@ -2963,6 +2963,22 @@ impl NamsdecApp {
                 // Le désassemblage, lui, n'existe qu'après l'assemblage
                 // — et c'est ce qu'on colle dans un compte rendu, pas le
                 // source.
+                // L'état du processeur, en texte : c'est ce qu'on colle
+                // pour demander de l'aide. Un état qui ne sort pas de
+                // l'écran se recopie à la main, donc mal.
+                ui.add_enabled_ui(self.emulator.is_some(), |ui| {
+                    if ui
+                        .button(s.edit_copy_context)
+                        .on_hover_text(s.edit_copy_context_hint)
+                        .clicked()
+                    {
+                        if let Some(contexte) = self.context_text() {
+                            ui.ctx().copy_text(contexte);
+                            self.status = Status::Note(s.context_copied);
+                        }
+                        ui.close();
+                    }
+                });
                 ui.add_enabled_ui(self.assemble_state.is_some(), |ui| {
                     if ui.button(s.edit_copy_listing).clicked() {
                         if let Some(listing) = self.listing_text() {
@@ -5029,6 +5045,93 @@ impl NamsdecApp {
             }
         }
         self.help = Some((word.to_owned(), namsdec_doc::lookup(word)));
+    }
+
+    /// L'état du processeur, en texte : ce qu'on colle pour demander de
+    /// l'aide, ou dans un compte rendu de TP.
+    ///
+    /// C'est le `context` de pwndbg : la prochaine instruction, les
+    /// registres, les indicateurs, le haut de la pile et la chaîne des
+    /// appels. Un état qui ne sort pas de l'écran oblige à le recopier à
+    /// la main — et on recopie mal.
+    fn context_text(&self) -> Option<String> {
+        let emulator = self.emulator.as_ref()?;
+        let s = strings(self.lang);
+        let cpu = emulator.cpu();
+        let regs = &cpu.regs;
+        let mut out = format!("namsdec {APP_VERSION} — {}\n\n", s.context_title);
+
+        // Là où l'on est, et ce qui va s'exécuter.
+        let window = cpu.mem.peek_bytes(regs.rip, 16).ok();
+        let instruction = window
+            .and_then(|bytes| namsdec_disasm::decode_one(bytes, regs.rip))
+            .map(|decoded| namsdec_disasm::format_one(&decoded));
+        out.push_str(&format!("RIP {:#x}", regs.rip));
+        if let Some(texte) = &instruction {
+            out.push_str(&format!("  {texte}"));
+        }
+        if cpu.halted {
+            out.push_str(&format!("  ({})", s.next_instruction_done));
+        }
+        out.push_str("\n\n");
+
+        // Les registres, quatre par ligne : c'est ce qui se relit dans un
+        // message sans partir à la ligne.
+        out.push_str(&format!("{}\n", s.context_registers));
+        for (index, (name, reg)) in REGISTERS.iter().enumerate() {
+            out.push_str(&format!("{name:<3} {:016x}   ", regs.get64(*reg)));
+            if index % 4 == 3 {
+                out.push('\n');
+            }
+        }
+        if !REGISTERS.len().is_multiple_of(4) {
+            out.push('\n');
+        }
+        let indicateurs: Vec<String> = [
+            ("CF", namsdec_core::RFlags::CF),
+            ("PF", namsdec_core::RFlags::PF),
+            ("AF", namsdec_core::RFlags::AF),
+            ("ZF", namsdec_core::RFlags::ZF),
+            ("SF", namsdec_core::RFlags::SF),
+            ("OF", namsdec_core::RFlags::OF),
+        ]
+        .iter()
+        .map(|(name, bit)| format!("{name} {}", u8::from(cpu.flags.contains(*bit))))
+        .collect();
+        out.push_str(&format!(
+            "{} {}\n\n",
+            s.context_flags,
+            indicateurs.join(" ")
+        ));
+
+        // Le haut de la pile, pointeurs suivis : c'est là que se lisent
+        // les adresses de retour.
+        out.push_str(&format!("{}\n", s.context_stack));
+        let rsp = regs.get64(Reg64::Rsp);
+        for index in 0..8u64 {
+            let addr = rsp + index * 8;
+            let links =
+                namsdec_emu::telescope::chain(&cpu.mem, addr, namsdec_emu::telescope::LIMIT);
+            let Some(first) = links.first() else { break };
+            out.push_str(&format!("{addr:#010x}  {:016x}", first.value));
+            for link in &links[1..] {
+                out.push_str(&format!("  -> {:#x}", link.value));
+            }
+            if let Some(fin) = sidebar::chain_end(links.last()) {
+                out.push_str(&format!("  {fin}"));
+            }
+            out.push('\n');
+        }
+
+        // Et la chaîne des appels, quand il y en a une.
+        let frames = emulator.frames();
+        if !frames.is_empty() {
+            out.push_str(&format!("\n{}\n", s.context_calls));
+            for frame in frames {
+                out.push_str(&format!("{:#x}\n", frame.entry));
+            }
+        }
+        Some(out)
     }
 
     /// Le désassemblage du programme, en texte, prêt à être collé.
