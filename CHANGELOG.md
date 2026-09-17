@@ -74,6 +74,13 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
 - « Afficher un nombre » : la synthèse — une boucle, `div` et son RDX, la
   pile, l'arithmétique des caractères et un appel système.
 
+**Un budget par exercice**
+- Chaque exercice mesuré annonce le nombre d'instructions qu'exécute la
+  solution livrée. Le bandeau montre ce que coûte la vôtre, le budget, et
+  votre meilleur score ; un anneau marque les exercices passés en
+  dessous, et la série en tient le compte.
+- Un test vérifie que chaque budget est tenable, solution à l'appui.
+
 **Vérifier ce qu'on a fait**
 - Un exercice réussi le reste : pastille dans la liste, compte en tête de
   la série, retenus sur le disque. Repartir du programme de départ ne le

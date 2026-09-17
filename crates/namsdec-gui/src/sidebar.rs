@@ -145,6 +145,37 @@ impl NamsdecApp {
         })
         .response
         .on_hover_text(s.goal_hint);
+
+        // Le coût, à côté du verdict : un programme juste peut être deux
+        // fois plus court, et c'est en cherchant comment qu'on apprend
+        // `lea`, les décalages, ou qu'une boucle de cinq tours se
+        // remplace par une formule.
+        let Some(id) = self.current_exercise.clone() else {
+            return;
+        };
+        let Some(budget) = namsdec_exercises::find(&self.exercise_packs, &id).and_then(|e| e.par)
+        else {
+            return;
+        };
+        let exécutées = self.emulator.as_ref().map(|e| e.executed()).unwrap_or(0);
+        let meilleur = self.exercises_best.get(&id).copied();
+        ui.horizontal_wrapped(|ui| {
+            ui.colored_label(theme.dim, s.par_label);
+            ui.colored_label(
+                if atteint && exécutées < budget {
+                    theme.good
+                } else {
+                    theme.text
+                },
+                egui::RichText::new(format!("{exécutées}")).monospace(),
+            );
+            ui.colored_label(theme.dim, format!("/ {budget}"));
+            if let Some(meilleur) = meilleur {
+                ui.colored_label(theme.dim, format!("{} {meilleur}", s.par_best));
+            }
+        })
+        .response
+        .on_hover_text(s.par_hint);
     }
 
     /// Combien d'instructions ont tourné depuis le départ.

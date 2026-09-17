@@ -68,6 +68,19 @@ pub struct Exercise {
     /// « atteint » d'un exercice qui ne demande rien n'apprendrait
     /// rien.
     pub goal: Vec<String>,
+    /// Le budget : atteindre le but en ce nombre d'instructions
+    /// **exécutées**, ou moins.
+    ///
+    /// Ce n'est pas une note, c'est une mesure. Un programme juste peut
+    /// être deux fois plus court, et c'est en cherchant comment qu'on
+    /// apprend `lea`, les décalages, ou qu'une boucle de cinq tours se
+    /// remplace par une formule. Le budget est celui de la solution
+    /// livrée : l'égaler est normal, descendre en dessous est le vrai
+    /// exercice.
+    ///
+    /// `None` quand il n'y a rien à mesurer — un exercice qui attend une
+    /// entrée, ou qui montre un refus.
+    pub par: Option<u64>,
 }
 
 /// Une série d'exercices : celle qui est livrée, ou une installée depuis
@@ -106,6 +119,7 @@ pub fn builtin_pack() -> Pack {
                 },
                 starter_code: include_str!("../exercises/registres.asm").to_owned(),
                 goal: Vec::new(),
+                par: None,
             },
             Exercise {
                 id: "boucle".to_owned(),
@@ -119,6 +133,7 @@ pub fn builtin_pack() -> Pack {
                 },
                 starter_code: include_str!("../exercises/boucle.asm").to_owned(),
                 goal: vec!["rax == 0xf".to_owned()],
+                par: Some(18),
             },
             Exercise {
                 id: "bits".to_owned(),
@@ -132,6 +147,7 @@ pub fn builtin_pack() -> Pack {
                 },
                 starter_code: include_str!("../exercises/bits.asm").to_owned(),
                 goal: vec!["rax == 0x28".to_owned(), "rbx == 1".to_owned()],
+                par: Some(8),
             },
             Exercise {
                 id: "comparer".to_owned(),
@@ -145,6 +161,7 @@ pub fn builtin_pack() -> Pack {
                 },
                 starter_code: include_str!("../exercises/comparer.asm").to_owned(),
                 goal: Vec::new(),
+                par: None,
             },
             Exercise {
                 id: "signe".to_owned(),
@@ -158,6 +175,7 @@ pub fn builtin_pack() -> Pack {
                 },
                 starter_code: include_str!("../exercises/signe.asm").to_owned(),
                 goal: vec!["rcx == 1".to_owned(), "rdx == 0".to_owned()],
+                par: Some(11),
             },
             Exercise {
                 id: "multiplier".to_owned(),
@@ -171,6 +189,7 @@ pub fn builtin_pack() -> Pack {
                 },
                 starter_code: include_str!("../exercises/multiplier.asm").to_owned(),
                 goal: vec!["rax == 7".to_owned(), "rdx == 1".to_owned()],
+                par: Some(8),
             },
             Exercise {
                 id: "division".to_owned(),
@@ -184,6 +203,7 @@ pub fn builtin_pack() -> Pack {
                 },
                 starter_code: include_str!("../exercises/division.asm").to_owned(),
                 goal: vec!["rax == 7".to_owned(), "rdx == 3".to_owned()],
+                par: Some(5),
             },
             Exercise {
                 id: "memoire".to_owned(),
@@ -197,6 +217,7 @@ pub fn builtin_pack() -> Pack {
                 },
                 starter_code: include_str!("../exercises/memoire.asm").to_owned(),
                 goal: vec!["r8 == 0x44332211".to_owned(), "r9 == 0x11".to_owned()],
+                par: Some(7),
             },
             Exercise {
                 id: "boutisme".to_owned(),
@@ -210,6 +231,7 @@ pub fn builtin_pack() -> Pack {
                 },
                 starter_code: include_str!("../exercises/boutisme.asm").to_owned(),
                 goal: vec!["rcx == 0x88".to_owned(), "rdx == 0x11".to_owned()],
+                par: Some(4),
             },
             Exercise {
                 id: "donnees".to_owned(),
@@ -223,6 +245,7 @@ pub fn builtin_pack() -> Pack {
                 },
                 starter_code: include_str!("../exercises/donnees.asm").to_owned(),
                 goal: vec!["rax == 0x44332211".to_owned(), "rbx == 5".to_owned(), "rcx == 0x201".to_owned()],
+                par: Some(4),
             },
             Exercise {
                 id: "tableau".to_owned(),
@@ -236,6 +259,7 @@ pub fn builtin_pack() -> Pack {
                 },
                 starter_code: include_str!("../exercises/tableau.asm").to_owned(),
                 goal: vec!["rax == 0x64".to_owned()],
+                par: Some(19),
             },
             Exercise {
                 id: "adresses".to_owned(),
@@ -249,6 +273,7 @@ pub fn builtin_pack() -> Pack {
                 },
                 starter_code: include_str!("../exercises/adresses.asm").to_owned(),
                 goal: vec!["rax == 0x2d".to_owned(), "rcx == 0x1e".to_owned()],
+                par: Some(6),
             },
             Exercise {
                 id: "chaine".to_owned(),
@@ -262,6 +287,7 @@ pub fn builtin_pack() -> Pack {
                 },
                 starter_code: include_str!("../exercises/chaine.asm").to_owned(),
                 goal: vec!["rcx == 5".to_owned()],
+                par: Some(36),
             },
             Exercise {
                 id: "chaines".to_owned(),
@@ -275,6 +301,7 @@ pub fn builtin_pack() -> Pack {
                 },
                 starter_code: include_str!("../exercises/chaines.asm").to_owned(),
                 goal: vec!["rax == 0x73".to_owned(), "rbx == 0x74".to_owned()],
+                par: Some(13),
             },
             Exercise {
                 id: "macros".to_owned(),
@@ -288,6 +315,7 @@ pub fn builtin_pack() -> Pack {
                 },
                 starter_code: include_str!("../exercises/macros.asm").to_owned(),
                 goal: vec!["rax == 0x1e".to_owned(), "rbx == 0xc".to_owned()],
+                par: Some(8),
             },
             Exercise {
                 id: "pile".to_owned(),
@@ -301,6 +329,7 @@ pub fn builtin_pack() -> Pack {
                 },
                 starter_code: include_str!("../exercises/pile.asm").to_owned(),
                 goal: vec!["rax == 1".to_owned(), "rbx == 2".to_owned()],
+                par: Some(9),
             },
             Exercise {
                 id: "appels".to_owned(),
@@ -314,6 +343,7 @@ pub fn builtin_pack() -> Pack {
                 },
                 starter_code: include_str!("../exercises/appels.asm").to_owned(),
                 goal: vec!["rax == 7".to_owned()],
+                par: Some(9),
             },
             Exercise {
                 id: "recursion".to_owned(),
@@ -327,6 +357,7 @@ pub fn builtin_pack() -> Pack {
                 },
                 starter_code: include_str!("../exercises/recursion.asm").to_owned(),
                 goal: vec!["rax == 0x78".to_owned()],
+                par: Some(39),
             },
             Exercise {
                 id: "cadre".to_owned(),
@@ -340,6 +371,7 @@ pub fn builtin_pack() -> Pack {
                 },
                 starter_code: include_str!("../exercises/cadre.asm").to_owned(),
                 goal: vec!["rax == 7".to_owned()],
+                par: Some(11),
             },
             Exercise {
                 id: "sortie".to_owned(),
@@ -353,6 +385,7 @@ pub fn builtin_pack() -> Pack {
                 },
                 starter_code: include_str!("../exercises/sortie.asm").to_owned(),
                 goal: Vec::new(),
+                par: None,
             },
             Exercise {
                 id: "entree".to_owned(),
@@ -366,6 +399,7 @@ pub fn builtin_pack() -> Pack {
                 },
                 starter_code: include_str!("../exercises/entree.asm").to_owned(),
                 goal: vec![],
+                par: None,
             },
             Exercise {
                 id: "tas".to_owned(),
@@ -379,6 +413,7 @@ pub fn builtin_pack() -> Pack {
                 },
                 starter_code: include_str!("../exercises/tas.asm").to_owned(),
                 goal: vec!["rax == 0x42".to_owned()],
+                par: Some(11),
             },
             Exercise {
                 id: "flottants".to_owned(),
@@ -392,6 +427,7 @@ pub fn builtin_pack() -> Pack {
                 },
                 starter_code: include_str!("../exercises/flottants.asm").to_owned(),
                 goal: vec!["rax == 0x400e000000000000".to_owned()],
+                par: Some(5),
             },
             Exercise {
                 id: "afficher".to_owned(),
@@ -405,6 +441,7 @@ pub fn builtin_pack() -> Pack {
                 },
                 starter_code: include_str!("../exercises/afficher.asm").to_owned(),
                 goal: vec!["rax == 4".to_owned()],
+                par: Some(59),
             },
             Exercise {
                 id: "debordement".to_owned(),
@@ -418,6 +455,7 @@ pub fn builtin_pack() -> Pack {
                 },
                 starter_code: include_str!("../exercises/debordement.asm").to_owned(),
                 goal: Vec::new(),
+                par: None,
             },
             Exercise {
                 id: "protection".to_owned(),
@@ -431,6 +469,7 @@ pub fn builtin_pack() -> Pack {
                 },
                 starter_code: include_str!("../exercises/protection.asm").to_owned(),
                 goal: Vec::new(),
+                par: None,
             },
         ],
     }

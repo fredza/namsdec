@@ -10465,6 +10465,160 @@ fn the_five_later_steps_do_what_they_show() {
     );
 }
 
+/// Le budget est une mesure, pas une note : et il est tenable.
+///
+/// Chaque exercice qui en porte un annonce ce que coûte la solution
+/// livrée. Promettre un budget qu'aucune solution n'atteint serait pire
+/// que de n'en pas donner : ce test vérifie, pour chacun, qu'une
+/// solution existe — celle qu'on livre pour les démonstrations, celle
+/// que l'énoncé demande d'écrire pour les autres.
+#[test]
+fn every_budget_is_one_a_program_can_hold() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    // Les deux exercices à faire : le budget vise la solution que
+    // l'énoncé demande, et la voici.
+    let corrections: [(&str, &str, &str); 2] = [
+        ("division", "mov rdx, 99", "xor rdx, rdx"),
+        ("pile", "    hlt", "    xchg rax, rbx\n    hlt"),
+    ];
+
+    for exercise in &namsdec_exercises::builtin_pack().exercises {
+        let Some(budget) = exercise.par else { continue };
+        let mut source = exercise.starter_code.clone();
+        for (id, avant, après) in corrections {
+            if exercise.id == id {
+                source = source.replace(avant, après);
+            }
+        }
+        let mut app = NamsdecApp {
+            source,
+            ..Default::default()
+        };
+        app.do_assemble();
+        assert!(
+            matches!(app.status, Status::AssembleOk),
+            "{} : {:?}",
+            exercise.id,
+            app.status
+        );
+        app.do_run();
+        for _ in 0..500 {
+            if !app.running {
+                break;
+            }
+            app.tick_run(&egui::Context::default());
+        }
+        let emulator = app.emulator.as_ref().expect("chargé");
+        let exécutées = emulator.executed();
+        assert!(
+            exécutées <= budget,
+            "{} : la solution coûte {exécutées} instructions pour un budget de {budget}",
+            exercise.id
+        );
+        // Et elle atteint bien le but qu'on lui demande.
+        let regs = &emulator.cpu().regs;
+        for texte in &exercise.goal {
+            let condition = condition::parse(texte).unwrap_or_else(|| panic!("{texte}"));
+            assert!(
+                condition.holds(regs),
+                "{} : « {texte} » n'est pas atteint par la solution",
+                exercise.id
+            );
+        }
+    }
+}
+
+/// Le score d'un exercice est ce qu'il coûte, et c'est le meilleur qui
+/// reste.
+///
+/// On essaie une idée plus courte, elle échoue, on revient à la
+/// précédente : le score d'avant n'a pas à en pâtir.
+#[test]
+fn the_score_of_an_exercise_is_what_it_costs() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let jouer = |app: &mut NamsdecApp| {
+        app.do_assemble();
+        app.do_run();
+        for _ in 0..200 {
+            if !app.running {
+                break;
+            }
+            app.tick_run(&egui::Context::default());
+        }
+        paint(app);
+    };
+
+    let mut app = NamsdecApp {
+        exercises: true,
+        ..Default::default()
+    };
+    app.load_exercise("namsdec/boucle");
+    jouer(&mut app);
+    let livrée = app.exercises_best.get("namsdec/boucle").copied();
+    assert_eq!(livrée, Some(18), "le coût de la solution livrée");
+
+    // Une solution plus courte : la somme des cinq premiers entiers ne
+    // demande pas de boucle.
+    app.source = "\
+global _start
+section .text
+_start:
+    mov rax, 15
+    hlt
+"
+    .to_owned();
+    jouer(&mut app);
+    let mieux = app.exercises_best.get("namsdec/boucle").copied();
+    assert_eq!(mieux, Some(2), "le meilleur descend");
+
+    // Une tentative plus longue ne remonte pas le score.
+    app.source = namsdec_exercises::builtin_pack()
+        .by_id("boucle")
+        .unwrap()
+        .starter_code
+        .clone();
+    jouer(&mut app);
+    assert_eq!(app.exercises_best.get("namsdec/boucle").copied(), Some(2));
+
+    // Et le score survit au lancement suivant.
+    let écrit = serde_json::to_string(&app.settings_snapshot()).unwrap();
+    let relu = NamsdecApp::from_settings(serde_json::from_str(&écrit).unwrap());
+    assert_eq!(relu.exercises_best.get("namsdec/boucle").copied(), Some(2));
+}
+
+/// Le coût s'affiche à côté du but : ce que le programme a dépensé, le
+/// budget, et le meilleur obtenu jusqu'ici.
+#[test]
+fn the_cost_is_shown_next_to_the_goal() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        exercises: true,
+        ..Default::default()
+    };
+    app.load_exercise("namsdec/boucle");
+    app.do_assemble();
+    app.do_run();
+    for _ in 0..200 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&egui::Context::default());
+    }
+    let painted = paint(&mut app);
+    let s = strings(app.lang);
+    assert!(painted.contains(s.par_label), "{painted}");
+    // Le coût de la solution livrée, et son budget.
+    assert!(painted.contains("18"), "{painted}");
+    assert!(painted.contains("/ 18"), "{painted}");
+    assert!(painted.contains(s.par_best), "le meilleur est dit");
+}
+
 /// La mémoire montre sa carte : où commence le code, où finit la pile,
 /// ce que le tas occupe, avec les droits de chacun.
 ///

@@ -19,11 +19,15 @@
 //!       "title": "Échanger deux registres",
 //!       "description": { "fr": "Sans passer par un troisième.", "en": "Without a third one." },
 //!       "code": "BITS 64\nsection .text\n    xor rax, rbx\n    hlt\n",
-//!       "goal": ["rax == 2", "rbx == 1"]
+//!       "goal": ["rax == 2", "rbx == 1"],
+//!       "par": 6
 //!     }
 //!   ]
 //! }
 //! ```
+//!
+//! `par` est le budget : le nombre d'instructions exécutées qu'il faut
+//! tenir. Facultatif lui aussi — il n'a de sens qu'avec un but.
 //!
 //! `goal` est facultatif : les conditions — la grammaire des points
 //! d'arrêt, **tout en hexadécimal** — que l'état du processeur doit
@@ -91,6 +95,9 @@ struct ExerciseFile {
     /// se regarde n'a pas de but à vérifier.
     #[serde(default)]
     goal: Vec<String>,
+    /// Le budget d'instructions exécutées. Facultatif.
+    #[serde(default)]
+    par: Option<u64>,
 }
 
 #[derive(Deserialize)]
@@ -148,6 +155,7 @@ pub fn parse(text: &str) -> Result<Pack, PackError> {
             description: exercise.description.into(),
             starter_code: exercise.code,
             goal: exercise.goal,
+            par: exercise.par,
         });
     }
 

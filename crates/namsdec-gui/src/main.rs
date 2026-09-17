@@ -747,6 +747,8 @@ struct NamsdecApp {
     /// Retenu sur le disque : un parcours se fait en plusieurs fois, et
     /// ce qu'on a déjà réussi ne se redemande pas.
     exercises_done: BTreeSet<String>,
+    /// Le meilleur compte d'instructions par exercice : le score.
+    exercises_best: BTreeMap<String, u64>,
     /// La légende de la barre de chaleur, sous l'éditeur.
     ///
     /// Utile le temps d'apprendre à lire les teintes, superflue ensuite :
@@ -1417,6 +1419,7 @@ impl Default for NamsdecApp {
             editing_register: None,
             recent_files: Vec::new(),
             exercises_done: BTreeSet::new(),
+            exercises_best: BTreeMap::new(),
             heat_legend: true,
             window_command: None,
             system_titlebar: false,
@@ -1499,6 +1502,7 @@ impl NamsdecApp {
             system_titlebar: settings.system_titlebar,
             heat_legend: settings.heat_legend,
             exercises_done: settings.exercises_done.iter().cloned().collect(),
+            exercises_best: settings.exercises_best.iter().cloned().collect(),
             recent_files: settings.recent_files.iter().map(PathBuf::from).collect(),
             disassembler: settings.disassembler.clone(),
             explorer,
@@ -1594,6 +1598,11 @@ impl NamsdecApp {
             system_titlebar: self.system_titlebar,
             heat_legend: self.heat_legend,
             exercises_done: self.exercises_done.iter().cloned().collect(),
+            exercises_best: self
+                .exercises_best
+                .iter()
+                .map(|(id, compte)| (id.clone(), *compte))
+                .collect(),
             recent_files: self
                 .recent_files
                 .iter()
@@ -4284,12 +4293,24 @@ impl NamsdecApp {
                                         .contains(&namsdec_exercises::full_id(pack, exercise))
                                 })
                                 .count();
+                            let sous_budget = pack
+                                .exercises
+                                .iter()
+                                .filter(|exercise| {
+                                    let id = namsdec_exercises::full_id(pack, exercise);
+                                    match (exercise.par, self.exercises_best.get(&id)) {
+                                        (Some(budget), Some(meilleur)) => *meilleur < budget,
+                                        _ => false,
+                                    }
+                                })
+                                .count();
                             let header = egui::CollapsingHeader::new(
                                 egui::RichText::new(format!(
-                                    "{}  —  {faits}/{} {}",
+                                    "{}  —  {faits}/{} {} · {sous_budget} {}",
                                     pack.name,
                                     pack.exercises.len(),
-                                    s.exercises_done_count
+                                    s.exercises_done_count,
+                                    s.par_under
                                 ))
                                 .color(theme.dim),
                             )
@@ -4317,6 +4338,21 @@ impl NamsdecApp {
                                             // même, et l'on refait le
                                             // premier trois fois.
                                             let fait = self.exercises_done.contains(&id);
+                                            // Trois états, pas de
+                                            // médailles : rien tenté,
+                                            // réussi, réussi sous le
+                                            // budget de la solution
+                                            // livrée.
+                                            let sous_budget = fait
+                                                && match (
+                                                    exercise.par,
+                                                    self.exercises_best.get(&id),
+                                                ) {
+                                                    (Some(budget), Some(meilleur)) => {
+                                                        *meilleur < budget
+                                                    }
+                                                    _ => false,
+                                                };
                                             let (pastille, _) = ui.allocate_exact_size(
                                                 egui::vec2(10.0, 10.0),
                                                 egui::Sense::hover(),
@@ -4327,12 +4363,33 @@ impl NamsdecApp {
                                                     4.0,
                                                     theme.good,
                                                 );
+                                                // Un anneau de plus pour
+                                                // ce qui est passé sous
+                                                // le budget : la seule
+                                                // distinction du
+                                                // parcours, et elle se
+                                                // mérite en réécrivant.
+                                                if sous_budget {
+                                                    ui.painter().circle_stroke(
+                                                        pastille.center(),
+                                                        6.0,
+                                                        egui::Stroke::new(1.2, theme.accent),
+                                                    );
+                                                }
                                             } else {
                                                 ui.painter().circle_stroke(
                                                     pastille.center(),
                                                     4.0,
                                                     egui::Stroke::new(1.0, theme.dim),
                                                 );
+                                            }
+                                            if let Some(meilleur) = self.exercises_best.get(&id) {
+                                                ui.colored_label(
+                                                    theme.dim,
+                                                    egui::RichText::new(format!("{meilleur}"))
+                                                        .monospace(),
+                                                )
+                                                .on_hover_text(s.par_hint);
                                             }
                                             ui.strong(exercise.title.get(lang));
                                             if en_cours {
@@ -5859,6 +5916,14 @@ impl NamsdecApp {
         let Some(id) = self.current_exercise.clone() else {
             return;
         };
+        // Le coût de la course qui vient de réussir. Le meilleur est
+        // gardé, jamais le dernier : on essaie une idée plus courte, elle
+        // échoue, et le score d'avant n'a pas à en pâtir.
+        let exécutées = self.emulator.as_ref().map(|e| e.executed()).unwrap_or(0);
+        let meilleur = self.exercises_best.entry(id.clone()).or_insert(exécutées);
+        if exécutées < *meilleur {
+            *meilleur = exécutées;
+        }
         if self.exercises_done.insert(id) {
             self.status = Status::Note(strings(self.lang).exercises_done_note);
         }

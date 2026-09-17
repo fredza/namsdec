@@ -99,6 +99,14 @@ pub struct Settings {
     /// que d'attaquer le septième.
     #[serde(default)]
     pub exercises_done: Vec<String>,
+    /// Le meilleur compte d'instructions obtenu sur chaque exercice.
+    ///
+    /// Le score d'un exercice d'assembleur, c'est ce qu'il coûte à
+    /// exécuter : un programme juste peut être deux fois plus court, et
+    /// c'est en cherchant comment qu'on apprend. Gardé par identifiant
+    /// complet, comme le reste.
+    #[serde(default)]
+    pub exercises_best: Vec<(String, u64)>,
     /// Le moteur du panneau de désassemblage : « pseudo », « nasm », ou
     /// l'identifiant d'un outil installé. Celui qu'on a choisi doit
     /// revenir à la session suivante, comme le reste.
@@ -162,6 +170,7 @@ impl Default for Settings {
             current_exercise: None,
             recent_files: Vec::new(),
             exercises_done: Vec::new(),
+            exercises_best: Vec::new(),
             disassembler: pseudo_par_défaut(),
             memory_format: "bytes".to_owned(),
             heat_legend: true,
