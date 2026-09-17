@@ -2932,6 +2932,56 @@ fn paint(app: &mut NamsdecApp) -> String {
     painted
 }
 
+/// Le manuel s'exporte en Markdown, dans la langue lue, et le fichier
+/// contient bien les 140 fiches : ce que namsdec explique doit pouvoir
+/// se lire sans namsdec.
+#[test]
+fn the_whole_manual_leaves_in_one_markdown_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("manuel.md");
+
+    let mut app = NamsdecApp::default();
+    app.export_manual(&path);
+    assert!(
+        matches!(app.status, Status::Note(_)),
+        "l'export devrait réussir : {:?}",
+        app.status
+    );
+
+    let texte = std::fs::read_to_string(&path).unwrap();
+    for entry in namsdec_doc::all() {
+        assert!(
+            texte.contains(&format!("### {} — ", entry.names[0])),
+            "{} manque au manuel exporté",
+            entry.names[0]
+        );
+        assert!(
+            texte.contains(entry.title.fr),
+            "{} : titre absent",
+            entry.names[0]
+        );
+    }
+    // Les exemples sortent en blocs de code : autant qu'il y a de
+    // fiches, ouverts et refermés.
+    assert_eq!(
+        texte.matches("```nasm").count(),
+        namsdec_doc::count(),
+        "un bloc de code par fiche"
+    );
+    assert_eq!(
+        texte.matches("```").count(),
+        namsdec_doc::count() * 2,
+        "chaque bloc se referme"
+    );
+
+    // Et l'anglais dit la même chose, en anglais.
+    app.lang = Lang::En;
+    app.export_manual(&path);
+    let anglais = std::fs::read_to_string(&path).unwrap();
+    assert!(anglais.starts_with("# The namsdec manual"));
+    assert!(anglais.contains("Flags written:"));
+}
+
 /// Suivre un renvoi ne perd pas le chemin : la fiche quittée revient
 /// d'un bouton, et le sommaire efface l'historique.
 #[test]

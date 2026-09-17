@@ -124,6 +124,103 @@ pub fn related(entry: &'static Entry, lang: &str) -> Vec<&'static Entry> {
     vus
 }
 
+/// Le manuel entier en Markdown, dans une langue.
+///
+/// Ce que namsdec explique n'a pas à rester dans namsdec : un fichier
+/// qu'on lit sans lui, qu'on imprime, qu'on distribue à une classe. Les
+/// fiches sortent dans l'ordre de la table, groupées par famille.
+///
+/// ```
+/// let manuel = namsdec_doc::markdown("fr");
+/// assert!(manuel.starts_with("# "));
+/// assert!(manuel.contains("## Les notions"));
+/// ```
+pub fn markdown(lang: &str) -> String {
+    let fr = lang == "fr";
+    let mut out = String::new();
+    out.push_str(if fr {
+        "# Le manuel de namsdec
+
+"
+    } else {
+        "# The namsdec manual
+
+"
+    });
+    out.push_str(&if fr {
+        format!(
+            "{} fiches : les instructions que namsdec exécute, les              directives de NASM, le préprocesseur, et les notions que              tout le reste suppose.
+",
+            count()
+        )
+    } else {
+        format!(
+            "{} sheets: the instructions namsdec runs, NASM's              directives, the preprocessor, and the concepts everything              else takes for granted.
+",
+            count()
+        )
+    });
+
+    for (kind, titre) in [
+        (Kind::Concept, if fr { "Les notions" } else { "Concepts" }),
+        (
+            Kind::Instruction,
+            if fr { "Les instructions" } else { "Instructions" },
+        ),
+        (
+            Kind::Directive,
+            if fr {
+                "Les directives de NASM"
+            } else {
+                "NASM directives"
+            },
+        ),
+        (
+            Kind::Preprocessor,
+            if fr {
+                "Le préprocesseur"
+            } else {
+                "The preprocessor"
+            },
+        ),
+    ] {
+        out.push_str(&format!("\n## {titre}\n"));
+        for entry in ENTRIES.iter().filter(|e| e.kind == kind) {
+            out.push_str(&format!(
+                "\n### {} — {}\n\n",
+                entry.names[0],
+                entry.title.get(lang)
+            ));
+            if entry.names.len() > 1 {
+                out.push_str(&format!(
+                    "*{} {}*\n\n",
+                    if fr { "Aussi :" } else { "Also:" },
+                    entry.names[1..].join(", ")
+                ));
+            }
+            out.push_str(entry.body.get(lang));
+            out.push('\n');
+            if kind == Kind::Instruction {
+                out.push_str(&format!(
+                    "\n{} {}\n",
+                    if fr {
+                        "Indicateurs écrits :"
+                    } else {
+                        "Flags written:"
+                    },
+                    if entry.flags.is_empty() {
+                        if fr { "aucun" } else { "none" }
+                    } else {
+                        entry.flags
+                    }
+                ));
+            }
+            out.push_str(&format!("\n```nasm\n{}\n```\n", entry.example));
+        }
+    }
+    out
+}
+
 /// Combien de fiches namsdec porte, instructions et directives
 /// confondues. Le README l'annonce ; un test le compare.
 pub fn count() -> usize {

@@ -613,6 +613,8 @@ enum FileDialogKind {
     AddTheme,
     /// Choisir une série d'exercices à installer.
     AddExercises,
+    /// Choisir où écrire le manuel entier, en Markdown.
+    ExportManual,
 }
 
 /// Le compte rendu de la dernière installation de plugin.
@@ -1902,7 +1904,7 @@ impl NamsdecApp {
                 | FileDialogKind::AddTheme
                 | FileDialogKind::AddExercises => dialog.pick_file(),
                 FileDialogKind::OpenFolder => dialog.pick_folder(),
-                FileDialogKind::SaveAs => dialog.save_file(),
+                FileDialogKind::SaveAs | FileDialogKind::ExportManual => dialog.save_file(),
             };
             // Si l'application s'est arrêtée entre-temps, le résultat
             // n'intéresse plus personne : l'envoi échoue et le thread
@@ -1934,6 +1936,9 @@ impl NamsdecApp {
                 // rfd : c'est ce qui laisse choisir un exécutable ELF sans
                 // extension, cas le plus courant sous Linux.
                 .add_filter(s.filter_all, &["*"]),
+            FileDialogKind::ExportManual => dialog
+                .add_filter(s.filter_markdown, &["md"])
+                .set_file_name("namsdec-manuel.md"),
             FileDialogKind::OpenFolder | FileDialogKind::SaveAs => dialog,
         }
     }
@@ -1978,6 +1983,21 @@ impl NamsdecApp {
             FileDialogKind::SaveAs => self.write_to(&path),
             FileDialogKind::AddTheme => self.install_theme(&path, ctx),
             FileDialogKind::AddExercises => self.install_exercises(&path),
+            FileDialogKind::ExportManual => self.export_manual(&path),
+        }
+    }
+
+    /// Écrit le manuel entier dans un fichier Markdown.
+    ///
+    /// Ce que namsdec explique n'a pas à rester dans namsdec : la
+    /// licence est libre, le manuel se lit, s'imprime et se distribue
+    /// sans lui. La langue est celle de l'interface : on exporte ce
+    /// qu'on lit.
+    fn export_manual(&mut self, path: &Path) {
+        let s = strings(self.lang);
+        match std::fs::write(path, namsdec_doc::markdown(self.lang.code())) {
+            Ok(()) => self.status = Status::Note(s.manual_exported),
+            Err(e) => self.status = Status::Error(format!("{} : {e}", s.manual_export_failed)),
         }
     }
 
@@ -2846,6 +2866,17 @@ impl NamsdecApp {
                     .clicked()
                 {
                     self.dispatch(Action::GoToLabel);
+                    ui.close();
+                }
+                ui.separator();
+                // Le manuel sort d'ici : un fichier qu'on garde, qu'on
+                // imprime, qu'on donne. Le savoir ne sert que partagé.
+                if ui
+                    .button(s.help_export_manual)
+                    .on_hover_text(s.help_export_manual_hint)
+                    .clicked()
+                {
+                    self.spawn_file_dialog(FileDialogKind::ExportManual);
                     ui.close();
                 }
                 ui.separator();
