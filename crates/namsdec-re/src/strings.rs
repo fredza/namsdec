@@ -17,6 +17,7 @@ pub struct StringsModule {
 }
 
 /// Une chaîne trouvée : où elle commence, et ce qu'elle dit.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Found {
     pub addr: u64,
     pub text: String,
@@ -134,12 +135,35 @@ impl ReModule for StringsModule {
         // les données, et chercher ailleurs ne rapporte que du code qui
         // ressemble à du texte. À défaut — un tampon brut, un programme
         // qu'on vient d'assembler — on lit la mémoire telle quelle.
-        self.found = scan_elf(ctx.binary).unwrap_or_else(|| {
-            match ctx.cpu.mem.peek_bytes(range.start, len) {
+        self.found = match scan_elf(ctx.binary) {
+            Some(trouvées) => {
+                // Les adresses viennent des sections — des adresses
+                // virtuelles. Le listing, lui, part parfois du premier
+                // octet du fichier : il faut alors les ramener là où le
+                // code les désigne, sans quoi aucune référence croisée
+                // ne tomberait juste.
+                let base = ctx.disasm.first().map(|first| first.address);
+                trouvées
+                    .into_iter()
+                    .map(|found| match base {
+                        Some(base) if !range.contains(&found.addr) => {
+                            match crate::imports::file_offset(ctx.binary, found.addr) {
+                                Some(offset) => Found {
+                                    addr: base + offset,
+                                    ..found
+                                },
+                                None => found,
+                            }
+                        }
+                        _ => found,
+                    })
+                    .collect()
+            }
+            None => match ctx.cpu.mem.peek_bytes(range.start, len) {
                 Ok(bytes) => scan(bytes, range.start),
                 Err(_) => Vec::new(),
-            }
-        });
+            },
+        };
         // « Mot de passe » quelque part dans les données ne dit rien ;
         // « mot de passe, lu ici » dit par où entrer.
         self.xrefs = crate::xrefs::scan(ctx.disasm, range);

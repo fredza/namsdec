@@ -143,8 +143,11 @@ fn written_address(
     // Seules les adresses écrites en dur se lisent ici : `[rsi]` dépend
     // d'un registre, et personne ne sait ce qu'il vaudra.
     let base = instr.memory_base();
+    // Pour un opérande relatif à RIP, iced rend déjà l'adresse absolue :
+    // y rajouter `next_ip` donnait une adresse qui n'existe nulle part,
+    // et l'avertissement visait alors à côté.
     let addr = if base == Register::RIP || base == Register::EIP {
-        instr.next_ip().wrapping_add(instr.memory_displacement64())
+        instr.ip_rel_memory_address()
     } else if base == Register::None && instr.memory_index() == Register::None {
         instr.memory_displacement64()
     } else {

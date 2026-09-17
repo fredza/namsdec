@@ -9105,6 +9105,75 @@ fn the_repository_checks_itself_on_every_push() {
     assert!(ci.contains("nasm binutils"), "{ci}");
 }
 
+/// Les chaînes se lisent aux adresses que le code désigne : c'est ce
+/// qui permet de dire « lue ici », et c'est tout l'intérêt.
+///
+/// Sur un programme assemblé ici, l'adresse trouvée doit être celle de
+/// l'étiquette. Sur un gros binaire lu par morceaux, les chaînes de
+/// `.rodata` tombent au-delà de ce que namsdec charge : elles se lisent
+/// quand même, mais aucune référence ne peut les croiser, et il vaut
+/// mieux le savoir que le découvrir.
+#[test]
+fn the_strings_of_a_program_land_on_their_label() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: "\
+default rel
+global _start
+
+section .data
+message: db \"un message assez long\", 0
+
+section .text
+_start:
+    lea rax, [message]
+    hlt
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+
+    let state = app.assemble_state.as_ref().expect("assemblé");
+    let attendue = state
+        .output
+        .symbols
+        .iter()
+        .find(|s| s.name == "message")
+        .expect("l'étiquette existe")
+        .addr;
+    let trouvées = namsdec_re::strings::scan_elf(&state.output.file).expect("un ELF");
+    let chaîne = trouvées
+        .iter()
+        .find(|found| found.text.contains("un message assez long"))
+        .unwrap_or_else(|| panic!("la chaîne n'est pas trouvée : {trouvées:?}"));
+    assert_eq!(
+        chaîne.addr, attendue,
+        "l'adresse trouvée est celle de l'étiquette"
+    );
+
+    // Et le code la désigne : c'est le « lue ici » du panneau.
+    // La plage est celle du programme entier : c'est elle qui dit à
+    // `xrefs` ce qui est une adresse et ce qui est un nombre.
+    let premier = state.disasm.first().expect("du code").address;
+    let dernier = state.disasm.last().expect("du code").address;
+    let xrefs = namsdec_re::xrefs::scan(&state.disasm, premier..dernier + 0x2000);
+    println!(
+        "XREF attendue={attendue:#x} ; cibles = {:?}",
+        xrefs.labels()
+    );
+    for i in &state.disasm {
+        println!("  {:#x} {}", i.address, i.text);
+    }
+    assert!(
+        !xrefs.to(attendue).is_empty(),
+        "personne ne pointe sur la chaîne"
+    );
+}
+
 /// La mémoire montre sa carte : où commence le code, où finit la pile,
 /// ce que le tas occupe, avec les droits de chacun.
 ///

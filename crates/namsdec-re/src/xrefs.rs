@@ -145,8 +145,14 @@ pub fn scan(disasm: &[DecodedInstruction], range: std::ops::Range<u64>) -> Xrefs
                 // données d'un programme, où qu'il soit chargé.
                 OpKind::Memory => {
                     let base = instr.memory_base();
+                    // `[rel message]` : iced a déjà fait le calcul —
+                    // `memory_displacement64` rend l'adresse absolue,
+                    // pas le déplacement. Y rajouter `next_ip` doublait
+                    // l'adresse, et toutes les références aux données
+                    // d'un programme moderne — qui est relatif à RIP —
+                    // se perdaient hors de la plage du programme.
                     let target = if base == Register::RIP || base == Register::EIP {
-                        instr.next_ip().wrapping_add(instr.memory_displacement64())
+                        instr.ip_rel_memory_address()
                     } else if base == Register::None && instr.memory_index() == Register::None {
                         instr.memory_displacement64()
                     } else {
@@ -242,6 +248,27 @@ mod tests {
                 from: 0x400000,
                 kind: Kind::Address
             }]
+        );
+    }
+
+    /// Une donnée désignée relativement à RIP compte comme les autres.
+    ///
+    /// C'est le cas ordinaire du code moderne — `default rel`, et tout
+    /// ce que produit un compilateur — et il était perdu : iced rend
+    /// déjà l'adresse absolue, y rajouter `next_ip` l'envoyait hors du
+    /// programme. « Qui lit cette chaîne ? » ne répondait jamais rien.
+    #[test]
+    fn a_rip_relative_data_reference_counts_too() {
+        // lea rax, [rel 0x401000] à 0x400000.
+        let bytes = [0x48, 0x8d, 0x05, 0xf9, 0x0f, 0x00, 0x00];
+        let xrefs = scan(&disassemble(&bytes, 0x400000), 0x400000..0x402000);
+        assert_eq!(
+            xrefs.to(0x401000),
+            [Ref {
+                from: 0x400000,
+                kind: Kind::Data
+            }],
+            "l'adresse visée est celle que le désassemblage écrit"
         );
     }
 
