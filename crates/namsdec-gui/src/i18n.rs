@@ -253,6 +253,12 @@ pub struct Strings {
     pub untitled_buffer: &'static str,
     /// L'infobulle de la croix d'un onglet.
     pub tab_close_hint: &'static str,
+    /// Ce qui se dit quand le fichier a changé sur le disque : rechargé
+    /// tout seul quand rien n'était en danger, signalé sinon.
+    pub disk_reloaded: &'static str,
+    pub disk_changed: &'static str,
+    pub disk_reload: &'static str,
+    pub disk_keep: &'static str,
     /// Les trois gestes des onglets, dans les raccourcis et la palette.
     pub action_next_tab: &'static str,
     pub action_previous_tab: &'static str,
@@ -769,6 +775,10 @@ const FR: Strings = Strings {
     prefix_vex: "VEX : l'encodage des instructions AVX.",
     untitled_buffer: "sans titre",
     tab_close_hint: "Fermer ce fichier",
+    disk_reloaded: "Le fichier a changé sur le disque : rechargé.",
+    disk_changed: "Ce fichier a changé sur le disque, et vos modifications ne sont pas enregistrées.",
+    disk_reload: "Recharger",
+    disk_keep: "Garder ce que j'ai écrit",
     action_next_tab: "Fichier suivant",
     action_previous_tab: "Fichier précédent",
     action_close_tab: "Fermer le fichier",
@@ -1251,6 +1261,10 @@ const EN: Strings = Strings {
     prefix_vex: "VEX: the encoding of AVX instructions.",
     untitled_buffer: "untitled",
     tab_close_hint: "Close this file",
+    disk_reloaded: "The file changed on disk: reloaded.",
+    disk_changed: "This file changed on disk, and your edits are not saved.",
+    disk_reload: "Reload",
+    disk_keep: "Keep what I wrote",
     action_next_tab: "Next file",
     action_previous_tab: "Previous file",
     action_close_tab: "Close file",

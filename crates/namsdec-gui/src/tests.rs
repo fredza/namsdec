@@ -13079,3 +13079,81 @@ fn each_exercise_gets_its_own_named_tab() {
     );
     assert_eq!(app.tabs.len(), 1, "et l'on n'a pas ouvert un troisième");
 }
+
+/// Un fichier changé sous nos pieds ne passe pas inaperçu.
+///
+/// `git checkout`, un autre éditeur, un `sed` : le fichier bouge pendant
+/// qu'on regarde ailleurs. Rien de tapé de notre côté, on relit — c'est
+/// ce que le fichier dit maintenant. Modifié des deux côtés, on ne
+/// choisit pas à la place de l'utilisateur : on le dit, et il tranche.
+#[test]
+fn a_file_changed_on_disk_is_noticed_and_never_silently_overwritten() {
+    let dir = tempfile::tempdir().unwrap();
+    let chemin = dir.path().join("travail.asm");
+    std::fs::write(&chemin, "global _start\nsection .text\n_start:\n    hlt\n").unwrap();
+
+    let mut app = NamsdecApp::default();
+    app.open_file(chemin.clone());
+    assert!(app.file_mtime.is_some(), "la date du fichier est relevée");
+
+    // Quelqu'un d'autre écrit dedans. La date doit changer : un système
+    // de fichiers à la seconde près demande qu'on l'attende.
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    std::fs::write(
+        &chemin,
+        "global _start\nsection .text\n_start:\n    nop\n    hlt\n",
+    )
+    .unwrap();
+
+    // Rien de tapé ici : on relit, et on le dit.
+    app.check_disk_change();
+    assert!(app.source.contains("nop"), "le tampon suit le disque");
+    assert!(!app.disk_changed, "rien à trancher : {:?}", app.status);
+    assert!(
+        matches!(app.status, Status::Note(_)),
+        "et le rechargement se dit : {:?}",
+        app.status
+    );
+    assert!(
+        app.assemble_state.is_none(),
+        "ce qui était assemblé décrivait l'ancienne version"
+    );
+
+    // Cette fois, on a tapé quelque chose *et* le fichier a rebougé.
+    app.source.push_str("    ; mon ajout\n");
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    std::fs::write(
+        &chemin,
+        "global _start\nsection .text\n_start:\n    xor rax, rax\n    hlt\n",
+    )
+    .unwrap();
+    app.check_disk_change();
+    assert!(
+        app.disk_changed,
+        "les deux versions comptent : il faut le signaler"
+    );
+    assert!(
+        app.source.contains("; mon ajout"),
+        "et surtout ne rien écraser sans le demander"
+    );
+
+    // Le bandeau le dit, avec de quoi trancher.
+    let peint = paint(&mut app);
+    assert!(peint.contains(strings(Lang::Fr).disk_reload), "{peint}");
+    assert!(peint.contains(strings(Lang::Fr).disk_keep), "{peint}");
+
+    // Recharger prend la version du disque, et l'avertissement s'en va.
+    app.reload_from_disk();
+    assert!(app.source.contains("xor rax, rax"), "{}", app.source);
+    assert!(!app.source.contains("; mon ajout"));
+    assert!(!app.disk_changed);
+
+    // Enregistrer fait foi : la date relevée est celle qu'on vient
+    // d'écrire, et l'avertissement ne revient pas sur notre propre
+    // écriture.
+    app.source.push_str("    ; encore un ajout\n");
+    app.do_save();
+    app.check_disk_change();
+    assert!(!app.disk_changed, "notre propre écriture ne s'annonce pas");
+    assert!(app.source.contains("; encore un ajout"));
+}

@@ -585,6 +585,9 @@ impl EditorMode {
 /// arrêtée au pas où on l'avait laissée.
 struct OpenTab {
     path: Option<PathBuf>,
+    /// La date qu'avait le fichier quand on l'a lu ou écrit. C'est elle
+    /// qui dit, au retour, qu'un autre programme est passé par là.
+    file_mtime: Option<std::time::SystemTime>,
     source: String,
     saved_source: String,
     cursor_byte: usize,
@@ -965,6 +968,19 @@ struct NamsdecApp {
     /// Les autres fichiers ouverts, rangés tels qu'on les a laissés.
     /// L'onglet actif n'y est pas : c'est l'état de travail lui-même.
     tabs: Vec<OpenTab>,
+    /// La date du fichier ouvert, telle qu'on l'a lue ou écrite.
+    ///
+    /// Un fichier qu'on édite aussi ailleurs — un autre éditeur, un
+    /// `sed`, un `git checkout` — change sous l'application sans que rien
+    /// ne le dise : on écrasait alors le travail de l'autre au premier
+    /// Ctrl+S, ou l'on assemblait une version périmée.
+    file_mtime: Option<std::time::SystemTime>,
+    /// Le fichier a changé sur le disque et le tampon, lui, n'est pas
+    /// enregistrable sans écraser : on le signale au lieu de choisir.
+    disk_changed: bool,
+    /// La fenêtre avait-elle le focus à l'image précédente ? C'est le
+    /// passage de « non » à « oui » qui déclenche la vérification.
+    had_focus: bool,
     /// Vrai le temps de rouvrir les fichiers de la séance précédente.
     ///
     /// Rouvrir n'est pas ouvrir : la liste des fichiers récents garde
@@ -1602,6 +1618,9 @@ impl Default for NamsdecApp {
             explorer_focused: false,
             current_file: None,
             tabs: Vec::new(),
+            file_mtime: None,
+            disk_changed: false,
+            had_focus: true,
             restoring_session: false,
             active_tab_index: 0,
             show_toolbar: true,
@@ -2872,6 +2891,7 @@ impl NamsdecApp {
     fn take_tab(&mut self) -> OpenTab {
         OpenTab {
             path: self.current_file.take(),
+            file_mtime: self.file_mtime,
             source: std::mem::take(&mut self.source),
             saved_source: std::mem::take(&mut self.saved_source),
             cursor_byte: self.cursor_byte,
@@ -2890,6 +2910,7 @@ impl NamsdecApp {
     /// Et l'inverse : l'onglet redevient le fichier de travail.
     fn restore_tab(&mut self, tab: OpenTab) {
         self.current_file = tab.path;
+        self.file_mtime = tab.file_mtime;
         self.source = tab.source;
         self.saved_source = tab.saved_source;
         self.cursor_byte = tab.cursor_byte;
@@ -2916,6 +2937,57 @@ impl NamsdecApp {
         // fait qu'à la demande, sinon il le laisse où la souris l'a
         // posé.
         self.goto_line = Some(self.cursor_pos.0.max(1) as u32);
+        // Le fichier a pu changer pendant qu'on travaillait ailleurs.
+        self.check_disk_change();
+    }
+
+    /// Le fichier ouvert a-t-il changé sur le disque ?
+    ///
+    /// Non enregistré de notre côté, on recharge : c'est ce que le
+    /// fichier dit maintenant, et rien de nôtre n'est perdu. Modifié des
+    /// deux côtés, on ne choisit pas à la place de l'utilisateur — on le
+    /// dit, et il tranche.
+    fn check_disk_change(&mut self) {
+        let (Some(path), Some(connue)) = (self.current_file.clone(), self.file_mtime) else {
+            return;
+        };
+        let Some(sur_disque) = file_mtime(&path) else {
+            // Disparu : ce n'est pas à nous de l'effacer de l'écran, et
+            // Ctrl+S le réécrira très bien.
+            return;
+        };
+        if sur_disque == connue {
+            return;
+        }
+        if self.buffer_modified() {
+            self.disk_changed = true;
+            return;
+        }
+        let Ok(texte) = std::fs::read_to_string(&path) else {
+            self.disk_changed = true;
+            return;
+        };
+        self.source = texte.clone();
+        self.saved_source = texte;
+        self.file_mtime = Some(sur_disque);
+        self.disk_changed = false;
+        // Ce qui était assemblé décrit l'ancienne version : le garder
+        // ferait pointer la gouttière sur des lignes qui ont bougé.
+        self.assemble_state = None;
+        self.emulator = None;
+        self.diagnostics.clear();
+        self.status = Status::Note(strings(self.lang).disk_reloaded);
+    }
+
+    /// Recharge depuis le disque, en abandonnant ce qu'on avait tapé.
+    fn reload_from_disk(&mut self) {
+        if self.current_file.is_none() {
+            return;
+        }
+        // On fait comme si le tampon était à jour : `check_disk_change`
+        // relit alors le fichier et remplace tout.
+        self.saved_source = self.source.clone();
+        self.check_disk_change();
     }
 
     /// Tous les onglets dans l'ordre, l'actif à sa place.
@@ -3222,6 +3294,8 @@ impl NamsdecApp {
                 self.saved_source = text.clone();
                 self.source = text;
                 self.note_recent(&path);
+                self.file_mtime = file_mtime(&path);
+                self.disk_changed = false;
                 self.current_file = Some(path);
                 self.assemble_state = None;
                 self.emulator = None;
@@ -3733,6 +3807,10 @@ impl NamsdecApp {
             Ok(()) => {
                 self.current_file = Some(path.to_path_buf());
                 self.saved_source = self.source.clone();
+                // Ce qu'on vient d'écrire fait foi : la date change, et
+                // l'avertissement éventuel n'a plus lieu d'être.
+                self.file_mtime = file_mtime(path);
+                self.disk_changed = false;
             }
             Err(e) => {
                 self.status = Status::Error(if self.lang == Lang::Fr {
@@ -5856,6 +5934,7 @@ impl NamsdecApp {
         // Les fichiers ouverts, en tête : on passe de l'un à l'autre
         // sans rien perdre de ce qu'on faisait sur les autres.
         self.tabs_bar_ui(ui);
+        self.disk_changed_ui(ui);
         // La barre de recherche, au-dessus du code : elle pousse
         // l'éditeur d'une ligne plutôt que de flotter par-dessus, pour
         // ne jamais couvrir ce qu'on vient de trouver.
@@ -6202,6 +6281,44 @@ impl NamsdecApp {
 
     /// La barre de recherche : ce qu'on cherche, combien de fois on le
     /// trouve, et de quoi passer d'une occurrence à l'autre.
+    /// L'avertissement d'un fichier changé sous nos pieds.
+    ///
+    /// Non bloquant : une fenêtre modale au retour d'un `git checkout`
+    /// interromprait pour une question qui n'est pas urgente. Deux
+    /// boutons suffisent — relire le disque, ou garder ce qu'on a écrit
+    /// et l'enregistrer quand on voudra.
+    fn disk_changed_ui(&mut self, ui: &mut egui::Ui) {
+        if !self.disk_changed {
+            return;
+        }
+        let s = strings(self.lang);
+        let theme = self.theme;
+        egui::Frame::new()
+            .fill(theme.warn.gamma_multiply(0.12))
+            .inner_margin(egui::Margin::symmetric(8, 5))
+            .corner_radius(4.0)
+            .show(ui, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.colored_label(theme.warn, s.disk_changed);
+                    if ui.button(s.disk_reload).clicked() {
+                        self.reload_from_disk();
+                    }
+                    if ui.button(s.disk_keep).clicked() {
+                        // Garder, c'est accepter la version du disque
+                        // comme point de comparaison : sans cela,
+                        // l'avertissement reviendrait à chaque regard.
+                        self.file_mtime = self
+                            .current_file
+                            .as_deref()
+                            .and_then(file_mtime)
+                            .or(self.file_mtime);
+                        self.disk_changed = false;
+                    }
+                });
+            });
+        ui.add_space(2.0);
+    }
+
     /// La barre des fichiers ouverts.
     ///
     /// Un onglet par fichier, le nom raccourci quand il est long — mais
@@ -8716,6 +8833,11 @@ fn newline_indent(source: &str, cursor: usize) -> String {
     format!("\n{indent}")
 }
 
+/// La date de dernière modification d'un fichier, si on peut la lire.
+fn file_mtime(path: &Path) -> Option<std::time::SystemTime> {
+    std::fs::metadata(path).ok()?.modified().ok()
+}
+
 /// Le nom d'un onglet : le fichier, l'exercice, ou « sans titre ».
 ///
 /// Un exercice n'a pas de fichier sur le disque, et trois onglets
@@ -9634,6 +9756,14 @@ impl NamsdecApp {
         // boîte native doit être chargé avant que la frame ne s'affiche.
         self.poll_file_dialog(&ctx);
         self.poll_update_check(&ctx);
+        // Au retour dans la fenêtre : un autre programme a pu passer par
+        // là — un `git checkout`, un éditeur, un `sed`. On regarde à ce
+        // moment-là, et non à chaque image : c'est un accès au disque.
+        let focus = ctx.input(|i| i.focused);
+        if focus && !self.had_focus {
+            self.check_disk_change();
+        }
+        self.had_focus = focus;
         self.apply_tooltip_setting(&ctx);
         self.tick_run(&ctx);
         self.note_goal_reached();

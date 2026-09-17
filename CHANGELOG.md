@@ -230,6 +230,12 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
 - Ouvrir un fichier ne demande donc plus si l'on veut perdre le
   précédent : il attend dans son onglet. Ctrl+Tab passe au suivant,
   Ctrl+Maj+Tab au précédent, Ctrl+W ferme.
+- Un fichier changé sur le disque pendant qu'on regardait ailleurs — un
+  `git checkout`, un autre éditeur — ne passe plus inaperçu : rien de
+  tapé de notre côté, il est relu et namsdec le dit ; modifié des deux
+  côtés, un bandeau propose de relire ou de garder. La vérification a
+  lieu au retour dans la fenêtre et en changeant d'onglet, jamais à
+  chaque image.
 - Chaque exercice a son onglet, et porte son titre : on ouvre le suivant
   sans abandonner le précédent, et l'on y revient avec ce qu'on y avait
   écrit. Trois onglets « sans titre » côte à côte ne disaient rien.
