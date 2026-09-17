@@ -923,6 +923,29 @@ impl NamsdecApp {
         }
     }
 
+    /// Écrit des octets en mémoire, à la main.
+    ///
+    /// Sans regarder les droits : c'est ce que fait un débogueur, et
+    /// c'est ce qui permet d'essayer une hypothèse sur du code ou sur
+    /// une section en lecture seule. Le *programme*, lui, continue
+    /// d'obéir aux règles — sans quoi la protection n'apprendrait plus
+    /// rien.
+    pub(crate) fn poke_memory(&mut self, addr: u64, bytes: &[u8]) {
+        let s = strings(self.lang);
+        let Some(emulator) = &mut self.emulator else {
+            return;
+        };
+        match emulator.cpu_mut().mem.poke(addr, bytes) {
+            Ok(()) => {
+                self.status = Status::Note(s.poke_done);
+                // Le vidage compare avec l'image d'avant : sans cela, ce
+                // qu'on vient d'écrire ne ressortirait pas.
+                self.mem_before = None;
+            }
+            Err(_) => self.status = Status::Error(s.address_out_of_range.to_owned()),
+        }
+    }
+
     /// Pose une valeur dans un registre, à la main.
     ///
     /// Le pas suivant partira de là : c'est une hypothèse qu'on teste,
@@ -1745,6 +1768,45 @@ impl NamsdecApp {
                     }
                 }
             });
+        // Écrire ici, à la main : le pendant de l'édition d'un registre.
+        // Un débogueur écrit là où le programme n'a pas le droit — c'est
+        // ce qui permet d'essayer « et si ce tampon contenait ça ? » —,
+        // et le dire vaut mieux que de le cacher.
+        let mut écrire = None;
+        egui::CollapsingHeader::new(s.poke_title)
+            .id_salt("memory_poke")
+            .show(ui, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    for kind in SearchKind::ALL {
+                        if ui
+                            .selectable_label(self.mem_search_kind == kind, kind.label(s))
+                            .clicked()
+                        {
+                            self.mem_search_kind = kind;
+                        }
+                    }
+                });
+                ui.horizontal(|ui| {
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.mem_poke)
+                            .font(egui::TextStyle::Monospace)
+                            .desired_width(180.0)
+                            .hint_text(s.poke_hint),
+                    );
+                    let octets = self.mem_search_kind.needle(&self.mem_poke);
+                    ui.add_enabled_ui(octets.is_some(), |ui| {
+                        if ui
+                            .button(s.poke_write)
+                            .on_hover_text(s.poke_write_hint)
+                            .clicked()
+                            && let Some(octets) = octets
+                        {
+                            écrire = Some(octets);
+                        }
+                    });
+                });
+                ui.colored_label(theme.dim, s.poke_explain);
+            });
         self.watchpoints_ui(ui, &watched);
         ui.colored_label(theme.dim, quartier);
         // Qui a écrit là : la même question que pour un registre, en
@@ -1763,6 +1825,10 @@ impl NamsdecApp {
                     });
             }
             None => hexdump_ui(ui, "memory_dump", &dump),
+        }
+
+        if let Some(octets) = écrire {
+            self.poke_memory(self.mem_addr, &octets);
         }
 
         // Sauter à une zone de la carte : le vidage suit, et le champ

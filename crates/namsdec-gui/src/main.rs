@@ -623,6 +623,12 @@ struct NamsdecApp {
     /// entière : « et si RCX valait 1 ? » se répond en une seconde au
     /// lieu de se réécrire. `set $rax = …` chez gdb.
     editing_register: Option<(&'static str, String)>,
+    /// Ce qu'on s'apprête à écrire dans la mémoire, à la main.
+    ///
+    /// Le pendant de l'édition d'un registre : poser une valeur dans un
+    /// tampon pour voir ce que le programme en fera. `patch` chez
+    /// pwndbg.
+    mem_poke: String,
     /// Le panneau de désassemblage, et le moteur qu'il emploie.
     show_disassembly: bool,
     disassembler: String,
@@ -1221,6 +1227,7 @@ impl Default for NamsdecApp {
             mem_search: String::new(),
             mem_search_kind: SearchKind::Text,
             editing_register: None,
+            mem_poke: String::new(),
             show_disassembly: false,
             disassembler: PSEUDO_ID.to_owned(),
             disassembly_query: String::new(),

@@ -8505,6 +8505,73 @@ _start:
     assert!(contexte.contains("\"salut\""), "{contexte}");
 }
 
+/// On écrit en mémoire à la main, y compris là où le programme n'aurait
+/// pas le droit — c'est ce que fait un débogueur —, et le programme,
+/// lui, continue d'obéir aux règles.
+#[test]
+fn memory_is_written_by_hand_where_the_program_could_not() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: "\
+default rel
+global _start
+
+section .data
+tampon: times 8 db 0
+
+section .text
+_start:
+    mov al, [tampon]
+    hlt
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+
+    let tampon = app
+        .assemble_state
+        .as_ref()
+        .unwrap()
+        .output
+        .symbols
+        .iter()
+        .find(|s| s.name == "tampon")
+        .expect("l'étiquette existe")
+        .addr;
+
+    // Ce qu'on écrit, le programme le lit.
+    app.poke_memory(tampon, b"\x42");
+    app.do_step();
+    assert_eq!(
+        app.emulator.as_ref().unwrap().cpu().regs.get64(Reg64::Rax) & 0xff,
+        0x42
+    );
+
+    // Et l'on écrit même dans le code, que le programme ne pourrait pas
+    // toucher : c'est l'observateur qui écrit, pas lui.
+    let code = app.assemble_state.as_ref().unwrap().output.entry;
+    app.poke_memory(code, &[0x90]);
+    assert!(matches!(app.status, Status::Note(_)), "{:?}", app.status);
+    assert_eq!(
+        app.emulator
+            .as_ref()
+            .unwrap()
+            .cpu()
+            .mem
+            .peek_bytes(code, 1)
+            .unwrap(),
+        &[0x90]
+    );
+
+    // Hors de la mémoire simulée, en revanche, il n'y a rien à écrire.
+    app.poke_memory(0xdead_beef, &[0]);
+    assert!(matches!(app.status, Status::Error(_)), "{:?}", app.status);
+}
+
 /// La mémoire montre sa carte : où commence le code, où finit la pile,
 /// ce que le tas occupe, avec les droits de chacun.
 ///
