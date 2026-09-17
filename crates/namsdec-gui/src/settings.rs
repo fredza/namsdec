@@ -94,6 +94,12 @@ pub struct Settings {
     /// Comment l'onglet Mémoire lit les octets : « bytes », « words » ou
     /// « text ».
     pub memory_format: String,
+    /// Rendre la barre de titre au système au lieu de celle que namsdec
+    /// dessine. Faux par défaut : les menus *sont* la barre de titre, ce
+    /// qui économise une rangée. Vrai pour qui préfère la décoration de
+    /// son bureau, ou pour qui a un ennui avec la nôtre.
+    #[serde(default)]
+    pub system_titlebar: bool,
     /// La hauteur de la console, en pixels, quand elle a été réglée à la
     /// main. Absente — le cas par défaut — la console prend la place de
     /// ce qu'elle a à dire.
@@ -140,6 +146,7 @@ impl Default for Settings {
             current_exercise: None,
             disassembler: pseudo_par_défaut(),
             memory_format: "bytes".to_owned(),
+            system_titlebar: false,
             console_height: None,
             memory_follow: fixe_par_défaut(),
             explorer_root: None,

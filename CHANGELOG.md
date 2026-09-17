@@ -79,6 +79,17 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
   exécutables que le fichier désigne.
 
 **Place à l'écran**
+- Les onglets du panneau latéral — Pile, Mémoire, Tas, Octets, RE — sont
+  passés à droite de la barre d'outils : ils ne montent plus et ne
+  descendent plus avec le bandeau, et le panneau gagne leur hauteur.
+- La gouttière peint une bande de chaleur au lieu d'écrire « ×1203 » :
+  l'échelle est logarithmique, le compte exact vient au survol, et la
+  colonne du compteur disparaît avec ses quarante-quatre pixels.
+- La fenêtre porte ses trois pastilles au bout de la barre de menus, qui
+  fait office de barre de titre : une rangée de moins. Préférences ▸
+  Général rend la barre du système à qui la préfère.
+- La boîte « À propos » mène quelque part : namsdec.io, le Discord, le
+  dépôt.
 - La console prend la hauteur de ce qu'elle a à dire : « le programme n'a
   rien écrit » occupait le quart de l'écran, c'est maintenant trois
   lignes. Tirer la poignée reprend la main, et la hauteur choisie est

@@ -244,6 +244,14 @@ sans avertissement, et s'exécuter jusqu'au bout.
 - AVX-512, FMA, les ports `in`/`out` et `cmpxchg16b` ne sont pas
   implémentés.
 
+### La fenêtre
+
+namsdec dessine sa propre barre de titre : les menus en tiennent lieu,
+et les trois pastilles sont au bout, à droite. On déplace la fenêtre en
+saisissant la barre, on l'agrandit d'un double-clic, on la
+redimensionne par ses bords. Préférences ▸ Général rend la décoration du
+bureau à qui la préfère — le réglage s'applique sans redémarrer.
+
 ### Les mises à jour
 
 « À propos ▸ Rechercher une mise à jour » demande à GitHub les versions

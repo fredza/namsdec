@@ -9599,6 +9599,67 @@ fn the_about_box_opens_the_three_doors_of_the_project() {
     )));
 }
 
+/// La fenêtre porte ses trois pastilles au bout de la barre de menus,
+/// et la barre de titre du système reste à un réglage près.
+///
+/// Dessiner la décoration soi-même économise une rangée : les menus
+/// *sont* la barre de titre. Mais tout ce que le système faisait — la
+/// déplacer, l'agrandir, la redimensionner — revient alors à notre
+/// charge, et il faut pouvoir revenir en arrière si un bureau s'y prend
+/// autrement.
+#[test]
+fn the_window_carries_its_own_three_buttons() {
+    let mut app = NamsdecApp::default();
+    assert!(!app.system_titlebar, "la décoration maison par défaut");
+
+    // Les trois pastilles sont peintes : trois disques, de trois
+    // couleurs, au bout de la barre.
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 820.0),
+        )),
+        ..Default::default()
+    };
+    let disques = |app: &mut NamsdecApp| -> Vec<(egui::Color32, f32)> {
+        let mut out = Vec::new();
+        for _ in 0..2 {
+            out.clear();
+            let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+            for clipped in &output.shapes {
+                if let egui::epaint::Shape::Circle(cercle) = &clipped.shape
+                    && cercle.center.y < 40.0
+                {
+                    out.push((cercle.fill, cercle.center.x));
+                }
+            }
+            output.textures_delta.clear();
+        }
+        out
+    };
+    let peints = disques(&mut app);
+    assert_eq!(peints.len(), 3, "trois pastilles : {peints:?}");
+    // De gauche à droite : réduire, agrandir, fermer — la fermeture à
+    // l'extrémité, là où la main la cherche.
+    let mut x: Vec<f32> = peints.iter().map(|(_, x)| *x).collect();
+    x.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    assert!(x[0] > 1280.0 * 0.8, "au bout de la barre : {x:?}");
+    // Trois couleurs distinctes, et aucune n'est celle du fond.
+    let couleurs: std::collections::BTreeSet<[u8; 4]> =
+        peints.iter().map(|(c, _)| c.to_array()).collect();
+    assert_eq!(couleurs.len(), 3, "{peints:?}");
+
+    // Le réglage rend la décoration au système, et les pastilles s'en
+    // vont avec elle.
+    app.system_titlebar = true;
+    assert!(disques(&mut app).is_empty());
+    // Et il se retrouve au lancement suivant, comme tout réglage.
+    let écrit = serde_json::to_string(&app.settings_snapshot()).unwrap();
+    assert!(écrit.contains("\"system_titlebar\":true"), "{écrit}");
+}
+
 /// La mémoire montre sa carte : où commence le code, où finit la pile,
 /// ce que le tas occupe, avec les droits de chacun.
 ///

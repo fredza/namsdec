@@ -3,6 +3,7 @@
 //! (vérification pédagogique) et exécute pas à pas via `namsdec-emu`,
 //! en affichant les panneaux des modules `ReModule` enregistrés.
 
+mod chrome;
 mod completion;
 mod condition;
 mod errors;
@@ -233,6 +234,16 @@ impl UntilKind {
             UntilKind::Syscall => instr.mnemonic() == namsdec_disasm::Mnemonic::Syscall,
         }
     }
+}
+
+/// Ce qu'une pastille de fenêtre demande au système.
+///
+/// La fermeture n'y est pas : elle passe par la garde du travail non
+/// enregistré, comme « Quitter ».
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WindowCommand {
+    Minimize,
+    Maximize,
 }
 
 /// Sous quelle forme on écrit ce qu'on cherche en mémoire.
@@ -710,6 +721,19 @@ struct NamsdecApp {
     /// entière : « et si RCX valait 1 ? » se répond en une seconde au
     /// lieu de se réécrire. `set $rax = …` chez gdb.
     editing_register: Option<(&'static str, String)>,
+    /// Ce que les pastilles ont demandé, à exécuter une fois la barre de
+    /// menus rendue : un `ViewportCommand` envoyé au milieu du rendu
+    /// arriverait avant que la frame soit finie.
+    window_command: Option<WindowCommand>,
+    /// La barre de titre du système, plutôt que celle qu'on dessine.
+    ///
+    /// Réglage utilisateur, donc dans `settings.json` — et appliqué à
+    /// chaud : on ne redémarre pas une application pour retrouver son
+    /// cadre.
+    system_titlebar: bool,
+    /// Les décorations telles qu'elles sont en ce moment, pour ne
+    /// renvoyer la commande au système que lorsque le réglage change.
+    decorations_applied: Option<bool>,
     /// La hauteur de la console quand l'utilisateur l'a réglée lui-même.
     ///
     /// `None` — le cas par défaut — veut dire « qu'elle prenne la place
@@ -1349,6 +1373,9 @@ impl Default for NamsdecApp {
             mem_search: String::new(),
             mem_search_kind: SearchKind::Text,
             editing_register: None,
+            window_command: None,
+            system_titlebar: false,
+            decorations_applied: None,
             console_height: None,
             mem_poke: String::new(),
             show_disassembly: false,
@@ -1421,6 +1448,7 @@ impl NamsdecApp {
             memory_format: MemoryFormat::by_id(&settings.memory_format),
             memory_follow: MemFollow::by_id(&settings.memory_follow),
             console_height: settings.console_height.map(|h| h as f32),
+            system_titlebar: settings.system_titlebar,
             disassembler: settings.disassembler.clone(),
             explorer,
             saved_settings: settings,
@@ -1512,6 +1540,7 @@ impl NamsdecApp {
             memory_format: self.memory_format.id().to_owned(),
             memory_follow: self.memory_follow.id().to_owned(),
             console_height: self.console_height.map(|h| h.round() as u32),
+            system_titlebar: self.system_titlebar,
             explorer_root: self.explorer.root.as_ref().map(|p| p.display().to_string()),
             current_file: self.current_file.as_ref().map(|p| p.display().to_string()),
             shortcuts: settings::shortcuts_to_strings(&self.keybindings),
@@ -3027,6 +3056,7 @@ impl NamsdecApp {
 
     fn menu_bar_ui(&mut self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
+        let mut bouton_fenêtre = None;
         ui.horizontal(|ui| {
             ui.menu_button(s.menu_file, |ui| {
                 let ctx = ui.ctx().clone();
@@ -3386,7 +3416,37 @@ impl NamsdecApp {
                     ui.close();
                 }
             });
+
+            // La barre de menus *est* la barre de titre : les pastilles
+            // au bout, et tout ce qui reste entre les deux se saisit
+            // pour déplacer la fenêtre. Une barre de titre du système
+            // par-dessus celle-ci ferait deux rangées pour le même
+            // travail.
+            if !self.system_titlebar {
+                let maximisée = ui.input(|i| i.viewport().maximized.unwrap_or(false));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    bouton_fenêtre = chrome::window_buttons_ui(ui, s, maximisée);
+                    // Tout ce qui reste entre les menus et les pastilles
+                    // saisit la fenêtre, et le double-clic l'agrandit.
+                    chrome::title_drag_ui(ui, maximisée);
+                });
+            }
         });
+        if let Some(bouton) = bouton_fenêtre {
+            self.window_button(bouton);
+        }
+    }
+
+    /// Ce que fait chacune des trois pastilles.
+    ///
+    /// La fermeture passe par la même garde que « Quitter » : un travail
+    /// non enregistré ne part pas parce qu'on a visé un rond rouge.
+    fn window_button(&mut self, bouton: chrome::WindowButton) {
+        match bouton {
+            chrome::WindowButton::Minimize => self.window_command = Some(WindowCommand::Minimize),
+            chrome::WindowButton::Maximize => self.window_command = Some(WindowCommand::Maximize),
+            chrome::WindowButton::Close => self.guard(Pending::Quit),
+        }
     }
 
     /// Ouvre la boîte Préférences en mémorisant l'état des réglages, pour
@@ -3479,6 +3539,12 @@ impl NamsdecApp {
 
         ui.separator();
 
+        // La décoration de la fenêtre : celle que namsdec dessine — les
+        // menus font office de barre de titre — ou celle du bureau.
+        ui.checkbox(&mut self.system_titlebar, s.preferences_system_titlebar);
+        ui.weak(s.preferences_system_titlebar_hint);
+
+        ui.add_space(6.0);
         ui.checkbox(&mut self.show_tooltips, s.preferences_tooltips);
         ui.weak(s.preferences_tooltips_hint);
 
@@ -7966,6 +8032,32 @@ impl NamsdecApp {
         let mut spans: Vec<(&'static str, Duration)> = Vec::new();
         let frame_start = Instant::now();
 
+        // Les décorations suivent le réglage, et ne sont renvoyées au
+        // système que lorsqu'il change : une commande par frame ferait
+        // clignoter la fenêtre sous certains bureaux.
+        if self.decorations_applied != Some(self.system_titlebar) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Decorations(self.system_titlebar));
+            self.decorations_applied = Some(self.system_titlebar);
+        }
+        // Ce qu'une pastille a demandé à la frame précédente.
+        match self.window_command.take() {
+            Some(WindowCommand::Minimize) => {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
+            }
+            Some(WindowCommand::Maximize) => {
+                let maximisée = ctx.input(|i| i.viewport().maximized.unwrap_or(false));
+                ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!maximisée));
+            }
+            None => {}
+        }
+
+        // Les prises de redimensionnement, quand la fenêtre n'a pas
+        // celles du système : posées avant le reste pour être dessous,
+        // elles ne prennent le clic que sur les huit pixels du bord.
+        if !self.system_titlebar {
+            chrome::resize_edges_ui(&ctx, self.theme);
+        }
+
         timed(&mut spans, "barres", || {
             egui::Panel::top("menu_bar").show(ui, |ui| self.menu_bar_ui(ui));
             if self.show_toolbar {
@@ -8573,7 +8665,11 @@ fn main() -> eframe::Result<()> {
             // la fenêtre à son fichier `.desktop`, et donc à son icône :
             // il doit valoir le nom de ce fichier (`namsdec.desktop`),
             // sans quoi la barre des tâches affiche une icône générique.
-            .with_app_id("namsdec"),
+            .with_app_id("namsdec")
+            // La fenêtre s'ouvre déjà sans décoration quand le réglage le
+            // dit : la poser d'abord avec, pour la retirer à la première
+            // frame, ferait sauter la fenêtre sous les yeux.
+            .with_decorations(Settings::load().system_titlebar),
         ..Default::default()
     };
     eframe::run_native(
