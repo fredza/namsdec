@@ -359,6 +359,7 @@ fn action_id(action: Action) -> &'static str {
         Action::GoToLabel => "goto_label",
         Action::Find => "find",
         Action::New => "new",
+        Action::ShowFlow => "show_flow",
         Action::NextTab => "next_tab",
         Action::PreviousTab => "previous_tab",
         Action::CloseTab => "close_tab",

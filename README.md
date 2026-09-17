@@ -68,6 +68,15 @@ d'arrêt, et l'exécution arrêtée au pas où on l'avait laissée. Ctrl+Tab
 passe au suivant, Ctrl+W ferme, et les fichiers reviennent au lancement
 d'après.
 
+**La forme du programme, pas sa suite d'instructions.** `Espace g` ouvre
+le **déroulement** : chaque boîte est un bloc qu'on ne peut qu'entrer par
+le haut et quitter par le bas, les flèches disent le saut pris (vert), le
+saut non pris (rouge) et l'appel (bleu), et une boucle se voit à ce
+qu'elle remonte. Le bloc où le programme se trouve est mis en avant, un
+clic y emmène dans l'éditeur, et Ctrl+molette recule pour voir la forme
+d'ensemble. C'est ce qu'on reconstitue de tête en lisant un listing — et
+ce qu'un débutant ne voit pas encore.
+
 **Où le programme passe son temps.** Une bande de chaleur dans la
 gouttière — verte pour une ligne parcourue une fois, rouge pour la plus
 chaude, jaune et orange entre les deux — avec le compte exact au survol

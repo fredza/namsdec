@@ -6516,7 +6516,10 @@ fn the_course_is_discoverable_before_it_is_loaded() {
         output.textures_delta.clear();
     }
     // Le texte d'accueil est à l'écran, avec sa mention du parcours.
-    assert!(painted.contains("soixante et onze exercices"), "{painted}");
+    assert!(
+        painted.contains("quatre-vingt-seize exercices"),
+        "{painted}"
+    );
 }
 
 /// Le parcours se reprend là où on l'avait laissé.
@@ -13447,5 +13450,162 @@ fn the_shipped_course_is_a_file_that_install_puts_in_place() {
     assert!(
         !lib.contains("include_str!"),
         "les programmes des exercices ne doivent plus être compilés dans le binaire"
+    );
+}
+
+/// Le déroulement s'ouvre par « Espace g » et montre la forme du
+/// programme.
+///
+/// Un listing se lit de haut en bas ; un programme, non. La fenêtre
+/// dessine ce qu'on reconstitue de tête en lisant : les blocs, les
+/// sauts pris et non pris, et la boucle qui remonte.
+#[test]
+fn the_flow_window_draws_the_shape_of_the_program() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: "\
+global _start
+section .text
+_start:
+    mov rcx, 3
+boucle:
+    dec rcx
+    jnz boucle
+    call fin
+    hlt
+fin:
+    ret
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    app.do_step();
+
+    // Le raccourci : `Espace g`, sous le même préfixe que l'explorateur.
+    let chord = app
+        .keybindings
+        .map
+        .get(&Action::ShowFlow)
+        .expect("le raccourci existe");
+    assert_eq!(
+        *chord,
+        crate::keybindings::Chord::leader(&[egui::Key::Space, egui::Key::G]),
+        "« Espace g » ouvre le déroulement"
+    );
+
+    app.dispatch(Action::ShowFlow);
+    assert!(app.show_flow, "l'action ouvre la fenêtre");
+
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 1400.0),
+        )),
+        ..Default::default()
+    };
+    let mut peint = String::new();
+    let mut traits = 0usize;
+    let mut flèches = 0usize;
+    for _ in 0..2 {
+        peint.clear();
+        traits = 0;
+        flèches = 0;
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        for clipped in &output.shapes {
+            match &clipped.shape {
+                egui::epaint::Shape::Text(text) => {
+                    peint.push_str(text.galley.text());
+                    peint.push('|');
+                }
+                // Les flèches : un trait pour le corps, un triangle pour
+                // la pointe.
+                egui::epaint::Shape::LineSegment { .. } => traits += 1,
+                egui::epaint::Shape::Path(path) if path.points.len() == 3 => flèches += 1,
+                _ => {}
+            }
+        }
+        output.textures_delta.clear();
+    }
+
+    assert!(peint.contains(strings(Lang::Fr).flow_title), "{peint}");
+    // Les instructions du programme sont dans les boîtes.
+    for attendu in ["dec rcx", "hlt"] {
+        assert!(peint.contains(attendu), "« {attendu} » manque :\n{peint}");
+    }
+    // Et le bloc où le programme se trouve est signalé.
+    assert!(
+        peint.contains(strings(Lang::Fr).flow_here),
+        "le bloc courant doit se voir :\n{peint}"
+    );
+    // Des flèches, et pas qu'une : le saut pris, le saut non pris,
+    // l'appel, le retour de l'appel.
+    assert!(traits >= 4, "trop peu de traits : {traits}");
+    assert!(flèches >= 4, "trop peu de pointes : {flèches}");
+
+    // Sans programme assemblé, la fenêtre dit quoi faire plutôt que de
+    // rester vide.
+    let mut vierge = NamsdecApp {
+        show_flow: true,
+        ..Default::default()
+    };
+    let peint = paint(&mut vierge);
+    assert!(peint.contains(strings(Lang::Fr).flow_empty), "{peint}");
+}
+
+/// Le graphe se lit comme le programme : entrée en haut, boucle qui
+/// remonte, deux chemins après un test.
+#[test]
+fn the_flow_graph_says_what_the_listing_hides() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: "\
+global _start
+section .text
+_start:
+    mov rcx, 3
+boucle:
+    dec rcx
+    jnz boucle
+    hlt
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    let state = app.assemble_state.as_ref().expect("assemblé");
+    let cfg = namsdec_re::cfg::build(&state.disasm);
+
+    // Trois blocs : l'entrée, le corps de la boucle, la sortie.
+    assert!(cfg.blocks.len() >= 3, "{:?}", cfg.blocks);
+    let niveaux = cfg.layers();
+    assert_eq!(niveaux[0], 0, "l'entrée est en haut");
+
+    // Le test ouvre bien deux chemins, et l'un des deux remonte.
+    let corps = cfg
+        .blocks
+        .iter()
+        .position(|b| b.exit == namsdec_re::cfg::Exit::Branch)
+        .expect("un bloc se termine par un saut conditionnel");
+    let pris = cfg
+        .edges
+        .iter()
+        .find(|e| e.from == corps && e.kind == namsdec_re::cfg::Kind::Taken)
+        .expect("le chemin du saut pris");
+    assert!(
+        cfg.blocks[pris.to].start <= cfg.blocks[corps].start,
+        "la boucle remonte"
+    );
+    assert!(
+        cfg.edges
+            .iter()
+            .any(|e| e.from == corps && e.kind == namsdec_re::cfg::Kind::NotTaken),
+        "et l'autre chemin continue"
     );
 }

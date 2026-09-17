@@ -817,6 +817,10 @@ struct NamsdecApp {
     show_breakpoints: bool,
     /// La chronologie : le chemin parcouru, pas par pas.
     show_timeline: bool,
+    /// La fenêtre du déroulement — le graphe des blocs du programme.
+    show_flow: bool,
+    /// Le grossissement du dessin, réglé à la molette.
+    flow_zoom: f32,
     /// La fenêtre du motif cyclique — celle qui répond à « de combien ça
     /// déborde ».
     show_cyclic: bool,
@@ -1256,6 +1260,10 @@ fn palette_commands(
         ),
         (s.timeline_open.to_string(), PaletteCommand::ShowTimeline),
         (
+            s.flow_open.to_string(),
+            PaletteCommand::Do(Action::ShowFlow),
+        ),
+        (
             s.disassembly_open.to_string(),
             PaletteCommand::ShowDisassembly,
         ),
@@ -1572,6 +1580,8 @@ impl Default for NamsdecApp {
             show_vectors: false,
             show_breakpoints: false,
             show_timeline: false,
+            show_flow: false,
+            flow_zoom: 1.0,
             show_cyclic: false,
             // Cent, comme pwndbg : de quoi couvrir un tampon
             // d'apprentissage sans noyer la fenêtre.
@@ -2634,6 +2644,7 @@ impl NamsdecApp {
             Action::GoToLabel => self.do_goto_label(),
             Action::Find => self.do_find(),
             Action::New => self.do_new(),
+            Action::ShowFlow => self.show_flow = true,
             Action::NextTab => self.cycle_tab(1),
             Action::PreviousTab => self.cycle_tab(-1),
             Action::CloseTab => self.close_tab(self.active_tab_index),
@@ -4117,6 +4128,20 @@ impl NamsdecApp {
                     self.show_analysis = true;
                     ui.close();
                 }
+                // Le déroulement du programme : là où l'on comprend sa
+                // forme, et non sa suite d'instructions.
+                if ui
+                    .button(shortcut_hint(
+                        &self.keybindings,
+                        &ui.ctx().clone(),
+                        s.flow_open,
+                        Action::ShowFlow,
+                    ))
+                    .clicked()
+                {
+                    self.show_flow = true;
+                    ui.close();
+                }
                 if ui.button(s.vectors_open).clicked() {
                     self.show_vectors = true;
                     ui.close();
@@ -5302,6 +5327,74 @@ impl NamsdecApp {
         self.diagnostics.clear();
         self.breakpoint_lines.clear();
         self.status = Status::Idle;
+    }
+
+    /// La fenêtre du déroulement : le programme, tel qu'il se parcourt.
+    ///
+    /// Un listing se lit de haut en bas ; un programme, non. Les sauts
+    /// le plient — une boucle remonte, un test ouvre deux chemins, un
+    /// appel part et revient. Ce dessin est la forme que l'on
+    /// reconstitue de tête en lisant, et qu'un débutant ne voit pas
+    /// encore.
+    fn flow_window_ui(&mut self, ctx: &egui::Context) {
+        if !self.show_flow {
+            return;
+        }
+        let s = strings(self.lang);
+        let theme = self.theme;
+        let mut open = self.show_flow;
+        let mut aller: Option<u32> = None;
+        egui::Window::new(s.flow_title)
+            .id(egui::Id::new("flow_window"))
+            .open(&mut open)
+            .resizable(true)
+            .collapsible(false)
+            .default_size([760.0, 560.0])
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(ctx.viewport_rect().center())
+            .show(ctx, |ui| {
+                let Some(state) = &self.assemble_state else {
+                    ui.colored_label(theme.dim, s.flow_empty);
+                    return;
+                };
+                let cfg = namsdec_re::cfg::build(&state.disasm);
+                if cfg.blocks.is_empty() {
+                    ui.colored_label(theme.dim, s.flow_empty);
+                    return;
+                }
+                ui.colored_label(theme.dim, s.flow_hint);
+                flow_legend_ui(ui, theme, s);
+                ui.separator();
+
+                // Le zoom à la molette, comme sur une carte : un
+                // programme un peu long ne tient pas à l'échelle d'une
+                // ligne lisible, et l'on veut d'abord voir sa forme.
+                let survolé = ui.rect_contains_pointer(ui.max_rect());
+                if survolé {
+                    let molette = ui.input(|i| i.smooth_scroll_delta.y);
+                    if molette.abs() > 0.5 && ui.input(|i| i.modifiers.ctrl) {
+                        self.flow_zoom = (self.flow_zoom * (1.0 + molette * 0.002))
+                            .clamp(FLOW_ZOOM_MIN, FLOW_ZOOM_MAX);
+                    }
+                }
+                let zoom = self.flow_zoom;
+                // Où le programme en est : le bloc qui contient RIP est
+                // mis en avant, comme la ligne courante dans l'éditeur.
+                let ici = self
+                    .emulator
+                    .as_ref()
+                    .and_then(|e| cfg.block_at(e.cpu().regs.rip));
+                let lignes = &state.addr_to_line;
+                egui::ScrollArea::both()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        aller = flow_graph_ui(ui, theme, s, &cfg, ici, lignes, zoom);
+                    });
+            });
+        self.show_flow = open;
+        if let Some(ligne) = aller {
+            self.goto_line = Some(ligne);
+        }
     }
 
     fn about_window_ui(&mut self, ctx: &egui::Context) {
@@ -8883,6 +8976,240 @@ fn file_mtime(path: &Path) -> Option<std::time::SystemTime> {
     std::fs::metadata(path).ok()?.modified().ok()
 }
 
+/// Les bornes du grossissement du déroulement.
+///
+/// Au-delà, les boîtes deviennent des traits ; en deçà, on ne lit plus
+/// rien. Entre les deux, on voit soit la forme, soit les instructions —
+/// et c'est exactement le choix qu'on veut laisser.
+const FLOW_ZOOM_MIN: f32 = 0.4;
+const FLOW_ZOOM_MAX: f32 = 2.0;
+
+/// La couleur d'une flèche, selon ce qu'elle veut dire.
+fn flow_edge_colour(theme: &'static Theme, kind: namsdec_re::cfg::Kind) -> egui::Color32 {
+    use namsdec_re::cfg::Kind;
+    match kind {
+        // Le vert et le rouge d'une condition, comme partout ailleurs
+        // dans namsdec : ce qui se fait, ce qui ne se fait pas.
+        Kind::Taken => theme.good,
+        Kind::NotTaken => theme.bad,
+        Kind::Call => theme.accent,
+        Kind::Next => theme.dim,
+    }
+}
+
+/// La légende des flèches : quatre traits et leur sens.
+fn flow_legend_ui(ui: &mut egui::Ui, theme: &'static Theme, s: &Strings) {
+    use namsdec_re::cfg::Kind;
+    ui.horizontal_wrapped(|ui| {
+        for (kind, texte) in [
+            (Kind::Taken, s.flow_legend_taken),
+            (Kind::NotTaken, s.flow_legend_not_taken),
+            (Kind::Call, s.flow_legend_call),
+        ] {
+            let (rect, _) = ui.allocate_exact_size(egui::vec2(18.0, 10.0), egui::Sense::hover());
+            ui.painter().line_segment(
+                [
+                    egui::pos2(rect.left(), rect.center().y),
+                    egui::pos2(rect.right(), rect.center().y),
+                ],
+                egui::Stroke::new(2.0, flow_edge_colour(theme, kind)),
+            );
+            ui.colored_label(theme.dim, texte);
+            ui.add_space(6.0);
+        }
+        ui.colored_label(theme.dim, format!("? {}", s.flow_legend_indirect));
+    });
+}
+
+/// Le dessin du graphe. Rend la ligne où aller, si l'on a cliqué un bloc.
+///
+/// La mise en page tient en deux règles : un bloc se range au niveau de
+/// son plus court chemin depuis l'entrée, et les blocs d'un même niveau
+/// s'alignent sur une rangée. Cela ne donne pas le plus joli graphe du
+/// monde — les vrais outils y mettent des heures de calcul —, mais cela
+/// donne le bon : l'entrée en haut, le sens de lecture vers le bas, et
+/// les boucles qui remontent, visiblement.
+fn flow_graph_ui(
+    ui: &mut egui::Ui,
+    theme: &'static Theme,
+    s: &Strings,
+    cfg: &namsdec_re::cfg::Cfg,
+    ici: Option<usize>,
+    lignes: &BTreeMap<u64, u32>,
+    zoom: f32,
+) -> Option<u32> {
+    use namsdec_re::cfg::Exit;
+
+    let niveaux = cfg.layers();
+    let profondeur = niveaux.iter().max().copied().unwrap_or(0) + 1;
+    // Combien de blocs par rangée, et le rang de chacun dans la sienne.
+    let mut par_rangée: Vec<Vec<usize>> = vec![Vec::new(); profondeur];
+    for (index, niveau) in niveaux.iter().enumerate() {
+        par_rangée[*niveau].push(index);
+    }
+
+    let police = egui::FontId::monospace(11.0 * zoom);
+    let hauteur_ligne = ui.ctx().fonts_mut(|f| f.row_height(&police));
+    let large = 260.0 * zoom;
+    let marge = 18.0 * zoom;
+
+    // La hauteur d'un bloc dépend de ce qu'il contient : on borne à
+    // huit lignes, au-delà le dessin ne montrerait plus la forme.
+    const LIGNES_MAX: usize = 8;
+    let hauteur_de = |index: usize| {
+        let lignes = cfg.blocks[index].instructions.len().min(LIGNES_MAX) + 1;
+        lignes as f32 * hauteur_ligne + 10.0 * zoom
+    };
+
+    // Poser les boîtes, rangée par rangée.
+    let mut rects: Vec<egui::Rect> = vec![egui::Rect::NOTHING; cfg.blocks.len()];
+    let mut y = 0.0f32;
+    let mut largeur_totale = 0.0f32;
+    for rangée in &par_rangée {
+        let mut x = 0.0f32;
+        let mut haut = 0.0f32;
+        for index in rangée {
+            let h = hauteur_de(*index);
+            rects[*index] = egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(large, h));
+            x += large + marge;
+            haut = haut.max(h);
+        }
+        largeur_totale = largeur_totale.max(x);
+        y += haut + marge * 2.0;
+    }
+
+    let (réponse, painter) = ui.allocate_painter(
+        egui::vec2(largeur_totale.max(100.0), y.max(100.0)),
+        egui::Sense::click(),
+    );
+    let origine = réponse.rect.min.to_vec2();
+    let décalé = |rect: egui::Rect| rect.translate(origine);
+
+    // Les flèches d'abord : elles passent sous les boîtes.
+    for edge in &cfg.edges {
+        let (de, vers) = (décalé(rects[edge.from]), décalé(rects[edge.to]));
+        let couleur = flow_edge_colour(theme, edge.kind);
+        let remonte = rects[edge.to].top() <= rects[edge.from].top();
+        let départ = egui::pos2(de.center().x, de.bottom());
+        let arrivée = egui::pos2(vers.center().x, vers.top());
+        if remonte {
+            // Une boucle : on la fait passer par le côté, sinon elle
+            // traverse tout ce qui la sépare de sa cible.
+            let côté = de.right() + marge * 0.6;
+            let retour = egui::pos2(vers.center().x, vers.bottom());
+            for segment in [
+                [
+                    egui::pos2(de.right(), de.center().y),
+                    egui::pos2(côté, de.center().y),
+                ],
+                [egui::pos2(côté, de.center().y), egui::pos2(côté, retour.y)],
+                [egui::pos2(côté, retour.y), retour],
+            ] {
+                painter.line_segment(segment, egui::Stroke::new(1.5 * zoom, couleur));
+            }
+            flow_arrow_head(&painter, retour, egui::vec2(0.0, -1.0), couleur, zoom);
+        } else {
+            painter.line_segment([départ, arrivée], egui::Stroke::new(1.5 * zoom, couleur));
+            flow_arrow_head(&painter, arrivée, egui::vec2(0.0, 1.0), couleur, zoom);
+        }
+    }
+
+    // Puis les boîtes.
+    let mut aller = None;
+    for (index, bloc) in cfg.blocks.iter().enumerate() {
+        let rect = décalé(rects[index]);
+        let courant = ici == Some(index);
+        let fond = if courant {
+            theme.accent.gamma_multiply(0.22)
+        } else {
+            theme.dim.gamma_multiply(0.10)
+        };
+        painter.rect_filled(rect, 4.0 * zoom, fond);
+        painter.rect_stroke(
+            rect,
+            4.0 * zoom,
+            egui::Stroke::new(
+                if courant { 2.0 } else { 1.0 },
+                if courant { theme.accent } else { theme.dim },
+            ),
+            egui::StrokeKind::Inside,
+        );
+
+        // L'adresse du bloc en tête, puis ses instructions.
+        let mut ligne_y = rect.top() + 4.0 * zoom;
+        let entête = match bloc.exit {
+            Exit::Indirect => format!("{:#010x}  ?", bloc.start),
+            _ => format!("{:#010x}", bloc.start),
+        };
+        painter.text(
+            egui::pos2(rect.left() + 6.0 * zoom, ligne_y),
+            egui::Align2::LEFT_TOP,
+            entête,
+            police.clone(),
+            if courant { theme.accent } else { theme.dim },
+        );
+        ligne_y += hauteur_ligne;
+        for (rang, texte) in bloc.instructions.iter().enumerate() {
+            if rang == LIGNES_MAX {
+                painter.text(
+                    egui::pos2(rect.left() + 6.0 * zoom, ligne_y),
+                    egui::Align2::LEFT_TOP,
+                    format!("… {}", bloc.instructions.len() - LIGNES_MAX),
+                    police.clone(),
+                    theme.dim,
+                );
+                break;
+            }
+            painter.text(
+                egui::pos2(rect.left() + 6.0 * zoom, ligne_y),
+                egui::Align2::LEFT_TOP,
+                texte,
+                police.clone(),
+                theme.text,
+            );
+            ligne_y += hauteur_ligne;
+        }
+        if courant {
+            painter.text(
+                egui::pos2(rect.right() - 6.0 * zoom, rect.top() + 4.0 * zoom),
+                egui::Align2::RIGHT_TOP,
+                s.flow_here,
+                police.clone(),
+                theme.accent,
+            );
+        }
+
+        // Un clic emmène à la ligne du bloc dans l'éditeur : le dessin
+        // sert à s'orienter, pas à remplacer le code.
+        if réponse.clicked()
+            && let Some(pos) = réponse.interact_pointer_pos()
+            && rect.contains(pos)
+        {
+            aller = lignes.get(&bloc.start).copied();
+        }
+    }
+    réponse.on_hover_text(s.flow_goto);
+    aller
+}
+
+/// La pointe d'une flèche, à `bout`, dans la direction `sens`.
+fn flow_arrow_head(
+    painter: &egui::Painter,
+    bout: egui::Pos2,
+    sens: egui::Vec2,
+    couleur: egui::Color32,
+    zoom: f32,
+) {
+    let taille = 5.0 * zoom;
+    let arrière = bout - sens * taille;
+    let côté = egui::vec2(-sens.y, sens.x) * (taille * 0.6);
+    painter.add(egui::Shape::convex_polygon(
+        vec![bout, arrière + côté, arrière - côté],
+        couleur,
+        egui::Stroke::NONE,
+    ));
+}
+
 /// Le nom d'un onglet : le fichier, l'exercice, ou « sans titre ».
 ///
 /// Un exercice n'a pas de fichier sur le disque, et trois onglets
@@ -9379,6 +9706,7 @@ fn action_label(s: &Strings, action: Action) -> &'static str {
         Action::GoToLabel => s.action_goto_label,
         Action::Find => s.action_find,
         Action::New => s.file_new,
+        Action::ShowFlow => s.flow_open,
         Action::NextTab => s.action_next_tab,
         Action::PreviousTab => s.action_previous_tab,
         Action::CloseTab => s.action_close_tab,
@@ -10038,6 +10366,7 @@ impl NamsdecApp {
             self.vectors_window_ui(&ctx);
             self.breakpoints_window_ui(&ctx);
             self.timeline_window_ui(&ctx);
+            self.flow_window_ui(&ctx);
             self.disassembly_window_ui(&ctx);
             self.cyclic_window_ui(&ctx);
             self.analysis_window_ui(&ctx);

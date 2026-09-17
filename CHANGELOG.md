@@ -223,6 +223,19 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
   coût et le lien des registres étendus se superposaient à l'onglet, les
   deux illisibles. Le bandeau tient maintenant dans une seule zone qui
   coupe net, et la barre n'apparaît que sur une fenêtre trop courte.
+**Le déroulement du programme**
+- Une fenêtre, ouverte par `Espace g`, dessine le graphe des blocs : un
+  listing se lit de haut en bas, un programme non. Chaque boîte est une
+  suite d'instructions qu'on ne peut qu'entrer par le haut et quitter par
+  le bas ; les flèches disent le saut pris, le saut non pris et l'appel ;
+  une boucle se voit à ce qu'elle remonte, en passant par le côté.
+- Le bloc où le programme se trouve est mis en avant à chaque pas, un
+  clic y emmène dans l'éditeur, et Ctrl+molette recule pour voir la forme
+  d'ensemble.
+- Un saut dont la cible se calcule — table de sauts, pointeur de
+  fonction — est signalé comme tel : aucune flèche n'est inventée vers
+  une adresse qu'on ne connaît pas.
+
 **Le parcours sort du binaire, et passe à soixante et onze étapes**
 - Les exercices ne sont plus compilés dans le programme : c'est un
   fichier de données, `namsdec.json`, installé à côté des thèmes et lu

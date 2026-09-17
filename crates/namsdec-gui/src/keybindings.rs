@@ -48,6 +48,8 @@ pub enum Action {
     Find,
     /// Repartir d'un programme neuf.
     New,
+    /// Ouvrir le déroulement du programme : son graphe de blocs.
+    ShowFlow,
     /// Passer d'un fichier ouvert au suivant, au précédent, ou fermer
     /// celui qu'on regarde.
     NextTab,
@@ -56,7 +58,7 @@ pub enum Action {
 }
 
 impl Action {
-    pub const ALL: [Action; 22] = [
+    pub const ALL: [Action; 23] = [
         Action::ToggleExplorer,
         Action::Assemble,
         Action::Run,
@@ -76,6 +78,7 @@ impl Action {
         Action::GoToLabel,
         Action::Find,
         Action::New,
+        Action::ShowFlow,
         Action::NextTab,
         Action::PreviousTab,
         Action::CloseTab,
@@ -287,6 +290,10 @@ impl Default for KeyBindings {
             Chord::Simple(KeyboardShortcut::new(Modifiers::CTRL, Key::F)),
         );
         map.insert(Action::ToggleExplorer, Chord::leader(&[Key::Space, Key::E]));
+        // `Espace g` : le graphe du déroulement. `g` comme graphe, et
+        // sous le même préfixe que l'explorateur — ce sont deux façons
+        // de regarder ce qu'on a sous la main.
+        map.insert(Action::ShowFlow, Chord::leader(&[Key::Space, Key::G]));
         // Trois pas d'exploration sous le même préfixe, `u` comme
         // *until* — le mot de gdb pour « cours jusqu'à ». Trois touches
         // et non deux : `Espace r` et `Espace s…` sont déjà pris, et une
