@@ -600,14 +600,16 @@ struct OpenTab {
 }
 
 impl OpenTab {
-    /// Le nom qui s'écrit sur l'onglet : celui du fichier, ou « sans
-    /// titre » tant qu'il n'en a pas.
-    fn label(&self, s: &Strings) -> String {
-        self.path
-            .as_ref()
-            .and_then(|p| p.file_name())
-            .map(|nom| nom.to_string_lossy().into_owned())
-            .unwrap_or_else(|| s.untitled_buffer.to_owned())
+    /// Le nom qui s'écrit sur l'onglet : celui du fichier, le titre de
+    /// l'exercice s'il n'y a pas de fichier, et « sans titre » sinon.
+    fn label(&self, s: &Strings, packs: &[namsdec_exercises::Pack], lang: Lang) -> String {
+        tab_label(
+            self.path.as_deref(),
+            self.current_exercise.as_deref(),
+            s,
+            packs,
+            lang,
+        )
     }
 
     fn modifié(&self) -> bool {
@@ -2924,17 +2926,19 @@ impl NamsdecApp {
     fn tab_labels(&self) -> Vec<(String, bool)> {
         let s = strings(self.lang);
         let actif = (
-            self.current_file
-                .as_ref()
-                .and_then(|p| p.file_name())
-                .map(|nom| nom.to_string_lossy().into_owned())
-                .unwrap_or_else(|| s.untitled_buffer.to_owned()),
+            tab_label(
+                self.current_file.as_deref(),
+                self.current_exercise.as_deref(),
+                s,
+                &self.exercise_packs,
+                self.lang,
+            ),
             self.buffer_modified(),
         );
         let mut out: Vec<(String, bool)> = self
             .tabs
             .iter()
-            .map(|tab| (tab.label(s), tab.modifié()))
+            .map(|tab| (tab.label(s, &self.exercise_packs, self.lang), tab.modifié()))
             .collect();
         out.insert(self.active_tab_index.min(out.len()), actif);
         out
@@ -3067,6 +3071,22 @@ impl NamsdecApp {
         self.tabs.insert(insertion, courant);
         self.active_tab_index = insertion + 1;
         self.open_file_now(path);
+    }
+
+    /// Le rang de l'onglet qui travaille cet exercice, s'il y en a un.
+    fn exercise_tab_index(&self, id: &str) -> Option<usize> {
+        if self.current_exercise.as_deref() == Some(id) {
+            return Some(self.active_tab_index);
+        }
+        let position = self
+            .tabs
+            .iter()
+            .position(|tab| tab.current_exercise.as_deref() == Some(id))?;
+        Some(if position >= self.active_tab_index {
+            position + 1
+        } else {
+            position
+        })
     }
 
     /// Le rang de l'onglet qui montre ce fichier, s'il y en a un.
@@ -5142,6 +5162,36 @@ impl NamsdecApp {
         let Some(exercise) = namsdec_exercises::find(&self.exercise_packs, id) else {
             return;
         };
+        // Déjà ouvert : on y retourne, avec ce qu'on y avait écrit.
+        if let Some(rang) = self.exercise_tab_index(id) {
+            self.go_to_tab(rang);
+            return;
+        }
+        // Sinon un onglet à lui, sauf si le tampon courant est vierge :
+        // on garde ainsi son propre programme à côté de l'exercice, et
+        // l'on peut comparer deux étapes du parcours.
+        if self.current_file.is_some() || self.buffer_modified() || self.current_exercise.is_some()
+        {
+            let courant = self.take_tab();
+            let insertion = self.active_tab_index.min(self.tabs.len());
+            self.tabs.insert(insertion, courant);
+            self.active_tab_index = insertion + 1;
+            // `find` a emprunté `self` : on le refait après le
+            // déplacement, sur un état stable.
+            let Some(exercise) = namsdec_exercises::find(&self.exercise_packs, id) else {
+                return;
+            };
+            self.current_exercise = Some(id.to_owned());
+            self.saved_source = exercise.starter_code.clone();
+            self.source = exercise.starter_code.clone();
+            self.current_file = None;
+            self.assemble_state = None;
+            self.emulator = None;
+            self.diagnostics.clear();
+            self.breakpoint_lines.clear();
+            self.status = Status::Idle;
+            return;
+        }
         self.current_exercise = Some(id.to_owned());
         self.saved_source = exercise.starter_code.clone();
         self.source = exercise.starter_code.clone();
@@ -8664,6 +8714,27 @@ fn newline_indent(source: &str, cursor: usize) -> String {
         .take_while(|c| *c == ' ' || *c == '\t')
         .collect();
     format!("\n{indent}")
+}
+
+/// Le nom d'un onglet : le fichier, l'exercice, ou « sans titre ».
+///
+/// Un exercice n'a pas de fichier sur le disque, et trois onglets
+/// « sans titre » côte à côte ne disent rien. Son titre, lui, dit
+/// exactement ce qu'on travaille.
+fn tab_label(
+    path: Option<&Path>,
+    exercise: Option<&str>,
+    s: &Strings,
+    packs: &[namsdec_exercises::Pack],
+    lang: Lang,
+) -> String {
+    if let Some(nom) = path.and_then(|p| p.file_name()) {
+        return nom.to_string_lossy().into_owned();
+    }
+    if let Some(exercice) = exercise.and_then(|id| namsdec_exercises::find(packs, id)) {
+        return exercice.title.get(lang.code()).to_owned();
+    }
+    s.untitled_buffer.to_owned()
 }
 
 /// Un nom de fichier raccourci **par le milieu**.

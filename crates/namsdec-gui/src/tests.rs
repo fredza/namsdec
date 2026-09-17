@@ -13036,3 +13036,46 @@ fn quitting_looks_at_every_open_file() {
     assert!(!app.anything_modified(), "plus rien à perdre");
     assert_eq!(app.first_modified_tab(), None);
 }
+
+/// Chaque exercice a son onglet, et porte son nom.
+///
+/// Trois onglets « sans titre » côte à côte ne disent rien ; le titre de
+/// l'exercice dit exactement ce qu'on travaille. Et y revenir rend ce
+/// qu'on y avait écrit : c'est tout l'intérêt d'ouvrir le suivant sans
+/// abandonner le précédent.
+#[test]
+fn each_exercise_gets_its_own_named_tab() {
+    let pack = namsdec_exercises::builtin_pack();
+    let premier = namsdec_exercises::full_id(&pack, &pack.exercises[0]);
+    let second = namsdec_exercises::full_id(&pack, &pack.exercises[1]);
+
+    let mut app = NamsdecApp {
+        exercises: true,
+        ..Default::default()
+    };
+    app.load_exercise_now(&premier);
+    assert!(app.tabs.is_empty(), "le tampon vierge laisse la place");
+    app.source.push_str("    ; mon essai\n");
+
+    app.load_exercise_now(&second);
+    assert_eq!(app.tabs.len(), 1, "le premier attend dans son onglet");
+    assert_eq!(app.current_exercise.as_deref(), Some(second.as_str()));
+
+    // Les onglets portent le titre de leur exercice, pas « sans titre ».
+    let noms: Vec<String> = app.tab_labels().into_iter().map(|(nom, _)| nom).collect();
+    assert_eq!(noms.len(), 2, "{noms:?}");
+    assert!(
+        noms.iter().any(|n| n == &pack.exercises[0].title.fr)
+            && noms.iter().any(|n| n == &pack.exercises[1].title.fr),
+        "les deux titres doivent se lire : {noms:?}"
+    );
+
+    // Revenir au premier rend ce qu'on y avait écrit.
+    app.load_exercise_now(&premier);
+    assert_eq!(app.current_exercise.as_deref(), Some(premier.as_str()));
+    assert!(
+        app.source.contains("; mon essai"),
+        "l'essai laissé dans l'exercice précédent est toujours là"
+    );
+    assert_eq!(app.tabs.len(), 1, "et l'on n'a pas ouvert un troisième");
+}
