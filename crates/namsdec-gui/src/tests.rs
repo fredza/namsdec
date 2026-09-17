@@ -7874,3 +7874,28 @@ hlt
     }
     assert!(painted.contains("arrêter la machine"), "{painted}");
 }
+
+/// L'exemple de plugin donné dans le README doit être un plugin valide.
+///
+/// Un format documenté par un exemple faux coûte une soirée à qui le
+/// recopie.
+#[test]
+fn the_plugin_example_in_the_readme_is_valid() {
+    let readme = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../README.md"))
+        .expect("le README est à la racine");
+    // Le bloc JSON qui suit la phrase d'introduction du format.
+    let début = readme
+        .find("\"id\": \"objdump\"")
+        .expect("le README montre un exemple de plugin");
+    let ouvrante = readme[..début].rfind('{').expect("son accolade");
+    let fermante = readme[ouvrante..].find("\n}").expect("et sa fermeture") + ouvrante + 2;
+    let exemple = &readme[ouvrante..fermante];
+
+    let dossier = tempfile::tempdir().expect("dossier temporaire");
+    let chemin = dossier.path().join("exemple.json");
+    std::fs::write(&chemin, exemple).unwrap();
+    let plugin = namsdec_disasm::plugin::read(&chemin)
+        .unwrap_or_else(|e| panic!("l'exemple du README est refusé : {e}\n{exemple}"));
+    assert_eq!(plugin.id, "objdump");
+    assert!(plugin.args.iter().any(|arg| arg.contains("{file}")));
+}

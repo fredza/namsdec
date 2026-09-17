@@ -137,6 +137,29 @@ tableaux, chaînes, pile, appels, sortie, protection — activable dans
 Préférences ▸ Modules. D'autres séries s'installent depuis
 un simple fichier JSON, comme les thèmes : Outils ▸ Exercices.
 
+### Ajouter un désassembleur
+
+Le panneau de désassemblage propose deux moteurs livrés — le pseudo-code
+et la syntaxe NASM — et tous ceux qu'on lui décrit. Un fichier JSON par
+outil, dans `~/.local/share/namsdec/disassemblers/` :
+
+```json
+{
+  "id": "objdump",
+  "name": "objdump",
+  "command": "objdump",
+  "args": ["-d", "-M", "intel", "{file}"]
+}
+```
+
+`{file}` est remplacé par le chemin du binaire. Contrairement à un thème,
+qui n'est qu'une palette, **un tel plugin est un programme** : namsdec ne
+le lance qu'au clic, annonce la commande avant de le faire, passe le
+binaire par un fichier temporaire plutôt que par un interpréteur de
+commandes, et borne la sortie. Un fichier qui ne peut pas marcher —
+commande vide, `{file}` oublié — est refusé à la lecture plutôt que
+découvert au premier essai.
+
 ## Le code
 
 Un workspace Rust, une crate par responsabilité :
