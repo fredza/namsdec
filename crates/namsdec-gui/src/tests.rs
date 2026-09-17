@@ -10225,6 +10225,53 @@ fn an_unlinked_object_reads_but_does_not_run() {
     );
 }
 
+/// Les fichiers récemment ouverts se retrouvent dans le menu, et le même
+/// fichier n'y figure qu'une fois.
+///
+/// On retravaille le même fichier trois fois dans une séance, et le
+/// sélecteur natif demande à chaque fois de retrouver son dossier.
+#[test]
+fn recently_opened_files_come_back_in_the_menu() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = NamsdecApp::default();
+    assert!(app.recent_files.is_empty());
+
+    // Ouvrir en note le chemin, le plus récent en tête.
+    let mut chemins = Vec::new();
+    for index in 0..3 {
+        let chemin = dir.path().join(format!("p{index}.asm"));
+        std::fs::write(&chemin, "global _start\nsection .text\n_start:\n    hlt\n").unwrap();
+        app.open_file(chemin.clone());
+        chemins.push(chemin);
+    }
+    assert_eq!(app.recent_files.len(), 3);
+    assert_eq!(app.recent_files[0], chemins[2], "le dernier ouvert en tête");
+
+    // Rouvrir le premier le fait remonter, sans le doubler.
+    app.open_file(chemins[0].clone());
+    assert_eq!(app.recent_files.len(), 3);
+    assert_eq!(app.recent_files[0], chemins[0]);
+
+    // La liste ne grandit pas sans fin.
+    for index in 0..12 {
+        let chemin = dir.path().join(format!("autre{index}.asm"));
+        std::fs::write(&chemin, "section .text\n").unwrap();
+        app.open_file(chemin);
+    }
+    assert_eq!(app.recent_files.len(), NamsdecApp::RECENT_LIMIT);
+
+    // Et elle survit au lancement suivant.
+    let écrit = serde_json::to_string(&app.settings_snapshot()).unwrap();
+    let relu = NamsdecApp::from_settings(serde_json::from_str(&écrit).unwrap());
+    assert_eq!(relu.recent_files, app.recent_files);
+
+    // Un fichier qui n'existe plus se refuse en le disant, plutôt que de
+    // ressortir une copie d'hier.
+    let disparu = dir.path().join("disparu.asm");
+    app.open_file(disparu);
+    assert!(matches!(app.status, Status::Error(_)), "{:?}", app.status);
+}
+
 /// La mémoire montre sa carte : où commence le code, où finit la pile,
 /// ce que le tas occupe, avec les droits de chacun.
 ///

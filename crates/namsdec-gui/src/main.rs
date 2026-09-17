@@ -740,6 +740,8 @@ struct NamsdecApp {
     /// menus rendue : un `ViewportCommand` envoyé au milieu du rendu
     /// arriverait avant que la frame soit finie.
     window_command: Option<WindowCommand>,
+    /// Les derniers fichiers ouverts, le plus récent en tête.
+    recent_files: Vec<PathBuf>,
     /// Les exercices réussis, par identifiant complet.
     ///
     /// Retenu sur le disque : un parcours se fait en plusieurs fois, et
@@ -1413,6 +1415,7 @@ impl Default for NamsdecApp {
             mem_search: String::new(),
             mem_search_kind: SearchKind::Text,
             editing_register: None,
+            recent_files: Vec::new(),
             exercises_done: BTreeSet::new(),
             heat_legend: true,
             window_command: None,
@@ -1496,6 +1499,7 @@ impl NamsdecApp {
             system_titlebar: settings.system_titlebar,
             heat_legend: settings.heat_legend,
             exercises_done: settings.exercises_done.iter().cloned().collect(),
+            recent_files: settings.recent_files.iter().map(PathBuf::from).collect(),
             disassembler: settings.disassembler.clone(),
             explorer,
             saved_settings: settings,
@@ -1590,6 +1594,11 @@ impl NamsdecApp {
             system_titlebar: self.system_titlebar,
             heat_legend: self.heat_legend,
             exercises_done: self.exercises_done.iter().cloned().collect(),
+            recent_files: self
+                .recent_files
+                .iter()
+                .map(|path| path.to_string_lossy().into_owned())
+                .collect(),
             explorer_root: self.explorer.root.as_ref().map(|p| p.display().to_string()),
             current_file: self.current_file.as_ref().map(|p| p.display().to_string()),
             shortcuts: settings::shortcuts_to_strings(&self.keybindings),
@@ -2629,6 +2638,20 @@ impl NamsdecApp {
         }
     }
 
+    /// Combien de fichiers récents on garde.
+    ///
+    /// Huit : de quoi couvrir une séance de travail. Au-delà, la liste
+    /// devient un historique, qu'on parcourt au lieu de le lire.
+    const RECENT_LIMIT: usize = 8;
+
+    /// Note un fichier comme récemment ouvert.
+    fn note_recent(&mut self, path: &Path) {
+        // Le même fichier ne s'y met pas deux fois : il remonte.
+        self.recent_files.retain(|autre| autre != path);
+        self.recent_files.insert(0, path.to_path_buf());
+        self.recent_files.truncate(Self::RECENT_LIMIT);
+    }
+
     fn open_file_now(&mut self, path: PathBuf) {
         let bytes = match std::fs::read(&path) {
             Ok(bytes) => bytes,
@@ -2646,6 +2669,7 @@ impl NamsdecApp {
             Ok(text) => {
                 self.saved_source = text.clone();
                 self.source = text;
+                self.note_recent(&path);
                 self.current_file = Some(path);
                 self.assemble_state = None;
                 self.emulator = None;
@@ -3201,6 +3225,36 @@ impl NamsdecApp {
                     self.dispatch(Action::OpenFolder);
                     ui.close();
                 }
+                // Les derniers ouverts : on retravaille le même fichier
+                // trois fois dans une séance, et le sélecteur natif
+                // demande à chaque fois de retrouver son dossier.
+                let récents = self.recent_files.clone();
+                ui.add_enabled_ui(!récents.is_empty(), |ui| {
+                    ui.menu_button(s.file_recent, |ui| {
+                        for chemin in &récents {
+                            let nom = chemin
+                                .file_name()
+                                .map(|nom| nom.to_string_lossy().into_owned())
+                                .unwrap_or_else(|| chemin.to_string_lossy().into_owned());
+                            // Le chemin entier au survol : deux fichiers
+                            // peuvent porter le même nom dans deux
+                            // dossiers, et c'est même le cas courant.
+                            if ui
+                                .button(nom)
+                                .on_hover_text(chemin.to_string_lossy())
+                                .clicked()
+                            {
+                                self.open_file(chemin.clone());
+                                ui.close();
+                            }
+                        }
+                        ui.separator();
+                        if ui.button(s.file_recent_clear).clicked() {
+                            self.recent_files.clear();
+                            ui.close();
+                        }
+                    });
+                });
                 if ui
                     .button(shortcut_hint(
                         &self.keybindings,

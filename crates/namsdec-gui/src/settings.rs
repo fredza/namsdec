@@ -86,6 +86,12 @@ pub struct Settings {
     /// chercher.
     #[serde(default)]
     pub current_exercise: Option<String>,
+    /// Les derniers fichiers ouverts, le plus récent en tête.
+    ///
+    /// Des chemins, jamais leur contenu : rouvrir un fichier déplacé
+    /// doit échouer en le disant, pas ressortir une copie d'hier.
+    #[serde(default)]
+    pub recent_files: Vec<String>,
     /// Les exercices dont le but a été atteint au moins une fois.
     ///
     /// Un parcours sans trace de ce qu'on a déjà fait oblige à s'en
@@ -154,6 +160,7 @@ impl Default for Settings {
             hover_help: true,
             disabled_packs: Vec::new(),
             current_exercise: None,
+            recent_files: Vec::new(),
             exercises_done: Vec::new(),
             disassembler: pseudo_par_défaut(),
             memory_format: "bytes".to_owned(),
