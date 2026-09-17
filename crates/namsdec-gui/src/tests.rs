@@ -2932,6 +2932,30 @@ fn paint(app: &mut NamsdecApp) -> String {
     painted
 }
 
+/// Suivre un renvoi ne perd pas le chemin : la fiche quittée revient
+/// d'un bouton, et le sommaire efface l'historique.
+#[test]
+fn the_help_window_remembers_where_one_came_from() {
+    let mut app = NamsdecApp::default();
+    app.open_help("cmp");
+    assert!(app.help_back.is_empty(), "rien à quitter la première fois");
+
+    app.open_help("je");
+    assert_eq!(app.help_back, vec!["cmp".to_owned()]);
+
+    // Deux fois la même fiche ne s'empile pas : on n'a pas bougé.
+    app.open_help("je");
+    assert_eq!(app.help_back, vec!["cmp".to_owned()]);
+
+    // L'historique ne grandit pas sans fin : c'est une lecture, pas un
+    // journal.
+    for _ in 0..40 {
+        app.open_help("push");
+        app.open_help("pop");
+    }
+    assert!(app.help_back.len() <= 32, "{}", app.help_back.len());
+}
+
 /// Une fiche ouverte mène aux fiches qu'elle cite : les renvois se
 /// déduisent du texte, donc personne ne peut oublier de les écrire.
 #[test]

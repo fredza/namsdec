@@ -456,6 +456,10 @@ struct NamsdecApp {
     /// La famille de fiches que montre le sommaire du manuel, faute de
     /// fiche à lire. Un choix de lecture : il ne va pas sur le disque.
     help_index_kind: namsdec_doc::Kind,
+    /// Les fiches déjà lues, la plus récente en dernier : de quoi
+    /// revenir sur ses pas quand un renvoi a mené trois fiches plus
+    /// loin que prévu.
+    help_back: Vec<String>,
     preferences_tab: PreferencesTab,
     /// L'onglet RE est-il dans la barre latérale ? **Volontairement hors
     /// de `settings.json`** : il ouvre un module de reverse engineering
@@ -1017,6 +1021,7 @@ impl Default for NamsdecApp {
             cursor_byte: 0,
             help: None,
             help_index_kind: namsdec_doc::Kind::Concept,
+            help_back: Vec::new(),
             preferences_tab: PreferencesTab::General,
             show_re_tab: false,
             exercises: false,
@@ -4629,12 +4634,30 @@ impl NamsdecApp {
     /// aussi bien ce que fait `movzx` que ce que fait le `rep` qui le
     /// précède, et c'est là qu'on a mis le curseur.
     fn do_instruction_help(&mut self) {
-        let word = word_at(&self.source, self.cursor_byte);
+        let word = word_at(&self.source, self.cursor_byte).to_owned();
         if word.is_empty() {
             return;
         }
-        self.help = Some((word.to_owned(), namsdec_doc::lookup(word)));
+        self.open_help(&word);
         self.show_help = true;
+    }
+
+    /// Ouvre une fiche en gardant celle qu'on quitte.
+    ///
+    /// Suivre un renvoi ne doit pas coûter le chemin parcouru : on
+    /// apprend en tirant sur un fil, et on revient au point de départ.
+    fn open_help(&mut self, word: &str) {
+        if let Some((courant, _)) = &self.help
+            && courant != word
+        {
+            self.help_back.push(courant.clone());
+            // Une lecture, pas un journal : au-delà, le début ne sert
+            // plus à rien.
+            if self.help_back.len() > 32 {
+                self.help_back.remove(0);
+            }
+        }
+        self.help = Some((word.to_owned(), namsdec_doc::lookup(word)));
     }
 
     /// Le désassemblage du programme, en texte, prêt à être collé.
@@ -5473,10 +5496,21 @@ impl NamsdecApp {
             if !self.help_query.is_empty() && ui.button("x").clicked() {
                 self.help_query.clear();
             }
-            // De quoi revenir au sommaire : une fiche ouverte ne doit
-            // pas être un cul-de-sac.
+            // De quoi revenir sur ses pas, puis au sommaire : une fiche
+            // ouverte ne doit pas être un cul-de-sac.
+            if !self.help_back.is_empty()
+                && ui
+                    .button(s.help_back)
+                    .on_hover_text(s.help_back_hint)
+                    .clicked()
+                && let Some(precedent) = self.help_back.pop()
+            {
+                self.help = Some((precedent.clone(), namsdec_doc::lookup(&precedent)));
+                self.help_query.clear();
+            }
             if self.help.is_some() && ui.button(s.help_index).clicked() {
                 self.help = None;
+                self.help_back.clear();
                 self.help_query.clear();
             }
         });
@@ -5514,7 +5548,7 @@ impl NamsdecApp {
                     }
                 });
             if let Some(name) = ouvrir {
-                self.help = Some((name.to_owned(), namsdec_doc::lookup(name)));
+                self.open_help(name);
                 self.help_query.clear();
             }
             return;
@@ -5627,7 +5661,7 @@ impl NamsdecApp {
                 }
             });
         if let Some(name) = suivante {
-            self.help = Some((name.to_owned(), namsdec_doc::lookup(name)));
+            self.open_help(name);
         }
         if copié {
             self.status = Status::Note(s.help_example_copied);
@@ -5695,7 +5729,7 @@ impl NamsdecApp {
             });
 
         if let Some(name) = ouvrir {
-            self.help = Some((name.to_owned(), namsdec_doc::lookup(name)));
+            self.open_help(name);
         }
     }
 
