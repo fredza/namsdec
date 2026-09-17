@@ -141,6 +141,27 @@ const TOOLTIP_GRACE_TIME: f32 = 0.2;
 /// En deçà, le panneau ne montrerait plus rien de lisible.
 const SIDEBAR_MIN_WIDTH: f32 = 200.0;
 
+/// La largeur au-dessous de laquelle le panneau latéral ne se resserre
+/// plus.
+///
+/// Mesurée, et non fixée : elle vaut une paire « nom de registre +
+/// valeur sur seize chiffres », plus les marges. Plus étroit, le
+/// seizième chiffre passe sous le bord — et une valeur tronquée n'est
+/// pas une valeur abrégée, c'est une valeur fausse que rien ne signale.
+/// La police et le zoom la font varier, d'où la mesure à chaque image.
+fn sidebar_min_width(ui: &egui::Ui) -> f32 {
+    let spacing = ui.spacing();
+    // Ce qui se prend de la largeur avant que la grille n'en voie la
+    // couleur : les marges du panneau, celles de la grille, et la barre
+    // de défilement du bandeau, qui est réservée qu'elle serve ou non.
+    let marges = 4.0 * spacing.item_spacing.x
+        + spacing.scroll.bar_width
+        + spacing.scroll.bar_inner_margin
+        + spacing.scroll.bar_outer_margin
+        + 16.0;
+    (sidebar::register_pair_width(ui) + marges).max(SIDEBAR_MIN_WIDTH)
+}
+
 /// La hauteur minimale laissée au contenu de l'onglet du panneau
 /// latéral — Pile, Mémoire, Tas, Octets, RE.
 ///
@@ -9166,11 +9187,29 @@ impl NamsdecApp {
         }
         timed(&mut spans, "panneau latéral", || {
             if self.show_sidebar {
-                egui::Panel::right("sidebar")
+                let minimum = sidebar_min_width(ui);
+                let id = egui::Id::new("sidebar");
+                // `min_size` ne borne que la poignée : une largeur
+                // retenue d'une session précédente — ou d'avant un
+                // changement de police ou de zoom — passe dessous sans
+                // être corrigée, et les registres perdent leur dernier
+                // chiffre. On la relève donc nous-mêmes.
+                if let Some(état) = egui::containers::panel::PanelState::load(ui.ctx(), id)
+                    && état.outer_rect.width() < minimum
+                {
+                    let corrigé = egui::containers::panel::PanelState {
+                        outer_rect: egui::Rect::from_min_size(
+                            état.outer_rect.min,
+                            egui::vec2(minimum, état.outer_rect.height()),
+                        ),
+                    };
+                    ui.ctx().data_mut(|data| data.insert_persisted(id, corrigé));
+                }
+                egui::Panel::right(id)
                     .resizable(true)
                     .default_size(SIDEBAR_WIDTH)
-                    .min_size(SIDEBAR_MIN_WIDTH)
-                    .max_size((ui.available_width() * SIDEBAR_MAX_FRACTION).max(SIDEBAR_MIN_WIDTH))
+                    .min_size(minimum)
+                    .max_size((ui.available_width() * SIDEBAR_MAX_FRACTION).max(minimum))
                     .show(ui, |ui| self.sidebar_ui(ui));
             }
         });

@@ -126,7 +126,12 @@ impl NamsdecApp {
         // tout premier passage on ne sait rien : la moitié du panneau
         // est un départ honnête, et l'image suivante corrige.
         let laissée = if self.sidebar_banner_height > 0.0 {
-            total - self.sidebar_banner_height
+            // Quelques pixels de garde : sans eux, le partage se cale
+            // pile sur la hauteur du bandeau, et le moindre pixel de
+            // plus — une ligne de séparation, un caractère plus haut —
+            // fait apparaître une barre de défilement au milieu des
+            // registres.
+            total - self.sidebar_banner_height - 12.0
         } else {
             total * 0.5
         };
@@ -134,6 +139,10 @@ impl NamsdecApp {
         // de deux lignes ne montre rien, et ce qui cède alors est le
         // détail de la prochaine instruction, qui se replie d'un clic.
         let voulue = laissée.clamp(SIDEBAR_TAB_MIN.min(plafond), plafond);
+        eprintln!(
+            "SONDE total={total} bandeau={} laissée={laissée} plafond={plafond} voulue={voulue}",
+            self.sidebar_banner_height
+        );
         let id = egui::Id::new("sidebar_tab");
         if self.sidebar_tab_height.is_none() {
             let état = egui::containers::panel::PanelState {
@@ -1217,7 +1226,21 @@ impl NamsdecApp {
                 // chaîne des appels et l'aide-mémoire de la convention
                 // l'expliquent, mais ils passaient devant elle et la
                 // repoussaient hors du panneau.
-                self.stack_words_ui(ui, emulator.as_ref());
+                // La pile défile aussi de côté : une ligne porte une
+                // adresse, un mot de huit octets, ses repères et la
+                // suite des pointeurs — c'est plus large qu'un panneau,
+                // et le bord coupait les derniers chiffres d'une valeur
+                // sans que rien ne le dise. Une valeur tronquée n'est
+                // pas une valeur abrégée : c'est une valeur fausse.
+                egui::ScrollArea::horizontal()
+                    .id_salt("stack_words_scroll")
+                    // Toute la largeur, mais seulement la hauteur de ses
+                    // douze lignes : sans cela, la zone prenait le reste
+                    // du panneau et repoussait hors de vue ce qui suit la
+                    // pile — les adresses de retour, la chaîne des
+                    // appels, la convention.
+                    .auto_shrink([false, true])
+                    .show(ui, |ui| self.stack_words_ui(ui, emulator.as_ref()));
                 ui.separator();
                 self.return_addresses_ui(ui, emulator.as_ref());
                 self.call_chain_ui(ui, emulator.as_ref());
@@ -1310,6 +1333,23 @@ impl NamsdecApp {
         // Deux mots au-dessus de RSP — ce qui vient d'être dépilé — et
         // dix en dessous : de quoi voir un cadre d'appel entier.
         let first = rsp.saturating_sub(16);
+        // Dans un panneau étroit, l'adresse absolue et le mot de huit
+        // octets ne tiennent pas côte à côte, et c'est la valeur qui
+        // perdait ses derniers chiffres — une valeur tronquée n'est pas
+        // une valeur abrégée, c'est une valeur fausse. On passe alors à
+        // l'écart depuis RSP, comme le fait pwndbg : plus court, et il
+        // dit quelque chose de plus — à quelle profondeur on regarde.
+        let font = egui::TextStyle::Monospace.resolve(ui.style());
+        let largeur_de = |texte: &str| {
+            ui.painter()
+                .layout_no_wrap(texte.to_owned(), font.clone(), egui::Color32::WHITE)
+                .rect
+                .width()
+        };
+        let besoin = largeur_de("0x0040fef0")
+            + largeur_de("0000000000000000")
+            + 3.0 * ui.spacing().item_spacing.x;
+        let compact = ui.available_width() < besoin;
         egui::Grid::new("stack_words")
             .num_columns(4)
             .min_col_width(0.0)
@@ -1327,10 +1367,18 @@ impl NamsdecApp {
                     } else {
                         ui.visuals().text_color()
                     };
-                    ui.colored_label(
-                        colour,
-                        egui::RichText::new(format!("{addr:#010x}")).monospace(),
-                    );
+                    let repère = if compact {
+                        // L'écart depuis RSP, en octets : `+0x10` est le
+                        // deuxième mot sous le sommet, `-0x08` celui
+                        // qu'on vient de dépiler.
+                        let écart = addr as i64 - rsp as i64;
+                        let signe = if écart < 0 { '-' } else { '+' };
+                        format!("{signe}{:#04x}", écart.unsigned_abs())
+                    } else {
+                        format!("{addr:#010x}")
+                    };
+                    ui.colored_label(colour, egui::RichText::new(repère).monospace())
+                        .on_hover_text(format!("{addr:#018x}"));
                     ui.label(hex_job(ui, theme, value, colour))
                         .on_hover_text(readings::of(lang, value));
                     // Le repère : d'abord ce que l'adresse *est* pour le

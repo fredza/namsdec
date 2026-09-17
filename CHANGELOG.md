@@ -218,6 +218,12 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
   coût et le lien des registres étendus se superposaient à l'onglet, les
   deux illisibles. Le bandeau tient maintenant dans une seule zone qui
   coupe net, et la barre n'apparaît que sur une fenêtre trop courte.
+- La pile ne coupe plus ses valeurs au bord du panneau : elle défile de
+  côté, et sur un panneau étroit l'adresse laisse la place à l'écart
+  depuis RSP (`+0x10`, `-0x08`) — plus court, et il dit quelque chose de
+  plus : à quelle profondeur on regarde. L'adresse complète reste au
+  survol. Le panneau, lui, ne se resserre plus en deçà d'une valeur de
+  seize chiffres, barre de défilement comprise.
 - L'onglet Mémoire lit son format dans une liste déroulante : « Octets
   Mots Texte Pointeurs » ne tenait pas sur la largeur d'un panneau et
   repassait à la ligne par-dessus le reste.

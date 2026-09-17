@@ -3773,18 +3773,20 @@ malpolie:
     }
 
     let ctx = egui::Context::default();
-    // Une fenêtre haute : l'onglet montre d'abord la pile elle-même, et
-    // l'aide-mémoire de la convention vient après — c'est lui qu'on
-    // vérifie ici.
+    // Une fenêtre très haute : l'onglet montre d'abord la pile
+    // elle-même, puis les adresses de retour, puis l'aide-mémoire de la
+    // convention — c'est lui qu'on vérifie ici. Ce qui dépasse est
+    // maintenant coupé par la zone de défilement de l'onglet, comme il
+    // se doit : pour le lire, il faut donc la place de l'afficher.
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 1400.0),
+            egui::vec2(1280.0, 2400.0),
         )),
         ..Default::default()
     };
     let mut painted = String::new();
-    for _ in 0..2 {
+    for _ in 0..3 {
         painted.clear();
         let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
         for clipped in &output.shapes {
@@ -4645,8 +4647,12 @@ fn the_cpu_state_fills_the_panel_without_a_scroll_bar() {
         let mut trouvés: Vec<(&'static str, egui::Pos2)> = Vec::new();
         let mut état_y = f32::MAX;
         barres.clear();
-        onglet_y = f32::MAX;
         let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        // Deux passes : l'ordre de peinture ne dit pas l'ordre à
+        // l'écran — le panneau de l'onglet est posé avant le bandeau
+        // qu'il surmonte —, donc on relève d'abord les repères, on
+        // décide ensuite.
+        let mut titres_onglet: Vec<egui::Pos2> = Vec::new();
         for clipped in &output.shapes {
             match &clipped.shape {
                 egui::epaint::Shape::Text(text) => match text.galley.text() {
@@ -4657,10 +4663,9 @@ fn the_cpu_state_fills_the_panel_without_a_scroll_bar() {
                     // Le titre de l'onglet dans le panneau, et non celui
                     // de la barre d'outils, qui est tout en haut.
                     t if t == strings(Lang::Fr).tab_stack
-                        && text.pos.x > 1280.0 - SIDEBAR_WIDTH
-                        && text.pos.y > état_y =>
+                        && text.pos.x > 1280.0 - SIDEBAR_WIDTH =>
                     {
-                        onglet_y = onglet_y.min(text.pos.y)
+                        titres_onglet.push(text.pos)
                     }
                     _ => {}
                 },
@@ -4670,6 +4675,11 @@ fn the_cpu_state_fills_the_panel_without_a_scroll_bar() {
                 _ => {}
             }
         }
+        onglet_y = titres_onglet
+            .iter()
+            .map(|pos| pos.y)
+            .filter(|y| *y > état_y)
+            .fold(f32::MAX, f32::min);
         registres = trouvés
             .into_iter()
             .filter(|(_, pos)| pos.y > état_y && pos.y < onglet_y)
@@ -12635,6 +12645,91 @@ fn the_banner_never_paints_over_the_tab_below() {
         assert!(
             débordements.is_empty(),
             "à {taille:?}, le bandeau déborde sur la vue du dessous : {débordements:?}"
+        );
+    }
+}
+
+/// Une valeur de huit octets se lit en entier, jusqu'au dernier
+/// chiffre — dans les registres comme dans la pile.
+///
+/// Seize chiffres dont le seizième passe sous le bord du panneau, ce
+/// n'est pas une valeur abrégée : c'est une valeur *fausse*, et rien ne
+/// le dit. Chaque vue doit donc compter sur la largeur dont elle dispose
+/// réellement, barre de défilement comprise — quitte à raccourcir ce qui
+/// peut l'être sans mentir, comme l'adresse d'un mot de pile, que son
+/// écart depuis RSP remplace alors.
+#[test]
+fn an_eight_byte_value_is_never_cut_by_the_edge_of_the_panel() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    // La largeur du panneau lui-même, et non celle de la fenêtre :
+    // c'est en tirant le panneau qu'on gagne une colonne, et c'est là
+    // que la dernière risque de passer sous le bord.
+    for panneau in [
+        SIDEBAR_MIN_WIDTH,
+        SIDEBAR_WIDTH,
+        420.0_f32,
+        520.0,
+        620.0,
+        720.0,
+        860.0,
+    ] {
+        let mut app = NamsdecApp {
+            source: DEFAULT_SOURCE.to_owned(),
+            ..Default::default()
+        };
+        app.do_assemble();
+        app.do_step();
+        let ctx = egui::Context::default();
+        app.apply_theme(&ctx);
+        ctx.data_mut(|data| {
+            data.insert_persisted(
+                egui::Id::new("sidebar"),
+                egui::containers::panel::PanelState {
+                    outer_rect: egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(panneau, 1400.0),
+                    ),
+                },
+            )
+        });
+        let taille = egui::vec2(1920.0, 1400.0);
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, taille)),
+            ..Default::default()
+        };
+        let mut coupées: Vec<(String, f32, f32)> = Vec::new();
+        for _ in 0..3 {
+            coupées.clear();
+            let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+            for clipped in &output.shapes {
+                if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                    let mot = text.galley.text();
+                    // Une valeur de registre : seize chiffres
+                    // hexadécimaux, et rien d'autre.
+                    if mot.len() != 16 || !mot.chars().all(|c| c.is_ascii_hexdigit()) {
+                        continue;
+                    }
+                    let droite = text.pos.x + text.galley.size().x;
+                    eprintln!(
+                        "VAL x={} w={} droite={droite} clip={:?}",
+                        text.pos.x,
+                        text.galley.size().x,
+                        clipped.clip_rect
+                    );
+                    // repère : où commence le nom
+
+                    if droite > clipped.clip_rect.right() + 0.5 {
+                        coupées.push((mot.to_owned(), droite, clipped.clip_rect.right()));
+                    }
+                }
+            }
+            output.textures_delta.clear();
+        }
+        assert!(
+            coupées.is_empty(),
+            "un panneau de {panneau} laisse passer des valeurs sous le bord : {coupées:?}"
         );
     }
 }
