@@ -53,7 +53,18 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
 - Chaque exercice montre les fiches que son propre code emploie.
 - F1 répond aussi sur une fonction empruntée.
 
-**Le parcours passe à vingt et une étapes**
+**Le parcours passe à vingt-six étapes**
+- « Déclarer des données » : `db`/`dw`/`dd`/`dq`, `times`, `equ`, `$` — et
+  l'onglet Octets pour voir ce que chaque directive a écrit.
+- « Calculer une adresse » : `lea` contre `mov`, et la multiplication par
+  cinq la moins chère du jeu d'instructions.
+- « Avant l'assemblage » : `%define`, `%macro`, `%rep` — une macro n'est
+  pas un appel, et les octets le prouvent.
+- « Une fonction qui s'appelle elle-même » : la récursion, la chaîne des
+  appels qui s'allonge, et d'où vient le débordement de pile.
+- « Lire ce qu'on vous donne » : `read` rend ce qu'il a pu lire, jamais
+  ce qu'on lui a demandé.
+
 - « Copier sans boucle » : `rep movsb`, et d'où RSI et RDI tirent leur
   nom.
 - « Un cadre de pile » : `push rbp` / `mov rbp, rsp` / `sub rsp, 16`, les

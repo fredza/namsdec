@@ -3945,7 +3945,7 @@ fn an_exercise_points_at_the_sheets_it_uses() {
     );
 }
 
-/// Le parcours livré est un parcours : vingt et une étapes dans l'ordre où
+/// Le parcours livré est un parcours : vingt-six étapes dans l'ordre où
 /// l'on apprend, chacune avec son but écrit dans le programme.
 ///
 /// L'ordre n'est pas décoratif. On lit les registres avant d'écrire une
@@ -3967,13 +3967,18 @@ fn the_built_in_pack_is_a_course_in_order() {
             "division",
             "memoire",
             "boutisme",
+            "donnees",
             "tableau",
+            "adresses",
             "chaine",
             "chaines",
+            "macros",
             "pile",
             "appels",
+            "recursion",
             "cadre",
             "sortie",
+            "entree",
             "tas",
             "flottants",
             "afficher",
@@ -5489,11 +5494,11 @@ fn the_readme_tells_the_truth() {
 
     let exercices = namsdec_exercises::builtin_pack().exercises.len();
     assert_eq!(
-        exercices, 21,
-        "le parcours livré compte vingt et un exercices"
+        exercices, 26,
+        "le parcours livré compte vingt-six exercices"
     );
     assert!(
-        readme.contains("parcours de vingt et un exercices"),
+        readme.contains("parcours de vingt-six exercices"),
         "le README doit annoncer le bon nombre d'exercices"
     );
     // Les crates listées dans le tableau existent toutes.
@@ -6295,7 +6300,7 @@ fn the_exercises_deliver_what_they_promise() {
 ///
 /// Un module qu'on active si on le désire, soit — mais une porte qu'on
 /// ne voit pas n'existe pas. Quelqu'un qui débute ne devinera pas qu'il
-/// y a vingt et un exercices derrière un réglage.
+/// y a vingt-six exercices derrière un réglage.
 #[test]
 fn the_course_is_discoverable_before_it_is_loaded() {
     let mut app = NamsdecApp::default();
@@ -6336,7 +6341,7 @@ fn the_course_is_discoverable_before_it_is_loaded() {
         output.textures_delta.clear();
     }
     // Le texte d'accueil est à l'écran, avec sa mention du parcours.
-    assert!(painted.contains("vingt et un exercices"), "{painted}");
+    assert!(painted.contains("vingt-six exercices"), "{painted}");
 }
 
 /// Le parcours se reprend là où on l'avait laissé.
@@ -6402,13 +6407,13 @@ fn the_course_remembers_where_one_stopped() {
         painted.contains("En cours :"),
         "l'étape en cours se voit sans avoir à la chercher : {painted}"
     );
-    // Le rang dans le parcours, aussi : le tableau est la dixième des
-    // vingt et une étapes.
-    assert!(painted.contains("10/21"), "{painted}");
+    // Le rang dans le parcours, aussi : le tableau est la onzième des
+    // vingt-six étapes.
+    assert!(painted.contains("11/26"), "{painted}");
 }
 
 /// Un parcours se suit : l'étape suivante est à un clic, sans avoir à
-/// retrouver son rang dans une liste de vingt et un.
+/// retrouver son rang dans une liste de vingt-six.
 #[test]
 fn the_course_offers_the_next_step() {
     let mut app = NamsdecApp {
@@ -6455,7 +6460,7 @@ fn the_course_offers_the_next_step() {
     }
     assert!(painted.contains("Étape suivante"), "{painted}");
     assert!(
-        painted.contains("1/21"),
+        painted.contains("1/26"),
         "le rang de l'étape en cours : {painted}"
     );
 }
@@ -8970,7 +8975,7 @@ fn every_goal_is_readable_and_on_the_right_side() {
     }
     // Ce que le programme livré fait déjà : on le regarde tourner et on
     // comprend ce qui s'est passé.
-    const DÉMONSTRATIONS: [&str; 14] = [
+    const DÉMONSTRATIONS: [&str; 18] = [
         "boucle",
         "bits",
         "memoire",
@@ -8985,6 +8990,10 @@ fn every_goal_is_readable_and_on_the_right_side() {
         "tas",
         "flottants",
         "afficher",
+        "donnees",
+        "adresses",
+        "macros",
+        "recursion",
     ];
     // Ce qu'il reste à faire : le but n'est pas atteint tant qu'on n'a
     // pas écrit ce qui manque.
@@ -10115,7 +10124,7 @@ fn a_solved_exercise_stays_solved() {
     app.show_exercises = true;
     let painted = paint(&mut app);
     assert!(
-        painted.contains(&format!("1/21 {}", strings(app.lang).exercises_done_count)),
+        painted.contains(&format!("1/26 {}", strings(app.lang).exercises_done_count)),
         "{painted}"
     );
 }
@@ -10361,6 +10370,99 @@ fn the_five_new_steps_do_what_they_show() {
     let app = jouer("afficher");
     let sortie = String::from_utf8_lossy(app.emulator.as_ref().unwrap().output()).into_owned();
     assert_eq!(sortie, "1234", "les chiffres sortent à l'endroit");
+}
+
+/// Les cinq nouvelles étapes tiennent ce qu'elles montrent : les
+/// données déclarées, le calcul d'adresse, le préprocesseur, la
+/// récursion, et l'entrée qui attend.
+#[test]
+fn the_five_later_steps_do_what_they_show() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let jouer = |id: &str| -> NamsdecApp {
+        let mut app = NamsdecApp {
+            exercises: true,
+            ..Default::default()
+        };
+        app.load_exercise(&format!("namsdec/{id}"));
+        app.do_assemble();
+        assert!(
+            matches!(app.status, Status::AssembleOk),
+            "{id} : {:?}",
+            app.status
+        );
+        app.do_run();
+        for _ in 0..500 {
+            if !app.running {
+                break;
+            }
+            app.tick_run(&egui::Context::default());
+        }
+        app
+    };
+
+    // Les directives ont écrit ce qu'elles annoncent : quatre octets,
+    // un mot, cinq lettres, puis quatre fois 0xff.
+    let app = jouer("donnees");
+    let state = app.assemble_state.as_ref().unwrap();
+    let octets = state
+        .output
+        .symbols
+        .iter()
+        .find(|s| s.name == "octets")
+        .expect("l'étiquette existe")
+        .addr;
+    let mémoire = &app.emulator.as_ref().unwrap().cpu().mem;
+    assert_eq!(
+        mémoire.peek_bytes(octets, 11).unwrap(),
+        b"\x11\x22\x33\x44\x01\x02salut",
+        "les octets, dans l'ordre où la machine les range"
+    );
+
+    // `lea` a calculé sans lire : RBX porte l'adresse de la table.
+    let app = jouer("adresses");
+    let state = app.assemble_state.as_ref().unwrap();
+    let table = state
+        .output
+        .symbols
+        .iter()
+        .find(|s| s.name == "table")
+        .expect("l'étiquette existe")
+        .addr;
+    let regs = &app.emulator.as_ref().unwrap().cpu().regs;
+    assert_eq!(regs.get64(Reg64::Rbx), table, "l'adresse, pas le contenu");
+
+    // Le préprocesseur n'a laissé ni `call` ni `ret` : la macro est du
+    // texte recopié, et le `%rep` a bien écrit trois `add`.
+    let app = jouer("macros");
+    let ajouts = app
+        .assemble_state
+        .as_ref()
+        .unwrap()
+        .disasm
+        .iter()
+        .filter(|i| i.text.starts_with("add "))
+        .count();
+    assert_eq!(ajouts, 5, "deux de la macro, trois du %rep");
+    assert!(
+        !app.source.contains("call ajoute_deux_fois"),
+        "une macro n'est pas un appel"
+    );
+
+    // La récursion est descendue puis remontée : la pile est rendue.
+    let app = jouer("recursion");
+    let emulator = app.emulator.as_ref().unwrap();
+    assert!(emulator.frames().is_empty(), "tous les appels sont revenus");
+    assert_eq!(emulator.cpu().regs.get64(Reg64::Rax), 120);
+
+    // Et l'entrée attend : le programme rend la main sans s'arrêter.
+    let app = jouer("entree");
+    assert!(
+        matches!(app.status, Status::WaitingForInput),
+        "{:?}",
+        app.status
+    );
 }
 
 /// La mémoire montre sa carte : où commence le code, où finit la pile,

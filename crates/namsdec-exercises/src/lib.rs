@@ -212,6 +212,19 @@ pub fn builtin_pack() -> Pack {
                 goal: vec!["rcx == 0x88".to_owned(), "rdx == 0x11".to_owned()],
             },
             Exercise {
+                id: "donnees".to_owned(),
+                title: Text {
+                    fr: "Déclarer des données".to_owned(),
+                    en: "Declaring data".to_owned(),
+                },
+                description: Text {
+                    fr: "`db`, `dw`, `dd`, `dq` posent des octets ; `times` répète, `equ` nomme une valeur, `$` est l'adresse courante — d'où `$ - message` pour une longueur calculée à l'assemblage. Ouvrez l'onglet Octets : il montre ce que chaque directive a vraiment écrit. À l'arrêt, RAX doit valoir 0x44332211, RBX 5 et RCX 0x0201.".to_owned(),
+                    en: "`db`, `dw`, `dd`, `dq` lay down bytes; `times` repeats, `equ` names a value, `$` is the current address — hence `$ - message` for a length worked out at assembly time. Open the Bytes tab: it shows what each directive really wrote. At the halt, RAX must hold 0x44332211, RBX 5 and RCX 0x0201.".to_owned(),
+                },
+                starter_code: include_str!("../exercises/donnees.asm").to_owned(),
+                goal: vec!["rax == 0x44332211".to_owned(), "rbx == 5".to_owned(), "rcx == 0x201".to_owned()],
+            },
+            Exercise {
                 id: "tableau".to_owned(),
                 title: Text {
                     fr: "Un tableau, et son indice".to_owned(),
@@ -223,6 +236,19 @@ pub fn builtin_pack() -> Pack {
                 },
                 starter_code: include_str!("../exercises/tableau.asm").to_owned(),
                 goal: vec!["rax == 0x64".to_owned()],
+            },
+            Exercise {
+                id: "adresses".to_owned(),
+                title: Text {
+                    fr: "Calculer une adresse".to_owned(),
+                    en: "Working out an address".to_owned(),
+                },
+                description: Text {
+                    fr: "`mov` lit la mémoire, `lea` calcule seulement l'adresse. Le processeur fait base + indice × taille + décalage sans rien toucher — ce qui fait de `lea rax, [rdi + rdi*4]` la multiplication par cinq la moins chère du jeu d'instructions. À l'arrêt, RAX doit valoir 45 et RCX 30.".to_owned(),
+                    en: "`mov` reads memory, `lea` only computes the address. The processor does base + index × scale + displacement without touching anything — which makes `lea rax, [rdi + rdi*4]` the cheapest multiply-by-five in the instruction set. At the halt, RAX must hold 45 and RCX 30.".to_owned(),
+                },
+                starter_code: include_str!("../exercises/adresses.asm").to_owned(),
+                goal: vec!["rax == 0x2d".to_owned(), "rcx == 0x1e".to_owned()],
             },
             Exercise {
                 id: "chaine".to_owned(),
@@ -251,6 +277,19 @@ pub fn builtin_pack() -> Pack {
                 goal: vec!["rax == 0x73".to_owned(), "rbx == 0x74".to_owned()],
             },
             Exercise {
+                id: "macros".to_owned(),
+                title: Text {
+                    fr: "Avant l'assemblage : le préprocesseur".to_owned(),
+                    en: "Before assembly: the preprocessor".to_owned(),
+                },
+                description: Text {
+                    fr: "`%define` remplace un mot, `%macro` recopie des lignes, `%rep` répète un bloc — tout cela sur le texte, avant la moindre traduction. Une macro n'est pas un appel : ni `call`, ni `ret`, ni pile, et l'onglet Octets le prouve. À l'arrêt, RAX doit valoir 30 et RBX 12.".to_owned(),
+                    en: "`%define` replaces a word, `%macro` copies lines in, `%rep` repeats a block — all on the text, before a single translation. A macro is not a call: no `call`, no `ret`, no stack, and the Bytes tab proves it. At the halt, RAX must hold 30 and RBX 12.".to_owned(),
+                },
+                starter_code: include_str!("../exercises/macros.asm").to_owned(),
+                goal: vec!["rax == 0x1e".to_owned(), "rbx == 0xc".to_owned()],
+            },
+            Exercise {
                 id: "pile".to_owned(),
                 title: Text {
                     fr: "La pile".to_owned(),
@@ -277,6 +316,19 @@ pub fn builtin_pack() -> Pack {
                 goal: vec!["rax == 7".to_owned()],
             },
             Exercise {
+                id: "recursion".to_owned(),
+                title: Text {
+                    fr: "Une fonction qui s'appelle elle-même".to_owned(),
+                    en: "A function that calls itself".to_owned(),
+                },
+                description: Text {
+                    fr: "Rien de particulier n'est demandé au processeur : `call` empile une adresse de retour, et rien n'interdit d'appeler la fonction où l'on est déjà. C'est la pile qui rend cela possible — et c'est aussi ce qui explique le débordement de pile. Regardez la chaîne des appels s'allonger. À l'arrêt, RAX doit contenir 5! = 120.".to_owned(),
+                    en: "Nothing special is asked of the processor: `call` pushes a return address, and nothing forbids calling the function one is already in. The stack is what makes it possible — and what explains stack overflow. Watch the call chain grow. At the halt, RAX must hold 5! = 120.".to_owned(),
+                },
+                starter_code: include_str!("../exercises/recursion.asm").to_owned(),
+                goal: vec!["rax == 0x78".to_owned()],
+            },
+            Exercise {
                 id: "cadre".to_owned(),
                 title: Text {
                     fr: "Un cadre de pile".to_owned(),
@@ -301,6 +353,19 @@ pub fn builtin_pack() -> Pack {
                 },
                 starter_code: include_str!("../exercises/sortie.asm").to_owned(),
                 goal: Vec::new(),
+            },
+            Exercise {
+                id: "entree".to_owned(),
+                title: Text {
+                    fr: "Lire ce qu'on vous donne".to_owned(),
+                    en: "Reading what you are given".to_owned(),
+                },
+                description: Text {
+                    fr: "`read` lit *au plus* ce qu'on lui demande et rend ce qu'il a pu lire — jamais plus, souvent moins, et zéro veut dire « fin d'entrée ». Tapez quelque chose dans la console, envoyez, et regardez RAX : un programme qui suppose avoir tout reçu du premier coup est un programme qui se trompera.".to_owned(),
+                    en: "`read` reads *at most* what it is asked for and returns what it managed — never more, often less, and zero means end of input. Type something in the console, send it, and watch RAX: a program assuming it got everything in one go is a program that will be wrong.".to_owned(),
+                },
+                starter_code: include_str!("../exercises/entree.asm").to_owned(),
+                goal: vec![],
             },
             Exercise {
                 id: "tas".to_owned(),
@@ -400,9 +465,9 @@ mod tests {
     #[test]
     fn every_builtin_exercise_is_complete_and_stops() {
         let pack = builtin_pack();
-        // Un parcours, pas une poignée : vingt et une étapes, et chacune
+        // Un parcours, pas une poignée : vingt-six étapes, et chacune
         // s'appuie sur les précédentes.
-        assert_eq!(pack.exercises.len(), 21);
+        assert_eq!(pack.exercises.len(), 26);
         for exercise in &pack.exercises {
             assert!(!exercise.id.is_empty());
             assert!(!exercise.title.fr.is_empty() && !exercise.title.en.is_empty());
