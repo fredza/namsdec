@@ -2632,7 +2632,25 @@ impl NamsdecApp {
         let truncated = bytes.len() > MEM_SIZE;
         bytes.truncate(MEM_SIZE);
 
-        let disasm = namsdec_disasm::disassemble(&bytes, BASE_ADDR);
+        // Ce qu'on désassemble : le code, et seulement lui, quand le
+        // fichier dit où il est. Partir de l'octet zéro faisait lire
+        // l'en-tête ELF et les tables de relocation comme des
+        // instructions — les premières lignes d'un binaire ouvert
+        // étaient du charabia, et c'est la première chose qu'on voyait.
+        let disasm = executable_ranges(&file, bytes.len())
+            .map(|plages| {
+                let mut out = Vec::new();
+                for (offset, len) in plages {
+                    let début = offset as usize;
+                    let fin = début + len as usize;
+                    if let Some(morceau) = bytes.get(début..fin) {
+                        out.extend(namsdec_disasm::disassemble(morceau, BASE_ADDR + offset));
+                    }
+                }
+                out
+            })
+            .filter(|out| !out.is_empty())
+            .unwrap_or_else(|| namsdec_disasm::disassemble(&bytes, BASE_ADDR));
 
         // Même chose pour un fichier lu tel quel : ses entrées de liaison
         // se nomment, à ceci près que le listing part du premier octet du
@@ -7061,6 +7079,32 @@ fn cyclic_offset(saisie: &str) -> Option<usize> {
         return namsdec_re::cyclic::offset_of_value(value);
     }
     namsdec_re::cyclic::offset(saisie.as_bytes())
+}
+
+/// Les morceaux exécutables d'un ELF, en position dans le fichier, bornés
+/// à ce qui a été chargé.
+///
+/// `None` quand ce n'est pas un ELF : il n'y a alors rien d'autre à
+/// faire que de tout lire comme du code, faute de savoir où il commence.
+fn executable_ranges(file: &[u8], loaded: usize) -> Option<Vec<(u64, u64)>> {
+    let elf = namsdec_re::elf_scan::scan(file)?;
+    let mut plages: Vec<(u64, u64)> = elf
+        .sections
+        .iter()
+        .filter(|section| section.execute && !section.nobits && section.size > 0)
+        .filter_map(|section| {
+            let fin = section.offset.checked_add(section.size)?;
+            // Bornée à la fenêtre chargée : ce qui dépasse n'existe pas
+            // en mémoire, et un listing qui le montrerait mentirait.
+            let fin = fin.min(loaded as u64);
+            // `then` et non `then_some` : l'argument de ce dernier est
+            // évalué quoi qu'il arrive, et la soustraction déborderait
+            // pour une section qui commence après la fenêtre.
+            (fin > section.offset).then(|| (section.offset, fin - section.offset))
+        })
+        .collect();
+    plages.sort_unstable();
+    (!plages.is_empty()).then_some(plages)
 }
 
 /// Les entrées de la table de liaison, en étiquettes du listing.

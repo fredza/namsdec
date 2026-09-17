@@ -9174,6 +9174,53 @@ _start:
     );
 }
 
+/// Ouvrir un binaire montre son code, et non son en-tête décodé comme
+/// des instructions.
+///
+/// Les premières lignes d'un ELF ouvert étaient du charabia : le
+/// désassemblage partait de l'octet zéro, donc de `\x7fELF`, des tables
+/// de relocation et des chaînes de symboles. C'est pourtant la première
+/// chose qu'on voit en ouvrant un fichier.
+#[test]
+fn opening_a_binary_shows_its_code_not_its_header() {
+    let Ok(bytes) = std::fs::read("/bin/ls") else {
+        eprintln!("/bin/ls introuvable : test ignoré");
+        return;
+    };
+    let mut app = NamsdecApp::default();
+    app.load_binary(bytes);
+    let state = app.assemble_state.as_ref().expect("chargé");
+
+    // Le listing ne commence plus au premier octet du fichier.
+    let première = state.disasm.first().expect("du code").address;
+    assert!(
+        première > BASE_ADDR,
+        "le listing part encore de l'en-tête : {première:#x}"
+    );
+
+    // Et tout ce qu'il montre tombe dans une section exécutable du
+    // fichier — c'est la définition de « c'est du code ».
+    let elf = namsdec_re::elf_scan::scan(&state.output.file).expect("un ELF");
+    let plages: Vec<(u64, u64)> = elf
+        .sections
+        .iter()
+        .filter(|s| s.execute && !s.nobits)
+        .map(|s| (BASE_ADDR + s.offset, BASE_ADDR + s.offset + s.size))
+        .collect();
+    for instruction in &state.disasm {
+        assert!(
+            plages
+                .iter()
+                .any(|(début, fin)| (*début..*fin).contains(&instruction.address)),
+            "{:#x} n'est dans aucune section exécutable",
+            instruction.address
+        );
+    }
+
+    // Les entrées de liaison y sont toujours nommées.
+    assert!(app.source.contains("malloc@plt:"), "les étiquettes restent");
+}
+
 /// La mémoire montre sa carte : où commence le code, où finit la pile,
 /// ce que le tas occupe, avec les droits de chacun.
 ///
