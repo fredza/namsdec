@@ -1138,10 +1138,10 @@ fn the_address_field_understands_registers_and_arithmetic() {
     assert_eq!(eval_address("0x401000", None), Some(0x401000));
 }
 
-/// Les trois lectures de la mémoire disent trois choses différentes
+/// Les quatre lectures de la mémoire disent quatre choses différentes
 /// des mêmes octets.
 #[test]
-fn the_three_memory_formats_read_the_same_bytes_differently() {
+fn the_memory_formats_read_the_same_bytes_differently() {
     let mut mem = namsdec_core::Memory::new(BASE_ADDR, 0x1000);
     // « Hi », un octet nul, puis un mot de huit octets valant 1.
     mem.load(BASE_ADDR, b"Hi\0\0\0\0\0\0\x01\0\0\0\0\0\0\0")
@@ -1164,7 +1164,22 @@ fn the_three_memory_formats_read_the_same_bytes_differently() {
     );
     assert!(!text.contains("48"), "et ne montre plus d'hexadécimal");
 
-    // Hors de la fenêtre simulée, les trois le disent.
+    // Et les pointeurs : le mot de huit octets qui vaut 1 ne pointe
+    // nulle part, mais celui qu'on pose ici mène à « Hi ».
+    mem.map(
+        BASE_ADDR..BASE_ADDR + 0x1000,
+        namsdec_core::Perms::DATA,
+        "test",
+    );
+    mem.write_u64(BASE_ADDR + 0x100, BASE_ADDR).unwrap();
+    let chaîne = read_memory(&mem, BASE_ADDR + 0x100, MemoryFormat::Chain, "hors bornes");
+    let première = chaîne.lines().next().expect("une ligne");
+    assert!(
+        première.contains(&format!("{BASE_ADDR:016x}")) && première.contains("\"Hi\""),
+        "l'adresse suivie jusqu'à son texte : {première}"
+    );
+
+    // Hors de la fenêtre simulée, les quatre le disent.
     for format in MemoryFormat::ALL {
         assert_eq!(
             read_memory(&mem, 0xdead_beef, format, "hors bornes"),
@@ -8105,6 +8120,59 @@ fn the_listing_labels_the_functions_a_binary_calls() {
             symbol.addr
         );
     }
+}
+
+/// La pile suit ses pointeurs : un mot qui pointe une chaîne le dit, un
+/// mot qui pointe du code montre l'instruction.
+///
+/// C'est le geste qu'on fait sinon à la main, une lecture après l'autre —
+/// celui que pwndbg appelle *telescope*. Un mot de pile n'est presque
+/// jamais un nombre.
+#[test]
+fn the_stack_follows_its_pointers() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: "\
+default rel
+global _start
+
+section .data
+message: db \"salut\", 0
+
+section .text
+_start:
+    lea rax, [message]
+    push rax
+    hlt
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+    app.do_step();
+    app.do_step();
+
+    let painted = paint(&mut app);
+    assert!(
+        painted.contains("\"salut\""),
+        "le mot empilé pointe une chaîne, et la pile le dit : {painted}"
+    );
+
+    // Et en mémoire, le format « Pointeurs » dit la même chose à partir
+    // de n'importe quelle adresse.
+    let emulator = app.emulator.as_ref().expect("chargé");
+    let rsp = emulator.cpu().regs.get64(Reg64::Rsp);
+    let dump = read_memory(
+        &emulator.cpu().mem,
+        rsp,
+        MemoryFormat::Chain,
+        "hors de la mémoire",
+    );
+    assert!(dump.contains("\"salut\""), "{dump}");
+    assert_eq!(dump.lines().count(), 8, "huit mots, comme telescope");
 }
 
 /// Les fonctions qu'un binaire emprunte se lisent dans la fenêtre

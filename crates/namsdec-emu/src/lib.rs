@@ -17,6 +17,7 @@ use namsdec_core::{
 use thiserror::Error;
 
 pub mod explain;
+pub mod telescope;
 
 use regmap::{is_high_byte, map_register};
 

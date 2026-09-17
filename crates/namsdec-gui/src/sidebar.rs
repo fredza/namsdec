@@ -839,7 +839,7 @@ impl NamsdecApp {
         // dix en dessous : de quoi voir un cadre d'appel entier.
         let first = rsp.saturating_sub(16);
         egui::Grid::new("stack_words")
-            .num_columns(3)
+            .num_columns(4)
             .min_col_width(0.0)
             .striped(true)
             .show(ui, |ui| {
@@ -893,6 +893,23 @@ impl NamsdecApp {
                         },
                         note,
                     );
+                    // Et ce que la valeur désigne, suivi jusqu'au bout :
+                    // un mot de pile n'est presque jamais un nombre, et
+                    // savoir *quoi* demande sinon d'aller lire l'adresse
+                    // à la main, puis la suivante.
+                    let links = namsdec_emu::telescope::chain(
+                        &emulator.cpu().mem,
+                        addr,
+                        namsdec_emu::telescope::LIMIT,
+                    );
+                    let mut suite = String::new();
+                    for link in links.iter().skip(1) {
+                        suite.push_str(&format!("-> {:#x} ", link.value));
+                    }
+                    if let Some(fin) = chain_end(links.last()) {
+                        suite.push_str(&fin);
+                    }
+                    ui.colored_label(theme.dim, egui::RichText::new(suite).monospace());
                     ui.end_row();
                 }
             });
@@ -1895,6 +1912,44 @@ pub(crate) fn read_memory(
                 Err(_) => out_of_range.to_string(),
             }
         }
+        MemoryFormat::Chain => chain_dump(mem, addr),
+    }
+}
+
+/// Huit mots, chacun suivi de pointeur en pointeur.
+///
+/// C'est `telescope` : à chaque ligne, l'adresse, ce qu'elle contient, et
+/// ce que cela désigne — une chaîne, une instruction, un autre pointeur —
+/// jusqu'à ce qu'il n'y ait plus rien à suivre.
+pub(crate) fn chain_dump(mem: &namsdec_core::Memory, addr: u64) -> String {
+    let mut out = String::new();
+    for index in 0..8u64 {
+        let at = addr + index * 8;
+        let links = namsdec_emu::telescope::chain(mem, at, namsdec_emu::telescope::LIMIT);
+        let Some(first) = links.first() else { break };
+        out.push_str(&format!("{at:#010x}  {:016x}", first.value));
+        for link in &links[1..] {
+            out.push_str(&format!("  -> {:#x}", link.value));
+        }
+        if let Some(fin) = chain_end(links.last()) {
+            out.push_str("  ");
+            out.push_str(&fin);
+        }
+        out.push('\n');
+    }
+    out
+}
+
+/// Ce qu'il y a au bout de la chaîne, dit en clair.
+pub(crate) fn chain_end(last: Option<&namsdec_emu::telescope::Link>) -> Option<String> {
+    use namsdec_emu::telescope::What;
+    match &last?.what {
+        // Une instruction : c'est ainsi qu'on reconnaît une adresse de
+        // retour au milieu de nombres.
+        What::Code(text) => Some(format!("({text})")),
+        What::Text(text) => Some(format!("\"{text}\"")),
+        What::Pointer | What::Number => None,
+        What::Unreadable => Some("?".to_owned()),
     }
 }
 

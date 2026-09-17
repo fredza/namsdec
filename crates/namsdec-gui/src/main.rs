@@ -186,16 +186,27 @@ enum MemoryFormat {
     Words,
     /// Le texte jusqu'au premier octet nul.
     Text,
+    /// Les pointeurs suivis jusqu'au bout : à cette adresse il y a cette
+    /// adresse, où il y a cette chaîne. Le geste que pwndbg appelle
+    /// *telescope*, et qu'on fait sinon à la main, une lecture après
+    /// l'autre.
+    Chain,
 }
 
 impl MemoryFormat {
-    const ALL: [MemoryFormat; 3] = [MemoryFormat::Bytes, MemoryFormat::Words, MemoryFormat::Text];
+    const ALL: [MemoryFormat; 4] = [
+        MemoryFormat::Bytes,
+        MemoryFormat::Words,
+        MemoryFormat::Text,
+        MemoryFormat::Chain,
+    ];
 
     fn label(self, s: &Strings) -> &'static str {
         match self {
             MemoryFormat::Bytes => s.memory_format_bytes,
             MemoryFormat::Words => s.memory_format_words,
             MemoryFormat::Text => s.memory_format_text,
+            MemoryFormat::Chain => s.memory_format_chain,
         }
     }
 
@@ -205,6 +216,7 @@ impl MemoryFormat {
             MemoryFormat::Bytes => "bytes",
             MemoryFormat::Words => "words",
             MemoryFormat::Text => "text",
+            MemoryFormat::Chain => "chain",
         }
     }
 

@@ -316,6 +316,7 @@ pub struct Strings {
     pub memory_format_bytes: &'static str,
     pub memory_format_words: &'static str,
     pub memory_format_text: &'static str,
+    pub memory_format_chain: &'static str,
     pub memory_go_hint: &'static str,
     pub memory_watch_hint: &'static str,
     /// Cliquer sur le nom d'un registre le surveille.
@@ -679,6 +680,7 @@ const FR: Strings = Strings {
     memory_format_bytes: "Octets",
     memory_format_words: "Mots",
     memory_format_text: "Texte",
+    memory_format_chain: "Pointeurs",
     memory_go_hint: "Afficher la mémoire à cette adresse (ou Entrée)",
     memory_watch_hint: "Surveiller ces huit octets : l'exécution s'arrêtera quand ils changeront",
     register_watch_hint: "Surveiller ce registre : l'exécution s'arrêtera quand il changera",
@@ -1029,6 +1031,7 @@ const EN: Strings = Strings {
     memory_format_bytes: "Bytes",
     memory_format_words: "Words",
     memory_format_text: "Text",
+    memory_format_chain: "Pointers",
     memory_go_hint: "Show memory at this address (or press Enter)",
     memory_watch_hint: "Watch these eight bytes: execution stops when they change",
     register_watch_hint: "Watch this register: execution stops when it changes",
