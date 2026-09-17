@@ -12011,3 +12011,66 @@ boucle:
         "et le dépassement doit dire par où reprendre :\n{peint}"
     );
 }
+
+/// Le profil situe chaque ligne dans son bloc.
+///
+/// « ligne 6 » oblige à retourner dans le programme pour savoir de quoi
+/// il s'agit ; « boucle: dec rcx » le dit sur place. L'étiquette est la
+/// plus proche au-dessus, et une étiquette locale — celles qui
+/// commencent par un point — ne compte pas : elle ne veut rien dire
+/// hors de son bloc.
+#[test]
+fn the_profile_says_which_block_a_line_belongs_to() {
+    let source = "\
+section .text
+global _start
+_start:
+    mov rcx, 2
+boucle:
+    dec rcx
+.suite:
+    jnz boucle
+    hlt
+";
+    assert_eq!(enclosing_label(source, 4).as_deref(), Some("_start"));
+    assert_eq!(enclosing_label(source, 6).as_deref(), Some("boucle"));
+    assert_eq!(
+        enclosing_label(source, 8).as_deref(),
+        Some("boucle"),
+        "une étiquette locale ne prend pas la place de son bloc"
+    );
+    assert_eq!(
+        enclosing_label(source, 1),
+        None,
+        "avant la première étiquette, il n'y a rien à nommer"
+    );
+    // Une étiquette indentée n'existe pas en NASM : elle ne doit pas
+    // être prise pour le nom d'un bloc.
+    assert_eq!(
+        enclosing_label("_start:\n    ceci: nop\n", 2).as_deref(),
+        Some("_start")
+    );
+
+    // Et le texte copié le porte aussi.
+    let mut app = NamsdecApp {
+        source: source.to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    app.do_run();
+    for _ in 0..10 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&egui::Context::default());
+    }
+    let passages = app.line_visits();
+    let mut classement: Vec<(u32, u64)> = passages.iter().map(|(l, c)| (*l, *c)).collect();
+    classement.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    let total: u64 = classement.iter().map(|(_, c)| *c).sum();
+    let texte = app.profile_text(&classement, total);
+    assert!(
+        texte.contains("boucle: dec rcx"),
+        "le profil copié situe la ligne dans son bloc :\n{texte}"
+    );
+}

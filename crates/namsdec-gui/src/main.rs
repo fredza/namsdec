@@ -7507,6 +7507,15 @@ impl NamsdecApp {
                             1.0,
                             heat_colour(theme, *compte, plus_chaude),
                         );
+                        // Le bloc auquel la ligne appartient : « boucle: »
+                        // devant « dec rcx » dit en un mot ce qu'un
+                        // numéro seul oblige à aller vérifier.
+                        if let Some(étiquette) = enclosing_label(&self.source, *ligne) {
+                            ui.colored_label(
+                                theme.label,
+                                egui::RichText::new(format!("{étiquette}:")).monospace(),
+                            );
+                        }
                         // La ligne elle-même : sans elle, le classement
                         // renvoie à un numéro qu'il faut aller chercher.
                         let texte = source_line(&self.source, *ligne);
@@ -7535,8 +7544,11 @@ impl NamsdecApp {
         let mut out = format!("{} {}\n", sidebar::group_digits(total), s.profile_total);
         for (ligne, compte) in classement {
             let part = *compte as f32 / total.max(1) as f32 * 100.0;
+            let bloc = enclosing_label(&self.source, *ligne)
+                .map(|nom| format!("{nom}: "))
+                .unwrap_or_default();
             out.push_str(&format!(
-                "{ligne:>5}  {:>9}  {part:>5.1} %  {}\n",
+                "{ligne:>5}  {:>9}  {part:>5.1} %  {bloc}{}\n",
                 sidebar::group_digits(*compte),
                 source_line(&self.source, *ligne)
             ));
@@ -7976,6 +7988,27 @@ fn source_line(source: &str, ligne: u32) -> String {
         .unwrap_or_default()
         .trim()
         .to_owned()
+}
+
+/// L'étiquette sous laquelle vit la ligne `ligne`, s'il y en a une.
+///
+/// La plus proche au-dessus : c'est le bloc auquel la ligne appartient.
+/// Dans un profil, « boucle: dec rcx » situe la ligne sans rien aller
+/// chercher, là où un numéro seul oblige à retourner dans le programme.
+/// Les étiquettes locales de nasm — celles qui commencent par un point
+/// — ne comptent pas : elles ne portent pas de sens à elles seules.
+fn enclosing_label(source: &str, ligne: u32) -> Option<String> {
+    let lignes: Vec<&str> = source.lines().take(ligne as usize).collect();
+    lignes.iter().rev().find_map(|texte| {
+        let texte = texte.split(';').next().unwrap_or("");
+        // En tête de ligne, sans indentation : une étiquette
+        // indentée n'existe pas en NASM.
+        if texte.starts_with([' ', '\t']) {
+            return None;
+        }
+        let nom = texte.split_whitespace().next()?.strip_suffix(':')?;
+        (!nom.is_empty() && !nom.starts_with('.')).then(|| nom.to_owned())
+    })
 }
 
 /// La ligne où l'étiquette `name` est définie, en comptant à partir de 1.
