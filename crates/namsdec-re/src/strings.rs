@@ -14,6 +14,12 @@ pub struct StringsModule {
     /// Ce qu'on cherche parmi elles. Deux cents chaînes se parcourent
     /// mal ; on sait en général ce qu'on veut y trouver.
     query: String,
+    /// N'afficher que celles que le code désigne.
+    ///
+    /// Une chaîne à laquelle personne ne fait référence est souvent du
+    /// texte mort — un reste de bibliothèque, un nom de section. Celles
+    /// qu'une instruction va chercher sont, elles, des pistes.
+    pointed_only: bool,
 }
 
 /// Une chaîne trouvée : où elle commence, et ce qu'elle dit.
@@ -183,14 +189,23 @@ impl ReModule for StringsModule {
             if !self.query.is_empty() && ui.small_button("x").clicked() {
                 self.query.clear();
             }
+            ui.checkbox(
+                &mut self.pointed_only,
+                ctx.t("désignées seulement", "pointed at only"),
+            )
+            .on_hover_text(ctx.t(
+                "Une chaîne que personne ne va chercher est souvent du texte mort.",
+                "A string nobody goes looking for is usually dead text.",
+            ));
         });
         let query = self.query.to_lowercase();
         let montrées: Vec<&Found> = self
             .found
             .iter()
             .filter(|found| query.is_empty() || found.text.to_lowercase().contains(&query))
+            .filter(|found| !self.pointed_only || !self.xrefs.to(found.addr).is_empty())
             .collect();
-        ui.label(if query.is_empty() {
+        ui.label(if query.is_empty() && !self.pointed_only {
             format!(
                 "{} {}",
                 self.found.len(),
@@ -281,6 +296,34 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// Le filtre « désignées seulement » sépare les pistes du texte
+    /// mort : une chaîne que personne ne va chercher n'apprend rien.
+    #[test]
+    fn showing_only_the_strings_the_code_points_at() {
+        // lea rax, [rel 0x401000] ; hlt — le code désigne la première
+        // chaîne, pas la seconde.
+        let code = [0x48, 0x8d, 0x05, 0xf9, 0x0f, 0x00, 0x00, 0xf4];
+        let disasm = namsdec_disasm::disassemble(&code, 0x400000);
+        let xrefs = crate::xrefs::scan(&disasm, 0x400000..0x402000);
+
+        let trouvées = vec![
+            Found {
+                addr: 0x401000,
+                text: "désignée".to_owned(),
+            },
+            Found {
+                addr: 0x401100,
+                text: "orpheline".to_owned(),
+            },
+        ];
+        let désignées: Vec<&Found> = trouvées
+            .iter()
+            .filter(|found| !xrefs.to(found.addr).is_empty())
+            .collect();
+        assert_eq!(désignées.len(), 1, "{désignées:?}");
+        assert_eq!(désignées[0].text, "désignée");
     }
 
     /// Ce qui n'est pas un ELF se lit quand même, du premier octet au
