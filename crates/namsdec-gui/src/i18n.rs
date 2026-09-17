@@ -172,6 +172,11 @@ pub struct Strings {
     pub heap_hint: &'static str,
     /// Le bouton qui emmène le vidage du tas dans l'onglet Mémoire.
     pub heap_inspect: &'static str,
+    /// Ce que dit la console quand le programme n'écrit jamais rien, et
+    /// quand il n'a pas encore tourné : « rien » a deux raisons, et les
+    /// confondre laisse chercher une panne qui n'existe pas.
+    pub output_never: &'static str,
+    pub output_not_yet: &'static str,
     pub tab_output: &'static str,
     pub tab_diagnostics: &'static str,
     /// L'onglet qui classe les lignes par temps passé dedans.
@@ -687,6 +692,8 @@ const FR: Strings = Strings {
     heap_empty: "Le programme n'a encore rien demandé : appelez brk pour agrandir le tas.",
     heap_hint: "brk(0) lit la rupture, brk(adresse) la déplace ; l'appel rend toujours la rupture effective.",
     heap_inspect: "Voir dans Mémoire",
+    output_never: "Ce programme n'écrit rien : il ne contient aucun appel write.",
+    output_not_yet: "Rien pour l'instant : le programme n'a pas encore tourné.",
     tab_output: "Console",
     tab_diagnostics: "Diagnostics",
     tab_profile: "Profil",
@@ -1159,6 +1166,8 @@ const EN: Strings = Strings {
     heap_empty: "The program has not asked for anything yet: call brk to grow the heap.",
     heap_hint: "brk(0) reads the break, brk(address) moves it; the call always returns the effective break.",
     heap_inspect: "Show in Memory",
+    output_never: "This program writes nothing: it contains no write call.",
+    output_not_yet: "Nothing yet: the program has not run.",
     tab_output: "Console",
     tab_diagnostics: "Diagnostics",
     tab_profile: "Profile",

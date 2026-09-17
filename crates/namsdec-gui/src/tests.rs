@@ -1271,11 +1271,16 @@ fn the_console_panel_spans_the_window_and_keeps_its_input_at_the_bottom() {
         return;
     }
     let mut app = NamsdecApp {
+        // Le programme écrit beaucoup, puis lit : sans ce `read`, la
+        // console ne proposerait aucune saisie — et elle a raison, un
+        // programme qui ne lit rien n'a que faire d'un champ de saisie.
         source: "section .data\n    msg db \"beaucoup de sortie\", 10\n\
                  \x20   len equ $ - msg\nsection .text\n    global _start\n_start:\n\
                  \x20   mov rcx, 40\nboucle:\n    push rcx\n    mov rax, 1\n\
                  \x20   mov rdi, 1\n    mov rsi, msg\n    mov rdx, len\n    syscall\n\
-                 \x20   pop rcx\n    dec rcx\n    jnz boucle\n    hlt\n"
+                 \x20   pop rcx\n    dec rcx\n    jnz boucle\n\
+                 \x20   xor rax, rax\n    xor rdi, rdi\n    mov rsi, msg\n\
+                 \x20   mov rdx, 4\n    syscall\n    hlt\n"
             .to_owned(),
         console_tab: ConsoleTab::Output,
         ..Default::default()
@@ -12226,5 +12231,79 @@ fn the_re_tab_leads_to_the_analysis_window() {
     assert!(
         !app.show_analysis,
         "et il n'ouvre rien tant qu'on ne clique pas"
+    );
+}
+
+/// La console ne propose une saisie qu'aux programmes qui lisent.
+///
+/// Un champ, deux boutons et une invite devant un programme qui ne
+/// contient aucun `read` : trois lignes qui ne serviront jamais, et une
+/// question de plus pour qui apprend. Le même raisonnement vaut pour ce
+/// qu'affiche la console vide — « le programme n'a rien écrit » devant
+/// un programme qui n'écrit jamais rien laisse chercher une panne qui
+/// n'existe pas.
+#[test]
+fn the_console_offers_input_only_to_programs_that_read() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let peindre = |source: &str, exécuter: bool| {
+        let mut app = NamsdecApp {
+            source: source.to_owned(),
+            console_tab: ConsoleTab::Output,
+            ..Default::default()
+        };
+        app.do_assemble();
+        assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+        if exécuter {
+            app.do_run();
+            for _ in 0..50 {
+                if !app.running {
+                    break;
+                }
+                app.tick_run(&egui::Context::default());
+            }
+        }
+        (paint(&mut app), app.program_reads, app.program_writes)
+    };
+
+    // Un programme qui ne fait que calculer : ni saisie, ni reproche.
+    let muet = "global _start\nsection .text\n_start:\n    mov rax, 2\n    add rax, 3\n    hlt\n";
+    let (peint, lit, écrit) = peindre(muet, true);
+    assert!(!lit && !écrit, "ce programme ne parle à personne");
+    assert!(
+        !peint.contains(strings(Lang::Fr).console_send),
+        "aucun bouton Envoyer pour un programme qui ne lit pas :\n{peint}"
+    );
+    assert!(
+        !peint.contains(strings(Lang::Fr).console_input_hint),
+        "ni champ de saisie :\n{peint}"
+    );
+    assert!(
+        peint.contains(strings(Lang::Fr).output_never),
+        "et la console dit pourquoi elle est vide :\n{peint}"
+    );
+
+    // Le même, pas encore lancé : « rien pour l'instant », et non « il
+    // n'a rien écrit » — il n'a rien fait du tout.
+    let écrivain = "section .data\n    msg db \"x\", 10\nsection .text\nglobal _start\n_start:\n\
+                    \x20   mov rax, 1\n    mov rdi, 1\n    mov rsi, msg\n    mov rdx, 2\n\
+                    \x20   syscall\n    hlt\n";
+    let (peint, _, écrit) = peindre(écrivain, false);
+    assert!(écrit, "celui-ci écrit");
+    assert!(
+        peint.contains(strings(Lang::Fr).output_not_yet),
+        "avant l'exécution, la console ne reproche rien :\n{peint}"
+    );
+
+    // Et un programme qui lit garde son champ, forcément.
+    let lecteur = "section .bss\n    tampon resb 16\nsection .text\nglobal _start\n_start:\n\
+                   \x20   xor rax, rax\n    xor rdi, rdi\n    mov rsi, tampon\n    mov rdx, 8\n\
+                   \x20   syscall\n    hlt\n";
+    let (peint, lit, _) = peindre(lecteur, false);
+    assert!(lit, "celui-ci lit");
+    assert!(
+        peint.contains(strings(Lang::Fr).console_send),
+        "un programme qui lit garde de quoi lui parler :\n{peint}"
     );
 }

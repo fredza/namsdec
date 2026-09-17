@@ -211,6 +211,12 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
   recherche coupé en deux. Ce qui cède, désormais, c'est le détail de la
   prochaine instruction, qui se replie d'un clic. L'onglet RE mène en
   outre à la fenêtre d'analyse, où tout se lit déplié.
+- La console ne tend plus un champ de saisie à un programme qui ne lit
+  rien : elle relit son code, et la saisie n'apparaît que s'il contient
+  un `read` — ou dès qu'il en réclame une. Vide, elle dit aussi
+  *pourquoi* : « ce programme n'écrit rien » quand il ne contient aucun
+  `write`, « rien pour l'instant » tant qu'il n'a pas tourné, et « le
+  programme n'a rien écrit » seulement quand c'est vrai.
 - La console prend la hauteur de ce qu'elle a à dire : « le programme n'a
   rien écrit » occupait le quart de l'écran, c'est maintenant trois
   lignes. Tirer la poignée reprend la main, et la hauteur choisie est

@@ -573,6 +573,16 @@ struct NamsdecApp {
     /// seulement si… ». Une ligne sans entrée s'arrête toujours.
     breakpoint_conditions: BTreeMap<u32, String>,
     assemble_state: Option<AssembleState>,
+    /// Le programme chargé peut-il lire son entrée, peut-il écrire sur sa
+    /// sortie ? Lu une fois dans son code — un `syscall` précédé du
+    /// numéro 0 ou 1 —, et non deviné à chaque image.
+    ///
+    /// La console s'en sert pour ne pas proposer un champ de saisie à un
+    /// programme qui ne lira jamais, et pour dire « ce programme n'écrit
+    /// rien » au lieu de « le programme n'a rien écrit », qui laisse
+    /// croire à un raté.
+    program_reads: bool,
+    program_writes: bool,
     /// Texte en cours de saisie dans la console, pas encore envoyé au
     /// programme. Donnée de session et non réglage : elle n'a aucun sens
     /// hors du programme qui tourne, et n'a donc rien à faire dans
@@ -1399,6 +1409,8 @@ impl Default for NamsdecApp {
             breakpoint_lines: BTreeSet::new(),
             breakpoint_conditions: BTreeMap::new(),
             assemble_state: None,
+            program_reads: false,
+            program_writes: false,
             emulator: None,
             regs_before: None,
             flags_before: None,
@@ -1769,6 +1781,7 @@ impl NamsdecApp {
                     disasm,
                     addr_to_line,
                 });
+                self.note_program_io();
                 self.status = Status::AssembleOk;
                 self.rebuild_emulator();
             }
@@ -1815,6 +1828,34 @@ impl NamsdecApp {
     /// L'émulateur compte par adresse ; une ligne en produit parfois
     /// plusieurs, et c'est la ligne qu'on lit. Vide tant que rien n'a
     /// tourné — auquel cas la gouttière ne réserve aucune place.
+    /// Relit ce que le programme chargé demande au monde extérieur.
+    ///
+    /// Une fois par programme, et non à chaque image : remonter le
+    /// numéro d'un `syscall` coûte un décodage par instruction, ce qui
+    /// se paie cher sur un binaire du système.
+    fn note_program_io(&mut self) {
+        let (mut lit, mut écrit) = (false, false);
+        if let Some(state) = &self.assemble_state {
+            for call in namsdec_re::syscalls::scan(&state.disasm) {
+                match call.number {
+                    // Un numéro illisible d'ici — calculé, lu en
+                    // mémoire — peut être n'importe lequel : on ne
+                    // refuse pas la saisie à un programme qui l'attend
+                    // peut-être.
+                    None => {
+                        lit = true;
+                        écrit = true;
+                    }
+                    Some(0) => lit = true,
+                    Some(1) => écrit = true,
+                    _ => {}
+                }
+            }
+        }
+        self.program_reads = lit;
+        self.program_writes = écrit;
+    }
+
     fn line_visits(&self) -> BTreeMap<u32, u64> {
         let (Some(emulator), Some(state)) = (&self.emulator, &self.assemble_state) else {
             return BTreeMap::new();
@@ -2824,6 +2865,7 @@ impl NamsdecApp {
             disasm,
             addr_to_line,
         });
+        self.note_program_io();
         // Un objet non lié — un `.o` — n'a ni point d'entrée ni adresse
         // de section : `ld` ne lui en a pas encore donné. Il se lit et
         // s'analyse très bien, mais l'exécuter n'a pas de sens, et le
@@ -2926,6 +2968,7 @@ impl NamsdecApp {
             disasm,
             addr_to_line,
         });
+        self.note_program_io();
         self.rebuild_emulator();
         if !matches!(self.status, Status::Error(_)) {
             self.status = Status::BinaryLoaded {
@@ -5923,7 +5966,14 @@ impl NamsdecApp {
         // Les onglets, le séparateur et les marges du panneau.
         let chrome = ui.text_style_height(&egui::TextStyle::Button) + 28.0;
         // Le champ d'entrée n'existe que s'il y a quelqu'un pour lire.
-        let entrée = if self.emulator.is_some() {
+        let entrée = if self.emulator.is_some()
+            && (self.program_reads
+                || matches!(self.status, Status::WaitingForInput)
+                || self
+                    .emulator
+                    .as_ref()
+                    .is_some_and(|e| e.pending_input() > 0))
+        {
             ui.text_style_height(&egui::TextStyle::Body) + 16.0
         } else {
             0.0
@@ -7691,8 +7741,17 @@ impl NamsdecApp {
         };
 
         // Posée en bas du panneau, la saisie ne bouge plus quoi qu'écrive
-        // le programme. Elle n'apparaît que s'il y a quelqu'un pour lire.
-        if self.emulator.is_some() {
+        // le programme. Elle n'apparaît que s'il y a quelqu'un pour
+        // lire : un programme sans `read` n'attendra jamais rien, et lui
+        // tendre un champ de saisie, deux boutons et une invite, c'est
+        // trois lignes qui ne servent à rien et une question de plus
+        // pour qui apprend. La saisie revient dès que le programme
+        // réclame de quoi lire, ou qu'on lui a déjà donné quelque chose.
+        let saisie = self.emulator.is_some()
+            && (self.program_reads
+                || matches!(self.status, Status::WaitingForInput)
+                || pending > 0);
+        if saisie {
             egui::Panel::bottom("console_input")
                 .resizable(false)
                 .frame(egui::Frame::NONE)
@@ -7732,7 +7791,21 @@ impl NamsdecApp {
                         if self.emulator.is_none() {
                             ui.colored_label(self.theme.dim, s.no_binary_assembled);
                         } else if output.is_empty() {
-                            ui.colored_label(self.theme.dim, s.output_empty);
+                            // Dire *pourquoi* c'est vide. « Le programme
+                            // n'a rien écrit » devant un programme qui
+                            // n'écrit jamais rien laisse chercher une
+                            // panne qui n'existe pas ; devant un
+                            // programme qu'on n'a pas lancé, c'est
+                            // simplement faux.
+                            let exécuté = self.emulator.as_ref().is_some_and(|e| e.executed() > 0);
+                            ui.colored_label(
+                                self.theme.dim,
+                                match (self.program_writes, exécuté) {
+                                    (false, _) => s.output_never,
+                                    (true, false) => s.output_not_yet,
+                                    (true, true) => s.output_empty,
+                                },
+                            );
                         } else {
                             // Sélectionnable : la sortie d'un programme se
                             // recopie ailleurs (un rapport, un test).

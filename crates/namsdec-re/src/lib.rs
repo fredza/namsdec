@@ -16,7 +16,7 @@ pub mod libc;
 mod protections;
 pub mod report;
 pub mod strings;
-mod syscalls;
+pub mod syscalls;
 pub mod table;
 pub mod xrefs;
 mod xrefs_module;

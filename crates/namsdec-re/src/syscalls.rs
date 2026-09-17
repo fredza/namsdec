@@ -14,9 +14,40 @@ pub struct SyscallsModule {
     found: Vec<Call>,
 }
 
-struct Call {
-    addr: u64,
-    number: Option<u64>,
+/// Un `syscall` du programme : où il est, et ce qu'il demande — quand
+/// le numéro se lit d'ici.
+pub struct Call {
+    pub addr: u64,
+    pub number: Option<u64>,
+}
+
+/// Tous les appels système d'un désassemblage, avec leur numéro quand il
+/// est écrit en clair juste avant.
+///
+/// Sorti du module pour servir ailleurs : la console a besoin de savoir
+/// si le programme peut lire quelque chose avant de proposer un champ de
+/// saisie à un programme qui ne lira jamais.
+pub fn scan(disasm: &[namsdec_disasm::DecodedInstruction]) -> Vec<Call> {
+    disasm
+        .iter()
+        .enumerate()
+        .filter(|(_, instr)| instr.text.trim() == "syscall")
+        .map(|(index, instr)| Call {
+            addr: instr.address,
+            number: number_before(disasm, index),
+        })
+        .collect()
+}
+
+/// Le programme peut-il lire son entrée ?
+///
+/// Vrai s'il contient un `read` (appel numéro zéro), et vrai aussi si un
+/// appel a un numéro qu'on ne sait pas lire d'ici : mieux vaut proposer
+/// une saisie inutile que la refuser à un programme qui l'attend.
+pub fn reads_input(disasm: &[namsdec_disasm::DecodedInstruction]) -> bool {
+    scan(disasm)
+        .iter()
+        .any(|call| matches!(call.number, None | Some(0)))
 }
 
 /// Combien d'instructions on remonte pour trouver le numéro. Au-delà,
@@ -84,16 +115,7 @@ impl ReModule for SyscallsModule {
     }
 
     fn on_binary_loaded(&mut self, ctx: &ReContext) {
-        self.found = ctx
-            .disasm
-            .iter()
-            .enumerate()
-            .filter(|(_, instr)| instr.text.trim() == "syscall")
-            .map(|(index, instr)| Call {
-                addr: instr.address,
-                number: number_before(ctx.disasm, index),
-            })
-            .collect();
+        self.found = scan(ctx.disasm);
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
