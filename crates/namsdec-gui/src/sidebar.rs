@@ -717,7 +717,11 @@ impl NamsdecApp {
             return;
         };
         let theme = self.theme;
-        let regs = &emulator.cpu().regs;
+        // Une copie : la grille écrit dans `self` — le champ d'édition
+        // d'un registre — et ne peut donc pas garder l'émulateur
+        // emprunté pendant ce temps.
+        let regs = emulator.cpu().regs.clone();
+        let regs = &regs;
         let changed = changed_registers(self.regs_before.as_ref(), regs);
         // Dix-huit valeurs d'affilée, c'est haut. Le panneau élargi,
         // elles tiennent sur deux colonnes ou plus, et l'état du
@@ -747,6 +751,14 @@ impl NamsdecApp {
         // Relevé dans la boucle, appliqué après : la grille emprunte
         // `self` en lecture, la surveillance l'écrit.
         let mut clicked: Option<&'static str> = None;
+        // Ce que le rendu a demandé : ouvrir un champ, poser une valeur,
+        // ou refermer. Appliqué après la grille, qui emprunte `self`.
+        let mut éditer: Option<&'static str> = None;
+        let mut poser: Option<(&'static str, u64)> = None;
+        let mut annuler = false;
+        // Sortie de `self` le temps du rendu : la grille a besoin de
+        // l'écrire, et elle lit `self` par ailleurs.
+        let mut edition = self.editing_register.take();
         let s = strings(self.lang);
         let lang = self.lang;
         egui::Grid::new("registers_grid")
@@ -828,15 +840,47 @@ impl NamsdecApp {
                     // fait en décimal, quel caractère, quels octets en
                     // mémoire. C'est la question qui fait ouvrir une
                     // calculatrice ailleurs.
-                    ui.add(
-                        egui::Label::new(
-                            egui::RichText::new(format!("{value:016x}"))
-                                .monospace()
-                                .color(color),
-                        )
-                        .sense(egui::Sense::hover()),
-                    )
-                    .on_hover_text(readings::of(lang, value));
+                    // La valeur se lit *et* se pose : un clic ouvre un
+                    // champ, et ce qu'on y écrit remplace le contenu du
+                    // registre. « Et si RCX valait 1 ? » se répond alors
+                    // en une seconde, sans réécrire le programme.
+                    match &mut edition {
+                        Some((nom, saisie)) if *nom == name => {
+                            let champ = ui.add(
+                                egui::TextEdit::singleline(saisie)
+                                    .font(egui::TextStyle::Monospace)
+                                    .desired_width(pair * 0.62),
+                            );
+                            champ.request_focus();
+                            if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                                annuler = true;
+                            } else if champ.lost_focus()
+                                && ui.input(|i| i.key_pressed(egui::Key::Enter))
+                            {
+                                poser = parse_register_value(saisie).map(|v| (name, v));
+                                annuler = true;
+                            }
+                        }
+                        _ => {
+                            let valeur = ui
+                                .add(
+                                    egui::Label::new(
+                                        egui::RichText::new(format!("{value:016x}"))
+                                            .monospace()
+                                            .color(color),
+                                    )
+                                    .sense(egui::Sense::click()),
+                                )
+                                .on_hover_ui(|ui| {
+                                    ui.label(readings::of(lang, value));
+                                    ui.add_space(4.0);
+                                    ui.weak(s.register_edit_hint);
+                                });
+                            if valeur.clicked() {
+                                éditer = Some(name);
+                            }
+                        }
+                    }
                     in_row += 1;
                     if in_row == pairs {
                         ui.end_row();
@@ -862,14 +906,54 @@ impl NamsdecApp {
             }
             self.sync_watchpoints();
         }
+        self.editing_register = edition;
+        if let Some(name) = éditer {
+            let valeur = self
+                .emulator
+                .as_ref()
+                .map(|e| register_value_by_name(e.cpu(), name))
+                .unwrap_or(0);
+            self.editing_register = Some((name, format!("{valeur:x}")));
+        }
+        if let Some((name, valeur)) = poser {
+            self.set_register(name, valeur);
+        }
+        if annuler {
+            self.editing_register = None;
+        }
     }
 
-    fn flags_ui(&self, ui: &mut egui::Ui) {
+    /// Pose une valeur dans un registre, à la main.
+    ///
+    /// Le pas suivant partira de là : c'est une hypothèse qu'on teste,
+    /// pas une triche. Revenir en arrière la défait comme le reste —
+    /// l'annulation restaure les registres d'avant le pas.
+    pub(crate) fn set_register(&mut self, name: &str, value: u64) {
+        let Some(emulator) = &mut self.emulator else {
+            return;
+        };
+        if name == "RIP" {
+            emulator.cpu_mut().regs.rip = value;
+        } else if let Some(reg) = register_by_name(name) {
+            emulator.cpu_mut().regs.set64(reg, value);
+        } else {
+            return;
+        }
+        self.status = Status::Note(strings(self.lang).register_set);
+    }
+
+    fn flags_ui(&mut self, ui: &mut egui::Ui) {
+        let s = strings(self.lang);
         let Some(emulator) = &self.emulator else {
             return;
         };
         let f = emulator.cpu().flags;
         let theme = self.theme;
+        // Un indicateur se bascule d'un clic : « et si ZF valait 1 ? »
+        // est une question qu'on se pose devant chaque saut conditionnel,
+        // et que le pas suivant tranche aussitôt. C'est le `setflag` de
+        // pwndbg.
+        let mut basculer = None;
         ui.horizontal_wrapped(|ui| {
             for (name, bit) in [
                 ("CF", RFlags::CF),
@@ -879,9 +963,31 @@ impl NamsdecApp {
                 ("SF", RFlags::SF),
                 ("OF", RFlags::OF),
             ] {
-                flag_chip(ui, theme, name, f.contains(bit));
+                if flag_chip(ui, theme, name, f.contains(bit))
+                    .on_hover_text(s.flag_toggle_hint)
+                    .clicked()
+                {
+                    basculer = Some(bit);
+                }
             }
         });
+        if let Some(bit) = basculer {
+            self.toggle_flag(bit);
+        }
+    }
+
+    /// Bascule un indicateur à la main.
+    ///
+    /// Le saut qui suit le lira : c'est la façon la plus courte de voir
+    /// ce que `jz` fait de `ZF`, et elle se défait comme le reste en
+    /// revenant d'un pas en arrière.
+    pub(crate) fn toggle_flag(&mut self, bit: RFlags) {
+        let Some(emulator) = &mut self.emulator else {
+            return;
+        };
+        let flags = &mut emulator.cpu_mut().flags;
+        flags.toggle(bit);
+        self.status = Status::Note(strings(self.lang).flag_set);
     }
 
     fn stack_ui(&self, ui: &mut egui::Ui) {
@@ -1810,6 +1916,41 @@ pub(crate) fn changed_registers(
         .collect()
 }
 
+/// La valeur d'un registre nommé, RIP compris.
+pub(crate) fn register_value_by_name(cpu: &namsdec_core::Cpu, name: &str) -> u64 {
+    if name == "RIP" {
+        return cpu.regs.rip;
+    }
+    register_by_name(name)
+        .map(|reg| cpu.regs.get64(reg))
+        .unwrap_or(0)
+}
+
+/// Ce qu'on tape dans le champ d'un registre.
+///
+/// **Tout est hexadécimal**, comme le champ d'adresse et comme la valeur
+/// affichée : on recopie ce qu'on voit. Un `-` devant donne le
+/// complément à deux, parce que « mets -1 » est la façon dont on le
+/// pense.
+pub(crate) fn parse_register_value(saisie: &str) -> Option<u64> {
+    let saisie = saisie.trim().to_ascii_lowercase();
+    let (négatif, chiffres) = match saisie.strip_prefix('-') {
+        Some(reste) => (true, reste),
+        None => (false, saisie.as_str()),
+    };
+    let chiffres = chiffres.strip_prefix("0x").unwrap_or(chiffres);
+    let chiffres = chiffres.replace('_', "");
+    if chiffres.is_empty() {
+        return None;
+    }
+    let value = u64::from_str_radix(&chiffres, 16).ok()?;
+    Some(if négatif {
+        value.wrapping_neg()
+    } else {
+        value
+    })
+}
+
 /// Les droits d'une zone, à la façon d'un `vmmap` : `rwx`, un tiret pour
 /// ce qui est refusé. Trois caractères se comparent d'un coup d'œil, là
 /// où trois mots demandent de lire.
@@ -1921,15 +2062,20 @@ pub(crate) fn xmm_tooltip(s: &Strings, value: [u128; 2]) -> String {
     )
 }
 
-pub(crate) fn flag_chip(ui: &mut egui::Ui, theme: &'static Theme, name: &str, on: bool) {
+pub(crate) fn flag_chip(
+    ui: &mut egui::Ui,
+    theme: &'static Theme,
+    name: &str,
+    on: bool,
+) -> egui::Response {
     let color = if on { theme.good } else { theme.dim };
     let galley = ui.painter().layout_no_wrap(
         format!("{name} {}", u8::from(on)),
         egui::TextStyle::Monospace.resolve(ui.style()),
         color,
     );
-    let (rect, _) =
-        ui.allocate_exact_size(galley.size() + egui::vec2(12.0, 4.0), egui::Sense::hover());
+    let (rect, response) =
+        ui.allocate_exact_size(galley.size() + egui::vec2(12.0, 4.0), egui::Sense::click());
     ui.painter().rect_stroke(
         rect,
         egui::CornerRadius::from(3),
@@ -1938,6 +2084,7 @@ pub(crate) fn flag_chip(ui: &mut egui::Ui, theme: &'static Theme, name: &str, on
     );
     let pos = rect.center() - 0.5 * galley.size();
     ui.painter().galley(pos, galley, color);
+    response
 }
 
 pub(crate) fn hexdump_ui(ui: &mut egui::Ui, id: &str, dump: &str) {

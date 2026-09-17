@@ -8360,6 +8360,107 @@ quelquepart:
     assert!(app.breakpoint_lines.is_empty(), "et rien n'a été posé");
 }
 
+/// Un registre se pose à la main, et un indicateur se bascule : « et si
+/// RCX valait 1 ? » se répond en une seconde au lieu de se réécrire.
+///
+/// C'est le `set $rax = …` de gdb et le `setflag` de pwndbg. Le pas
+/// suivant part de là, et la valeur posée entre dans l'histoire du
+/// programme : revenir en arrière restaure ce qui était vrai avant
+/// chaque pas, la main comprise.
+#[test]
+fn a_register_is_set_and_a_flag_is_flipped_by_hand() {
+    // Ce qu'on tape : de l'hexadécimal, comme ce qu'on lit à l'écran.
+    assert_eq!(parse_register_value("1f"), Some(0x1f));
+    assert_eq!(parse_register_value("0x1F"), Some(0x1f));
+    assert_eq!(parse_register_value("dead_beef"), Some(0xdeadbeef));
+    // Un moins donne le complément à deux : « mets -1 » est la façon
+    // dont on le pense.
+    assert_eq!(parse_register_value("-1"), Some(u64::MAX));
+    assert_eq!(parse_register_value(""), None);
+    assert_eq!(parse_register_value("zz"), None);
+
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: "\
+global _start
+
+section .text
+_start:
+    mov rcx, 5
+    dec rcx
+    jz fini
+    mov rax, 1
+fini:
+    hlt
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+
+    // La boucle part de 5 ; on la pose à 1, et le `dec` suivant met ZF.
+    app.do_step();
+    app.set_register("RCX", 1);
+    assert_eq!(
+        app.emulator.as_ref().unwrap().cpu().regs.get64(Reg64::Rcx),
+        1
+    );
+    app.do_step(); // dec rcx -> 0, ZF posé
+    assert!(
+        app.emulator
+            .as_ref()
+            .unwrap()
+            .cpu()
+            .flags
+            .contains(namsdec_core::RFlags::ZF),
+        "le dec a bien vu 1"
+    );
+
+    // L'indicateur se bascule aussi : le saut lira ce qu'on a posé.
+    app.toggle_flag(namsdec_core::RFlags::ZF);
+    assert!(
+        !app.emulator
+            .as_ref()
+            .unwrap()
+            .cpu()
+            .flags
+            .contains(namsdec_core::RFlags::ZF)
+    );
+    app.do_step(); // jz : ZF est retombé, le saut n'est pas pris
+    let rip = app.emulator.as_ref().unwrap().cpu().regs.rip;
+    let texte = app
+        .assemble_state
+        .as_ref()
+        .unwrap()
+        .disasm
+        .iter()
+        .find(|i| i.address == rip)
+        .map(|i| i.text.clone())
+        .unwrap_or_default();
+    assert!(
+        texte.starts_with("mov"),
+        "le saut ne devait pas être pris : « {texte} »"
+    );
+
+    // Et revenir en arrière restaure ce qui était vrai *avant chaque
+    // pas*, la main comprise : la valeur posée fait désormais partie de
+    // l'histoire du programme, elle ne s'évapore pas.
+    app.do_step_back(); // défait le `jz`
+    app.do_step_back(); // défait le `dec` : RCX retrouve le 1 posé
+    assert_eq!(
+        app.emulator.as_ref().unwrap().cpu().regs.get64(Reg64::Rcx),
+        1
+    );
+    app.do_step_back(); // défait le `mov rcx, 5` : on est avant tout
+    assert_eq!(
+        app.emulator.as_ref().unwrap().cpu().regs.get64(Reg64::Rcx),
+        0
+    );
+}
+
 /// La mémoire montre sa carte : où commence le code, où finit la pile,
 /// ce que le tas occupe, avec les droits de chacun.
 ///

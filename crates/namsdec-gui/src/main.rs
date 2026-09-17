@@ -617,6 +617,12 @@ struct NamsdecApp {
     /// saisie de travail, comme l'adresse du vidage.
     mem_search: String,
     mem_search_kind: SearchKind,
+    /// Le registre en cours d'édition, et ce qui est tapé dedans.
+    ///
+    /// Poser une valeur à la main est un geste d'apprentissage à part
+    /// entière : « et si RCX valait 1 ? » se répond en une seconde au
+    /// lieu de se réécrire. `set $rax = …` chez gdb.
+    editing_register: Option<(&'static str, String)>,
     /// Le panneau de désassemblage, et le moteur qu'il emploie.
     show_disassembly: bool,
     disassembler: String,
@@ -1214,6 +1220,7 @@ impl Default for NamsdecApp {
             cyclic_find: String::new(),
             mem_search: String::new(),
             mem_search_kind: SearchKind::Text,
+            editing_register: None,
             show_disassembly: false,
             disassembler: PSEUDO_ID.to_owned(),
             disassembly_query: String::new(),
