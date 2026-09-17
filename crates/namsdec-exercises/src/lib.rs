@@ -50,6 +50,69 @@ impl Text {
     }
 }
 
+/// Le palier d'un exercice.
+///
+/// Quatre, et nommés par ce qu'on y fait plutôt que par un chiffre : un
+/// « niveau 3 » ne dit pas ce qui attend, « Structures » si. Le parcours
+/// les traverse dans l'ordre, et aucun exercice ne revient à un palier
+/// qu'on a quitté — c'est ce que vérifie le test.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Level {
+    /// Ce que le processeur est : registres, indicateurs, sauts.
+    Discovery,
+    /// Ce qu'il manipule : mémoire, données, adresses.
+    Practice,
+    /// Ce qu'on construit avec : boucles écrites autrement, fonctions,
+    /// pile, macros.
+    Structures,
+    /// Ce qui l'entoure : le noyau, le vectoriel, et ce qui casse.
+    Mastery,
+}
+
+impl Level {
+    /// Son nom, dans la langue demandée.
+    pub fn label(self, lang: &str) -> &'static str {
+        let fr = lang.starts_with("fr");
+        match (self, fr) {
+            (Level::Discovery, true) => "Découverte",
+            (Level::Discovery, false) => "Discovery",
+            (Level::Practice, true) => "Pratique",
+            (Level::Practice, false) => "Practice",
+            (Level::Structures, true) => "Structures",
+            (Level::Structures, false) => "Structures",
+            (Level::Mastery, true) => "Maîtrise",
+            (Level::Mastery, false) => "Mastery",
+        }
+    }
+
+    /// Les quatre, dans l'ordre.
+    pub const ALL: [Level; 4] = [
+        Level::Discovery,
+        Level::Practice,
+        Level::Structures,
+        Level::Mastery,
+    ];
+
+    /// L'identifiant écrit dans un fichier de série.
+    pub fn id(self) -> &'static str {
+        match self {
+            Level::Discovery => "discovery",
+            Level::Practice => "practice",
+            Level::Structures => "structures",
+            Level::Mastery => "mastery",
+        }
+    }
+
+    /// Lu depuis un fichier de série. Ce qu'on ne reconnaît pas retombe
+    /// sur le premier palier : une série mal étiquetée reste utilisable.
+    pub fn by_id(id: &str) -> Self {
+        Self::ALL
+            .into_iter()
+            .find(|level| level.id() == id)
+            .unwrap_or(Level::Discovery)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Exercise {
     /// Identifiant stable, indépendant de la langue et du titre.
@@ -81,6 +144,8 @@ pub struct Exercise {
     /// `None` quand il n'y a rien à mesurer — un exercice qui attend une
     /// entrée, ou qui montre un refus.
     pub par: Option<u64>,
+    /// Le palier auquel il appartient.
+    pub level: Level,
 }
 
 /// Une série d'exercices : celle qui est livrée, ou une installée depuis
@@ -120,6 +185,22 @@ pub fn builtin_pack() -> Pack {
                 starter_code: include_str!("../exercises/registres.asm").to_owned(),
                 goal: Vec::new(),
                 par: None,
+                level: Level::Discovery,
+            },
+            Exercise {
+                id: "echange".to_owned(),
+                title: Text {
+                    fr: "Échanger deux registres".to_owned(),
+                    en: "Swapping two registers".to_owned(),
+                },
+                description: Text {
+                    fr: "`xchg` le fait en une instruction. L'autre chemin — trois `xor` — échange sans rien emprunter, parce que a xor b xor b redonne a : une curiosité à avoir vue, pas un conseil. Essayez les deux et regardez le compteur d'instructions : c'est lui qui tranche.".to_owned(),
+                    en: "`xchg` does it in one instruction. The other way — three `xor`s — swaps without borrowing anything, because a xor b xor b gives a back: a curiosity worth seeing once, not advice. Try both and watch the instruction count: that is what settles it.".to_owned(),
+                },
+                starter_code: include_str!("../exercises/echange.asm").to_owned(),
+                goal: vec!["rax == 2".to_owned(), "rbx == 1".to_owned()],
+                par: Some(4),
+                level: Level::Discovery,
             },
             Exercise {
                 id: "boucle".to_owned(),
@@ -134,6 +215,7 @@ pub fn builtin_pack() -> Pack {
                 starter_code: include_str!("../exercises/boucle.asm").to_owned(),
                 goal: vec!["rax == 0xf".to_owned()],
                 par: Some(18),
+                level: Level::Discovery,
             },
             Exercise {
                 id: "bits".to_owned(),
@@ -148,6 +230,7 @@ pub fn builtin_pack() -> Pack {
                 starter_code: include_str!("../exercises/bits.asm").to_owned(),
                 goal: vec!["rax == 0x28".to_owned(), "rbx == 1".to_owned()],
                 par: Some(8),
+                level: Level::Discovery,
             },
             Exercise {
                 id: "comparer".to_owned(),
@@ -162,6 +245,7 @@ pub fn builtin_pack() -> Pack {
                 starter_code: include_str!("../exercises/comparer.asm").to_owned(),
                 goal: Vec::new(),
                 par: None,
+                level: Level::Discovery,
             },
             Exercise {
                 id: "signe".to_owned(),
@@ -176,6 +260,22 @@ pub fn builtin_pack() -> Pack {
                 starter_code: include_str!("../exercises/signe.asm").to_owned(),
                 goal: vec!["rcx == 1".to_owned(), "rdx == 0".to_owned()],
                 par: Some(11),
+                level: Level::Discovery,
+            },
+            Exercise {
+                id: "decalages".to_owned(),
+                title: Text {
+                    fr: "Multiplier sans multiplier".to_owned(),
+                    en: "Multiplying without multiplying".to_owned(),
+                },
+                description: Text {
+                    fr: "Décaler d'un cran à gauche multiplie par deux, à droite divise par deux — et un compilateur remplace `x * 8` par `x << 3` sans qu'on le lui demande. Mais il y a deux décalages à droite : `shr` fait entrer des zéros, `sar` recopie le bit de signe. Sur -4, l'un rend -2, l'autre un nombre positif énorme.".to_owned(),
+                    en: "Shifting left by one multiplies by two, right divides by two — and a compiler turns `x * 8` into `x << 3` unasked. But there are two right shifts: `shr` brings in zeroes, `sar` copies the sign bit. On -4, one gives -2, the other a huge positive number.".to_owned(),
+                },
+                starter_code: include_str!("../exercises/decalages.asm").to_owned(),
+                goal: vec!["rax == 0x28".to_owned(), "rbx == 5".to_owned()],
+                par: Some(9),
+                level: Level::Practice,
             },
             Exercise {
                 id: "multiplier".to_owned(),
@@ -190,6 +290,7 @@ pub fn builtin_pack() -> Pack {
                 starter_code: include_str!("../exercises/multiplier.asm").to_owned(),
                 goal: vec!["rax == 7".to_owned(), "rdx == 1".to_owned()],
                 par: Some(8),
+                level: Level::Practice,
             },
             Exercise {
                 id: "division".to_owned(),
@@ -204,6 +305,7 @@ pub fn builtin_pack() -> Pack {
                 starter_code: include_str!("../exercises/division.asm").to_owned(),
                 goal: vec!["rax == 7".to_owned(), "rdx == 3".to_owned()],
                 par: Some(5),
+                level: Level::Practice,
             },
             Exercise {
                 id: "memoire".to_owned(),
@@ -218,6 +320,7 @@ pub fn builtin_pack() -> Pack {
                 starter_code: include_str!("../exercises/memoire.asm").to_owned(),
                 goal: vec!["r8 == 0x44332211".to_owned(), "r9 == 0x11".to_owned()],
                 par: Some(7),
+                level: Level::Practice,
             },
             Exercise {
                 id: "boutisme".to_owned(),
@@ -232,6 +335,7 @@ pub fn builtin_pack() -> Pack {
                 starter_code: include_str!("../exercises/boutisme.asm").to_owned(),
                 goal: vec!["rcx == 0x88".to_owned(), "rdx == 0x11".to_owned()],
                 par: Some(4),
+                level: Level::Practice,
             },
             Exercise {
                 id: "donnees".to_owned(),
@@ -246,6 +350,7 @@ pub fn builtin_pack() -> Pack {
                 starter_code: include_str!("../exercises/donnees.asm").to_owned(),
                 goal: vec!["rax == 0x44332211".to_owned(), "rbx == 5".to_owned(), "rcx == 0x201".to_owned()],
                 par: Some(4),
+                level: Level::Practice,
             },
             Exercise {
                 id: "tableau".to_owned(),
@@ -260,6 +365,7 @@ pub fn builtin_pack() -> Pack {
                 starter_code: include_str!("../exercises/tableau.asm").to_owned(),
                 goal: vec!["rax == 0x64".to_owned()],
                 par: Some(19),
+                level: Level::Practice,
             },
             Exercise {
                 id: "adresses".to_owned(),
@@ -274,6 +380,7 @@ pub fn builtin_pack() -> Pack {
                 starter_code: include_str!("../exercises/adresses.asm").to_owned(),
                 goal: vec!["rax == 0x2d".to_owned(), "rcx == 0x1e".to_owned()],
                 par: Some(6),
+                level: Level::Practice,
             },
             Exercise {
                 id: "chaine".to_owned(),
@@ -288,6 +395,7 @@ pub fn builtin_pack() -> Pack {
                 starter_code: include_str!("../exercises/chaine.asm").to_owned(),
                 goal: vec!["rcx == 5".to_owned()],
                 par: Some(36),
+                level: Level::Structures,
             },
             Exercise {
                 id: "chaines".to_owned(),
@@ -302,6 +410,7 @@ pub fn builtin_pack() -> Pack {
                 starter_code: include_str!("../exercises/chaines.asm").to_owned(),
                 goal: vec!["rax == 0x73".to_owned(), "rbx == 0x74".to_owned()],
                 par: Some(13),
+                level: Level::Structures,
             },
             Exercise {
                 id: "macros".to_owned(),
@@ -316,6 +425,22 @@ pub fn builtin_pack() -> Pack {
                 starter_code: include_str!("../exercises/macros.asm").to_owned(),
                 goal: vec!["rax == 0x1e".to_owned(), "rbx == 0xc".to_owned()],
                 par: Some(8),
+                level: Level::Structures,
+            },
+            Exercise {
+                id: "branchements".to_owned(),
+                title: Text {
+                    fr: "Choisir parmi plusieurs".to_owned(),
+                    en: "Choosing among many".to_owned(),
+                },
+                description: Text {
+                    fr: "Une suite de `cmp`/`je` coûte un test par branche ; une table de saut n'en coûte aucun — on range les adresses dans un tableau et l'on saute à celle que l'indice désigne. C'est ce qu'un compilateur produit pour un `switch` dense. Le prix : rien ne vérifie l'indice, et c'est exactement ce que les protections modernes cherchent à rendre impossible.".to_owned(),
+                    en: "A chain of `cmp`/`je` costs one test per branch; a jump table costs none — the addresses live in an array and one jumps to the entry the index picks. That is what a compiler emits for a dense `switch`. The price: nothing checks the index, which is precisely what modern hardening tries to make impossible.".to_owned(),
+                },
+                starter_code: include_str!("../exercises/branchements.asm").to_owned(),
+                goal: vec!["rax == 0x12c".to_owned()],
+                par: Some(6),
+                level: Level::Structures,
             },
             Exercise {
                 id: "pile".to_owned(),
@@ -330,6 +455,7 @@ pub fn builtin_pack() -> Pack {
                 starter_code: include_str!("../exercises/pile.asm").to_owned(),
                 goal: vec!["rax == 1".to_owned(), "rbx == 2".to_owned()],
                 par: Some(9),
+                level: Level::Structures,
             },
             Exercise {
                 id: "appels".to_owned(),
@@ -344,6 +470,7 @@ pub fn builtin_pack() -> Pack {
                 starter_code: include_str!("../exercises/appels.asm").to_owned(),
                 goal: vec!["rax == 7".to_owned()],
                 par: Some(9),
+                level: Level::Structures,
             },
             Exercise {
                 id: "recursion".to_owned(),
@@ -358,6 +485,7 @@ pub fn builtin_pack() -> Pack {
                 starter_code: include_str!("../exercises/recursion.asm").to_owned(),
                 goal: vec!["rax == 0x78".to_owned()],
                 par: Some(39),
+                level: Level::Structures,
             },
             Exercise {
                 id: "cadre".to_owned(),
@@ -372,6 +500,7 @@ pub fn builtin_pack() -> Pack {
                 starter_code: include_str!("../exercises/cadre.asm").to_owned(),
                 goal: vec!["rax == 7".to_owned()],
                 par: Some(11),
+                level: Level::Structures,
             },
             Exercise {
                 id: "sortie".to_owned(),
@@ -386,6 +515,7 @@ pub fn builtin_pack() -> Pack {
                 starter_code: include_str!("../exercises/sortie.asm").to_owned(),
                 goal: Vec::new(),
                 par: None,
+                level: Level::Mastery,
             },
             Exercise {
                 id: "entree".to_owned(),
@@ -400,6 +530,7 @@ pub fn builtin_pack() -> Pack {
                 starter_code: include_str!("../exercises/entree.asm").to_owned(),
                 goal: vec![],
                 par: None,
+                level: Level::Mastery,
             },
             Exercise {
                 id: "tas".to_owned(),
@@ -414,6 +545,7 @@ pub fn builtin_pack() -> Pack {
                 starter_code: include_str!("../exercises/tas.asm").to_owned(),
                 goal: vec!["rax == 0x42".to_owned()],
                 par: Some(11),
+                level: Level::Mastery,
             },
             Exercise {
                 id: "flottants".to_owned(),
@@ -428,6 +560,22 @@ pub fn builtin_pack() -> Pack {
                 starter_code: include_str!("../exercises/flottants.asm").to_owned(),
                 goal: vec!["rax == 0x400e000000000000".to_owned()],
                 par: Some(5),
+                level: Level::Mastery,
+            },
+            Exercise {
+                id: "simd".to_owned(),
+                title: Text {
+                    fr: "Quatre additions d'un coup".to_owned(),
+                    en: "Four additions at once".to_owned(),
+                },
+                description: Text {
+                    fr: "Un registre XMM tient quatre entiers de 32 bits, et `paddd` les additionne tous les quatre en même temps — le `p` dit *packed*. C'est le principe de tout le calcul vectoriel, et la raison pour laquelle un même algorithme peut aller quatre fois plus vite. `movdqa` exige un alignement sur seize octets : retirez le `align 16` pour voir ce que le processeur en dit.".to_owned(),
+                    en: "An XMM register holds four 32-bit integers, and `paddd` adds all four at once — the `p` means packed. That is the principle behind all vector computing, and why the same algorithm can run four times faster. `movdqa` demands sixteen-byte alignment: remove the `align 16` to see what the processor makes of it.".to_owned(),
+                },
+                starter_code: include_str!("../exercises/simd.asm").to_owned(),
+                goal: vec!["rax == 0xb".to_owned(), "rbx == 0x2c".to_owned()],
+                par: Some(6),
+                level: Level::Mastery,
             },
             Exercise {
                 id: "afficher".to_owned(),
@@ -442,6 +590,7 @@ pub fn builtin_pack() -> Pack {
                 starter_code: include_str!("../exercises/afficher.asm").to_owned(),
                 goal: vec!["rax == 4".to_owned()],
                 par: Some(59),
+                level: Level::Mastery,
             },
             Exercise {
                 id: "debordement".to_owned(),
@@ -456,6 +605,7 @@ pub fn builtin_pack() -> Pack {
                 starter_code: include_str!("../exercises/debordement.asm").to_owned(),
                 goal: Vec::new(),
                 par: None,
+                level: Level::Mastery,
             },
             Exercise {
                 id: "protection".to_owned(),
@@ -470,6 +620,7 @@ pub fn builtin_pack() -> Pack {
                 starter_code: include_str!("../exercises/protection.asm").to_owned(),
                 goal: Vec::new(),
                 par: None,
+                level: Level::Mastery,
             },
         ],
     }
@@ -504,9 +655,9 @@ mod tests {
     #[test]
     fn every_builtin_exercise_is_complete_and_stops() {
         let pack = builtin_pack();
-        // Un parcours, pas une poignée : vingt-six étapes, et chacune
+        // Un parcours, pas une poignée : trente étapes, et chacune
         // s'appuie sur les précédentes.
-        assert_eq!(pack.exercises.len(), 26);
+        assert_eq!(pack.exercises.len(), 30);
         for exercise in &pack.exercises {
             assert!(!exercise.id.is_empty());
             assert!(!exercise.title.fr.is_empty() && !exercise.title.en.is_empty());
@@ -528,6 +679,32 @@ mod tests {
                 exercise.starter_code.contains("hlt") || exercise.starter_code.contains("exit"),
                 "{} ne s'arrête pas",
                 exercise.id
+            );
+        }
+    }
+
+    /// Les paliers ne reculent jamais : le parcours va de la découverte
+    /// à la maîtrise, et rien n'y revient en arrière.
+    #[test]
+    fn the_course_never_goes_back_down_a_level() {
+        let pack = builtin_pack();
+        let mut niveaux = pack.exercises.iter().map(|exercise| exercise.level);
+        let mut précédent = niveaux.next().expect("au moins un exercice");
+        for niveau in niveaux {
+            assert!(
+                niveau >= précédent,
+                "un exercice de niveau {précédent:?} précède un {niveau:?}"
+            );
+            précédent = niveau;
+        }
+        // Et les quatre paliers sont représentés : un parcours qui n'en
+        // aurait que trois n'aurait pas besoin du quatrième.
+        for niveau in Level::ALL {
+            assert!(
+                pack.exercises
+                    .iter()
+                    .any(|exercise| exercise.level == niveau),
+                "aucun exercice en {niveau:?}"
             );
         }
     }

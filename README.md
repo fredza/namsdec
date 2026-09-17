@@ -138,7 +138,7 @@ Les raccourcis sont dans Préférences ▸ Raccourcis, et se changent.
 
 ### Les exercices
 
-Vingt des vingt-six exercices portent un **but vérifiable** (`rax == 0xf`) :
+Vingt-quatre des trente exercices portent un **but vérifiable** (`rax == 0xf`) :
 le bandeau de l'état du processeur dit « atteint » ou « pas encore », au
 lieu de laisser vérifier à l'œil. Ce qui a été réussi une fois le reste :
 une pastille dans la liste, un compte en tête de la série, et les deux
@@ -154,12 +154,14 @@ budget annoncé est tenable : promettre un chiffre qu'aucune solution
 n'atteint serait pire que de n'en pas donner. Une série installée peut en porter
 aussi — champ `goal` du fichier JSON.
 
-Un parcours de vingt-six exercices est livré avec le programme —
-registres, boucle, bits, comparaison, multiplication, division, ordre des
-octets, signé ou non, mémoire, données déclarées, tableaux, calcul
-d'adresse, chaînes, instructions de chaîne, macros, pile, appels,
-récursion, cadre de pile, sortie, entrée, tas, flottants, affichage d'un
-nombre, débordement, protection — activable dans
+Un parcours de trente exercices est livré avec le programme, rangé en
+quatre paliers de difficulté croissante — **Découverte** (registres,
+échange, boucle, bits, comparaisons, signe), **Pratique** (décalages,
+multiplication, division, mémoire, ordre des octets, données déclarées,
+tableaux, calcul d'adresse), **Structures** (chaînes, instructions de
+chaîne, macros, table de saut, pile, appels, récursion, cadre de pile),
+**Maîtrise** (sortie, entrée, tas, flottants, SIMD, affichage d'un
+nombre, débordement, protection) — activable dans
 Préférences ▸ Modules. D'autres séries s'installent depuis
 un simple fichier JSON, comme les thèmes : Outils ▸ Exercices.
 

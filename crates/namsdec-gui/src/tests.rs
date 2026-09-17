@@ -3945,7 +3945,7 @@ fn an_exercise_points_at_the_sheets_it_uses() {
     );
 }
 
-/// Le parcours livré est un parcours : vingt-six étapes dans l'ordre où
+/// Le parcours livré est un parcours : trente étapes dans l'ordre où
 /// l'on apprend, chacune avec son but écrit dans le programme.
 ///
 /// L'ordre n'est pas décoratif. On lit les registres avant d'écrire une
@@ -3959,10 +3959,12 @@ fn the_built_in_pack_is_a_course_in_order() {
         ids,
         [
             "registres",
+            "echange",
             "boucle",
             "bits",
             "comparer",
             "signe",
+            "decalages",
             "multiplier",
             "division",
             "memoire",
@@ -3973,6 +3975,7 @@ fn the_built_in_pack_is_a_course_in_order() {
             "chaine",
             "chaines",
             "macros",
+            "branchements",
             "pile",
             "appels",
             "recursion",
@@ -3981,9 +3984,10 @@ fn the_built_in_pack_is_a_course_in_order() {
             "entree",
             "tas",
             "flottants",
+            "simd",
             "afficher",
             "debordement",
-            "protection"
+            "protection",
         ]
     );
     for exercise in &pack.exercises {
@@ -5493,12 +5497,9 @@ fn the_readme_tells_the_truth() {
     );
 
     let exercices = namsdec_exercises::builtin_pack().exercises.len();
-    assert_eq!(
-        exercices, 26,
-        "le parcours livré compte vingt-six exercices"
-    );
+    assert_eq!(exercices, 30, "le parcours livré compte trente exercices");
     assert!(
-        readme.contains("parcours de vingt-six exercices"),
+        readme.contains("parcours de trente exercices"),
         "le README doit annoncer le bon nombre d'exercices"
     );
     // Les crates listées dans le tableau existent toutes.
@@ -6300,7 +6301,7 @@ fn the_exercises_deliver_what_they_promise() {
 ///
 /// Un module qu'on active si on le désire, soit — mais une porte qu'on
 /// ne voit pas n'existe pas. Quelqu'un qui débute ne devinera pas qu'il
-/// y a vingt-six exercices derrière un réglage.
+/// y a trente exercices derrière un réglage.
 #[test]
 fn the_course_is_discoverable_before_it_is_loaded() {
     let mut app = NamsdecApp::default();
@@ -6341,7 +6342,7 @@ fn the_course_is_discoverable_before_it_is_loaded() {
         output.textures_delta.clear();
     }
     // Le texte d'accueil est à l'écran, avec sa mention du parcours.
-    assert!(painted.contains("vingt-six exercices"), "{painted}");
+    assert!(painted.contains("trente exercices"), "{painted}");
 }
 
 /// Le parcours se reprend là où on l'avait laissé.
@@ -6407,13 +6408,13 @@ fn the_course_remembers_where_one_stopped() {
         painted.contains("En cours :"),
         "l'étape en cours se voit sans avoir à la chercher : {painted}"
     );
-    // Le rang dans le parcours, aussi : le tableau est la onzième des
-    // vingt-six étapes.
-    assert!(painted.contains("11/26"), "{painted}");
+    // Le rang dans le parcours, aussi : le tableau est la treizième des
+    // trente étapes.
+    assert!(painted.contains("13/30"), "{painted}");
 }
 
 /// Un parcours se suit : l'étape suivante est à un clic, sans avoir à
-/// retrouver son rang dans une liste de vingt-six.
+/// retrouver son rang dans une liste de trente.
 #[test]
 fn the_course_offers_the_next_step() {
     let mut app = NamsdecApp {
@@ -6426,7 +6427,7 @@ fn the_course_offers_the_next_step() {
     let (suivant, titre) = app
         .exercise_after("namsdec/registres")
         .expect("il y a une suite");
-    assert_eq!(suivant, "namsdec/boucle");
+    assert_eq!(suivant, "namsdec/echange");
     assert!(!titre.is_empty());
 
     // Le dernier n'en a pas : un parcours a une fin, et l'outil ne
@@ -6460,7 +6461,7 @@ fn the_course_offers_the_next_step() {
     }
     assert!(painted.contains("Étape suivante"), "{painted}");
     assert!(
-        painted.contains("1/26"),
+        painted.contains("1/30"),
         "le rang de l'étape en cours : {painted}"
     );
 }
@@ -8975,7 +8976,7 @@ fn every_goal_is_readable_and_on_the_right_side() {
     }
     // Ce que le programme livré fait déjà : on le regarde tourner et on
     // comprend ce qui s'est passé.
-    const DÉMONSTRATIONS: [&str; 18] = [
+    const DÉMONSTRATIONS: [&str; 22] = [
         "boucle",
         "bits",
         "memoire",
@@ -8994,6 +8995,10 @@ fn every_goal_is_readable_and_on_the_right_side() {
         "adresses",
         "macros",
         "recursion",
+        "echange",
+        "decalages",
+        "branchements",
+        "simd",
     ];
     // Ce qu'il reste à faire : le but n'est pas atteint tant qu'on n'a
     // pas écrit ce qui manque.
@@ -10124,7 +10129,7 @@ fn a_solved_exercise_stays_solved() {
     app.show_exercises = true;
     let painted = paint(&mut app);
     assert!(
-        painted.contains(&format!("1/26 {}", strings(app.lang).exercises_done_count)),
+        painted.contains(&format!("1/30 {}", strings(app.lang).exercises_done_count)),
         "{painted}"
     );
 }
@@ -10617,6 +10622,87 @@ fn the_cost_is_shown_next_to_the_goal() {
     assert!(painted.contains("18"), "{painted}");
     assert!(painted.contains("/ 18"), "{painted}");
     assert!(painted.contains(s.par_best), "le meilleur est dit");
+}
+
+/// Le parcours est rangé par difficulté croissante, et la liste le dit.
+///
+/// Quatre paliers, nommés par ce qu'on y fait plutôt que par un
+/// chiffre : « Découverte » annonce ce qui attend, « niveau 3 » non.
+#[test]
+fn the_course_climbs_and_says_so() {
+    let pack = namsdec_exercises::builtin_pack();
+    // Les paliers ne reculent pas, et les quatre sont là.
+    let niveaux: Vec<namsdec_exercises::Level> = pack.exercises.iter().map(|e| e.level).collect();
+    assert!(
+        niveaux.windows(2).all(|p| p[0] <= p[1]),
+        "le parcours redescend : {niveaux:?}"
+    );
+    for niveau in namsdec_exercises::Level::ALL {
+        assert!(niveaux.contains(&niveau), "aucun exercice en {niveau:?}");
+    }
+    // Le premier exercice ouvre la Découverte, le dernier ferme la
+    // Maîtrise : ce n'est pas un hasard de tri.
+    assert_eq!(niveaux.first(), Some(&namsdec_exercises::Level::Discovery));
+    assert_eq!(niveaux.last(), Some(&namsdec_exercises::Level::Mastery));
+
+    // Et la fenêtre les annonce, en tête de chaque groupe. Trois
+    // images : une fenêtre flottante se place à la deuxième, et son
+    // contenu n'est peint qu'ensuite.
+    let mut app = NamsdecApp {
+        exercises: true,
+        show_exercises: true,
+        ..Default::default()
+    };
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 1000.0),
+        )),
+        ..Default::default()
+    };
+    let mut painted = String::new();
+    for _ in 0..3 {
+        painted.clear();
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        fn collecte(shape: &egui::epaint::Shape, out: &mut String) {
+            match shape {
+                egui::epaint::Shape::Text(text) => {
+                    out.push_str(text.galley.text());
+                    out.push('|');
+                }
+                egui::epaint::Shape::Vec(shapes) => {
+                    for shape in shapes {
+                        collecte(shape, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+        for clipped in &output.shapes {
+            collecte(&clipped.shape, &mut painted);
+        }
+        output.textures_delta.clear();
+    }
+    // Le premier palier au moins : la fenêtre ne montre que ce qui tient
+    // à l'écran, et les suivants attendent qu'on fasse défiler.
+    assert!(
+        painted.contains(namsdec_exercises::Level::Discovery.label(app.lang.code())),
+        "{painted}"
+    );
+
+    // Les deux langues nomment les paliers, et pas de la même façon.
+    assert_ne!(
+        namsdec_exercises::Level::Discovery.label("fr"),
+        namsdec_exercises::Level::Discovery.label("en")
+    );
+    // Un identifiant inconnu ne range pas au hasard : il retombe sur le
+    // premier palier, qui reste vrai d'une série qu'on découvre.
+    assert_eq!(
+        namsdec_exercises::Level::by_id("n'importe quoi"),
+        namsdec_exercises::Level::Discovery
+    );
 }
 
 /// La mémoire montre sa carte : où commence le code, où finit la pile,

@@ -1218,7 +1218,7 @@ enum PreferencesTab {
 /// chose qui marche même quand il ne l'est pas.
 const DEFAULT_SOURCE: &str = "\
 ; Bienvenue dans namsdec. Assemblez (Ctrl+Maj+B), puis avancez pas à pas.
-; Un parcours de vingt-six exercices vous attend : Préférences > Modules.
+; Un parcours de trente exercices vous attend : Préférences > Modules.
 
 global _start
 
@@ -4230,7 +4230,7 @@ impl NamsdecApp {
             .default_pos(ctx.viewport_rect().center())
             .show(ctx, |ui| {
                 ui.label(s.exercises_legend);
-                // L'étape en cours, en tête : vingt-six exercices ne tiennent
+                // L'étape en cours, en tête : trente exercices ne tiennent
                 // pas dans la fenêtre, et « où j'en étais » ne sert à
                 // rien s'il faut le chercher en défilant.
                 if let Some(id) = self.current_exercise.clone()
@@ -4266,7 +4266,7 @@ impl NamsdecApp {
                 egui::ScrollArea::vertical()
                     .max_height(room)
                     // `false` en hauteur : une zone qui rétrécit à son
-                    // contenu est aussi haute que ses vingt-six exercices,
+                    // contenu est aussi haute que ses trente exercices,
                     // donc ne défile jamais — elle déborde de la fenêtre,
                     // et ce qui dépasse est coupé.
                     .auto_shrink([false, false])
@@ -4318,7 +4318,23 @@ impl NamsdecApp {
                             .default_open(true);
                             let total = pack.exercises.len();
                             header.show(ui, |ui| {
+                                let mut palier = None;
                                 for (index, exercise) in pack.exercises.iter().enumerate() {
+                                    // Le palier, en tête de son groupe :
+                                    // le parcours va de la découverte à
+                                    // la maîtrise, et le dire évite de
+                                    // prendre la vingt-huitième étape
+                                    // pour la suite naturelle de la
+                                    // première.
+                                    if palier != Some(exercise.level) {
+                                        palier = Some(exercise.level);
+                                        ui.add_space(6.0);
+                                        ui.colored_label(
+                                            theme.accent,
+                                            egui::RichText::new(exercise.level.label(lang))
+                                                .strong(),
+                                        );
+                                    }
                                     let id = namsdec_exercises::full_id(pack, exercise);
                                     let en_cours = self.current_exercise.as_deref() == Some(&id);
                                     ui.group(|ui| {

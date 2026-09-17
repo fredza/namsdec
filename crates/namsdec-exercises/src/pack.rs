@@ -20,11 +20,16 @@
 //!       "description": { "fr": "Sans passer par un troisième.", "en": "Without a third one." },
 //!       "code": "BITS 64\nsection .text\n    xor rax, rbx\n    hlt\n",
 //!       "goal": ["rax == 2", "rbx == 1"],
-//!       "par": 6
+//!       "par": 6,
+//!       "level": "practice"
 //!     }
 //!   ]
 //! }
 //! ```
+//!
+//! `level` range l'exercice dans un palier — « discovery », « practice »,
+//! « structures », « mastery » —, et le parcours les traverse dans cet
+//! ordre.
 //!
 //! `par` est le budget : le nombre d'instructions exécutées qu'il faut
 //! tenir. Facultatif lui aussi — il n'a de sens qu'avec un but.
@@ -44,7 +49,7 @@ use std::path::Path;
 use serde::Deserialize;
 use thiserror::Error;
 
-use crate::{Exercise, Pack, Text};
+use crate::{Exercise, Level, Pack, Text};
 
 /// `Display` en anglais, comme les autres erreurs des crates métier : la
 /// traduction se fait dans l'interface.
@@ -98,6 +103,11 @@ struct ExerciseFile {
     /// Le budget d'instructions exécutées. Facultatif.
     #[serde(default)]
     par: Option<u64>,
+    /// Le palier : « discovery », « practice », « structures » ou
+    /// « mastery ». Facultatif — sans lui, l'exercice est au premier,
+    /// ce qui reste vrai d'une série qu'on découvre.
+    #[serde(default)]
+    level: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -156,6 +166,11 @@ pub fn parse(text: &str) -> Result<Pack, PackError> {
             starter_code: exercise.code,
             goal: exercise.goal,
             par: exercise.par,
+            level: exercise
+                .level
+                .as_deref()
+                .map(Level::by_id)
+                .unwrap_or(Level::Discovery),
         });
     }
 

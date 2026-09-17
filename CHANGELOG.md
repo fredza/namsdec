@@ -53,7 +53,18 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
 - Chaque exercice montre les fiches que son propre code emploie.
 - F1 répond aussi sur une fonction empruntée.
 
-**Le parcours passe à vingt-six étapes**
+**Le parcours passe à trente étapes, rangées par difficulté**
+- Quatre paliers, nommés par ce qu'on y fait : **Découverte** (ce que le
+  processeur est), **Pratique** (ce qu'il manipule), **Structures** (ce
+  qu'on construit avec), **Maîtrise** (ce qui l'entoure). La liste les
+  annonce en tête de chaque groupe, et un test vérifie que le parcours ne
+  redescend jamais d'un palier.
+- Quatre exercices de plus : « Échanger deux registres » (`xchg` contre
+  les trois `xor`), « Multiplier sans multiplier » (`shl`/`shr`/`sar`, et
+  ce que le signe change), « Choisir parmi plusieurs » (la table de saut,
+  et pourquoi rien n'y vérifie l'indice), « Quatre additions d'un coup »
+  (`paddd`, et l'alignement que `movdqa` exige).
+
 - « Déclarer des données » : `db`/`dw`/`dd`/`dq`, `times`, `equ`, `$` — et
   l'onglet Octets pour voir ce que chaque directive a écrit.
 - « Calculer une adresse » : `lea` contre `mov`, et la multiplication par
