@@ -5416,7 +5416,9 @@ hlt
         "la ligne sautée n'a jamais tourné, et ça se voit : {passages:?}"
     );
 
-    // Et le compteur se peint bien dans la gouttière.
+    // Et la gouttière le peint : une bande par ligne parcourue, d'autant
+    // plus chaude qu'elle a tourné souvent. Un nombre par ligne se lit
+    // une ligne à la fois ; une bande de couleur se lit d'un coup.
     app.apply_theme(&ctx);
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
@@ -5425,19 +5427,34 @@ hlt
         )),
         ..Default::default()
     };
-    let mut painted = String::new();
+    let mut bandes: Vec<egui::Color32> = Vec::new();
     for _ in 0..2 {
-        painted.clear();
+        bandes.clear();
         let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
         for clipped in &output.shapes {
-            if let egui::epaint::Shape::Text(text) = &clipped.shape {
-                painted.push_str(text.galley.text());
-                painted.push('|');
+            if let egui::epaint::Shape::Rect(forme) = &clipped.shape
+                && (forme.rect.width() - HEAT_WIDTH).abs() < 0.5
+            {
+                bandes.push(forme.fill);
             }
         }
         output.textures_delta.clear();
     }
-    assert!(painted.contains("×5"), "{painted}");
+    assert_eq!(
+        bandes.len(),
+        app.line_visits().len(),
+        "une bande par ligne parcourue, et pas une de plus"
+    );
+    // La ligne du corps de boucle est plus chaude que celle qui n'a
+    // tourné qu'une fois : c'est tout ce que la couleur doit dire.
+    let froide = heat_colour(app.theme, 1, 5);
+    let chaude = heat_colour(app.theme, 5, 5);
+    assert_ne!(froide, chaude);
+    assert!(bandes.contains(&froide), "{bandes:?}");
+    assert!(bandes.contains(&chaude), "{bandes:?}");
+    // Une ligne jamais atteinte n'a pas de bande : l'absence dit
+    // quelque chose, elle aussi.
+    assert_eq!(heat_colour(app.theme, 0, 5), heat_colour(app.theme, 0, 5));
 }
 
 /// Le README annonce des chiffres : ils doivent rester vrais.

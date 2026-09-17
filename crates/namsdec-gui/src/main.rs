@@ -4752,12 +4752,14 @@ impl NamsdecApp {
                         // seulement été atteinte ? Rien d'autre à l'écran
                         // ne répond à ça.
                         let passages = self.line_visits();
-                        // La colonne ne prend de la place que lorsqu'il y
-                        // a quelque chose à y mettre.
-                        let compteur = if passages.is_empty() { 0.0 } else { 44.0 };
+                        // Le plus grand nombre de passages : c'est lui qui
+                        // donne l'échelle. Une ligne exécutée mille fois
+                        // dans un programme qui en compte mille n'est pas
+                        // chaude — elle est la normale.
+                        let plus_chaude = passages.values().copied().max().unwrap_or(0);
                         let (gutter_rect, gutter_resp) = ui.allocate_exact_size(
-                            egui::vec2(GUTTER_WIDTH + compteur, galley.rect.height().max(1.0)),
-                            egui::Sense::click(),
+                            egui::vec2(GUTTER_WIDTH, galley.rect.height().max(1.0)),
+                            egui::Sense::click_and_drag(),
                         );
                         let click_y = gutter_resp.interact_pointer_pos().map(|p| p.y);
                         let mut clicked_line = None;
@@ -4866,18 +4868,39 @@ impl NamsdecApp {
                                 font_id.clone(),
                                 color,
                             );
-                            // Le compteur de passages, à gauche du numéro
-                            // et plus discret que lui : c'est une mesure,
-                            // pas une adresse.
+                            // La chaleur de la ligne : une bande à
+                            // l'extrême gauche, d'autant plus vive que la
+                            // ligne a tourné souvent. Un nombre par ligne
+                            // se lit une ligne à la fois ; une bande de
+                            // couleur se lit d'un coup d'œil, et c'est
+                            // ainsi qu'on repère la boucle qui coûte.
                             if let Some(count) = passages.get(&line) {
-                                painter.text(
-                                    egui::pos2(gutter_rect.left() + 30.0, row_rect.center().y),
-                                    egui::Align2::LEFT_CENTER,
-                                    format!("×{count}"),
-                                    font_id.clone(),
-                                    theme.dim,
+                                painter.rect_filled(
+                                    egui::Rect::from_min_size(
+                                        egui::pos2(gutter_rect.left(), row_rect.top()),
+                                        egui::vec2(HEAT_WIDTH, row_rect.height()),
+                                    ),
+                                    0.0,
+                                    heat_colour(theme, *count, plus_chaude),
                                 );
                             }
+                        }
+                        // Combien de fois, au survol : la bande dit
+                        // « souvent », le nombre dit « mille deux cent
+                        // trois ». Quel que soit le mode de l'éditeur —
+                        // on regarde un programme bien plus souvent
+                        // qu'on ne le tape.
+                        if self.show_tooltips
+                            && let Some(pos) = gutter_resp.hover_pos()
+                            && let Some(ligne) = ligne_sous(&galley, gutter_rect, pos)
+                            && let Some(count) = passages.get(&ligne)
+                        {
+                            let texte = if self.lang == Lang::Fr {
+                                format!("Ligne {ligne} : exécutée {count} fois")
+                            } else {
+                                format!("Line {ligne}: run {count} times")
+                            };
+                            gutter_resp.clone().show_tooltip_text(texte);
                         }
                         if let Some(line) = clicked_line {
                             if self.breakpoint_lines.contains(&line) {
@@ -7203,6 +7226,48 @@ fn executable_ranges(file: &[u8], loaded: usize) -> Option<Vec<(u64, u64)>> {
         .collect();
     plages.sort_unstable();
     (!plages.is_empty()).then_some(plages)
+}
+
+/// La largeur de la bande de chaleur, à l'extrême gauche de la
+/// gouttière. Assez pour se voir, assez peu pour ne pas se disputer la
+/// place avec le point d'arrêt.
+const HEAT_WIDTH: f32 = 4.0;
+
+/// La couleur d'une ligne selon ce qu'elle a coûté.
+///
+/// L'échelle est logarithmique : entre une ligne parcourue une fois et
+/// une autre parcourue mille fois, ce qui compte est l'ordre de
+/// grandeur, pas la différence. Du froid — le gris de ce qui n'a tourné
+/// qu'une fois — au chaud, en passant par l'orange : c'est la
+/// convention de toutes les cartes de chaleur, et elle se lit sans
+/// légende.
+fn heat_colour(theme: &'static Theme, count: u64, max: u64) -> egui::Color32 {
+    let échelle = (max.max(1) as f32 + 1.0).ln();
+    let part = if échelle > 0.0 {
+        ((count as f32 + 1.0).ln() / échelle).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    // Deux segments : du froid au tiède, puis du tiède au chaud.
+    if part < 0.5 {
+        theme.dim.lerp_to_gamma(theme.warn, part * 2.0)
+    } else {
+        theme.warn.lerp_to_gamma(theme.bad, (part - 0.5) * 2.0)
+    }
+}
+
+/// La ligne qu'un point de l'écran désigne dans la gouttière.
+fn ligne_sous(galley: &egui::Galley, gutter_rect: egui::Rect, pos: egui::Pos2) -> Option<u32> {
+    galley
+        .rows
+        .iter()
+        .position(|row| {
+            row.rect()
+                .translate(gutter_rect.min.to_vec2())
+                .y_range()
+                .contains(pos.y)
+        })
+        .map(|index| index as u32 + 1)
 }
 
 /// Les entrées de la table de liaison, en étiquettes du listing.
