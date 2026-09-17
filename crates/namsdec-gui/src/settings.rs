@@ -94,6 +94,14 @@ pub struct Settings {
     /// Comment l'onglet Mémoire lit les octets : « bytes », « words » ou
     /// « text ».
     pub memory_format: String,
+    /// La hauteur de la console, en pixels, quand elle a été réglée à la
+    /// main. Absente — le cas par défaut — la console prend la place de
+    /// ce qu'elle a à dire.
+    ///
+    /// En entier : un fichier de réglages n'a que faire de la fraction
+    /// de pixel qu'une poignée de souris laisse derrière elle.
+    #[serde(default)]
+    pub console_height: Option<u32>,
     /// Ce que l'onglet Mémoire suit pas à pas : « fixed », « rsp » ou
     /// « rip ».
     #[serde(default = "fixe_par_défaut")]
@@ -132,6 +140,7 @@ impl Default for Settings {
             current_exercise: None,
             disassembler: pseudo_par_défaut(),
             memory_format: "bytes".to_owned(),
+            console_height: None,
             memory_follow: fixe_par_défaut(),
             explorer_root: None,
             current_file: None,

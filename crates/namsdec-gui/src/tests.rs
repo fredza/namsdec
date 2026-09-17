@@ -9381,6 +9381,97 @@ fn what_this_machine_runs_can_be_explained() {
     );
 }
 
+/// La console prend la hauteur de ce qu'elle a à dire.
+///
+/// « Le programme n'a rien écrit » occupait le quart de l'écran. Deux
+/// lignes de sortie n'ont pas besoin de plus que deux lignes ; vingt en
+/// réclament davantage, jusqu'à un plafond.
+#[test]
+fn the_console_takes_the_height_of_what_it_has_to_say() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mesure = |app: &mut NamsdecApp| {
+        let ctx = egui::Context::default();
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1280.0, 900.0),
+            )),
+            ..Default::default()
+        };
+        let mut hauteur = 0.0;
+        for _ in 0..2 {
+            let mut output = ctx.run_ui(input.clone(), |ui| {
+                hauteur = app.console_wanted_height(ui);
+                app.draw(ui);
+            });
+            output.textures_delta.clear();
+        }
+        hauteur
+    };
+
+    // Rien à dire : la console se réduit à ses onglets et à son champ.
+    let mut app = NamsdecApp::default();
+    let vide = mesure(&mut app);
+    assert!(
+        vide <= CONSOLE_MIN_HEIGHT + 1.0,
+        "une console vide réclame {vide} pixels"
+    );
+
+    // Vingt lignes écrites : elle grandit, mais pas sans fin.
+    app.source = "\
+global _start
+
+section .data
+ligne: db \"x\", 10
+
+section .text
+_start:
+    mov rcx, 20
+boucle:
+    push rcx
+    mov rax, 1
+    mov rdi, 1
+    mov rsi, ligne
+    mov rdx, 2
+    syscall
+    pop rcx
+    dec rcx
+    jnz boucle
+    hlt
+"
+    .to_owned();
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+    app.do_run();
+    for _ in 0..50 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&egui::Context::default());
+    }
+    let pleine = mesure(&mut app);
+    assert!(
+        pleine > vide,
+        "vingt lignes devraient réclamer plus que rien : {pleine} contre {vide}"
+    );
+    assert!(
+        pleine < 900.0 * CONSOLE_MAX_FRACTION + 40.0,
+        "et pas plus que le plafond : {pleine}"
+    );
+
+    // La hauteur réglée à la main est retenue, et se retrouve au
+    // lancement suivant.
+    app.console_height = Some(240.0);
+    let écrit = serde_json::to_string(&app.settings_snapshot()).unwrap();
+    assert!(écrit.contains("\"console_height\":240"), "{écrit}");
+    // Et l'automatique revient en effaçant ce réglage.
+    app.console_height = None;
+    let écrit = serde_json::to_string(&app.settings_snapshot()).unwrap();
+    assert!(écrit.contains("\"console_height\":null"), "{écrit}");
+}
+
 /// La mémoire montre sa carte : où commence le code, où finit la pile,
 /// ce que le tas occupe, avec les droits de chacun.
 ///

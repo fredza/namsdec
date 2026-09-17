@@ -79,7 +79,7 @@ const SIDEBAR_WIDTH: f32 = 380.0;
 /// raison que pour le panneau latéral : une hauteur aberrante enregistrée
 /// ne doit pas pouvoir revenir au lancement suivant.
 const CONSOLE_HEIGHT: f32 = 180.0;
-const CONSOLE_MIN_HEIGHT: f32 = 90.0;
+const CONSOLE_MIN_HEIGHT: f32 = 72.0;
 const CONSOLE_MAX_FRACTION: f32 = 0.6;
 /// L'illustration du bouton de don, en pixels bruts RGBA — 128 x 128.
 ///
@@ -702,6 +702,14 @@ struct NamsdecApp {
     /// entière : « et si RCX valait 1 ? » se répond en une seconde au
     /// lieu de se réécrire. `set $rax = …` chez gdb.
     editing_register: Option<(&'static str, String)>,
+    /// La hauteur de la console quand l'utilisateur l'a réglée lui-même.
+    ///
+    /// `None` — le cas par défaut — veut dire « qu'elle prenne la place
+    /// de ce qu'elle a à dire » : deux lignes de sortie n'ont pas besoin
+    /// du quart de l'écran. Dès qu'on tire la poignée, sa hauteur est
+    /// retenue et l'ajustement cesse : on ne lutte pas contre la main
+    /// de celui qui travaille.
+    console_height: Option<f32>,
     /// Ce qu'on s'apprête à écrire dans la mémoire, à la main.
     ///
     /// Le pendant de l'édition d'un registre : poser une valeur dans un
@@ -1333,6 +1341,7 @@ impl Default for NamsdecApp {
             mem_search: String::new(),
             mem_search_kind: SearchKind::Text,
             editing_register: None,
+            console_height: None,
             mem_poke: String::new(),
             show_disassembly: false,
             disassembler: PSEUDO_ID.to_owned(),
@@ -1403,6 +1412,7 @@ impl NamsdecApp {
             current_exercise: settings.current_exercise.clone(),
             memory_format: MemoryFormat::by_id(&settings.memory_format),
             memory_follow: MemFollow::by_id(&settings.memory_follow),
+            console_height: settings.console_height.map(|h| h as f32),
             disassembler: settings.disassembler.clone(),
             explorer,
             saved_settings: settings,
@@ -1493,6 +1503,7 @@ impl NamsdecApp {
             disassembler: self.disassembler.clone(),
             memory_format: self.memory_format.id().to_owned(),
             memory_follow: self.memory_follow.id().to_owned(),
+            console_height: self.console_height.map(|h| h.round() as u32),
             explorer_root: self.explorer.root.as_ref().map(|p| p.display().to_string()),
             current_file: self.current_file.as_ref().map(|p| p.display().to_string()),
             shortcuts: settings::shortcuts_to_strings(&self.keybindings),
@@ -3264,6 +3275,27 @@ impl NamsdecApp {
                 ui.checkbox(&mut self.show_sidebar, s.view_sidebar);
                 ui.checkbox(&mut self.show_statusbar, s.view_statusbar);
                 ui.checkbox(&mut self.show_console, s.view_console);
+                // Rendre la hauteur à ce qu'elle dit : une console qu'on
+                // a agrandie pour lire vingt lignes n'a plus de raison
+                // d'occuper autant devant deux.
+                let mut automatique = self.console_height.is_none();
+                if ui
+                    .add_enabled(
+                        self.show_console,
+                        egui::Checkbox::new(&mut automatique, s.view_console_auto),
+                    )
+                    .on_hover_text(s.view_console_auto_hint)
+                    .changed()
+                {
+                    // Décochée, la case rend la console à une hauteur
+                    // fixe — celle qu'elle avait avant qu'on sache la
+                    // calculer.
+                    self.console_height = if automatique {
+                        None
+                    } else {
+                        Some(CONSOLE_HEIGHT)
+                    };
+                }
 
                 ui.separator();
                 // L'explorateur n'est PAS un de ces panneaux : c'est une
@@ -5201,6 +5233,41 @@ impl NamsdecApp {
     /// les diagnostics y trouvent enfin de quoi être lus : ils étaient
     /// jusqu'ici entassés sous la barre de statut, sur deux lignes
     /// hautes de rien.
+    /// La hauteur que la console réclame pour ce qu'elle a à dire.
+    ///
+    /// Une console qui annonce « le programme n'a rien écrit » n'a pas
+    /// besoin du quart de l'écran ; vingt lignes de sortie, si. On
+    /// compte donc les lignes, on borne — au-delà d'une douzaine, c'est
+    /// la barre de défilement qui prend le relais — et on ajoute ce qui
+    /// entoure : les onglets, le séparateur, et le champ d'entrée quand
+    /// un programme peut lire.
+    fn console_wanted_height(&self, ui: &egui::Ui) -> f32 {
+        let ligne = ui.text_style_height(&egui::TextStyle::Monospace);
+        let lignes = match self.console_tab {
+            ConsoleTab::Output => self
+                .emulator
+                .as_ref()
+                .map(|emulator| {
+                    String::from_utf8_lossy(emulator.output())
+                        .lines()
+                        .count()
+                        .max(1)
+                })
+                .unwrap_or(1),
+            ConsoleTab::Diagnostics => self.diagnostics.len().max(1),
+        };
+        // Les onglets, le séparateur et les marges du panneau.
+        let chrome = ui.text_style_height(&egui::TextStyle::Button) + 28.0;
+        // Le champ d'entrée n'existe que s'il y a quelqu'un pour lire.
+        let entrée = if self.emulator.is_some() {
+            ui.text_style_height(&egui::TextStyle::Body) + 16.0
+        } else {
+            0.0
+        };
+        let contenu = ligne * lignes.min(12) as f32;
+        (chrome + entrée + contenu).max(CONSOLE_MIN_HEIGHT)
+    }
+
     fn console_panel_ui(&mut self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
         ui.horizontal_wrapped(|ui| {
@@ -7795,14 +7862,44 @@ impl NamsdecApp {
         // programme suppose quand il écrit.
         if self.show_console {
             timed(&mut spans, "console", || {
-                egui::Panel::bottom("console")
+                let plafond =
+                    (ui.available_height() * CONSOLE_MAX_FRACTION).max(CONSOLE_MIN_HEIGHT);
+                let voulue = self.console_wanted_height(ui).min(plafond);
+                let id = egui::Id::new("console");
+                // En mode automatique, la hauteur est réécrite à chaque
+                // image : c'est ainsi qu'elle suit ce que la console a à
+                // dire, plutôt que de garder celle d'une image passée.
+                if self.console_height.is_none() {
+                    let état = egui::containers::panel::PanelState {
+                        outer_rect: egui::Rect::from_min_size(
+                            egui::Pos2::ZERO,
+                            egui::vec2(ui.available_width(), voulue),
+                        ),
+                    };
+                    ui.ctx().data_mut(|data| data.insert_persisted(id, état));
+                }
+                egui::Panel::bottom(id)
                     .resizable(true)
-                    .default_size(CONSOLE_HEIGHT)
+                    .default_size(self.console_height.unwrap_or(voulue))
                     .min_size(CONSOLE_MIN_HEIGHT)
-                    .max_size(
-                        (ui.available_height() * CONSOLE_MAX_FRACTION).max(CONSOLE_MIN_HEIGHT),
-                    )
+                    .max_size(plafond)
                     .show(ui, |ui| self.console_panel_ui(ui));
+                // Ce que le panneau fait vraiment. S'il n'est pas à la
+                // hauteur demandée, c'est que la poignée a été tirée :
+                // on retient alors ce choix, et l'ajustement s'arrête.
+                let rendue = egui::containers::panel::PanelState::load(ui.ctx(), id)
+                    .map(|état| état.outer_rect.height());
+                if let Some(rendue) = rendue {
+                    match self.console_height {
+                        Some(gardée) if (rendue - gardée).abs() > 1.0 => {
+                            self.console_height = Some(rendue);
+                        }
+                        None if (rendue - voulue).abs() > 1.0 => {
+                            self.console_height = Some(rendue);
+                        }
+                        _ => {}
+                    }
+                }
             });
         }
         timed(&mut spans, "panneau latéral", || {

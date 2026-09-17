@@ -78,6 +78,13 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
   instructions : le désassemblage part maintenant des sections
   exécutables que le fichier désigne.
 
+**Place à l'écran**
+- La console prend la hauteur de ce qu'elle a à dire : « le programme n'a
+  rien écrit » occupait le quart de l'écran, c'est maintenant trois
+  lignes. Tirer la poignée reprend la main, et la hauteur choisie est
+  retenue ; Affichage ▸ « Console à la hauteur de son contenu » rend
+  l'ajustement.
+
 **Tenue**
 - Un bandeau dit, dans « À propos », que la version est une préversion.
   Il est lu dans le numéro de version et disparaîtra de lui-même.
