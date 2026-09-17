@@ -83,6 +83,15 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
   exécutables que le fichier désigne.
 
 **Place à l'écran**
+- Une légende sous l'éditeur dit ce que valent les couleurs de la
+  gouttière, avec des repères pris sur l'échelle réelle du programme.
+  Préférences ▸ Général l'éteint.
+- Le panneau latéral nomme la vue qu'il montre : depuis que les onglets
+  sont dans la barre d'outils, une colonne d'adresses n'annonçait plus
+  qu'elle était une pile. Même facture de titre pour « Prochaine
+  instruction ».
+- L'onglet Mémoire tient « Suivre » et les quatre lectures sur une seule
+  ligne, au lieu de trois rangées avant le premier octet.
 - Les onglets du panneau latéral — Pile, Mémoire, Tas, Octets, RE — sont
   passés à droite de la barre d'outils : ils ne montent plus et ne
   descendent plus avec le bandeau, et le panneau gagne leur hauteur.

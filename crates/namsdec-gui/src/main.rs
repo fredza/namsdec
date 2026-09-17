@@ -740,6 +740,11 @@ struct NamsdecApp {
     /// menus rendue : un `ViewportCommand` envoyé au milieu du rendu
     /// arriverait avant que la frame soit finie.
     window_command: Option<WindowCommand>,
+    /// La légende de la barre de chaleur, sous l'éditeur.
+    ///
+    /// Utile le temps d'apprendre à lire les teintes, superflue ensuite :
+    /// elle se coupe dans les préférences.
+    heat_legend: bool,
     /// La barre de titre du système, plutôt que celle qu'on dessine.
     ///
     /// Réglage utilisateur, donc dans `settings.json` — et appliqué à
@@ -1389,6 +1394,7 @@ impl Default for NamsdecApp {
             mem_search: String::new(),
             mem_search_kind: SearchKind::Text,
             editing_register: None,
+            heat_legend: true,
             window_command: None,
             system_titlebar: false,
             decorations_applied: None,
@@ -1465,6 +1471,7 @@ impl NamsdecApp {
             memory_follow: MemFollow::by_id(&settings.memory_follow),
             console_height: settings.console_height.map(|h| h as f32),
             system_titlebar: settings.system_titlebar,
+            heat_legend: settings.heat_legend,
             disassembler: settings.disassembler.clone(),
             explorer,
             saved_settings: settings,
@@ -1557,6 +1564,7 @@ impl NamsdecApp {
             memory_follow: self.memory_follow.id().to_owned(),
             console_height: self.console_height.map(|h| h.round() as u32),
             system_titlebar: self.system_titlebar,
+            heat_legend: self.heat_legend,
             explorer_root: self.explorer.root.as_ref().map(|p| p.display().to_string()),
             current_file: self.current_file.as_ref().map(|p| p.display().to_string()),
             shortcuts: settings::shortcuts_to_strings(&self.keybindings),
@@ -3561,6 +3569,10 @@ impl NamsdecApp {
         ui.weak(s.preferences_system_titlebar_hint);
 
         ui.add_space(6.0);
+        ui.checkbox(&mut self.heat_legend, s.preferences_heat_legend);
+        ui.weak(s.preferences_heat_legend_hint);
+
+        ui.add_space(6.0);
         ui.checkbox(&mut self.show_tooltips, s.preferences_tooltips);
         ui.weak(s.preferences_tooltips_hint);
 
@@ -4818,6 +4830,40 @@ impl NamsdecApp {
     /// (`desired_width(INFINITY)` + défilement horizontal disponible) pour
     /// qu'une ligne logique corresponde toujours à une seule ligne visuelle
     /// — sinon la gouttière se décale sur une ligne trop longue.
+    /// La légende de la barre de chaleur : ce que chaque teinte vaut.
+    ///
+    /// Une bande de couleur sans échelle ne dit rien — « plus rouge »
+    /// ne devient « mille passages » que si on l'écrit. Les graduations
+    /// suivent l'échelle réelle, celle de la ligne la plus chaude du
+    /// programme, et sont logarithmiques comme elle.
+    fn heat_legend_ui(&mut self, ui: &mut egui::Ui, max: u64) {
+        let s = strings(self.lang);
+        let theme = self.theme;
+        ui.horizontal_wrapped(|ui| {
+            ui.colored_label(theme.dim, s.heat_legend);
+            // Cinq repères entre une fois et le maximum : assez pour
+            // situer une teinte, assez peu pour tenir sur une ligne.
+            let repères = heat_legend_steps(max);
+            for valeur in repères {
+                let (rect, réponse) =
+                    ui.allocate_exact_size(egui::vec2(14.0, 12.0), egui::Sense::hover());
+                ui.painter()
+                    .rect_filled(rect, 2.0, heat_colour(theme, valeur, max));
+                réponse.on_hover_text(if self.lang == Lang::Fr {
+                    format!("{valeur} passage(s)")
+                } else {
+                    format!("{valeur} pass(es)")
+                });
+                ui.colored_label(
+                    theme.dim,
+                    egui::RichText::new(sidebar::group_digits(valeur)).monospace(),
+                );
+                ui.add_space(4.0);
+            }
+            ui.colored_label(theme.dim, s.heat_legend_hint);
+        });
+    }
+
     fn editor_ui(&mut self, ui: &mut egui::Ui) {
         let theme = self.theme;
         // La barre de recherche, au-dessus du code : elle pousse
@@ -7395,6 +7441,33 @@ fn executable_ranges(file: &[u8], loaded: usize) -> Option<Vec<(u64, u64)>> {
     (!plages.is_empty()).then_some(plages)
 }
 
+/// Les valeurs que montre la légende, de la plus froide à la plus
+/// chaude.
+///
+/// Réparties sur l'échelle logarithmique de la barre elle-même : entre
+/// un passage et mille, les repères intéressants sont 1, 6, 32, 178,
+/// 1000 — et non 200, 400, 600, 800.
+fn heat_legend_steps(max: u64) -> Vec<u64> {
+    let max = max.max(1);
+    if max <= 5 {
+        return (1..=max).collect();
+    }
+    let échelle = (max as f32).ln();
+    (0..5)
+        .map(|i| {
+            let t = i as f32 / 4.0;
+            (échelle * t).exp().round().max(1.0) as u64
+        })
+        // Deux repères qui tombent sur la même valeur ne se distinguent
+        // pas : on n'en garde qu'un.
+        .fold(Vec::new(), |mut out, valeur| {
+            if out.last() != Some(&valeur) {
+                out.push(valeur);
+            }
+            out
+        })
+}
+
 /// La largeur de la bande de chaleur, à l'extrême gauche de la
 /// gouttière. Assez pour se voir, assez peu pour ne pas se disputer la
 /// place avec le point d'arrêt.
@@ -8241,6 +8314,22 @@ impl NamsdecApp {
                     .show(ui, |ui| self.sidebar_ui(ui));
             }
         });
+        // La légende de la chaleur, sous l'éditeur : une bande de
+        // couleur sans échelle ne dit rien — « plus rouge » ne se
+        // convertit en « mille passages » que si quelque chose le dit.
+        if self.heat_legend {
+            timed(&mut spans, "légende", || {
+                let passages = self.line_visits();
+                if !passages.is_empty() {
+                    let max = passages.values().copied().max().unwrap_or(1);
+                    egui::Panel::bottom("heat_legend")
+                        .resizable(false)
+                        .frame(egui::Frame::new().inner_margin(egui::Margin::symmetric(10, 4)))
+                        .show(ui, |ui| self.heat_legend_ui(ui, max));
+                }
+            });
+        }
+
         // L'éditeur recolore tout le tampon à chaque frame : c'est le
         // premier suspect dès que la source devient longue (un binaire
         // désassemblé, par exemple).

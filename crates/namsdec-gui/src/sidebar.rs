@@ -77,7 +77,12 @@ impl NamsdecApp {
         // contenu qu'elle commande : on changeait de vue en visant une
         // rangée qui descendait ou montait selon la taille du bandeau.
         // En haut, elle ne bouge plus, et le panneau gagne sa hauteur.
-        ui.separator();
+        ui.add_space(6.0);
+        // Le titre de la vue qu'on regarde. Les onglets sont montés dans
+        // la barre d'outils, et le panneau se retrouvait à montrer des
+        // adresses sans dire de quoi : une colonne de nombres n'annonce
+        // pas qu'elle est une pile.
+        section_header(ui, self.theme, self.active_tab.label(s));
         // Chaque vue pose sa propre zone de défilement : un vidage
         // mémoire défile dans les deux sens (seize octets et leur
         // transcription, c'est plus large que le panneau), mais une
@@ -443,7 +448,7 @@ impl NamsdecApp {
         let text = namsdec_disasm::format_one(&instr);
 
         ui.add_space(4.0);
-        ui.colored_label(theme.dim, s.next_instruction);
+        section_header(ui, theme, s.next_instruction);
         ui.horizontal_wrapped(|ui| {
             ui.colored_label(
                 theme.accent,
@@ -1692,9 +1697,9 @@ impl NamsdecApp {
             ui.colored_label(theme.bad, s.memory_address_invalid);
         }
 
-        // Ce qu'on suit : rien, la pile, ou le code. Regarder la pile
-        // pendant qu'on avance demandait sinon de retaper l'adresse à
-        // chaque instruction.
+        // Ce qu'on suit et comment on lit : deux réglages du même geste,
+        // sur une seule ligne. Empilés sur trois rangées, ils prenaient
+        // le tiers du panneau avant le premier octet.
         ui.horizontal_wrapped(|ui| {
             ui.colored_label(theme.dim, s.memory_follow);
             for kind in MemFollow::ALL {
@@ -1705,16 +1710,10 @@ impl NamsdecApp {
                     self.memory_follow = kind;
                 }
             }
-        });
-        if let Some(addr) = self.memory_follow.address(&regs) {
-            self.mem_addr = addr;
-            self.mem_addr_input = format!("{addr:#x}");
-        }
-
-        // Comment lire ces octets : bruts, par mots de huit, ou comme du
-        // texte. Le même endroit dit trois choses différentes selon ce
-        // qu'on y cherche — un tampon, une pile, une chaîne.
-        ui.horizontal_wrapped(|ui| {
+            ui.separator();
+            // Le même endroit dit quatre choses différentes selon ce
+            // qu'on y cherche — un tampon, une pile, une chaîne, une
+            // suite de pointeurs.
             for format in MemoryFormat::ALL {
                 if ui
                     .selectable_label(self.memory_format == format, format.label(s))
@@ -1724,6 +1723,10 @@ impl NamsdecApp {
                 }
             }
         });
+        if let Some(addr) = self.memory_follow.address(&regs) {
+            self.mem_addr = addr;
+            self.mem_addr_input = format!("{addr:#x}");
+        }
 
         // Le vidage est calculé *avant* la liste : celle-ci peut retirer
         // une zone, donc emprunter `self` en écriture, et l'émulateur
@@ -2160,6 +2163,22 @@ pub(crate) fn return_addresses(
         addr += 8;
     }
     trouvées
+}
+
+/// Le titre d'une section du panneau : un mot en gras, un filet sous
+/// lui, et de l'air autour.
+///
+/// Toutes les sections du panneau portent le même : sans une facture
+/// commune, un titre en gris clair ressemble à une explication, et l'on
+/// ne sait plus ce qui annonce quoi.
+pub(crate) fn section_header(ui: &mut egui::Ui, theme: &'static Theme, titre: &str) {
+    ui.add_space(2.0);
+    ui.label(egui::RichText::new(titre).strong().color(theme.text));
+    let (rect, _) =
+        ui.allocate_exact_size(egui::vec2(ui.available_width(), 1.0), egui::Sense::hover());
+    ui.painter()
+        .rect_filled(rect, 0.0, theme.dim.gamma_multiply(0.35));
+    ui.add_space(4.0);
 }
 
 /// Les droits d'une zone, à la façon d'un `vmmap` : `rwx`, un tiret pour

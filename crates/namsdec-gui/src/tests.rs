@@ -9800,6 +9800,100 @@ fn clicking_a_door_really_opens_its_address() {
     );
 }
 
+/// La légende dit ce que valent les couleurs de la gouttière, et elle
+/// se coupe dans les préférences.
+///
+/// Une bande de couleur sans échelle ne dit rien : « plus rouge » ne
+/// devient « mille passages » que si quelque chose l'écrit.
+#[test]
+fn the_heat_legend_says_what_the_colours_are_worth() {
+    // Les repères suivent l'échelle logarithmique de la barre : entre
+    // un passage et mille, ce sont les ordres de grandeur qui comptent.
+    assert_eq!(heat_legend_steps(1), vec![1]);
+    assert_eq!(heat_legend_steps(4), vec![1, 2, 3, 4]);
+    let repères = heat_legend_steps(1000);
+    assert_eq!(repères.first(), Some(&1));
+    assert_eq!(repères.last(), Some(&1000));
+    assert!(repères.len() <= 5, "{repères:?}");
+    assert!(
+        repères.windows(2).all(|p| p[0] < p[1]),
+        "les repères montent : {repères:?}"
+    );
+    // Et ils ne se répètent pas quand le maximum est petit.
+    let courts = heat_legend_steps(6);
+    assert_eq!(
+        courts.len(),
+        courts
+            .iter()
+            .collect::<std::collections::BTreeSet<_>>()
+            .len(),
+        "{courts:?}"
+    );
+
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: "\
+global _start
+section .text
+_start:
+    mov rcx, 5
+boucle:
+    dec rcx
+    jnz boucle
+    hlt
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    app.do_run();
+    for _ in 0..50 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&egui::Context::default());
+    }
+
+    // Allumée : la légende est sous l'éditeur, avec ses valeurs.
+    assert!(app.heat_legend, "allumée par défaut");
+    let painted = paint(&mut app);
+    let s = strings(app.lang);
+    assert!(painted.contains(s.heat_legend), "{painted}");
+    assert!(painted.contains(s.heat_legend_hint), "{painted}");
+
+    // Éteinte : plus rien, et le réglage se retrouve au lancement
+    // suivant.
+    app.heat_legend = false;
+    let painted = paint(&mut app);
+    assert!(!painted.contains(s.heat_legend), "{painted}");
+    let écrit = serde_json::to_string(&app.settings_snapshot()).unwrap();
+    assert!(écrit.contains("\"heat_legend\":false"), "{écrit}");
+}
+
+/// Le panneau dit ce qu'il montre : depuis que les onglets sont montés
+/// dans la barre d'outils, une colonne d'adresses n'annonçait plus
+/// qu'elle était une pile.
+#[test]
+fn the_sidebar_names_the_view_it_shows() {
+    let mut app = NamsdecApp {
+        show_sidebar: true,
+        active_tab: SidebarTab::Stack,
+        ..Default::default()
+    };
+    let s = strings(app.lang);
+    // Le titre est peint deux fois : une fois comme onglet dans la barre
+    // d'outils, une fois comme en-tête de la vue.
+    let compte =
+        |app: &mut NamsdecApp, titre: &str| paint(app).matches(&format!("{titre}|")).count();
+    assert_eq!(compte(&mut app, s.tab_stack), 2, "onglet et en-tête");
+    app.active_tab = SidebarTab::Heap;
+    assert_eq!(compte(&mut app, s.tab_heap), 2);
+    // Et l'onglet qu'on ne regarde pas n'a que son bouton.
+    assert_eq!(compte(&mut app, s.tab_stack), 1);
+}
+
 /// La mémoire montre sa carte : où commence le code, où finit la pile,
 /// ce que le tas occupe, avec les droits de chacun.
 ///

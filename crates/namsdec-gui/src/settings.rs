@@ -94,6 +94,9 @@ pub struct Settings {
     /// Comment l'onglet Mémoire lit les octets : « bytes », « words » ou
     /// « text ».
     pub memory_format: String,
+    /// La légende des couleurs de la gouttière, sous l'éditeur.
+    #[serde(default = "vrai")]
+    pub heat_legend: bool,
     /// Rendre la barre de titre au système au lieu de celle que namsdec
     /// dessine. Faux par défaut : les menus *sont* la barre de titre, ce
     /// qui économise une rangée. Vrai pour qui préfère la décoration de
@@ -146,6 +149,7 @@ impl Default for Settings {
             current_exercise: None,
             disassembler: pseudo_par_défaut(),
             memory_format: "bytes".to_owned(),
+            heat_legend: true,
             system_titlebar: false,
             console_height: None,
             memory_follow: fixe_par_défaut(),
