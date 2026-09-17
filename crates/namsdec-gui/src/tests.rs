@@ -13362,3 +13362,41 @@ boucle:
         "puis celle des passages"
     );
 }
+
+/// Le parcours livré est un fichier, et il s'installe.
+///
+/// Les exercices ne sont plus compilés dans le programme : sans le
+/// fichier, il n'y a pas de parcours, et il vaut mieux que le dépôt s'en
+/// aperçoive avant l'utilisateur. Ce test vérifie donc ce que le dépôt
+/// livre — le fichier lui-même —, et qu'`install.sh` le pose bien.
+#[test]
+fn the_shipped_course_is_a_file_that_install_puts_in_place() {
+    let racine = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    // Le fichier est dans le dépôt, et il se lit.
+    let fichier = racine.join("crates/namsdec-exercises/packs/namsdec.json");
+    assert!(fichier.is_file(), "{} manque", fichier.display());
+    let pack = namsdec_exercises::pack::read(&fichier).expect("la série livrée se lit");
+    assert_eq!(pack.id, namsdec_exercises::BUILTIN_ID);
+    assert!(pack.exercises.len() >= 71, "{}", pack.exercises.len());
+
+    // Et l'installateur le pose là où le programme va le chercher.
+    let install = std::fs::read_to_string(racine.join("install.sh")).expect("install.sh");
+    assert!(
+        install.contains("packs/namsdec.json"),
+        "install.sh doit installer le parcours"
+    );
+    assert!(
+        install.contains("exercises"),
+        "et dans le dossier où le programme le lit"
+    );
+
+    // Le programme, lui, ne le porte plus : plus un seul énoncé dans le
+    // code du crate qui les définissait.
+    let lib = std::fs::read_to_string(racine.join("crates/namsdec-exercises/src/lib.rs"))
+        .expect("le crate des exercices");
+    assert!(
+        !lib.contains("include_str!"),
+        "les programmes des exercices ne doivent plus être compilés dans le binaire"
+    );
+}
