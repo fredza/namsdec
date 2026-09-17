@@ -3018,7 +3018,10 @@ fn a_sheet_leads_to_the_sheets_it_mentions() {
 
     let painted = paint(&mut app);
 
-    assert!(painted.contains(strings(app.lang).help_see_also), "{painted}");
+    assert!(
+        painted.contains(strings(app.lang).help_see_also),
+        "{painted}"
+    );
     // `cmp` parle de `ja`/`jb` : la fiche des sauts conditionnels est à
     // un clic, sous son premier nom.
     assert!(painted.contains("|je|"), "{painted}");
@@ -3077,10 +3080,7 @@ fn the_help_window_offers_its_contents_when_no_sheet_is_open() {
         s.help_kind_directives,
         s.help_kind_preprocessors,
     ] {
-        assert!(
-            painted.contains(famille),
-            "le sommaire tait « {famille} »"
-        );
+        assert!(painted.contains(famille), "le sommaire tait « {famille} »");
     }
     // Et la famille ouverte d'emblée est celle des notions : ce sont
     // elles qu'on lit quand on ne sait pas encore par où commencer.
@@ -3843,7 +3843,11 @@ fn the_new_steps_of_the_course_keep_their_promise() {
     // Signé ou non : sur la même comparaison, `ja` saute et `jg` non.
     let app = exécute(&code("signe"));
     let regs = &app.emulator.as_ref().expect("chargé").cpu().regs;
-    assert_eq!(regs.get64(Reg64::Rcx), 1, "non signé : -1 est le plus grand de tous");
+    assert_eq!(
+        regs.get64(Reg64::Rcx),
+        1,
+        "non signé : -1 est le plus grand de tous"
+    );
     assert_eq!(regs.get64(Reg64::Rdx), 0, "signé : -1 est plus petit que 1");
 
     // La division part sur un refus — c'est l'énoncé —, et la
@@ -7948,6 +7952,7 @@ fn every_glyph_the_interface_writes_exists_in_its_font() {
         include_str!("../../namsdec-re/src/protections.rs"),
         include_str!("../../namsdec-re/src/xrefs_module.rs"),
         include_str!("../../namsdec-re/src/gadgets_module.rs"),
+        include_str!("../../namsdec-re/src/imports_module.rs"),
         include_str!("../../namsdec-re/src/binary_info.rs"),
         include_str!("../../namsdec-disasm/src/pseudo.rs"),
     ];
@@ -8010,6 +8015,31 @@ fn every_glyph_the_interface_writes_exists_in_its_font() {
         manquants.is_empty(),
         "ces caractères seront peints en carré vide : {manquants:?}"
     );
+}
+
+/// Les fonctions qu'un binaire emprunte se lisent dans la fenêtre
+/// d'analyse, rangées après les appels système : même question, un cran
+/// plus haut — que demande-t-il à ce qui n'est pas lui ?
+///
+/// Ce que le module trouve est vérifié chez lui, sur un binaire du
+/// système ; ici on vérifie qu'il est bien branché, et au bon endroit.
+#[test]
+fn what_a_binary_borrows_has_its_place_in_the_analysis() {
+    let mut app = NamsdecApp::default();
+    let titres: Vec<&str> = app
+        .re_registry
+        .iter_mut()
+        .map(|module| module.title("fr"))
+        .collect();
+    let importées = titres
+        .iter()
+        .position(|titre| *titre == "Fonctions importées")
+        .unwrap_or_else(|| panic!("le module manque : {titres:?}"));
+    let syscalls = titres
+        .iter()
+        .position(|titre| titre.contains("ppels système"))
+        .unwrap_or_else(|| panic!("celui des appels système manque : {titres:?}"));
+    assert!(importées > syscalls, "{titres:?}");
 }
 
 /// Le pseudo-code doit couvrir ce qu'on lit vraiment dans un binaire.

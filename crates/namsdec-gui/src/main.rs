@@ -27,8 +27,8 @@ use namsdec_disasm::DecodedInstruction;
 use namsdec_emu::{Backend, Emulator, RunStop, StepOverResult, StepResult};
 use namsdec_explorer::{ExplorerAction, FileExplorer};
 use namsdec_re::{
-    BinaryInfoModule, GadgetsModule, ProtectionsModule, ReContext, ReModuleRegistry, StringsModule,
-    SyscallsModule, XrefsModule,
+    BinaryInfoModule, GadgetsModule, ImportsModule, ProtectionsModule, ReContext, ReModuleRegistry,
+    StringsModule, SyscallsModule, XrefsModule,
 };
 use namsdec_theme::Theme;
 
@@ -1007,6 +1007,11 @@ impl Default for NamsdecApp {
         // est découpé.
         re_registry.register(Box::new(StringsModule::default()));
         re_registry.register(Box::new(SyscallsModule::default()));
+        // Ce qu'il emprunte : les fonctions d'autrui qu'il appelle. On
+        // les lit juste après les appels système, parce que c'est la
+        // même question posée un cran plus haut — que demande-t-il à ce
+        // qui n'est pas lui ?
+        re_registry.register(Box::new(ImportsModule::default()));
         // Les références croisées en dernier : elles se lisent une fois
         // qu'on sait ce que le binaire contient, pour décider par où
         // entrer dedans.
@@ -4816,7 +4821,12 @@ impl NamsdecApp {
             .and_then(|path| path.file_name())
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_else(|| strings(self.lang).analysis_title.to_owned());
-        Some(namsdec_re::report::markdown(&scan, self.lang.code(), &name))
+        Some(namsdec_re::report::markdown(
+            &scan,
+            &state.output.file,
+            self.lang.code(),
+            &name,
+        ))
     }
 
     /// La question qui protège un travail non enregistré.
@@ -5747,9 +5757,7 @@ impl NamsdecApp {
                         ui.colored_label(theme.dim, s.help_see_also);
                         for autre in renvois {
                             if ui
-                                .small_button(
-                                    egui::RichText::new(autre.names[0]).monospace(),
-                                )
+                                .small_button(egui::RichText::new(autre.names[0]).monospace())
                                 .on_hover_text(autre.title.get(lang))
                                 .clicked()
                             {

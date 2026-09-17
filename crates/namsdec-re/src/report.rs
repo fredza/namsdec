@@ -10,13 +10,18 @@
 //! le recevra.
 
 use crate::elf_scan::{Kind, Relro, Scan};
+use crate::imports;
 
 fn t(lang: &str, fr: &str, en: &str) -> String {
     if lang.starts_with("fr") { fr } else { en }.to_owned()
 }
 
 /// Le rapport complet d'un binaire analysé.
-pub fn markdown(scan: &Scan, lang: &str, name: &str) -> String {
+///
+/// `bytes` est le fichier lui-même : certaines sections du rapport se
+/// lisent dans des tables que le résumé ne porte pas — les fonctions
+/// empruntées, par exemple, qui vivent dans les relocations.
+pub fn markdown(scan: &Scan, bytes: &[u8], lang: &str, name: &str) -> String {
     let fr = lang.starts_with("fr");
     let mut out = String::new();
 
@@ -248,6 +253,19 @@ pub fn markdown(scan: &Scan, lang: &str, name: &str) -> String {
             out.push_str(&format!("- `{lib}`\n"));
         }
     }
+    // Ce que le binaire emprunte, nommément : c'est la première
+    // question qu'on se pose devant du code qu'on n'a pas écrit.
+    let empruntées = imports::scan(bytes);
+    if !empruntées.is_empty() {
+        out.push_str(&format!(
+            "\n## {} ({})\n\n",
+            t(lang, "Fonctions importées", "Imported functions"),
+            empruntées.len()
+        ));
+        for import in &empruntées {
+            out.push_str(&format!("- `{}` — {:#x}\n", import.name, import.plt));
+        }
+    }
     for (label, value) in [("RUNPATH", &scan.runpath), ("RPATH", &scan.rpath)] {
         if let Some(value) = value {
             out.push_str(&format!("\n- {label} : `{value}`\n"));
@@ -335,10 +353,19 @@ mod tests {
             eprintln!("/bin/ls n'est pas un ELF64 ici : test ignoré");
             return;
         };
-        let report = markdown(&scan, "fr", "ls");
+        let report = markdown(&scan, &bytes, "fr", "ls");
 
         assert!(report.starts_with("# Analyse du binaire — ls"));
-        for attendu in ["PIE", "NX", "RELRO", "Canari de pile", "Segments", "LOAD"] {
+        for attendu in [
+            "PIE",
+            "NX",
+            "RELRO",
+            "Canari de pile",
+            "Segments",
+            "LOAD",
+            "Fonctions importées",
+            "malloc",
+        ] {
             assert!(report.contains(attendu), "« {attendu} » manque :\n{report}");
         }
         assert!(
@@ -350,7 +377,7 @@ mod tests {
             "le rapport dit d'où il vient, et sous quelle licence"
         );
         // Et la version anglaise dit autre chose que la française.
-        let english = markdown(&scan, "en", "ls");
+        let english = markdown(&scan, &bytes, "en", "ls");
         assert_ne!(report, english);
         assert!(english.starts_with("# Binary analysis — ls"));
     }

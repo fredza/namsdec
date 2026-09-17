@@ -1,0 +1,208 @@
+//! Le panneau des fonctions empruntées : ce que le binaire appelle
+//! ailleurs que chez lui.
+//!
+//! Le premier réflexe devant un binaire inconnu est de regarder ce qu'il
+//! demande au système et à la bibliothèque C : qui ouvre des fichiers,
+//! qui alloue, qui écrit. Les appels sont classés par nombre
+//! d'appelants, comme les références croisées — ce qui sert partout se
+//! lit en premier.
+
+use crate::imports::{self, Import};
+use crate::{ReContext, ReModule};
+
+#[derive(Default)]
+pub struct ImportsModule {
+    imports: Vec<Import>,
+    /// Combien de `call` du code visent chaque entrée.
+    appels: Vec<usize>,
+}
+
+impl ImportsModule {
+    /// Les fonctions importées, pour qui veut les lire sans l'interface.
+    pub fn imports(&self) -> &[Import] {
+        &self.imports
+    }
+
+    /// Combien d'appels mènent à chacune, dans le même ordre.
+    pub fn calls(&self) -> &[usize] {
+        &self.appels
+    }
+}
+
+impl ReModule for ImportsModule {
+    fn id(&self) -> &'static str {
+        "imports"
+    }
+
+    fn title(&self, lang: &str) -> &'static str {
+        if lang.starts_with("fr") {
+            "Fonctions importées"
+        } else {
+            "Imported functions"
+        }
+    }
+
+    fn on_binary_loaded(&mut self, ctx: &ReContext) {
+        self.imports = imports::scan(ctx.binary);
+        // Un appel par entrée : c'est ce qui distingue la fonction dont
+        // tout dépend de celle qui est liée sans jamais servir.
+        //
+        // Les adresses ne se comparent pas telles quelles : le nom vient
+        // des sections du fichier — des adresses virtuelles — et le
+        // désassemblage part du premier octet de ce même fichier, à
+        // l'adresse où namsdec l'a posé. Les deux se rejoignent sur la
+        // *position dans le fichier*.
+        let base = ctx.disasm.first().map(|first| first.address);
+        let cibles: Vec<u64> = ctx
+            .disasm
+            .iter()
+            .filter_map(|instruction| {
+                namsdec_disasm::decode_one(&instruction.bytes, instruction.address)
+            })
+            .filter(|decoded| decoded.flow_control() == iced_x86::FlowControl::Call)
+            .map(|decoded| decoded.near_branch_target())
+            .collect();
+        self.appels = self
+            .imports
+            .iter()
+            .map(|import| {
+                let Some(offset) = imports::file_offset(ctx.binary, import.plt) else {
+                    return 0;
+                };
+                cibles
+                    .iter()
+                    .filter(|cible| match base {
+                        Some(base) => cible.checked_sub(base) == Some(offset),
+                        None => **cible == import.plt,
+                    })
+                    .count()
+            })
+            .collect();
+    }
+
+    fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
+        if self.imports.is_empty() {
+            ui.weak(ctx.t(
+                "Aucune : ce programme n'emprunte rien: il est statique, ou il ne parle \
+                 qu'au noyau.",
+                "None: this program borrows nothing — it is static, or it only talks to \
+                 the kernel.",
+            ));
+            return;
+        }
+        ui.strong(format!(
+            "{} {}",
+            self.imports.len(),
+            ctx.t("fonctions importées", "imported functions")
+        ));
+        ui.weak(ctx.t(
+            "Chaque entrée est une petite fonction qui saute là où l'éditeur de liens \
+             aura écrit la vraie adresse. C'est pour cela qu'un `call` vers la \
+             bibliothèque C passe par le programme lui-même.",
+            "Each entry is a small function jumping to wherever the linker will have \
+             written the real address. That is why a call into the C library goes \
+             through the program itself.",
+        ));
+        ui.add_space(4.0);
+
+        // Par nombre d'appels : ce qui sert partout d'abord, le reste
+        // par ordre alphabétique pour s'y retrouver.
+        let mut rangs: Vec<usize> = (0..self.imports.len()).collect();
+        rangs.sort_by(|&a, &b| {
+            self.appels[b]
+                .cmp(&self.appels[a])
+                .then_with(|| self.imports[a].name.cmp(&self.imports[b].name))
+        });
+        for rang in rangs {
+            let import = &self.imports[rang];
+            let appels = self.appels[rang];
+            ui.horizontal(|ui| {
+                ui.monospace(format!("{:#x}", import.plt));
+                ui.strong(&import.name);
+                if appels > 0 {
+                    ui.weak(format!(
+                        "{appels} {}",
+                        if appels > 1 {
+                            ctx.t("appels", "calls")
+                        } else {
+                            ctx.t("appel", "call")
+                        }
+                    ));
+                }
+            });
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use namsdec_core::{Cpu, Memory};
+
+    /// Sur un vrai binaire, le module nomme ce qui est emprunté *et*
+    /// compte les appels qui y mènent.
+    ///
+    /// Le comptage est la partie fragile : les noms viennent des
+    /// sections — des adresses virtuelles — et le désassemblage part du
+    /// premier octet du fichier. Sans le rapprochement par position dans
+    /// le fichier, tous les comptes resteraient à zéro sans que rien ne
+    /// le signale.
+    #[test]
+    fn a_system_binary_shows_what_it_calls_and_how_often() {
+        let Ok(bytes) = std::fs::read("/bin/ls") else {
+            eprintln!("/bin/ls introuvable : test ignoré");
+            return;
+        };
+        // Comme l'interface : le fichier entier, désassemblé depuis son
+        // premier octet, posé à l'adresse de travail de namsdec.
+        let taille = bytes.len().min(0x10000);
+        let disasm = namsdec_disasm::disassemble(&bytes[..taille], 0x400000);
+        let mem = Memory::new(0x400000, 0x1000);
+        let cpu = Cpu::new(mem);
+        let ctx = ReContext {
+            cpu: &cpu,
+            disasm: &disasm,
+            source: "",
+            binary: &bytes,
+            lang: "fr",
+        };
+
+        let mut module = ImportsModule::default();
+        module.on_binary_loaded(&ctx);
+
+        let noms: Vec<&str> = module
+            .imports()
+            .iter()
+            .map(|import| import.name.as_str())
+            .collect();
+        assert!(noms.contains(&"malloc"), "{noms:?}");
+        assert!(noms.contains(&"free"), "{noms:?}");
+        assert_eq!(module.calls().len(), module.imports().len());
+        assert!(
+            module.calls().iter().sum::<usize>() > 50,
+            "un binaire de cette taille appelle ses imports : {:?}",
+            module.calls()
+        );
+    }
+
+    /// Un programme qui n'emprunte rien ne se voit pas reprocher de
+    /// tables manquantes : la liste est vide, et c'est tout.
+    #[test]
+    fn a_program_that_borrows_nothing_shows_nothing() {
+        let bytes: &[u8] = &[0x90, 0xc3];
+        let disasm = namsdec_disasm::disassemble(bytes, 0x400000);
+        let mut mem = Memory::new(0x400000, 0x100);
+        mem.load(0x400000, bytes).unwrap();
+        let cpu = Cpu::new(mem);
+        let ctx = ReContext {
+            cpu: &cpu,
+            disasm: &disasm,
+            source: "",
+            binary: bytes,
+            lang: "fr",
+        };
+        let mut module = ImportsModule::default();
+        module.on_binary_loaded(&ctx);
+        assert!(module.imports().is_empty());
+    }
+}

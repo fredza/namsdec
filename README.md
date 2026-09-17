@@ -79,7 +79,9 @@ est appelée de partout est celle par laquelle on commence à lire.
 
 **Les protections d'un binaire.** PIE, NX, RELRO, canari de pile,
 FORTIFY, IBT et pile fantôme, segments W+X, symboles, bibliothèques,
-RPATH — avec, pour chacun, ce que son état change concrètement. Sur
+RPATH, et les fonctions qu'il emprunte — chaque entrée de la table de
+liaison retrouve son nom, avec le nombre d'appels qui y mènent — avec,
+pour chacun, ce que son état change concrètement. Sur
 votre programme comme sur un binaire du système. Le rapport se copie en
 Markdown pour être collé dans un compte rendu ou un cours.
 

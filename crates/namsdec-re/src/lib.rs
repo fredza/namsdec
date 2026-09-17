@@ -9,6 +9,8 @@ mod binary_info;
 pub mod elf_scan;
 pub mod gadgets;
 mod gadgets_module;
+pub mod imports;
+mod imports_module;
 mod protections;
 pub mod report;
 pub mod strings;
@@ -19,6 +21,7 @@ mod xrefs_module;
 
 pub use binary_info::BinaryInfoModule;
 pub use gadgets_module::GadgetsModule;
+pub use imports_module::ImportsModule;
 pub use protections::ProtectionsModule;
 pub use strings::StringsModule;
 pub use syscalls::SyscallsModule;

@@ -165,7 +165,11 @@ pub fn markdown(lang: &str) -> String {
         (Kind::Concept, if fr { "Les notions" } else { "Concepts" }),
         (
             Kind::Instruction,
-            if fr { "Les instructions" } else { "Instructions" },
+            if fr {
+                "Les instructions"
+            } else {
+                "Instructions"
+            },
         ),
         (
             Kind::Directive,
