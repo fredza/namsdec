@@ -54,6 +54,9 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
 - F1 répond aussi sur une fonction empruntée.
 
 **Vérifier ce qu'on a fait**
+- Un exercice réussi le reste : pastille dans la liste, compte en tête de
+  la série, retenus sur le disque. Repartir du programme de départ ne le
+  défait pas — on ne retire pas ce qu'on a compris.
 - Onze exercices portent un but en conditions (`rax == 0xf`), vérifié
   sur les registres : le bandeau dit « atteint » ou « pas encore ». Une
   série installée peut en porter aussi (champ `goal`).

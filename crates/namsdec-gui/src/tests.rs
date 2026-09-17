@@ -10049,6 +10049,64 @@ fn the_title_bar_carries_the_file_name() {
     );
 }
 
+/// Un exercice réussi le reste : la pastille s'allume, le compte monte,
+/// et cela survit au lancement suivant.
+///
+/// Un parcours sans trace de ce qu'on a déjà fait oblige à s'en souvenir
+/// soi-même, et l'on refait le premier trois fois plutôt que d'attaquer
+/// le septième.
+#[test]
+fn a_solved_exercise_stays_solved() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        exercises: true,
+        ..Default::default()
+    };
+    assert!(app.exercises_done.is_empty(), "rien de fait au départ");
+
+    app.load_exercise("namsdec/boucle");
+    app.do_assemble();
+    app.do_run();
+    for _ in 0..50 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&egui::Context::default());
+    }
+    // Le but est atteint : le rendu le note une fois pour toutes.
+    paint(&mut app);
+    assert!(
+        app.exercises_done.contains("namsdec/boucle"),
+        "{:?}",
+        app.exercises_done
+    );
+
+    // Repartir du programme de départ ne le défait pas : on ne retire
+    // pas ce qu'on a compris.
+    app.load_exercise("namsdec/boucle");
+    paint(&mut app);
+    assert!(app.exercises_done.contains("namsdec/boucle"));
+
+    // Et le disque s'en souvient.
+    let écrit = serde_json::to_string(&app.settings_snapshot()).unwrap();
+    assert!(
+        écrit.contains("\"exercises_done\":[\"namsdec/boucle\"]"),
+        "{écrit}"
+    );
+    let relu = NamsdecApp::from_settings(serde_json::from_str(&écrit).unwrap());
+    assert!(relu.exercises_done.contains("namsdec/boucle"));
+
+    // La fenêtre le montre : le compte de la série.
+    app.show_exercises = true;
+    let painted = paint(&mut app);
+    assert!(
+        painted.contains(&format!("1/16 {}", strings(app.lang).exercises_done_count)),
+        "{painted}"
+    );
+}
+
 /// La mémoire montre sa carte : où commence le code, où finit la pile,
 /// ce que le tas occupe, avec les droits de chacun.
 ///

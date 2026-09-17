@@ -86,6 +86,13 @@ pub struct Settings {
     /// chercher.
     #[serde(default)]
     pub current_exercise: Option<String>,
+    /// Les exercices dont le but a été atteint au moins une fois.
+    ///
+    /// Un parcours sans trace de ce qu'on a déjà fait oblige à s'en
+    /// souvenir soi-même — et l'on refait le premier trois fois plutôt
+    /// que d'attaquer le septième.
+    #[serde(default)]
+    pub exercises_done: Vec<String>,
     /// Le moteur du panneau de désassemblage : « pseudo », « nasm », ou
     /// l'identifiant d'un outil installé. Celui qu'on a choisi doit
     /// revenir à la session suivante, comme le reste.
@@ -147,6 +154,7 @@ impl Default for Settings {
             hover_help: true,
             disabled_packs: Vec::new(),
             current_exercise: None,
+            exercises_done: Vec::new(),
             disassembler: pseudo_par_défaut(),
             memory_format: "bytes".to_owned(),
             heat_legend: true,

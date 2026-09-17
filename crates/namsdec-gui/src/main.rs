@@ -740,6 +740,11 @@ struct NamsdecApp {
     /// menus rendue : un `ViewportCommand` envoyé au milieu du rendu
     /// arriverait avant que la frame soit finie.
     window_command: Option<WindowCommand>,
+    /// Les exercices réussis, par identifiant complet.
+    ///
+    /// Retenu sur le disque : un parcours se fait en plusieurs fois, et
+    /// ce qu'on a déjà réussi ne se redemande pas.
+    exercises_done: BTreeSet<String>,
     /// La légende de la barre de chaleur, sous l'éditeur.
     ///
     /// Utile le temps d'apprendre à lire les teintes, superflue ensuite :
@@ -1406,6 +1411,7 @@ impl Default for NamsdecApp {
             mem_search: String::new(),
             mem_search_kind: SearchKind::Text,
             editing_register: None,
+            exercises_done: BTreeSet::new(),
             heat_legend: true,
             window_command: None,
             system_titlebar: false,
@@ -1487,6 +1493,7 @@ impl NamsdecApp {
             console_height: settings.console_height.map(|h| h as f32),
             system_titlebar: settings.system_titlebar,
             heat_legend: settings.heat_legend,
+            exercises_done: settings.exercises_done.iter().cloned().collect(),
             disassembler: settings.disassembler.clone(),
             explorer,
             saved_settings: settings,
@@ -1580,6 +1587,7 @@ impl NamsdecApp {
             console_height: self.console_height.map(|h| h.round() as u32),
             system_titlebar: self.system_titlebar,
             heat_legend: self.heat_legend,
+            exercises_done: self.exercises_done.iter().cloned().collect(),
             explorer_root: self.explorer.root.as_ref().map(|p| p.display().to_string()),
             current_file: self.current_file.as_ref().map(|p| p.display().to_string()),
             shortcuts: settings::shortcuts_to_strings(&self.keybindings),
@@ -4136,8 +4144,25 @@ impl NamsdecApp {
                             // par défaut — une liste qu'il faut déplier
                             // pour voir ce qu'elle contient n'aide
                             // personne le premier jour.
+                            // Combien de faits sur combien : le premier
+                            // chiffre qu'on cherche en rouvrant un
+                            // parcours.
+                            let faits = pack
+                                .exercises
+                                .iter()
+                                .filter(|exercise| {
+                                    self.exercises_done
+                                        .contains(&namsdec_exercises::full_id(pack, exercise))
+                                })
+                                .count();
                             let header = egui::CollapsingHeader::new(
-                                egui::RichText::new(&pack.name).color(theme.dim),
+                                egui::RichText::new(format!(
+                                    "{}  —  {faits}/{} {}",
+                                    pack.name,
+                                    pack.exercises.len(),
+                                    s.exercises_done_count
+                                ))
+                                .color(theme.dim),
                             )
                             .id_salt(&pack.id)
                             .default_open(true);
@@ -4156,6 +4181,30 @@ impl NamsdecApp {
                                                 theme.dim,
                                                 format!("{}/{total}", index + 1),
                                             );
+                                            // Une pastille pour ce qui est
+                                            // fait : un parcours sans trace
+                                            // de ce qu'on a déjà réussi
+                                            // oblige à s'en souvenir soi-
+                                            // même, et l'on refait le
+                                            // premier trois fois.
+                                            let fait = self.exercises_done.contains(&id);
+                                            let (pastille, _) = ui.allocate_exact_size(
+                                                egui::vec2(10.0, 10.0),
+                                                egui::Sense::hover(),
+                                            );
+                                            if fait {
+                                                ui.painter().circle_filled(
+                                                    pastille.center(),
+                                                    4.0,
+                                                    theme.good,
+                                                );
+                                            } else {
+                                                ui.painter().circle_stroke(
+                                                    pastille.center(),
+                                                    4.0,
+                                                    egui::Stroke::new(1.0, theme.dim),
+                                                );
+                                            }
                                             ui.strong(exercise.title.get(lang));
                                             if en_cours {
                                                 ui.colored_label(theme.accent, s.exercises_current);
@@ -5667,6 +5716,23 @@ impl NamsdecApp {
             }
         }
         self.help = Some((word.to_owned(), namsdec_doc::lookup(word)));
+    }
+
+    /// Note l'exercice en cours comme réussi si son but est atteint.
+    ///
+    /// Appelé à chaque image, mais n'écrit qu'une fois : le premier
+    /// passage au vert suffit, et repasser sur un exercice déjà fait ne
+    /// le défait pas — on ne retire pas ce qu'on a compris.
+    fn note_goal_reached(&mut self) {
+        let Some((_, true)) = self.exercise_goal() else {
+            return;
+        };
+        let Some(id) = self.current_exercise.clone() else {
+            return;
+        };
+        if self.exercises_done.insert(id) {
+            self.status = Status::Note(strings(self.lang).exercises_done_note);
+        }
     }
 
     /// Où en est le but de l'exercice en cours.
@@ -8205,6 +8271,7 @@ impl NamsdecApp {
         self.poll_update_check(&ctx);
         self.apply_tooltip_setting(&ctx);
         self.tick_run(&ctx);
+        self.note_goal_reached();
         if self.rebinding.is_none() {
             // Un rebind en cours capture les touches lui-même (voir
             // rebinding_ui) — pas de dispatch normal pendant ce temps.

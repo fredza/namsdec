@@ -140,7 +140,9 @@ Les raccourcis sont dans Préférences ▸ Raccourcis, et se changent.
 
 Onze des seize exercices portent un **but vérifiable** (`rax == 0xf`) :
 le bandeau de l'état du processeur dit « atteint » ou « pas encore », au
-lieu de laisser vérifier à l'œil. Une série installée peut en porter
+lieu de laisser vérifier à l'œil. Ce qui a été réussi une fois le reste :
+une pastille dans la liste, un compte en tête de la série, et les deux
+survivent au lancement suivant. Une série installée peut en porter
 aussi — champ `goal` du fichier JSON.
 
 Un parcours de seize exercices est livré avec le programme — registres,
