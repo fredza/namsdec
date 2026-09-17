@@ -188,6 +188,11 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
   survol, et la colonne du compteur disparaît avec ses quarante-quatre
   pixels. Une légende sous l'éditeur donne les valeurs, et Préférences ▸
   Affichage la retire.
+- Les colonnes du profil tombent sous leur en-tête : « ligne passages
+  part » était écrit d'un seul trait, avec des espaces qui ne mesuraient
+  rien. Une grille les aligne, les nombres sont calés à droite, et les
+  pourcentages s'écrivent comme la langue les écrit — « 30,0 % » en
+  français.
 - Un onglet **Profil**, dans la console, classe les lignes par temps
   passé dedans : le nombre de passages, la part du total, la ligne
   elle-même, et un clic qui y emmène. La bande de chaleur dit où ça

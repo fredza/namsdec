@@ -13157,3 +13157,113 @@ fn a_file_changed_on_disk_is_noticed_and_never_silently_overwritten() {
     assert!(!app.disk_changed, "notre propre écriture ne s'annonce pas");
     assert!(app.source.contains("; encore un ajout"));
 }
+
+/// Les colonnes du profil tombent sous leur en-tête.
+///
+/// « ligne passages part » écrit d'un seul trait, avec des espaces qui
+/// ne mesurent rien, ne surmonte aucune colonne : les titres flottaient
+/// à gauche pendant que les nombres se rangeaient ailleurs. Une grille
+/// aligne les uns sous les autres, et les nombres sont calés à droite —
+/// c'est ainsi que des chiffres se comparent d'une ligne à l'autre.
+#[test]
+fn the_profile_columns_line_up_under_their_headings() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: "\
+section .text
+global _start
+_start:
+    mov rcx, 3
+boucle:
+    dec rcx
+    jnz boucle
+    mov rax, 60
+    xor rdi, rdi
+    syscall
+"
+        .to_owned(),
+        console_tab: ConsoleTab::Profile,
+        show_console: true,
+        ..Default::default()
+    };
+    app.do_assemble();
+    app.do_run();
+    for _ in 0..20 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&egui::Context::default());
+    }
+
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 1400.0),
+        )),
+        ..Default::default()
+    };
+    // Chaque texte peint, avec son bord droit : c'est lui qui compte,
+    // les nombres étant calés à droite.
+    let mut textes: Vec<(String, f32, f32)> = Vec::new();
+    for _ in 0..2 {
+        textes.clear();
+        let mut output = ctx.run_ui(input.clone(), |ui| app.console_panel_ui(ui));
+        for clipped in &output.shapes {
+            if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                textes.push((
+                    text.galley.text().to_owned(),
+                    text.pos.x,
+                    text.pos.x + text.galley.size().x,
+                ));
+            }
+        }
+        output.textures_delta.clear();
+    }
+    for t in &textes {
+        if ["ligne", "passages", "part", "6", "3", "33.3 %", "7"].contains(&t.0.as_str()) {
+            eprintln!("T {:?} x={} droite={}", t.0, t.1, t.2);
+        }
+    }
+    // Les textes portent leur remplissage — c'est lui qui aligne dans
+    // une chasse fixe —, donc on les compare débarrassés de leurs
+    // espaces.
+    let droite_de = |mot: &str| -> f32 {
+        textes
+            .iter()
+            .find(|(t, _, _)| t.trim() == mot)
+            .unwrap_or_else(|| panic!("« {mot} » doit être peint : {textes:?}"))
+            .2
+    };
+
+    // Les trois titres, et sous chacun sa colonne. Le programme tourne
+    // trois fois dans sa boucle : la ligne 6 y passe 3 fois sur les dix
+    // instructions exécutées, soit 30 %.
+    for (titre, valeur) in [
+        (strings(Lang::Fr).line_word, "6"),
+        (strings(Lang::Fr).profile_count, "3"),
+        // En français, une virgule décimale et l'espace avant le signe.
+        (strings(Lang::Fr).profile_share, "30,0 %"),
+    ] {
+        let écart = (droite_de(titre) - droite_de(valeur)).abs();
+        assert!(
+            écart < 4.0,
+            "« {titre} » et « {valeur} » doivent finir à la même abscisse, \
+             obtenu {écart} px d'écart"
+        );
+    }
+
+    // Et les colonnes restent dans l'ordre : la ligne avant les
+    // passages, les passages avant la part.
+    assert!(
+        droite_de(strings(Lang::Fr).line_word) < droite_de(strings(Lang::Fr).profile_count),
+        "la colonne des lignes vient d'abord"
+    );
+    assert!(
+        droite_de(strings(Lang::Fr).profile_count) < droite_de(strings(Lang::Fr).profile_share),
+        "puis celle des passages"
+    );
+}

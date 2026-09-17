@@ -8283,89 +8283,111 @@ impl NamsdecApp {
             });
         }
         ui.colored_label(theme.dim, s.profile_hint);
-        // L'en-tête des colonnes : sans lui, « 12 » et « 4,2 % » se
-        // lisent, mais « 1 204 » se prend pour une adresse.
-        ui.horizontal(|ui| {
-            ui.add_space(8.0 + ui.spacing().item_spacing.x);
-            ui.colored_label(
-                theme.dim,
-                egui::RichText::new(format!(
-                    "{:>5}  {:>9}  {:>7}",
-                    s.line_word, s.profile_count, s.profile_share
-                ))
-                .monospace()
-                .small(),
-            );
-        });
         ui.separator();
 
         let mut goto = None;
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
-                for (ligne, compte) in &classement {
-                    let part = *compte as f32 / total.max(1) as f32;
-                    ui.horizontal(|ui| {
-                        // La pastille reprend exactement la teinte de la
-                        // gouttière : la même ligne a la même couleur
-                        // aux deux endroits, sinon le lien se perd.
-                        let (rect, _) =
-                            ui.allocate_exact_size(egui::vec2(8.0, 12.0), egui::Sense::hover());
-                        ui.painter().rect_filled(
-                            rect,
-                            1.0,
-                            heat_colour(theme, *compte, plus_chaude),
-                        );
-                        ui.colored_label(
-                            theme.dim,
-                            egui::RichText::new(format!("{ligne:>5}")).monospace(),
-                        );
-                        ui.colored_label(
-                            theme.text,
-                            egui::RichText::new(format!("{:>9}", sidebar::group_digits(*compte)))
-                                .monospace(),
-                        );
-                        ui.colored_label(
-                            theme.dim,
-                            egui::RichText::new(format!("{:>5.1} %", part * 100.0)).monospace(),
-                        );
-                        // Une barre proportionnelle : les pourcentages se
-                        // comparent bien plus vite en longueur qu'en
-                        // chiffres.
-                        let (barre, _) =
-                            ui.allocate_exact_size(egui::vec2(60.0, 10.0), egui::Sense::hover());
-                        ui.painter().rect_filled(
-                            egui::Rect::from_min_size(
-                                barre.min,
-                                egui::vec2(barre.width() * part, barre.height()),
-                            ),
-                            1.0,
-                            heat_colour(theme, *compte, plus_chaude),
-                        );
-                        // Le bloc auquel la ligne appartient : « boucle: »
-                        // devant « dec rcx » dit en un mot ce qu'un
-                        // numéro seul oblige à aller vérifier.
-                        if let Some(étiquette) = enclosing_label(&self.source, *ligne) {
+                // Une grille, et non des rangées posées à la main : les
+                // colonnes d'une rangée tombaient sous les mots d'une
+                // autre, et l'en-tête — un seul texte dont les espaces ne
+                // mesuraient rien — sous aucune.
+                egui::Grid::new("profile_rows")
+                    .num_columns(6)
+                    .min_col_width(0.0)
+                    .striped(true)
+                    .show(ui, |ui| {
+                        // L'en-tête : sans lui, « 12 » et « 4,2 % » se
+                        // lisent, mais « 1 204 » se prend pour une
+                        // adresse.
+                        ui.label("");
+                        // Les titres au même gabarit que les nombres
+                        // qu'ils surmontent : dans une chasse fixe, c'est
+                        // le remplissage qui aligne, et la grille fait le
+                        // reste. Une cellule de grille ne prend que la
+                        // largeur de son contenu — un calage à droite n'y
+                        // change donc rien.
+                        for (titre, largeur) in [
+                            (s.line_word, COL_LIGNE),
+                            (s.profile_count, COL_PASSAGES),
+                            (s.profile_share, COL_PART),
+                        ] {
                             ui.colored_label(
-                                theme.label,
-                                egui::RichText::new(format!("{étiquette}:")).monospace(),
+                                theme.dim,
+                                egui::RichText::new(caler_à_droite(titre, largeur)).monospace(),
                             );
                         }
-                        // La ligne elle-même : sans elle, le classement
-                        // renvoie à un numéro qu'il faut aller chercher.
-                        let texte = source_line(&self.source, *ligne);
-                        let réponse = ui.add(
-                            egui::Label::new(
-                                egui::RichText::new(texte).monospace().color(theme.text),
-                            )
-                            .sense(egui::Sense::click())
-                            .truncate(),
-                        );
-                        if réponse.on_hover_text(s.profile_goto).clicked() {
-                            goto = Some(*ligne);
+                        ui.label("");
+                        ui.label("");
+                        ui.end_row();
+
+                        for (ligne, compte) in &classement {
+                            let part = *compte as f32 / total.max(1) as f32;
+                            let teinte = heat_colour(theme, *compte, plus_chaude);
+                            // La pastille reprend exactement la teinte de
+                            // la gouttière : la même ligne a la même
+                            // couleur aux deux endroits, sinon le lien se
+                            // perd.
+                            let (rect, _) =
+                                ui.allocate_exact_size(egui::vec2(8.0, 12.0), egui::Sense::hover());
+                            ui.painter().rect_filled(rect, 1.0, teinte);
+
+                            // Les trois nombres, calés à droite de leur
+                            // colonne : c'est ainsi que des chiffres se
+                            // comparent d'une ligne à l'autre.
+                            for (texte, largeur, couleur) in [
+                                (format!("{ligne}"), COL_LIGNE, theme.dim),
+                                (sidebar::group_digits(*compte), COL_PASSAGES, theme.text),
+                                (pourcentage(part, self.lang), COL_PART, theme.dim),
+                            ] {
+                                ui.colored_label(
+                                    couleur,
+                                    egui::RichText::new(caler_à_droite(&texte, largeur))
+                                        .monospace(),
+                                );
+                            }
+
+                            // Une barre proportionnelle : les pourcentages
+                            // se comparent bien plus vite en longueur
+                            // qu'en chiffres.
+                            let (barre, _) = ui
+                                .allocate_exact_size(egui::vec2(60.0, 10.0), egui::Sense::hover());
+                            ui.painter().rect_filled(
+                                egui::Rect::from_min_size(
+                                    barre.min,
+                                    egui::vec2(barre.width() * part, barre.height()),
+                                ),
+                                1.0,
+                                teinte,
+                            );
+
+                            // Le bloc et la ligne elle-même : sans eux, le
+                            // classement renvoie à un numéro qu'il faut
+                            // aller chercher.
+                            ui.horizontal(|ui| {
+                                if let Some(étiquette) = enclosing_label(&self.source, *ligne) {
+                                    ui.colored_label(
+                                        theme.label,
+                                        egui::RichText::new(format!("{étiquette}:")).monospace(),
+                                    );
+                                }
+                                let réponse = ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(source_line(&self.source, *ligne))
+                                            .monospace()
+                                            .color(theme.text),
+                                    )
+                                    .sense(egui::Sense::click())
+                                    .truncate(),
+                                );
+                                if réponse.on_hover_text(s.profile_goto).clicked() {
+                                    goto = Some(*ligne);
+                                }
+                            });
+                            ui.end_row();
                         }
                     });
-                }
             });
         if let Some(ligne) = goto {
             self.goto_line = Some(ligne);
@@ -8378,12 +8400,12 @@ impl NamsdecApp {
         let s = strings(self.lang);
         let mut out = format!("{} {}\n", sidebar::group_digits(total), s.profile_total);
         for (ligne, compte) in classement {
-            let part = *compte as f32 / total.max(1) as f32 * 100.0;
+            let part = pourcentage(*compte as f32 / total.max(1) as f32, self.lang);
             let bloc = enclosing_label(&self.source, *ligne)
                 .map(|nom| format!("{nom}: "))
                 .unwrap_or_default();
             out.push_str(&format!(
-                "{ligne:>5}  {:>9}  {part:>5.1} %  {bloc}{}\n",
+                "{ligne:>5}  {:>9}  {part:>7}  {bloc}{}\n",
                 sidebar::group_digits(*compte),
                 source_line(&self.source, *ligne)
             ));
@@ -9002,6 +9024,45 @@ fn executable_ranges(file: &[u8], loaded: usize) -> Option<Vec<(u64, u64)>> {
         .collect();
     plages.sort_unstable();
     (!plages.is_empty()).then_some(plages)
+}
+
+/// Les largeurs, en caractères, des trois colonnes chiffrées du profil.
+///
+/// Assez pour un numéro de ligne à cinq chiffres, un compte de passages
+/// groupé par milliers, et « 100.0 % ». Les titres partagent le même
+/// gabarit : c'est ce qui les pose exactement au-dessus de ce qu'ils
+/// nomment.
+const COL_LIGNE: usize = 6;
+const COL_PASSAGES: usize = 9;
+const COL_PART: usize = 7;
+
+/// Une part en pourcentage, écrite comme la langue l'écrit.
+///
+/// Le français met une virgule décimale et une espace avant le signe ;
+/// l'anglais un point et rien. Un atelier qui parle deux langues écrit
+/// ses nombres dans les deux.
+fn pourcentage(part: f32, lang: Lang) -> String {
+    let brut = format!("{:.1}", part * 100.0);
+    if lang == Lang::Fr {
+        format!("{} %", brut.replace('.', ","))
+    } else {
+        format!("{brut}%")
+    }
+}
+
+/// Un texte complété d'espaces à gauche, pour tenir la largeur voulue
+/// dans une police à chasse fixe.
+///
+/// Plus long que la largeur demandée, il est rendu tel quel : mieux vaut
+/// une colonne qui s'élargit qu'un nombre amputé.
+fn caler_à_droite(texte: &str, largeur: usize) -> String {
+    let compte = texte.chars().count();
+    if compte >= largeur {
+        return texte.to_owned();
+    }
+    let mut out = " ".repeat(largeur - compte);
+    out.push_str(texte);
+    out
 }
 
 /// Les valeurs que montre la légende, de la plus froide à la plus
