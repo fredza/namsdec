@@ -6428,7 +6428,7 @@ fn the_course_offers_the_next_step() {
 /// Le manuel se consulte aussi pour ce qu'on ne connaît pas encore.
 ///
 /// F1 répond sur le mot où l'on est : encore faut-il savoir quoi
-/// écrire. La fenêtre d'aide cherche maintenant dans les 141 fiches, par
+/// écrire. La fenêtre d'aide cherche maintenant dans les 144 fiches, par
 /// nom comme par titre.
 #[test]
 fn the_manual_can_be_searched_for_what_one_does_not_know_yet() {
@@ -8668,6 +8668,29 @@ deux:
     let emulator = app.emulator.as_ref().expect("chargé");
     let après = return_addresses(emulator.cpu(), &symbols, 32);
     assert_eq!(après.len(), 1, "{après:?}");
+}
+
+/// La palette promet « toutes les commandes » : elle les a toutes.
+///
+/// Une action qui n'y figure pas n'existe que pour qui connaît déjà son
+/// raccourci — c'est-à-dire pour personne, le premier jour.
+#[test]
+fn the_palette_offers_every_action_there_is() {
+    let s = strings(Lang::Fr);
+    let commandes = palette_commands(s, true, true);
+    for action in Action::ALL {
+        assert!(
+            commandes
+                .iter()
+                .any(|(_, command)| matches!(command, PaletteCommand::Do(a) if *a == action)),
+            "{action:?} n'est proposée nulle part dans la palette"
+        );
+    }
+    // Et chaque entrée porte un libellé : une ligne vide ne se cherche
+    // pas.
+    for (label, _) in &commandes {
+        assert!(!label.trim().is_empty());
+    }
 }
 
 /// La mémoire montre sa carte : où commence le code, où finit la pile,

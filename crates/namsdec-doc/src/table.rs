@@ -1928,6 +1928,48 @@ pub const ENTRIES: &[Entry] = &[
     // laisse le lecteur les deviner.
     Entry {
         kind: Kind::Concept,
+        names: &["debordement", "débordement", "overflow"],
+        title: Text {
+            fr: "Le débordement de tampon",
+            en: "Buffer overflow",
+        },
+        body: Text {
+            fr: "Un tampon a une taille ; l'écriture, elle, n'en a pas connaissance. Lire soixante-quatre octets dans seize, c'est écrire quarante-huit octets sur ce qui suit — et sur la pile, ce qui suit est l'adresse de retour que `call` y a déposée. Le `ret` repart alors où l'on a écrit. Le **canari de pile** est la réponse : une valeur posée juste avant l'adresse de retour, vérifiée avant de s'en servir. L'exercice « débordement » le montre, et le motif cyclique mesure de combien ça dépasse.",
+            en: "A buffer has a size; the write knows nothing of it. Reading sixty-four bytes into sixteen means writing forty-eight bytes over what follows — and on the stack, what follows is the return address `call` put there. The `ret` then leaves for wherever one wrote. The **stack canary** is the answer: a value placed just before the return address and checked before using it. The \"overflow\" exercise shows this, and the cyclic pattern measures by how much.",
+        },
+        flags: "",
+        example: "    sub rsp, 16     ; seize octets de tampon\n    add rsp, 16",
+    },
+    Entry {
+        kind: Kind::Concept,
+        names: &["motif", "cyclique", "debruijn", "cyclic"],
+        title: Text {
+            fr: "Le motif cyclique",
+            en: "The cyclic pattern",
+        },
+        body: Text {
+            fr: "Une suite dont toute tranche de quatre octets n'apparaît qu'une fois — `aaaabaaacaaa…`. Donnée à manger à un programme qui déborde, elle se retrouve là où le débordement a écrit ; les quatre octets lus dans `RIP` disent alors, à eux seuls, à quelle distance du début du tampon se trouvait ce qui a été écrasé. C'est une suite de De Bruijn, et celle de namsdec est octet pour octet celle de pwntools : un décalage trouvé ici vaut ailleurs. Outils ▸ Motif cyclique.",
+            en: "A sequence in which every four-byte slice appears exactly once — `aaaabaaacaaa…`. Fed to a program that overflows, it ends up wherever the overflow wrote; the four bytes read from `RIP` then say by themselves how far from the start of the buffer the overwritten thing was. It is a De Bruijn sequence, and namsdec's is byte for byte pwntools': an offset found here holds elsewhere. Tools ▸ Cyclic pattern.",
+        },
+        flags: "",
+        example: "; Outils > Motif cyclique, puis « Vers l'entrée du programme »\n    nop",
+    },
+    Entry {
+        kind: Kind::Concept,
+        names: &["plt", "got", "liaison", "import"],
+        title: Text {
+            fr: "La table de liaison (PLT, GOT)",
+            en: "The linkage table (PLT, GOT)",
+        },
+        body: Text {
+            fr: "Un programme qui appelle `malloc` ne sait pas où elle sera : la bibliothèque est chargée ailleurs à chaque exécution. Il appelle donc une petite fonction à lui — une entrée de la **PLT** — qui saute à l'adresse écrite dans la **GOT**, remplie par l'éditeur de liens au chargement. C'est pour cela qu'un `call` vers la bibliothèque C reste, dans le binaire, un appel vers le binaire lui-même. namsdec retrouve le nom de chaque entrée : fenêtre Analyse ▸ Fonctions importées, et `malloc@plt` dans le listing.",
+            en: "A program calling `malloc` cannot know where it will be: the library is loaded elsewhere on every run. So it calls a small function of its own — a **PLT** entry — which jumps to the address written in the **GOT**, filled in by the linker at load time. That is why a call into the C library remains, inside the binary, a call into the binary itself. namsdec recovers each entry's name: Analysis ▸ Imported functions, and `malloc@plt` in the listing.",
+        },
+        flags: "",
+        example: "; Dans un binaire ouvert : call 0x401030 -> malloc@plt\n    nop",
+    },
+    Entry {
+        kind: Kind::Concept,
         names: &["pwndbg", "gdb", "debogueur", "débogueur"],
         title: Text {
             fr: "Ce qu'un débogueur fait, et ce que namsdec en fait",

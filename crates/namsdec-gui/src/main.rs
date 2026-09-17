@@ -918,6 +918,31 @@ fn palette_commands(
             PaletteCommand::Do(Action::GoToLabel),
         ),
         (s.action_find.to_string(), PaletteCommand::Do(Action::Find)),
+        // Les gestes d'exécution que les menus portent aussi : la
+        // palette promet « toutes les commandes », et une commande
+        // qu'elle ne propose pas n'existe que pour qui connaît déjà son
+        // raccourci.
+        (
+            s.action_step_back.to_string(),
+            PaletteCommand::Do(Action::StepBack),
+        ),
+        (
+            s.action_run_to_cursor.to_string(),
+            PaletteCommand::Do(Action::RunToCursor),
+        ),
+        (
+            s.action_run_to_call.to_string(),
+            PaletteCommand::Do(Action::RunToCall),
+        ),
+        (
+            s.action_run_to_return.to_string(),
+            PaletteCommand::Do(Action::RunToReturn),
+        ),
+        (
+            s.action_run_to_syscall.to_string(),
+            PaletteCommand::Do(Action::RunToSyscall),
+        ),
+        (s.file_new.to_string(), PaletteCommand::Do(Action::New)),
         (s.help_about.to_string(), PaletteCommand::ShowAbout),
         (s.analysis_open.to_string(), PaletteCommand::ShowAnalysis),
         (s.vectors_open.to_string(), PaletteCommand::ShowVectors),
