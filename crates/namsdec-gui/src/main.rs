@@ -1378,7 +1378,7 @@ enum PreferencesTab {
 /// chose qui marche même quand il ne l'est pas.
 const DEFAULT_SOURCE: &str = "\
 ; Bienvenue dans namsdec. Assemblez (Ctrl+Maj+B), puis avancez pas à pas.
-; Un parcours de soixante et onze exercices vous attend : Préférences > Modules.
+; Un parcours de quatre-vingt-seize exercices vous attend : Préférences > Modules.
 
 global _start
 
@@ -4952,7 +4952,7 @@ impl NamsdecApp {
                     return;
                 }
                 ui.label(s.exercises_legend);
-                // L'étape en cours, en tête : soixante et onze exercices ne tiennent
+                // L'étape en cours, en tête : quatre-vingt-seize exercices ne tiennent
                 // pas dans la fenêtre, et « où j'en étais » ne sert à
                 // rien s'il faut le chercher en défilant.
                 if let Some(id) = self.current_exercise.clone()
@@ -5005,7 +5005,7 @@ impl NamsdecApp {
                 egui::ScrollArea::vertical()
                     .max_height(room)
                     // `false` en hauteur : une zone qui rétrécit à son
-                    // contenu est aussi haute que ses soixante et onze exercices,
+                    // contenu est aussi haute que ses quatre-vingt-seize exercices,
                     // donc ne défile jamais — elle déborde de la fenêtre,
                     // et ce qui dépasse est coupé.
                     .auto_shrink([false, false])

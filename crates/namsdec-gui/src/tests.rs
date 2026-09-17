@@ -4052,6 +4052,12 @@ fn the_built_in_pack_is_a_course_in_order() {
             "test_and",
             "xchg_bswap",
             "masques",
+            "constantes",
+            "rotations",
+            "setcc",
+            "not_neg",
+            "division_signee",
+            "immediats",
             "decalages",
             "compter_bits",
             "multiplier",
@@ -4071,6 +4077,13 @@ fn the_built_in_pack_is_a_course_in_order() {
             "borne",
             "puissances",
             "somme_moyenne",
+            "tableau_octets",
+            "memmove",
+            "remplir",
+            "bit_scan",
+            "adc_128",
+            "table_conversion",
+            "padding",
             "chaine",
             "chaines",
             "comparer_chaines",
@@ -4094,6 +4107,13 @@ fn the_built_in_pack_is_a_course_in_order() {
             "args_pile",
             "pointeur_fonction",
             "alignement",
+            "concatener",
+            "premier_mot",
+            "recursion_terminale",
+            "tri_insertion",
+            "recherche_binaire",
+            "liste_chainee",
+            "transposee",
             "sortie",
             "entree",
             "tas",
@@ -4108,6 +4128,11 @@ fn the_built_in_pack_is_a_course_in_order() {
             "somme_controle",
             "canari",
             "flottants_masque",
+            "simd_somme",
+            "flottants_conversion",
+            "table_ascii",
+            "afficher_signe",
+            "echo",
         ]
     );
     for exercise in &pack.exercises {
@@ -5644,11 +5669,11 @@ fn the_readme_tells_the_truth() {
 
     let exercices = builtin_pack().exercises.len();
     assert_eq!(
-        exercices, 71,
-        "le parcours livré compte soixante et onze exercices"
+        exercices, 96,
+        "le parcours livré compte quatre-vingt-seize exercices"
     );
     assert!(
-        readme.contains("parcours de soixante et onze exercices"),
+        readme.contains("parcours de quatre-vingt-seize exercices"),
         "le README doit annoncer le bon nombre d'exercices"
     );
     // Les crates listées dans le tableau existent toutes.
@@ -6559,12 +6584,12 @@ fn the_course_remembers_where_one_stopped() {
         "l'étape en cours se voit sans avoir à la chercher : {painted}"
     );
     // Le rang dans le parcours, aussi : le tableau est la
-    // vingt-quatrième des soixante et onze étapes.
-    assert!(painted.contains("24/71"), "{painted}");
+    // vingt-quatrième des quatre-vingt-seize étapes.
+    assert!(painted.contains("30/96"), "{painted}");
 }
 
 /// Un parcours se suit : l'étape suivante est à un clic, sans avoir à
-/// retrouver son rang dans une liste de soixante et onze.
+/// retrouver son rang dans une liste de quatre-vingt-seize.
 #[test]
 fn the_course_offers_the_next_step() {
     let mut app = NamsdecApp {
@@ -6583,7 +6608,7 @@ fn the_course_offers_the_next_step() {
 
     // Le dernier n'en a pas : un parcours a une fin, et l'outil ne
     // propose pas d'aller au-delà.
-    assert!(app.exercise_after("namsdec/flottants_masque").is_none());
+    assert!(app.exercise_after("namsdec/echo").is_none());
     // Un identifiant inconnu non plus.
     assert!(app.exercise_after("namsdec/ceci-nexiste-pas").is_none());
 
@@ -6612,7 +6637,7 @@ fn the_course_offers_the_next_step() {
     }
     assert!(painted.contains("Étape suivante"), "{painted}");
     assert!(
-        painted.contains("1/71"),
+        painted.contains("1/96"),
         "le rang de l'étape en cours : {painted}"
     );
 }
@@ -9130,7 +9155,31 @@ fn every_goal_is_readable_and_on_the_right_side() {
     }
     // Ce que le programme livré fait déjà : on le regarde tourner et on
     // comprend ce qui s'est passé.
-    const DÉMONSTRATIONS: [&str; 62] = [
+    const DÉMONSTRATIONS: [&str; 86] = [
+        "constantes",
+        "rotations",
+        "setcc",
+        "not_neg",
+        "division_signee",
+        "immediats",
+        "tableau_octets",
+        "memmove",
+        "remplir",
+        "bit_scan",
+        "adc_128",
+        "table_conversion",
+        "padding",
+        "concatener",
+        "premier_mot",
+        "recursion_terminale",
+        "tri_insertion",
+        "recherche_binaire",
+        "liste_chainee",
+        "transposee",
+        "simd_somme",
+        "flottants_conversion",
+        "table_ascii",
+        "afficher_signe",
         "hexadecimal",
         "incrementer",
         "test_and",
@@ -10335,7 +10384,7 @@ fn a_solved_exercise_stays_solved() {
     app.show_exercises = true;
     let painted = paint(&mut app);
     assert!(
-        painted.contains(&format!("1/71 {}", strings(app.lang).exercises_done_count)),
+        painted.contains(&format!("1/96 {}", strings(app.lang).exercises_done_count)),
         "{painted}"
     );
 }
@@ -13378,7 +13427,7 @@ fn the_shipped_course_is_a_file_that_install_puts_in_place() {
     assert!(fichier.is_file(), "{} manque", fichier.display());
     let pack = namsdec_exercises::pack::read(&fichier).expect("la série livrée se lit");
     assert_eq!(pack.id, namsdec_exercises::BUILTIN_ID);
-    assert!(pack.exercises.len() >= 71, "{}", pack.exercises.len());
+    assert!(pack.exercises.len() >= 96, "{}", pack.exercises.len());
 
     // Et l'installateur le pose là où le programme va le chercher.
     let install = std::fs::read_to_string(racine.join("install.sh")).expect("install.sh");

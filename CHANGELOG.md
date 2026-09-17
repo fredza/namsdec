@@ -229,7 +229,20 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
   au démarrage comme n'importe quelle série. Corriger un énoncé ne
   demande plus de recompiler, et ce qu'on écrit soi-même se range
   exactement comme ce qui est livré.
-- Vingt-quatre étapes de plus, portées à **71** : les trois écritures
+- Vingt-cinq étapes encore, portées à **96** : ce que l'assembleur
+  calcule pour vous, les rotations, `setcc`, `not` et `neg`, la division
+  signée et le `cqo` qu'elle exige, ce que coûte un immédiat ; les
+  tableaux d'octets, les zones qui se chevauchent (`memmove` contre
+  `memcpy`), `rep stosb`, la recherche de bit, l'addition sur cent
+  vingt-huit bits, la table de conversion, les trous d'une structure ;
+  la concaténation, l'extraction d'un mot, la récursion terminale qui
+  devient une boucle, le tri par insertion à comparer au tri à bulles
+  dans le Profil, la recherche binaire et son calcul de milieu qui
+  déborde, la liste chaînée, la transposition ; la somme vectorielle et
+  son repliement final, tronquer contre arrondir, la table ASCII en un
+  seul `write`, l'affichage d'un négatif et le nombre sur lequel la
+  valeur absolue ment, et la lecture jusqu'à la fin.
+- Vingt-quatre étapes de plus avant elles, portées alors à 71 : les trois écritures
   d'un nombre, `inc` contre `add` et la retenue qu'il épargne, `test`
   qui regarde sans écrire, `xchg` et `bswap`, les masques de bits ; le
   minimum et le maximum en un passage, la parité en un bit, les
