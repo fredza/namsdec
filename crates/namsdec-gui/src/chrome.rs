@@ -172,13 +172,36 @@ pub fn window_buttons_ui(ui: &mut egui::Ui, s: &Strings, maximized: bool) -> Opt
 
 /// Rend la zone vide de la barre de menus déplaçable, et le double-clic
 /// maximisant — les deux gestes qu'on fait sans y penser sur une barre
-/// de titre.
-pub fn title_drag_ui(ui: &mut egui::Ui, maximized: bool) {
+/// de titre. Y écrit aussi ce qu'on y cherche : le nom du fichier.
+pub fn title_drag_ui(
+    ui: &mut egui::Ui,
+    theme: &'static Theme,
+    titre: &str,
+    modifié: bool,
+    maximized: bool,
+) {
     let reste = ui.available_size_before_wrap();
     if reste.x <= 0.0 {
         return;
     }
-    let (_, réponse) = ui.allocate_exact_size(reste, egui::Sense::click_and_drag());
+    let (bande, réponse) = ui.allocate_exact_size(reste, egui::Sense::click_and_drag());
+    // Le nom du fichier, centré dans ce qui reste entre les menus et les
+    // pastilles. Une barre de titre sans titre laisse deviner, à l'alt-
+    // tab comme au réveil, sur quoi l'on travaillait.
+    let texte = if modifié {
+        format!("{titre} •")
+    } else {
+        titre.to_owned()
+    };
+    let galley = ui.painter().layout_no_wrap(
+        texte,
+        egui::TextStyle::Body.resolve(ui.style()),
+        if modifié { theme.changed } else { theme.dim },
+    );
+    if galley.size().x < bande.width() {
+        ui.painter()
+            .galley(bande.center() - galley.size() * 0.5, galley, theme.dim);
+    }
     if réponse.drag_started() {
         ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
     }

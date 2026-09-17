@@ -3466,8 +3466,21 @@ impl NamsdecApp {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     bouton_fenêtre = chrome::window_buttons_ui(ui, s, maximisée);
                     // Tout ce qui reste entre les menus et les pastilles
-                    // saisit la fenêtre, et le double-clic l'agrandit.
-                    chrome::title_drag_ui(ui, maximisée);
+                    // saisit la fenêtre, porte le nom du fichier, et le
+                    // double-clic l'agrandit.
+                    let fichier = self
+                        .current_file
+                        .as_ref()
+                        .and_then(|path| path.file_name())
+                        .map(|name| name.to_string_lossy().into_owned())
+                        .unwrap_or_else(|| s.untitled_buffer.to_owned());
+                    chrome::title_drag_ui(
+                        ui,
+                        self.theme,
+                        &fichier,
+                        self.source != self.saved_source,
+                        maximisée,
+                    );
                 });
             }
         });

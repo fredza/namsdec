@@ -9969,14 +9969,14 @@ fn the_panel_puts_forward_what_matters() {
         output.textures_delta.clear();
     }
     assert_eq!(sections, 2, "les zéros de tête sont à part");
-    // Une valeur nulle garde un chiffre lisible : tout effacer donnerait
-    // une ligne vide.
+    // Une valeur nulle s'efface en entier : un seul morceau, et rien
+    // qui attire l'œil sur le registre qui n'a rien à dire.
     let mut vides = 0usize;
     let mut output = ctx.run_ui(input.clone(), |ui| {
         vides = hex_job(ui, app.theme, 0, app.theme.text).sections.len();
     });
     output.textures_delta.clear();
-    assert_eq!(vides, 2, "même à zéro, un chiffre reste lisible");
+    assert_eq!(vides, 1, "à zéro, tout passe au second plan");
 
     // Le détail de l'instruction est replié devant une instruction
     // ordinaire, et s'ouvre de lui-même devant un appel.
@@ -10007,6 +10007,46 @@ quelquepart:
     app.next_detail_open = false;
     let painted = paint(&mut app);
     assert!(!painted.contains(s.call_arguments), "{painted}");
+}
+
+/// La barre de titre porte un titre : le nom du fichier, au milieu, avec
+/// la marque de ce qui n'est pas enregistré.
+///
+/// Une barre de titre sans titre laisse deviner, à l'alt-tab comme au
+/// réveil, sur quoi l'on travaillait.
+#[test]
+fn the_title_bar_carries_the_file_name() {
+    let mut app = NamsdecApp::default();
+    let s = strings(app.lang);
+    let painted = paint(&mut app);
+    // Sans fichier, le nom du tampon — et il est déjà modifié ou non
+    // comme n'importe quel autre.
+    assert!(painted.contains(s.untitled_buffer), "{painted}");
+
+    // Avec un fichier : son nom, et la marque quand il a changé.
+    app.current_file = Some(std::path::PathBuf::from("/tmp/exemple.asm"));
+    app.saved_source = app.source.clone();
+    let painted = paint(&mut app);
+    assert!(painted.contains("exemple.asm"), "{painted}");
+    assert!(!painted.contains("exemple.asm •"), "rien à enregistrer");
+
+    app.source.push_str("    nop\n");
+    // Deux fois : la barre de titre et la barre de statut, qui le dit
+    // aussi depuis toujours.
+    assert_eq!(
+        paint(&mut app).matches("exemple.asm •").count(),
+        2,
+        "le titre et le statut"
+    );
+
+    // Et quand la barre du système reprend la main, namsdec n'écrit
+    // plus de titre : ce serait le dire deux fois.
+    app.system_titlebar = true;
+    assert_eq!(
+        paint(&mut app).matches("exemple.asm •").count(),
+        1,
+        "le statut seul"
+    );
 }
 
 /// La mémoire montre sa carte : où commence le code, où finit la pile,

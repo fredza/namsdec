@@ -2235,9 +2235,14 @@ pub(crate) fn hex_job(
     let texte = format!("{value:016x}");
     let police = egui::TextStyle::Monospace.resolve(ui.style());
     let mut job = egui::text::LayoutJob::default();
-    // Tout à zéro : il n'y a rien à mettre en avant, et tout effacer
-    // rendrait la ligne illisible. Le dernier chiffre porte la valeur.
-    let significatifs = texte.len() - texte.chars().take_while(|c| *c == '0').count().min(15);
+    // Une valeur nulle s'efface en entier : un zéro clair au bout de
+    // quinze zéros sombres attire l'œil sur le seul registre qui n'a
+    // rien à dire.
+    let significatifs = if value == 0 {
+        0
+    } else {
+        texte.len() - texte.chars().take_while(|c| *c == '0').count()
+    };
     let (zéros, reste) = texte.split_at(texte.len() - significatifs);
     if !zéros.is_empty() {
         job.append(
@@ -2250,15 +2255,17 @@ pub(crate) fn hex_job(
             },
         );
     }
-    job.append(
-        reste,
-        0.0,
-        egui::TextFormat {
-            font_id: police,
-            color: colour,
-            ..Default::default()
-        },
-    );
+    if !reste.is_empty() {
+        job.append(
+            reste,
+            0.0,
+            egui::TextFormat {
+                font_id: police,
+                color: colour,
+                ..Default::default()
+            },
+        );
+    }
     job
 }
 
