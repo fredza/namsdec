@@ -9221,6 +9221,97 @@ fn opening_a_binary_shows_its_code_not_its_header() {
     assert!(app.source.contains("malloc@plt:"), "les étiquettes restent");
 }
 
+/// Les deux langues disent les mêmes choses : mêmes champs, aucun vide,
+/// et rien qui soit resté en français dans la version anglaise.
+///
+/// C'est l'erreur qu'on fait en ajoutant un message : le compilateur
+/// exige les deux champs, mais rien n'empêche d'y écrire deux fois la
+/// même phrase. Les mots qui sont *les mêmes* dans les deux langues —
+/// « Step Into », « OK », un nom d'onglet technique — sont listés ici
+/// un par un, pour qu'un oubli ne puisse pas s'y cacher.
+#[test]
+fn both_languages_say_the_same_things() {
+    /// Les champs dont les deux langues partagent le texte, et pourquoi.
+    const LES_MÊMES: [&str; 18] = [
+        // Les commandes que tout débogueur écrit ainsi, y compris en
+        // français : les traduire couperait du reste du monde.
+        "action_step_into",
+        "action_step_over",
+        "action_step_back",
+        "action_stop",
+        // Un mot identique dans les deux langues.
+        "abi_arguments",
+        "about_build_word",
+        "dialog_ok",
+        "bytes_instructions",
+        "disassembly_nasm",
+        "disassembly_pseudo",
+        "filter_markdown",
+        "preferences_tab_modules",
+        "preferences_tab_plugins",
+        "tab_diagnostics",
+        "tab_output",
+        "tab_re",
+        "view_console",
+        "x87_empty",
+    ];
+
+    let source = include_str!("i18n.rs");
+    let bloc = |nom: &str| {
+        let début = source
+            .find(&format!("const {nom}: Strings = Strings {{"))
+            .unwrap_or_else(|| panic!("le bloc {nom} existe"));
+        let fin = source[début..].find("\n};").expect("le bloc se ferme") + début;
+        &source[début..fin]
+    };
+    let champs = |bloc: &str| -> Vec<(String, String)> {
+        let mut out = Vec::new();
+        for ligne in bloc.lines() {
+            let taillée = ligne.trim();
+            // Une ligne de champ : `nom: "valeur",`. Les commentaires et
+            // les suites de `concat!` n'en sont pas.
+            let Some((nom, reste)) = taillée.split_once(": ") else {
+                continue;
+            };
+            if nom.starts_with("//") || !nom.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+            {
+                continue;
+            }
+            out.push((nom.to_owned(), reste.to_owned()));
+        }
+        out
+    };
+
+    let fr = champs(bloc("FR"));
+    let en = champs(bloc("EN"));
+    assert_eq!(
+        fr.len(),
+        en.len(),
+        "les deux langues n'ont pas le même nombre de messages"
+    );
+    for ((nom_fr, texte_fr), (nom_en, texte_en)) in fr.iter().zip(&en) {
+        assert_eq!(nom_fr, nom_en, "les champs ne sont pas dans le même ordre");
+        assert!(texte_fr.len() > 2, "{nom_fr} : rien en français");
+        assert!(texte_en.len() > 2, "{nom_en} : rien en anglais");
+        if texte_fr == texte_en {
+            assert!(
+                LES_MÊMES.contains(&nom_fr.as_str()),
+                "{nom_fr} dit la même chose dans les deux langues : traduction oubliée ?"
+            );
+        }
+    }
+    // Et la liste ne garde pas d'entrées mortes : un champ traduit
+    // depuis n'a plus rien à y faire.
+    for nom in LES_MÊMES {
+        let (_, texte_fr) = fr.iter().find(|(n, _)| n == nom).expect(nom);
+        let (_, texte_en) = en.iter().find(|(n, _)| n == nom).expect(nom);
+        assert_eq!(
+            texte_fr, texte_en,
+            "{nom} est traduit : à retirer de la liste"
+        );
+    }
+}
+
 /// La mémoire montre sa carte : où commence le code, où finit la pile,
 /// ce que le tas occupe, avec les droits de chacun.
 ///
