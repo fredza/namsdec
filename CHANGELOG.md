@@ -53,7 +53,14 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
 - Chaque exercice montre les fiches que son propre code emploie.
 - F1 répond aussi sur une fonction empruntée.
 
-**Le parcours passe à quarante-quatre étapes, rangées par difficulté**
+**Le parcours passe à quarante-sept étapes, rangées par difficulté**
+- Trois de plus : « D'un texte à un nombre » (`atoi`, et ce qu'`atoi` ne
+  rend pas — le texte était-il un nombre ?), « Un enregistrement, et ses
+  champs » (`struc`, et le calcul base + indice × taille + champ que
+  fait un compilateur derrière `gens[i].age`), et « Trier, et voir ce
+  que ça coûte » (le tri à bulles, dont l'onglet Profil montre où part
+  le temps — O(n²) se lit au lieu de se croire sur parole).
+
 - Huit de plus : les quatre indicateurs provoqués un par un, le
   complément à deux vu de près, `popcnt` contre la boucle qui compte les
   bits, la matrice et pourquoi on la parcourt ligne par ligne, `cmov` et

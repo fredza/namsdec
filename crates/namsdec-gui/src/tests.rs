@@ -3983,7 +3983,9 @@ fn the_built_in_pack_is_a_course_in_order() {
             "chaine",
             "chaines",
             "comparer_chaines",
+            "lire_nombre",
             "macros",
+            "structure",
             "branchements",
             "sans_branche",
             "pile",
@@ -3993,6 +3995,7 @@ fn the_built_in_pack_is_a_course_in_order() {
             "fibonacci",
             "cadre",
             "pile_locale",
+            "tri",
             "sortie",
             "entree",
             "tas",
@@ -5512,11 +5515,11 @@ fn the_readme_tells_the_truth() {
 
     let exercices = namsdec_exercises::builtin_pack().exercises.len();
     assert_eq!(
-        exercices, 44,
-        "le parcours livré compte quarante-quatre exercices"
+        exercices, 47,
+        "le parcours livré compte quarante-sept exercices"
     );
     assert!(
-        readme.contains("parcours de quarante-quatre exercices"),
+        readme.contains("parcours de quarante-sept exercices"),
         "le README doit annoncer le bon nombre d'exercices"
     );
     // Les crates listées dans le tableau existent toutes.
@@ -6426,12 +6429,12 @@ fn the_course_remembers_where_one_stopped() {
         "l'étape en cours se voit sans avoir à la chercher : {painted}"
     );
     // Le rang dans le parcours, aussi : le tableau est la dix-neuvième
-    // des quarante-quatre étapes.
-    assert!(painted.contains("19/44"), "{painted}");
+    // des quarante-sept étapes.
+    assert!(painted.contains("19/47"), "{painted}");
 }
 
 /// Un parcours se suit : l'étape suivante est à un clic, sans avoir à
-/// retrouver son rang dans une liste de quarante-quatre.
+/// retrouver son rang dans une liste de quarante-sept.
 #[test]
 fn the_course_offers_the_next_step() {
     let mut app = NamsdecApp {
@@ -6478,7 +6481,7 @@ fn the_course_offers_the_next_step() {
     }
     assert!(painted.contains("Étape suivante"), "{painted}");
     assert!(
-        painted.contains("1/44"),
+        painted.contains("1/47"),
         "le rang de l'étape en cours : {painted}"
     );
 }
@@ -8993,8 +8996,11 @@ fn every_goal_is_readable_and_on_the_right_side() {
     }
     // Ce que le programme livré fait déjà : on le regarde tourner et on
     // comprend ce qui s'est passé.
-    const DÉMONSTRATIONS: [&str; 35] = [
+    const DÉMONSTRATIONS: [&str; 38] = [
         "boucle",
+        "lire_nombre",
+        "structure",
+        "tri",
         "bits",
         "memoire",
         "tableau",
@@ -10159,7 +10165,7 @@ fn a_solved_exercise_stays_solved() {
     app.show_exercises = true;
     let painted = paint(&mut app);
     assert!(
-        painted.contains(&format!("1/44 {}", strings(app.lang).exercises_done_count)),
+        painted.contains(&format!("1/47 {}", strings(app.lang).exercises_done_count)),
         "{painted}"
     );
 }
@@ -10911,7 +10917,11 @@ fn every_instruction_the_course_writes_has_a_sheet() {
             ) {
                 siens.insert(premier.to_lowercase());
             }
-            if (premier.eq_ignore_ascii_case("%macro") || premier.eq_ignore_ascii_case("%define"))
+            if (premier.eq_ignore_ascii_case("%macro")
+                || premier.eq_ignore_ascii_case("%define")
+                // `struc Personne` : le nom d'une structure est inventé
+                // par le fichier, au même titre qu'une étiquette.
+                || premier.eq_ignore_ascii_case("struc"))
                 && let Some(nom) = ligne.split_whitespace().nth(1)
             {
                 siens.insert(nom.to_lowercase());

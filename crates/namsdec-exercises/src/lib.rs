@@ -548,6 +548,21 @@ pub fn builtin_pack() -> Pack {
                 level: Level::Structures,
             },
             Exercise {
+                id: "lire_nombre".to_owned(),
+                title: Text {
+                    fr: "D'un texte à un nombre".to_owned(),
+                    en: "From text to number".to_owned(),
+                },
+                description: Text {
+                    fr: "Le clavier ne donne pas de nombres, il donne des caractères : \"4096\" est la suite 0x34 0x30 0x39 0x36, et rien dedans ne vaut quatre mille quatre-vingt-seize. La conversion est une règle de trois répétée — résultat × 10 + (caractère − '0') —, l'exact inverse d'« Afficher un nombre ». C'est `atoi` ; ce que `atoi` ne rend pas, et qui vous vaudra un jour un bogue, c'est de dire si le texte était bien un nombre. À l'arrêt, RAX doit valoir 4096 et RBX 1.".to_owned(),
+                    en: "A keyboard does not give numbers, it gives characters: \"4096\" is the run 0x34 0x30 0x39 0x36, and nothing in there is four thousand and ninety-six. The conversion is one rule repeated — result × 10 + (character − '0') —, the exact reverse of \"Printing a number\". This is `atoi`; what `atoi` does not return, and what will cost you a bug one day, is whether the text was a number at all. At the halt, RAX must hold 4096 and RBX 1.".to_owned(),
+                },
+                starter_code: include_str!("../exercises/lire_nombre.asm").to_owned(),
+                goal: vec!["rax == 0x1000", "rbx == 1"].into_iter().map(str::to_owned).collect(),
+                par: Some(55),
+                level: Level::Structures,
+            },
+            Exercise {
                 id: "macros".to_owned(),
                 title: Text {
                     fr: "Avant l'assemblage : le préprocesseur".to_owned(),
@@ -560,6 +575,21 @@ pub fn builtin_pack() -> Pack {
                 starter_code: include_str!("../exercises/macros.asm").to_owned(),
                 goal: vec!["rax == 0x1e".to_owned(), "rbx == 0xc".to_owned()],
                 par: Some(8),
+                level: Level::Structures,
+            },
+            Exercise {
+                id: "structure".to_owned(),
+                title: Text {
+                    fr: "Un enregistrement, et ses champs".to_owned(),
+                    en: "A record, and its fields".to_owned(),
+                },
+                description: Text {
+                    fr: "Une structure n'existe pas pour le processeur : c'est une suite d'octets, et un nom pour chaque décalage depuis le début. `struc` compte les octets à votre place et rend `Personne.age` au lieu de `+8`. Un tableau de structures se parcourt alors comme tout tableau, le pas en plus : base + indice × taille + décalage du champ — ce que fait un compilateur derrière `gens[i].age`. À l'arrêt, RAX doit valoir 30 et RBX 3.".to_owned(),
+                    en: "A structure does not exist for the processor: it is a run of bytes, and a name for each offset from the start. `struc` counts the bytes for you and gives `Personne.age` instead of `+8`. An array of structures then walks like any array, with one extra step: base + index × size + field offset — what a compiler does behind `people[i].age`. At the halt, RAX must hold 30 and RBX 3.".to_owned(),
+                },
+                starter_code: include_str!("../exercises/structure.asm").to_owned(),
+                goal: vec!["rax == 0x1e".to_owned(), "rbx == 3".to_owned()],
+                par: Some(41),
                 level: Level::Structures,
             },
             Exercise {
@@ -695,6 +725,21 @@ pub fn builtin_pack() -> Pack {
                 starter_code: include_str!("../exercises/pile_locale.asm").to_owned(),
                 goal: vec!["rax == 6".to_owned()],
                 par: Some(11),
+                level: Level::Structures,
+            },
+            Exercise {
+                id: "tri".to_owned(),
+                title: Text {
+                    fr: "Trier, et voir ce que ça coûte".to_owned(),
+                    en: "Sorting, and seeing what it costs".to_owned(),
+                },
+                description: Text {
+                    fr: "Le tri à bulles : parcourir, échanger deux voisins mal rangés, recommencer tant qu'on a échangé. Le plus simple à écrire, le plus lent qui soit. Après l'exécution, ouvrez l'onglet Profil : la comparaison intérieure porte à elle seule la plus grosse part du temps. C'est ce que dit la notation O(n²), et on le lit ici ligne par ligne au lieu de le croire sur parole. À l'arrêt, RAX doit valoir 11 et RBX 95.".to_owned(),
+                    en: "Bubble sort: walk the array, swap two neighbours that are out of order, start again as long as something was swapped. The simplest to write, the slowest there is. After running it, open the Profile tab: the inner comparison alone carries the largest share of the time. That is what O(n²) means, and here you read it line by line instead of taking it on trust. At the halt, RAX must hold 11 and RBX 95.".to_owned(),
+                },
+                starter_code: include_str!("../exercises/tri.asm").to_owned(),
+                goal: vec!["rax == 0xb".to_owned(), "rbx == 0x5f".to_owned()],
+                par: Some(251),
                 level: Level::Structures,
             },
             Exercise {
@@ -865,9 +910,9 @@ mod tests {
     #[test]
     fn every_builtin_exercise_is_complete_and_stops() {
         let pack = builtin_pack();
-        // Un parcours, pas une poignée : quarante-quatre étapes, et
+        // Un parcours, pas une poignée : quarante-sept étapes, et
         // chacune s'appuie sur les précédentes.
-        assert_eq!(pack.exercises.len(), 44);
+        assert_eq!(pack.exercises.len(), 47);
         for exercise in &pack.exercises {
             assert!(!exercise.id.is_empty());
             assert!(!exercise.title.fr.is_empty() && !exercise.title.en.is_empty());

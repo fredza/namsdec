@@ -143,7 +143,7 @@ Les raccourcis sont dans Préférences ▸ Raccourcis, et se changent.
 
 ### Les exercices
 
-Trente-huit des quarante-quatre exercices portent un **but vérifiable** (`rax == 0xf`) :
+Quarante et un des quarante-sept exercices portent un **but vérifiable** (`rax == 0xf`) :
 le bandeau de l'état du processeur dit « atteint » ou « pas encore », au
 lieu de laisser vérifier à l'œil. Ce qui a été réussi une fois le reste :
 une pastille dans la liste, un compte en tête de la série, et les deux
@@ -159,7 +159,7 @@ budget annoncé est tenable : promettre un chiffre qu'aucune solution
 n'atteint serait pire que de n'en pas donner. Une série installée peut en porter
 aussi — champ `goal` du fichier JSON.
 
-Un parcours de quarante-quatre exercices est livré avec le
+Un parcours de quarante-sept exercices est livré avec le
 programme, rangé en quatre paliers de difficulté croissante :
 
 - **Découverte** — registres, échange, mise à zéro, boucles, `loop`,
@@ -168,9 +168,9 @@ programme, rangé en quatre paliers de difficulté croissante :
   mémoire, tailles d'opérande, ordre des octets, données déclarées,
   tableaux, matrices, recherche, calcul d'adresse.
 - **Structures** — chaînes, instructions de chaîne, comparaison de
-  chaînes, macros, table de saut, choix sans branchement, pile,
-  appels, convention d'appel, récursion, Fibonacci, cadre de pile,
-  tableau local.
+  chaînes, texte vers nombre, macros, enregistrements et champs, table
+  de saut, choix sans branchement, pile, appels, convention d'appel,
+  récursion, Fibonacci, cadre de pile, tableau local, tri.
 - **Maîtrise** — sortie, entrée, tas, flottants, SIMD, affichage d'un
   nombre, majuscules, débordement, protections.
 
