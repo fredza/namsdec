@@ -9249,7 +9249,12 @@ fn opening_a_binary_shows_its_code_not_its_header() {
 #[test]
 fn both_languages_say_the_same_things() {
     /// Les champs dont les deux langues partagent le texte, et pourquoi.
-    const LES_MÊMES: [&str; 18] = [
+    const LES_MÊMES: [&str; 21] = [
+        // Une adresse et deux noms propres : les traduire n'aurait pas
+        // de sens.
+        "about_site_hint",
+        "about_discord",
+        "about_github",
         // Les commandes que tout débogueur écrit ainsi, y compris en
         // français : les traduire couperait du reste du monde.
         "action_step_into",
@@ -9554,6 +9559,44 @@ fn the_sidebar_tabs_live_in_the_toolbar() {
     app.show_sidebar = false;
     let painted = paint(&mut app);
     assert!(!painted.contains(s.tab_heap), "{painted}");
+}
+
+/// La boîte « À propos » dit où trouver le projet : le site, le salon,
+/// le dépôt.
+///
+/// Trois portes et pas une de plus — une boîte qui aligne dix liens ne
+/// dit plus lequel compte —, et des adresses qui tiennent debout.
+#[test]
+fn the_about_box_opens_the_three_doors_of_the_project() {
+    let mut app = NamsdecApp {
+        show_about: true,
+        ..Default::default()
+    };
+    let painted = paint(&mut app);
+    let s = strings(app.lang);
+    for porte in [s.about_site, s.about_discord, s.about_github] {
+        assert!(painted.contains(porte), "« {porte} » manque : {painted}");
+    }
+    // Le nom en grand et la version à côté, en toutes lettres.
+    assert!(painted.contains("namsdec"), "{painted}");
+    assert!(painted.contains(&format!("v{APP_VERSION}")), "{painted}");
+
+    // Les adresses : chiffrées, et celles qu'on a annoncées.
+    for url in [SITE_URL, DISCORD_URL, GITHUB_URL, MIT_LICENSE_URL] {
+        assert!(url.starts_with("https://"), "{url}");
+        assert!(!url.ends_with('/'), "{url}");
+    }
+    assert_eq!(SITE_URL, "https://namsdec.io");
+    assert!(DISCORD_URL.starts_with("https://discord.gg/"));
+    assert_eq!(GITHUB_URL, "https://github.com/fredza/namsdec");
+    // Le dépôt des liens et celui qu'interroge la recherche de mise à
+    // jour sont le même : deux adresses qui divergent, et l'une des deux
+    // finit fausse.
+    assert!(GITHUB_URL.ends_with(&format!(
+        "{}/{}",
+        namsdec_update::OWNER,
+        namsdec_update::REPO
+    )));
 }
 
 /// La mémoire montre sa carte : où commence le code, où finit la pile,

@@ -105,6 +105,14 @@ const EXTERNAL_ABYSS: &str =
     "/home/fred/Projects/Rust/namsdec-plugin-abyss/abyss.namsdec-theme.json";
 
 const MIT_LICENSE_URL: &str = "https://opensource.org/license/mit";
+/// Où l'on trouve namsdec, et où l'on en parle.
+///
+/// Trois adresses et pas une de plus : le site, le salon, le dépôt.
+/// Une boîte « À propos » qui aligne dix liens ne dit plus lequel
+/// compte.
+const SITE_URL: &str = "https://namsdec.io";
+const DISCORD_URL: &str = "https://discord.gg/pv6pHkzB5";
+const GITHUB_URL: &str = "https://github.com/fredza/namsdec";
 /// Où mène le bouton de don. Adresse **fictive** pour l'instant —
 /// `example.com` est réservé à la documentation, personne n'y reçoit
 /// rien : à remplacer par le vrai lien (Ko-fi, PayPal.me, Liberapay…).
@@ -4123,12 +4131,39 @@ impl NamsdecApp {
             .pivot(egui::Align2::CENTER_CENTER)
             .current_pos(ctx.viewport_rect().center())
             .show(ctx, |ui| {
-                ui.heading("Namsdec");
-                ui.label(format!(
-                    "Version {APP_VERSION} ({} {BUILD_DATE})",
-                    s.about_build_word
-                ));
-                ui.label(s.about_description);
+                // L'en-tête : le nom en grand, la version à côté et non
+                // en dessous — c'est une précision, pas une deuxième
+                // information.
+                ui.horizontal(|ui| {
+                    ui.heading(egui::RichText::new("namsdec").strong());
+                    ui.colored_label(
+                        theme.dim,
+                        egui::RichText::new(format!("v{APP_VERSION}")).monospace(),
+                    )
+                    .on_hover_text(format!("{} {BUILD_DATE}", s.about_build_word));
+                });
+                ui.colored_label(theme.dim, s.about_description);
+                ui.add_space(8.0);
+
+                // Les trois portes du projet, côte à côte : le site, le
+                // salon, le dépôt. Des boutons et non des liens en
+                // toutes lettres — on cherche où cliquer, pas une
+                // adresse à recopier.
+                ui.horizontal_wrapped(|ui| {
+                    for (label, url, infobulle) in [
+                        (s.about_site, SITE_URL, s.about_site_hint),
+                        (s.about_discord, DISCORD_URL, s.about_discord_hint),
+                        (s.about_github, GITHUB_URL, s.about_github_hint),
+                    ] {
+                        if ui
+                            .add(egui::Button::new(label).corner_radius(6))
+                            .on_hover_text(format!("{infobulle}\n{url}"))
+                            .clicked()
+                        {
+                            ui.ctx().open_url(egui::OpenUrl::new_tab(url));
+                        }
+                    }
+                });
 
                 // Le bandeau des préversions : il dit ce qu'on tient
                 // entre les mains, et disparaît de lui-même le jour où
@@ -4155,12 +4190,14 @@ impl NamsdecApp {
                         });
                 }
 
-                ui.separator();
-                ui.label(s.about_license);
-                ui.hyperlink_to(s.about_license_link, MIT_LICENSE_URL);
+                ui.add_space(6.0);
+                ui.horizontal_wrapped(|ui| {
+                    ui.colored_label(theme.dim, s.about_license);
+                    ui.hyperlink_to(s.about_license_link, MIT_LICENSE_URL);
+                });
 
                 ui.separator();
-                ui.label(s.about_donate_hint);
+                ui.colored_label(theme.dim, s.about_donate_hint);
                 let can_donate = !DONATION_URL.is_empty();
                 let texture = self.treat_texture(ctx);
                 ui.add_enabled_ui(can_donate, |ui| {
