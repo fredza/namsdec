@@ -3867,6 +3867,42 @@ fn the_new_steps_of_the_course_keep_their_promise() {
     assert_eq!(regs.get64(Reg64::Rdx), 3, "et son reste");
 }
 
+/// Chaque exercice montre les fiches dont son programme se sert : le
+/// manuel est à côté de l'énoncé, pas à chercher.
+#[test]
+fn an_exercise_points_at_the_sheets_it_uses() {
+    // Les mots lus sont ceux du code, pas des commentaires, et une
+    // étiquette n'est pas une instruction.
+    let fiches = sheets_used(
+        "; div n'est pas ici\n_start:\n    mov rax, 45\n    xor rdx, rdx\n    div rcx\n",
+    );
+    // `xor` s'affiche « xor », même si sa fiche s'appelle « and » : on
+    // cherche le mot qu'on a sous les yeux.
+    assert_eq!(fiches, vec!["mov", "xor", "div"]);
+
+    // Chaque étape du parcours en a au moins une : un exercice sans
+    // fiche serait un exercice sur rien.
+    for exercise in &namsdec_exercises::builtin_pack().exercises {
+        assert!(
+            !sheets_used(&exercise.starter_code).is_empty(),
+            "{} ne renvoie à aucune fiche",
+            exercise.id
+        );
+    }
+
+    // Et elles s'affichent sous l'énoncé.
+    let mut app = NamsdecApp {
+        exercises: true,
+        show_exercises: true,
+        ..Default::default()
+    };
+    let painted = paint(&mut app);
+    assert!(
+        painted.contains(strings(app.lang).exercises_sheets),
+        "{painted}"
+    );
+}
+
 /// Le parcours livré est un parcours : quinze étapes dans l'ordre où
 /// l'on apprend, chacune avec son but écrit dans le programme.
 ///

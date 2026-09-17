@@ -617,6 +617,46 @@ enum FileDialogKind {
     ExportManual,
 }
 
+/// Les fiches dont un programme se sert, dans l'ordre où il les emploie.
+///
+/// Le premier mot d'une ligne est l'instruction, sauf s'il porte le
+/// deux-points d'une étiquette. Ce qui a une fiche devient un renvoi ;
+/// le reste est ignoré sans bruit.
+fn sheets_used(source: &str) -> Vec<&'static str> {
+    let mut vus: Vec<&'static str> = Vec::new();
+    for ligne in source.lines() {
+        let ligne = ligne.split(';').next().unwrap_or("").trim();
+        for mot in ligne.split_whitespace() {
+            let mot = mot.trim_end_matches(',');
+            if mot.ends_with(':') {
+                continue;
+            }
+            let Some(entry) = namsdec_doc::lookup(mot) else {
+                continue;
+            };
+            // Le mot tel que le programme l'écrit, et non le premier nom
+            // de la fiche : `xor` renvoie à la fiche des opérations
+            // logiques, mais l'élève cherche `xor` dans son code.
+            let name = entry
+                .names
+                .iter()
+                .find(|name| name.eq_ignore_ascii_case(mot))
+                .copied()
+                .unwrap_or(entry.names[0]);
+            // Une fiche une fois : deux noms de la même famille ne font
+            // pas deux renvois.
+            if vus.iter().any(|vu| namsdec_doc::lookup(vu) == Some(entry)) {
+                continue;
+            }
+            vus.push(name);
+        }
+    }
+    // Douze suffisent : au-delà, la liste cesse d'être un guide et
+    // redevient une table des matières.
+    vus.truncate(12);
+    vus
+}
+
 /// Le compte rendu de la dernière installation de plugin.
 struct PluginNote {
     ok: bool,
@@ -3430,6 +3470,7 @@ impl NamsdecApp {
         let lang = self.lang.code();
         let mut open = self.show_exercises;
         let mut load = None;
+        let mut fiche: Option<&'static str> = None;
         egui::Window::new(s.exercises_title)
             .id(egui::Id::new("exercises_window"))
             .open(&mut open)
@@ -3541,6 +3582,29 @@ impl NamsdecApp {
                                         let texte =
                                             prose(ui, theme, exercise.description.get(lang));
                                         ui.label(texte);
+                                        // Les fiches dont l'exercice se
+                                        // sert : un exercice n'apprend
+                                        // rien sans le manuel à côté, et
+                                        // aller le chercher soi-même
+                                        // suppose de savoir quoi
+                                        // chercher.
+                                        let fiches = sheets_used(&exercise.starter_code);
+                                        if !fiches.is_empty() {
+                                            ui.horizontal_wrapped(|ui| {
+                                                ui.colored_label(theme.dim, s.exercises_sheets);
+                                                for name in fiches {
+                                                    if ui
+                                                        .small_button(
+                                                            egui::RichText::new(name).monospace(),
+                                                        )
+                                                        .on_hover_text(s.help_open_sheet)
+                                                        .clicked()
+                                                    {
+                                                        fiche = Some(name);
+                                                    }
+                                                }
+                                            });
+                                        }
                                     });
                                 }
                             });
@@ -3551,6 +3615,10 @@ impl NamsdecApp {
         if let Some(id) = load {
             self.load_exercise(&id);
             open = false;
+        }
+        if let Some(name) = fiche {
+            self.open_help(name);
+            self.show_help = true;
         }
         self.show_exercises = open;
     }
