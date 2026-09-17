@@ -151,9 +151,9 @@ const SIDEBAR_MIN_WIDTH: f32 = 200.0;
 /// plancher lui garantit de quoi être lu.
 const SIDEBAR_TAB_MIN: f32 = 220.0;
 
-/// Et ce qui reste au-dessus de l'état du processeur, quoi qu'il
-/// arrive : de quoi lire la prochaine instruction, même repliée.
-const SIDEBAR_BANNER_MIN: f32 = 90.0;
+/// Et ce qui reste au bandeau, quoi qu'il arrive : de quoi lire ce qui
+/// vient et les premières lignes de l'état du processeur.
+const SIDEBAR_BANNER_MIN: f32 = 280.0;
 /// Et au-delà de cette part de la fenêtre, il mangerait l'éditeur. La
 /// borne vaut aussi réparation : egui garde la largeur du panneau d'une
 /// session à l'autre, donc une largeur aberrante — héritée d'un bug de
@@ -817,10 +817,6 @@ struct NamsdecApp {
     /// qu'on doit poser la part de l'onglet *avant* de dessiner le
     /// bandeau, et qu'elle change avec ce qui est replié.
     sidebar_banner_height: f32,
-    /// Et la hauteur qu'a prise l'état du processeur, lui aussi mesuré :
-    /// il est ancré au-dessus de l'onglet, et sa place n'est pas à
-    /// prendre.
-    sidebar_cpu_height: f32,
     /// La hauteur qu'a réellement prise la part de l'onglet à la
     /// dernière image : celle qu'on fige quand on cesse de la calculer.
     sidebar_tab_last: f32,
@@ -1489,7 +1485,6 @@ impl Default for NamsdecApp {
             console_height: None,
             sidebar_tab_height: None,
             sidebar_banner_height: 0.0,
-            sidebar_cpu_height: 0.0,
             sidebar_tab_last: SIDEBAR_TAB_MIN,
             mem_poke: String::new(),
             show_disassembly: false,
@@ -1567,7 +1562,6 @@ impl NamsdecApp {
             console_height: settings.console_height.map(|h| h as f32),
             sidebar_tab_height: settings.sidebar_tab_height.map(|h| h as f32),
             sidebar_banner_height: 0.0,
-            sidebar_cpu_height: 0.0,
             sidebar_tab_last: SIDEBAR_TAB_MIN,
             system_titlebar: settings.system_titlebar,
             heat_legend: settings.heat_legend,

@@ -212,6 +212,15 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
 - La palette de commandes mène aux **étiquettes du programme** : on tape
   `affiche_nombre`, on y est. Sur deux cents lignes, c'est le « ouvrir
   par son nom » des éditeurs, sans rien de nouveau à retenir.
+- L'état du processeur ne se peint plus par-dessus la vue du dessous.
+  Il vivait dans un panneau hors zone de défilement : un tel panneau ne
+  rogne pas ce qui dépasse, il le laisse déborder — les indicateurs, le
+  coût et le lien des registres étendus se superposaient à l'onglet, les
+  deux illisibles. Le bandeau tient maintenant dans une seule zone qui
+  coupe net, et la barre n'apparaît que sur une fenêtre trop courte.
+- L'onglet Mémoire lit son format dans une liste déroulante : « Octets
+  Mots Texte Pointeurs » ne tenait pas sur la largeur d'un panneau et
+  repassait à la ligne par-dessus le reste.
 - Un filet sépare les trois zones du panneau latéral, et Affichage ▸
   « Panneau latéral partagé tout seul » rend le partage automatique à qui
   a tiré la poignée une fois.

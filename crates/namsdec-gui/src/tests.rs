@@ -12168,15 +12168,16 @@ fn the_tab_keeps_its_share_of_the_side_panel() {
         "l'onglet doit garder de quoi montrer quelque chose : {}",
         part.height()
     );
-    // Et l'état du processeur garde la sienne, entière : c'est ce qu'on
-    // regarde entre deux pas.
-    let état = egui::containers::panel::PanelState::load(&ctx, egui::Id::new("cpu_state"))
-        .expect("l'état du processeur a sa part")
+    // Et le bandeau garde la sienne : ce qui vient, puis les registres,
+    // au-dessus de l'onglet et non par-dessus.
+    let panneau = egui::containers::panel::PanelState::load(&ctx, egui::Id::new("sidebar"))
+        .expect("le panneau latéral est affiché")
         .outer_rect;
     assert!(
-        état.height() > 100.0,
-        "l'état du processeur n'est pas rogné : {}",
-        état.height()
+        panneau.height() - part.height() >= SIDEBAR_BANNER_MIN,
+        "il reste au bandeau de quoi se lire : {} sur {}",
+        panneau.height() - part.height(),
+        panneau.height()
     );
     // Rien ne sort par le bas : ce qui dépassait du panneau était peint
     // là où personne ne peut le lire.
@@ -12564,4 +12565,76 @@ fn the_palette_leads_to_the_labels_of_the_program() {
     // Et la commande y emmène.
     app.execute_palette_command(&ctx, PaletteCommand::GoLine(6));
     assert_eq!(app.goto_line, Some(6), "la palette pose le curseur là-bas");
+}
+
+/// Le bandeau ne se peint jamais par-dessus la vue du dessous.
+///
+/// Un panneau hors zone de défilement dont le contenu dépasse la hauteur
+/// allouée n'est pas rogné : il déborde. L'état du processeur se
+/// retrouvait ainsi peint par-dessus l'onglet Mémoire, les deux
+/// illisibles, sur une fenêtre où il manquait deux cents pixels. Ce que
+/// le bandeau ne peut pas montrer doit disparaître, pas se superposer.
+#[test]
+fn the_banner_never_paints_over_the_tab_below() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    // Des fenêtres étroites et courtes : c'est là que le bandeau ne
+    // tient pas, et c'est là que le débordement se voyait.
+    for taille in [
+        egui::vec2(900.0, 560.0),
+        egui::vec2(1024.0, 640.0),
+        egui::vec2(1280.0, 800.0),
+    ] {
+        let mut app = NamsdecApp {
+            source: DEFAULT_SOURCE.to_owned(),
+            active_tab: SidebarTab::Memory,
+            ..Default::default()
+        };
+        app.do_assemble();
+        app.do_step();
+        let ctx = egui::Context::default();
+        app.apply_theme(&ctx);
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, taille)),
+            ..Default::default()
+        };
+        let mut débordements: Vec<(String, f32)> = Vec::new();
+        for _ in 0..3 {
+            débordements.clear();
+            let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+            let Some(onglet) =
+                egui::containers::panel::PanelState::load(&ctx, egui::Id::new("sidebar_tab"))
+                    .map(|état| état.outer_rect)
+            else {
+                output.textures_delta.clear();
+                continue;
+            };
+            for clipped in &output.shapes {
+                if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                    // Ce que seul le bandeau écrit : les noms de
+                    // registres, les indicateurs, ses propres titres.
+                    let mot = text.galley.text();
+                    let du_bandeau =
+                        // « RIP » est écarté : l'onglet Mémoire le
+                        // propose lui aussi, dans son « Suivre ».
+                        matches!(mot, "RAX" | "R15" | "CF 0" | "ZF 0" | "ZF 1")
+                            || mot == strings(Lang::Fr).cpu_state
+                            || mot == strings(Lang::Fr).next_instruction;
+                    // Peint *et* visible : un texte que sa zone de
+                    // défilement coupe ne se voit pas, et c'est
+                    // précisément ce qu'on veut qu'il arrive.
+                    let visible = text.pos.y < clipped.clip_rect.bottom();
+                    if du_bandeau && visible && text.pos.y > onglet.top() + 1.0 {
+                        débordements.push((mot.to_owned(), text.pos.y));
+                    }
+                }
+            }
+            output.textures_delta.clear();
+        }
+        assert!(
+            débordements.is_empty(),
+            "à {taille:?}, le bandeau déborde sur la vue du dessous : {débordements:?}"
+        );
+    }
 }

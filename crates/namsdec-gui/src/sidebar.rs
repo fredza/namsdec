@@ -43,78 +43,22 @@ impl NamsdecApp {
         // défile — il se replie d'un clic, l'analyse non.
         self.sidebar_tab_panel_ui(ui);
 
-        // Puis l'état du processeur, juste au-dessus : lui non plus ne
-        // défile jamais, et il n'est jamais rogné. C'est ce qu'on
-        // regarde entre deux pas — devoir faire glisser une barre pour
-        // voir R15 ou ZF casse la lecture.
+        // Le bandeau prend ce qui reste, dans **une** zone qui défile.
         //
-        // Ce qui cède, quand les trois ne tiennent pas, c'est donc le
-        // détail de la prochaine instruction : il se replie d'un clic,
-        // et ce qu'il dit se relit dans le listing.
-        self.cpu_state_panel_ui(ui);
-
-        // Le reste prend ce qui demeure, et défile s'il le faut.
+        // Une zone, et non deux panneaux empilés : un panneau hors
+        // défilement dont le contenu dépasse la hauteur allouée n'est
+        // pas rogné, il déborde — et l'état du processeur se peignait
+        // par-dessus la vue du dessous, les deux illisibles. Une zone
+        // qui défile, elle, coupe net, et la barre n'apparaît que
+        // lorsque la fenêtre est vraiment trop courte.
         let bandeau = egui::ScrollArea::vertical()
             .id_salt("sidebar_banner")
             .auto_shrink([false, true])
             .show(ui, |ui| self.sidebar_banner_ui(ui));
-        // Ce que le haut du bandeau mesurerait s'il avait toute la
-        // place : c'est cette hauteur qui décide, à l'image suivante, de
-        // la part de l'onglet.
-        self.sidebar_banner_height = bandeau.content_size.y + self.sidebar_cpu_height;
-    }
-
-    /// L'état du processeur, ancré au-dessus de l'onglet.
-    ///
-    /// Dans un panneau à lui, et jamais dans une zone qui défile : sa
-    /// hauteur est connue — dix-huit valeurs sur autant de colonnes que
-    /// le panneau en tient — et une barre au milieu des registres
-    /// oblige à faire défiler pour voir R15 ou ZF, en plein pas à pas.
-    fn cpu_state_panel_ui(&mut self, ui: &mut egui::Ui) {
-        let s = strings(self.lang);
-        let mesure = egui::Panel::bottom("cpu_state")
-            .resizable(false)
-            // Sans cadre : les marges d'un panneau valent une vingtaine
-            // de pixels, et une valeur de registre fait seize chiffres —
-            // avec elles, la grille perdait une colonne entière.
-            .frame(egui::Frame::new())
-            .show(ui, |ui| {
-                let départ = ui.cursor().top();
-                rule(ui, self.theme);
-                // `show_unindented` : le retrait qu'ajoute un en-tête
-                // repliable vaut une vingtaine de pixels, et une valeur
-                // de registre fait seize chiffres — avec le retrait, la
-                // ligne débordait du panneau.
-                //
-                // `open(Some(...))` plutôt que `default_open(true)` : le
-                // premier impose l'état à chaque image, le second ne
-                // vaut qu'à la toute première ouverture et laisse
-                // ensuite egui ressortir ce qu'il a retenu de la session
-                // précédente.
-                let banner = egui::CollapsingHeader::new(s.cpu_state)
-                    .open(Some(self.cpu_state_open))
-                    .show_unindented(ui, |ui| self.cpu_state_ui(ui));
-                // L'état imposé prive l'en-tête de son propre clic : on
-                // le reprend ici, sinon le bandeau ne se replierait
-                // plus.
-                if banner.header_response.clicked() {
-                    self.cpu_state_open = !self.cpu_state_open;
-                }
-
-                // Les vectoriels ne sont plus ici : seize registres SSE
-                // et huit emplacements x87, c'est vingt-quatre lignes de
-                // plus dans un panneau qui en a déjà dix-huit. Dépliés,
-                // ils poussaient la rangée d'onglets hors du panneau ;
-                // bornés, ils défilaient au milieu de l'état du
-                // processeur. Ils ont maintenant une fenêtre à eux, où
-                // ils tiennent en entier.
-                self.vectors_link_ui(ui);
-                // La hauteur de ce qui a été posé, et non celle du
-                // panneau : c'est la place que l'état réclame, la seule
-                // qui doive entrer dans le partage.
-                ui.cursor().top() - départ
-            });
-        self.sidebar_cpu_height = mesure.inner;
+        // Ce que le bandeau mesurerait s'il avait toute la place : c'est
+        // cette hauteur qui décide, à l'image suivante, de la part de
+        // l'onglet — et le partage se stabilise dès que tout tient.
+        self.sidebar_banner_height = bandeau.content_size.y;
     }
 
     /// Le haut du bandeau : la prochaine instruction et le dernier pas.
@@ -133,6 +77,36 @@ impl NamsdecApp {
         }
         self.last_step_ui(ui);
         self.advice_ui(ui);
+
+        // L'état du processeur, sous ce qui vient : c'est ce qu'on
+        // regarde entre deux pas, et il garde sa place entière tant que
+        // la fenêtre en a une à lui donner.
+        rule(ui, self.theme);
+        // `show_unindented` : le retrait qu'ajoute un en-tête repliable
+        // vaut une vingtaine de pixels, et une valeur de registre fait
+        // seize chiffres — avec le retrait, la ligne débordait du
+        // panneau.
+        //
+        // `open(Some(...))` plutôt que `default_open(true)` : le premier
+        // impose l'état à chaque image, le second ne vaut qu'à la toute
+        // première ouverture et laisse ensuite egui ressortir ce qu'il a
+        // retenu de la session précédente.
+        let banner = egui::CollapsingHeader::new(s.cpu_state)
+            .open(Some(self.cpu_state_open))
+            .show_unindented(ui, |ui| self.cpu_state_ui(ui));
+        // L'état imposé prive l'en-tête de son propre clic : on le
+        // reprend ici, sinon le bandeau ne se replierait plus.
+        if banner.header_response.clicked() {
+            self.cpu_state_open = !self.cpu_state_open;
+        }
+
+        // Les vectoriels ne sont plus ici : seize registres SSE et huit
+        // emplacements x87, c'est vingt-quatre lignes de plus dans un
+        // panneau qui en a déjà dix-huit. Dépliés, ils poussaient la
+        // rangée d'onglets hors du panneau ; bornés, ils défilaient au
+        // milieu de l'état du processeur. Ils ont maintenant une fenêtre
+        // à eux, où ils tiennent en entier.
+        self.vectors_link_ui(ui);
     }
 
     /// La part du panneau réservée au contenu de l'onglet.
@@ -144,11 +118,10 @@ impl NamsdecApp {
     fn sidebar_tab_panel_ui(&mut self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
         let total = ui.available_height();
-        // Ce que l'onglet peut prendre au plus : l'état du processeur
-        // garde sa place entière — c'est la règle du panneau —, et il
-        // reste de quoi lire la prochaine instruction. Le reste est à
-        // l'onglet, et il n'en manque plus.
-        let plafond = (total - self.sidebar_cpu_height - SIDEBAR_BANNER_MIN).max(0.0);
+        // Ce que l'onglet peut prendre au plus : il reste toujours au
+        // bandeau de quoi montrer ce qui vient et les premiers
+        // registres. Le reste est à l'onglet, et il n'en manque plus.
+        let plafond = (total - SIDEBAR_BANNER_MIN).max(0.0);
         // Ce que le bandeau laisse, mesuré à l'image précédente. Au
         // tout premier passage on ne sait rien : la moitié du panneau
         // est un départ honnête, et l'image suivante corrige.
@@ -1894,15 +1867,18 @@ impl NamsdecApp {
             ui.separator();
             // Le même endroit dit quatre choses différentes selon ce
             // qu'on y cherche — un tampon, une pile, une chaîne, une
-            // suite de pointeurs.
-            for format in MemoryFormat::ALL {
-                if ui
-                    .selectable_label(self.memory_format == format, format.label(s))
-                    .clicked()
-                {
-                    self.memory_format = format;
-                }
-            }
+            // suite de pointeurs. Dans une liste déroulante et non en
+            // quatre boutons : « Octets Mots Texte Pointeurs » ne tient
+            // pas sur la largeur d'un panneau, et repassait à la ligne
+            // par-dessus le reste.
+            ui.colored_label(theme.dim, s.memory_format_label);
+            egui::ComboBox::from_id_salt("memory_format")
+                .selected_text(self.memory_format.label(s))
+                .show_ui(ui, |ui| {
+                    for format in MemoryFormat::ALL {
+                        ui.selectable_value(&mut self.memory_format, format, format.label(s));
+                    }
+                });
         });
         if let Some(addr) = self.memory_follow.address(&regs) {
             self.mem_addr = addr;
