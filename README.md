@@ -159,7 +159,7 @@ Les raccourcis sont dans Préférences ▸ Raccourcis, et se changent.
 
 ### Les exercices
 
-Quarante et un des quarante-sept exercices portent un **but vérifiable** (`rax == 0xf`) :
+Soixante-cinq des soixante et onze exercices portent un **but vérifiable** (`rax == 0xf`) :
 le bandeau de l'état du processeur dit « atteint » ou « pas encore », au
 lieu de laisser vérifier à l'œil. Ce qui a été réussi une fois le reste :
 une pastille dans la liste, un compte en tête de la série, et les deux
@@ -175,23 +175,38 @@ budget annoncé est tenable : promettre un chiffre qu'aucune solution
 n'atteint serait pire que de n'en pas donner. Une série installée peut en porter
 aussi — champ `goal` du fichier JSON.
 
-Un parcours de quarante-sept exercices est livré avec le
+Un parcours de soixante et onze exercices est livré avec le
 programme, rangé en quatre paliers de difficulté croissante :
 
-- **Découverte** — registres, échange, mise à zéro, boucles, `loop`,
-  bits, comparaisons, indicateurs, signe, nombres négatifs.
-- **Pratique** — décalages, compte de bits, multiplication, division,
-  mémoire, tailles d'opérande, ordre des octets, données déclarées,
-  tableaux, matrices, recherche, calcul d'adresse.
-- **Structures** — chaînes, instructions de chaîne, comparaison de
+- **Découverte** (15) — registres, échange, mise à zéro, boucles,
+  `loop`, bits, comparaisons, indicateurs, signe, nombres négatifs,
+  écritures d'un nombre, `inc` contre `add`, `test`, `xchg`/`bswap`,
+  masques de bits.
+- **Pratique** (19) — décalages, compte de bits, multiplication,
+  division, mémoire, tailles d'opérande, ordre des octets, données
+  déclarées, tableaux, matrices, recherche, calcul d'adresse, minimum et
+  maximum, parité, occurrences, retournement sur place, bornage sans
+  branchement, puissances de deux, somme et moyenne.
+- **Structures** (23) — chaînes, instructions de chaîne, comparaison de
   chaînes, texte vers nombre, macros, enregistrements et champs, table
   de saut, choix sans branchement, pile, appels, convention d'appel,
-  récursion, Fibonacci, cadre de pile, tableau local, tri.
-- **Maîtrise** — sortie, entrée, tas, flottants, SIMD, affichage d'un
-  nombre, majuscules, débordement, protections.
+  récursion, Fibonacci, cadre de pile, tableau local, tri, `strlen` par
+  `scasb`, mot à l'envers, compte de mots, pile qui retourne, arguments
+  au-delà de six, pointeur de fonction, alignement de pile.
+- **Maîtrise** (14) — sortie, entrée, tas, flottants, SIMD, affichage
+  décimal et hexadécimal, majuscules, débordement, protections,
+  chiffrement XOR, somme de contrôle, canari posé à la main, choix
+  vectoriel par masque.
 
-Activable dans Préférences ▸ Modules. D'autres séries s'installent depuis
-un simple fichier JSON, comme les thèmes : Outils ▸ Exercices.
+Activable dans Préférences ▸ Modules.
+
+**Le parcours n'est pas dans le binaire** : c'est un fichier de données,
+`~/.local/share/namsdec/exercises/namsdec.json`, installé par
+`install.sh` et lu au démarrage comme n'importe quelle autre série.
+Corriger un énoncé ne demande donc pas de recompiler, ce qu'on écrit
+soi-même se range exactement comme ce qui est livré, et le programme ne
+porte pas cent kilo-octets de texte. D'autres séries s'installent de la
+même façon : Outils ▸ Exercices.
 
 ### Si vous venez de pwndbg
 

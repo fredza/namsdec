@@ -223,6 +223,31 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
   coût et le lien des registres étendus se superposaient à l'onglet, les
   deux illisibles. Le bandeau tient maintenant dans une seule zone qui
   coupe net, et la barre n'apparaît que sur une fenêtre trop courte.
+**Le parcours sort du binaire, et passe à soixante et onze étapes**
+- Les exercices ne sont plus compilés dans le programme : c'est un
+  fichier de données, `namsdec.json`, installé à côté des thèmes et lu
+  au démarrage comme n'importe quelle série. Corriger un énoncé ne
+  demande plus de recompiler, et ce qu'on écrit soi-même se range
+  exactement comme ce qui est livré.
+- Vingt-quatre étapes de plus, portées à **71** : les trois écritures
+  d'un nombre, `inc` contre `add` et la retenue qu'il épargne, `test`
+  qui regarde sans écrire, `xchg` et `bswap`, les masques de bits ; le
+  minimum et le maximum en un passage, la parité en un bit, les
+  occurrences, le retournement sur place, le bornage sans branchement,
+  les puissances de deux et leur limite, la somme et la moyenne ;
+  `strlen` par `repne scasb`, le mot à l'envers, le compte de mots, la
+  pile qui retourne ce qu'on lui donne, les arguments au-delà de six,
+  le pointeur de fonction, l'alignement de pile sur seize ; l'affichage
+  hexadécimal, le chiffrement XOR et sa faiblesse, la somme de
+  contrôle, le canari posé à la main, et le choix vectoriel par masque.
+- Le test qui vérifiait les budgets exécute désormais **tous** les
+  exercices : un exercice qui n'atteint pas son propre but est faux,
+  budget ou non. Il a trouvé deux énoncés qui comptaient mal.
+- Le binaire passe de 25,1 à **17,8 Mo** — l'édition de liens voit tout
+  le programme d'un coup et jette ce qui n'est appelé nulle part. Rien
+  n'est effacé pour autant : les symboles restent, un rapport de
+  plantage doit pouvoir se lire.
+
 **Plusieurs fichiers à la fois**
 - Une barre d'onglets au-dessus de l'éditeur : un onglet par fichier, le
   nom raccourci par le milieu quand il est long, un point sur ce qui

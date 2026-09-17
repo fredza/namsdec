@@ -13,6 +13,7 @@ BIN_NAME=namsdec-gui           # nom produit par cargo
 PREFIX="${XDG_DATA_HOME:-$HOME/.local/share}"
 BIN_DIR="$HOME/.local/bin"
 ICON_DIR="$PREFIX/icons/hicolor"
+EXERCISES_DIR="$PREFIX/namsdec/exercises"
 DESKTOP_DIR="$PREFIX/applications"
 SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -42,6 +43,15 @@ BUILT="$SOURCE_DIR/target/release/$BIN_NAME"
 # --- Binaire -----------------------------------------------------------
 say "Installation du binaire dans $BIN_DIR/$APP"
 install -Dm755 "$BUILT" "$BIN_DIR/$APP"
+
+# --- Exercices ---------------------------------------------------------
+# Le parcours n'est pas dans le binaire : c'est un fichier de données,
+# comme un thème. On l'installe donc, et une correction d'énoncé ne
+# demande plus de recompiler. Ce que l'utilisateur a ajouté à côté n'est
+# pas touché : seul le fichier livré est remplacé.
+say "Installation du parcours dans $EXERCISES_DIR"
+install -Dm644 "$SOURCE_DIR/crates/namsdec-exercises/packs/namsdec.json" \
+    "$EXERCISES_DIR/namsdec.json"
 
 # --- Icônes ------------------------------------------------------------
 # Le SVG d'abord : c'est lui que les thèmes modernes préfèrent, à

@@ -12,6 +12,28 @@ use super::*;
 // nomment sans préfixe, comme avant leur déménagement.
 use crate::sidebar::*;
 
+/// La série livrée, lue dans le dépôt.
+///
+/// Elle n'est plus compilée dans le programme : c'est un fichier de
+/// données. Les tests lisent donc celui **du dépôt** — jamais celui qui
+/// est installé sur la machine, dont l'état ne prouverait rien.
+fn builtin_pack() -> namsdec_exercises::Pack {
+    let packs = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../namsdec-exercises/packs");
+    namsdec_exercises::builtin_pack_in(&packs).expect("la série livrée est lisible")
+}
+
+/// Une application qui connaît la série livrée.
+///
+/// `NamsdecApp::default()` n'en charge aucune — c'est le démarrage qui
+/// lit les fichiers —, donc un test qui parle d'exercices la lui donne.
+fn app_with_exercises() -> NamsdecApp {
+    NamsdecApp {
+        exercises: true,
+        exercise_packs: vec![builtin_pack()],
+        ..Default::default()
+    }
+}
+
 /// Le programme type qu'on écrit en apprenant l'assembleur sous
 /// Linux : deux sections, un `_start`, des appels système. Il doit
 /// s'assembler, démarrer à `_start` — et non au premier octet chargé,
@@ -2729,6 +2751,7 @@ fn the_exercises_module_stays_out_of_the_way_until_it_is_asked_for() {
 
     let mut app = NamsdecApp {
         show_exercises: true,
+        exercise_packs: vec![builtin_pack()],
         ..Default::default()
     };
     assert!(
@@ -2752,6 +2775,7 @@ fn the_exercises_module_stays_out_of_the_way_until_it_is_asked_for() {
 fn asking_for_the_exercises_is_remembered() {
     let app = NamsdecApp {
         exercises: true,
+        exercise_packs: vec![builtin_pack()],
         ..Default::default()
     };
     let written = serde_json::to_string(&app.settings_snapshot()).unwrap();
@@ -2774,6 +2798,7 @@ fn asking_for_the_exercises_is_remembered() {
 fn loading_an_exercise_fills_the_editor_without_claiming_a_file() {
     let mut app = NamsdecApp {
         exercises: true,
+        exercise_packs: vec![builtin_pack()],
         current_file: Some(std::path::PathBuf::from("/tmp/le-mien.asm")),
         ..Default::default()
     };
@@ -2856,6 +2881,7 @@ fn an_installed_pack_joins_the_built_in_one() {
     let data = dir.path().join("data");
     let mut app = NamsdecApp {
         exercises: true,
+        exercise_packs: vec![builtin_pack()],
         ..Default::default()
     };
     with_data_home(&data, || app.install_exercises(&path));
@@ -2903,13 +2929,17 @@ fn a_pack_cannot_take_the_name_of_the_built_in_one() {
             {"id":"a","title":"A","description":"B","code":"BITS 64\nhlt\n"}]}"#,
     )
     .unwrap();
-    let mut app = NamsdecApp::default();
+    let mut app = app_with_exercises();
     with_data_home(&dir.path().join("data"), || app.install_exercises(&path));
     assert!(
         app.plugin_note.as_ref().is_some_and(|n| !n.ok),
         "elle doit être refusée"
     );
-    assert_eq!(app.exercise_packs.len(), 1);
+    assert_eq!(
+        app.exercise_packs.len(),
+        1,
+        "la série livrée reste seule : l'usurpatrice n'a pas pris sa place"
+    );
     assert!(app.exercise_files.is_empty());
 }
 
@@ -3241,7 +3271,7 @@ fn every_program_we_ship_is_a_complete_program() {
         ("le programme d'accueil", DEFAULT_SOURCE.to_owned()),
         ("le squelette de « Nouveau »", NEW_PROGRAM.to_owned()),
     ];
-    for exercise in namsdec_exercises::builtin_pack().exercises {
+    for exercise in builtin_pack().exercises {
         programs.push((
             Box::leak(exercise.id.clone().into_boxed_str()) as &str,
             exercise.starter_code,
@@ -3838,6 +3868,7 @@ malpolie:
 fn a_pack_can_be_set_aside_without_being_uninstalled() {
     let mut app = NamsdecApp {
         exercises: true,
+        exercise_packs: vec![builtin_pack()],
         show_exercises: true,
         ..Default::default()
     };
@@ -3914,7 +3945,7 @@ fn the_new_steps_of_the_course_keep_their_promise() {
         }
         app
     }
-    let pack = namsdec_exercises::builtin_pack();
+    let pack = builtin_pack();
     let code = |id: &str| pack.by_id(id).expect("l'étape existe").starter_code.clone();
 
     // L'ordre des octets : le premier en mémoire est celui de poids
@@ -3971,7 +4002,7 @@ fn an_exercise_points_at_the_sheets_it_uses() {
 
     // Chaque étape du parcours en a au moins une : un exercice sans
     // fiche serait un exercice sur rien.
-    for exercise in &namsdec_exercises::builtin_pack().exercises {
+    for exercise in &builtin_pack().exercises {
         assert!(
             !sheets_used(&exercise.starter_code).is_empty(),
             "{} ne renvoie à aucune fiche",
@@ -3982,6 +4013,7 @@ fn an_exercise_points_at_the_sheets_it_uses() {
     // Et elles s'affichent sous l'énoncé.
     let mut app = NamsdecApp {
         exercises: true,
+        exercise_packs: vec![builtin_pack()],
         show_exercises: true,
         ..Default::default()
     };
@@ -4000,7 +4032,7 @@ fn an_exercise_points_at_the_sheets_it_uses() {
 /// une chaîne avant de l'écrire sur la sortie.
 #[test]
 fn the_built_in_pack_is_a_course_in_order() {
-    let pack = namsdec_exercises::builtin_pack();
+    let pack = builtin_pack();
     let ids: Vec<&str> = pack.exercises.iter().map(|e| e.id.as_str()).collect();
     assert_eq!(
         ids,
@@ -4015,6 +4047,11 @@ fn the_built_in_pack_is_a_course_in_order() {
             "drapeaux",
             "signe",
             "negatif",
+            "hexadecimal",
+            "incrementer",
+            "test_and",
+            "xchg_bswap",
+            "masques",
             "decalages",
             "compter_bits",
             "multiplier",
@@ -4027,6 +4064,13 @@ fn the_built_in_pack_is_a_course_in_order() {
             "matrice",
             "recherche",
             "adresses",
+            "min_max",
+            "pair_impair",
+            "occurrences",
+            "inverser_tableau",
+            "borne",
+            "puissances",
+            "somme_moyenne",
             "chaine",
             "chaines",
             "comparer_chaines",
@@ -4043,6 +4087,13 @@ fn the_built_in_pack_is_a_course_in_order() {
             "cadre",
             "pile_locale",
             "tri",
+            "longueur_chaine",
+            "inverser_chaine",
+            "compter_mots",
+            "pile_inverse",
+            "args_pile",
+            "pointeur_fonction",
+            "alignement",
             "sortie",
             "entree",
             "tas",
@@ -4052,6 +4103,11 @@ fn the_built_in_pack_is_a_course_in_order() {
             "majuscules",
             "debordement",
             "protection",
+            "hexa_affichage",
+            "xor_chiffrement",
+            "somme_controle",
+            "canari",
+            "flottants_masque",
         ]
     );
     for exercise in &pack.exercises {
@@ -5586,13 +5642,13 @@ fn the_readme_tells_the_truth() {
         "le README annonce un autre nombre de fiches que les {fiches} existantes"
     );
 
-    let exercices = namsdec_exercises::builtin_pack().exercises.len();
+    let exercices = builtin_pack().exercises.len();
     assert_eq!(
-        exercices, 47,
-        "le parcours livré compte quarante-sept exercices"
+        exercices, 71,
+        "le parcours livré compte soixante et onze exercices"
     );
     assert!(
-        readme.contains("parcours de quarante-sept exercices"),
+        readme.contains("parcours de soixante et onze exercices"),
         "le README doit annoncer le bon nombre d'exercices"
     );
     // Les crates listées dans le tableau existent toutes.
@@ -6033,7 +6089,7 @@ fn unsaved_work_is_not_thrown_away_without_asking() {
     let fichier = dossier.path().join("autre.asm");
     std::fs::write(&fichier, "global _start\nsection .text\n_start:\nhlt\n").unwrap();
 
-    let mut app = NamsdecApp::default();
+    let mut app = app_with_exercises();
     // Tampon intact : l'ouverture se fait sans rien demander.
     app.open_file(fichier.clone());
     assert!(app.pending.is_none());
@@ -6354,7 +6410,7 @@ fn the_exercises_deliver_what_they_promise() {
         ("tableau", &[(Reg64::Rax, 100)]),
     ];
 
-    let packs = [namsdec_exercises::builtin_pack()];
+    let packs = [builtin_pack()];
     for (id, registres) in attendus {
         let exercise = namsdec_exercises::find(&packs, &format!("namsdec/{id}"))
             .unwrap_or_else(|| panic!("l'exercice {id} existe"));
@@ -6435,7 +6491,7 @@ fn the_course_is_discoverable_before_it_is_loaded() {
         output.textures_delta.clear();
     }
     // Le texte d'accueil est à l'écran, avec sa mention du parcours.
-    assert!(painted.contains("quarante-sept exercices"), "{painted}");
+    assert!(painted.contains("soixante et onze exercices"), "{painted}");
 }
 
 /// Le parcours se reprend là où on l'avait laissé.
@@ -6448,6 +6504,7 @@ fn the_course_is_discoverable_before_it_is_loaded() {
 fn the_course_remembers_where_one_stopped() {
     let mut app = NamsdecApp {
         exercises: true,
+        exercise_packs: vec![builtin_pack()],
         show_exercises: true,
         ..Default::default()
     };
@@ -6501,17 +6558,18 @@ fn the_course_remembers_where_one_stopped() {
         painted.contains("En cours :"),
         "l'étape en cours se voit sans avoir à la chercher : {painted}"
     );
-    // Le rang dans le parcours, aussi : le tableau est la dix-neuvième
-    // des quarante-sept étapes.
-    assert!(painted.contains("19/47"), "{painted}");
+    // Le rang dans le parcours, aussi : le tableau est la
+    // vingt-quatrième des soixante et onze étapes.
+    assert!(painted.contains("24/71"), "{painted}");
 }
 
 /// Un parcours se suit : l'étape suivante est à un clic, sans avoir à
-/// retrouver son rang dans une liste de quarante-sept.
+/// retrouver son rang dans une liste de soixante et onze.
 #[test]
 fn the_course_offers_the_next_step() {
     let mut app = NamsdecApp {
         exercises: true,
+        exercise_packs: vec![builtin_pack()],
         ..Default::default()
     };
 
@@ -6525,7 +6583,7 @@ fn the_course_offers_the_next_step() {
 
     // Le dernier n'en a pas : un parcours a une fin, et l'outil ne
     // propose pas d'aller au-delà.
-    assert!(app.exercise_after("namsdec/protection").is_none());
+    assert!(app.exercise_after("namsdec/flottants_masque").is_none());
     // Un identifiant inconnu non plus.
     assert!(app.exercise_after("namsdec/ceci-nexiste-pas").is_none());
 
@@ -6554,7 +6612,7 @@ fn the_course_offers_the_next_step() {
     }
     assert!(painted.contains("Étape suivante"), "{painted}");
     assert!(
-        painted.contains("1/47"),
+        painted.contains("1/71"),
         "le rang de l'étape en cours : {painted}"
     );
 }
@@ -6874,7 +6932,7 @@ fn the_extra_checks_warn_without_crying_wolf() {
     // Les programmes livrés avec l'application, eux, ne doivent
     // déclencher aucun avertissement : ce sont les modèles.
     let mut modèles = vec![("accueil", DEFAULT_SOURCE), ("nouveau", NEW_PROGRAM)];
-    let pack = namsdec_exercises::builtin_pack();
+    let pack = builtin_pack();
     for exercise in &pack.exercises {
         // Sauf celui qui met une faute en scène exprès.
         if exercise.id != "protection" {
@@ -7307,6 +7365,7 @@ fn every_window_at_once_holds_together() {
             let mut app = NamsdecApp {
                 lang,
                 exercises: true,
+                exercise_packs: vec![builtin_pack()],
                 show_re_tab: true,
                 show_analysis: true,
                 show_vectors: true,
@@ -7380,6 +7439,7 @@ fn every_setting_survives_a_round_trip() {
         completion: false,
         auto_indent: false,
         exercises: true,
+        exercise_packs: vec![builtin_pack()],
         show_re_tab: true,
         memory_format: MemoryFormat::Text,
         ..Default::default()
@@ -8721,7 +8781,7 @@ fn the_overflow_exercise_is_measured_by_the_cyclic_pattern() {
     if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
         return;
     }
-    let pack = namsdec_exercises::builtin_pack();
+    let pack = builtin_pack();
     let exercice = pack.by_id("debordement").expect("l'étape existe");
     let mut app = NamsdecApp {
         source: exercice.starter_code.clone(),
@@ -9008,6 +9068,7 @@ fn an_exercise_says_whether_its_goal_is_reached() {
     }
     let mut app = NamsdecApp {
         exercises: true,
+        exercise_packs: vec![builtin_pack()],
         ..Default::default()
     };
     // Sans exercice chargé, rien à dire.
@@ -9055,7 +9116,7 @@ fn an_exercise_says_whether_its_goal_is_reached() {
 /// de celui qui la fait.
 #[test]
 fn every_goal_is_readable_and_on_the_right_side() {
-    for exercise in &namsdec_exercises::builtin_pack().exercises {
+    for exercise in &builtin_pack().exercises {
         for texte in &exercise.goal {
             assert!(
                 condition::parse(texte).is_some(),
@@ -9069,7 +9130,31 @@ fn every_goal_is_readable_and_on_the_right_side() {
     }
     // Ce que le programme livré fait déjà : on le regarde tourner et on
     // comprend ce qui s'est passé.
-    const DÉMONSTRATIONS: [&str; 38] = [
+    const DÉMONSTRATIONS: [&str; 62] = [
+        "hexadecimal",
+        "incrementer",
+        "test_and",
+        "xchg_bswap",
+        "masques",
+        "min_max",
+        "pair_impair",
+        "occurrences",
+        "inverser_tableau",
+        "borne",
+        "puissances",
+        "somme_moyenne",
+        "longueur_chaine",
+        "inverser_chaine",
+        "compter_mots",
+        "pile_inverse",
+        "args_pile",
+        "pointeur_fonction",
+        "alignement",
+        "hexa_affichage",
+        "xor_chiffrement",
+        "somme_controle",
+        "canari",
+        "flottants_masque",
         "boucle",
         "lire_nombre",
         "structure",
@@ -9120,6 +9205,7 @@ fn every_goal_is_readable_and_on_the_right_side() {
     {
         let mut app = NamsdecApp {
             exercises: true,
+            exercise_packs: vec![builtin_pack()],
             ..Default::default()
         };
         app.load_exercise(&format!("namsdec/{id}"));
@@ -9148,7 +9234,7 @@ fn every_goal_is_readable_and_on_the_right_side() {
 
     // Et chaque exercice du parcours est dans l'une des deux listes, ou
     // n'a pas de but : personne n'est oublié en chemin.
-    for exercise in &namsdec_exercises::builtin_pack().exercises {
+    for exercise in &builtin_pack().exercises {
         let classé = DÉMONSTRATIONS.contains(&exercise.id.as_str())
             || À_FAIRE.contains(&exercise.id.as_str());
         assert_eq!(
@@ -10208,6 +10294,7 @@ fn a_solved_exercise_stays_solved() {
     }
     let mut app = NamsdecApp {
         exercises: true,
+        exercise_packs: vec![builtin_pack()],
         ..Default::default()
     };
     assert!(app.exercises_done.is_empty(), "rien de fait au départ");
@@ -10248,7 +10335,7 @@ fn a_solved_exercise_stays_solved() {
     app.show_exercises = true;
     let painted = paint(&mut app);
     assert!(
-        painted.contains(&format!("1/47 {}", strings(app.lang).exercises_done_count)),
+        painted.contains(&format!("1/71 {}", strings(app.lang).exercises_done_count)),
         "{painted}"
     );
 }
@@ -10433,6 +10520,7 @@ fn the_five_new_steps_do_what_they_show() {
     let jouer = |id: &str| -> NamsdecApp {
         let mut app = NamsdecApp {
             exercises: true,
+            exercise_packs: vec![builtin_pack()],
             ..Default::default()
         };
         app.load_exercise(&format!("namsdec/{id}"));
@@ -10507,6 +10595,7 @@ fn the_five_later_steps_do_what_they_show() {
     let jouer = |id: &str| -> NamsdecApp {
         let mut app = NamsdecApp {
             exercises: true,
+            exercise_packs: vec![builtin_pack()],
             ..Default::default()
         };
         app.load_exercise(&format!("namsdec/{id}"));
@@ -10614,8 +10703,10 @@ fn every_budget_is_one_a_program_can_hold() {
         ),
     ];
 
-    for exercise in &namsdec_exercises::builtin_pack().exercises {
-        let Some(budget) = exercise.par else { continue };
+    // Tous les exercices, et non les seuls budgétés : un exercice qui
+    // n'atteint pas son propre but est un exercice faux, budget ou non.
+    for exercise in &builtin_pack().exercises {
+        let budget = exercise.par.unwrap_or(u64::MAX);
         let mut source = exercise.starter_code.clone();
         for (id, avant, après) in corrections {
             if exercise.id == id {
@@ -10692,6 +10783,7 @@ fn the_score_of_an_exercise_is_what_it_costs() {
 
     let mut app = NamsdecApp {
         exercises: true,
+        exercise_packs: vec![builtin_pack()],
         ..Default::default()
     };
     app.load_exercise("namsdec/boucle");
@@ -10714,11 +10806,7 @@ _start:
     assert_eq!(mieux, Some(2), "le meilleur descend");
 
     // Une tentative plus longue ne remonte pas le score.
-    app.source = namsdec_exercises::builtin_pack()
-        .by_id("boucle")
-        .unwrap()
-        .starter_code
-        .clone();
+    app.source = builtin_pack().by_id("boucle").unwrap().starter_code.clone();
     jouer(&mut app);
     assert_eq!(app.exercises_best.get("namsdec/boucle").copied(), Some(2));
 
@@ -10737,6 +10825,7 @@ fn the_cost_is_shown_next_to_the_goal() {
     }
     let mut app = NamsdecApp {
         exercises: true,
+        exercise_packs: vec![builtin_pack()],
         ..Default::default()
     };
     app.load_exercise("namsdec/boucle");
@@ -10763,7 +10852,7 @@ fn the_cost_is_shown_next_to_the_goal() {
 /// chiffre : « Découverte » annonce ce qui attend, « niveau 3 » non.
 #[test]
 fn the_course_climbs_and_says_so() {
-    let pack = namsdec_exercises::builtin_pack();
+    let pack = builtin_pack();
     // Les paliers ne reculent pas, et les quatre sont là.
     let niveaux: Vec<namsdec_exercises::Level> = pack.exercises.iter().map(|e| e.level).collect();
     assert!(
@@ -10783,6 +10872,7 @@ fn the_course_climbs_and_says_so() {
     // contenu n'est peint qu'ensuite.
     let mut app = NamsdecApp {
         exercises: true,
+        exercise_packs: vec![builtin_pack()],
         show_exercises: true,
         ..Default::default()
     };
@@ -10851,6 +10941,7 @@ fn a_goal_true_before_running_scores_nothing() {
     }
     let mut app = NamsdecApp {
         exercises: true,
+        exercise_packs: vec![builtin_pack()],
         ..Default::default()
     };
     // « Mettre à zéro » : son but est vrai dès le départ, registres
@@ -10894,6 +10985,7 @@ fn a_goal_true_before_running_scores_nothing() {
 fn the_next_step_skips_what_is_already_done() {
     let mut app = NamsdecApp {
         exercises: true,
+        exercise_packs: vec![builtin_pack()],
         ..Default::default()
     };
     // Rien de fait : la suivante est la suivante.
@@ -10912,7 +11004,7 @@ fn the_next_step_skips_what_is_already_done() {
 
     // Tout réussi jusqu'au bout : on retombe sur la suivante, plutôt
     // que de ne rien proposer.
-    for exercise in &namsdec_exercises::builtin_pack().exercises {
+    for exercise in &builtin_pack().exercises {
         app.exercises_done
             .insert(format!("namsdec/{}", exercise.id));
     }
@@ -10973,7 +11065,7 @@ fn est_un_registre(mot: &str) -> bool {
 /// l'instruction qu'il vient de rencontrer pour la première fois.
 #[test]
 fn every_instruction_the_course_writes_has_a_sheet() {
-    let pack = namsdec_exercises::builtin_pack();
+    let pack = builtin_pack();
     let mut sans_fiche: std::collections::BTreeMap<String, String> = Default::default();
 
     for exercise in &pack.exercises {
@@ -11064,11 +11156,12 @@ fn every_instruction_the_course_writes_has_a_sheet() {
 fn each_level_says_how_far_one_has_got() {
     let mut app = NamsdecApp {
         exercises: true,
+        exercise_packs: vec![builtin_pack()],
         show_exercises: true,
         ..Default::default()
     };
     // Rien de fait : le premier palier est à zéro.
-    let pack = namsdec_exercises::builtin_pack();
+    let pack = builtin_pack();
     let combien = |niveau: namsdec_exercises::Level| {
         pack.exercises
             .iter()
@@ -12024,7 +12117,7 @@ fn the_profile_recalls_the_exercise_budget() {
     let ctx = egui::Context::default();
     // Un exercice qui a un budget, et un programme qui le dépasse de
     // beaucoup : une boucle de cent tours là où l'énoncé en veut peu.
-    let pack = namsdec_exercises::builtin_pack();
+    let pack = builtin_pack();
     let exercice = pack
         .exercises
         .iter()
@@ -12050,6 +12143,7 @@ boucle:
             tours = budget + 100
         ),
         current_exercise: Some(id),
+        exercise_packs: vec![builtin_pack()],
         console_tab: ConsoleTab::Profile,
         ..Default::default()
     };
@@ -13045,12 +13139,13 @@ fn quitting_looks_at_every_open_file() {
 /// abandonner le précédent.
 #[test]
 fn each_exercise_gets_its_own_named_tab() {
-    let pack = namsdec_exercises::builtin_pack();
+    let pack = builtin_pack();
     let premier = namsdec_exercises::full_id(&pack, &pack.exercises[0]);
     let second = namsdec_exercises::full_id(&pack, &pack.exercises[1]);
 
     let mut app = NamsdecApp {
         exercises: true,
+        exercise_packs: vec![builtin_pack()],
         ..Default::default()
     };
     app.load_exercise_now(&premier);

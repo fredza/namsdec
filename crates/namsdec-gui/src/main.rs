@@ -1378,7 +1378,7 @@ enum PreferencesTab {
 /// chose qui marche même quand il ne l'est pas.
 const DEFAULT_SOURCE: &str = "\
 ; Bienvenue dans namsdec. Assemblez (Ctrl+Maj+B), puis avancez pas à pas.
-; Un parcours de quarante-sept exercices vous attend : Préférences > Modules.
+; Un parcours de soixante et onze exercices vous attend : Préférences > Modules.
 
 global _start
 
@@ -1600,7 +1600,10 @@ impl Default for NamsdecApp {
             disassembler_plugins: load_disassembler_plugins(),
             plugin_output: None,
             timeline_notable_only: false,
-            exercise_packs: vec![namsdec_exercises::builtin_pack()],
+            // Aucune série au départ : elles sont des fichiers, et
+            // c'est le démarrage qui les lit — celle qui est livrée
+            // comme celles qu'on ajoute.
+            exercise_packs: Vec::new(),
             exercise_files: BTreeMap::new(),
             pack_to_remove: None,
             disabled_packs: BTreeSet::new(),
@@ -4928,8 +4931,28 @@ impl NamsdecApp {
             // fenêtre à chaque frame, et l'on ne peut plus la déplacer.
             .default_pos(ctx.viewport_rect().center())
             .show(ctx, |ui| {
+                // Aucune série lisible : le parcours est un fichier, et
+                // ce fichier n'est pas là. Le dire, avec l'endroit où il
+                // devrait être — c'est la seule chose utile ici.
+                if self.exercise_packs.is_empty() {
+                    ui.colored_label(theme.bad, s.exercises_missing);
+                    if let Some(dir) = exercises_dir() {
+                        ui.colored_label(
+                            theme.dim,
+                            egui::RichText::new(
+                                dir.join(namsdec_exercises::BUILTIN_FILE)
+                                    .display()
+                                    .to_string(),
+                            )
+                            .monospace(),
+                        );
+                    }
+                    ui.add_space(4.0);
+                    ui.colored_label(theme.dim, s.exercises_missing_hint);
+                    return;
+                }
                 ui.label(s.exercises_legend);
-                // L'étape en cours, en tête : quarante-sept exercices ne tiennent
+                // L'étape en cours, en tête : soixante et onze exercices ne tiennent
                 // pas dans la fenêtre, et « où j'en étais » ne sert à
                 // rien s'il faut le chercher en défilant.
                 if let Some(id) = self.current_exercise.clone()
@@ -4982,7 +5005,7 @@ impl NamsdecApp {
                 egui::ScrollArea::vertical()
                     .max_height(room)
                     // `false` en hauteur : une zone qui rétrécit à son
-                    // contenu est aussi haute que ses quarante-sept exercices,
+                    // contenu est aussi haute que ses soixante et onze exercices,
                     // donc ne défile jamais — elle déborde de la fenêtre,
                     // et ce qui dépasse est coupé.
                     .auto_shrink([false, false])
@@ -10308,9 +10331,14 @@ fn load_installed_exercises() -> (
         .filter(|path| path.extension().is_some_and(|ext| ext == "json"))
         .collect();
     paths.sort();
+    // La série livrée d'abord, quel que soit l'ordre alphabétique :
+    // c'est par elle qu'on commence, et les autres viennent ensuite.
+    let livrée = dir.join(namsdec_exercises::BUILTIN_FILE);
+    paths.sort_by_key(|path| *path != livrée);
     for path in paths {
+        let est_livrée = path == livrée;
         match namsdec_exercises::pack::read(&path) {
-            Ok(pack) if pack.id != namsdec_exercises::BUILTIN_ID => {
+            Ok(pack) if est_livrée || pack.id != namsdec_exercises::BUILTIN_ID => {
                 files.insert(pack.id.clone(), path);
                 packs.push(pack);
             }
@@ -10555,8 +10583,8 @@ fn main() -> eframe::Result<()> {
             // l'application devient celle qui écrit vraiment.
             app.settings_file = settings::settings_path();
             app.theme_files = theme_files;
-            // Les séries installées viennent après celle d'origine, qui
-            // reste en tête : c'est là qu'on commence.
+            // Toutes les séries lues sur le disque, celle qui est
+            // livrée en tête.
             app.exercise_packs.extend(packs);
             app.exercise_files = exercise_files;
             if !failures.is_empty() {

@@ -253,6 +253,10 @@ pub struct Strings {
     pub untitled_buffer: &'static str,
     /// L'infobulle de la croix d'un onglet.
     pub tab_close_hint: &'static str,
+    /// Ce qui se dit quand le parcours livré n'est pas là : c'est un
+    /// fichier de données, et il s'installe.
+    pub exercises_missing: &'static str,
+    pub exercises_missing_hint: &'static str,
     /// Ce qui se dit quand le fichier a changé sur le disque : rechargé
     /// tout seul quand rien n'était en danger, signalé sinon.
     pub disk_reloaded: &'static str,
@@ -775,6 +779,8 @@ const FR: Strings = Strings {
     prefix_vex: "VEX : l'encodage des instructions AVX.",
     untitled_buffer: "sans titre",
     tab_close_hint: "Fermer ce fichier",
+    exercises_missing: "Aucune série d'exercices n'a été trouvée.",
+    exercises_missing_hint: "Le parcours est un fichier de données, comme un thème : relancez install.sh, ou déposez un fichier de série avec Outils > Exercices.",
     disk_reloaded: "Le fichier a changé sur le disque : rechargé.",
     disk_changed: "Ce fichier a changé sur le disque, et vos modifications ne sont pas enregistrées.",
     disk_reload: "Recharger",
@@ -1261,6 +1267,8 @@ const EN: Strings = Strings {
     prefix_vex: "VEX: the encoding of AVX instructions.",
     untitled_buffer: "untitled",
     tab_close_hint: "Close this file",
+    exercises_missing: "No exercise pack was found.",
+    exercises_missing_hint: "The course is a data file, like a theme: run install.sh again, or drop a pack in with Tools > Exercises.",
     disk_reloaded: "The file changed on disk: reloaded.",
     disk_changed: "This file changed on disk, and your edits are not saved.",
     disk_reload: "Reload",
