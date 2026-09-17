@@ -1,0 +1,16 @@
+{
+  "id": "rizin-ghidra",
+  "name": "Rizin + rz-ghidra — décompilation (pdg)",
+  "command": "rizin",
+  "args": [
+    "-N",
+    "-q",
+    "-e",
+    "scr.color=0",
+    "-c",
+    "aaa; s entry0; af; pdg",
+    "--",
+    "{file}"
+  ],
+  "install": "sudo dnf install rizin rizin-plugin-ghidra"
+}

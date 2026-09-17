@@ -4,6 +4,225 @@ Les dates sont celles des commits ; le format suit [Keep a
 Changelog](https://keepachangelog.com/fr/1.1.0/) d'assez loin — une
 entrée par version, et ce qui change pour qui s'en sert.
 
+## 0.2.4-beta.1 — 18 septembre 2026
+
+Trois chantiers : lire un binaire qu'on n'a pas écrit, ouvrir plusieurs
+fichiers à la fois, et brancher les outils du métier.
+
+**Un répertoire `plugins/`**
+- Tout ce qui s'ajoute à namsdec sans le recompiler y est rangé en deux
+  familles : les **thèmes**, qui ne sont que des couleurs, et les
+  **fonctionnalités supplémentaires**, qui décrivent un programme à
+  lancer. La distinction n'est pas un classement, c'est une question de
+  confiance : un thème ne s'exécute pas.
+- Chaque dossier porte son mode d'emploi — le format champ par champ, où
+  les fichiers s'installent, et comment installer les décompilateurs :
+  radare2, Rizin avec son greffon `rz-ghidra`, RetDec depuis ses versions
+  publiées.
+- Les descriptions d'outils y sont **engendrées** par le code qui les
+  connaît : un argument ne peut pas diverger entre ce que namsdec lance
+  et ce que le dépôt propose de copier.
+
+**Ouvrir un vrai binaire**
+- La mémoire simulée ne fait plus soixante-quatre kilo-octets : elle
+  s'adapte au programme chargé. Un binaire de trois cent mille octets n'y
+  entrait pas, namsdec retombait sur un désassemblage brut tassé à
+  `0x400000`, et l'on croyait lire le fichier ouvert alors que toutes les
+  adresses étaient décalées. Un exercice, lui, retrouve exactement la
+  fenêtre d'avant — même base, même taille, même sommet de pile.
+- Un binaire **lié dynamiquement** le dit dès son ouverture : il se lit,
+  se désassemble et s'analyse, mais ne s'exécute pas ici — les fonctions
+  qu'il emprunte ne sont pas là. Mieux vaut l'apprendre au chargement que
+  sur un « rien n'est projeté à cette adresse » au premier appel.
+- **Réassembler le listing d'un binaire** est refusé, en le disant : cela
+  donnait un programme sans ses données ni sa table de liaison, qui
+  partait dans le décor à la première lecture.
+- Les outils d'analyse ont **leur propre onglet** dans les préférences,
+  et une ligne chacun : ils étaient au bas de la page des plugins, sur
+  quatre lignes, et seul le premier entrait dans la fenêtre — Rizin et
+  RetDec étaient là sans que personne puisse les voir.
+
+**Un module de décompilation, chargé à la demande**
+- Cinq outils connus d'avance, avec les arguments qui marchent :
+  `objdump`, `ndisasm`, le pseudo-code de `radare2`, **Rizin + rz-ghidra**
+  (`pdg`) et **RetDec**. Préférences ▸ Plugins dit lesquels sont présents
+  sur la machine, lesquels manquent, et ce qu'il faut taper pour les
+  obtenir — puis les déclare d'un clic, ce qui écrit un fichier et rien
+  d'autre.
+- Rizin a droit à une nuance que personne d'autre ne fait : le programme
+  peut être installé sans que la décompilation le soit, faute du greffon
+  `rz-ghidra`. namsdec le lui demande et répond « incomplet » plutôt que
+  de laisser essayer.
+- Le format de description accepte `{out}` : un outil qui écrit son
+  résultat dans un fichier — RetDec — est désormais lisible, là où
+  namsdec n'attendait que la sortie standard.
+- Un outil extérieur — `objdump`, `ndisasm`, RetDec, le vôtre — décrit
+  par un fichier JSON dans `~/.local/share/namsdec/decompilers/`, choisi
+  dans une liste et lancé sur le programme lié.
+- Éteint par défaut, et pour une raison qui est dite : ce module
+  n'affiche pas, il **exécute**. La case des préférences, l'entrée de
+  menu qui n'apparaît qu'ensuite, et le bouton « Lancer » font trois
+  verrous — et la commande complète est écrite avant d'être lancée.
+- Le travail se fait dans un fil à part : l'interface reste utilisable, et
+  un outil qui ne rend pas la main au bout de deux minutes est réellement
+  arrêté, pas attendu.
+- Ce qui tourne se voit à deux endroits : une **barre de progression dans
+  la barre d'état**, et le **titre de la fenêtre** — donc la barre des
+  tâches du système, où l'on regarde quand on a changé d'application. La
+  progression est celle du temps accordé, seule chose qu'un programme
+  extérieur nous laisse savoir ; quand rien ne borne, la barre avance
+  toute seule plutôt que d'inventer un pourcentage.
+
+**Lire un binaire qu'on n'a pas écrit**
+- Un module **Fonctions** : le `main` d'un binaire dépouillé, retrouvé
+  par la convention de démarrage, puis les fonctions découpées sur les
+  cibles d'appel, avec leurs appelants.
+- Les chaînes des langages sans zéro final — Rust, Go, Zig — sont
+  découpées **par le code**, où l'adresse voyage avec sa longueur. Un
+  scan des octets lisait « Error flushing bufferError reading
+  inputIncorrect password » d'un seul tenant.
+- Un module **Figures** : constantes qui sont du texte, contrôles de
+  longueur, comparaisons déguisées en XOR, comparaisons de chaîne,
+  tables de sauts. Rangées de la plus rare à la plus commune — c'est ce
+  classement qui fait sortir une piste d'un binaire de soixante mille
+  instructions.
+- **La route vers une adresse** : dans le déroulement, un champ répond à
+  « comment arrive-t-on là ? » en listant les conditions à satisfaire
+  dans l'ordre, et met en avant les blocs du chemin. La plus courte —
+  namsdec dit quand il en existe d'autres.
+- **La provenance lue dans le code** : à défaut d'historique, namsdec
+  remonte les instructions à l'envers jusqu'à la source d'une valeur, et
+  s'arrête au premier saut plutôt que de deviner.
+
+**Un guide de l'utilisateur**
+- Un PDF de neuf pages accompagne la version : installation, prise en
+  main, chaque panneau, l'exécution, la mémoire, le manuel, le
+  déroulement, le parcours, la rétro-ingénierie, les raccourcis, les
+  fichiers et les limites connues.
+- Il est produit depuis le dépôt : version, nombre d'exercices, nombre de
+  fiches, nombre de tests et table des raccourcis sont lus dans les
+  sources. Un test refuse qu'une seule de ces valeurs y soit recopiée.
+
+**Le déroulement du programme**
+- Une fenêtre, ouverte par `Espace g`, dessine le graphe des blocs : un
+  listing se lit de haut en bas, un programme non. Chaque boîte est une
+  suite d'instructions qu'on ne peut qu'entrer par le haut et quitter par
+  le bas ; les flèches disent le saut pris, le saut non pris et l'appel ;
+  une boucle se voit à ce qu'elle remonte, en passant par le côté.
+- Le bloc où le programme se trouve est mis en avant à chaque pas, un
+  clic y emmène dans l'éditeur, et Ctrl+molette recule pour voir la forme
+  d'ensemble.
+- Un saut dont la cible se calcule — table de sauts, pointeur de
+  fonction — est signalé comme tel : aucune flèche n'est inventée vers
+  une adresse qu'on ne connaît pas.
+
+**Le parcours sort du binaire, et passe à soixante et onze étapes**
+- Les exercices ne sont plus compilés dans le programme : c'est un
+  fichier de données, `namsdec.json`, installé à côté des thèmes et lu
+  au démarrage comme n'importe quelle série. Corriger un énoncé ne
+  demande plus de recompiler, et ce qu'on écrit soi-même se range
+  exactement comme ce qui est livré.
+- Vingt-cinq étapes encore, portées à **96** : ce que l'assembleur
+  calcule pour vous, les rotations, `setcc`, `not` et `neg`, la division
+  signée et le `cqo` qu'elle exige, ce que coûte un immédiat ; les
+  tableaux d'octets, les zones qui se chevauchent (`memmove` contre
+  `memcpy`), `rep stosb`, la recherche de bit, l'addition sur cent
+  vingt-huit bits, la table de conversion, les trous d'une structure ;
+  la concaténation, l'extraction d'un mot, la récursion terminale qui
+  devient une boucle, le tri par insertion à comparer au tri à bulles
+  dans le Profil, la recherche binaire et son calcul de milieu qui
+  déborde, la liste chaînée, la transposition ; la somme vectorielle et
+  son repliement final, tronquer contre arrondir, la table ASCII en un
+  seul `write`, l'affichage d'un négatif et le nombre sur lequel la
+  valeur absolue ment, et la lecture jusqu'à la fin.
+- Vingt-quatre étapes de plus avant elles, portées alors à 71 : les trois écritures
+  d'un nombre, `inc` contre `add` et la retenue qu'il épargne, `test`
+  qui regarde sans écrire, `xchg` et `bswap`, les masques de bits ; le
+  minimum et le maximum en un passage, la parité en un bit, les
+  occurrences, le retournement sur place, le bornage sans branchement,
+  les puissances de deux et leur limite, la somme et la moyenne ;
+  `strlen` par `repne scasb`, le mot à l'envers, le compte de mots, la
+  pile qui retourne ce qu'on lui donne, les arguments au-delà de six,
+  le pointeur de fonction, l'alignement de pile sur seize ; l'affichage
+  hexadécimal, le chiffrement XOR et sa faiblesse, la somme de
+  contrôle, le canari posé à la main, et le choix vectoriel par masque.
+- Le test qui vérifiait les budgets exécute désormais **tous** les
+  exercices : un exercice qui n'atteint pas son propre but est faux,
+  budget ou non. Il a trouvé deux énoncés qui comptaient mal.
+- Le binaire passe de 25,1 à **17,8 Mo** — l'édition de liens voit tout
+  le programme d'un coup et jette ce qui n'est appelé nulle part. Rien
+  n'est effacé pour autant : les symboles restent, un rapport de
+  plantage doit pouvoir se lire.
+
+**Plusieurs fichiers à la fois**
+- Une barre d'onglets au-dessus de l'éditeur : un onglet par fichier, le
+  nom raccourci par le milieu quand il est long, un point sur ce qui
+  n'est pas enregistré, une croix pour fermer. Elle n'apparaît qu'à
+  partir du deuxième fichier.
+- Chaque onglet garde ce qu'on y faisait : le texte, le curseur, les
+  points d'arrêt et leurs conditions, l'exercice en cours, et
+  l'exécution arrêtée au pas où on l'avait laissée. Y revenir, c'est
+  reprendre la phrase au milieu.
+- Ouvrir un fichier ne demande donc plus si l'on veut perdre le
+  précédent : il attend dans son onglet. Ctrl+Tab passe au suivant,
+  Ctrl+Maj+Tab au précédent, Ctrl+W ferme.
+- Un fichier changé sur le disque pendant qu'on regardait ailleurs — un
+  `git checkout`, un autre éditeur — ne passe plus inaperçu : rien de
+  tapé de notre côté, il est relu et namsdec le dit ; modifié des deux
+  côtés, un bandeau propose de relire ou de garder. La vérification a
+  lieu au retour dans la fenêtre et en changeant d'onglet, jamais à
+  chaque image.
+- Chaque exercice a son onglet, et porte son titre : on ouvre le suivant
+  sans abandonner le précédent, et l'on y revient avec ce qu'on y avait
+  écrit. Trois onglets « sans titre » côte à côte ne disaient rien.
+- Fermer un onglet dont le texte n'est pas enregistré demande d'abord, et
+  quitter regarde **tous** les fichiers ouverts : la fenêtre dit combien
+  sont en danger, et « Enregistrer » passe au suivant au lieu
+  d'emporter le reste.
+- Les fichiers ouverts reviennent au lancement suivant — leurs chemins,
+  jamais leur contenu, comme pour le reste.
+
+- La mémoire lue « en Texte » s'explique : `<b8><01>` suivi de `\0` ne
+  disait ni que le zéro arrêtait la lecture, ni que ces octets n'étaient
+  pas du texte, ni où se trouvait le message cherché. Elle dit maintenant
+  les trois — et liste, avec leurs adresses, les suites lisibles de la
+  fenêtre, comme `strings`.
+- La pile ne coupe plus ses valeurs au bord du panneau : elle défile de
+  côté, et sur un panneau étroit l'adresse laisse la place à l'écart
+  depuis RSP (`+0x10`, `-0x08`) — plus court, et il dit quelque chose de
+  plus : à quelle profondeur on regarde. L'adresse complète reste au
+  survol. Le panneau, lui, ne se resserre plus en deçà d'une valeur de
+  seize chiffres, barre de défilement comprise.
+- L'onglet Mémoire lit son format dans une liste déroulante : « Octets
+  Mots Texte Pointeurs » ne tenait pas sur la largeur d'un panneau et
+  repassait à la ligne par-dessus le reste.
+- Un filet sépare les trois zones du panneau latéral, et Affichage ▸
+  « Panneau latéral partagé tout seul » rend le partage automatique à qui
+  a tiré la poignée une fois.
+- Le panneau latéral partage sa hauteur au lieu de la donner au premier
+  arrivé : l'état du processeur garde la sienne, entière et sans barre
+  de défilement, et le contenu de l'onglet — Pile, Mémoire, Tas, Octets,
+  RE — a la sienne, avec une poignée pour la régler et un plancher en
+  dessous duquel il ne descend plus. Il sortait jusque-là par le bas du
+  panneau : l'onglet RE se réduisait à son titre et à un champ de
+  recherche coupé en deux. Ce qui cède, désormais, c'est le détail de la
+  prochaine instruction, qui se replie d'un clic. L'onglet RE mène en
+  outre à la fenêtre d'analyse, où tout se lit déplié.
+- Un appel système que namsdec ne simule pas — `mmap`, `open`, `fork` —
+  est annoncé dès l'assemblage, avec sa ligne : le programme s'arrêtait
+  dessus sans que rien ne l'ait laissé prévoir.
+- La console ne tend plus un champ de saisie à un programme qui ne lit
+  rien : elle relit son code, et la saisie n'apparaît que s'il contient
+  un `read` — ou dès qu'il en réclame une. Vide, elle dit aussi
+  *pourquoi* : « ce programme n'écrit rien » quand il ne contient aucun
+  `write`, « rien pour l'instant » tant qu'il n'a pas tourné, et « le
+  programme n'a rien écrit » seulement quand c'est vrai.
+- La console prend la hauteur de ce qu'elle a à dire : « le programme n'a
+  rien écrit » occupait le quart de l'écran, c'est maintenant trois
+  lignes. Tirer la poignée reprend la main, et la hauteur choisie est
+  retenue ; Affichage ▸ « Console à la hauteur de son contenu » rend
+  l'ajustement.
+
 ## 0.2.1-beta.2 — 17 septembre 2026
 
 La version qui emprunte ses gestes à [pwndbg](https://pwndbg.re/) : ce
@@ -225,206 +444,6 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
   coût et le lien des registres étendus se superposaient à l'onglet, les
   deux illisibles. Le bandeau tient maintenant dans une seule zone qui
   coupe net, et la barre n'apparaît que sur une fenêtre trop courte.
-**Ouvrir un vrai binaire**
-- La mémoire simulée ne fait plus soixante-quatre kilo-octets : elle
-  s'adapte au programme chargé. Un binaire de trois cent mille octets n'y
-  entrait pas, namsdec retombait sur un désassemblage brut tassé à
-  `0x400000`, et l'on croyait lire le fichier ouvert alors que toutes les
-  adresses étaient décalées. Un exercice, lui, retrouve exactement la
-  fenêtre d'avant — même base, même taille, même sommet de pile.
-- Un binaire **lié dynamiquement** le dit dès son ouverture : il se lit,
-  se désassemble et s'analyse, mais ne s'exécute pas ici — les fonctions
-  qu'il emprunte ne sont pas là. Mieux vaut l'apprendre au chargement que
-  sur un « rien n'est projeté à cette adresse » au premier appel.
-- **Réassembler le listing d'un binaire** est refusé, en le disant : cela
-  donnait un programme sans ses données ni sa table de liaison, qui
-  partait dans le décor à la première lecture.
-- Les outils d'analyse ont **leur propre onglet** dans les préférences,
-  et une ligne chacun : ils étaient au bas de la page des plugins, sur
-  quatre lignes, et seul le premier entrait dans la fenêtre — Rizin et
-  RetDec étaient là sans que personne puisse les voir.
-
-**Un module de décompilation, chargé à la demande**
-- Cinq outils connus d'avance, avec les arguments qui marchent :
-  `objdump`, `ndisasm`, le pseudo-code de `radare2`, **Rizin + rz-ghidra**
-  (`pdg`) et **RetDec**. Préférences ▸ Plugins dit lesquels sont présents
-  sur la machine, lesquels manquent, et ce qu'il faut taper pour les
-  obtenir — puis les déclare d'un clic, ce qui écrit un fichier et rien
-  d'autre.
-- Rizin a droit à une nuance que personne d'autre ne fait : le programme
-  peut être installé sans que la décompilation le soit, faute du greffon
-  `rz-ghidra`. namsdec le lui demande et répond « incomplet » plutôt que
-  de laisser essayer.
-- Le format de description accepte `{out}` : un outil qui écrit son
-  résultat dans un fichier — RetDec — est désormais lisible, là où
-  namsdec n'attendait que la sortie standard.
-- Un outil extérieur — `objdump`, `ndisasm`, RetDec, le vôtre — décrit
-  par un fichier JSON dans `~/.local/share/namsdec/decompilers/`, choisi
-  dans une liste et lancé sur le programme lié.
-- Éteint par défaut, et pour une raison qui est dite : ce module
-  n'affiche pas, il **exécute**. La case des préférences, l'entrée de
-  menu qui n'apparaît qu'ensuite, et le bouton « Lancer » font trois
-  verrous — et la commande complète est écrite avant d'être lancée.
-- Le travail se fait dans un fil à part : l'interface reste utilisable, et
-  un outil qui ne rend pas la main au bout de deux minutes est réellement
-  arrêté, pas attendu.
-- Ce qui tourne se voit à deux endroits : une **barre de progression dans
-  la barre d'état**, et le **titre de la fenêtre** — donc la barre des
-  tâches du système, où l'on regarde quand on a changé d'application. La
-  progression est celle du temps accordé, seule chose qu'un programme
-  extérieur nous laisse savoir ; quand rien ne borne, la barre avance
-  toute seule plutôt que d'inventer un pourcentage.
-
-**Lire un binaire qu'on n'a pas écrit**
-- Un module **Fonctions** : le `main` d'un binaire dépouillé, retrouvé
-  par la convention de démarrage, puis les fonctions découpées sur les
-  cibles d'appel, avec leurs appelants.
-- Les chaînes des langages sans zéro final — Rust, Go, Zig — sont
-  découpées **par le code**, où l'adresse voyage avec sa longueur. Un
-  scan des octets lisait « Error flushing bufferError reading
-  inputIncorrect password » d'un seul tenant.
-- Un module **Figures** : constantes qui sont du texte, contrôles de
-  longueur, comparaisons déguisées en XOR, comparaisons de chaîne,
-  tables de sauts. Rangées de la plus rare à la plus commune — c'est ce
-  classement qui fait sortir une piste d'un binaire de soixante mille
-  instructions.
-- **La route vers une adresse** : dans le déroulement, un champ répond à
-  « comment arrive-t-on là ? » en listant les conditions à satisfaire
-  dans l'ordre, et met en avant les blocs du chemin. La plus courte —
-  namsdec dit quand il en existe d'autres.
-- **La provenance lue dans le code** : à défaut d'historique, namsdec
-  remonte les instructions à l'envers jusqu'à la source d'une valeur, et
-  s'arrête au premier saut plutôt que de deviner.
-
-**Un guide de l'utilisateur**
-- Un PDF de neuf pages accompagne la version : installation, prise en
-  main, chaque panneau, l'exécution, la mémoire, le manuel, le
-  déroulement, le parcours, la rétro-ingénierie, les raccourcis, les
-  fichiers et les limites connues.
-- Il est produit depuis le dépôt : version, nombre d'exercices, nombre de
-  fiches, nombre de tests et table des raccourcis sont lus dans les
-  sources. Un test refuse qu'une seule de ces valeurs y soit recopiée.
-
-**Le déroulement du programme**
-- Une fenêtre, ouverte par `Espace g`, dessine le graphe des blocs : un
-  listing se lit de haut en bas, un programme non. Chaque boîte est une
-  suite d'instructions qu'on ne peut qu'entrer par le haut et quitter par
-  le bas ; les flèches disent le saut pris, le saut non pris et l'appel ;
-  une boucle se voit à ce qu'elle remonte, en passant par le côté.
-- Le bloc où le programme se trouve est mis en avant à chaque pas, un
-  clic y emmène dans l'éditeur, et Ctrl+molette recule pour voir la forme
-  d'ensemble.
-- Un saut dont la cible se calcule — table de sauts, pointeur de
-  fonction — est signalé comme tel : aucune flèche n'est inventée vers
-  une adresse qu'on ne connaît pas.
-
-**Le parcours sort du binaire, et passe à soixante et onze étapes**
-- Les exercices ne sont plus compilés dans le programme : c'est un
-  fichier de données, `namsdec.json`, installé à côté des thèmes et lu
-  au démarrage comme n'importe quelle série. Corriger un énoncé ne
-  demande plus de recompiler, et ce qu'on écrit soi-même se range
-  exactement comme ce qui est livré.
-- Vingt-cinq étapes encore, portées à **96** : ce que l'assembleur
-  calcule pour vous, les rotations, `setcc`, `not` et `neg`, la division
-  signée et le `cqo` qu'elle exige, ce que coûte un immédiat ; les
-  tableaux d'octets, les zones qui se chevauchent (`memmove` contre
-  `memcpy`), `rep stosb`, la recherche de bit, l'addition sur cent
-  vingt-huit bits, la table de conversion, les trous d'une structure ;
-  la concaténation, l'extraction d'un mot, la récursion terminale qui
-  devient une boucle, le tri par insertion à comparer au tri à bulles
-  dans le Profil, la recherche binaire et son calcul de milieu qui
-  déborde, la liste chaînée, la transposition ; la somme vectorielle et
-  son repliement final, tronquer contre arrondir, la table ASCII en un
-  seul `write`, l'affichage d'un négatif et le nombre sur lequel la
-  valeur absolue ment, et la lecture jusqu'à la fin.
-- Vingt-quatre étapes de plus avant elles, portées alors à 71 : les trois écritures
-  d'un nombre, `inc` contre `add` et la retenue qu'il épargne, `test`
-  qui regarde sans écrire, `xchg` et `bswap`, les masques de bits ; le
-  minimum et le maximum en un passage, la parité en un bit, les
-  occurrences, le retournement sur place, le bornage sans branchement,
-  les puissances de deux et leur limite, la somme et la moyenne ;
-  `strlen` par `repne scasb`, le mot à l'envers, le compte de mots, la
-  pile qui retourne ce qu'on lui donne, les arguments au-delà de six,
-  le pointeur de fonction, l'alignement de pile sur seize ; l'affichage
-  hexadécimal, le chiffrement XOR et sa faiblesse, la somme de
-  contrôle, le canari posé à la main, et le choix vectoriel par masque.
-- Le test qui vérifiait les budgets exécute désormais **tous** les
-  exercices : un exercice qui n'atteint pas son propre but est faux,
-  budget ou non. Il a trouvé deux énoncés qui comptaient mal.
-- Le binaire passe de 25,1 à **17,8 Mo** — l'édition de liens voit tout
-  le programme d'un coup et jette ce qui n'est appelé nulle part. Rien
-  n'est effacé pour autant : les symboles restent, un rapport de
-  plantage doit pouvoir se lire.
-
-**Plusieurs fichiers à la fois**
-- Une barre d'onglets au-dessus de l'éditeur : un onglet par fichier, le
-  nom raccourci par le milieu quand il est long, un point sur ce qui
-  n'est pas enregistré, une croix pour fermer. Elle n'apparaît qu'à
-  partir du deuxième fichier.
-- Chaque onglet garde ce qu'on y faisait : le texte, le curseur, les
-  points d'arrêt et leurs conditions, l'exercice en cours, et
-  l'exécution arrêtée au pas où on l'avait laissée. Y revenir, c'est
-  reprendre la phrase au milieu.
-- Ouvrir un fichier ne demande donc plus si l'on veut perdre le
-  précédent : il attend dans son onglet. Ctrl+Tab passe au suivant,
-  Ctrl+Maj+Tab au précédent, Ctrl+W ferme.
-- Un fichier changé sur le disque pendant qu'on regardait ailleurs — un
-  `git checkout`, un autre éditeur — ne passe plus inaperçu : rien de
-  tapé de notre côté, il est relu et namsdec le dit ; modifié des deux
-  côtés, un bandeau propose de relire ou de garder. La vérification a
-  lieu au retour dans la fenêtre et en changeant d'onglet, jamais à
-  chaque image.
-- Chaque exercice a son onglet, et porte son titre : on ouvre le suivant
-  sans abandonner le précédent, et l'on y revient avec ce qu'on y avait
-  écrit. Trois onglets « sans titre » côte à côte ne disaient rien.
-- Fermer un onglet dont le texte n'est pas enregistré demande d'abord, et
-  quitter regarde **tous** les fichiers ouverts : la fenêtre dit combien
-  sont en danger, et « Enregistrer » passe au suivant au lieu
-  d'emporter le reste.
-- Les fichiers ouverts reviennent au lancement suivant — leurs chemins,
-  jamais leur contenu, comme pour le reste.
-
-- La mémoire lue « en Texte » s'explique : `<b8><01>` suivi de `\0` ne
-  disait ni que le zéro arrêtait la lecture, ni que ces octets n'étaient
-  pas du texte, ni où se trouvait le message cherché. Elle dit maintenant
-  les trois — et liste, avec leurs adresses, les suites lisibles de la
-  fenêtre, comme `strings`.
-- La pile ne coupe plus ses valeurs au bord du panneau : elle défile de
-  côté, et sur un panneau étroit l'adresse laisse la place à l'écart
-  depuis RSP (`+0x10`, `-0x08`) — plus court, et il dit quelque chose de
-  plus : à quelle profondeur on regarde. L'adresse complète reste au
-  survol. Le panneau, lui, ne se resserre plus en deçà d'une valeur de
-  seize chiffres, barre de défilement comprise.
-- L'onglet Mémoire lit son format dans une liste déroulante : « Octets
-  Mots Texte Pointeurs » ne tenait pas sur la largeur d'un panneau et
-  repassait à la ligne par-dessus le reste.
-- Un filet sépare les trois zones du panneau latéral, et Affichage ▸
-  « Panneau latéral partagé tout seul » rend le partage automatique à qui
-  a tiré la poignée une fois.
-- Le panneau latéral partage sa hauteur au lieu de la donner au premier
-  arrivé : l'état du processeur garde la sienne, entière et sans barre
-  de défilement, et le contenu de l'onglet — Pile, Mémoire, Tas, Octets,
-  RE — a la sienne, avec une poignée pour la régler et un plancher en
-  dessous duquel il ne descend plus. Il sortait jusque-là par le bas du
-  panneau : l'onglet RE se réduisait à son titre et à un champ de
-  recherche coupé en deux. Ce qui cède, désormais, c'est le détail de la
-  prochaine instruction, qui se replie d'un clic. L'onglet RE mène en
-  outre à la fenêtre d'analyse, où tout se lit déplié.
-- Un appel système que namsdec ne simule pas — `mmap`, `open`, `fork` —
-  est annoncé dès l'assemblage, avec sa ligne : le programme s'arrêtait
-  dessus sans que rien ne l'ait laissé prévoir.
-- La console ne tend plus un champ de saisie à un programme qui ne lit
-  rien : elle relit son code, et la saisie n'apparaît que s'il contient
-  un `read` — ou dès qu'il en réclame une. Vide, elle dit aussi
-  *pourquoi* : « ce programme n'écrit rien » quand il ne contient aucun
-  `write`, « rien pour l'instant » tant qu'il n'a pas tourné, et « le
-  programme n'a rien écrit » seulement quand c'est vrai.
-- La console prend la hauteur de ce qu'elle a à dire : « le programme n'a
-  rien écrit » occupait le quart de l'écran, c'est maintenant trois
-  lignes. Tirer la poignée reprend la main, et la hauteur choisie est
-  retenue ; Affichage ▸ « Console à la hauteur de son contenu » rend
-  l'ajustement.
-
 **Tenue**
 - Un bandeau dit, dans « À propos », que la version est une préversion.
   Il est lu dans le numéro de version et disparaîtra de lui-même.

@@ -1,0 +1,11 @@
+{
+  "id": "ndisasm",
+  "name": "ndisasm — désassemblage brut",
+  "command": "ndisasm",
+  "args": [
+    "-b",
+    "64",
+    "{file}"
+  ],
+  "install": "sudo dnf install nasm"
+}

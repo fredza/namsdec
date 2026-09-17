@@ -401,6 +401,54 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "copier. Un atelier qui ne laisse rien sortir apprend à se servir de lui, pas de "
          "l'assembleur."),
 
+        ("h1", "Ajouter des plugins"),
+        ("p",
+         "Tout ce qui s'ajoute à namsdec sans le recompiler se range en deux familles, et la "
+         "différence entre elles n'est pas une question de classement : c'est une question de "
+         "confiance."),
+        ("table", [
+            ["Famille", "Ce que c'est", "Ce que ça peut faire"],
+            ["Thèmes", "des couleurs, et rien d'autre", "rien : namsdec lit des nombres et peint"],
+            ["Fonctionnalités", "la description d'un programme", "ce que ce programme peut faire"],
+        ]),
+        ("p",
+         "Un thème ne s'exécute pas. Une fonctionnalité, si — et c'est pourquoi namsdec ne va "
+         "jamais en chercher tout seul, ne les lance que sur demande explicite, et écrit la "
+         "commande complète avant de la lancer."),
+        ("h2", "Où ils vivent"),
+        ("code",
+         "~/.local/share/namsdec/\n"
+         "├── themes/          les thèmes\n"
+         "├── decompilers/     les désassembleurs et décompilateurs\n"
+         "└── exercises/       les séries d'exercices"),
+        ("p",
+         "Installer, c'est copier un fichier JSON dans le bon dossier. Depuis namsdec : "
+         "Préférences ▸ Plugins pour un thème, Préférences ▸ Outils pour un décompilateur. Le "
+         "dépôt en contient des exemples prêts à l'emploi, dans son dossier "
+         "<font face='Courier'>plugins/</font>, avec le format décrit champ par champ."),
+        ("h2", "Installer un décompilateur"),
+        ("p",
+         "namsdec n'installe pas le programme lui-même : télécharger et exécuter du code au nom "
+         "de quelqu'un n'est pas une commodité, c'est une décision. Il dit ce qu'il faut taper, "
+         "et laisse taper."),
+        ("table", [
+            ["Outil", "Ce qu'il rend", "Comment l'obtenir"],
+            ["radare2", "du pseudo-code, sans greffon", "sudo dnf install radare2"],
+            ["Rizin + rz-ghidra", "le décompilateur de Ghidra",
+             "sudo dnf install rizin rizin-plugin-ghidra"],
+            ["RetDec", "du C compilable, lentement", "github.com/avast/retdec/releases"],
+            ["objdump, ndisasm", "des instructions", "déjà là si namsdec assemble"],
+        ]),
+        ("note",
+         "<b>Rizin seul ne décompile pas</b> : la commande <font face='Courier'>pdg</font> vient "
+         "du greffon <font face='Courier'>rz-ghidra</font>. Là où il n'est pas empaqueté, "
+         "<font face='Courier'>rz-pm -i rz-ghidra</font> l'installe. namsdec vérifie sa présence "
+         "et affiche « incomplet » plutôt que de vous laisser essayer."),
+        ("p",
+         "Le module reste éteint tant qu'on ne l'allume pas (Préférences ▸ Modules), l'entrée de "
+         "menu n'apparaît qu'ensuite, et rien ne part sans le bouton « Lancer ». Passé deux "
+         "minutes, un outil qui ne rend pas la main est arrêté."),
+
         ("h1", "Régler namsdec"),
         ("p",
          "Les préférences couvrent le thème, la langue (français ou anglais), les modules, "

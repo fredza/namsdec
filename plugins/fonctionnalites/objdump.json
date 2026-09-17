@@ -1,0 +1,13 @@
+{
+  "id": "objdump",
+  "name": "objdump — désassemblage (Intel)",
+  "command": "objdump",
+  "args": [
+    "-d",
+    "-M",
+    "intel",
+    "--no-show-raw-insn",
+    "{file}"
+  ],
+  "install": "sudo dnf install binutils"
+}

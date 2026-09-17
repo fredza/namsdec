@@ -14415,3 +14415,102 @@ fn the_window_buttons_hold_the_corner_without_crowding_the_menus() {
         "le nom du fichier reste centré : {titre_x}"
     );
 }
+
+/// Le répertoire `plugins/` dit la vérité sur ce que namsdec lance.
+///
+/// Ses fichiers sont engendrés par le code qui connaît ces outils : si
+/// l'un des deux changeait sans l'autre, le dépôt proposerait de copier
+/// une commande que namsdec ne lance pas — c'est-à-dire un mensonge dans
+/// le seul endroit où l'on ne peut pas se le permettre, puisqu'il s'agit
+/// d'exécuter un programme.
+#[test]
+fn the_plugins_directory_matches_what_namsdec_would_run() {
+    let racine = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let plugins = racine.join("plugins");
+
+    // Les deux familles, et leur mode d'emploi.
+    for (dossier, attendu) in [
+        ("themes", "Préférences ▸ Plugins"),
+        ("fonctionnalites", "rz-ghidra"),
+    ] {
+        let readme = plugins.join(dossier).join("README.md");
+        let texte = std::fs::read_to_string(&readme)
+            .unwrap_or_else(|_| panic!("{} manque", readme.display()));
+        assert!(
+            texte.contains(attendu),
+            "{} doit expliquer ce qu'on y range",
+            readme.display()
+        );
+    }
+    let sommaire = std::fs::read_to_string(plugins.join("README.md")).expect("plugins/README.md");
+    assert!(
+        sommaire.contains("Thèmes") && sommaire.contains("Fonctionnalités"),
+        "le sommaire nomme les deux familles"
+    );
+
+    // Chaque outil connu a son fichier, et ce fichier est exactement ce
+    // que namsdec lancerait.
+    for outil in namsdec_disasm::known::all() {
+        let chemin = plugins
+            .join("fonctionnalites")
+            .join(format!("{}.json", outil.plugin.id));
+        let écrit = namsdec_disasm::plugin::read(&chemin)
+            .unwrap_or_else(|e| panic!("{} : {e}", chemin.display()));
+        assert_eq!(
+            écrit,
+            outil.plugin,
+            "{} ne décrit pas ce que namsdec lance",
+            chemin.display()
+        );
+    }
+
+    // Et les thèmes proposés se lisent vraiment.
+    let mut thèmes = 0;
+    for entrée in std::fs::read_dir(plugins.join("themes")).expect("le dossier des thèmes") {
+        let chemin = entrée.expect("une entrée").path();
+        if chemin.extension().is_some_and(|e| e == "json") {
+            namsdec_theme::plugin::read(&chemin)
+                .unwrap_or_else(|e| panic!("{} : {e}", chemin.display()));
+            thèmes += 1;
+        }
+    }
+    assert!(
+        thèmes >= 2,
+        "au moins deux thèmes d'exemple, obtenu {thèmes}"
+    );
+}
+
+/// Les instructions d'installation des décompilateurs sont là, et
+/// complètes.
+///
+/// C'est la seule étape que namsdec ne fait pas à la place de
+/// l'utilisateur : autant qu'elle soit écrite en entier, pour les trois
+/// outils qui demandent un geste.
+#[test]
+fn the_decompilers_come_with_their_installation_instructions() {
+    let readme = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../plugins/fonctionnalites/README.md");
+    let texte = std::fs::read_to_string(&readme).expect("le mode d'emploi des outils");
+
+    for attendu in [
+        // Ce qu'il faut taper, pour chacun.
+        "dnf install radare2",
+        "rizin-plugin-ghidra",
+        "rz-pm -i rz-ghidra",
+        "retdec/releases",
+        // Et les deux marqueurs du format, sans lesquels on ne peut pas
+        // écrire sa propre description.
+        "{file}",
+        "{out}",
+    ] {
+        assert!(
+            texte.contains(attendu),
+            "le mode d'emploi doit contenir « {attendu} »"
+        );
+    }
+    // Le piège de Rizin est nommé : le programme seul ne décompile pas.
+    assert!(
+        texte.contains("Rizin seul ne décompile pas"),
+        "la nuance qui coûte une soirée doit être dite"
+    );
+}

@@ -180,10 +180,26 @@ ou d'une adresse, vérification de la convention d'appel (ce qu'une
 sous-routine a emprunté sans le rendre), mémoire protégée par les droits
 réels des sections, tas simulé avec `brk`, SSE/AVX et pile x87.
 
+## Les plugins
+
+Le dossier [`plugins/`](plugins/) range ce qui s'ajoute à namsdec sans le
+recompiler, en deux familles :
+
+- [**Thèmes**](plugins/themes/) — des couleurs, et rien d'autre. Un thème
+  ne s'exécute pas.
+- [**Fonctionnalités supplémentaires**](plugins/fonctionnalites/) — la
+  description d'un **programme** à lancer : `objdump`, `ndisasm`,
+  `radare2`, Rizin + rz-ghidra, RetDec. Chacun avec ses instructions
+  d'installation, et les arguments qui marchent.
+
+La distinction n'est pas un classement, c'est une question de confiance :
+namsdec ne va jamais chercher un programme tout seul, ne le lance que sur
+demande explicite, et écrit la commande complète avant de la lancer.
+
 ## Le guide
 
 Un **guide de l'utilisateur en PDF** accompagne chaque version :
-[`docs/guide-namsdec-0.2.1-beta.2.pdf`](docs/guide-namsdec-0.2.1-beta.2.pdf)
+[`docs/guide-namsdec-0.2.4-beta.1.pdf`](docs/guide-namsdec-0.2.4-beta.1.pdf)
 — installation, prise en main, chaque panneau, l'exécution pas à pas, la
 mémoire, le manuel, le déroulement, le parcours, la rétro-ingénierie, les
 raccourcis et les limites connues.

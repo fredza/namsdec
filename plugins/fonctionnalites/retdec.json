@@ -1,0 +1,12 @@
+{
+  "id": "retdec",
+  "name": "RetDec — décompilation en C",
+  "command": "retdec-decompiler",
+  "args": [
+    "--cleanup",
+    "-o",
+    "{out}",
+    "{file}"
+  ],
+  "install": "github.com/avast/retdec/releases"
+}
