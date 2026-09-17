@@ -64,6 +64,9 @@ pub struct Settings {
     /// Entrée garde l'indentation de la ligne qu'on quitte.
     #[serde(default = "vrai")]
     pub auto_indent: bool,
+    /// La fiche de l'instruction au survol du code.
+    #[serde(default = "vrai")]
+    pub hover_help: bool,
     /// Le module des exercices. Éteint par défaut : quelqu'un qui écrit
     /// son propre code n'a pas besoin qu'on lui propose des devoirs, et
     /// rien n'apparaît tant qu'il ne le demande pas.
@@ -120,6 +123,7 @@ impl Default for Settings {
             completion: true,
             exercises: false,
             auto_indent: true,
+            hover_help: true,
             disabled_packs: Vec::new(),
             current_exercise: None,
             disassembler: pseudo_par_défaut(),

@@ -4084,9 +4084,12 @@ fn hovering_an_instruction_explains_it() {
             // sa place se lit dans le galley du code, pas dans des
             // coordonnées devinées.
             if pointer.is_none() {
+                // Le *dernier* : le code est peint deux fois, une fois
+                // pour aligner la gouttière et une fois par le champ de
+                // texte, et c'est le second qui reçoit le pointeur.
                 let (pos, galley) = texts
                     .iter()
-                    .find(|(_, g)| g.text().starts_with("global _start"))
+                    .rfind(|(_, g)| g.text().starts_with("global _start"))
                     .expect("le code doit être dessiné");
                 let row = galley.rows.get(3).expect("quatre lignes de code");
                 pointer = Some(egui::pos2(
@@ -7975,4 +7978,93 @@ fn the_disassembly_panel_remembers_and_navigates() {
         painted.contains("revenir à l'appelant"),
         "et ce qu'elle contient : {painted}"
     );
+}
+
+/// Le pointeur posé dans le vide ne fait pas apparaître de fiche.
+///
+/// Le champ de texte occupe toute la hauteur de l'éditeur, bien au-delà
+/// du code, et chaque ligne est plus courte que sa largeur. Le caractère
+/// le plus proche — le dernier du fichier — se voyait attribuer le
+/// survol, et sa fiche restait affichée sans qu'on comprenne d'où elle
+/// venait.
+#[test]
+fn hovering_outside_the_code_explains_nothing() {
+    let source = "global _start\nsection .text\n_start:\n    syscall\n";
+    let peindre = |cible: egui::Vec2| -> String {
+        let mut app = NamsdecApp {
+            source: source.to_owned(),
+            ..Default::default()
+        };
+        let ctx = egui::Context::default();
+        app.apply_theme(&ctx);
+        let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 820.0));
+        let mut texts: Vec<(egui::Pos2, std::sync::Arc<egui::Galley>)> = Vec::new();
+        let mut pointer = None;
+        for _ in 0..4 {
+            let input = egui::RawInput {
+                screen_rect: Some(screen),
+                events: pointer.map(egui::Event::PointerMoved).into_iter().collect(),
+                ..Default::default()
+            };
+            let mut output = ctx.run_ui(input, |ui| app.draw(ui));
+            texts.clear();
+            for clipped in &output.shapes {
+                if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                    texts.push((text.pos, text.galley.clone()));
+                }
+            }
+            if pointer.is_none()
+                && let Some((pos, _)) = texts
+                    .iter()
+                    .rfind(|(_, g)| g.text().starts_with("global _start"))
+            {
+                pointer = Some(*pos + cible);
+            }
+            output.textures_delta.clear();
+        }
+        texts
+            .iter()
+            .map(|(_, g)| g.text())
+            .collect::<Vec<_>>()
+            .join("|")
+    };
+
+    // Sur le `syscall` de la quatrième ligne : la fiche est là.
+    let sur = peindre(egui::vec2(40.0, 52.5));
+    assert!(sur.contains("Appeler le système"), "{sur}");
+
+    // Loin sous le code, là où il n'y a rien : rien non plus.
+    let dessous = peindre(egui::vec2(40.0, 400.0));
+    assert!(
+        !dessous.contains("Appeler le système"),
+        "le vide sous le code n'explique rien : {dessous}"
+    );
+
+    // À droite de la ligne, au-delà de son dernier caractère : rien.
+    let à_droite = peindre(egui::vec2(600.0, 52.5));
+    assert!(
+        !à_droite.contains("Appeler le système"),
+        "après la fin de la ligne non plus : {à_droite}"
+    );
+}
+
+/// Et la fiche au survol s'éteint dans les Préférences, séparément des
+/// infobulles ordinaires : elle est grande, et s'ouvre pendant qu'on
+/// écrit.
+#[test]
+fn the_hover_sheet_can_be_turned_off_on_its_own() {
+    let app = NamsdecApp {
+        hover_help: false,
+        ..Default::default()
+    };
+    assert!(app.show_tooltips, "les autres infobulles restent");
+    let json = serde_json::to_string(&app.settings_snapshot()).unwrap();
+    assert!(json.contains("\"hover_help\":false"), "{json}");
+    let relu: crate::settings::Settings = serde_json::from_str(&json).unwrap();
+    assert!(!NamsdecApp::from_settings(relu).hover_help);
+
+    // Absent d'un fichier plus ancien : allumée, comme elle l'était.
+    let ancien: crate::settings::Settings =
+        serde_json::from_str(r#"{"version":1,"theme":"vscode-dark","language":"fr"}"#).unwrap();
+    assert!(ancien.hover_help);
 }

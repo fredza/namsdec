@@ -558,6 +558,10 @@ struct NamsdecApp {
     completion: bool,
     /// Entrée garde l'indentation de la ligne qu'on quitte.
     auto_indent: bool,
+    /// La fiche de l'instruction au survol du code. Distincte des
+    /// infobulles ordinaires : celle-ci est grande, et s'ouvre en
+    /// écrivant.
+    hover_help: bool,
     /// Ce que l'autocomplétion propose en ce moment, recalculé à chaque
     /// frappe. Rien à enregistrer : c'est l'état d'un instant.
     suggestions: Option<completion::Suggestions>,
@@ -1046,6 +1050,7 @@ impl Default for NamsdecApp {
             show_tooltips: true,
             completion: true,
             auto_indent: true,
+            hover_help: true,
             suggestions: None,
             alt_was_down: false,
             command_palette: None,
@@ -1080,6 +1085,7 @@ impl NamsdecApp {
             show_tooltips: settings.show_tooltips,
             completion: settings.completion,
             auto_indent: settings.auto_indent,
+            hover_help: settings.hover_help,
             exercises: settings.exercises,
             disabled_packs: settings.disabled_packs.iter().cloned().collect(),
             current_exercise: settings.current_exercise.clone(),
@@ -1167,6 +1173,7 @@ impl NamsdecApp {
             show_tooltips: self.show_tooltips,
             completion: self.completion,
             auto_indent: self.auto_indent,
+            hover_help: self.hover_help,
             exercises: self.exercises,
             disabled_packs: self.disabled_packs.iter().cloned().collect(),
             current_exercise: self.current_exercise.clone(),
@@ -2939,6 +2946,8 @@ impl NamsdecApp {
         ui.weak(s.preferences_completion_hint);
         ui.checkbox(&mut self.auto_indent, s.preferences_auto_indent);
         ui.weak(s.preferences_auto_indent_hint);
+        ui.checkbox(&mut self.hover_help, s.preferences_hover_help);
+        ui.weak(s.preferences_hover_help_hint);
 
         ui.separator();
 
@@ -4442,7 +4451,7 @@ impl NamsdecApp {
     /// réglage des infobulles : ceux qui les trouvent envahissantes n'en
     /// veulent pas ici non plus.
     fn hover_help_ui(&self, ui: &mut egui::Ui, output: &egui::text_edit::TextEditOutput) {
-        if !self.show_tooltips {
+        if !self.show_tooltips || !self.hover_help {
             return;
         }
         let Some(pointer) = ui.ctx().pointer_hover_pos() else {
@@ -4451,9 +4460,30 @@ impl NamsdecApp {
         if !output.response.response.hovered() {
             return;
         }
+        // Le champ de texte occupe toute la hauteur de l'éditeur, bien
+        // au-delà du code, et chaque ligne est bien plus courte que sa
+        // largeur : sans cette vérification, le pointeur posé dans le
+        // vide se voyait attribuer le caractère le plus proche — le
+        // dernier du fichier — et la fiche de cette instruction-là
+        // restait affichée sans qu'on comprenne d'où elle venait.
+        let relatif = pointer - output.galley_pos;
+        let Some(ligne) = output
+            .galley
+            .rows
+            .iter()
+            .find(|ligne| ligne.rect().y_range().contains(relatif.y))
+        else {
+            return;
+        };
+        // Un demi-caractère de tolérance au bout de la ligne : viser une
+        // lettre, pas son coin.
+        let marge = ligne.rect().height() / 2.0;
+        if relatif.x < ligne.rect().left() - marge || relatif.x > ligne.rect().right() + marge {
+            return;
+        }
+        let cursor = output.galley.cursor_from_pos(relatif);
         // La position du pointeur dans le texte, puis le mot qui s'y
         // trouve : le même que celui sur lequel F1 répondrait.
-        let cursor = output.galley.cursor_from_pos(pointer - output.galley_pos);
         let byte = char_to_byte(&self.source, cursor.index.0);
         let word = word_at(&self.source, byte);
         let Some(entry) = namsdec_doc::lookup(word) else {
