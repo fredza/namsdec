@@ -28,8 +28,8 @@ use namsdec_disasm::DecodedInstruction;
 use namsdec_emu::{Backend, Emulator, RunStop, StepOverResult, StepResult};
 use namsdec_explorer::{ExplorerAction, FileExplorer};
 use namsdec_re::{
-    BinaryInfoModule, GadgetsModule, ImportsModule, ProtectionsModule, ReContext, ReModuleRegistry,
-    StringsModule, SyscallsModule, XrefsModule,
+    BinaryInfoModule, FunctionsModule, GadgetsModule, ImportsModule, ProtectionsModule, ReContext,
+    ReModuleRegistry, StringsModule, SyscallsModule, XrefsModule,
 };
 use namsdec_theme::Theme;
 
@@ -1498,6 +1498,10 @@ impl Default for NamsdecApp {
         // ensuite.
         re_registry.register(Box::new(BinaryInfoModule::default()));
         re_registry.register(Box::new(ProtectionsModule::default()));
+        // Puis « par où commencer » : dans un binaire dépouillé, la
+        // question précède toutes les autres. Le module retrouve le
+        // `main` et découpe le code en fonctions.
+        re_registry.register(Box::new(FunctionsModule::default()));
         // Puis dans l'ordre où l'on regarde un binaire inconnu : ce qu'il
         // dit (ses chaînes), ce qu'il demande au système, puis comment il
         // est découpé.

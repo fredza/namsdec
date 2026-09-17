@@ -13655,3 +13655,82 @@ fn the_user_guide_is_generated_from_what_the_repository_knows() {
         octets.len()
     );
 }
+
+/// Devant un binaire dépouillé, namsdec dit par où commencer.
+///
+/// Un `.text` de deux cent quarante kilo-octets dont presque tout
+/// appartient à la bibliothèque standard : la première question est « où
+/// est le programme ». La convention de démarrage y répond — le code
+/// d'amorçage passe l'adresse de `main` dans RDI —, et les cibles
+/// d'appel donnent le reste.
+#[test]
+fn a_stripped_binary_says_where_the_program_starts() {
+    // Le démarrage que produit un compilateur C, à l'octet près.
+    let bytes: &[u8] = &[
+        0xF3, 0x0F, 0x1E, 0xFA, // endbr64
+        0x31, 0xED, // xor ebp, ebp
+        0x49, 0x89, 0xD1, // mov r9, rdx
+        0x48, 0x8D, 0x3D, 0x41, 0x0D, 0x00, 0x00, // lea rdi, [rip+0xd41]
+        0xFF, 0x15, 0xEB, 0xE3, 0x03, 0x00, // call [rip+0x3e3eb]
+        0xF4, // hlt
+    ];
+    let disasm = namsdec_disasm::disassemble(bytes, 0xf6f0);
+    // `lea` à 0xf6f9, longue de sept octets : 0xf700 + 0xd41.
+    assert_eq!(
+        namsdec_re::functions::main_of(&disasm, 0xf6f0),
+        Some(0x10441),
+        "le `main` se lit dans le premier argument passé au démarrage"
+    );
+
+    // Et les fonctions se découpent sur les cibles d'appel.
+    let fonctions = namsdec_re::functions::discover(&disasm, 0xf6f0);
+    assert!(
+        fonctions
+            .iter()
+            .any(|f| f.origin == namsdec_re::functions::Origin::Entry),
+        "le point d'entrée est nommé"
+    );
+}
+
+/// Les chaînes d'un binaire Rust se découpent par le code, pas par les
+/// octets.
+///
+/// Sans zéro final, un scan des données agglomère « Error flushing
+/// bufferError reading inputIncorrect password » en une seule ligne
+/// absurde. Le code, lui, porte la longueur de chacune juste à côté de
+/// son adresse.
+#[test]
+fn strings_without_a_final_zero_are_cut_by_the_code_that_uses_them() {
+    let données = b"Incorrect password\nCorrect Password\n";
+    let mut fichier = vec![0u8; 0x1000];
+    fichier[0x300..0x300 + données.len()].copy_from_slice(données);
+    let sections = vec![namsdec_re::elf_scan::SectionInfo {
+        name: ".rodata".into(),
+        addr: 0x3000,
+        size: 0x100,
+        write: false,
+        execute: false,
+        offset: 0x300,
+        nobits: false,
+    }];
+
+    // lea rsi, [rip+…] vers « Correct Password\n » ; mov edx, 17 ; call
+    let cible = 0x3000u64 + 19;
+    let déplacement = (cible as i64 - 0x1007) as i32;
+    let mut code = vec![0x48, 0x8D, 0x35];
+    code.extend_from_slice(&déplacement.to_le_bytes());
+    code.extend_from_slice(&[0xBA, 0x11, 0x00, 0x00, 0x00]);
+    code.extend_from_slice(&[0xE8, 0x00, 0x00, 0x00, 0x00]);
+    let disasm = namsdec_disasm::disassemble(&code, 0x1000);
+
+    let littérales = namsdec_re::literals::scan(&disasm, &sections, &fichier);
+    assert_eq!(littérales.len(), 1, "{littérales:?}");
+    assert_eq!(
+        littérales[0].text, "Correct Password\n",
+        "la chaîne s'arrête où le code dit qu'elle s'arrête"
+    );
+    assert_eq!(
+        littérales[0].from, 0x1000,
+        "et l'on sait d'où l'on s'en sert"
+    );
+}

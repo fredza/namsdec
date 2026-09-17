@@ -8,6 +8,9 @@ use crate::{ReContext, ReModule};
 #[derive(Default)]
 pub struct StringsModule {
     found: Vec<Found>,
+    /// Les chaînes que le code découpe lui-même : adresse **et**
+    /// longueur, prises dans les instructions qui s'en servent.
+    literals: Vec<crate::literals::Literal>,
     /// Qui désigne quoi : c'est ce qui fait la différence entre une
     /// liste de chaînes et une piste à suivre.
     xrefs: crate::xrefs::Xrefs,
@@ -173,9 +176,62 @@ impl ReModule for StringsModule {
         // « Mot de passe » quelque part dans les données ne dit rien ;
         // « mot de passe, lu ici » dit par où entrer.
         self.xrefs = crate::xrefs::scan(ctx.disasm, range);
+        // Et les chaînes que le **code** découpe, pour les langages qui
+        // ne terminent pas les leurs par un zéro : sans elles, un
+        // binaire Rust ou Go ne montre que des pâtés illisibles.
+        self.literals = match crate::elf_scan::scan(ctx.binary) {
+            Some(elf) => crate::literals::scan(ctx.disasm, &elf.sections, ctx.binary),
+            None => Vec::new(),
+        };
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
+        // Ce que le code découpe lui-même, d'abord : c'est la vérité du
+        // programme, là où le scan des octets n'est qu'une supposition.
+        if !self.literals.is_empty() {
+            egui::CollapsingHeader::new(format!(
+                "{} {}",
+                self.literals.len(),
+                ctx.t(
+                    "chaînes découpées par le code",
+                    "strings carved out by the code"
+                )
+            ))
+            .id_salt("strings_literals")
+            .default_open(true)
+            .show(ui, |ui| {
+                ui.weak(ctx.t(
+                    "En Rust, en Go, en Zig, une chaîne n'a pas de zéro final : c'est une \
+                     adresse et une longueur. La découpe est donc dans le code, pas dans \
+                     les données — « employée en » dit où aller lire.",
+                    "In Rust, Go or Zig a string has no final zero: it is an address and \
+                     a length. The cut is therefore in the code, not in the data — \
+                     « used at » says where to go and read.",
+                ));
+                egui::ScrollArea::vertical()
+                    .id_salt("strings_literals_scroll")
+                    .max_height(220.0)
+                    .show(ui, |ui| {
+                        egui::Grid::new("strings_literals_grid")
+                            .num_columns(3)
+                            .min_col_width(0.0)
+                            .striped(true)
+                            .show(ui, |ui| {
+                                for littérale in &self.literals {
+                                    ui.monospace(format!("{:#010x}", littérale.addr));
+                                    ui.label(format!("{:?}", littérale.text));
+                                    ui.weak(format!(
+                                        "{} {:#010x}",
+                                        ctx.t("employée en", "used at"),
+                                        littérale.from
+                                    ));
+                                    ui.end_row();
+                                }
+                            });
+                    });
+            });
+            ui.add_space(4.0);
+        }
         if self.found.is_empty() {
             ui.label(ctx.t("Aucune chaîne trouvée.", "No string found."));
             return;
