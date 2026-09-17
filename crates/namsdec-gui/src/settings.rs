@@ -94,6 +94,10 @@ pub struct Settings {
     /// Comment l'onglet Mémoire lit les octets : « bytes », « words » ou
     /// « text ».
     pub memory_format: String,
+    /// Ce que l'onglet Mémoire suit pas à pas : « fixed », « rsp » ou
+    /// « rip ».
+    #[serde(default = "fixe_par_défaut")]
+    pub memory_follow: String,
     /// Dernier dossier ouvert dans l'explorateur, pour le retrouver au
     /// lancement suivant.
     pub explorer_root: Option<String>,
@@ -128,6 +132,7 @@ impl Default for Settings {
             current_exercise: None,
             disassembler: pseudo_par_défaut(),
             memory_format: "bytes".to_owned(),
+            memory_follow: fixe_par_défaut(),
             explorer_root: None,
             current_file: None,
             shortcuts: shortcuts_to_strings(&KeyBindings::default()),
@@ -256,6 +261,12 @@ pub fn shortcuts_to_strings(bindings: &KeyBindings) -> BTreeMap<String, String> 
 
 /// Le moteur de départ : le pseudo-code, celui qu'on veut lire en
 /// premier quand on apprend.
+/// Par défaut, l'adresse ne bouge pas : c'est ce qu'on attend d'un
+/// vidage qu'on vient de poser quelque part.
+fn fixe_par_défaut() -> String {
+    "fixed".to_owned()
+}
+
 fn pseudo_par_défaut() -> String {
     "pseudo".to_owned()
 }

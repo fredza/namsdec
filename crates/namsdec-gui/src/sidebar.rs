@@ -1668,6 +1668,25 @@ impl NamsdecApp {
             ui.colored_label(theme.bad, s.memory_address_invalid);
         }
 
+        // Ce qu'on suit : rien, la pile, ou le code. Regarder la pile
+        // pendant qu'on avance demandait sinon de retaper l'adresse à
+        // chaque instruction.
+        ui.horizontal_wrapped(|ui| {
+            ui.colored_label(theme.dim, s.memory_follow);
+            for kind in MemFollow::ALL {
+                if ui
+                    .selectable_label(self.memory_follow == kind, kind.label(s))
+                    .clicked()
+                {
+                    self.memory_follow = kind;
+                }
+            }
+        });
+        if let Some(addr) = self.memory_follow.address(&regs) {
+            self.mem_addr = addr;
+            self.mem_addr_input = format!("{addr:#x}");
+        }
+
         // Comment lire ces octets : bruts, par mots de huit, ou comme du
         // texte. Le même endroit dit trois choses différentes selon ce
         // qu'on y cherche — un tampon, une pile, une chaîne.
@@ -1724,142 +1743,164 @@ impl NamsdecApp {
             .iter()
             .map(|point| (point.addr, point.value()))
             .collect();
-        // La carte de la mémoire, comme `vmmap` : où commence le code,
-        // où finit la pile, ce que le tas occupe. Un refus d'accès
-        // n'apprend rien à qui ne sait pas où il se trouvait.
+        // Relevé avant tout affichage : la suite écrit dans `self`, et
+        // l'émulateur ne peut pas rester emprunté pendant ce temps.
         let zones = mem.regions();
-        let mut aller = None;
-        if !zones.is_empty() {
-            egui::CollapsingHeader::new(format!("{} ({})", s.memory_map, zones.len()))
-                .id_salt("memory_map")
-                .show(ui, |ui| {
-                    egui::Grid::new("memory_map_grid")
-                        .num_columns(3)
-                        .min_col_width(0.0)
-                        .striped(true)
-                        .show(ui, |ui| {
-                            for zone in &zones {
-                                let dedans = zone.range.contains(&self.mem_addr);
-                                let ligne = ui
-                                    .colored_label(
-                                        if dedans { theme.accent } else { theme.text },
-                                        egui::RichText::new(format!(
-                                            "{:#x}-{:#x}",
-                                            zone.range.start, zone.range.end
-                                        ))
-                                        .monospace(),
-                                    )
-                                    .on_hover_text(s.memory_map_hint);
-                                ui.colored_label(
-                                    theme.register,
-                                    egui::RichText::new(perms_text(zone.perms)).monospace(),
-                                );
-                                ui.colored_label(theme.dim, zone.name);
-                                if ligne.interact(egui::Sense::click()).clicked() {
-                                    aller = Some(zone.range.start);
-                                }
-                                ui.end_row();
-                            }
-                        });
-                });
-        }
-        // Chercher : c'est le `search` de pwndbg. On a une chaîne, une
-        // valeur, une adresse — la question est « où ? », et la réponse
-        // ne s'obtient pas en faisant défiler un vidage.
-        egui::CollapsingHeader::new(s.search_title)
-            .id_salt("memory_search")
-            .show(ui, |ui| {
-                ui.horizontal_wrapped(|ui| {
-                    for kind in SearchKind::ALL {
-                        if ui
-                            .selectable_label(self.mem_search_kind == kind, kind.label(s))
-                            .clicked()
-                        {
-                            self.mem_search_kind = kind;
-                        }
-                    }
-                });
-                ui.add(
-                    egui::TextEdit::singleline(&mut self.mem_search)
-                        .font(egui::TextStyle::Monospace)
-                        .desired_width(f32::INFINITY)
-                        .hint_text(s.search_hint),
-                );
-                let Some(needle) = self.mem_search_kind.needle(&self.mem_search) else {
-                    return;
-                };
-                // Vingt-quatre adresses : au-delà, la liste cesse d'être
-                // une réponse.
-                let trouvés = namsdec_emu::telescope::search(mem, &needle, 24);
-                if trouvés.is_empty() {
-                    ui.colored_label(theme.dim, s.search_none);
-                    return;
-                }
-                ui.colored_label(theme.dim, format!("{} {} :", trouvés.len(), s.search_found));
-                for addr in trouvés {
-                    if ui
-                        .add(
-                            egui::Label::new(
-                                egui::RichText::new(format!("{addr:#x}"))
-                                    .monospace()
-                                    .color(theme.accent),
-                            )
-                            .sense(egui::Sense::click()),
-                        )
-                        .on_hover_text(s.search_goto)
-                        .clicked()
-                    {
-                        aller = Some(addr);
-                    }
-                }
-            });
-        // Écrire ici, à la main : le pendant de l'édition d'un registre.
-        // Un débogueur écrit là où le programme n'a pas le droit — c'est
-        // ce qui permet d'essayer « et si ce tampon contenait ça ? » —,
-        // et le dire vaut mieux que de le cacher.
-        let mut écrire = None;
-        egui::CollapsingHeader::new(s.poke_title)
-            .id_salt("memory_poke")
-            .show(ui, |ui| {
-                ui.horizontal_wrapped(|ui| {
-                    for kind in SearchKind::ALL {
-                        if ui
-                            .selectable_label(self.mem_search_kind == kind, kind.label(s))
-                            .clicked()
-                        {
-                            self.mem_search_kind = kind;
-                        }
-                    }
-                });
-                ui.horizontal(|ui| {
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.mem_poke)
-                            .font(egui::TextStyle::Monospace)
-                            .desired_width(180.0)
-                            .hint_text(s.poke_hint),
-                    );
-                    let octets = self.mem_search_kind.needle(&self.mem_poke);
-                    ui.add_enabled_ui(octets.is_some(), |ui| {
-                        if ui
-                            .button(s.poke_write)
-                            .on_hover_text(s.poke_write_hint)
-                            .clicked()
-                            && let Some(octets) = octets
-                        {
-                            écrire = Some(octets);
-                        }
-                    });
-                });
-                ui.colored_label(theme.dim, s.poke_explain);
-            });
+        // De même pour la recherche : elle lit toute la mémoire, et se
+        // fait donc pendant que l'émulateur est encore là. Le résultat
+        // date d'une frame, comme le vidage lui-même.
+        let cherché = self.mem_search_kind.needle(&self.mem_search);
+        let trouvés: Vec<u64> = cherché
+            .as_ref()
+            .map(|needle| namsdec_emu::telescope::search(mem, needle, 24))
+            .unwrap_or_default();
+
+        // Ce qu'on regarde, d'abord : l'étiquette, la zone, ses droits,
+        // et qui a écrit là. C'est la réponse à « où suis-je », et elle
+        // ne doit pas se mériter.
         self.watchpoints_ui(ui, &watched);
         ui.colored_label(theme.dim, quartier);
-        // Qui a écrit là : la même question que pour un registre, en
-        // plus difficile à la main — une écriture mémoire ne laisse rien
-        // de visible dans le code.
         if let Some(provenance) = self.last_memory_write_line(self.mem_addr) {
             ui.colored_label(theme.accent, provenance);
         }
+
+        // Puis les outils, sous un seul repli : la carte, la recherche
+        // et l'écriture. Trois en-têtes dépliables poussaient le vidage
+        // hors du panneau, et c'est lui qu'on est venu voir.
+        let mut aller = None;
+        let mut écrire = None;
+        egui::CollapsingHeader::new(s.memory_tools)
+            .id_salt("memory_tools")
+            .show(ui, |ui| {
+                // La carte, comme `vmmap` : où commence le code, où
+                // finit la pile, ce que le tas occupe. Un refus d'accès
+                // n'apprend rien à qui ne sait pas où il se trouvait.
+                if !zones.is_empty() {
+                    egui::CollapsingHeader::new(format!("{} ({})", s.memory_map, zones.len()))
+                        .id_salt("memory_map")
+                        .show(ui, |ui| {
+                            egui::Grid::new("memory_map_grid")
+                                .num_columns(3)
+                                .min_col_width(0.0)
+                                .striped(true)
+                                .show(ui, |ui| {
+                                    for zone in &zones {
+                                        let dedans = zone.range.contains(&self.mem_addr);
+                                        let ligne = ui
+                                            .colored_label(
+                                                if dedans { theme.accent } else { theme.text },
+                                                egui::RichText::new(format!(
+                                                    "{:#x}-{:#x}",
+                                                    zone.range.start, zone.range.end
+                                                ))
+                                                .monospace(),
+                                            )
+                                            .on_hover_text(s.memory_map_hint);
+                                        ui.colored_label(
+                                            theme.register,
+                                            egui::RichText::new(perms_text(zone.perms)).monospace(),
+                                        );
+                                        ui.colored_label(theme.dim, zone.name);
+                                        if ligne.interact(egui::Sense::click()).clicked() {
+                                            aller = Some(zone.range.start);
+                                        }
+                                        ui.end_row();
+                                    }
+                                });
+                        });
+                }
+                // Chercher : c'est le `search` de pwndbg. On a une chaîne, une
+                // valeur, une adresse — la question est « où ? », et la réponse
+                // ne s'obtient pas en faisant défiler un vidage.
+                egui::CollapsingHeader::new(s.search_title)
+                    .id_salt("memory_search")
+                    .show(ui, |ui| {
+                        ui.horizontal_wrapped(|ui| {
+                            for kind in SearchKind::ALL {
+                                if ui
+                                    .selectable_label(self.mem_search_kind == kind, kind.label(s))
+                                    .clicked()
+                                {
+                                    self.mem_search_kind = kind;
+                                }
+                            }
+                        });
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.mem_search)
+                                .font(egui::TextStyle::Monospace)
+                                .desired_width(f32::INFINITY)
+                                .hint_text(s.search_hint),
+                        );
+                        if cherché.is_none() {
+                            return;
+                        }
+                        // Vingt-quatre adresses : au-delà, la liste cesse
+                        // d'être une réponse.
+                        if trouvés.is_empty() {
+                            ui.colored_label(theme.dim, s.search_none);
+                            return;
+                        }
+                        ui.colored_label(
+                            theme.dim,
+                            format!("{} {} :", trouvés.len(), s.search_found),
+                        );
+                        for addr in &trouvés {
+                            let addr = *addr;
+                            if ui
+                                .add(
+                                    egui::Label::new(
+                                        egui::RichText::new(format!("{addr:#x}"))
+                                            .monospace()
+                                            .color(theme.accent),
+                                    )
+                                    .sense(egui::Sense::click()),
+                                )
+                                .on_hover_text(s.search_goto)
+                                .clicked()
+                            {
+                                aller = Some(addr);
+                            }
+                        }
+                    });
+                // Écrire ici, à la main : le pendant de l'édition d'un registre.
+                // Un débogueur écrit là où le programme n'a pas le droit — c'est
+                // ce qui permet d'essayer « et si ce tampon contenait ça ? » —,
+                // et le dire vaut mieux que de le cacher.
+                egui::CollapsingHeader::new(s.poke_title)
+                    .id_salt("memory_poke")
+                    .show(ui, |ui| {
+                        ui.horizontal_wrapped(|ui| {
+                            for kind in SearchKind::ALL {
+                                if ui
+                                    .selectable_label(self.mem_search_kind == kind, kind.label(s))
+                                    .clicked()
+                                {
+                                    self.mem_search_kind = kind;
+                                }
+                            }
+                        });
+                        ui.horizontal(|ui| {
+                            ui.add(
+                                egui::TextEdit::singleline(&mut self.mem_poke)
+                                    .font(egui::TextStyle::Monospace)
+                                    .desired_width(180.0)
+                                    .hint_text(s.poke_hint),
+                            );
+                            let octets = self.mem_search_kind.needle(&self.mem_poke);
+                            ui.add_enabled_ui(octets.is_some(), |ui| {
+                                if ui
+                                    .button(s.poke_write)
+                                    .on_hover_text(s.poke_write_hint)
+                                    .clicked()
+                                    && let Some(octets) = octets
+                                {
+                                    écrire = Some(octets);
+                                }
+                            });
+                        });
+                        ui.colored_label(theme.dim, s.poke_explain);
+                    });
+            });
         match coloré {
             Some(job) => {
                 egui::ScrollArea::both()

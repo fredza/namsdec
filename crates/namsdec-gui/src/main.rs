@@ -272,6 +272,58 @@ impl SearchKind {
     }
 }
 
+/// Ce que l'onglet Mémoire suit, pas à pas.
+///
+/// Sans cela, regarder la pile pendant qu'on avance demande de retaper
+/// l'adresse à chaque instruction. pwndbg résout la même chose en
+/// réaffichant son contexte à chaque arrêt ; ici, on choisit ce qu'on
+/// veut voir bouger.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MemFollow {
+    /// L'adresse reste où on l'a mise.
+    Fixed,
+    Rsp,
+    Rip,
+}
+
+impl MemFollow {
+    const ALL: [MemFollow; 3] = [MemFollow::Fixed, MemFollow::Rsp, MemFollow::Rip];
+
+    fn label(self, s: &Strings) -> &'static str {
+        match self {
+            MemFollow::Fixed => s.memory_follow_none,
+            MemFollow::Rsp => "RSP",
+            MemFollow::Rip => "RIP",
+        }
+    }
+
+    fn id(self) -> &'static str {
+        match self {
+            MemFollow::Fixed => "fixed",
+            MemFollow::Rsp => "rsp",
+            MemFollow::Rip => "rip",
+        }
+    }
+
+    fn by_id(id: &str) -> Self {
+        Self::ALL
+            .into_iter()
+            .find(|kind| kind.id() == id)
+            .unwrap_or(MemFollow::Fixed)
+    }
+
+    /// L'adresse à regarder maintenant, alignée sur seize octets pour
+    /// que le vidage ne danse pas d'une colonne à l'autre.
+    fn address(self, regs: &namsdec_core::Registers) -> Option<u64> {
+        let value = match self {
+            MemFollow::Fixed => return None,
+            MemFollow::Rsp => regs.get64(Reg64::Rsp),
+            MemFollow::Rip => regs.rip,
+        };
+        Some(value & !0xf)
+    }
+}
+
 /// Comment lire les octets de l'onglet Mémoire.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum MemoryFormat {
@@ -490,6 +542,9 @@ struct NamsdecApp {
     /// Comment l'onglet Mémoire lit les octets. Réglage utilisateur, donc
     /// enregistré dans `settings.json`.
     memory_format: MemoryFormat,
+    /// Ce que l'onglet Mémoire suit. Réglage utilisateur, donc
+    /// enregistré dans `settings.json`.
+    memory_follow: MemFollow,
     /// L'adresse où s'arrêter pour un « exécuter jusqu'ici » : un point
     /// d'arrêt posé le temps d'une course, et retiré dès qu'elle
     /// s'achève. Il n'appartient pas à l'utilisateur, il ne doit donc pas
@@ -1207,6 +1262,7 @@ impl Default for NamsdecApp {
             mem_addr_input: format!("{BASE_ADDR:#x}"),
             mem_addr: BASE_ADDR,
             memory_format: MemoryFormat::Bytes,
+            memory_follow: MemFollow::Fixed,
             watchpoints: Vec::new(),
             run_to: None,
             run_until: None,
@@ -1321,6 +1377,7 @@ impl NamsdecApp {
             disabled_packs: settings.disabled_packs.iter().cloned().collect(),
             current_exercise: settings.current_exercise.clone(),
             memory_format: MemoryFormat::by_id(&settings.memory_format),
+            memory_follow: MemFollow::by_id(&settings.memory_follow),
             disassembler: settings.disassembler.clone(),
             explorer,
             saved_settings: settings,
@@ -1410,6 +1467,7 @@ impl NamsdecApp {
             current_exercise: self.current_exercise.clone(),
             disassembler: self.disassembler.clone(),
             memory_format: self.memory_format.id().to_owned(),
+            memory_follow: self.memory_follow.id().to_owned(),
             explorer_root: self.explorer.root.as_ref().map(|p| p.display().to_string()),
             current_file: self.current_file.as_ref().map(|p| p.display().to_string()),
             shortcuts: settings::shortcuts_to_strings(&self.keybindings),

@@ -8772,6 +8772,32 @@ _start:
     }
 }
 
+/// L'onglet Mémoire suit ce qu'on lui demande : la pile ou le code,
+/// pas à pas, sans qu'on retape l'adresse à chaque instruction.
+#[test]
+fn the_memory_tab_follows_the_register_it_is_told_to() {
+    // Alignée sur seize octets : un vidage qui danse d'une colonne à
+    // l'autre à chaque pas ne se lit pas.
+    let mut regs = namsdec_core::Registers::new();
+    regs.set64(Reg64::Rsp, 0x40fef8);
+    regs.rip = 0x400007;
+    assert_eq!(MemFollow::Fixed.address(&regs), None);
+    assert_eq!(MemFollow::Rsp.address(&regs), Some(0x40fef0));
+    assert_eq!(MemFollow::Rip.address(&regs), Some(0x400000));
+
+    // Et le choix survit au lancement suivant, comme tout réglage.
+    let mut app = NamsdecApp {
+        memory_follow: MemFollow::Rsp,
+        ..Default::default()
+    };
+    let écrit = serde_json::to_string(&app.settings_snapshot()).unwrap();
+    assert!(écrit.contains("\"memory_follow\":\"rsp\""), "{écrit}");
+    app.memory_follow = MemFollow::by_id("rip");
+    assert_eq!(app.memory_follow, MemFollow::Rip);
+    // Un identifiant inconnu ne fait pas suivre n'importe quoi.
+    assert_eq!(MemFollow::by_id("n'importe quoi"), MemFollow::Fixed);
+}
+
 /// La mémoire montre sa carte : où commence le code, où finit la pile,
 /// ce que le tas occupe, avec les droits de chacun.
 ///
@@ -8817,8 +8843,17 @@ _start:
         );
     }
 
+    // Et les outils qui la portent sont là, repliés : le vidage reste
+    // ce qu'on voit en premier.
     let painted = paint(&mut app);
-    assert!(painted.contains(strings(app.lang).memory_map), "{painted}");
+    assert!(
+        painted.contains(strings(app.lang).memory_tools),
+        "{painted}"
+    );
+    assert!(
+        painted.contains("_start"),
+        "l'étiquette de l'adresse regardée reste visible : {painted}"
+    );
 }
 
 /// La pile suit ses pointeurs : un mot qui pointe une chaîne le dit, un
