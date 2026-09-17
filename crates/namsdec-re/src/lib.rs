@@ -22,6 +22,7 @@ mod patterns_module;
 mod protections;
 pub mod provenance;
 pub mod report;
+pub mod route;
 pub mod strings;
 pub mod syscalls;
 pub mod table;

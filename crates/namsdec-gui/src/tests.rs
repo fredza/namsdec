@@ -9532,7 +9532,9 @@ fn opening_a_binary_shows_its_code_not_its_header() {
 #[test]
 fn both_languages_say_the_same_things() {
     /// Les champs dont les deux langues partagent le texte, et pourquoi.
-    const LES_MÊMES: [&str; 21] = [
+    const LES_MÊMES: [&str; 22] = [
+        // Une adresse d'exemple : elle s'écrit pareil partout.
+        "flow_goal_hint",
         // Une adresse et deux noms propres : les traduire n'aurait pas
         // de sens.
         "about_site_hint",
@@ -13824,4 +13826,74 @@ fn a_disguised_comparison_hands_over_what_it_expects() {
     assert_eq!(xors.len(), 2, "{xors:?}");
     assert!(xors[0].contains("HVUH"), "{xors:?}");
     assert!(xors[1].contains("HADN"), "{xors:?}");
+}
+
+/// « Comment arrive-t-on là ? » : la route, et ses conditions.
+///
+/// C'est la lecture d'un programme qui refuse quelque chose. On connaît
+/// l'adresse où il accepte — la chaîne « Correct » est dans les données,
+/// et quelque chose la charge —, et l'on cherche le chemin, avec ce
+/// qu'il faut satisfaire en route.
+#[test]
+fn the_route_to_an_address_lists_what_must_hold() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: "\
+global _start
+section .text
+_start:
+    cmp rsi, 7
+    jne refus
+    mov ecx, 0x48555648
+    xor ecx, [rbx]
+    jne refus
+succes:
+    mov rax, 1
+    hlt
+refus:
+    xor rax, rax
+    hlt
+"
+        .to_owned(),
+        show_flow: true,
+        ..Default::default()
+    };
+    app.do_assemble();
+    let state = app.assemble_state.as_ref().expect("assemblé");
+    let cfg = namsdec_re::cfg::build(&state.disasm);
+
+    // L'adresse du succès, telle qu'on la trouverait par les chaînes.
+    let succes = *state
+        .output
+        .symbols
+        .iter()
+        .find(|s| s.name == "succes")
+        .map(|s| &s.addr)
+        .expect("l'étiquette du succès");
+
+    let route = namsdec_re::route::to(&cfg, succes).expect("une route mène au succès");
+    // Deux décisions à passer : la longueur, puis la comparaison.
+    assert_eq!(route.stages.len(), 2, "{:?}", route.stages);
+    for étape in &route.stages {
+        assert_eq!(
+            étape.condition,
+            namsdec_re::route::Condition::NotTaken,
+            "les deux `jne` doivent échouer pour arriver au succès : {étape:?}"
+        );
+        assert!(étape.decides.starts_with("jne"), "{étape:?}");
+    }
+
+    // Et la fenêtre montre la route quand on la demande.
+    app.flow_goal = format!("{succes:#x}");
+    let peint = paint(&mut app);
+    assert!(
+        peint.contains(strings(Lang::Fr).flow_route_steps),
+        "les conditions doivent être listées :\n{peint}"
+    );
+    assert!(
+        peint.contains("jne"),
+        "avec l'instruction qui décide :\n{peint}"
+    );
 }

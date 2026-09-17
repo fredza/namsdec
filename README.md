@@ -106,6 +106,14 @@ adresse, qui l'appelle, qui y saute et qui la désigne. Une adresse qu'un
 `call` vise est une fonction, même dépouillée de son nom — et celle qui
 est appelée de partout est celle par laquelle on commence à lire.
 
+**Comment arrive-t-on là ?** Dans le déroulement, un champ prend une
+adresse — celle où le programme accepte, par exemple — et donne **la route
+pour y parvenir**, avec les conditions à satisfaire dans l'ordre : ce
+`jne` ne doit pas être pris, celui-là doit l'être. Les blocs du chemin
+sont mis en avant dans le dessin. C'est la route la plus courte, et
+namsdec dit quand il en existe d'autres plutôt que de laisser croire à une
+démonstration.
+
 **Ce que le code fait de remarquable.** Le module **Figures** relève les
 constantes qui sont du texte (`mov ecx, 0x48555648` → `"HVUH"`), les
 contrôles de longueur, les comparaisons déguisées en XOR — `a XOR b` ne

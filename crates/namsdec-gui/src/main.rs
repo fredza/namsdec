@@ -821,6 +821,8 @@ struct NamsdecApp {
     show_flow: bool,
     /// Le grossissement du dessin, réglé à la molette.
     flow_zoom: f32,
+    /// L'adresse dont on demande « comment y arrive-t-on ? ».
+    flow_goal: String,
     /// La fenêtre du motif cyclique — celle qui répond à « de combien ça
     /// déborde ».
     show_cyclic: bool,
@@ -1591,6 +1593,7 @@ impl Default for NamsdecApp {
             show_timeline: false,
             show_flow: false,
             flow_zoom: 1.0,
+            flow_goal: String::new(),
             show_cyclic: false,
             // Cent, comme pwndbg : de quoi couvrir un tampon
             // d'apprentissage sans noyer la fenêtre.
@@ -5373,6 +5376,44 @@ impl NamsdecApp {
                 }
                 ui.colored_label(theme.dim, s.flow_hint);
                 flow_legend_ui(ui, theme, s);
+
+                // « Comment arrive-t-on là ? » — la question qu'on pose
+                // devant un programme qui refuse un mot de passe : on
+                // connaît l'adresse du succès, on cherche la route.
+                let mut route = None;
+                ui.horizontal_wrapped(|ui| {
+                    ui.colored_label(theme.dim, s.flow_goal_label);
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.flow_goal)
+                            .hint_text(s.flow_goal_hint)
+                            .font(egui::TextStyle::Monospace)
+                            .desired_width(120.0),
+                    );
+                    if !self.flow_goal.is_empty() && ui.small_button("x").clicked() {
+                        self.flow_goal.clear();
+                    }
+                });
+                if let Some(visée) = sidebar::eval_address(&self.flow_goal, None) {
+                    match namsdec_re::route::to(&cfg, visée) {
+                        Some(trouvée) => {
+                            flow_route_ui(ui, theme, s, &cfg, &trouvée, self.lang);
+                            route = Some(trouvée);
+                        }
+                        None => {
+                            ui.colored_label(theme.warn, s.flow_no_route);
+                        }
+                    }
+                }
+                let sur_la_route: std::collections::BTreeSet<usize> = route
+                    .as_ref()
+                    .map(|r| {
+                        r.stages
+                            .iter()
+                            .map(|é| é.block)
+                            .chain(std::iter::once(r.target))
+                            .collect()
+                    })
+                    .unwrap_or_default();
                 ui.separator();
 
                 // Le zoom à la molette, comme sur une carte : un
@@ -5397,7 +5438,7 @@ impl NamsdecApp {
                 egui::ScrollArea::both()
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
-                        aller = flow_graph_ui(ui, theme, s, &cfg, ici, lignes, zoom);
+                        aller = flow_graph_ui(ui, theme, s, &cfg, ici, lignes, zoom, &sur_la_route);
                     });
             });
         self.show_flow = open;
@@ -9038,6 +9079,7 @@ fn flow_legend_ui(ui: &mut egui::Ui, theme: &'static Theme, s: &Strings) {
 /// monde — les vrais outils y mettent des heures de calcul —, mais cela
 /// donne le bon : l'entrée en haut, le sens de lecture vers le bas, et
 /// les boucles qui remontent, visiblement.
+#[allow(clippy::too_many_arguments)]
 fn flow_graph_ui(
     ui: &mut egui::Ui,
     theme: &'static Theme,
@@ -9046,6 +9088,7 @@ fn flow_graph_ui(
     ici: Option<usize>,
     lignes: &BTreeMap<u64, u32>,
     zoom: f32,
+    route: &std::collections::BTreeSet<usize>,
 ) -> Option<u32> {
     use namsdec_re::cfg::Exit;
 
@@ -9128,8 +9171,13 @@ fn flow_graph_ui(
     for (index, bloc) in cfg.blocks.iter().enumerate() {
         let rect = décalé(rects[index]);
         let courant = ici == Some(index);
+        // Un bloc de la route demandée se voit : c'est le chemin qu'on
+        // vient de chercher, et il doit se suivre des yeux.
+        let sur_route = route.contains(&index);
         let fond = if courant {
             theme.accent.gamma_multiply(0.22)
+        } else if sur_route {
+            theme.good.gamma_multiply(0.16)
         } else {
             theme.dim.gamma_multiply(0.10)
         };
@@ -9138,8 +9186,14 @@ fn flow_graph_ui(
             rect,
             4.0 * zoom,
             egui::Stroke::new(
-                if courant { 2.0 } else { 1.0 },
-                if courant { theme.accent } else { theme.dim },
+                if courant || sur_route { 2.0 } else { 1.0 },
+                if courant {
+                    theme.accent
+                } else if sur_route {
+                    theme.good
+                } else {
+                    theme.dim
+                },
             ),
             egui::StrokeKind::Inside,
         );
@@ -9199,6 +9253,62 @@ fn flow_graph_ui(
     }
     réponse.on_hover_text(s.flow_goto);
     aller
+}
+
+/// La route vers une adresse : ce qu'il faut satisfaire, dans l'ordre.
+///
+/// C'est la lecture d'un programme qui refuse quelque chose : on part de
+/// l'endroit où il accepte, et l'on remonte les conditions. Chaque ligne
+/// nomme l'instruction qui décide et ce qu'elle doit répondre.
+fn flow_route_ui(
+    ui: &mut egui::Ui,
+    theme: &'static Theme,
+    s: &Strings,
+    cfg: &namsdec_re::cfg::Cfg,
+    route: &namsdec_re::route::Route,
+    lang: Lang,
+) {
+    use namsdec_re::route::Condition;
+    ui.add_space(2.0);
+    ui.colored_label(
+        theme.good,
+        format!(
+            "{} {}",
+            route.stages.len(),
+            if route.stages.len() > 1 {
+                s.flow_route_steps
+            } else {
+                s.flow_route_step
+            }
+        ),
+    );
+    egui::Grid::new("flow_route")
+        .num_columns(3)
+        .min_col_width(0.0)
+        .striped(true)
+        .show(ui, |ui| {
+            for étape in &route.stages {
+                ui.monospace(format!("{:#010x}", étape.addr));
+                ui.monospace(&étape.decides);
+                ui.colored_label(
+                    match étape.condition {
+                        Condition::Taken => theme.good,
+                        Condition::NotTaken => theme.bad,
+                        _ => theme.dim,
+                    },
+                    étape.condition.explain(lang.code()),
+                );
+                ui.end_row();
+            }
+            ui.monospace(format!("{:#010x}", cfg.blocks[route.target].start));
+            ui.colored_label(theme.good, s.flow_route_arrival);
+            ui.label("");
+            ui.end_row();
+        });
+    if route.others {
+        ui.colored_label(theme.dim, s.flow_route_others);
+    }
+    ui.add_space(2.0);
 }
 
 /// La pointe d'une flèche, à `bout`, dans la direction `sens`.
