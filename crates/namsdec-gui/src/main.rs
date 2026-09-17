@@ -491,6 +491,9 @@ struct NamsdecApp {
     disassembler: String,
     /// Ce qu'on cherche dans le listing.
     disassembly_query: String,
+    /// L'endroit où le listing commence, quand on a demandé à aller
+    /// quelque part. `None` : tout le programme, depuis le début.
+    disassembly_target: Option<u64>,
     /// Les désassembleurs décrits par des fichiers, trouvés au
     /// démarrage.
     disassembler_plugins: Vec<namsdec_disasm::plugin::Plugin>,
@@ -1018,6 +1021,7 @@ impl Default for NamsdecApp {
             show_disassembly: false,
             disassembler: PSEUDO_ID.to_owned(),
             disassembly_query: String::new(),
+            disassembly_target: None,
             disassembler_plugins: load_disassembler_plugins(),
             plugin_output: None,
             timeline_notable_only: false,
@@ -1080,6 +1084,7 @@ impl NamsdecApp {
             disabled_packs: settings.disabled_packs.iter().cloned().collect(),
             current_exercise: settings.current_exercise.clone(),
             memory_format: MemoryFormat::by_id(&settings.memory_format),
+            disassembler: settings.disassembler.clone(),
             explorer,
             saved_settings: settings,
             ..Default::default()
@@ -1165,6 +1170,7 @@ impl NamsdecApp {
             exercises: self.exercises,
             disabled_packs: self.disabled_packs.iter().cloned().collect(),
             current_exercise: self.current_exercise.clone(),
+            disassembler: self.disassembler.clone(),
             memory_format: self.memory_format.id().to_owned(),
             explorer_root: self.explorer.root.as_ref().map(|p| p.display().to_string()),
             current_file: self.current_file.as_ref().map(|p| p.display().to_string()),
@@ -4757,6 +4763,8 @@ impl NamsdecApp {
         let lang = self.lang.code();
         let mut open = true;
         let mut aller: Option<u32> = None;
+        let mut vise: Option<u64> = None;
+        let mut revenir_au_début = false;
         // Relevée avant la fenêtre : elle emprunte `self` en écriture.
         let addr_to_line = self
             .assemble_state
@@ -4873,12 +4881,40 @@ impl NamsdecApp {
                 });
                 let query = self.disassembly_query.to_lowercase();
 
+                // Où aller : les étiquettes du programme, dans l'ordre
+                // des adresses. Sur un binaire, c'est par là qu'on entre
+                // — et faire défiler quinze mille lignes pour trouver
+                // une fonction n'est pas une façon de lire.
+                if !symbols.is_empty() {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(s.disassembly_goto_label);
+                        egui::ComboBox::from_id_salt("disassembly_symbols")
+                            .selected_text(s.disassembly_choose)
+                            .show_ui(ui, |ui| {
+                                for symbol in symbols {
+                                    if ui.selectable_label(false, &symbol.name).clicked() {
+                                        vise = Some(symbol.addr);
+                                    }
+                                }
+                            });
+                    });
+                }
+
                 // Le texte de chaque ligne est calculé ici, pour que la
                 // recherche porte sur ce qu'on lit et non sur la forme
                 // d'un autre moteur.
                 let lignes: Vec<Ligne> = state
                     .disasm
                     .iter()
+                    // Demandé d'aller quelque part : la liste commence
+                    // là. Un défilement calculé dépend de la hauteur
+                    // exacte d'une rangée et de ce que la fenêtre laisse
+                    // voir — deux grandeurs qu'on ne connaît qu'après
+                    // avoir dessiné, et qui font tomber à côté.
+                    .skip_while(|instruction| {
+                        self.disassembly_target
+                            .is_some_and(|addr| instruction.address < addr)
+                    })
                     .map(|instruction| Ligne {
                         address: instruction.address,
                         octets: instruction
@@ -4910,34 +4946,49 @@ impl NamsdecApp {
                 if !query.is_empty() {
                     ui.weak(format!("{} / {}", lignes.len(), state.disasm.len()));
                 }
+                if let Some(addr) = self.disassembly_target {
+                    ui.horizontal(|ui| {
+                        let nom = symbols
+                            .iter()
+                            .find(|s| s.addr == addr)
+                            .map(|s| s.name.clone())
+                            .unwrap_or_else(|| format!("{addr:#x}"));
+                        ui.colored_label(theme.accent, format!("{} {nom}", s.disassembly_from));
+                        if ui.button(s.disassembly_all).clicked() {
+                            revenir_au_début = true;
+                        }
+                    });
+                }
 
                 let row_height =
                     ui.text_style_height(&egui::TextStyle::Monospace) + ui.spacing().item_spacing.y;
                 // Suivre l'exécution, comme l'onglet Octets — sauf
                 // pendant une recherche, où c'est elle qui commande.
-                let suivie = (query.is_empty() && self.follow_rip)
-                    .then(|| {
-                        rip.and_then(|rip| lignes.iter().position(|ligne| ligne.address == rip))
-                    })
-                    .flatten();
+                let suivie =
+                    (query.is_empty() && self.disassembly_target.is_none() && self.follow_rip)
+                        .then(|| {
+                            rip.and_then(|rip| lignes.iter().position(|ligne| ligne.address == rip))
+                        })
+                        .flatten();
+                // Bornée à la place que la fenêtre laisse : une zone qui
+                // se croit plus haute déborde, et ce qui dépasse est
+                // coupé — y compris les lignes vers lesquelles on vient
+                // de demander à aller.
                 let mut zone = egui::ScrollArea::vertical()
                     .id_salt("disassembly_rows")
+                    .max_height(ui.available_height().max(120.0))
                     .auto_shrink([false, false]);
                 if let Some(index) = suivie {
-                    let milieu = (index as f32 + 0.5) * row_height;
+                    // Trois lignes de contexte au-dessus, et non un
+                    // centrage : la hauteur visible n'est pas connue
+                    // avant que la zone existe, et un centrage calculé
+                    // sur une hauteur approximative tombe à côté.
+                    const CONTEXTE: usize = 3;
                     zone = zone
-                        .vertical_scroll_offset((milieu - ui.available_height() / 2.0).max(0.0));
+                        .vertical_scroll_offset(index.saturating_sub(CONTEXTE) as f32 * row_height);
                 }
                 zone.show_rows(ui, row_height, lignes.len(), |ui, rows| {
                     for ligne in &lignes[rows] {
-                        // L'étiquette, là où elle tombe : elle donne sa
-                        // structure au listing.
-                        for symbol in symbols.iter().filter(|s| s.addr == ligne.address) {
-                            ui.colored_label(
-                                theme.label,
-                                egui::RichText::new(format!("{}:", symbol.name)).monospace(),
-                            );
-                        }
                         let ici = rip == Some(ligne.address);
                         let rangée = ui
                             .horizontal(|ui| {
@@ -4945,6 +4996,20 @@ impl NamsdecApp {
                                     if ici { theme.accent } else { theme.dim },
                                     egui::RichText::new(format!("{:08x}", ligne.address))
                                         .monospace(),
+                                );
+                                // L'étiquette sur la rangée de son
+                                // instruction, et non sur une ligne à
+                                // elle : toutes les rangées gardent la
+                                // même hauteur, ce dont la zone a besoin
+                                // pour savoir où elle en est.
+                                let étiquette = symbols
+                                    .iter()
+                                    .find(|s| s.addr == ligne.address)
+                                    .map(|s| format!("{}:", s.name))
+                                    .unwrap_or_default();
+                                ui.colored_label(
+                                    theme.label,
+                                    egui::RichText::new(étiquette).monospace(),
                                 );
                                 // Les octets : ce qui distingue un
                                 // désassemblage d'une traduction. Sur une
@@ -4984,6 +5049,14 @@ impl NamsdecApp {
             });
         if let Some(ligne) = aller {
             self.goto_line = Some(ligne);
+        }
+        // Posée pour la frame suivante, puis oubliée : sans quoi la vue
+        // resterait collée là et l'on ne pourrait plus la faire défiler.
+        if let Some(addr) = vise {
+            self.disassembly_target = Some(addr);
+        }
+        if revenir_au_début {
+            self.disassembly_target = None;
         }
         self.show_disassembly = open;
     }

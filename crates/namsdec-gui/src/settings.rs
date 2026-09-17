@@ -83,6 +83,11 @@ pub struct Settings {
     /// chercher.
     #[serde(default)]
     pub current_exercise: Option<String>,
+    /// Le moteur du panneau de désassemblage : « pseudo », « nasm », ou
+    /// l'identifiant d'un outil installé. Celui qu'on a choisi doit
+    /// revenir à la session suivante, comme le reste.
+    #[serde(default = "pseudo_par_défaut")]
+    pub disassembler: String,
     /// Comment l'onglet Mémoire lit les octets : « bytes », « words » ou
     /// « text ».
     pub memory_format: String,
@@ -117,6 +122,7 @@ impl Default for Settings {
             auto_indent: true,
             disabled_packs: Vec::new(),
             current_exercise: None,
+            disassembler: pseudo_par_défaut(),
             memory_format: "bytes".to_owned(),
             explorer_root: None,
             current_file: None,
@@ -242,6 +248,12 @@ pub fn shortcuts_to_strings(bindings: &KeyBindings) -> BTreeMap<String, String> 
         .iter()
         .map(|(action, chord)| (action_id(*action).to_owned(), chord_to_string(chord)))
         .collect()
+}
+
+/// Le moteur de départ : le pseudo-code, celui qu'on veut lire en
+/// premier quand on apprend.
+fn pseudo_par_défaut() -> String {
+    "pseudo".to_owned()
 }
 
 /// La valeur d'un réglage absent d'un fichier écrit par une version

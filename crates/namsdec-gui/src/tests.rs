@@ -7899,3 +7899,80 @@ fn the_plugin_example_in_the_readme_is_valid() {
     assert_eq!(plugin.id, "objdump");
     assert!(plugin.args.iter().any(|arg| arg.contains("{file}")));
 }
+
+/// Le moteur choisi revient à la session suivante, et le panneau sait
+/// aller à une fonction sans qu'on fasse défiler.
+#[test]
+fn the_disassembly_panel_remembers_and_navigates() {
+    // Le réglage voyage comme les autres.
+    let app = NamsdecApp {
+        disassembler: NASM_ID.to_owned(),
+        ..Default::default()
+    };
+    let json = serde_json::to_string(&app.settings_snapshot()).unwrap();
+    assert!(json.contains("\"disassembler\":\"nasm\""), "{json}");
+    let relu: crate::settings::Settings = serde_json::from_str(&json).unwrap();
+    assert_eq!(NamsdecApp::from_settings(relu).disassembler, NASM_ID);
+
+    // Un fichier d'une version plus ancienne n'a pas le champ : on
+    // revient au pseudo-code, celui qu'on lit en premier.
+    let ancien: crate::settings::Settings =
+        serde_json::from_str(r#"{"version":1,"theme":"vscode-dark","language":"fr"}"#).unwrap();
+    assert_eq!(ancien.disassembler, PSEUDO_ID);
+
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    // Et la liste des étiquettes mène où on lui demande.
+    let mut app = NamsdecApp {
+        show_disassembly: true,
+        source: format!(
+            "global _start\nsection .text\n_start:\n{}call sous\nhlt\nsous:\nret\n",
+            "nop\n".repeat(200)
+        ),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+    let sous = app
+        .assemble_state
+        .as_ref()
+        .unwrap()
+        .output
+        .symbols
+        .iter()
+        .find(|s| s.name == "sous")
+        .expect("l'étiquette existe")
+        .addr;
+
+    app.disassembly_target = Some(sous);
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1400.0, 1000.0),
+        )),
+        ..Default::default()
+    };
+    let mut painted = String::new();
+    for _ in 0..3 {
+        painted.clear();
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        for clipped in &output.shapes {
+            if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                painted.push_str(text.galley.text());
+                painted.push('|');
+            }
+        }
+        output.textures_delta.clear();
+    }
+    assert!(
+        painted.contains("sous:"),
+        "la cible doit être à l'écran : {painted}"
+    );
+    assert!(
+        painted.contains("revenir à l'appelant"),
+        "et ce qu'elle contient : {painted}"
+    );
+}
