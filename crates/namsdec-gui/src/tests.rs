@@ -8269,6 +8269,97 @@ _start:
     );
 }
 
+/// « Jusqu'au prochain appel », « jusqu'au prochain retour », « jusqu'au
+/// prochain appel système » : les trois questions qu'on se pose en
+/// explorant un programme qu'on n'a pas écrit.
+///
+/// Ce sont les `nextcall`, `nextret` et `nextsyscall` de pwndbg. Un pas
+/// à pas de dix mille pas n'y répond pas.
+#[test]
+fn running_to_the_next_call_return_or_syscall() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: "\
+global _start
+
+section .text
+_start:
+    mov rax, 1
+    mov rbx, 2
+    call quelquepart
+    mov rcx, 3
+    hlt
+
+quelquepart:
+    mov rdx, 4
+    ret
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+
+    let jusque_arrêt = |app: &mut NamsdecApp| {
+        for _ in 0..100 {
+            if !app.running {
+                break;
+            }
+            app.tick_run(&egui::Context::default());
+        }
+    };
+
+    // Depuis le début, le prochain appel est à deux instructions de là :
+    // on s'arrête *sur* le `call`, pas après.
+    app.dispatch(Action::RunToCall);
+    jusque_arrêt(&mut app);
+    let emulator = app.emulator.as_ref().expect("chargé");
+    let rip = emulator.cpu().regs.rip;
+    let texte = app
+        .assemble_state
+        .as_ref()
+        .unwrap()
+        .disasm
+        .iter()
+        .find(|i| i.address == rip)
+        .map(|i| i.text.clone())
+        .unwrap_or_default();
+    assert!(texte.starts_with("call"), "arrêté sur « {texte} »");
+    // Les deux `mov` d'avant ont bien été exécutés.
+    assert_eq!(emulator.cpu().regs.get64(Reg64::Rbx), 2);
+
+    // Puis jusqu'au retour : on entre dans la sous-routine et l'on
+    // s'arrête sur son `ret`.
+    app.dispatch(Action::RunToReturn);
+    jusque_arrêt(&mut app);
+    let emulator = app.emulator.as_ref().expect("chargé");
+    assert_eq!(
+        emulator.cpu().regs.get64(Reg64::Rdx),
+        4,
+        "la sous-routine a tourné"
+    );
+
+    // Et ce qui n'existe pas se dit, au lieu de laisser courir le
+    // programme jusqu'à sa fin.
+    app.dispatch(Action::RunToSyscall);
+    assert!(
+        matches!(app.status, Status::Note(_)),
+        "aucun appel système ici : {:?}",
+        app.status
+    );
+    assert!(!app.running);
+
+    // Les points d'arrêt posés le temps de la course ne restent pas :
+    // ils n'appartiennent pas à l'utilisateur.
+    app.dispatch(Action::RunToCall);
+    jusque_arrêt(&mut app);
+    app.tick_run(&egui::Context::default());
+    assert!(app.run_until.is_none(), "la course est finie");
+    assert!(app.breakpoint_lines.is_empty(), "et rien n'a été posé");
+}
+
 /// La mémoire montre sa carte : où commence le code, où finit la pile,
 /// ce que le tas occupe, avec les droits de chacun.
 ///

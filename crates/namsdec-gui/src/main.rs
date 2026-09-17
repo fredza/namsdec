@@ -177,6 +177,35 @@ impl SidebarTab {
     }
 }
 
+/// Jusqu'où court « aller au prochain… ».
+///
+/// Trois questions, celles qu'on se pose en explorant un programme
+/// inconnu : qu'appelle-t-il, quand sort-il d'ici, que demande-t-il au
+/// noyau ? `nextcall`, `nextret` et `nextsyscall` chez pwndbg.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum UntilKind {
+    Call,
+    Return,
+    Syscall,
+}
+
+impl UntilKind {
+    /// Cette instruction est-elle de celles qu'on cherche ?
+    fn matches(self, instr: &namsdec_disasm::Decoded) -> bool {
+        use namsdec_disasm::FlowControl;
+        match self {
+            // L'appel indirect compte autant que l'autre : `call rax`
+            // est précisément celui qu'on veut voir arriver.
+            UntilKind::Call => matches!(
+                instr.flow_control(),
+                FlowControl::Call | FlowControl::IndirectCall
+            ),
+            UntilKind::Return => instr.flow_control() == FlowControl::Return,
+            UntilKind::Syscall => instr.mnemonic() == namsdec_disasm::Mnemonic::Syscall,
+        }
+    }
+}
+
 /// Sous quelle forme on écrit ce qu'on cherche en mémoire.
 ///
 /// Trois, parce que ce sont les trois choses qu'on a sous les yeux : un
@@ -466,6 +495,10 @@ struct NamsdecApp {
     /// s'achève. Il n'appartient pas à l'utilisateur, il ne doit donc pas
     /// survivre à ce qu'il a servi à faire.
     run_to: Option<u64>,
+    /// La course « jusqu'au prochain appel » en cours, s'il y en a une.
+    /// Comme `run_to`, elle a posé des points d'arrêt qui ne sont pas
+    /// ceux de l'utilisateur, et qu'il faut retirer en arrivant.
+    run_until: Option<UntilKind>,
     /// La ligne où poser le curseur au prochain rendu de l'éditeur :
     /// cliquer un diagnostic doit y mener, sans quoi lire le message et
     /// retrouver l'endroit restent deux gestes.
@@ -1139,6 +1172,7 @@ impl Default for NamsdecApp {
             memory_format: MemoryFormat::Bytes,
             watchpoints: Vec::new(),
             run_to: None,
+            run_until: None,
             goto_line: None,
             find: None,
             help_query: String::new(),
@@ -1779,6 +1813,58 @@ impl NamsdecApp {
         self.do_run();
     }
 
+    /// Court jusqu'à la prochaine instruction de ce genre.
+    ///
+    /// Les points d'arrêt sont posés d'avance sur toutes les
+    /// instructions visées — un pas à pas jusqu'à la bonne aurait figé
+    /// l'interface sur une boucle un peu longue. L'instruction courante
+    /// est exclue, sans quoi « au prochain appel » n'irait nulle part
+    /// quand on est déjà sur un `call`.
+    ///
+    /// Rien à viser n'est pas une erreur : le programme ne contient
+    /// simplement pas ce qu'on cherche, et le dire vaut mieux que de le
+    /// laisser courir jusqu'à la fin.
+    fn do_run_until(&mut self, kind: UntilKind) {
+        self.last_step = None;
+        self.error_advice = None;
+        let s = strings(self.lang);
+        let Some(state) = &self.assemble_state else {
+            return;
+        };
+        let ici = self.emulator.as_ref().map(|e| e.cpu().regs.rip);
+        let mut points: BTreeSet<u64> = state
+            .disasm
+            .iter()
+            .filter(|instruction| Some(instruction.address) != ici)
+            .filter_map(|instruction| {
+                namsdec_disasm::decode_one(&instruction.bytes, instruction.address)
+                    .filter(|decoded| kind.matches(decoded))
+                    .map(|_| instruction.address)
+            })
+            .collect();
+        if points.is_empty() {
+            self.status = Status::Note(match kind {
+                UntilKind::Call => s.run_until_no_call,
+                UntilKind::Return => s.run_until_no_return,
+                UntilKind::Syscall => s.run_until_no_syscall,
+            });
+            return;
+        }
+        // Les points de l'utilisateur restent armés : on court vers le
+        // prochain appel, mais on s'arrête quand même là où il l'a
+        // demandé.
+        points.extend(
+            self.breakpoint_lines
+                .iter()
+                .filter_map(|l| state.output.line_to_addr.get(l).copied()),
+        );
+        if let Some(emulator) = &mut self.emulator {
+            emulator.set_breakpoints(points);
+        }
+        self.run_until = Some(kind);
+        self.do_run();
+    }
+
     /// À appeler une fois par frame. N'avance que si un Run est en cours.
     fn tick_run(&mut self, ctx: &egui::Context) {
         if !self.running {
@@ -1786,7 +1872,7 @@ impl NamsdecApp {
             // avec elle : il n'appartient pas à l'utilisateur, et le
             // laisser là ferait s'arrêter la course suivante à un endroit
             // que personne n'a demandé.
-            if self.run_to.take().is_some() {
+            if self.run_to.take().is_some() | self.run_until.take().is_some() {
                 self.sync_breakpoints();
             }
             return;
@@ -2018,6 +2104,9 @@ impl NamsdecApp {
             Action::OpenFolder => self.do_open_folder(),
             Action::InstructionHelp => self.do_instruction_help(),
             Action::RunToCursor => self.do_run_to_cursor(),
+            Action::RunToCall => self.do_run_until(UntilKind::Call),
+            Action::RunToReturn => self.do_run_until(UntilKind::Return),
+            Action::RunToSyscall => self.do_run_until(UntilKind::Syscall),
             Action::GoToLabel => self.do_goto_label(),
             Action::Find => self.do_find(),
             Action::New => self.do_new(),
@@ -2931,6 +3020,30 @@ impl NamsdecApp {
                             ui.close();
                         }
                     });
+                    ui.separator();
+                    // Explorer un programme qu'on ne connaît pas : ce
+                    // qu'il appelle, quand il en sort, ce qu'il demande
+                    // au noyau. Un pas à pas de dix mille pas ne répond
+                    // pas à ces questions-là.
+                    for (action, label) in [
+                        (Action::RunToCall, s.action_run_to_call),
+                        (Action::RunToReturn, s.action_run_to_return),
+                        (Action::RunToSyscall, s.action_run_to_syscall),
+                    ] {
+                        if ui
+                            .button(shortcut_hint(
+                                &self.keybindings,
+                                &ui.ctx().clone(),
+                                label,
+                                action,
+                            ))
+                            .clicked()
+                        {
+                            self.dispatch(action);
+                            ui.close();
+                        }
+                    }
+                    ui.separator();
                     if ui.button(s.action_reset).clicked() {
                         self.dispatch(Action::Reset);
                         ui.close();
@@ -6735,6 +6848,9 @@ fn action_label(s: &Strings, action: Action) -> &'static str {
         Action::Find => s.action_find,
         Action::New => s.file_new,
         Action::RunToCursor => s.action_run_to_cursor,
+        Action::RunToCall => s.action_run_to_call,
+        Action::RunToReturn => s.action_run_to_return,
+        Action::RunToSyscall => s.action_run_to_syscall,
     }
 }
 

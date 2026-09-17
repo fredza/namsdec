@@ -33,6 +33,15 @@ pub enum Action {
     InstructionHelp,
     /// Exécuter jusqu'à la ligne où se trouve le curseur.
     RunToCursor,
+    /// Courir jusqu'au prochain appel, retour, ou appel système.
+    ///
+    /// Les trois questions qu'on se pose en explorant un programme qu'on
+    /// ne connaît pas : que va-t-il appeler, quand sort-il d'ici, et que
+    /// demande-t-il au noyau ? pwndbg les appelle `nextcall`, `nextret`
+    /// et `nextsyscall` ; ce sont les mêmes.
+    RunToCall,
+    RunToReturn,
+    RunToSyscall,
     /// Aller à l'étiquette sous le curseur — là où elle est définie.
     GoToLabel,
     /// Chercher dans le code.
@@ -42,7 +51,7 @@ pub enum Action {
 }
 
 impl Action {
-    pub const ALL: [Action; 16] = [
+    pub const ALL: [Action; 19] = [
         Action::ToggleExplorer,
         Action::Assemble,
         Action::Run,
@@ -56,6 +65,9 @@ impl Action {
         Action::OpenFolder,
         Action::InstructionHelp,
         Action::RunToCursor,
+        Action::RunToCall,
+        Action::RunToReturn,
+        Action::RunToSyscall,
         Action::GoToLabel,
         Action::Find,
         Action::New,
@@ -249,6 +261,22 @@ impl Default for KeyBindings {
             Chord::Simple(KeyboardShortcut::new(Modifiers::CTRL, Key::F)),
         );
         map.insert(Action::ToggleExplorer, Chord::leader(&[Key::Space, Key::E]));
+        // Trois pas d'exploration sous le même préfixe, `u` comme
+        // *until* — le mot de gdb pour « cours jusqu'à ». Trois touches
+        // et non deux : `Espace r` et `Espace s…` sont déjà pris, et une
+        // séquence qui en court-circuite une autre la rend inatteignable.
+        map.insert(
+            Action::RunToCall,
+            Chord::leader(&[Key::Space, Key::U, Key::C]),
+        );
+        map.insert(
+            Action::RunToReturn,
+            Chord::leader(&[Key::Space, Key::U, Key::R]),
+        );
+        map.insert(
+            Action::RunToSyscall,
+            Chord::leader(&[Key::Space, Key::U, Key::S]),
+        );
         Self { map }
     }
 }
