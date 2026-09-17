@@ -134,6 +134,18 @@ pub fn builtin_pack() -> Pack {
                 starter_code: include_str!("../exercises/comparer.asm").to_owned(),
             },
             Exercise {
+                id: "signe".to_owned(),
+                title: Text {
+                    fr: "Signé ou non signé".to_owned(),
+                    en: "Signed or unsigned".to_owned(),
+                },
+                description: Text {
+                    fr: "Les mêmes bits, deux lectures : 0xFFFFFFFFFFFFFFFF est -1 et le plus grand entier non signé. `ja` lit CF, `jg` lit SF et OF — sur la même comparaison, l'un saute et l'autre pas. À l'arrêt, RCX doit valoir 1 et RDX 0.".to_owned(),
+                    en: "The same bits, two readings: 0xFFFFFFFFFFFFFFFF is -1 and the largest unsigned integer. `ja` reads CF, `jg` reads SF and OF — on the same comparison, one jumps and the other does not. At the halt, RCX must hold 1 and RDX 0.".to_owned(),
+                },
+                starter_code: include_str!("../exercises/signe.asm").to_owned(),
+            },
+            Exercise {
                 id: "multiplier".to_owned(),
                 title: Text {
                     fr: "Multiplier et diviser".to_owned(),
@@ -146,6 +158,18 @@ pub fn builtin_pack() -> Pack {
                 starter_code: include_str!("../exercises/multiplier.asm").to_owned(),
             },
             Exercise {
+                id: "division".to_owned(),
+                title: Text {
+                    fr: "Diviser, et ce qu'on oublie".to_owned(),
+                    en: "Divide, and what gets forgotten".to_owned(),
+                },
+                description: Text {
+                    fr: "`div` ne divise pas RAX mais RDX:RAX — ce qui traîne dans RDX fait partie du dividende. Le programme part avec un reste oublié dans RDX : exécutez, lisez le refus, puis mettez RDX à zéro. À l'arrêt, RAX doit valoir 7 et RDX 3.".to_owned(),
+                    en: "`div` does not divide RAX but RDX:RAX — whatever sits in RDX is part of the dividend. The program starts with a leftover in RDX: run it, read the refusal, then zero RDX. At the halt, RAX must hold 7 and RDX 3.".to_owned(),
+                },
+                starter_code: include_str!("../exercises/division.asm").to_owned(),
+            },
+            Exercise {
                 id: "memoire".to_owned(),
                 title: Text {
                     fr: "Lire et écrire en mémoire".to_owned(),
@@ -156,6 +180,18 @@ pub fn builtin_pack() -> Pack {
                     en: "Four bytes at once, a single byte widened with zeroes, and indexed addressing base + offset. Open the Memory tab and type \"rdi\" in the address field to follow what changes.".to_owned(),
                 },
                 starter_code: include_str!("../exercises/memoire.asm").to_owned(),
+            },
+            Exercise {
+                id: "boutisme".to_owned(),
+                title: Text {
+                    fr: "L'ordre des octets".to_owned(),
+                    en: "The order of the bytes".to_owned(),
+                },
+                description: Text {
+                    fr: "Un entier de 64 bits se range en mémoire du poids faible au poids fort. L'octet à l'adresse la plus basse n'est donc pas celui qu'on écrit en premier. Ouvrez la fenêtre Mémoire sur `valeur` et comparez : RCX doit valoir 0x88 et RDX 0x11.".to_owned(),
+                    en: "A 64-bit integer is stored least significant byte first. The byte at the lowest address is therefore not the one written first. Open the Memory window on `valeur` and compare: RCX must hold 0x88 and RDX 0x11.".to_owned(),
+                },
+                starter_code: include_str!("../exercises/boutisme.asm").to_owned(),
             },
             Exercise {
                 id: "tableau".to_owned(),
@@ -262,9 +298,9 @@ mod tests {
     #[test]
     fn every_builtin_exercise_is_complete_and_stops() {
         let pack = builtin_pack();
-        // Un parcours, pas une poignée : douze étapes, et chacune
+        // Un parcours, pas une poignée : quinze étapes, et chacune
         // s'appuie sur les précédentes.
-        assert_eq!(pack.exercises.len(), 12);
+        assert_eq!(pack.exercises.len(), 15);
         for exercise in &pack.exercises {
             assert!(!exercise.id.is_empty());
             assert!(!exercise.title.fr.is_empty() && !exercise.title.en.is_empty());

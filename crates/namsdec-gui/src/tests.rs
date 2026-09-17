@@ -3798,7 +3798,76 @@ fn a_pack_can_be_set_aside_without_being_uninstalled() {
     );
 }
 
-/// Le parcours livré est un parcours : douze étapes dans l'ordre où
+/// Les trois étapes ajoutées au parcours tiennent ce que leur énoncé
+/// promet : le but s'atteint vraiment, dans cet émulateur-ci.
+///
+/// Un exercice dont le but est inatteignable n'apprend qu'une chose :
+/// que l'outil ment. Le programme de départ est donc exécuté ici, puis
+/// corrigé comme l'énoncé le demande, et les registres vérifiés.
+#[test]
+fn the_new_steps_of_the_course_keep_their_promise() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    fn exécute(source: &str) -> NamsdecApp {
+        let mut app = NamsdecApp {
+            source: source.to_owned(),
+            ..Default::default()
+        };
+        app.do_assemble();
+        assert!(
+            matches!(app.status, Status::AssembleOk),
+            "l'exercice doit s'assembler : {:?}",
+            app.status
+        );
+        app.do_run();
+        for _ in 0..50 {
+            if !app.running {
+                break;
+            }
+            app.tick_run(&egui::Context::default());
+        }
+        app
+    }
+    let pack = namsdec_exercises::builtin_pack();
+    let code = |id: &str| pack.by_id(id).expect("l'étape existe").starter_code.clone();
+
+    // L'ordre des octets : le premier en mémoire est celui de poids
+    // faible, le dernier celui de poids fort.
+    let app = exécute(&code("boutisme"));
+    let regs = &app.emulator.as_ref().expect("chargé").cpu().regs;
+    assert_eq!(regs.get64(Reg64::Rax), 0x1122334455667788);
+    assert_eq!(regs.get64(Reg64::Rcx), 0x88);
+    assert_eq!(regs.get64(Reg64::Rdx), 0x11);
+
+    // Signé ou non : sur la même comparaison, `ja` saute et `jg` non.
+    let app = exécute(&code("signe"));
+    let regs = &app.emulator.as_ref().expect("chargé").cpu().regs;
+    assert_eq!(regs.get64(Reg64::Rcx), 1, "non signé : -1 est le plus grand de tous");
+    assert_eq!(regs.get64(Reg64::Rdx), 0, "signé : -1 est plus petit que 1");
+
+    // La division part sur un refus — c'est l'énoncé —, et la
+    // correction que l'énoncé demande donne le quotient et le reste.
+    let app = exécute(&code("division"));
+    assert!(
+        matches!(app.status, Status::Error(_)),
+        "le quotient ne tient pas dans 64 bits : {:?}",
+        app.status
+    );
+    // Et le refus dit quoi faire : l'exercice se corrige sans aide
+    // extérieure.
+    let Status::Error(message) = &app.status else {
+        unreachable!()
+    };
+    assert!(message.contains("moitié haute du dividende"), "{message}");
+    let corrigé = code("division").replace("mov rdx, 99", "xor rdx, rdx");
+    let app = exécute(&corrigé);
+    let regs = &app.emulator.as_ref().expect("chargé").cpu().regs;
+    assert_eq!(regs.get64(Reg64::Rax), 7, "le quotient de 45 par 6");
+    assert_eq!(regs.get64(Reg64::Rdx), 3, "et son reste");
+}
+
+/// Le parcours livré est un parcours : quinze étapes dans l'ordre où
 /// l'on apprend, chacune avec son but écrit dans le programme.
 ///
 /// L'ordre n'est pas décoratif. On lit les registres avant d'écrire une
@@ -3815,8 +3884,11 @@ fn the_built_in_pack_is_a_course_in_order() {
             "boucle",
             "bits",
             "comparer",
+            "signe",
             "multiplier",
+            "division",
             "memoire",
+            "boutisme",
             "tableau",
             "chaine",
             "pile",
@@ -5279,9 +5351,9 @@ fn the_readme_tells_the_truth() {
     );
 
     let exercices = namsdec_exercises::builtin_pack().exercises.len();
-    assert_eq!(exercices, 12, "le parcours livré compte douze exercices");
+    assert_eq!(exercices, 15, "le parcours livré compte quinze exercices");
     assert!(
-        readme.contains("parcours de douze exercices"),
+        readme.contains("parcours de quinze exercices"),
         "le README doit annoncer le bon nombre d'exercices"
     );
     // Les crates listées dans le tableau existent toutes.
@@ -6079,7 +6151,7 @@ fn the_exercises_deliver_what_they_promise() {
 ///
 /// Un module qu'on active si on le désire, soit — mais une porte qu'on
 /// ne voit pas n'existe pas. Quelqu'un qui débute ne devinera pas qu'il
-/// y a douze exercices derrière un réglage.
+/// y a quinze exercices derrière un réglage.
 #[test]
 fn the_course_is_discoverable_before_it_is_loaded() {
     let mut app = NamsdecApp::default();
@@ -6120,7 +6192,7 @@ fn the_course_is_discoverable_before_it_is_loaded() {
         output.textures_delta.clear();
     }
     // Le texte d'accueil est à l'écran, avec sa mention du parcours.
-    assert!(painted.contains("douze exercices"), "{painted}");
+    assert!(painted.contains("quinze exercices"), "{painted}");
 }
 
 /// Le parcours se reprend là où on l'avait laissé.
@@ -6186,13 +6258,13 @@ fn the_course_remembers_where_one_stopped() {
         painted.contains("En cours :"),
         "l'étape en cours se voit sans avoir à la chercher : {painted}"
     );
-    // Le rang dans le parcours, aussi : le tableau est la septième des
-    // douze étapes.
-    assert!(painted.contains("7/12"), "{painted}");
+    // Le rang dans le parcours, aussi : le tableau est la dixième des
+    // quinze étapes.
+    assert!(painted.contains("10/15"), "{painted}");
 }
 
 /// Un parcours se suit : l'étape suivante est à un clic, sans avoir à
-/// retrouver son rang dans une liste de douze.
+/// retrouver son rang dans une liste de quinze.
 #[test]
 fn the_course_offers_the_next_step() {
     let mut app = NamsdecApp {
@@ -6239,7 +6311,7 @@ fn the_course_offers_the_next_step() {
     }
     assert!(painted.contains("Étape suivante"), "{painted}");
     assert!(
-        painted.contains("1/12"),
+        painted.contains("1/15"),
         "le rang de l'étape en cours : {painted}"
     );
 }

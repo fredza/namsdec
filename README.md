@@ -133,9 +133,10 @@ Les raccourcis sont dans Préférences ▸ Raccourcis, et se changent.
 
 ### Les exercices
 
-Un parcours de douze exercices est livré avec le programme — registres,
-boucle, bits, comparaison, multiplication et division, mémoire,
-tableaux, chaînes, pile, appels, sortie, protection — activable dans
+Un parcours de quinze exercices est livré avec le programme — registres,
+boucle, bits, comparaison, multiplication, division, ordre des octets,
+signé ou non, mémoire, tableaux, chaînes, pile, appels, sortie,
+protection — activable dans
 Préférences ▸ Modules. D'autres séries s'installent depuis
 un simple fichier JSON, comme les thèmes : Outils ▸ Exercices.
 
