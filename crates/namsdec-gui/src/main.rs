@@ -7422,6 +7422,31 @@ impl NamsdecApp {
                 self.status = Status::Note(s.profile_copied);
             }
         });
+        // Le budget de l'exercice, quand il y en a un : c'est ici qu'on
+        // vient quand on le dépasse, et la réponse — quelle ligne
+        // reprendre — est juste en dessous.
+        if let Some(budget) = self
+            .current_exercise
+            .as_deref()
+            .and_then(|id| namsdec_exercises::find(&self.exercise_packs, id))
+            .and_then(|exercice| exercice.par)
+        {
+            let exécutées = self.emulator.as_ref().map_or(0, |e| e.executed());
+            ui.horizontal_wrapped(|ui| {
+                ui.colored_label(theme.dim, s.par_label);
+                ui.colored_label(
+                    if exécutées > budget {
+                        theme.warn
+                    } else {
+                        theme.good
+                    },
+                    egui::RichText::new(format!("{exécutées} / {budget}")).monospace(),
+                );
+                if exécutées > budget {
+                    ui.colored_label(theme.dim, s.profile_over_budget);
+                }
+            });
+        }
         ui.colored_label(theme.dim, s.profile_hint);
         // L'en-tête des colonnes : sans lui, « 12 » et « 4,2 % » se
         // lisent, mais « 1 204 » se prend pour une adresse.

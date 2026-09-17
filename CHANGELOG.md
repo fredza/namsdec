@@ -184,7 +184,9 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
 - Un onglet **Profil**, dans la console, classe les lignes par temps
   passé dedans : le nombre de passages, la part du total, la ligne
   elle-même, et un clic qui y emmène. La bande de chaleur dit où ça
-  chauffe ; le profil dit de combien, et se copie en texte.
+  chauffe ; le profil dit de combien, et se copie en texte. Quand un
+  exercice impose un budget d'instructions, le profil le rappelle et,
+  s'il est dépassé, désigne la ligne par où reprendre.
 - La fenêtre porte ses trois pastilles au bout de la barre de menus, qui
   fait office de barre de titre : une rangée de moins. Réduire à gauche,
   fermer à droite, comme partout ailleurs sous Linux. Préférences ▸

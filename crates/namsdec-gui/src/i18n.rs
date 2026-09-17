@@ -190,6 +190,9 @@ pub struct Strings {
     /// Le bouton qui copie le profil, pour le coller dans un rapport.
     pub profile_copy: &'static str,
     pub profile_copied: &'static str,
+    /// Ce que dit le profil quand l'exercice courant a un budget et que
+    /// le programme le dépasse : par où commencer à chercher.
+    pub profile_over_budget: &'static str,
     /// L'infobulle d'un diagnostic cliquable.
     pub diagnostic_goto: &'static str,
     /// La fenêtre d'aide, et ce qu'elle dit.
@@ -695,6 +698,7 @@ const FR: Strings = Strings {
     profile_goto: "Aller à cette ligne",
     profile_copy: "Copier le profil",
     profile_copied: "Profil copié : collez-le où vous voulez (Ctrl+V).",
+    profile_over_budget: "au-dessus du budget de l'exercice — la ligne en tête de liste est celle à reprendre.",
     diagnostic_goto: "Aller à cette ligne",
     help_title: "Aide sur l'instruction",
     help_empty: "Placez le curseur sur une instruction et appuyez sur F1.",
@@ -1166,6 +1170,7 @@ const EN: Strings = Strings {
     profile_goto: "Go to that line",
     profile_copy: "Copy the profile",
     profile_copied: "Profile copied: paste it wherever you like (Ctrl+V).",
+    profile_over_budget: "over the exercise budget — the line at the top of the list is the one to rework.",
     diagnostic_goto: "Go to that line",
     help_title: "Instruction help",
     help_empty: "Put the cursor on an instruction and press F1.",

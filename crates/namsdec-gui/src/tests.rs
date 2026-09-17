@@ -11919,3 +11919,85 @@ boucle:
         "le profil vide doit s'expliquer, obtenu :\n{vide}"
     );
 }
+
+/// Le profil rappelle le budget de l'exercice, et dit quoi en faire.
+///
+/// « 61 instructions pour un budget de 30 » sans rien d'autre laisse
+/// devant la même question qu'avant ; la ligne en tête du classement est
+/// la réponse, et le profil est l'endroit où les deux se rencontrent.
+#[test]
+fn the_profile_recalls_the_exercise_budget() {
+    let ctx = egui::Context::default();
+    // Un exercice qui a un budget, et un programme qui le dépasse de
+    // beaucoup : une boucle de cent tours là où l'énoncé en veut peu.
+    let pack = namsdec_exercises::builtin_pack();
+    let exercice = pack
+        .exercises
+        .iter()
+        .find(|e| e.par.is_some())
+        .expect("au moins un exercice a un budget");
+    let budget = exercice.par.expect("le budget existe");
+    let id = namsdec_exercises::full_id(&pack, exercice);
+
+    let mut app = NamsdecApp {
+        source: format!(
+            "\
+section .text
+global _start
+_start:
+    mov rcx, {tours}
+boucle:
+    dec rcx
+    jnz boucle
+    mov rax, 60
+    xor rdi, rdi
+    syscall
+",
+            tours = budget + 100
+        ),
+        current_exercise: Some(id),
+        console_tab: ConsoleTab::Profile,
+        ..Default::default()
+    };
+    app.do_assemble();
+    app.do_run();
+    for _ in 0..20 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&egui::Context::default());
+    }
+    let exécutées = app.emulator.as_ref().expect("un émulateur").executed();
+    assert!(
+        exécutées > budget,
+        "le programme doit dépasser le budget pour que le rappel ait un sens : {exécutées} contre {budget}"
+    );
+
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 820.0),
+        )),
+        ..Default::default()
+    };
+    let mut peint = String::new();
+    for _ in 0..2 {
+        peint.clear();
+        let mut output = ctx.run_ui(input.clone(), |ui| app.console_panel_ui(ui));
+        for clipped in &output.shapes {
+            if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                peint.push_str(text.galley.text());
+                peint.push('\n');
+            }
+        }
+        output.textures_delta.clear();
+    }
+    assert!(
+        peint.contains(&format!("{exécutées} / {budget}")),
+        "le budget doit se lire dans le profil :\n{peint}"
+    );
+    assert!(
+        peint.contains("au-dessus du budget"),
+        "et le dépassement doit dire par où reprendre :\n{peint}"
+    );
+}
