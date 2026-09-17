@@ -12889,8 +12889,19 @@ fn several_files_stay_open_each_where_it_was_left() {
     );
     assert!(app.buffer_modified(), "et il se sait modifié");
 
-    // Fermer revient au voisin, sans toucher au reste.
+    // Fermer un fichier modifié demande d'abord : c'est le seul endroit
+    // d'où un travail peut disparaître sans qu'on l'ait voulu.
     app.close_tab(1);
+    assert!(
+        matches!(app.pending, Some(Pending::CloseTab(1))),
+        "la question doit être posée : {:?}",
+        app.pending
+    );
+    assert_eq!(app.tabs.len(), 1, "et rien n'est encore fermé");
+
+    // « Ne pas enregistrer » : on ferme, et l'on revient au voisin.
+    let en_attente = app.pending.take().expect("une question en attente");
+    app.perform(en_attente);
     assert!(app.tabs.is_empty());
     assert_eq!(app.current_file.as_deref(), Some(un.as_path()));
 
@@ -12981,4 +12992,47 @@ fn the_tab_bar_shows_the_open_files() {
         !peint.contains('×'),
         "pas de barre d'onglets pour un seul fichier : {peint}"
     );
+}
+
+/// Quitter regarde tous les fichiers ouverts, pas seulement celui qu'on
+/// voit.
+///
+/// Un onglet laissé de côté avec des modifications compte autant que le
+/// tampon sous les yeux : la question doit être posée pour lui aussi, et
+/// « Enregistrer » doit passer au suivant plutôt que d'emporter le
+/// reste.
+#[test]
+fn quitting_looks_at_every_open_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let un = dir.path().join("un.asm");
+    let deux = dir.path().join("deux.asm");
+    for chemin in [&un, &deux] {
+        std::fs::write(chemin, "global _start\nsection .text\n_start:\n    hlt\n").unwrap();
+    }
+    let mut app = NamsdecApp::default();
+    app.open_file(un.clone());
+    app.source.push_str("; tapé dans le premier\n");
+    app.open_file(deux.clone());
+
+    // Le fichier visible est propre, l'autre non : quitter doit quand
+    // même demander.
+    assert!(!app.buffer_modified(), "celui qu'on voit est enregistré");
+    assert!(app.anything_modified(), "mais pas celui d'à côté");
+    assert_eq!(app.modified_tabs(), 1);
+    app.guard(Pending::Quit);
+    assert!(
+        matches!(app.pending, Some(Pending::Quit)),
+        "la question doit être posée : {:?}",
+        app.pending
+    );
+    assert!(!app.quitting, "et l'on ne quitte pas avant d'avoir répondu");
+
+    // Le premier onglet modifié se retrouve, pour que « Enregistrer »
+    // enregistre le bon fichier.
+    let rang = app.first_modified_tab().expect("un onglet en danger");
+    app.go_to_tab(rang);
+    assert_eq!(app.current_file.as_deref(), Some(un.as_path()));
+    app.do_save();
+    assert!(!app.anything_modified(), "plus rien à perdre");
+    assert_eq!(app.first_modified_tab(), None);
 }

@@ -230,6 +230,10 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
 - Ouvrir un fichier ne demande donc plus si l'on veut perdre le
   précédent : il attend dans son onglet. Ctrl+Tab passe au suivant,
   Ctrl+Maj+Tab au précédent, Ctrl+W ferme.
+- Fermer un onglet dont le texte n'est pas enregistré demande d'abord, et
+  quitter regarde **tous** les fichiers ouverts : la fenêtre dit combien
+  sont en danger, et « Enregistrer » passe au suivant au lieu
+  d'emporter le reste.
 - Les fichiers ouverts reviennent au lancement suivant — leurs chemins,
   jamais leur contenu, comme pour le reste.
 

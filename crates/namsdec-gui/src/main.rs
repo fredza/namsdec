@@ -1383,6 +1383,8 @@ boucle:
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Pending {
     New,
+    /// Fermer un onglet dont le texte n'est pas enregistré.
+    CloseTab(usize),
     Exercise(String),
     Quit,
 }
@@ -2980,6 +2982,38 @@ impl NamsdecApp {
         if self.tabs.is_empty() {
             return;
         }
+        // Un onglet dont le texte n'est pas enregistré ne part pas sur
+        // un clic : c'est le seul endroit d'où un travail peut
+        // disparaître sans qu'on l'ait voulu.
+        if self.tab_modified(index) {
+            // La question porte sur l'onglet visé : on s'y installe
+            // d'abord, pour que « Enregistrer » enregistre le bon
+            // fichier et qu'on voie ce dont on parle.
+            self.go_to_tab(index);
+            self.pending = Some(Pending::CloseTab(self.active_tab_index));
+            return;
+        }
+        self.close_tab_now(index);
+    }
+
+    /// Ce que l'onglet de rang `index` a de non enregistré.
+    fn tab_modified(&self, index: usize) -> bool {
+        if index == self.active_tab_index {
+            return self.buffer_modified();
+        }
+        let rang = if index < self.active_tab_index {
+            index
+        } else {
+            index.wrapping_sub(1)
+        };
+        self.tabs.get(rang).is_some_and(OpenTab::modifié)
+    }
+
+    /// Ferme sans plus rien demander.
+    fn close_tab_now(&mut self, index: usize) {
+        if self.tabs.is_empty() {
+            return;
+        }
         if index == self.active_tab_index {
             // On s'installe sur le voisin, puis on ferme celui qu'on
             // vient de quitter.
@@ -3094,9 +3128,30 @@ impl NamsdecApp {
         self.source != self.saved_source
     }
 
+    /// Combien de fichiers ouverts ont du texte non enregistré.
+    fn modified_tabs(&self) -> usize {
+        usize::from(self.buffer_modified()) + self.tabs.iter().filter(|t| t.modifié()).count()
+    }
+
+    /// Le rang du premier onglet — autre que l'actif — qui a du texte
+    /// non enregistré.
+    fn first_modified_tab(&self) -> Option<usize> {
+        (0..=self.tabs.len())
+            .find(|rang| *rang != self.active_tab_index && self.tab_modified(*rang))
+    }
+
+    /// Y a-t-il quelque chose à perdre **où que ce soit** ?
+    ///
+    /// Depuis qu'on peut ouvrir plusieurs fichiers, quitter ne met pas en
+    /// danger le seul tampon visible : un onglet laissé de côté avec des
+    /// modifications compte autant.
+    fn anything_modified(&self) -> bool {
+        self.buffer_modified() || self.tabs.iter().any(OpenTab::modifié)
+    }
+
     /// Fait l'action, ou demande d'abord.
     fn guard(&mut self, action: Pending) {
-        if self.buffer_modified() {
+        if self.anything_modified() {
             self.pending = Some(action);
         } else {
             self.perform(action);
@@ -3106,6 +3161,7 @@ impl NamsdecApp {
     fn perform(&mut self, action: Pending) {
         match action {
             Pending::New => self.new_program(),
+            Pending::CloseTab(index) => self.close_tab_now(index),
             Pending::Exercise(id) => self.load_exercise_now(&id),
             Pending::Quit => self.quitting = true,
         }
@@ -6834,6 +6890,21 @@ impl NamsdecApp {
                 ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
                 ui.set_max_width(380.0);
                 ui.label(s.unsaved_question);
+                // Quand plusieurs fichiers sont en jeu, le dire : « le
+                // fichier n'est pas enregistré » devant trois onglets
+                // modifiés laisse croire qu'on n'en perd qu'un.
+                let en_danger = self.modified_tabs();
+                if en_danger > 1 {
+                    ui.add_space(4.0);
+                    ui.colored_label(
+                        theme.warn,
+                        if self.lang == Lang::Fr {
+                            format!("{en_danger} fichiers ouverts ne sont pas enregistrés.")
+                        } else {
+                            format!("{en_danger} open files are not saved.")
+                        },
+                    );
+                }
                 ui.add_space(8.0);
                 ui.horizontal(|ui| {
                     let save =
@@ -6871,6 +6942,17 @@ impl NamsdecApp {
             // Un enregistrement qui échoue — disque plein, fichier en
             // lecture seule — ne doit pas emporter le tampon avec lui.
             if self.buffer_modified() {
+                return;
+            }
+            // Quitter emporte tous les fichiers : tant qu'il en reste un
+            // à enregistrer, on l'ouvre et l'on repose la question. « Ne
+            // pas enregistrer », lui, vaut pour tous — c'est ce qu'il
+            // veut dire.
+            if matches!(pending, Pending::Quit)
+                && let Some(rang) = self.first_modified_tab()
+            {
+                self.go_to_tab(rang);
+                self.pending = Some(Pending::Quit);
                 return;
             }
         }
