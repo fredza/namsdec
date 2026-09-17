@@ -45,9 +45,17 @@ au-dessus de RSP est grisé — ces octets sont encore là, mais le prochain
 `push` les écrase.
 
 **Un décompilateur, si vous en avez un.** Le module **Décompilation**
-(Préférences ▸ Modules, éteint par défaut) lance l'outil de votre choix —
-`objdump`, `ndisasm`, RetDec, celui que vous écrivez — décrit par un
-fichier JSON déposé dans `~/.local/share/namsdec/decompilers/`. Trois
+(Préférences ▸ Modules, éteint par défaut) lance l'outil de votre choix.
+Cinq sont connus d'avance — `objdump`, `ndisasm`, le pseudo-code de
+`radare2`, **Rizin + rz-ghidra** et **RetDec** — avec les arguments qui
+marchent : Préférences ▸ Plugins dit lesquels sont installés sur votre
+machine, lesquels manquent et comment les obtenir, et les déclare d'un
+clic. Déclarer **écrit un fichier de quelques lignes** : namsdec ne
+télécharge rien et ne lance rien de lui-même. Le vôtre s'ajoute de la
+même façon, par un JSON déposé dans
+`~/.local/share/namsdec/decompilers/` — avec `{out}` dans les arguments
+si l'outil écrit son résultat dans un fichier plutôt que sur la sortie
+standard. Trois
 verrous, parce qu'il s'agit d'exécuter un programme sur votre machine :
 le module s'active à la main, la fenêtre s'ouvre à la demande, et
 **la commande est écrite en toutes lettres avant d'être lancée**. Le

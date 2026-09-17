@@ -224,6 +224,19 @@ qu'on fait devant un binaire porte ici les mêmes noms qu'ailleurs.
   deux illisibles. Le bandeau tient maintenant dans une seule zone qui
   coupe net, et la barre n'apparaît que sur une fenêtre trop courte.
 **Un module de décompilation, chargé à la demande**
+- Cinq outils connus d'avance, avec les arguments qui marchent :
+  `objdump`, `ndisasm`, le pseudo-code de `radare2`, **Rizin + rz-ghidra**
+  (`pdg`) et **RetDec**. Préférences ▸ Plugins dit lesquels sont présents
+  sur la machine, lesquels manquent, et ce qu'il faut taper pour les
+  obtenir — puis les déclare d'un clic, ce qui écrit un fichier et rien
+  d'autre.
+- Rizin a droit à une nuance que personne d'autre ne fait : le programme
+  peut être installé sans que la décompilation le soit, faute du greffon
+  `rz-ghidra`. namsdec le lui demande et répond « incomplet » plutôt que
+  de laisser essayer.
+- Le format de description accepte `{out}` : un outil qui écrit son
+  résultat dans un fichier — RetDec — est désormais lisible, là où
+  namsdec n'attendait que la sortie standard.
 - Un outil extérieur — `objdump`, `ndisasm`, RetDec, le vôtre — décrit
   par un fichier JSON dans `~/.local/share/namsdec/decompilers/`, choisi
   dans une liste et lancé sur le programme lié.

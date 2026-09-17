@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// `Display` en anglais, comme les autres erreurs des crates métier.
@@ -39,7 +39,7 @@ pub enum PluginError {
 }
 
 /// Un désassembleur décrit par un fichier.
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Plugin {
     /// Identifiant stable : lettres, chiffres et tirets.
     pub id: String,
@@ -49,7 +49,20 @@ pub struct Plugin {
     pub command: String,
     /// Ses arguments. L'un d'eux doit contenir `{file}`, remplacé par le
     /// chemin du binaire — sans quoi l'outil ne saurait pas quoi lire.
+    ///
+    /// Un argument peut aussi contenir `{out}` : namsdec y met alors le
+    /// chemin d'un fichier de sortie, et lit ce fichier une fois l'outil
+    /// terminé. C'est nécessaire pour ceux qui écrivent leur résultat
+    /// dans un fichier plutôt que sur la sortie standard — RetDec, par
+    /// exemple, à qui l'on passe `-o {out}`.
     pub args: Vec<String>,
+    /// Comment installer l'outil, quand il n'est pas là.
+    ///
+    /// namsdec ne l'installe pas lui-même : télécharger et exécuter du
+    /// code au nom de quelqu'un n'est pas une commodité, c'est une
+    /// décision. Il dit ce qu'il faut taper, et laisse taper.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub install: Option<String>,
 }
 
 /// Ce qu'on tolère d'un outil extérieur : il analyse un binaire, il ne
@@ -118,11 +131,18 @@ impl Plugin {
         let dir = tempfile::tempdir()?;
         let file: PathBuf = dir.path().join("program");
         std::fs::write(&file, bytes)?;
+        // Le fichier où l'outil écrira, s'il en veut un. Dans le même
+        // dossier temporaire : il disparaît avec lui.
+        let sortie: PathBuf = dir.path().join("sortie");
+        let écrit_un_fichier = self.args.iter().any(|arg| arg.contains("{out}"));
 
         let args: Vec<String> = self
             .args
             .iter()
-            .map(|arg| arg.replace("{file}", &file.to_string_lossy()))
+            .map(|arg| {
+                arg.replace("{file}", &file.to_string_lossy())
+                    .replace("{out}", &sortie.to_string_lossy())
+            })
             .collect();
         let mut enfant = Command::new(&self.command)
             .args(&args)
@@ -146,6 +166,17 @@ impl Plugin {
             }
         }
         let output = enfant.wait_with_output()?;
+        if écrit_un_fichier {
+            // Ce que l'outil a écrit dans son fichier fait foi. S'il n'a
+            // rien écrit — il a refusé, il s'est plaint —, la sortie
+            // d'erreur dit pourquoi, et c'est elle qu'on montre.
+            match std::fs::read(&sortie) {
+                Ok(contenu) if !contenu.is_empty() => {
+                    return Ok(borner(&contenu, &output.stderr));
+                }
+                _ => return Ok(borner(&output.stdout, &output.stderr)),
+            }
+        }
         Ok(borner(&output.stdout, &output.stderr))
     }
 }

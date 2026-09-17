@@ -13954,6 +13954,7 @@ fn the_decompiler_shows_the_command_then_runs_it() {
         // réponse dépend vraiment du binaire qu'on lui donne.
         command: "wc".to_owned(),
         args: vec!["-c".to_owned(), "{file}".to_owned()],
+        install: None,
     };
     let mut app = NamsdecApp {
         show_decompiler_module: true,
@@ -14018,6 +14019,7 @@ fn a_tool_that_never_finishes_is_stopped() {
         // qui ne rend jamais la main, et il existe partout.
         command: "tail".to_owned(),
         args: vec!["-f".to_owned(), "{file}".to_owned()],
+        install: None,
     };
     let début = std::time::Instant::now();
     let erreur = dormeur
@@ -14107,4 +14109,89 @@ fn a_background_job_shows_its_progress_where_one_looks() {
     app.job = None;
     app.reflect_job_in_title(&ctx);
     assert_eq!(app.window_title.as_deref(), Some("Namsdec"));
+}
+
+/// Déclarer un outil écrit un fichier — et rien d'autre.
+///
+/// C'est la promesse de cet écran : namsdec ne télécharge pas Rizin, ne
+/// l'installe pas, ne le lance pas. Il pose la description que l'outil
+/// attendait, avec les arguments qui marchent — ceux qu'on aurait mis
+/// une heure à trouver soi-même.
+#[test]
+fn declaring_a_tool_writes_a_file_and_nothing_else() {
+    let dossier = tempfile::tempdir().expect("un dossier temporaire");
+    let mut app = NamsdecApp::default();
+    assert!(app.decompilers.is_empty());
+
+    let rizin = namsdec_disasm::known::all()
+        .into_iter()
+        .find(|outil| outil.plugin.id == "rizin-ghidra")
+        .expect("Rizin est un outil connu");
+
+    with_data_home(dossier.path(), || app.declare_tool(&rizin.plugin));
+
+    // Le fichier est là, lisible, et namsdec le relit comme n'importe
+    // quelle description écrite à la main.
+    let écrit = dossier.path().join("namsdec/decompilers/rizin-ghidra.json");
+    assert!(écrit.is_file(), "{} manque", écrit.display());
+    let relu = namsdec_disasm::plugin::read(&écrit).expect("la description est valide");
+    assert_eq!(relu.command, "rizin");
+    assert!(
+        relu.args.iter().any(|a| a.contains("pdg")),
+        "c'est `pdg` qui décompile : {:?}",
+        relu.args
+    );
+
+    // Et le premier outil déclaré devient celui qu'on lancera : une
+    // liste d'un seul élément ne devrait pas s'ouvrir sur « choisir… ».
+    with_data_home(dossier.path(), || {
+        app.decompilers = load_installed_decompilers();
+    });
+    assert_eq!(app.decompiler, "rizin-ghidra");
+
+    // Le retrait enlève la description, pas le programme.
+    with_data_home(dossier.path(), || app.undeclare_tool("rizin-ghidra"));
+    assert!(!écrit.exists(), "la description s'en va");
+    assert!(app.decompiler.is_empty() || app.decompiler != "rizin-ghidra");
+}
+
+/// namsdec dit ce que la machine a, et ce qu'elle n'a pas.
+///
+/// Proposer un outil sans dire s'il est là laisse découvrir son absence
+/// au moment de s'en servir — c'est-à-dire au pire moment. Et Rizin
+/// mérite un mot de plus : le programme peut être installé sans que la
+/// décompilation le soit, faute du greffon qui l'apporte.
+#[test]
+fn the_tools_say_whether_this_machine_has_them() {
+    use namsdec_disasm::known::Availability;
+    let outils = namsdec_disasm::known::all();
+    assert!(outils.len() >= 5, "{}", outils.len());
+
+    for outil in &outils {
+        let dispo = outil.availability();
+        let trouvé = namsdec_disasm::known::program_path(&outil.plugin.command).is_some();
+        if !trouvé {
+            assert_eq!(
+                dispo,
+                Availability::Missing,
+                "{} n'est pas installé ici, il faut le dire",
+                outil.plugin.id
+            );
+        }
+        // Et ce qui est absent dit toujours comment l'obtenir.
+        if dispo == Availability::Missing {
+            assert!(outil.plugin.install.is_some(), "{}", outil.plugin.id);
+        }
+    }
+
+    // Rizin est le seul dont la présence ne suffit pas : sans
+    // `rz-ghidra`, `pdg` n'existe pas, et l'outil est dit incomplet.
+    let rizin = outils
+        .iter()
+        .find(|outil| outil.plugin.id == "rizin-ghidra")
+        .expect("Rizin");
+    assert!(
+        rizin.needs_fr.is_some() && rizin.needs_en.is_some(),
+        "la pièce manquante doit être nommée dans les deux langues"
+    );
 }

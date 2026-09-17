@@ -4708,6 +4708,146 @@ impl NamsdecApp {
             });
     }
 
+    /// Les outils d'analyse connus : présents ou non, et déclarables
+    /// d'un clic.
+    ///
+    /// Écrire un fichier JSON à la main pour brancher Rizin serait une
+    /// barrière absurde — les arguments qui marchent sont les mêmes pour
+    /// tout le monde. Le bouton **écrit ce fichier**, et rien d'autre :
+    /// il n'installe pas le programme, il ne le lance pas. Quand le
+    /// programme manque, namsdec dit ce qu'il faut taper pour l'obtenir
+    /// et laisse taper.
+    fn known_tools_ui(&mut self, ui: &mut egui::Ui) {
+        use namsdec_disasm::known::Availability;
+        let s = strings(self.lang);
+        let theme = self.theme;
+        let fr = self.lang == Lang::Fr;
+
+        ui.label(egui::RichText::new(s.tools_title).strong());
+        ui.weak(s.tools_legend);
+        ui.add_space(6.0);
+
+        let installés: std::collections::BTreeSet<String> =
+            self.decompilers.iter().map(|p| p.id.clone()).collect();
+        let mut à_installer = None;
+        let mut à_retirer = None;
+
+        egui::Grid::new("outils_connus")
+            .num_columns(3)
+            .min_col_width(0.0)
+            .striped(true)
+            .show(ui, |ui| {
+                for outil in namsdec_disasm::known::all() {
+                    let dispo = outil.availability();
+                    // Ce que la machine en dit : un rond, une couleur,
+                    // une phrase au survol. C'est la première chose à
+                    // savoir avant de choisir.
+                    let (couleur, état) = match dispo {
+                        Availability::Ready => (theme.good, s.tools_ready),
+                        Availability::Incomplete => (theme.warn, s.tools_incomplete),
+                        Availability::Missing => (theme.dim, s.tools_missing),
+                    };
+                    ui.vertical(|ui| {
+                        ui.label(egui::RichText::new(&outil.plugin.name).strong());
+                        ui.weak(if fr { outil.about_fr } else { outil.about_en });
+                        if dispo != Availability::Ready
+                            && let Some(besoin) = if fr { outil.needs_fr } else { outil.needs_en }
+                        {
+                            ui.colored_label(theme.warn, format!("{} {besoin}", s.tools_needs));
+                        }
+                        if dispo == Availability::Missing
+                            && let Some(comment) = &outil.plugin.install
+                        {
+                            ui.colored_label(
+                                theme.dim,
+                                egui::RichText::new(format!("{} {comment}", s.tools_install))
+                                    .monospace()
+                                    .small(),
+                            );
+                        }
+                    });
+                    ui.colored_label(couleur, état);
+                    if installés.contains(&outil.plugin.id) {
+                        if framed_button(ui, theme, s.tools_remove).clicked() {
+                            à_retirer = Some(outil.plugin.id.clone());
+                        }
+                    } else if framed_button(ui, theme, s.tools_declare).clicked() {
+                        à_installer = Some(outil.plugin.clone());
+                    }
+                    ui.end_row();
+                }
+            });
+
+        if let Some(plugin) = à_installer {
+            self.declare_tool(&plugin);
+        }
+        if let Some(id) = à_retirer {
+            self.undeclare_tool(&id);
+        }
+    }
+
+    /// Écrit la description d'un outil dans le dossier des
+    /// décompilateurs. Aucun programme n'est téléchargé, aucun n'est
+    /// lancé : on pose un fichier de quelques lignes.
+    fn declare_tool(&mut self, plugin: &namsdec_disasm::plugin::Plugin) {
+        let s = strings(self.lang);
+        let Some(dir) = decompilers_dir() else {
+            self.plugin_note = Some(PluginNote {
+                ok: false,
+                text: s.tools_no_dir.to_owned(),
+            });
+            return;
+        };
+        let écrire = || -> std::io::Result<()> {
+            std::fs::create_dir_all(&dir)?;
+            let json = serde_json::to_string_pretty(plugin)
+                .map_err(|e| std::io::Error::other(e.to_string()))?;
+            std::fs::write(dir.join(format!("{}.json", plugin.id)), json)
+        };
+        match écrire() {
+            Ok(()) => {
+                self.decompilers = load_installed_decompilers();
+                // Le premier déclaré devient celui qu'on lancera : sans
+                // cela, la fenêtre s'ouvre sur « choisir… » alors qu'il
+                // n'y a qu'un choix.
+                if self.decompiler.is_empty() {
+                    self.decompiler = plugin.id.clone();
+                }
+                self.plugin_note = Some(PluginNote {
+                    ok: true,
+                    text: format!("{} {}", s.tools_declared, plugin.name),
+                });
+            }
+            Err(e) => {
+                self.plugin_note = Some(PluginNote {
+                    ok: false,
+                    text: format!("{} {e}", s.tools_failed),
+                });
+            }
+        }
+    }
+
+    /// Retire la description d'un outil : le fichier s'en va, le
+    /// programme reste là où il est.
+    fn undeclare_tool(&mut self, id: &str) {
+        let s = strings(self.lang);
+        if let Some(dir) = decompilers_dir() {
+            let _ = std::fs::remove_file(dir.join(format!("{id}.json")));
+        }
+        self.decompilers = load_installed_decompilers();
+        if self.decompiler == id {
+            self.decompiler = self
+                .decompilers
+                .first()
+                .map(|p| p.id.clone())
+                .unwrap_or_default();
+        }
+        self.plugin_note = Some(PluginNote {
+            ok: true,
+            text: s.tools_undeclared.to_owned(),
+        });
+    }
+
     /// Onglet Plugins : pour l'instant les thèmes, qui en sont le premier
     /// type. Un thème est une simple palette (`namsdec-theme`), donc le
     /// jour où d'autres s'installent, ils se contentent d'allonger la
@@ -4782,6 +4922,12 @@ impl NamsdecApp {
             self.spawn_file_dialog(FileDialogKind::AddTheme);
         }
         ui.weak(s.plugins_add_hint);
+
+        // Les outils d'analyse : même page, mêmes gestes, mais une
+        // différence qu'on ne cache pas — ceux-là sont des programmes.
+        ui.add_space(10.0);
+        ui.separator();
+        self.known_tools_ui(ui);
 
         // Les séries d'exercices s'installent de la même façon : un
         // fichier JSON, copié dans le dossier de données, relu au
