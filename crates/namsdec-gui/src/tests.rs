@@ -14808,6 +14808,34 @@ fn installing_tools_adds_no_dependency_to_the_binary() {
 
 
 
+/// Compile un petit programme C, et rend son binaire.
+///
+/// `None` quand la machine n'a pas de quoi — pas de `gcc`, pas de
+/// bibliothèque C statique. Ce n'est pas un échec de namsdec, et le test
+/// qui s'en sert se tait alors plutôt que d'échouer ailleurs.
+fn compile_c(source: &str, options: &[&str]) -> Option<(tempfile::TempDir, std::path::PathBuf)> {
+    let dir = tempfile::tempdir().ok()?;
+    let chemin = dir.path().join("essai.c");
+    std::fs::write(&chemin, source).ok()?;
+    let binaire = dir.path().join("essai");
+    let sortie = std::process::Command::new("gcc")
+        .args(options)
+        .arg("-O1")
+        .arg("-o")
+        .arg(&binaire)
+        .arg(&chemin)
+        .output()
+        .ok()?;
+    if !sortie.status.success() {
+        eprintln!(
+            "gcc n'a pas pu compiler ({}) : test ignoré",
+            String::from_utf8_lossy(&sortie.stderr).lines().next().unwrap_or("")
+        );
+        return None;
+    }
+    Some((dir, binaire))
+}
+
 /// Un binaire ouvert est chargé comme le noyau le ferait.
 ///
 /// C'est la différence entre « les octets sont quelque part en mémoire »
@@ -14930,33 +14958,44 @@ fn a_binary_is_loaded_the_way_the_kernel_would() {
 /// simplement, et c'est cela qu'il faut lire.
 #[test]
 fn a_call_that_leaves_the_program_says_which_function_it_was() {
-    let Ok(octets) = std::fs::read("/bin/ls") else {
+    // Un programme qui appelle une fonction que namsdec ne fournit pas :
+    // ouvrir un répertoire demanderait un système de fichiers.
+    let Some((_dir, binaire)) = compile_c(
+        "#include <dirent.h>\nint main(void) { return opendir(\"/\") == 0; }\n",
+        &[],
+    ) else {
         return;
     };
+    let octets = std::fs::read(&binaire).expect("le binaire se lit");
     let mut app = NamsdecApp::default();
-    assert!(app.load_elf(&octets, "ls"), "l'ELF se charge");
-    let binaire = app
-        .assemble_state
-        .as_ref()
-        .and_then(|state| state.from_binary.as_ref())
-        .expect("un binaire chargé");
-    if binaire.externals.is_empty() {
-        return;
-    }
+    assert!(app.load_elf(&octets, "essai"), "l'ELF se charge");
+    assert!(
+        !app.assemble_state
+            .as_ref()
+            .and_then(|state| state.from_binary.as_ref())
+            .expect("un binaire chargé")
+            .externals
+            .is_empty(),
+        "il emprunte des fonctions"
+    );
 
-    // Quelques pas suffisent : le code de démarrage appelle la
-    // bibliothèque C presque tout de suite.
-    for _ in 0..64 {
+    for _ in 0..100_000 {
         app.do_step();
         if matches!(app.status, Status::Error(_)) {
             break;
         }
+        if app.emulator.as_ref().is_some_and(|e| e.cpu().halted) {
+            break;
+        }
     }
     let Status::Error(message) = &app.status else {
-        panic!("l'exécution doit buter sur la bibliothèque : {:?}", app.status);
+        panic!(
+            "l'exécution doit buter sur la fonction absente : {:?}",
+            app.status
+        );
     };
     assert!(
-        message.contains("__libc_start_main"),
+        message.contains("opendir"),
         "le message nomme la fonction appelée : {message}"
     );
     let conseil = app.error_advice.as_ref().expect("et il explique");
@@ -14975,36 +15014,13 @@ fn a_call_that_leaves_the_program_says_which_function_it_was() {
 /// pièce manque au chargement.
 #[test]
 fn a_static_c_program_runs_all_the_way_through() {
-    if std::process::Command::new("gcc")
-        .arg("--version")
-        .output()
-        .is_err()
-    {
-        eprintln!("gcc absent : test ignoré");
-        return;
-    }
-    let dir = tempfile::tempdir().expect("un dossier");
-    let source = dir.path().join("bonjour.c");
-    std::fs::write(
-        &source,
+    let Some((_dir, binaire)) = compile_c(
         "#include <stdio.h>\nint main(int argc, char **argv) {\n\
          \x20   printf(\"bonjour %s (%d)\\n\", argv[0], argc);\n    return 0;\n}\n",
-    )
-    .expect("le source s'écrit");
-    let binaire = dir.path().join("bonjour");
-    let compilé = std::process::Command::new("gcc")
-        .arg("-static")
-        .arg("-O1")
-        .arg("-o")
-        .arg(&binaire)
-        .arg(&source)
-        .output();
-    // Sans bibliothèque C statique sur la machine, il n'y a rien à
-    // éprouver — et ce n'est pas un échec de namsdec.
-    if !compilé.is_ok_and(|sortie| sortie.status.success()) {
-        eprintln!("pas de libc statique : test ignoré");
+        &["-static"],
+    ) else {
         return;
-    }
+    };
 
     let octets = std::fs::read(&binaire).expect("le binaire se lit");
     let mut app = NamsdecApp::default();
@@ -15046,3 +15062,87 @@ fn a_static_c_program_runs_all_the_way_through() {
     );
 }
 
+
+#[test]
+fn a_dynamic_c_program_reads_its_input_and_answers() {
+    let Some((_dir, binaire)) = compile_c(
+        "#include <stdio.h>\n#include <string.h>\n#include <stdlib.h>\n\
+         int main(void) {\n\
+         \x20   char *saisie = malloc(64);\n\
+         \x20   printf(\"mot de passe : \");\n\
+         \x20   if (!fgets(saisie, 64, stdin)) return 2;\n\
+         \x20   saisie[strcspn(saisie, \"\\n\")] = 0;\n\
+         \x20   if (strcmp(saisie, \"ouvre-toi\") == 0) {\n\
+         \x20       printf(\"entrez, %s (%d)\\n\", saisie, (int) strlen(saisie));\n\
+         \x20       return 0;\n\
+         \x20   }\n\
+         \x20   puts(\"non\");\n\
+         \x20   return 1;\n\
+         }\n",
+        &[],
+    ) else {
+        return;
+    };
+    let octets = std::fs::read(&binaire).expect("le binaire se lit");
+
+    for (saisie, attendu, code) in [
+        ("ouvre-toi", "mot de passe : entrez, ouvre-toi (9)\n", 0),
+        ("au hasard", "mot de passe : non\n", 1),
+    ] {
+        let mut app = NamsdecApp::default();
+        assert!(app.load_elf(&octets, "essai"), "l'ELF se charge");
+        app.send_input(Some(saisie.to_owned()));
+
+        for _ in 0..1_000_000 {
+            app.do_step();
+            if let Status::Error(message) = &app.status {
+                panic!(
+                    "« {saisie} » s'arrête à {:#x} : {message}",
+                    app.emulator.as_ref().map(|e| e.cpu().regs.rip).unwrap_or(0)
+                );
+            }
+            if app.emulator.as_ref().is_some_and(|e| e.cpu().halted) {
+                break;
+            }
+        }
+        let emulator = app.emulator.as_ref().expect("un émulateur");
+        assert!(emulator.cpu().halted, "« {saisie} » doit finir");
+        assert_eq!(
+            String::from_utf8_lossy(emulator.output()),
+            attendu,
+            "ce que le programme écrit pour « {saisie} »"
+        );
+        assert_eq!(emulator.exit_code(), Some(code), "et son code de sortie");
+    }
+}
+
+/// Ce que namsdec annonce fournir, il le fournit vraiment.
+///
+/// La liste est ce que l'interface montre après avoir chargé un binaire,
+/// et c'est sur elle qu'on décide si un programme va tourner. Une seule
+/// entrée en trop, et la promesse est fausse.
+#[test]
+fn every_function_namsdec_claims_to_provide_really_answers() {
+    for nom in namsdec_emu::PROVIDED_FUNCTIONS {
+        assert!(
+            namsdec_emu::provides(nom),
+            "« {nom} » est annoncée mais le moteur ne la reconnaît pas"
+        );
+    }
+    // Et ce qu'elle ne contient pas n'est pas fourni en douce.
+    for absente in ["opendir", "fork", "socket", "dlopen"] {
+        assert!(
+            !namsdec_emu::provides(absente),
+            "« {absente} » ne doit pas être annoncée comme fournie"
+        );
+    }
+    // Les variantes que l'éditeur de liens fabrique désignent la même
+    // fonction : c'est ce qui fait marcher un binaire compilé avec les
+    // protections de la glibc.
+    for variante in ["printf@GLIBC_2.2.5", "__printf_chk", "__isoc99_scanf", "memcpy@plt"] {
+        assert!(
+            namsdec_emu::provides(variante),
+            "« {variante} » doit être reconnue comme sa fonction d'origine"
+        );
+    }
+}

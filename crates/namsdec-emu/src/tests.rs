@@ -3214,3 +3214,123 @@ hlt
         "st_mode annonce un terminal"
     );
 }
+
+/// Un émulateur nu, avec une borne de bibliothèque à `0x401000` et une
+/// pile prête : de quoi appeler une fonction fournie et regarder ce
+/// qu'elle fait.
+fn library_emulator(nom: &str) -> Emulator {
+    const BORNE: u64 = 0x401000;
+    let mem = namsdec_core::Memory::new(BASE, 0x10000);
+    let mut cpu = namsdec_core::Cpu::new(mem);
+    cpu.regs.rip = BORNE;
+    // La pile porte l'adresse de retour, comme après un `call`.
+    cpu.regs.set64(Reg64::Rsp, 0x408000);
+    let mut emu = Emulator::new(cpu);
+    emu.cpu.mem.poke(0x408000, &0x402000u64.to_le_bytes()).unwrap();
+    emu.set_heap(0x405000, 0x407000);
+    emu.set_externals([(BORNE, nom.to_owned())].into_iter().collect(), 0);
+    emu
+}
+
+/// `printf` met en forme comme `printf` : les conversions, la largeur, et
+/// les arguments là où la convention d'appel les a rangés.
+///
+/// C'est la fonction la plus appelée de toute la bibliothèque C, et celle
+/// dont un programme dépend le plus visiblement : s'y tromper se voit
+/// immédiatement à l'écran.
+#[test]
+fn the_provided_printf_formats_like_printf() {
+    let mut emu = library_emulator("printf");
+    emu.cpu
+        .mem
+        .poke(0x403000, b"%s a %d ans, soit %04x en hexadecimal (%5.2f)\n\0")
+        .unwrap();
+    emu.cpu.mem.poke(0x403100, b"Bob\0").unwrap();
+    emu.cpu.regs.set64(Reg64::Rdi, 0x403000);
+    emu.cpu.regs.set64(Reg64::Rsi, 0x403100);
+    emu.cpu.regs.set64(Reg64::Rdx, 7);
+    emu.cpu.regs.set64(Reg64::Rcx, 0x2a);
+    emu.cpu
+        .regs
+        .set_xmm(namsdec_core::RegXmm::Xmm0, 3.5f64.to_bits() as u128);
+
+    emu.step().expect("l'appel a lieu");
+
+    assert_eq!(
+        String::from_utf8_lossy(emu.output()),
+        "Bob a 7 ans, soit 002a en hexadecimal ( 3.50)\n"
+    );
+    // Et la fonction est revenue là où l'appelant l'attend.
+    assert_eq!(emu.cpu.regs.rip, 0x402000, "le retour est dépilé");
+    assert_eq!(emu.cpu.regs.get64(Reg64::Rsp), 0x408008);
+}
+
+/// `malloc` donne du tas, et ce qu'il donne est utilisable.
+///
+/// La mémoire vient du tas — celui que `brk` fait grandir —, et non d'un
+/// coin caché : un programme qui alloue voit sa zone monter dans la carte
+/// mémoire, exactement comme avec une vraie bibliothèque.
+#[test]
+fn the_provided_malloc_hands_out_heap() {
+    let mut emu = library_emulator("malloc");
+    emu.cpu.regs.set64(Reg64::Rdi, 100);
+    emu.step().expect("l'appel a lieu");
+
+    let bloc = emu.cpu.regs.get64(Reg64::Rax);
+    let tas = emu.heap();
+    assert!(
+        bloc >= tas.start() && bloc + 100 <= tas.current(),
+        "{bloc:#x} doit être dans le tas ({:#x}..{:#x})",
+        tas.start(),
+        tas.current()
+    );
+    assert_eq!(bloc % 16, 0, "aligné comme tout `malloc` le promet");
+    // Deux allocations ne se recouvrent pas.
+    emu.cpu.regs.rip = 0x401000;
+    emu.cpu.regs.set64(Reg64::Rsp, 0x408000);
+    emu.cpu.regs.set64(Reg64::Rdi, 100);
+    emu.step().expect("la seconde aussi");
+    let second = emu.cpu.regs.get64(Reg64::Rax);
+    assert!(second >= bloc + 100, "{second:#x} après {bloc:#x}");
+}
+
+/// Ce qu'une fonction fournie écrit se défait comme le reste.
+///
+/// Un appel compte pour un pas ; revenir dessus doit rendre la mémoire et
+/// les registres exactement comme ils étaient. Sans cela, le retour en
+/// arrière mentirait dès qu'un programme appelle `strcpy`.
+#[test]
+fn a_provided_call_can_be_stepped_back() {
+    let mut emu = library_emulator("strcpy");
+    emu.cpu.mem.poke(0x403100, b"salut\0").unwrap();
+    emu.cpu.mem.poke(0x403200, b"........\0").unwrap();
+    emu.cpu.regs.set64(Reg64::Rdi, 0x403200);
+    emu.cpu.regs.set64(Reg64::Rsi, 0x403100);
+
+    emu.step().expect("l'appel a lieu");
+    assert_eq!(&emu.cpu.mem.peek_bytes(0x403200, 6).unwrap(), b"salut\0");
+
+    assert!(emu.step_back(), "le pas se défait");
+    assert_eq!(
+        &emu.cpu.mem.peek_bytes(0x403200, 6).unwrap(),
+        b"......",
+        "la destination est rendue telle quelle"
+    );
+    assert_eq!(emu.cpu.regs.rip, 0x401000, "et RIP revient sur la borne");
+}
+
+/// Une fonction que namsdec ne fournit pas s'arrête en se nommant.
+///
+/// C'est la limite, et elle doit être lisible : « namsdec ne fournit pas
+/// `opendir` » apprend quelque chose, « adresse non projetée » n'apprend
+/// rien.
+#[test]
+fn a_function_namsdec_does_not_provide_names_itself() {
+    let mut emu = library_emulator("opendir");
+    let erreur = emu.step().expect_err("il n'y a rien à appeler");
+    match erreur {
+        EmuError::UnsupportedLibrary { name, .. } => assert_eq!(name, "opendir"),
+        autre => panic!("attendu une fonction absente, obtenu {autre:?}"),
+    }
+    assert_eq!(emu.cpu.regs.rip, 0x401000, "RIP reste sur la borne");
+}

@@ -32,6 +32,15 @@ pub fn emu(lang: Lang, error: &EmuError) -> String {
                 format!("the {backend} interpreter does not support the {mnemonic} instruction")
             }
         }
+        // Un appel qui sort du programme : ce n'est pas une instruction
+        // manquante, c'est une fonction qui vit dans une bibliothèque.
+        EmuError::UnsupportedLibrary { name, .. } => {
+            if fr {
+                format!("namsdec ne fournit pas la fonction de bibliothèque « {name} »")
+            } else {
+                format!("namsdec does not provide the {name} library function")
+            }
+        }
         EmuError::UnsupportedRegister { backend, register } => {
             if fr {
                 format!("l'interpréteur {backend} ne gère pas le registre {register}")
@@ -116,6 +125,24 @@ pub fn emu(lang: Lang, error: &EmuError) -> String {
 pub fn advice(lang: Lang, error: &EmuError) -> Option<&'static str> {
     let fr = lang == Lang::Fr;
     Some(match error {
+        // Une fonction qui vit dans une bibliothèque : ce n'est pas une
+        // faute du programme, c'est une limite de namsdec — et elle se
+        // dit comme telle, avec ce qui marche malgré tout.
+        EmuError::UnsupportedLibrary { .. } => {
+            if fr {
+                "namsdec n'est pas un éditeur de liens dynamique : aucune bibliothèque \
+                 n'est chargée. Il fournit lui-même une poignée de fonctions — afficher, \
+                 lire, comparer des chaînes, demander de la mémoire — ce qui suffit à la \
+                 plupart des programmes ; celle-ci n'en fait pas partie. Un binaire lié \
+                 statiquement (`gcc -static`), lui, n'emprunte rien et s'exécute entier."
+            } else {
+                "namsdec is not a dynamic linker: no library is loaded. It provides a \
+                 handful of functions itself — printing, reading, comparing strings, \
+                 asking for memory — which is enough for most programs; this one is not \
+                 among them. A statically linked binary (`gcc -static`) borrows nothing \
+                 and runs in full."
+            }
+        }
         EmuError::Mem(MemError::Protection { needed, .. }) => match (needed, fr) {
             (Access::Write, true) => {
                 "Cette zone n'est pas inscriptible. Le code (`section .text`) et les \

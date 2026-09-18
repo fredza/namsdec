@@ -2430,6 +2430,9 @@ impl NamsdecApp {
         let mut emulator = Emulator::new(cpu);
         emulator.set_heap(chargé.layout.heap.start, chargé.layout.heap.end);
         emulator.set_mmap(chargé.layout.mmap.start, chargé.layout.mmap.end);
+        // Les bornes : arriver sur l'une d'elles, c'est appeler la
+        // fonction qu'elle remplace. namsdec en fournit une poignée.
+        emulator.set_externals(chargé.externals.clone(), chargé.main_return);
         emulator.set_breakpoints(
             self.breakpoint_lines
                 .iter()
@@ -2657,48 +2660,11 @@ impl NamsdecApp {
         });
     }
 
-    /// Rend compte d'une erreur d'exécution, dans les mots qui
-    /// conviennent.
-    ///
-    /// Un appel qui tombe sur la borne d'une fonction de bibliothèque
-    /// n'est pas « un saut dans des données » : c'est un appel à
-    /// `printf`. Le dire tel quel évite d'envoyer chercher une faute de
-    /// pointeur là où il n'y en a pas — et apprend au passage ce que fait
-    /// vraiment un éditeur de liens dynamique.
+    /// Rend compte d'une erreur d'exécution : le message et, quand il y
+    /// en a un, le conseil qui va avec.
     fn report_error(&mut self, e: &namsdec_emu::EmuError) {
-        if let Some((message, conseil)) = self.library_call(e) {
-            self.status = Status::Error(message);
-            self.error_advice = Some(conseil);
-            return;
-        }
         self.error_advice = errors::advice(self.lang, e).map(str::to_owned);
         self.status = Status::Error(errors::emu(self.lang, e));
-    }
-
-    /// L'erreur vient-elle d'un appel à une fonction de bibliothèque ?
-    ///
-    /// Le chargeur a posé une borne à la place de chaque fonction
-    /// absente : une adresse lisible mais non exécutable, dont il a gardé
-    /// le nom. Sauter dessus se termine donc par un refus d'exécution —
-    /// et c'est ici qu'on retrouve de qui il s'agissait.
-    fn library_call(&self, e: &namsdec_emu::EmuError) -> Option<(String, String)> {
-        use namsdec_core::MemError;
-        let namsdec_emu::EmuError::Mem(MemError::Protection { addr, .. }) = e else {
-            return None;
-        };
-        let binaire = self.assemble_state.as_ref()?.from_binary.as_ref()?;
-        // La borne fait seize octets : un appel peut viser son début ou,
-        // par un saut de table de liaison, quelques octets plus loin.
-        let (_, nom) = binaire
-            .externals
-            .range(..=*addr)
-            .next_back()
-            .filter(|(début, _)| *addr < **début + 16)?;
-        let s = strings(self.lang);
-        Some((
-            format!("{} « {nom} »", s.library_call),
-            format!("{} {}", s.library_call_advice, s.library_call_static),
-        ))
     }
 
     fn do_step(&mut self) {
@@ -3913,13 +3879,14 @@ impl NamsdecApp {
         true
     }
 
-    /// Dit ce que le chargeur a fait, quand il n'a pas pu tout faire.
+    /// Dit ce que le chargeur a fait, et ce que le programme emprunte.
     ///
     /// Un chargement complet n'appelle pas de commentaire : le programme
-    /// tourne, et la carte mémoire montre le reste. Un chargement qui
-    /// laisse des cases vides, si — car c'est lui qui explique l'arrêt à
-    /// venir, et il vaut mieux l'apprendre en ouvrant le fichier qu'au
-    /// milieu d'une exécution.
+    /// tourne, et la carte mémoire montre le reste. Un programme qui
+    /// emprunte des fonctions, si — car la question qui vient ensuite est
+    /// « est-ce que ça va tourner ? », et la réponse tient en un compte :
+    /// combien de ces fonctions namsdec sait faire, et lesquelles il ne
+    /// sait pas.
     fn note_load_report(&mut self) {
         let Some(chargé) = self
             .assemble_state
@@ -3933,22 +3900,34 @@ impl NamsdecApp {
             return;
         }
         let s = strings(self.lang);
-        // Les premières manquantes, et le compte : soixante noms dans un
-        // panneau de diagnostics ne se lisent pas.
-        let montrées = rapport
+        let (fournies, absentes): (Vec<String>, Vec<String>) = rapport
             .external
             .iter()
-            .take(6)
+            .cloned()
+            .partition(|nom| namsdec_emu::provides(nom));
+        // Les manquantes d'abord, et toutes si elles tiennent : ce sont
+        // elles qui décident où l'exécution s'arrêtera.
+        let montrées = absentes
+            .iter()
+            .take(8)
             .cloned()
             .collect::<Vec<_>>()
             .join(", ");
-        let suite = if rapport.external.len() > 6 {
-            format!(", … {} {}", rapport.external.len() - 6, s.loaded_others)
+        let suite = if absentes.len() > 8 {
+            format!(", … {} {}", absentes.len() - 8, s.loaded_others)
         } else {
             String::new()
         };
+        let emprunts = format!(
+            "{} {} {} {} {}",
+            s.loaded_provided_before,
+            fournies.len(),
+            s.loaded_provided_of,
+            rapport.external.len(),
+            s.loaded_provided_after,
+        );
         let message = format!(
-            "{} {} {}, {} {}, {} {} — {} {} : {montrées}{suite}",
+            "{} {} {}, {} {}, {} {}. {emprunts}{}",
             s.loaded_summary,
             rapport.segments,
             s.loaded_segments,
@@ -3956,8 +3935,11 @@ impl NamsdecApp {
             s.loaded_relocations,
             rapport.tls,
             s.loaded_tls,
-            rapport.external.len(),
-            s.loaded_external,
+            if absentes.is_empty() {
+                String::new()
+            } else {
+                format!(" {} {montrées}{suite}", s.loaded_missing)
+            },
         );
         self.diagnostics.push(namsdec_asm::Diagnostic {
             line: 0,

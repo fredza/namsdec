@@ -2102,6 +2102,29 @@ pub const ENTRIES: &[Entry] = &[
     // laisse le lecteur les deviner.
     Entry {
         kind: Kind::Concept,
+        names: &[
+            "chargement",
+            "chargeur",
+            "relocation",
+            "bibliotheque",
+            "bibliothèque",
+            "libc",
+            "ld.so",
+            "tls",
+        ],
+        title: Text {
+            fr: "Ce qui se passe avant la première instruction",
+            en: "What happens before the first instruction",
+        },
+        body: Text {
+            fr: "Entre « lancer un programme » et sa première instruction, le noyau a déjà beaucoup travaillé. Il lit les **segments** de l'ELF — et non ses sections — et les projette en pages entières avec leurs droits ; il met le `.bss` à zéro ; il pose une **pile** qui porte `argc`, `argv`, l'environnement et le *vecteur auxiliaire*, par lequel le programme apprend où sont ses propres en-têtes et d'où vient son hasard. Pour un exécutable indépendant de la position, l'éditeur de liens dynamique applique ensuite les **relocations** : sans elles, les tables de pointeurs du programme sont nulles. Enfin un bloc de mémoire **locale au fil d'exécution** (TLS) est posé, et la base `FS` installée dessus — c'est là que vit le canari de pile, lu par `fs:0x28`.\n\nnamsdec fait tout cela, et s'arrête là où commence le travail de `ld.so` : **aucune bibliothèque n'est chargée**. Il fournit lui-même une poignée de fonctions, écrites en Rust — afficher, lire, comparer des chaînes, demander de la mémoire —, de quoi faire tourner la plupart des programmes ; les autres s'arrêtent en se nommant. Un binaire lié statiquement, lui, n'emprunte rien et s'exécute entier.",
+            en: "Between «\u{a0}run a program\u{a0}» and its first instruction, the kernel has already done a lot. It reads the ELF's **segments** — not its sections — and maps them as whole pages with their permissions; it zeroes `.bss`; it lays out a **stack** carrying `argc`, `argv`, the environment and the *auxiliary vector*, through which the program learns where its own headers are and where its randomness comes from. For a position-independent executable, the dynamic linker then applies the **relocations**: without them the program's pointer tables are all zero. Finally a block of **thread-local storage** (TLS) is laid down and the `FS` base installed on it — that is where the stack canary lives, read through `fs:0x28`.\n\nnamsdec does all of this, and stops where `ld.so`'s work begins: **no library is loaded**. It provides a handful of functions itself, written in Rust — printing, reading, comparing strings, asking for memory — enough to run most programs; the others stop by naming themselves. A statically linked binary borrows nothing and runs in full.",
+        },
+        flags: "",
+        example: "; le canari, lu par le prologue d'une fonction protégée\n    ; mov rax, [fs:0x28]\n    nop",
+    },
+    Entry {
+        kind: Kind::Concept,
         names: &["assemblage", "nasm", "ld", "editeur-de-liens", "lier"],
         title: Text {
             fr: "D'un texte à un programme : nasm, puis ld",

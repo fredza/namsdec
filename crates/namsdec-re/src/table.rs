@@ -36,6 +36,7 @@ pub fn syscall(number: u64) -> Option<Syscall> {
         3 => ("close", &["fd"]),
         4 => ("stat", &["chemin", "statbuf"]),
         5 => ("fstat", &["fd", "statbuf"]),
+        7 => ("poll", &["descripteurs", "nombre", "délai"]),
         8 => ("lseek", &["fd", "décalage", "origine"]),
         9 => (
             "mmap",
@@ -45,6 +46,7 @@ pub fn syscall(number: u64) -> Option<Syscall> {
         11 => ("munmap", &["adresse", "taille"]),
         12 => ("brk", &["rupture"]),
         13 => ("rt_sigaction", &["signal", "action", "ancienne"]),
+        14 => ("rt_sigprocmask", &["comment", "masque", "ancien", "taille"]),
         16 => ("ioctl", &["fd", "requête", "argument"]),
         19 => ("readv", &["fd", "vecteur", "nombre"]),
         20 => ("writev", &["fd", "vecteur", "nombre"]),
@@ -66,6 +68,7 @@ pub fn syscall(number: u64) -> Option<Syscall> {
         62 => ("kill", &["pid", "signal"]),
         63 => ("uname", &["buf"]),
         79 => ("getcwd", &["buf", "taille"]),
+        72 => ("fcntl", &["fd", "commande", "argument"]),
         83 => ("mkdir", &["chemin", "droits"]),
         87 => ("unlink", &["chemin"]),
         96 => ("gettimeofday", &["heure", "fuseau"]),
@@ -76,6 +79,7 @@ pub fn syscall(number: u64) -> Option<Syscall> {
         107 => ("geteuid", &[]),
         108 => ("getegid", &[]),
         110 => ("getppid", &[]),
+        131 => ("sigaltstack", &["nouvelle", "ancienne"]),
         158 => ("arch_prctl", &["code", "adresse"]),
         186 => ("gettid", &[]),
         202 => ("futex", &["adresse", "opération", "valeur", "délai"]),
@@ -113,11 +117,15 @@ pub fn syscall(number: u64) -> Option<Syscall> {
         simulated: matches!(
             number,
             0 | 1
+                | 3
                 | 5
+                | 7
                 | 9
                 | 10
                 | 11
                 | 12
+                | 13
+                | 14
                 | 16
                 | 19
                 | 20
@@ -126,6 +134,8 @@ pub fn syscall(number: u64) -> Option<Syscall> {
                 | 39
                 | 60
                 | 63
+                | 72
+                | 79
                 | 89
                 | 96
                 | 97
@@ -134,6 +144,7 @@ pub fn syscall(number: u64) -> Option<Syscall> {
                 | 107
                 | 108
                 | 110
+                | 131
                 | 158
                 | 186
                 | 202

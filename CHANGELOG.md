@@ -163,6 +163,37 @@ mémoire ; il **charge** désormais un programme, comme le noyau le fait.
 - Un binaire **lié dynamiquement** se lit, s'analyse et se désassemble
   comme avant ; il s'exécute maintenant jusqu'à son premier appel à la
   bibliothèque, et s'arrête en le nommant.
+
+**Une bibliothèque C, écrite en Rust**
+
+Un exercice de rétro-ingénierie est presque toujours lié dynamiquement :
+il affiche une invite, lit une réponse, la compare. S'arrêter sur
+`__libc_start_main` revenait à ne jamais le voir tourner.
+
+- namsdec **fournit** une centaine de fonctions de bibliothèque, écrites
+  en Rust : `printf` et ses cousines (`sprintf`, `snprintf`, `fprintf`,
+  avec les conversions, la largeur, la précision et les flottants),
+  `puts`, `fgets`, `gets`, `scanf`, toutes les fonctions de chaînes et de
+  mémoire, `malloc` et sa famille, et les enveloppes des appels système.
+  `__libc_start_main` appelle `main` pour de vrai, et son retour devient
+  le code de sortie.
+- Elles obéissent aux règles de la maison : les **droits** de la mémoire
+  simulée s'appliquent — un `strcpy` vers `.rodata` échoue ici comme sur
+  la vraie machine —, `malloc` prend sa mémoire **dans le tas**, où la
+  carte la montre, chaque appel compte pour **un pas**, et ce qu'il écrit
+  se défait avec « pas en arrière ».
+- Rien n'est approché : une fonction qui n'est pas fournie **s'arrête en
+  se nommant**, avec ce qui marche malgré tout. Le compte se lit au
+  chargement — « namsdec fournit 46 des 59 fonctions empruntées ; il ne
+  fournit pas : … » —, ce qui répond avant de commencer à la seule
+  question qui se pose : est-ce que ce programme-là va tourner ?
+- Résultat, sur un crackme ordinaire : l'invite s'affiche, la saisie est
+  lue, la comparaison a lieu, le verdict s'écrit. Deux tests le
+  vérifient en compilant un programme C, lié dynamiquement puis
+  statiquement, et en le faisant tourner jusqu'à son code de sortie.
+- Une fiche **F1** explique tout ce qui se passe avant la première
+  instruction : segments, relocations, TLS, pile de processus, et où
+  s'arrête namsdec.
 - La mémoire simulée ne fait plus soixante-quatre kilo-octets : elle
   s'adapte au programme chargé. Un binaire de trois cent mille octets n'y
   entrait pas, namsdec retombait sur un désassemblage brut tassé à

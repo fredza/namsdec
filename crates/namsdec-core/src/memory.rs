@@ -324,6 +324,14 @@ impl Memory {
         Ok(self.peek_bytes(addr, 1)?[0])
     }
 
+    /// Un mot de 64 bits, sans contrôle de droits — ce que lit
+    /// l'inspecteur, et ce que lit un chargeur en relisant ses propres
+    /// tables.
+    pub fn peek_u64(&self, addr: u64) -> Result<u64, MemError> {
+        let b = self.peek_bytes(addr, 8)?;
+        Ok(u64::from_le_bytes(b.try_into().unwrap()))
+    }
+
     pub fn read_u8(&self, addr: u64) -> Result<u8, MemError> {
         Ok(self.bytes_at(addr, 1)?[0])
     }

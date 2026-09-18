@@ -179,7 +179,7 @@ pour chacun, ce que son état change concrètement. Sur
 votre programme comme sur un binaire du système. Le rapport se copie en
 Markdown, ou s'enregistre, pour être collé dans un compte rendu ou un cours.
 
-Et aussi : documentation de 154 instructions, directives et notions sous **F1** ou
+Et aussi : documentation de 155 instructions, directives et notions sous **F1** ou
 au survol — avec sommaire, renvois d'une fiche à l'autre et export du
 manuel entier en Markdown (menu Aide), parce que ce qu'on apprend ici
 doit pouvoir se lire ailleurs —, autocomplétion qui ne propose que ce qui est documenté,
@@ -405,9 +405,20 @@ sans avertissement, et s'exécuter jusqu'au bout.
   appliquées, mémoire locale au fil posée, pile de processus écrite avec
   `argc`, `argv`, l'environnement et le vecteur auxiliaire — mais il ne
   charge aucune bibliothèque. Un binaire lié **statiquement** s'exécute
-  donc entièrement, bibliothèque C comprise ; un binaire **dynamique** se
-  lit, s'analyse et se désassemble, et s'arrête au premier appel qui sort
-  de lui, en nommant la fonction qu'il voulait appeler.
+  donc entièrement, bibliothèque C comprise.
+- À la place, namsdec **fournit lui-même** une centaine de fonctions,
+  écrites en Rust : `printf` et ses cousines, `puts`, `fgets`, `scanf`,
+  les fonctions de chaînes et de mémoire, `malloc` et sa famille — qui
+  prend sa mémoire dans le tas, où on la voit —, et les enveloppes des
+  appels système. Un binaire **dynamique** ordinaire s'exécute donc lui
+  aussi, du prompt jusqu'au verdict ; il s'arrête en **nommant** la
+  première fonction qu'il emprunte et que namsdec ne fournit pas. Ce qui
+  est fourni l'est en le disant : le compte s'affiche au chargement, et
+  la liste complète est celle de `namsdec_emu::PROVIDED_FUNCTIONS`.
+- Ces fonctions obéissent aux mêmes règles que le reste : les droits de
+  la mémoire simulée s'appliquent (un `strcpy` vers `.rodata` échoue,
+  comme sur la vraie machine), chaque appel compte pour **un pas**, et ce
+  qu'il écrit se défait avec « pas en arrière ».
 - Les appels système simulés sont ceux qui *font* le travail — `read`,
   `write`, `brk`, `mmap`, `mprotect`, `exit` —, ceux qui renseignent sans
   rien changer au monde — `getpid`, `getuid`, `geteuid`, `sched_yield`,

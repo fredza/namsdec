@@ -374,7 +374,7 @@ mod tests {
         let disasm = namsdec_disasm::disassemble(&code, 0x400000);
         let xrefs = crate::xrefs::scan(&disasm, 0x400000..0x402000);
 
-        let trouvées = vec![
+        let trouvées = [
             Found {
                 addr: 0x401000,
                 text: "désignée".to_owned(),
@@ -469,7 +469,6 @@ mod tests {
         assert_eq!(trouvées[0].text, "salut tout le monde");
         assert_eq!(trouvées[0].addr, 0x1002);
     }
-    use super::*;
 
     #[test]
     fn a_run_of_printable_bytes_is_a_string() {

@@ -3,6 +3,7 @@
 //! la sémantique d'exécution (effets sur registres/flags/mémoire) est
 //! écrite ici, à la main, pour rester transparente et pédagogique.
 
+mod libc;
 mod regmap;
 mod vector;
 mod x87;
@@ -15,6 +16,8 @@ use namsdec_core::{
     sub_with_flags,
 };
 use thiserror::Error;
+
+pub use libc::{PROVIDED as PROVIDED_FUNCTIONS, provides};
 
 pub mod explain;
 pub mod telescope;
@@ -63,6 +66,11 @@ pub enum EmuError {
     UnsupportedOperandSize { backend: &'static str, bytes: usize },
     #[error("{backend}: unsupported syscall: {number}")]
     UnsupportedSyscall { backend: &'static str, number: u64 },
+    /// Le programme appelle une fonction qui vivrait dans une
+    /// bibliothèque. namsdec en fournit une poignée, écrites en Rust ;
+    /// celle-ci n'en fait pas partie.
+    #[error("{backend}: unsupported library function: {name}")]
+    UnsupportedLibrary { backend: &'static str, name: String },
     #[error("memory error: {0}")]
     Mem(#[from] namsdec_core::MemError),
     #[error("invalid instruction at {addr:#x}")]
@@ -702,6 +710,18 @@ pub struct Emulator {
     heap: Heap,
     /// L'arène de `mmap`, telle que les allocations l'ont laissée.
     mmap: Mmap,
+    /// Les fonctions de bibliothèque, par l'adresse de leur borne.
+    ///
+    /// Le chargeur pose une borne à la place de chaque fonction qu'un
+    /// binaire emprunte ; arriver dessus n'est pas « sauter dans des
+    /// données », c'est appeler `printf`. namsdec en fournit une poignée,
+    /// écrites en Rust ; les autres s'arrêtent en se nommant.
+    externals: BTreeMap<u64, String>,
+    /// Là où `main` revient : une borne à part, qui transforme son
+    /// résultat en code de sortie.
+    main_return: u64,
+    /// La case d'`errno`, allouée au premier `__errno_location`.
+    errno_at: u64,
     /// Les entorses à la convention d'appel relevées jusqu'ici.
     breaches: Vec<AbiBreach>,
     /// Combien d'instructions ont été exécutées depuis le chargement.
@@ -883,6 +903,9 @@ impl Emulator {
                 current: end,
                 limit: end,
             },
+            externals: BTreeMap::new(),
+            main_return: 0,
+            errno_at: 0,
             ticks: 0,
             visits: BTreeMap::new(),
             trace: VecDeque::new(),
@@ -936,6 +959,80 @@ impl Emulator {
     /// L'arène de `mmap`, telle que les allocations l'ont laissée.
     pub fn mmap(&self) -> Mmap {
         self.mmap
+    }
+
+    /// Installe les bornes des fonctions de bibliothèque : adresse -> nom.
+    ///
+    /// `main_return` est celle sur laquelle `main` revient — une borne à
+    /// part, que `__libc_start_main` empile avant de sauter.
+    pub fn set_externals(&mut self, table: BTreeMap<u64, String>, main_return: u64) {
+        self.externals = table;
+        self.main_return = main_return;
+    }
+
+    /// Le nom de la fonction dont la borne est à cette adresse.
+    pub fn external_at(&self, addr: u64) -> Option<&str> {
+        self.externals.get(&addr).map(String::as_str)
+    }
+
+    /// L'adresse sur laquelle `main` revient.
+    fn main_return_addr(&self) -> u64 {
+        self.main_return
+    }
+
+    /// Donne `size` octets de tas à la bibliothèque fournie.
+    ///
+    /// Un allocateur minimal : un curseur qui monte dans le tas, et huit
+    /// octets de garde devant chaque bloc pour y noter sa taille — comme
+    /// le fait un vrai `malloc`, et pour la même raison : `free` et
+    /// `realloc` doivent pouvoir la retrouver.
+    ///
+    /// La mémoire rendue par `free` n'est pas reprise. C'est une
+    /// simplification, et elle est dite : un programme qui relit ce qu'il
+    /// a libéré retrouve ses données, ce qu'un vrai `malloc` fait aussi
+    /// souvent — et c'est bien pourquoi ce bogue-là est si difficile à
+    /// voir.
+    fn libc_alloc(&mut self, size: u64) -> Option<u64> {
+        /// L'alignement que tout `malloc` promet : de quoi y poser
+        /// n'importe quel type, `long double` compris.
+        const ALIGN: u64 = 16;
+        let base = (self.heap.current + 8).div_ceil(ALIGN) * ALIGN;
+        let fin = base.checked_add(size.max(1))?;
+        if self.set_break(fin) < fin {
+            return None;
+        }
+        self.record_memory(base - 8, 8);
+        self.cpu.mem.poke(base - 8, &size.to_le_bytes()).ok()?;
+        Some(base)
+    }
+
+    /// La taille notée devant un bloc rendu par la bibliothèque fournie.
+    fn block_size(&self, addr: u64) -> u64 {
+        if addr < self.heap.start + 8 {
+            return 0;
+        }
+        self.cpu.mem.peek_u64(addr - 8).unwrap_or(0)
+    }
+
+    /// La case d'`errno`, allouée au premier usage.
+    fn errno_slot(&mut self) -> u64 {
+        if self.errno_at == 0 {
+            self.errno_at = self.libc_alloc(8).unwrap_or(0);
+        }
+        self.errno_at
+    }
+
+    /// Un nombre pseudo-aléatoire, de la même suite reproductible que
+    /// `getrandom` : le même programme doit donner deux fois le même
+    /// résultat, sans quoi revenir en arrière n'aurait plus de sens.
+    fn pseudo_random_u32(&self) -> u32 {
+        let mut state =
+            0x9e37_79b9_7f4a_7c15u64 ^ self.ticks.wrapping_mul(0x2545_f491_4f6c_dd1d);
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        // `rand` rend un entier positif, borné par RAND_MAX.
+        (state >> 33) as u32 & 0x7fff_ffff
     }
 
     /// Donne `len` octets d'arène, projetés avec les droits demandés.
@@ -1199,6 +1296,17 @@ impl Emulator {
         /// c'est le seul temps qui existe ici, et il est reproductible.
         const SYS_CLOCK_GETTIME: u64 = 228;
         const SYS_GETTIMEOFDAY: u64 = 96;
+        /// `poll` : une bibliothèque C demande au démarrage si l'entrée
+        /// et la sortie sont bien ouvertes.
+        const SYS_POLL: u64 = 7;
+        /// Les signaux. namsdec n'en délivre aucun — il n'y a ni
+        /// terminal, ni horloge, ni voisin pour en envoyer.
+        const SYS_RT_SIGACTION: u64 = 13;
+        const SYS_RT_SIGPROCMASK: u64 = 14;
+        const SYS_SIGALTSTACK: u64 = 131;
+        const SYS_CLOSE: u64 = 3;
+        const SYS_FCNTL: u64 = 72;
+        const SYS_GETCWD: u64 = 79;
         /// Les codes d'erreur que namsdec rend, avec leur nom de la libc.
         const ENOSYS: i64 = -38;
         const EINVAL: i64 = -22;
@@ -1418,6 +1526,55 @@ impl Emulator {
             SYS_READLINK | SYS_READLINKAT => {
                 self.cpu.regs.set64(Reg64::Rax, EINVAL as u64);
             }
+            // `poll` sur les descripteurs ouverts : rien à signaler, et
+            // c'est la bonne réponse — une bibliothèque s'en sert au
+            // démarrage pour vérifier que l'entrée et la sortie existent,
+            // et c'est l'absence de `POLLNVAL` qui le lui dit.
+            SYS_POLL => {
+                let fds = self.cpu.regs.get64(Reg64::Rdi);
+                let combien = self.cpu.regs.get64(Reg64::Rsi).min(64);
+                // `struct pollfd` fait huit octets. Un tableau qui ne
+                // tient pas en mémoire vaut `-EFAULT`, comme au noyau :
+                // c'est une réponse, pas un arrêt.
+                if self
+                    .cpu
+                    .mem
+                    .check(fds, (combien * 8) as usize, Access::Write)
+                    .is_err()
+                {
+                    self.cpu.regs.set64(Reg64::Rax, (-14i64) as u64);
+                } else {
+                    for index in 0..combien {
+                        // Seul le dernier champ est à nous : ce qui
+                        // arrive, et il n'arrive rien.
+                        self.cpu.mem.write_u16(fds + index * 8 + 6, 0)?;
+                    }
+                    self.cpu.regs.set64(Reg64::Rax, 0);
+                }
+            }
+            // Les signaux : namsdec n'en délivre aucun, il n'y a donc
+            // rien à installer — mais refuser l'appel arrêterait le
+            // démarrage de toute bibliothèque moderne.
+            SYS_RT_SIGACTION | SYS_RT_SIGPROCMASK | SYS_SIGALTSTACK => {
+                self.cpu.regs.set64(Reg64::Rax, 0);
+            }
+            // Fermer un descripteur qu'on ne tient pas vraiment : dire
+            // que c'est fait est exact du point de vue du programme.
+            SYS_CLOSE | SYS_FCNTL => {
+                self.cpu.regs.set64(Reg64::Rax, 0);
+            }
+            SYS_GETCWD => {
+                // La racine : il n'y a pas de système de fichiers, et
+                // prétendre être ailleurs ne servirait personne.
+                let buf = self.cpu.regs.get64(Reg64::Rdi);
+                let taille = self.cpu.regs.get64(Reg64::Rsi);
+                if taille < 2 {
+                    self.cpu.regs.set64(Reg64::Rax, (-34i64) as u64);
+                } else {
+                    self.cpu.mem.poke(buf, b"/\0")?;
+                    self.cpu.regs.set64(Reg64::Rax, 2);
+                }
+            }
             // Personne à attendre : il n'y a qu'un fil d'exécution.
             SYS_FUTEX => {
                 self.cpu.regs.set64(Reg64::Rax, 0);
@@ -1582,10 +1739,94 @@ impl Emulator {
         namsdec_disasm::decode_one(&window, rip).ok_or(EmuError::InvalidInstruction { addr: rip })
     }
 
+    /// RIP est-il posé sur une borne de bibliothèque ?
+    fn at_library_boundary(&self) -> bool {
+        let rip = self.cpu.regs.rip;
+        rip == self.main_return && rip != 0 || self.externals.contains_key(&rip)
+    }
+
+    /// Exécute une fonction de bibliothèque fournie par namsdec.
+    ///
+    /// Elle compte pour **un pas** : c'est ce qu'on veut en avançant à la
+    /// main, et c'est ce qui permet de revenir en arrière dessus comme
+    /// sur une instruction. Ce qu'elle écrit est journalisé, ce qu'elle
+    /// rend passe par RAX, et le retour dépile l'adresse comme le ferait
+    /// un `ret`.
+    fn call_library(&mut self) -> Result<StepResult, EmuError> {
+        let rip = self.cpu.regs.rip;
+        let nom = if rip == self.main_return {
+            String::new()
+        } else {
+            self.externals.get(&rip).cloned().unwrap_or_default()
+        };
+
+        // Lire l'entrée bloque, comme pour `read` : le pas rend la main,
+        // et reprendra quand la ligne sera là.
+        if libc::reads_input(&nom) && self.input.is_empty() && !self.input_closed {
+            return Ok(StepResult::NeedsInput);
+        }
+
+        self.begin_undo();
+        self.ticks = self.ticks.wrapping_add(1);
+        *self.visits.entry(rip).or_insert(0) += 1;
+
+        let flow = if rip == self.main_return {
+            Ok(libc::main_returned(self))
+        } else {
+            libc::call(self, &nom)
+        };
+        let flow = match flow {
+            Ok(flow) => flow,
+            Err(e) => {
+                // L'appel n'a pas eu lieu : tout ce qu'il a pu écrire est
+                // défait, et RIP reste sur la borne.
+                self.step_back();
+                self.cpu.regs.rip = rip;
+                return Err(e);
+            }
+        };
+
+        match flow {
+            libc::Flow::Returned => self.return_from_library()?,
+            libc::Flow::Jumped | libc::Flow::Halted => {}
+        }
+
+        Ok(if self.cpu.halted {
+            StepResult::Halted
+        } else {
+            StepResult::Continued
+        })
+    }
+
+    /// Le retour d'une fonction fournie : exactement ce que fait `ret`.
+    fn return_from_library(&mut self) -> Result<(), EmuError> {
+        let rsp = self.cpu.regs.get64(Reg64::Rsp);
+        let retour = self.cpu.mem.read_u64(rsp)?;
+        self.cpu.regs.set64(Reg64::Rsp, rsp.wrapping_add(8));
+        self.cpu.regs.rip = retour;
+        // La chaîne d'appels se dépile comme pour une vraie fonction —
+        // sans vérifier la convention : une fonction écrite en Rust ne
+        // peut pas abîmer les registres qu'elle doit rendre intacts.
+        if let Some(frame) = self.frames.pop()
+            && let Some(undo) = self.history.back_mut()
+        {
+            undo.frames = FrameChange::Popped(frame);
+        }
+        Ok(())
+    }
+
     /// Décode puis exécute l'instruction à RIP.
     pub fn step(&mut self) -> Result<StepResult, EmuError> {
         if self.cpu.halted {
             return Ok(StepResult::Halted);
+        }
+
+        // Une borne de bibliothèque ? Il n'y a pas d'instruction à
+        // décoder là : le chargeur a posé une adresse à la place d'une
+        // fonction qui vit ailleurs, et c'est namsdec qui répond. Un
+        // appel, un pas — comme un `call` suivi de son `ret`.
+        if self.at_library_boundary() {
+            return self.call_library();
         }
 
         let instr = self.decode_at_rip()?;

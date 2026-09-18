@@ -201,9 +201,12 @@ pub struct Loaded {
     /// son canari.
     pub fs_base: u64,
     /// Les bornes posées à la place des fonctions de bibliothèque :
-    /// adresse -> nom. Sauter sur l'une d'elles est une erreur qui sait
-    /// dire qui on voulait appeler.
+    /// adresse -> nom. Arriver sur l'une d'elles, c'est appeler cette
+    /// fonction-là — namsdec en fournit une poignée, et nomme les autres.
     pub externals: BTreeMap<u64, String>,
+    /// La borne sur laquelle `main` revient : son résultat y devient le
+    /// code de sortie du programme, comme le ferait `__libc_start_main`.
+    pub main_return: u64,
     pub report: Report,
 }
 
@@ -238,7 +241,10 @@ pub fn load(elf: &Elf, name: &str, max: usize) -> Result<Loaded, LoadError> {
     // vrai chargeur, et cela évite de devoir écrire deux fois dans la
     // mémoire simulée.
     let mut externals = BTreeMap::new();
-    let mut prochaine = layout.externals.start;
+    // La première borne de la page est réservée au retour de `main` :
+    // c'est là que `__libc_start_main` fait revenir le programme.
+    let main_return = layout.externals.start;
+    let mut prochaine = layout.externals.start + 16;
     let mut bornes: BTreeMap<String, u64> = BTreeMap::new();
     let rapport = elf.relocate(load_addr, &mut image, 0, |reloc| {
         // Chaque nom reçoit *sa* borne, et toujours la même : deux cases
@@ -288,6 +294,7 @@ pub fn load(elf: &Elf, name: &str, max: usize) -> Result<Loaded, LoadError> {
         fs_base: layout.thread_pointer,
         layout,
         externals,
+        main_return,
         report,
     })
 }
@@ -342,10 +349,17 @@ fn map_regions(memory: &mut Memory, elf: &Elf, layout: &Layout) {
         );
     }
 
-    // La borne des fonctions absentes : lisible, pour qu'un vidage
-    // mémoire la montre, mais **pas exécutable** — c'est le refus
-    // d'exécution qui permet de dire quelle fonction on appelait.
-    memory.map(layout.externals.clone(), Perms::RODATA, "bibliothèque");
+    // Les bornes : lisibles et **inscriptibles**, mais pas exécutables.
+    //
+    // Inscriptibles parce qu'une bibliothèque ne fournit pas que des
+    // fonctions : `stdout`, `errno`, `environ` sont des *données*, et un
+    // programme écrit dedans. Leur borne doit donc être une vraie case
+    // mémoire, sans quoi la première écriture serait refusée.
+    //
+    // Pas exécutables parce que rien ne s'y exécute : arriver sur la
+    // borne d'une fonction est intercepté avant tout décodage, et ce qui
+    // atterrit ailleurs dans la page est une erreur, qui doit le rester.
+    memory.map(layout.externals.clone(), Perms::DATA, "bibliothèque");
     memory.map(layout.tls.clone(), Perms::DATA, "TLS");
     memory.map(layout.stack.clone(), Perms::DATA, "pile");
 }

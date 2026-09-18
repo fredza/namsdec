@@ -132,13 +132,25 @@ fn main() {
 
     // Qui désigne ces chaînes ? C'est la question d'un crackme.
     println!("\n== qui charge l'adresse de ces chaînes ?");
-    let plage = elf
+    // La plage couverte par les sections qui portent des octets : du plus
+    // bas début à la plus haute fin. Écrite en deux passes plutôt qu'en
+    // un `fold` partant d'un intervalle vide à l'envers — qui se lit mal
+    // et que le compilateur refuse à juste titre.
+    let début = elf
         .sections
         .iter()
         .filter(|s| !s.nobits)
-        .fold(u64::MAX..0, |acc, s| {
-            acc.start.min(s.addr)..acc.end.max(s.addr + s.size)
-        });
+        .map(|s| s.addr)
+        .min()
+        .unwrap_or(0);
+    let fin = elf
+        .sections
+        .iter()
+        .filter(|s| !s.nobits)
+        .map(|s| s.addr + s.size)
+        .max()
+        .unwrap_or(0);
+    let plage = début..fin;
     let xrefs = namsdec_re::xrefs::scan(&disasm, plage);
     for cible in [0x4afcu64, 0x5f6b, 0x5fa6] {
         let refs = xrefs.to(cible);
