@@ -3044,3 +3044,173 @@ hlt
         "mais « non plus petit » est vrai devant un NaN : ce n'est pas « plus grand ou égal »"
     );
 }
+
+/// `arch_prctl` installe la base FS, et `fs:[…]` s'en sert.
+///
+/// C'est le seul moyen, en espace utilisateur, de dire où vit la mémoire
+/// locale au fil d'exécution. Un binaire lié statiquement le fait avant
+/// d'appeler quoi que ce soit, et tout ce qui suit — le canari de pile en
+/// tête — lit à travers FS. Sans cet appel, un programme moderne
+/// s'arrêtait à sa première fonction protégée.
+#[test]
+fn arch_prctl_installs_the_fs_base_and_fs_reads_follow_it() {
+    let emu = run_program(
+        "\
+section .bss
+bloc: resb 64
+
+section .text
+global _start
+_start:
+; arch_prctl(ARCH_SET_FS, bloc)
+mov rax, 158
+mov rdi, 0x1002
+mov rsi, bloc
+syscall
+; une valeur reconnaissable à fs:0x28, comme un canari
+mov rcx, 0x1234567890abcdef
+mov [bloc + 0x28], rcx
+mov rdx, [fs:0x28]
+hlt
+",
+        &[],
+    );
+
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rax),
+        0,
+        "l'appel doit réussir : {:?}",
+        emu.cpu.regs.get64(Reg64::Rax)
+    );
+    assert_ne!(emu.cpu.regs.fs_base, 0, "la base est installée");
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rdx),
+        0x1234567890abcdef,
+        "et `fs:0x28` lit bien 0x28 octets au-dessus d'elle"
+    );
+}
+
+/// `mmap` donne de la mémoire vierge, utilisable, hors du tas.
+///
+/// C'est par lui que passe tout allocateur un peu sérieux : `brk` agrandit
+/// le tas d'un seul tenant, `mmap` rend un bloc indépendant. Un programme
+/// qui demande de la mémoire et écrit dedans doit pouvoir la relire.
+#[test]
+fn mmap_hands_out_usable_memory() {
+    let mut emu = load_only(
+        "\
+section .text
+global _start
+_start:
+; mmap(NULL, 8192, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0)
+mov rax, 9
+xor rdi, rdi
+mov rsi, 8192
+mov rdx, 3
+mov r10, 0x22
+mov r8, -1
+xor r9, r9
+syscall
+mov rbx, rax
+mov rdx, 0x4242424242424242
+mov [rbx], rdx
+mov rcx, [rbx]
+hlt
+",
+        &[],
+    );
+    // L'arène est posée par celui qui charge : ici, juste au-dessus de
+    // ce que le programme occupe.
+    let fin = emu.cpu.mem.range().end;
+    emu.set_mmap(fin - 0x8000, fin);
+    emu.run(10_000).expect("exécution");
+
+    let bloc = emu.cpu.regs.get64(Reg64::Rbx);
+    assert!(
+        bloc >= fin - 0x8000 && bloc < fin,
+        "l'adresse rendue est dans l'arène : {bloc:#x}"
+    );
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rcx),
+        0x4242424242424242,
+        "et ce qu'on y écrit se relit"
+    );
+    assert!(
+        emu.mmap().len() >= 8192,
+        "l'arène a bien donné les pages demandées"
+    );
+}
+
+/// `writev` écrit ses morceaux dans l'ordre, comme `write` le ferait.
+///
+/// Une bibliothèque C s'en sert pour vider un tampon et ajouter la suite
+/// en un seul appel — ce qui explique qu'un `printf` puisse ne jamais
+/// passer par `write`.
+#[test]
+fn writev_writes_every_piece_in_order() {
+    let emu = run_program(
+        "\
+section .data
+un db \"bon\"
+deux db \"jour\", 10
+vecteur:
+dq un
+dq 3
+dq deux
+dq 5
+
+section .text
+global _start
+_start:
+mov rax, 20
+mov rdi, 1
+mov rsi, vecteur
+mov rdx, 2
+syscall
+hlt
+",
+        &[],
+    );
+
+    assert_eq!(emu.output(), b"bonjour\n");
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rax),
+        8,
+        "et rend le total écrit"
+    );
+}
+
+/// `fstat` décrit la sortie standard comme un terminal.
+///
+/// Une bibliothèque C interroge le descripteur avant d'écrire son premier
+/// caractère : selon la réponse, elle tamponne par ligne ou par blocs.
+/// Sans réponse, elle n'écrit rien du tout — et l'on cherche longtemps
+/// pourquoi un `printf` ne sort pas.
+#[test]
+fn fstat_describes_standard_output() {
+    let emu = run_program(
+        "\
+section .bss
+statbuf: resb 144
+
+section .text
+global _start
+_start:
+mov rax, 5
+mov rdi, 1
+mov rsi, statbuf
+syscall
+mov ecx, [statbuf + 24]
+hlt
+",
+        &[],
+    );
+
+    assert_eq!(emu.cpu.regs.get64(Reg64::Rax), 0, "l'appel réussit");
+    // `S_IFCHR | 0620` : un périphérique caractère, ce qu'est un terminal.
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rcx) as u32,
+        0x2000 | 0o620,
+        "st_mode annonce un terminal"
+    );
+}

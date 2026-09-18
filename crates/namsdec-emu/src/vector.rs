@@ -347,6 +347,27 @@ fn shuffle_dwords(src: u128, control: u64) -> u128 {
     out
 }
 
+/// `pshuflw`/`pshufhw` : le brassage des mots de seize bits, dans une
+/// moitié du registre seulement — l'autre est recopiée telle quelle.
+///
+/// C'est l'outil des routines de chaînes : `strlen` et ses semblables
+/// s'en servent pour rapprocher les octets qu'elles viennent de comparer.
+fn shuffle_words(src: u128, control: u64, high: bool) -> u128 {
+    let décalage = if high { 64 } else { 0 };
+    let moitié = (src >> décalage) & u128::from(u64::MAX);
+    let mut brassée = 0u128;
+    for lane in 0..4 {
+        let from = (control >> (lane * 2)) & 3;
+        brassée |= ((moitié >> (from * 16)) & u128::from(u16::MAX)) << (lane * 16);
+    }
+    let autre = if high {
+        src & u128::from(u64::MAX)
+    } else {
+        (src >> 64) << 64
+    };
+    autre | (brassée << décalage)
+}
+
 /// `shufps` : les deux éléments bas viennent de la première source, les
 /// deux hauts de la seconde.
 fn shuffle_singles(a: u128, b: u128, control: u64) -> u128 {
@@ -409,6 +430,12 @@ impl Emulator {
                 let wide = self.is_wide(instr);
                 self.write_vec_op(instr, 0, [src[0], if wide { src[1] } else { 0 }])?;
             }
+            // Les demi-déplacements : huit octets qui vont dans une
+            // moitié du registre et laissent l'autre intacte. C'est ainsi
+            // qu'une bibliothèque C recopie une chaîne de moins de seize
+            // octets, et on les croise donc partout dans un vrai binaire.
+            M::Movlps | M::Movlpd | M::Vmovlps | M::Vmovlpd => self.move_half(instr, false)?,
+            M::Movhps | M::Movhpd | M::Vmovhps | M::Vmovhpd => self.move_half(instr, true)?,
             M::Movd | M::Vmovd => self.move_between_files(instr, 4)?,
             M::Movq | M::Vmovq => self.move_between_files(instr, 8)?,
 
@@ -696,6 +723,14 @@ impl Emulator {
                 let control = self.read_op(instr, instr.op_count() - 1)?;
                 self.vector_binary_extra(instr, 1, move |_, b| shuffle_dwords(b, control))?;
             }
+            M::Pshuflw | M::Vpshuflw => {
+                let control = self.read_op(instr, instr.op_count() - 1)?;
+                self.vector_binary_extra(instr, 1, move |_, b| shuffle_words(b, control, false))?;
+            }
+            M::Pshufhw | M::Vpshufhw => {
+                let control = self.read_op(instr, instr.op_count() - 1)?;
+                self.vector_binary_extra(instr, 1, move |_, b| shuffle_words(b, control, true))?;
+            }
             M::Shufps | M::Vshufps => {
                 let control = self.read_op(instr, instr.op_count() - 1)?;
                 self.vector_binary_extra(instr, 1, move |a, b| shuffle_singles(a, b, control))?;
@@ -975,6 +1010,33 @@ impl Emulator {
             self.read_vec_op(instr, 0)?[0] & !mask
         };
         self.write_vec_op(instr, 0, [upper | src, 0])
+    }
+
+    /// `movlpd`/`movhpd` et leurs cousins : huit octets déplacés dans
+    /// **une moitié** du registre, l'autre gardée telle quelle.
+    ///
+    /// C'est ce qui les distingue de `movsd`, qui écrase le haut quand il
+    /// lit la mémoire. Deux d'entre elles mises bout à bout recopient
+    /// seize octets sans exiger d'alignement — la recette de tous les
+    /// `memcpy` courts du monde.
+    fn move_half(&mut self, instr: &Instruction, high: bool) -> Result<(), EmuError> {
+        let moitié = if high { 64 } else { 0 };
+        let mask: u128 = 0xffff_ffff_ffff_ffff << moitié;
+        if instr.op_kind(0) == OpKind::Memory {
+            // Vers la mémoire : la moitié choisie, et rien d'autre.
+            let src = self.read_vec_op(instr, instr.op_count() - 1)?[0];
+            return self.write_vec_op(instr, 0, [(src & mask) >> moitié, 0]);
+        }
+        let last = instr.op_count() - 1;
+        let src = self.read_vec_op(instr, last)?[0] & 0xffff_ffff_ffff_ffff;
+        // La forme AVX à trois opérandes prend l'autre moitié de sa
+        // première source ; la forme SSE la garde de la destination.
+        let reste = if instr.op_count() >= 3 {
+            self.read_vec_op(instr, 1)?[0] & !mask
+        } else {
+            self.read_vec_op(instr, 0)?[0] & !mask
+        };
+        self.write_vec_op(instr, 0, [reste | (src << moitié), 0])
     }
 
     /// `movd`/`movq` : le passage entre les deux familles de registres.

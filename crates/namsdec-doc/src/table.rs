@@ -577,6 +577,27 @@ pub const ENTRIES: &[Entry] = &[
     },
     Entry {
         kind: Kind::Instruction,
+        names: &[
+            "rdsspq",
+            "rdsspd",
+            "incsspq",
+            "incsspd",
+            "saveprevssp",
+            "clrssbsy",
+        ],
+        title: Text {
+            fr: "La pile fantôme",
+            en: "The shadow stack",
+        },
+        body: Text {
+            fr: "Un second exemplaire des adresses de retour, que le processeur tient à part et que le programme ne peut pas écrire. À chaque `call`, l'adresse y est copiée ; à chaque `ret`, les deux sont comparées — si la pile ordinaire a été récrite, elles diffèrent, et le processeur arrête tout. C'est la réponse matérielle au débordement de tampon, et elle rend inopérante la technique qui consiste à écraser une adresse de retour.\n\n`rdssp` lit le pointeur de cette pile, `incssp` l'avance, `saveprevssp` et `clrssbsy` servent au changement de contexte. Sur une machine sans le dispositif — la plupart —, elles ne font **rien** : `rdssp` laisse son registre inchangé, et c'est ainsi qu'une bibliothèque teste la présence du dispositif. Elle met zéro dans un registre, lit, et regarde si c'est toujours zéro. namsdec fait comme ces machines-là.",
+            en: "A second copy of the return addresses, kept aside by the processor and unwritable by the program. Every `call` copies the address there; every `ret` compares the two — if the ordinary stack was rewritten they differ, and the processor stops everything. This is the hardware answer to the buffer overflow, and it defeats the technique of smashing a return address.\n\n`rdssp` reads that stack's pointer, `incssp` advances it, `saveprevssp` and `clrssbsy` serve context switches. On a machine without the feature — most of them — they do **nothing**: `rdssp` leaves its register untouched, and that is how a library tests for the feature. It zeroes a register, reads, and checks whether it is still zero. namsdec behaves like those machines.",
+        },
+        flags: "",
+        example: "xor eax, eax\n    rdsspq rax\n    test rax, rax",
+    },
+    Entry {
+        kind: Kind::Instruction,
         names: &["int3", "ud2"],
         title: Text {
             fr: "S'arrêter exprès",
@@ -822,7 +843,7 @@ pub const ENTRIES: &[Entry] = &[
     },
     Entry {
         kind: Kind::Instruction,
-        names: &["pshuflw", "pshufhw"],
+        names: &["pshuflw", "pshufhw", "vpshuflw", "vpshufhw"],
         title: Text {
             fr: "Remettre des mots dans l'ordre qu'on veut",
             en: "Put words in whatever order one wants",
@@ -832,7 +853,7 @@ pub const ENTRIES: &[Entry] = &[
             en: "The same idea as `pshufd`, on 16-bit words: `pshuflw` rearranges the low four words of a register and leaves the high ones, `pshufhw` does the opposite. The third operand says, two bits per word, where each one comes from. They turn up in text and image routines, where the order of bytes is the thing being handled.",
         },
         flags: "aucun",
-        example: "; namsdec ne les simule pas : pshuflw xmm0, xmm1, 0x1b\n    nop",
+        example: "pshuflw xmm0, xmm1, 0x1b\n    pshufhw xmm2, xmm0, 0x39",
     },
     Entry {
         kind: Kind::Instruction,
@@ -1752,17 +1773,19 @@ pub const ENTRIES: &[Entry] = &[
     },
     Entry {
         kind: Kind::Instruction,
-        names: &["movhps", "movlps", "movhpd", "movlpd"],
+        names: &[
+            "movhps", "movlps", "movhpd", "movlpd", "vmovhps", "vmovlps", "vmovhpd", "vmovlpd",
+        ],
         title: Text {
             fr: "Ne bouger qu'une moitié",
             en: "Move one half only",
         },
         body: Text {
-            fr: "Lisent ou écrivent huit octets dans la moitié *haute* (`movhps`) ou *basse* (`movlps`) d'un registre vectoriel, en laissant l'autre intacte. C'est ainsi qu'on charge deux morceaux venus d'endroits différents dans un même registre — et c'est pourquoi on les voit par paires dans le code des compilateurs. namsdec ne les simule pas : on les lit, on ne les exécute pas ici.",
-            en: "Read or write eight bytes into the *upper* (`movhps`) or *lower* (`movlps`) half of a vector register, leaving the other untouched. That is how two pieces from different places end up in one register — which is why they come in pairs in compiler output. namsdec does not simulate them: they are read here, not run.",
+            fr: "Lisent ou écrivent huit octets dans la moitié *haute* (`movhps`) ou *basse* (`movlps`) d'un registre vectoriel, en laissant l'autre intacte. C'est ainsi qu'on charge deux morceaux venus d'endroits différents dans un même registre — et c'est pourquoi on les voit par paires dans le code des compilateurs. C'est aussi ce qui les distingue de `movsd`, qui efface le haut en lisant la mémoire : deux d'entre elles mises bout à bout recopient seize octets sans exiger le moindre alignement, recette de tous les `memcpy` courts du monde.",
+            en: "Read or write eight bytes into the *upper* (`movhps`) or *lower* (`movlps`) half of a vector register, leaving the other untouched. That is how two pieces from different places end up in one register — which is why they come in pairs in compiler output. It is also what sets them apart from `movsd`, which wipes the upper half when reading memory: two of them back to back copy sixteen bytes with no alignment requirement at all, the recipe behind every short `memcpy` there is.",
         },
         flags: "",
-        example: "movlps xmm0, [rsi]\nmovhps xmm0, [rsi + 8]",
+        example: "movlps xmm0, [vecteur]\nmovhps xmm0, [vecteur + 8]",
     },
     Entry {
         kind: Kind::Instruction,

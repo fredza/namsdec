@@ -2286,7 +2286,7 @@ fn opening_a_raw_binary_disassembles_and_boots_the_emulator() {
     .expect("le programme de test doit s'assembler");
 
     let mut app = NamsdecApp::default();
-    app.load_binary(output.bytes);
+    app.load_binary(output.bytes, "programme");
 
     assert!(
         app.source.contains("mov"),
@@ -2380,7 +2380,7 @@ fn cursor_position_counts_characters_not_bytes() {
 #[test]
 fn oversized_binaries_are_truncated_not_rejected() {
     let mut app = NamsdecApp::default();
-    app.load_binary(vec![0x90; MEM_SIZE + 1024]); // que des `nop`
+    app.load_binary(vec![0x90; MEM_SIZE + 1024], "programme"); // que des `nop`
 
     match app.status {
         Status::BinaryLoaded { bytes, truncated } => {
@@ -2657,7 +2657,7 @@ fn an_elf_is_opened_where_it_says_to_be() {
     );
 
     let mut app = NamsdecApp::default();
-    app.load_binary(std::fs::read(&program).unwrap());
+    app.load_binary(std::fs::read(&program).unwrap(), "programme");
 
     let state = app.assemble_state.as_ref().expect("un binaire chargé");
     assert!(
@@ -5096,7 +5096,7 @@ fn a_binary_from_disk_is_analysed_as_itself() {
     };
     // Trop gros pour la mémoire simulée — il ne s'exécutera pas ici,
     // mais il doit s'*analyser*.
-    app.load_binary(bytes);
+    app.load_binary(bytes, "programme");
 
     let ctx = egui::Context::default();
     app.apply_theme(&ctx);
@@ -5703,17 +5703,17 @@ fn the_readme_tells_the_truth() {
     }
     // Et les limites annoncées le sont toujours : les appels système
     // simulés sont bien ceux-là, ni plus ni moins.
-    for simulé in [0u64, 1, 12, 60, 39, 102, 107, 24, 35, 318] {
+    for simulé in [0u64, 1, 12, 60, 39, 102, 107, 24, 35, 318, 9, 10, 158, 5, 302] {
         assert!(
             namsdec_re::table::is_simulated(simulé),
             "l'appel {simulé} est annoncé comme simulé"
         );
     }
     assert!(
-        !namsdec_re::table::is_simulated(9),
-        "mmap n'est pas simulé, et le README le dit"
+        !namsdec_re::table::is_simulated(2),
+        "ouvrir un fichier n'est pas simulé, et le README le dit"
     );
-    for nom in ["getpid", "getrandom", "sched_yield"] {
+    for nom in ["getpid", "getrandom", "sched_yield", "arch_prctl", "mmap"] {
         assert!(readme.contains(nom), "le README annonce {nom}");
     }
 }
@@ -5840,7 +5840,7 @@ ret
     .expect("assemblage");
 
     let mut app = NamsdecApp::default();
-    assert!(app.load_elf(&out.file), "l'ELF doit se charger");
+    assert!(app.load_elf(&out.file, "programme"), "l'ELF doit se charger");
 
     // Les étiquettes du source sont revenues dans le listing.
     assert!(
@@ -6263,7 +6263,7 @@ fn a_large_listing_still_draws_fast() {
         return;
     };
     let mut app = NamsdecApp::default();
-    app.load_binary(bytes);
+    app.load_binary(bytes, "programme");
     assert!(
         app.source.lines().count() > 5_000,
         "le listing doit être gros pour que la mesure ait un sens : {}",
@@ -7020,7 +7020,7 @@ fn a_real_binary_reads_with_the_manual_at_hand() {
         return;
     };
     let mut app = NamsdecApp::default();
-    app.load_binary(bytes);
+    app.load_binary(bytes, "programme");
     let state = app.assemble_state.as_ref().expect("chargé");
 
     let mut sans_fiche: std::collections::BTreeSet<String> = Default::default();
@@ -8300,7 +8300,7 @@ fn the_analysis_report_can_be_written_to_a_file() {
     assert!(matches!(app.status, Status::Error(_)), "{:?}", app.status);
     assert!(!path.exists(), "aucun fichier n'a été créé");
 
-    app.load_binary(bytes);
+    app.load_binary(bytes, "programme");
     app.export_report(&path);
     assert!(matches!(app.status, Status::Note(_)), "{:?}", app.status);
     let texte = std::fs::read_to_string(&path).unwrap();
@@ -8321,7 +8321,7 @@ fn the_listing_labels_the_functions_a_binary_calls() {
         return;
     };
     let mut app = NamsdecApp::default();
-    app.load_binary(bytes);
+    app.load_binary(bytes, "programme");
 
     let state = app.assemble_state.as_ref().expect("chargé");
     let noms: Vec<&str> = state
@@ -9488,7 +9488,7 @@ fn opening_a_binary_shows_its_code_not_its_header() {
         return;
     };
     let mut app = NamsdecApp::default();
-    app.load_binary(bytes);
+    app.load_binary(bytes, "programme");
     let state = app.assemble_state.as_ref().expect("chargé");
 
     // Le listing commence à une section exécutable, et non à l'octet
@@ -10507,7 +10507,7 @@ fn an_unlinked_object_reads_but_does_not_run() {
     }
 
     let mut app = NamsdecApp::default();
-    app.load_binary(std::fs::read(&objet).unwrap());
+    app.load_binary(std::fs::read(&objet).unwrap(), "objet.o");
 
     // Il se lit : le désassemblage est là, avec l'étiquette.
     let state = app.assemble_state.as_ref().expect("chargé");
@@ -11474,7 +11474,7 @@ fn the_pseudo_code_covers_a_real_binary() {
         return;
     };
     let mut app = NamsdecApp::default();
-    app.load_binary(bytes);
+    app.load_binary(bytes, "programme");
     let state = app.assemble_state.as_ref().expect("chargé");
 
     let mut total = 0usize;
@@ -12509,7 +12509,7 @@ fn the_console_offers_input_only_to_programs_that_read() {
 
 /// Un appel système que namsdec ne simule pas se dit à l'assemblage.
 ///
-/// `mmap`, `open`, `fork` : namsdec les nomme mais ne les fait pas — il
+/// `open`, `execve`, `fork` : namsdec les nomme mais ne les fait pas — il
 /// n'a ni fichiers ni processus à offrir. Un programme qui en contient
 /// un s'arrête dessus, et rien dans le code ne le laisse deviner. Le
 /// dire avant, avec sa ligne, vaut mieux que de le découvrir au milieu
@@ -12521,9 +12521,8 @@ fn an_unsimulated_syscall_is_announced_before_it_stops_the_program() {
     }
     let mut app = NamsdecApp {
         source: "global _start\nsection .text\n_start:\n\
-                 \x20   mov rax, 9\n    xor rdi, rdi\n    mov rsi, 4096\n\
-                 \x20   mov rdx, 3\n    mov r10, 34\n    mov r8, -1\n\
-                 \x20   xor r9, r9\n    syscall\n    hlt\n"
+                 \x20   mov rax, 2\n    xor rdi, rdi\n    xor rsi, rsi\n\
+                 \x20   xor rdx, rdx\n    syscall\n    hlt\n"
             .to_owned(),
         ..Default::default()
     };
@@ -12533,12 +12532,12 @@ fn an_unsimulated_syscall_is_announced_before_it_stops_the_program() {
     let dit: Vec<&namsdec_asm::Diagnostic> = app
         .diagnostics
         .iter()
-        .filter(|d| d.message.contains("mmap"))
+        .filter(|d| d.message.contains("open"))
         .collect();
     assert_eq!(
         dit.len(),
         1,
-        "mmap doit être annoncé une fois : {:?}",
+        "open doit être annoncé une fois : {:?}",
         app.diagnostics
     );
     assert_eq!(
@@ -12547,7 +12546,7 @@ fn an_unsimulated_syscall_is_announced_before_it_stops_the_program() {
         "un avertissement, pas une erreur"
     );
     assert_eq!(
-        dit[0].line, 11,
+        dit[0].line, 8,
         "et la ligne du syscall, pour y aller d'un clic"
     );
 
@@ -14375,7 +14374,7 @@ fn a_dynamically_linked_binary_says_it_cannot_run_here() {
         return;
     };
     let mut app = NamsdecApp::default();
-    assert!(app.load_elf(&octets), "l'ELF se charge");
+    assert!(app.load_elf(&octets, "ls"), "l'ELF se charge");
 
     // Le chargement réussit — c'est bien le but : on vient le lire.
     assert!(app.assemble_state.is_some(), "le programme est chargé");
@@ -14434,7 +14433,7 @@ fn a_real_binary_loads_at_the_addresses_it_declares() {
     };
     let mut app = NamsdecApp::default();
     assert!(
-        app.load_elf(&octets),
+        app.load_elf(&octets, "ls"),
         "un binaire de cette taille se charge"
     );
 
@@ -14457,6 +14456,21 @@ fn a_real_binary_loads_at_the_addresses_it_declares() {
         emulator.cpu().regs.rip,
         elf.entry,
         "et l'exécution commencerait là"
+    );
+    // Et surtout : le point d'entrée est *projeté*, avec le droit de
+    // s'exécuter. Un vrai binaire a quatre sections de code — `.init`,
+    // `.text`, `.fini`, `.plt` — qui portent toutes l'étiquette
+    // « .text » ; quand ce nom seul identifiait la zone, chacune
+    // effaçait la précédente et le premier pas répondait « rien n'est
+    // projeté à cette adresse ».
+    assert_eq!(
+        emulator
+            .cpu()
+            .mem
+            .check(elf.entry, 1, namsdec_core::Access::Execute),
+        Ok(()),
+        "le point d'entrée {:#x} doit être exécutable",
+        elf.entry
     );
 
     // La fenêtre s'est bien élargie, sans déplacer la pile des exercices.
@@ -14791,3 +14805,244 @@ fn installing_tools_adds_no_dependency_to_the_binary() {
         );
     }
 }
+
+
+
+/// Un binaire ouvert est chargé comme le noyau le ferait.
+///
+/// C'est la différence entre « les octets sont quelque part en mémoire »
+/// et « le programme est chargé » : des segments projetés en pages
+/// entières, des relocations appliquées, une base FS installée sur un
+/// bloc de mémoire locale au fil, et une pile qui porte `argc`, `argv`,
+/// l'environnement et le vecteur auxiliaire. Sans cela, un binaire
+/// moderne ne survit pas à ses dix premières instructions.
+#[test]
+fn a_binary_is_loaded_the_way_the_kernel_would() {
+    let Ok(octets) = std::fs::read("/bin/ls") else {
+        return;
+    };
+    let mut app = NamsdecApp::default();
+    assert!(app.load_elf(&octets, "ls"), "l'ELF se charge");
+    let elf = namsdec_asm::elf::parse(&octets).expect("un ELF");
+    let emulator = app.emulator.as_ref().expect("un émulateur");
+    let cpu = emulator.cpu();
+
+    // 1. Le point d'entrée est projeté, et exécutable.
+    assert_eq!(cpu.regs.rip, elf.entry);
+    assert_eq!(
+        cpu.mem.check(elf.entry, 1, namsdec_core::Access::Execute),
+        Ok(()),
+        "le point d'entrée {:#x} doit être exécutable",
+        elf.entry
+    );
+
+    // 2. Les pages entières sont projetées : entre la fin d'une section
+    // et le début de la suivante, un vrai processus n'a pas de trou.
+    let dernier = elf
+        .segments
+        .iter()
+        .find(|segment| segment.execute)
+        .expect("un segment de code");
+    let bout = dernier.vaddr + dernier.memsz as u64 - 1;
+    assert_eq!(
+        cpu.mem.check(bout, 1, namsdec_core::Access::Read),
+        Ok(()),
+        "le rembourrage de fin de segment est lisible, comme sur une vraie machine"
+    );
+
+    // 3. La base FS est posée, et le canari s'y lit.
+    assert_ne!(cpu.regs.fs_base, 0, "la base FS est installée");
+    assert_eq!(
+        cpu.mem.read_u64(cpu.regs.fs_base + 0x28),
+        Ok(crate::loader::STACK_GUARD),
+        "le canari de pile est en fs:0x28"
+    );
+    assert_eq!(
+        cpu.mem.read_u64(cpu.regs.fs_base),
+        Ok(cpu.regs.fs_base),
+        "et fs:0 pointe sur lui-même, comme l'attend toute bibliothèque C"
+    );
+
+    // 4. La pile initiale : alignée, et portant ce que le noyau y met.
+    let rsp = cpu.regs.get64(Reg64::Rsp);
+    assert_eq!(rsp % 16, 0, "RSP est aligné sur seize octets à l'entrée");
+    assert_eq!(cpu.mem.read_u64(rsp), Ok(1), "argc vaut un");
+    let argv0 = cpu.mem.read_u64(rsp + 8).expect("argv[0]");
+    let nom = cpu.mem.peek_bytes(argv0, 2).expect("le nom du programme");
+    assert_eq!(nom, b"ls", "argv[0] est le nom du fichier ouvert");
+    assert_eq!(cpu.mem.read_u64(rsp + 16), Ok(0), "puis le zéro qui clôt argv");
+
+    // 5. Le vecteur auxiliaire dit au programme où il est.
+    const AT_NULL: u64 = 0;
+    const AT_ENTRY: u64 = 9;
+    const AT_PHDR: u64 = 3;
+    const AT_RANDOM: u64 = 25;
+    let mut at = rsp + 24;
+    // L'environnement, jusqu'à son zéro.
+    while cpu.mem.read_u64(at).expect("l'environnement") != 0 {
+        at += 8;
+    }
+    at += 8;
+    let mut vu: BTreeMap<u64, u64> = BTreeMap::new();
+    loop {
+        let clé = cpu.mem.read_u64(at).expect("une clé");
+        let valeur = cpu.mem.read_u64(at + 8).expect("une valeur");
+        if clé == AT_NULL {
+            break;
+        }
+        vu.insert(clé, valeur);
+        at += 16;
+        assert!(vu.len() < 64, "le vecteur auxiliaire se termine");
+    }
+    assert_eq!(vu.get(&AT_ENTRY), Some(&elf.entry), "AT_ENTRY");
+    assert_eq!(
+        vu.get(&AT_PHDR).copied(),
+        elf.phdr.map(|(addr, _, _)| addr),
+        "AT_PHDR montre les en-têtes projetés"
+    );
+    let random = *vu.get(&AT_RANDOM).expect("AT_RANDOM");
+    assert!(
+        cpu.mem.peek_bytes(random, 16).is_ok(),
+        "et les seize octets de hasard sont lisibles"
+    );
+
+    // 6. Les relocations ont été appliquées.
+    let binaire = app
+        .assemble_state
+        .as_ref()
+        .and_then(|state| state.from_binary.as_ref())
+        .expect("un binaire chargé");
+    if !elf.relocs.is_empty() {
+        assert!(
+            binaire.load.relocations > 0,
+            "un binaire qui en porte doit en avoir reçu : {:?}",
+            binaire.load
+        );
+    }
+}
+
+/// Un appel qui sort du programme nomme la fonction qu'il appelait.
+///
+/// Le chargeur pose une borne à la place de chaque fonction qu'une
+/// bibliothèque aurait dû fournir. Sauter dessus donnait « on ne saute
+/// pas dans des données », un conseil qui envoie chercher une faute de
+/// pointeur là où il n'y en a pas : le programme appelait `printf`, tout
+/// simplement, et c'est cela qu'il faut lire.
+#[test]
+fn a_call_that_leaves_the_program_says_which_function_it_was() {
+    let Ok(octets) = std::fs::read("/bin/ls") else {
+        return;
+    };
+    let mut app = NamsdecApp::default();
+    assert!(app.load_elf(&octets, "ls"), "l'ELF se charge");
+    let binaire = app
+        .assemble_state
+        .as_ref()
+        .and_then(|state| state.from_binary.as_ref())
+        .expect("un binaire chargé");
+    if binaire.externals.is_empty() {
+        return;
+    }
+
+    // Quelques pas suffisent : le code de démarrage appelle la
+    // bibliothèque C presque tout de suite.
+    for _ in 0..64 {
+        app.do_step();
+        if matches!(app.status, Status::Error(_)) {
+            break;
+        }
+    }
+    let Status::Error(message) = &app.status else {
+        panic!("l'exécution doit buter sur la bibliothèque : {:?}", app.status);
+    };
+    assert!(
+        message.contains("__libc_start_main"),
+        "le message nomme la fonction appelée : {message}"
+    );
+    let conseil = app.error_advice.as_ref().expect("et il explique");
+    assert!(
+        conseil.contains("éditeur de liens dynamique"),
+        "en disant ce qui manque : {conseil}"
+    );
+}
+
+/// Un vrai programme C lié statiquement s'exécute entièrement.
+///
+/// C'est l'épreuve du chargeur : trois cent mille instructions de code de
+/// démarrage de la glibc — installation de la base FS, allocation des
+/// tampons, lecture du vecteur auxiliaire —, puis `main`, puis `printf`,
+/// puis la sortie propre. Rien de tout cela ne fonctionne si une seule
+/// pièce manque au chargement.
+#[test]
+fn a_static_c_program_runs_all_the_way_through() {
+    if std::process::Command::new("gcc")
+        .arg("--version")
+        .output()
+        .is_err()
+    {
+        eprintln!("gcc absent : test ignoré");
+        return;
+    }
+    let dir = tempfile::tempdir().expect("un dossier");
+    let source = dir.path().join("bonjour.c");
+    std::fs::write(
+        &source,
+        "#include <stdio.h>\nint main(int argc, char **argv) {\n\
+         \x20   printf(\"bonjour %s (%d)\\n\", argv[0], argc);\n    return 0;\n}\n",
+    )
+    .expect("le source s'écrit");
+    let binaire = dir.path().join("bonjour");
+    let compilé = std::process::Command::new("gcc")
+        .arg("-static")
+        .arg("-O1")
+        .arg("-o")
+        .arg(&binaire)
+        .arg(&source)
+        .output();
+    // Sans bibliothèque C statique sur la machine, il n'y a rien à
+    // éprouver — et ce n'est pas un échec de namsdec.
+    if !compilé.is_ok_and(|sortie| sortie.status.success()) {
+        eprintln!("pas de libc statique : test ignoré");
+        return;
+    }
+
+    let octets = std::fs::read(&binaire).expect("le binaire se lit");
+    let mut app = NamsdecApp::default();
+    assert!(app.load_elf(&octets, "bonjour"), "l'ELF se charge");
+
+    // Un programme lié statiquement n'attend rien de personne : aucune
+    // borne de bibliothèque n'a dû être posée.
+    let chargé = app
+        .assemble_state
+        .as_ref()
+        .and_then(|state| state.from_binary.as_ref())
+        .expect("un binaire chargé");
+    assert!(
+        chargé.externals.is_empty(),
+        "rien à emprunter : {:?}",
+        chargé.load.external
+    );
+
+    for pas in 0..1_000_000u32 {
+        app.do_step();
+        if let Status::Error(message) = &app.status {
+            panic!(
+                "arrêt au pas {pas}, à {:#x} : {message}",
+                app.emulator.as_ref().map(|e| e.cpu().regs.rip).unwrap_or(0)
+            );
+        }
+        if app.emulator.as_ref().is_some_and(|e| e.cpu().halted) {
+            break;
+        }
+    }
+
+    let emulator = app.emulator.as_ref().expect("un émulateur");
+    assert!(emulator.cpu().halted, "le programme doit finir");
+    assert_eq!(emulator.exit_code(), Some(0), "et sortir proprement");
+    let sortie = String::from_utf8_lossy(emulator.output()).into_owned();
+    assert_eq!(
+        sortie, "bonjour bonjour (1)\n",
+        "et avoir écrit ce qu'il devait, `printf` compris"
+    );
+}
+

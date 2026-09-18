@@ -91,7 +91,78 @@ fichiers à la fois, et brancher les outils du métier.
   cherchées en disant combien elles sont, une liste des **fonctions**
   repérées pour y sauter, et des numéros de ligne dans la marge.
 
-**Ouvrir un vrai binaire**
+**Un vrai chargeur**
+
+Ouvrir un binaire s'arrêtait sur « rien n'est projeté à l'adresse … : ni
+le programme, ni la pile, ni le tas » — et l'adresse fautive était son
+propre point d'entrée. La cause tenait en une ligne ; ce qu'elle a
+révélé tenait en un chantier. namsdec posait les octets d'un fichier en
+mémoire ; il **charge** désormais un programme, comme le noyau le fait.
+
+- **Le programme est projeté en entier.** Une zone mémoire était
+  identifiée par son seul nom : un vrai exécutable a quatre sections de
+  code — `.init`, `.text`, `.fini`, `.plt` — annoncées toutes les quatre
+  comme « .text », et chacune effaçait la précédente. Il ne restait
+  projeté que la dernière déclarée. Une zone se reconnaît maintenant à son
+  nom **et** à son adresse de départ ; le tas continue de grandir sur
+  place comme avant.
+- **Le chargement se fait par segments**, comme celui du noyau, et non
+  plus par sections : des pages entières, les droits que le fichier
+  déclare, le `.bss` réservé même quand il ne pèse rien. Entre la fin
+  d'une section et le début de la suivante, un vrai processus n'a pas de
+  trou — et namsdec n'en a plus non plus. Un binaire **dépouillé**
+  (`strip`), qui n'a plus une seule section, se charge désormais aussi
+  bien qu'un autre.
+- **Les relocations sont appliquées.** `DT_RELA`, `DT_JMPREL` et le
+  format compact `DT_RELR` sont lus dans la table dynamique et posés
+  avant la première instruction. Sans elles, un exécutable indépendant de
+  la position démarre sur des tables de pointeurs entièrement nulles, et
+  le premier appel indirect saute à zéro : 355 cases pour un petit
+  crackme en Rust, 0 auparavant.
+- **La mémoire locale au fil d'exécution existe**, et la base `FS` avec
+  elle. Le bloc `PT_TLS` est recopié, le pointeur de fil posé dessus,
+  `fs:0` pointe sur lui-même et `fs:0x28` porte un canari de pile —
+  reconnaissable à l'œil dans un vidage, et toujours le même, pour qu'une
+  exécution se rejoue à l'identique. `arch_prctl` permet au programme de
+  la déplacer lui-même, comme sous Linux.
+- **La pile initiale est celle d'un processus** : `argc`, `argv` (le nom
+  du fichier ouvert), l'environnement, puis le vecteur auxiliaire —
+  `AT_PHDR`, `AT_ENTRY`, `AT_PAGESZ`, `AT_RANDOM` et les autres —, le
+  tout aligné sur seize octets comme l'exige la convention d'appel. Le
+  programme démarrait jusqu'ici sur une pile de zéros, où `argc` valait
+  zéro.
+- **Un binaire C lié statiquement s'exécute entièrement**, bibliothèque C
+  comprise : cent trente-sept mille instructions de démarrage de la
+  glibc, puis `main`, puis `printf`, puis la sortie avec son code. Un
+  test le vérifie en compilant un programme et en le faisant tourner
+  jusqu'au bout.
+- **Un appel qui sort du programme dit qui il appelait.** Chaque fonction
+  qu'une bibliothèque aurait dû fournir reçoit une borne : sauter dessus
+  s'arrête sur « appel à une fonction de bibliothèque : `__libc_start_main` »
+  au lieu de « on ne saute pas dans des données », qui envoyait chercher
+  une faute de pointeur là où il n'y en avait pas.
+- **Ce que le chargeur a fait est dit** quand il n'a pas tout pu faire :
+  combien de segments, combien de relocations, combien d'octets de TLS,
+  et les fonctions manquantes nommées.
+- La carte mémoire **nomme les sections telles qu'elles sont** : `.got`,
+  `.plt`, `.dynamic`, `.data.rel.ro`, `.eh_frame`… Savoir qu'on est tombé
+  dans la table de liaison plutôt que dans « des données » est souvent
+  toute la réponse à la question qu'on se pose.
+- **Les appels système du démarrage d'une bibliothèque C** sont simulés :
+  `mmap` (avec sa propre arène, hors du tas), `mprotect` — appliqué pour
+  de vrai, ce qui rend RELRO observable —, `munmap`, `fstat`, `ioctl`,
+  `writev`, `readv`, `uname`, `prlimit64`, `getrlimit`, `arch_prctl`,
+  `set_tid_address`, `set_robust_list`, `rseq`, `futex`, `clock_gettime`,
+  `readlink`. Il suffit d'un seul manquant pour qu'un programme n'arrive
+  jamais à son `main`.
+- **Six instructions de plus** : `movlpd`/`movhpd` et leurs cousines, que
+  toute routine de chaînes emploie ; `pshuflw`/`pshufhw` ; et les
+  instructions de pile fantôme (`rdssp`, `incssp`…), qui ne font rien sur
+  une machine sans le dispositif — ce qui est précisément ainsi qu'une
+  bibliothèque teste sa présence. Une fiche les explique toutes.
+- Un binaire **lié dynamiquement** se lit, s'analyse et se désassemble
+  comme avant ; il s'exécute maintenant jusqu'à son premier appel à la
+  bibliothèque, et s'arrête en le nommant.
 - La mémoire simulée ne fait plus soixante-quatre kilo-octets : elle
   s'adapte au programme chargé. Un binaire de trois cent mille octets n'y
   entrait pas, namsdec retombait sur un désassemblage brut tassé à

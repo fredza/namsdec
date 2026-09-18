@@ -9,6 +9,7 @@ mod condition;
 mod errors;
 mod i18n;
 mod keybindings;
+mod loader;
 mod nasm_errors;
 mod readings;
 mod roles;
@@ -760,6 +761,15 @@ struct LoadedBinary {
     needed: Vec<String>,
     /// Le chargeur qu'il demande, quand il en demande un.
     interpreter: Option<String>,
+    /// Le nom sous lequel le programme se voit lui-même — `argv[0]`, et
+    /// ce qu'il cite quand il se plaint.
+    name: String,
+    /// Les bornes posées à la place des fonctions qu'une bibliothèque
+    /// aurait dû fournir : adresse -> nom. Sauter sur l'une d'elles est
+    /// une erreur qui sait dire qui l'on voulait appeler.
+    externals: BTreeMap<u64, String>,
+    /// Ce que le chargeur a fait, pour pouvoir le raconter.
+    load: loader::Report,
 }
 
 struct NamsdecApp {
@@ -810,7 +820,12 @@ struct NamsdecApp {
     flags_before: Option<RFlags>,
     /// Le conseil qui accompagne la dernière erreur d'exécution : par où
     /// reprendre, quand l'erreur appelle un geste précis.
-    error_advice: Option<&'static str>,
+    /// Le conseil qui accompagne la dernière erreur d'exécution.
+    ///
+    /// Une chaîne possédée, et non statique : certains conseils nomment
+    /// ce sur quoi on vient de buter — la fonction de bibliothèque qu'on
+    /// appelait — et ce nom vient du fichier ouvert.
+    error_advice: Option<String>,
     /// L'instruction que le dernier pas vient d'exécuter : son adresse et
     /// son texte. `None` après un Run, un retour en arrière ou une
     /// réinitialisation — il n'y a plus « un » dernier pas à montrer.
@@ -2344,7 +2359,117 @@ impl NamsdecApp {
             .map(<[u8]>::to_vec);
     }
 
+    /// (Re)construit l'émulateur dans l'état du tout début.
+    ///
+    /// Deux chemins, parce qu'il y a deux sortes de programmes. Celui
+    /// qu'on vient d'écrire est posé tel quel, à l'adresse qu'on lui a
+    /// donnée, avec une pile vierge : c'est ce qu'on veut en apprenant, et
+    /// rien d'autre ne doit bouger sous les pieds. Celui qui vient d'un
+    /// fichier, lui, passe par le **chargeur** — segments, relocations,
+    /// TLS, pile de processus —, faute de quoi il ne survit pas à ses dix
+    /// premières instructions.
     fn rebuild_emulator(&mut self) {
+        if let Some(elf) = self.binary_elf() {
+            self.load_process(&elf);
+            return;
+        }
+        self.rebuild_from_assembly();
+    }
+
+    /// L'ELF du binaire ouvert, quand c'en est un et qu'il est chargeable.
+    ///
+    /// Relu à chaque reconstruction plutôt que gardé : l'analyse coûte
+    /// une milliseconde sur un binaire de trois cent mille octets, et
+    /// garder une image déjà relogée obligerait à la dupliquer pour
+    /// pouvoir revenir à l'état initial — ce que « Reset » demande.
+    fn binary_elf(&self) -> Option<namsdec_asm::elf::Elf> {
+        let state = self.assemble_state.as_ref()?;
+        state.from_binary.as_ref()?;
+        namsdec_asm::elf::parse(&state.output.file).filter(|elf| !elf.segments.is_empty())
+    }
+
+    /// Charge un binaire comme le noyau le ferait, et arme l'émulateur
+    /// sur l'état que `_start` trouverait.
+    fn load_process(&mut self, elf: &namsdec_asm::elf::Elf) {
+        let nom = self
+            .assemble_state
+            .as_ref()
+            .and_then(|state| state.from_binary.as_ref())
+            .map(|binaire| binaire.name.clone())
+            .filter(|nom| !nom.is_empty())
+            .unwrap_or_else(|| "programme".to_owned());
+
+        let chargé = match loader::load(elf, &nom, MEM_MAX) {
+            Ok(chargé) => chargé,
+            Err(loader::LoadError::TooLarge { .. }) => {
+                self.status = Status::Error(strings(self.lang).binary_too_large.to_string());
+                self.emulator = None;
+                return;
+            }
+            Err(loader::LoadError::NotLoadable) => {
+                self.status = Status::Error(strings(self.lang).binary_not_linked.to_owned());
+                self.emulator = None;
+                return;
+            }
+        };
+
+        let mut cpu = namsdec_core::Cpu::new(chargé.memory);
+        cpu.regs.rip = chargé.entry;
+        cpu.regs.set64(Reg64::Rsp, chargé.rsp);
+        // La base FS : sans elle, la première fonction protégée lit son
+        // canari à une adresse qui n'existe pas.
+        cpu.regs.fs_base = chargé.fs_base;
+
+        // Un programme qui vient d'être chargé n'a pas de passé.
+        self.regs_before = None;
+        self.flags_before = None;
+        self.last_step = None;
+        self.error_advice = None;
+        self.mem_before = None;
+
+        let mut emulator = Emulator::new(cpu);
+        emulator.set_heap(chargé.layout.heap.start, chargé.layout.heap.end);
+        emulator.set_mmap(chargé.layout.mmap.start, chargé.layout.mmap.end);
+        emulator.set_breakpoints(
+            self.breakpoint_lines
+                .iter()
+                .filter_map(|l| {
+                    self.assemble_state
+                        .as_ref()
+                        .and_then(|state| state.output.line_to_addr.get(l).copied())
+                })
+                .collect(),
+        );
+
+        if let Some(state) = self.assemble_state.as_ref() {
+            let ctx = ReContext {
+                cpu: emulator.cpu(),
+                disasm: &state.disasm,
+                source: &self.source,
+                binary: &state.output.file,
+                lang: self.lang.code(),
+            };
+            self.re_registry.on_binary_loaded(&ctx);
+        }
+
+        self.emulator = Some(Box::new(emulator));
+        // Ce que le chargeur a posé suit le programme : les bornes
+        // servent à nommer un appel qui n'aboutira pas, le rapport à dire
+        // ce qui a été fait.
+        if let Some(binaire) = self
+            .assemble_state
+            .as_mut()
+            .and_then(|state| state.from_binary.as_mut())
+        {
+            binaire.externals = chargé.externals;
+            binaire.load = chargé.report;
+        }
+        self.sync_watchpoints();
+    }
+
+    /// Le chemin d'un programme qu'on vient d'assembler : l'image telle
+    /// quelle, à son adresse, dans la fenêtre historique de l'atelier.
+    fn rebuild_from_assembly(&mut self) {
         let Some(state) = &self.assemble_state else {
             return;
         };
@@ -2376,6 +2501,11 @@ impl NamsdecApp {
         // droits pour lui reviendrait à refuser ce qu'on ne comprend pas.
         if !state.output.sections.is_empty() {
             for section in &state.output.sections {
+                // Une section vide ne projette rien : la déclarer
+                // n'ajouterait qu'une ligne sans contenu à la carte.
+                if section.size == 0 {
+                    continue;
+                }
                 let perms = namsdec_core::Perms {
                     read: true,
                     write: section.writable,
@@ -2527,6 +2657,50 @@ impl NamsdecApp {
         });
     }
 
+    /// Rend compte d'une erreur d'exécution, dans les mots qui
+    /// conviennent.
+    ///
+    /// Un appel qui tombe sur la borne d'une fonction de bibliothèque
+    /// n'est pas « un saut dans des données » : c'est un appel à
+    /// `printf`. Le dire tel quel évite d'envoyer chercher une faute de
+    /// pointeur là où il n'y en a pas — et apprend au passage ce que fait
+    /// vraiment un éditeur de liens dynamique.
+    fn report_error(&mut self, e: &namsdec_emu::EmuError) {
+        if let Some((message, conseil)) = self.library_call(e) {
+            self.status = Status::Error(message);
+            self.error_advice = Some(conseil);
+            return;
+        }
+        self.error_advice = errors::advice(self.lang, e).map(str::to_owned);
+        self.status = Status::Error(errors::emu(self.lang, e));
+    }
+
+    /// L'erreur vient-elle d'un appel à une fonction de bibliothèque ?
+    ///
+    /// Le chargeur a posé une borne à la place de chaque fonction
+    /// absente : une adresse lisible mais non exécutable, dont il a gardé
+    /// le nom. Sauter dessus se termine donc par un refus d'exécution —
+    /// et c'est ici qu'on retrouve de qui il s'agissait.
+    fn library_call(&self, e: &namsdec_emu::EmuError) -> Option<(String, String)> {
+        use namsdec_core::MemError;
+        let namsdec_emu::EmuError::Mem(MemError::Protection { addr, .. }) = e else {
+            return None;
+        };
+        let binaire = self.assemble_state.as_ref()?.from_binary.as_ref()?;
+        // La borne fait seize octets : un appel peut viser son début ou,
+        // par un saut de table de liaison, quelques octets plus loin.
+        let (_, nom) = binaire
+            .externals
+            .range(..=*addr)
+            .next_back()
+            .filter(|(début, _)| *addr < **début + 16)?;
+        let s = strings(self.lang);
+        Some((
+            format!("{} « {nom} »", s.library_call),
+            format!("{} {}", s.library_call_advice, s.library_call_static),
+        ))
+    }
+
     fn do_step(&mut self) {
         self.remember_registers();
         self.remember_step();
@@ -2549,11 +2723,7 @@ impl NamsdecApp {
             }
             Ok(StepResult::NeedsInput) => self.status = Status::WaitingForInput,
             Ok(StepResult::Continued) => {}
-            Err(e) => {
-                self.error_advice = errors::advice(self.lang, &e);
-                self.error_advice = errors::advice(self.lang, &e);
-                self.status = Status::Error(errors::emu(self.lang, &e));
-            }
+            Err(e) => self.report_error(&e),
         }
         self.notify_step();
     }
@@ -2748,8 +2918,7 @@ impl NamsdecApp {
             }
             Err(e) => {
                 self.running = false;
-                self.error_advice = errors::advice(self.lang, &e);
-                self.status = Status::Error(errors::emu(self.lang, &e));
+                self.report_error(&e);
             }
         }
         self.notify_step();
@@ -2828,11 +2997,7 @@ impl NamsdecApp {
             Ok(StepOverResult::StepLimit) => self.status = Status::StepLimit,
             Ok(StepOverResult::NeedsInput) => self.status = Status::WaitingForInput,
             Ok(StepOverResult::Stepped | StepOverResult::SteppedOverCall) => {}
-            Err(e) => {
-                self.error_advice = errors::advice(self.lang, &e);
-                self.error_advice = errors::advice(self.lang, &e);
-                self.status = Status::Error(errors::emu(self.lang, &e));
-            }
+            Err(e) => self.report_error(&e),
         }
         self.notify_step();
     }
@@ -3581,7 +3746,14 @@ impl NamsdecApp {
                 self.diagnostics.clear();
                 self.status = Status::Idle;
             }
-            Err(e) => self.load_binary(e.into_bytes()),
+            Err(e) => {
+                let nom = path
+                    .file_name()
+                    .map(|nom| nom.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| "programme".to_owned());
+                self.note_recent(&path);
+                self.load_binary(e.into_bytes(), &nom);
+            }
         }
     }
 
@@ -3603,7 +3775,7 @@ impl NamsdecApp {
     ///
     /// Rend `false` si ce n'en est pas un — à l'appelant de retomber sur
     /// le désassemblage brut.
-    fn load_elf(&mut self, bytes: &[u8]) -> bool {
+    fn load_elf(&mut self, bytes: &[u8], name: &str) -> bool {
         let Some(elf) = namsdec_asm::elf::parse(bytes) else {
             return false;
         };
@@ -3677,8 +3849,13 @@ impl NamsdecApp {
                 Some(scan) => LoadedBinary {
                     needed: scan.needed,
                     interpreter: scan.interpreter,
+                    name: name.to_owned(),
+                    ..Default::default()
                 },
-                None => LoadedBinary::default(),
+                None => LoadedBinary {
+                    name: name.to_owned(),
+                    ..Default::default()
+                },
             }),
         });
         self.note_program_io();
@@ -3726,13 +3903,73 @@ impl NamsdecApp {
                 ),
             });
         }
+        self.note_load_report();
+        // Le vidage mémoire s'ouvre là où l'exécution commence : la
+        // fenêtre historique (`0x400000`) ne veut plus rien dire pour un
+        // binaire chargé à ses propres adresses, et la première chose
+        // qu'on regarde est ce que le programme va exécuter.
+        self.mem_addr = elf.entry;
+        self.mem_addr_input = format!("{:#x}", elf.entry);
         true
     }
 
-    fn load_binary(&mut self, mut bytes: Vec<u8>) {
+    /// Dit ce que le chargeur a fait, quand il n'a pas pu tout faire.
+    ///
+    /// Un chargement complet n'appelle pas de commentaire : le programme
+    /// tourne, et la carte mémoire montre le reste. Un chargement qui
+    /// laisse des cases vides, si — car c'est lui qui explique l'arrêt à
+    /// venir, et il vaut mieux l'apprendre en ouvrant le fichier qu'au
+    /// milieu d'une exécution.
+    fn note_load_report(&mut self) {
+        let Some(chargé) = self
+            .assemble_state
+            .as_ref()
+            .and_then(|state| state.from_binary.as_ref())
+        else {
+            return;
+        };
+        let rapport = chargé.load.clone();
+        if rapport.external.is_empty() {
+            return;
+        }
+        let s = strings(self.lang);
+        // Les premières manquantes, et le compte : soixante noms dans un
+        // panneau de diagnostics ne se lisent pas.
+        let montrées = rapport
+            .external
+            .iter()
+            .take(6)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(", ");
+        let suite = if rapport.external.len() > 6 {
+            format!(", … {} {}", rapport.external.len() - 6, s.loaded_others)
+        } else {
+            String::new()
+        };
+        let message = format!(
+            "{} {} {}, {} {}, {} {} — {} {} : {montrées}{suite}",
+            s.loaded_summary,
+            rapport.segments,
+            s.loaded_segments,
+            rapport.relocations,
+            s.loaded_relocations,
+            rapport.tls,
+            s.loaded_tls,
+            rapport.external.len(),
+            s.loaded_external,
+        );
+        self.diagnostics.push(namsdec_asm::Diagnostic {
+            line: 0,
+            severity: namsdec_asm::Severity::Warning,
+            message,
+        });
+    }
+
+    fn load_binary(&mut self, mut bytes: Vec<u8>, name: &str) {
         // Un ELF64 dit lui-même où il va et par où il commence : autant
         // l'écouter.
-        if self.load_elf(&bytes) {
+        if self.load_elf(&bytes, name) {
             return;
         }
 
@@ -12321,22 +12558,67 @@ fn data_dir() -> Option<PathBuf> {
     Some(base.join("namsdec"))
 }
 
+/// Les sections qu'un binaire ordinaire porte, et qui méritent d'être
+/// nommées telles quelles dans la carte mémoire et dans les messages de
+/// faute.
+///
+/// Un programme qu'on vient d'écrire en a trois ou quatre ; un exécutable
+/// venu du disque en a vingt, et savoir qu'on est tombé dans `.got` ou
+/// dans `.plt` plutôt que dans « des données » est souvent toute la
+/// réponse à la question qu'on se pose.
+const SECTIONS_CONNUES: &[&str] = &[
+    ".text",
+    ".data",
+    ".bss",
+    ".rodata",
+    ".init",
+    ".fini",
+    ".plt",
+    ".plt.sec",
+    ".plt.got",
+    ".got",
+    ".got.plt",
+    ".init_array",
+    ".fini_array",
+    ".data.rel.ro",
+    ".dynamic",
+    ".dynsym",
+    ".dynstr",
+    ".interp",
+    ".eh_frame",
+    ".eh_frame_hdr",
+    ".gcc_except_table",
+    ".tdata",
+    ".tbss",
+    ".rela.dyn",
+    ".rela.plt",
+    ".gnu.hash",
+];
+
 /// Le nom sous lequel annoncer une section dans un message de faute.
 ///
-/// Les quatre noms usuels passent tels quels ; une section au nom exotique
-/// est annoncée par ce qu'elle *est* — du code, des données, de la donnée
+/// Les noms usuels passent tels quels ; une section au nom exotique est
+/// annoncée par ce qu'elle *est* — du code, des données, de la donnée
 /// en lecture seule. Le message doit pouvoir être écrit dans les deux
 /// langues, et un nom venu du fichier ne peut pas l'être : il n'a pas de
 /// durée de vie statique, et il ne se traduit pas.
 fn region_label(section: &namsdec_asm::Section) -> &'static str {
-    match section.name.as_str() {
-        ".text" => ".text",
-        ".data" => ".data",
-        ".bss" => ".bss",
-        ".rodata" => ".rodata",
-        _ if section.executable => ".text",
-        _ if section.writable => ".data",
-        _ => ".rodata",
+    region_label_named(&section.name, section.executable, section.writable)
+}
+
+/// Même chose, depuis les faits plutôt que depuis la structure : le
+/// chargeur travaille sur les sections de l'ELF, qui ne sont pas du même
+/// type que celles d'un programme assemblé mais portent les mêmes noms.
+pub(crate) fn region_label_named(name: &str, executable: bool, writable: bool) -> &'static str {
+    if let Some(connu) = SECTIONS_CONNUES.iter().find(|connu| **connu == name) {
+        return connu;
+    }
+    if executable {
+        ".text"
+    } else if writable {
+        ".data"
+    } else {
+        ".rodata"
     }
 }
 

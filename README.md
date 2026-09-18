@@ -179,7 +179,7 @@ pour chacun, ce que son état change concrètement. Sur
 votre programme comme sur un binaire du système. Le rapport se copie en
 Markdown, ou s'enregistre, pour être collé dans un compte rendu ou un cours.
 
-Et aussi : documentation de 153 instructions, directives et notions sous **F1** ou
+Et aussi : documentation de 154 instructions, directives et notions sous **F1** ou
 au survol — avec sommaire, renvois d'une fiche à l'autre et export du
 manuel entier en Markdown (menu Aide), parce que ce qu'on apprend ici
 doit pouvoir se lire ailleurs —, autocomplétion qui ne propose que ce qui est documenté,
@@ -400,12 +400,23 @@ sans avertissement, et s'exécuter jusqu'au bout.
 ## Ce qu'il ne fait pas
 
 - Pas de mode 32 bits, pas d'`int 0x80`.
-- Pas de libc : un programme lié dynamiquement s'analyse, mais ne
-  s'exécute pas ici (il n'y a pas de vrai noyau derrière).
-- Les appels système simulés sont `read`, `write`, `brk` et `exit`, plus
-  ceux qui renseignent sans rien changer au monde — `getpid`, `getuid`,
-  `geteuid`, `sched_yield`, `nanosleep`, `getrandom`. Les autres sont
-  nommés et signalés comme non simulés. `getrandom` rend des octets
+- **Pas d'éditeur de liens dynamique.** namsdec charge un binaire comme
+  le ferait le noyau — segments projetés en pages, relocations
+  appliquées, mémoire locale au fil posée, pile de processus écrite avec
+  `argc`, `argv`, l'environnement et le vecteur auxiliaire — mais il ne
+  charge aucune bibliothèque. Un binaire lié **statiquement** s'exécute
+  donc entièrement, bibliothèque C comprise ; un binaire **dynamique** se
+  lit, s'analyse et se désassemble, et s'arrête au premier appel qui sort
+  de lui, en nommant la fonction qu'il voulait appeler.
+- Les appels système simulés sont ceux qui *font* le travail — `read`,
+  `write`, `brk`, `mmap`, `mprotect`, `exit` —, ceux qui renseignent sans
+  rien changer au monde — `getpid`, `getuid`, `geteuid`, `sched_yield`,
+  `nanosleep`, `getrandom`, `uname`, `clock_gettime` — et ceux du
+  démarrage d'une bibliothèque C : `arch_prctl`, `set_tid_address`,
+  `fstat`, `ioctl`, `writev`, `prlimit64`, `futex`. Les autres — ouvrir
+  un fichier, lancer un processus, ouvrir une connexion — sont nommés et
+  signalés comme non simulés : il n'y a derrière namsdec ni système de
+  fichiers, ni réseau, ni second processus. `getrandom` rend des octets
   **reproductibles** : c'est ce qu'il faut à un atelier où l'on revient
   en arrière, et ce qu'il ne faut surtout pas à une clé.
 - AVX-512, FMA, les ports `in`/`out` et `cmpxchg16b` ne sont pas

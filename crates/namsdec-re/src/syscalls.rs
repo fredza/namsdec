@@ -181,7 +181,7 @@ mod tests {
         assert_eq!(module.found[0].number, Some(1), "write");
         assert_eq!(module.found[1].number, Some(0), "xor rax, rax vaut zéro");
         assert_eq!(syscall_name(1), Some("write"));
-        assert!(is_simulated(12) && !is_simulated(9));
+        assert!(is_simulated(12) && !is_simulated(59));
     }
 
     /// Un numéro qui vient d'un calcul ne se devine pas : le module le dit

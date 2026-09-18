@@ -192,6 +192,23 @@ pub struct Registers {
     /// calcul à virgule.
     pub x87: X87,
     pub rip: u64,
+    /// La base du segment FS : ce que le noyau installe pour désigner la
+    /// mémoire locale au fil d'exécution.
+    ///
+    /// En 64 bits, CS, DS, ES et SS ont tous une base nulle — c'est le
+    /// modèle plat. FS et GS font exception, et c'est *tout* leur intérêt :
+    /// `mov rax, fs:[0x28]` ne lit pas l'adresse 0x28, mais l'adresse
+    /// 0x28 **au-dessus de la base du fil**, là où vit le canari de pile.
+    /// Un programme qui vient d'un compilateur moderne le fait dès sa
+    /// première fonction protégée.
+    ///
+    /// Nulle tant que personne ne l'a installée — un programme écrit à la
+    /// main n'en a pas besoin, et une base nulle fait dire à namsdec
+    /// qu'il ne sait pas où pointe FS plutôt que de lire n'importe où.
+    pub fs_base: u64,
+    /// La base du segment GS. Linux la réserve au noyau ; un programme en
+    /// espace utilisateur ne s'en sert presque jamais.
+    pub gs_base: u64,
 }
 
 impl Registers {

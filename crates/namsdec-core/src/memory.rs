@@ -137,15 +137,25 @@ impl Memory {
 
     /// Déclare une zone et ses droits.
     ///
-    /// Le nom identifie la zone : la redéclarer la remplace. C'est ce qui
-    /// permet au tas de grandir — `brk` rappelle `map` avec une plage
-    /// plus large — sans laisser derrière lui une pile de zones périmées.
+    /// Ce qui identifie une zone, c'est son nom **et** son adresse de
+    /// départ : la redéclarer au même endroit la remplace. C'est ce qui
+    /// permet au tas de grandir — `brk` rappelle `map` avec la même
+    /// adresse de départ et une fin plus loin — sans laisser derrière lui
+    /// une pile de zones périmées.
+    ///
+    /// Le nom seul ne suffit pas : un vrai programme a plusieurs zones de
+    /// code — `.init`, `.plt`, `.text`, `.fini` — qui portent toutes
+    /// l'étiquette « .text ». Les départager par le nom seul effaçait la
+    /// précédente à chaque fois, et il ne restait projeté que la dernière
+    /// déclarée : le point d'entrée d'un binaire ouvert tombait alors
+    /// dans un trou.
     ///
     /// Deux zones qui se recouvrent sont départagées par l'ordre : la
     /// dernière déclarée gagne, ce qui permet de poser une pile au milieu
     /// d'un bloc déjà décrit.
     pub fn map(&mut self, range: Range<u64>, perms: Perms, name: &'static str) {
-        self.regions.retain(|region| region.name != name);
+        self.regions
+            .retain(|region| region.name != name || region.range.start != range.start);
         self.regions.push(Region { range, perms, name });
     }
 
@@ -192,7 +202,16 @@ impl Memory {
     pub fn regions(&self) -> Vec<Region> {
         let mut vues: Vec<Region> = Vec::new();
         for region in self.regions.iter().rev() {
-            if vues.iter().any(|vue| vue.name == region.name) {
+            // Une zone vide n'est pas une zone : le tas d'un programme
+            // qui n'a rien demandé occupe zéro octet, et l'annoncer sur
+            // la carte ferait chercher quelque chose là où il n'y a rien.
+            if region.range.is_empty() {
+                continue;
+            }
+            if vues
+                .iter()
+                .any(|vue| vue.name == region.name && vue.range.start == region.range.start)
+            {
                 continue;
             }
             vues.push(region.clone());
@@ -481,5 +500,44 @@ mod tests {
         assert!(mem.peek_bytes(0x400000, 2).is_ok());
         // Mais le programme, lui, ne peut pas y écrire.
         assert!(mem.write_bytes(0x400000, &[0x90]).is_err());
+    }
+
+    /// Plusieurs zones peuvent porter la même étiquette.
+    ///
+    /// Un vrai binaire a quatre sections exécutables — `.init`, `.text`,
+    /// `.fini`, `.plt` — et elles s'annoncent toutes comme du code.
+    /// Quand le nom seul identifiait la zone, chacune effaçait la
+    /// précédente : le point d'entrée d'un programme ouvert n'était
+    /// projeté nulle part, et la première instruction se heurtait à un
+    /// « rien n'est projeté à cette adresse ».
+    #[test]
+    fn two_regions_may_share_a_label() {
+        let mut mem = Memory::new(0x400000, 0x10000);
+        mem.map(0x400000..0x401000, Perms::TEXT, ".text");
+        mem.map(0x403000..0x404000, Perms::TEXT, ".text");
+
+        assert!(
+            mem.check(0x400000, 1, Access::Execute).is_ok(),
+            "la première zone reste projetée"
+        );
+        assert!(
+            mem.check(0x403000, 1, Access::Execute).is_ok(),
+            "la seconde aussi"
+        );
+        assert_eq!(mem.regions().len(), 2, "et la carte montre les deux");
+    }
+
+    /// La même zone redéclarée au même endroit, en revanche, remplace :
+    /// c'est ainsi que le tas grandit sans laisser de zones périmées
+    /// derrière lui.
+    #[test]
+    fn a_region_redeclared_at_the_same_address_replaces_the_previous_one() {
+        let mut mem = Memory::new(0x400000, 0x10000);
+        mem.map(0x405000..0x405100, Perms::DATA, "heap");
+        mem.map(0x405000..0x405200, Perms::DATA, "heap");
+
+        let zones = mem.regions();
+        assert_eq!(zones.len(), 1, "une seule zone de tas : {zones:?}");
+        assert_eq!(zones[0].range, 0x405000..0x405200, "et c'est la plus large");
     }
 }

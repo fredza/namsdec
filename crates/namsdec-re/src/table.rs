@@ -46,6 +46,7 @@ pub fn syscall(number: u64) -> Option<Syscall> {
         12 => ("brk", &["rupture"]),
         13 => ("rt_sigaction", &["signal", "action", "ancienne"]),
         16 => ("ioctl", &["fd", "requête", "argument"]),
+        19 => ("readv", &["fd", "vecteur", "nombre"]),
         20 => ("writev", &["fd", "vecteur", "nombre"]),
         22 => ("pipe", &["tubes"]),
         23 => (
@@ -68,8 +69,26 @@ pub fn syscall(number: u64) -> Option<Syscall> {
         83 => ("mkdir", &["chemin", "droits"]),
         87 => ("unlink", &["chemin"]),
         96 => ("gettimeofday", &["heure", "fuseau"]),
+        89 => ("readlink", &["chemin", "buf", "taille"]),
+        97 => ("getrlimit", &["ressource", "limite"]),
         102 => ("getuid", &[]),
+        104 => ("getgid", &[]),
         107 => ("geteuid", &[]),
+        108 => ("getegid", &[]),
+        110 => ("getppid", &[]),
+        158 => ("arch_prctl", &["code", "adresse"]),
+        186 => ("gettid", &[]),
+        202 => ("futex", &["adresse", "opération", "valeur", "délai"]),
+        218 => ("set_tid_address", &["adresse"]),
+        228 => ("clock_gettime", &["horloge", "temps"]),
+        262 => ("newfstatat", &["dossier", "chemin", "statbuf", "options"]),
+        267 => ("readlinkat", &["dossier", "chemin", "buf", "taille"]),
+        273 => ("set_robust_list", &["liste", "taille"]),
+        302 => (
+            "prlimit64",
+            &["pid", "ressource", "nouvelle", "ancienne"],
+        ),
+        334 => ("rseq", &["rseq", "taille", "options", "signature"]),
         201 => ("time", &["résultat"]),
         318 => ("getrandom", &["buf", "taille", "options"]),
         231 => ("exit_group", &["code"]),
@@ -80,13 +99,53 @@ pub fn syscall(number: u64) -> Option<Syscall> {
         number,
         name,
         args,
-        // Ceux que l'interpréteur exécute pour de vrai. Les quatre
-        // premiers font le travail ; les autres renseignent sans rien
-        // changer au monde, et s'arrêter dessus empêcherait seulement
-        // le programme d'aller plus loin.
+        // Ceux que l'interpréteur exécute pour de vrai.
+        //
+        // Trois familles. Ceux qui *font* le travail — lire, écrire,
+        // sortir, demander de la mémoire. Ceux qui *renseignent* sans
+        // rien changer au monde, et sur lesquels s'arrêter empêcherait
+        // seulement le programme d'avancer. Et ceux du **démarrage**
+        // d'une bibliothèque C — `arch_prctl` pour installer la base FS,
+        // `fstat` pour choisir comment tamponner la sortie, `prlimit64`
+        // pour connaître sa pile : un binaire lié statiquement en fait
+        // une vingtaine avant d'arriver à `main`, et il suffit d'un seul
+        // manquant pour qu'il n'y arrive jamais.
         simulated: matches!(
             number,
-            0 | 1 | 12 | 24 | 35 | 39 | 60 | 102 | 107 | 231 | 318
+            0 | 1
+                | 5
+                | 9
+                | 10
+                | 11
+                | 12
+                | 16
+                | 19
+                | 20
+                | 24
+                | 35
+                | 39
+                | 60
+                | 63
+                | 89
+                | 96
+                | 97
+                | 102
+                | 104
+                | 107
+                | 108
+                | 110
+                | 158
+                | 186
+                | 202
+                | 218
+                | 228
+                | 231
+                | 262
+                | 267
+                | 273
+                | 302
+                | 318
+                | 334
         ),
     })
 }
@@ -125,8 +184,14 @@ mod tests {
     #[test]
     fn unsimulated_calls_say_so() {
         assert!(is_simulated(1) && is_simulated(60));
-        assert!(!is_simulated(9), "mmap n'est pas simulé");
-        assert!(syscall(9).is_some(), "mais il est nommé");
+        // Ce qui demanderait un vrai système : un système de fichiers,
+        // d'autres processus, un réseau.
+        assert!(!is_simulated(2), "ouvrir un fichier n'est pas simulé");
+        assert!(!is_simulated(59), "execve non plus");
+        assert!(syscall(2).is_some(), "mais ils sont nommés");
+        // Ceux du démarrage d'une bibliothèque C, eux, le sont.
+        assert!(is_simulated(158), "arch_prctl installe la base FS");
+        assert!(is_simulated(9), "mmap donne de la mémoire");
         assert!(syscall(4242).is_none());
     }
 

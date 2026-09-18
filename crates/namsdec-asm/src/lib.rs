@@ -609,7 +609,7 @@ _start:
                     writable: true,
                 },
             ],
-            symbols: Vec::new(),
+            ..Default::default()
         };
         let listing = "\
      1                                  section .data

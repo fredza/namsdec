@@ -470,7 +470,7 @@ impl NamsdecApp {
     /// sous l'instruction qui a échoué, plutôt que dans la barre de
     /// statut, qui n'a de place que pour une ligne tronquée.
     fn advice_ui(&mut self, ui: &mut egui::Ui) {
-        let Some(advice) = self.error_advice else {
+        let Some(advice) = self.error_advice.clone() else {
             return;
         };
         let theme = self.theme;

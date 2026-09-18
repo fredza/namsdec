@@ -203,6 +203,8 @@ struct Undo {
     frames: FrameChange,
     /// Le tas d'avant : un `brk` se défait comme le reste.
     heap: Heap,
+    /// L'arène d'avant : un `mmap` aussi.
+    mmap: Mmap,
     /// Le compteur d'instructions d'avant : `rdtsc` doit rendre deux fois
     /// la même valeur si on rejoue deux fois le même pas.
     ticks: u64,
@@ -635,6 +637,41 @@ impl Heap {
     }
 }
 
+/// L'arène de `mmap` : la mémoire que le noyau donne **en dehors** du
+/// tas, et par laquelle passe tout allocateur un peu sérieux.
+///
+/// `brk` sert à agrandir le tas d'un seul tenant ; `mmap` sert à obtenir
+/// un bloc indépendant, qu'on rendra sans toucher au reste. La glibc s'en
+/// sert pour les grosses allocations, pour ses tampons d'entrée-sortie et
+/// pour la mémoire locale des fils. Un programme lié statiquement n'en
+/// fait pas trois cents pas sans.
+///
+/// Ici, pas de pagination ni de recherche de place : un curseur qui
+/// monte. Rendre la mémoire (`munmap`) ne la reprend donc pas — ce qui
+/// est dit dans le code plutôt que caché.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Mmap {
+    start: u64,
+    current: u64,
+    limit: u64,
+}
+
+impl Mmap {
+    /// Combien d'octets ont été donnés.
+    pub fn len(&self) -> u64 {
+        self.current - self.start
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.current == self.start
+    }
+
+    /// Le plus haut que l'arène puisse monter.
+    pub fn limit(&self) -> u64 {
+        self.limit
+    }
+}
+
 pub struct Emulator {
     pub cpu: Cpu,
     pub breakpoints: BTreeSet<u64>,
@@ -663,6 +700,8 @@ pub struct Emulator {
     watched_registers: Vec<(&'static str, Reg64, u64)>,
     /// Le tas, tel que `brk` l'a laissé.
     heap: Heap,
+    /// L'arène de `mmap`, telle que les allocations l'ont laissée.
+    mmap: Mmap,
     /// Les entorses à la convention d'appel relevées jusqu'ici.
     breaches: Vec<AbiBreach>,
     /// Combien d'instructions ont été exécutées depuis le chargement.
@@ -838,6 +877,12 @@ impl Emulator {
                 current: end,
                 limit: end,
             },
+            // Sans arène déclarée, `mmap` n'a rien à donner et le dit.
+            mmap: Mmap {
+                start: end,
+                current: end,
+                limit: end,
+            },
             ticks: 0,
             visits: BTreeMap::new(),
             trace: VecDeque::new(),
@@ -870,6 +915,52 @@ impl Emulator {
     /// Le tas, tel que `brk` l'a laissé.
     pub fn heap(&self) -> Heap {
         self.heap
+    }
+
+    /// Installe l'arène de `mmap`.
+    ///
+    /// Comme pour le tas, c'est l'appelant qui la place : lui seul sait
+    /// ce qu'il a chargé et où la pile commence. Sans arène, `mmap`
+    /// répond « plus de mémoire » — ce qui est la vérité.
+    pub fn set_mmap(&mut self, start: u64, limit: u64) {
+        let range = self.cpu.mem.range();
+        let start = page_up(start).clamp(range.start, range.end);
+        let limit = limit.clamp(start, range.end);
+        self.mmap = Mmap {
+            start,
+            current: start,
+            limit,
+        };
+    }
+
+    /// L'arène de `mmap`, telle que les allocations l'ont laissée.
+    pub fn mmap(&self) -> Mmap {
+        self.mmap
+    }
+
+    /// Donne `len` octets d'arène, projetés avec les droits demandés.
+    ///
+    /// Rend `None` quand il n'y a plus de place — ce que le noyau
+    /// signale par `-ENOMEM`, et qu'un allocateur sait encaisser.
+    fn mmap_anonymous(&mut self, len: u64, perms: namsdec_core::Perms) -> Option<u64> {
+        let len = page_up(len.max(1));
+        let start = self.mmap.current;
+        let fin = start.checked_add(len)?;
+        if fin > self.mmap.limit {
+            return None;
+        }
+        self.mmap.current = fin;
+        // Une page rendue par `mmap` est **vierge** : le noyau ne donne
+        // jamais les données de quelqu'un d'autre. Ici, la mémoire a déjà
+        // servi si un `munmap` est passé avant, d'où la remise à zéro.
+        let _ = self.cpu.mem.poke(start, &vec![0u8; len as usize]);
+        // Seulement si la mémoire est déjà découpée en zones : en
+        // déclarer une dans un bloc qui n'en a aucune rendrait tout le
+        // reste — le programme lui-même — inadressable.
+        if self.cpu.mem.has_regions() {
+            self.cpu.mem.map(start..fin, perms, "mmap");
+        }
+        Some(start)
     }
 
     /// Déplace la rupture et rend celle qui vaut désormais.
@@ -914,6 +1005,100 @@ impl Emulator {
         );
     }
 
+    /// Décrit un descripteur ouvert comme le ferait `fstat`.
+    ///
+    /// Une bibliothèque C interroge la sortie standard avant d'écrire son
+    /// premier caractère : selon la réponse, elle tamponne par ligne (un
+    /// terminal) ou par blocs de quelques kilo-octets (un fichier). Sans
+    /// réponse, elle n'écrit rien du tout — et l'on cherche longtemps
+    /// pourquoi un `printf` ne sort pas.
+    ///
+    /// namsdec répond « un terminal » : la sortie apparaît alors ligne à
+    /// ligne, au moment où le programme l'écrit, ce qui est exactement ce
+    /// qu'on veut en avançant pas à pas.
+    fn fstat(&mut self, fd: u64, buf: u64) -> Result<i64, EmuError> {
+        /// `struct stat` d'x86-64 : 144 octets, dont seuls quelques
+        /// champs intéressent qui que ce soit ici.
+        const STAT_SIZE: usize = 144;
+        /// Un périphérique caractère, lisible et inscriptible par son
+        /// propriétaire : `S_IFCHR | 0620`, ce qu'est un terminal.
+        const S_IFCHR: u32 = 0x2000;
+        const MODE: u32 = S_IFCHR | 0o620;
+        if fd > 2 {
+            return Ok(-9);
+        }
+        if buf == 0 {
+            return Ok(-14);
+        }
+        let mut stat = [0u8; STAT_SIZE];
+        stat[24..28].copy_from_slice(&MODE.to_le_bytes());
+        stat[16..24].copy_from_slice(&1u64.to_le_bytes()); // st_nlink
+        stat[56..64].copy_from_slice(&1024i64.to_le_bytes()); // st_blksize
+        self.cpu.mem.poke(buf, &stat)?;
+        Ok(0)
+    }
+
+    /// Remplit la `struct utsname` de `uname`.
+    fn uname(&mut self, buf: u64) -> Result<(), EmuError> {
+        /// Six champs de 65 octets, bout à bout.
+        const CHAMP: usize = 65;
+        let champs = [
+            "Linux",
+            "namsdec",
+            "6.0.0-namsdec",
+            "#1 SMP namsdec",
+            "x86_64",
+            "(none)",
+        ];
+        let mut bloc = vec![0u8; CHAMP * champs.len()];
+        for (index, texte) in champs.iter().enumerate() {
+            let octets = texte.as_bytes();
+            bloc[index * CHAMP..index * CHAMP + octets.len()].copy_from_slice(octets);
+        }
+        self.cpu.mem.poke(buf, &bloc)?;
+        Ok(())
+    }
+
+    /// `writev` et `readv` : la même chose que `write` et `read`, mais sur
+    /// une liste de morceaux.
+    ///
+    /// Une bibliothèque C s'en sert pour vider un tampon et ajouter la
+    /// suite en un seul appel — ce qui explique qu'un `printf` puisse ne
+    /// jamais passer par `write`.
+    fn vector_io(&mut self, fd: u64, iov: u64, count: u64, lecture: bool) -> Result<i64, EmuError> {
+        /// Un `struct iovec` : un pointeur, une longueur.
+        const IOVEC: u64 = 16;
+        /// Le noyau en refuse plus de mille vingt-quatre.
+        const IOV_MAX: u64 = 1024;
+        if count > IOV_MAX {
+            return Ok(-22);
+        }
+        let mut total = 0i64;
+        for index in 0..count {
+            let at = iov + index * IOVEC;
+            let base = self.cpu.mem.read_u64(at)?;
+            let len = self.cpu.mem.read_u64(at + 8)?;
+            if len == 0 {
+                continue;
+            }
+            let fait = if lecture {
+                self.read(fd, base, len)?
+            } else {
+                self.write(fd, base, len)?
+            };
+            if fait < 0 {
+                return Ok(if total > 0 { total } else { fait });
+            }
+            total += fait;
+            // Une lecture plus courte que demandé met fin à l'appel :
+            // c'est ainsi que se termine un fichier.
+            if (fait as u64) < len {
+                break;
+            }
+        }
+        Ok(total)
+    }
+
     /// L'appel système Linux x86-64 : le numéro est dans RAX, les
     /// arguments dans RDI, RSI, RDX (puis R10, R8, R9 — dont aucun appel
     /// géré ici n'a besoin), et la valeur de retour repart dans RAX.
@@ -949,6 +1134,76 @@ impl Emulator {
         /// programme ne donnerait pas deux fois le même résultat et le
         /// retour en arrière n'aurait plus de sens.
         const SYS_GETRANDOM: u64 = 318;
+        /// `arch_prctl` : le seul moyen, en espace utilisateur, de
+        /// déplacer la base FS. Un binaire lié statiquement s'en sert
+        /// pour installer sa propre mémoire locale au fil, avant même
+        /// d'avoir appelé quoi que ce soit.
+        const SYS_ARCH_PRCTL: u64 = 158;
+        const ARCH_SET_GS: u64 = 0x1001;
+        const ARCH_SET_FS: u64 = 0x1002;
+        const ARCH_GET_FS: u64 = 0x1003;
+        const ARCH_GET_GS: u64 = 0x1004;
+        /// Les appels par lesquels une bibliothèque C annonce au noyau de
+        /// quoi gérer les fils d'exécution. Sans fils, il n'y a rien à
+        /// annoncer — mais refuser l'appel arrêterait le programme au
+        /// milieu de son démarrage, avant sa première ligne utile.
+        const SYS_SET_TID_ADDRESS: u64 = 218;
+        const SYS_SET_ROBUST_LIST: u64 = 273;
+        const SYS_RSEQ: u64 = 334;
+        /// `mmap` et ses voisins : la mémoire qu'on demande en dehors du
+        /// tas. Toute bibliothèque C sérieuse passe par là — pour ses
+        /// tampons d'entrée-sortie, pour les grosses allocations, pour la
+        /// mémoire locale d'un fil.
+        const SYS_MMAP: u64 = 9;
+        const SYS_MPROTECT: u64 = 10;
+        const SYS_MUNMAP: u64 = 11;
+        /// `MAP_ANONYMOUS` : de la mémoire vierge, sans fichier derrière.
+        /// C'est le seul `mmap` que namsdec sait rendre — il n'y a pas de
+        /// système de fichiers ici.
+        const MAP_ANONYMOUS: u64 = 0x20;
+        const PROT_READ: u64 = 1;
+        const PROT_WRITE: u64 = 2;
+        const PROT_EXEC: u64 = 4;
+        /// `fstat` sur la sortie standard : une bibliothèque C le fait
+        /// avant d'écrire son premier caractère, pour choisir comment
+        /// tamponner. Sans réponse, elle n'écrit rien du tout.
+        const SYS_FSTAT: u64 = 5;
+        const SYS_NEWFSTATAT: u64 = 262;
+        /// `ioctl` : la même question, posée autrement — « es-tu un
+        /// terminal ? »
+        const SYS_IOCTL: u64 = 16;
+        /// `writev` écrit plusieurs morceaux d'un coup. `printf` s'en
+        /// sert dès qu'il doit vider un tampon et ajouter du texte.
+        const SYS_WRITEV: u64 = 20;
+        const SYS_READV: u64 = 19;
+        /// Les limites du processus. La glibc lit celle de la pile au
+        /// démarrage, et s'arrête si personne ne répond.
+        const SYS_PRLIMIT64: u64 = 302;
+        const SYS_GETRLIMIT: u64 = 97;
+        const RLIMIT_STACK: u64 = 3;
+        /// `uname` : qui es-tu, noyau ?
+        const SYS_UNAME: u64 = 63;
+        /// Les liens symboliques : un programme y lit son propre chemin.
+        /// Il n'y a pas de système de fichiers, et le dire (`-EINVAL`)
+        /// vaut mieux que de s'arrêter.
+        const SYS_READLINK: u64 = 89;
+        const SYS_READLINKAT: u64 = 267;
+        /// `futex` : l'attente entre fils d'exécution. Il n'y en a qu'un,
+        /// donc il n'y a jamais personne à attendre.
+        const SYS_FUTEX: u64 = 202;
+        const SYS_GETTID: u64 = 186;
+        const SYS_GETPPID: u64 = 110;
+        const SYS_GETGID: u64 = 104;
+        const SYS_GETEGID: u64 = 108;
+        /// L'horloge. Elle avance au rythme des instructions exécutées :
+        /// c'est le seul temps qui existe ici, et il est reproductible.
+        const SYS_CLOCK_GETTIME: u64 = 228;
+        const SYS_GETTIMEOFDAY: u64 = 96;
+        /// Les codes d'erreur que namsdec rend, avec leur nom de la libc.
+        const ENOSYS: i64 = -38;
+        const EINVAL: i64 = -22;
+        const ENOTTY: i64 = -25;
+        const ENOMEM: i64 = -12;
         /// Le numéro que namsdec rend à `getpid`, toujours le même : un
         /// programme d'apprentissage doit être reproductible.
         const FAKE_PID: u64 = 1000;
@@ -993,6 +1248,48 @@ impl Emulator {
             SYS_GETUID | SYS_GETEUID => {
                 self.cpu.regs.set64(Reg64::Rax, FAKE_PID);
             }
+            SYS_ARCH_PRCTL => {
+                let code = self.cpu.regs.get64(Reg64::Rdi);
+                let valeur = self.cpu.regs.get64(Reg64::Rsi);
+                let rendu = match code {
+                    ARCH_SET_FS => {
+                        self.cpu.regs.fs_base = valeur;
+                        0
+                    }
+                    ARCH_SET_GS => {
+                        self.cpu.regs.gs_base = valeur;
+                        0
+                    }
+                    ARCH_GET_FS => {
+                        let base = self.cpu.regs.fs_base;
+                        self.cpu.mem.write_u64(valeur, base)?;
+                        0
+                    }
+                    ARCH_GET_GS => {
+                        let base = self.cpu.regs.gs_base;
+                        self.cpu.mem.write_u64(valeur, base)?;
+                        0
+                    }
+                    // `-EINVAL`, comme le noyau : le programme sait quoi
+                    // en faire, et cela vaut mieux qu'un arrêt.
+                    _ => (-22i64) as u64,
+                };
+                self.cpu.regs.set64(Reg64::Rax, rendu);
+            }
+            // Rien à annoncer, et c'est la bonne réponse : il n'y a qu'un
+            // fil d'exécution, et il est là.
+            SYS_SET_TID_ADDRESS => {
+                self.cpu.regs.set64(Reg64::Rax, FAKE_PID);
+            }
+            SYS_SET_ROBUST_LIST => {
+                self.cpu.regs.set64(Reg64::Rax, 0);
+            }
+            // `rseq` : une optimisation que le noyau refuse sans drame
+            // quand il ne la gère pas. `-ENOSYS` est exactement ce
+            // qu'une bibliothèque C sait encaisser.
+            SYS_RSEQ => {
+                self.cpu.regs.set64(Reg64::Rax, (-38i64) as u64);
+            }
             SYS_GETRANDOM => {
                 // L'appel prend (buf, taille, options) : le tampon est
                 // dans RDI, la taille dans RSI.
@@ -1000,6 +1297,155 @@ impl Emulator {
                 let count = self.cpu.regs.get64(Reg64::Rsi);
                 let written = self.fill_pseudo_random(buf, count)?;
                 self.cpu.regs.set64(Reg64::Rax, written as u64);
+            }
+            SYS_MMAP => {
+                let len = self.cpu.regs.get64(Reg64::Rsi);
+                let prot = self.cpu.regs.get64(Reg64::Rdx);
+                let flags = self.cpu.regs.get64(Reg64::R10);
+                let rendu = if flags & MAP_ANONYMOUS == 0 {
+                    // Projeter un fichier demanderait un système de
+                    // fichiers. Il n'y en a pas, et l'inventer serait pire
+                    // que de répondre non.
+                    ENOSYS as u64
+                } else {
+                    let perms = namsdec_core::Perms {
+                        read: prot & PROT_READ != 0,
+                        write: prot & PROT_WRITE != 0,
+                        execute: prot & PROT_EXEC != 0,
+                    };
+                    match self.mmap_anonymous(len, perms) {
+                        Some(adresse) => adresse,
+                        None => ENOMEM as u64,
+                    }
+                };
+                self.cpu.regs.set64(Reg64::Rax, rendu);
+            }
+            // La mémoire rendue n'est pas reprise : l'arène est un
+            // curseur qui monte. Répondre « c'est fait » est exact du
+            // point de vue du programme, qui n'y touchera plus.
+            SYS_MUNMAP => {
+                self.cpu.regs.set64(Reg64::Rax, 0);
+            }
+            // `mprotect`, lui, est appliqué pour de bon : c'est par lui
+            // qu'un programme rend ses tables de liaison inscriptibles
+            // le temps du chargement, puis les referme. Le voir marcher
+            // est la moitié de ce qu'il y a à comprendre sur RELRO.
+            SYS_MPROTECT => {
+                let addr = self.cpu.regs.get64(Reg64::Rdi);
+                let len = self.cpu.regs.get64(Reg64::Rsi);
+                let prot = self.cpu.regs.get64(Reg64::Rdx);
+                if self.cpu.mem.has_regions() && len > 0 {
+                    let début = addr & !(PAGE - 1);
+                    let fin = page_up(addr + len);
+                    self.cpu.mem.map(
+                        début..fin,
+                        namsdec_core::Perms {
+                            read: prot & PROT_READ != 0,
+                            write: prot & PROT_WRITE != 0,
+                            execute: prot & PROT_EXEC != 0,
+                        },
+                        "mprotect",
+                    );
+                }
+                self.cpu.regs.set64(Reg64::Rax, 0);
+            }
+            SYS_FSTAT => {
+                let fd = self.cpu.regs.get64(Reg64::Rdi);
+                let buf = self.cpu.regs.get64(Reg64::Rsi);
+                let rendu = self.fstat(fd, buf)?;
+                self.cpu.regs.set64(Reg64::Rax, rendu as u64);
+            }
+            SYS_NEWFSTATAT => {
+                let fd = self.cpu.regs.get64(Reg64::Rdi);
+                let buf = self.cpu.regs.get64(Reg64::Rdx);
+                let rendu = self.fstat(fd, buf)?;
+                self.cpu.regs.set64(Reg64::Rax, rendu as u64);
+            }
+            // « Es-tu un terminal ? » — non. La bibliothèque en tire la
+            // façon de tamponner sa sortie, et `-ENOTTY` est la réponse
+            // que donne un noyau pour un tube ou un fichier.
+            SYS_IOCTL => {
+                self.cpu.regs.set64(Reg64::Rax, ENOTTY as u64);
+            }
+            SYS_WRITEV | SYS_READV => {
+                let fd = self.cpu.regs.get64(Reg64::Rdi);
+                let iov = self.cpu.regs.get64(Reg64::Rsi);
+                let count = self.cpu.regs.get64(Reg64::Rdx);
+                let lecture = number == SYS_READV;
+                let rendu = self.vector_io(fd, iov, count, lecture)?;
+                self.cpu.regs.set64(Reg64::Rax, rendu as u64);
+            }
+            SYS_PRLIMIT64 | SYS_GETRLIMIT => {
+                // `prlimit64(pid, ressource, neuve, ancienne)` ;
+                // `getrlimit(ressource, ancienne)`. Seule la limite de la
+                // pile intéresse une bibliothèque C au démarrage.
+                let (ressource, ancienne) = if number == SYS_PRLIMIT64 {
+                    (
+                        self.cpu.regs.get64(Reg64::Rsi),
+                        self.cpu.regs.get64(Reg64::R10),
+                    )
+                } else {
+                    (
+                        self.cpu.regs.get64(Reg64::Rdi),
+                        self.cpu.regs.get64(Reg64::Rsi),
+                    )
+                };
+                if ancienne != 0 {
+                    let (courante, maximum) = if ressource == RLIMIT_STACK {
+                        // Ce que namsdec a réellement donné à la pile.
+                        let pile = self
+                            .cpu
+                            .mem
+                            .regions()
+                            .into_iter()
+                            .find(|zone| zone.name == "pile")
+                            .map(|zone| zone.range.end - zone.range.start)
+                            .unwrap_or(0x100000);
+                        (pile, pile)
+                    } else {
+                        (u64::MAX, u64::MAX)
+                    };
+                    self.cpu.mem.write_u64(ancienne, courante)?;
+                    self.cpu.mem.write_u64(ancienne + 8, maximum)?;
+                }
+                self.cpu.regs.set64(Reg64::Rax, 0);
+            }
+            SYS_UNAME => {
+                let buf = self.cpu.regs.get64(Reg64::Rdi);
+                self.uname(buf)?;
+                self.cpu.regs.set64(Reg64::Rax, 0);
+            }
+            SYS_READLINK | SYS_READLINKAT => {
+                self.cpu.regs.set64(Reg64::Rax, EINVAL as u64);
+            }
+            // Personne à attendre : il n'y a qu'un fil d'exécution.
+            SYS_FUTEX => {
+                self.cpu.regs.set64(Reg64::Rax, 0);
+            }
+            SYS_GETTID => {
+                self.cpu.regs.set64(Reg64::Rax, FAKE_PID);
+            }
+            SYS_GETPPID => {
+                self.cpu.regs.set64(Reg64::Rax, FAKE_PID - 1);
+            }
+            SYS_GETGID | SYS_GETEGID => {
+                self.cpu.regs.set64(Reg64::Rax, FAKE_PID);
+            }
+            SYS_CLOCK_GETTIME | SYS_GETTIMEOFDAY => {
+                // Le temps qui passe ici, c'est le nombre d'instructions
+                // exécutées : une horloge reproductible, la seule qui
+                // permette de rejouer deux fois la même exécution.
+                let buf = if number == SYS_CLOCK_GETTIME {
+                    self.cpu.regs.get64(Reg64::Rsi)
+                } else {
+                    self.cpu.regs.get64(Reg64::Rdi)
+                };
+                if buf != 0 {
+                    let ticks = self.ticks;
+                    self.cpu.mem.write_u64(buf, ticks / 1_000_000_000)?;
+                    self.cpu.mem.write_u64(buf + 8, ticks % 1_000_000_000)?;
+                }
+                self.cpu.regs.set64(Reg64::Rax, 0);
             }
             number => {
                 return Err(EmuError::UnsupportedSyscall {
@@ -1841,6 +2287,19 @@ impl Emulator {
             // le désordre. Elles restent légales, et ne font rien.
             M::Pause | M::Mfence | M::Lfence | M::Sfence | M::Endbr64 | M::Endbr32 => {}
 
+            // La pile fantôme (CET) : un second exemplaire des adresses
+            // de retour, que le processeur garde hors d'atteinte du
+            // programme. namsdec n'en tient pas, et c'est aussi le cas de
+            // la plupart des machines sur lesquelles tourne ce code.
+            //
+            // Sur un processeur sans pile fantôme, ces instructions ne
+            // font rien — `rdssp` laisse son registre **inchangé**, et
+            // c'est précisément ainsi qu'une bibliothèque C teste la
+            // présence du dispositif : elle met zéro, lit, et regarde si
+            // c'est toujours zéro. Les traiter comme inconnues arrêtait
+            // net tout binaire récent lié statiquement.
+            M::Rdsspd | M::Rdsspq | M::Incsspd | M::Incsspq | M::Saveprevssp | M::Clrssbsy => {}
+
             M::Jmp => {
                 self.cpu.regs.rip = self.branch_target(instr)?;
             }
@@ -2605,6 +3064,7 @@ impl Emulator {
             memory: Vec::new(),
             frames: FrameChange::None,
             heap: self.heap,
+            mmap: self.mmap,
             ticks: self.ticks,
             breaches: self.breaches.len(),
         });
@@ -2657,6 +3117,7 @@ impl Emulator {
         }
         self.input_closed = undo.input_closed;
         self.heap = undo.heap;
+        self.mmap = undo.mmap;
         self.map_heap();
         self.ticks = undo.ticks;
         self.breaches.truncate(undo.breaches);
@@ -3001,9 +3462,15 @@ pub fn effective_address(regs: &Registers, instr: &Instruction, op_index: u32) -
         // *aucun* opérande mémoire ne se calculait : `mov [case], rax`
         // échouait avant même de lire la mémoire.
         Register::CS | Register::DS | Register::ES | Register::SS => Some(0),
-        // FS et GS, eux, ont une base que le noyau installe (TLS,
-        // canari de pile). namsdec ne la simule pas.
-        Register::FS | Register::GS => None,
+        // FS et GS, eux, ont une base que le noyau installe. namsdec la
+        // pose en chargeant un binaire — c'est là que vivent la mémoire
+        // locale au fil et le canari de pile — et un programme peut la
+        // déplacer lui-même par `arch_prctl`. Tant que personne ne l'a
+        // installée, elle vaut zéro : rendre `None` dit alors « je ne
+        // sais pas où pointe FS », ce qui vaut mieux qu'une adresse
+        // inventée.
+        Register::FS => (regs.fs_base != 0).then_some(regs.fs_base),
+        Register::GS => (regs.gs_base != 0).then_some(regs.gs_base),
         other => map_register(other).ok().map(|(r, _)| regs.get64(r)),
     })
 }
