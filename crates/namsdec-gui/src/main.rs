@@ -560,6 +560,139 @@ impl MemFollow {
     }
 }
 
+/// La base dans laquelle la calculatrice lit et écrit.
+///
+/// Elle gouverne les deux : le grand résultat est écrit dedans, et un
+/// chiffre tapé au clavier de l'écran y entre avec le préfixe qui va
+/// avec. C'est ce que fait la calculatrice de GNOME, et c'est ce qu'on
+/// attend — choisir « hexadécimal » puis taper `1f` doit donner
+/// trente et un, non mille neuf cent.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum CalcBase {
+    Hex,
+    Dec,
+    Oct,
+    Bin,
+}
+
+impl CalcBase {
+    const ALL: [CalcBase; 4] = [CalcBase::Hex, CalcBase::Dec, CalcBase::Oct, CalcBase::Bin];
+
+    fn id(self) -> &'static str {
+        match self {
+            CalcBase::Hex => "hex",
+            CalcBase::Dec => "dec",
+            CalcBase::Oct => "oct",
+            CalcBase::Bin => "bin",
+        }
+    }
+
+    fn by_id(id: &str) -> Self {
+        CalcBase::ALL
+            .into_iter()
+            .find(|b| b.id() == id)
+            .unwrap_or(CalcBase::Hex)
+    }
+
+    fn label(self, s: &Strings) -> &'static str {
+        match self {
+            CalcBase::Hex => s.reading_hex,
+            CalcBase::Dec => s.reading_unsigned,
+            CalcBase::Oct => s.reading_octal,
+            CalcBase::Bin => s.calculator_base_binary,
+        }
+    }
+
+    /// Ce qu'on écrit devant un nombre pour que l'évaluateur le lise
+    /// dans cette base. Rien pour le décimal, qui est le défaut de tout
+    /// le monde.
+    fn prefix(self) -> &'static str {
+        match self {
+            CalcBase::Hex => "0x",
+            CalcBase::Dec => "",
+            CalcBase::Oct => "0o",
+            CalcBase::Bin => "0b",
+        }
+    }
+
+    /// Ce chiffre a-t-il un sens dans cette base ?
+    ///
+    /// Sert à éteindre les touches plutôt qu'à les laisser produire une
+    /// expression que l'évaluateur refusera : un clavier qui propose `9`
+    /// en binaire ment sur ce qu'on peut taper.
+    fn accepte(self, c: char) -> bool {
+        let valeur = match c.to_ascii_lowercase() {
+            c if c.is_ascii_digit() => c as u32 - '0' as u32,
+            c if ('a'..='f').contains(&c) => c as u32 - 'a' as u32 + 10,
+            _ => return false,
+        };
+        valeur
+            < match self {
+                CalcBase::Hex => 16,
+                CalcBase::Dec => 10,
+                CalcBase::Oct => 8,
+                CalcBase::Bin => 2,
+            }
+    }
+
+    /// Une valeur écrite dans cette base, préfixe compris.
+    fn écrire(self, valeur: u64) -> String {
+        match self {
+            CalcBase::Hex => format!("{valeur:#x}"),
+            CalcBase::Dec => valeur.to_string(),
+            CalcBase::Oct => format!("{valeur:#o}"),
+            CalcBase::Bin => format!("{valeur:#b}"),
+        }
+    }
+}
+
+/// Sur combien de bits la calculatrice montre son résultat.
+///
+/// Un `and eax, 0x1f` travaille sur trente-deux bits ; lire le résultat
+/// sur soixante-quatre fait compter des zéros qui ne veulent rien dire.
+/// La largeur masque l'affichage — elle ne change pas le calcul, qui se
+/// fait toujours sur soixante-quatre bits, comme le processeur.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum CalcWidth {
+    W8,
+    W16,
+    W32,
+    W64,
+}
+
+impl CalcWidth {
+    const ALL: [CalcWidth; 4] = [CalcWidth::W8, CalcWidth::W16, CalcWidth::W32, CalcWidth::W64];
+
+    fn bits(self) -> u32 {
+        match self {
+            CalcWidth::W8 => 8,
+            CalcWidth::W16 => 16,
+            CalcWidth::W32 => 32,
+            CalcWidth::W64 => 64,
+        }
+    }
+
+    fn id(self) -> String {
+        self.bits().to_string()
+    }
+
+    fn by_id(id: &str) -> Self {
+        CalcWidth::ALL
+            .into_iter()
+            .find(|w| w.id() == id)
+            .unwrap_or(CalcWidth::W64)
+    }
+
+    /// Le masque de cette largeur. `u64::MAX` pour soixante-quatre :
+    /// `1 << 64` déborderait.
+    fn mask(self) -> u64 {
+        match self {
+            CalcWidth::W64 => u64::MAX,
+            autre => (1u64 << autre.bits()) - 1,
+        }
+    }
+}
+
 /// Comment lire les octets de l'onglet Mémoire.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum MemoryFormat {
@@ -929,6 +1062,13 @@ struct NamsdecApp {
     active_tab: SidebarTab,
     console_tab: ConsoleTab,
     mem_addr_input: String,
+    /// La base dans laquelle la calculatrice lit et écrit.
+    /// Le module que la fenêtre d'analyse montre, ou une chaîne vide
+    /// pour les montrer tous.
+    analysis_module: String,
+    calc_base: CalcBase,
+    /// Sur combien de bits elle montre son résultat.
+    calc_width: CalcWidth,
     /// La longueur du texte à la frame précédente.
     ///
     /// Sert à distinguer les deux sortes de frames lentes : celle d'une
@@ -2031,6 +2171,9 @@ impl Default for NamsdecApp {
             active_tab: SidebarTab::Stack,
             console_tab: ConsoleTab::Output,
             mem_addr_input: format!("{BASE_ADDR:#x}"),
+            analysis_module: String::new(),
+            calc_base: CalcBase::Hex,
+            calc_width: CalcWidth::W64,
             last_layout_len: 0,
             windows_open: BTreeSet::new(),
             mem_find_input: String::new(),
@@ -2247,6 +2390,9 @@ impl NamsdecApp {
             disabled_packs: settings.disabled_packs.iter().cloned().collect(),
             current_exercise: settings.current_exercise.clone(),
             memory_format: MemoryFormat::by_id(&settings.memory_format),
+            analysis_module: settings.analysis_module.clone(),
+            calc_base: CalcBase::by_id(&settings.calc_base),
+            calc_width: CalcWidth::by_id(&settings.calc_width),
             memory_follow: MemFollow::by_id(&settings.memory_follow),
             console_height: settings.console_height.map(|h| h as f32),
             sidebar_tab_height: settings.sidebar_tab_height.map(|h| h as f32),
@@ -2512,6 +2658,9 @@ impl NamsdecApp {
             current_exercise: self.current_exercise.clone(),
             disassembler: self.disassembler.clone(),
             memory_format: self.memory_format.id().to_owned(),
+            analysis_module: self.analysis_module.clone(),
+            calc_base: self.calc_base.id().to_owned(),
+            calc_width: self.calc_width.id(),
             memory_follow: self.memory_follow.id().to_owned(),
             console_height: self.console_height.map(|h| h.round() as u32),
             sidebar_tab_height: self.sidebar_tab_height.map(|h| h.round() as u32),
@@ -6910,6 +7059,18 @@ impl NamsdecApp {
     /// Les registres du programme en cours sont des noms comme les
     /// autres : `rax & 0xff` se lit comme on le pense, et c'est très
     /// exactement la question qu'on se pose devant un `and eax, 0xff`.
+    /// La calculatrice : un champ, un clavier, une grille de bits.
+    ///
+    /// Taillée comme celle de GNOME en mode Programmation, parce que
+    /// c'est la disposition qu'on connaît : l'expression en haut, le
+    /// résultat en grand, les soixante-quatre bits dessous, et un
+    /// clavier qui écrit ce que l'évaluateur lit — `&`, `|`, `<<`, et
+    /// non des symboles mathématiques qu'il faudrait retraduire pour les
+    /// recopier dans du code.
+    ///
+    /// S'y ajoute ce qu'aucune calculatrice de bureau ne fait : les
+    /// registres du programme en cours, et les dix-huit fonctions qu'on
+    /// écrit à la main en lisant un désassemblage.
     fn calculator_window_ui(&mut self, ctx: &egui::Context) {
         if !self.show_calculator {
             return;
@@ -6922,14 +7083,22 @@ impl NamsdecApp {
         let regs = self.emulator.as_ref().map(|e| &e.cpu().regs);
         let résultat = calc::eval(&self.calc_input, regs);
         let mut à_copier: Option<String> = None;
+        // Relevés dans la fenêtre, agis après : les fermetures empruntent
+        // `self` en écriture, et la fenêtre le tient déjà.
+        let mut à_écrire: Option<String> = None;
+        let mut à_effacer = false;
+        let mut reculer = false;
+        let mut bit_basculé: Option<u32> = None;
 
         let fenêtre = egui::Window::new(s.calculator_title)
             .id(egui::Id::new("calculator_window"))
             .open(&mut open)
             .resizable(true)
             .collapsible(false)
-            .default_size([460.0, 400.0])
-            .min_size([360.0, 260.0])
+            // Plus grande qu'avant : un clavier et une grille de bits ne
+            // tiennent pas dans quatre cents pixels de haut.
+            .default_size([520.0, 720.0])
+            .min_size([440.0, 520.0])
             .pivot(egui::Align2::CENTER_CENTER)
             .default_pos(ctx.viewport_rect().center());
         let rendue = self
@@ -6942,6 +7111,7 @@ impl NamsdecApp {
                 if ok_bar(ui, theme, s, "calculator") {
                     fermer_ok = true;
                 }
+
                 ui.horizontal(|ui| {
                     ui.colored_label(theme.dim, s.calculator_expression);
                     let champ = ui.add(
@@ -6956,98 +7126,139 @@ impl NamsdecApp {
                         champ.request_focus();
                     }
                 });
-                ui.add_space(8.0);
 
-                match &résultat {
-                    Ok(valeur) => {
-                        // Toutes les bases, l'une sous l'autre, en
-                        // colonnes alignées. Chacune se copie d'un clic :
-                        // ce qu'on calcule ici finit presque toujours
-                        // dans le code d'à côté.
-                        egui::Grid::new("calculator_bases")
-                            .num_columns(2)
-                            .spacing([16.0, 6.0])
-                            .show(ui, |ui| {
-                                for (nom, texte) in readings::all_bases(lang, *valeur) {
-                                    ui.colored_label(theme.dim, nom);
-                                    let réponse = ui.add(
-                                        egui::Label::new(
-                                            egui::RichText::new(&texte)
-                                                .monospace()
-                                                .color(theme.text),
-                                        )
-                                        .sense(egui::Sense::click()),
-                                    );
-                                    if réponse.on_hover_text(s.calculator_copy).clicked() {
-                                        à_copier = Some(texte.clone());
-                                    }
-                                    ui.end_row();
-                                }
-                            });
+                // Le résultat en grand, dans la base choisie et sur la
+                // largeur choisie. C'est la ligne qu'on regarde, elle a
+                // donc la taille qui va avec.
+                let valeur = résultat.as_ref().ok().map(|v| *v & self.calc_width.mask());
+                ui.add_space(6.0);
+                match (&résultat, valeur) {
+                    (Ok(_), Some(valeur)) => {
+                        let texte = self.calc_base.écrire(valeur);
+                        let réponse = ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(&texte)
+                                    .monospace()
+                                    .size(24.0)
+                                    .color(theme.accent),
+                            )
+                            .sense(egui::Sense::click()),
+                        );
+                        if réponse.on_hover_text(s.calculator_copy).clicked() {
+                            à_copier = Some(texte);
+                        }
                     }
-                    Err(erreur) => {
-                        // Vide, on ne reproche rien : la fenêtre vient
-                        // de s'ouvrir, il n'y a pas d'erreur à signaler.
-                        if !matches!(erreur, calc::CalcError::Empty) {
+                    (Err(erreur), _) => {
+                        // Vide, on ne reproche rien : la fenêtre vient de
+                        // s'ouvrir, il n'y a pas d'erreur à signaler.
+                        if matches!(erreur, calc::CalcError::Empty) {
+                            ui.add_space(30.0);
+                        } else {
                             ui.colored_label(theme.bad, calc_error_text(s, erreur));
                         }
                     }
+                    _ => {}
                 }
+
+                ui.add_space(6.0);
+                calculator_bits_ui(
+                    ui,
+                    theme,
+                    s,
+                    valeur.unwrap_or(0),
+                    self.calc_width,
+                    valeur.is_some(),
+                    &mut bit_basculé,
+                );
+
+                ui.add_space(6.0);
+                ui.horizontal_wrapped(|ui| {
+                    ui.colored_label(theme.dim, s.calculator_base_label);
+                    egui::ComboBox::from_id_salt("calculator_base")
+                        .selected_text(self.calc_base.label(s))
+                        .show_ui(ui, |ui| {
+                            for base in CalcBase::ALL {
+                                ui.selectable_value(&mut self.calc_base, base, base.label(s));
+                            }
+                        });
+                    ui.separator();
+                    ui.colored_label(theme.dim, s.calculator_width_label);
+                    egui::ComboBox::from_id_salt("calculator_width")
+                        .selected_text(format!("{} bits", self.calc_width.bits()))
+                        .show_ui(ui, |ui| {
+                            for largeur in CalcWidth::ALL {
+                                ui.selectable_value(
+                                    &mut self.calc_width,
+                                    largeur,
+                                    format!("{} bits", largeur.bits()),
+                                );
+                            }
+                        });
+                });
+
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    à_effacer |= ui.button(s.calculator_clear).clicked();
+                    reculer |= icon_square_button(ui, chrome::icon_backspace)
+                        .on_hover_text(s.calculator_backspace)
+                        .clicked();
+                });
+                ui.add_space(4.0);
+                calculator_keypad_ui(ui, theme, self.calc_base, &self.calc_input, &mut à_écrire);
 
                 ui.add_space(8.0);
                 ui.separator();
-                // L'aide-mémoire des fonctions, replié : on l'ouvre une
-                // fois pour découvrir ce qu'il y a, puis on ne le rouvre
-                // plus — et il ne doit donc pas prendre la place chaque
-                // fois.
-                egui::CollapsingHeader::new(s.calculator_functions)
-                    .id_salt("calculator_functions")
-                    .default_open(false)
-                    .show(ui, |ui| {
-                        if regs.is_none() {
-                            ui.colored_label(theme.dim, s.calculator_no_registers);
-                            ui.add_space(4.0);
-                        }
-                        egui::Grid::new("calculator_function_list")
-                            .num_columns(2)
-                            .spacing([12.0, 4.0])
-                            .show(ui, |ui| {
-                                for (nom, arité, fr, en) in calc::FUNCTIONS {
-                                    let appel = if *arité == 2 {
-                                        format!("{nom}(x, n)")
-                                    } else {
-                                        format!("{nom}(x)")
-                                    };
-                                    if ui
-                                        .add(
-                                            egui::Label::new(
-                                                egui::RichText::new(&appel)
-                                                    .monospace()
-                                                    .color(theme.accent),
-                                            )
-                                            .sense(egui::Sense::click()),
-                                        )
-                                        .on_hover_text(s.calculator_insert)
-                                        .clicked()
-                                    {
-                                        // Insérer le nom et sa
-                                        // parenthèse : on cherche ce
-                                        // qu'une fonction fait, on la
-                                        // clique, on complète.
-                                        self.calc_input.push_str(nom);
-                                        self.calc_input.push('(');
-                                    }
-                                    ui.colored_label(
-                                        theme.dim,
-                                        if lang == Lang::Fr { *fr } else { *en },
-                                    );
-                                    ui.end_row();
+                if regs.is_none() {
+                    ui.colored_label(theme.dim, s.calculator_no_registers);
+                }
+                calculator_functions_ui(ui, theme, s, lang, &mut à_écrire);
+
+                ui.add_space(8.0);
+                ui.separator();
+                // Toutes les bases à la fois, en petit : c'est ce qu'on
+                // vient chercher quand on ne sait pas encore *laquelle*
+                // on veut. Chacune se copie d'un clic.
+                if let Some(valeur) = valeur {
+                    egui::Grid::new("calculator_bases")
+                        .num_columns(2)
+                        .spacing([16.0, 4.0])
+                        .show(ui, |ui| {
+                            for (nom, texte) in readings::all_bases(lang, valeur) {
+                                ui.colored_label(theme.dim, nom);
+                                let réponse = ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(&texte).monospace().color(theme.text),
+                                    )
+                                    .sense(egui::Sense::click()),
+                                );
+                                if réponse.on_hover_text(s.calculator_copy).clicked() {
+                                    à_copier = Some(texte.clone());
                                 }
-                            });
-                    });
+                                ui.end_row();
+                            }
+                        });
+                }
             });
         self.place_maximize_button(ctx, Self::CALCULATOR_WINDOW, rendue);
 
+        if à_effacer {
+            self.calc_input.clear();
+        }
+        if reculer {
+            self.calc_input.pop();
+        }
+        if let Some(morceau) = à_écrire {
+            self.calc_input.push_str(&morceau);
+        }
+        if let Some(rang) = bit_basculé
+            && let Ok(valeur) = résultat
+        {
+            // Le bit basculé devient la nouvelle expression, écrite dans
+            // la base courante : on repart de ce qu'on vient de poser,
+            // comme sur une calculatrice de bureau.
+            let nouvelle = (valeur ^ (1u64 << rang)) & self.calc_width.mask();
+            self.calc_input = self.calc_base.écrire(nouvelle);
+        }
         if let Some(texte) = à_copier {
             ctx.copy_text(texte);
             self.status = Status::Note(|s| s.calculator_copied);
@@ -12268,9 +12479,6 @@ impl NamsdecApp {
                 if ok_bar(ui, self.theme, strings(self.lang), "analysis") {
                     fermer_ok = true;
                 }
-                ui.horizontal_wrapped(|ui| {
-                    ui.weak(s.analysis_hint);
-                });
                 // Ce qu'on a compris d'un binaire ne vaut que si on peut
                 // le transmettre : le rapport part en Markdown, prêt à
                 // coller dans un compte rendu ou un support de cours.
@@ -12291,11 +12499,68 @@ impl NamsdecApp {
                     {
                         self.spawn_file_dialog(FileDialogKind::ExportReport);
                     }
+                    ui.separator();
+                    ui.weak(s.analysis_hint);
                 });
-                ui.separator();
+                ui.add_space(4.0);
+
+                // Une colonne de navigation à gauche, le module à
+                // droite. Les sept modules empilés les uns sous les
+                // autres n'employaient que la hauteur : on relisait une
+                // page de deux mille pixels dans une fenêtre large de
+                // mille, en cherchant un titre à l'ascenseur. Ici, on
+                // choisit, et le module a toute la largeur.
+                let lang = self.lang.code();
+                let titres = self.re_registry.entries(lang);
+                egui::Panel::left(egui::Id::new("analysis_nav"))
+                    .resizable(true)
+                    .default_size(190.0)
+                    .min_size(140.0)
+                    .max_size(320.0)
+                    .frame(egui::Frame::NONE.inner_margin(egui::Margin::symmetric(0, 0)))
+                    .show(ui, |ui| {
+                        egui::ScrollArea::vertical()
+                            .id_salt("analysis_nav_scroll")
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                // « Tout » en tête : c'est la forme d'un
+                                // compte rendu, celle qu'on copie.
+                                let tout = self.analysis_module.is_empty();
+                                if ui
+                                    .add_sized(
+                                        [ui.available_width(), 26.0],
+                                        egui::Button::selectable(tout, s.analysis_all),
+                                    )
+                                    .clicked()
+                                {
+                                    self.analysis_module.clear();
+                                }
+                                ui.add_space(2.0);
+                                ui.separator();
+                                ui.add_space(2.0);
+                                for (id, titre) in &titres {
+                                    let choisi = self.analysis_module == *id;
+                                    if ui
+                                        .add_sized(
+                                            [ui.available_width(), 26.0],
+                                            egui::Button::selectable(choisi, *titre),
+                                        )
+                                        .clicked()
+                                    {
+                                        self.analysis_module = (*id).to_owned();
+                                    }
+                                }
+                            });
+                    });
+                ui.add_space(8.0);
                 egui::ScrollArea::vertical()
+                    .id_salt("analysis_content")
                     .auto_shrink([false, false])
-                    .show(ui, |ui| self.re_modules_ui(ui, true));
+                    .show(ui, |ui| {
+                        let choisi = self.analysis_module.clone();
+                        let seul = (!choisi.is_empty()).then_some(choisi.as_str());
+                        self.re_modules_ui(ui, seul);
+                    });
             });
         self.place_maximize_button(ctx, Self::ANALYSIS_WINDOW, rendue_analysis_window);
         self.show_analysis = open && !fermer_ok;
@@ -16237,6 +16502,13 @@ fn byte_to_char(text: &str, byte: usize) -> usize {
 /// laisserait les autres chercher une fenêtre qui n'existe plus.
 pub(crate) const ABOUT_WINDOW: &str = "about_window";
 
+/// L'identifiant de la boîte « À propos », sous la forme qu'egui attend.
+///
+/// **Pour les tests seulement** : la fenêtre, elle, passe la constante.
+/// Sans le `cfg`, la compilation du binaire signalait une fonction morte
+/// qui ne l'était pas, et un avertissement qu'on apprend à ignorer finit
+/// par en cacher un vrai.
+#[cfg(test)]
 fn about_window_id() -> egui::Id {
     egui::Id::new(ABOUT_WINDOW)
 }
@@ -16713,6 +16985,221 @@ struct CompletionKeys {
 /// atteinte, le panneau le dit — une liste tronquée qui se tait fait
 /// conclure à tort qu'il n'y en a pas davantage.
 pub(crate) const MEM_FIND_MAX: usize = 64;
+
+/// La grille des bits, façon calculatrice de programmeur.
+///
+/// Deux rangées de trente-deux, groupées par quartets : c'est ainsi
+/// qu'on lit un masque, et c'est ainsi que l'octet se retrouve du
+/// premier coup d'œil. Les index encadrent chaque rangée, comme sur la
+/// calculatrice de GNOME — sans eux, on compte les colonnes avec le
+/// doigt.
+///
+/// Chaque bit se clique pour le basculer. C'est le geste qui manque
+/// partout ailleurs : on veut savoir ce que vaut `0x1f` avec le
+/// quatrième bit en moins, et l'écrire à la main est plus long que de
+/// le cliquer.
+fn calculator_bits_ui(
+    ui: &mut egui::Ui,
+    theme: &'static Theme,
+    s: &Strings,
+    valeur: u64,
+    largeur: CalcWidth,
+    actif: bool,
+    basculé: &mut Option<u32>,
+) {
+    const PAR_RANGÉE: u32 = 32;
+    let bits = largeur.bits();
+    let rangées = bits.div_ceil(PAR_RANGÉE);
+    let police = egui::FontId::monospace(12.0);
+
+    for rangée in 0..rangées {
+        // De haut en bas, du poids fort au poids faible : la rangée 0
+        // porte les bits les plus hauts, comme un nombre s'écrit.
+        let haut = bits - rangée * PAR_RANGÉE - 1;
+        let bas = haut.saturating_sub(PAR_RANGÉE - 1);
+        ui.horizontal(|ui| {
+            ui.add_sized(
+                [24.0, 16.0],
+                egui::Label::new(
+                    egui::RichText::new(haut.to_string())
+                        .monospace()
+                        .size(10.0)
+                        .color(theme.dim),
+                ),
+            );
+            for rang in (bas..=haut).rev() {
+                let (case, réponse) =
+                    ui.allocate_exact_size(egui::vec2(11.0, 16.0), egui::Sense::click());
+                let mis = valeur >> rang & 1 == 1;
+                if actif && réponse.hovered() {
+                    ui.painter()
+                        .rect_filled(case.expand(1.0), 2.0, theme.accent.gamma_multiply(0.35));
+                }
+                ui.painter().text(
+                    case.center(),
+                    egui::Align2::CENTER_CENTER,
+                    if mis { "1" } else { "0" },
+                    police.clone(),
+                    if !actif {
+                        theme.dim.gamma_multiply(0.5)
+                    } else if mis {
+                        theme.accent
+                    } else {
+                        theme.dim
+                    },
+                );
+                if actif && réponse.on_hover_text(s.calculator_bits_hint).clicked() {
+                    *basculé = Some(rang);
+                }
+                // Un blanc tous les quatre bits : c'est la coupure du
+                // quartet, celle qu'on lit en hexadécimal.
+                if rang.is_multiple_of(4) && rang > bas {
+                    ui.add_space(5.0);
+                }
+            }
+            ui.add_space(4.0);
+            ui.colored_label(
+                theme.dim,
+                egui::RichText::new(bas.to_string()).monospace().size(10.0),
+            );
+        });
+    }
+}
+
+/// Le clavier de la calculatrice.
+///
+/// Il écrit ce que l'évaluateur lit — `&`, `|`, `^`, `<<` — et non des
+/// symboles mathématiques qu'il faudrait retraduire pour les recopier
+/// dans du code. C'est la même raison qui fait écrire `qword [rsp]`
+/// plutôt qu'une notation à nous : namsdec sert à lire du code, et ce
+/// qu'on y tape doit ressembler à ce qu'on y lit.
+///
+/// Les chiffres qui n'ont pas de sens dans la base courante sont
+/// éteints : un clavier qui propose `9` en binaire ment sur ce qu'on
+/// peut taper.
+fn calculator_keypad_ui(
+    ui: &mut egui::Ui,
+    theme: &'static Theme,
+    base: CalcBase,
+    courant: &str,
+    à_écrire: &mut Option<String>,
+) {
+    /// Cinq rangées de six touches. Les chiffres à gauche, les
+    /// opérateurs à droite, comme sur toutes les calculatrices.
+    const TOUCHES: [[&str; 6]; 5] = [
+        ["7", "8", "9", "/", "&", "<<"],
+        ["4", "5", "6", "*", "|", ">>"],
+        ["1", "2", "3", "-", "^", "~"],
+        ["0", "A", "B", "+", "%", "0x"],
+        ["C", "D", "E", "F", "(", ")"],
+    ];
+
+    let largeur = ((ui.available_width() - 5.0 * 4.0) / 6.0).clamp(28.0, 72.0);
+    for rangée in TOUCHES {
+        ui.horizontal(|ui| {
+            for touche in rangée {
+                // Un chiffre n'est proposé que s'il existe dans la base.
+                let chiffre = touche.len() == 1
+                    && touche.chars().next().is_some_and(|c| c.is_ascii_alphanumeric());
+                let permis = !chiffre || touche.chars().all(|c| base.accepte(c));
+                let couleur = if chiffre { theme.text } else { theme.accent };
+                ui.add_enabled_ui(permis, |ui| {
+                    if ui
+                        .add_sized(
+                            [largeur, 30.0],
+                            egui::Button::new(
+                                egui::RichText::new(touche).monospace().color(couleur),
+                            ),
+                        )
+                        .clicked()
+                    {
+                        *à_écrire = Some(écriture_de_touche(touche, base, courant));
+                    }
+                });
+            }
+        });
+    }
+}
+
+/// Ce qu'une touche du clavier écrit dans l'expression.
+///
+/// Un chiffre qui **commence un nombre** entre avec le préfixe de la
+/// base : en hexadécimal, `1` puis `f` doit donner `0x1f` et non `1f`,
+/// que l'évaluateur refuserait. Un chiffre qui continue un nombre entre
+/// seul — sans quoi on écrirait `0x10x5`.
+///
+/// « Commence un nombre » se reconnaît au dernier caractère déjà là :
+/// une lettre, un chiffre ou un point le continuent, tout le reste
+/// l'ouvre. C'est grossier, et c'est juste dans tous les cas qu'on
+/// rencontre.
+fn écriture_de_touche(touche: &str, base: CalcBase, courant: &str) -> String {
+    let est_un_chiffre = touche.len() == 1
+        && touche
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_alphanumeric());
+    if !est_un_chiffre {
+        return touche.to_owned();
+    }
+    let continue_un_nombre = courant
+        .chars()
+        .next_back()
+        .is_some_and(|c| c.is_ascii_alphanumeric());
+    if continue_un_nombre {
+        touche.to_owned()
+    } else {
+        format!("{}{touche}", base.prefix())
+    }
+}
+
+/// Les fonctions de rétro-ingénierie, en boutons.
+///
+/// Une grille qui se replie à la largeur de la fenêtre, et **une ligne
+/// sous elle** qui dit ce que fait celle qu'on survole. L'infobulle
+/// seule ne suffisait pas : elle se mérite après une demi-seconde
+/// d'immobilité, alors qu'on parcourt dix-huit noms des yeux pour
+/// trouver le bon.
+fn calculator_functions_ui(
+    ui: &mut egui::Ui,
+    theme: &'static Theme,
+    s: &Strings,
+    lang: Lang,
+    à_écrire: &mut Option<String>,
+) {
+    let mut survolée: Option<&'static str> = None;
+    ui.horizontal_wrapped(|ui| {
+        for (nom, arité, fr, en) in calc::FUNCTIONS {
+            let appel = if *arité == 2 {
+                format!("{nom}(x, n)")
+            } else {
+                format!("{nom}(x)")
+            };
+            let réponse = ui.add(
+                egui::Button::new(egui::RichText::new(&appel).monospace().size(11.5))
+                    .fill(theme.dim.gamma_multiply(0.10)),
+            );
+            if réponse.hovered() {
+                survolée = Some(if lang == Lang::Fr { *fr } else { *en });
+            }
+            if réponse.clicked() {
+                // Le nom et sa parenthèse : on cherche ce qu'une
+                // fonction fait, on la clique, on complète.
+                *à_écrire = Some(format!("{nom}("));
+            }
+        }
+    });
+    ui.add_space(2.0);
+    // La place de la ligne est réservée même quand rien n'est survolé :
+    // sinon la grille sautait d'une ligne sous le pointeur.
+    ui.colored_label(
+        if survolée.is_some() {
+            theme.text
+        } else {
+            theme.dim
+        },
+        survolée.unwrap_or(s.calculator_pick_function),
+    );
+}
 
 /// Ce qui cloche dans un motif de recherche, dit en clair.
 fn pattern_error_text(s: &Strings, erreur: &memfind::PatternError) -> String {

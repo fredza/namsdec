@@ -126,6 +126,15 @@ impl ReModuleRegistry {
         self.modules.iter().map(|m| m.title(lang)).collect()
     }
 
+    /// Identifiant et titre de chaque module, dans l'ordre.
+    ///
+    /// L'identifiant ne change pas avec la langue, le titre si : une
+    /// colonne de navigation a besoin des deux — l'un pour retenir ce
+    /// qu'on a choisi, l'autre pour l'écrire.
+    pub fn entries(&self, lang: &str) -> Vec<(&'static str, &'static str)> {
+        self.modules.iter().map(|m| (m.id(), m.title(lang))).collect()
+    }
+
     pub fn on_binary_loaded(&mut self, ctx: &ReContext) {
         for module in &mut self.modules {
             module.on_binary_loaded(ctx);

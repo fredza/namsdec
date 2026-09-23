@@ -2349,16 +2349,18 @@ impl NamsdecApp {
         ui.add_space(10.0);
     }
 
-    /// Les modules de rétro-ingénierie, les uns sous les autres.
+    /// Les modules de rétro-ingénierie.
     ///
-    /// Posés ici sans zone de défilement : l'onglet du panneau et la
-    /// fenêtre d'analyse ont chacun la leur, et deux zones imbriquées ne
-    /// défilent bien ni l'une ni l'autre.
-    /// `tous_ouverts` : la fenêtre d'analyse est faite pour être lue en
-    /// entier, le panneau latéral pour être consulté. Dans l'un on
-    /// déplie tout, dans l'autre on ouvre le résumé et l'on va chercher
-    /// le reste.
-    pub(crate) fn re_modules_ui(&mut self, ui: &mut egui::Ui, tous_ouverts: bool) {
+    /// `seul` désigne celui qu'on veut, ou `None` pour les avoir tous à
+    /// la suite. Les deux servent : la colonne de gauche de la fenêtre
+    /// d'analyse en choisit un et lui donne toute la largeur — sept
+    /// panneaux dépliés font une page de deux mille pixels où l'on
+    /// cherche un titre en faisant défiler —, tandis que « Tout » les
+    /// montre à la file, qui est la forme d'un compte rendu.
+    ///
+    /// Posés ici sans zone de défilement : l'appelant a la sienne, et
+    /// deux zones imbriquées ne défilent bien ni l'une ni l'autre.
+    pub(crate) fn re_modules_ui(&mut self, ui: &mut egui::Ui, seul: Option<&str>) {
         let s = strings(self.lang);
         let (Some(emulator), Some(state)) = (&self.emulator, &self.assemble_state) else {
             ui.label(s.no_binary_assembled);
@@ -2371,27 +2373,43 @@ impl NamsdecApp {
             binary: &state.output.file,
             lang: self.lang.code(),
         };
-        // Chaque module dans un cadre, et **seul le premier ouvert** :
-        // sept panneaux dépliés font une page de deux mille pixels où
-        // l'on cherche le titre qu'on veut en faisant défiler. Le
-        // premier est le résumé — celui par lequel on commence —, les
-        // autres s'ouvrent quand on va les chercher.
         let théme = self.theme;
-        for (rang, module) in self.re_registry.iter_mut().enumerate() {
-            egui::Frame::new()
-                .fill(théme.dim.gamma_multiply(0.06))
-                .inner_margin(egui::Margin::symmetric(8, 6))
-                .corner_radius(6.0)
-                .show(ui, |ui| {
-                    ui.set_min_width(ui.available_width());
-                    egui::CollapsingHeader::new(
-                        egui::RichText::new(module.title(ctx.lang)).strong(),
-                    )
-                    .id_salt(module.id())
-                    .default_open(tous_ouverts || rang == 0)
-                    .show_unindented(ui, |ui| module.ui(ui, &ctx));
-                });
-            ui.add_space(4.0);
+        for module in self.re_registry.iter_mut() {
+            match seul {
+                // Un seul, choisi : il prend toute la place, sans cadre
+                // ni flèche de repli. Il n'y a rien à replier quand il
+                // n'y a rien d'autre.
+                Some(voulu) if module.id() == voulu => {
+                    ui.add_space(2.0);
+                    ui.label(
+                        egui::RichText::new(module.title(ctx.lang))
+                            .strong()
+                            .size(15.0),
+                    );
+                    ui.add_space(6.0);
+                    module.ui(ui, &ctx);
+                    return;
+                }
+                Some(_) => continue,
+                // Tous : chacun dans son cadre, tous dépliés. C'est la
+                // forme qu'on relit et qu'on copie.
+                None => {
+                    egui::Frame::new()
+                        .fill(théme.dim.gamma_multiply(0.06))
+                        .inner_margin(egui::Margin::symmetric(8, 6))
+                        .corner_radius(6.0)
+                        .show(ui, |ui| {
+                            ui.set_min_width(ui.available_width());
+                            egui::CollapsingHeader::new(
+                                egui::RichText::new(module.title(ctx.lang)).strong(),
+                            )
+                            .id_salt(module.id())
+                            .default_open(true)
+                            .show_unindented(ui, |ui| module.ui(ui, &ctx));
+                        });
+                    ui.add_space(4.0);
+                }
+            }
         }
     }
 }

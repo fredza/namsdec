@@ -622,6 +622,50 @@ pub fn icon_calculator(painter: &egui::Painter, rect: egui::Rect, color: egui::C
     }
 }
 
+/// L'icône « effacer le dernier caractère » : la flèche à gauche avec
+/// sa croix, comme sur tous les claviers.
+///
+/// Dessinée et non écrite : le caractère `←` n'est pas dans la police
+/// d'egui, et le test qui vérifie chaque glyphe de l'interface l'a
+/// attrapé avant qu'il n'arrive à l'écran sous forme de carré vide.
+pub fn icon_backspace(painter: &egui::Painter, rect: egui::Rect, color: egui::Color32) {
+    let trait_ = egui::Stroke::new(1.3, color);
+    let h = rect.height() * 0.62;
+    let l = rect.width() * 0.86;
+    let centre = rect.center();
+    let pointe = egui::pos2(centre.x - l * 0.5, centre.y);
+    let épaule = centre.x - l * 0.5 + h * 0.5;
+
+    // Le contour : une pointe à gauche, un rectangle à droite.
+    painter.add(egui::Shape::closed_line(
+        vec![
+            pointe,
+            egui::pos2(épaule, centre.y - h * 0.5),
+            egui::pos2(centre.x + l * 0.5, centre.y - h * 0.5),
+            egui::pos2(centre.x + l * 0.5, centre.y + h * 0.5),
+            egui::pos2(épaule, centre.y + h * 0.5),
+        ],
+        trait_,
+    ));
+    // La croix dedans.
+    let bras = h * 0.22;
+    let croix = egui::pos2(centre.x + l * 0.16, centre.y);
+    painter.line_segment(
+        [
+            croix - egui::vec2(bras, bras),
+            croix + egui::vec2(bras, bras),
+        ],
+        trait_,
+    );
+    painter.line_segment(
+        [
+            croix - egui::vec2(bras, -bras),
+            croix + egui::vec2(bras, -bras),
+        ],
+        trait_,
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -652,8 +696,9 @@ mod tests {
 
         /// Le nom d'une icône, et la fonction qui la dessine.
         type Dessin = (&'static str, fn(&egui::Painter, egui::Rect, egui::Color32));
-        let dessins: [Dessin; 5] = [
+        let dessins: [Dessin; 6] = [
             ("analyse", icon_analysis),
+            ("retour arrière", icon_backspace),
             ("calculatrice", icon_calculator),
             ("recherche", icon_search),
             ("globe", icon_globe),

@@ -524,6 +524,30 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "trouve <font face='Courier'>0x6c6c6568</font> dans un registre et l'on se demande "
          "quelles lettres c'est."),
         ("p",
+         "Elle est taillée comme une calculatrice de programmeur : l'expression en "
+         "haut, le résultat en grand, les <b>soixante-quatre bits</b> dessous — "
+         "groupés par quartets, avec leurs index —, puis un clavier. Cliquer un bit "
+         "le bascule, et l'expression devient la nouvelle valeur : on veut savoir ce que "
+         "vaut <font face='Courier'>0x1f</font> avec le quatrième bit en moins, et "
+         "l'écrire à la main est plus long que de le cliquer."),
+        ("p",
+         "Le clavier écrit <b>ce que l'évaluateur lit</b> — "
+         "<font face='Courier'>&amp;</font>, <font face='Courier'>|</font>, "
+         "<font face='Courier'>^</font>, <font face='Courier'>&lt;&lt;</font> — et non "
+         "des symboles mathématiques qu'il faudrait retraduire pour les recopier dans "
+         "du code. C'est la même raison qui fait écrire "
+         "<font face='Courier'>qword [rsp]</font> plutôt qu'une notation à nous."),
+        ("p",
+         "La <b>base</b> gouverne les deux sens : le grand résultat est écrit "
+         "dedans, et un chiffre tapé au clavier de l'écran y entre avec le "
+         "préfixe qui va avec — en hexadécimal, "
+         "<font face='Courier'>1</font> puis <font face='Courier'>F</font> donnent "
+         "<font face='Courier'>0x1F</font>. Les chiffres qui n'existent pas dans la base "
+         "sont éteints : un clavier qui propose <font face='Courier'>9</font> en "
+         "binaire ment sur ce qu'on peut taper. La <b>largeur</b> (8, 16, 32, 64) borne "
+         "la lecture, non le calcul, qui se fait toujours sur soixante-quatre bits comme "
+         "le processeur."),
+        ("p",
          "Elle lit l'hexadécimal, le binaire, l'octal, le décimal, le suffixe "
          "<font face='Courier'>h</font> de nasm et les caractères "
          "(<font face='Courier'>'A'</font>), avec les opérateurs de bits à la priorité du "
@@ -547,8 +571,12 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
         ("p",
          "S'y ajoutent les fonctions qu'on écrit à la main en lisant un désassemblage : "
          "permutation d'octets, extension de signe, comptage de bits, rotations, "
-         "alignement. Le résultat s'affiche dans <b>toutes les bases en même temps</b>, "
-         "chaque ligne se copiant d'un clic."),
+         "alignement. Elles sont en boutons, et <b>survoler l'une d'elles écrit ce "
+         "qu'elle fait</b> juste en dessous — l'infobulle seule ne suffisait pas, elle "
+         "se mérite après une demi-seconde d'immobilité alors qu'on parcourt "
+         "dix-huit noms des yeux. Un clic écrit l'appel dans l'expression. Le résultat "
+         "s'affiche en bas dans <b>toutes les bases en même temps</b>, chaque ligne se "
+         "copiant d'un clic."),
         ("note",
          "La lecture ASCII suit l'ordre de la <b>mémoire</b>, non celui de l'écriture : "
          "<font face='Courier'>0x6c6c6568</font> donne « hell » et non « lleh ». Une valeur "
@@ -680,8 +708,14 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "Le module <b>RE</b> (Préférences › Modules) ajoute un onglet au panneau "
          "latéral et une fenêtre d'analyse. L'onglet ne porte qu'un bouton, celui qui "
          "ouvre la fenêtre : sept modules empilés dans une colonne de trois cents "
-         "pixels se parcourent à l'ascenseur, alors qu'ils tiennent en entier et tout "
-         "dépliés dans la fenêtre. C'est là qu'on les lit :"),
+         "pixels se parcourent à l'ascenseur."),
+        ("p",
+         "La fenêtre se lit <b>en largeur</b> : une colonne à gauche nomme les "
+         "modules, celui qu'on choisit prend tout le reste. « Tout » les remet à la "
+         "file, qui est la forme d'un compte rendu — c'est cette vue-là que "
+         "« Copier » et « Enregistrer » exportent en Markdown. Le module choisi est un "
+         "réglage : on le retrouve au retour."),
+        ("p", "Ce qu'on y trouve :"),
         ("liste", [
          "<b>Protections</b> — PIE, NX, RELRO, canari de pile, FORTIFY, IBT et pile "
          "fantôme, segments W+X, symboles, bibliothèques, RPATH — avec, pour chacune, ce "

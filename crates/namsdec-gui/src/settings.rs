@@ -118,6 +118,17 @@ pub struct Settings {
     /// Comment l'onglet Mémoire lit les octets : « bytes », « words » ou
     /// « text ».
     pub memory_format: String,
+    /// La base de la calculatrice : « hex », « dec », « oct » ou « bin ».
+    /// Le module que la fenêtre d'analyse montre, ou rien pour les
+    /// montrer tous.
+    #[serde(default)]
+    pub analysis_module: String,
+    #[serde(default = "base_par_défaut")]
+    pub calc_base: String,
+    /// Sur combien de bits elle montre son résultat : « 8 », « 16 »,
+    /// « 32 » ou « 64 ».
+    #[serde(default = "largeur_par_défaut")]
+    pub calc_width: String,
     /// La légende des couleurs de la gouttière, sous l'éditeur.
     #[serde(default = "vrai")]
     pub heat_legend: bool,
@@ -231,6 +242,17 @@ pub struct Settings {
     pub shortcuts: BTreeMap<String, String>,
 }
 
+/// L'hexadécimal : c'est la base d'un désassemblage, et c'est de là
+/// qu'on recopie ce qu'on veut calculer.
+fn base_par_défaut() -> String {
+    "hex".to_owned()
+}
+
+/// Soixante-quatre bits, la largeur de la machine simulée.
+fn largeur_par_défaut() -> String {
+    "64".to_owned()
+}
+
 impl Default for Settings {
     /// Les défauts de l'application, pas ceux de `Default` sur chaque type
     /// — sans quoi un fichier partiel masquerait les barres au lieu de les
@@ -257,6 +279,9 @@ impl Default for Settings {
             exercises_best: Vec::new(),
             disassembler: pseudo_par_défaut(),
             memory_format: "bytes".to_owned(),
+            analysis_module: String::new(),
+            calc_base: base_par_défaut(),
+            calc_width: largeur_par_défaut(),
             heat_legend: true,
             system_titlebar: false,
             console_height: None,

@@ -9565,7 +9565,7 @@ fn opening_a_binary_shows_its_code_not_its_header() {
 #[test]
 fn both_languages_say_the_same_things() {
     /// Les champs dont les deux langues partagent le texte, et pourquoi.
-    const LES_MÊMES: [&str; 26] = [
+    const LES_MÊMES: [&str; 27] = [
         // Une adresse d'exemple : elle s'écrit pareil partout.
         "flow_goal_hint",
         // Une adresse et deux noms propres : les traduire n'aurait pas
@@ -9596,6 +9596,7 @@ fn both_languages_say_the_same_things() {
         "x87_empty",
         // Le mot est le même des deux côtés de la Manche.
         "calculator_expression",
+        "calculator_base_label",
         "reading_octal",
         "reading_ascii",
         // Une expression de calcul : `0xff & 0x0f` ne se traduit pas.
@@ -11854,6 +11855,186 @@ fn a_solved_exercise_stays_solved() {
         painted.contains(&format!("1/96 {}", strings(app.lang).exercises_done_count)),
         "{painted}"
     );
+}
+
+/// La fenêtre d'analyse se lit en largeur, pas seulement en hauteur.
+///
+/// Les sept modules empilés n'employaient que la hauteur : on relisait
+/// une page de deux mille pixels dans une fenêtre large de mille, en
+/// cherchant un titre à l'ascenseur. Une colonne choisit, le module
+/// prend le reste.
+#[test]
+fn the_analysis_window_reads_across_and_not_only_down() {
+    let s = strings(Lang::Fr);
+    let Some(octets) = binaire_dépreuve("crackme-01") else {
+        return;
+    };
+    let ctx = egui::Context::default();
+    let écran = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1900.0, 1200.0));
+    let entrée = egui::RawInput {
+        screen_rect: Some(écran),
+        ..Default::default()
+    };
+    let peindre = |app: &mut NamsdecApp| -> String {
+        let mut peint = String::new();
+        for _ in 0..3 {
+            peint.clear();
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(texte) = &clipped.shape {
+                    peint.push_str(texte.galley.text());
+                    peint.push('|');
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+        peint
+    };
+
+    let mut app = NamsdecApp::default();
+    app.apply_theme(&ctx);
+    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    app.show_analysis = true;
+
+    // La colonne porte « Tout » et le nom de chaque module.
+    let titres = app.re_registry.titles("fr");
+    assert!(titres.len() >= 5, "il y a bien des modules : {titres:?}");
+    let peint = peindre(&mut app);
+    assert!(peint.contains(s.analysis_all), "« Tout » est dans la colonne :\n{peint}");
+    for titre in &titres {
+        assert!(peint.contains(titre), "« {titre} » est dans la colonne");
+    }
+
+    // Choisi, un seul module s'affiche — et les autres ne sont plus que
+    // des entrées de la colonne, non des pages à faire défiler.
+    let (id, titre) = app.re_registry.entries("fr")[1];
+    app.analysis_module = id.to_owned();
+    let peint = peindre(&mut app);
+    assert!(peint.contains(titre), "le module choisi est montré :\n{peint}");
+
+    // Et le choix se retrouve au retour : c'est un réglage.
+    assert_eq!(app.settings_snapshot().analysis_module, id);
+    let relu = NamsdecApp::from_settings(app.settings_snapshot());
+    assert_eq!(relu.analysis_module, id);
+}
+
+/// Le clavier écrit ce que l'évaluateur lit.
+///
+/// C'est toute la règle : une touche qui produirait une expression que
+/// la calculatrice refuse serait une touche qui ment. En hexadécimal,
+/// taper 1 puis F doit donner trente et un — non mille neuf cent.
+#[test]
+fn the_keypad_writes_what_the_evaluator_reads() {
+    // Une frappe après l'autre, comme au clavier de l'écran.
+    let tape = |base: CalcBase, touches: &[&str]| -> String {
+        let mut expression = String::new();
+        for touche in touches {
+            expression.push_str(&écriture_de_touche(touche, base, &expression));
+        }
+        expression
+    };
+
+    // Le préfixe arrive avec le premier chiffre, et une seule fois.
+    assert_eq!(tape(CalcBase::Hex, &["1", "F"]), "0x1F");
+    assert_eq!(calc::eval("0x1F", None), Ok(31));
+    assert_eq!(tape(CalcBase::Bin, &["1", "1", "1", "1", "1"]), "0b11111");
+    assert_eq!(calc::eval("0b11111", None), Ok(31));
+    assert_eq!(tape(CalcBase::Oct, &["3", "7"]), "0o37");
+    // Le décimal n'a pas de préfixe : c'est le défaut de tout le monde.
+    assert_eq!(tape(CalcBase::Dec, &["3", "1"]), "31");
+
+    // Après un opérateur, un nouveau nombre commence, donc un nouveau
+    // préfixe.
+    assert_eq!(tape(CalcBase::Hex, &["1", "F", "&", "F"]), "0x1F&0xF");
+    assert_eq!(calc::eval("0x1F&0xF", None), Ok(15));
+
+    // Les opérateurs et les parenthèses s'écrivent tels quels.
+    assert_eq!(tape(CalcBase::Hex, &["(", "1", ")", "<<", "4"]), "(0x1)<<0x4");
+    assert_eq!(calc::eval("(0x1)<<0x4", None), Ok(16));
+}
+
+/// Un chiffre n'est proposé que s'il existe dans la base.
+///
+/// Un clavier qui propose `9` en binaire ment sur ce qu'on peut taper,
+/// et l'on apprend l'erreur en la commettant.
+#[test]
+fn a_digit_is_offered_only_where_it_exists() {
+    assert!(CalcBase::Hex.accepte('f') && CalcBase::Hex.accepte('F'));
+    assert!(CalcBase::Dec.accepte('9') && !CalcBase::Dec.accepte('A'));
+    assert!(CalcBase::Oct.accepte('7') && !CalcBase::Oct.accepte('8'));
+    assert!(CalcBase::Bin.accepte('1') && !CalcBase::Bin.accepte('2'));
+}
+
+/// La largeur masque l'affichage, elle ne change pas le calcul.
+///
+/// Le processeur travaille sur soixante-quatre bits quoi qu'on affiche ;
+/// ce qu'on choisit ici, c'est combien de bits on veut *lire*. Un `and
+/// eax, 0x1f` travaille sur trente-deux, et lire son résultat sur
+/// soixante-quatre fait compter des zéros qui ne veulent rien dire.
+#[test]
+fn the_width_masks_the_reading_not_the_computation() {
+    assert_eq!(CalcWidth::W64.mask(), u64::MAX, "et non un débordement");
+    assert_eq!(CalcWidth::W32.mask(), 0xffff_ffff);
+    assert_eq!(CalcWidth::W16.mask(), 0xffff);
+    assert_eq!(CalcWidth::W8.mask(), 0xff);
+
+    let valeur = calc::eval("0 - 1", None).expect("le calcul passe");
+    assert_eq!(valeur, u64::MAX, "le calcul déborde comme un registre");
+    assert_eq!(valeur & CalcWidth::W8.mask(), 0xff, "et la lecture se borne");
+}
+
+/// La base et la largeur se retrouvent au retour.
+///
+/// Ce sont des réglages : quelqu'un qui travaille en hexadécimal sur
+/// trente-deux bits ne veut pas le redire à chaque lancement.
+#[test]
+fn the_calculator_remembers_its_base_and_width() {
+    let mut app = NamsdecApp {
+        calc_base: CalcBase::Bin,
+        calc_width: CalcWidth::W16,
+        ..Default::default()
+    };
+    let écrits = app.settings_snapshot();
+    assert_eq!(écrits.calc_base, "bin");
+    assert_eq!(écrits.calc_width, "16");
+
+    app = NamsdecApp::from_settings(écrits);
+    assert_eq!(app.calc_base, CalcBase::Bin);
+    assert_eq!(app.calc_width, CalcWidth::W16);
+
+    // Un fichier qui ne les connaît pas retombe sur l'hexadécimal et
+    // soixante-quatre bits : la base d'un désassemblage, et la largeur
+    // de la machine simulée.
+    assert_eq!(CalcBase::by_id("n'importe quoi"), CalcBase::Hex);
+    assert_eq!(CalcWidth::by_id("n'importe quoi"), CalcWidth::W64);
+}
+
+/// La calculatrice montre son clavier, ses bits et ses fonctions.
+#[test]
+fn the_calculator_shows_its_keypad_its_bits_and_its_functions() {
+    let s = strings(Lang::Fr);
+    let mut app = NamsdecApp {
+        show_calculator: true,
+        calc_input: "0x1f".to_owned(),
+        ..Default::default()
+    };
+    let peint = paint(&mut app);
+
+    // Le résultat, dans la base choisie.
+    assert!(peint.contains("0x1f"), "{peint}");
+    // Le clavier : des chiffres et des opérateurs de code, non des
+    // symboles mathématiques qu'il faudrait retraduire.
+    for touche in ["7", "F", "&", "<<", "0x"] {
+        assert!(peint.contains(&format!("{touche}|")), "la touche {touche} :\n{peint}");
+    }
+    // Les fonctions, en toutes lettres.
+    assert!(peint.contains("popcnt(x)"), "{peint}");
+    assert!(peint.contains("rol(x, n)"), "{peint}");
+    // Et la ligne qui invite à les survoler.
+    assert!(peint.contains(s.calculator_pick_function), "{peint}");
+    // Les index de la grille de bits.
+    assert!(peint.contains("63|"), "{peint}");
+    assert!(peint.contains("32|"), "{peint}");
 }
 
 /// Une fenêtre qui vient de s'ouvrir passe devant.

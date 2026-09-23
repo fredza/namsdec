@@ -43,6 +43,33 @@ six fautes d'assembleur que namsdec sait désormais reconnaître.
   même le seul moment où l'on en écrit une —, et à ce moment-là il n'y a
   ni registre ni mémoire à lire.
 
+**La calculatrice, comme celle d'un programmeur**
+- L'expression en haut, le résultat en grand, les **soixante-quatre
+  bits** dessous — groupés par quartets, avec leurs index —, puis un
+  clavier. Cliquer un bit le bascule, et l'expression devient la
+  nouvelle valeur.
+- Le clavier écrit **ce que l'évaluateur lit** : `&`, `|`, `^`, `<<`, et
+  non des symboles mathématiques qu'il faudrait retraduire pour les
+  recopier dans du code.
+- La **base** gouverne les deux sens : le résultat est écrit dedans, et
+  un chiffre tapé y entre avec son préfixe — en hexadécimal, `1` puis
+  `F` donnent `0x1F`. Les chiffres qui n'existent pas dans la base sont
+  éteints ; un clavier qui propose `9` en binaire ment sur ce qu'on peut
+  taper. La **largeur** (8, 16, 32, 64) borne la lecture, non le calcul.
+- Les dix-huit fonctions sont en boutons, et **survoler l'une d'elles
+  écrit ce qu'elle fait** juste en dessous. L'infobulle seule ne
+  suffisait pas : elle se mérite après une demi-seconde d'immobilité,
+  alors qu'on parcourt dix-huit noms des yeux.
+- Base et largeur sont des réglages : on les retrouve au retour.
+
+**La fenêtre d'analyse se lit en largeur**
+- Une colonne à gauche nomme les modules, celui qu'on choisit prend tout
+  le reste. Les sept empilés n'employaient que la hauteur : on relisait
+  une page de deux mille pixels dans une fenêtre large de mille, en
+  cherchant un titre à l'ascenseur.
+- « Tout » les remet à la file, qui est la forme d'un compte rendu —
+  c'est cette vue-là qu'on copie. Le module choisi est un réglage.
+
 **Chercher dans la mémoire**
 - Un champ dans l'onglet Mémoire, et trois écritures qui se mélangent
   dans la même case : `"pass"` pour un texte, `41 42 43` ou `414243`
@@ -74,6 +101,14 @@ six fautes d'assembleur que namsdec sait désormais reconnaître.
   en grand et tout dépliés. Deux fois la même chose, dont une mal.
 
 **Réparé**
+- `Suggestions::accepted` et `about_window_id` n'étaient employées que
+  par les tests, et la compilation release les signalait comme mortes.
+  Elles sont marquées `#[cfg(test)]`, ce qui dit ce qui est : un
+  avertissement qu'on apprend à ignorer finit par en cacher un vrai.
+- Le caractère `←` n'existe pas dans la police d'egui. Le test qui
+  vérifie chaque glyphe de l'interface l'a attrapé avant qu'il n'arrive
+  à l'écran sous forme de carré vide ; le retour arrière est une icône
+  dessinée.
 - Une fenêtre qui vient de s'ouvrir passe devant. Le plan d'installation
   s'ouvre depuis les préférences et se posait derrière elles : on
   cliquait « Installer… » et il ne se passait rien de visible. La règle
