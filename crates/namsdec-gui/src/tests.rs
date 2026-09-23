@@ -5046,6 +5046,12 @@ fn the_analysis_window_reports_the_binary_protections() {
     let mut app = NamsdecApp {
         source: DEFAULT_SOURCE.to_owned(),
         show_analysis: true,
+        // Le module choisi dans la colonne de gauche : c'est ainsi
+        // qu'on lit celui-ci, et c'est ce qui lui donne toute la place.
+        // « Tout » les empile, et ce qui dépasse de la fenêtre n'est
+        // pas peint — un test qui lit ce qui est peint ne le verrait
+        // pas.
+        analysis_module: "protections".to_owned(),
         ..Default::default()
     };
     app.do_assemble();
@@ -5109,6 +5115,7 @@ fn a_binary_from_disk_is_analysed_as_itself() {
     };
     let mut app = NamsdecApp {
         show_analysis: true,
+        analysis_module: "protections".to_owned(),
         ..Default::default()
     };
     // Trop gros pour la mémoire simulée — il ne s'exécutera pas ici,
@@ -11855,6 +11862,55 @@ fn a_solved_exercise_stays_solved() {
         painted.contains(&format!("1/96 {}", strings(app.lang).exercises_done_count)),
         "{painted}"
     );
+}
+
+/// La carte du fichier dit où est quoi, et le vidage ce que ces
+/// octets-là sont.
+///
+/// Les deux répondent à la question qui vient après « qu'est-ce que
+/// c'est ? » : savoir à quel endroit on regarde change ce qu'on y
+/// cherche — une entropie haute dans `.text` est normale, la même dans
+/// `.rodata` annonce des données chiffrées.
+#[test]
+fn the_map_and_the_dump_say_where_and_what() {
+    let Some(octets) = binaire_dépreuve("crackme-01") else {
+        return;
+    };
+    let mut app = NamsdecApp::default();
+    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    app.show_analysis = true;
+
+    let ids: Vec<&str> = app
+        .re_registry
+        .entries("fr")
+        .into_iter()
+        .map(|(id, _)| id)
+        .collect();
+    for voulu in ["map", "dump"] {
+        assert!(ids.contains(&voulu), "le module « {voulu} » existe : {ids:?}");
+    }
+
+    // La carte : les segments que le noyau charge, avec leurs droits, et
+    // les sections que l'éditeur de liens a rangées.
+    app.analysis_module = "map".to_owned();
+    let peint = paint(&mut app);
+    assert!(peint.contains("LOAD"), "les segments chargeables :\n{peint}");
+    assert!(peint.contains("r-x"), "et leurs droits :\n{peint}");
+    assert!(peint.contains(".text"), "les sections nommées :\n{peint}");
+
+    // Le vidage : la tranche de départ, son empreinte, son entropie.
+    app.analysis_module = "dump".to_owned();
+    let peint = paint(&mut app);
+    // Les seize premiers octets d'un ELF commencent par son nombre
+    // magique, et c'est ce que la colonne de texte montre.
+    assert!(peint.contains("ELF"), "le début du fichier :\n{peint}");
+    let empreinte = namsdec_re::digest::hex(&namsdec_re::digest::sha256(&octets[..16]));
+    assert!(
+        peint.contains(&empreinte),
+        "l'empreinte des seize premiers octets, et non celle du fichier :\n{peint}"
+    );
+    assert!(peint.contains("SHA-256"), "{peint}");
+    assert!(peint.contains("CRC-32"), "{peint}");
 }
 
 /// Le rapport d'analyse porte l'empreinte du fichier.

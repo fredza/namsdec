@@ -76,6 +76,20 @@ six fautes d'assembleur que namsdec sait désormais reconnaître.
 - Ni MD5 ni SHA-1 : ce sont des empreintes cassées, et les afficher à
   côté d'une bonne sans le dire apprendrait le faux.
 
+**Où est quoi, et ce que ces octets-là sont**
+- **Carte du fichier** : les segments, ce que le noyau charge, avec
+  leurs droits — un `rwx` se voit en rouge — ; et les sections, ce que
+  l'éditeur de liens a rangé, avec leur place dans le fichier, leur
+  adresse et leur entropie. `.bss` n'a pas d'entropie et le dit : elle
+  n'occupe rien dans le fichier, et mesurer là reviendrait à raconter le
+  voisin.
+- **Vidage du fichier** : les octets tels qu'ils sont sur le disque —
+  l'onglet Mémoire montre ceux du programme qui tourne, ce n'est pas la
+  même chose — et, pour la tranche qu'on choisit, sa taille, son
+  SHA-256, son CRC-32 et son entropie. Cliquer un octet pose le début.
+  Seules les lignes visibles sont disposées : un fichier de trois cents
+  kilo-octets fait vingt mille lignes.
+
 **La fenêtre d'analyse se lit en largeur**
 - Une colonne à gauche nomme les modules, celui qu'on choisit prend tout
   le reste. Les sept empilés n'employaient que la hauteur : on relisait

@@ -1,0 +1,349 @@
+use crate::{ReContext, ReModule, digest, entropy};
+
+/// Le vidage hexadécimal du fichier, et l'empreinte de ce qu'on y
+/// sélectionne.
+///
+/// L'onglet Mémoire montre la mémoire **du programme qui tourne** ;
+/// celui-ci montre le **fichier**, tel qu'il est sur le disque. Les
+/// deux diffèrent plus qu'on ne croit : ce qui n'est pas chargé n'a pas
+/// d'adresse, ce qui est relogé n'a plus la même valeur, et un binaire
+/// empaqueté ne ressemble à rien une fois déballé.
+///
+/// Ce qu'on vient y chercher tient en une question : *ces octets-là,
+/// qu'est-ce que c'est ?* D'où l'empreinte et l'entropie d'une
+/// sélection — un bloc à 7,9 bits par octet est chiffré ou compressé, un
+/// bloc à 4,5 est du code, et un SHA-256 se colle dans un compte rendu
+/// ou se compare à celui d'un fichier connu.
+pub struct DumpModule {
+    /// Le début de la sélection, tel qu'on l'a écrit.
+    début: String,
+    /// Sa longueur, telle qu'on l'a écrite.
+    longueur: String,
+    /// Où le vidage doit se rendre à la prochaine image, s'il le doit.
+    aller_à: Option<usize>,
+}
+
+impl Default for DumpModule {
+    fn default() -> Self {
+        Self {
+            début: "0".to_owned(),
+            // Seize octets : une ligne du vidage. C'est la sélection
+            // qu'on refait le plus souvent, et elle donne une réponse
+            // tout de suite plutôt qu'un champ vide.
+            longueur: "0x10".to_owned(),
+            aller_à: None,
+        }
+    }
+}
+
+/// Combien d'octets par ligne. Seize, comme tous les vidages depuis
+/// quarante ans : c'est ce qui fait qu'une adresse ronde tombe en début
+/// de ligne.
+const PAR_LIGNE: usize = 16;
+
+/// Lit un nombre écrit à la main, dans la base que son préfixe annonce.
+///
+/// `0x` hexadécimal, sinon décimal. Rendre `None` sur ce qui n'en est
+/// pas un plutôt que zéro : un champ qui répond « 0 » à une faute de
+/// frappe fait croire qu'on regarde le début du fichier.
+fn nombre(texte: &str) -> Option<usize> {
+    let texte = texte.trim();
+    if let Some(hexa) = texte.strip_prefix("0x").or_else(|| texte.strip_prefix("0X")) {
+        usize::from_str_radix(hexa, 16).ok()
+    } else {
+        texte.parse().ok()
+    }
+}
+
+/// La tranche que ces deux champs désignent dans ce fichier.
+///
+/// Bornée au fichier : une longueur trop grande donne ce qui reste, et
+/// non une erreur — on tape « tout le reste » en écrivant un grand
+/// nombre, et refuser serait pédant. Un début hors du fichier, en
+/// revanche, ne désigne rien.
+pub fn tranche(taille_du_fichier: usize, début: usize, longueur: usize) -> Option<(usize, usize)> {
+    if début >= taille_du_fichier || longueur == 0 {
+        return None;
+    }
+    let fin = début.saturating_add(longueur).min(taille_du_fichier);
+    Some((début, fin))
+}
+
+impl ReModule for DumpModule {
+    fn id(&self) -> &'static str {
+        "dump"
+    }
+
+    fn title(&self, lang: &str) -> &'static str {
+        if lang.starts_with("fr") {
+            "Vidage du fichier"
+        } else {
+            "File dump"
+        }
+    }
+
+    fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
+        let octets = ctx.binary;
+        if octets.is_empty() {
+            ui.weak(ctx.t(
+                "Rien de chargé : il n'y a pas de fichier à vider.",
+                "Nothing loaded: there is no file to dump.",
+            ));
+            return;
+        }
+
+        // La sélection, écrite à la main ou posée d'un clic.
+        let mut aller = false;
+        ui.horizontal_wrapped(|ui| {
+            ui.weak(ctx.t("De", "From"));
+            ui.add(
+                egui::TextEdit::singleline(&mut self.début)
+                    .font(egui::TextStyle::Monospace)
+                    .desired_width(90.0),
+            );
+            ui.weak(ctx.t("longueur", "length"));
+            ui.add(
+                egui::TextEdit::singleline(&mut self.longueur)
+                    .font(egui::TextStyle::Monospace)
+                    .desired_width(90.0),
+            );
+            aller |= ui
+                .button(ctx.t("Aller", "Go"))
+                .on_hover_text(ctx.t(
+                    "Amener le vidage sur cette tranche",
+                    "Bring the dump to this range",
+                ))
+                .clicked();
+            if ui.button(ctx.t("Tout", "Everything")).clicked() {
+                self.début = "0".to_owned();
+                self.longueur = format!("{:#x}", octets.len());
+            }
+        });
+
+        let choisie = nombre(&self.début)
+            .zip(nombre(&self.longueur))
+            .and_then(|(d, l)| tranche(octets.len(), d, l));
+        match choisie {
+            Some((début, fin)) => {
+                if aller {
+                    self.aller_à = Some(début);
+                }
+                let morceau = &octets[début..fin];
+                ui.add_space(4.0);
+                egui::Grid::new("dump_selection")
+                    .num_columns(2)
+                    .min_col_width(0.0)
+                    .striped(true)
+                    .spacing([14.0, 3.0])
+                    .show(ui, |ui| {
+                        ui.weak(ctx.t("Tranche", "Range"));
+                        ui.monospace(format!(
+                            "{:#x} … {:#x} ({} {})",
+                            début,
+                            fin,
+                            morceau.len(),
+                            ctx.t("octets", "bytes")
+                        ));
+                        ui.end_row();
+
+                        ui.weak("SHA-256");
+                        let empreinte = digest::hex(&digest::sha256(morceau));
+                        if ui
+                            .add(
+                                egui::Label::new(
+                                    egui::RichText::new(&empreinte).monospace().size(11.0),
+                                )
+                                .sense(egui::Sense::click()),
+                            )
+                            .on_hover_text(ctx.t("Cliquer pour copier", "Click to copy"))
+                            .clicked()
+                        {
+                            ui.ctx().copy_text(empreinte);
+                        }
+                        ui.end_row();
+
+                        ui.weak("CRC-32");
+                        ui.monospace(format!("{:08x}", digest::crc32(morceau)));
+                        ui.end_row();
+
+                        ui.weak(ctx.t("Entropie", "Entropy"));
+                        let valeur = entropy::shannon(morceau);
+                        ui.monospace(format!(
+                            "{valeur:.2} — {}",
+                            entropy::Verdict::of(valeur).label(ctx.lang.starts_with("fr"))
+                        ));
+                        ui.end_row();
+
+                        ui.weak(ctx.t("Texte", "Text"));
+                        ui.monospace(lisible(morceau, 48));
+                        ui.end_row();
+                    });
+            }
+            None => {
+                ui.add_space(4.0);
+                ui.weak(ctx.t(
+                    "Cette tranche ne désigne rien : un début dans le fichier, une longueur \
+                     non nulle. Cliquez un octet du vidage pour poser le début.",
+                    "That range points at nothing: a start inside the file, a non-zero \
+                     length. Click a byte in the dump to set the start.",
+                ));
+            }
+        }
+
+        ui.add_space(6.0);
+        ui.separator();
+        ui.add_space(4.0);
+
+        // Le vidage lui-même, une ligne à la fois et seulement celles
+        // qu'on voit : un fichier de trois cents kilo-octets fait vingt
+        // mille lignes, et les disposer toutes coûterait une seconde
+        // par image.
+        let hauteur = ui.text_style_height(&egui::TextStyle::Monospace) + 2.0;
+        let lignes = octets.len().div_ceil(PAR_LIGNE);
+        let mut zone = egui::ScrollArea::vertical()
+            .id_salt("dump_rows")
+            .auto_shrink([false, false])
+            .max_height(320.0);
+        if let Some(cible) = self.aller_à.take() {
+            zone = zone.vertical_scroll_offset((cible / PAR_LIGNE) as f32 * hauteur);
+        }
+        let mut cliqué: Option<usize> = None;
+        zone.show_rows(ui, hauteur, lignes, |ui, plage| {
+            for ligne in plage {
+                let base = ligne * PAR_LIGNE;
+                let fin = (base + PAR_LIGNE).min(octets.len());
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 4.0;
+                    ui.monospace(
+                        egui::RichText::new(format!("{base:08x}"))
+                            .color(ui.visuals().weak_text_color()),
+                    );
+                    for (rang, octet) in octets[base..fin].iter().enumerate() {
+                        let position = base + rang;
+                        let dans = choisie.is_some_and(|(d, f)| position >= d && position < f);
+                        let texte = egui::RichText::new(format!("{octet:02x}")).monospace();
+                        let texte = if dans {
+                            texte.background_color(
+                                ui.visuals().selection.bg_fill.gamma_multiply(0.55),
+                            )
+                        } else {
+                            texte
+                        };
+                        if ui
+                            .add(egui::Label::new(texte).sense(egui::Sense::click()))
+                            .clicked()
+                        {
+                            cliqué = Some(position);
+                        }
+                        // Un blanc au milieu : c'est ce qui fait qu'on
+                        // compte les octets par huit sans les compter.
+                        if rang == PAR_LIGNE / 2 - 1 {
+                            ui.add_space(6.0);
+                        }
+                    }
+                    ui.add_space(8.0);
+                    ui.monospace(lisible(&octets[base..fin], PAR_LIGNE));
+                });
+            }
+        });
+        if let Some(position) = cliqué {
+            self.début = format!("{position:#x}");
+        }
+    }
+}
+
+/// Les octets lus comme du texte, le reste en points — comme dans tout
+/// vidage hexadécimal depuis quarante ans.
+fn lisible(octets: &[u8], combien: usize) -> String {
+    octets
+        .iter()
+        .take(combien)
+        .map(|o| {
+            if o.is_ascii_graphic() || *o == b' ' {
+                *o as char
+            } else {
+                '.'
+            }
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Un nombre se lit dans la base que son préfixe annonce, et ce qui
+    /// n'en est pas un ne devient pas zéro.
+    ///
+    /// Un champ qui répond « 0 » à une faute de frappe fait croire qu'on
+    /// regarde le début du fichier, ce qui est le plus sûr moyen de
+    /// conclure de travers.
+    #[test]
+    fn a_number_reads_in_the_base_its_prefix_announces() {
+        assert_eq!(nombre("0x10"), Some(16));
+        assert_eq!(nombre("0X10"), Some(16));
+        assert_eq!(nombre("16"), Some(16));
+        assert_eq!(nombre("  0x1f  "), Some(31));
+        assert_eq!(nombre(""), None);
+        assert_eq!(nombre("zz"), None);
+        assert_eq!(nombre("0xzz"), None);
+    }
+
+    /// La tranche est bornée au fichier, et un début dehors ne désigne
+    /// rien.
+    #[test]
+    fn a_range_is_bounded_by_the_file() {
+        // Une longueur trop grande donne ce qui reste : on tape « tout
+        // le reste » en écrivant un grand nombre, et refuser serait
+        // pédant.
+        assert_eq!(tranche(100, 90, 1000), Some((90, 100)));
+        assert_eq!(tranche(100, 0, 16), Some((0, 16)));
+        // Un début hors du fichier, en revanche, ne désigne rien.
+        assert_eq!(tranche(100, 100, 16), None);
+        assert_eq!(tranche(100, 200, 16), None);
+        // Et une longueur nulle non plus : l'empreinte du vide
+        // ressemble à une vraie.
+        assert_eq!(tranche(100, 0, 0), None);
+        assert_eq!(tranche(0, 0, 16), None);
+        // Le débordement ne fait rien tomber.
+        assert_eq!(tranche(100, 1, usize::MAX), Some((1, 100)));
+    }
+
+    /// Le texte d'un vidage : ce qui se lit, et des points pour le
+    /// reste.
+    #[test]
+    fn the_text_column_shows_what_reads() {
+        assert_eq!(lisible(b"ELF\x01\x02 ok", 16), "ELF.. ok");
+        assert_eq!(lisible(b"abcdef", 3), "abc");
+        assert_eq!(lisible(b"", 16), "");
+    }
+
+    /// L'empreinte porte sur la tranche choisie, non sur le fichier.
+    ///
+    /// C'est tout l'intérêt : « ces octets-là, qu'est-ce que c'est ? »
+    #[test]
+    fn the_digest_covers_the_selected_range_only() {
+        let fichier = b"aaaabbbbcccc";
+        let (début, fin) = tranche(fichier.len(), 4, 4).expect("une tranche");
+        assert_eq!(&fichier[début..fin], b"bbbb");
+        assert_eq!(
+            digest::hex(&digest::sha256(&fichier[début..fin])),
+            digest::hex(&digest::sha256(b"bbbb"))
+        );
+        assert_ne!(
+            digest::hex(&digest::sha256(&fichier[début..fin])),
+            digest::hex(&digest::sha256(fichier))
+        );
+    }
+
+    /// Les valeurs de départ répondent tout de suite.
+    ///
+    /// Seize octets depuis le début : la sélection qu'on refait le plus
+    /// souvent, et qui donne une réponse plutôt qu'un champ vide.
+    #[test]
+    fn the_first_selection_already_says_something() {
+        let module = DumpModule::default();
+        assert_eq!(nombre(&module.début), Some(0));
+        assert_eq!(nombre(&module.longueur), Some(16));
+    }
+}

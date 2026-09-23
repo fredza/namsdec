@@ -722,6 +722,13 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "personnes qui lisent « le crackme » n'ont pas forcément le même fichier "
          "sous les yeux. Les deux se copient d'un clic, et le panneau dit laquelle prouve "
          "quelque chose — CRC-32 ne fait que dire si le fichier est arrivé entier.",
+         "<b>Carte du fichier</b> — les <b>segments</b>, ce que le noyau charge, avec "
+         "leurs droits (un <font face='Courier'>rwx</font> se voit en rouge) ; et les "
+         "<b>sections</b>, ce que l'éditeur de liens a rangé, avec leur place dans "
+         "le fichier, leur adresse et leur entropie. Savoir à quel endroit on regarde "
+         "change ce qu'on y cherche : une entropie haute dans "
+         "<font face='Courier'>.text</font> est normale, la même dans "
+         "<font face='Courier'>.rodata</font> annonce des données chiffrées.",
          "<b>Protections</b> — PIE, NX, RELRO, canari de pile, FORTIFY, IBT et pile "
          "fantôme, segments W+X, symboles, bibliothèques, RPATH — avec, pour chacune, ce "
          "que son état change concrètement.",
@@ -737,6 +744,11 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "adresse. Une adresse qu'un `call` vise est une fonction, même dépouillée de son "
          "nom.",
          "<b>Gadgets</b> — les fins de séquence utiles à une chaîne ROP.",
+         "<b>Vidage du fichier</b> — les octets tels qu'ils sont sur le disque, et pour "
+         "la tranche qu'on choisit : sa taille, son SHA-256, son CRC-32 et son entropie. "
+         "C'est la réponse à « ces octets-là, qu'est-ce que c'est ? » — un "
+         "bloc à 7,9 bits par octet est chiffré ou compressé, un bloc à "
+         "4,5 est du code. Cliquer un octet pose le début de la tranche.",
          "<b>Entropie</b> — combien de bits d'information porte un octet, sur tout le "
          "fichier puis par tranches. C'est ce qui répond avant tout le reste à « y a-t-il "
          "seulement quelque chose à lire ici ? » : un binaire empaqueté montre un petit "

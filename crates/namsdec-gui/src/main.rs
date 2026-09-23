@@ -35,7 +35,8 @@ use namsdec_disasm::DecodedInstruction;
 use namsdec_emu::{Backend, Emulator, RunStop, StepOverResult, StepResult};
 use namsdec_explorer::{ExplorerAction, FileExplorer};
 use namsdec_re::{
-    BinaryInfoModule, DigestModule, EntropyModule, FunctionsModule, GadgetsModule, ImportsModule, PatternsModule,
+    BinaryInfoModule, DigestModule, DumpModule, EntropyModule,
+    MapModule, FunctionsModule, GadgetsModule, ImportsModule, PatternsModule,
     ProtectionsModule, ReContext, ReModuleRegistry, StringsModule, SyscallsModule, XrefsModule,
 };
 use namsdec_theme::Theme;
@@ -2119,6 +2120,11 @@ impl Default for NamsdecApp {
         // la première ligne d'un compte rendu, et ce qui permet à deux
         // personnes de savoir qu'elles lisent le même fichier.
         re_registry.register(Box::new(DigestModule::default()));
+        // Puis « où est quoi » : un binaire n'est pas un bloc. Savoir à
+        // quel endroit on regarde change ce qu'on y cherche — une
+        // entropie haute dans `.text` est normale, la même dans
+        // `.rodata` annonce des données chiffrées.
+        re_registry.register(Box::new(MapModule::default()));
         re_registry.register(Box::new(ProtectionsModule::default()));
         // L'entropie juste après : elle répond avant tout le reste à
         // « est-ce qu'il y a quelque chose à lire ici ? ». Sur un binaire
@@ -2152,6 +2158,10 @@ impl Default for NamsdecApp {
         // Les fragments en dernier : ils n'ont de sens qu'après avoir lu
         // les protections, dont ils expliquent la raison d'être.
         re_registry.register(Box::new(GadgetsModule::default()));
+        // Le vidage en dernier : c'est là qu'on descend quand les
+        // modules d'au-dessus ont désigné un endroit, et qu'on veut
+        // savoir ce que ces octets-là sont vraiment.
+        re_registry.register(Box::new(DumpModule::default()));
 
         Self {
             source: DEFAULT_SOURCE.to_string(),
