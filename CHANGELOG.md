@@ -61,6 +61,16 @@ six fautes d'assembleur que namsdec sait désormais reconnaître.
   suffisait pas : elle se mérite après une demi-seconde d'immobilité,
   alors qu'on parcourt dix-huit noms des yeux.
 - Base et largeur sont des réglages : on les retrouve au retour.
+- **Les touches sont de vrais boutons**, avec leur fond, leur liseré et
+  leur couleur de famille : gris pour les chiffres, bleu pour les
+  opérateurs, rouge pour ce qui efface. Au repos, le thème rend le fond
+  des boutons transparent et le liseré invisible — le clavier n'était
+  qu'une trentaine de caractères posés dans du vide, qu'on ne pensait
+  même pas à cliquer.
+- **Tout est centré** : le résultat, la grille de bits, les sélecteurs et
+  le clavier. `vertical_centered` ne centre que les enfants de largeur
+  connue, et une rangée horizontale prend toute la largeur : elle ne se
+  centrait donc jamais. Les largeurs sont maintenant dites.
 
 **L'empreinte du fichier**
 - Un module de plus : la taille exacte, le **SHA-256** et le **CRC-32**

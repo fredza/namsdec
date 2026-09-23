@@ -12099,6 +12099,106 @@ fn the_analysis_window_reads_across_and_not_only_down() {
     assert_eq!(relu.analysis_module, id);
 }
 
+/// Les touches du clavier sont de vrais boutons, et le bloc est centré.
+///
+/// Le thème rend le fond des boutons transparent au repos et leur liseré
+/// invisible : sans fond posé à la main, le clavier n'était qu'une
+/// trentaine de caractères flottant dans du vide, qu'on ne pensait même
+/// pas à cliquer. Et aligné à gauche dans une fenêtre large, il tombait
+/// contre un bord avec du vide en face — une page, et non un appareil.
+#[test]
+fn the_keypad_is_made_of_real_buttons_and_is_centred() {
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp {
+        show_calculator: true,
+        ..Default::default()
+    };
+    app.apply_theme(&ctx);
+    let entrée = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1600.0, 1200.0),
+        )),
+        ..Default::default()
+    };
+
+    // Les touches : des rectangles à la taille posée, et rien d'autre
+    // dans la fenêtre n'a cette taille-là.
+    let mut touches: Vec<(egui::Rect, egui::Color32)> = Vec::new();
+    for _ in 0..3 {
+        touches.clear();
+        let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Rect(cadre) = &clipped.shape
+                && (cadre.rect.width() - 48.0).abs() < 0.5
+                && (cadre.rect.height() - 36.0).abs() < 0.5
+            {
+                touches.push((cadre.rect, cadre.fill));
+            }
+        }
+        sortie.textures_delta.clear();
+    }
+
+    assert_eq!(touches.len(), 30, "cinq rangées de six touches");
+    for (rect, fond) in &touches {
+        assert!(
+            fond.a() > 0,
+            "une touche sans fond ne se voit pas comme un bouton : {rect:?}"
+        );
+    }
+
+    // Centré dans la fenêtre : le milieu du bloc et celui de la fenêtre
+    // tombent au même endroit.
+    let fenêtre = egui::AreaState::load(&ctx, egui::Id::new("calculator_window"))
+        .expect("la calculatrice est affichée");
+    let gauche = touches
+        .iter()
+        .map(|(r, _)| r.left())
+        .fold(f32::MAX, f32::min);
+    let droite = touches
+        .iter()
+        .map(|(r, _)| r.right())
+        .fold(f32::MIN, f32::max);
+    let milieu_du_bloc = (gauche + droite) / 2.0;
+    let milieu_fenêtre = fenêtre.rect().center().x;
+    assert!(
+        (milieu_du_bloc - milieu_fenêtre).abs() < 12.0,
+        "le clavier doit être centré : {milieu_du_bloc} contre {milieu_fenêtre}"
+    );
+
+    // La grille de bits est centrée elle aussi : ses deux index
+    // encadrent la rangée, et leur milieu tombe au milieu de la fenêtre.
+    let mut index: std::collections::BTreeMap<String, (f32, f32)> =
+        std::collections::BTreeMap::new();
+    let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+    for clipped in &sortie.shapes {
+        if let egui::epaint::Shape::Text(texte) = &clipped.shape {
+            let mot = texte.galley.text();
+            if ["63", "32"].contains(&mot) {
+                index.insert(mot.to_owned(), (texte.pos.x, texte.pos.x + texte.galley.size().x));
+            }
+        }
+    }
+    sortie.textures_delta.clear();
+    let (gauche_index, _) = index["63"];
+    let (_, droite_index) = index["32"];
+    assert!(
+        ((gauche_index + droite_index) / 2.0 - milieu_fenêtre).abs() < 16.0,
+        "la grille de bits doit être centrée : {gauche_index}..{droite_index}"
+    );
+
+    // Six colonnes : les touches d'une rangée se suivent sans se
+    // chevaucher, et chaque rangée en compte six.
+    let mut par_rangée: std::collections::BTreeMap<i32, usize> = std::collections::BTreeMap::new();
+    for (rect, _) in &touches {
+        *par_rangée.entry(rect.top() as i32).or_default() += 1;
+    }
+    assert_eq!(par_rangée.len(), 5, "cinq rangées : {par_rangée:?}");
+    for (haut, combien) in &par_rangée {
+        assert_eq!(*combien, 6, "six touches à la hauteur {haut}");
+    }
+}
+
 /// Le clavier écrit ce que l'évaluateur lit.
 ///
 /// C'est toute la règle : une touche qui produirait une expression que
