@@ -1,0 +1,719 @@
+================================================================================
+  namsdec — améliorations à faire
+  Établi le 18 septembre 2026, à partir d'une séance de travail sur la v0.2.4-beta.1
+================================================================================
+
+Ce fichier ne liste pas des idées générales : chaque entrée vient d'un défaut
+constaté à l'usage, d'une limite rencontrée en corrigeant, ou d'un choix
+délibérément remis à plus tard. Les trois premières sections sont ce qui gêne
+aujourd'hui ; les suivantes, ce vers quoi l'outil peut aller.
+
+
+--------------------------------------------------------------------------------
+ 1. CE QUI EST CASSÉ OU INCOMPLET AUJOURD'HUI
+--------------------------------------------------------------------------------
+
+1.1  Les diagnostics déjà affichés ne se retraduisent pas
+     Ceux du lint parlent désormais la langue de l'application : ils étaient en
+     anglais en dur, même en français. Mais ceux qui sont DÉJÀ dans la liste
+     gardent la langue où ils ont été produits — les retraduire demanderait de
+     refaire l'assemblage, et ceux de nasm resteront de toute façon en anglais.
+     Piste : un Diagnostic qui garde son motif et ses arguments plutôt que sa
+     phrase, et ne se formate qu'au dessin.
+
+1.2  Le mode Normal : les mouvements par mot manquent encore
+     h, j, k, l, 0, Début, Fin et G sont là. Manquent w et b (mot suivant,
+     mot précédent), gg (début de fichier, qui demande une séquence de deux
+     touches), et les compteurs — 5j pour descendre de cinq lignes.
+
+1.3  Le graphe ne nomme pas la fonction, il l'adresse
+     La barre affiche maintenant l'adresse du premier bloc de la fonction
+     montrée. Le NOM manque : function_around() est une fermeture par sauts,
+     sans symboles, et se trompe là où deux fonctions partagent un bloc.
+     Piste : la table des symboles, déjà lue par load_elf pour les étiquettes.
+
+1.4  [FAIT] La route hors de la fonction montrée est signalée
+     Quand aucune route n'existe dans le sous-graphe mais qu'il en existe une
+     dans le programme entier, namsdec le dit et propose d'élargir la vue.
+
+1.5  [FAIT] Les modules d'analyse se replient
+     Neuf lignes de moins sur la page, derrière un en-tête qui les compte.
+
+1.6  rz-ghidra : la construction complète n'a pas été relancée
+     Les signatures ont été vérifiées à la source le 18 septembre 2026 : rz-ghidra
+     v0.9.0 appelle rz_core_annotated_code_print(code, offsets) à deux arguments,
+     et rizin v0.9.1 la déclare ainsi — les deux étiquettes vont donc ensemble.
+     Mais une compilation entière (dix à vingt minutes) n'a pas été faite.
+     Piste : vérifier au lancement de la recette que les deux tags existent
+     encore, et le dire plutôt que d'échouer à la sixième étape.
+
+1.7  Les noms de paquets annoncés ne sont vérifiés par rien
+     « sudo dnf install rizin rizin-plugin-ghidra » promettait un paquet qui
+     n'existe dans aucun dépôt Fedora — et comme dnf refuse la transaction
+     entière, la commande n'installait même pas Rizin. Corrigé, mais aucun test
+     ne peut vérifier qu'un paquet existe sans réseau ni distribution donnée.
+     Les trois autres (binutils, nasm, radare2) ont été vérifiés à la main le
+     18 septembre 2026.
+     Piste : une vérification facultative, lancée à la demande, qui interroge le
+     gestionnaire local et signale ce qui a disparu.
+
+1.8  [FAIT] Les sources sont effacées une fois l'outil bâti
+     Dernière étape de la recette de Rizin : 1,3 Go rendus. Reste à faire : un
+     bouton dans l'onglet Outils disant ce que chaque dossier pèse.
+
+
+1.17 [FAIT] Le mode d'emploi des plugins annonçait un dossier au lieu de deux
+     plugins/README.md disait « decompilers/ : les désassembleurs et
+     décompilateurs ». C'est faux : namsdec lit DEUX dossiers séparés,
+     `disassemblers/` (un listing, qui remplace le panneau principal) et
+     `decompilers/` (du pseudo-code, dans sa propre fenêtre). Une fiche rangée
+     dans le mauvais est ignorée SANS MESSAGE — namsdec ne sait pas qu'elle
+     existe. De quoi perdre une soirée sur son premier outil.
+     Corrigé, et un test tient les deux noms à jour avec le code.
+
+
+1.14 [FAIT] Le champ de saisie disparaissait vraiment — à 128 px de console
+     Signalé deux fois, et j'avais eu tort de le croire réglé : la correction
+     précédente traitait un autre cas. Reproduit en chargeant les réglages
+     réels de la machine (console_height: 128) au lieu d'une application par
+     défaut, et le thème posé — c'est ce dernier oubli qui rendait le test
+     aveugle : il change les espacements, donc la hauteur des rangées.
+     La cause : le plancher sous lequel la console ne peut pas descendre était
+     calculé d'après la hauteur que la zone de saisie avait prise à l'image
+     précédente. Or cette hauteur est celle qu'on lui a *allouée* : trop
+     courte, la zone est tronquée, la mesure rend la hauteur tronquée, et le
+     plancher reste sous ce qu'il faut. Le panneau restait court parce qu'il
+     était court.
+     Le plancher se calcule maintenant rangée par rangée, d'après le contenu,
+     et la mesure ne sert plus qu'à l'agrandir (l'environnement déplié). La
+     console s'ouvre d'elle-même à 163 px quand le programme attend.
+     Le test balaie cinq hauteurs × environnement replié/déplié, pose le
+     thème, et vérifie la POSITION de chaque rangée. Vérifié qu'il échoue sans
+     le correctif.
+
+1.15 [FAIT] La fenêtre du plan d'installation : bouton toujours actif, et
+     impossible à fermer
+     (a) « Lancer l'installation » restait invitant après l'installation. On ne
+         savait donc pas si elle avait abouti, et la seule façon de s'en
+         assurer était de tout relancer — un quart d'heure de compilation pour
+         rien. La fenêtre demande maintenant à la machine si l'outil répond, et
+         dit « C'est fait : l'outil répond » avec un bouton Fermer.
+         « Recommencer » reste possible, mais n'est plus ce qu'on propose en
+         premier.
+     (b) Impossible de fermer : le plan de rizin compte neuf étapes et un
+         journal, la fenêtre dépassait en haut comme en bas, et sa barre de
+         titre — donc sa croix — passait hors champ. Elle est bornée à 86 % de
+         l'écran, la page défilante à 50 %, un bouton Fermer est dans la barre
+         d'action, et Échap referme (sauf pendant l'installation : on
+         n'interrompt pas un `ninja` par mégarde).
+
+1.16 [FAIT] keymap.json n'existait pas avant le premier changement
+     Les deux jeux de raccourcis étaient bien là depuis la séance précédente —
+     Préférences > Raccourcis, « Vim et gdb » (le défaut) et « Éditeur
+     ordinaire » —, mais le fichier n'était écrit qu'au premier changement.
+     Personne ne pouvait donc le lire pour savoir de quoi il partait. Il est
+     maintenant posé au lancement, comme settings.json, et jamais depuis un
+     test.
+
+1.13 [FAIT] « Il lui manque le greffon rz-ghidra » sur une installation qui
+     marchait
+     Deux défauts distincts, signalés en photo le 22 septembre.
+     (a) Le prérequis d'un outil était affiché SANS CONDITION. « Il lui manque
+         le greffon rz-ghidra » s'écrivait donc juste à côté de « programme
+         détecté » et « namsdec s'en sert », sur une machine où le greffon
+         était installé et répondait. On en concluait, très logiquement, que
+         l'installation avait échoué. Le message ne s'écrit plus que quand
+         l'outil est réellement incomplet.
+     (b) Celui-là cassait pour de vrai. Fedora livre rizin 0.7.4, sans
+         rz-ghidra ; namsdec en installe un 0.9.1 dans son propre dossier
+         (~/.local/share/namsdec/tools/rizin/bin/rizin), avec le greffon. Mais
+         le bouton « S'en servir » enregistrait la fiche embarquée, qui nomme
+         son programme « rizin » tout court — donc celui du PATH, donc celui
+         de Fedora, donc pas de `pdg`. Une installation réussie donnait un
+         outil cassé.
+         La fiche enregistrée porte maintenant le chemin résolu quand namsdec
+         a posé l'outil lui-même, et la ligne « Ce qui sera lancé » montre ce
+         qui sera vraiment lancé. Un outil venu du système, lui, garde son nom
+         nu : le figer en chemin absolu casserait à la première mise à jour.
+     Vérifié à la main : la décompilation de crackme-01 par pdg rend bien du C.
+
+1.9  [FAIT] Coloration syntaxique : `mov` et `mav` de la même couleur
+     Le premier mot d'une ligne était peint en instruction, quel qu'il soit.
+     La coloration ne distinguait donc pas ce qui existe de ce qui n'existe
+     pas — elle n'apprenait rien, et rassurait à tort.
+     La liste vient maintenant d'iced-x86, le décodeur que namsdec emploie
+     déjà : ce qui se décode se colore, et les deux ne peuvent pas diverger.
+     Ce qui n'y est pas se peint en couleur d'erreur.
+     La moitié difficile était de ne pas crier sur du code juste. Sont donc
+     reconnus : les préfixes (`rep`, `lock`), les deux orthographes d'une même
+     condition (`jnz` = `jne` : c'est le même octet), les comparaisons
+     vectorielles nommées (`cmpltpd`), les étiquettes sans deux-points
+     (`message db "salut"`), les directives de structure, et les macros que le
+     fichier définit lui-même. Vérifié sur les 96 exercices livrés : aucun mot
+     signalé à tort, et un test le tient.
+
+1.10 [FAIT] L'infobulle d'un registre ne donnait pas la valeur décimale
+     Elle la donnait, mais sur la *valeur* — il fallait viser les chiffres, à
+     côté. Survoler le nom parlait du rôle du registre et de sa provenance,
+     jamais de ce qu'il contient. Or « combien ça fait ? » est la question
+     qu'on se pose en survolant RCX.
+     Au passage : une condition morte dans readings.rs (`signed != value as
+     i64`, qui compare une valeur à elle-même).
+
+1.11 [FAIT] L'onglet RE ne se retenait pas d'un lancement à l'autre
+     Il en avait été retiré exprès, et la raison tenait alors : le module
+     était une ébauche, et la palette pouvait l'allumer sans qu'on le veuille.
+     Ce n'est plus le cas. La case est dans les Préférences, visible et
+     décochable, et refaire ce choix à chaque lancement est exactement ce
+     qu'un réglage sert à éviter.
+     Le champ a changé de nom (`re_tab`) : un ancien fichier, écrit du temps
+     où le « oui » pouvait être involontaire, ne rallume donc rien.
+
+1.12 [FAIT] Le champ de saisie manquait quand le programme attendait
+     Signalé en photo le 19 septembre : « Enter the password: » à l'écran, la
+     barre du bas disant « En attente d'une entrée… », et nulle part où taper.
+     Déjà corrigé depuis (la hauteur de la zone était ajoutée par-dessus le
+     journal au lieu d'être retranchée). Un test balaie maintenant cinq
+     hauteurs de console et vérifie la *position* de chaque rangée — egui
+     peint aussi ce qu'un découpage escamote, et chercher le texte ne
+     prouverait rien.
+
+
+--------------------------------------------------------------------------------
+ 2. ERGONOMIE
+--------------------------------------------------------------------------------
+
+2.1  Les fenêtres internes ne disent pas leur rang
+     Celle du plan d'installation s'ouvrait derrière les préférences d'où elle
+     part : on cliquait « Installer… » et il ne se passait rien de visible.
+     Corrigé en la posant au premier plan, mais le cas se reproduira — rien
+     n'oblige une fenêtre ouverte depuis une autre à passer devant elle.
+     Piste : un helper qui ouvre une fenêtre « au-dessus de celle qui l'appelle »,
+     plutôt qu'un Order choisi fenêtre par fenêtre.
+
+2.2  [FAIT] Le code de sortie est écrit dans le journal
+     « (code 128) » y figure à la suite de ce que la commande a écrit.
+
+2.3  [FAIT] Un échec dit ce qu'il laisse sur le disque
+     La note d'échec nomme le dossier à demi rempli et rappelle que la
+     prochaine tentative l'efface. Reste à faire : proposer de reprendre là où
+     l'on s'est arrêté plutôt que de tout refaire.
+
+2.4  [FAIT] Arguments et environnement se donnent
+     Champ « Arguments » (guillemets compris) et bloc « Variables
+     d'environnement », replié, une par ligne. Une variable redéfinie l'emporte
+     sur celle que le chargeur pose.
+
+2.5  [FAIT] Le champ annonce sa touche de sortie
+     « (Échap rend le clavier à l'éditeur) » dans le texte d'invite.
+
+2.6  [FAIT] La barre dit quand elle tronque
+     Au-delà de quatre-vingt-dix caractères, « (survolez pour lire la suite) »
+     et l'infobulle donne le message entier.
+
+2.7  [FAIT] Le zoom suit le pointeur
+     Ce qu'on vise reste sous la souris, comme sur une carte.
+
+2.8  [FAIT] « Tout voir » répond à la touche F
+     Seulement quand aucun champ ne retient les frappes.
+
+2.9  [FAIT] Six fenêtres s'agrandissent
+     Graphe, décompilateur, désassemblage, chronologie, analyse, exercices —
+     par un helper commun (maximizable + place_maximize_button).
+
+
+--------------------------------------------------------------------------------
+ 3. ROBUSTESSE ET TESTS
+--------------------------------------------------------------------------------
+
+3.1  [EN COURS] Des tests dépendent encore de la machine
+     Un dossier tests/binaires/ existe maintenant, avec un test qui passe en
+     revue tout ce qu'on y dépose : chargement, désassemblage, point d'entrée,
+     exécution. Il est vide dans le dépôt (les exécutables n'y ont pas leur
+     place) et ne fait rien tant que personne ne le remplit. Son LISEZMOI dit
+     quels cas manquent le plus — statique, PIE, argv, 32 bits, ELF corrompu.
+     Reste vrai pour les autres tests, qui lancent nasm et ld et se taisent
+     s'ils manquent.
+
+     [ancien texte]
+     the_tools_tab_shows_every_tool_not_just_the_first a dû être rendu
+     conditionnel : il exigeait qu'un outil soit absent, ce qui n'était vrai que
+     sur un poste mal équipé. D'autres tests lancent nasm et ld et se taisent
+     s'ils manquent. Un jeu de binaires de référence dans le dépôt rendrait ces
+     tests inconditionnels.
+
+3.2  Le rendu hors écran n'est pas testable tel quel
+     egui ne peint pas ce qu'une ScrollArea laisse hors de vue : deux tests ont
+     dû mesurer le contenu d'une page plutôt que ce que la fenêtre en montre.
+     Utile à savoir avant d'en écrire d'autres.
+
+3.3  Pas de test de bout en bout sur l'installation
+     Les recettes sont décrites, jamais exécutées en test — ce qui est normal
+     (dix minutes de compilation), mais une recette qui ne compile plus ne se
+     découvre qu'à l'usage. Une vérification légère (les dépôts et les tags
+     existent, les commandes sont dans le PATH) tiendrait en quelques secondes.
+
+3.4  the_assembled_program_can_leave_the_workbench est instable
+     Observé une fois en échec dans un `cargo test --workspace`, puis cinq
+     passes de suite sans rien. Il assemble, lie et exporte un vrai binaire dans
+     un dossier temporaire : sous la charge de tous les crates en parallèle,
+     nasm ou ld doit parfois rendre la main autrement. Un test qui échoue une
+     fois sur six ne se voit qu'en intégration continue, et fait douter de tous
+     les autres.
+
+3.5  egui_kittest n'est pas utilisé
+     Les tests d'interface lisent les formes peintes et cherchent des chaînes.
+     C'est efficace mais fragile : un libellé qui change casse un test sans
+     rapport. kittest interroge l'arbre d'accessibilité — par rôle et par nom.
+
+
+--------------------------------------------------------------------------------
+ 4. FONCTIONNALITÉS À VENIR
+--------------------------------------------------------------------------------
+
+4.1  Patcher un binaire
+     Le besoin est apparu naturellement : on ouvre un crackme, on voit le je qu'il
+     faudrait inverser, et l'on ne peut rien en faire. Réassembler le listing est
+     refusé — à juste titre. Ce qu'il faudrait est l'écriture d'octets dans
+     l'image ELF et sa réécriture sur disque : changer un je en jne, neutraliser
+     un call par des nop, et relancer.
+     C'est la fonctionnalité qui manque le plus à un outil de rétro-ingénierie.
+
+4.2  Nommer les fonctions et les adresses
+     Un binaire dépouillé n'a que des adresses. Pouvoir écrire « vérifie_mdp »
+     en face de 0x1d491, et voir ce nom partout — listing, graphe, pile d'appels —
+     est ce qui fait la différence entre lire un désassemblage et le comprendre.
+     Demande : une table de noms, sauvegardée à côté du binaire.
+
+4.3  Commentaires sur le listing
+     Même besoin, même mécanisme de stockage.
+
+4.4  Suivre une valeur à rebours
+     « D'où vient ce que RAX contient ? » Le module de provenance existe déjà
+     (where a value comes from) ; l'étendre à plusieurs pas en arrière, en
+     s'appuyant sur le pas à pas inverse, donnerait l'outil le plus utile devant
+     un contrôle de mot de passe.
+
+4.5  keymap.json : ce qui reste à faire
+     Le fichier existe et se relit, mais rien ne le surveille : modifié pendant
+     que namsdec tourne, il n'est repris qu'au lancement suivant. Et il n'y a
+     pas d'export « le jeu entier, à plat » pour qui veut partir d'une liste
+     complète plutôt que d'un écart.
+
+4.6  Points d'arrêt conditionnels sur expression
+     breakpoint_conditions existe. L'élargir à « RAX == 0x1234 » ou
+     « [RSP+8] != 0 » demanderait un petit évaluateur — eval_address en est déjà
+     la moitié.
+
+4.7  [FAIT] Le graphe s'exporte en DOT
+     Bouton « Copier en DOT » : Graphviz en fait une image avec « dot -Tsvg ».
+     Reste à faire : l'écrire dans un fichier plutôt que dans le presse-papiers.
+
+4.8  Vue hexadécimale éditable
+     L'onglet Octets montre ; il ne laisse pas écrire. Lié à 4.1.
+
+4.9  Chercher dans la mémoire
+     Une suite d'octets, une chaîne, un motif. C'est le premier réflexe devant
+     un programme qui compare quelque chose.
+
+     --- demandé le 19 septembre 2026, sur capture d'écran ---
+
+4.16 [FAIT] DZF branché comme désassembleur
+     DZF est le désassembleur x86-64 maison (dépôt ~/Projects/DZF) : C++23,
+     écrit à la main, sans aucune dépendance. C'est exactement le cas d'usage
+     du format de plugins — namsdec n'a rien à savoir de lui sinon la commande.
+     Ce qui lui manquait, et rien de plus : accepter un chemin de fichier en
+     argument. Un outil qui lit son entrée au clavier ne peut pas être appelé
+     par un autre programme — il attendrait une frappe qui ne vient pas, et
+     namsdec finirait par l'arrêter au bout de son délai. Son mode interactif
+     est gardé quand on l'appelle sans argument (`src/main.cpp`, + --base et
+     --help). Le décodeur lui-même n'a pas été touché : c'est son exercice.
+     Livré : plugins/fonctionnalites/dzf.json, la fiche posée dans
+     ~/.local/share/namsdec/disassemblers/ avec le chemin de son build, et une
+     section du README qui prend DZF en exemple pour « brancher son propre
+     outil ».
+     Vérifié de bout en bout par namsdec lui-même (plugin::read puis run) sur
+     `push rbp ; mov rbp, rsp ; mov rax, 42 ; pop rbp ; ret` : le listing sort
+     juste, adresses comprises.
+     LIMITE À CONNAÎTRE : DZF ne lit pas l'en-tête ELF. namsdec lui passe le
+     binaire entier, donc l'en-tête est désassemblé comme du code et le début
+     du listing ne veut rien dire. C'est la prochaine étape de son côté ; la
+     même fiche continuera de marcher sans y toucher.
+
+4.10 [FAIT] Calculatrice multi-bases
+     Outils > Calculatrice, ou la palette de commandes.
+     Un évaluateur d'expressions à part (crates/namsdec-gui/src/calc.rs), qui
+     ne connaît ni egui ni écran et se teste donc au caractère près. Il lit
+     0x / 0b / 0o / décimal / le suffixe `h` de NASM / 'A', les opérateurs de
+     bits avec la priorité du C, les parenthèses, et les registres du
+     programme en cours à toutes leurs largeurs (rax, eax, ax, al, ah).
+     Dix-huit fonctions de rétro-ingénierie : bswap16/32/64, sext8/16/32,
+     lo8/16/32, hi32, popcnt, clz, ctz, rol, ror, align, min, max.
+     Tout déborde en silence, comme un registre : 0 - 1 vaut bien
+     0xffffffffffffffff.
+     Le résultat s'affiche dans toutes les bases en même temps — hex, décimal
+     signé et non signé, octal, binaire, ASCII, octets mémoire —, chaque ligne
+     se copiant d'un clic. Aucune ne disparaît selon la valeur : une ligne qui
+     va et vient ferait bouger l'affichage pendant qu'on tape.
+     Chaque erreur se nomme (« division par zéro », « une parenthèse reste
+     ouverte », « aucun programme ne tourne, ce registre n'a pas de valeur ») :
+     répondre « erreur » n'apprend rien.
+
+4.11 [FAIT] Reprendre le travail après extinction
+     Les sources se rouvraient déjà (chemins dans settings.json) ; un binaire,
+     non — et c'est pourtant là qu'il y a du travail à perdre.
+     Reviennent maintenant : le binaire ouvert, ses points d'arrêt, ses zones
+     de mémoire surveillées, les registres surveillés, les arguments et
+     variables d'environnement du programme, et l'onglet latéral qu'on
+     regardait.
+     Le chemin du binaire est retenu à part de `current_file`, qui reste vide
+     pour un binaire exprès : un Ctrl+S distrait n'a pas à écraser
+     l'exécutable par son propre désassemblage.
+     **Garde importante** : les repères ne reviennent que si le fichier est le
+     même — taille et date de modification. Ils se comptent en numéros de ligne
+     d'un listing reconstruit à chaque ouverture ; sur un binaire recompilé
+     entre-temps, ils désigneraient d'autres instructions. Poser des points
+     d'arrêt au hasard est pire que ne pas en poser, et le faire en silence est
+     pire encore : le binaire se rouvre, les repères sont oubliés, et
+     l'application le dit.
+     RESTE : la position dans le listing (le défilement) n'est pas retenue.
+
+4.12 [FAIT] Une chronologie de l'exécution — la barre qui manquait
+     La fenêtre « Chronologie » existait déjà (Outils), et montre la liste des
+     pas : rang relatif, nature du pas, adresse, ligne, clic pour rembobiner,
+     clic droit pour aller à la ligne. Elle répond très bien à « qu'est-ce qui
+     s'est passé », et pas du tout à « où j'en suis » : cinq mille pas dans une
+     zone défilante ne donnent aucune idée de la forme du parcours.
+     Ajouté : une barre en haut de cette fenêtre. Une colonne par tranche de
+     temps, colorée par ce qui s'y est passé de plus notable — un appel système
+     passe devant un appel, qui passe devant une écriture, qui passe devant un
+     saut. C'est ce classement qui compte : prendre le premier pas de chaque
+     tranche, ou une moyenne, effacerait justement le rare, qui est ce qu'on
+     cherche des yeux. Vérifié : un appel seul au milieu de deux mille pas
+     ordinaires reste visible.
+     On clique ou l'on glisse dessus pour rembobiner, comme sur la piste d'un
+     lecteur. L'échelle est celle du parcours entier, filtre ou pas filtre —
+     sans quoi sa forme mentirait.
+
+4.13 [FAIT] Entropie dans l'onglet RE
+     Un module RE de plus, placé juste après les protections : il répond avant
+     tout le reste à « est-ce qu'il y a quelque chose à lire ici ? ». Sur un
+     binaire empaqueté, les modules suivants analyseraient un déchiffreur de
+     trois cents octets en croyant analyser le programme.
+     L'entropie de Shannon, en bits par octet, sur le fichier entier puis par
+     tranches — soixante-quatre tranches, 256 octets au moins chacune, parce
+     qu'en deçà la mesure ne veut rien dire. Un histogramme dessiné, échelle
+     fixe de 0 à 8 : une échelle qui s'ajuste ferait paraître spectaculaire
+     l'écart entre 5,9 et 6,1. Le repère de 7,2 est tracé, et la couleur suit
+     le verdict — uniforme, texte, code, mêlé, compressé.
+     Mesuré sur les crackmes du répertoire, et c'est là qu'on voit que ça sert :
+       veil          61 Ko   tout 5,75 (code)   max 7,82 à 0xc1c0  -> chiffré
+       thisismebtw   28 Ko   tout 3,98 (texte)  max 7,41 à 0x438a  -> chiffré
+       crackme-01   308 Ko   tout 6,32 (code)   max 6,59           -> rien
+     La moyenne du fichier entier ne disait rien dans les deux premiers cas :
+     c'est le profil qui trouve le bloc, et il donne son adresse.
+     Dit comme une piste et non comme un verdict, à l'écran : un bloc de code
+     dense monte à 6,5 sans être chiffré pour autant.
+
+4.14 Un vrai éditeur — commencé
+     [FAIT] Fermeture automatique des paires ( ) [ ] { } " '. Trois règles,
+     et pas une de plus : on ne ferme pas devant un mot, on ne ferme pas une
+     apostrophe qui suit une lettre (« l'adresse »), et taper le fermant qui
+     est déjà là le traverse au lieu de l'écrire deux fois. Le retour arrière
+     emporte la paire vide. Réglable dans les Préférences, et enregistré.
+     [FAIT] L'autocomplétion se pilote. Elle ne s'acceptait qu'avec `Alt`, et
+     seulement sa première proposition : ni Tab, ni les flèches, ni Échap ne
+     faisaient quoi que ce soit. La liste était donc décorative dès qu'elle
+     montrait plusieurs lignes, et le moyen de l'accepter ne se devinait pas.
+     Maintenant : Tab accepte (comme partout ailleurs), les flèches haut/bas
+     choisissent en tournant en boucle, Échap referme sans écrire, un clic
+     prend la ligne visée, et la proposition mise en avant est celle qui sera
+     prise — non plus toujours la première. `Alt` continue de marcher.
+     Le point délicat : ces touches ont déjà un sens dans l'éditeur. Elles
+     sont donc retirées de la file **avant** le champ de texte, et seulement
+     quand une liste est ouverte — sinon Tab indente et les flèches déplacent
+     le curseur, comme d'habitude.
+     [FAIT] Duplication de ligne. Ctrl+Maj+D dans le jeu ordinaire, `y y`
+     dans le jeu vim. Le curseur garde sa colonne, une ligne plus bas. Sans
+     effet sur un listing venu d'un binaire : celui-ci est reconstruit, et y
+     insérer une ligne décalerait les correspondances ligne <-> adresse dont
+     dépendent la gouttière, les points d'arrêt et le suivi de RIP.
+     [FAIT] Surligner les occurrences — `Espace s s`, ou Ctrl+F2. En vert du
+     thème (chacun choisit le sien, donc chacun garde son contraste ; un vert
+     en dur serait illisible sur un thème clair).
+     Il cherche des JETONS et non du texte : le `rax` d'un commentaire n'est
+     pas surligné, ni le milieu de `sauve_rax`. La casse suit NASM — `MOV` et
+     `mov` sont la même instruction, `Boucle` et `boucle` deux étiquettes
+     différentes, et les confondre lierait le mauvais symbole.
+     Même touche pour éteindre, Échap aussi. Le surlignage suit le texte quand
+     on tape : les étendues sont recalculées, non décalées à l'estime.
+     `Espace s s` et non `Espace s` : celui-ci est déjà le préfixe de
+     `Espace s i` et `Espace s o`.
+     [FAIT] Aller d'une occurrence à l'autre — `n` et `N`, ou F3 / Maj+F3.
+     Circulaire. Chacune arrive SÉLECTIONNÉE, donc prête à être remplacée,
+     et l'éditeur passe en insertion : c'est le geste de `*` puis `n` dans
+     vim, et c'est ce qui remplace le mieux le multicurseur à l'usage.
+     [FAIT] Renommer toutes les occurrences — `Espace s r`, ou F2. Ce à quoi
+     le multicurseur sert neuf fois sur dix, et sans son défaut : un
+     chercher-remplacer toucherait les commentaires, pas celui-ci.
+     RESTE : le multicurseur proprement dit. Vérifié dans egui 0.36 :
+     `TextEditState` n'a qu'un seul champ `cursor`. En tenir plusieurs demande
+     de remplacer le widget de texte, ou d'écrire une couche qui rejoue chaque
+     frappe à chaque position. Ce qui précède couvre son usage réel ; ce qui
+     manquerait encore est l'édition libre à plusieurs endroits sans rapport.
+
+1.23 LES RACCOURCIS SONT EN DÉSORDRE — à reprendre en entier
+     Constat relevé le 23 septembre, en listant les deux jeux (28 actions
+     chacun). Ce n'est pas une impression : il y a des collisions de sens.
+
+     Le jeu « Vim et gdb » :
+     - `Espace s` sert à DEUX familles sans rapport : `Espace s i` = Step
+       Into, mais `Espace s s` = surligner et `Espace s r` = renommer. Le
+       même préfixe pour « avancer » et pour « chercher ».
+     - `n` seul = occurrence suivante, alors que `Espace n i` = Step Over.
+       Cela ne casse plus rien (le dispatcher donne la priorité à une
+       séquence en cours, voir 1.18), mais la lettre `n` a deux rôles.
+     - `Ctrl+N` = Nouveau fichier, en plus des deux `n` ci-dessus.
+     - Le jeu n'est vim que pour un tiers : Ctrl+S, Ctrl+O, Ctrl+W, Ctrl+F,
+       Ctrl+Tab, F1, F12, Ctrl+F10, Maj+F5, Ctrl+Maj+F5, Ctrl+Maj+B n'ont
+       rien de vim. C'est un mélange, et c'est peut-être le bon choix —
+       mais alors le nom du jeu ment un peu.
+
+     Le jeu « Éditeur ordinaire » est plus sain : il suit VS Code presque
+     partout (F5, F10, F11, F2, Ctrl+F2, F3, Ctrl+Maj+D, Ctrl+B). À
+     vérifier quand même : `Ctrl+Alt+C/R/S` pour les trois « cours
+     jusqu'à » ne viennent de nulle part.
+
+     Piste pour la reprise, à discuter :
+     - ranger le jeu vim par préfixe de SENS et non par lettre d'action :
+       `Espace s…` pour « step » seulement, un autre préfixe pour la
+       recherche (`Espace /…` serait le plus vim) ;
+     - décider ce que le jeu vim doit vraiment reprendre de vim, et
+       l'assumer dans son nom et sa description ;
+     - un écran qui montre les DEUX jeux côte à côte, action par action,
+       pour voir les trous et les doublons d'un coup d'oeil. Aujourd'hui
+       l'onglet Raccourcis montre un jeu à la fois.
+
+1.20 [FAIT] La rangée « Entrée » était coupée en deux — et mon test ne le
+     voyait pas
+     Troisième signalement du même écran, et cette fois la cause était dans le
+     TEST autant que dans le code.
+     Le test vérifiait que la POSITION du texte tombait dans le panneau. Or
+     `pos` est le coin supérieur GAUCHE : une rangée dont seul le haut
+     dépassait passait donc pour visible, alors qu'à l'écran on en voyait la
+     moitié et que le champ et les boutons étaient sous le bord. Il mesure
+     maintenant le rectangle entier de chaque rangée (`contains_rect`), ce qui
+     reproduit la photo : « Entrée : » va jusqu'à y=1185, le panneau s'arrête
+     à 1177.
+     Côté code, l'estimation de la hauteur réservée à la saisie s'arrêtait à
+     un forfait de 24 px pour « le séparateur, les marges et l'espace ». Il en
+     manquait neuf — juste assez pour couper la ligne où l'on tape. Les termes
+     sont maintenant comptés un par un (le trait de séparation et son blanc,
+     les marges du cadre, le `add_space`), plus huit pixels de sûreté
+     assumés : les hauteurs de police varient d'un thème à l'autre, et deux
+     pixels de trop ne coûtent rien quand deux de moins coupent la ligne.
+     Vérifié avec le settings.json réel de la machine : les six rangées sont
+     entières, environnement replié comme déplié.
+
+1.21 [FAIT] Entrée ne validait pas la saisie du programme
+     Il fallait cliquer « Envoyer », alors que le curseur arrive déjà tout
+     seul dans le champ — le geste au clavier était donc à moitié fait.
+     La cause : un `TextEdit` qui traite Entrée la RETIRE de la file
+     d'évènements. La guetter après lui, comme le code le faisait, ne voyait
+     plus rien. Les deux touches (Entrée, Échap) sont maintenant relevées
+     AVANT le champ, sans les consommer. Même piège que pour Tab dans
+     l'autocomplétion, et même remède.
+
+1.22 [FAIT] La zone d'attente ne se voyait pas assez
+     C'est le seul moment où l'application demande quelque chose ; la
+     manquer, c'est croire qu'elle a planté. Un liseré d'un pixel et un fond
+     à dix pour cent passaient pour une nuance sur un panneau déjà sombre.
+     Maintenant : liseré de deux pixels, fond à dix-huit pour cent, une
+     pastille pleine devant la phrase d'attente, le libellé « Entrée : » en
+     accent et en gras pendant l'attente, et le geste écrit en toutes lettres
+     — « tapez ci-dessous, puis Entrée ».
+     Le liseré épaissi a aussitôt coupé « Envoyer » d'un cheveu : ses quatre
+     pixels sont désormais comptés dans la hauteur réservée. C'est le test de
+     1.20 qui l'a vu, et c'est à cela qu'il sert.
+
+1.18 [FAIT] Un raccourci simple court-circuitait une séquence
+     Trouvé en ajoutant `n` : la touche déclenchait « occurrence suivante » au
+     milieu de `Espace n i`, si bien que Step Over n'était plus atteignable.
+     Le dispatcher essayait les raccourcis simples avant de regarder si une
+     séquence était en cours. Une séquence commencée capture maintenant la
+     touche — ce que fait tout éditeur modal —, et sans cette règle, toute
+     lettre servant de deuxième touche quelque part serait interdite comme
+     raccourci simple.
+
+1.19 [FAIT] Une étiquette n'était colorée qu'à sa définition
+     `boucle:` était peinte en étiquette ; `jnz boucle` ne l'était pas. C'est
+     pourtant là qu'on a besoin de la reconnaître : savoir d'un coup d'oeil
+     que `boucle` est un endroit de CE fichier, et non un registre, un nombre
+     ou une faute de frappe.
+
+4.15 [FAIT] Élargir la fenêtre des exercices
+     480 px de large : un énoncé y tombait sur six lignes. La taille suit
+     maintenant l'écran — quatre cinquièmes, plafonnés à 920x720 — au lieu
+     d'un chiffre fixe qui déborde d'un petit écran et se perd sur un grand.
+     L'identifiant de la fenêtre a changé de version : egui retient la taille
+     par identifiant, et sans cela rien n'aurait bougé pour qui l'avait déjà
+     ouverte.
+
+
+--------------------------------------------------------------------------------
+ 5. DETTE TECHNIQUE
+--------------------------------------------------------------------------------
+
+5.1  namsdec-gui/src/main.rs dépasse les 12 000 lignes
+     Toute l'interface y est. Les panneaux (flow, décompilateur, installateur,
+     préférences) sont autonomes et pourraient partir dans leurs propres modules,
+     comme sidebar.rs l'a déjà fait.
+
+5.2  Les frames lentes : mesuré, et ce n'est pas ce qu'on croyait
+     Sur le crackme (62 386 lignes, 1,0 Mo de listing), en release :
+       frame 1 (froide) : 450 ms   ← la mise en page initiale
+       frame 2          :  26 ms
+       frames 3 et +    : 1,9 ms   ← le cache de layout_code porte
+       hachage du texte : 0,25 ms par appel, deux fois par frame
+     Il n'y a donc PAS de coût continu : le cache fait son travail. Les 450 ms
+     sont payés une fois, au chargement, et bloquent l'interface d'un demi-
+     seconde. Le message « frame lente » laisse croire à un problème permanent.
+     Piste : ne pas le crier pour la première frame après un chargement, ou
+     mettre le listing en page hors du fil d'affichage.
+
+5.3  Le listing entier est mis en page en une fois
+     Non pas à chaque frame — le cache l'évite —, mais la première fois, et
+     d'un bloc : 450 ms pour 62 386 lignes. Un `TextEdit` multiligne ne
+     virtualise pas ; il faudrait une vue qui ne dispose que les lignes
+     visibles, ce qui veut dire renoncer au `TextEdit` pour le listing d'un
+     binaire (qu'on n'édite pas) tout en le gardant pour un source (qu'on
+     édite). C'est le gros chantier de performance qui reste.
+
+5.4  Ce qui pèse dans le binaire, mesuré le 18 septembre 2026
+     18,4 Mo installés, dont : .text 10,8 Mo (le code), .rodata 3,2 Mo, et
+     2,2 Mo de table de symboles — celle-ci est maintenant retirée à
+     l'installation, le binaire tombe à 16,2 Mo. Les infos de debug, elles, ne
+     pèsent que 2,6 Ko : il n'y a rien à gagner de ce côté.
+     Les 96 exercices ne sont PAS dans le binaire : ils vivent dans
+     crates/namsdec-exercises/packs/namsdec.json (195 Ko), installé dans
+     ~/.local/share/namsdec/exercises/. Aucun de leurs textes ne figure dans le
+     binaire — vérifié. Les en sortir ne ferait donc rien gagner.
+     Si l'on veut vraiment alléger, c'est dans .text qu'il faut chercher :
+     egui, iced-x86 et le décompilateur pèsent l'essentiel. cargo-bloat dirait
+     lesquels.
+
+5.5  [FAIT] egui_extras retiré des dépendances
+     Aucun crate ne l'employait.
+
+
+--------------------------------------------------------------------------------
+ 6. CE QUI A ÉTÉ FAIT PENDANT CETTE SÉANCE (pour mémoire)
+--------------------------------------------------------------------------------
+  --- séance du 18 septembre 2026, seconde partie ---
+  - Les messages du lint parlent la langue de l'application (ils étaient en
+    anglais en dur, même en français).
+  - Mode Normal : h j k l, 0, Début, Fin et G déplacent le curseur. Les
+    caractères comptent pour un, non pour leurs octets.
+  - Arguments et variables d'environnement se donnent au programme et arrivent
+    sur sa pile.
+  - La route hors de la fonction montrée est signalée, avec de quoi élargir.
+  - Le zoom du graphe suit le pointeur ; F fait « Tout voir » ; le graphe
+    s'exporte en DOT ; la barre nomme l'adresse de la fonction montrée.
+  - Six fenêtres internes s'agrandissent, par un helper commun.
+  - Les modules d'analyse se replient dans l'onglet Modules.
+  - Le journal d'installation porte le code de sortie ; un échec dit ce qu'il
+    laisse sur le disque ; les sources sont effacées une fois l'outil bâti.
+  - La barre de statut annonce qu'elle tronque ; le champ d'entrée annonce
+    Échap ; egui_extras retiré des dépendances.
+  - Performance mesurée : le cache du listing fonctionne (1,9 ms en régime
+    établi), les 450 ms sont le coût unique de la première mise en page.
+
+
+  - Bouton Réinitialiser dans la barre d'outils, actif même programme terminé.
+  - do_reset() : vide les diagnostics d'un binaire ouvert, referme l'onglet
+    Diagnostics, remet le compte de pas à zéro, ramène le listing au point
+    d'entrée.
+  - Assembler se grise sur un listing de binaire, avec infobulle ; le raccourci
+    garde le refus expliqué.
+  - Échap rend le clavier à l'éditeur depuis le champ d'entrée du programme.
+  - Curseur bloc peint en mode Normal, et cursor_pos tenu à jour sans focus.
+  - Rizin et rz-ghidra épinglés sur des versions appariées (v0.9.1 / v0.9.0).
+  - program_path_in() : namsdec retrouve ce qu'il a installé lui-même.
+  - Commande de prérequis à copier, avec détection de dnf/apt/pacman/zypper.
+  - Onglet Modules : dix cartes au lieu de cinq, modules d'analyse détaillés,
+    section « Venus de fichiers ».
+  - Graphe de flux : fenêtre plein écran, zoom à boutons, « Tout voir »,
+    déplacement à la souris, boîtes à la largeur de leur texte, troncature,
+    restriction à la fonction courante.
+  - Status::Note résolu à l'affichage : changer de langue retraduit la barre.
+  - Bouton d'agrandissement des fenêtres internes (graphe, décompilateur), posé
+    dans le bandeau à la géométrie exacte de la croix d'egui, avec icônes
+    dessinées plutôt que des glyphes absents de la police. Double-clic sur le
+    bandeau pour le même effet. Agrandir prend tout l'écran, sans marge.
+  - rizin-plugin-ghidra retiré de la commande d'installation : ce paquet
+    n'existe pas. La ligne « Pour l'obtenir » se dit maintenant dans le
+    gestionnaire de paquets de la machine (dnf, apt, pacman, zypper).
+  - La fenêtre du plan d'installation s'ouvre au premier plan, et non derrière
+    les préférences d'où elle part.
+  - Les recettes se rejouent : elles effacent ce qu'une tentative précédente a
+    laissé avant d'écrire. git clone refusait un dossier occupé et l'installation
+    échouait en une fraction de seconde, sans rien montrer.
+  - Le journal des commandes est affiché dans la fenêtre d'installation, gardé
+    après la fin du travail, et copiable.
+  - La ligne de saisie s'encadre en couleur quand le programme attend : elle est
+    en bas d'un panneau lui-même en bas, et on ne la trouvait pas.
+  - Elle s'ouvre dès le chargement d'un binaire qui appelle fgets ou scanf, sans
+    attendre qu'il se bloque : la détection ne regardait que les syscalls, qu'un
+    programme lié dynamiquement ne fait jamais.
+  - Champ « Arguments » : ce qu'on taperait après le nom du programme est posé
+    sur sa pile (argc, argv), guillemets compris. Le chargeur n'y mettait que
+    argv[0].
+  - Le binaire installé est débarrassé de sa table de symboles : 18,4 -> 16,2 Mo.
+  - Deux jeux de raccourcis dans le binaire (vim/gdb et éditeur ordinaire), un
+    fichier ~/.config/namsdec/keymap.json qui note le jeu choisi et ce qu'on en
+    a écarté, et de quoi passer de l'un à l'autre dans les préférences.
+
+  - La zone de saisie de la console reste à l'écran quand la console est basse :
+    sa hauteur est retranchée de celle du journal, non ajoutée par-dessus.
+  - `ptrace` est fourni, des deux côtés : l'appel système 101 et la fonction de
+    bibliothèque que cherche un binaire lié dynamiquement. Il répond zéro —
+    « personne ne te regarde ». C'est un mensonge délibéré : l'anti-débogage par
+    `PTRACE_TRACEME` arrêtait net des programmes qu'on est justement venu
+    observer. Ce que cela coûte : un programme qui piloterait vraiment un fils
+    par `ptrace` n'en tirerait rien. On ne sait pas tracer, seulement dire qu'on
+    ne trace pas.
+  - Le montage anti-débogage en entier, et non `ptrace` tout seul. Mesuré en
+    exécutant les quatre crackmes concernés : ce n'était pas `prctl` qui les
+    bloquait — c'était `clone` (56), puis `tgkill` (234).
+    Le montage complet, tel que LeetCrackme3 l'écrit :
+      1. prctl(PR_SET_DUMPABLE, 0)   « qu'on ne puisse pas m'attacher »
+      2. fork()                       il se dédouble
+      3. ptrace(PTRACE_TRACEME)       dans le fils : « mon père me regarde »
+      4. tgkill(soi, SIGSTOP)         « je suis prêt, relance-moi »
+    Sont donc fournis : `prctl` et `ptrace` en fonction de bibliothèque,
+    `clone`/`fork`/`vfork` (répondent zéro — namsdec joue la branche du fils,
+    celle qui travaille), et le `SIGSTOP` qu'un programme s'envoie à lui-même
+    (relancé aussitôt, comme le ferait le père un PTRACE_CONT plus loin).
+    Tout autre signal s'arrête et se nomme : avaler un SIGKILL ferait courir
+    un programme que la vraie machine aurait tué.
+    Ce que cela coûte : un programme qui se dédouble pour de bon — un serveur
+    qui traite chaque client dans un fils — ne s'exécutera pas comme sur la
+    vraie machine. Une seule branche est jouée, et le père n'existe pas.
+  - `int3` ne dit plus « arrêté » comme une fin. C'est un point d'arrêt que le
+    programme se pose à lui-même, et le confondre avec `hlt` annonçait
+    « terminé » à quelqu'un dont le programme attend qu'on le relance. L'état
+    est désormais distinct, expliqué, et réversible comme le reste.
+
+  --- ce qui reste sur ce terrain ---
+  - LeetCrackme3 et LeetCrackmeLin64 ne s'arrêtent plus sur un appel système
+    inconnu : ils vont jusqu'au bout de leur anti-débogage, et butent
+    maintenant sur un `int3` que le programme se pose à lui-même. Il a
+    installé un gestionnaire de SIGTRAP (rt_sigaction) et attend qu'on lui
+    livre le signal — c'est la suite du montage : le père, devenu traceur,
+    reprend la main à chaque piège. Aller plus loin demande de délivrer les
+    signaux au gestionnaire installé, ce qui est un vrai chantier et non un
+    appel de plus. C'est aussi, sans doute, le coeur du crackme.
+  - hard_crackme et crackme_hard, eux, passent : ils demandent maintenant
+    leur entrée au lieu de s'arrêter sur `ptrace`.
+
+================================================================================
