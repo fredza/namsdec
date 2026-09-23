@@ -596,6 +596,20 @@ pub struct Strings {
     /// Le champ Adresse refuse ce qui n'est pas une adresse, et le dit.
     pub memory_address_invalid: &'static str,
 
+    // Chercher dans la mémoire
+    pub memory_find_label: &'static str,
+    pub memory_find_hint: &'static str,
+    pub memory_find_none: &'static str,
+    /// « 4 octets » : ce que le motif mesure, jokers compris.
+    pub memory_find_bytes: &'static str,
+    /// « 12 trouvés » : le `{}` reçoit le compte.
+    pub memory_find_count: &'static str,
+    pub memory_find_capped: &'static str,
+    pub pattern_unterminated: &'static str,
+    /// Les deux portent un `{}` : le caractère ou le morceau fautif.
+    pub pattern_bad_hex: &'static str,
+    pub pattern_half_byte: &'static str,
+
     // Correction de code — ce que namsdec propose, et qu'Alt+Entrée pose.
     /// Le raccourci et la proposition, dans la barre d'état. Le `{}`
     /// reçoit le titre de la correction. La touche est `Alt` seule,
@@ -1315,6 +1329,15 @@ const FR: Strings = Strings {
 
     memory_address_label: "Adresse :",
     memory_address_invalid: "Ce n'est pas une adresse : des chiffres hexadécimaux, un registre, ou une somme des deux.",
+    memory_find_label: "Chercher :",
+    memory_find_hint: "Un texte entre guillemets, des octets en hexadécimal, ?? pour n'importe lequel. Exemples : « \"pass\" 00 », « 48 89 ?? 45 ».",
+    memory_find_none: "rien trouvé",
+    memory_find_bytes: "{} octets",
+    memory_find_count: "{} trouvés",
+    memory_find_capped: "premiers résultats seulement",
+    pattern_unterminated: "un texte est ouvert et jamais refermé.",
+    pattern_bad_hex: "ni un chiffre hexadécimal ni un ? :",
+    pattern_half_byte: "un octet fait deux chiffres :",
     fix_hint: "Alt : {}",
     fix_applied: "Ligne corrigée.",
     fix_unclosed_bracket: "un crochet reste ouvert — le refermer ?",
@@ -2005,6 +2028,15 @@ const EN: Strings = Strings {
 
     memory_address_label: "Address:",
     memory_address_invalid: "Not an address: hexadecimal digits, a register, or a sum of both.",
+    memory_find_label: "Find:",
+    memory_find_hint: "Text in quotes, bytes in hexadecimal, ?? for any one. Examples: \"pass\" 00, 48 89 ?? 45.",
+    memory_find_none: "nothing found",
+    memory_find_bytes: "{} bytes",
+    memory_find_count: "{} found",
+    memory_find_capped: "first results only",
+    pattern_unterminated: "a text is opened and never closed.",
+    pattern_bad_hex: "neither a hexadecimal digit nor a ?:",
+    pattern_half_byte: "a byte is two digits:",
     fix_hint: "Alt: {}",
     fix_applied: "Line corrected.",
     fix_unclosed_bracket: "a bracket is left open — close it?",

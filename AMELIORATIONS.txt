@@ -383,9 +383,15 @@ aujourd'hui ; les suivantes, ce vers quoi l'outil peut aller.
 4.8  Vue hexadécimale éditable
      L'onglet Octets montre ; il ne laisse pas écrire. Lié à 4.1.
 
-4.9  Chercher dans la mémoire
-     Une suite d'octets, une chaîne, un motif. C'est le premier réflexe devant
-     un programme qui compare quelque chose.
+4.9  [FAIT] Chercher dans la mémoire
+     Le champ « Chercher » de l'onglet Mémoire. Trois écritures qui se mélangent
+     dans la même case : un texte entre guillemets, des octets en hexadécimal,
+     et ?? pour « n'importe lequel » — la notation des outils de rétro-ingénierie,
+     celle qu'on recopie d'un article sans la retraduire.
+     Le panneau dit combien d'octets le motif mesure avant de chercher : c'est
+     là qu'on s'aperçoit d'un chiffre oublié. Les adresses trouvées sont
+     cliquables, et la liste s'arrête à soixante-quatre en le disant — une liste
+     tronquée qui se tait fait conclure qu'il n'y en a pas davantage.
 
      --- demandé le 19 septembre 2026, sur capture d'écran ---
 

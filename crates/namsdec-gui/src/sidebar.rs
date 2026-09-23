@@ -1890,6 +1890,9 @@ impl NamsdecApp {
         let typed = eval_address(&self.mem_addr_input, Some(&regs));
         let mut go = false;
         let mut watch = None;
+        // Relevé ici, agi plus bas : la liste des résultats emprunte
+        // `self` en écriture, et l'adresse regardée en fait partie.
+        let mut aller_à: Option<u64> = None;
         ui.horizontal(|ui| {
             ui.label(s.memory_address_label);
             let response = ui
@@ -1939,6 +1942,107 @@ impl NamsdecApp {
         }
         if typed.is_none() {
             ui.colored_label(theme.bad, s.memory_address_invalid);
+        }
+
+        // Chercher une suite d'octets. C'est le premier réflexe devant un
+        // programme qui compare quelque chose : on vient de taper un mot
+        // de passe, on veut savoir dans quel tampon il a atterri.
+        let motif = memfind::parse(&self.mem_find_input);
+        let mut chercher = false;
+        ui.horizontal(|ui| {
+            ui.colored_label(theme.dim, s.memory_find_label);
+            let réponse = ui
+                .add(
+                    egui::TextEdit::singleline(&mut self.mem_find_input)
+                        .id_salt("memory_find")
+                        .font(egui::TextStyle::Monospace)
+                        .desired_width(ui.available_width() - 28.0),
+                )
+                .on_hover_text(s.memory_find_hint);
+            // Le refus se voit sur le champ, comme pour l'adresse — mais
+            // pas sur un champ vide : on n'a encore rien demandé.
+            if matches!(&motif, Err(e) if !matches!(e, memfind::PatternError::Empty)) {
+                ui.painter().rect_stroke(
+                    réponse.rect,
+                    ui.visuals().widgets.inactive.corner_radius,
+                    egui::Stroke::new(1.0, theme.bad),
+                    egui::StrokeKind::Inside,
+                );
+            }
+            chercher |= réponse.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+            ui.add_enabled_ui(motif.is_ok(), |ui| {
+                chercher |= icon_square_button(ui, chrome::icon_search)
+                    .on_hover_text(s.memory_find_hint)
+                    .clicked();
+            });
+        });
+        // Ce que le motif mesure, jokers compris : c'est la première
+        // chose qu'on veut vérifier après l'avoir tapé. « 414243 » fait
+        // trois octets, « ?? 41 » en fait deux — et l'on s'aperçoit
+        // ainsi d'un chiffre oublié avant de chercher, non après.
+        if let Ok(motif) = &motif {
+            ui.colored_label(
+                theme.dim,
+                s.memory_find_bytes
+                    .replacen("{}", &motif.len().to_string(), 1),
+            );
+        }
+        match &motif {
+            Err(memfind::PatternError::Empty) => {}
+            Err(e) => {
+                ui.colored_label(theme.bad, pattern_error_text(s, e));
+            }
+            Ok(motif) => {
+                if chercher {
+                    self.mem_find_hits = search_memory(&emulator.cpu().mem, motif);
+                    self.mem_find_done = true;
+                }
+            }
+        }
+        if self.mem_find_done && motif.is_ok() {
+            if self.mem_find_hits.is_empty() {
+                ui.colored_label(theme.dim, s.memory_find_none);
+            } else {
+                ui.horizontal_wrapped(|ui| {
+                    ui.colored_label(
+                        theme.dim,
+                        s.memory_find_count
+                            .replacen("{}", &self.mem_find_hits.len().to_string(), 1),
+                    );
+                    if self.mem_find_hits.len() == MEM_FIND_MAX {
+                        // Dire qu'on s'est arrêté : une liste tronquée
+                        // qui ne le dit pas fait conclure à tort qu'il
+                        // n'y en a pas davantage.
+                        ui.colored_label(theme.warn, s.memory_find_capped);
+                    }
+                });
+                // Une seule rangée qui se replie : dix adresses les unes
+                // sous les autres prendraient la moitié du panneau, et
+                // l'on est venu voir des octets.
+                ui.horizontal_wrapped(|ui| {
+                    for addr in &self.mem_find_hits {
+                        if ui
+                            .add(
+                                egui::Label::new(
+                                    egui::RichText::new(format!("{addr:#x}"))
+                                        .monospace()
+                                        .color(theme.accent),
+                                )
+                                .sense(egui::Sense::click()),
+                            )
+                            .on_hover_text(s.memory_go_hint)
+                            .clicked()
+                        {
+                            aller_à = Some(*addr);
+                        }
+                    }
+                });
+            }
+        }
+
+        if let Some(addr) = aller_à {
+            self.mem_addr = addr;
+            self.mem_addr_input = format!("{addr:#x}");
         }
 
         // Ce qu'on suit et comment on lit : deux réglages du même geste,
@@ -3042,6 +3146,20 @@ pub(crate) fn chain_end(last: Option<&namsdec_emu::telescope::Link>) -> Option<S
 ///
 /// **Tout est hexadécimal**, décalages compris — une seule règle, la même
 /// que le vidage d'en dessous. `rsi+10` avance donc de seize octets.
+/// Cherche un motif dans toute la mémoire simulée.
+///
+/// D'un seul tenant, et non par tranches : la mémoire tient en quelques
+/// mégaoctets, et découper manquerait ce qui est à cheval sur deux
+/// morceaux. Rendre une liste vide quand la mémoire n'est pas lisible
+/// est le bon silence : il n'y a alors rien à chercher dedans.
+pub(crate) fn search_memory(mem: &namsdec_core::Memory, motif: &memfind::Pattern) -> Vec<u64> {
+    let étendue = mem.range();
+    let taille = (étendue.end - étendue.start) as usize;
+    mem.peek_bytes(étendue.start, taille)
+        .map(|octets| motif.find_all(octets, étendue.start, MEM_FIND_MAX))
+        .unwrap_or_default()
+}
+
 pub(crate) fn eval_address(expr: &str, regs: Option<&namsdec_core::Registers>) -> Option<u64> {
     let expr = expr.trim().to_ascii_lowercase();
     if expr.is_empty() {

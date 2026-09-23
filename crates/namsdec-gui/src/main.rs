@@ -9,6 +9,7 @@ mod condition;
 mod errors;
 mod fixes;
 mod i18n;
+mod memfind;
 mod keybindings;
 mod loader;
 mod nasm_errors;
@@ -928,6 +929,18 @@ struct NamsdecApp {
     active_tab: SidebarTab,
     console_tab: ConsoleTab,
     mem_addr_input: String,
+    /// Ce qu'on cherche dans la mémoire, tel qu'on l'a tapé.
+    ///
+    /// Pas un réglage : une saisie de travail, comme l'adresse juste
+    /// au-dessus. Elle ne va donc pas dans `settings.json` — un champ de
+    /// recherche qui revient rempli de la question de l'avant-veille est
+    /// une nuisance, pas un service.
+    mem_find_input: String,
+    /// Les adresses trouvées au dernier « Chercher ».
+    mem_find_hits: Vec<u64>,
+    /// A-t-on cherché ? Sans cela, « rien trouvé » s'afficherait avant
+    /// qu'on ait rien demandé.
+    mem_find_done: bool,
     /// L'adresse effectivement montrée par l'onglet Mémoire. Distincte de
     /// la saisie : tant que celle-ci n'est pas une adresse valide et
     /// validée, le vidage reste là où il était.
@@ -2005,6 +2018,9 @@ impl Default for NamsdecApp {
             active_tab: SidebarTab::Stack,
             console_tab: ConsoleTab::Output,
             mem_addr_input: format!("{BASE_ADDR:#x}"),
+            mem_find_input: String::new(),
+            mem_find_hits: Vec::new(),
+            mem_find_done: false,
             mem_addr: BASE_ADDR,
             memory_format: MemoryFormat::Bytes,
             memory_follow: MemFollow::Fixed,
@@ -16588,6 +16604,26 @@ struct CompletionKeys {
 /// En clair, et en nommant ce qui coince : « erreur de syntaxe » oblige à
 /// chercher soi-même, ce qui est exactement le travail qu'on venait
 /// éviter.
+/// Combien de résultats de recherche mémoire on montre au plus.
+///
+/// Un motif d'un seul octet dans un mégaoctet trouve des milliers de
+/// réponses, et une liste de milliers de lignes n'apprend rien : ce
+/// qu'on veut savoir, c'est où commencer à regarder. Quand la borne est
+/// atteinte, le panneau le dit — une liste tronquée qui se tait fait
+/// conclure à tort qu'il n'y en a pas davantage.
+pub(crate) const MEM_FIND_MAX: usize = 64;
+
+/// Ce qui cloche dans un motif de recherche, dit en clair.
+fn pattern_error_text(s: &Strings, erreur: &memfind::PatternError) -> String {
+    use memfind::PatternError as E;
+    match erreur {
+        E::Empty => String::new(),
+        E::Unterminated => s.pattern_unterminated.to_owned(),
+        E::BadHex(c) => format!("{} {c}", s.pattern_bad_hex),
+        E::HalfByte(mot) => format!("{} {mot}", s.pattern_half_byte),
+    }
+}
+
 /// La mémoire du programme, telle que la calculatrice sait la lire.
 ///
 /// `peek` et non `read` : évaluer une condition d'arrêt ne doit ni

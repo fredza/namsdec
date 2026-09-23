@@ -43,6 +43,19 @@ six fautes d'assembleur que namsdec sait désormais reconnaître.
   même le seul moment où l'on en écrit une —, et à ce moment-là il n'y a
   ni registre ni mémoire à lire.
 
+**Chercher dans la mémoire**
+- Un champ dans l'onglet Mémoire, et trois écritures qui se mélangent
+  dans la même case : `"pass"` pour un texte, `41 42 43` ou `414243`
+  pour des octets, `??` pour « n'importe lequel ». `"pass" 00` cherche
+  le mot suivi de son zéro final, `48 89 ?? 45` une instruction dont un
+  octet varie.
+- Le panneau dit combien d'octets le motif mesure **avant** de chercher :
+  c'est là qu'on s'aperçoit d'un chiffre oublié.
+- Les adresses trouvées sont cliquables, et la liste s'arrête à
+  soixante-quatre en le disant. Un motif d'un seul octet dans un
+  mégaoctet trouve des milliers de réponses, et une liste tronquée qui
+  se tait fait conclure qu'il n'y en a pas davantage.
+
 **Ce qu'on voit**
 - Les quinze fenêtres internes se ferment par la **même pastille** que la
   fenêtre principale, au coin haut gauche. egui posait sa croix à lui,

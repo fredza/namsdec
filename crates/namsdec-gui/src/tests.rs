@@ -11856,6 +11856,66 @@ fn a_solved_exercise_stays_solved() {
     );
 }
 
+/// Chercher une suite d'octets dans la mémoire du programme.
+///
+/// C'est le premier réflexe devant un programme qui compare quelque
+/// chose : on a lu une chaîne, on veut savoir où elle est écrite, et
+/// c'est de là qu'on remonte à ce qui la lit.
+#[test]
+fn a_byte_pattern_is_found_in_the_running_memory() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: "\
+global _start
+section .data
+mot db \"HVUHADN\", 0
+section .text
+_start:
+hlt
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+    let mem = &app.emulator.as_ref().expect("un émulateur").cpu().mem;
+
+    // L'adresse que l'assembleur a donnée à l'étiquette : c'est elle
+    // qu'on doit retrouver, et non une adresse voisine.
+    let attendue = app
+        .assemble_state
+        .as_ref()
+        .expect("assemblé")
+        .output
+        .symbols
+        .iter()
+        .find(|s| s.name == "mot")
+        .map(|s| s.addr)
+        .expect("l'étiquette « mot » existe");
+
+    // Le texte.
+    let trouvés = sidebar::search_memory(mem, &memfind::parse("\"HVUHADN\"").unwrap());
+    assert!(
+        trouvés.contains(&attendue),
+        "« HVUHADN » doit être en {attendue:#x} : {trouvés:x?}"
+    );
+
+    // Les mêmes octets en hexadécimal, et avec un joker au milieu.
+    for écriture in ["48 56 55 48", "48 56 ?? 48", "\"HV\" ?? 48"] {
+        let trouvés = sidebar::search_memory(mem, &memfind::parse(écriture).unwrap());
+        assert!(
+            trouvés.contains(&attendue),
+            "« {écriture} » doit trouver {attendue:#x} : {trouvés:x?}"
+        );
+    }
+
+    // Ce qui n'y est pas ne se trouve pas — et ne fait rien tomber.
+    let trouvés = sidebar::search_memory(mem, &memfind::parse("\"PASDEDANS\"").unwrap());
+    assert!(trouvés.is_empty(), "{trouvés:x?}");
+}
+
 /// Un point d'arrêt qui regarde dans la mémoire, et non dans un
 /// registre.
 ///

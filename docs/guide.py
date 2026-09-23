@@ -441,6 +441,31 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "L'adresse s'écrit en hexadécimal, en décimal, ou par un nom de registre : taper "
          "<font face='Courier'>rsi</font> et valider suit le pointeur. « Suivre » fixe la "
          "vue sur RSP ou RIP pas à pas."),
+        ("h2", "Chercher dans la mémoire"),
+        ("p",
+         "C'est le premier réflexe devant un programme qui compare quelque chose. On "
+         "vient de taper un mot de passe et l'on veut savoir dans quel tampon il a "
+         "atterri ; on a lu une chaîne dans le module <b>Chaînes</b> et l'on cherche "
+         "l'endroit où elle est écrite ; on a vu passer quatre octets dans un registre "
+         "et l'on veut savoir s'ils sont aussi ailleurs."),
+        ("p",
+         "Le champ <b>Chercher</b> de l'onglet Mémoire accepte trois écritures, qui se "
+         "mélangent dans la même case :"),
+        ("table", [
+            ["Écriture", "Ce qu'elle cherche"],
+            ['"pass"', "les quatre octets du mot, tels qu'ils sont écrits"],
+            ["41 42 43", "trois octets donnés en hexadécimal"],
+            ["414243", "les mêmes, sans les blancs"],
+            ["48 89 ?? 45", "un octet libre au milieu"],
+            ['"pass" 00', "le mot suivi de son zéro final"],
+        ]),
+        ("p",
+         "Le panneau annonce combien d'octets le motif mesure — c'est la première chose "
+         "qu'on vérifie après l'avoir tapé —, puis les adresses trouvées, "
+         "cliquables : le vidage s'y rend. La liste s'arrête à soixante-quatre et le "
+         "dit ; un motif d'un seul octet dans un mégaoctet trouve des milliers de "
+         "réponses, et une liste de milliers de lignes n'apprend rien."),
+
         ("h2", "Les outils de mémoire"),
         ("liste", [
          "<b>Carte de la mémoire</b> — les zones et leurs droits, à la façon de `vmmap`.",
