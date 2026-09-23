@@ -14924,6 +14924,20 @@ fn big_action_button(
     // chacun de son côté laisse le texte de travers dès que le libellé
     // change de langue.
     let bloc = TAILLE_ICÔNE + ÉCART + galley.size().x;
+    // Dans un panneau étroit, l'icône cède la place au mot : une icône
+    // seule ne dit pas ce que le bouton fait, un mot tronqué non plus,
+    // et entre les deux c'est le mot qui en dit le plus.
+    if bloc > rect.width() - 8.0 {
+        ui.painter().galley(
+            egui::pos2(
+                rect.center().x - galley.size().x * 0.5,
+                rect.center().y - galley.size().y * 0.5,
+            ),
+            galley,
+            encre,
+        );
+        return réponse;
+    }
     let gauche = rect.center().x - bloc * 0.5;
     let case = egui::Rect::from_min_size(
         egui::pos2(gauche, rect.center().y - TAILLE_ICÔNE * 0.5),

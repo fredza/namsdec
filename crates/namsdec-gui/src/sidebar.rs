@@ -2233,14 +2233,13 @@ impl NamsdecApp {
                 big_action_button(ui, theme, chrome::icon_analysis, s.analysis_open)
             })
             .inner;
-        if bouton
-            .on_hover_text(if prêt {
-                s.analysis_hint
-            } else {
-                s.no_binary_assembled
-            })
-            .clicked()
-        {
+        // Deux infobulles et non une : egui ne montre `on_hover_text`
+        // que sur un widget actif, et c'est justement quand le bouton
+        // est éteint qu'il faut dire pourquoi.
+        let bouton = bouton
+            .on_hover_text(s.analysis_hint)
+            .on_disabled_hover_text(s.no_binary_assembled);
+        if bouton.clicked() {
             self.show_analysis = true;
         }
         ui.add_space(10.0);

@@ -477,7 +477,12 @@ pub fn icon_discord(painter: &egui::Painter, rect: egui::Rect, color: egui::Colo
 /// ronde, deux oreilles, une queue.
 pub fn icon_github(painter: &egui::Painter, rect: egui::Rect, color: egui::Color32) {
     let centre = rect.center();
-    let r = rect.width() * 0.42;
+    // 0,37 et non 0,42 : les oreilles et la queue montent à 1,35 fois ce
+    // rayon, si bien qu'à 0,42 le chat dépassait de sa case d'un huitième
+    // en haut comme en bas — assez pour mordre le texte du lien voisin.
+    // Le rayon est donc choisi pour que ces extrémités-là, et non le
+    // cercle de la tête, touchent le bord.
+    let r = rect.width() * 0.37;
     // Les oreilles d'abord : elles dépassent de la tête.
     for sens in [-1.0f32, 1.0] {
         painter.add(egui::Shape::convex_polygon(
@@ -613,6 +618,63 @@ pub fn icon_calculator(painter: &egui::Painter, rect: egui::Rect, color: egui::C
             boîtier.right() - marge * 1.1,
         ] {
             painter.circle_filled(egui::pos2(x, y), rayon, color);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Une icône reste dans la case qu'on lui donne.
+    ///
+    /// Rien ne l'y oblige : le peintre accepte n'importe quelle
+    /// coordonnée, et une icône qui déborde de deux pixels passe sur le
+    /// bouton voisin sans que personne ne s'en plaigne — sauf l'œil,
+    /// plus tard, sur une capture d'écran.
+    #[test]
+    fn an_icon_stays_inside_the_box_it_is_given() {
+        let ctx = egui::Context::default();
+        let entrée = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(200.0, 100.0),
+            )),
+            ..Default::default()
+        };
+        let case = egui::Rect::from_min_size(egui::pos2(40.0, 20.0), egui::vec2(16.0, 16.0));
+        // Ce que le trait lui-même occupe : un segment épais posé sur le
+        // bord en dépasse de la moitié de son épaisseur, et une courbe
+        // d'un peu plus. Un pixel et demi de tolérance sur une icône de
+        // seize laisse passer la géométrie du trait et arrête ce qu'on
+        // cherche : une forme posée à côté de sa case.
+        let permis = case.expand(1.5);
+
+        /// Le nom d'une icône, et la fonction qui la dessine.
+        type Dessin = (&'static str, fn(&egui::Painter, egui::Rect, egui::Color32));
+        let dessins: [Dessin; 5] = [
+            ("analyse", icon_analysis),
+            ("calculatrice", icon_calculator),
+            ("recherche", icon_search),
+            ("globe", icon_globe),
+            ("github", icon_github),
+        ];
+
+        for (nom, dessine) in dessins {
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| {
+                dessine(ui.painter(), case, egui::Color32::WHITE);
+            });
+            for clipped in &sortie.shapes {
+                let emprise = clipped.shape.visual_bounding_rect();
+                if !emprise.is_positive() {
+                    continue;
+                }
+                assert!(
+                    permis.contains_rect(emprise),
+                    "l'icône « {nom} » déborde : {emprise:?} hors de {permis:?}"
+                );
+            }
+            sortie.textures_delta.clear();
         }
     }
 }

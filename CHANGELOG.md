@@ -44,6 +44,9 @@ six fautes d'assembleur que namsdec sait désormais reconnaître.
   en grand et tout dépliés. Deux fois la même chose, dont une mal.
 
 **Réparé**
+- Les icônes restent dans leur case, et un test le vérifie. Le chat de
+  GitHub dépassait de la sienne d'un huitième, oreilles en haut et queue
+  en bas — assez pour mordre le texte du lien voisin.
 - `y y` et `g g` ne faisaient rien. egui marque la seconde frappe d'une
   même touche comme une répétition, et le collecteur écartait toutes les
   répétitions — la bonne règle pour tenir un raccourci enfoncé, la
