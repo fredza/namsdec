@@ -7679,18 +7679,25 @@ impl NamsdecApp {
                     }
                     ui.separator();
                     ui.checkbox(&mut self.flow_current_only, s.flow_current_only);
-                    // Et laquelle : sans symboles, la fermeture par sauts
-                    // ne sait pas nommer la fonction, mais l'adresse de
-                    // son premier bloc la désigne sans ambiguïté — c'est
-                    // ce qu'on tape dans « Comment arrive-t-on à ».
+                    // Et laquelle. Le nom quand le binaire en porte un,
+                    // l'adresse sinon : « vérifie_mdp » se retient, pas
+                    // `0x1d491`. L'adresse reste montrée à côté — c'est
+                    // elle qu'on tape dans « Comment arrive-t-on à », et
+                    // c'est elle qui lève l'ambiguïté quand la fermeture
+                    // par sauts se trompe, faute de symboles.
                     if restreint
                         && let Some(entrée) = cfg.blocks.first()
                     {
-                        ui.colored_label(
-                            theme.dim,
-                            egui::RichText::new(format!("{:#x}", entrée.start)).monospace(),
-                        )
-                        .on_hover_text(s.flow_function_hint);
+                        let nom = self
+                            .assemble_state
+                            .as_ref()
+                            .and_then(|état| symbol_at(&état.output.symbols, entrée.start));
+                        let texte = match &nom {
+                            Some(nom) => format!("{nom}  {:#x}", entrée.start),
+                            None => format!("{:#x}", entrée.start),
+                        };
+                        ui.colored_label(theme.dim, egui::RichText::new(texte).monospace())
+                            .on_hover_text(s.flow_function_hint);
                     }
                     ui.separator();
                     // Combien on en montre, et combien il y en a : sur un

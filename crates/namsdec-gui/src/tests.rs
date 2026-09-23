@@ -18446,3 +18446,61 @@ fn a_message_from_nasm_carries_no_pattern() {
         "un message rédigé ailleurs n'a pas de motif à reformer"
     );
 }
+
+/// Le graphe nomme la fonction quand le binaire porte ses symboles.
+///
+/// Il n'en donnait que l'adresse : « vérifie_mdp » se retient, `0x1d491`
+/// non. L'adresse reste affichée à côté — c'est elle qu'on tape dans
+/// « Comment arrive-t-on à », et elle lève l'ambiguïté quand la
+/// fermeture par sauts se trompe, faute de symboles.
+#[test]
+fn the_flow_window_names_the_function_it_shows() {
+    let mut app = NamsdecApp {
+        source: "\
+section .text
+global _start
+_start:
+    call vérifie
+    hlt
+vérifie:
+    mov rax, 1
+    ret
+"
+        .to_owned(),
+        show_flow: true,
+        flow_current_only: true,
+        ..Default::default()
+    };
+    app.do_assemble();
+    // Sans nasm, rien à vérifier.
+    let Some(état) = app.assemble_state.as_ref() else {
+        return;
+    };
+    if état.output.symbols.is_empty() {
+        return;
+    }
+
+    // Le symbole se retrouve bien à son adresse : c'est ce dont dépend
+    // l'affichage.
+    let vérifie = état
+        .output
+        .symbols
+        .iter()
+        .find(|symbole| symbole.name == "vérifie");
+    let Some(vérifie) = vérifie else {
+        return;
+    };
+    assert_eq!(
+        symbol_at(&état.output.symbols, vérifie.addr).as_deref(),
+        Some("vérifie"),
+        "l'adresse de la fonction doit rendre son nom"
+    );
+
+    // Et au milieu de la fonction, le nom porte son décalage : on sait
+    // où l'on est, et dans quoi.
+    let dedans = symbol_at(&état.output.symbols, vérifie.addr + 1);
+    assert!(
+        dedans.as_deref().is_some_and(|nom| nom.starts_with("vérifie+")),
+        "au milieu, le nom porte son décalage : {dedans:?}"
+    );
+}

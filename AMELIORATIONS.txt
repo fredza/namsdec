@@ -45,11 +45,14 @@ aujourd'hui ; les suivantes, ce vers quoi l'outil peut aller.
      RESTE : les compteurs (`5j`), qui demandent de lire les chiffres comme un
      préfixe et non comme un mouvement.
 
-1.3  Le graphe ne nomme pas la fonction, il l'adresse
-     La barre affiche maintenant l'adresse du premier bloc de la fonction
-     montrée. Le NOM manque : function_around() est une fermeture par sauts,
-     sans symboles, et se trompe là où deux fonctions partagent un bloc.
-     Piste : la table des symboles, déjà lue par load_elf pour les étiquettes.
+1.3  [FAIT] Le graphe nomme la fonction quand il peut
+     La piste notée était la bonne : `symbol_at()` existait déjà et nomme une
+     adresse depuis la table des symboles. Le graphe l'emploie — « vérifie_mdp »
+     se retient, `0x1d491` non.
+     L'adresse reste affichée à côté, et c'est voulu : c'est elle qu'on tape
+     dans « Comment arrive-t-on à », et c'est elle qui lève l'ambiguïté quand
+     la fermeture par sauts se trompe, faute de symboles. Un binaire dépouillé
+     n'affiche que l'adresse, comme avant.
 
 1.4  [FAIT] La route hors de la fonction montrée est signalée
      Quand aucune route n'existe dans le sous-graphe mais qu'il en existe une
