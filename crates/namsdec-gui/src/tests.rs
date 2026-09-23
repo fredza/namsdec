@@ -11856,6 +11856,38 @@ fn a_solved_exercise_stays_solved() {
     );
 }
 
+/// Lance un binaire qu'on vient d'écrire, en attendant qu'il se libère.
+///
+/// Ce test était le seul instable du dépôt : il tombait une fois sur
+/// vingt, et seulement dans un `cargo test --workspace` complet. La
+/// cause n'est pas dans le binaire produit, elle est chez les voisins.
+/// Des dizaines de tests tournent en parallèle **dans le même
+/// processus**, et plusieurs lancent `nasm` ou `ld`. Quand l'un d'eux
+/// fait son `fork` pendant qu'on tient ici un fichier ouvert en
+/// écriture, le fils hérite d'une copie du descripteur ; tant qu'il n'a
+/// pas fait son `exec` — quelques microsecondes —, le noyau compte
+/// encore une écriture ouverte sur notre fichier et refuse de
+/// l'exécuter : `ETXTBSY`. Le programme est bon, c'est le voisin qui
+/// tient encore la porte.
+///
+/// On attend donc, et seulement pour cette raison-là : toute autre
+/// erreur remonte au premier tour, sans délai ajouté. Une seconde de
+/// patience au total, ce qu'aucune de ces courses n'a jamais approché.
+fn lance_ce_qui_vient_d_etre_ecrit(chemin: &std::path::Path) -> std::process::ExitStatus {
+    let mut attente = std::time::Duration::from_millis(1);
+    for _ in 0..12 {
+        match std::process::Command::new(chemin).status() {
+            Ok(statut) => return statut,
+            Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy => {
+                std::thread::sleep(attente);
+                attente *= 2;
+            }
+            Err(e) => panic!("le binaire exporté se lance : {e}"),
+        }
+    }
+    panic!("le binaire exporté reste « occupé » après plusieurs secondes");
+}
+
 /// Le programme assemblé sort de l'atelier : un ELF exécutable, celui
 /// que la ligne de commande aurait donné.
 ///
@@ -11902,9 +11934,7 @@ _start:
         assert_eq!(mode & 0o111, 0o111, "exécutable : {mode:o}");
     }
     // Et il tourne pour de vrai, avec le code qu'on lui a écrit.
-    let sortie = std::process::Command::new(&chemin)
-        .status()
-        .expect("le binaire exporté se lance");
+    let sortie = lance_ce_qui_vient_d_etre_ecrit(&chemin);
     assert_eq!(sortie.code(), Some(0));
 
     // Les deux commandes sont dites, et elles sont celles qu'on
@@ -18776,5 +18806,47 @@ fn escape_leaves_insert_mode_without_announcing_anything_else() {
         matches!(app.status, Status::Note(_)),
         "l'interrupteur, lui, annonce : {:?}",
         app.status
+    );
+}
+
+/// `y y` duplique la ligne, au clavier et pour de vrai.
+///
+/// L'action existait et marchait ; le raccourci ne l'atteignait pas, et
+/// personne ne pouvait le savoir sans essayer. Le test part donc du
+/// clavier, non de l'action.
+#[test]
+fn typing_y_y_duplicates_the_line() {
+    let mut app = NamsdecApp {
+        source: "mov rax, 1\nmov rbx, 2\n".to_owned(),
+        editor_mode: EditorMode::Normal,
+        ..Default::default()
+    };
+    app.cursor_byte = 3;
+    app.cursor_pos = (1, 4);
+
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let écran = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1400.0, 900.0));
+    // Deux frappes, comme on les taperait — la seconde arrivant marquée
+    // « répétition », ce qu'egui fait de deux pressions rapprochées.
+    for répétition in [false, true] {
+        let mut entrée = egui::RawInput {
+            screen_rect: Some(écran),
+            ..Default::default()
+        };
+        entrée.events.push(egui::Event::Key {
+            key: egui::Key::Y,
+            physical_key: None,
+            pressed: true,
+            repeat: répétition,
+            modifiers: egui::Modifiers::NONE,
+        });
+        let mut sortie = ctx.run_ui(entrée, |ui| app.draw(ui));
+        sortie.textures_delta.clear();
+    }
+
+    assert_eq!(
+        app.source, "mov rax, 1\nmov rax, 1\nmov rbx, 2\n",
+        "la ligne doit être recopiée dessous"
     );
 }

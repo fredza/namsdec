@@ -298,13 +298,15 @@ aujourd'hui ; les suivantes, ce vers quoi l'outil peut aller.
      découvre qu'à l'usage. Une vérification légère (les dépôts et les tags
      existent, les commandes sont dans le PATH) tiendrait en quelques secondes.
 
-3.4  the_assembled_program_can_leave_the_workbench est instable
-     Observé une fois en échec dans un `cargo test --workspace`, puis cinq
-     passes de suite sans rien. Il assemble, lie et exporte un vrai binaire dans
-     un dossier temporaire : sous la charge de tous les crates en parallèle,
-     nasm ou ld doit parfois rendre la main autrement. Un test qui échoue une
-     fois sur six ne se voit qu'en intégration continue, et fait douter de tous
-     les autres.
+3.4  the_assembled_program_can_leave_the_workbench est instable   [FAIT]
+     La cause n'était pas dans le binaire produit : elle était chez les voisins.
+     Les tests tournent en parallèle dans le même processus, et plusieurs
+     lancent nasm ou ld. Le `fork` de l'un d'eux, fait pendant qu'on tient le
+     fichier ouvert en écriture, donne au fils une copie du descripteur ; tant
+     qu'il n'a pas fait son `exec`, le noyau compte encore une écriture ouverte
+     et refuse d'exécuter le fichier — ETXTBSY. D'où l'échec sous charge seule.
+     Le test attend maintenant que la porte se libère, et pour cette erreur-là
+     uniquement : toute autre remonte au premier tour.
 
 3.5  egui_kittest n'est pas utilisé
      Les tests d'interface lisent les formes peintes et cherchent des chaînes.

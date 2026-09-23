@@ -735,7 +735,17 @@ impl Dispatcher {
         bindings: &KeyBindings,
         text_focused: bool,
     ) -> Option<Action> {
-        let pressed = pressed_keys_this_frame(ctx);
+        // Les répétitions comptent quand une séquence est en cours, et
+        // c'est indispensable : egui marque la SECONDE pression d'une
+        // même touche comme une répétition, si bien qu'une séquence de
+        // deux touches identiques ne pouvait pas se faire. `y y` ne
+        // dupliquait pas, `g g` n'allait nulle part — les deux gestes
+        // les plus vim du lot, et les deux muets.
+        //
+        // Hors séquence, les répétitions restent écartées : garder le
+        // doigt sur une touche ne doit pas rejouer un raccourci trente
+        // fois par seconde.
+        let pressed = pressed_keys_this_frame(ctx, !self.pending.is_empty());
         self.consumed.clear();
         // Retenu pour la trace de diagnostic, plus bas.
         let seen: Vec<Key> = pressed.iter().map(|(k, _)| *k).collect();
@@ -899,7 +909,9 @@ impl Dispatcher {
     /// À appeler une fois par frame pendant qu'une capture (`Rebinding`)
     /// est en cours. Renvoie le nouveau `Chord` dès qu'il est complet.
     pub fn poll_rebind(&self, ctx: &egui::Context, rebinding: &mut Rebinding) -> Option<Chord> {
-        let pressed = pressed_keys_this_frame(ctx);
+        // En capture de raccourci, une séquence peut aussi doubler une
+        // touche : quelqu'un qui pose `y y` doit pouvoir le taper.
+        let pressed = pressed_keys_this_frame(ctx, !rebinding.captured.is_empty());
         let &(key, modifiers) = pressed.first()?;
 
         match rebinding.mode {
@@ -956,7 +968,7 @@ fn trace(
 /// cet évènement précis* — pas l'agrégat `InputState::modifiers`, qui ne
 /// se met à jour que sur `Event::ModifiersChanged` et peut donc être en
 /// retard d'une frame par rapport à l'`Event::Key` en cours de traitement.
-fn pressed_keys_this_frame(ctx: &egui::Context) -> Vec<(Key, Modifiers)> {
+fn pressed_keys_this_frame(ctx: &egui::Context, sequence_en_cours: bool) -> Vec<(Key, Modifiers)> {
     ctx.input(|i| {
         i.events
             .iter()
@@ -964,10 +976,10 @@ fn pressed_keys_this_frame(ctx: &egui::Context) -> Vec<(Key, Modifiers)> {
                 egui::Event::Key {
                     key,
                     pressed: true,
-                    repeat: false,
+                    repeat,
                     modifiers,
                     ..
-                } => Some((*key, *modifiers)),
+                } if !*repeat || sequence_en_cours => Some((*key, *modifiers)),
                 _ => None,
             })
             .collect()
@@ -1169,6 +1181,62 @@ mod tests {
             dispatcher.consumed().is_empty(),
             "la touche appartient au champ, le dispatcher n'en prend rien"
         );
+    }
+
+    /// Une séquence peut doubler une touche : `y y`, `g g`.
+    ///
+    /// Elle ne le pouvait pas, et les deux gestes les plus vim du lot
+    /// étaient muets. egui marque la SECONDE pression d'une même touche
+    /// comme une répétition — le doigt qui reste appuyé —, et le relevé
+    /// les écartait toutes. `y y` ne dupliquait rien, `g g` n'allait
+    /// nulle part, sans que rien ne le dise.
+    ///
+    /// Hors séquence, les répétitions restent écartées : garder le doigt
+    /// sur une touche ne doit pas rejouer un raccourci trente fois par
+    /// seconde. C'est la seconde moitié du test.
+    #[test]
+    fn a_sequence_can_double_a_key() {
+        let bindings = KeyBindings::vim();
+        let ctx = egui::Context::default();
+        let mut dispatcher = Dispatcher::default();
+
+        // Le premier `y` arme sans rien faire.
+        let mut premier = None;
+        run(&ctx, vec![key_event(Key::Y)], |ui| {
+            premier = dispatcher.poll(ui.ctx(), &bindings, false);
+        });
+        assert_eq!(premier, None);
+        assert_eq!(dispatcher.pending(), [Key::Y]);
+
+        // Le second arrive marqué « répétition » — c'est ainsi qu'egui
+        // décrit deux pressions rapprochées de la même touche.
+        let répétition = egui::Event::Key {
+            key: Key::Y,
+            physical_key: None,
+            pressed: true,
+            repeat: true,
+            modifiers: Modifiers::NONE,
+        };
+        let mut second = None;
+        run(&ctx, vec![répétition.clone()], |ui| {
+            second = dispatcher.poll(ui.ctx(), &bindings, false);
+        });
+        assert_eq!(
+            second,
+            Some(Action::DuplicateLine),
+            "`y y` doit dupliquer, répétition ou non"
+        );
+
+        let _ = répétition;
+
+        // Ce qu'on ne teste PAS ici, et pourquoi : « hors séquence, une
+        // répétition ne déclenche rien ». La règle est dans le code — on
+        // ne rejoue pas un raccourci trente fois par seconde parce qu'un
+        // doigt traîne — mais egui recalcule lui-même le drapeau de
+        // répétition d'après son historique de touches. Sur un contexte
+        // neuf, la première frappe n'en est jamais une, quoi qu'on lui
+        // passe : un test qui prétendrait le vérifier mesurerait autre
+        // chose que ce qu'il annonce.
     }
 
     #[test]
