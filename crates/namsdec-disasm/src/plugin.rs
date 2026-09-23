@@ -283,3 +283,70 @@ mod tests {
         assert_eq!(sortie, "salut");
     }
 }
+
+#[cfg(test)]
+mod dzf_tests {
+    use super::*;
+
+    /// La fiche de DZF est valide, et namsdec sait la lire.
+    ///
+    /// DZF est un désassembleur x86-64 écrit à la main, sans dépendance :
+    /// c'est le genre d'outil pour lequel ce format existe. Le test lit
+    /// la fiche livrée et vérifie qu'elle passe les contrôles — un
+    /// identifiant propre, une commande, et `{file}` quelque part, sans
+    /// quoi l'outil ne saurait pas quoi lire.
+    #[test]
+    fn the_dzf_plugin_file_is_valid() {
+        let chemin = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../plugins/fonctionnalites/dzf.json");
+        let plugin = read(&chemin).expect("la fiche de DZF doit être valide");
+        assert_eq!(plugin.id, "dzf");
+        assert!(
+            plugin.args.iter().any(|a| a.contains("{file}")),
+            "namsdec doit pouvoir dire où est le binaire : {:?}",
+            plugin.args
+        );
+        // Et elle dit comment l'obtenir : un outil qu'on n'a pas et dont
+        // on ne sait pas quoi faire n'est pas une proposition.
+        assert!(plugin.install.is_some());
+    }
+
+    /// Et s'il est bâti sur cette machine, il répond vraiment.
+    ///
+    /// Le test ne suppose pas qu'il est là : DZF vit dans un autre dépôt,
+    /// et la suite doit passer sur une machine qui ne l'a pas. Quand il
+    /// est là, en revanche, on va jusqu'au bout — c'est la seule façon de
+    /// savoir que le branchement tient.
+    #[test]
+    fn dzf_disassembles_real_bytes_when_it_is_built() {
+        let binaire = std::path::Path::new("/home/fred/Projects/DZF/x64-disassembler/build/x64-disassembler");
+        if !binaire.is_file() {
+            return;
+        }
+        let plugin = Plugin {
+            id: "dzf".to_owned(),
+            name: "DZF".to_owned(),
+            command: binaire.display().to_string(),
+            args: vec!["--base".to_owned(), "0x401000".to_owned(), "{file}".to_owned()],
+            install: None,
+        };
+        // `push rbp ; mov rbp, rsp ; mov rax, 42 ; pop rbp ; ret` — le
+        // début de n'importe quelle fonction, et de quoi vérifier que les
+        // adresses avancent du bon nombre d'octets.
+        let octets: &[u8] = &[
+            0x55, 0x48, 0x89, 0xe5, 0x48, 0xb8, 0x2a, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x5d, 0xc3,
+        ];
+        let listing = plugin.run(octets).expect("DZF doit répondre");
+        for attendu in ["push rbp", "mov rbp, rsp", "mov rax, 0x2a", "pop rbp", "ret"] {
+            assert!(
+                listing.contains(attendu),
+                "« {attendu} » manque dans ce que DZF rend :\n{listing}"
+            );
+        }
+        // Les adresses suivent la base demandée, et avancent de la taille
+        // de chaque instruction.
+        assert!(listing.contains("401000"), "{listing}");
+        assert!(listing.contains("40100f"), "le `ret` est au bon endroit :\n{listing}");
+    }
+}

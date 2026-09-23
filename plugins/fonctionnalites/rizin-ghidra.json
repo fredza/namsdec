@@ -12,5 +12,5 @@
     "--",
     "{file}"
   ],
-  "install": "sudo dnf install rizin rizin-plugin-ghidra"
+  "install": "sudo dnf install rizin"
 }

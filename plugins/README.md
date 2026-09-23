@@ -18,9 +18,17 @@ explicite, et écrit la commande complète avant de la lancer.
 ```
 ~/.local/share/namsdec/
 ├── themes/          les thèmes
-├── decompilers/     les désassembleurs et décompilateurs
+├── disassemblers/   les désassembleurs — ils remplacent le listing
+├── decompilers/     les décompilateurs — Outils ▸ Décompiler…
 └── exercises/       les séries d'exercices (dont le parcours livré)
 ```
+
+**Deux dossiers, et non un seul** : namsdec les lit séparément, parce que
+les deux ne répondent pas à la même question. Un désassembleur rend un
+listing, une instruction par ligne, et devient le moteur du panneau
+principal. Un décompilateur rend du pseudo-code, dans sa propre fenêtre.
+Une fiche rangée dans le mauvais dossier est simplement ignorée — sans
+message, puisque namsdec ne sait pas qu'elle existe.
 
 Installer, c'est copier un fichier JSON dans le bon dossier. Trois façons,
 au choix :

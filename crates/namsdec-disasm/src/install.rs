@@ -132,6 +132,16 @@ fn retdec(data: &Path) -> Recipe {
                 args: vec!["-p".into(), destination.display().to_string()],
                 cwd: None,
             },
+            // Un téléchargement interrompu laisse une archive à demi
+            // écrite, que `tar` refusera plus loin sans qu'on sache
+            // pourquoi.
+            Step {
+                about_fr: "Effacer une archive laissée par une tentative précédente".into(),
+                about_en: "Remove any archive left by an earlier attempt".into(),
+                command: "rm".into(),
+                args: vec!["-f".into(), archive.display().to_string()],
+                cwd: None,
+            },
             Step {
                 about_fr: format!("Télécharger RetDec {RETDEC_VERSION} depuis GitHub"),
                 about_en: format!("Download RetDec {RETDEC_VERSION} from GitHub"),
@@ -232,7 +242,35 @@ fn rizin(data: &Path) -> Recipe {
                 args: vec!["-p".into(), sources.display().to_string()],
                 cwd: None,
             },
+            // `git clone` refuse un dossier qui n'est pas vide, et
+            // s'arrête à la première ligne. Une tentative précédente —
+            // interrompue, ou faite avec d'autres versions — laissait
+            // donc l'installation échouer aussitôt, trop vite pour qu'on
+            // voie autre chose qu'un bouton qui revient.
+            //
+            // Effacer plutôt que réutiliser : ce qui est là vient
+            // peut-être d'autres étiquettes, et un dépôt à demi mis à
+            // jour est plus difficile à comprendre qu'un dépôt neuf.
             Step {
+                about_fr: "Effacer les sources d'une tentative précédente".into(),
+                about_en: "Remove sources from any earlier attempt".into(),
+                command: "rm".into(),
+                args: vec![
+                    "-rf".into(),
+                    sources.join("rizin").display().to_string(),
+                    sources.join("rz-ghidra").display().to_string(),
+                ],
+                cwd: None,
+            },
+            Step {
+                // `--branch` : une version publiée, jamais la branche
+                // par défaut. Rizin et rz-ghidra sont deux dépôts que
+                // seule leur numérotation apparie : prendre les deux
+                // HEAD donnait un Rizin d'hier et un greffon du mois
+                // dernier, et le greffon ne compilait plus contre lui —
+                // `rz_core_annotated_code_print` avait gagné un
+                // paramètre entre les deux.
+                //
                 // `--depth 1` : on veut le code, pas dix ans d'histoire.
                 // `--recursive` : Rizin porte ses dépendances en
                 // sous-modules, et sans elles la configuration échoue.
@@ -243,6 +281,8 @@ fn rizin(data: &Path) -> Recipe {
                     "clone".into(),
                     "--depth".into(),
                     "1".into(),
+                    "--branch".into(),
+                    RIZIN_TAG.into(),
                     "--recursive".into(),
                     "https://github.com/rizinorg/rizin".into(),
                     sources.join("rizin").display().to_string(),
@@ -276,6 +316,8 @@ fn rizin(data: &Path) -> Recipe {
                     "clone".into(),
                     "--depth".into(),
                     "1".into(),
+                    "--branch".into(),
+                    RZ_GHIDRA_TAG.into(),
                     "--recursive".into(),
                     "https://github.com/rizinorg/rz-ghidra".into(),
                     sources.join("rz-ghidra").display().to_string(),
@@ -315,7 +357,127 @@ fn rizin(data: &Path) -> Recipe {
                 ],
                 cwd: Some(sources.join("rz-ghidra")),
             },
+            // Un gigaoctet et demi de sources dont plus personne n'a
+            // besoin : l'outil est posé ailleurs, dans son propre
+            // dossier. Les garder ne servirait qu'à une reconstruction
+            // qui, de toute façon, recommence par les effacer.
+            Step {
+                about_fr: "Effacer les sources, devenues inutiles".into(),
+                about_en: "Remove the sources, now useless".into(),
+                command: "rm".into(),
+                args: vec![
+                    "-rf".into(),
+                    sources.join("rizin").display().to_string(),
+                    sources.join("rz-ghidra").display().to_string(),
+                ],
+                cwd: None,
+            },
         ],
+    }
+}
+
+/// Les versions de Rizin et de son greffon, appariées.
+///
+/// Elles vont ensemble et ne se remontent qu'ensemble : rz-ghidra suit
+/// l'API de Rizin, qui change entre deux versions mineures. Prendre les
+/// branches par défaut des deux dépôts revenait à tirer à pile ou face
+/// sur leur écart du jour.
+const RIZIN_TAG: &str = "v0.9.1";
+const RZ_GHIDRA_TAG: &str = "v0.9.0";
+
+/// La commande d'installation d'un outil, dite pour cette machine-ci.
+///
+/// Les outils connus annoncent leur paquet en `dnf`, faute de pouvoir
+/// deviner la distribution à l'écriture. Devant un autre gestionnaire, la
+/// ligne était fausse — et l'on ne s'en apercevait qu'en la tapant. On la
+/// retraduit ici, en gardant les noms de paquets et en changeant ce qui
+/// les précède.
+///
+/// Ce qui ne ressemble pas à une commande `dnf` est rendu tel quel : une
+/// adresse de page de téléchargement n'a pas de gestionnaire.
+pub fn install_command_here(annoncée: &str) -> String {
+    const PRÉFIXE: &str = "sudo dnf install ";
+    let Some(paquets) = annoncée.strip_prefix(PRÉFIXE) else {
+        return annoncée.to_owned();
+    };
+    let paquets: Vec<&str> = paquets.split_whitespace().collect();
+    if crate::known::program_path("dnf").is_some() {
+        return annoncée.to_owned();
+    }
+    if crate::known::program_path("apt-get").is_some() {
+        return format!("sudo apt-get install {}", paquets.join(" "));
+    }
+    if crate::known::program_path("pacman").is_some() {
+        return format!("sudo pacman -S {}", paquets.join(" "));
+    }
+    if crate::known::program_path("zypper").is_some() {
+        return format!("sudo zypper install {}", paquets.join(" "));
+    }
+    // Aucun gestionnaire connu : mieux vaut la ligne d'origine, qui dit
+    // au moins quels paquets chercher, qu'une invention.
+    annoncée.to_owned()
+}
+
+/// La commande qui poserait les prérequis manquants, pour cette machine.
+///
+/// namsdec ne la lance pas : elle demande `sudo`, et prendre les droits
+/// de quelqu'un pour installer des paquets système n'est pas son rôle.
+/// Mais la lui montrer toute faite lui épargne de chercher le nom du
+/// paquet — qui n'est presque jamais celui du programme : `ninja` est
+/// fourni par `ninja-build` sur Fedora comme sur Debian, et `sha256sum`
+/// par `coreutils` partout.
+///
+/// `None` quand aucun gestionnaire connu n'est là : mieux vaut ne rien
+/// dire qu'une commande qui ne marchera pas ici.
+pub fn requirement_command(missing: &[&str]) -> Option<String> {
+    let (gestionnaire, installer, paquet): (&str, &str, fn(&str) -> &str) =
+        if crate::known::program_path("dnf").is_some() {
+            ("dnf", "install", paquet_fedora)
+        } else if crate::known::program_path("apt-get").is_some() {
+            ("apt-get", "install", paquet_debian)
+        } else if crate::known::program_path("pacman").is_some() {
+            ("pacman", "-S", paquet_arch)
+        } else if crate::known::program_path("zypper").is_some() {
+            ("zypper", "install", paquet_fedora)
+        } else {
+            return None;
+        };
+
+    let mut paquets: Vec<&str> = missing.iter().map(|m| paquet(m)).collect();
+    paquets.sort_unstable();
+    paquets.dedup();
+    if paquets.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "sudo {gestionnaire} {installer} {}",
+        paquets.join(" ")
+    ))
+}
+
+fn paquet_fedora(programme: &str) -> &str {
+    match programme {
+        "ninja" => "ninja-build",
+        "sha256sum" => "coreutils",
+        "g++" | "gcc" => "gcc-c++",
+        autre => autre,
+    }
+}
+
+fn paquet_debian(programme: &str) -> &str {
+    match programme {
+        "ninja" => "ninja-build",
+        "sha256sum" => "coreutils",
+        "g++" | "gcc" => "g++",
+        autre => autre,
+    }
+}
+
+fn paquet_arch(programme: &str) -> &str {
+    match programme {
+        "sha256sum" => "coreutils",
+        "g++" | "gcc" => "gcc",
+        autre => autre,
     }
 }
 
@@ -509,4 +671,135 @@ mod reachability {
             );
         }
     }
+    /// Une recette se rejoue sur un dossier déjà occupé.
+    ///
+    /// `git clone` refuse un dossier qui n'est pas vide et s'arrête à la
+    /// première ligne : une tentative précédente — interrompue, ou faite
+    /// avec d'autres étiquettes — faisait échouer l'installation en une
+    /// fraction de seconde, trop vite pour qu'on voie autre chose qu'un
+    /// bouton qui revient.
+    #[test]
+    fn a_recipe_can_be_run_again_over_what_a_previous_attempt_left() {
+        let data = std::path::Path::new("/tmp/namsdec-test");
+        for outil in ["rizin-ghidra", "retdec"] {
+            let recette = recipe_for(outil, data).expect("une recette");
+            // Ce qu'une tentative précédente a pu laisser doit être
+            // effacé avant d'être réécrit.
+            let efface: Vec<&Step> = recette
+                .steps
+                .iter()
+                .filter(|étape| étape.command == "rm")
+                .collect();
+            assert!(
+                !efface.is_empty(),
+                "{outil} : rien n'efface ce qu'une tentative précédente a laissé"
+            );
+
+            // Et cet effacement précède ce qui écrit.
+            let premier_rm = recette
+                .steps
+                .iter()
+                .position(|é| é.command == "rm")
+                .expect("une étape d'effacement");
+            for (rang, étape) in recette.steps.iter().enumerate() {
+                if étape.command == "git" && étape.args.first().map(String::as_str) == Some("clone")
+                {
+                    assert!(
+                        premier_rm < rang,
+                        "{outil} : on efface après avoir cloné, ce qui ne sert à rien"
+                    );
+                }
+            }
+
+            // Ce qu'on efface reste sous le dossier d'outils : une
+            // recette ne touche à rien d'autre.
+            let outils = tools_dir(data);
+            for étape in efface {
+                for cible in étape.args.iter().filter(|a| !a.starts_with('-')) {
+                    assert!(
+                        std::path::Path::new(cible).starts_with(&outils),
+                        "{outil} : {cible} est hors de {}",
+                        outils.display()
+                    );
+                }
+            }
+        }
+    }
+
+    /// Un paquet qui n'existe pas ne doit pas être promis.
+    ///
+    /// La fiche de Rizin annonçait « sudo dnf install rizin
+    /// rizin-plugin-ghidra ». Le second paquet n'existe dans aucun dépôt
+    /// Fedora : la commande échouait en bloc, sans rien installer — pas
+    /// même Rizin, dnf refusant la transaction entière. Le greffon
+    /// rz-ghidra n'est empaqueté nulle part ; c'est justement pourquoi
+    /// namsdec sait le bâtir.
+    #[test]
+    fn the_rizin_entry_promises_only_a_package_that_exists() {
+        let rizin = crate::known::all()
+            .into_iter()
+            .find(|connu| connu.plugin.id == "rizin-ghidra")
+            .expect("la fiche de Rizin");
+        let commande = rizin.plugin.install.expect("une façon de l'obtenir");
+        assert!(
+            !commande.contains("rizin-plugin-ghidra"),
+            "ce paquet n'existe pas : {commande}"
+        );
+        assert!(commande.contains("rizin"), "{commande}");
+        // Et la recette de construction reste le seul chemin vers le
+        // greffon : elle doit exister pour cet outil.
+        assert!(
+            recipe_for("rizin-ghidra", std::path::Path::new("/tmp")).is_some(),
+            "sans paquet, il faut une recette"
+        );
+    }
+
+    /// La commande d'installation se dit dans le gestionnaire qu'on a.
+    #[test]
+    fn an_install_line_speaks_the_local_package_manager() {
+        let dite = install_command_here("sudo dnf install radare2");
+        assert!(dite.starts_with("sudo "), "{dite}");
+        assert!(dite.contains("radare2"), "le paquet ne change pas : {dite}");
+        // Le gestionnaire, lui, est celui de cette machine.
+        for (outil, attendu) in [
+            ("dnf", "dnf install"),
+            ("apt-get", "apt-get install"),
+            ("pacman", "pacman -S"),
+            ("zypper", "zypper install"),
+        ] {
+            if crate::known::program_path(outil).is_some() {
+                assert!(dite.contains(attendu), "{outil} attendu dans {dite}");
+                break;
+            }
+        }
+        // Ce qui n'est pas une commande de paquets passe tel quel.
+        assert_eq!(
+            install_command_here("github.com/avast/retdec/releases"),
+            "github.com/avast/retdec/releases"
+        );
+    }
+
+    /// Les prérequis manquants deviennent une commande qu'on peut coller.
+    ///
+    /// Le nom du paquet n'est presque jamais celui du programme : c'est
+    /// tout l'intérêt de la proposer toute faite plutôt que de laisser
+    /// chercher « ninja » dans un gestionnaire qui l'appelle autrement.
+    #[test]
+    fn missing_requirements_become_a_command_one_can_paste() {
+        let Some(commande) = requirement_command(&["meson", "ninja"]) else {
+            // Aucun gestionnaire connu sur cette machine : rien à dire,
+            // et c'est ce que la fonction répond.
+            return;
+        };
+        assert!(commande.starts_with("sudo "), "{commande}");
+        assert!(commande.contains("meson"), "{commande}");
+        // ninja est fourni par ninja-build sur Fedora comme sur Debian.
+        assert!(
+            commande.contains("ninja"),
+            "le paquet qui fournit ninja doit y être : {commande}"
+        );
+        // Rien à installer, rien à dire.
+        assert_eq!(requirement_command(&[]), None);
+    }
+
 }

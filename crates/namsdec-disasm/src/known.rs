@@ -11,7 +11,7 @@
 //! commodité, c'est une décision. Il dit donc si l'outil est là, ce
 //! qu'il faut taper pour l'obtenir, et laisse taper.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::plugin::Plugin;
 
@@ -133,7 +133,7 @@ pub fn all() -> Vec<Known> {
                     "--".to_owned(),
                     "{file}".to_owned(),
                 ],
-                install: Some("sudo dnf install rizin rizin-plugin-ghidra".to_owned()),
+                install: Some("sudo dnf install rizin".to_owned()),
             },
             about_fr: "Le décompilateur de Ghidra, porté dans Rizin. C'est le meilleur résultat \
                        qu'on obtienne sans installer Ghidra lui-même.",
@@ -175,9 +175,28 @@ pub fn all() -> Vec<Known> {
 /// programme pour savoir si l'on peut en lancer un autre serait un
 /// détour, et un `which` absent ferait croire que rien n'est installé.
 pub fn program_path(command: &str) -> Option<PathBuf> {
+    program_path_in(command, None)
+}
+
+/// Comme [`program_path`], mais en regardant d'abord là où namsdec pose
+/// ce qu'il installe lui-même.
+///
+/// Un outil bâti par le module d'installation vit dans
+/// `<tools>/<outil>/bin/`, qui n'est dans le PATH de personne. Son chemin
+/// n'était retenu que par la déclaration faite en fin d'installation : une
+/// installation interrompue, ou dont une étape tardive échouait, laissait
+/// donc sur le disque un programme parfaitement fonctionnel que namsdec
+/// déclarait « absent ». On regarde le disque plutôt que de se fier à ce
+/// qu'on a noté.
+pub fn program_path_in(command: &str, tools: Option<&Path>) -> Option<PathBuf> {
     let chemin = std::path::Path::new(command);
     if chemin.is_absolute() {
         return chemin.is_file().then(|| chemin.to_path_buf());
+    }
+    if let Some(tools) = tools
+        && let Some(trouvé) = installed_program(command, tools)
+    {
+        return Some(trouvé);
     }
     let path = std::env::var_os("PATH")?;
     std::env::split_paths(&path).find_map(|dir| {
@@ -186,10 +205,57 @@ pub fn program_path(command: &str) -> Option<PathBuf> {
     })
 }
 
+/// Le programme, s'il est dans le dossier d'outils de namsdec.
+///
+/// Un niveau de répertoire par outil, un `bin` dedans : c'est ce que les
+/// recettes construisent, et l'on n'explore pas plus loin.
+fn installed_program(command: &str, tools: &Path) -> Option<PathBuf> {
+    let candidat = |dossier: &Path| {
+        let programme = dossier.join("bin").join(command);
+        programme.is_file().then_some(programme)
+    };
+    std::fs::read_dir(tools)
+        .ok()?
+        .filter_map(Result::ok)
+        .find_map(|entrée| candidat(&entrée.path()))
+}
+
 impl Known {
     /// Ce qu'on sait de cet outil sur cette machine.
     pub fn availability(&self) -> Availability {
-        let Some(chemin) = program_path(&self.plugin.command) else {
+        self.availability_in(None)
+    }
+
+    /// La fiche à enregistrer, avec le chemin du programme **résolu**.
+    ///
+    /// La fiche embarquée nomme son programme tout court — « rizin » —,
+    /// ce qui est juste tant qu'on parle de celui du système. Mais
+    /// namsdec sait en installer un dans son propre dossier, et celui-là
+    /// n'est dans le PATH de personne.
+    ///
+    /// Sans cette résolution, s'en servir après l'avoir installé écrivait
+    /// « rizin » : la machine en a peut-être un autre, plus ancien, sans
+    /// le greffon — et l'on obtenait « la commande pdg n'existe pas »
+    /// juste après une installation qui avait pourtant réussi. C'est
+    /// exactement ce qui se passait sur une Fedora livrant rizin 0.7.4.
+    pub fn resolved_plugin(&self, tools: Option<&Path>) -> Plugin {
+        let mut plugin = self.plugin.clone();
+        // Seulement celui que namsdec a posé : si le programme vient du
+        // système, son nom nu reste la bonne réponse — il suivra les
+        // mises à jour de la machine, et le figer en chemin absolu
+        // casserait à la première.
+        if let Some(tools) = tools
+            && let Some(chemin) = installed_program(&plugin.command, tools)
+        {
+            plugin.command = chemin.display().to_string();
+        }
+        plugin
+    }
+
+    /// Comme [`Known::availability`], en regardant aussi ce que namsdec a
+    /// installé lui-même sous `tools`.
+    pub fn availability_in(&self, tools: Option<&Path>) -> Availability {
+        let Some(chemin) = program_path_in(&self.plugin.command, tools) else {
             return Availability::Missing;
         };
         // Rizin sans rz-ghidra : le programme est là, `pdg` n'y est pas.
@@ -265,5 +331,92 @@ mod tests {
         assert_eq!(program_path("ce-programme-nexiste-pas-du-tout"), None);
         // Et l'un de ceux que tout système possède est trouvé.
         assert!(program_path("sh").is_some());
+    }
+
+    /// Ce que namsdec a installé lui-même, il doit le retrouver.
+    ///
+    /// Le programme est posé sous `<tools>/<outil>/bin/`, qui n'est dans
+    /// le PATH de personne. Tant que la recherche s'en tenait au PATH, une
+    /// installation qu'une étape tardive avait fait échouer laissait sur
+    /// le disque un outil complet et fonctionnel, que namsdec déclarait
+    /// « absent » — et qu'il proposait de réinstaller.
+    #[test]
+    fn a_tool_namsdec_installed_itself_is_found() {
+        let racine = tempfile::tempdir().expect("un dossier temporaire");
+        let tools = racine.path();
+        let bin = tools.join("retdec").join("bin");
+        std::fs::create_dir_all(&bin).expect("l'arborescence");
+        let programme = bin.join("retdec-decompiler");
+        std::fs::write(&programme, b"").expect("le programme");
+
+        assert_eq!(
+            program_path_in("retdec-decompiler", Some(tools)),
+            Some(programme),
+            "il est là où namsdec l'a mis"
+        );
+        // Sans le dossier, on ne connaît toujours que le PATH.
+        assert_eq!(program_path("retdec-decompiler"), None);
+        // Et l'on ne remonte pas un programme qui n'y est pas.
+        assert_eq!(program_path_in("outil-qui-nexiste-pas", Some(tools)), None);
+    }
+}
+
+#[cfg(test)]
+mod resolution_tests {
+    use super::*;
+
+    /// S'en servir après l'avoir installé enregistre **son** chemin.
+    ///
+    /// Le cas qui s'est vraiment produit : Fedora livre rizin 0.7.4, sans
+    /// le greffon rz-ghidra. namsdec en installe un 0.9.1 dans son propre
+    /// dossier, avec le greffon — puis, en cliquant « S'en servir »,
+    /// écrivait « rizin » tout court dans la fiche. La commande partait
+    /// alors chercher celui du PATH, c'est-à-dire l'autre, et répondait
+    /// que `pdg` n'existe pas. Une installation réussie donnait donc un
+    /// outil cassé.
+    #[test]
+    fn using_a_self_installed_tool_records_its_own_path() {
+        let dossier = tempfile::tempdir().unwrap();
+        let outils = dossier.path();
+        let bin = outils.join("rizin").join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::write(bin.join("rizin"), b"#!/bin/sh\n").unwrap();
+
+        let rizin = all()
+            .into_iter()
+            .find(|k| k.plugin.id == "rizin-ghidra")
+            .expect("la fiche rizin existe");
+
+        // Sans dossier d'outils : le nom nu, qui suivra le système.
+        assert_eq!(rizin.resolved_plugin(None).command, "rizin");
+
+        // Avec : le chemin de celui que namsdec a posé.
+        let résolu = rizin.resolved_plugin(Some(outils));
+        assert_eq!(
+            résolu.command,
+            bin.join("rizin").display().to_string(),
+            "c'est celui-là qu'il faut lancer, pas celui du PATH"
+        );
+        // Le reste de la fiche ne bouge pas : seul le programme change.
+        assert_eq!(résolu.args, rizin.plugin.args);
+        assert_eq!(résolu.id, rizin.plugin.id);
+    }
+
+    /// Un outil que namsdec n'a pas installé garde son nom nu.
+    ///
+    /// Le figer en chemin absolu casserait à la première mise à jour de
+    /// la machine : `/usr/bin/objdump` déplacé, et la fiche ne vaut plus
+    /// rien. Le nom nu, lui, suit.
+    #[test]
+    fn a_system_tool_keeps_its_bare_name() {
+        let dossier = tempfile::tempdir().unwrap();
+        for outil in all() {
+            let résolu = outil.resolved_plugin(Some(dossier.path()));
+            assert_eq!(
+                résolu.command, outil.plugin.command,
+                "{} : rien d'installé, rien à résoudre",
+                outil.plugin.id
+            );
+        }
     }
 }

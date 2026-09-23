@@ -173,3 +173,59 @@ relu comme une commande. Vous ne pouvez pas écrire `foo | bar` ni
   ce n'est plus un listing qu'on lit, c'est un vidage.
 - Le travail se fait dans un fil à part : l'interface reste utilisable
   pendant ce temps.
+
+---
+
+## Deux dossiers, deux questions
+
+namsdec lit **deux** dossiers, et non un seul :
+
+| Dossier | Ce qu'on y range | Où ça se voit |
+|---|---|---|
+| `~/.local/share/namsdec/disassemblers/` | un outil qui rend un **listing**, une instruction par ligne | il devient le moteur du panneau principal |
+| `~/.local/share/namsdec/decompilers/` | un outil qui rend du **pseudo-code** | Outils ▸ Décompiler… |
+
+Le format des fiches est le même ; c'est le dossier qui dit à quoi elles
+servent. Une fiche rangée dans le mauvais dossier est **ignorée sans
+message** — namsdec ne sait pas qu'elle existe.
+
+## Brancher son propre outil : l'exemple de DZF
+
+[DZF](https://github.com/…) est un désassembleur x86-64 écrit à la main
+en C++23, sans aucune dépendance. C'est exactement le genre d'outil pour
+lequel ce format existe : namsdec n'a rien à savoir de lui, sinon la
+commande à lancer.
+
+Ce qu'il a fallu pour le brancher — et rien de plus :
+
+1. **Accepter un chemin de fichier en argument.** C'est la seule
+   exigence réelle. Un outil qui lit son entrée au clavier ne peut pas
+   être appelé par un autre programme : il attendrait une frappe qui ne
+   viendra pas, et namsdec finirait par l'arrêter au bout de son délai.
+   DZF garde son mode interactif quand on l'appelle sans argument, et
+   désassemble le fichier nommé sinon.
+2. **Écrire le listing sur la sortie standard.** Une ligne par
+   instruction. namsdec ne lui impose aucun format : il montre ce qui
+   vient.
+3. **Poser la fiche** dans `disassemblers/` :
+
+```json
+{
+  "id": "dzf",
+  "name": "DZF — désassemblage x86-64 (maison)",
+  "command": "/chemin/vers/x64-disassembler",
+  "args": ["--base", "0x401000", "{file}"],
+  "install": "cd DZF/x64-disassembler && cmake -S . -B build && cmake --build build"
+}
+```
+
+La fiche livrée dans ce dossier (`dzf.json`) nomme son programme
+`x64-disassembler` tout court : elle marche si vous mettez le binaire
+dans votre `PATH`. Sinon, mettez-y le chemin complet, comme ci-dessus.
+
+**Ce que DZF ne sait pas encore**, et qu'il faut savoir avant de s'en
+servir : il ne lit pas l'en-tête ELF. namsdec lui passe le binaire
+entier, donc les premiers octets — l'en-tête — sont désassemblés comme du
+code, et le début du listing ne veut rien dire. C'est la prochaine étape
+de son côté, pas du nôtre : dès qu'il saura trouver ses sections
+exécutables, la même fiche continuera de marcher sans y toucher.

@@ -1,0 +1,11 @@
+{
+  "id": "dzf",
+  "name": "DZF — désassemblage x86-64 (maison)",
+  "command": "x64-disassembler",
+  "args": [
+    "--base",
+    "0x401000",
+    "{file}"
+  ],
+  "install": "cd DZF/x64-disassembler && cmake -S . -B build && cmake --build build"
+}
