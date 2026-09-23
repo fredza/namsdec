@@ -61,13 +61,24 @@ aujourd'hui ; les suivantes, ce vers quoi l'outil peut aller.
 1.5  [FAIT] Les modules d'analyse se replient
      Neuf lignes de moins sur la page, derrière un en-tête qui les compte.
 
-1.6  rz-ghidra : la construction complète n'a pas été relancée
+1.6  [FAIT] rz-ghidra : la construction complète a été relancée, et elle tient
      Les signatures ont été vérifiées à la source le 18 septembre 2026 : rz-ghidra
      v0.9.0 appelle rz_core_annotated_code_print(code, offsets) à deux arguments,
      et rizin v0.9.1 la déclare ainsi — les deux étiquettes vont donc ensemble.
-     Mais une compilation entière (dix à vingt minutes) n'a pas été faite.
-     Piste : vérifier au lancement de la recette que les deux tags existent
-     encore, et le dire plutôt que d'échouer à la sixième étape.
+     La compilation entière a été faite le 23 septembre 2026, en suivant les
+     neuf étapes de la recette telles que namsdec les annonce. Résultat :
+     rizin 0.9.1 dans ~/.local/share/namsdec/tools/rizin (96 Mo), les trois
+     greffons ghidra posés, `pdg` répond, et la décompilation de crackme-01
+     rend du C. Les sources sont bien effacées à la dernière étape.
+     La recette est donc juste de bout en bout — c'est la première fois qu'on
+     peut le dire.
+     La piste notée est faite aussi : `tag_exists()` demande à git, par
+     `ls-remote`, si les deux étiquettes existent encore. Un tag retiré ou
+     déplacé — cela arrive — faisait échouer la recette à sa sixième étape,
+     APRÈS dix minutes de compilation de Rizin. La question coûte une seconde.
+     Le test se tait sans réseau (`None` n'est pas un échec), et un second
+     vérifie qu'une étiquette inventée est bien vue comme absente : un contrôle
+     qui ne peut pas échouer ne vérifie rien.
 
 1.7  [FAIT] Les noms de paquets annoncés sont vérifiés
      « sudo dnf install rizin rizin-plugin-ghidra » promettait un paquet qui

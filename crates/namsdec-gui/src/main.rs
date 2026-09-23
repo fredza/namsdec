@@ -6352,16 +6352,24 @@ impl NamsdecApp {
                         // Recommencer reste possible en second : c'est le
                         // geste de quelqu'un qui sait pourquoi il le fait.
                         ui.colored_label(theme.good, s.install_already_done);
-                        match dialog_bar_hinted(
-                            ui,
-                            theme,
-                            s.dialog_close,
-                            Some(s.install_again),
-                            Some(s.install_again_hint),
-                        ) {
-                            Some(Answer::Ok) => fermer = true,
-                            Some(Answer::Cancel) => lancer = true,
-                            None => {}
+                        // « Recommencer » n'est PAS le second bouton de la
+                        // barre, et c'est une leçon qu'un test a rendue :
+                        // Échap y répond `Cancel`, ce qui lançait une
+                        // recompilation de vingt minutes au lieu de
+                        // fermer. Échap veut dire « je m'en vais », jamais
+                        // « fais l'autre chose ».
+                        //
+                        // La barre ne porte donc que le geste principal et
+                        // le renoncement. Une troisième action se pose à
+                        // côté, et se clique exprès.
+                        if framed_button(ui, theme, s.install_again)
+                            .on_hover_text(s.install_again_hint)
+                            .clicked()
+                        {
+                            lancer = true;
+                        }
+                        if dialog_bar(ui, theme, s.dialog_close, None).is_some() {
+                            fermer = true;
                         }
                     } else {
                         // Rien d'installé : le principal est « Lancer »,

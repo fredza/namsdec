@@ -385,6 +385,42 @@ fn rizin(data: &Path) -> Recipe {
 const RIZIN_TAG: &str = "v0.9.1";
 const RZ_GHIDRA_TAG: &str = "v0.9.0";
 
+/// Les deux étiquettes que la recette de rz-ghidra va chercher.
+///
+/// Exposées pour qu'on puisse les vérifier : un dépôt qui retire une
+/// étiquette — cela arrive, une version reprise, un tag déplacé — fait
+/// échouer la recette à sa sixième étape, après dix minutes de
+/// compilation de Rizin. Le dire d'abord coûte une requête.
+pub fn rizin_tags() -> (&'static str, &'static str) {
+    (RIZIN_TAG, RZ_GHIDRA_TAG)
+}
+
+/// Cette étiquette existe-t-elle encore dans ce dépôt ?
+///
+/// `None` quand on ne peut pas conclure — pas de `git`, pas de réseau,
+/// une erreur : on ne suppose pas qu'une étiquette a disparu parce que
+/// personne n'a répondu. `Some(false)` veut dire « git a répondu, et il
+/// ne la trouve pas ».
+///
+/// `ls-remote` plutôt qu'un clone : c'est une question, pas un
+/// téléchargement, et elle se pose en une seconde.
+pub fn tag_exists(repo: &str, tag: &str) -> Option<bool> {
+    let git = crate::known::program_path_in("git", None)?;
+    let sortie = std::process::Command::new(git)
+        .args(["ls-remote", "--tags", "--exit-code", repo, &format!("refs/tags/{tag}")])
+        .output()
+        .ok()?;
+    match sortie.status.code() {
+        // 0 : trouvée. 2 : `--exit-code` dit qu'il n'y a pas de
+        // correspondance, ce qui est une réponse et non une panne.
+        Some(0) => Some(true),
+        Some(2) => Some(false),
+        // Tout le reste — réseau coupé, dépôt injoignable — ne dit rien
+        // de l'étiquette.
+        _ => None,
+    }
+}
+
 /// La commande d'installation d'un outil, dite pour cette machine-ci.
 ///
 /// Les outils connus annoncent leur paquet en `dnf`, faute de pouvoir
@@ -802,4 +838,51 @@ mod reachability {
         assert_eq!(requirement_command(&[]), None);
     }
 
+}
+
+#[cfg(test)]
+mod tag_tests {
+    use super::*;
+
+    /// Les deux étiquettes épinglées existent encore.
+    ///
+    /// Elles vont ensemble et ne se remontent qu'ensemble : rz-ghidra
+    /// suit l'API de Rizin, qui change entre deux versions mineures. Si
+    /// l'une disparaît du dépôt — version reprise, tag déplacé —, la
+    /// recette échoue à sa sixième étape, après dix minutes de
+    /// compilation de Rizin. Autant le savoir ici.
+    ///
+    /// Le test se tait sans réseau : `None` n'est pas un échec, c'est
+    /// une absence de réponse.
+    #[test]
+    fn both_pinned_tags_still_exist() {
+        let (rizin, ghidra) = rizin_tags();
+        for (dépôt, étiquette) in [
+            ("https://github.com/rizinorg/rizin", rizin),
+            ("https://github.com/rizinorg/rz-ghidra", ghidra),
+        ] {
+            if let Some(false) = tag_exists(dépôt, étiquette) {
+                panic!(
+                    "{dépôt} n'a plus l'étiquette {étiquette} : la recette échouerait \
+                     après dix minutes de compilation"
+                );
+            }
+        }
+    }
+
+    /// Et une étiquette inventée est bien vue comme absente.
+    ///
+    /// Sans quoi le contrôle ci-dessus passerait toujours, quoi qu'il
+    /// arrive — un test qui ne peut pas échouer ne vérifie rien.
+    #[test]
+    fn a_made_up_tag_is_reported_missing() {
+        let réponse = tag_exists(
+            "https://github.com/rizinorg/rizin",
+            "v0.0.0-cette-version-n-existe-pas",
+        );
+        assert!(
+            réponse != Some(true),
+            "une étiquette inventée ne doit pas être trouvée"
+        );
+    }
 }

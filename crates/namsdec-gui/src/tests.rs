@@ -18607,3 +18607,57 @@ fn naming_a_line_without_an_address_says_so() {
     assert!(app.note_edit.is_none(), "aucun champ ne doit s'ouvrir");
     assert!(matches!(app.status, Status::Note(_)), "{:?}", app.status);
 }
+
+/// Échap ne déclenche jamais l'action secondaire d'une fenêtre.
+///
+/// La barre de dialogue répond `Cancel` à Échap. Tant que le second
+/// bouton est un renoncement, c'est juste — mais la fenêtre
+/// d'installation y avait mis « Recommencer », si bien qu'Échap lançait
+/// une recompilation de vingt minutes au lieu de fermer.
+///
+/// La règle est donc : la barre porte le geste principal et le
+/// renoncement, jamais une troisième action. Celle-ci se pose à côté et
+/// se clique exprès.
+#[test]
+fn escape_never_triggers_a_second_action() {
+    let mut app = NamsdecApp {
+        show_installer_module: true,
+        install_plan: Some("rizin-ghidra".to_owned()),
+        ..Default::default()
+    };
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let écran = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1600.0, 1100.0));
+    let mut sortie = ctx.run_ui(
+        egui::RawInput {
+            screen_rect: Some(écran),
+            ..Default::default()
+        },
+        |ui| app.draw(ui),
+    );
+    sortie.textures_delta.clear();
+    if app.install_plan.is_none() {
+        return;
+    }
+
+    let mut échap = egui::RawInput {
+        screen_rect: Some(écran),
+        ..Default::default()
+    };
+    échap.events.push(egui::Event::Key {
+        key: egui::Key::Escape,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: egui::Modifiers::NONE,
+    });
+    let mut sortie = ctx.run_ui(échap, |ui| app.draw(ui));
+    sortie.textures_delta.clear();
+
+    assert!(app.install_plan.is_none(), "Échap referme");
+    assert!(
+        app.install_job.is_none(),
+        "et surtout ne lance rien : une recompilation de vingt minutes \
+         ne se déclenche pas par la touche qui veut dire « je m'en vais »"
+    );
+}
