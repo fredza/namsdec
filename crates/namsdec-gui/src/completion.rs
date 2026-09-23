@@ -176,30 +176,23 @@ fn push_matching(out: &mut Vec<Candidate>, words: &[&str], prefix: &str, kind: T
     }
 }
 
-/// Les étiquettes **définies** dans la source : c'est ce qu'on écrit
-/// après un `jmp` ou un `call`, et personne ne peut le deviner à notre
+/// Les noms **définis** dans la source : c'est ce qu'on écrit après un
+/// `jmp`, un `call` ou un `mov`, et personne ne peut le deviner à notre
 /// place.
 ///
-/// Définies, donc en tête de ligne et suivies de leurs deux-points. Tout
-/// ce qui *ressemble* à une étiquette ne se saute pas : le `.text` de
-/// `section .text` nomme une section, et proposer d'y sauter n'aiderait
-/// personne.
+/// La même liste que celle de la coloration, et c'est voulu : il y en
+/// avait deux, qui ne relevaient pas la même chose. Celle-ci ignorait
+/// les données nommées — `nom db "fred"`, que NASM laisse écrire sans
+/// deux-points —, si bien qu'un programme déclarant ses chaînes en tête
+/// ne se les voyait jamais proposer. C'est pourtant ce qu'on écrit le
+/// plus souvent.
+///
+/// Triés, pour que l'ordre ne dépende pas du hasard d'une table de
+/// hachage : une liste de propositions qui change d'ordre à chaque
+/// frappe ne se lit pas.
 fn labels_of(source: &str) -> Vec<String> {
-    let mut labels = Vec::new();
-    for line in source.lines() {
-        let trimmed = line.trim_start();
-        let Some(colon) = trimmed.find(':') else {
-            continue;
-        };
-        let name = &trimmed[..colon];
-        let looks_like_a_label = !name.is_empty()
-            && name
-                .chars()
-                .all(|c| c.is_alphanumeric() || matches!(c, '_' | '.' | '$' | '@' | '?'));
-        if looks_like_a_label && !labels.iter().any(|known| known == name) {
-            labels.push(name.to_owned());
-        }
-    }
+    let mut labels: Vec<String> = syntax::labels_of(source).into_iter().collect();
+    labels.sort();
     labels
 }
 
@@ -357,9 +350,13 @@ mod tests {
     fn only_defined_labels_are_offered_as_jump_targets() {
         let source = "section .text\n_start:\n    mov rax, [fs:0]\n.fin:\n    jmp ";
         let labels = labels_of(source);
+        // Triés, et non dans l'ordre du fichier : c'est l'ordre stable
+        // qui compte. Une liste de propositions qui change de rangement
+        // d'une frappe à l'autre ne se lit pas — et l'ordre du fichier
+        // ne survivrait pas au relevé, qui passe par un ensemble.
         assert_eq!(
             labels,
-            vec!["_start".to_owned(), ".fin".to_owned()],
+            vec![".fin".to_owned(), "_start".to_owned()],
             "{labels:?}"
         );
     }
@@ -416,5 +413,84 @@ mod navigation_tests {
             suggestions.accepted_at(dernier),
             "au-delà de la liste, on prend la dernière — jamais rien"
         );
+    }
+}
+
+#[cfg(test)]
+mod variables_tests {
+    use super::*;
+
+    /// Les données nommées se proposent comme le reste.
+    ///
+    /// Elles ne l'étaient pas : la liste ne relevait que les étiquettes
+    /// suivies de deux-points, et `nom db "fred"` n'en a pas. Un
+    /// programme qui déclare ses chaînes en tête — c'est-à-dire tous —
+    /// ne se voyait jamais proposer ce qu'il écrit le plus souvent.
+    #[test]
+    fn named_data_is_offered_like_everything_else() {
+        let source = "\
+section .data
+    nom db \"fred\", 10
+    addition db \"addition\", 10
+    enterfirstnbr db \"Entrez le premier nombre : \", 10
+
+section .text
+_start:
+    mov rsi, no
+";
+        let at = source.len() - 1;
+        let suggestions = suggest(source, at).expect("« no » doit proposer quelque chose");
+        let textes: Vec<&str> = suggestions
+            .candidates
+            .iter()
+            .map(|c| c.text.as_str())
+            .collect();
+        assert!(
+            textes.contains(&"nom"),
+            "la donnée déclarée doit être proposée : {textes:?}"
+        );
+
+        // Et les trois sont bien connues, y compris la plus longue.
+        let noms = labels_of(source);
+        for attendu in ["nom", "addition", "enterfirstnbr", "_start"] {
+            assert!(
+                noms.iter().any(|n| n == attendu),
+                "« {attendu} » manque : {noms:?}"
+            );
+        }
+    }
+
+    /// L'ordre des propositions ne dépend pas du hasard.
+    ///
+    /// Elles venaient d'une table de hachage : deux frappes de suite
+    /// pouvaient les rendre dans un ordre différent, et une liste qui
+    /// bouge sous les doigts ne se lit pas.
+    #[test]
+    fn the_order_never_changes_between_two_calls() {
+        let source = "\
+section .data
+    zeta db 0
+    alpha db 0
+    mu db 0
+section .text
+_start:
+    mov rsi, a
+";
+        let at = source.len() - 1;
+        let premier = suggest(source, at).map(|s| {
+            s.candidates
+                .iter()
+                .map(|c| c.text.clone())
+                .collect::<Vec<_>>()
+        });
+        for _ in 0..20 {
+            let encore = suggest(source, at).map(|s| {
+                s.candidates
+                    .iter()
+                    .map(|c| c.text.clone())
+                    .collect::<Vec<_>>()
+            });
+            assert_eq!(encore, premier, "l'ordre doit être le même à chaque fois");
+        }
     }
 }

@@ -213,21 +213,44 @@ impl Macros {
     }
 }
 
-/// Les étiquettes **définies** : en tête de ligne, suivies de leurs
-/// deux-points.
+/// Les noms **définis** par le fichier : étiquettes et données.
 ///
-/// Définies seulement : tout ce qui ressemble à une étiquette n'en est
-/// pas une. Le `.text` de `section .text` nomme une section, et le
-/// peindre en étiquette laisserait croire qu'on peut y sauter.
-fn labels_of(text: &str) -> std::collections::HashSet<String> {
+/// Deux formes, et il faut les deux :
+///
+/// - `boucle:` — une étiquette, avec ses deux-points ;
+/// - `nom db "fred"` — une donnée, que NASM laisse écrire sans
+///   deux-points, et qui est tout autant un nom auquel on se réfère.
+///
+/// La seconde manquait, et c'est elle qu'on emploie le plus : un
+/// programme déclare ses chaînes en tête, puis les nomme partout. Les
+/// ignorer revenait à ne pas proposer ce qu'on écrit le plus souvent.
+///
+/// Définis seulement : tout ce qui ressemble à un nom n'en est pas un.
+/// Le `.text` de `section .text` nomme une section, et le peindre en
+/// étiquette laisserait croire qu'on peut y sauter.
+pub(crate) fn labels_of(text: &str) -> std::collections::HashSet<String> {
     let mut out = std::collections::HashSet::new();
     for ligne in text.lines() {
         let taillée = ligne.trim_start();
-        let Some(deux_points) = taillée.find(':') else {
+        // La forme avec deux-points.
+        if let Some(deux_points) = taillée.find(':') {
+            let nom = &taillée[..deux_points];
+            if !nom.is_empty() && nom.chars().all(is_word_char) {
+                out.insert(nom.to_owned());
+                continue;
+            }
+        }
+        // La forme sans : un nom, puis une directive qui pose des
+        // octets. C'est ce qui distingue `nom db "fred"` de
+        // `mov rax, 1` — le second mot, et lui seul.
+        let fin = taillée
+            .find(|c: char| !is_word_char(c))
+            .unwrap_or(taillée.len());
+        if fin == 0 {
             continue;
-        };
-        let nom = &taillée[..deux_points];
-        if !nom.is_empty() && nom.chars().all(is_word_char) {
+        }
+        let nom = &taillée[..fin];
+        if next_word_defines_data(taillée, fin) {
             out.insert(nom.to_owned());
         }
     }

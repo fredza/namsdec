@@ -18725,3 +18725,56 @@ fn every_window_carries_a_way_out() {
         );
     }
 }
+
+/// Échap quitte le mode Insertion sans rien annoncer d'autre.
+///
+/// Il effaçait le surlignage — ce qui est juste — mais l'annonçait :
+/// « Surlignage effacé » s'écrivait dans la barre d'état au moment où
+/// l'on y cherchait « NORMAL ». On appuie sur Échap pour changer de
+/// mode ; lui faire dire autre chose répond à côté de ce qu'on a fait.
+#[test]
+fn escape_leaves_insert_mode_without_announcing_anything_else() {
+    let mut app = NamsdecApp {
+        source: "    mov rax, 1\n    add rax, rbx\n".to_owned(),
+        editor_mode: EditorMode::Insert,
+        ..Default::default()
+    };
+    app.cursor_byte = app.source.find("rax").unwrap() + 1;
+    app.highlight_matches();
+    assert!(app.tracked.is_some(), "quelque chose est surligné");
+
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let écran = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1400.0, 900.0));
+    let mut échap = egui::RawInput {
+        screen_rect: Some(écran),
+        ..Default::default()
+    };
+    échap.events.push(egui::Event::Key {
+        key: egui::Key::Escape,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: egui::Modifiers::NONE,
+    });
+    let mut sortie = ctx.run_ui(échap, |ui| app.draw(ui));
+    sortie.textures_delta.clear();
+
+    assert_eq!(app.editor_mode, EditorMode::Normal, "on quitte l'insertion");
+    assert!(app.tracked.is_none(), "et le surlignage s'éteint");
+    assert!(
+        !matches!(app.status, Status::Note(_)),
+        "mais rien ne l'annonce : {:?}",
+        app.status
+    );
+
+    // Refaire la commande, en revanche, le dit : là, c'est le geste
+    // demandé, et le retour compte.
+    app.highlight_matches();
+    app.highlight_matches();
+    assert!(
+        matches!(app.status, Status::Note(_)),
+        "l'interrupteur, lui, annonce : {:?}",
+        app.status
+    );
+}

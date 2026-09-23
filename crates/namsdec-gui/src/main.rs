@@ -9283,12 +9283,17 @@ impl NamsdecApp {
             {
                 self.move_in_normal_mode(ui.ctx(), mouvement);
             }
-            // Échap éteint aussi le surlignage des occurrences, avant
-            // de changer de mode : c'est le geste qui annule ce qu'on
-            // vient de demander, et l'attendre d'un second raccourci
-            // serait une chose de plus à retenir.
+            // Échap éteint aussi le surlignage, avant de changer de
+            // mode : c'est le geste qui annule ce qu'on vient de
+            // demander, et l'attendre d'un second raccourci serait une
+            // chose de plus à retenir.
+            //
+            // Sans rien annoncer, en revanche : on appuie sur Échap pour
+            // quitter l'insertion, et lire « Surlignage effacé » là où
+            // l'on attend « NORMAL » répond à côté. L'effacement se voit
+            // — les marques disparaissent —, il n'a pas à être dit.
             if exit_insert && self.tracked.is_some() {
-                self.clear_matches();
+                self.forget_matches();
             }
             match self.editor_mode {
                 EditorMode::Normal if enter_insert => {
@@ -10293,14 +10298,28 @@ impl NamsdecApp {
         self.status = Status::Counted(combien, |s| s.matches_found);
     }
 
-    /// Éteint le surlignage.
+    /// Éteint le surlignage, et le dit.
+    ///
+    /// À n'employer que lorsque c'est le geste demandé — refaire la
+    /// commande de surlignage, qui fonctionne en interrupteur. Éteindre
+    /// est visible à l'écran : les marques disparaissent. L'annoncer
+    /// quand personne ne l'a demandé écrase un message plus utile.
     fn clear_matches(&mut self) {
         if self.tracked.is_none() {
             return;
         }
+        self.forget_matches();
+        self.status = Status::Note(|s| s.matches_cleared);
+    }
+
+    /// Éteint le surlignage sans rien dire.
+    ///
+    /// Pour les effets de bord : Échap sert d'abord à quitter le mode
+    /// Insertion, et annoncer « Surlignage effacé » à ce moment-là
+    /// répond à côté de ce qu'on vient de faire.
+    fn forget_matches(&mut self) {
         self.tracked = None;
         self.tracked_spans.clear();
-        self.status = Status::Note(|s| s.matches_cleared);
     }
 
     /// Remet les étendues à jour quand la source a changé.
