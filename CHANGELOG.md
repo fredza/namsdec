@@ -100,6 +100,11 @@ six fautes d'assembleur que namsdec sait désormais reconnaître.
   cherchant un titre à l'ascenseur.
 - « Tout » les remet à la file, qui est la forme d'un compte rendu —
   c'est cette vue-là qu'on copie. Le module choisi est un réglage.
+- La colonne est **alignée à gauche** et les deux zones ont leurs
+  marges. Centrés, treize libellés de longueurs différentes n'ont plus
+  de bord commun : l'œil cherche chacun au lieu de descendre une liste.
+  Et un tableau collé au trait de séparation donne l'impression d'être
+  coupé.
 
 **Chercher dans la mémoire**
 - Un champ dans l'onglet Mémoire, et trois écritures qui se mélangent

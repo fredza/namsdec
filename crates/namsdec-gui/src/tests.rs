@@ -11864,6 +11864,95 @@ fn a_solved_exercise_stays_solved() {
     );
 }
 
+/// La fenêtre d'analyse respire, et sa colonne s'aligne.
+///
+/// Sans marge, le texte se colle au cadre de la fenêtre et à la ligne
+/// qui sépare les deux colonnes : un tableau donne alors l'impression
+/// d'être coupé. Et treize libellés centrés n'ont plus de bord commun —
+/// l'œil doit chercher chacun au lieu de descendre une liste.
+#[test]
+fn the_analysis_window_has_margins_and_a_left_aligned_column() {
+    let Some(octets) = binaire_dépreuve("crackme-01") else {
+        return;
+    };
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp::default();
+    app.apply_theme(&ctx);
+    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    app.show_analysis = true;
+    app.analysis_module = "protections".to_owned();
+
+    let entrée = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1600.0, 1100.0),
+        )),
+        ..Default::default()
+    };
+    // Où chaque texte est peint, et jusqu'où il va.
+    let mut posés: Vec<(String, f32, f32)> = Vec::new();
+    for _ in 0..3 {
+        posés.clear();
+        let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(texte) = &clipped.shape {
+                posés.push((
+                    texte.galley.text().to_owned(),
+                    texte.pos.x,
+                    texte.pos.x + texte.galley.size().x,
+                ));
+            }
+        }
+        sortie.textures_delta.clear();
+    }
+
+    let fenêtre = egui::AreaState::load(&ctx, egui::Id::new("analysis_window"))
+        .expect("la fenêtre est affichée");
+    let bord_gauche = fenêtre.left_top_pos().x;
+
+    let où = |quoi: &str| -> (f32, f32) {
+        posés
+            .iter()
+            .find(|(t, _, _)| t == quoi)
+            .map(|(_, g, d)| (*g, *d))
+            .unwrap_or_else(|| panic!("« {quoi} » est peint"))
+    };
+
+    // Les entrées de la colonne commencent toutes au même endroit.
+    let titres = app.re_registry.titles("fr");
+    let gauches: Vec<f32> = titres.iter().map(|t| où(t).0).collect();
+    let mini = gauches.iter().cloned().fold(f32::MAX, f32::min);
+    let maxi = gauches.iter().cloned().fold(f32::MIN, f32::max);
+    assert!(
+        maxi - mini < 0.5,
+        "les entrées doivent partager un bord gauche : {gauches:?}"
+    );
+
+    // Et cette colonne ne touche pas le cadre de la fenêtre.
+    assert!(
+        mini - bord_gauche >= 6.0,
+        "la colonne colle au bord : {mini} pour une fenêtre à {bord_gauche}"
+    );
+
+    // Le contenu ne touche pas la colonne : le texte du module commence
+    // franchement à droite du plus long libellé.
+    let fin_de_colonne = titres
+        .iter()
+        .map(|t| où(t).1)
+        .fold(f32::MIN, f32::max);
+    // Le titre du module est peint deux fois : dans la colonne et en
+    // tête du contenu. C'est celui de droite qu'on veut.
+    let début_du_contenu = posés
+        .iter()
+        .filter(|(t, _, _)| t == "Protections du binaire")
+        .map(|(_, g, _)| *g)
+        .fold(f32::MIN, f32::max);
+    assert!(
+        début_du_contenu - fin_de_colonne >= 10.0,
+        "le contenu colle à la colonne : {début_du_contenu} contre {fin_de_colonne}"
+    );
+}
+
 /// La carte du fichier dit où est quoi, et le vidage ce que ces
 /// octets-là sont.
 ///
