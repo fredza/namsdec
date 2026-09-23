@@ -75,6 +75,9 @@ six fautes d'assembleur que namsdec sait désormais reconnaître.
   test.
 - Ni MD5 ni SHA-1 : ce sont des empreintes cassées, et les afficher à
   côté d'une bonne sans le dire apprendrait le faux.
+- Le rapport Markdown la porte aussi, en tête : « de quel fichier
+  parle-t-on ? » est la question qu'un compte rendu doit trancher en
+  premier.
 
 **Où est quoi, et ce que ces octets-là sont**
 - **Carte du fichier** : les segments, ce que le noyau charge, avec

@@ -10,7 +10,7 @@
 //! le recevra.
 
 use crate::elf_scan::{Kind, Relro, Scan};
-use crate::imports;
+use crate::{digest, imports};
 
 fn t(lang: &str, fr: &str, en: &str) -> String {
     if lang.starts_with("fr") { fr } else { en }.to_owned()
@@ -45,6 +45,18 @@ pub fn markdown(scan: &Scan, bytes: &[u8], lang: &str, name: &str) -> String {
         Kind::Core => t(lang, "image mémoire", "core dump"),
         Kind::Other(v) => format!("type {v}"),
     };
+    // De quel fichier parle-t-on ? C'est la question qu'un compte rendu
+    // doit trancher en premier : deux personnes qui lisent « le
+    // crackme » n'ont pas forcément le même octet sous les yeux. Avant
+    // même le type et la machine, donc.
+    out.push_str(&format!(
+        "- {} : {} {}\n- SHA-256 : `{}`\n- CRC-32 : `{:08x}`\n",
+        t(lang, "Taille", "Size"),
+        bytes.len(),
+        t(lang, "octets", "bytes"),
+        digest::hex(&digest::sha256(bytes)),
+        digest::crc32(bytes),
+    ));
     out.push_str(&format!(
         "- {} : {kind}\n- {} : {}\n- {} : {:#x}\n- {} : {}\n",
         t(lang, "Type", "Type"),
@@ -389,6 +401,17 @@ mod tests {
         let report = markdown(&scan, &bytes, "fr", "ls");
 
         assert!(report.starts_with("# Analyse du binaire — ls"));
+        // De quel fichier parle-t-on ? C'est la première chose qu'un
+        // compte rendu doit trancher, et elle doit valoir celle que
+        // `sha256sum` donne — sinon on ne pourrait pas les comparer.
+        assert!(
+            report.contains(&format!("SHA-256 : `{}`", digest::hex(&digest::sha256(&bytes)))),
+            "l'empreinte du fichier entier :\n{report}"
+        );
+        assert!(
+            report.contains(&format!("{} octets", bytes.len())),
+            "et sa taille exacte"
+        );
         for attendu in [
             "PIE",
             "NX",
