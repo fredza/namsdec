@@ -462,7 +462,7 @@ aujourd'hui ; les suivantes, ce vers quoi l'outil peut aller.
      frappe à chaque position. Ce qui précède couvre son usage réel ; ce qui
      manquerait encore est l'édition libre à plusieurs endroits sans rapport.
 
-1.24 MODERNISER LES BOÎTES DE DIALOGUE — demandé le 23 septembre
+1.24 [FAIT] Les boîtes de dialogue parlent enfin la même langue
      Elles ne se ressemblent pas d'une fenêtre à l'autre. Relevé rapide :
      - `dialog_buttons()` (main.rs) donne OK + Quitter, et sert aux
        préférences ;
@@ -470,14 +470,24 @@ aujourd'hui ; les suivantes, ce vers quoi l'outil peut aller.
      - d'autres n'ont qu'une croix dans la barre de titre, laquelle sort de
        l'écran dès que la fenêtre est haute (c'était le cas du plan
        d'installation, voir 1.15).
-     Ce qu'il faudrait : une seule fonction qui pose la barre d'action de
-     toute boîte — un bouton principal (OK), un second facultatif (Annuler),
-     toujours au même endroit, avec Entrée qui valide et Échap qui annule.
-     Et que toute fenêtre qui pose une question l'emploie, sans exception :
-     c'est l'exception qui fait chercher.
-     À décider en le faisant : ce qu'« Annuler » veut dire là où l'effet est
-     déjà appliqué (les préférences changent à mesure qu'on coche). Un
-     bouton qui ne défait rien ment ; mieux vaut alors n'en pas mettre.
+     `dialog_bar()` pose désormais la barre de toutes les boîtes : bouton
+     principal à droite, plein, en couleur d'accent ; second à sa gauche,
+     même largeur (c'est la couleur qui dit lequel est principal, pas la
+     taille) ; Entrée vaut le principal, Échap vaut l'autre.
+     Les touches sont relevées et CONSOMMÉES avant les boutons : sans cela,
+     un champ de texte de la même fenêtre les aurait déjà mangées — le même
+     piège que Tab dans l'autocomplétion et qu'Entrée dans la console.
+     La question tranchée : « Annuler » ne défait rien dans les préférences,
+     qui s'appliquent à mesure qu'on coche. Un bouton qui ne défait rien
+     mentirait, d'où « Quitter » — qui dit ce qu'il fait. Et une boîte qui ne
+     fait que renseigner (À propos) n'a qu'un bouton, mais Échap la ferme
+     quand même.
+     `dialog_bar_hinted()` pour le cas où le mot du bouton ne suffit pas :
+     « Recommencer » vaut un quart d'heure de compilation, et le dire au
+     survol vaut mieux que d'allonger le libellé.
+     RESTE : les fenêtres qui n'ont encore qu'une croix (graphe, décompilateur,
+     analyse, exercices, chronologie) — elles ne posent pas de question, donc
+     rien ne presse, mais une barre « Fermer » les rendrait cohérentes.
 
 1.23 LES RACCOURCIS SONT EN DÉSORDRE — à reprendre en entier
      Constat relevé le 23 septembre, en listant les deux jeux (28 actions

@@ -18082,3 +18082,143 @@ fn the_waiting_input_area_announces_itself() {
         s.console_waiting_how
     );
 }
+
+/// Toute boîte de dialogue répond à Entrée et à Échap.
+///
+/// Elles ne se ressemblaient pas — OK et Quitter ici, Fermer et
+/// Recommencer là, une croix seule ailleurs — et aucune n'écoutait le
+/// clavier. Or c'est l'exception qui fait chercher : une barre d'action
+/// se trouve d'autant plus vite qu'elle est au même endroit partout.
+#[test]
+fn a_dialog_bar_answers_enter_and_escape() {
+    let theme = namsdec_theme::by_id("dark-plus");
+    let ctx = egui::Context::default();
+    let écran = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(600.0, 400.0));
+
+    // Entrée vaut le bouton principal.
+    let mut entrée = egui::RawInput {
+        screen_rect: Some(écran),
+        ..Default::default()
+    };
+    entrée.events.push(egui::Event::Key {
+        key: egui::Key::Enter,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: egui::Modifiers::NONE,
+    });
+    let mut réponse = None;
+    let mut sortie = ctx.run_ui(entrée, |ui| {
+        réponse = dialog_bar(ui, theme, "OK", Some("Annuler"));
+    });
+    sortie.textures_delta.clear();
+    assert_eq!(réponse, Some(Answer::Ok), "Entrée doit valider");
+
+    // Échap vaut l'autre.
+    let mut échap = egui::RawInput {
+        screen_rect: Some(écran),
+        ..Default::default()
+    };
+    échap.events.push(egui::Event::Key {
+        key: egui::Key::Escape,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: egui::Modifiers::NONE,
+    });
+    let mut réponse = None;
+    let mut sortie = ctx.run_ui(échap, |ui| {
+        réponse = dialog_bar(ui, theme, "OK", Some("Annuler"));
+    });
+    sortie.textures_delta.clear();
+    assert_eq!(réponse, Some(Answer::Cancel), "Échap doit annuler");
+
+    // Et Échap ferme même une boîte sans second bouton : fermer ce qui
+    // ne fait que renseigner n'annule rien, mais doit rester possible
+    // d'une touche.
+    let mut échap = egui::RawInput {
+        screen_rect: Some(écran),
+        ..Default::default()
+    };
+    échap.events.push(egui::Event::Key {
+        key: egui::Key::Escape,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: egui::Modifiers::NONE,
+    });
+    let mut réponse = None;
+    let mut sortie = ctx.run_ui(échap, |ui| {
+        réponse = dialog_bar(ui, theme, "OK", None);
+    });
+    sortie.textures_delta.clear();
+    assert_eq!(réponse, Some(Answer::Cancel));
+}
+
+/// Sans touche ni clic, la barre ne répond rien.
+///
+/// Une barre qui rendrait `Ok` par défaut fermerait la boîte dès la
+/// première image, et personne n'aurait rien vu.
+#[test]
+fn a_dialog_bar_says_nothing_until_asked() {
+    let theme = namsdec_theme::by_id("dark-plus");
+    let ctx = egui::Context::default();
+    let mut réponse = Some(Answer::Ok);
+    let mut sortie = ctx.run_ui(
+        egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(600.0, 400.0),
+            )),
+            ..Default::default()
+        },
+        |ui| {
+            réponse = dialog_bar(ui, theme, "OK", Some("Annuler"));
+        },
+    );
+    sortie.textures_delta.clear();
+    assert_eq!(réponse, None);
+}
+
+/// Les deux boutons ont la même largeur, où qu'ils soient.
+///
+/// Deux boutons de tailles différentes côte à côte se lisent comme une
+/// hiérarchie qui n'existe pas : c'est la couleur qui dit lequel est le
+/// principal, pas la taille.
+#[test]
+fn the_two_dialog_buttons_share_a_width() {
+    let theme = namsdec_theme::by_id("dark-plus");
+    let ctx = egui::Context::default();
+    let mut largeurs: Vec<f32> = Vec::new();
+    for _ in 0..2 {
+        largeurs.clear();
+        let mut sortie = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(600.0, 400.0),
+                )),
+                ..Default::default()
+            },
+            |ui| {
+                let _ = dialog_bar(ui, theme, "OK", Some("Quitter"));
+            },
+        );
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Rect(rect) = &clipped.shape
+                && rect.rect.height() > 10.0
+                && rect.rect.width() > 40.0
+            {
+                largeurs.push(rect.rect.width());
+            }
+        }
+        sortie.textures_delta.clear();
+    }
+    assert!(largeurs.len() >= 2, "les deux boutons sont peints : {largeurs:?}");
+    let plus_petit = largeurs.iter().copied().fold(f32::MAX, f32::min);
+    let plus_grand = largeurs.iter().copied().fold(0.0f32, f32::max);
+    assert!(
+        (plus_grand - plus_petit).abs() < 1.0,
+        "même largeur attendue : {largeurs:?}"
+    );
+}

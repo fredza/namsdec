@@ -5472,7 +5472,14 @@ impl NamsdecApp {
                         PreferencesTab::Tools => self.preferences_tools_ui(ui),
                     });
                 ui.separator();
-                close_keeping = dialog_buttons(ui, theme, s);
+                // Les préférences s'appliquent à mesure qu'on coche :
+                // « Annuler » n'y défait rien, et un bouton qui ne défait
+                // rien ment. D'où « Quitter » — qui dit ce qu'il fait —,
+                // et non « Annuler ».
+                close_keeping =
+                    dialog_bar(ui, theme, s.dialog_ok, Some(s.dialog_quit)).map(|réponse| {
+                        réponse == Answer::Ok
+                    });
             });
 
         match close_keeping {
@@ -6293,45 +6300,39 @@ impl NamsdecApp {
                             arrêter = true;
                         }
                     } else if déjà_prêt {
-                        // Installé, et vérifié : le bouton ne doit plus
-                        // inviter à recommencer. Il le faisait, et l'on
-                        // ne savait donc pas si l'installation avait
-                        // abouti — la seule façon de s'en assurer était
-                        // de tout relancer.
+                        // Installé, et vérifié : le bouton principal
+                        // devient « Fermer ». Il invitait à recommencer,
+                        // si bien qu'on ne savait pas si l'installation
+                        // avait abouti — la seule façon de s'en assurer
+                        // était de tout relancer.
+                        //
+                        // Recommencer reste possible en second : c'est le
+                        // geste de quelqu'un qui sait pourquoi il le fait.
                         ui.colored_label(theme.good, s.install_already_done);
-                        if framed_button(ui, theme, s.dialog_close).clicked() {
-                            fermer = true;
-                        }
-                        // Recommencer reste possible, mais ce n'est plus
-                        // ce qu'on propose en premier : c'est le geste de
-                        // quelqu'un qui sait pourquoi il le fait.
-                        if framed_button(ui, theme, s.install_again)
-                            .on_hover_text(s.install_again_hint)
-                            .clicked()
-                        {
-                            lancer = true;
+                        match dialog_bar_hinted(
+                            ui,
+                            theme,
+                            s.dialog_close,
+                            Some(s.install_again),
+                            Some(s.install_again_hint),
+                        ) {
+                            Some(Answer::Ok) => fermer = true,
+                            Some(Answer::Cancel) => lancer = true,
+                            None => {}
                         }
                     } else {
+                        // Rien d'installé : le principal est « Lancer »,
+                        // et « Fermer » est la sortie. La croix de la
+                        // barre de titre ne suffit pas — elle se retrouve
+                        // loin du regard sur un plan de neuf étapes.
                         ui.add_enabled_ui(manquants.is_empty(), |ui| {
-                            lancer = ui
-                                .add(
-                                    egui::Button::new(
-                                        egui::RichText::new(s.install_start)
-                                            .strong()
-                                            .color(theme.bg),
-                                    )
-                                    .fill(theme.accent),
-                                )
-                                .clicked();
+                            match dialog_bar(ui, theme, s.install_start, Some(s.dialog_close)) {
+                                Some(Answer::Ok) => lancer = true,
+                                Some(Answer::Cancel) => fermer = true,
+                                None => {}
+                            }
                         });
                         ui.colored_label(theme.dim, s.install_nothing_yet);
-                        // Un bouton pour partir, en plus de la croix :
-                        // celle-ci est dans la barre de titre, qui se
-                        // retrouve loin du regard sur un plan de neuf
-                        // étapes.
-                        if framed_button(ui, theme, s.dialog_close).clicked() {
-                            fermer = true;
-                        }
                     }
                 });
             });
@@ -6342,12 +6343,10 @@ impl NamsdecApp {
         if arrêter && let Some(job) = &self.install_job {
             job.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
         }
-        // Échap aussi : c'est le geste qu'on fait sans y penser devant
-        // une fenêtre dont on a fini. Pas pendant l'installation — on
-        // n'interrompt pas un `ninja` par mégarde.
-        if !en_cours && ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
-            fermer = true;
-        }
+        // Échap est pris par la barre d'action — elle le consomme, donc
+        // il n'y a rien à guetter ici. Pendant l'installation, la barre
+        // n'est pas affichée : on n'interrompt pas un `ninja` par
+        // mégarde, et c'est « Arrêter » qui le fait, explicitement.
         if !ouverte || fermer {
             self.install_plan = None;
         }
@@ -8574,13 +8573,8 @@ impl NamsdecApp {
 
                 ui.separator();
                 // Un seul bouton : il n'y a rien à annuler dans une boîte
-                // qui ne fait que renseigner. « Quitter » n'y aurait fait
-                // que doubler « OK ».
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let ok = egui::Button::new(egui::RichText::new(s.dialog_ok).color(theme.bg))
-                        .fill(theme.accent);
-                    close = ui.add(ok).clicked();
-                });
+                // qui ne fait que renseigner. Échap la ferme quand même.
+                close = dialog_bar(ui, theme, s.dialog_ok, None).is_some();
             });
         if lancer_recherche {
             self.start_update_check();
@@ -14044,20 +14038,91 @@ fn window_room(ui: &egui::Ui) -> f32 {
     (ui.ctx().input(|i| i.content_rect()).height() * 0.55).max(240.0)
 }
 
-fn dialog_buttons(ui: &mut egui::Ui, theme: &Theme, s: &Strings) -> Option<bool> {
-    let mut result = None;
-    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-        let ok =
-            egui::Button::new(egui::RichText::new(s.dialog_ok).color(theme.bg)).fill(theme.accent);
-        if ui.add(ok).clicked() {
-            result = Some(true);
+/// Ce qu'une boîte de dialogue a reçu comme réponse.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Answer {
+    /// Le bouton principal, ou Entrée.
+    Ok,
+    /// Le second bouton, ou Échap, ou la croix.
+    Cancel,
+}
+
+/// La barre d'action d'une boîte de dialogue : toujours la même.
+///
+/// Elles ne se ressemblaient pas d'une fenêtre à l'autre — OK et Quitter
+/// ici, Fermer et Recommencer là, une croix seule ailleurs, et cette
+/// croix sortait de l'écran dès que la fenêtre était haute. Or c'est
+/// l'exception qui fait chercher : une barre d'action se trouve
+/// d'autant plus vite qu'elle est au même endroit partout.
+///
+/// Trois règles tenues ici :
+///
+/// - le bouton principal à droite, plein, en couleur d'accent ;
+/// - le second à sa gauche, seulement quand il y a vraiment quelque
+///   chose à annuler — un bouton qui ne défait rien ment, et il vaut
+///   mieux n'en pas mettre ;
+/// - **Entrée vaut le principal, Échap vaut l'autre.** Relevés avant les
+///   boutons et pris à la file : sans cela, un champ de texte de la même
+///   fenêtre les aurait déjà consommés.
+///
+/// `annuler` porte le libellé du second bouton, ou `None` pour n'en pas
+/// avoir. Dans ce dernier cas Échap répond quand même `Cancel` : fermer
+/// une boîte qui ne fait que renseigner n'annule rien, mais on doit
+/// pouvoir la fermer d'une touche.
+fn dialog_bar(
+    ui: &mut egui::Ui,
+    theme: &Theme,
+    principal: &str,
+    annuler: Option<&str>,
+) -> Option<Answer> {
+    dialog_bar_hinted(ui, theme, principal, annuler, None)
+}
+
+/// La même, avec une infobulle sur le second bouton.
+///
+/// Séparée pour que le cas ordinaire reste court : la plupart des boîtes
+/// n'ont rien à expliquer de plus que le mot écrit sur le bouton. Quand
+/// ce mot ne suffit pas — « Recommencer » vaut un quart d'heure de
+/// compilation —, le dire au survol vaut mieux que de l'allonger.
+fn dialog_bar_hinted(
+    ui: &mut egui::Ui,
+    theme: &Theme,
+    principal: &str,
+    annuler: Option<&str>,
+    infobulle: Option<&str>,
+) -> Option<Answer> {
+    let mut réponse = None;
+    // Avant les boutons : les touches se prennent à la file, et un champ
+    // de la même fenêtre les aurait sinon déjà mangées.
+    ui.input_mut(|i| {
+        if i.consume_key(egui::Modifiers::NONE, egui::Key::Enter) {
+            réponse = Some(Answer::Ok);
         }
-        let quit = egui::Button::new(s.dialog_quit).stroke(egui::Stroke::new(1.0, theme.dim));
-        if ui.add(quit).clicked() {
-            result = Some(false);
+        if i.consume_key(egui::Modifiers::NONE, egui::Key::Escape) {
+            réponse = Some(Answer::Cancel);
         }
     });
-    result
+    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        let ok = egui::Button::new(egui::RichText::new(principal).color(theme.bg))
+            .fill(theme.accent)
+            .min_size(egui::vec2(96.0, 0.0));
+        if ui.add(ok).clicked() {
+            réponse = Some(Answer::Ok);
+        }
+        if let Some(annuler) = annuler {
+            let autre = egui::Button::new(annuler)
+                .stroke(egui::Stroke::new(1.0, theme.dim))
+                .min_size(egui::vec2(96.0, 0.0));
+            let cliqué = match infobulle {
+                Some(texte) => ui.add(autre).on_hover_text(texte).clicked(),
+                None => ui.add(autre).clicked(),
+            };
+            if cliqué {
+                réponse = Some(Answer::Cancel);
+            }
+        }
+    });
+    réponse
 }
 
 /// Libellé d'une action, pour le tableau de raccourcis de Préférences.

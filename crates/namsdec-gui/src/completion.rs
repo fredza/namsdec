@@ -49,7 +49,12 @@ impl Suggestions {
         self.candidates.get(index).map(|c| c.text.as_str())
     }
 
+
     /// Le premier candidat — celui qu'on accepte sans avoir rien choisi.
+    ///
+    /// `cargo check` la croit inutile parce qu'il ne compile pas les
+    /// tests, qui s'en servent. L'avertissement ne dit donc pas ce qu'il
+    /// paraît dire, et l'on ne retire pas du code sur sa seule foi.
     pub fn accepted(&self) -> Option<&str> {
         self.accepted_at(0)
     }
