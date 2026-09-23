@@ -36,7 +36,95 @@ pub enum Severity {
 pub struct Diagnostic {
     pub line: u32,
     pub severity: Severity,
+    /// La phrase, dans la langue où elle a été produite.
+    ///
+    /// Reste la seule chose qu'on ait pour les messages de nasm, qui
+    /// arrivent déjà rédigés — en anglais, et il n'y a pas à les
+    /// réécrire.
     pub message: String,
+    /// Ce que le contrôle a trouvé, quand il vient de namsdec.
+    ///
+    /// Le motif et ses arguments, sans la phrase : c'est ce qui permet de
+    /// la reformer dans la langue du moment. Sans cela, un diagnostic
+    /// déjà affiché gardait la langue où il avait été produit, et
+    /// basculer de langue laissait du français dans une interface
+    /// anglaise — retraduire aurait demandé de réassembler.
+    pub kind: Option<LintKind>,
+}
+
+/// Ce qu'un contrôle de namsdec a trouvé, avant d'être mis en phrase.
+///
+/// Un cas par contrôle, avec ce qu'il faut pour écrire le message. Les
+/// deux familles sont ici ; les messages de nasm n'en font pas partie,
+/// puisqu'ils arrivent rédigés.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LintKind {
+    /// L'exécution peut sortir par la fin d'une section.
+    RunsOffTheEnd { section: String, last: String },
+    /// Une écriture dans une section qui n'est pas inscriptible.
+    WritesToReadOnly { addr: u64, section: String },
+    /// Un appel système que l'interpréteur ne simule pas.
+    ///
+    /// Produit par l'interface et non par l'assembleur, mais rangé ici
+    /// comme les autres : ce qui compte est que le motif voyage sans sa
+    /// phrase. Il ne porte que des données brutes — un nom, un numéro —,
+    /// donc aucune dépendance nouvelle.
+    UnsimulatedSyscall { name: String, number: u64 },
+}
+
+impl LintKind {
+    /// La phrase, dans la langue demandée.
+    ///
+    /// Formée au moment du dessin, et non à la production : c'est tout
+    /// l'objet de ce type.
+    pub fn message(&self, fr: bool) -> String {
+        match self {
+            LintKind::RunsOffTheEnd { section, last } => {
+                if fr {
+                    format!(
+                        "l'exécution peut sortir par la fin de {section} : la dernière \
+                         instruction est « {last} », qui n'arrête ni ne saute — ajoutez \
+                         « hlt », ou sortez par l'appel système 60"
+                    )
+                } else {
+                    format!(
+                        "execution can run off the end of {section}: the last instruction is \
+                         `{last}`, which neither stops nor jumps — add `hlt`, or exit with \
+                         syscall 60"
+                    )
+                }
+            }
+            LintKind::UnsimulatedSyscall { name, number } => {
+                if fr {
+                    format!(
+                        "namsdec ne simule pas l'appel système {name} ({number}) : le \
+                         programme s'arrêtera ici. Le binaire exporté, lui, le fera pour \
+                         de vrai."
+                    )
+                } else {
+                    format!(
+                        "namsdec does not simulate the {name} syscall ({number}): the program \
+                         will stop here. The exported binary will do it for real."
+                    )
+                }
+            }
+            LintKind::WritesToReadOnly { addr, section } => {
+                if fr {
+                    format!(
+                        "ceci écrit en {addr:#x}, dans {section}, qui n'est pas \
+                         inscriptible — ce qui change pendant l'exécution a sa place \
+                         dans « section .data » ou « section .bss »"
+                    )
+                } else {
+                    format!(
+                        "this writes to {addr:#x}, inside {section}, which is not writable — \
+                         data that changes while running belongs in `section .data` or \
+                         `section .bss`"
+                    )
+                }
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -238,6 +326,9 @@ pub fn assemble(source: &str, base_addr: u64) -> Result<AssembleOutput, AsmError
                 line: 0,
                 severity: Severity::Warning,
                 message: line.to_owned(),
+                // Un message de l'éditeur de liens : il arrive rédigé,
+                // en anglais, et il n'y a pas à le réécrire.
+                kind: None,
             }),
     );
 
@@ -289,6 +380,8 @@ fn parse_diagnostics(stderr: &str) -> Vec<Diagnostic> {
                 line: caps["line"].parse().ok()?,
                 severity,
                 message: caps["msg"].to_string(),
+                // Un message de nasm : même raison.
+                kind: None,
             })
         })
         .collect()

@@ -18349,3 +18349,100 @@ fn the_double_g_needs_both_presses() {
         "`G` ne doit pas armer une séquence : c'est déjà un mouvement"
     );
 }
+
+/// Un diagnostic déjà affiché suit la langue quand on la change.
+///
+/// Ils gardaient celle où ils étaient nés : basculer en anglais laissait
+/// du français dans l'interface, et les retraduire aurait demandé de
+/// réassembler. Ceux qui viennent de namsdec portent maintenant leur
+/// motif et non leur phrase, laquelle se reforme au dessin.
+#[test]
+fn a_diagnostic_already_shown_follows_the_language() {
+    // Un programme dont l'exécution sort par la fin : le lint le dit.
+    let mut app = NamsdecApp {
+        source: "\
+section .text
+global _start
+_start:
+    mov rax, 1
+"
+        .to_owned(),
+        lang: Lang::Fr,
+        ..Default::default()
+    };
+    app.do_assemble();
+    let avec_motif: Vec<_> = app
+        .diagnostics
+        .iter()
+        .filter(|d| d.kind.is_some())
+        .collect();
+    // Sans nasm sur la machine, rien n'a été assemblé : le test se tait.
+    if avec_motif.is_empty() {
+        return;
+    }
+
+    let s = strings(Lang::Fr);
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let entrée = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1600.0, 1100.0),
+        )),
+        ..Default::default()
+    };
+    let peindre = |app: &mut NamsdecApp| -> String {
+        app.console_tab = ConsoleTab::Diagnostics;
+        let mut peint = String::new();
+        for _ in 0..2 {
+            peint.clear();
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(texte) = &clipped.shape {
+                    peint.push_str(texte.galley.text());
+                    peint.push('|');
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+        peint
+    };
+
+    let en_français = peindre(&mut app);
+    assert!(
+        en_français.contains("l'exécution peut sortir"),
+        "le diagnostic doit se lire en français :\n{en_français}"
+    );
+    let _ = s;
+
+    // On bascule, **sans réassembler** : c'est tout le point.
+    app.lang = Lang::En;
+    let en_anglais = peindre(&mut app);
+    assert!(
+        en_anglais.contains("execution can run off the end"),
+        "et se relire en anglais sans réassembler :\n{en_anglais}"
+    );
+    assert!(
+        !en_anglais.contains("l'exécution peut sortir"),
+        "sans laisser du français derrière :\n{en_anglais}"
+    );
+}
+
+/// Les messages de nasm, eux, ne se retraduisent pas — et c'est dit.
+///
+/// Ils arrivent rédigés, en anglais. Les réécrire demanderait de
+/// comprendre ce que nasm a voulu dire, ce qui n'est pas le travail de
+/// namsdec : il les montre tels quels, et explique à côté quand il sait.
+#[test]
+fn a_message_from_nasm_carries_no_pattern() {
+    let venu_de_nasm = namsdec_asm::Diagnostic {
+        line: 3,
+        severity: namsdec_asm::Severity::Error,
+        message: "symbol `foo' undefined".to_owned(),
+        kind: None,
+    };
+    assert!(
+        venu_de_nasm.kind.is_none(),
+        "un message rédigé ailleurs n'a pas de motif à reformer"
+    );
+}

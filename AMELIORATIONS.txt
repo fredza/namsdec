@@ -13,13 +13,23 @@ aujourd'hui ; les suivantes, ce vers quoi l'outil peut aller.
  1. CE QUI EST CASSÉ OU INCOMPLET AUJOURD'HUI
 --------------------------------------------------------------------------------
 
-1.1  Les diagnostics déjà affichés ne se retraduisent pas
-     Ceux du lint parlent désormais la langue de l'application : ils étaient en
-     anglais en dur, même en français. Mais ceux qui sont DÉJÀ dans la liste
-     gardent la langue où ils ont été produits — les retraduire demanderait de
-     refaire l'assemblage, et ceux de nasm resteront de toute façon en anglais.
-     Piste : un Diagnostic qui garde son motif et ses arguments plutôt que sa
-     phrase, et ne se formate qu'au dessin.
+1.1  [FAIT] Les diagnostics déjà affichés se retraduisent
+     La piste notée était la bonne : un `Diagnostic` garde maintenant son
+     MOTIF et ses arguments (`LintKind`) en plus de sa phrase, et la phrase se
+     reforme au dessin, dans la langue du moment. Basculer de langue ne
+     demande plus de réassembler.
+     Trois motifs pour l'instant : sortie par la fin d'une section, écriture
+     dans une section non inscriptible, appel système non simulé. Le dernier
+     vient de l'interface et non de l'assembleur, mais il est rangé avec les
+     autres : il ne porte que des données brutes — un nom, un numéro —, donc
+     aucune dépendance nouvelle.
+     Deux diagnostics gardent `kind: None` À DESSEIN : ceux dont la phrase se
+     compose de chaînes de l'interface (binaire lié dynamiquement,
+     bibliothèques manquantes). Les déplacer dans namsdec-asm ferait deux
+     sources pour un même texte, ce qui est pire qu'une phrase qui garde sa
+     langue.
+     Et ceux de nasm restent en anglais, comme prévu : ils arrivent rédigés,
+     et les réécrire demanderait de comprendre ce que nasm a voulu dire.
 
 1.2  [FAIT] Le mode Normal : les mouvements par mot
      h, j, k, l, 0, Début, Fin et G étaient là. S'ajoutent w, b, e et gg.

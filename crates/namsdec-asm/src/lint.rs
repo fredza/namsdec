@@ -61,6 +61,10 @@ fn falls_off_the_end(output: &AssembleOutput, fr: bool, found: &mut Vec<Diagnost
             "hlt" | "ret" | "jmp" | "syscall" | "int" | "int3" | "ud2"
         );
         if !stops {
+            let kind = crate::LintKind::RunsOffTheEnd {
+                section: section.name.clone(),
+                last: last.text.clone(),
+            };
             found.push(Diagnostic {
                 line: output
                     .line_to_addr
@@ -69,20 +73,11 @@ fn falls_off_the_end(output: &AssembleOutput, fr: bool, found: &mut Vec<Diagnost
                     .map(|(line, _)| *line)
                     .unwrap_or(0),
                 severity: Severity::Warning,
-                message: if fr {
-                    format!(
-                        "l'exécution peut sortir par la fin de {} : la dernière \
-                         instruction est « {} », qui n'arrête ni ne saute — ajoutez \
-                         « hlt », ou sortez par l'appel système 60",
-                        section.name, last.text
-                    )
-                } else {
-                    format!(
-                        "execution can run off the end of {}: the last instruction is `{}`, \
-                         which neither stops nor jumps — add `hlt`, or exit with syscall 60",
-                        section.name, last.text
-                    )
-                },
+                // La phrase est formée ici pour l'affichage immédiat, et
+                // le motif est gardé à côté : c'est lui qui permettra de
+                // la reformer si l'on change de langue.
+                message: kind.message(fr),
+                kind: Some(kind),
             });
         }
     }
@@ -118,6 +113,10 @@ fn writes_to_read_only(output: &AssembleOutput, fr: bool, found: &mut Vec<Diagno
             let Some((addr, nom)) = written_address(&instr, &protégées, output) else {
                 continue;
             };
+            let kind = crate::LintKind::WritesToReadOnly {
+                addr,
+                section: nom.clone(),
+            };
             found.push(Diagnostic {
                 line: output
                     .line_to_addr
@@ -126,19 +125,8 @@ fn writes_to_read_only(output: &AssembleOutput, fr: bool, found: &mut Vec<Diagno
                     .map(|(line, _)| *line)
                     .unwrap_or(0),
                 severity: Severity::Warning,
-                message: if fr {
-                    format!(
-                        "ceci écrit en {addr:#x}, dans {nom}, qui n'est pas \
-                         inscriptible — ce qui change pendant l'exécution a sa place \
-                         dans « section .data » ou « section .bss »"
-                    )
-                } else {
-                    format!(
-                        "this writes to {addr:#x}, inside {nom}, which is not writable — \
-                         data that changes while running belongs in `section .data` or \
-                         `section .bss`"
-                    )
-                },
+                message: kind.message(fr),
+                kind: Some(kind),
             });
         }
     }

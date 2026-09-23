@@ -2675,18 +2675,15 @@ impl NamsdecApp {
                 }
                 let nom = namsdec_re::table::syscall_name(number)?;
                 let line = state.addr_to_line.get(&call.addr).copied().unwrap_or(0);
+                let kind = namsdec_asm::LintKind::UnsimulatedSyscall {
+                    name: nom.to_owned(),
+                    number,
+                };
                 Some(namsdec_asm::Diagnostic {
                     line,
                     severity: namsdec_asm::Severity::Warning,
-                    message: if self.lang == Lang::Fr {
-                        format!(
-                            "namsdec ne simule pas l'appel système {nom} ({number}) : le programme s'arrêtera ici. Le binaire exporté, lui, le fera pour de vrai."
-                        )
-                    } else {
-                        format!(
-                            "namsdec does not simulate the {nom} ({number}) system call: the program will stop here. The exported binary will really do it."
-                        )
-                    },
+                    message: kind.message(self.lang == Lang::Fr),
+                    kind: Some(kind),
                 })
             })
             .collect()
@@ -4340,6 +4337,13 @@ impl NamsdecApp {
             self.diagnostics.push(namsdec_asm::Diagnostic {
                 line: 0,
                 severity: namsdec_asm::Severity::Warning,
+                // Sans motif, celui-ci : sa phrase est bâtie autour d'une
+                // chaîne de l'interface (`binary_dynamic`), et la
+                // recopier dans namsdec-asm ferait deux sources pour un
+                // même texte. Il garde donc la langue où il est né — ce
+                // qui se voit, mais moins qu'une divergence entre deux
+                // copies du même message.
+                kind: None,
                 message: format!(
                     "{} {}",
                     s.binary_dynamic,
@@ -4427,6 +4431,9 @@ impl NamsdecApp {
             line: 0,
             severity: namsdec_asm::Severity::Warning,
             message,
+            // Même cas que le précédent : la phrase se compose de
+            // chaînes de l'interface, qu'on ne recopie pas ailleurs.
+            kind: None,
         });
     }
 
@@ -12290,13 +12297,24 @@ impl NamsdecApp {
                     } else {
                         theme.warn
                     };
+                    // La phrase est reformée ici quand le diagnostic
+                    // porte son motif : c'est ce qui la fait suivre la
+                    // langue du moment. Sans cela, ceux qui étaient déjà
+                    // dans la liste gardaient celle où ils étaient nés,
+                    // et basculer de langue laissait du français dans une
+                    // interface anglaise — les retraduire aurait demandé
+                    // de réassembler.
+                    let phrase = match &d.kind {
+                        Some(kind) => kind.message(lang == Lang::Fr),
+                        None => d.message.clone(),
+                    };
                     // Un diagnostic sans ligne — ceux de l'éditeur de
                     // liens, qui parlent du programme entier — ne
                     // s'annonce pas par « ligne 0 ».
                     let text = match (d.line, lang) {
-                        (0, _) => d.message.clone(),
-                        (line, Lang::Fr) => format!("ligne {line} — {}", d.message),
-                        (line, _) => format!("line {line} — {}", d.message),
+                        (0, _) => phrase,
+                        (line, Lang::Fr) => format!("ligne {line} — {phrase}"),
+                        (line, _) => format!("line {line} — {phrase}"),
                     };
                     // Cliquable quand nasm a nommé une ligne : lire le
                     // message et retrouver l'endroit sont deux gestes, et
