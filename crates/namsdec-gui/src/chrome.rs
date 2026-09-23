@@ -114,57 +114,7 @@ pub fn window_buttons_ui(ui: &mut egui::Ui, s: &Strings, maximized: bool) -> Opt
             ui.id().with(("window_button", rang)),
             egui::Sense::click(),
         );
-        let couleur = bouton.colour();
-        // Éteinte tant que la souris n'est pas dessus : trois pastilles
-        // vives en permanence tirent l'œil hors du code, qui est ce
-        // qu'on est venu lire.
-        let remplissage = if réponse.hovered() {
-            couleur
-        } else {
-            couleur.gamma_multiply(0.55)
-        };
-        ui.painter()
-            .circle_filled(centre, BUTTON_RADIUS, remplissage);
-        // Le signe n'apparaît qu'au survol, comme sur les pastilles
-        // qu'on connaît : la couleur suffit à désigner, le signe
-        // confirme.
-        if réponse.hovered() {
-            let trait_ = egui::Stroke::new(1.4, egui::Color32::from_black_alpha(190));
-            let bras = BUTTON_RADIUS * 0.45;
-            match bouton {
-                WindowButton::Minimize => {
-                    ui.painter().line_segment(
-                        [
-                            centre - egui::vec2(bras, 0.0),
-                            centre + egui::vec2(bras, 0.0),
-                        ],
-                        trait_,
-                    );
-                }
-                WindowButton::Maximize => {
-                    let carré =
-                        egui::Rect::from_center_size(centre, egui::vec2(bras * 1.7, bras * 1.7));
-                    ui.painter()
-                        .rect_stroke(carré, 1.0, trait_, egui::StrokeKind::Inside);
-                }
-                WindowButton::Close => {
-                    ui.painter().line_segment(
-                        [
-                            centre - egui::vec2(bras, bras),
-                            centre + egui::vec2(bras, bras),
-                        ],
-                        trait_,
-                    );
-                    ui.painter().line_segment(
-                        [
-                            centre - egui::vec2(bras, -bras),
-                            centre + egui::vec2(bras, -bras),
-                        ],
-                        trait_,
-                    );
-                }
-            }
-        }
+        paint_pastille(ui, centre, bouton, réponse.hovered());
         let infobulle = if bouton == WindowButton::Maximize && maximized {
             s.window_restore
         } else {
@@ -175,6 +125,135 @@ pub fn window_buttons_ui(ui: &mut egui::Ui, s: &Strings, maximized: bool) -> Opt
         }
     }
     cliqué
+}
+
+/// Peint une pastille — le rond de couleur, et son signe au survol.
+///
+/// Sortie de la barre de titre parce que les fenêtres internes de
+/// namsdec portent la même : une seule façon de dessiner un bouton de
+/// fenêtre dans toute l'application, et un seul endroit à corriger.
+fn paint_pastille(
+    ui: &egui::Ui,
+    centre: egui::Pos2,
+    bouton: WindowButton,
+    survolée: bool,
+) {
+    let couleur = bouton.colour();
+    // Éteinte tant que la souris n'est pas dessus : des pastilles vives
+    // en permanence tirent l'œil hors du code, qui est ce qu'on est venu
+    // lire.
+    let remplissage = if survolée {
+        couleur
+    } else {
+        couleur.gamma_multiply(0.55)
+    };
+    ui.painter()
+        .circle_filled(centre, BUTTON_RADIUS, remplissage);
+    // Le signe n'apparaît qu'au survol, comme sur les pastilles qu'on
+    // connaît : la couleur suffit à désigner, le signe confirme.
+    if !survolée {
+        return;
+    }
+    let trait_ = egui::Stroke::new(1.4, egui::Color32::from_black_alpha(190));
+    let bras = BUTTON_RADIUS * 0.45;
+    match bouton {
+        WindowButton::Minimize => {
+            ui.painter().line_segment(
+                [
+                    centre - egui::vec2(bras, 0.0),
+                    centre + egui::vec2(bras, 0.0),
+                ],
+                trait_,
+            );
+        }
+        WindowButton::Maximize => {
+            let carré = egui::Rect::from_center_size(centre, egui::vec2(bras * 1.7, bras * 1.7));
+            ui.painter()
+                .rect_stroke(carré, 1.0, trait_, egui::StrokeKind::Inside);
+        }
+        WindowButton::Close => {
+            ui.painter().line_segment(
+                [
+                    centre - egui::vec2(bras, bras),
+                    centre + egui::vec2(bras, bras),
+                ],
+                trait_,
+            );
+            ui.painter().line_segment(
+                [
+                    centre - egui::vec2(bras, -bras),
+                    centre + egui::vec2(bras, -bras),
+                ],
+                trait_,
+            );
+        }
+    }
+}
+
+/// La hauteur de la barre de titre d'une fenêtre interne.
+const HEAD_HEIGHT: f32 = 24.0;
+
+/// La barre de titre d'une fenêtre interne, taillée comme celle de la
+/// fenêtre principale : la pastille de fermeture au coin haut gauche, le
+/// titre au centre, un filet dessous.
+///
+/// Pourquoi ne pas garder celle d'egui : elle pose une croix maigre à
+/// droite, dessinée au trait du texte. Dans une application dont la
+/// fenêtre principale se ferme par une pastille rouge posée à gauche,
+/// cela fait deux grammaires pour le même geste — et c'est celle qu'on
+/// voit le moins qui ferme le plus de choses. Une seule ici, celle de la
+/// grande fenêtre.
+///
+/// Rend `true` si l'on a cliqué la pastille. L'appelant en fait ce qu'il
+/// veut : fermer tout court pour une fenêtre d'affichage, annuler pour
+/// une boîte qui pose une question.
+///
+/// La fenêtre se déplace en tirant n'importe où (egui bascule en
+/// « glisser partout » dès qu'on lui retire sa barre de titre), donc
+/// cette barre-ci n'a pas à s'en charger.
+pub fn window_head(ui: &mut egui::Ui, theme: &'static Theme, s: &Strings, titre: &str) -> bool {
+    let largeur = ui.available_width();
+    let (bande, _) = ui.allocate_exact_size(
+        egui::vec2(largeur, HEAD_HEIGHT),
+        egui::Sense::hover(),
+    );
+    let centre = egui::pos2(bande.left() + EDGE_MARGIN + BUTTON_RADIUS, bande.center().y);
+    let cible = egui::Rect::from_center_size(
+        centre,
+        egui::vec2(BUTTON_RADIUS * 2.0 + BUTTON_SPACING, bande.height()),
+    );
+    let réponse = ui.interact(cible, ui.id().with("window_head_close"), egui::Sense::click());
+    paint_pastille(ui, centre, WindowButton::Close, réponse.hovered());
+
+    // Le titre au centre de la bande entière, non de ce qui reste à
+    // droite de la pastille : décalé de six pixels, il se lirait de
+    // travers dans une fenêtre dont on connaît le milieu.
+    let galley = ui.painter().layout_no_wrap(
+        titre.to_owned(),
+        egui::TextStyle::Body.resolve(ui.style()),
+        theme.text,
+    );
+    let place = bande.width() - (EDGE_MARGIN + BUTTON_RADIUS * 2.0 + BUTTON_SPACING) * 2.0;
+    if galley.size().x < place {
+        ui.painter().galley(
+            egui::pos2(
+                bande.center().x - galley.size().x * 0.5,
+                bande.center().y - galley.size().y * 0.5,
+            ),
+            galley,
+            theme.text,
+        );
+    }
+
+    // Le filet : sans lui, le titre flotte au-dessus du contenu et la
+    // fenêtre n'a plus de haut.
+    ui.painter().hline(
+        bande.x_range(),
+        bande.bottom(),
+        egui::Stroke::new(1.0, theme.surface),
+    );
+    ui.add_space(4.0);
+    réponse.on_hover_text(s.window_close).clicked()
 }
 
 /// Rend la zone vide de la barre de menus déplaçable, et le double-clic

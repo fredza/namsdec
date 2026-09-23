@@ -5486,7 +5486,11 @@ impl NamsdecApp {
             .default_size([780.0, 760.0])
             .pivot(egui::Align2::CENTER_CENTER)
             .default_pos(ctx.viewport_rect().center())
+            .title_bar(false)
             .show(ctx, |ui| {
+                if chrome::window_head(ui, self.theme, s, s.preferences_title) {
+                    close_keeping = Some(true);
+                }
                 ui.horizontal(|ui| {
                     for (tab, label) in [
                         (PreferencesTab::General, s.preferences_tab_general),
@@ -5519,10 +5523,12 @@ impl NamsdecApp {
                 // « Annuler » n'y défait rien, et un bouton qui ne défait
                 // rien ment. D'où « Quitter » — qui dit ce qu'il fait —,
                 // et non « Annuler ».
-                close_keeping =
-                    dialog_bar(ui, theme, s.dialog_ok, Some(s.dialog_quit)).map(|réponse| {
-                        réponse == Answer::Ok
-                    });
+                // `or` et non une affectation sèche : la pastille du
+                // bandeau a peut-être déjà répondu plus haut.
+                close_keeping = close_keeping.or_else(|| {
+                    dialog_bar(ui, theme, s.dialog_ok, Some(s.dialog_quit))
+                        .map(|réponse| réponse == Answer::Ok)
+                });
             });
 
         match close_keeping {
@@ -6043,7 +6049,11 @@ impl NamsdecApp {
             ))
             .pivot(egui::Align2::CENTER_CENTER)
             .default_pos(ctx.viewport_rect().center())
+            .title_bar(false)
             .show(ctx, |ui| {
+                if chrome::window_head(ui, self.theme, s, format!("{} — {}", s.install_title, recette.tool).as_str()) {
+                    fermer = true;
+                }
                 ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
                 // La zone qui défile s'arrête avant le bas : sans cette
                 // borne, elle prend toute la hauteur offerte et pousse
@@ -6869,7 +6879,11 @@ impl NamsdecApp {
             .default_pos(ctx.viewport_rect().center());
         let rendue = self
             .maximizable(fenêtre, Self::CALCULATOR_WINDOW, ctx)
+            .title_bar(false)
             .show(ctx, |ui| {
+                if chrome::window_head(ui, self.theme, s, s.calculator_title) {
+                    fermer_ok = true;
+                }
                 if ok_bar(ui, theme, s, "calculator") {
                     fermer_ok = true;
                 }
@@ -7022,7 +7036,11 @@ impl NamsdecApp {
             .default_pos(ctx.viewport_rect().center());
         let rendue_exercises_window = self
             .maximizable(fenêtre_exercises_window, Self::EXERCISES_WINDOW, ctx)
+            .title_bar(false)
             .show(ctx, |ui| {
+                if chrome::window_head(ui, self.theme, s, s.exercises_title) {
+                    fermer_ok = true;
+                }
                 if ok_bar(ui, self.theme, strings(self.lang), "exercises") {
                     fermer_ok = true;
                 }
@@ -7566,7 +7584,11 @@ impl NamsdecApp {
                 .default_pos(ctx.viewport_rect().center())
         };
         let rendue = fenêtre
+            .title_bar(false)
             .show(ctx, |ui| {
+                if chrome::window_head(ui, self.theme, s, s.flow_title) {
+                    fermer_ok = true;
+                }
                 if ok_bar(ui, self.theme, strings(self.lang), "flow") {
                     fermer_ok = true;
                 }
@@ -8083,7 +8105,11 @@ impl NamsdecApp {
                 .default_pos(ctx.viewport_rect().center())
         };
         let rendue = fenêtre
+            .title_bar(false)
             .show(ctx, |ui| {
+                if chrome::window_head(ui, self.theme, s, s.decompiler_title) {
+                    fermer_ok = true;
+                }
                 if ok_bar(ui, self.theme, strings(self.lang), "decompiler") {
                     fermer_ok = true;
                 }
@@ -8480,7 +8506,11 @@ impl NamsdecApp {
             // de trois cents pixels sans se replier en accordéon.
             .default_width(ABOUT_WIDTH)
             .min_width(ABOUT_WIDTH)
+            .title_bar(false)
             .show(ctx, |ui| {
+                if chrome::window_head(ui, self.theme, s, s.about_title) {
+                    close = true;
+                }
                 ui.set_min_width(ABOUT_WIDTH - 24.0);
                 // L'en-tête : l'icône de l'application à gauche — la
                 // même que celle du lanceur —, et à droite ce qu'elle
@@ -8645,7 +8675,10 @@ impl NamsdecApp {
                 ui.separator();
                 // Un seul bouton : il n'y a rien à annuler dans une boîte
                 // qui ne fait que renseigner. Échap la ferme quand même.
-                close = dialog_bar(ui, theme, s.dialog_ok, None).is_some();
+                // `|=` et non `=` : la pastille du bandeau a peut-être
+                // déjà répondu plus haut, et une affectation sèche
+                // l'effacerait.
+                close |= dialog_bar(ui, theme, s.dialog_ok, None).is_some();
             });
         if lancer_recherche {
             self.start_update_check();
@@ -11122,7 +11155,11 @@ impl NamsdecApp {
             .resizable(false)
             .pivot(egui::Align2::CENTER_CENTER)
             .default_pos(ctx.viewport_rect().center())
+            .title_bar(false)
             .show(ctx, |ui| {
+                if chrome::window_head(ui, self.theme, s, s.unsaved_title) {
+                    annuler = true;
+                }
                 ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
                 ui.set_max_width(380.0);
                 ui.label(s.unsaved_question);
@@ -11248,7 +11285,11 @@ impl NamsdecApp {
             .default_pos(ctx.viewport_rect().center());
         let rendue_disassembly_window = self
             .maximizable(fenêtre_disassembly_window, Self::DISASSEMBLY_WINDOW, ctx)
+            .title_bar(false)
             .show(ctx, |ui| {
+                if chrome::window_head(ui, self.theme, s, s.disassembly_title) {
+                    fermer_ok = true;
+                }
                 if ok_bar(ui, self.theme, strings(self.lang), "disassembly") {
                     fermer_ok = true;
                 }
@@ -11580,7 +11621,11 @@ impl NamsdecApp {
             .default_size([560.0, 400.0])
             .pivot(egui::Align2::CENTER_CENTER)
             .default_pos(ctx.viewport_rect().center())
+            .title_bar(false)
             .show(ctx, |ui| {
+                if chrome::window_head(ui, self.theme, s, s.cyclic_title) {
+                    fermer_ok = true;
+                }
                 if ok_bar(ui, self.theme, strings(self.lang), "cyclic") {
                     fermer_ok = true;
                 }
@@ -11727,7 +11772,11 @@ impl NamsdecApp {
             .default_pos(ctx.viewport_rect().center());
         let rendue_timeline_window = self
             .maximizable(fenêtre_timeline_window, Self::TIMELINE_WINDOW, ctx)
+            .title_bar(false)
             .show(ctx, |ui| {
+                if chrome::window_head(ui, self.theme, s, s.timeline_title) {
+                    fermer_ok = true;
+                }
                 if ok_bar(ui, self.theme, strings(self.lang), "timeline") {
                     fermer_ok = true;
                 }
@@ -11893,7 +11942,11 @@ impl NamsdecApp {
             .default_size([480.0, 320.0])
             .pivot(egui::Align2::CENTER_CENTER)
             .default_pos(ctx.viewport_rect().center())
+            .title_bar(false)
             .show(ctx, |ui| {
+                if chrome::window_head(ui, self.theme, s, s.breakpoints_title) {
+                    fermer_ok = true;
+                }
                 if ok_bar(ui, self.theme, strings(self.lang), "breakpoints") {
                     fermer_ok = true;
                 }
@@ -11977,7 +12030,11 @@ impl NamsdecApp {
             .default_pos(ctx.viewport_rect().center());
         let rendue_analysis_window = self
             .maximizable(fenêtre_analysis_window, Self::ANALYSIS_WINDOW, ctx)
+            .title_bar(false)
             .show(ctx, |ui| {
+                if chrome::window_head(ui, self.theme, s, s.analysis_title) {
+                    fermer_ok = true;
+                }
                 if ok_bar(ui, self.theme, strings(self.lang), "analysis") {
                     fermer_ok = true;
                 }
@@ -12043,7 +12100,11 @@ impl NamsdecApp {
             // laquelle on vient de demander de l'aide.
             .pivot(egui::Align2::RIGHT_BOTTOM)
             .default_pos(ctx.viewport_rect().max - egui::vec2(24.0, 24.0))
+            .title_bar(false)
             .show(ctx, |ui| {
+                if chrome::window_head(ui, self.theme, s, s.help_title) {
+                    fermer = true;
+                }
                 // La fiche prend la place qui reste, la barre d'action
                 // garde la sienne en bas : sans ce panneau, le bouton
                 // était poussé hors de la fenêtre par une fiche longue.
@@ -12084,7 +12145,11 @@ impl NamsdecApp {
             .default_size([520.0, 620.0])
             .pivot(egui::Align2::CENTER_CENTER)
             .default_pos(ctx.viewport_rect().center())
+            .title_bar(false)
             .show(ctx, |ui| {
+                if chrome::window_head(ui, self.theme, s, s.vectors_title) {
+                    fermer_ok = true;
+                }
                 if ok_bar(ui, self.theme, strings(self.lang), "vectors") {
                     fermer_ok = true;
                 }

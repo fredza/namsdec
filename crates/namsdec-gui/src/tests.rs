@@ -11856,6 +11856,118 @@ fn a_solved_exercise_stays_solved() {
     );
 }
 
+/// Les fenêtres internes se ferment par la même pastille que la grande.
+///
+/// egui pose sa croix à lui : deux traits maigres, à droite, de la
+/// couleur du texte. Dans une application dont la fenêtre principale se
+/// ferme par un rond rouge posé à gauche, cela faisait deux grammaires
+/// pour le même geste — et celle qu'on voit le moins fermait le plus de
+/// choses. Ce test dit qu'il n'en reste qu'une, et qu'elle est bien la
+/// même.
+#[test]
+fn every_inner_window_closes_with_the_same_pastille() {
+    /// La teinte d'une couleur peinte, rendue à son opacité pleine.
+    ///
+    /// egui fait apparaître une fenêtre en fondu : tant que le fondu
+    /// dure, ses formes arrivent en alpha prémultiplié, et le rouge de
+    /// la pastille se présente comme un rouge sombre. On divise par
+    /// l'alpha pour retrouver la teinte, qui est ce qu'on vérifie — la
+    /// couleur, non l'avancement d'une animation.
+    fn teinte(c: egui::Color32) -> [i32; 3] {
+        let a = i32::from(c.a()).max(1);
+        [
+            i32::from(c.r()) * 255 / a,
+            i32::from(c.g()) * 255 / a,
+            i32::from(c.b()) * 255 / a,
+        ]
+    }
+    let attendue = teinte(chrome::WindowButton::Close.colour());
+
+    // Les fenêtres qu'un démarrage nu sait ouvrir, chacune seule : deux
+    // à la fois se recouvrent, et l'on ne saurait plus laquelle porte la
+    // pastille vue.
+    /// Comment ouvrir une fenêtre, et comment la nommer dans l'échec.
+    type Ouverture = (&'static str, fn(&mut NamsdecApp));
+    let fenêtres: Vec<Ouverture> = vec![
+        ("préférences", |app| app.show_preferences = true),
+        ("à propos", |app| app.show_about = true),
+        ("calculatrice", |app| app.show_calculator = true),
+        ("aide", |app| app.show_help = true),
+        ("registres étendus", |app| app.show_vectors = true),
+        ("points d'arrêt", |app| app.show_breakpoints = true),
+        ("chronologie", |app| app.show_timeline = true),
+        ("motif cyclique", |app| app.show_cyclic = true),
+        ("analyse", |app| app.show_analysis = true),
+        ("désassemblage", |app| app.show_disassembly = true),
+        ("graphe", |app| app.show_flow = true),
+        // Le décompilateur est un module : il s'active dans les
+        // préférences avant que sa fenêtre existe.
+        ("décompilateur", |app| {
+            app.show_decompiler_module = true;
+            app.show_decompiler = true;
+        }),
+    ];
+
+    for (nom, ouvre) in fenêtres {
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp::default();
+        app.apply_theme(&ctx);
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1280.0, 1400.0),
+            )),
+            ..Default::default()
+        };
+        // Les pastilles peintes ailleurs que dans la barre de titre de
+        // la fenêtre principale, qui occupe les quarante premiers
+        // pixels.
+        let sous_la_barre = |app: &mut NamsdecApp| -> Vec<[i32; 3]> {
+            let mut vues = Vec::new();
+            for _ in 0..3 {
+                vues.clear();
+                let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+                for clipped in &output.shapes {
+                    if let egui::epaint::Shape::Circle(cercle) = &clipped.shape
+                        && cercle.center.y > 40.0
+                        && (cercle.radius - 6.5).abs() < 0.01
+                    {
+                        vues.push(teinte(cercle.fill));
+                    }
+                }
+                output.textures_delta.clear();
+            }
+            vues
+        };
+
+        assert!(
+            sous_la_barre(&mut app).is_empty(),
+            "{nom} : fermée, rien ne traîne"
+        );
+
+        ouvre(&mut app);
+        let vues = sous_la_barre(&mut app);
+        assert_eq!(
+            vues.len(),
+            1,
+            "{nom} : une pastille de fermeture, et une seule : {vues:?}"
+        );
+        // Le fondu laisse quelques unités d'écart après division : on
+        // juge la teinte, pas l'arrondi.
+        let écart = vues[0]
+            .iter()
+            .zip(attendue.iter())
+            .map(|(a, b)| (a - b).abs())
+            .max()
+            .unwrap();
+        assert!(
+            écart <= 8,
+            "{nom} : la pastille doit être celle de la fermeture, {:?} contre {attendue:?}",
+            vues[0]
+        );
+    }
+}
+
 /// Lance un binaire qu'on vient d'écrire, en attendant qu'il se libère.
 ///
 /// Ce test était le seul instable du dépôt : il tombait une fois sur
