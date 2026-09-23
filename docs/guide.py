@@ -717,6 +717,11 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "réglage : on le retrouve au retour."),
         ("p", "Ce qu'on y trouve :"),
         ("liste", [
+         "<b>Empreintes</b> — la taille exacte, le SHA-256 et le CRC-32 du fichier. "
+         "C'est la première ligne d'un compte rendu : de quel octet parle-t-on ? Deux "
+         "personnes qui lisent « le crackme » n'ont pas forcément le même fichier "
+         "sous les yeux. Les deux se copient d'un clic, et le panneau dit laquelle prouve "
+         "quelque chose — CRC-32 ne fait que dire si le fichier est arrivé entier.",
          "<b>Protections</b> — PIE, NX, RELRO, canari de pile, FORTIFY, IBT et pile "
          "fantôme, segments W+X, symboles, bibliothèques, RPATH — avec, pour chacune, ce "
          "que son état change concrètement.",

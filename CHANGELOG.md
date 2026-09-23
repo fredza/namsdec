@@ -62,6 +62,20 @@ six fautes d'assembleur que namsdec sait désormais reconnaître.
   alors qu'on parcourt dix-huit noms des yeux.
 - Base et largeur sont des réglages : on les retrouve au retour.
 
+**L'empreinte du fichier**
+- Un module de plus : la taille exacte, le **SHA-256** et le **CRC-32**
+  du fichier entier, comme `sha256sum` les donne. C'est la première
+  ligne d'un compte rendu — de quel octet parle-t-on ? —, et les deux se
+  copient d'un clic.
+- Écrites à la main, sans dépendance : SHA-256 tient en soixante lignes,
+  CRC-32 en quinze, et les vecteurs d'essai publics disent si c'est
+  juste. Ils l'ont dit : le rembourrage s'arrêtait un bloc trop tôt
+  quand le message faisait de cinquante-six à soixante-trois octets.
+  Les dix longueurs autour de la bascule sont maintenant gravées dans un
+  test.
+- Ni MD5 ni SHA-1 : ce sont des empreintes cassées, et les afficher à
+  côté d'une bonne sans le dire apprendrait le faux.
+
 **La fenêtre d'analyse se lit en largeur**
 - Une colonne à gauche nomme les modules, celui qu'on choisit prend tout
   le reste. Les sept empilés n'employaient que la hauteur : on relisait

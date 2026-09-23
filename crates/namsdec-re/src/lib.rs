@@ -8,6 +8,8 @@
 mod binary_info;
 pub mod cfg;
 pub mod cyclic;
+pub mod digest;
+mod digest_module;
 pub mod elf_scan;
 pub mod entropy;
 mod entropy_module;
@@ -33,6 +35,7 @@ mod xrefs_module;
 
 pub use entropy_module::EntropyModule;
 pub use binary_info::BinaryInfoModule;
+pub use digest_module::DigestModule;
 pub use functions_module::FunctionsModule;
 pub use gadgets_module::GadgetsModule;
 pub use imports_module::ImportsModule;

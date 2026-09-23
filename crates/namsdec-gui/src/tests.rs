@@ -11857,6 +11857,42 @@ fn a_solved_exercise_stays_solved() {
     );
 }
 
+/// Le rapport d'analyse porte l'empreinte du fichier.
+///
+/// C'est la première ligne d'un compte rendu : de quel octet parle-t-on ?
+/// Deux personnes qui lisent « le crackme » n'ont pas forcément le même
+/// fichier sous les yeux.
+#[test]
+fn the_analysis_gives_the_fingerprint_of_the_file() {
+    let Some(octets) = binaire_dépreuve("crackme-01") else {
+        return;
+    };
+    let mut app = NamsdecApp::default();
+    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+
+    // Celle du fichier entier, comme `sha256sum` la donne — sinon on ne
+    // pourrait pas la comparer à celle d'un autre outil.
+    let attendue = namsdec_re::digest::hex(&namsdec_re::digest::sha256(&octets));
+    assert_eq!(attendue.len(), 64);
+
+    app.show_analysis = true;
+    // Le module est dans la fenêtre, et son titre dans la colonne.
+    let ids: Vec<&str> = app
+        .re_registry
+        .entries("fr")
+        .into_iter()
+        .map(|(id, _)| id)
+        .collect();
+    assert!(ids.contains(&"digest"), "le module existe : {ids:?}");
+
+    app.analysis_module = "digest".to_owned();
+    let peint = paint(&mut app);
+    assert!(
+        peint.contains(&attendue),
+        "l'empreinte du fichier doit s'y lire :\n{peint}"
+    );
+}
+
 /// La fenêtre d'analyse se lit en largeur, pas seulement en hauteur.
 ///
 /// Les sept modules empilés n'employaient que la hauteur : on relisait

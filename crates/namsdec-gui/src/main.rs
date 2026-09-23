@@ -35,7 +35,7 @@ use namsdec_disasm::DecodedInstruction;
 use namsdec_emu::{Backend, Emulator, RunStop, StepOverResult, StepResult};
 use namsdec_explorer::{ExplorerAction, FileExplorer};
 use namsdec_re::{
-    BinaryInfoModule, EntropyModule, FunctionsModule, GadgetsModule, ImportsModule, PatternsModule,
+    BinaryInfoModule, DigestModule, EntropyModule, FunctionsModule, GadgetsModule, ImportsModule, PatternsModule,
     ProtectionsModule, ReContext, ReModuleRegistry, StringsModule, SyscallsModule, XrefsModule,
 };
 use namsdec_theme::Theme;
@@ -2115,6 +2115,10 @@ impl Default for NamsdecApp {
         // est armé, car c'est ce qui décide de tout ce qu'on tentera
         // ensuite.
         re_registry.register(Box::new(BinaryInfoModule::default()));
+        // Puis l'identité du fichier : de quel octet parle-t-on ? C'est
+        // la première ligne d'un compte rendu, et ce qui permet à deux
+        // personnes de savoir qu'elles lisent le même fichier.
+        re_registry.register(Box::new(DigestModule::default()));
         re_registry.register(Box::new(ProtectionsModule::default()));
         // L'entropie juste après : elle répond avant tout le reste à
         // « est-ce qu'il y a quelque chose à lire ici ? ». Sur un binaire
