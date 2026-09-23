@@ -737,7 +737,7 @@ impl NamsdecApp {
                 for line in lines {
                     ui.colored_label(theme.dim, egui::RichText::new(line.text).monospace());
                     ui.label(egui::RichText::new(line.value).monospace());
-                    let named = line.addr.and_then(|addr| symbol_at(symbols, addr));
+                    let named = line.addr.and_then(|addr| named_at(&self.notes, symbols, addr));
                     ui.colored_label(
                         theme.accent,
                         egui::RichText::new(named.unwrap_or_default()).monospace(),
@@ -779,7 +779,7 @@ impl NamsdecApp {
         // Le nom de la cible, quand l'appel en désigne une en clair : un
         // `call rax` ne dit pas où il va avant d'être exécuté.
         let cible = (instr.op0_kind() == namsdec_disasm::OpKind::NearBranch64)
-            .then(|| symbol_at(symbols, instr.near_branch_target()))
+            .then(|| named_at(&self.notes, symbols, instr.near_branch_target()))
             .flatten();
         let note = cible.as_deref().and_then(namsdec_re::libc::explain);
         let params = note.map(|note| note.params).unwrap_or_default();
@@ -1305,7 +1305,7 @@ impl NamsdecApp {
             .as_ref()
             .map(|state| state.output.symbols.as_slice())
             .unwrap_or_default();
-        let trouvées = return_addresses(emulator.cpu(), symbols, 32);
+        let trouvées = return_addresses(emulator.cpu(), &self.notes, symbols, 32);
         if trouvées.is_empty() {
             return;
         }
@@ -1440,7 +1440,7 @@ impl NamsdecApp {
                             note.push_str(" · ");
                         }
                         note.push_str(s.stack_return_address);
-                        if let Some(label) = symbol_at(symbols, value) {
+                        if let Some(label) = named_at(&self.notes, symbols, value) {
                             note.push_str(&format!(" ({label})"));
                         }
                     }
@@ -1990,7 +1990,7 @@ impl NamsdecApp {
             .as_ref()
             .map(|state| state.output.symbols.as_slice())
             .unwrap_or_default();
-        let quartier = match symbol_at(symbols, self.mem_addr) {
+        let quartier = match named_at(&self.notes, symbols, self.mem_addr) {
             Some(label) => format!("{label} · {}", region_line(s, mem, self.mem_addr)),
             None => region_line(s, mem, self.mem_addr),
         };
@@ -2414,6 +2414,7 @@ pub(crate) fn parse_register_value(saisie: &str) -> Option<u64> {
 /// écrasée », et elle ne se pose que devant la liste entière.
 pub(crate) fn return_addresses(
     cpu: &namsdec_core::Cpu,
+    notes: &crate::notes::Notes,
     symbols: &[namsdec_asm::elf::Symbol],
     limit: usize,
 ) -> Vec<(u64, u64, String)> {
@@ -2434,7 +2435,7 @@ pub(crate) fn return_addresses(
             && let namsdec_emu::telescope::What::Code(texte) =
                 namsdec_emu::telescope::describe(&cpu.mem, value)
         {
-            let nom = symbol_at(symbols, value).unwrap_or(texte);
+            let nom = named_at(notes, symbols, value).unwrap_or(texte);
             trouvées.push((addr, value, nom));
         }
         addr += 8;

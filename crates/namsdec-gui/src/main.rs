@@ -7721,16 +7721,7 @@ impl NamsdecApp {
                     if restreint
                         && let Some(entrée) = cfg.blocks.first()
                     {
-                        // Le nom posé à la main l'emporte sur le
-                        // symbole, ce qui est toute la raison de l'avoir
-                        // écrit. Relevé sans passer par `name_of`, qui
-                        // emprunterait `self` alors que `state` l'est
-                        // déjà pour la durée de la fenêtre.
-                        let nom = self
-                            .notes
-                            .name(entrée.start)
-                            .map(str::to_owned)
-                            .or_else(|| symbol_at(&state.output.symbols, entrée.start));
+                        let nom = named_at(&self.notes, &state.output.symbols, entrée.start);
                         let texte = match &nom {
                             Some(nom) => format!("{nom}  {:#x}", entrée.start),
                             None => format!("{:#x}", entrée.start),
@@ -10201,19 +10192,6 @@ impl NamsdecApp {
         }
     }
 
-    /// Le nom d'une adresse : celui qu'on a posé, sinon celui du binaire.
-    ///
-    /// Le nom posé à la main l'emporte, et c'est voulu : quelqu'un qui
-    /// renomme `sub_1d491` en `vérifie_mdp` veut voir le second — c'est
-    /// même toute la raison de l'avoir écrit.
-    fn name_of(&self, addr: u64) -> Option<String> {
-        if let Some(nom) = self.notes.name(addr) {
-            return Some(nom.to_owned());
-        }
-        self.assemble_state
-            .as_ref()
-            .and_then(|état| symbol_at(&état.output.symbols, addr))
-    }
 
     /// Peint les commentaires à droite de leur ligne.
     ///
@@ -14308,6 +14286,28 @@ fn branch_target(text: &str) -> Option<u64> {
 /// avant, et on ne le propose que s'il est assez proche pour dire encore
 /// quelque chose — sa taille déclarée quand nasm en donne une, sinon la
 /// distance jusqu'au symbole suivant.
+/// Le nom d'une adresse : celui qu'on a posé, sinon celui du binaire.
+///
+/// Le nom posé à la main l'emporte, et c'est voulu : quelqu'un qui
+/// renomme `sub_1d491` en `vérifie_mdp` veut voir le second — c'est même
+/// toute la raison de l'avoir écrit. Retiré, on retombe sur le symbole,
+/// et non sur rien.
+///
+/// Fonction libre plutôt que méthode : elle sert dans la barre latérale,
+/// dans le graphe, dans le listing, à des endroits qui tiennent déjà un
+/// emprunt sur l'application. En faire une méthode obligeait à la
+/// contourner là où elle servait le plus.
+pub(crate) fn named_at(
+    notes: &notes::Notes,
+    symbols: &[namsdec_asm::elf::Symbol],
+    addr: u64,
+) -> Option<String> {
+    if let Some(nom) = notes.name(addr) {
+        return Some(nom.to_owned());
+    }
+    symbol_at(symbols, addr)
+}
+
 pub(crate) fn symbol_at(symbols: &[namsdec_asm::elf::Symbol], addr: u64) -> Option<String> {
     let index = symbols.partition_point(|s| s.addr <= addr).checked_sub(1)?;
     let symbol = &symbols[index];

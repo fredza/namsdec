@@ -8902,7 +8902,7 @@ deux:
     // appelant.
     let emulator = app.emulator.as_ref().expect("chargé");
     let symbols = app.assemble_state.as_ref().unwrap().output.symbols.clone();
-    let trouvées = return_addresses(emulator.cpu(), &symbols, 32);
+    let trouvées = return_addresses(emulator.cpu(), &app.notes, &symbols, 32);
     assert_eq!(trouvées.len(), 2, "{trouvées:?}");
     assert!(trouvées[0].2.starts_with("une"), "{trouvées:?}");
     assert!(trouvées[1].2.starts_with("_start"), "{trouvées:?}");
@@ -8912,7 +8912,7 @@ deux:
     // exactement ce qu'on vient y lire.
     app.poke_memory(trouvées[0].0, b"aaaabbbb");
     let emulator = app.emulator.as_ref().expect("chargé");
-    let après = return_addresses(emulator.cpu(), &symbols, 32);
+    let après = return_addresses(emulator.cpu(), &app.notes, &symbols, 32);
     assert_eq!(après.len(), 1, "{après:?}");
 }
 
@@ -18566,20 +18566,32 @@ _start:
         return;
     };
 
+    let symboles = app
+        .assemble_state
+        .as_ref()
+        .map(|état| état.output.symbols.clone())
+        .unwrap_or_default();
+
     // Le symbole, d'abord.
-    assert_eq!(app.name_of(start).as_deref(), Some("_start"));
+    assert_eq!(
+        named_at(&app.notes, &symboles, start).as_deref(),
+        Some("_start")
+    );
 
     // Puis le nom posé.
     app.notes.set_name(start, "le_vrai_début");
     assert_eq!(
-        app.name_of(start).as_deref(),
+        named_at(&app.notes, &symboles, start).as_deref(),
         Some("le_vrai_début"),
         "le nom écrit à la main doit primer"
     );
 
     // Retiré, on retombe sur le symbole — et non sur rien.
     app.notes.set_name(start, "");
-    assert_eq!(app.name_of(start).as_deref(), Some("_start"));
+    assert_eq!(
+        named_at(&app.notes, &symboles, start).as_deref(),
+        Some("_start")
+    );
 }
 
 /// Nommer une ligne qui n'a pas d'adresse le dit, plutôt que d'ouvrir un
