@@ -332,3 +332,136 @@ mod encoding_tests {
         );
     }
 }
+
+/// Ce mot est-il une instruction que le processeur connaît ?
+///
+/// La liste vient d'iced-x86 — le décodeur que namsdec emploie déjà —,
+/// et non d'un tableau écrit à la main. C'est ce qui empêche les deux de
+/// diverger : ce qui se décode se colore, et réciproquement.
+///
+/// S'y ajoutent les préfixes, que NASM écrit comme un premier mot
+/// (`rep movsb`, `lock xchg`) alors que le décodeur les porte sur
+/// l'instruction elle-même.
+pub fn is_mnemonic(word: &str) -> bool {
+    use std::collections::HashSet;
+    use std::sync::OnceLock;
+
+    static CONNUS: OnceLock<HashSet<String>> = OnceLock::new();
+    let connus = CONNUS.get_or_init(|| {
+        let mut set: HashSet<String> = Mnemonic::values()
+            .filter(|m| *m != Mnemonic::INVALID)
+            .map(|m| format!("{m:?}").to_ascii_lowercase())
+            .collect();
+        // Les préfixes : le décodeur les range à part, l'assembleur les
+        // écrit devant. Sans eux, `rep movsb` verrait son premier mot
+        // signalé comme inconnu.
+        for préfixe in [
+            "rep", "repe", "repz", "repne", "repnz", "lock", "xacquire", "xrelease", "bnd",
+            "notrack",
+        ] {
+            set.insert(préfixe.to_owned());
+        }
+        // Les synonymes de condition. `jne` et `jnz` sont le **même**
+        // octet : la première orthographe parle du résultat d'un `cmp`
+        // (« pas égal »), la seconde du drapeau qui le porte (« zéro pas
+        // mis »). iced n'en nomme qu'une, NASM accepte les deux, et
+        // signaler `jnz` reviendrait à reprocher à quelqu'un d'écrire
+        // l'assembleur qu'on lui a appris.
+        //
+        // Chaque groupe désigne une seule condition. Dès qu'une de ses
+        // orthographes est connue du décodeur, toutes le deviennent.
+        const CONDITIONS: &[&[&str]] = &[
+            &["e", "z"],
+            &["ne", "nz"],
+            &["b", "c", "nae"],
+            &["ae", "nb", "nc"],
+            &["be", "na"],
+            &["a", "nbe"],
+            &["l", "nge"],
+            &["ge", "nl"],
+            &["le", "ng"],
+            &["g", "nle"],
+            &["p", "pe"],
+            &["np", "po"],
+            &["s"],
+            &["ns"],
+            &["o"],
+            &["no"],
+        ];
+        for racine in ["j", "set", "cmov", "fcmov", "loope", "loopne"] {
+            for groupe in CONDITIONS {
+                let connu = groupe
+                    .iter()
+                    .any(|suffixe| set.contains(&format!("{racine}{suffixe}")));
+                if connu {
+                    for suffixe in *groupe {
+                        set.insert(format!("{racine}{suffixe}"));
+                    }
+                }
+            }
+        }
+        // Les comparaisons vectorielles, que NASM nomme par leur
+        // condition. `cmpltpd` est un `cmppd` dont l'immédiat vaut 1 :
+        // le décodeur ne connaît que la forme générale, l'assembleur
+        // accepte les deux, et c'est la forme nommée qu'on écrit.
+        for suffixe in ["ps", "pd", "ss", "sd"] {
+            if !set.contains(&format!("cmp{suffixe}")) {
+                continue;
+            }
+            for condition in ["eq", "lt", "le", "unord", "neq", "nlt", "nle", "ord"] {
+                set.insert(format!("cmp{condition}{suffixe}"));
+                set.insert(format!("vcmp{condition}{suffixe}"));
+            }
+        }
+        set
+    });
+    connus.contains(&word.to_ascii_lowercase())
+}
+
+#[cfg(test)]
+mod mnemonic_tests {
+    use super::*;
+
+    /// La coloration distinguait `mov` de `mav` : elle ne le fait plus.
+    ///
+    /// Peindre un mot inventé comme une instruction n'apprend rien et
+    /// rassure à tort — c'est précisément la faute de frappe qu'on
+    /// cherche des yeux avant de lancer l'assembleur.
+    #[test]
+    fn a_made_up_word_is_not_an_instruction() {
+        assert!(is_mnemonic("mov"), "mov existe");
+        assert!(!is_mnemonic("mav"), "mav n'existe pas");
+        assert!(is_mnemonic("MOV"), "la casse ne compte pas");
+    }
+
+    /// Les préfixes comptent : NASM les écrit en premier mot.
+    #[test]
+    fn prefixes_count_as_a_first_word() {
+        assert!(is_mnemonic("rep"), "`rep movsb` commence par `rep`");
+        assert!(is_mnemonic("lock"));
+    }
+
+    /// Les deux orthographes d'une même condition sont acceptées.
+    ///
+    /// `jne` et `jnz` sont le même octet : l'une nomme le résultat d'un
+    /// `cmp`, l'autre le drapeau qui le porte. Les exercices livrés
+    /// emploient les deux, et ils ont raison.
+    #[test]
+    fn both_spellings_of_a_condition_are_known() {
+        for paire in [("jne", "jnz"), ("je", "jz"), ("setne", "setnz"), ("cmovae", "cmovnb")] {
+            assert!(is_mnemonic(paire.0), "{} devrait être connu", paire.0);
+            assert!(is_mnemonic(paire.1), "{} aussi : c'est le même octet", paire.1);
+        }
+        // Mais le synonyme d'une condition qui n'existe pas n'en devient
+        // pas une pour autant.
+        assert!(!is_mnemonic("jzz"));
+    }
+
+    /// Et la liste est bien celle du décodeur, pas un échantillon.
+    #[test]
+    fn the_list_is_the_decoders_own() {
+        for instruction in ["syscall", "endbr64", "vpxor", "cmovne", "pshufb", "sarx"] {
+            assert!(is_mnemonic(instruction), "{instruction} devrait être connu");
+        }
+    }
+}

@@ -50,6 +50,8 @@ pub const DIRECTIVES: &[&str] = &[
     "resy", "resz", "incbin", "equ", "times", // tailles et modificateurs d'opérande
     "byte", "word", "dword", "qword", "tword", "oword", "yword", "zword", "ptr", "near", "far",
     "short", "strict", "nosplit", "rel", "abs", "wrt",
+    // Les structures : une déclaration de disposition, pas du code.
+    "struc", "endstruc", "istruc", "iend", "at",
 ];
 
 /// Les mots du préprocesseur, sans leur `%`.
@@ -66,6 +68,12 @@ pub const PREPROCESSOR: &[&str] = &[
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Token {
     Mnemonic,
+    /// Un premier mot qui n'est aucune instruction connue.
+    ///
+    /// `mav` au lieu de `mov` : la faute de frappe qu'on cherche des
+    /// yeux avant de lancer l'assembleur. La peindre comme une
+    /// instruction ne l'apprenait pas — elle la cachait.
+    UnknownMnemonic,
     Register,
     Directive,
     Preprocessor,
@@ -80,6 +88,9 @@ impl Token {
     pub fn colour(self, theme: &Theme) -> Color32 {
         match self {
             Token::Mnemonic => theme.mnemonic,
+            // La couleur des ennuis, et rien d'autre : l'oeil s'arrête
+            // dessus sans avoir à lire.
+            Token::UnknownMnemonic => theme.bad,
             Token::Register => theme.register,
             Token::Directive | Token::Preprocessor => theme.directive,
             Token::Number => theme.number,
@@ -100,11 +111,15 @@ pub fn highlight(ui: &Ui, theme: &Theme, text: &str, wrap_width: f32) -> LayoutJ
     let mut job = LayoutJob::default();
     job.wrap.max_width = wrap_width;
 
+    // Relevées une fois pour tout le fichier : une macro définie en bas
+    // s'emploie en haut, et colorer ligne à ligne sans les connaître
+    // signalerait ses appels comme des mots inventés.
+    let macros = Macros::of(text);
     for (i, line) in text.split('\n').enumerate() {
         if i > 0 {
             append(&mut job, "\n", &font_id, theme.text, false);
         }
-        for (piece, token) in tokenize(line) {
+        for (piece, token) in tokenize_with(line, &macros) {
             append(
                 &mut job,
                 piece,
@@ -122,6 +137,105 @@ pub fn highlight(ui: &Ui, theme: &Theme, text: &str, wrap_width: f32) -> LayoutJ
 /// concaténation des morceaux redonne la ligne, exactement — c'est ce
 /// qui garantit que la coloration ne déplace jamais un caractère.
 pub fn tokenize(line: &str) -> Vec<(&str, Token)> {
+    tokenize_with(line, &Macros::default())
+}
+
+/// Ce que le fichier définit lui-même, relevé avant de le colorer.
+///
+/// Deux listes, pour deux raisons voisines :
+///
+/// - **les macros**. Une macro s'invoque comme une instruction —
+///   `ajoute_deux_fois DIX` — et n'en est pas une. Sans cette liste,
+///   chaque appel se voyait signalé comme un mot inventé, ce qui est le
+///   contraire du but : on ne signale une faute de frappe que si l'on ne
+///   crie pas sur le reste.
+/// - **les étiquettes**. `boucle:` était bien peinte en étiquette là où
+///   elle est définie, et pas du tout dans `jnz boucle`, où elle passait
+///   pour un mot quelconque. Or c'est justement là qu'on a besoin de la
+///   reconnaître : lire `jnz boucle` et savoir d'un coup d'oeil que
+///   `boucle` est un endroit de *ce* fichier — et non un registre, un
+///   nombre ou une faute — est la moitié du travail de lecture.
+#[derive(Default, Clone)]
+pub struct Macros {
+    noms: std::collections::HashSet<String>,
+    /// Les étiquettes définies, à leur casse exacte : NASM distingue
+    /// `Boucle` de `boucle`, et les confondre lierait le mauvais symbole.
+    étiquettes: std::collections::HashSet<String>,
+}
+
+impl Macros {
+    /// Les noms définis par `%macro`, `%imacro` et leurs cousins, relevés
+    /// dans un fichier entier.
+    pub fn of(text: &str) -> Self {
+        let mut noms = std::collections::HashSet::new();
+        for ligne in text.lines() {
+            let ligne = ligne.trim_start();
+            let Some(reste) = ligne.strip_prefix('%') else {
+                continue;
+            };
+            let (mot, suite) = match reste.find(char::is_whitespace) {
+                Some(i) => (&reste[..i], &reste[i..]),
+                None => continue,
+            };
+            // `%macro nom 1` définit ; `%define nom …` aussi, et les deux
+            // s'écrivent ensuite en tête de ligne.
+            if !matches!(
+                mot.to_ascii_lowercase().as_str(),
+                "macro" | "imacro" | "rmacro" | "irmacro" | "define" | "xdefine" | "idefine"
+            ) {
+                continue;
+            }
+            let nom = suite.trim_start();
+            let fin = nom
+                .find(|c: char| !is_word_char(c))
+                .unwrap_or(nom.len());
+            if fin > 0 {
+                noms.insert(nom[..fin].to_ascii_lowercase());
+            }
+        }
+        Self {
+            noms,
+            étiquettes: labels_of(text),
+        }
+    }
+
+    fn contient(&self, mot: &str) -> bool {
+        self.noms.contains(&mot.to_ascii_lowercase())
+    }
+
+    /// Ce mot est-il une étiquette définie dans le fichier ?
+    ///
+    /// À la casse près : NASM distingue `Boucle` de `boucle`, et sauter
+    /// à l'une en croyant l'autre est une erreur de liaison, non une
+    /// coquille d'affichage.
+    fn est_une_étiquette(&self, mot: &str) -> bool {
+        self.étiquettes.contains(mot)
+    }
+}
+
+/// Les étiquettes **définies** : en tête de ligne, suivies de leurs
+/// deux-points.
+///
+/// Définies seulement : tout ce qui ressemble à une étiquette n'en est
+/// pas une. Le `.text` de `section .text` nomme une section, et le
+/// peindre en étiquette laisserait croire qu'on peut y sauter.
+fn labels_of(text: &str) -> std::collections::HashSet<String> {
+    let mut out = std::collections::HashSet::new();
+    for ligne in text.lines() {
+        let taillée = ligne.trim_start();
+        let Some(deux_points) = taillée.find(':') else {
+            continue;
+        };
+        let nom = &taillée[..deux_points];
+        if !nom.is_empty() && nom.chars().all(is_word_char) {
+            out.insert(nom.to_owned());
+        }
+    }
+    out
+}
+
+/// Comme `tokenize`, en sachant quelles macros le fichier définit.
+pub fn tokenize_with<'a>(line: &'a str, macros: &Macros) -> Vec<(&'a str, Token)> {
     let bytes = line.as_bytes();
     let mut out = Vec::new();
     let mut i = 0;
@@ -182,7 +296,18 @@ pub fn tokenize(line: &str) -> Vec<(&str, Token)> {
                 i = scan(line, i, is_word_char);
                 let word = &line[start..i];
                 let followed_by_colon = bytes.get(i) == Some(&b':');
-                let token = classify(word, first_word, followed_by_colon);
+                // `message db "salut"` : NASM autorise l'étiquette sans
+                // deux-points quand une directive de données suit. Sans
+                // ce regard en avant, « message » occupait la place du
+                // mnémonique et se voyait signalé comme une instruction
+                // inventée — sur du code parfaitement juste.
+                let followed_by_data = first_word && next_word_defines_data(line, i);
+                let token = classify(
+                    word,
+                    first_word && !followed_by_data,
+                    followed_by_colon,
+                    macros,
+                );
                 out.push((word, token));
                 // Une étiquette en tête de ligne ne consomme pas la place
                 // du mnémonique ; ailleurs, elle est une opérande comme
@@ -204,8 +329,38 @@ pub fn tokenize(line: &str) -> Vec<(&str, Token)> {
     out
 }
 
+/// Le mot qui suit `from` est-il une directive de définition de données ?
+///
+/// C'est ce qui distingue `message db "salut"` — une étiquette suivie
+/// d'une directive — de `mov rax, 1`. NASM tolère l'étiquette sans
+/// deux-points dans ce seul cas, et le code des exercices s'en sert.
+fn next_word_defines_data(line: &str, from: usize) -> bool {
+    /// Celles qui peuvent suivre une étiquette nue. `equ` et `times` en
+    /// font partie ; `section` ou `global` non, qui ne s'étiquettent pas.
+    const APRÈS_ÉTIQUETTE: &[&str] = &[
+        "db", "dw", "dd", "dq", "dt", "do", "dy", "dz", "resb", "resw", "resd", "resq", "rest",
+        "reso", "resy", "resz", "incbin", "equ", "times",
+    ];
+    let reste = &line[from..];
+    let début = reste.len() - reste.trim_start().len();
+    let suite = &reste[début..];
+    // Rien après, ou pas un mot : ce n'en est pas une.
+    if début == 0 || suite.is_empty() {
+        return false;
+    }
+    let fin = suite
+        .find(|c: char| !is_word_char(c))
+        .unwrap_or(suite.len());
+    APRÈS_ÉTIQUETTE.contains(&suite[..fin].to_ascii_lowercase().as_str())
+}
+
 /// À quelle famille appartient un mot, à sa place dans la ligne.
-fn classify(word: &str, first_word: bool, followed_by_colon: bool) -> Token {
+fn classify(
+    word: &str,
+    first_word: bool,
+    followed_by_colon: bool,
+    macros: &Macros,
+) -> Token {
     let lower = word.to_ascii_lowercase();
     // Les registres passent avant la règle des deux-points : le `fs` de
     // `[fs:0x28]` est un registre de segment, pas une étiquette.
@@ -220,10 +375,29 @@ fn classify(word: &str, first_word: bool, followed_by_colon: bool) -> Token {
     if DIRECTIVES.contains(&lower.as_str()) {
         return Token::Directive;
     }
+    // Une étiquette du fichier, employée comme opérande : `jmp boucle`,
+    // `call vérifie`, `dq table`. Elle n'a pas de deux-points ici — ils
+    // sont à sa définition — et passait donc pour un mot quelconque.
+    if macros.est_une_étiquette(word) {
+        return Token::Label;
+    }
     if first_word {
-        // Par position : un jeu d'instructions s'allonge, une liste
-        // fermée finirait par mentir.
-        return Token::Mnemonic;
+        // La liste vient du décodeur qu'emploie namsdec, non d'un
+        // tableau écrit ici : les deux ne peuvent donc pas diverger, et
+        // le reproche qu'on faisait aux listes fermées — « un jeu
+        // d'instructions s'allonge » — tombe avec elle.
+        //
+        // Ce qui n'y est pas se peint en couleur d'erreur. C'est le
+        // point : `mav` recevait la couleur de `mov`, si bien que la
+        // coloration ne distinguait pas ce qui existe de ce qui
+        // n'existe pas. Elle n'apprenait rien, et rassurait à tort.
+        // Une macro du fichier s'écrit à la place d'une instruction et
+        // se colore comme telle : c'en est une, pour qui lit.
+        return if namsdec_disasm::is_mnemonic(&lower) || macros.contient(&lower) {
+            Token::Mnemonic
+        } else {
+            Token::UnknownMnemonic
+        };
     }
     Token::Plain
 }
@@ -338,10 +512,15 @@ mod tests {
         assert!(line.contains(&("8", Token::Number)));
     }
 
-    /// Les mnémoniques se reconnaissent à leur *place*, pas à une liste :
-    /// celle-ci finirait par mentir à chaque instruction ajoutée.
+    /// Un mnémonique se reconnaît à sa place **et** à la liste du
+    /// décodeur : la place seule donnait sa couleur à `mav`.
+    ///
+    /// La liste ne risque pas de mentir, puisqu'elle est celle
+    /// d'iced-x86 — ce qui se décode se colore. Restent les mots qui ne
+    /// sont pas des instructions du tout : ils gardent leur famille, où
+    /// qu'ils soient dans la ligne.
     #[test]
-    fn a_mnemonic_is_the_first_word_whatever_it_is() {
+    fn a_mnemonic_is_the_first_word_and_a_known_one() {
         assert!(tokens("    cpuid").contains(&("cpuid", Token::Mnemonic)));
         assert!(tokens("    vpxor xmm0, xmm0, xmm0").contains(&("vpxor", Token::Mnemonic)));
         // Même après une étiquette, qui ne prend pas sa place.
@@ -426,5 +605,194 @@ mod tests {
                 "« {text} » doit être un nombre"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod mnemonic_colour_tests {
+    use super::*;
+
+    fn premiers_mots(ligne: &str) -> Vec<(&str, Token)> {
+        tokenize(ligne)
+            .into_iter()
+            .filter(|(mot, _)| !mot.trim().is_empty())
+            .collect()
+    }
+
+    /// `mov` et `mav` ne se peignent plus pareil.
+    ///
+    /// C'était le reproche, et il était juste : une coloration qui donne
+    /// la même couleur à une instruction et à une faute de frappe
+    /// n'apprend rien, et rassure à tort — on relit sa ligne, on la voit
+    /// colorée, on la croit bonne.
+    #[test]
+    fn a_typo_does_not_look_like_an_instruction() {
+        let bons = premiers_mots("    mov rax, 1");
+        assert_eq!(bons[0].1, Token::Mnemonic, "{bons:?}");
+        let mauvais = premiers_mots("    mav rax, 1");
+        assert_eq!(mauvais[0].1, Token::UnknownMnemonic, "{mauvais:?}");
+        assert_ne!(
+            Token::Mnemonic.colour(namsdec_theme::by_id("dark-plus")),
+            Token::UnknownMnemonic.colour(namsdec_theme::by_id("dark-plus")),
+            "et les deux couleurs diffèrent vraiment"
+        );
+    }
+
+    /// Une macro du fichier s'écrit comme une instruction, et n'est pas
+    /// signalée.
+    ///
+    /// C'est la contrepartie indispensable : on ne signale une faute de
+    /// frappe que si l'on ne crie pas sur le reste. Une coloration qui
+    /// se trompe une fois sur dix cesse d'être lue.
+    #[test]
+    fn a_macro_defined_in_the_file_is_not_flagged() {
+        let source = "\
+%macro ajoute_deux_fois 1
+    add rax, %1
+    add rax, %1
+%endmacro
+
+_start:
+    ajoute_deux_fois 10
+    mav rax, 1
+";
+        let macros = Macros::of(source);
+        let appel: Vec<_> = tokenize_with("    ajoute_deux_fois 10", &macros)
+            .into_iter()
+            .filter(|(mot, _)| !mot.trim().is_empty())
+            .collect();
+        assert_eq!(
+            appel[0].1,
+            Token::Mnemonic,
+            "l'appel de macro se colore comme une instruction : {appel:?}"
+        );
+        // Et la faute de frappe, elle, est toujours vue.
+        let faute: Vec<_> = tokenize_with("    mav rax, 1", &macros)
+            .into_iter()
+            .filter(|(mot, _)| !mot.trim().is_empty())
+            .collect();
+        assert_eq!(faute[0].1, Token::UnknownMnemonic, "{faute:?}");
+    }
+
+    /// Une étiquette du fichier se colore aussi là où l'on y saute.
+    ///
+    /// `boucle:` était peinte en étiquette à sa définition, et pas du
+    /// tout dans `jnz boucle` — où elle passait pour un mot quelconque.
+    /// C'est pourtant là qu'on a besoin de la reconnaître : savoir d'un
+    /// coup d'oeil que `boucle` est un endroit de *ce* fichier, et non un
+    /// registre, un nombre ou une faute de frappe.
+    #[test]
+    fn a_label_is_coloured_where_one_jumps_to_it() {
+        let source = "\
+boucle:
+    add rax, 1
+    jnz boucle
+    call vérifie
+vérifie:
+    ret
+";
+        let macros = Macros::of(source);
+        let saut: Vec<_> = tokenize_with("    jnz boucle", &macros)
+            .into_iter()
+            .filter(|(mot, _)| !mot.trim().is_empty())
+            .collect();
+        assert_eq!(saut[0].1, Token::Mnemonic, "{saut:?}");
+        assert_eq!(saut[1].1, Token::Label, "la cible du saut : {saut:?}");
+
+        let appel: Vec<_> = tokenize_with("    call vérifie", &macros)
+            .into_iter()
+            .filter(|(mot, _)| !mot.trim().is_empty())
+            .collect();
+        assert_eq!(appel[1].1, Token::Label, "{appel:?}");
+
+        // Mais un mot qui n'est aucune étiquette du fichier garde sa
+        // nature : on ne peint pas en étiquette ce qui n'en est pas une.
+        let ailleurs: Vec<_> = tokenize_with("    jmp nulle_part", &macros)
+            .into_iter()
+            .filter(|(mot, _)| !mot.trim().is_empty())
+            .collect();
+        assert_ne!(ailleurs[1].1, Token::Label, "{ailleurs:?}");
+
+        // Et `.text` de `section .text` nomme une section, non un
+        // endroit où sauter.
+        let section: Vec<_> = tokenize_with("section .text", &macros)
+            .into_iter()
+            .filter(|(mot, _)| !mot.trim().is_empty())
+            .collect();
+        assert_eq!(section[0].1, Token::Directive, "{section:?}");
+    }
+
+    /// Ce qui est valide reste calme — y compris les préfixes et les
+    /// instructions récentes.
+    #[test]
+    fn valid_assembly_is_never_flagged() {
+        for ligne in [
+            "    mov rax, 1",
+            "    syscall",
+            "    endbr64",
+            "    rep movsb",
+            "    lock xchg [rax], rbx",
+            "    vpxor xmm0, xmm0, xmm0",
+            "    cmovne rax, rbx",
+            // Ce qui n'est pas une instruction du tout ne doit pas être
+            // jugé comme telle : directives, étiquettes, préprocesseur.
+            "section .text",
+            "global _start",
+            "_start:",
+            ".boucle:",
+            "msg: db \"salut\", 0",
+            "%define TAILLE 64",
+            "    ; un commentaire",
+            "",
+        ] {
+            for (mot, token) in premiers_mots(ligne) {
+                assert_ne!(
+                    token,
+                    Token::UnknownMnemonic,
+                    "« {mot} » est signalé à tort dans : {ligne}"
+                );
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod corpus_tests {
+    use super::*;
+
+    /// Tout l'assembleur que namsdec livre doit passer sans un seul mot
+    /// signalé.
+    ///
+    /// Une coloration qui crie sur du code juste est pire que celle
+    /// qu'elle remplace : on apprend à ne plus la croire. Le corpus, ce
+    /// sont les exercices livrés — le code que quelqu'un qui apprend a
+    /// sous les yeux le premier jour.
+    #[test]
+    fn every_shipped_exercise_colours_clean() {
+        // Le fichier du dépôt, et non celui qui est installé : le test
+        // doit juger ce que namsdec livre, pas ce qu'une machine a.
+        let dossier = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../namsdec-exercises/packs");
+        let pack = namsdec_exercises::builtin_pack_in(&dossier).expect("la série livrée se lit");
+        let mut vus = 0usize;
+        let mut fautifs: Vec<String> = Vec::new();
+        for exercice in &pack.exercises {
+            vus += 1;
+            let macros = Macros::of(&exercice.starter_code);
+            for ligne in exercice.starter_code.lines() {
+                for (mot, token) in tokenize_with(ligne, &macros) {
+                    if token == Token::UnknownMnemonic {
+                        fautifs.push(format!("{} : « {mot} » dans « {ligne} »", exercice.id));
+                    }
+                }
+            }
+        }
+        assert!(vus > 0, "le corpus ne doit pas être vide");
+        assert!(
+            fautifs.is_empty(),
+            "{} source(s) signalée(s) à tort sur {vus} :\n{}",
+            fautifs.len(),
+            fautifs.join("\n")
+        );
     }
 }
