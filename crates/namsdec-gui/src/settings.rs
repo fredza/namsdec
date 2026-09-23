@@ -796,15 +796,24 @@ mod tests {
 
         let migrated = settings.migrate();
         assert_eq!(migrated.version, SETTINGS_VERSION);
-        assert_eq!(migrated.shortcuts["run"], "Space,R");
-        assert_eq!(migrated.shortcuts["step_into"], "Space,S,I");
-        assert_eq!(migrated.shortcuts["step_over"], "Space,N,I");
+
+        // Ce qu'on vérifie est la MIGRATION, non les touches du jour :
+        // les valeurs attendues viennent du jeu par défaut, et le test ne
+        // tombe donc plus chaque fois qu'un raccourci change de place.
+        let défauts = shortcuts_to_strings(&KeyBindings::default());
+        for id in ["run", "step_into", "step_over"] {
+            assert_eq!(
+                migrated.shortcuts[id], défauts[id],
+                "« {id} » doit avoir reçu le raccourci du jeu par défaut"
+            );
+        }
 
         // Et ils se relisent bien comme des séquences.
         let bindings = migrated.keybindings();
-        assert_eq!(
-            bindings.map.get(&Action::StepInto),
-            Some(&Chord::leader(&[Key::Space, Key::S, Key::I]))
+        assert!(
+            matches!(bindings.map.get(&Action::StepInto), Some(Chord::Leader(_))),
+            "le pas détaillé est une séquence : {:?}",
+            bindings.map.get(&Action::StepInto)
         );
     }
 

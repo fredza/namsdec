@@ -190,8 +190,8 @@ syscall
 #[test]
 fn stepping_with_a_leader_sequence_stays_in_normal_mode() {
     for sequence in [
-        [egui::Key::Space, egui::Key::S, egui::Key::I],
-        [egui::Key::Space, egui::Key::N, egui::Key::I],
+        [egui::Key::Space, egui::Key::P, egui::Key::I],
+        [egui::Key::Space, egui::Key::P, egui::Key::O],
     ] {
         let mut app = NamsdecApp::default();
         assert_eq!(app.editor_mode, EditorMode::Normal);
@@ -236,8 +236,8 @@ fn stepping_with_a_leader_sequence_stays_in_normal_mode() {
 #[test]
 fn stepping_stays_in_normal_mode_across_separate_frames() {
     for sequence in [
-        [egui::Key::Space, egui::Key::S, egui::Key::I],
-        [egui::Key::Space, egui::Key::N, egui::Key::I],
+        [egui::Key::Space, egui::Key::P, egui::Key::I],
+        [egui::Key::Space, egui::Key::P, egui::Key::O],
     ] {
         let mut app = NamsdecApp::default();
         let ctx = egui::Context::default();
@@ -318,7 +318,7 @@ fn stepping_works_after_leaving_insert_mode() {
     assert_eq!(app.editor_mode, EditorMode::Normal, "Échap la referme");
 
     // Puis la séquence de pas, touche par touche.
-    for key in [egui::Key::Space, egui::Key::S, egui::Key::I] {
+    for key in [egui::Key::Space, egui::Key::P, egui::Key::I] {
         frame(&mut app, key);
     }
 
@@ -14955,7 +14955,7 @@ fin:
         .expect("le raccourci existe");
     assert_eq!(
         *chord,
-        crate::keybindings::Chord::leader(&[egui::Key::Space, egui::Key::G]),
+        crate::keybindings::Chord::leader(&[egui::Key::Space, egui::Key::V, egui::Key::G]),
         "« Espace g » ouvre le déroulement"
     );
 

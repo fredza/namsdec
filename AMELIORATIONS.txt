@@ -550,7 +550,7 @@ aujourd'hui ; les suivantes, ce vers quoi l'outil peut aller.
      analyse, exercices, chronologie) — elles ne posent pas de question, donc
      rien ne presse, mais une barre « Fermer » les rendrait cohérentes.
 
-1.23 LES RACCOURCIS SONT EN DÉSORDRE — à reprendre en entier
+1.23 [FAIT] Les raccourcis, repris par famille
      Constat relevé le 23 septembre, en listant les deux jeux (28 actions
      chacun). Ce n'est pas une impression : il y a des collisions de sens.
 
@@ -572,15 +572,34 @@ aujourd'hui ; les suivantes, ce vers quoi l'outil peut aller.
      vérifier quand même : `Ctrl+Alt+C/R/S` pour les trois « cours
      jusqu'à » ne viennent de nulle part.
 
-     Piste pour la reprise, à discuter :
-     - ranger le jeu vim par préfixe de SENS et non par lettre d'action :
-       `Espace s…` pour « step » seulement, un autre préfixe pour la
-       recherche (`Espace /…` serait le plus vim) ;
-     - décider ce que le jeu vim doit vraiment reprendre de vim, et
-       l'assumer dans son nom et sa description ;
-     - un écran qui montre les DEUX jeux côte à côte, action par action,
-       pour voir les trous et les doublons d'un coup d'oeil. Aujourd'hui
-       l'onglet Raccourcis montre un jeu à la fois.
+     FAIT le 23 septembre 2026. Les séquences sont rangées par FAMILLE : le
+     préfixe dit de quoi l'on parle, la lettre dit quoi en faire.
+
+       Espace p…   les pas        p i  détaillé    p o  principal
+                                  p b  en arrière  p r  exécuter
+                                  p c  jusqu'au curseur
+       Espace u…   cours jusqu'à  u c  appel   u r  retour   u s  appel système
+       Espace /…   chercher       / /  surligner   / n  suivant
+                                  / p  précédent   / r  renommer
+       Espace m…   marquer        m n  nommer      m c  commenter
+       Espace v…   voir           v e  explorateur v g  graphe
+
+     `/` est la touche de recherche de vim : ce préfixe-là se devine sans
+     l'apprendre. Et `n` retrouve sa place dans « nommer », celle qu'il a dans
+     tous les outils du métier — il avait dû céder à `Espace a` parce que
+     `Espace n` était le préfixe de `Espace n i`.
+     Hors famille, et volontairement : `y y` duplique une ligne et `g g` va au
+     début — deux doublements de vim, qu'on ne range pas ailleurs sans les
+     dénaturer.
+     Le prix, dit franchement : toutes les habitudes prises sur `Espace r`,
+     `Espace b`, `Espace e`, `Espace g`, `Espace s i` changent.
+     Trois contrôles tiennent la règle désormais : aucune séquence n'est le
+     préfixe d'une autre (c'est ce qui rendait une action inatteignable),
+     chaque famille contient ce qui lui revient, et aucune touche ne sert
+     deux fois dans un jeu.
+     RESTE : l'écran qui montrerait les DEUX jeux côte à côte, action par
+     action. L'onglet Raccourcis n'en montre qu'un, ce qui empêche de voir
+     les trous d'un coup d'oeil.
 
 1.20 [FAIT] La rangée « Entrée » était coupée en deux — et mon test ne le
      voyait pas

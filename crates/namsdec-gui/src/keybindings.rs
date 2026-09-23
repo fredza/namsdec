@@ -495,18 +495,42 @@ impl KeyBindings {
                 Key::B,
             )),
         );
-        map.insert(Action::Run, Chord::leader(&[Key::Space, Key::R]));
-        map.insert(
-            Action::StepOver,
-            Chord::leader(&[Key::Space, Key::N, Key::I]),
-        );
+        // --- `Espace p…` : les pas ---------------------------------
+        //
+        // Les séquences sont rangées par FAMILLE, et non par la première
+        // lettre de l'action. C'est un changement de méthode, et il vient
+        // d'un constat : rangées par action, elles se plaçaient où il
+        // restait de la place. `Espace s` avait fini par servir aux pas
+        // (`s i`) et à la recherche (`s s`), `n` court-circuitait
+        // `Espace n i`, et « nommer » avait dû prendre `Espace a` faute
+        // de mieux — alors que `n` est la touche de tous les outils du
+        // métier.
+        //
+        // Rangées par famille, le préfixe dit de quoi l'on parle et la
+        // lettre dit quoi en faire. Chaque ajout a dès lors une place
+        // évidente, au lieu d'une place libre.
+        //
+        // Le prix est réel et il faut le dire : toutes les habitudes
+        // prises sur `Espace r`, `Espace b`, `Espace s i` changent.
+        map.insert(Action::Run, Chord::leader(&[Key::Space, Key::P, Key::R]));
         map.insert(
             Action::StepInto,
-            Chord::leader(&[Key::Space, Key::S, Key::I]),
+            Chord::leader(&[Key::Space, Key::P, Key::I]),
         );
-        // `Espace b` comme *back* : gdb écrit `reverse-stepi`, qui n'a pas
+        map.insert(
+            Action::StepOver,
+            Chord::leader(&[Key::Space, Key::P, Key::O]),
+        );
+        // `p b` comme *back* : gdb écrit `reverse-stepi`, qui n'a pas
         // d'abréviation courte à imiter.
-        map.insert(Action::StepBack, Chord::leader(&[Key::Space, Key::B]));
+        map.insert(
+            Action::StepBack,
+            Chord::leader(&[Key::Space, Key::P, Key::B]),
+        );
+        map.insert(
+            Action::RunToCursor,
+            Chord::leader(&[Key::Space, Key::P, Key::C]),
+        );
         map.insert(
             Action::Stop,
             Chord::Simple(KeyboardShortcut::new(Modifiers::SHIFT, Key::F5)),
@@ -543,11 +567,9 @@ impl KeyBindings {
             Chord::Simple(KeyboardShortcut::new(Modifiers::NONE, Key::F1)),
         );
         // « Exécuter jusqu'ici » : on pose le curseur sur une ligne et
-        // l'on y va, sans poser puis retirer un point d'arrêt.
-        map.insert(
-            Action::RunToCursor,
-            Chord::Simple(KeyboardShortcut::new(Modifiers::CTRL, Key::F10)),
-        );
+        // l'on y va, sans poser puis retirer un point d'arrêt. Il vit
+        // désormais dans la famille des pas (`Espace p c`) : c'en est un,
+        // simplement plus long.
         // F12 : « aller à la définition », la touche qu'un éditeur de
         // code donne à ce geste depuis toujours.
         map.insert(
@@ -580,57 +602,59 @@ impl KeyBindings {
         // `y y` : le doublement de vim, qui copie une ligne. Ici il la
         // recopie directement — c'est le geste, sans le presse-papiers.
         map.insert(Action::DuplicateLine, Chord::leader(&[Key::Y, Key::Y]));
-        // `Espace s s`, et non `Espace s` : celui-ci est déjà le préfixe
-        // de `Espace s i` et `Espace s o`, et une séquence qui en
-        // court-circuite une autre la rend inatteignable. Le doublement
-        // est celui de `y y`, et `s` reste la lettre de « similaire ».
+        // --- `Espace /…` : chercher --------------------------------
+        //
+        // La barre oblique est la touche de recherche de vim : le préfixe
+        // se devine donc sans l'apprendre. Le doublement — `/ /` —
+        // surligne, comme `y y` duplique.
         map.insert(
             Action::HighlightMatches,
-            Chord::leader(&[Key::Space, Key::S, Key::S]),
+            Chord::leader(&[Key::Space, Key::Slash, Key::Slash]),
         );
-        // `r` comme renommer, sous le même préfixe que le surlignage :
-        // les deux gestes vont ensemble, on surligne puis on renomme.
         map.insert(
             Action::RenameMatches,
-            Chord::leader(&[Key::Space, Key::S, Key::R]),
+            Chord::leader(&[Key::Space, Key::Slash, Key::R]),
         );
-        // `Espace a` pour nommer une adresse, `Espace c` pour commenter :
-        // deux gestes qu'on répète en lisant un binaire, donc deux
-        // touches et pas trois.
+        // --- `Espace m…` : marquer ---------------------------------
         //
-        // `Espace n` aurait été plus naturel — `n` comme nommer, comme
-        // dans tous les outils du métier — mais il est déjà le préfixe de
-        // `Espace n i` (Step Over), et une séquence courte court-circuite
-        // la longue : Step Over serait devenu inatteignable. C'est la
-        // troisième fois que ce jeu de raccourcis force la main, et c'est
-        // noté comme tel dans AMELIORATIONS (1.23).
-        map.insert(Action::NameAddress, Chord::leader(&[Key::Space, Key::A]));
+        // Ce qu'on écrit sur le binaire pour s'en souvenir. `m n` nomme,
+        // `m c` commente — et `n` retrouve enfin sa place, celle qu'il a
+        // dans tous les outils du métier. Il avait dû céder à `Espace a`
+        // parce que `Espace n` était le préfixe de `Espace n i` ; ce
+        // préfixe n'existe plus.
+        map.insert(
+            Action::NameAddress,
+            Chord::leader(&[Key::Space, Key::M, Key::N]),
+        );
         map.insert(
             Action::CommentAddress,
-            Chord::leader(&[Key::Space, Key::C]),
+            Chord::leader(&[Key::Space, Key::M, Key::C]),
         );
-        // `n` et `N` tout court, sans leader : c'est ainsi qu'on passe
-        // d'une occurrence à l'autre dans vim, et une séquence de trois
-        // touches pour un geste qu'on répète dix fois de suite n'en
-        // serait pas une.
         map.insert(
             Action::NextMatch,
-            Chord::Simple(KeyboardShortcut::new(Modifiers::NONE, Key::N)),
+            Chord::leader(&[Key::Space, Key::Slash, Key::N]),
         );
         map.insert(
             Action::PreviousMatch,
-            Chord::Simple(KeyboardShortcut::new(Modifiers::SHIFT, Key::N)),
+            Chord::leader(&[Key::Space, Key::Slash, Key::P]),
         );
         // Ctrl+F : chercher, comme partout ailleurs.
         map.insert(
             Action::Find,
             Chord::Simple(KeyboardShortcut::new(Modifiers::CTRL, Key::F)),
         );
-        map.insert(Action::ToggleExplorer, Chord::leader(&[Key::Space, Key::E]));
-        // `Espace g` : le graphe du déroulement. `g` comme graphe, et
-        // sous le même préfixe que l'explorateur — ce sont deux façons
-        // de regarder ce qu'on a sous la main.
-        map.insert(Action::ShowFlow, Chord::leader(&[Key::Space, Key::G]));
+        // --- `Espace v…` : voir ------------------------------------
+        //
+        // Ce qui ouvre une vue sur ce qu'on a sous la main, sans rien
+        // changer au programme.
+        map.insert(
+            Action::ToggleExplorer,
+            Chord::leader(&[Key::Space, Key::V, Key::E]),
+        );
+        map.insert(
+            Action::ShowFlow,
+            Chord::leader(&[Key::Space, Key::V, Key::G]),
+        );
         // Trois pas d'exploration sous le même préfixe, `u` comme
         // *until* — le mot de gdb pour « cours jusqu'à ». Trois touches
         // et non deux : `Espace r` et `Espace s…` sont déjà pris, et une
@@ -1010,7 +1034,7 @@ mod tests {
         let mut dispatcher = Dispatcher::default();
         let mut result = None;
 
-        run(&ctx, vec![key_event(Key::Space), key_event(Key::E)], |ui| {
+        run(&ctx, vec![key_event(Key::Space), key_event(Key::V), key_event(Key::E)], |ui| {
             result = dispatcher.poll(ui.ctx(), &bindings, false);
         });
 
@@ -1028,6 +1052,12 @@ mod tests {
         });
         assert_eq!(dispatcher.pending(), [Key::Space]);
 
+        // `Espace v e` compte trois touches depuis que les séquences
+        // sont rangées par famille : `v` ouvre la famille « voir », `e`
+        // désigne l'explorateur.
+        run(&ctx, vec![key_event(Key::V)], |ui| {
+            assert_eq!(dispatcher.poll(ui.ctx(), &bindings, false), None);
+        });
         let mut result = None;
         run(&ctx, vec![key_event(Key::E)], |ui| {
             result = dispatcher.poll(ui.ctx(), &bindings, false);
@@ -1043,7 +1073,7 @@ mod tests {
         let mut dispatcher = Dispatcher::default();
         let mut result = None;
 
-        run(&ctx, vec![key_event(Key::Space), key_event(Key::E)], |ui| {
+        run(&ctx, vec![key_event(Key::Space), key_event(Key::V), key_event(Key::E)], |ui| {
             result = dispatcher.poll(ui.ctx(), &bindings, true);
         });
 
@@ -1126,7 +1156,7 @@ mod tests {
 
         // Frame 2 : le clavier est dans un champ, et on y tape `e`.
         let mut fired = None;
-        run(&ctx, vec![key_event(Key::E)], |ui| {
+        run(&ctx, vec![key_event(Key::V)], |ui| {
             fired = dispatcher.poll(ui.ctx(), &bindings, true);
         });
 
@@ -1144,9 +1174,9 @@ mod tests {
     #[test]
     fn a_three_key_sequence_resolves() {
         for (keys, expected) in [
-            (vec![Key::Space, Key::S, Key::I], Action::StepInto),
-            (vec![Key::Space, Key::N, Key::I], Action::StepOver),
-            (vec![Key::Space, Key::R], Action::Run),
+            (vec![Key::Space, Key::P, Key::I], Action::StepInto),
+            (vec![Key::Space, Key::P, Key::O], Action::StepOver),
+            (vec![Key::Space, Key::P, Key::R], Action::Run),
         ] {
             let ctx = egui::Context::default();
             let bindings = KeyBindings::default();
@@ -1170,23 +1200,38 @@ mod tests {
     /// touche quelque part.
     #[test]
     fn a_sequence_in_progress_beats_a_simple_shortcut() {
-        let bindings = KeyBindings::default();
-        // La touche est bien un raccourci simple à elle seule.
+        // Une table bâtie pour le test, où le conflit existe : `o` seul
+        // est un raccourci, et `o` est aussi la deuxième touche de
+        // `Espace p o`. Aucun des deux jeux livrés n'a plus ce cas — le
+        // rangement par famille l'a fait disparaître —, mais la règle
+        // doit rester vraie pour le jour où l'on ajoutera un raccourci.
+        let mut map = BTreeMap::new();
+        map.insert(
+            Action::Stop,
+            Chord::Simple(KeyboardShortcut::new(Modifiers::NONE, Key::O)),
+        );
+        map.insert(
+            Action::StepOver,
+            Chord::leader(&[Key::Space, Key::P, Key::O]),
+        );
+        let bindings = KeyBindings { map };
+
+        // Seule, la touche déclenche son raccourci.
         let ctx = egui::Context::default();
         let mut dispatcher = Dispatcher::default();
         let mut seule = None;
-        run(&ctx, vec![key_event(Key::N)], |ui| {
+        run(&ctx, vec![key_event(Key::O)], |ui| {
             seule = dispatcher.poll(ui.ctx(), &bindings, false);
         });
-        assert_eq!(seule, Some(Action::NextMatch), "`n` seul avance");
+        assert_eq!(seule, Some(Action::Stop), "`o` seul fait son raccourci");
 
-        // Mais au milieu d'une séquence, elle appartient à la séquence.
+        // Au milieu d'une séquence, elle appartient à la séquence.
         let ctx = egui::Context::default();
         let mut dispatcher = Dispatcher::default();
         let mut suite = None;
         run(
             &ctx,
-            vec![Key::Space, Key::N, Key::I]
+            vec![Key::Space, Key::P, Key::O]
                 .into_iter()
                 .map(key_event)
                 .collect(),
@@ -1194,7 +1239,11 @@ mod tests {
                 suite = dispatcher.poll(ui.ctx(), &bindings, false);
             },
         );
-        assert_eq!(suite, Some(Action::StepOver), "`Espace n i` reste Step Over");
+        assert_eq!(
+            suite,
+            Some(Action::StepOver),
+            "et la séquence reste atteignable"
+        );
     }
 
     /// Les deux premières touches de `Espace s i` ne déclenchent rien
@@ -1208,10 +1257,10 @@ mod tests {
         run(&ctx, vec![key_event(Key::Space)], |ui| {
             assert_eq!(dispatcher.poll(ui.ctx(), &bindings, false), None);
         });
-        run(&ctx, vec![key_event(Key::S)], |ui| {
+        run(&ctx, vec![key_event(Key::P)], |ui| {
             assert_eq!(dispatcher.poll(ui.ctx(), &bindings, false), None);
         });
-        assert_eq!(dispatcher.pending(), [Key::Space, Key::S]);
+        assert_eq!(dispatcher.pending(), [Key::Space, Key::P]);
 
         let mut result = None;
         run(&ctx, vec![key_event(Key::I)], |ui| {
@@ -1240,7 +1289,7 @@ mod tests {
         };
         run(
             &ctx,
-            vec![key_event(Key::Space), shifted(Key::S), shifted(Key::I)],
+            vec![key_event(Key::Space), shifted(Key::P), shifted(Key::I)],
             |ui| {
                 result = dispatcher.poll(ui.ctx(), &bindings, false);
             },
@@ -1267,6 +1316,7 @@ mod tests {
         assert!(dispatcher.pending().is_empty());
 
         let mut events = key_stroke(Key::Space);
+        events.extend(key_stroke(Key::P));
         events.extend(key_stroke(Key::R));
         let mut result = None;
         run(&ctx, events, |ui| {
@@ -1292,7 +1342,7 @@ mod tests {
 
         run(
             &ctx,
-            vec![key_event(Key::Space), key_event(Key::S), key_event(Key::I)],
+            vec![key_event(Key::Space), key_event(Key::P), key_event(Key::I)],
             |ui| {
                 assert_eq!(
                     dispatcher.poll(ui.ctx(), &bindings, false),
@@ -1351,8 +1401,8 @@ mod tests {
     /// séquence vide ou trop longue n'existe pas.
     #[test]
     fn a_sequence_holds_between_one_and_three_keys() {
-        let sequence = Sequence::new(&[Key::Space, Key::S, Key::I]).unwrap();
-        assert_eq!(sequence.as_slice(), [Key::Space, Key::S, Key::I]);
+        let sequence = Sequence::new(&[Key::Space, Key::P, Key::I]).unwrap();
+        assert_eq!(sequence.as_slice(), [Key::Space, Key::P, Key::I]);
         assert_eq!(sequence.first(), Key::Space);
 
         assert!(Sequence::new(&[]).is_none());
@@ -1361,12 +1411,151 @@ mod tests {
         // L'égalité ne regarde que les touches utiles, pas le remplissage
         // du tableau.
         assert_eq!(
-            Sequence::new(&[Key::Space, Key::E]),
-            Sequence::new(&[Key::Space, Key::E])
+            Sequence::new(&[Key::Space, Key::V, Key::E]),
+            Sequence::new(&[Key::Space, Key::V, Key::E])
         );
         assert_ne!(
-            Sequence::new(&[Key::Space, Key::E]),
+            Sequence::new(&[Key::Space, Key::V, Key::E]),
             Sequence::new(&[Key::Space, Key::E, Key::I])
         );
+    }
+}
+
+#[cfg(test)]
+mod family_tests {
+    use super::*;
+
+    /// Aucune séquence n'est le préfixe d'une autre.
+    ///
+    /// C'était le défaut de fond, et il s'est manifesté trois fois : une
+    /// séquence courte se résout avant la longue, si bien que la longue
+    /// devient inatteignable. `n` court-circuitait `Espace n i`, puis
+    /// `Espace n` aussi.
+    ///
+    /// Ce contrôle vaut pour les deux jeux, et couvre aussi le cas mêlé —
+    /// un raccourci simple qui est la deuxième touche d'une séquence est
+    /// désormais permis (le dispatcher donne la priorité à la séquence en
+    /// cours), mais une séquence préfixe d'une autre ne l'est jamais.
+    #[test]
+    fn no_sequence_is_the_prefix_of_another() {
+        for (nom, jeu) in [("vim", KeyBindings::vim()), ("ordinaire", KeyBindings::classic())] {
+            let séquences: Vec<(Action, Vec<Key>)> = jeu
+                .map
+                .iter()
+                .filter_map(|(action, chord)| match chord {
+                    Chord::Leader(suite) => Some((*action, suite.as_slice().to_vec())),
+                    Chord::Simple(_) => None,
+                })
+                .collect();
+            for (a, courte) in &séquences {
+                for (b, longue) in &séquences {
+                    if a == b {
+                        continue;
+                    }
+                    assert!(
+                        !longue.starts_with(courte),
+                        "jeu {nom} : {a:?} ({courte:?}) est le préfixe de {b:?} \
+                         ({longue:?}), qui devient donc inatteignable"
+                    );
+                }
+            }
+        }
+    }
+
+    /// Chaque famille range ce qui va ensemble, et rien d'autre.
+    ///
+    /// C'est la règle qui remplace l'ancienne — « la première lettre de
+    /// l'action » —, laquelle plaçait chaque ajout là où il restait de la
+    /// place plutôt qu'à un endroit qui se devine.
+    #[test]
+    fn each_family_holds_what_belongs_together() {
+        let jeu = KeyBindings::vim();
+        let préfixe_de = |action: Action| -> Option<Vec<Key>> {
+            match jeu.map.get(&action)? {
+                Chord::Leader(suite) => {
+                    let touches = suite.as_slice();
+                    (touches.len() >= 2).then(|| touches[..2].to_vec())
+                }
+                Chord::Simple(_) => None,
+            }
+        };
+
+        // Les pas, tous sous `Espace p`.
+        for action in [
+            Action::Run,
+            Action::StepInto,
+            Action::StepOver,
+            Action::StepBack,
+            Action::RunToCursor,
+        ] {
+            assert_eq!(
+                préfixe_de(action),
+                Some(vec![Key::Space, Key::P]),
+                "{action:?} appartient à la famille des pas"
+            );
+        }
+
+        // Chercher, tous sous `Espace /`.
+        for action in [
+            Action::HighlightMatches,
+            Action::NextMatch,
+            Action::PreviousMatch,
+            Action::RenameMatches,
+        ] {
+            assert_eq!(
+                préfixe_de(action),
+                Some(vec![Key::Space, Key::Slash]),
+                "{action:?} appartient à la famille « chercher »"
+            );
+        }
+
+        // Marquer, sous `Espace m`.
+        for action in [Action::NameAddress, Action::CommentAddress] {
+            assert_eq!(
+                préfixe_de(action),
+                Some(vec![Key::Space, Key::M]),
+                "{action:?} appartient à la famille « marquer »"
+            );
+        }
+
+        // Voir, sous `Espace v`.
+        for action in [Action::ToggleExplorer, Action::ShowFlow] {
+            assert_eq!(
+                préfixe_de(action),
+                Some(vec![Key::Space, Key::V]),
+                "{action:?} appartient à la famille « voir »"
+            );
+        }
+
+        // Et « cours jusqu'à », qui était déjà rangé ainsi.
+        for action in [
+            Action::RunToCall,
+            Action::RunToReturn,
+            Action::RunToSyscall,
+        ] {
+            assert_eq!(
+                préfixe_de(action),
+                Some(vec![Key::Space, Key::U]),
+                "{action:?} appartient à la famille « cours jusqu'à »"
+            );
+        }
+    }
+
+    /// Une même touche ne sert pas deux fois dans un jeu.
+    ///
+    /// Deux actions sur le même raccourci en rendent une inatteignable,
+    /// et laquelle dépend de l'ordre de parcours de la table — c'est-à-dire
+    /// du hasard.
+    #[test]
+    fn no_shortcut_is_used_twice() {
+        for (nom, jeu) in [("vim", KeyBindings::vim()), ("ordinaire", KeyBindings::classic())] {
+            let mut vus: std::collections::BTreeMap<String, Action> = Default::default();
+            for (action, chord) in &jeu.map {
+                let clé = format!("{chord:?}");
+                if let Some(déjà) = vus.insert(clé.clone(), *action) {
+                    panic!("jeu {nom} : {déjà:?} et {action:?} partagent {clé}");
+                }
+            }
+        }
     }
 }

@@ -73,6 +73,15 @@ def fiches():
 def raccourcis():
     """Les raccourcis par défaut, lus dans le code qui les pose."""
     texte = (RACINE / "crates/namsdec-gui/src/keybindings.rs").read_text(encoding="utf-8")
+    # Sans les modules de test : ils posent leurs propres tables pour
+    # vérifier des règles, et le guide les lisait comme de vrais
+    # raccourcis — on y trouvait « Stop : O », qui n'existe nulle part
+    # dans l'application.
+    #
+    # Les accolades se comptent, faute de quoi on ne sait pas où un
+    # module finit : il y en a un AVANT les définitions, et couper au
+    # premier venu ne laissait plus rien.
+    texte = _sans_les_tests(texte)
     trouvés = []
     for bloc in re.finditer(
         r"map\.insert\(\s*Action::(\w+),\s*Chord::(?:Simple\(KeyboardShortcut::new\(\s*"
@@ -97,11 +106,43 @@ def raccourcis():
     return trouvés
 
 
+def _sans_les_tests(texte):
+    """Le code, débarrassé de ses modules `#[cfg(test)]`."""
+    out = []
+    reste = texte
+    while True:
+        début = reste.find("#[cfg(test)]")
+        if début < 0:
+            out.append(reste)
+            break
+        out.append(reste[:début])
+        # De la première accolade du module jusqu'à celle qui la ferme.
+        ouvre = reste.find("{", début)
+        if ouvre < 0:
+            break
+        profondeur, i = 0, ouvre
+        while i < len(reste):
+            if reste[i] == "{":
+                profondeur += 1
+            elif reste[i] == "}":
+                profondeur -= 1
+                if profondeur == 0:
+                    break
+            i += 1
+        reste = reste[i + 1:]
+    return "".join(out)
+
+
 def _touche(nom):
     """Le nom d'une touche, tel qu'on le dit en français."""
     return {
         "CTRL": "Ctrl", "SHIFT": "Maj", "ALT": "Alt", "COMMAND": "Cmd",
         "Space": "Espace", "Escape": "Échap",
+        # Les touches de ponctuation : egui les nomme, on les écrit.
+        # « Slash » dans un guide ne dit pas sur quoi appuyer.
+        "Slash": "/", "Backslash": "\\", "Semicolon": ";", "Quote": "'",
+        "Comma": ",", "Period": ".", "Minus": "-", "Plus": "+", "Equals": "=",
+        "OpenBracket": "[", "CloseBracket": "]",
     }.get(nom, nom)
 
 
