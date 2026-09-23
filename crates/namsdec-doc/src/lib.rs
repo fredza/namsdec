@@ -326,3 +326,208 @@ mod tests {
         }
     }
 }
+
+/// Une fiche trouvée par une recherche, et le nom qui a correspondu.
+///
+/// Le nom compte autant que la fiche : une fiche couvre souvent
+/// plusieurs mnémoniques — `push` et `pop` partagent la leur — et
+/// n'afficher que le premier répondait « push » à qui cherchait « pop ».
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Found {
+    pub entry: &'static Entry,
+    /// Le nom sous lequel la fiche a été trouvée, tel qu'on l'a cherché.
+    pub name: &'static str,
+    /// D'autant plus petit que la correspondance est franche : sert au
+    /// classement, et n'a pas d'autre sens.
+    rang: u8,
+}
+
+/// Les fiches qui répondent à `query`, la plus franche d'abord.
+///
+/// Le classement est ce qui manquait. Chercher « pop » rendait quatre
+/// fiches dans l'ordre du manuel — `push`, `pushf`, `popcnt`, `%push` —
+/// et celle qu'on voulait n'était nulle part en tête, alors qu'elle
+/// portait le nom exact.
+///
+/// Quatre degrés, du plus franc au plus lâche :
+///
+/// 1. un nom **exact** ;
+/// 2. un nom qui **commence** par ce qu'on a tapé ;
+/// 3. un nom qui le **contient** ;
+/// 4. le **titre** qui le contient.
+///
+/// À rang égal, l'ordre du manuel est gardé : les familles s'y suivent,
+/// et les bousculer par ordre alphabétique n'apprendrait rien.
+pub fn search(query: &str, lang: &str) -> Vec<Found> {
+    let query = query.trim().to_ascii_lowercase();
+    if query.is_empty() {
+        return Vec::new();
+    }
+    let mut out: Vec<Found> = Vec::new();
+    for entry in all() {
+        // Le meilleur des noms de la fiche : c'est lui qu'on montrera,
+        // et c'est lui qui décide du rang.
+        let meilleur = entry
+            .names
+            .iter()
+            .map(|name| {
+                let rang = if *name == query {
+                    0
+                } else if name.starts_with(&query) {
+                    1
+                } else if name.contains(&query) {
+                    2
+                } else {
+                    u8::MAX
+                };
+                (rang, *name)
+            })
+            .min_by_key(|(rang, _)| *rang);
+        let (rang, name) = match meilleur {
+            Some((rang, name)) if rang != u8::MAX => (rang, name),
+            // Aucun nom ne correspond : reste le titre, qui répond à
+            // « comment ça s'appelle, déjà ? » plutôt qu'à un nom précis.
+            _ if entry.title.get(lang).to_lowercase().contains(&query) => (3, entry.names[0]),
+            _ => continue,
+        };
+        out.push(Found { entry, name, rang });
+    }
+    // `sort_by_key` est stable : à rang égal, l'ordre du manuel tient.
+    out.sort_by_key(|trouvé| trouvé.rang);
+    out
+}
+
+#[cfg(test)]
+mod search_tests {
+    use super::*;
+
+    /// Chercher « pop » rend d'abord la fiche de `pop`, sous son nom.
+    ///
+    /// Elle rendait quatre fiches dans l'ordre du manuel — `push`,
+    /// `pushf`, `popcnt`, `%push` — et celle qu'on voulait n'était nulle
+    /// part en tête. Pire : elle s'y affichait sous le nom « push »,
+    /// parce que c'est le premier de la fiche. On cherchait `pop`, on
+    /// lisait `push`.
+    #[test]
+    fn searching_for_pop_answers_pop() {
+        let trouvées = search("pop", "fr");
+        assert!(!trouvées.is_empty(), "« pop » doit trouver quelque chose");
+        assert_eq!(
+            trouvées[0].name, "pop",
+            "et la première doit porter le nom cherché : {:?}",
+            trouvées.iter().map(|t| t.name).collect::<Vec<_>>()
+        );
+        assert!(
+            trouvées[0].entry.names.contains(&"pop"),
+            "la fiche couvre bien pop"
+        );
+    }
+
+    /// Un nom exact passe devant un nom qui commence pareil.
+    #[test]
+    fn an_exact_name_comes_before_one_that_merely_starts_alike() {
+        let trouvées = search("mov", "fr");
+        assert_eq!(trouvées[0].name, "mov");
+        // `movsb`, `movzx` et les autres suivent, mais après.
+        assert!(
+            trouvées.len() > 1,
+            "les cousines sont là aussi : {:?}",
+            trouvées.iter().map(|t| t.name).collect::<Vec<_>>()
+        );
+    }
+
+    /// On trouve aussi par le titre, pour ce dont on ignore le nom.
+    ///
+    /// C'est la moitié du service : un manuel qu'on ne peut consulter
+    /// qu'en sachant déjà le nom de ce qu'on cherche ne sert qu'à ceux
+    /// qui n'en ont pas besoin.
+    #[test]
+    fn one_can_search_without_knowing_the_name() {
+        let trouvées = search("pile", "fr");
+        assert!(
+            !trouvées.is_empty(),
+            "« pile » doit mener quelque part : c'est ainsi qu'on cherche \
+             ce dont on ignore le nom"
+        );
+    }
+
+    /// Une recherche vide ne rend rien, et rien ne panique.
+    #[test]
+    fn nothing_breaks_on_anything() {
+        assert!(search("", "fr").is_empty());
+        assert!(search("   ", "fr").is_empty());
+        for texte in ["zzzz", "%", "é", "MOV", "0x", "'"] {
+            let _ = search(texte, "fr");
+            let _ = search(texte, "en");
+        }
+        // Et la casse ne compte pas.
+        assert_eq!(search("MOV", "fr")[0].name, search("mov", "fr")[0].name);
+    }
+}
+
+/// L'adresse de la référence complète d'une instruction, quand il y en a
+/// une.
+///
+/// Les fiches de namsdec tiennent en un écran : elles disent ce que
+/// l'instruction fait, ce qu'elle écrit comme indicateurs, et donnent un
+/// exemple qui s'assemble. C'est ce qu'on veut en écrivant du code.
+///
+/// Ce n'est pas ce qu'on veut quand une instruction se comporte
+/// autrement qu'on l'espérait : il faut alors le détail — tous les
+/// encodages, tous les modes, toutes les exceptions —, c'est-à-dire le
+/// manuel d'Intel. Le recopier ici serait absurde : il fait deux mille
+/// pages, et il est déjà mis en ligne, instruction par instruction.
+///
+/// `None` pour ce qui n'est pas une instruction du processeur : une
+/// directive de NASM ou une notion n'ont rien à voir chez Intel, et y
+/// renvoyer enverrait dans le vide.
+pub fn reference_url(entry: &Entry) -> Option<String> {
+    if entry.kind != Kind::Instruction {
+        return None;
+    }
+    // felixcloutier.com met en ligne le manuel d'Intel, une page par
+    // instruction, adressée par son mnémonique en majuscules.
+    let nom = entry.names.first()?.to_ascii_uppercase();
+    Some(format!("https://www.felixcloutier.com/x86/{nom}"))
+}
+
+#[cfg(test)]
+mod reference_tests {
+    use super::*;
+
+    /// Une instruction renvoie vers le manuel d'Intel, une notion non.
+    #[test]
+    fn only_instructions_point_at_intels_manual() {
+        let mov = lookup("mov").expect("la fiche de mov");
+        let url = reference_url(mov).expect("une instruction a sa référence");
+        assert!(url.ends_with("/MOV"), "{url}");
+        assert!(url.starts_with("https://"), "{url}");
+
+        // Une directive de NASM n'a rien à voir chez Intel : y renvoyer
+        // enverrait dans le vide.
+        for nom in ["db", "section"] {
+            if let Some(fiche) = lookup(nom) {
+                assert!(
+                    reference_url(fiche).is_none(),
+                    "« {nom} » n'est pas une instruction du processeur"
+                );
+            }
+        }
+    }
+
+    /// Chaque instruction documentée a une référence, et une seule forme.
+    #[test]
+    fn every_instruction_has_one() {
+        let mut vues = 0;
+        for entry in all().iter().filter(|e| e.kind == Kind::Instruction) {
+            let url = reference_url(entry)
+                .unwrap_or_else(|| panic!("{:?} devrait avoir une référence", entry.names));
+            assert!(
+                !url.contains(' ') && url.starts_with("https://www.felixcloutier.com/x86/"),
+                "adresse mal formée : {url}"
+            );
+            vues += 1;
+        }
+        assert!(vues > 50, "le manuel compte bien des instructions : {vues}");
+    }
+}

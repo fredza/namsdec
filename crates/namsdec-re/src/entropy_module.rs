@@ -49,14 +49,21 @@ impl ReModule for EntropyModule {
         }
 
         let fr = ctx.lang.starts_with("fr");
-        ui.horizontal(|ui| {
-            ui.label(ctx.t("Sur tout le fichier", "Whole file"));
-            ui.monospace(format!("{:.2}", self.whole));
-            ui.weak(Verdict::of(self.whole).label(fr));
+        // Les deux mesures côte à côte, le profil à droite : la bande
+        // pleine largeur prenait l'oeil avant le reste, alors que c'est
+        // un indice parmi sept. Ce qu'on lit d'abord est le chiffre et
+        // son verdict ; le dessin sert à savoir OÙ, non à savoir quoi.
+        ui.horizontal_top(|ui| {
+            ui.vertical(|ui| {
+                ui.horizontal(|ui| {
+                    ui.label(ctx.t("Sur tout le fichier", "Whole file"));
+                    ui.monospace(format!("{:.2}", self.whole));
+                });
+                ui.weak(Verdict::of(self.whole).label(fr));
+            });
+            ui.add_space(12.0);
+            histogram(ui, &self.windows);
         });
-        ui.add_space(6.0);
-
-        histogram(ui, &self.windows);
 
         ui.add_space(6.0);
         // La tranche la plus haute, nommée par son décalage : c'est
@@ -97,8 +104,16 @@ impl ReModule for EntropyModule {
 /// une échelle qui s'ajuste ferait paraître spectaculaire l'écart entre
 /// 5,9 et 6,1, et l'oeil y verrait une bosse qui n'existe pas.
 fn histogram(ui: &mut egui::Ui, windows: &[Window]) {
-    const HAUTEUR: f32 = 64.0;
-    let largeur = ui.available_width().max(64.0);
+    // Assez haut pour qu'une bosse se voie, assez bas pour ne pas
+    // occuper le tiers de la fenêtre d'analyse. Soixante-quatre pixels
+    // en travers de toute la largeur faisaient une bande qui prenait
+    // l'oeil avant le reste — or c'est un indice parmi sept, non le
+    // sujet.
+    const HAUTEUR: f32 = 36.0;
+    // Bornée aussi en largeur : étirée sur une fenêtre de mille pixels,
+    // chaque colonne devenait un trait isolé au milieu du vide, et la
+    // forme du profil se perdait au lieu de se lire.
+    let largeur = ui.available_width().clamp(64.0, 520.0);
     let (rect, réponse) =
         ui.allocate_exact_size(egui::vec2(largeur, HAUTEUR), egui::Sense::hover());
     let peintre = ui.painter_at(rect);

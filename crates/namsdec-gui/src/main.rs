@@ -6853,6 +6853,7 @@ impl NamsdecApp {
         let theme = self.theme;
         let lang = self.lang;
         let mut open = true;
+        let mut fermer_ok = false;
         let regs = self.emulator.as_ref().map(|e| &e.cpu().regs);
         let résultat = calc::eval(&self.calc_input, regs);
         let mut à_copier: Option<String> = None;
@@ -6869,6 +6870,9 @@ impl NamsdecApp {
         let rendue = self
             .maximizable(fenêtre, Self::CALCULATOR_WINDOW, ctx)
             .show(ctx, |ui| {
+                if ok_bar(ui, theme, s, "calculator") {
+                    fermer_ok = true;
+                }
                 ui.horizontal(|ui| {
                     ui.colored_label(theme.dim, s.calculator_expression);
                     let champ = ui.add(
@@ -6980,7 +6984,7 @@ impl NamsdecApp {
             self.status = Status::Note(|s| s.calculator_copied);
         }
         self.calculator_was_open = self.show_calculator;
-        self.show_calculator = open;
+        self.show_calculator = open && !fermer_ok;
         if !open {
             self.calculator_was_open = false;
         }
@@ -6991,6 +6995,7 @@ impl NamsdecApp {
         let theme = self.theme;
         let lang = self.lang.code();
         let mut open = self.show_exercises;
+        let mut fermer_ok = false;
         let mut load = None;
         let mut fiche: Option<&'static str> = None;
         let fenêtre_exercises_window = egui::Window::new(s.exercises_title)
@@ -7018,6 +7023,9 @@ impl NamsdecApp {
         let rendue_exercises_window = self
             .maximizable(fenêtre_exercises_window, Self::EXERCISES_WINDOW, ctx)
             .show(ctx, |ui| {
+                if ok_bar(ui, self.theme, strings(self.lang), "exercises") {
+                    fermer_ok = true;
+                }
                 // Aucune série lisible : le parcours est un fichier, et
                 // ce fichier n'est pas là. Le dire, avec l'endroit où il
                 // devrait être — c'est la seule chose utile ici.
@@ -7335,7 +7343,7 @@ impl NamsdecApp {
             self.open_help(name);
             self.show_help = true;
         }
-        self.show_exercises = open;
+        self.show_exercises = open && !fermer_ok;
     }
 
     /// Met le programme de départ d'un exercice dans l'éditeur.
@@ -7526,6 +7534,7 @@ impl NamsdecApp {
         let s = strings(self.lang);
         let theme = self.theme;
         let mut open = self.show_flow;
+        let mut fermer_ok = false;
         let mut aller: Option<u32> = None;
         let agrandie = self.window_maximized(Self::FLOW_WINDOW);
         // Ce que le bouton a demandé : appliqué une fois la fenêtre
@@ -7558,6 +7567,9 @@ impl NamsdecApp {
         };
         let rendue = fenêtre
             .show(ctx, |ui| {
+                if ok_bar(ui, self.theme, strings(self.lang), "flow") {
+                    fermer_ok = true;
+                }
                 let Some(state) = &self.assemble_state else {
                     ui.colored_label(theme.dim, s.flow_empty);
                     return;
@@ -7794,7 +7806,7 @@ impl NamsdecApp {
                 // trois doivent parler du même point.
                 self.flow_offset = sortie.state.offset - tiré;
             });
-        self.show_flow = open;
+        self.show_flow = open && !fermer_ok;
         if let Some(rendue) = rendue
             && title_bar_maximize_button(
                 ctx,
@@ -8053,6 +8065,7 @@ impl NamsdecApp {
         let s = strings(self.lang);
         let theme = self.theme;
         let mut open = self.show_decompiler;
+        let mut fermer_ok = false;
         let mut lancer = false;
         let agrandie = self.window_maximized(Self::DECOMPILER_WINDOW);
         let mut bascule = false;
@@ -8071,6 +8084,9 @@ impl NamsdecApp {
         };
         let rendue = fenêtre
             .show(ctx, |ui| {
+                if ok_bar(ui, self.theme, strings(self.lang), "decompiler") {
+                    fermer_ok = true;
+                }
                 if self.decompilers.is_empty() {
                     ui.colored_label(theme.warn, s.decompiler_none_installed);
                     ui.add_space(4.0);
@@ -8300,7 +8316,7 @@ impl NamsdecApp {
                     }
                 }
             });
-        self.show_decompiler = open;
+        self.show_decompiler = open && !fermer_ok;
         if let Some(rendue) = rendue
             && title_bar_maximize_button(
                 ctx,
@@ -11192,6 +11208,7 @@ impl NamsdecApp {
         let theme = self.theme;
         let lang = self.lang.code();
         let mut open = true;
+        let mut fermer_ok = false;
         let mut aller: Option<u32> = None;
         let mut vise: Option<u64> = None;
         let mut revenir_au_début = false;
@@ -11213,6 +11230,9 @@ impl NamsdecApp {
         let rendue_disassembly_window = self
             .maximizable(fenêtre_disassembly_window, Self::DISASSEMBLY_WINDOW, ctx)
             .show(ctx, |ui| {
+                if ok_bar(ui, self.theme, strings(self.lang), "disassembly") {
+                    fermer_ok = true;
+                }
                 // Le choix du moteur, en tête : c'est lui qui décide de
                 // tout ce qu'on lit en dessous.
                 ui.horizontal_wrapped(|ui| {
@@ -11491,7 +11511,7 @@ impl NamsdecApp {
         if revenir_au_début {
             self.disassembly_target = None;
         }
-        self.show_disassembly = open;
+        self.show_disassembly = open && !fermer_ok;
     }
 
     /// La chronologie : le chemin parcouru, et de quoi y revenir.
@@ -11519,6 +11539,7 @@ impl NamsdecApp {
         let s = strings(self.lang);
         let theme = self.theme;
         let mut open = true;
+        let mut fermer_ok = false;
         // Relevés avant la fenêtre, qui emprunte `self` en écriture.
         let registres: Vec<(&'static str, u64)> = self
             .emulator
@@ -11541,6 +11562,9 @@ impl NamsdecApp {
             .pivot(egui::Align2::CENTER_CENTER)
             .default_pos(ctx.viewport_rect().center())
             .show(ctx, |ui| {
+                if ok_bar(ui, self.theme, strings(self.lang), "cyclic") {
+                    fermer_ok = true;
+                }
                 ui.label(prose(ui, theme, s.cyclic_explain));
                 ui.separator();
 
@@ -11627,7 +11651,7 @@ impl NamsdecApp {
             self.show_console = true;
             self.status = Status::Note(|s| s.cyclic_sent);
         }
-        self.show_cyclic = open;
+        self.show_cyclic = open && !fermer_ok;
     }
 
     /// Le parcours entier, tel que l'émulateur l'a retenu.
@@ -11649,6 +11673,7 @@ impl NamsdecApp {
         let s = strings(self.lang);
         let theme = self.theme;
         let mut open = true;
+        let mut fermer_ok = false;
         let mut revenir = None;
         let mut aller = None;
 
@@ -11684,6 +11709,9 @@ impl NamsdecApp {
         let rendue_timeline_window = self
             .maximizable(fenêtre_timeline_window, Self::TIMELINE_WINDOW, ctx)
             .show(ctx, |ui| {
+                if ok_bar(ui, self.theme, strings(self.lang), "timeline") {
+                    fermer_ok = true;
+                }
                 if pas.is_empty() {
                     ui.weak(if self.timeline_notable_only {
                         s.timeline_nothing_notable
@@ -11791,7 +11819,7 @@ impl NamsdecApp {
         if let Some(ligne) = aller {
             self.goto_line = Some(ligne);
         }
-        self.show_timeline = open;
+        self.show_timeline = open && !fermer_ok;
     }
 
     /// Rembobine de `pas` pas : autant de retours en arrière, d'un coup.
@@ -11836,6 +11864,7 @@ impl NamsdecApp {
         let s = strings(self.lang);
         let theme = self.theme;
         let mut open = true;
+        let mut fermer_ok = false;
         let mut retirer = None;
         egui::Window::new(s.breakpoints_title)
             .id(egui::Id::new("breakpoints_window"))
@@ -11846,6 +11875,9 @@ impl NamsdecApp {
             .pivot(egui::Align2::CENTER_CENTER)
             .default_pos(ctx.viewport_rect().center())
             .show(ctx, |ui| {
+                if ok_bar(ui, self.theme, strings(self.lang), "breakpoints") {
+                    fermer_ok = true;
+                }
                 if self.breakpoint_lines.is_empty() {
                     ui.weak(s.breakpoints_empty);
                     return;
@@ -11887,7 +11919,7 @@ impl NamsdecApp {
             self.breakpoint_conditions.remove(&ligne);
             self.sync_breakpoints();
         }
-        self.show_breakpoints = open;
+        self.show_breakpoints = open && !fermer_ok;
     }
 
     /// La fenêtre d'analyse : tous les modules de rétro-ingénierie, avec
@@ -11903,6 +11935,7 @@ impl NamsdecApp {
         }
         let s = strings(self.lang);
         let mut open = true;
+        let mut fermer_ok = false;
         let fenêtre_analysis_window = egui::Window::new(s.analysis_title)
             // Un identifiant explicite : le titre change avec la langue,
             // et la fenêtre perdrait sa position en passant à l'anglais.
@@ -11910,14 +11943,25 @@ impl NamsdecApp {
             .open(&mut open)
             .resizable(true)
             .collapsible(false)
-            // Six modules à la suite : la fenêtre part plus haute que
-            // large, et se redimensionne.
-            .default_size([620.0, 760.0])
+            // Sept modules à la suite, dont un histogramme et plusieurs
+            // tableaux : la fenêtre part large ET haute. 620 px de large
+            // coupaient les tables de fonctions au milieu d'une colonne,
+            // et l'on relisait un rapport en le faisant défiler dans les
+            // deux sens.
+            //
+            // Proportionnée à l'écran, comme celle des exercices : un
+            // chiffre en dur déborde d'un petit écran et se perd sur un
+            // grand.
+            .default_size(analysis_window_size(ctx))
+            .min_size([560.0, 420.0])
             .pivot(egui::Align2::CENTER_CENTER)
             .default_pos(ctx.viewport_rect().center());
         let rendue_analysis_window = self
             .maximizable(fenêtre_analysis_window, Self::ANALYSIS_WINDOW, ctx)
             .show(ctx, |ui| {
+                if ok_bar(ui, self.theme, strings(self.lang), "analysis") {
+                    fermer_ok = true;
+                }
                 ui.horizontal_wrapped(|ui| {
                     ui.weak(s.analysis_hint);
                 });
@@ -11948,7 +11992,7 @@ impl NamsdecApp {
                     .show(ui, |ui| self.re_modules_ui(ui, true));
             });
         self.place_maximize_button(ctx, Self::ANALYSIS_WINDOW, rendue_analysis_window);
-        self.show_analysis = open;
+        self.show_analysis = open && !fermer_ok;
     }
 
     /// La fiche d'une instruction : ce qu'elle fait, ce qu'elle laisse
@@ -11961,6 +12005,7 @@ impl NamsdecApp {
     fn help_window_ui(&mut self, ctx: &egui::Context) {
         let s = strings(self.lang);
         let mut open = self.show_help;
+        let mut fermer = false;
         egui::Window::new(s.help_title)
             // Un identifiant explicite : le titre change avec la langue,
             // et la fenêtre perdrait sa position en passant à l'anglais.
@@ -11968,14 +12013,33 @@ impl NamsdecApp {
             .open(&mut open)
             .resizable(true)
             .collapsible(false)
-            .default_size([460.0, 320.0])
+            // 460 × 320 était trop petit : une fiche s'y lisait par
+            // tranches de six lignes, et la liste des résultats tenait
+            // en quatre. Une barre de défilement qui parcourt quatre
+            // lignes n'est pas une barre, c'est un aveu.
+            .default_size([680.0, 560.0])
+            .min_size([460.0, 320.0])
             // En bas à droite, loin du curseur : on lit la fiche en
             // continuant d'écrire, elle ne doit pas couvrir la ligne sur
             // laquelle on vient de demander de l'aide.
             .pivot(egui::Align2::RIGHT_BOTTOM)
             .default_pos(ctx.viewport_rect().max - egui::vec2(24.0, 24.0))
-            .show(ctx, |ui| self.help_ui(ui));
-        self.show_help = open;
+            .show(ctx, |ui| {
+                // La fiche prend la place qui reste, la barre d'action
+                // garde la sienne en bas : sans ce panneau, le bouton
+                // était poussé hors de la fenêtre par une fiche longue.
+                egui::Panel::bottom("help_actions")
+                    .frame(egui::Frame::NONE)
+                    .show(ui, |ui| {
+                        ui.add_space(6.0);
+                        if dialog_bar(ui, self.theme, strings(self.lang).dialog_ok, None).is_some()
+                        {
+                            fermer = true;
+                        }
+                    });
+                self.help_ui(ui);
+            });
+        self.show_help = open && !fermer;
     }
 
     /// Les registres étendus, dans une fenêtre à eux.
@@ -11992,6 +12056,7 @@ impl NamsdecApp {
         }
         let s = strings(self.lang);
         let mut open = true;
+        let mut fermer_ok = false;
         egui::Window::new(s.vectors_title)
             .id(egui::Id::new("vectors_window"))
             .open(&mut open)
@@ -12001,6 +12066,9 @@ impl NamsdecApp {
             .pivot(egui::Align2::CENTER_CENTER)
             .default_pos(ctx.viewport_rect().center())
             .show(ctx, |ui| {
+                if ok_bar(ui, self.theme, strings(self.lang), "vectors") {
+                    fermer_ok = true;
+                }
                 if self.emulator.is_none() {
                     ui.label(s.no_binary_assembled);
                     return;
@@ -12013,7 +12081,7 @@ impl NamsdecApp {
                 ui.add_space(10.0);
                 self.x87_ui(ui);
             });
-        self.show_vectors = open;
+        self.show_vectors = open && !fermer_ok;
     }
 
     fn help_ui(&mut self, ui: &mut egui::Ui) {
@@ -12026,11 +12094,31 @@ impl NamsdecApp {
         // code — ce qui suppose de savoir qu'elle existe. Le manuel se
         // consulte aussi pour ce qu'on ne connaît pas encore.
         let mut ouvrir = None;
+        // Relevée avant le champ, comme partout ailleurs : un `TextEdit`
+        // qui traite Entrée la retire de la file.
+        let entrée_frappée = ui.input(|i| i.key_pressed(egui::Key::Enter));
         ui.horizontal(|ui| {
+            // Un vrai champ de recherche : la loupe devant, et la
+            // largeur qui suit la fenêtre. Un champ de 200 px collé aux
+            // boutons ne se voyait pas comme un champ.
+            //
+            // La loupe est dessinée, non écrite : l'emoji n'est dans
+            // aucune police chargée par défaut et se peindrait en carré
+            // vide — ce qu'un test du projet attrape.
+            let (marque, _) = ui.allocate_exact_size(
+                egui::vec2(16.0, ui.spacing().interact_size.y),
+                egui::Sense::hover(),
+            );
+            chrome::icon_search(
+                ui.painter(),
+                egui::Rect::from_center_size(marque.center(), egui::vec2(13.0, 13.0)),
+                theme.dim,
+            );
             ui.add(
                 egui::TextEdit::singleline(&mut self.help_query)
                     .hint_text(s.help_search)
-                    .desired_width(200.0),
+                    .font(egui::TextStyle::Monospace)
+                    .desired_width((ui.available_width() - 180.0).max(180.0)),
             );
             if !self.help_query.is_empty() && ui.button("x").clicked() {
                 self.help_query.clear();
@@ -12054,27 +12142,47 @@ impl NamsdecApp {
             }
         });
         if !self.help_query.is_empty() {
-            let query = self.help_query.to_lowercase();
-            let trouvées: Vec<&namsdec_doc::Entry> = namsdec_doc::all()
-                .iter()
-                .filter(|entry| {
-                    entry.names.iter().any(|name| name.contains(&query))
-                        || entry.title.get(lang_code).to_lowercase().contains(&query)
-                })
-                .collect();
+            // Classées par pertinence, et sous le nom qui a correspondu.
+            // Chercher « pop » rendait quatre fiches dans l'ordre du
+            // manuel, celle qu'on voulait nulle part en tête — et
+            // affichée sous le nom « push », premier de sa fiche. On
+            // cherchait `pop`, on lisait `push`.
+            let trouvées = namsdec_doc::search(&self.help_query, lang_code);
             ui.colored_label(theme.dim, format!("{} {}", trouvées.len(), s.help_results));
+            // Entrée ouvre la première : c'est celle qu'on voulait dans
+            // le cas ordinaire, et cela évite de viser à la souris ce
+            // qu'on vient de taper au clavier.
+            if entrée_frappée && let Some(première) = trouvées.first() {
+                ouvrir = Some(première.name);
+            }
             ui.separator();
             egui::ScrollArea::vertical()
                 .id_salt("help_index")
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
-                    for entry in trouvées {
+                    for trouvée in trouvées {
                         let ligne = ui.horizontal_wrapped(|ui| {
                             ui.colored_label(
                                 theme.mnemonic,
-                                egui::RichText::new(entry.names[0]).monospace(),
+                                egui::RichText::new(trouvée.name).monospace().strong(),
                             );
-                            ui.label(entry.title.get(lang_code));
+                            ui.label(trouvée.entry.title.get(lang_code));
+                            // Les autres noms de la fiche : une fiche
+                            // couvre souvent une famille, et le dire
+                            // évite de la rouvrir pour chacun.
+                            let autres: Vec<&str> = trouvée
+                                .entry
+                                .names
+                                .iter()
+                                .copied()
+                                .filter(|nom| *nom != trouvée.name)
+                                .collect();
+                            if !autres.is_empty() {
+                                ui.colored_label(
+                                    theme.dim,
+                                    egui::RichText::new(autres.join(" ")).monospace().small(),
+                                );
+                            }
                         });
                         if ligne
                             .response
@@ -12082,7 +12190,7 @@ impl NamsdecApp {
                             .on_hover_text(s.help_open_sheet)
                             .clicked()
                         {
-                            ouvrir = Some(entry.names[0]);
+                            ouvrir = Some(trouvée.name);
                         }
                     }
                 });
@@ -12126,6 +12234,7 @@ impl NamsdecApp {
         let lang = if self.lang == Lang::Fr { "fr" } else { "en" };
         let mut copié = false;
         let mut suivante = None;
+        let mut à_ouvrir: Option<String> = None;
         egui::ScrollArea::vertical()
             .id_salt("help")
             .auto_shrink([false, false])
@@ -12212,9 +12321,41 @@ impl NamsdecApp {
                         }
                     });
                 }
+
+                // La référence complète, pour le jour où la fiche ne
+                // suffit pas. Elle tient en un écran — ce qu'on veut en
+                // écrivant du code —, mais quand une instruction se
+                // comporte autrement qu'on l'espérait, il faut le
+                // détail : tous les encodages, tous les modes, toutes
+                // les exceptions. C'est le manuel d'Intel, et le
+                // recopier ici serait absurde : deux mille pages, déjà
+                // en ligne, instruction par instruction.
+                if let Some(url) = namsdec_doc::reference_url(entry) {
+                    ui.add_space(10.0);
+                    ui.separator();
+                    ui.horizontal_wrapped(|ui| {
+                        ui.colored_label(theme.dim, s.help_reference);
+                        if ui
+                            .link(
+                                egui::RichText::new(format!(
+                                    "{} — Intel",
+                                    entry.names[0].to_uppercase()
+                                ))
+                                .monospace(),
+                            )
+                            .on_hover_text(&url)
+                            .clicked()
+                        {
+                            à_ouvrir = Some(url.clone());
+                        }
+                    });
+                }
             });
         if let Some(name) = suivante {
             self.open_help(name);
+        }
+        if let Some(url) = à_ouvrir {
+            ui.ctx().open_url(egui::OpenUrl::new_tab(url));
         }
         if copié {
             self.status = Status::Note(|s| s.help_example_copied);
@@ -14349,6 +14490,31 @@ enum NoteKind {
     Comment,
 }
 
+/// La barre « OK » d'une fenêtre qui n'a rien à annuler.
+///
+/// Posée en panneau bas, et c'est ce qui compte : le contenu prend la
+/// place qui reste, le bouton garde la sienne. Ajouté au corps de la
+/// fenêtre, il se faisait pousser hors de l'écran par un contenu long —
+/// c'est ce qui était arrivé au plan d'installation, dont la croix
+/// elle-même sortait du cadre.
+///
+/// Rend `true` quand il faut fermer. Le séparateur au-dessus est léger :
+/// une barre d'action doit se voir sans découper la fenêtre en deux.
+fn ok_bar(ui: &mut egui::Ui, theme: &'static Theme, s: &Strings, id: &str) -> bool {
+    let mut fermer = false;
+    egui::Panel::bottom(egui::Id::new(format!("{id}_ok")))
+        .frame(egui::Frame::NONE)
+        .show(ui, |ui| {
+            ui.add_space(4.0);
+            ui.separator();
+            ui.add_space(4.0);
+            if dialog_bar(ui, theme, s.dialog_ok, None).is_some() {
+                fermer = true;
+            }
+        });
+    fermer
+}
+
 /// Ce qu'une boîte de dialogue a reçu comme réponse.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Answer {
@@ -16191,6 +16357,18 @@ fn timeline_bar(
         ));
     }
     (réponse.clicked() || réponse.dragged()).then_some(visé?)
+}
+
+/// La taille de départ de la fenêtre d'analyse.
+///
+/// Plus large que celle des exercices : elle porte des tableaux — nom,
+/// adresse, taille, appelants — qu'une colonne étroite coupe au milieu.
+fn analysis_window_size(ctx: &egui::Context) -> egui::Vec2 {
+    let écran = ctx.viewport_rect().size();
+    egui::vec2(
+        (écran.x * 0.72).clamp(560.0, 1100.0),
+        (écran.y * 0.82).clamp(420.0, 900.0),
+    )
 }
 
 /// La taille de départ de la fenêtre des exercices.

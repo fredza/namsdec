@@ -18661,3 +18661,67 @@ fn escape_never_triggers_a_second_action() {
          ne se déclenche pas par la touche qui veut dire « je m'en vais »"
     );
 }
+
+/// Toute fenêtre qui s'ouvre porte un bouton pour la fermer.
+///
+/// La croix de la barre de titre ne suffit pas : elle est petite, elle
+/// est loin quand la fenêtre est haute, et il lui est arrivé de sortir
+/// de l'écran. Un bouton dans le corps de la fenêtre se trouve toujours,
+/// et il se trouve au même endroit partout.
+#[test]
+fn every_window_carries_a_way_out() {
+    let Some(octets) = binaire_dépreuve("crackme-01") else {
+        // Sans binaire d'épreuve, plusieurs fenêtres restent vides : on
+        // ne peut pas juger.
+        return;
+    };
+    let s = strings(Lang::Fr);
+    let ctx = egui::Context::default();
+    let écran = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1900.0, 1200.0));
+    let entrée = egui::RawInput {
+        screen_rect: Some(écran),
+        ..Default::default()
+    };
+
+    /// Comment ouvrir une fenêtre, et comment l'appeler dans l'échec.
+    type Ouverture = (&'static str, fn(&mut NamsdecApp));
+
+    // Chaque fenêtre, ouverte seule : deux fenêtres à la fois se
+    // recouvrent, et l'on ne saurait pas laquelle porte le bouton vu.
+    let fenêtres: [Ouverture; 9] = [
+        ("calculatrice", |app| app.show_calculator = true),
+        ("graphe", |app| app.show_flow = true),
+        ("désassemblage", |app| app.show_disassembly = true),
+        ("motif cyclique", |app| app.show_cyclic = true),
+        ("chronologie", |app| app.show_timeline = true),
+        ("points d'arrêt", |app| app.show_breakpoints = true),
+        ("analyse", |app| app.show_analysis = true),
+        ("registres étendus", |app| app.show_vectors = true),
+        ("aide", |app| app.show_help = true),
+    ];
+
+    for (nom, ouvrir) in fenêtres {
+        let mut app = NamsdecApp::default();
+        app.apply_theme(&ctx);
+        assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+        ouvrir(&mut app);
+
+        let mut peint = String::new();
+        for _ in 0..3 {
+            peint.clear();
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(texte) = &clipped.shape {
+                    peint.push_str(texte.galley.text());
+                    peint.push('|');
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+        assert!(
+            peint.contains(s.dialog_ok),
+            "la fenêtre « {nom} » doit porter un bouton « {} » :\n{peint}",
+            s.dialog_ok
+        );
+    }
+}

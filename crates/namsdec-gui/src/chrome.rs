@@ -409,3 +409,22 @@ pub fn icon_github(painter: &egui::Painter, rect: egui::Rect, color: egui::Color
         );
     }
 }
+
+/// Une loupe : un cercle et son manche.
+///
+/// Dessinée plutôt qu'écrite, comme les autres marques de l'interface.
+/// L'emoji « 🔍 » n'est dans aucune des polices qu'egui charge par
+/// défaut : il se peindrait en carré vide, ce qu'un test du projet
+/// attrape — et il aurait raison, un champ de recherche annoncé par un
+/// rectangle n'annonce rien.
+pub fn icon_search(painter: &egui::Painter, rect: egui::Rect, color: egui::Color32) {
+    let trait_ = egui::Stroke::new(1.4, color);
+    // Le verre occupe les deux tiers hauts-gauche, le manche descend en
+    // diagonale vers le bas-droit : c'est la forme qu'on reconnaît sans
+    // la regarder.
+    let r = rect.width() * 0.32;
+    let centre = egui::pos2(rect.left() + r + 1.0, rect.top() + r + 1.0);
+    painter.circle_stroke(centre, r, trait_);
+    let départ = centre + egui::vec2(r * 0.72, r * 0.72);
+    painter.line_segment([départ, rect.right_bottom() - egui::vec2(1.0, 1.0)], trait_);
+}
