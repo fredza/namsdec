@@ -7,6 +7,7 @@ mod chrome;
 mod completion;
 mod condition;
 mod errors;
+mod fixes;
 mod i18n;
 mod keybindings;
 mod loader;
@@ -1415,6 +1416,21 @@ struct NamsdecApp {
     /// autrement, garder Alt enfoncé accepterait une proposition à chaque
     /// frame.
     alt_was_down: bool,
+    /// `Alt` vient-il d'être enfoncé, à cette frame ?
+    ///
+    /// Relevé une fois et partagé : la liste de propositions le prend en
+    /// premier, et ce qui reste va à la correction de code. Sans ce
+    /// partage, la même frappe accepterait une proposition *et*
+    /// corrigerait la ligne.
+    alt_pressed: bool,
+    /// La correction proposée pour la ligne du curseur, et de quoi
+    /// savoir si elle est encore à jour.
+    ///
+    /// Gardée d'une frame à l'autre parce que la calculer relit les
+    /// étiquettes et les macros de tout le fichier : sur un binaire
+    /// désassemblé, ce n'est pas ce qu'on refait soixante fois par
+    /// seconde.
+    fix: Option<FixCache>,
     command_palette: Option<CommandPalette>,
     /// Réglages tels qu'écrits sur le disque. Comparés à l'état courant à
     /// chaque frame : dès qu'ils divergent, le fichier est réécrit. C'est
@@ -2148,6 +2164,8 @@ impl Default for NamsdecApp {
             completion_dismissed: false,
             completion_keys: CompletionKeys::default(),
             alt_was_down: false,
+            alt_pressed: false,
+            fix: None,
             command_palette: None,
             saved_settings: Settings::default(),
             pending_dialog: None,
@@ -8984,6 +9002,29 @@ impl NamsdecApp {
                 s.buffer_saved
             });
             ui.separator();
+
+            // La correction proposée pour la ligne du curseur, et la
+            // touche qui la pose. À gauche du message d'état : elle
+            // parle de ce qu'on est en train d'écrire, non de ce que
+            // namsdec vient de faire, et c'est l'ordre dans lequel on
+            // lit la barre.
+            if let Some(correction) = self.current_fix() {
+                ui.scope(|ui| {
+                    // Bornée et tronquée, comme le message : une phrase
+                    // longue ne doit pas pousser les compartiments de
+                    // droite hors de la fenêtre.
+                    ui.set_max_width(420.0);
+                    ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
+                    ui.colored_label(
+                        theme.changed,
+                        s.fix_hint.replacen("{}", &correction.titre, 1),
+                    )
+                    // La ligne telle qu'elle sera écrite : on confirme
+                    // ce qu'on a vu, non ce qu'on a deviné.
+                    .on_hover_text(&correction.ligne);
+                });
+                ui.separator();
+            }
             // Le message est borné, et tronqué s'il déborde : les
             // compartiments de droite sont posés dans la place qui reste,
             // et un message long — le nom d'un fichier chargé, une erreur
@@ -9201,6 +9242,9 @@ impl NamsdecApp {
     }
 
     fn editor_ui(&mut self, ui: &mut egui::Ui) {
+        // Avant de dessiner : la barre d'état, peinte plus tôt dans la
+        // frame, lit ce qu'on calcule ici.
+        self.refresh_fix();
         let theme = self.theme;
         // Les fichiers ouverts, en tête : on passe de l'un à l'autre
         // sans rien perdre de ce qu'on faisait sur les autres.
@@ -9712,6 +9756,7 @@ impl NamsdecApp {
                             }
                         }
                         self.completion_ui(ui, &output);
+                        self.apply_fix_if_confirmed();
                         self.hover_help_ui(ui, &output);
                         // Après le `TextEdit` : son état existe, et c'est
                         // lui qu'on déplace.
@@ -10389,6 +10434,72 @@ impl NamsdecApp {
         self.pending_cursor = Some(curseur);
     }
 
+    /// Calcule, si besoin, la correction proposée pour la ligne du
+    /// curseur.
+    ///
+    /// Ce qui rend le calcul caduc : changer de ligne, changer le texte
+    /// de cette ligne, changer la longueur du fichier — un `jmp` vers
+    /// une étiquette qu'on vient d'écrire ailleurs doit cesser d'être
+    /// signalé — ou changer de langue, puisque la phrase l'est.
+    ///
+    /// Une modification ailleurs dans le fichier qui n'en change pas la
+    /// longueur passe à travers, et c'est assumé : renommer une
+    /// étiquette sans changer le nombre de lettres laisse une
+    /// proposition d'une frappe en retard, ce qui se corrige à la frappe
+    /// suivante et ne coûte rien à personne.
+    fn refresh_fix(&mut self) {
+        let index = self.cursor_pos.0.saturating_sub(1);
+        let clé = FixKey {
+            index,
+            ligne: self.source.lines().nth(index).unwrap_or("").to_owned(),
+            taille: self.source.len(),
+            lang: self.lang,
+        };
+        if self.fix.as_ref().is_some_and(|f| f.clé == clé) {
+            return;
+        }
+        let correction = fixes::propose(&self.source, index, strings(self.lang));
+        self.fix = Some(FixCache { clé, correction });
+    }
+
+    /// La correction proposée en ce moment, s'il y en a une.
+    fn current_fix(&self) -> Option<&fixes::Correction> {
+        self.fix.as_ref()?.correction.as_ref()
+    }
+
+    /// Alt vient d'être enfoncé et rien d'autre ne l'a pris : la
+    /// correction s'applique.
+    ///
+    /// À appeler **après** la liste de propositions, qui a la priorité :
+    /// elle est sous le curseur, on la regarde, et c'est elle qu'on
+    /// croit confirmer. La correction, elle, est écrite dans la barre
+    /// d'état — on la confirme quand plus rien ne la précède.
+    fn apply_fix_if_confirmed(&mut self) {
+        if !self.alt_pressed || self.suggestions.is_some() {
+            return;
+        }
+        self.alt_pressed = false;
+        let Some(cache) = self.fix.as_ref() else {
+            return;
+        };
+        let Some(correction) = cache.correction.as_ref() else {
+            return;
+        };
+        let index = cache.clé.index;
+        let Some(début) = ligne_début(&self.source, index) else {
+            return;
+        };
+        let fin = début + self.source[début..].find('\n').unwrap_or(self.source.len() - début);
+        let nouvelle = correction.ligne.clone();
+        self.source.replace_range(début..fin, &nouvelle);
+        // Le curseur au bout de la ligne réécrite : c'est là qu'on
+        // était, et c'est de là qu'on repart.
+        self.pending_cursor = Some(byte_to_char(&self.source, début + nouvelle.len()));
+        self.status = Status::Note(|s| s.fix_applied);
+        // Le cache parle d'une ligne qui n'existe plus.
+        self.fix = None;
+    }
+
     /// Retire du clavier ce que la liste de propositions veut pour elle.
     ///
     /// À appeler **avant** le `TextEdit` : Tab, les flèches et Échap ont
@@ -10431,6 +10542,8 @@ impl NamsdecApp {
         });
         let alt_pressed = alt_alone && !self.alt_was_down;
         self.alt_was_down = alt_alone;
+        // Partagé avec la correction de code, qui passe après.
+        self.alt_pressed = alt_pressed;
 
         let Some(range) = output.cursor_range else {
             self.suggestions = None;
@@ -10485,6 +10598,8 @@ impl NamsdecApp {
         // Tab accepte, comme partout ailleurs, et `Alt` aussi — celle-ci
         // était le seul moyen jusqu'ici, ce qui ne se devinait pas.
         if alt_pressed || touches.accept {
+            // Pris : la correction de code ne verra pas cette frappe.
+            self.alt_pressed = false;
             self.accept_completion(ui.ctx(), &suggestions);
             return;
         }
@@ -16330,6 +16445,38 @@ fn duplicated_line(source: &str, cursor: usize) -> (String, usize) {
     out.push_str(&source[fin..]);
     // Le curseur garde sa colonne, une ligne plus bas.
     (out, cursor + ligne.len() + 1)
+}
+
+/// Où commence la ligne de rang `index`, en octets.
+///
+/// `str::lines()` ne rend pas les positions, et les recalculer à la main
+/// à chaque usage finit par diverger de ce que `lines()` appelle une
+/// ligne — notamment sur `\r\n`. Une seule fonction, donc, et les
+/// autres s'y réfèrent.
+fn ligne_début(source: &str, index: usize) -> Option<usize> {
+    let mut reste = index;
+    let mut début = 0usize;
+    while reste > 0 {
+        let saut = source[début..].find('\n')?;
+        début += saut + 1;
+        reste -= 1;
+    }
+    (début <= source.len()).then_some(début)
+}
+
+/// La correction calculée, et ce pour quoi elle l'a été.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FixKey {
+    index: usize,
+    ligne: String,
+    taille: usize,
+    lang: Lang,
+}
+
+#[derive(Debug, Clone)]
+struct FixCache {
+    clé: FixKey,
+    correction: Option<fixes::Correction>,
 }
 
 /// Ce que la liste de propositions a pris au clavier cette image-ci.

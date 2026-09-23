@@ -11856,6 +11856,132 @@ fn a_solved_exercise_stays_solved() {
     );
 }
 
+/// La correction proposée s'écrit dans la barre d'état, et Alt la pose.
+///
+/// Deux choses à vérifier, et la seconde compte autant que la première :
+/// que namsdec **propose** quand il y a lieu, et qu'il n'écrit rien
+/// avant qu'on le lui dise. Le code de quelqu'un ne se corrige pas tout
+/// seul.
+#[test]
+fn a_proposed_fix_is_written_in_the_status_bar_and_alt_applies_it() {
+    let s = strings(Lang::Fr);
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp {
+        source: "    mvo rax, 1\n".to_owned(),
+        // Le curseur est sur la première ligne, comme au chargement.
+        cursor_pos: (1, 1),
+        ..Default::default()
+    };
+    app.apply_theme(&ctx);
+    let écran = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1600.0, 1000.0));
+
+    let peindre = |app: &mut NamsdecApp, alt: bool| -> String {
+        // `Alt` seul n'est pas une touche pour egui : il arrive par
+        // l'évènement qui annonce un changement de modificateurs.
+        let entrée = egui::RawInput {
+            screen_rect: Some(écran),
+            events: vec![egui::Event::ModifiersChanged(egui::Modifiers {
+                alt,
+                ..Default::default()
+            })],
+            ..Default::default()
+        };
+        let mut peint = String::new();
+        let mut sortie = ctx.run_ui(entrée, |ui| app.draw(ui));
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(texte) = &clipped.shape {
+                peint.push_str(texte.galley.text());
+                peint.push('|');
+            }
+        }
+        sortie.textures_delta.clear();
+        peint
+    };
+
+    // Deux frames : la barre d'état est peinte avant l'éditeur, qui est
+    // ce qui calcule la proposition.
+    peindre(&mut app, false);
+    let peint = peindre(&mut app, false);
+    let attendu = s
+        .fix_hint
+        .replacen("{}", &s.fix_unknown_mnemonic.replacen("{}", "mvo", 1).replacen("{}", "mov", 1), 1);
+    assert!(peint.contains(&attendu), "attendu « {attendu} » dans :\n{peint}");
+    assert_eq!(
+        app.source, "    mvo rax, 1\n",
+        "rien n'est écrit tant qu'on n'a pas confirmé"
+    );
+
+    // Alt confirme.
+    peindre(&mut app, true);
+    assert_eq!(app.source, "    mov rax, 1\n", "Alt pose la correction");
+
+    // Et la ligne corrigée ne propose plus rien.
+    peindre(&mut app, false);
+    let peint = peindre(&mut app, false);
+    assert!(
+        !peint.contains("n'existe pas"),
+        "plus rien à proposer :\n{peint}"
+    );
+}
+
+/// Garder Alt enfoncé ne corrige qu'une fois.
+///
+/// egui n'émet pas d'évènement pour une touche de modification seule :
+/// elle n'apparaît que dans l'état des modificateurs, vrai à chaque
+/// frame tant qu'on appuie. C'est le *passage* de relâché à enfoncé
+/// qu'on guette — sans quoi une seconde d'Alt corrigerait tout ce qui
+/// passe.
+///
+/// La ligne choisie le montre bien : une fois le mnémonique réparé, il
+/// reste une seconde faute sur la même ligne. Si l'appui tenu comptait
+/// pour plusieurs, elle partirait dans la foulée, sans qu'on l'ait lue.
+#[test]
+fn holding_alt_does_not_correct_twice() {
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp {
+        source: "    mvo [compteur], 1\n".to_owned(),
+        cursor_pos: (1, 1),
+        ..Default::default()
+    };
+    app.apply_theme(&ctx);
+    let écran = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1600.0, 1000.0));
+    let frame = |app: &mut NamsdecApp, alt: bool| {
+        let entrée = egui::RawInput {
+            screen_rect: Some(écran),
+            events: vec![egui::Event::ModifiersChanged(egui::Modifiers {
+                alt,
+                ..Default::default()
+            })],
+            ..Default::default()
+        };
+        ctx.run_ui(entrée, |ui| app.draw(ui))
+            .textures_delta
+            .clear();
+    };
+
+    frame(&mut app, false);
+    frame(&mut app, false);
+    frame(&mut app, true);
+    assert_eq!(
+        app.source, "    mov [compteur], 1\n",
+        "le mnémonique d'abord"
+    );
+
+    // Toujours enfoncé : la seconde faute reste, et c'est le but.
+    frame(&mut app, true);
+    frame(&mut app, true);
+    assert_eq!(
+        app.source, "    mov [compteur], 1\n",
+        "Alt maintenu ne corrige pas une seconde fois"
+    );
+
+    // Relâché puis réenfoncé : la taille de l'écriture, qui n'était pas
+    // dite.
+    frame(&mut app, false);
+    frame(&mut app, true);
+    assert_eq!(app.source, "    mov qword [compteur], 1\n");
+}
+
 /// Les fenêtres internes se ferment par la même pastille que la grande.
 ///
 /// egui pose sa croix à lui : deux traits maigres, à droite, de la

@@ -593,6 +593,22 @@ pub struct Strings {
     pub memory_address_label: &'static str,
     /// Le champ Adresse refuse ce qui n'est pas une adresse, et le dit.
     pub memory_address_invalid: &'static str,
+
+    // Correction de code — ce que namsdec propose, et qu'Alt+Entrée pose.
+    /// Le raccourci et la proposition, dans la barre d'état. Le `{}`
+    /// reçoit le titre de la correction. La touche est `Alt` seule,
+    /// celle qui accepte déjà une proposition de complétion : un seul
+    /// geste pour « oui, écris ce que tu proposes ».
+    pub fix_hint: &'static str,
+    pub fix_applied: &'static str,
+    pub fix_unclosed_bracket: &'static str,
+    /// Trois messages à deux ou trois trous : le mot fautif d'abord, la
+    /// proposition ensuite.
+    pub fix_unknown_mnemonic: &'static str,
+    pub fix_unknown_label: &'static str,
+    pub fix_register_width: &'static str,
+    pub fix_int80: &'static str,
+    pub fix_missing_size: &'static str,
     /// Les droits de la zone qu'on regarde, dans l'onglet Mémoire.
     pub perms_read: &'static str,
     pub perms_write: &'static str,
@@ -1295,6 +1311,14 @@ const FR: Strings = Strings {
 
     memory_address_label: "Adresse :",
     memory_address_invalid: "Ce n'est pas une adresse : des chiffres hexadécimaux, un registre, ou une somme des deux.",
+    fix_hint: "Alt : {}",
+    fix_applied: "Ligne corrigée.",
+    fix_unclosed_bracket: "un crochet reste ouvert — le refermer ?",
+    fix_unknown_mnemonic: "« {} » n'existe pas — écrire « {} » ?",
+    fix_unknown_label: "aucune étiquette « {} » — « {} » ?",
+    fix_register_width: "« {} » n'a pas la taille de « {} » — « {} » ?",
+    fix_int80: "int 0x80 est l'appel système 32 bits — ici c'est syscall.",
+    fix_missing_size: "la taille de l'écriture n'est pas dite — qword ?",
     perms_read: "lecture",
     perms_write: "écriture",
     perms_execute: "exécution",
@@ -1975,6 +1999,14 @@ const EN: Strings = Strings {
 
     memory_address_label: "Address:",
     memory_address_invalid: "Not an address: hexadecimal digits, a register, or a sum of both.",
+    fix_hint: "Alt: {}",
+    fix_applied: "Line corrected.",
+    fix_unclosed_bracket: "a bracket is left open — close it?",
+    fix_unknown_mnemonic: "“{}” does not exist — write “{}”?",
+    fix_unknown_label: "no label “{}” — “{}”?",
+    fix_register_width: "“{}” is not the size of “{}” — “{}”?",
+    fix_int80: "int 0x80 is the 32-bit system call — here it is syscall.",
+    fix_missing_size: "the size of the write is not stated — qword?",
     perms_read: "read",
     perms_write: "write",
     perms_execute: "execute",
