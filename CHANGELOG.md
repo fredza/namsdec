@@ -74,6 +74,17 @@ six fautes d'assembleur que namsdec sait désormais reconnaître.
   en grand et tout dépliés. Deux fois la même chose, dont une mal.
 
 **Réparé**
+- Une fenêtre qui vient de s'ouvrir passe devant. Le plan d'installation
+  s'ouvre depuis les préférences et se posait derrière elles : on
+  cliquait « Installer… » et il ne se passait rien de visible. La règle
+  vaut pour toutes, et un test vérifie qu'aucune fenêtre ne manque à la
+  table — il en a trouvé deux sans identifiant explicite, les
+  préférences et le motif cyclique, qui perdaient leur position en
+  passant à l'anglais.
+- « frame lente » ne se crie plus devant un simple chargement. Ouvrir un
+  binaire de soixante mille lignes demande une demi-seconde de mise en
+  page, **une fois** ; le message le dit maintenant, au lieu de faire
+  chercher une fuite là où il n'y a qu'un fichier qui arrive.
 - Les icônes restent dans leur case, et un test le vérifie. Le chat de
   GitHub dépassait de la sienne d'un huitième, oreilles en haut et queue
   en bas — assez pour mordre le texte du lien voisin.
