@@ -61,7 +61,12 @@ pub fn syscall(number: u64) -> Option<Syscall> {
         39 => ("getpid", &[]),
         41 => ("socket", &["domaine", "type", "protocole"]),
         42 => ("connect", &["fd", "adresse", "taille"]),
+        56 => (
+            "clone",
+            &["options", "pile", "pid_parent", "pid_enfant", "tls"],
+        ),
         57 => ("fork", &[]),
+        58 => ("vfork", &[]),
         59 => ("execve", &["chemin", "arguments", "environnement"]),
         60 => ("exit", &["code"]),
         61 => ("wait4", &["pid", "statut", "options", "ressources"]),
@@ -74,15 +79,19 @@ pub fn syscall(number: u64) -> Option<Syscall> {
         96 => ("gettimeofday", &["heure", "fuseau"]),
         89 => ("readlink", &["chemin", "buf", "taille"]),
         97 => ("getrlimit", &["ressource", "limite"]),
+        101 => ("ptrace", &["requête", "pid", "adresse", "donnée"]),
         102 => ("getuid", &[]),
         104 => ("getgid", &[]),
         107 => ("geteuid", &[]),
         108 => ("getegid", &[]),
         110 => ("getppid", &[]),
         131 => ("sigaltstack", &["nouvelle", "ancienne"]),
+        157 => ("prctl", &["option", "arg2", "arg3", "arg4", "arg5"]),
         158 => ("arch_prctl", &["code", "adresse"]),
         186 => ("gettid", &[]),
+        200 => ("tkill", &["tid", "signal"]),
         202 => ("futex", &["adresse", "opération", "valeur", "délai"]),
+        234 => ("tgkill", &["tgid", "tid", "signal"]),
         218 => ("set_tid_address", &["adresse"]),
         228 => ("clock_gettime", &["horloge", "temps"]),
         262 => ("newfstatat", &["dossier", "chemin", "statbuf", "options"]),
@@ -114,6 +123,18 @@ pub fn syscall(number: u64) -> Option<Syscall> {
         // pour connaître sa pile : un binaire lié statiquement en fait
         // une vingtaine avant d'arriver à `main`, et il suffit d'un seul
         // manquant pour qu'il n'y arrive jamais.
+        //
+        // S'y ajoute depuis peu une quatrième famille : celle de
+        // l'**anti-débogage**. `prctl`, `fork` et `ptrace` forment le
+        // montage par lequel un programme vérifie qu'on ne le regarde
+        // pas — et namsdec répond, parce qu'un outil fait pour observer
+        // ne peut pas s'arrêter devant la question.
+        //
+        // `kill`, `tkill` et `tgkill` n'y sont **pas**, et c'est voulu :
+        // namsdec n'envoie aucun signal. Il encaisse seulement le
+        // `SIGSTOP` qu'un programme s'envoie à lui-même, qui est la fin
+        // de ce montage-là. Annoncer « simulé » pour ce seul cas
+        // promettrait bien plus que ce qui est tenu.
         simulated: matches!(
             number,
             0 | 1
@@ -132,6 +153,9 @@ pub fn syscall(number: u64) -> Option<Syscall> {
                 | 24
                 | 35
                 | 39
+                | 56
+                | 57
+                | 58
                 | 60
                 | 63
                 | 72
@@ -139,12 +163,14 @@ pub fn syscall(number: u64) -> Option<Syscall> {
                 | 89
                 | 96
                 | 97
+                | 101
                 | 102
                 | 104
                 | 107
                 | 108
                 | 110
                 | 131
+                | 157
                 | 158
                 | 186
                 | 202

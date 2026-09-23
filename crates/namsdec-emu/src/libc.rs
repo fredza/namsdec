@@ -91,6 +91,7 @@ pub const PROVIDED: &[&str] = &[
     "memset",
     "perror",
     "posix_memalign",
+    "prctl",
     "printf",
     "pthread_attr_destroy",
     "pthread_attr_getguardsize",
@@ -106,6 +107,7 @@ pub const PROVIDED: &[&str] = &[
     "pthread_once",
     "pthread_self",
     "pthread_setspecific",
+    "ptrace",
     "putchar",
     "puts",
     "rand",
@@ -165,6 +167,17 @@ pub(crate) fn reads_input(name: &str) -> bool {
     )
 }
 
+/// Ce nom-là désigne-t-il une fonction qui réclame une entrée ?
+///
+/// Publique, et prenant le nom tel que l'éditeur de liens l'a écrit :
+/// l'interface s'en sert pour ouvrir la ligne de saisie dès qu'un binaire
+/// est chargé, sans attendre qu'il se bloque dessus. Un programme lié
+/// dynamiquement ne fait aucun `syscall` de lecture — il appelle `fgets`
+/// ou `scanf` —, et rien ne disait donc qu'il demanderait quelque chose.
+pub fn name_reads_input(name: &str) -> bool {
+    reads_input(canonical(name))
+}
+
 /// Le nom, dépouillé de ce que l'éditeur de liens y ajoute.
 ///
 /// `strcpy@GLIBC_2.2.5`, `__strcpy_chk`, `puts@plt` : trois façons de
@@ -173,7 +186,16 @@ pub(crate) fn reads_input(name: &str) -> bool {
 /// ordinaire fait exactement le même travail.
 fn canonical(name: &str) -> &str {
     let name = name.split('@').next().unwrap_or(name);
-    let name = name.strip_prefix("__isoc99_").unwrap_or(name);
+    // `__isoc99_scanf` hier, `__isoc23_scanf` depuis la glibc 2.38 : la
+    // norme C change de millésime, le préfixe suit, et la fonction fait
+    // toujours la même chose. On les retire tous plutôt que d'attendre le
+    // prochain — sans quoi un binaire compilé cette année s'arrête sur un
+    // « scanf » que namsdec fournit pourtant.
+    let name = name
+        .strip_prefix("__isoc99_")
+        .or_else(|| name.strip_prefix("__isoc23_"))
+        .or_else(|| name.strip_prefix("__isoc11_"))
+        .unwrap_or(name);
     let name = name.strip_suffix("_chk").unwrap_or(name);
     match name {
         "__printf" => "printf",
@@ -665,6 +687,39 @@ pub(crate) fn call(emu: &mut Emulator, name: &str) -> Result<Flow, EmuError> {
         "__errno_location" => {
             let adresse = emu.errno_slot();
             set(emu, adresse);
+        }
+        "prctl" => {
+            // `prctl` règle mille détails d'un processus : son nom, sa
+            // graine de hasard, son droit de laisser un fichier de
+            // vidange. Rien de tout cela n'existe ici.
+            //
+            // On répond « c'est fait ». C'est vrai au sens qui compte :
+            // il n'y avait rien à régler. Le seul usage qu'en fait un
+            // crackme est `PR_SET_DUMPABLE` à zéro, juste avant de se
+            // dédoubler — une façon d'interdire qu'on l'attache. Ce
+            // verrou-là ne ferme rien sur une machine qui n'a qu'un
+            // processus.
+            //
+            // Ce que cela coûte : un `PR_GET_…` qui attend une réponse
+            // dans un pointeur ne recevra rien. On sait dire oui, on ne
+            // sait pas raconter un processus qui n'existe pas.
+            set(emu, 0);
+        }
+        "ptrace" => {
+            // Le programme demande si quelqu'un le regarde. C'est
+            // l'anti-débogage le plus répandu : il s'attache à lui-même
+            // par `PTRACE_TRACEME`, et si l'appel échoue, c'est qu'un
+            // débogueur l'a devancé.
+            //
+            // namsdec répond zéro — « personne ne te regarde ». C'est un
+            // mensonge, et il est délibéré : l'outil est fait pour
+            // observer des programmes qui préféreraient ne pas l'être, et
+            // s'arrêter sur la question reviendrait à leur donner raison.
+            //
+            // Ce que cela coûte : un programme qui se servirait vraiment
+            // de `ptrace` pour piloter un fils n'en tirerait rien. On ne
+            // sait pas tracer, on sait seulement dire qu'on ne trace pas.
+            set(emu, 0);
         }
         "getenv" => {
             // L'environnement que le chargeur a posé sur la pile n'est pas

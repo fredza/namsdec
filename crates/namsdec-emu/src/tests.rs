@@ -3334,3 +3334,162 @@ fn a_function_namsdec_does_not_provide_names_itself() {
     }
     assert_eq!(emu.cpu.regs.rip, 0x401000, "RIP reste sur la borne");
 }
+
+/// `ptrace` répond « personne ne te regarde », par les deux chemins.
+///
+/// C'est l'anti-débogage le plus répandu : le programme s'attache à
+/// lui-même par `PTRACE_TRACEME`, et si l'appel échoue, il en conclut
+/// qu'un débogueur l'a devancé et change de comportement — ou s'arrête.
+///
+/// Un binaire lié statiquement fait l'appel système 101 lui-même ; un
+/// binaire lié dynamiquement passe par la fonction `ptrace` de la libc, et
+/// atterrit donc sur une borne. Les deux chemins doivent rendre zéro, sans
+/// quoi le programme ne montre jamais ce qu'on est venu voir.
+#[test]
+fn ptrace_answers_that_nobody_is_watching() {
+    let emu = run_program(
+        "\
+section .text
+global _start
+_start:
+; ptrace(PTRACE_TRACEME, 0, NULL, NULL)
+mov rax, 101
+xor rdi, rdi
+xor rsi, rsi
+xor rdx, rdx
+xor r10, r10
+syscall
+hlt
+",
+        &[],
+    );
+
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rax),
+        0,
+        "l'appel système doit réussir : un échec veut dire « on te regarde »"
+    );
+
+    assert!(
+        crate::provides("ptrace"),
+        "et la fonction de bibliothèque doit être fournie : un binaire lié \
+         dynamiquement ne fait pas l'appel système lui-même, il atterrit sur \
+         la borne"
+    );
+}
+
+/// Le montage anti-débogage complet, joué d'un bout à l'autre.
+///
+/// Un crackme sérieux n'appelle pas `ptrace` tout seul : il enchaîne
+/// quatre gestes, et rater un seul les arrête tous.
+///
+/// 1. `prctl(PR_SET_DUMPABLE, 0)` — « qu'on ne puisse pas m'attacher ».
+/// 2. `fork()` — il se dédouble.
+/// 3. Dans le fils, `ptrace(PTRACE_TRACEME)` — « mon père me regarde ».
+/// 4. Toujours dans le fils, `SIGSTOP` — « je suis prêt, relance-moi ».
+///
+/// namsdec n'a qu'un processus. Il répond donc zéro au dédoublement — ce
+/// qui le place dans le fils, celui qui fait le travail —, réussit
+/// l'attache, et relance aussitôt. C'est la branche qu'on est venu voir,
+/// et c'est la seule qu'il joue : un programme qui se dédoublerait pour de
+/// bon n'aurait pas son père.
+#[test]
+fn the_whole_anti_debugging_dance_runs_through() {
+    let emu = run_program(
+        "\
+section .text
+global _start
+_start:
+; prctl(PR_SET_DUMPABLE, 0)
+mov rax, 157
+mov rdi, 4
+xor rsi, rsi
+syscall
+mov r12, rax
+; fork()
+mov rax, 57
+syscall
+mov r13, rax
+; le père n'a rien à faire ici — s'il passait, on le saurait
+test rax, rax
+jnz pere
+; ptrace(PTRACE_TRACEME, 0, 0, 0)
+mov rax, 101
+xor rdi, rdi
+xor rsi, rsi
+xor rdx, rdx
+xor r10, r10
+syscall
+mov r14, rax
+; tgkill(1000, 1000, SIGSTOP)
+mov rax, 234
+mov rdi, 1000
+mov rsi, 1000
+mov rdx, 19
+syscall
+mov r15, rax
+hlt
+pere:
+; si on arrive ici, c'est qu'on a pris la mauvaise branche
+mov r15, 0xbad
+hlt
+",
+        &[],
+    );
+
+    assert_eq!(emu.cpu.regs.get64(Reg64::R12), 0, "`prctl` accepte");
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::R13),
+        0,
+        "le dédoublement rend zéro : on est le fils, celui qui travaille"
+    );
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::R14),
+        0,
+        "l'attache réussit — « personne ne te regarde »"
+    );
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::R15),
+        0,
+        "et le `SIGSTOP` est encaissé : le programme repart, comme si son \
+         père l'avait relancé"
+    );
+
+    // Les deux mêmes gestes, mais vus par un binaire lié dynamiquement :
+    // il n'écrit pas l'appel système, il appelle la fonction, et atterrit
+    // sur une borne. Sans elle, le montage s'arrête au premier pas.
+    for nom in ["prctl", "ptrace", "ptrace@GLIBC_2.2.5"] {
+        assert!(crate::provides(nom), "`{nom}` doit être fourni");
+    }
+}
+
+/// Mais tout signal n'est pas encaissé : un `SIGKILL` s'arrête et se nomme.
+///
+/// C'est la contrepartie du test précédent, et elle compte autant. Avaler
+/// `SIGSTOP` fait courir un programme que la vraie machine ferait courir
+/// aussi. Avaler `SIGKILL` ferait courir un programme que la vraie machine
+/// aurait tué — et montrer faux est pire que ne pas montrer.
+#[test]
+fn a_fatal_signal_is_not_swallowed() {
+    let mut emu = load_only(
+        "\
+section .text
+global _start
+_start:
+; tgkill(1000, 1000, SIGKILL)
+mov rax, 234
+mov rdi, 1000
+mov rsi, 1000
+mov rdx, 9
+syscall
+hlt
+",
+        &[],
+    );
+    let stop = emu.run(1000);
+    assert!(
+        matches!(stop, Err(EmuError::UnsupportedSyscall { number: 234, .. })),
+        "un signal qu'on ne sait pas donner doit s'arrêter en se nommant, \
+         pas répondre zéro : {stop:?}"
+    );
+}

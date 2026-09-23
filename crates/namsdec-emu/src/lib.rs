@@ -4,6 +4,7 @@
 //! écrite ici, à la main, pour rester transparente et pédagogique.
 
 mod libc;
+pub use libc::name_reads_input;
 mod regmap;
 mod vector;
 mod x87;
@@ -200,6 +201,14 @@ struct Undo {
     flags: RFlags,
     halted: bool,
     exit_code: Option<i64>,
+    /// L'adresse d'un `int3` rencontré, s'il y en a eu un.
+    ///
+    /// `hlt` et `int3` arrêtent tous deux la machine, et ne veulent pas
+    /// dire la même chose : le premier est une fin, le second un point
+    /// d'arrêt que le programme se pose à lui-même. Les confondre, c'est
+    /// annoncer « terminé » à quelqu'un dont le programme attend qu'on le
+    /// relance.
+    software_breakpoint: Option<u64>,
     /// Longueur de la sortie avant le pas : ce qu'il a écrit se tronque.
     output_len: usize,
     /// Les octets d'entrée qu'un `read` a consommés, à remettre en tête.
@@ -564,6 +573,10 @@ pub trait Backend {
     /// lui-même. `None` tant qu'il tourne, ou s'il s'est arrêté sur `hlt`
     /// — qui arrête la machine sans rien rendre.
     fn exit_code(&self) -> Option<i64>;
+
+    /// L'adresse du `int3` sur lequel la machine s'est arrêtée, s'il y en
+    /// a eu un. `None` quand l'arrêt vient d'ailleurs.
+    fn software_breakpoint(&self) -> Option<u64>;
 }
 
 /// Ce qu'un pas a fait, au-delà d'avancer.
@@ -698,6 +711,14 @@ pub struct Emulator {
     /// « rien pour l'instant » de « plus rien à lire ».
     input_closed: bool,
     exit_code: Option<i64>,
+    /// L'adresse d'un `int3` rencontré, s'il y en a eu un.
+    ///
+    /// `hlt` et `int3` arrêtent tous deux la machine, et ne veulent pas
+    /// dire la même chose : le premier est une fin, le second un point
+    /// d'arrêt que le programme se pose à lui-même. Les confondre, c'est
+    /// annoncer « terminé » à quelqu'un dont le programme attend au
+    /// contraire qu'on le relance.
+    software_breakpoint: Option<u64>,
     /// De quoi défaire les derniers pas — voir `Undo` et `step_back`.
     history: VecDeque<Undo>,
     /// Les appels en cours, du plus ancien au plus récent.
@@ -868,6 +889,10 @@ impl Backend for Emulator {
     fn exit_code(&self) -> Option<i64> {
         self.exit_code
     }
+
+    fn software_breakpoint(&self) -> Option<u64> {
+        self.software_breakpoint
+    }
 }
 
 impl Emulator {
@@ -884,6 +909,7 @@ impl Emulator {
             input: VecDeque::new(),
             input_closed: false,
             exit_code: None,
+            software_breakpoint: None,
             history: VecDeque::new(),
             frames: Vec::new(),
             watchpoints: Vec::new(),
@@ -1244,6 +1270,46 @@ impl Emulator {
         /// quoi gérer les fils d'exécution. Sans fils, il n'y a rien à
         /// annoncer — mais refuser l'appel arrêterait le programme au
         /// milieu de son démarrage, avant sa première ligne utile.
+        /// `prctl` règle mille détails d'un processus — son nom, son
+        /// droit de vidanger, sa graine de hasard. Une bibliothèque C
+        /// liée statiquement en fait un au démarrage et continue quoi
+        /// qu'on réponde : refuser l'arrêtait avant son premier pas.
+        const SYS_PRCTL: u64 = 157;
+        /// `ptrace` demande si quelqu'un regarde. C'est l'anti-débogage
+        /// le plus répandu : le programme s'attache lui-même, et s'il
+        /// échoue, c'est qu'un débogueur est déjà là.
+        ///
+        /// namsdec répond zéro — « personne ne te regarde ». C'est un
+        /// mensonge, et c'est délibéré : l'outil est fait pour observer
+        /// des programmes qui préféreraient ne pas l'être, et le dire
+        /// vaut mieux que de s'arrêter sur la question.
+        const SYS_PTRACE: u64 = 101;
+        /// `fork` et ses deux cousins : `clone` quand on lui demande un
+        /// processus (pile nulle, `SIGCHLD`), et `vfork`.
+        ///
+        /// Ils forment la seconde moitié de l'anti-débogage par `ptrace`,
+        /// et la plus retorse : le programme se dédouble, le fils
+        /// s'attache par `PTRACE_TRACEME`, le père l'attend. Sous un
+        /// débogueur, l'attache échoue et le fils se saborde ; le père lit
+        /// son code de sortie et se saborde à son tour. Le programme ne
+        /// montre jamais rien.
+        const SYS_CLONE: u64 = 56;
+        const SYS_FORK: u64 = 57;
+        const SYS_VFORK: u64 = 58;
+        /// Les trois façons d'envoyer un signal à quelqu'un — ici, à
+        /// soi-même : `kill(pid)`, `tkill(tid)`, `tgkill(tgid, tid)`.
+        ///
+        /// C'est le troisième temps du montage : après s'être dédoublé et
+        /// attaché, le fils s'arrête net par `SIGSTOP` pour dire au père
+        /// « je suis prêt », et attend d'être relancé.
+        const SYS_KILL: u64 = 62;
+        const SYS_TKILL: u64 = 200;
+        const SYS_TGKILL: u64 = 234;
+        /// `SIGSTOP` met en pause, `SIGCONT` relance. Les seuls que l'on
+        /// sache encaisser : ils ne demandent rien d'autre que de laisser
+        /// le programme courir.
+        const SIGCONT: u64 = 18;
+        const SIGSTOP: u64 = 19;
         const SYS_SET_TID_ADDRESS: u64 = 218;
         const SYS_SET_ROBUST_LIST: u64 = 273;
         const SYS_RSEQ: u64 = 334;
@@ -1391,6 +1457,56 @@ impl Emulator {
             }
             SYS_SET_ROBUST_LIST => {
                 self.cpu.regs.set64(Reg64::Rax, 0);
+            }
+            // Ces deux-là répondent « c'est fait » sans rien faire :
+            // ce qu'ils règlent n'existe pas ici.
+            SYS_PRCTL | SYS_PTRACE => {
+                self.cpu.regs.set64(Reg64::Rax, 0);
+            }
+            // namsdec ne dédouble rien : il n'a qu'un processus, et un
+            // seul fil d'exécution à montrer. Il répond donc zéro — « tu
+            // es le fils » — et continue dans la branche du fils.
+            //
+            // Ce n'est pas arbitraire. Dans ce montage, c'est le fils qui
+            // fait le travail : il s'attache, et si l'attache réussit —
+            // elle réussit, `ptrace` répond zéro — il poursuit jusqu'au
+            // code qu'on est venu lire. Le père, lui, ne saurait
+            // qu'attendre un enfant qui n'existe pas.
+            //
+            // Ce que cela coûte, et il faut le savoir : un programme qui
+            // se dédouble pour de bon — un serveur qui traite chaque
+            // client dans un fils, un shell qui lance une commande — ne
+            // s'exécutera pas comme sur la vraie machine. On ne suit
+            // qu'une branche, celle du fils, et le père n'est jamais joué.
+            SYS_CLONE | SYS_FORK | SYS_VFORK => {
+                self.cpu.regs.set64(Reg64::Rax, 0);
+            }
+            // Un `SIGSTOP` que le programme s'envoie à lui-même : il
+            // demande à être mis en pause jusqu'à ce qu'on le relance.
+            // namsdec le relance aussitôt — c'est exactement ce que ferait
+            // le père, un `PTRACE_CONT` plus loin.
+            //
+            // Tout autre signal s'arrête et se nomme : un `SIGABRT` ou un
+            // `SIGKILL` que l'on avalerait ferait courir un programme que
+            // la vraie machine aurait tué, et le montrer faux est pire que
+            // ne pas le montrer. De même un signal adressé à un autre
+            // processus : il n'y en a pas d'autre ici.
+            SYS_KILL | SYS_TKILL | SYS_TGKILL => {
+                // Le numéro du signal est le dernier argument, et sa place
+                // change avec le nombre d'arguments de l'appel.
+                let signal = match number {
+                    SYS_KILL | SYS_TKILL => self.cpu.regs.get64(Reg64::Rsi),
+                    _ => self.cpu.regs.get64(Reg64::Rdx),
+                };
+                let cible = self.cpu.regs.get64(Reg64::Rdi);
+                if (signal == SIGSTOP || signal == SIGCONT) && cible == FAKE_PID {
+                    self.cpu.regs.set64(Reg64::Rax, 0);
+                } else {
+                    return Err(EmuError::UnsupportedSyscall {
+                        backend: Self::NAME,
+                        number,
+                    });
+                }
             }
             // `rseq` : une optimisation que le noyau refuse sans drame
             // quand il ne la gère pas. `-ENOSYS` est exactement ce
@@ -2386,6 +2502,7 @@ impl Emulator {
             // devant un débogueur — sauf qu'ici, le débogueur, c'est
             // l'application elle-même.
             M::Int3 => {
+                self.software_breakpoint = Some(instr.ip());
                 self.cpu.halted = true;
             }
             // `ud2` existe pour planter : c'est ce qu'un compilateur pose
@@ -3299,6 +3416,7 @@ impl Emulator {
             flags: self.cpu.flags,
             halted: self.cpu.halted,
             exit_code: self.exit_code,
+            software_breakpoint: self.software_breakpoint,
             output_len: self.output.len(),
             consumed_input: Vec::new(),
             input_closed: self.input_closed,
@@ -3352,6 +3470,7 @@ impl Emulator {
         self.cpu.flags = undo.flags;
         self.cpu.halted = undo.halted;
         self.exit_code = undo.exit_code;
+        self.software_breakpoint = undo.software_breakpoint;
         self.output.truncate(undo.output_len);
         for byte in undo.consumed_input.iter().rev() {
             self.input.push_front(*byte);
