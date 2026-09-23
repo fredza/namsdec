@@ -1067,6 +1067,30 @@ struct NamsdecApp {
     /// Le module que la fenêtre d'analyse montre, ou une chaîne vide
     /// pour les montrer tous.
     analysis_module: String,
+    /// Ce qu'on tape dans la boîte de saisie.
+    ///
+    /// Son propre tampon, distinct de celui de la ligne de console. Les
+    /// deux champs partageaient la même chaîne, et deux widgets qui
+    /// écrivent dans un même texte se disputent le focus et se
+    /// contredisent : ce qu'on tapait dans l'un disparaissait de
+    /// l'autre. Chacun le sien, et l'envoi part de celui qui a servi.
+    input_dialog_text: String,
+    /// La boîte doit-elle prendre le clavier à la prochaine image ?
+    ///
+    /// Une fois, à l'ouverture — et non à chaque image : demander le
+    /// focus en boucle empêche Échap de le rendre, et la boîte gardait
+    /// alors le clavier pour toujours.
+    input_dialog_focus: bool,
+    /// La boîte de saisie est-elle ouverte ?
+    ///
+    /// Elle s'ouvre d'elle-même quand le programme se met à attendre, et
+    /// se referme dès qu'on lui a répondu.
+    show_input_dialog: bool,
+    /// Le programme attendait-il à l'image précédente ?
+    ///
+    /// C'est le *passage* à l'attente qui ouvre la boîte, non l'attente
+    /// elle-même : sans cela, la refermer la rouvrirait aussitôt.
+    was_waiting_for_input: bool,
     calc_base: CalcBase,
     /// Sur combien de bits elle montre son résultat.
     calc_width: CalcWidth,
@@ -1637,6 +1661,8 @@ enum FileDialogKind {
     ExportReport,
     /// Choisir où écrire le programme assemblé, tel que `ld` l'a produit.
     ExportBinary,
+    /// Choisir où écrire le vidage hexadécimal du fichier chargé.
+    ExportDump,
 }
 
 /// Les fiches dont un programme se sert, dans l'ordre où il les emploie.
@@ -2186,6 +2212,10 @@ impl Default for NamsdecApp {
             console_tab: ConsoleTab::Output,
             mem_addr_input: format!("{BASE_ADDR:#x}"),
             analysis_module: String::new(),
+            input_dialog_text: String::new(),
+            input_dialog_focus: false,
+            show_input_dialog: false,
+            was_waiting_for_input: false,
             calc_base: CalcBase::Hex,
             calc_width: CalcWidth::W64,
             last_layout_len: 0,
@@ -3782,6 +3812,7 @@ impl NamsdecApp {
                 FileDialogKind::SaveAs
                 | FileDialogKind::ExportManual
                 | FileDialogKind::ExportReport
+                | FileDialogKind::ExportDump
                 | FileDialogKind::ExportBinary => dialog.save_file(),
             };
             // Si l'application s'est arrêtée entre-temps, le résultat
@@ -3836,6 +3867,16 @@ impl NamsdecApp {
                         .map(|name| name.to_string_lossy().into_owned())
                         .unwrap_or_else(|| "namsdec".to_owned())
                 )),
+            FileDialogKind::ExportDump => dialog
+                .add_filter(s.filter_text, &["txt"])
+                .set_file_name(format!(
+                    "{}-vidage.txt",
+                    self.current_file
+                        .as_ref()
+                        .and_then(|path| path.file_stem())
+                        .map(|name| name.to_string_lossy().into_owned())
+                        .unwrap_or_else(|| "namsdec".to_owned())
+                )),
             FileDialogKind::OpenFolder | FileDialogKind::SaveAs => dialog,
         }
     }
@@ -3883,6 +3924,27 @@ impl NamsdecApp {
             FileDialogKind::ExportManual => self.export_manual(&path),
             FileDialogKind::ExportReport => self.export_report(&path),
             FileDialogKind::ExportBinary => self.export_binary(&path),
+            FileDialogKind::ExportDump => self.export_dump(&path),
+        }
+    }
+
+    /// Écrit le vidage hexadécimal du fichier chargé.
+    ///
+    /// Le fichier tel qu'il est sur le disque, au format de `xxd` : c'est
+    /// ce qui permet de le comparer — à celui qu'on a sous les yeux, à
+    /// celui d'un autre outil, ou à la même analyse faite la semaine
+    /// dernière. Un `diff` de deux vidages dit en une ligne ce qu'un
+    /// binaire a de changé.
+    fn export_dump(&mut self, path: &Path) {
+        let s = strings(self.lang);
+        let Some(state) = &self.assemble_state else {
+            self.status = Status::Error(s.binary_none.to_owned());
+            return;
+        };
+        let texte = namsdec_re::dump_module::hex_dump(&state.output.file);
+        match std::fs::write(path, texte) {
+            Ok(()) => self.status = Status::Note(|s| s.dump_saved),
+            Err(e) => self.status = Status::Error(format!("{} : {e}", s.dump_save_failed)),
         }
     }
 
@@ -9206,7 +9268,7 @@ impl NamsdecApp {
     /// ajouter une fenêtre sans y penser reviendrait à réintroduire le
     /// défaut sans le voir. Les noms sont les identifiants qu'on passe à
     /// `egui::Window::id`, lesquels ne changent pas avec la langue.
-    fn window_states(&self) -> [(&'static str, bool); 16] {
+    fn window_states(&self) -> [(&'static str, bool); 17] {
         [
             ("preferences_window", self.show_preferences),
             (ABOUT_WINDOW, self.show_about),
@@ -9230,6 +9292,7 @@ impl NamsdecApp {
             ("exercises_window_v2", self.exercises && self.show_exercises),
             ("unsaved_changes", self.pending.is_some()),
             ("command_palette", self.command_palette.is_some()),
+            (INPUT_DIALOG, self.show_input_dialog),
         ]
     }
 
@@ -12544,6 +12607,17 @@ impl NamsdecApp {
                             {
                                 self.spawn_file_dialog(FileDialogKind::ExportReport);
                             }
+                            // Le vidage a son propre enregistrement :
+                            // ce n'est pas un rapport, c'est le fichier
+                            // lui-même, et il sert à être comparé.
+                            if self.analysis_module == "dump"
+                                && ui
+                                    .button(s.dump_save)
+                                    .on_hover_text(s.dump_save_hint)
+                                    .clicked()
+                            {
+                                self.spawn_file_dialog(FileDialogKind::ExportDump);
+                            }
                             ui.separator();
                             ui.weak(s.analysis_hint);
                         });
@@ -12637,6 +12711,15 @@ impl NamsdecApp {
                             .id_salt("analysis_content")
                             .auto_shrink([false, false])
                             .show(ui, |ui| {
+                                // Une largeur de lecture, et non toute
+                                // la place : sur un écran large, une
+                                // table à deux colonnes posait la
+                                // seconde à mille pixels de la première,
+                                // et l'on suivait la ligne du doigt. Ce
+                                // que fait tout volet de détail.
+                                ui.set_max_width(
+                                    ui.available_width().min(ANALYSIS_CONTENT_MAX),
+                                );
                                 let choisi = self.analysis_module.clone();
                                 let seul = (!choisi.is_empty()).then_some(choisi.as_str());
                                 self.re_modules_ui(ui, seul);
@@ -13472,6 +13555,170 @@ impl NamsdecApp {
     /// qu'un programme attend d'un terminal : il lit jusqu'au `\n`, et une
     /// ligne sans fin de ligne le laisserait croire qu'elle n'est pas
     /// terminée.
+    /// La boîte de saisie : là où l'on répond au programme.
+    ///
+    /// La ligne de la console suffit quand on la voit. Elle ne suffit pas
+    /// quand une fenêtre d'analyse couvre l'écran, quand la console est
+    /// repliée, ou simplement quand on ne sait pas encore qu'elle existe
+    /// — et l'on reste alors devant un programme qui ne répond plus, sans
+    /// savoir qu'il attend *nous*.
+    ///
+    /// La boîte s'ouvre donc d'elle-même au moment où le programme se met
+    /// à attendre, au premier plan, le curseur déjà dans le champ. Elle
+    /// montre **ce que le programme vient d'écrire** : neuf fois sur dix
+    /// c'est l'invite — « Enter the password: » —, et c'est la seule
+    /// chose qui dise ce qu'on attend de nous.
+    fn input_dialog_ui(&mut self, ctx: &egui::Context) {
+        // Le passage à l'attente ouvre la boîte ; l'attente seule ne la
+        // rouvre pas, sans quoi la refermer serait impossible.
+        let attend = matches!(self.status, Status::WaitingForInput);
+        if attend && !self.was_waiting_for_input {
+            self.show_input_dialog = true;
+            self.input_dialog_focus = true;
+        }
+        if !attend {
+            self.show_input_dialog = false;
+        }
+        self.was_waiting_for_input = attend;
+        if !self.show_input_dialog {
+            return;
+        }
+
+        let s = strings(self.lang);
+        let theme = self.theme;
+        // Les dernières lignes écrites : l'invite, et ce qui la précède.
+        let sortie = self
+            .emulator
+            .as_ref()
+            .map(|e| String::from_utf8_lossy(e.output()).into_owned())
+            .unwrap_or_default();
+        let invite = {
+            let mut lignes: Vec<&str> = sortie.lines().rev().take(4).collect();
+            lignes.reverse();
+            lignes.join("\n")
+        };
+
+        let mut envoyer = false;
+        let mut fin = false;
+        let mut fermer = false;
+        egui::Window::new(s.input_dialog_title)
+            .id(egui::Id::new(INPUT_DIALOG))
+            .resizable(false)
+            .collapsible(false)
+            .title_bar(false)
+            .pivot(egui::Align2::CENTER_CENTER)
+            .current_pos(ctx.viewport_rect().center())
+            .default_width(480.0)
+            .min_width(480.0)
+            .show(ctx, |ui| {
+                if chrome::window_head(ui, theme, s, s.input_dialog_title) {
+                    fermer = true;
+                }
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    let (rect, _) = ui.allocate_exact_size(
+                        egui::vec2(10.0, ui.text_style_height(&egui::TextStyle::Body)),
+                        egui::Sense::hover(),
+                    );
+                    ui.painter().circle_filled(rect.center(), 4.0, theme.accent);
+                    ui.colored_label(
+                        theme.accent,
+                        egui::RichText::new(s.console_waiting).strong(),
+                    );
+                });
+
+                ui.add_space(8.0);
+                ui.colored_label(theme.dim, s.input_dialog_asked);
+                ui.add_space(2.0);
+                // Ce que le programme vient d'écrire, sur le fond d'un
+                // terminal : c'est sa voix, elle ne doit pas se confondre
+                // avec celle de l'application.
+                egui::Frame::new()
+                    .fill(theme.bg)
+                    .inner_margin(egui::Margin::symmetric(8, 6))
+                    .corner_radius(4)
+                    .show(ui, |ui| {
+                        ui.set_min_width(ui.available_width());
+                        if invite.trim().is_empty() {
+                            ui.colored_label(theme.dim, s.input_dialog_nothing_asked);
+                        } else {
+                            ui.label(egui::RichText::new(&invite).monospace());
+                        }
+                    });
+
+                ui.add_space(10.0);
+                // Les deux touches relevées avant le champ : un
+                // `TextEdit` qui traite Entrée la retire de la file, si
+                // bien que la guetter après lui ne verrait plus rien.
+                let entrée_frappée = ui.input(|i| i.key_pressed(egui::Key::Enter));
+                let échap_frappé = ui.input(|i| i.key_pressed(egui::Key::Escape));
+                let champ = ui.add(
+                    egui::TextEdit::singleline(&mut self.input_dialog_text)
+                        .hint_text(s.console_input_hint)
+                        .font(egui::TextStyle::Monospace)
+                        .desired_width(ui.available_width()),
+                );
+                // Le curseur y va à l'ouverture, une fois : la boîte
+                // s'est ouverte parce qu'on nous demande quelque chose,
+                // et la seule chose à faire est d'écrire. Le redemander
+                // à chaque image empêcherait Échap de rendre le clavier.
+                if self.input_dialog_focus {
+                    champ.request_focus();
+                    self.input_dialog_focus = false;
+                }
+                envoyer |= entrée_frappée && (champ.has_focus() || champ.lost_focus());
+                fermer |= échap_frappé;
+
+                ui.add_space(10.0);
+                ui.separator();
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    // « Fin d'entrée » à gauche, loin du bouton qu'on
+                    // vise : fermer l'entrée d'un programme est sans
+                    // retour pour lui, et ce n'est pas ce qu'on venait
+                    // faire.
+                    if ui
+                        .button(s.console_eof)
+                        .on_hover_text(s.console_eof_hint)
+                        .clicked()
+                    {
+                        fin = true;
+                    }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let envoi =
+                            egui::Button::new(egui::RichText::new(s.console_send).color(theme.bg))
+                                .fill(theme.accent)
+                                .min_size(egui::vec2(110.0, 0.0));
+                        envoyer |= ui.add(envoi).clicked();
+                        if ui
+                            .add(
+                                egui::Button::new(s.input_dialog_later)
+                                    .stroke(egui::Stroke::new(1.0, theme.dim))
+                                    .min_size(egui::vec2(110.0, 0.0)),
+                            )
+                            .on_hover_text(s.input_dialog_later_hint)
+                            .clicked()
+                        {
+                            fermer = true;
+                        }
+                    });
+                });
+            });
+
+        if envoyer {
+            let ligne = std::mem::take(&mut self.input_dialog_text);
+            self.send_input(Some(ligne));
+            self.show_input_dialog = false;
+        }
+        if fin {
+            self.send_input(None);
+            self.show_input_dialog = false;
+        }
+        if fermer {
+            self.show_input_dialog = false;
+        }
+    }
+
     /// La console montre-t-elle sa ligne de saisie ?
     ///
     /// Dès qu'un programme est assemblé, et sans autre condition.
@@ -13692,7 +13939,10 @@ impl NamsdecApp {
                     // Revenu dedans de son plein gré : l'attente suivante
                     // pourra de nouveau l'y amener.
                     self.console_input_released = false;
-                } else if waiting && !self.console_input_released {
+                } else if waiting && !self.console_input_released && !self.show_input_dialog {
+                    // Pas tant que la boîte est ouverte : c'est elle qui
+                    // demande, et deux champs qui réclament le clavier
+                    // dans la même image se l'arrachent.
                     response.request_focus();
                 }
                 // Le champ a le focus et l'on vient de frapper Entrée :
@@ -16444,6 +16694,9 @@ impl NamsdecApp {
             }
             self.command_palette_ui(&ctx);
             self.unsaved_window_ui(&ctx);
+            // En dernier : c'est la seule fenêtre qui réclame une
+            // réponse, elle passe donc devant toutes les autres.
+            self.input_dialog_ui(&ctx);
         });
 
         // En dernier : tout réglage changé pendant cette frame, d'où qu'il
@@ -16590,6 +16843,24 @@ fn byte_to_char(text: &str, byte: usize) -> usize {
 /// position. Trois endroits, un seul mot — sans quoi renommer l'un
 /// laisserait les autres chercher une fenêtre qui n'existe plus.
 pub(crate) const ABOUT_WINDOW: &str = "about_window";
+
+/// L'identifiant de la boîte de saisie.
+///
+/// Nommé une fois : la fenêtre s'en sert, et la table qui remet devant
+/// les fenêtres qui s'ouvrent aussi — c'est elle qui fait passer la
+/// boîte au-dessus d'une fenêtre d'analyse ouverte en grand.
+pub(crate) const INPUT_DIALOG: &str = "input_dialog";
+
+/// La largeur au-delà de laquelle le contenu de la fenêtre d'analyse ne
+/// s'étire plus.
+///
+/// Un volet de détail qui prend deux mille pixels ne se lit pas : une
+/// table à deux colonnes y pose la seconde à mille pixels de la
+/// première, et l'on suit la ligne du doigt. Mille pixels, c'est une
+/// centaine de caractères de chasse fixe — la largeur d'un terminal
+/// large, et celle au-delà de laquelle l'œil perd la ligne en revenant à
+/// la gauche.
+pub(crate) const ANALYSIS_CONTENT_MAX: f32 = 1000.0;
 
 /// L'identifiant de la boîte « À propos », sous la forme qu'egui attend.
 ///

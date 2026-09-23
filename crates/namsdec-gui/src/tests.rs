@@ -10097,24 +10097,35 @@ syscall
         output.textures_delta.clear();
     };
 
+    // La boîte de saisie s'ouvre d'elle-même : c'est elle qui demande,
+    // et c'est elle qui prend le clavier. On la referme d'abord — le
+    // reste du test porte sur la ligne de la console, l'autre chemin.
+    frame(&mut app, &ctx, input.clone());
+    assert!(app.show_input_dialog, "la boîte s'ouvre quand on attend");
+    let échap = |input: &egui::RawInput| {
+        let mut avec = input.clone();
+        avec.events.push(egui::Event::Key {
+            key: egui::Key::Escape,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        });
+        avec
+    };
+    frame(&mut app, &ctx, échap(&input));
+    assert!(!app.show_input_dialog, "Échap referme la boîte");
+
     frame(&mut app, &ctx, input.clone());
     let au_champ = ctx.memory(|m| m.focused());
     assert!(
         au_champ.is_some(),
-        "le champ prend le curseur quand le programme attend"
+        "la ligne de la console prend alors le curseur"
     );
     assert_ne!(au_champ, Some(editor_id()), "et ce n'est pas l'éditeur");
 
-    // Échap, et le clavier revient aux commandes.
-    let mut avec_echap = input.clone();
-    avec_echap.events.push(egui::Event::Key {
-        key: egui::Key::Escape,
-        physical_key: None,
-        pressed: true,
-        repeat: false,
-        modifiers: egui::Modifiers::NONE,
-    });
-    frame(&mut app, &ctx, avec_echap);
+    // Échap de nouveau, et le clavier revient aux commandes.
+    frame(&mut app, &ctx, échap(&input));
     assert_eq!(
         ctx.memory(|m| m.focused()),
         None,
@@ -12099,6 +12110,96 @@ fn the_analysis_window_reads_across_and_not_only_down() {
     assert_eq!(relu.analysis_module, id);
 }
 
+/// La boîte de saisie s'ouvre quand le programme attend, et répond.
+///
+/// La ligne de la console suffit quand on la voit. Elle ne suffit pas
+/// quand une fenêtre d'analyse couvre l'écran, quand la console est
+/// repliée, ou quand on ne sait pas encore qu'elle existe — et l'on
+/// reste devant un programme qui ne répond plus, sans savoir qu'il
+/// attend *nous*.
+#[test]
+fn the_input_dialog_opens_when_the_program_waits_and_shows_what_it_asked() {
+    let s = strings(Lang::Fr);
+    let Some(octets) = binaire_dépreuve("crackme-01") else {
+        return;
+    };
+    let mut app = NamsdecApp::default();
+    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    assert!(!app.show_input_dialog, "rien tant que rien n'attend");
+
+    app.do_run();
+    for _ in 0..4000 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&egui::Context::default());
+    }
+    assert!(matches!(app.status, Status::WaitingForInput), "{:?}", app.status);
+
+    let peint = paint(&mut app);
+    assert!(app.show_input_dialog, "la boîte s'ouvre d'elle-même");
+    assert!(peint.contains(s.input_dialog_title), "son titre :\n{peint}");
+    // Ce que le programme vient d'écrire : c'est l'invite, et c'est la
+    // seule chose qui dise ce qu'on attend de nous.
+    assert!(
+        peint.contains("Enter the password:"),
+        "l'invite du programme doit être montrée :\n{peint}"
+    );
+    assert!(peint.contains(s.console_send), "et de quoi répondre :\n{peint}");
+    assert!(peint.contains(s.console_eof), "{peint}");
+
+    // « Plus tard » la referme sans rien envoyer : le programme attend
+    // toujours, et la ligne de la console reste.
+    app.show_input_dialog = false;
+    assert!(matches!(app.status, Status::WaitingForInput), "{:?}", app.status);
+    let peint = paint(&mut app);
+    assert!(
+        !peint.contains(s.input_dialog_asked),
+        "refermée, elle ne revient pas toute seule :\n{peint}"
+    );
+    assert!(
+        peint.contains(s.console_input_label),
+        "et l'autre chemin est toujours là :\n{peint}"
+    );
+}
+
+/// Le vidage s'enregistre, au format que `diff` sait lire.
+///
+/// Un vidage sert à être comparé : à celui qu'on a sous les yeux, à
+/// celui d'un autre outil, à la même analyse faite la semaine dernière.
+#[test]
+fn the_dump_can_be_saved_in_a_shape_one_can_compare() {
+    let s = strings(Lang::Fr);
+    let Some(octets) = binaire_dépreuve("crackme-01") else {
+        return;
+    };
+    let mut app = NamsdecApp::default();
+    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    app.show_analysis = true;
+
+    // Le bouton n'apparaît que sur le module qui le concerne : c'est le
+    // fichier qu'on enregistre, pas un rapport.
+    app.analysis_module = "protections".to_owned();
+    let peint = paint(&mut app);
+    assert!(!peint.contains(s.dump_save), "pas ailleurs :\n{peint}");
+    app.analysis_module = "dump".to_owned();
+    let peint = paint(&mut app);
+    assert!(peint.contains(s.dump_save), "et là, oui :\n{peint}");
+
+    // Et ce qu'il écrit est le fichier entier, au format de xxd.
+    let dossier = tempfile::tempdir().unwrap();
+    let chemin = dossier.path().join("vidage.txt");
+    app.export_dump(&chemin);
+    assert!(matches!(app.status, Status::Note(_)), "{:?}", app.status);
+    let écrit = std::fs::read_to_string(&chemin).expect("le vidage est là");
+    assert!(écrit.starts_with("00000000  7f 45 4c 46"), "un ELF :\n{}", &écrit[..80]);
+    assert_eq!(
+        écrit.lines().count(),
+        octets.len().div_ceil(16),
+        "seize octets par ligne, et tout le fichier"
+    );
+}
+
 /// La ligne de saisie est là dès qu'un programme est assemblé, même
 /// s'il ne lit rien encore.
 ///
@@ -12525,12 +12626,13 @@ fn every_window_is_in_the_table_that_raises_new_ones() {
     let mut vus = std::collections::BTreeSet::new();
     for (position, _) in source.match_indices("egui::Window::new(") {
         let suite = &source[position..(position + 600).min(source.len())];
-        // La boîte « À propos » nomme son identifiant par une constante,
-        // parce que trois endroits s'y réfèrent ; le reste l'écrit sur
-        // place.
+        // Deux fenêtres nomment leur identifiant par une constante,
+        // parce que plusieurs endroits s'y réfèrent ; le reste l'écrit
+        // sur place.
         let id = suite
             .find("egui::Id::new(ABOUT_WINDOW)")
             .map(|_| ABOUT_WINDOW)
+            .or_else(|| suite.find("egui::Id::new(INPUT_DIALOG)").map(|_| INPUT_DIALOG))
             .or_else(|| {
                 suite
                     .find("egui::Id::new(\"")
@@ -19314,11 +19416,14 @@ fn walking_without_a_highlight_starts_one() {
 
 /// Entrée envoie la ligne au programme — sans toucher à la souris.
 ///
-/// Elle ne le faisait pas : un `TextEdit` qui traite Entrée la retire de
-/// la file d'évènements, si bien que la guetter *après* lui ne voyait
-/// plus rien. Le champ gardait le texte, le programme continuait
-/// d'attendre, et il fallait cliquer « Envoyer » — ce qui est exactement
-/// ce que le focus automatique cherchait à éviter.
+/// La boîte de saisie s'ouvre quand le programme attend, prend le
+/// clavier, et Entrée envoie. Avant elle, ce chemin passait par la ligne
+/// de la console ; il existe toujours, et il est vérifié plus bas.
+///
+/// Le piège que ce test garde : un `TextEdit` qui traite Entrée la
+/// retire de la file d'évènements, si bien que la guetter *après* lui ne
+/// voit plus rien. Le champ gardait le texte, le programme continuait
+/// d'attendre, et il fallait cliquer « Envoyer ».
 #[test]
 fn pressing_enter_sends_the_line_to_the_program() {
     let Some(octets) = binaire_dépreuve("crackme-01") else {
@@ -19342,11 +19447,13 @@ fn pressing_enter_sends_the_line_to_the_program() {
         screen_rect: Some(écran),
         ..Default::default()
     };
-    // Deux images : le champ réclame le focus, et l'obtient.
+    // Deux images : la boîte s'ouvre, son champ réclame le clavier et
+    // l'obtient.
     for _ in 0..2 {
         let mut sortie = ctx.run_ui(base.clone(), |ui| app.draw(ui));
         sortie.textures_delta.clear();
     }
+    assert!(app.show_input_dialog, "la boîte s'ouvre d'elle-même");
     assert!(
         ctx.memory(|m| m.focused()).is_some(),
         "le curseur doit aller tout seul là où il faut taper"
@@ -19357,7 +19464,10 @@ fn pressing_enter_sends_the_line_to_the_program() {
     frappe.events.push(egui::Event::Text("secret".to_owned()));
     let mut sortie = ctx.run_ui(frappe, |ui| app.draw(ui));
     sortie.textures_delta.clear();
-    assert_eq!(app.console_input, "secret", "ce qu'on tape arrive dans le champ");
+    assert_eq!(
+        app.input_dialog_text, "secret",
+        "ce qu'on tape arrive dans le champ de la boîte"
+    );
 
     // Puis Entrée.
     let mut entrée = base.clone();
@@ -19372,15 +19482,40 @@ fn pressing_enter_sends_the_line_to_the_program() {
     sortie.textures_delta.clear();
 
     assert!(
-        app.console_input.is_empty(),
+        app.input_dialog_text.is_empty(),
         "le champ se vide : la ligne est partie — {:?}",
-        app.console_input
+        app.input_dialog_text
+    );
+    assert!(
+        !app.show_input_dialog,
+        "et la boîte se referme : on a répondu"
     );
     assert!(
         !matches!(app.status, Status::WaitingForInput),
         "et le programme repart au lieu d'attendre encore : {:?}",
         app.status
     );
+
+    // L'autre chemin marche toujours : la ligne de la console, pour qui
+    // préfère ne pas voir de boîte.
+    app.do_run();
+    for _ in 0..4000 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&egui::Context::default());
+    }
+    if matches!(app.status, Status::WaitingForInput) {
+        app.show_input_dialog = false;
+        app.console_input = "encore".to_owned();
+        let ligne = std::mem::take(&mut app.console_input);
+        app.send_input(Some(ligne));
+        assert!(
+            !matches!(app.status, Status::WaitingForInput),
+            "la ligne de la console envoie aussi : {:?}",
+            app.status
+        );
+    }
 }
 
 /// Pendant l'attente, la zone de saisie se voit sans qu'on la cherche.

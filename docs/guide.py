@@ -360,6 +360,14 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
         ]),
 
         ("p",
+         "Quand le programme se met \u00e0 attendre, une <b>bo\u00eete de saisie</b> s'ouvre "
+         "d'elle-m\u00eame, au premier plan, le curseur d\u00e9j\u00e0 dans le champ. Elle montre "
+         "<b>ce que le programme vient d'\u00e9crire</b> \u2014 neuf fois sur dix c'est "
+         "l'invite, et c'est la seule chose qui dise ce qu'on attend de nous. Entr\u00e9e "
+         "envoie, \u00c9chap referme sans rien envoyer. Elle sert pr\u00e9cis\u00e9ment quand la "
+         "console est repli\u00e9e ou couverte par une autre fen\u00eatre : on reste sinon "
+         "devant un programme qui ne r\u00e9pond plus, sans savoir qu'il attend <i>nous</i>."),
+        ("p",
          "La ligne <b>Entrée</b> est l\u00e0 d\u00e8s qu'un programme est assembl\u00e9, "
          "qu'il lise ou non. On \u00e9crit son programme, on a pos\u00e9 ses cha\u00eenes, "
          "et l'on veut pr\u00e9parer ce qu'il lira avant d'avoir tap\u00e9 le "
@@ -752,6 +760,9 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "<b>Gadgets</b> — les fins de séquence utiles à une chaîne ROP.",
          "<b>Vidage du fichier</b> — les octets tels qu'ils sont sur le disque, et pour "
          "la tranche qu'on choisit : sa taille, son SHA-256, son CRC-32 et son entropie. "
+         "Il se copie et s'enregistre au format de <font face='Courier'>xxd</font>, celui "
+         "qu'un <font face='Courier'>diff</font> sait lire — c'est ce qui permet de "
+         "comparer deux binaires, ou deux états du même. "
          "C'est la réponse à « ces octets-là, qu'est-ce que c'est ? » — un "
          "bloc à 7,9 bits par octet est chiffré ou compressé, un bloc à "
          "4,5 est du code. Cliquer un octet pose le début de la tranche.",

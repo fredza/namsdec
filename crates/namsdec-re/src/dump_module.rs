@@ -41,6 +41,41 @@ impl Default for DumpModule {
 /// de ligne.
 const PAR_LIGNE: usize = 16;
 
+/// Le vidage en texte, tel qu'on l'enregistre ou qu'on le colle.
+///
+/// La même forme que celle de l'écran — décalage, seize octets, puis la
+/// colonne de texte —, parce qu'un vidage qu'on enregistre sert à être
+/// comparé à celui qu'on a sous les yeux. C'est aussi la forme que
+/// `xxd` et `hexdump -C` donnent, donc celle qu'un `diff` sait lire.
+///
+/// Une seule fonction pour l'écran et pour le fichier : deux qui
+/// formateraient chacune finiraient par ne plus donner le même texte, et
+/// la comparaison ne dirait plus rien.
+pub fn hex_dump(octets: &[u8]) -> String {
+    let mut out = String::with_capacity(octets.len() * 4);
+    for (ligne, tranche) in octets.chunks(PAR_LIGNE).enumerate() {
+        out.push_str(&format!("{:08x}  ", ligne * PAR_LIGNE));
+        for (rang, octet) in tranche.iter().enumerate() {
+            out.push_str(&format!("{octet:02x} "));
+            if rang == PAR_LIGNE / 2 - 1 {
+                out.push(' ');
+            }
+        }
+        // Les colonnes restent alignées sur la dernière ligne, qui est
+        // souvent incomplète : sans ce remplissage, la colonne de texte
+        // remonterait de quelques caractères et le fichier ne se
+        // comparerait plus au précédent.
+        for rang in tranche.len()..PAR_LIGNE {
+            out.push_str("   ");
+            if rang == PAR_LIGNE / 2 - 1 {
+                out.push(' ');
+            }
+        }
+        out.push_str(&format!(" |{}|\n", lisible(tranche, PAR_LIGNE)));
+    }
+    out
+}
+
 /// Lit un nombre écrit à la main, dans la base que son préfixe annonce.
 ///
 /// `0x` hexadécimal, sinon décimal. Rendre `None` sur ce qui n'en est
@@ -117,6 +152,21 @@ impl ReModule for DumpModule {
             if ui.button(ctx.t("Tout", "Everything")).clicked() {
                 self.début = "0".to_owned();
                 self.longueur = format!("{:#x}", octets.len());
+            }
+            ui.separator();
+            // Le vidage entier dans le presse-papier : on le colle dans
+            // un compte rendu, ou on le compare à celui d'un autre
+            // outil. C'est la forme de `xxd`, donc celle qu'un `diff`
+            // sait lire.
+            if ui
+                .button(ctx.t("Copier le vidage", "Copy the dump"))
+                .on_hover_text(ctx.t(
+                    "Le fichier entier, au format de xxd",
+                    "The whole file, in xxd's format",
+                ))
+                .clicked()
+            {
+                ui.ctx().copy_text(hex_dump(octets));
             }
         });
 
@@ -307,6 +357,33 @@ mod tests {
         assert_eq!(tranche(0, 0, 16), None);
         // Le débordement ne fait rien tomber.
         assert_eq!(tranche(100, 1, usize::MAX), Some((1, 100)));
+    }
+
+    /// Le vidage en texte a la forme de `xxd`, colonnes comprises.
+    ///
+    /// C'est ce qui permet de le comparer : un vidage enregistré sert à
+    /// être mis en regard de celui qu'on a sous les yeux, ou de celui
+    /// d'un autre outil.
+    #[test]
+    fn the_text_dump_has_the_shape_one_can_diff() {
+        let texte = hex_dump(b"ELF\x01\x02");
+        let lignes: Vec<&str> = texte.lines().collect();
+        assert_eq!(lignes.len(), 1, "cinq octets tiennent sur une ligne");
+        assert!(lignes[0].starts_with("00000000  45 4c 46 01 02"), "{}", lignes[0]);
+        assert!(lignes[0].ends_with("|ELF..|"), "{}", lignes[0]);
+
+        // Deux lignes pleines, et les décalages qui vont avec.
+        let texte = hex_dump(&[0x41u8; 20]);
+        let lignes: Vec<&str> = texte.lines().collect();
+        assert_eq!(lignes.len(), 2);
+        assert!(lignes[1].starts_with("00000010  41 41 41 41 "), "{}", lignes[1]);
+        // La colonne de texte reste à la même abscisse sur une ligne
+        // incomplète : sans le remplissage, un `diff` verrait une
+        // différence là où il n'y en a pas.
+        let barre = |l: &str| l.find('|').expect("la colonne de texte");
+        assert_eq!(barre(lignes[0]), barre(lignes[1]), "{lignes:?}");
+
+        assert!(hex_dump(&[]).is_empty(), "rien à vider");
     }
 
     /// Le texte d'un vidage : ce qui se lit, et des points pour le

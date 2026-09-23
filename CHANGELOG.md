@@ -110,6 +110,13 @@ six fautes d'assembleur que namsdec sait désormais reconnaître.
   cherchant un titre à l'ascenseur.
 - « Tout » les remet à la file, qui est la forme d'un compte rendu —
   c'est cette vue-là qu'on copie. Le module choisi est un réglage.
+- Le contenu ne s'étire plus au-delà d'une largeur de lecture. Sur un
+  écran large, une table à deux colonnes posait la seconde à mille
+  pixels de la première, et l'on suivait la ligne du doigt.
+- Le **vidage s'enregistre** au format de `xxd` — celui qu'un `diff` sait
+  lire —, et se copie d'un bouton. Un vidage sert à être comparé : à
+  celui qu'on a sous les yeux, à celui d'un autre outil, à la même
+  analyse faite la semaine dernière.
 - La colonne est **alignée à gauche** et les deux zones ont leurs
   marges. Centrés, treize libellés de longueurs différentes n'ont plus
   de bord commun : l'œil cherche chacun au lieu de descendre une liste.
@@ -128,6 +135,20 @@ six fautes d'assembleur que namsdec sait désormais reconnaître.
   soixante-quatre en le disant. Un motif d'un seul octet dans un
   mégaoctet trouve des milliers de réponses, et une liste tronquée qui
   se tait fait conclure qu'il n'y en a pas davantage.
+
+**Une boîte pour répondre au programme**
+- Quand le programme se met à attendre, une boîte s'ouvre d'elle-même,
+  au premier plan, le curseur déjà dans le champ. Elle montre **ce que
+  le programme vient d'écrire** — neuf fois sur dix c'est l'invite, et
+  c'est la seule chose qui dise ce qu'on attend de nous.
+- Entrée envoie, Échap referme sans rien envoyer, « Fin d'entrée » ferme
+  l'entrée. La ligne de la console reste, pour qui préfère.
+- Elle sert précisément quand la console est repliée ou couverte par une
+  fenêtre d'analyse : on restait sinon devant un programme qui ne répond
+  plus, sans savoir qu'il attendait *nous*.
+- Son champ est **distinct** de celui de la console : deux widgets qui
+  écrivaient la même chaîne se disputaient le clavier, et ce qu'on
+  tapait dans l'un disparaissait de l'autre.
 
 **Ce qu'on voit**
 - Les quinze fenêtres internes se ferment par la **même pastille** que la

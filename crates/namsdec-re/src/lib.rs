@@ -10,7 +10,7 @@ pub mod cfg;
 pub mod cyclic;
 pub mod digest;
 mod digest_module;
-mod dump_module;
+pub mod dump_module;
 mod map_module;
 pub mod elf_scan;
 pub mod entropy;
