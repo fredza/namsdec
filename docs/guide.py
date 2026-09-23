@@ -395,9 +395,28 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
         ("h2", "Les points d'arrêt"),
         ("p",
          "Un clic dans la gouttière pose un point d'arrêt. Il peut porter une "
-         "<b>condition</b> — <font face='Courier'>rcx == 0</font> — auquel cas l'exécution "
-         "ne s'arrête que si elle est vraie. La fenêtre des points d'arrêt les liste tous, "
-         "avec leur condition et le nombre de fois qu'ils ont arrêté le programme."),
+         "<b>condition</b>, auquel cas l'exécution ne s'arrête que si elle est vraie. "
+         "Dans une boucle de cinq cents tours, s'arrêter à chaque passage n'est pas "
+         "déboguer, c'est une punition : la condition fait le tri. La fenêtre des points "
+         "d'arrêt les liste tous, avec leur condition et le nombre de fois qu'ils ont "
+         "arrêté le programme."),
+        ("p",
+         "Les deux côtés de la comparaison sont des <b>expressions de la "
+         "calculatrice</b> : une grammaire de plus à apprendre serait une grammaire de "
+         "trop."),
+        ("table", [
+            ["Condition", "Ce qu'elle attend"],
+            ["rcx == 0", "le dernier tour de la boucle"],
+            ["rax > 0x100", "un résultat qui dépasse"],
+            ["(rax &amp; 0xff) == 'A'", "l'octet de bas vaut la lettre A"],
+            ["[rsp+8] != 0", "ce qui est sur la pile n'est plus nul"],
+            ["byte [rdi] == 'A'", "le premier caractère pointé par RDI"],
+        ]),
+        ("note",
+         "Une condition s'écrit <b>avant</b> de lancer — c'est même le seul moment où "
+         "l'on en écrit une. Le champ ne refuse donc que ce qui est mal écrit, et non ce "
+         "qu'il ne sait pas encore calculer : à ce moment-là, il n'y a ni registre ni "
+         "mémoire à lire."),
         ("p",
          "Une <b>surveillance</b> est l'autre façon de s'arrêter : sur un registre (« quand "
          "RAX change ») ou sur une adresse (« quand ces huit octets changent »). C'est la "
@@ -488,6 +507,18 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "<font face='Courier'>eax</font>, <font face='Courier'>ax</font>, "
          "<font face='Courier'>ah</font> : <font face='Courier'>rax &amp; 0xff</font> se lit "
          "comme on le pense."),
+        ("p",
+         "Elle lit aussi la <b>mémoire</b>, entre crochets et avec la grammaire de nasm : "
+         "<font face='Courier'>[rsp+8]</font> donne les huit octets à cette adresse, "
+         "<font face='Courier'>byte [rdi]</font> un seul, "
+         "<font face='Courier'>dword [rbx + rcx*4]</font> les quatre d'une case de tableau. "
+         "L'adresse est une expression entière, la même qu'on lit dans le listing "
+         "juste au-dessus."),
+        ("note",
+         "La lecture est un <b>coup d'œil</b>, non une instruction : elle ne déclenche "
+         "aucune surveillance, ne compte pas comme un accès du programme, et ne bute pas "
+         "sur une page sans droit de lecture. Regarder ne doit pas changer ce qu'on "
+         "regarde."),
         ("p",
          "S'y ajoutent les fonctions qu'on écrit à la main en lisant un désassemblage : "
          "permutation d'octets, extension de signe, comptage de bits, rotations, "

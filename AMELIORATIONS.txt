@@ -363,10 +363,18 @@ aujourd'hui ; les suivantes, ce vers quoi l'outil peut aller.
      pas d'export « le jeu entier, à plat » pour qui veut partir d'une liste
      complète plutôt que d'un écart.
 
-4.6  Points d'arrêt conditionnels sur expression
-     breakpoint_conditions existe. L'élargir à « RAX == 0x1234 » ou
-     « [RSP+8] != 0 » demanderait un petit évaluateur — eval_address en est déjà
-     la moitié.
+4.6  [FAIT] Points d'arrêt conditionnels sur expression
+     L'évaluateur n'était pas à écrire : la calculatrice en est un, complet.
+     Les deux côtés d'une condition sont désormais des expressions de la
+     calculatrice — parenthèses, opérateurs binaires, dix-huit fonctions — et
+     la calculatrice a gagné la lecture mémoire entre crochets, avec la
+     grammaire de nasm : « [rsp+8] != 0 », « byte [rdi] == 'A' ».
+     La lecture est un coup d'œil : elle ne déclenche aucune surveillance et ne
+     compte pas comme un accès du programme. Regarder ne doit pas changer ce
+     qu'on regarde.
+     Et le champ ne refuse que ce qui est mal écrit, non ce qu'il ne sait pas
+     encore calculer : une condition s'écrit avant de lancer, c'est-à-dire
+     quand il n'y a ni registre ni mémoire à lire.
 
 4.7  [FAIT] Le graphe s'exporte en DOT
      Bouton « Copier en DOT » : Graphviz en fait une image avec « dot -Tsvg ».

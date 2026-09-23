@@ -3099,7 +3099,8 @@ impl NamsdecApp {
         let Some(emulator) = &self.emulator else {
             return true;
         };
-        condition.holds(&emulator.cpu().regs)
+        let cpu = emulator.cpu();
+        condition.holds(&cpu.regs, Some(&PeekMemory(&cpu.mem)))
     }
 
     fn sync_breakpoints(&mut self) {
@@ -11103,13 +11104,13 @@ impl NamsdecApp {
             return None;
         }
         let emulator = self.emulator.as_ref()?;
-        let regs = &emulator.cpu().regs;
+        let cpu = emulator.cpu();
+        let mémoire = PeekMemory(&cpu.mem);
         // Une condition qu'on ne sait pas lire ne vaut pas « atteint » :
         // mieux vaut un but qu'on n'atteint jamais qu'un faux succès.
-        let atteint = exercise
-            .goal
-            .iter()
-            .all(|texte| condition::parse(texte).is_some_and(|c| c.holds(regs)));
+        let atteint = exercise.goal.iter().all(|texte| {
+            condition::parse(texte).is_some_and(|c| c.holds(&cpu.regs, Some(&mémoire)))
+        });
         Some((exercise.goal.clone(), atteint))
     }
 
@@ -16587,6 +16588,28 @@ struct CompletionKeys {
 /// En clair, et en nommant ce qui coince : « erreur de syntaxe » oblige à
 /// chercher soi-même, ce qui est exactement le travail qu'on venait
 /// éviter.
+/// La mémoire du programme, telle que la calculatrice sait la lire.
+///
+/// `peek` et non `read` : évaluer une condition d'arrêt ne doit ni
+/// déclencher une surveillance, ni compter comme un accès du programme,
+/// ni échouer sur une page sans droit de lecture. C'est un coup d'œil de
+/// l'extérieur, pas une instruction que la machine exécute.
+struct PeekMemory<'a>(&'a namsdec_core::Memory);
+
+impl calc::Memory for PeekMemory<'_> {
+    fn peek(&self, addr: u64, taille: usize) -> Option<u64> {
+        let octets = self.0.peek_bytes(addr, taille).ok()?;
+        // Petit-boutiste, comme la machine : le premier octet lu est
+        // celui de poids faible.
+        Some(
+            octets
+                .iter()
+                .enumerate()
+                .fold(0u64, |acc, (rang, o)| acc | u64::from(*o) << (8 * rang)),
+        )
+    }
+}
+
 fn calc_error_text(s: &Strings, erreur: &calc::CalcError) -> String {
     use calc::CalcError as E;
     match erreur {
@@ -16601,6 +16624,8 @@ fn calc_error_text(s: &Strings, erreur: &calc::CalcError) -> String {
         E::NoRegisters(nom) => format!("{nom} : {}", s.calc_no_program),
         E::DivideByZero => s.calc_divide_by_zero.to_owned(),
         E::Trailing(reste) => format!("{} {reste}", s.calc_trailing),
+        E::NoMemory => s.calc_no_memory.to_owned(),
+        E::Unreadable(addr) => format!("{} {addr:#x}", s.calc_unreadable),
     }
 }
 

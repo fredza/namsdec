@@ -26,6 +26,23 @@ six fautes d'assembleur que namsdec sait désormais reconnaître.
   dire pourquoi elle est juste apprendrait le faux, ce qui est pire que
   de se taire.
 
+**Les points d'arrêt savent regarder dans la mémoire**
+- Les deux côtés d'une condition sont désormais des expressions de la
+  **calculatrice** : parenthèses, opérateurs binaires, dix-huit
+  fonctions. `(rax & 0xff) == 'A'` s'écrit tel quel.
+- Et la calculatrice a gagné la **lecture mémoire**, entre crochets et
+  avec la grammaire de nasm : `[rsp+8]`, `byte [rdi]`,
+  `dword [rbx + rcx*4]`. C'est la condition qu'on veut devant un
+  contrôle de mot de passe — l'intéressant n'est pas dans un registre,
+  il est à l'adresse qu'un registre désigne.
+- La lecture est un coup d'œil, non une instruction : elle ne déclenche
+  aucune surveillance et ne compte pas comme un accès du programme.
+  Regarder ne doit pas changer ce qu'on regarde.
+- Le champ ne refuse que ce qui est **mal écrit**, non ce qu'il ne sait
+  pas encore calculer. Une condition s'écrit avant de lancer — c'est
+  même le seul moment où l'on en écrit une —, et à ce moment-là il n'y a
+  ni registre ni mémoire à lire.
+
 **Ce qu'on voit**
 - Les quinze fenêtres internes se ferment par la **même pastille** que la
   fenêtre principale, au coin haut gauche. egui posait sa croix à lui,

@@ -11856,6 +11856,81 @@ fn a_solved_exercise_stays_solved() {
     );
 }
 
+/// Un point d'arrêt qui regarde dans la mémoire, et non dans un
+/// registre.
+///
+/// C'est la condition qu'on veut devant un contrôle de mot de passe :
+/// l'intéressant n'est pas dans un registre, il est à l'adresse qu'un
+/// registre désigne. Le programme ci-dessous écrit les lettres de
+/// `NAMSDEC` une par une sur la pile ; on demande à s'arrêter au moment
+/// où c'est le `S` qui vient d'être posé.
+#[test]
+fn a_breakpoint_can_watch_what_is_in_memory() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: "\
+global _start
+section .data
+mot db \"NAMSDEC\"
+section .text
+_start:
+sub rsp, 16
+xor rcx, rcx
+boucle:
+mov al, [mot + rcx]
+mov [rsp], al
+inc rcx
+cmp rcx, 7
+jne boucle
+add rsp, 16
+hlt
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+
+    // Sur la ligne qui incrémente le compteur : l'octet est alors posé.
+    let ligne = app
+        .source
+        .lines()
+        .position(|l| l.trim() == "inc rcx")
+        .map(|i| i as u32 + 1)
+        .expect("la ligne existe");
+    app.breakpoint_lines.insert(ligne);
+    app.breakpoint_conditions
+        .insert(ligne, "byte [rsp] == 'S'".to_owned());
+    app.sync_breakpoints();
+
+    let ctx = egui::Context::default();
+    app.do_run();
+    for _ in 0..40 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&ctx);
+    }
+
+    assert!(
+        matches!(app.status, Status::Breakpoint(_)),
+        "l'arrêt doit avoir eu lieu : {:?}",
+        app.status
+    );
+    // `NAMSDEC` : le S est la quatrième lettre, donc RCX vaut 3 quand on
+    // vient de la poser.
+    let rcx = app
+        .emulator
+        .as_ref()
+        .unwrap()
+        .cpu()
+        .regs
+        .get64(namsdec_core::Reg64::Rcx);
+    assert_eq!(rcx, 3, "au tour du S, et pas au premier");
+}
+
 /// Le nom du fichier suit les menus, il ne flotte pas au centre.
 ///
 /// Centré dans la place qui reste, il se déplaçait à chaque panneau
@@ -12704,7 +12779,7 @@ fn every_budget_is_one_a_program_can_hold() {
         for texte in &exercise.goal {
             let condition = condition::parse(texte).unwrap_or_else(|| panic!("{texte}"));
             assert!(
-                condition.holds(regs),
+                condition.holds(regs, None),
                 "{} : « {texte} » n'est pas atteint par la solution",
                 exercise.id
             );

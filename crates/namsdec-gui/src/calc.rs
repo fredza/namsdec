@@ -51,6 +51,52 @@ pub enum CalcError {
     DivideByZero,
     /// Ce qui reste après une expression complète : `1 2`.
     Trailing(String),
+    /// Une lecture mémoire demandée alors qu'aucun programme ne tourne.
+    NoMemory,
+    /// Une adresse que le programme ne peut pas lire — hors de ses
+    /// pages, ou dans une page sans droit de lecture.
+    Unreadable(u64),
+}
+
+impl CalcError {
+    /// L'expression est-elle **mal écrite**, ou seulement incalculable
+    /// ici et maintenant ?
+    ///
+    /// La distinction n'est pas une subtilité : `[rsp+8] != 0` est une
+    /// condition d'arrêt parfaitement valide, qu'on écrit avant que le
+    /// programme ne tourne — et à ce moment-là il n'y a ni registre ni
+    /// mémoire. Refuser le champ parce qu'on ne sait pas encore la
+    /// calculer reviendrait à interdire d'écrire une condition avant de
+    /// lancer, c'est-à-dire au seul moment où l'on en écrit une.
+    ///
+    /// Sont donc « incalculables » et non fautives : le programme absent
+    /// (`NoRegisters`, `NoMemory`), l'adresse illisible, et la division
+    /// par zéro, qui dépend des valeurs du moment. Tout le reste est une
+    /// faute de frappe, et se dit tout de suite.
+    pub fn is_syntax(&self) -> bool {
+        !matches!(
+            self,
+            CalcError::NoRegisters(_)
+                | CalcError::NoMemory
+                | CalcError::Unreadable(_)
+                | CalcError::DivideByZero
+        )
+    }
+}
+
+/// De quoi lire la mémoire du programme, quand l'expression le demande.
+///
+/// Un trait et non la mémoire elle-même : ce fichier ne connaît ni
+/// l'émulateur ni egui, et c'est ce qui permet de le tester au caractère
+/// près. L'appelant branche ce qu'il veut derrière.
+///
+/// La lecture doit être **sans effet** : évaluer une condition d'arrêt ne
+/// doit ni déclencher une surveillance, ni compter comme un accès du
+/// programme. C'est un coup d'œil, pas une instruction.
+pub trait Memory {
+    /// Les `taille` octets à cette adresse, lus en petit-boutiste, ou
+    /// `None` si l'adresse n'est pas lisible.
+    fn peek(&self, addr: u64, taille: usize) -> Option<u64>;
 }
 
 /// Les fonctions que la calculatrice connaît, avec ce qu'elles font.
@@ -121,6 +167,19 @@ pub const FUNCTIONS: &[(&str, usize, &str, &str)] = &[
 /// nommer un registre est une erreur qui le dit, plutôt qu'un zéro
 /// silencieux qui ferait croire à un résultat.
 pub fn eval(expr: &str, regs: Option<&Registers>) -> Result<u64, CalcError> {
+    eval_with(expr, regs, None)
+}
+
+/// La même, en sachant aussi lire la mémoire.
+///
+/// `[rsp+8]` lit alors huit octets à cette adresse, et `byte [rdi]` un
+/// seul — la même grammaire que NASM, parce que c'est celle qu'on a sous
+/// les yeux dans le listing.
+pub fn eval_with(
+    expr: &str,
+    regs: Option<&Registers>,
+    mem: Option<&dyn Memory>,
+) -> Result<u64, CalcError> {
     let tokens = lex(expr)?;
     if tokens.is_empty() {
         return Err(CalcError::Empty);
@@ -129,6 +188,7 @@ pub fn eval(expr: &str, regs: Option<&Registers>) -> Result<u64, CalcError> {
         tokens: &tokens,
         at: 0,
         regs,
+        mem,
     };
     let value = p.expression(0)?;
     // Ce qui reste est une faute, et non quelque chose à ignorer : `1 2`
@@ -148,6 +208,10 @@ enum Tok {
     Op(&'static str),
     Open,
     Close,
+    /// `[` : le début d'une lecture mémoire.
+    OpenBracket,
+    /// `]`.
+    CloseBracket,
     Comma,
 }
 
@@ -159,6 +223,8 @@ impl Tok {
             Tok::Op(o) => (*o).to_owned(),
             Tok::Open => "(".to_owned(),
             Tok::Close => ")".to_owned(),
+            Tok::OpenBracket => "[".to_owned(),
+            Tok::CloseBracket => "]".to_owned(),
             Tok::Comma => ",".to_owned(),
         }
     }
@@ -179,6 +245,14 @@ fn lex(expr: &str) -> Result<Vec<Tok>, CalcError> {
             }
             ')' => {
                 out.push(Tok::Close);
+                i += 1;
+            }
+            '[' => {
+                out.push(Tok::OpenBracket);
+                i += 1;
+            }
+            ']' => {
+                out.push(Tok::CloseBracket);
                 i += 1;
             }
             ',' => {
@@ -303,7 +377,18 @@ struct Parser<'a> {
     tokens: &'a [Tok],
     at: usize,
     regs: Option<&'a Registers>,
+    mem: Option<&'a dyn Memory>,
 }
+
+/// Les mots qui disent la taille d'une lecture mémoire, et combien
+/// d'octets ils valent. Ceux de NASM, parce que c'est ce qu'on lit dans
+/// le listing juste au-dessus du champ.
+const TAILLES: &[(&str, usize)] = &[
+    ("byte", 1),
+    ("word", 2),
+    ("dword", 4),
+    ("qword", 8),
+];
 
 /// La force d'un opérateur binaire. Celle du C, parce que c'est celle
 /// qu'on a en tête en lisant du code — et que se tromper là-dessus
@@ -380,18 +465,52 @@ impl Parser<'_> {
                 self.at += 1;
                 Ok(valeur)
             }
+            Tok::OpenBracket => {
+                self.at += 1;
+                // Sans taille dite, huit octets : c'est ce que vaut un
+                // mot sur cette machine, et ce qu'on lit neuf fois sur
+                // dix. `byte [rdi]` sert à le restreindre.
+                self.memory(8)
+            }
             Tok::Word(mot) => {
                 self.at += 1;
                 // Une fonction se reconnaît à la parenthèse qui suit ;
-                // sans elle, c'est un registre.
+                // sans elle, c'est un registre — ou un mot de taille, si
+                // un crochet suit.
                 if self.peek() == Some(&Tok::Open) {
                     return self.call(&mot);
                 }
+                if self.peek() == Some(&Tok::OpenBracket)
+                    && let Some(&(_, octets)) = TAILLES
+                        .iter()
+                        .find(|(nom, _)| *nom == mot.to_ascii_lowercase())
+                {
+                    self.at += 1;
+                    return self.memory(octets);
+                }
                 self.register(&mot)
             }
-            Tok::Close | Tok::Comma => Err(CalcError::Missing),
+            Tok::Close | Tok::CloseBracket | Tok::Comma => Err(CalcError::Missing),
             Tok::Op(_) => Err(CalcError::Missing),
         }
+    }
+
+    /// Ce que la mémoire contient à l'adresse entre crochets.
+    ///
+    /// Le crochet ouvrant est déjà consommé. L'adresse est une
+    /// expression entière : `[rbp - 8]`, `[rbx + rcx*4]`, tout ce que la
+    /// calculatrice sait calculer.
+    fn memory(&mut self, octets: usize) -> Result<u64, CalcError> {
+        let adresse = self.expression(0)?;
+        if self.peek() != Some(&Tok::CloseBracket) {
+            return Err(CalcError::Unbalanced);
+        }
+        self.at += 1;
+        let Some(mem) = self.mem else {
+            return Err(CalcError::NoMemory);
+        };
+        mem.peek(adresse, octets)
+            .ok_or(CalcError::Unreadable(adresse))
     }
 
     /// La valeur d'un registre nommé.
@@ -587,6 +706,81 @@ mod tests {
 
     fn ok(expr: &str) -> u64 {
         eval(expr, None).unwrap_or_else(|e| panic!("« {expr} » : {e:?}"))
+    }
+
+    /// Une mémoire d'essai : une tranche d'octets posée à une adresse.
+    struct Tranche {
+        base: u64,
+        octets: Vec<u8>,
+    }
+
+    impl Memory for Tranche {
+        fn peek(&self, addr: u64, taille: usize) -> Option<u64> {
+            let début = addr.checked_sub(self.base)? as usize;
+            let morceau = self.octets.get(début..début + taille)?;
+            Some(
+                morceau
+                    .iter()
+                    .enumerate()
+                    .fold(0u64, |acc, (rang, o)| acc | u64::from(*o) << (8 * rang)),
+            )
+        }
+    }
+
+    /// La mémoire se lit entre crochets, et la taille se dit comme dans
+    /// NASM.
+    ///
+    /// C'est ce qui manquait pour écrire une condition d'arrêt utile :
+    /// « arrête-toi quand ce qui est sur la pile n'est plus nul » ne
+    /// s'exprimait pas.
+    #[test]
+    fn memory_reads_between_brackets() {
+        // 0x41 0x42 0x43 0x44 0x00 0x00 0x00 0x00 à 0x1000.
+        let mem = Tranche {
+            base: 0x1000,
+            octets: vec![0x41, 0x42, 0x43, 0x44, 0, 0, 0, 0, 0xff],
+        };
+        let lis = |expr: &str| eval_with(expr, None, Some(&mem as &dyn Memory));
+
+        // Sans taille dite : huit octets, petit-boutiste.
+        assert_eq!(lis("[0x1000]"), Ok(0x4443_4241));
+        // Les quatre tailles de NASM.
+        assert_eq!(lis("byte [0x1000]"), Ok(0x41));
+        assert_eq!(lis("word [0x1000]"), Ok(0x4241));
+        assert_eq!(lis("dword [0x1000]"), Ok(0x4443_4241));
+        assert_eq!(lis("qword [0x1000]"), Ok(0x4443_4241));
+        // L'adresse est une expression entière, comme dans un listing.
+        assert_eq!(lis("byte [0x1000 + 1]"), Ok(0x42));
+        assert_eq!(lis("byte [0x0ff8 + 2*4]"), Ok(0x41));
+        // Et la lecture se combine au reste.
+        assert_eq!(lis("(byte [0x1000] & 0x0f) + 1"), Ok(2));
+
+        // Hors des pages : dit, et non zéro.
+        assert_eq!(lis("[0x2000]"), Err(CalcError::Unreadable(0x2000)));
+        // Sans mémoire du tout : dit aussi.
+        assert_eq!(eval("[0x1000]", None), Err(CalcError::NoMemory));
+        // Un crochet jamais refermé reste une faute.
+        assert_eq!(lis("[0x1000"), Err(CalcError::Unbalanced));
+    }
+
+    /// Mal écrit, ou seulement incalculable ici ?
+    ///
+    /// La distinction décide si un champ de condition doit devenir
+    /// rouge. `[rsp+8] != 0` s'écrit avant de lancer le programme — et
+    /// c'est même le seul moment où l'on écrit une condition d'arrêt.
+    #[test]
+    fn a_typo_and_a_missing_program_are_not_the_same_thing() {
+        for expr in ["totomatic", "1 +", "(1", "1 2", "min(1)", "@"] {
+            let e = eval(expr, None).unwrap_err();
+            assert!(e.is_syntax(), "« {expr} » est mal écrit : {e:?}");
+        }
+        for expr in ["rax", "[0x10]", "byte [rsp]", "1 / 0"] {
+            let e = eval(expr, None).unwrap_err();
+            assert!(
+                !e.is_syntax(),
+                "« {expr} » s'écrit bien, il manque seulement un programme : {e:?}"
+            );
+        }
     }
 
     /// Les quatre bases se lisent, et se mélangent dans une même ligne.
