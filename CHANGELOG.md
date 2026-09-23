@@ -147,6 +147,20 @@ six fautes d'assembleur que namsdec sait désormais reconnaître.
   en grand et tout dépliés. Deux fois la même chose, dont une mal.
 
 **Réparé**
+- **La ligne de saisie est toujours là** dès qu'un programme est
+  assemblé. Elle n'apparaissait que si namsdec avait repéré un `read`
+  dans le code — donc jamais pour qui écrit son programme, a posé ses
+  chaînes, et veut préparer ce qu'il lira avant d'avoir tapé le `read`.
+  Il n'y avait alors nulle part où taper, et rien à l'écran n'expliquait
+  pourquoi. Une phrase dit maintenant ce que la saisie deviendra quand
+  rien ne la lit encore. Un champ qui n'apparaît qu'à une condition
+  invisible n'est pas une économie, c'est une disparition.
+- Un message d'état tronqué se lit **en entier au survol**, et la
+  troncature est mesurée au lieu d'être devinée : la règle d'avant
+  (« plus de quatre-vingt-dix caractères ») ne valait que pour deux
+  états sur dix-sept, et la place dépend de la fenêtre, de la police et
+  du zoom. Une seule fonction compose la phrase — la barre la peint,
+  l'infobulle la répète, et les deux ne peuvent plus diverger.
 - `Suggestions::accepted` et `about_window_id` n'étaient employées que
   par les tests, et la compilation release les signalait comme mortes.
   Elles sont marquées `#[cfg(test)]`, ce qui dit ce qui est : un

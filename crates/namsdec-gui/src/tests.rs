@@ -12099,6 +12099,188 @@ fn the_analysis_window_reads_across_and_not_only_down() {
     assert_eq!(relu.analysis_module, id);
 }
 
+/// La ligne de saisie est là dès qu'un programme est assemblé, même
+/// s'il ne lit rien encore.
+///
+/// C'est le cas qui compte le plus, et c'est celui qui manquait : on
+/// écrit son programme, on a posé ses chaînes, et l'on veut préparer ce
+/// qu'il lira avant d'avoir tapé le `read`. La ligne n'apparaissait que
+/// si namsdec avait *repéré* une lecture dans le code — il n'y avait
+/// donc nulle part où taper, et rien à l'écran n'expliquait pourquoi.
+#[test]
+fn the_input_line_is_there_even_before_the_program_reads() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let s = strings(Lang::Fr);
+    // Le squelette qu'on a sous les yeux en commençant : des données, et
+    // une sortie. Aucune lecture.
+    let mut app = NamsdecApp {
+        source: "\
+global _start
+section .data
+invite db \"Entrez un nombre : \", 10
+section .text
+_start:
+    mov rax, 60
+    xor edi, edi
+    syscall
+"
+        .to_owned(),
+        show_console: true,
+        console_tab: ConsoleTab::Output,
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+    assert!(
+        !app.program_reads,
+        "ce programme ne lit rien, et c'est tout le point du test"
+    );
+
+    let peint = paint(&mut app);
+    assert!(
+        peint.contains(s.console_input_label),
+        "la ligne « {} » doit être là :\n{peint}",
+        s.console_input_label
+    );
+    assert!(
+        peint.contains(s.console_send),
+        "avec son bouton d'envoi :\n{peint}"
+    );
+    // Et l'application dit pourquoi ce qu'on tape attendra, au lieu de
+    // faire disparaître le champ.
+    assert!(
+        peint.contains(s.console_no_read),
+        "et l'explication :\n{peint}"
+    );
+
+    // Ce qu'on y tape part vraiment dans l'entrée du programme.
+    app.console_input = "42".to_owned();
+    let ligne = std::mem::take(&mut app.console_input);
+    app.send_input(Some(ligne));
+    assert_eq!(
+        app.emulator.as_ref().expect("un émulateur").pending_input(),
+        3,
+        "« 42 » et son retour à la ligne attendent d'être lus"
+    );
+}
+
+/// Un message d'état trop long se lit en entier au survol.
+///
+/// La barre le tronque pour ne pas passer sur les compartiments de
+/// droite. Tronqué sans recours, il cache justement ce qu'on voulait
+/// savoir : le chemin d'un fichier, la phrase d'une erreur de liaison.
+#[test]
+fn a_truncated_status_message_can_be_read_in_full() {
+    // Le texte que la barre composerait, et celui que l'infobulle doit
+    // répéter : c'est le même, et une seule fonction le produit.
+    let long = "x".repeat(400);
+    let mut app = NamsdecApp {
+        status: Status::Error(long.clone()),
+        ..Default::default()
+    };
+    let (texte, _, pastille) = app.status_line();
+    assert!(texte.contains(&long), "la phrase entière : {}", texte.len());
+    assert!(texte.starts_with("Erreur : "));
+    assert!(pastille.is_none());
+
+    // La barre la peint tronquée : egui garde le texte entier dans sa
+    // galley — c'est pourquoi le comparer ne dirait rien — mais marque
+    // qu'il a été élidé.
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    // Le temps avance d'une image à l'autre : namsdec fait attendre une
+    // demi-seconde avant de montrer une infobulle — le réglage existe
+    // pour que personne ne les subisse —, et sans horloge qui tourne
+    // elle n'arriverait jamais.
+    let entrée = |instant: f64, événements: Vec<egui::Event>| egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(900.0, 700.0),
+        )),
+        time: Some(instant),
+        predicted_dt: 0.1,
+        events: événements,
+        ..Default::default()
+    };
+    let mut horloge = 0.0_f64;
+    let mut case = None;
+    let mut élidé = false;
+    for _ in 0..2 {
+        horloge += 0.1;
+        let mut sortie = ctx.run_ui(entrée(horloge, Vec::new()), |ui| app.draw(ui));
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(t) = &clipped.shape
+                && t.galley.text() == texte
+            {
+                élidé = t.galley.elided;
+                case = Some(egui::Rect::from_min_size(t.pos, t.galley.size()));
+            }
+        }
+        sortie.textures_delta.clear();
+    }
+    let case = case.expect("le message est peint");
+    assert!(élidé, "le message est trop long pour tenir : il doit être coupé");
+
+    // Et au survol, il se lit en entier : l'infobulle le répète, donc le
+    // texte est peint une seconde fois.
+    let mut combien = 0;
+    for tour in 0..12 {
+        horloge += 0.1;
+        combien = 0;
+        // Le pointeur est posé une fois, puis il reste là : un
+        // déplacement à chaque image remettrait le délai à zéro.
+        let événements = if tour == 0 {
+            vec![egui::Event::PointerMoved(case.center())]
+        } else {
+            Vec::new()
+        };
+        let mut sortie = ctx.run_ui(entrée(horloge, événements), |ui| app.draw(ui));
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(t) = &clipped.shape
+                && t.galley.text() == texte
+            {
+                combien += 1;
+            }
+        }
+        sortie.textures_delta.clear();
+        if combien >= 2 {
+            break;
+        }
+    }
+    assert!(
+        combien >= 2,
+        "au survol, l'infobulle doit répéter le message en entier ({combien} fois vu)"
+    );
+
+    // Et chaque état sait se dire en texte : sans cela, l'infobulle
+    // dirait autre chose que la barre.
+    for état in [
+        Status::Idle,
+        Status::Running,
+        Status::AssembleOk,
+        Status::AssembleFailed,
+        Status::Halted,
+        Status::WaitingForInput,
+        Status::SteppedBack,
+        Status::NothingToUndo,
+        Status::StepLimit,
+        Status::NasmMissing,
+        Status::Exited { code: 0 },
+        Status::Breakpoint(0x400000),
+        Status::Watchpoint {
+            addr: 0x401000,
+            old: 0,
+            new: 1,
+        },
+    ] {
+        app.status = état;
+        let (texte, _, _) = app.status_line();
+        assert!(!texte.trim().is_empty(), "un état sans phrase : {:?}", app.status);
+    }
+}
+
 /// Les touches du clavier sont de vrais boutons, et le bloc est centré.
 ///
 /// Le thème rend le fond des boutons transparent au repos et leur liseré
@@ -15049,19 +15231,32 @@ fn the_re_tab_leads_to_the_analysis_window() {
     );
 }
 
-/// La console ne propose une saisie qu'aux programmes qui lisent.
+/// La console dit pourquoi elle est vide, et laisse toujours taper.
 ///
-/// Un champ, deux boutons et une invite devant un programme qui ne
-/// contient aucun `read` : trois lignes qui ne serviront jamais, et une
-/// question de plus pour qui apprend. Le même raisonnement vaut pour ce
-/// qu'affiche la console vide — « le programme n'a rien écrit » devant
-/// un programme qui n'écrit jamais rien laisse chercher une panne qui
+/// Elle ne proposait de saisie qu'aux programmes où namsdec avait
+/// *repéré* un `read`, au nom d'une économie : « un champ, deux boutons
+/// et une invite devant un programme qui ne lit pas, c'est trois lignes
+/// qui ne serviront jamais ». Le raisonnement tombait précisément dans
+/// le cas le plus fréquent — celui de quelqu'un qui écrit son programme,
+/// a posé ses chaînes, et veut préparer ce qu'il lira avant d'avoir tapé
+/// le `read`. Il n'y avait alors nulle part où taper, et rien à l'écran
+/// n'expliquait pourquoi.
+///
+/// La règle est donc inversée : la ligne est là dès qu'un programme est
+/// assemblé, et une phrase dit ce que la saisie deviendra quand rien ne
+/// la lit encore. Un champ qui n'apparaît qu'à une condition invisible
+/// n'est pas une économie, c'est une disparition.
+///
+/// Ce qu'affiche la console *vide*, en revanche, garde son ancienne
+/// règle, et elle est juste : « le programme n'a rien écrit » devant un
+/// programme qui n'écrit jamais rien laisse chercher une panne qui
 /// n'existe pas.
 #[test]
-fn the_console_offers_input_only_to_programs_that_read() {
+fn the_console_says_why_it_is_empty_and_always_lets_one_type() {
     if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
         return;
     }
+    let s = strings(Lang::Fr);
     let peindre = |source: &str, exécuter: bool| {
         let mut app = NamsdecApp {
             source: source.to_owned(),
@@ -15082,20 +15277,21 @@ fn the_console_offers_input_only_to_programs_that_read() {
         (paint(&mut app), app.program_reads, app.program_writes)
     };
 
-    // Un programme qui ne fait que calculer : ni saisie, ni reproche.
+    // Un programme qui ne fait que calculer : il a quand même sa ligne
+    // de saisie, et une phrase qui dit qu'elle attendra.
     let muet = "global _start\nsection .text\n_start:\n    mov rax, 2\n    add rax, 3\n    hlt\n";
     let (peint, lit, écrit) = peindre(muet, true);
     assert!(!lit && !écrit, "ce programme ne parle à personne");
     assert!(
-        !peint.contains(strings(Lang::Fr).console_send),
-        "aucun bouton Envoyer pour un programme qui ne lit pas :\n{peint}"
+        peint.contains(s.console_send),
+        "on doit pouvoir lui parler quand même :\n{peint}"
     );
     assert!(
-        !peint.contains(strings(Lang::Fr).console_input_hint),
-        "ni champ de saisie :\n{peint}"
+        peint.contains(s.console_no_read),
+        "et l'application dit ce que la saisie deviendra :\n{peint}"
     );
     assert!(
-        peint.contains(strings(Lang::Fr).output_never),
+        peint.contains(s.output_never),
         "et la console dit pourquoi elle est vide :\n{peint}"
     );
 
@@ -15107,19 +15303,24 @@ fn the_console_offers_input_only_to_programs_that_read() {
     let (peint, _, écrit) = peindre(écrivain, false);
     assert!(écrit, "celui-ci écrit");
     assert!(
-        peint.contains(strings(Lang::Fr).output_not_yet),
+        peint.contains(s.output_not_yet),
         "avant l'exécution, la console ne reproche rien :\n{peint}"
     );
 
-    // Et un programme qui lit garde son champ, forcément.
+    // Et un programme qui lit garde son champ, sans la phrase — il n'y a
+    // rien à expliquer, il lira.
     let lecteur = "section .bss\n    tampon resb 16\nsection .text\nglobal _start\n_start:\n\
                    \x20   xor rax, rax\n    xor rdi, rdi\n    mov rsi, tampon\n    mov rdx, 8\n\
                    \x20   syscall\n    hlt\n";
     let (peint, lit, _) = peindre(lecteur, false);
     assert!(lit, "celui-ci lit");
     assert!(
-        peint.contains(strings(Lang::Fr).console_send),
+        peint.contains(s.console_send),
         "un programme qui lit garde de quoi lui parler :\n{peint}"
+    );
+    assert!(
+        !peint.contains(s.console_no_read),
+        "et sans la phrase, qui n'aurait plus d'objet :\n{peint}"
     );
 }
 

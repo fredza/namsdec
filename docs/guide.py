@@ -352,15 +352,21 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
         ("p", "En bas, trois onglets :"),
         ("liste", [
          "<b>Console</b> — ce que le programme écrit lui-même, par "
-         "<font face='Courier'>write</font>. Le champ de saisie n'apparaît que si le "
-         "programme contient un <font face='Courier'>read</font> : inutile de proposer une "
-         "entrée à qui ne lira jamais.",
+         "<font face='Courier'>write</font>. C'est aussi là qu'on lui parle.",
          "<b>Diagnostics</b> — ce que nasm a eu à dire, les avertissements que namsdec "
          "ajoute, et les deux commandes réellement lancées, prêtes à copier.",
          "<b>Profil</b> — les lignes classées par temps passé dedans : passages, part du "
          "total, et un clic qui y emmène.",
         ]),
 
+        ("p",
+         "La ligne <b>Entrée</b> est l\u00e0 d\u00e8s qu'un programme est assembl\u00e9, "
+         "qu'il lise ou non. On \u00e9crit son programme, on a pos\u00e9 ses cha\u00eenes, "
+         "et l'on veut pr\u00e9parer ce qu'il lira avant d'avoir tap\u00e9 le "
+         "<font face='Courier'>read</font> : namsdec le dit alors en une phrase plut\u00f4t "
+         "que de faire dispara\u00eetre le champ. Entr\u00e9e envoie, \u00c9chap rend le "
+         "clavier \u00e0 l'\u00e9diteur, et « Fin d'entr\u00e9e » ferme l'entr\u00e9e pour "
+         "un programme qui lit jusqu'au bout."),
         ("h1", "Exécuter, et revenir en arrière"),
         ("h2", "Avancer"),
         ("table", [

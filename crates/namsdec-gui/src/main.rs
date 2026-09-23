@@ -9421,127 +9421,142 @@ impl NamsdecApp {
         });
     }
 
-    fn status_message_ui(&self, ui: &mut egui::Ui) {
+    /// Le message d'état : sa phrase, sa couleur, et la pastille qui la
+    /// précède quand il y en a une.
+    ///
+    /// **Un seul endroit décide de la phrase.** La barre la peint, et
+    /// l'infobulle la répète en entier quand la place a manqué. Deux
+    /// fonctions qui la composeraient chacune finiraient par diverger,
+    /// et ce serait l'infobulle qui aurait tort — celle qu'on ne
+    /// consulte justement que pour vérifier.
+    fn status_line(&self) -> (String, egui::Color32, Option<egui::Color32>) {
         let s = strings(self.lang);
-        let lang = self.lang;
+        let fr = self.lang == Lang::Fr;
         let theme = self.theme;
         match &self.status {
-            Status::Idle => {
-                ui.label(s.status_ready);
-            }
-            Status::Running => {
-                ui.colored_label(theme.accent, s.status_running);
-            }
-            // Une pastille peinte, pas un glyphe : "✓" et "✗" ne sont pas
-            // dans la police par défaut d'egui et retombaient sur le carré
-            // de remplacement. Le compte d'octets et de diagnostics n'y
-            // figure plus non plus — les diagnostics sont listés juste en
-            // dessous, avec leur ligne, et la taille du binaire
-            // n'apprenait rien d'utile à cet endroit.
-            Status::AssembleOk => {
-                status_dot(ui, theme.good);
-                ui.colored_label(theme.good, s.status_assembled);
-            }
-            Status::AssembleFailed => {
-                status_dot(ui, theme.bad);
-                ui.colored_label(theme.bad, s.status_assemble_failed);
-            }
-            Status::Watchpoint { addr, old, new } => {
-                status_dot(ui, theme.changed);
-                // La valeur d'avant et celle d'après : c'est toute
-                // l'information qu'on attendait en posant le point.
-                ui.colored_label(
-                    theme.changed,
-                    if lang == Lang::Fr {
-                        format!("Surveillance : {addr:#x} est passé de {old:#x} à {new:#x}")
-                    } else {
-                        format!("Watchpoint: {addr:#x} went from {old:#x} to {new:#x}")
-                    },
-                );
-            }
-            Status::RegisterChanged { register, old, new } => {
-                status_dot(ui, theme.changed);
-                ui.colored_label(
-                    theme.changed,
-                    if lang == Lang::Fr {
-                        format!("Surveillance : {register} est passé de {old:#x} à {new:#x}")
-                    } else {
-                        format!("Watch: {register} went from {old:#x} to {new:#x}")
-                    },
-                );
-            }
-            Status::SteppedBack => {
-                ui.colored_label(theme.accent, s.status_stepped_back);
-            }
-            Status::NothingToUndo => {
-                ui.colored_label(theme.dim, s.status_nothing_to_undo);
-            }
-            Status::Halted => {
-                ui.colored_label(theme.good, s.status_halted);
-            }
-            Status::WaitingForInput => {
-                ui.colored_label(theme.accent, s.status_waiting_for_input);
-            }
-            Status::Exited { code } => {
-                let color = if *code == 0 { theme.good } else { theme.bad };
-                ui.colored_label(
-                    color,
-                    if lang == Lang::Fr {
-                        format!("Programme terminé (code {code}).")
-                    } else {
-                        format!("Program exited (code {code}).")
-                    },
-                );
-            }
-            Status::BinaryLoaded { bytes, truncated } => {
-                let size = if *truncated {
-                    if lang == Lang::Fr {
-                        format!("{bytes} premiers octets")
-                    } else {
-                        format!("first {bytes} bytes")
-                    }
-                } else if lang == Lang::Fr {
-                    format!("{bytes} octets")
+            Status::Idle => (s.status_ready.to_owned(), theme.text, None),
+            Status::Running => (s.status_running.to_owned(), theme.accent, None),
+            // Une pastille peinte, pas un glyphe : « ✓ » et « ✗ » ne
+            // sont pas dans la police par défaut d'egui et retombaient
+            // sur le carré de remplacement.
+            Status::AssembleOk => (
+                s.status_assembled.to_owned(),
+                theme.good,
+                Some(theme.good),
+            ),
+            Status::AssembleFailed => (
+                s.status_assemble_failed.to_owned(),
+                theme.bad,
+                Some(theme.bad),
+            ),
+            // La valeur d'avant et celle d'après : c'est toute
+            // l'information qu'on attendait en posant le point.
+            Status::Watchpoint { addr, old, new } => (
+                if fr {
+                    format!("Surveillance : {addr:#x} est passé de {old:#x} à {new:#x}")
                 } else {
-                    format!("{bytes} bytes")
+                    format!("Watchpoint: {addr:#x} went from {old:#x} to {new:#x}")
+                },
+                theme.changed,
+                Some(theme.changed),
+            ),
+            Status::RegisterChanged { register, old, new } => (
+                if fr {
+                    format!("Surveillance : {register} est passé de {old:#x} à {new:#x}")
+                } else {
+                    format!("Watch: {register} went from {old:#x} to {new:#x}")
+                },
+                theme.changed,
+                Some(theme.changed),
+            ),
+            Status::SteppedBack => (s.status_stepped_back.to_owned(), theme.accent, None),
+            Status::NothingToUndo => (s.status_nothing_to_undo.to_owned(), theme.dim, None),
+            Status::Halted => (s.status_halted.to_owned(), theme.good, None),
+            Status::WaitingForInput => {
+                (s.status_waiting_for_input.to_owned(), theme.accent, None)
+            }
+            Status::Exited { code } => (
+                if fr {
+                    format!("Programme terminé (code {code}).")
+                } else {
+                    format!("Program exited (code {code}).")
+                },
+                if *code == 0 { theme.good } else { theme.bad },
+                None,
+            ),
+            Status::BinaryLoaded { bytes, truncated } => {
+                let taille = match (*truncated, fr) {
+                    (true, true) => format!("{bytes} premiers octets"),
+                    (true, false) => format!("first {bytes} bytes"),
+                    (false, true) => format!("{bytes} octets"),
+                    (false, false) => format!("{bytes} bytes"),
                 };
-                ui.colored_label(theme.accent, format!("{} — {size}", s.binary_not_text));
-            }
-            Status::Breakpoint(addr) => {
-                ui.colored_label(
+                (
+                    format!("{} — {taille}", s.binary_not_text),
                     theme.accent,
-                    if lang == Lang::Fr {
-                        format!("Arrêté sur point d'arrêt — {addr:#x}")
-                    } else {
-                        format!("Stopped at breakpoint — {addr:#x}")
-                    },
-                );
+                    None,
+                )
             }
-            Status::StepLimit => {
-                ui.colored_label(theme.bad, s.status_step_limit);
-            }
-            Status::NasmMissing => {
-                ui.colored_label(theme.bad, s.status_nasm_missing);
-            }
-            Status::Note(phrase) => {
-                status_message(ui, theme.good, phrase(s), s);
-            }
+            Status::Breakpoint(addr) => (
+                if fr {
+                    format!("Arrêté sur point d'arrêt — {addr:#x}")
+                } else {
+                    format!("Stopped at breakpoint — {addr:#x}")
+                },
+                theme.accent,
+                None,
+            ),
+            Status::StepLimit => (s.status_step_limit.to_owned(), theme.bad, None),
+            Status::NasmMissing => (s.status_nasm_missing.to_owned(), theme.bad, None),
+            Status::Note(phrase) => (phrase(s).to_owned(), theme.good, None),
             // Le nombre devant la phrase : « 7 occurrences surlignées ».
             // Le compte ne se traduit pas, la phrase si — d'où les deux
             // morceaux séparés jusqu'ici.
             Status::Counted(combien, phrase) => {
-                status_message(ui, theme.good, &format!("{combien} {}", phrase(s)), s);
+                (format!("{combien} {}", phrase(s)), theme.good, None)
             }
-            Status::Error(msg) => {
-                ui.colored_label(
-                    theme.bad,
-                    if lang == Lang::Fr {
-                        format!("Erreur : {msg}")
-                    } else {
-                        format!("Error: {msg}")
-                    },
-                );
-            }
+            Status::Error(msg) => (
+                if fr {
+                    format!("Erreur : {msg}")
+                } else {
+                    format!("Error: {msg}")
+                },
+                theme.bad,
+                None,
+            ),
+        }
+    }
+
+    /// Le message d'état, peint — et lisible en entier au survol quand la
+    /// place a manqué.
+    ///
+    /// La troncature est **mesurée** et non devinée : la règle d'avant
+    /// (« plus de quatre-vingt-dix caractères ») était une estimation, et
+    /// la place dépend de la largeur de la fenêtre, de la police et du
+    /// réglage de zoom. On compare ce que la phrase demande à ce qu'on
+    /// lui a laissé, et l'infobulle n'apparaît que si le second est plus
+    /// petit — une infobulle qui répète un texte entièrement visible
+    /// apprend à ne plus les lire.
+    fn status_message_ui(&self, ui: &mut egui::Ui) {
+        let (texte, couleur, pastille) = self.status_line();
+        if texte.is_empty() {
+            return;
+        }
+        if let Some(couleur_pastille) = pastille {
+            status_dot(ui, couleur_pastille);
+        }
+        let demandé = ui
+            .painter()
+            .layout_no_wrap(
+                texte.clone(),
+                egui::TextStyle::Body.resolve(ui.style()),
+                egui::Color32::PLACEHOLDER,
+            )
+            .rect
+            .width();
+        let réponse = ui.colored_label(couleur, &texte);
+        if demandé > réponse.rect.width() + 0.5 {
+            réponse.on_hover_text(&texte);
         }
     }
 
@@ -11207,14 +11222,7 @@ impl NamsdecApp {
     /// fixée à la main à 128 px : le programme demandait un mot de
     /// passe, et il n'y avait nulle part où le taper.
     fn console_input_estimate(&self, ui: &egui::Ui) -> f32 {
-        let montrée = self.emulator.is_some()
-            && (self.program_reads
-                || matches!(self.status, Status::WaitingForInput)
-                || self
-                    .emulator
-                    .as_ref()
-                    .is_some_and(|e| e.pending_input() > 0));
-        if !montrée {
+        if !self.console_shows_input() {
             return 0.0;
         }
         let rangée = ui
@@ -13382,17 +13390,8 @@ impl NamsdecApp {
         };
 
         // Posée en bas du panneau, la saisie ne bouge plus quoi qu'écrive
-        // le programme. Elle n'apparaît que s'il y a quelqu'un pour
-        // lire : un programme sans `read` n'attendra jamais rien, et lui
-        // tendre un champ de saisie, deux boutons et une invite, c'est
-        // trois lignes qui ne servent à rien et une question de plus
-        // pour qui apprend. La saisie revient dès que le programme
-        // réclame de quoi lire, ou qu'on lui a déjà donné quelque chose.
-        let saisie = self.emulator.is_some()
-            && (self.program_reads
-                || matches!(self.status, Status::WaitingForInput)
-                || pending > 0);
-        if saisie {
+        // le programme.
+        if self.console_shows_input() {
             egui::Panel::bottom("console_input")
                 .resizable(false)
                 .frame(egui::Frame::NONE)
@@ -13473,6 +13472,27 @@ impl NamsdecApp {
     /// qu'un programme attend d'un terminal : il lit jusqu'au `\n`, et une
     /// ligne sans fin de ligne le laisserait croire qu'elle n'est pas
     /// terminée.
+    /// La console montre-t-elle sa ligne de saisie ?
+    ///
+    /// Dès qu'un programme est assemblé, et sans autre condition.
+    ///
+    /// Elle n'apparaissait avant que si namsdec avait *repéré* un `read`
+    /// dans le code, au nom d'une économie : « un programme sans `read`
+    /// n'attendra jamais rien, et lui tendre un champ de saisie, c'est
+    /// trois lignes qui ne servent à rien ». Le raisonnement tombe
+    /// précisément dans le cas qui compte le plus — celui de quelqu'un
+    /// qui écrit son programme, a posé ses chaînes, et veut préparer ce
+    /// qu'il lira avant d'avoir tapé le `read`. Il n'y avait alors nulle
+    /// part où taper, et rien à l'écran n'expliquait pourquoi.
+    ///
+    /// Plus généralement : un champ qui n'apparaît qu'à une condition que
+    /// l'utilisateur ne peut pas voir n'est pas une économie, c'est une
+    /// disparition. Trois lignes toujours là se comprennent ; trois
+    /// lignes qui vont et viennent se cherchent.
+    fn console_shows_input(&self) -> bool {
+        self.emulator.is_some()
+    }
+
     fn console_input_ui(&mut self, ui: &mut egui::Ui, pending: usize) {
         let s = strings(self.lang);
         let waiting = matches!(self.status, Status::WaitingForInput);
@@ -13692,6 +13712,13 @@ impl NamsdecApp {
                     format!("{pending} byte(s) waiting to be read.")
                 },
             );
+        } else if !waiting && !self.program_reads {
+            // Le champ est là, mais rien ne le lira tel que le programme
+            // est écrit. Le dire plutôt que de faire disparaître le
+            // champ : celui qui prépare son entrée avant d'avoir tapé
+            // son `read` doit pouvoir la taper, et comprendre pourquoi
+            // elle attend.
+            ui.colored_label(self.theme.dim, s.console_no_read);
         }
 
         });
@@ -16146,17 +16173,6 @@ fn move_cursor(source: &str, at: usize, mouvement: Move) -> usize {
 /// trois lignes — se coupaient avec des points de suspension, et rien ne
 /// disait qu'il y avait plus à lire. L'infobulle le donne en entier, et
 /// une mention l'annonce plutôt que de compter sur la curiosité.
-fn status_message(ui: &mut egui::Ui, couleur: egui::Color32, texte: &str, s: &Strings) {
-    // Ce qui tient sans être coupé : au-delà, on le dit.
-    const TIENT: usize = 90;
-    let long = texte.chars().count() > TIENT;
-    let réponse = ui.colored_label(couleur, texte);
-    if long {
-        ui.weak(egui::RichText::new(s.status_more).small());
-        réponse.on_hover_text(texte);
-    }
-}
-
 fn module_card(
     ui: &mut egui::Ui,
     name: &str,

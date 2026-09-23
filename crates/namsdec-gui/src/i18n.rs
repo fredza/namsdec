@@ -322,7 +322,6 @@ pub struct Strings {
     pub shortcuts_file: &'static str,
     pub install_log_title: &'static str,
     pub install_leftover: &'static str,
-    pub status_more: &'static str,
     pub install_copy_log: &'static str,
     /// Au-dessus de la commande qui poserait les prérequis.
     pub install_requirements_hint: &'static str,
@@ -686,6 +685,9 @@ pub struct Strings {
     pub modules_update_idle: &'static str,
     pub output_empty: &'static str,
     pub console_input_hint: &'static str,
+    /// Sous la ligne de saisie, quand le programme ne contient encore
+    /// aucune lecture : ce qu'on tape attendra qu'il en fasse une.
+    pub console_no_read: &'static str,
     pub console_args: &'static str,
     pub console_args_hint: &'static str,
     pub console_args_apply: &'static str,
@@ -1081,7 +1083,6 @@ const FR: Strings = Strings {
     shortcuts_file: "Fichier :",
     install_log_title: "Ce que les commandes ont écrit",
     install_leftover: "— ce qui a été posé reste là, et la prochaine tentative l'efface :",
-    status_more: "(survolez pour lire la suite)",
     install_copy_log: "Copier le journal",
     install_requirements_hint: "namsdec ne lancera pas cette commande : elle demande des droits \
                                 qu'il ne prend pas. À copier dans un terminal.",
@@ -1406,6 +1407,7 @@ const FR: Strings = Strings {
     modules_update_idle: "Aucune recherche lancée.",
     output_empty: "Le programme n'a rien écrit.",
     console_input_hint: "Entrée du programme…  (Échap rend le clavier à l'éditeur)",
+    console_no_read: "Ce programme ne lit rien pour l'instant : ce qu'on tape ici attendra qu'il le demande.",
     console_args: "Arguments :",
     console_args_hint: "ce qu'on taperait après le nom du programme",
     console_args_apply: "Recharger",
@@ -1786,7 +1788,6 @@ const EN: Strings = Strings {
     shortcuts_file: "File:",
     install_log_title: "What the commands wrote",
     install_leftover: "— what was placed so far stays in; the next attempt clears it:",
-    status_more: "(hover to read the rest)",
     install_copy_log: "Copy the log",
     install_requirements_hint: "namsdec will not run this command: it asks for rights it does not \
                                 take. Copy it into a terminal.",
@@ -2111,6 +2112,7 @@ const EN: Strings = Strings {
     modules_update_idle: "No check has been run.",
     output_empty: "The program has not written anything.",
     console_input_hint: "Program input…  (Esc gives the keyboard back to the editor)",
+    console_no_read: "This program reads nothing yet: what you type here will wait until it asks.",
     console_args: "Arguments:",
     console_args_hint: "what you would type after the program's name",
     console_args_apply: "Reload",
