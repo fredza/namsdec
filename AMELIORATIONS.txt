@@ -21,10 +21,19 @@ aujourd'hui ; les suivantes, ce vers quoi l'outil peut aller.
      Piste : un Diagnostic qui garde son motif et ses arguments plutôt que sa
      phrase, et ne se formate qu'au dessin.
 
-1.2  Le mode Normal : les mouvements par mot manquent encore
-     h, j, k, l, 0, Début, Fin et G sont là. Manquent w et b (mot suivant,
-     mot précédent), gg (début de fichier, qui demande une séquence de deux
-     touches), et les compteurs — 5j pour descendre de cinq lignes.
+1.2  [FAIT] Le mode Normal : les mouvements par mot
+     h, j, k, l, 0, Début, Fin et G étaient là. S'ajoutent w, b, e et gg.
+     La notion de mot est celle de vim, non celle d'un traitement de texte :
+     trois familles — lettres/chiffres/soulignés, ponctuation, blanc — si bien
+     que `[rbp-0x18]` compte pour plusieurs mots. C'est exactement ce qu'il
+     faut : dans `mov qword [rbp-0x18], rax`, `w` s'arrête sur le crochet
+     puis sur `rbp`, au lieu de sauter la moitié de la ligne.
+     `gg` garde un témoin d'une image à l'autre, et tout le reste le désarme —
+     sans quoi `g` puis `j` sauterait au début du fichier à la prochaine
+     frappe de `g`, une minute plus tard. `G` (avec Maj) reste la fin du
+     fichier et n'arme rien.
+     RESTE : les compteurs (`5j`), qui demandent de lire les chiffres comme un
+     préfixe et non comme un mouvement.
 
 1.3  Le graphe ne nomme pas la fonction, il l'adresse
      La barre affiche maintenant l'adresse du premier bloc de la fonction

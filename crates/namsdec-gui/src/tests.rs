@@ -18222,3 +18222,130 @@ fn the_two_dialog_buttons_share_a_width() {
         "même largeur attendue : {largeurs:?}"
     );
 }
+
+/// Les mouvements par mot, comme dans vim.
+///
+/// C'est ce qu'on réclame en premier avec l'habitude de vim : avancer
+/// caractère par caractère dans `mov qword [rbp-0x18], rax` use la
+/// patience. Et la notion de mot est celle de vim, non celle d'un
+/// traitement de texte — `[rbp-0x18]` compte pour plusieurs mots, ce qui
+/// est exactement ce qu'il faut pour atteindre le déplacement sans viser
+/// à la souris.
+#[test]
+fn word_moves_follow_vims_idea_of_a_word() {
+    let ligne = "mov qword [rbp-0x18], rax";
+    // `w` depuis le début : chaque saut tombe sur un début de mot ou de
+    // ponctuation, et jamais au milieu.
+    let mut at = 0;
+    let mut étapes = Vec::new();
+    for _ in 0..12 {
+        let suivant = move_cursor(ligne, at, Move::WordForward);
+        if suivant == at {
+            break;
+        }
+        at = suivant;
+        étapes.push(&ligne[at.min(ligne.len())..]);
+    }
+    assert!(
+        étapes.iter().any(|reste| reste.starts_with("qword")),
+        "`w` doit s'arrêter sur « qword » : {étapes:?}"
+    );
+    assert!(
+        étapes.iter().any(|reste| reste.starts_with('[')),
+        "et sur le crochet, qui est une ponctuation : {étapes:?}"
+    );
+    assert!(
+        étapes.iter().any(|reste| reste.starts_with("rbp")),
+        "et sur « rbp » : {étapes:?}"
+    );
+
+    // `b` revient sur ses pas.
+    let depuis_la_fin = move_cursor(ligne, ligne.len(), Move::WordBack);
+    assert_eq!(&ligne[depuis_la_fin..], "rax", "`b` recule d'un mot");
+
+    // `e` va à la fin du mot, et répété, avance.
+    let fin_du_premier = move_cursor(ligne, 0, Move::WordEnd);
+    assert_eq!(&ligne[..fin_du_premier + 1], "mov");
+    let fin_du_second = move_cursor(ligne, fin_du_premier, Move::WordEnd);
+    assert!(fin_du_second > fin_du_premier, "`e` répété doit avancer");
+}
+
+/// Le début et la fin du fichier, et aucune position qui déborde.
+#[test]
+fn file_start_and_end_never_overshoot() {
+    let source = "mov rax, 1\nadd rax, rbx\nhlt\n";
+    assert_eq!(move_cursor(source, 20, Move::FileStart), 0);
+    assert_eq!(
+        move_cursor(source, 0, Move::FileEnd),
+        source.chars().count()
+    );
+
+    // Et sur un texte accentué, on compte en caractères — jamais en
+    // octets, sinon le curseur dériverait d'un cran par accent.
+    let accentué = "; drapeau à zéro\n    hlt\n";
+    for mouvement in [
+        Move::WordForward,
+        Move::WordBack,
+        Move::WordEnd,
+        Move::FileStart,
+        Move::FileEnd,
+    ] {
+        for at in 0..=accentué.chars().count() {
+            let cible = move_cursor(accentué, at, mouvement);
+            assert!(
+                cible <= accentué.chars().count(),
+                "{mouvement:?} depuis {at} sort du texte : {cible}"
+            );
+        }
+    }
+}
+
+/// `gg` demande ses deux frappes, et rien d'autre ne l'arme.
+#[test]
+fn the_double_g_needs_both_presses() {
+    let mut app = NamsdecApp {
+        source: "mov rax, 1\nadd rax, rbx\nhlt\n".to_owned(),
+        editor_mode: EditorMode::Normal,
+        ..Default::default()
+    };
+    assert!(!app.g_pending, "rien d'armé au départ");
+
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let écran = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1400.0, 900.0));
+    let frappe = |key: egui::Key, shift: bool| egui::RawInput {
+        screen_rect: Some(écran),
+        events: vec![egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: if shift {
+                egui::Modifiers::SHIFT
+            } else {
+                egui::Modifiers::NONE
+            },
+        }],
+        ..Default::default()
+    };
+
+    // Un `g` arme, sans bouger.
+    let mut sortie = ctx.run_ui(frappe(egui::Key::G, false), |ui| app.draw(ui));
+    sortie.textures_delta.clear();
+    assert!(app.g_pending, "le premier `g` attend le second");
+
+    // `G` (avec Maj) est un autre geste : la fin du fichier.
+    let mut app2 = NamsdecApp {
+        source: app.source.clone(),
+        editor_mode: EditorMode::Normal,
+        ..Default::default()
+    };
+    let ctx2 = egui::Context::default();
+    app2.apply_theme(&ctx2);
+    let mut sortie = ctx2.run_ui(frappe(egui::Key::G, true), |ui| app2.draw(ui));
+    sortie.textures_delta.clear();
+    assert!(
+        !app2.g_pending,
+        "`G` ne doit pas armer une séquence : c'est déjà un mouvement"
+    );
+}

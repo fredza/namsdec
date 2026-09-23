@@ -1377,6 +1377,8 @@ struct NamsdecApp {
     /// Comme `pending_cursor` : ce qui décide n'a pas le contexte egui
     /// où vit l'état du champ de texte.
     pending_selection: Option<std::ops::Range<usize>>,
+    /// Un `g` frappé attend-il son second ? C'est `gg` de vim.
+    g_pending: bool,
     /// La proposition mise en avant, dans la liste affichée.
     ///
     /// Zéro le plus souvent : on tape, et la première est la bonne. Les
@@ -2118,6 +2120,7 @@ impl Default for NamsdecApp {
             rename: None,
             rename_just_opened: false,
             pending_selection: None,
+            g_pending: false,
             completion_index: 0,
             completion_dismissed: false,
             completion_keys: CompletionKeys::default(),
@@ -9117,10 +9120,14 @@ impl NamsdecApp {
             // disponibles ici : le `i` qui termine `Espace s i` a servi à
             // demander un pas, pas à ouvrir la saisie.
             let consumed = self.dispatcher.consumed().to_vec();
-            let (enter_insert, exit_insert, mouvement) = ui.ctx().input(|inp| {
+            let g_armé = self.g_pending;
+            let (enter_insert, exit_insert, mouvement, armer_g, désarmer_g) =
+                ui.ctx().input(|inp| {
                 let mut enter = false;
                 let mut exit = false;
                 let mut mouvement = None;
+                let mut armer_g = false;
+                let mut désarmer_g = false;
                 for event in &inp.events {
                     if let egui::Event::Key {
                         key,
@@ -9160,12 +9167,46 @@ impl NamsdecApp {
                             egui::Key::G if plain && modifiers.shift => {
                                 mouvement = Some(Move::FileEnd);
                             }
+                            // `g g` : le début. Deux frappes de la même
+                            // touche, comme dans vim, et donc un témoin
+                            // à garder d'une image à l'autre — `G` est
+                            // la même touche avec Maj, il n'y a pas de
+                            // conflit.
+                            egui::Key::G if plain && !modifiers.shift => {
+                                if g_armé {
+                                    mouvement = Some(Move::FileStart);
+                                    désarmer_g = true;
+                                } else {
+                                    armer_g = true;
+                                }
+                            }
+                            // Les mouvements par mot : ce qu'on réclame
+                            // en premier avec l'habitude de vim. Avancer
+                            // caractère par caractère dans
+                            // `mov qword [rbp-0x18], rax` use la patience.
+                            egui::Key::W if plain && !consumed.contains(key) => {
+                                mouvement = Some(Move::WordForward);
+                            }
+                            egui::Key::B if plain && !consumed.contains(key) => {
+                                mouvement = Some(Move::WordBack);
+                            }
+                            egui::Key::E if plain && !consumed.contains(key) => {
+                                mouvement = Some(Move::WordEnd);
+                            }
                             _ => {}
                         }
                     }
                 }
-                (enter, exit, mouvement)
+                (enter, exit, mouvement, armer_g, désarmer_g)
             });
+            // `g` seul attend son second `g` ; tout le reste le désarme.
+            // Sans cela, `g` puis `j` sauterait au début du fichier à la
+            // prochaine frappe de `g`, une minute plus tard.
+            self.g_pending = if désarmer_g {
+                false
+            } else {
+                armer_g
+            };
             // Se déplacer avant de changer de mode : `i` entre en
             // Insertion là où le curseur est, non là où il était.
             if self.editor_mode == EditorMode::Normal
@@ -14778,6 +14819,35 @@ enum Move {
     LineStart,
     LineEnd,
     FileEnd,
+    /// Le début du fichier — `gg` dans vim.
+    FileStart,
+    /// Le début du mot suivant — `w`.
+    WordForward,
+    /// Le début du mot précédent — `b`.
+    WordBack,
+    /// La fin du mot où l'on est — `e`.
+    WordEnd,
+}
+
+/// Les trois familles de caractères que vim distingue pour `w` et `b`.
+///
+/// Un mot, une suite de ponctuation, ou du blanc. C'est ce découpage qui
+/// fait que `w` s'arrête sur le `[` de `[rbp-0x18]` au lieu de sauter la
+/// moitié de la ligne.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Classe {
+    Mot,
+    Ponctuation,
+    Blanc,
+}
+
+fn classe_de(c: Option<char>) -> Classe {
+    match c {
+        None => Classe::Blanc,
+        Some(c) if c.is_alphanumeric() || c == '_' => Classe::Mot,
+        Some(c) if c.is_whitespace() => Classe::Blanc,
+        Some(_) => Classe::Ponctuation,
+    }
 }
 
 /// Où va le curseur, compté en caractères depuis le début du texte.
@@ -14811,6 +14881,69 @@ fn move_cursor(source: &str, at: usize, mouvement: Move) -> usize {
         Move::LineStart => début,
         Move::LineEnd => fin,
         Move::FileEnd => caractères.len(),
+        Move::FileStart => 0,
+        // Les mouvements par mot, et c'est eux qu'on réclame en premier
+        // quand on a l'habitude de vim : se déplacer caractère par
+        // caractère dans `mov qword [rbp-0x18], rax` use la patience.
+        //
+        // La notion de mot est celle de vim, pas celle d'un traitement
+        // de texte : une suite de lettres, chiffres et soulignés, ou
+        // bien une suite de ponctuation. `[rbp-0x18]` compte donc pour
+        // plusieurs mots, ce qui est exactement ce qu'on veut pour
+        // atteindre le déplacement sans viser à la souris.
+        Move::WordForward => {
+            let mut i = at;
+            let classe = classe_de(caractères.get(i).copied());
+            // On sort du mot courant…
+            while i < caractères.len()
+                && classe_de(Some(caractères[i])) == classe
+                && classe != Classe::Blanc
+            {
+                i += 1;
+            }
+            // …puis des blancs qui suivent. Les retours à la ligne
+            // arrêtent : `w` en fin de ligne descend d'une ligne dans
+            // vim, mais s'arrête au premier mot — il ne saute pas une
+            // ligne vide.
+            while i < caractères.len() && caractères[i] != '\n' && caractères[i].is_whitespace() {
+                i += 1;
+            }
+            i
+        }
+        Move::WordBack => {
+            let mut i = at;
+            // Les blancs d'abord : on recule jusqu'à toucher un mot.
+            while i > 0 && caractères[i - 1] != '\n' && caractères[i - 1].is_whitespace() {
+                i -= 1;
+            }
+            if i == 0 {
+                return 0;
+            }
+            let classe = classe_de(Some(caractères[i - 1]));
+            while i > 0 && classe_de(Some(caractères[i - 1])) == classe {
+                i -= 1;
+            }
+            i
+        }
+        Move::WordEnd => {
+            let mut i = at;
+            // Si l'on est déjà sur la fin d'un mot, on va à la suivante :
+            // `e` répété doit avancer, non piétiner.
+            if i < caractères.len() {
+                i += 1;
+            }
+            while i < caractères.len() && caractères[i] != '\n' && caractères[i].is_whitespace() {
+                i += 1;
+            }
+            let classe = classe_de(caractères.get(i).copied());
+            while i + 1 < caractères.len()
+                && classe_de(Some(caractères[i + 1])) == classe
+                && classe != Classe::Blanc
+            {
+                i += 1;
+            }
+            i
+        }
         Move::Up => {
             if début == 0 {
                 return at;
