@@ -462,6 +462,23 @@ aujourd'hui ; les suivantes, ce vers quoi l'outil peut aller.
      frappe à chaque position. Ce qui précède couvre son usage réel ; ce qui
      manquerait encore est l'édition libre à plusieurs endroits sans rapport.
 
+1.24 MODERNISER LES BOÎTES DE DIALOGUE — demandé le 23 septembre
+     Elles ne se ressemblent pas d'une fenêtre à l'autre. Relevé rapide :
+     - `dialog_buttons()` (main.rs) donne OK + Quitter, et sert aux
+       préférences ;
+     - la fenêtre d'installation a Fermer + Recommencer, posés à la main ;
+     - d'autres n'ont qu'une croix dans la barre de titre, laquelle sort de
+       l'écran dès que la fenêtre est haute (c'était le cas du plan
+       d'installation, voir 1.15).
+     Ce qu'il faudrait : une seule fonction qui pose la barre d'action de
+     toute boîte — un bouton principal (OK), un second facultatif (Annuler),
+     toujours au même endroit, avec Entrée qui valide et Échap qui annule.
+     Et que toute fenêtre qui pose une question l'emploie, sans exception :
+     c'est l'exception qui fait chercher.
+     À décider en le faisant : ce qu'« Annuler » veut dire là où l'effet est
+     déjà appliqué (les préférences changent à mesure qu'on coche). Un
+     bouton qui ne défait rien ment ; mieux vaut alors n'en pas mettre.
+
 1.23 LES RACCOURCIS SONT EN DÉSORDRE — à reprendre en entier
      Constat relevé le 23 septembre, en listant les deux jeux (28 actions
      chacun). Ce n'est pas une impression : il y a des collisions de sens.
