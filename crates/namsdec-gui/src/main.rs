@@ -11,7 +11,10 @@ mod i18n;
 mod keybindings;
 mod loader;
 mod nasm_errors;
+mod calc;
+mod occurrences;
 mod readings;
+mod timeline;
 mod roles;
 mod settings;
 mod sidebar;
@@ -29,7 +32,7 @@ use namsdec_disasm::DecodedInstruction;
 use namsdec_emu::{Backend, Emulator, RunStop, StepOverResult, StepResult};
 use namsdec_explorer::{ExplorerAction, FileExplorer};
 use namsdec_re::{
-    BinaryInfoModule, FunctionsModule, GadgetsModule, ImportsModule, PatternsModule,
+    BinaryInfoModule, EntropyModule, FunctionsModule, GadgetsModule, ImportsModule, PatternsModule,
     ProtectionsModule, ReContext, ReModuleRegistry, StringsModule, SyscallsModule, XrefsModule,
 };
 use namsdec_theme::Theme;
@@ -360,6 +363,26 @@ impl SidebarTab {
         SidebarTab::Re,
     ];
 
+    /// L'identifiant qui part dans les réglages.
+    ///
+    /// Stable, et distinct du libellé : celui-ci change avec la langue,
+    /// et un fichier écrit en français ne doit pas devenir illisible
+    /// parce qu'on a basculé en anglais.
+    fn id(self) -> &'static str {
+        match self {
+            SidebarTab::Stack => "stack",
+            SidebarTab::Memory => "memory",
+            SidebarTab::Heap => "heap",
+            SidebarTab::Bytes => "bytes",
+            SidebarTab::Re => "re",
+        }
+    }
+
+    /// L'onglet que cet identifiant désigne, s'il en désigne un.
+    fn from_id(id: &str) -> Option<Self> {
+        SidebarTab::ALL.into_iter().find(|tab| tab.id() == id)
+    }
+
     fn label(self, s: &Strings) -> &'static str {
         match self {
             SidebarTab::Stack => s.tab_stack,
@@ -656,7 +679,17 @@ enum Status {
     NasmMissing,
     /// Une confirmation ordinaire : quelque chose a été fait, et il n'y
     /// a rien de plus à en dire qu'une phrase.
-    Note(&'static str),
+    ///
+    /// De quoi retrouver la phrase, et non la phrase : celle-ci était
+    /// figée dans la langue du moment où la note avait été posée, si
+    /// bien qu'après un changement de langue la barre de statut gardait
+    /// l'ancienne — du français dans une interface anglaise, et
+    /// l'inverse. On garde le chemin vers le texte ; il se lit à
+    /// l'affichage, dans la langue d'alors.
+    Note(fn(&Strings) -> &'static str),
+    /// Un nombre et ce qu'il compte, la phrase venant des textes : le
+    /// nombre ne se traduit pas, la phrase si.
+    Counted(usize, fn(&Strings) -> &'static str),
     Error(String),
 }
 
@@ -800,6 +833,47 @@ struct NamsdecApp {
     /// hors du programme qui tourne, et n'a donc rien à faire dans
     /// `settings.json`.
     console_input: String,
+    /// Les arguments passés au programme, tels qu'on les taperait après
+    /// son nom dans un terminal.
+    ///
+    /// Beaucoup de programmes — et la plupart des crackmes — attendent
+    /// ce qu'on leur donne là plutôt que sur l'entrée standard. Découpés
+    /// à l'espace, les guillemets groupant ce qui doit rester ensemble.
+    /// Le chemin du binaire ouvert, quand c'en est un.
+    ///
+    /// `current_file` reste vide pour un binaire, exprès. Celui-ci sert
+    /// à le retrouver au lancement suivant, et à rien d'autre.
+    binary_path: Option<PathBuf>,
+    program_args: String,
+    /// Les variables d'environnement ajoutées, une par ligne.
+    ///
+    /// Un programme qui lit `getenv("SECRET")` ne trouvait rien : le
+    /// chargeur écrivait cinq variables en dur et rien d'autre.
+    program_env: String,
+    /// La hauteur qu'a prise la zone de saisie à la dernière image.
+    ///
+    /// On la mesure au lieu de la deviner : elle porte selon les cas une
+    /// ligne ou six — la mention d'attente, les arguments, le bloc des
+    /// variables d'environnement une fois déplié —, et toute estimation
+    /// se trouve démentie dès qu'on ouvre quelque chose. Le panneau était
+    /// alors trop court, et le champ passait sous la barre de statut.
+    console_input_height: Option<f32>,
+    /// Le bloc des variables d'environnement est-il déplié ?
+    ///
+    /// Tenu ici plutôt que laissé au repliable : sa hauteur entre dans
+    /// celle que la console doit réserver, et l'on doit pouvoir la
+    /// connaître sans fouiller l'état interne d'egui.
+    console_env_open: bool,
+    /// L'utilisateur a repris la main sur le champ d'entrée par Échap.
+    ///
+    /// Tant que le programme attend, le champ réclame le focus à chaque
+    /// frame — sans quoi il faudrait le chercher à la souris. Mais cela
+    /// confisquait du même coup toutes les touches de l'éditeur : « i »
+    /// ne passait plus en Insertion, il s'écrivait dans le champ. Ce
+    /// drapeau est la porte de sortie : posé par Échap, levé dès qu'une
+    /// nouvelle attente commence ou qu'on revient dans le champ de son
+    /// plein gré.
+    console_input_released: bool,
     /// Un `Exécuter` a été suspendu faute d'entrée, et doit repartir tout
     /// seul dès qu'elle arrive. Un pas à pas, lui, ne reprend pas de
     /// lui-même : c'est l'utilisateur qui décide quand avancer.
@@ -862,6 +936,14 @@ struct NamsdecApp {
     /// cliquer un diagnostic doit y mener, sans quoi lire le message et
     /// retrouver l'endroit restent deux gestes.
     goto_line: Option<u32>,
+    /// Un curseur à replacer, en octets, à la prochaine image.
+    ///
+    /// Comme `goto_line`, et pour la même raison : ce qui change la
+    /// source ne tient pas toujours le contexte egui dont dépend l'état
+    /// du champ de texte. À la différence de `goto_line`, la colonne est
+    /// gardée — dupliquer une ligne pour se retrouver à son début
+    /// obligerait à y revenir à la main.
+    pending_cursor: Option<usize>,
     /// La recherche en cours, quand la barre est ouverte.
     find: Option<Find>,
     /// Ce qu'on cherche dans le manuel, quand la fenêtre d'aide est
@@ -917,6 +999,12 @@ struct NamsdecApp {
     install_job: Option<InstallJob>,
     /// L'outil dont on regarde la recette, avant de rien lancer.
     install_plan: Option<String>,
+    /// Ce que la dernière installation a écrit, gardé après sa fin.
+    ///
+    /// Le travail tient un journal ligne à ligne, mais il disparaissait
+    /// avec lui : on apprenait « l'étape 2 a échoué (code 128) » sans la
+    /// phrase de git qui disait pourquoi — la seule chose utile.
+    install_log: Vec<String>,
     /// Le module de décompilation : éteint par défaut.
     ///
     /// Il ne s'agit pas d'un affichage de plus, mais de la **permission
@@ -964,6 +1052,11 @@ struct NamsdecApp {
     /// fermeture de la boîte : on clique, on lit, on referme.
     update_result: Option<Result<namsdec_update::Verdict, String>>,
     keybindings: KeyBindings,
+    /// Le jeu de raccourcis dont on part — vim ou éditeur ordinaire.
+    ///
+    /// Les deux sont dans le binaire. Celui-ci dit seulement lequel sert
+    /// de socle ; ce que l'utilisateur a déplacé lui-même vient par-dessus.
+    keymap_preset: keybindings::Preset,
     dispatcher: Dispatcher,
     rebinding: Option<Rebinding>,
     running: bool,
@@ -1009,6 +1102,17 @@ struct NamsdecApp {
     exercises: bool,
     /// La fenêtre qui liste les exercices.
     show_exercises: bool,
+    /// La calculatrice est-elle ouverte, et sur quoi ?
+    ///
+    /// L'expression survit à la fermeture de la fenêtre : on la rouvre
+    /// pour reprendre le calcul qu'on avait laissé, non pour le retaper.
+    show_calculator: bool,
+    calc_input: String,
+    /// La fenêtre était-elle déjà ouverte à l'image précédente ?
+    ///
+    /// Sans ce témoin, le champ redemanderait le focus à chaque image et
+    /// l'on ne pourrait plus rien cliquer d'autre dans la fenêtre.
+    calculator_was_open: bool,
     /// La fenêtre de l'aide sur l'instruction. Une fenêtre et non un
     /// onglet de la console : celle-ci porte ce que *le programme* dit —
     /// sa sortie, les diagnostics de nasm —, et une fiche d'instruction
@@ -1026,7 +1130,29 @@ struct NamsdecApp {
     /// La fenêtre du déroulement — le graphe des blocs du programme.
     show_flow: bool,
     /// Le grossissement du dessin, réglé à la molette.
+    /// Les fenêtres internes qu'on a agrandies.
+    ///
+    /// Une `egui::Window` n'a pas les pastilles du système : elle se
+    /// traîne et se redimensionne à la main, ce qui est long quand on
+    /// veut simplement tout voir. Un identifiant par fenêtre plutôt
+    /// qu'un booléen par fenêtre : le mécanisme sert à toutes, et
+    /// n'ajoute rien à la structure quand on en ouvre une de plus.
+    maximized_windows: std::collections::BTreeSet<&'static str>,
+    /// N'afficher que la fonction où l'on se trouve.
+    ///
+    /// Vrai par défaut : sur un binaire ordinaire le graphe entier
+    /// compte des milliers de blocs, où l'on ne trouve rien. La fonction
+    /// courante est ce qu'on regarde neuf fois sur dix.
+    flow_current_only: bool,
     flow_zoom: f32,
+    /// Où l'on regarde dans le graphe, en pixels depuis son coin haut
+    /// gauche. Tenu ici plutôt que laissé à la zone défilante : le
+    /// glisser à la souris et les boutons d'ajustement le déplacent
+    /// aussi, et il faut qu'ils parlent tous du même point.
+    flow_offset: egui::Vec2,
+    /// Demande de ramener tout le graphe dans la fenêtre. Consommée au
+    /// dessin suivant, quand on connaît enfin la place disponible.
+    flow_fit: bool,
     /// L'adresse dont on demande « comment y arrive-t-on ? ».
     flow_goal: String,
     /// La fenêtre du motif cyclique — celle qui répond à « de combien ça
@@ -1145,7 +1271,7 @@ struct NamsdecApp {
     /// lancement réel donne ce chemin.
     settings_file: Option<PathBuf>,
     /// Le bandeau d'état est-il déployé ? Vrai à chaque lancement, et
-    /// **hors de `settings.json`** comme `show_re_tab` : egui garde
+    /// **hors de `settings.json`** : egui garde
     /// normalement l'état des en-têtes repliables d'une session à
     /// l'autre, si bien qu'un repli fait une fois — pour lire un vidage
     /// mémoire, par exemple — rouvrait l'application sur des registres
@@ -1213,6 +1339,8 @@ struct NamsdecApp {
     completion: bool,
     /// Entrée garde l'indentation de la ligne qu'on quitte.
     auto_indent: bool,
+    /// Les paires se ferment-elles toutes seules ?
+    auto_pairs: bool,
     /// La fiche de l'instruction au survol du code. Distincte des
     /// infobulles ordinaires : celle-ci est grande, et s'ouvre en
     /// écrivant.
@@ -1220,6 +1348,46 @@ struct NamsdecApp {
     /// Ce que l'autocomplétion propose en ce moment, recalculé à chaque
     /// frappe. Rien à enregistrer : c'est l'état d'un instant.
     suggestions: Option<completion::Suggestions>,
+    /// Ce qu'on suit à l'écran, et où ça revient.
+    ///
+    /// Vidé par Échap. Recalculé à chaque changement de la source : les
+    /// étendues sont des positions en octets, et taper une lettre plus
+    /// haut décalerait tout ce qui suit — surligner alors les anciennes
+    /// désignerait le milieu des mots.
+    tracked: Option<occurrences::Tracked>,
+    tracked_spans: Vec<std::ops::Range<usize>>,
+    /// La source telle qu'elle était au dernier calcul.
+    tracked_source_len: usize,
+    /// Ce qui est sélectionné dans l'éditeur, en octets.
+    ///
+    /// Relevé pendant le rendu, comme `cursor_byte` : les actions du
+    /// clavier n'ont pas le contexte egui où vit l'état du champ.
+    editor_selection: Option<std::ops::Range<usize>>,
+    /// Le nouveau nom en cours de frappe, quand on renomme.
+    rename: Option<String>,
+    rename_just_opened: bool,
+    /// Une étendue à sélectionner à la prochaine image.
+    ///
+    /// Comme `pending_cursor` : ce qui décide n'a pas le contexte egui
+    /// où vit l'état du champ de texte.
+    pending_selection: Option<std::ops::Range<usize>>,
+    /// La proposition mise en avant, dans la liste affichée.
+    ///
+    /// Zéro le plus souvent : on tape, et la première est la bonne. Les
+    /// flèches servent aux fois où elle ne l'est pas — et sans elles, on
+    /// ne pouvait accepter que la première, ce qui rendait la liste
+    /// décorative dès qu'elle en montrait plusieurs.
+    completion_index: usize,
+    /// La liste vient-elle d'être écartée par Échap ?
+    completion_dismissed: bool,
+    /// Les touches que la liste de propositions vient de prendre pour
+    /// elle, relevées **avant** l'éditeur.
+    ///
+    /// Tab, les flèches et Échap ont un sens dans l'éditeur et un autre
+    /// dans la liste. Les réclamer après coup ne marcherait pas : le
+    /// `TextEdit` les aurait déjà appliquées — Tab aurait posé une
+    /// tabulation, les flèches auraient déplacé le curseur.
+    completion_keys: CompletionKeys,
     /// `Alt` était-il enfoncé à la frame précédente ?
     ///
     /// egui n'émet pas d'évènement pour une touche de modification seule
@@ -1359,6 +1527,7 @@ enum PaletteCommand {
     /// Ouvrir la liste des exercices — seulement quand le module est
     /// chargé, sans quoi la commande n'est pas proposée.
     ShowExercises,
+    ShowCalculator,
     ShowAnalysis,
     ShowVectors,
     ShowBreakpoints,
@@ -1527,6 +1696,26 @@ fn palette_commands(
             PaletteCommand::Do(Action::CloseTab),
         ),
         (
+            s.action_duplicate_line.to_string(),
+            PaletteCommand::Do(Action::DuplicateLine),
+        ),
+        (
+            s.action_highlight_matches.to_string(),
+            PaletteCommand::Do(Action::HighlightMatches),
+        ),
+        (
+            s.action_next_match.to_string(),
+            PaletteCommand::Do(Action::NextMatch),
+        ),
+        (
+            s.action_previous_match.to_string(),
+            PaletteCommand::Do(Action::PreviousMatch),
+        ),
+        (
+            s.action_rename_matches.to_string(),
+            PaletteCommand::Do(Action::RenameMatches),
+        ),
+        (
             s.palette_toggle_toolbar.to_string(),
             PaletteCommand::ToggleToolbar,
         ),
@@ -1550,6 +1739,10 @@ fn palette_commands(
     if exercises {
         commands.push((s.exercises_open.to_string(), PaletteCommand::ShowExercises));
     }
+    // Sans condition : elle ne dépend d'aucun module, d'aucun binaire
+    // chargé, et sert autant à qui écrit son premier programme qu'à qui
+    // démonte un crackme.
+    commands.push((s.calculator_open.to_string(), PaletteCommand::ShowCalculator));
 
     if show_re_tab {
         commands.push((
@@ -1714,6 +1907,12 @@ impl Default for NamsdecApp {
         // ensuite.
         re_registry.register(Box::new(BinaryInfoModule::default()));
         re_registry.register(Box::new(ProtectionsModule::default()));
+        // L'entropie juste après : elle répond avant tout le reste à
+        // « est-ce qu'il y a quelque chose à lire ici ? ». Sur un binaire
+        // empaqueté, les modules suivants analyseraient un déchiffreur de
+        // trois cents octets en croyant analyser le programme — autant le
+        // savoir tout de suite.
+        re_registry.register(Box::new(EntropyModule::default()));
         // Puis « par où commencer » : dans un binaire dépouillé, la
         // question précède toutes les autres. Le module retrouve le
         // `main` et découpe le code en fonctions.
@@ -1770,6 +1969,7 @@ impl Default for NamsdecApp {
             run_to: None,
             run_until: None,
             goto_line: None,
+            pending_cursor: None,
             find: None,
             help_query: String::new(),
             pending: None,
@@ -1786,6 +1986,7 @@ impl Default for NamsdecApp {
             show_installer_module: false,
             install_job: None,
             install_plan: None,
+            install_log: Vec::new(),
             show_decompiler_module: false,
             show_decompiler: false,
             decompilers: Vec::new(),
@@ -1803,6 +2004,7 @@ impl Default for NamsdecApp {
             decompiled_from: None,
             update_result: None,
             keybindings: KeyBindings::default(),
+            keymap_preset: keybindings::Preset::default(),
             dispatcher: Dispatcher::default(),
             rebinding: None,
             running: false,
@@ -1818,13 +2020,20 @@ impl Default for NamsdecApp {
             show_re_tab: false,
             exercises: false,
             show_exercises: false,
+            show_calculator: false,
+            calc_input: String::new(),
+            calculator_was_open: false,
             show_help: false,
             show_analysis: false,
             show_vectors: false,
             show_breakpoints: false,
             show_timeline: false,
             show_flow: false,
+            maximized_windows: std::collections::BTreeSet::new(),
+            flow_current_only: true,
             flow_zoom: 1.0,
+            flow_offset: egui::Vec2::ZERO,
+            flow_fit: false,
             flow_goal: String::new(),
             show_cyclic: false,
             // Cent, comme pwndbg : de quoi couvrir un tampon
@@ -1868,6 +2077,12 @@ impl Default for NamsdecApp {
             next_detail_open: false,
             next_detail_addr: None,
             console_input: String::new(),
+            binary_path: None,
+            program_args: String::new(),
+            program_env: String::new(),
+            console_input_height: None,
+            console_env_open: false,
+            console_input_released: false,
             resume_run_after_input: false,
             explorer: FileExplorer::default(),
             show_explorer: false,
@@ -1887,8 +2102,19 @@ impl Default for NamsdecApp {
             show_tooltips: true,
             completion: true,
             auto_indent: true,
+            auto_pairs: true,
             hover_help: true,
             suggestions: None,
+            tracked: None,
+            tracked_spans: Vec::new(),
+            tracked_source_len: 0,
+            editor_selection: None,
+            rename: None,
+            rename_just_opened: false,
+            pending_selection: None,
+            completion_index: 0,
+            completion_dismissed: false,
+            completion_keys: CompletionKeys::default(),
             alt_was_down: false,
             command_palette: None,
             saved_settings: Settings::default(),
@@ -1914,7 +2140,19 @@ impl NamsdecApp {
         let mut app = Self {
             theme: settings.theme(),
             lang: settings.lang(),
-            keybindings: settings.keybindings(),
+            // Le fichier de raccourcis d'abord, quand il existe : c'est
+            // celui qu'on ouvre et qu'on copie d'une machine à l'autre.
+            // `settings.json` garde les siens pour les versions qui ne
+            // connaissaient que lui.
+            keybindings: {
+                let keymap = settings::load_keymap();
+                if settings::keymap_path().is_some_and(|p| p.exists()) {
+                    keymap.bindings()
+                } else {
+                    settings.keybindings()
+                }
+            },
+            keymap_preset: settings::load_keymap().preset(),
             show_toolbar: settings.show_toolbar,
             show_sidebar: settings.show_sidebar,
             show_statusbar: settings.show_statusbar,
@@ -1922,6 +2160,7 @@ impl NamsdecApp {
             show_tooltips: settings.show_tooltips,
             completion: settings.completion,
             auto_indent: settings.auto_indent,
+            auto_pairs: settings.auto_pairs,
             hover_help: settings.hover_help,
             exercises: settings.exercises,
             disabled_packs: settings.disabled_packs.iter().cloned().collect(),
@@ -1930,6 +2169,14 @@ impl NamsdecApp {
             memory_follow: MemFollow::by_id(&settings.memory_follow),
             console_height: settings.console_height.map(|h| h as f32),
             sidebar_tab_height: settings.sidebar_tab_height.map(|h| h as f32),
+            show_re_tab: settings.re_tab,
+            program_args: settings.program_args.clone(),
+            program_env: settings.program_env.clone(),
+            active_tab: settings
+                .sidebar_tab
+                .as_deref()
+                .and_then(SidebarTab::from_id)
+                .unwrap_or(SidebarTab::Stack),
             show_decompiler_module: settings.decompiler_module,
             show_installer_module: settings.installer_module,
             decompiler: settings.decompiler.clone(),
@@ -1947,6 +2194,11 @@ impl NamsdecApp {
         };
         app.ensure_explorer_root();
         app.reopen_last_file();
+        // Après les sources, et hors de `reopen_last_file` : celle-ci
+        // rend la main dès qu'il n'y a pas de source à rouvrir, ce qui
+        // est précisément le cas quand on travaillait un binaire —
+        // `current_file` reste vide pour lui.
+        app.restore_binary_session();
         app
     }
 
@@ -2005,6 +2257,77 @@ impl NamsdecApp {
         }
     }
 
+    /// Reprend le travail commencé sur un binaire : le binaire lui-même,
+    /// puis les repères posés dessus.
+    ///
+    /// Les sources se rouvrent depuis longtemps ; un binaire, non — et
+    /// c'est pourtant là qu'il y a du travail à perdre. Rouvrir namsdec
+    /// demandait de retrouver le fichier, de le recharger, de reposer ses
+    /// points d'arrêt et de retaper ses arguments.
+    ///
+    /// **Les repères ne reviennent que si le fichier est le même.** Ils se
+    /// comptent en numéros de ligne d'un listing reconstruit à chaque
+    /// ouverture : sur un binaire recompilé entre-temps, ils désigneraient
+    /// d'autres instructions, et poser des points d'arrêt au hasard est
+    /// pire que de ne pas en poser.
+    fn restore_binary_session(&mut self) {
+        let Some(chemin) = self.saved_settings.open_binary.clone().map(PathBuf::from) else {
+            return;
+        };
+        if !chemin.is_file() {
+            return;
+        }
+        let Ok(octets) = std::fs::read(&chemin) else {
+            return;
+        };
+        let nom = chemin
+            .file_name()
+            .map(|nom| nom.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "programme".to_owned());
+        self.load_binary(octets, &nom);
+        self.binary_path = Some(chemin.clone());
+
+        // Le fichier est-il celui qu'on avait quitté ? Taille et date :
+        // deux mesures qu'on a sous la main, et qui suffisent à écarter
+        // le cas qui compte — un binaire recompilé depuis.
+        let taille = std::fs::metadata(&chemin).ok().map(|m| m.len());
+        let date = file_mtime(&chemin)
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs());
+        let même = taille == self.saved_settings.open_binary_len
+            && date == self.saved_settings.open_binary_mtime;
+        if !même {
+            // Le dire, plutôt que de laisser croire que rien n'a été
+            // perdu : quelqu'un qui a recompilé son binaire doit savoir
+            // pourquoi ses points d'arrêt ont disparu.
+            if !self.saved_settings.breakpoints.is_empty()
+                || !self.saved_settings.watchpoints.is_empty()
+            {
+                self.status = Status::Note(|s| s.session_binary_changed);
+            }
+            return;
+        }
+
+        self.breakpoint_lines = self.saved_settings.breakpoints.iter().copied().collect();
+        self.watchpoints = self
+            .saved_settings
+            .watchpoints
+            .iter()
+            .map(|(addr, len)| (*addr, *len as usize))
+            .collect();
+        self.watched_registers = REGISTERS
+            .iter()
+            .map(|(nom, _)| *nom)
+            .filter(|nom| {
+                self.saved_settings
+                    .watched_registers
+                    .iter()
+                    .any(|gardé| gardé == nom)
+            })
+            .collect();
+        self.sync_watchpoints();
+    }
+
     /// Écrit le fichier de réglages sans attendre qu'un réglage change :
     /// appelé au démarrage pour que l'utilisateur puisse le trouver et
     /// l'éditer dès le premier lancement, avec les défauts du jour gravés
@@ -2013,6 +2336,29 @@ impl NamsdecApp {
     /// Volontairement hors de `from_settings` : construire l'application
     /// ne doit pas écrire sur le disque, sinon les tests qui la
     /// construisent écraseraient la configuration de la machine.
+    /// Écrit `keymap.json` dès le premier lancement, comme on le fait
+    /// pour les réglages.
+    ///
+    /// Le fichier n'était posé qu'au premier changement de raccourci.
+    /// Deux jeux vivent pourtant dans le binaire — Vim et gdb, qui est
+    /// le défaut, et l'éditeur ordinaire — et rien ne le disait à qui
+    /// n'ouvrait pas les Préférences : on cherchait un fichier qui
+    /// n'existait pas encore pour savoir de quoi on partait.
+    ///
+    /// Hors de `from_settings`, pour la même raison que les réglages :
+    /// construire l'application ne doit pas écrire sur le disque, sinon
+    /// les tests qui la construisent écraseraient les raccourcis de
+    /// l'utilisateur.
+    fn save_keymap_now(&mut self) {
+        if self.settings_file.is_none() {
+            return;
+        }
+        let _ = settings::save_keymap(&settings::Keymap::from_bindings(
+            self.keymap_preset,
+            &self.keybindings,
+        ));
+    }
+
     fn save_settings_now(&mut self) {
         let Some(path) = self.settings_file.clone() else {
             return;
@@ -2042,6 +2388,35 @@ impl NamsdecApp {
                 Lang::Fr => "fr".to_owned(),
                 Lang::En => "en".to_owned(),
             },
+            open_binary: self
+                .binary_path
+                .as_ref()
+                .map(|p| p.display().to_string()),
+            open_binary_len: self
+                .binary_path
+                .as_ref()
+                .and_then(|p| std::fs::metadata(p).ok())
+                .map(|m| m.len()),
+            open_binary_mtime: self
+                .binary_path
+                .as_deref()
+                .and_then(file_mtime)
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs()),
+            breakpoints: self.breakpoint_lines.iter().copied().collect(),
+            watchpoints: self
+                .watchpoints
+                .iter()
+                .map(|(addr, len)| (*addr, *len as u32))
+                .collect(),
+            watched_registers: self
+                .watched_registers
+                .iter()
+                .map(|nom| (*nom).to_owned())
+                .collect(),
+            program_args: self.program_args.clone(),
+            program_env: self.program_env.clone(),
+            sidebar_tab: Some(self.active_tab.id().to_owned()),
             show_toolbar: self.show_toolbar,
             show_sidebar: self.show_sidebar,
             show_statusbar: self.show_statusbar,
@@ -2049,6 +2424,7 @@ impl NamsdecApp {
             show_tooltips: self.show_tooltips,
             completion: self.completion,
             auto_indent: self.auto_indent,
+            auto_pairs: self.auto_pairs,
             hover_help: self.hover_help,
             exercises: self.exercises,
             disabled_packs: self.disabled_packs.iter().cloned().collect(),
@@ -2058,6 +2434,7 @@ impl NamsdecApp {
             memory_follow: self.memory_follow.id().to_owned(),
             console_height: self.console_height.map(|h| h.round() as u32),
             sidebar_tab_height: self.sidebar_tab_height.map(|h| h.round() as u32),
+            re_tab: self.show_re_tab,
             decompiler_module: self.show_decompiler_module,
             installer_module: self.show_installer_module,
             decompiler: self.decompiler.clone(),
@@ -2207,7 +2584,8 @@ impl NamsdecApp {
                 // pas, une écriture dans une zone en lecture seule. Ces
                 // deux fautes-là passent l'assemblage sans un mot et ne
                 // se manifestent qu'à l'exécution — ou pire, pas du tout.
-                self.diagnostics.extend(namsdec_asm::lint::check(&output));
+                self.diagnostics
+                    .extend(namsdec_asm::lint::check(&output, self.lang == Lang::Fr));
                 self.assemble_state = Some(AssembleState {
                     output,
                     disasm,
@@ -2329,6 +2707,22 @@ impl NamsdecApp {
                 }
             }
         }
+        // Ce qu'un binaire lié dynamiquement réclame ne passe par aucun
+        // `syscall` : il appelle `fgets` ou `scanf`, que namsdec fournit
+        // lui-même. Sans regarder ces noms-là, rien ne disait qu'il
+        // demanderait quelque chose, et la ligne de saisie n'apparaissait
+        // qu'au moment où il se bloquait dessus.
+        if let Some(binaire) = self
+            .assemble_state
+            .as_ref()
+            .and_then(|state| state.from_binary.as_ref())
+            && binaire
+                .externals
+                .values()
+                .any(|nom| namsdec_emu::name_reads_input(nom))
+        {
+            lit = true;
+        }
         self.program_reads = lit;
         self.program_writes = écrit;
     }
@@ -2368,6 +2762,40 @@ impl NamsdecApp {
     /// fichier, lui, passe par le **chargeur** — segments, relocations,
     /// TLS, pile de processus —, faute de quoi il ne survit pas à ses dix
     /// premières instructions.
+    /// Remet la machine dans l'état où le chargement l'avait laissée.
+    ///
+    /// Reconstruire l'émulateur suffit pour le processeur et la mémoire,
+    /// mais ce qui l'entoure gardait les traces de la course précédente :
+    /// les diagnostics d'un binaire ouvert, l'onglet resté ouvert sur
+    /// eux, le compte de pas, et le listing immobile là où l'exécution
+    /// s'était arrêtée. Rien de cela ne décrit plus le programme qu'on
+    /// vient de ramener à son point d'entrée, et le bouton passait pour
+    /// n'avoir rien fait.
+    fn do_reset(&mut self) {
+        // Les diagnostics d'un binaire ouvert ne viennent pas d'un
+        // assemblage : `load_elf` les vide en le chargeant, et les
+        // laisser ici ferait de « Réinitialiser » un demi-chargement.
+        // Ceux d'un source, eux, désignent des lignes qui n'ont pas
+        // bougé : les effacer perdrait ce que nasm avait à dire.
+        let from_binary = self
+            .assemble_state
+            .as_ref()
+            .is_some_and(|state| state.from_binary.is_some());
+        if from_binary {
+            self.diagnostics.clear();
+            if self.console_tab == ConsoleTab::Diagnostics {
+                self.console_tab = ConsoleTab::Output;
+            }
+        }
+        self.rebuild_emulator();
+        self.run_steps_taken = 0;
+        // Le listing suit le programme jusqu'à son point d'entrée : le
+        // laisser où la course s'était arrêtée montrait du code que plus
+        // rien n'allait exécuter.
+        self.follow_execution();
+        self.status = Status::Idle;
+    }
+
     fn rebuild_emulator(&mut self) {
         if let Some(elf) = self.binary_elf() {
             self.load_process(&elf);
@@ -2399,7 +2827,15 @@ impl NamsdecApp {
             .filter(|nom| !nom.is_empty())
             .unwrap_or_else(|| "programme".to_owned());
 
-        let chargé = match loader::load(elf, &nom, MEM_MAX) {
+        let arguments = split_args(&self.program_args);
+        let environnement: Vec<String> = self
+            .program_env
+            .lines()
+            .map(str::trim)
+            .filter(|ligne| !ligne.is_empty())
+            .map(str::to_owned)
+            .collect();
+        let chargé = match loader::load(elf, &nom, &arguments, &environnement, MEM_MAX) {
             Ok(chargé) => chargé,
             Err(loader::LoadError::TooLarge { .. }) => {
                 self.status = Status::Error(strings(self.lang).binary_too_large.to_string());
@@ -2467,6 +2903,9 @@ impl NamsdecApp {
             binaire.externals = chargé.externals;
             binaire.load = chargé.report;
         }
+        // Les bornes viennent d'être posées : c'est maintenant qu'on sait
+        // si ce programme réclamera une entrée.
+        self.note_program_io();
         self.sync_watchpoints();
     }
 
@@ -2687,7 +3126,7 @@ impl NamsdecApp {
                 self.status = halted_status(emulator.as_ref());
                 self.back_to_command_mode();
             }
-            Ok(StepResult::NeedsInput) => self.status = Status::WaitingForInput,
+            Ok(StepResult::NeedsInput) => self.wait_for_input(),
             Ok(StepResult::Continued) => {}
             Err(e) => self.report_error(&e),
         }
@@ -2762,7 +3201,6 @@ impl NamsdecApp {
     fn do_run_until(&mut self, kind: UntilKind) {
         self.last_step = None;
         self.error_advice = None;
-        let s = strings(self.lang);
         let Some(state) = &self.assemble_state else {
             return;
         };
@@ -2779,9 +3217,9 @@ impl NamsdecApp {
             .collect();
         if points.is_empty() {
             self.status = Status::Note(match kind {
-                UntilKind::Call => s.run_until_no_call,
-                UntilKind::Return => s.run_until_no_return,
-                UntilKind::Syscall => s.run_until_no_syscall,
+                UntilKind::Call => |s: &Strings| s.run_until_no_call,
+                UntilKind::Return => |s: &Strings| s.run_until_no_return,
+                UntilKind::Syscall => |s: &Strings| s.run_until_no_syscall,
             });
             return;
         }
@@ -2873,7 +3311,7 @@ impl NamsdecApp {
                 // elle-même dès que l'utilisateur aura tapé quelque chose.
                 self.running = false;
                 self.resume_run_after_input = true;
-                self.status = Status::WaitingForInput;
+                self.wait_for_input();
             }
             Ok(RunStop::StepLimit) => {
                 self.run_steps_taken += RUN_BATCH_STEPS as u64;
@@ -2961,7 +3399,7 @@ impl NamsdecApp {
                 self.status = Status::Watchpoint { addr, old, new }
             }
             Ok(StepOverResult::StepLimit) => self.status = Status::StepLimit,
-            Ok(StepOverResult::NeedsInput) => self.status = Status::WaitingForInput,
+            Ok(StepOverResult::NeedsInput) => self.wait_for_input(),
             Ok(StepOverResult::Stepped | StepOverResult::SteppedOverCall) => {}
             Err(e) => self.report_error(&e),
         }
@@ -2986,6 +3424,27 @@ impl NamsdecApp {
     /// rien produire, et laisser le bouton actif laisse croire le
     /// contraire. `Réinitialiser` reste disponible — c'est précisément ce
     /// qu'on veut faire ensuite.
+    /// Assembler a-t-il une chance d'aboutir ?
+    ///
+    /// Le bouton se grise plutôt que d'échouer : un listing de binaire
+    /// sera refusé à tous les coups, et rien ne l'annonçait avant le
+    /// clic. Le raccourci et la palette, eux, passent toujours par
+    /// `do_assemble` — refuser en disant pourquoi vaut mieux que ne rien
+    /// faire du tout quand le geste ne vient pas d'un bouton qu'on voit.
+    /// Le programme réclame de quoi lire.
+    ///
+    /// Chaque nouvelle attente rend son focus au champ, même si la
+    /// précédente s'était terminée par un Échap : ce qu'on a refusé une
+    /// fois, on ne le refuse pas pour toujours.
+    fn wait_for_input(&mut self) {
+        self.status = Status::WaitingForInput;
+        self.console_input_released = false;
+    }
+
+    fn can_assemble(&self) -> bool {
+        !self.buffer_came_from_a_binary()
+    }
+
     fn can_execute(&self) -> bool {
         self.emulator.is_some() && !self.program_finished()
     }
@@ -3025,10 +3484,7 @@ impl NamsdecApp {
             Action::StepOver => self.do_step_over(),
             Action::StepBack => self.do_step_back(),
             Action::Stop => self.do_stop(),
-            Action::Reset => {
-                self.rebuild_emulator();
-                self.status = Status::Idle;
-            }
+            Action::Reset => self.do_reset(),
             Action::Save => self.do_save(),
             Action::OpenFile => self.do_open_file_dialog(),
             Action::OpenFolder => self.do_open_folder(),
@@ -3044,6 +3500,11 @@ impl NamsdecApp {
             Action::NextTab => self.cycle_tab(1),
             Action::PreviousTab => self.cycle_tab(-1),
             Action::CloseTab => self.close_tab(self.active_tab_index),
+            Action::DuplicateLine => self.duplicate_line(),
+            Action::HighlightMatches => self.highlight_matches(),
+            Action::RenameMatches => self.start_rename(),
+            Action::NextMatch => self.go_to_match(true),
+            Action::PreviousMatch => self.go_to_match(false),
         }
     }
 
@@ -3190,7 +3651,7 @@ impl NamsdecApp {
     fn export_manual(&mut self, path: &Path) {
         let s = strings(self.lang);
         match std::fs::write(path, namsdec_doc::markdown(self.lang.code())) {
-            Ok(()) => self.status = Status::Note(s.manual_exported),
+            Ok(()) => self.status = Status::Note(|s| s.manual_exported),
             Err(e) => self.status = Status::Error(format!("{} : {e}", s.manual_export_failed)),
         }
     }
@@ -3222,7 +3683,7 @@ impl NamsdecApp {
                     use std::os::unix::fs::PermissionsExt;
                     let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755));
                 }
-                self.status = Status::Note(s.binary_exported);
+                self.status = Status::Note(|s| s.binary_exported);
             }
             Err(e) => self.status = Status::Error(format!("{} : {e}", s.binary_export_failed)),
         }
@@ -3236,7 +3697,7 @@ impl NamsdecApp {
             return;
         };
         match std::fs::write(path, report) {
-            Ok(()) => self.status = Status::Note(s.report_saved),
+            Ok(()) => self.status = Status::Note(|s| s.report_saved),
             Err(e) => self.status = Status::Error(format!("{} : {e}", s.report_save_failed)),
         }
     }
@@ -3386,7 +3847,7 @@ impl NamsdecApp {
         self.assemble_state = None;
         self.emulator = None;
         self.diagnostics.clear();
-        self.status = Status::Note(strings(self.lang).disk_reloaded);
+        self.status = Status::Note(|s| s.disk_reloaded);
     }
 
     /// Recharge depuis le disque, en abandonnant ce qu'on avait tapé.
@@ -3707,6 +4168,10 @@ impl NamsdecApp {
                 self.file_mtime = file_mtime(&path);
                 self.disk_changed = false;
                 self.current_file = Some(path);
+                // On travaille une source maintenant : le binaire de la
+                // séance précédente n'a plus à revenir au lancement
+                // suivant.
+                self.binary_path = None;
                 self.assemble_state = None;
                 self.emulator = None;
                 self.diagnostics.clear();
@@ -3719,6 +4184,11 @@ impl NamsdecApp {
                     .unwrap_or_else(|| "programme".to_owned());
                 self.note_recent(&path);
                 self.load_binary(e.into_bytes(), &nom);
+                // Retenu pour la séance suivante. Pas dans
+                // `current_file`, qui reste vide exprès pour un binaire :
+                // un Ctrl+S distrait n'a pas à écraser l'exécutable par
+                // son propre désassemblage.
+                self.binary_path = Some(path);
             }
         }
     }
@@ -3759,9 +4229,12 @@ impl NamsdecApp {
 
         // Le listing ne montre que les sections exécutables : le reste est
         // de la donnée, et la donnée désassemblée ne veut rien dire.
+        // Par sections quand le binaire en a, par segments sinon : un
+        // crackme dépouillé de sa table de sections n'en a aucune, et
+        // namsdec le déclarait illisible alors qu'il s'exécute très bien.
         let mut disasm = Vec::new();
-        for section in elf.sections.iter().filter(|s| s.executable) {
-            disasm.extend(namsdec_disasm::disassemble(&section.data, section.addr));
+        for (adresse, octets) in elf.executable_parts() {
+            disasm.extend(namsdec_disasm::disassemble(octets, adresse));
         }
         disasm.sort_by_key(|instruction| instruction.address);
 
@@ -3854,7 +4327,7 @@ impl NamsdecApp {
             && (!chargé.needed.is_empty() || chargé.interpreter.is_some())
         {
             let s = strings(self.lang);
-            self.status = Status::Note(s.binary_dynamic);
+            self.status = Status::Note(|s| s.binary_dynamic);
             self.diagnostics.push(namsdec_asm::Diagnostic {
                 line: 0,
                 severity: namsdec_asm::Severity::Warning,
@@ -4142,6 +4615,7 @@ impl NamsdecApp {
             PaletteCommand::ShowPreferences => self.open_preferences(),
             PaletteCommand::ShowAbout => self.show_about = true,
             PaletteCommand::ShowExercises => self.show_exercises = true,
+            PaletteCommand::ShowCalculator => self.show_calculator = true,
             PaletteCommand::ShowAnalysis => self.show_analysis = true,
             PaletteCommand::ShowVectors => self.show_vectors = true,
             PaletteCommand::ShowBreakpoints => self.show_breakpoints = true,
@@ -4555,7 +5029,7 @@ impl NamsdecApp {
                     {
                         if let Some(contexte) = self.context_text() {
                             ui.ctx().copy_text(contexte);
-                            self.status = Status::Note(s.context_copied);
+                            self.status = Status::Note(|s| s.context_copied);
                         }
                         ui.close();
                     }
@@ -4564,7 +5038,7 @@ impl NamsdecApp {
                     if ui.button(s.edit_copy_listing).clicked() {
                         if let Some(listing) = self.listing_text() {
                             ui.ctx().copy_text(listing);
-                            self.status = Status::Note(s.listing_copied);
+                            self.status = Status::Note(|s| s.listing_copied);
                         }
                         ui.close();
                     }
@@ -4686,6 +5160,14 @@ impl NamsdecApp {
                 }
                 if ui.button(s.vectors_open).clicked() {
                     self.show_vectors = true;
+                    ui.close();
+                }
+                if ui
+                    .button(s.calculator_open)
+                    .on_hover_text(s.calculator_hint)
+                    .clicked()
+                {
+                    self.show_calculator = true;
                     ui.close();
                 }
                 if ui.button(s.breakpoints_open).clicked() {
@@ -5024,6 +5506,8 @@ impl NamsdecApp {
         ui.weak(s.preferences_completion_hint);
         ui.checkbox(&mut self.auto_indent, s.preferences_auto_indent);
         ui.weak(s.preferences_auto_indent_hint);
+        ui.checkbox(&mut self.auto_pairs, s.preferences_auto_pairs);
+        ui.weak(s.preferences_auto_pairs_hint);
         ui.checkbox(&mut self.hover_help, s.preferences_hover_help);
         ui.weak(s.preferences_hover_help_hint);
 
@@ -5046,6 +5530,21 @@ impl NamsdecApp {
         });
     }
 
+    /// Passe d'un jeu de raccourcis à l'autre.
+    ///
+    /// Ce qu'on a déplacé soi-même est gardé : changer de jeu répond à
+    /// « d'où je pars », non à « efface ce que j'ai réglé ».
+    fn apply_keymap_preset(&mut self, preset: keybindings::Preset) {
+        let écarts = settings::Keymap::from_bindings(self.keymap_preset, &self.keybindings);
+        self.keymap_preset = preset;
+        let keymap = settings::Keymap {
+            preset: preset.id().to_owned(),
+            shortcuts: écarts.shortcuts,
+        };
+        self.keybindings = keymap.bindings();
+        let _ = settings::save_keymap(&keymap);
+    }
+
     fn preferences_shortcuts_ui(&mut self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
         let theme = self.theme;
@@ -5060,7 +5559,50 @@ impl NamsdecApp {
             let action = rebinding.action;
             self.keybindings.map.insert(action, chord);
             self.rebinding = None;
+            // Écrit tout de suite : un raccourci qu'on vient de poser et
+            // qui disparaît au prochain lancement se repose deux fois.
+            let _ = settings::save_keymap(&settings::Keymap::from_bindings(
+                self.keymap_preset,
+                &self.keybindings,
+            ));
         }
+
+        // Le jeu dont on part. Les deux sont dans le binaire : en changer
+        // remplace les raccourcis qu'on n'a pas déplacés soi-même, et
+        // garde les autres.
+        let fr = self.lang == Lang::Fr;
+        ui.horizontal_wrapped(|ui| {
+            ui.strong(s.shortcuts_preset);
+            for preset in keybindings::Preset::ALL {
+                let choisi = self.keymap_preset == preset;
+                if ui
+                    .selectable_label(choisi, preset.label(fr))
+                    .on_hover_text(preset.about(fr))
+                    .clicked()
+                    && !choisi
+                {
+                    self.apply_keymap_preset(preset);
+                }
+            }
+        });
+        ui.weak(self.keymap_preset.about(fr));
+        if let Some(chemin) = settings::keymap_path() {
+            ui.horizontal_wrapped(|ui| {
+                ui.colored_label(theme.dim, egui::RichText::new(s.shortcuts_file).small());
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(chemin.display().to_string())
+                            .monospace()
+                            .small()
+                            .color(theme.dim),
+                    )
+                    .selectable(true),
+                );
+            });
+        }
+        ui.add_space(6.0);
+        ui.separator();
+        ui.add_space(4.0);
 
         egui::Grid::new("shortcuts_grid")
             .num_columns(4)
@@ -5178,8 +5720,12 @@ impl NamsdecApp {
         let mut plan = None;
         let mut allumer = false;
 
+        // Le dossier où namsdec pose ce qu'il installe : un outil bâti
+        // par le module d'installation n'est dans le PATH de personne, et
+        // sans cela il restait « absent » alors qu'il tournait très bien.
+        let outils = data_dir().map(|dir| namsdec_disasm::install::tools_dir(&dir));
         for outil in namsdec_disasm::known::all() {
-            let dispo = outil.availability();
+            let dispo = outil.availability_in(outils.as_deref());
             let sert = utilisés.contains(&outil.plugin.id);
             // Une fiche par outil. La grille d'avant mettait sur une même
             // ligne un nom, un état, une commande d'installation et deux
@@ -5232,7 +5778,7 @@ impl NamsdecApp {
                                 )
                                 .clicked()
                             {
-                                à_utiliser = Some(outil.plugin.clone());
+                                à_utiliser = Some(outil.resolved_plugin(outils.as_deref()));
                             }
                         });
                     });
@@ -5247,7 +5793,14 @@ impl NamsdecApp {
                         ui.add_space(4.0);
                         ui.colored_label(theme.bad, s.tools_declared_but_missing);
                     }
-                    if let Some(besoin) = if fr { outil.needs_fr } else { outil.needs_en } {
+                    // Le prérequis ne se dit que s'il manque. Affiché
+                    // toujours, il se lisait comme une panne : « Il lui
+                    // manque le greffon rz-ghidra » juste à côté de
+                    // « programme détecté », sur une machine où le
+                    // greffon était installé et fonctionnait.
+                    if dispo == Availability::Incomplete
+                        && let Some(besoin) = if fr { outil.needs_fr } else { outil.needs_en }
+                    {
                         ui.add_space(4.0);
                         ui.colored_label(theme.warn, format!("{} {besoin}", s.tools_needs));
                     }
@@ -5273,11 +5826,16 @@ impl NamsdecApp {
                             );
                             ui.add(
                                 egui::Label::new(
-                                    egui::RichText::new(format!(
-                                        "{} {}",
-                                        outil.plugin.command,
-                                        outil.plugin.args.join(" ")
-                                    ))
+                                    // Le programme **résolu**, et non son
+                                    // nom nu : quand namsdec l'a installé
+                                    // lui-même, c'est son chemin à lui
+                                    // qui sera lancé, et annoncer
+                                    // « rizin » désignerait celui du
+                                    // système — un autre programme.
+                                    egui::RichText::new({
+                                        let résolu = outil.resolved_plugin(outils.as_deref());
+                                        format!("{} {}", résolu.command, résolu.args.join(" "))
+                                    })
                                     .monospace()
                                     .small()
                                     .color(theme.text),
@@ -5295,10 +5853,14 @@ impl NamsdecApp {
                                 );
                                 ui.add(
                                     egui::Label::new(
-                                        egui::RichText::new(commande)
-                                            .monospace()
-                                            .small()
-                                            .color(theme.warn),
+                                        egui::RichText::new(
+                                            namsdec_disasm::install::install_command_here(
+                                                commande,
+                                            ),
+                                        )
+                                        .monospace()
+                                        .small()
+                                        .color(theme.warn),
                                     )
                                     .selectable(true),
                                 );
@@ -5384,6 +5946,19 @@ impl NamsdecApp {
         let mut ouverte = true;
         let mut lancer = false;
         let mut arrêter = false;
+        let mut fermer = false;
+        // L'outil est-il déjà là ? Demandé à la machine, non déduit du
+        // fait qu'un travail s'est terminé : une installation peut
+        // aboutir sans que l'outil marche, et l'inverse aussi — celui du
+        // système peut l'avoir précédée.
+        let outils = namsdec_disasm::install::tools_dir(&data);
+        let déjà_prêt = namsdec_disasm::known::all()
+            .into_iter()
+            .find(|connu| connu.plugin.id == outil)
+            .map(|connu| {
+                connu.availability_in(Some(&outils)) == namsdec_disasm::known::Availability::Ready
+            })
+            .unwrap_or(false);
         let en_cours = self
             .install_job
             .as_ref()
@@ -5393,9 +5968,23 @@ impl NamsdecApp {
         egui::Window::new(format!("{} — {}", s.install_title, recette.tool))
             .id(egui::Id::new("installer_window"))
             .open(&mut ouverte)
+            // Au premier plan : elle s'ouvre depuis les préférences, qui
+            // occupent le centre de l'écran. Rangée comme une fenêtre
+            // ordinaire, elle se posait derrière elles — on cliquait
+            // « Installer… » et il ne se passait rien de visible.
+            .order(egui::Order::Foreground)
             .resizable(true)
             .collapsible(false)
             .default_size([700.0, 620.0])
+            // Bornée à l'écran, et c'est ce qui manquait : le plan de
+            // rizin compte neuf étapes et un journal, si bien que la
+            // fenêtre dépassait en haut comme en bas. Sa barre de titre
+            // passait hors champ — avec la croix qui s'y trouve —, et
+            // l'on ne pouvait plus la fermer du tout.
+            .max_size(egui::vec2(
+                ctx.viewport_rect().width() * 0.9,
+                ctx.viewport_rect().height() * 0.86,
+            ))
             .pivot(egui::Align2::CENTER_CENTER)
             .default_pos(ctx.viewport_rect().center())
             .show(ctx, |ui| {
@@ -5407,7 +5996,10 @@ impl NamsdecApp {
                 egui::ScrollArea::vertical()
                     .id_salt("installer_page")
                     .auto_shrink([false, true])
-                    .max_height(ctx.viewport_rect().height() * 0.55)
+                    // Moins que la moitié : au-dessus, l'avertissement
+                    // et les boutons se retrouvaient sous le bord de
+                    // l'écran, journal déplié.
+                    .max_height(ctx.viewport_rect().height() * 0.5)
                     .show(ui, |ui| {
                         // --- Ce qu'on va gagner ----------------------
                         // D'abord la leçon, ensuite la mécanique : une
@@ -5491,6 +6083,40 @@ impl NamsdecApp {
                                 theme.bad,
                                 format!("{} {}", s.install_missing, manquants.join(", ")),
                             );
+                            // Le bouton reste gris tant qu'il manque
+                            // quelque chose : sans la commande à poser,
+                            // la fenêtre était un cul-de-sac où l'on
+                            // apprenait seulement qu'on ne pouvait rien
+                            // faire.
+                            if let Some(commande) =
+                                namsdec_disasm::install::requirement_command(&manquants)
+                            {
+                                ui.add_space(4.0);
+                                ui.label(
+                                    egui::RichText::new(s.install_requirements_hint)
+                                        .small()
+                                        .color(theme.dim),
+                                );
+                                ui.horizontal(|ui| {
+                                    ui.add(
+                                        egui::Label::new(
+                                            egui::RichText::new(&commande).monospace(),
+                                        )
+                                        .selectable(true),
+                                    );
+                                    let copié = ui
+                                        .ctx()
+                                        .data(|d| d.get_temp::<bool>(copie_id()))
+                                        .unwrap_or(false);
+                                    let étiquette =
+                                        if copié { s.install_copied } else { s.install_copy };
+                                    if framed_button(ui, theme, étiquette).clicked() {
+                                        ui.ctx().copy_text(commande.clone());
+                                        ui.ctx()
+                                            .data_mut(|d| d.insert_temp(copie_id(), true));
+                                    }
+                                });
+                            }
                         }
                         ui.add_space(8.0);
 
@@ -5591,6 +6217,46 @@ impl NamsdecApp {
                         }
                     });
 
+                // --- Ce que les commandes ont écrit ------------------
+                //
+                // Replié par défaut : on ne l'ouvre que lorsqu'on veut
+                // savoir. Mais il est là, et c'est tout ce qui permet de
+                // comprendre un échec — « l'étape 2 a échoué (code 128) »
+                // ne dit pas que git a trouvé le dossier déjà occupé.
+                let journal: Vec<String> = if en_cours {
+                    self.install_job
+                        .as_ref()
+                        .map(|job| job.log.lock().expect("le journal").clone())
+                        .unwrap_or_default()
+                } else {
+                    self.install_log.clone()
+                };
+                if !journal.is_empty() {
+                    ui.add_space(4.0);
+                    egui::CollapsingHeader::new(s.install_log_title)
+                        .id_salt("install_log")
+                        .default_open(!en_cours && self.plugin_note.as_ref().is_some_and(|n| !n.ok))
+                        .show(ui, |ui| {
+                            egui::ScrollArea::vertical()
+                                .id_salt("install_log_scroll")
+                                .max_height(160.0)
+                                .stick_to_bottom(true)
+                                .show(ui, |ui| {
+                                    for ligne in &journal {
+                                        ui.add(
+                                            egui::Label::new(
+                                                egui::RichText::new(ligne).monospace().small(),
+                                            )
+                                            .selectable(true),
+                                        );
+                                    }
+                                });
+                            if framed_button(ui, theme, s.install_copy_log).clicked() {
+                                ui.ctx().copy_text(journal.join("\n"));
+                            }
+                        });
+                }
+
                 // --- Ce qu'on fait, tout en bas et toujours visible --
                 //
                 // L'avertissement voisine le bouton : plus haut, il
@@ -5620,6 +6286,25 @@ impl NamsdecApp {
                         if framed_button(ui, theme, s.install_cancel).clicked() {
                             arrêter = true;
                         }
+                    } else if déjà_prêt {
+                        // Installé, et vérifié : le bouton ne doit plus
+                        // inviter à recommencer. Il le faisait, et l'on
+                        // ne savait donc pas si l'installation avait
+                        // abouti — la seule façon de s'en assurer était
+                        // de tout relancer.
+                        ui.colored_label(theme.good, s.install_already_done);
+                        if framed_button(ui, theme, s.dialog_close).clicked() {
+                            fermer = true;
+                        }
+                        // Recommencer reste possible, mais ce n'est plus
+                        // ce qu'on propose en premier : c'est le geste de
+                        // quelqu'un qui sait pourquoi il le fait.
+                        if framed_button(ui, theme, s.install_again)
+                            .on_hover_text(s.install_again_hint)
+                            .clicked()
+                        {
+                            lancer = true;
+                        }
                     } else {
                         ui.add_enabled_ui(manquants.is_empty(), |ui| {
                             lancer = ui
@@ -5634,6 +6319,13 @@ impl NamsdecApp {
                                 .clicked();
                         });
                         ui.colored_label(theme.dim, s.install_nothing_yet);
+                        // Un bouton pour partir, en plus de la croix :
+                        // celle-ci est dans la barre de titre, qui se
+                        // retrouve loin du regard sur un plan de neuf
+                        // étapes.
+                        if framed_button(ui, theme, s.dialog_close).clicked() {
+                            fermer = true;
+                        }
                     }
                 });
             });
@@ -5644,7 +6336,13 @@ impl NamsdecApp {
         if arrêter && let Some(job) = &self.install_job {
             job.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
         }
-        if !ouverte {
+        // Échap aussi : c'est le geste qu'on fait sans y penser devant
+        // une fenêtre dont on a fini. Pas pendant l'installation — on
+        // n'interrompt pas un `ninja` par mégarde.
+        if !en_cours && ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            fermer = true;
+        }
+        if !ouverte || fermer {
             self.install_plan = None;
         }
     }
@@ -6082,6 +6780,156 @@ impl NamsdecApp {
         None
     }
 
+    /// La calculatrice : une expression, et toutes ses lectures.
+    ///
+    /// Elle répond pendant qu'on tape, sans bouton « égale ». C'est ce
+    /// qui la rend utile : on essaie `0xff & 0x0f`, on voit, on corrige,
+    /// on voit. Un bouton imposerait un aller-retour à chaque essai.
+    ///
+    /// Les registres du programme en cours sont des noms comme les
+    /// autres : `rax & 0xff` se lit comme on le pense, et c'est très
+    /// exactement la question qu'on se pose devant un `and eax, 0xff`.
+    fn calculator_window_ui(&mut self, ctx: &egui::Context) {
+        if !self.show_calculator {
+            return;
+        }
+        let s = strings(self.lang);
+        let theme = self.theme;
+        let lang = self.lang;
+        let mut open = true;
+        let regs = self.emulator.as_ref().map(|e| &e.cpu().regs);
+        let résultat = calc::eval(&self.calc_input, regs);
+        let mut à_copier: Option<String> = None;
+
+        let fenêtre = egui::Window::new(s.calculator_title)
+            .id(egui::Id::new("calculator_window"))
+            .open(&mut open)
+            .resizable(true)
+            .collapsible(false)
+            .default_size([460.0, 400.0])
+            .min_size([360.0, 260.0])
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(ctx.viewport_rect().center());
+        let rendue = self
+            .maximizable(fenêtre, Self::CALCULATOR_WINDOW, ctx)
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.colored_label(theme.dim, s.calculator_expression);
+                    let champ = ui.add(
+                        egui::TextEdit::singleline(&mut self.calc_input)
+                            .hint_text(s.calculator_hint_text)
+                            .font(egui::TextStyle::Monospace)
+                            .desired_width(ui.available_width()),
+                    );
+                    // Le curseur est dans le champ dès l'ouverture : on
+                    // vient là pour taper, pas pour cliquer d'abord.
+                    if !self.calculator_was_open {
+                        champ.request_focus();
+                    }
+                });
+                ui.add_space(8.0);
+
+                match &résultat {
+                    Ok(valeur) => {
+                        // Toutes les bases, l'une sous l'autre, en
+                        // colonnes alignées. Chacune se copie d'un clic :
+                        // ce qu'on calcule ici finit presque toujours
+                        // dans le code d'à côté.
+                        egui::Grid::new("calculator_bases")
+                            .num_columns(2)
+                            .spacing([16.0, 6.0])
+                            .show(ui, |ui| {
+                                for (nom, texte) in readings::all_bases(lang, *valeur) {
+                                    ui.colored_label(theme.dim, nom);
+                                    let réponse = ui.add(
+                                        egui::Label::new(
+                                            egui::RichText::new(&texte)
+                                                .monospace()
+                                                .color(theme.text),
+                                        )
+                                        .sense(egui::Sense::click()),
+                                    );
+                                    if réponse.on_hover_text(s.calculator_copy).clicked() {
+                                        à_copier = Some(texte.clone());
+                                    }
+                                    ui.end_row();
+                                }
+                            });
+                    }
+                    Err(erreur) => {
+                        // Vide, on ne reproche rien : la fenêtre vient
+                        // de s'ouvrir, il n'y a pas d'erreur à signaler.
+                        if !matches!(erreur, calc::CalcError::Empty) {
+                            ui.colored_label(theme.bad, calc_error_text(s, erreur));
+                        }
+                    }
+                }
+
+                ui.add_space(8.0);
+                ui.separator();
+                // L'aide-mémoire des fonctions, replié : on l'ouvre une
+                // fois pour découvrir ce qu'il y a, puis on ne le rouvre
+                // plus — et il ne doit donc pas prendre la place chaque
+                // fois.
+                egui::CollapsingHeader::new(s.calculator_functions)
+                    .id_salt("calculator_functions")
+                    .default_open(false)
+                    .show(ui, |ui| {
+                        if regs.is_none() {
+                            ui.colored_label(theme.dim, s.calculator_no_registers);
+                            ui.add_space(4.0);
+                        }
+                        egui::Grid::new("calculator_function_list")
+                            .num_columns(2)
+                            .spacing([12.0, 4.0])
+                            .show(ui, |ui| {
+                                for (nom, arité, fr, en) in calc::FUNCTIONS {
+                                    let appel = if *arité == 2 {
+                                        format!("{nom}(x, n)")
+                                    } else {
+                                        format!("{nom}(x)")
+                                    };
+                                    if ui
+                                        .add(
+                                            egui::Label::new(
+                                                egui::RichText::new(&appel)
+                                                    .monospace()
+                                                    .color(theme.accent),
+                                            )
+                                            .sense(egui::Sense::click()),
+                                        )
+                                        .on_hover_text(s.calculator_insert)
+                                        .clicked()
+                                    {
+                                        // Insérer le nom et sa
+                                        // parenthèse : on cherche ce
+                                        // qu'une fonction fait, on la
+                                        // clique, on complète.
+                                        self.calc_input.push_str(nom);
+                                        self.calc_input.push('(');
+                                    }
+                                    ui.colored_label(
+                                        theme.dim,
+                                        if lang == Lang::Fr { *fr } else { *en },
+                                    );
+                                    ui.end_row();
+                                }
+                            });
+                    });
+            });
+        self.place_maximize_button(ctx, Self::CALCULATOR_WINDOW, rendue);
+
+        if let Some(texte) = à_copier {
+            ctx.copy_text(texte);
+            self.status = Status::Note(|s| s.calculator_copied);
+        }
+        self.calculator_was_open = self.show_calculator;
+        self.show_calculator = open;
+        if !open {
+            self.calculator_was_open = false;
+        }
+    }
+
     fn exercises_window_ui(&mut self, ctx: &egui::Context) {
         let s = strings(self.lang);
         let theme = self.theme;
@@ -6089,20 +6937,30 @@ impl NamsdecApp {
         let mut open = self.show_exercises;
         let mut load = None;
         let mut fiche: Option<&'static str> = None;
-        egui::Window::new(s.exercises_title)
-            .id(egui::Id::new("exercises_window"))
+        let fenêtre_exercises_window = egui::Window::new(s.exercises_title)
+            // L'identifiant a changé de version, et il le fallait :
+            // egui retient la taille d'une fenêtre par son identifiant,
+            // si bien qu'élargir la taille de départ n'aurait rien
+            // changé pour qui l'a déjà ouverte une fois. Le prix est
+            // qu'elle reprend sa place au centre — pour une fenêtre
+            // qu'on jugeait trop étroite, c'est ce qu'on veut.
+            .id(egui::Id::new("exercises_window_v2"))
             .open(&mut open)
             .resizable(true)
             .collapsible(false)
-            // Une taille de départ franche plutôt qu'une fenêtre qui
-            // s'étire avec son contenu : deux séries installées la
-            // faisaient déborder de l'écran, et la troisième n'avait
-            // nulle part où aller.
-            .default_size([480.0, 520.0])
+            // 480 px de large étaient trop peu : un énoncé y tombe sur
+            // six lignes et la liste des séries se replie en accordéon.
+            // La taille suit maintenant l'écran — quatre cinquièmes,
+            // plafonnés — au lieu d'un chiffre fixe qui déborde d'un
+            // petit écran et se perd sur un grand.
+            .default_size(exercises_window_size(ctx))
+            .min_size([420.0, 320.0])
             .pivot(egui::Align2::CENTER_CENTER)
             // `default_pos` et non `current_pos` : la seconde replace la
             // fenêtre à chaque frame, et l'on ne peut plus la déplacer.
-            .default_pos(ctx.viewport_rect().center())
+            .default_pos(ctx.viewport_rect().center());
+        let rendue_exercises_window = self
+            .maximizable(fenêtre_exercises_window, Self::EXERCISES_WINDOW, ctx)
             .show(ctx, |ui| {
                 // Aucune série lisible : le parcours est un fichier, et
                 // ce fichier n'est pas là. Le dire, avec l'endroit où il
@@ -6412,6 +7270,7 @@ impl NamsdecApp {
                         }
                     });
             });
+        self.place_maximize_button(ctx, Self::EXERCISES_WINDOW, rendue_exercises_window);
         if let Some(id) = load {
             self.load_exercise(&id);
             open = false;
@@ -6484,6 +7343,126 @@ impl NamsdecApp {
     /// appel part et revient. Ce dessin est la forme que l'on
     /// reconstitue de tête en lisant, et qu'un débutant ne voit pas
     /// encore.
+    /// Cette fenêtre est-elle agrandie ?
+    fn window_maximized(&self, id: &'static str) -> bool {
+        self.maximized_windows.contains(id)
+    }
+
+    /// Règle une fenêtre pour qu'elle occupe tout l'écran.
+    ///
+    /// `fixed_size` donne la taille du *contenu* : le cadre de la fenêtre
+    /// s'ajoute autour. Sans retrancher ses marges, la fenêtre dépassait
+    /// de l'écran et se faisait rogner. Et `pivot` n'a plus lieu d'être —
+    /// c'est un coin qu'on vise, non un centre.
+    fn fill_the_screen<'a>(
+        fenêtre: egui::Window<'a>,
+        ctx: &egui::Context,
+    ) -> egui::Window<'a> {
+        let place = Self::maximized_rect(ctx);
+        let marge = ctx.style_of(ctx.theme()).spacing.window_margin;
+        let cadre = egui::vec2(
+            f32::from(marge.left + marge.right),
+            f32::from(marge.top + marge.bottom),
+        );
+        fenêtre
+            .resizable(false)
+            .pivot(egui::Align2::LEFT_TOP)
+            .fixed_pos(place.min)
+            .fixed_size(place.size() - cadre)
+    }
+
+    /// Le rectangle d'une fenêtre agrandie : tout ce qu'il y a.
+    ///
+    /// Sans marge : une fenêtre agrandie qui laisse voir douze pixels de
+    /// ce qu'elle recouvre n'a pas l'air agrandie, elle a l'air mal
+    /// posée.
+    fn maximized_rect(ctx: &egui::Context) -> egui::Rect {
+        ctx.viewport_rect()
+    }
+
+    /// Rend cette fenêtre agrandissable : elle prend tout l'écran quand
+    /// on le lui a demandé, et garde ses réglages sinon.
+    ///
+    /// À poser en dernier sur la fenêtre, après ses tailles : `fixed_*`
+    /// et `default_*` se disputent la même place, et le dernier écrit
+    /// gagne.
+    fn maximizable<'a>(
+        &self,
+        fenêtre: egui::Window<'a>,
+        id: &'static str,
+        ctx: &egui::Context,
+    ) -> egui::Window<'a> {
+        if self.window_maximized(id) {
+            Self::fill_the_screen(fenêtre, ctx)
+        } else {
+            fenêtre
+        }
+    }
+
+    /// Pose le bouton d'agrandissement dans le bandeau d'une fenêtre qui
+    /// vient d'être dessinée, et applique ce qu'on en a fait.
+    fn place_maximize_button<T>(
+        &mut self,
+        ctx: &egui::Context,
+        id: &'static str,
+        rendue: Option<egui::InnerResponse<Option<T>>>,
+    ) {
+        let agrandie = self.window_maximized(id);
+        if let Some(rendue) = rendue
+            && title_bar_maximize_button(
+                ctx,
+                id,
+                rendue.response.rect,
+                self.theme,
+                strings(self.lang),
+                agrandie,
+            )
+        {
+            self.toggle_maximized(id);
+        }
+    }
+
+    /// Déplace le curseur du mode Normal, et l'écrit dans l'état du
+    /// champ — c'est lui qui le porte, même quand il n'a pas le focus.
+    fn move_in_normal_mode(&mut self, ctx: &egui::Context, mouvement: Move) {
+        let Some(mut state) = egui::TextEdit::load_state(ctx, editor_id()) else {
+            return;
+        };
+        let at = state
+            .cursor
+            .char_range()
+            .map_or(0, |range| range.primary.index.0);
+        let cible = move_cursor(&self.source, at, mouvement);
+        state
+            .cursor
+            .set_char_range(Some(egui::text::CCursorRange::one(
+                egui::text::CCursor::new(cible),
+            )));
+        state.store(ctx, editor_id());
+        self.cursor_pos = line_col(&self.source, cible);
+        self.cursor_byte = char_to_byte(&self.source, cible);
+        // Le listing suit : se déplacer hors de l'écran sans que la vue
+        // bouge reviendrait à ne pas se déplacer.
+        self.follow_execution();
+    }
+
+    /// Applique ce qu'un clic sur le bouton d'agrandissement demande.
+    fn toggle_maximized(&mut self, id: &'static str) {
+        if !self.maximized_windows.remove(id) {
+            self.maximized_windows.insert(id);
+        }
+    }
+
+    /// Les fenêtres qui peuvent s'agrandir, nommées une fois pour que
+    /// l'état et le bouton parlent de la même.
+    const FLOW_WINDOW: &'static str = "flow";
+    const DECOMPILER_WINDOW: &'static str = "decompiler";
+    const DISASSEMBLY_WINDOW: &'static str = "disassembly";
+    const TIMELINE_WINDOW: &'static str = "timeline";
+    const ANALYSIS_WINDOW: &'static str = "analysis";
+    const EXERCISES_WINDOW: &'static str = "exercises";
+    const CALCULATOR_WINDOW: &'static str = "calculator";
+
     fn flow_window_ui(&mut self, ctx: &egui::Context) {
         if !self.show_flow {
             return;
@@ -6492,20 +7471,62 @@ impl NamsdecApp {
         let theme = self.theme;
         let mut open = self.show_flow;
         let mut aller: Option<u32> = None;
-        egui::Window::new(s.flow_title)
+        let agrandie = self.window_maximized(Self::FLOW_WINDOW);
+        // Ce que le bouton a demandé : appliqué une fois la fenêtre
+        // refermée, car tant qu'elle se dessine, ce qu'elle montre est
+        // emprunté à `self`.
+        let mut bascule = false;
+        let mut fenêtre = egui::Window::new(s.flow_title)
             .id(egui::Id::new("flow_window"))
             .open(&mut open)
-            .resizable(true)
-            .collapsible(false)
-            .default_size([760.0, 560.0])
-            .pivot(egui::Align2::CENTER_CENTER)
-            .default_pos(ctx.viewport_rect().center())
+            .collapsible(false);
+        // Agrandie ou libre : deux réglages qui ne se mélangent pas. Les
+        // poser à la suite ne marchait pas — `min_size` et `default_size`
+        // écrasaient ce que `fixed_rect` venait de fixer, et la fenêtre
+        // gardait sa taille d'origine en changeant seulement de coin.
+        fenêtre = if agrandie {
+            Self::fill_the_screen(fenêtre, ctx)
+        } else {
+            fenêtre
+                // Un graphe de blocs n'est pas une boîte de dialogue : il
+                // se lit à la taille de l'écran. Sept cent soixante
+                // pixels de large montraient trois boîtes sur mille.
+                .resizable(true)
+                .default_size({
+                    let écran = ctx.viewport_rect().size();
+                    egui::vec2(écran.x * 0.92, écran.y * 0.88)
+                })
+                .min_size([640.0, 420.0])
+                .pivot(egui::Align2::CENTER_CENTER)
+                .default_pos(ctx.viewport_rect().center())
+        };
+        let rendue = fenêtre
             .show(ctx, |ui| {
                 let Some(state) = &self.assemble_state else {
                     ui.colored_label(theme.dim, s.flow_empty);
                     return;
                 };
-                let cfg = namsdec_re::cfg::build(&state.disasm);
+                let entier = namsdec_re::cfg::build(&state.disasm);
+                if entier.blocks.is_empty() {
+                    ui.colored_label(theme.dim, s.flow_empty);
+                    return;
+                }
+                // Le bloc d'où l'on regarde : celui où le programme en
+                // est, ou son point d'entrée tant que rien n'a tourné.
+                let ancre = self
+                    .emulator
+                    .as_ref()
+                    .and_then(|e| entier.block_at(e.cpu().regs.rip))
+                    .unwrap_or(0);
+                // La fonction seule, ou tout. Un vrai sous-graphe : le
+                // dessin, la mise en page et la recherche de route
+                // travaillent dessus sans rien savoir de la restriction.
+                let restreint = self.flow_current_only && entier.blocks.len() > 1;
+                let cfg = if restreint {
+                    entier.subgraph(&entier.function_around(ancre))
+                } else {
+                    entier.clone()
+                };
                 if cfg.blocks.is_empty() {
                     ui.colored_label(theme.dim, s.flow_empty);
                     return;
@@ -6537,6 +7558,20 @@ impl NamsdecApp {
                         }
                         None => {
                             ui.colored_label(theme.warn, s.flow_no_route);
+                            // La route se cherche dans ce qu'on montre.
+                            // Si elle existe ailleurs dans le programme,
+                            // le dire vaut mieux que de laisser croire
+                            // qu'il n'y en a aucune — l'adresse visée est
+                            // souvent dans une autre fonction, et c'est
+                            // même tout l'intérêt de la question.
+                            if restreint && namsdec_re::route::to(&entier, visée).is_some() {
+                                ui.horizontal_wrapped(|ui| {
+                                    ui.colored_label(theme.dim, s.flow_route_elsewhere);
+                                    if framed_button(ui, theme, s.flow_show_whole).clicked() {
+                                        self.flow_current_only = false;
+                                    }
+                                });
+                            }
                         }
                     }
                 }
@@ -6559,9 +7594,123 @@ impl NamsdecApp {
                 if survolé {
                     let molette = ui.input(|i| i.smooth_scroll_delta.y);
                     if molette.abs() > 0.5 && ui.input(|i| i.modifiers.ctrl) {
+                        let avant = self.flow_zoom;
                         self.flow_zoom = (self.flow_zoom * (1.0 + molette * 0.002))
                             .clamp(FLOW_ZOOM_MIN, FLOW_ZOOM_MAX);
+                        // Zoomer sous le pointeur, comme sur une carte :
+                        // ce qu'on vise reste sous la souris. Zoomer
+                        // depuis le coin faisait fuir le bloc qu'on
+                        // regardait dès le deuxième cran.
+                        if let Some(souris) = ui.input(|i| i.pointer.interact_pos()) {
+                            let facteur = self.flow_zoom / avant;
+                            let vue = ui.min_rect().min.to_vec2();
+                            let sous_souris = self.flow_offset + (souris.to_vec2() - vue);
+                            self.flow_offset =
+                                sous_souris * facteur - (souris.to_vec2() - vue);
+                            self.flow_offset.x = self.flow_offset.x.max(0.0);
+                            self.flow_offset.y = self.flow_offset.y.max(0.0);
+                        }
                     }
+                }
+
+                // ── 2.8 : « Tout voir » à la touche F ────────────────
+                //
+                // Le bouton existait ; la touche manquait. `f` comme
+                // « fit », et seulement quand aucun champ ne retient les
+                // frappes — la case d'adresse est juste au-dessus.
+                if survolé
+                    && ui.ctx().memory(|m| m.focused()).is_none()
+                    && ui.input(|i| i.key_pressed(egui::Key::F))
+                {
+                    self.flow_fit = true;
+                }
+
+                // Et les mêmes commandes à portée de clic : la molette
+                // avec Ctrl ne s'invente pas, et rien ne l'annonçait.
+                ui.horizontal_wrapped(|ui| {
+                    if framed_button(ui, theme, "−")
+                        .on_hover_text(s.flow_zoom_out)
+                        .clicked()
+                    {
+                        self.flow_zoom = (self.flow_zoom / 1.25).clamp(FLOW_ZOOM_MIN, FLOW_ZOOM_MAX);
+                    }
+                    ui.colored_label(
+                        theme.dim,
+                        format!("{:.0} %", self.flow_zoom * 100.0),
+                    );
+                    if framed_button(ui, theme, "+")
+                        .on_hover_text(s.flow_zoom_in)
+                        .clicked()
+                    {
+                        self.flow_zoom = (self.flow_zoom * 1.25).clamp(FLOW_ZOOM_MIN, FLOW_ZOOM_MAX);
+                    }
+                    if framed_button(ui, theme, s.flow_zoom_reset).clicked() {
+                        self.flow_zoom = 1.0;
+                        self.flow_offset = egui::Vec2::ZERO;
+                    }
+                    if framed_button(ui, theme, s.flow_fit).clicked() {
+                        self.flow_fit = true;
+                    }
+                    // Le graphe s'emporte : dans une note, un rapport,
+                    // un cours. DOT plutôt qu'une image — il se lit à
+                    // l'œil, et `dot -Tsvg` en fait une image quand on en
+                    // veut une.
+                    if framed_button(ui, theme, s.flow_copy_dot)
+                        .on_hover_text(s.flow_copy_dot_hint)
+                        .clicked()
+                    {
+                        ui.ctx().copy_text(cfg.to_dot());
+                        self.status = Status::Note(|s| s.flow_dot_copied);
+                    }
+                    ui.separator();
+                    ui.checkbox(&mut self.flow_current_only, s.flow_current_only);
+                    // Et laquelle : sans symboles, la fermeture par sauts
+                    // ne sait pas nommer la fonction, mais l'adresse de
+                    // son premier bloc la désigne sans ambiguïté — c'est
+                    // ce qu'on tape dans « Comment arrive-t-on à ».
+                    if restreint
+                        && let Some(entrée) = cfg.blocks.first()
+                    {
+                        ui.colored_label(
+                            theme.dim,
+                            egui::RichText::new(format!("{:#x}", entrée.start)).monospace(),
+                        )
+                        .on_hover_text(s.flow_function_hint);
+                    }
+                    ui.separator();
+                    // Combien on en montre, et combien il y en a : sur un
+                    // binaire ordinaire, l'écart est tout le sujet.
+                    ui.colored_label(
+                        theme.dim,
+                        if restreint {
+                            format!(
+                                "{} / {} {}",
+                                cfg.blocks.len(),
+                                entier.blocks.len(),
+                                s.flow_blocks
+                            )
+                        } else {
+                            format!("{} {}", cfg.blocks.len(), s.flow_blocks)
+                        },
+                    );
+                    ui.separator();
+                    ui.weak(s.flow_pan_hint);
+                });
+                ui.add_space(4.0);
+
+                // « Tout voir » : le zoom qui fait entrer le graphe
+                // entier dans la place qu'on a. Il se calcule ici, où
+                // cette place est enfin connue — la demande, elle, a été
+                // faite au clic.
+                let vue = ui.available_size();
+                if self.flow_fit {
+                    self.flow_fit = false;
+                    let naturel = flow_extent(ui, &cfg, s, 1.0);
+                    let facteur = (vue.x / naturel.x.max(1.0))
+                        .min(vue.y / naturel.y.max(1.0))
+                        .clamp(FLOW_ZOOM_MIN, FLOW_ZOOM_MAX);
+                    self.flow_zoom = facteur;
+                    self.flow_offset = egui::Vec2::ZERO;
                 }
                 let zoom = self.flow_zoom;
                 // Où le programme en est : le bloc qui contient RIP est
@@ -6571,13 +7720,36 @@ impl NamsdecApp {
                     .as_ref()
                     .and_then(|e| cfg.block_at(e.cpu().regs.rip));
                 let lignes = &state.addr_to_line;
-                egui::ScrollArea::both()
+                let sortie = egui::ScrollArea::both()
                     .auto_shrink([false, false])
+                    .scroll_offset(self.flow_offset)
                     .show(ui, |ui| {
-                        aller = flow_graph_ui(ui, theme, s, &cfg, ici, lignes, zoom, &sur_la_route);
+                        flow_graph_ui(ui, theme, s, &cfg, ici, lignes, zoom, &sur_la_route)
                     });
+                let (destination, tiré) = sortie.inner;
+                aller = destination;
+                // Le glisser déplace la vue, comme sur une carte. On
+                // repart de ce que la zone défilante dit d'elle-même :
+                // les barres et la molette la déplacent aussi, et les
+                // trois doivent parler du même point.
+                self.flow_offset = sortie.state.offset - tiré;
             });
         self.show_flow = open;
+        if let Some(rendue) = rendue
+            && title_bar_maximize_button(
+                ctx,
+                Self::FLOW_WINDOW,
+                rendue.response.rect,
+                theme,
+                s,
+                agrandie,
+            )
+        {
+            bascule = true;
+        }
+        if bascule {
+            self.toggle_maximized(Self::FLOW_WINDOW);
+        }
         if let Some(ligne) = aller {
             self.goto_line = Some(ligne);
         }
@@ -6680,6 +7852,13 @@ impl NamsdecApp {
                         .code()
                         .map(|c| c.to_string())
                         .unwrap_or_else(|| "?".to_owned());
+                    // Le code de sortie dans le journal aussi : il ne
+                    // figurait que dans la note d'échec, ailleurs dans la
+                    // fenêtre, et l'on lisait les deux séparément.
+                    journal
+                        .lock()
+                        .expect("le journal")
+                        .push(format!("(code {code})"));
                     *résultat.lock().expect("le résultat") =
                         Some(Err(format!("« {} » a échoué (code {code})", étape.line())));
                     return;
@@ -6735,6 +7914,12 @@ impl NamsdecApp {
         };
         job.done = job.progress.load(Ordering::Relaxed);
         let fini = job.outcome.lock().expect("le résultat").take();
+        // Le journal, avant tout : ce qui suit jette le travail qui le
+        // tient, et c'est justement quand cela tourne mal qu'on veut le
+        // lire.
+        if fini.is_some() {
+            self.install_log = job.log.lock().expect("le journal").clone();
+        }
         match fini {
             Some(Ok(programme)) => {
                 let outil = job.tool.clone();
@@ -6743,11 +7928,21 @@ impl NamsdecApp {
                 self.declare_installed_tool(&outil, &programme);
             }
             Some(Err(raison)) => {
+                let outil = job.tool.clone();
                 self.install_job = None;
                 self.job = None;
+                // Ce qui reste sur le disque : une recette s'arrête où
+                // elle peut, et le dossier à demi rempli n'a l'air de
+                // rien. La prochaine tentative l'effacera d'elle-même,
+                // ce qui vaut la peine d'être dit.
+                let reste = data_dir()
+                    .map(|dir| namsdec_disasm::install::tools_dir(&dir).join(&outil))
+                    .filter(|chemin| chemin.exists())
+                    .map(|chemin| format!(" {} {}", strings(self.lang).install_leftover, chemin.display()))
+                    .unwrap_or_default();
                 self.plugin_note = Some(PluginNote {
                     ok: false,
-                    text: format!("{} {raison}", strings(self.lang).install_failed),
+                    text: format!("{} {raison}{reste}", strings(self.lang).install_failed),
                 });
             }
             None => ctx.request_repaint_after(std::time::Duration::from_millis(250)),
@@ -6799,14 +7994,22 @@ impl NamsdecApp {
         let theme = self.theme;
         let mut open = self.show_decompiler;
         let mut lancer = false;
-        egui::Window::new(s.decompiler_title)
+        let agrandie = self.window_maximized(Self::DECOMPILER_WINDOW);
+        let mut bascule = false;
+        let mut fenêtre = egui::Window::new(s.decompiler_title)
             .id(egui::Id::new("decompiler_window"))
             .open(&mut open)
-            .resizable(true)
-            .collapsible(false)
-            .default_size([720.0, 520.0])
-            .pivot(egui::Align2::CENTER_CENTER)
-            .default_pos(ctx.viewport_rect().center())
+            .collapsible(false);
+        fenêtre = if agrandie {
+            Self::fill_the_screen(fenêtre, ctx)
+        } else {
+            fenêtre
+                .resizable(true)
+                .default_size([720.0, 520.0])
+                .pivot(egui::Align2::CENTER_CENTER)
+                .default_pos(ctx.viewport_rect().center())
+        };
+        let rendue = fenêtre
             .show(ctx, |ui| {
                 if self.decompilers.is_empty() {
                     ui.colored_label(theme.warn, s.decompiler_none_installed);
@@ -7038,6 +8241,21 @@ impl NamsdecApp {
                 }
             });
         self.show_decompiler = open;
+        if let Some(rendue) = rendue
+            && title_bar_maximize_button(
+                ctx,
+                Self::DECOMPILER_WINDOW,
+                rendue.response.rect,
+                theme,
+                s,
+                agrandie,
+            )
+        {
+            bascule = true;
+        }
+        if bascule {
+            self.toggle_maximized(Self::DECOMPILER_WINDOW);
+        }
         if lancer {
             self.start_decompile();
         }
@@ -7446,18 +8664,21 @@ impl NamsdecApp {
         let s = strings(self.lang);
         let ctx = ui.ctx().clone();
         ui.horizontal(|ui| {
-            if ui
-                .button(s.action_assemble)
-                .on_hover_text(shortcut_hint(
-                    &self.keybindings,
-                    &ctx,
-                    s.action_assemble,
-                    Action::Assemble,
-                ))
-                .clicked()
-            {
-                self.dispatch(Action::Assemble);
-            }
+            ui.add_enabled_ui(self.can_assemble(), |ui| {
+                if ui
+                    .button(s.action_assemble)
+                    .on_hover_text(shortcut_hint(
+                        &self.keybindings,
+                        &ctx,
+                        s.action_assemble,
+                        Action::Assemble,
+                    ))
+                    .on_disabled_hover_text(s.binary_no_reassemble_hint)
+                    .clicked()
+                {
+                    self.dispatch(Action::Assemble);
+                }
+            });
 
             let can_exec = self.can_execute();
             // Le pas arrière a son propre grisé : il ne dépend pas de
@@ -7522,6 +8743,25 @@ impl NamsdecApp {
                     .clicked()
                 {
                     self.dispatch(Action::Stop);
+                }
+            });
+
+            // Réinitialiser ne se grise pas comme le reste : c'est le
+            // programme terminé, tous les autres boutons éteints, qu'on
+            // le cherche — précisément l'état où `can_execute` est faux.
+            // Sa seule condition est qu'il y ait une machine à remettre
+            // à zéro.
+            ui.add_enabled_ui(self.emulator.is_some(), |ui| {
+                if icon_button(ui, icon_reset, s.action_reset)
+                    .on_hover_text(shortcut_hint(
+                        &self.keybindings,
+                        &ctx,
+                        s.action_reset,
+                        Action::Reset,
+                    ))
+                    .clicked()
+                {
+                    self.dispatch(Action::Reset);
                 }
             });
 
@@ -7792,8 +9032,14 @@ impl NamsdecApp {
             Status::NasmMissing => {
                 ui.colored_label(theme.bad, s.status_nasm_missing);
             }
-            Status::Note(text) => {
-                ui.colored_label(theme.good, *text);
+            Status::Note(phrase) => {
+                status_message(ui, theme.good, phrase(s), s);
+            }
+            // Le nombre devant la phrase : « 7 occurrences surlignées ».
+            // Le compte ne se traduit pas, la phrase si — d'où les deux
+            // morceaux séparés jusqu'ici.
+            Status::Counted(combien, phrase) => {
+                status_message(ui, theme.good, &format!("{combien} {}", phrase(s)), s);
             }
             Status::Error(msg) => {
                 ui.colored_label(
@@ -7860,6 +9106,7 @@ impl NamsdecApp {
         // l'éditeur d'une ligne plutôt que de flotter par-dessus, pour
         // ne jamais couvrir ce qu'on vient de trouver.
         self.find_ui(ui);
+        self.rename_ui(ui);
         // Modes façon (n)vim : `i`/`I` pour passer en Insertion, `Échap`
         // pour revenir en Normal — désactivé pendant qu'une autre capture
         // de texte est active (palette de commandes, rebind de raccourci)
@@ -7870,9 +9117,10 @@ impl NamsdecApp {
             // disponibles ici : le `i` qui termine `Espace s i` a servi à
             // demander un pas, pas à ouvrir la saisie.
             let consumed = self.dispatcher.consumed().to_vec();
-            let (enter_insert, exit_insert) = ui.ctx().input(|inp| {
+            let (enter_insert, exit_insert, mouvement) = ui.ctx().input(|inp| {
                 let mut enter = false;
                 let mut exit = false;
+                let mut mouvement = None;
                 for event in &inp.events {
                     if let egui::Event::Key {
                         key,
@@ -7890,12 +9138,48 @@ impl NamsdecApp {
                         match key {
                             egui::Key::I if plain && !consumed.contains(key) => enter = true,
                             egui::Key::Escape => exit = true,
+                            // Les déplacements, seulement en mode Normal
+                            // et seulement s'ils n'ont pas déjà servi à
+                            // un raccourci.
+                            egui::Key::H if plain && !consumed.contains(key) => {
+                                mouvement = Some(Move::Left);
+                            }
+                            egui::Key::L if plain && !consumed.contains(key) => {
+                                mouvement = Some(Move::Right);
+                            }
+                            egui::Key::K if plain && !consumed.contains(key) => {
+                                mouvement = Some(Move::Up);
+                            }
+                            egui::Key::J if plain && !consumed.contains(key) => {
+                                mouvement = Some(Move::Down);
+                            }
+                            egui::Key::Num0 if plain => mouvement = Some(Move::LineStart),
+                            egui::Key::Home => mouvement = Some(Move::LineStart),
+                            egui::Key::End => mouvement = Some(Move::LineEnd),
+                            // `G` : la fin du fichier, comme dans vim.
+                            egui::Key::G if plain && modifiers.shift => {
+                                mouvement = Some(Move::FileEnd);
+                            }
                             _ => {}
                         }
                     }
                 }
-                (enter, exit)
+                (enter, exit, mouvement)
             });
+            // Se déplacer avant de changer de mode : `i` entre en
+            // Insertion là où le curseur est, non là où il était.
+            if self.editor_mode == EditorMode::Normal
+                && let Some(mouvement) = mouvement
+            {
+                self.move_in_normal_mode(ui.ctx(), mouvement);
+            }
+            // Échap éteint aussi le surlignage des occurrences, avant
+            // de changer de mode : c'est le geste qui annule ce qu'on
+            // vient de demander, et l'attendre d'un second raccourci
+            // serait une chose de plus à retenir.
+            if exit_insert && self.tracked.is_some() {
+                self.clear_matches();
+            }
             match self.editor_mode {
                 EditorMode::Normal if enter_insert => {
                     self.editor_mode = EditorMode::Insert;
@@ -8131,6 +9415,10 @@ impl NamsdecApp {
                         // affichée même sur trois lignes de vingt
                         // caractères.
                         let width = editor_width(galley.rect.width(), ui.available_width());
+                        // Avant le `TextEdit` : les touches que la liste
+                        // de propositions veut sont retirées de la file,
+                        // sans quoi l'éditeur les appliquerait d'abord.
+                        self.claim_completion_keys(ui);
                         let output = egui::TextEdit::multiline(&mut self.source)
                             .id(editor_id())
                             .frame(egui::Frame::NONE)
@@ -8140,13 +9428,107 @@ impl NamsdecApp {
                             .interactive(self.editor_mode == EditorMode::Insert)
                             .layouter(&mut layouter)
                             .show(ui);
+                        // Les occurrences suivies, peintes *sous* le
+                        // texte : par-dessus, même translucide, le fond
+                        // ternirait les lettres — or c'est le mot qu'on
+                        // cherche à lire, pas le rectangle.
+                        self.paint_matches(ui, &output);
+                        // En mode Normal, le `TextEdit` n'est pas
+                        // interactif : egui ne peint aucun caret et ne
+                        // rend plus de `cursor_range`. La position du
+                        // curseur n'était donc visible nulle part — ni
+                        // dans le code, ni dans la barre de statut, qui
+                        // restait figée sur « Lig 1, Col 1 ». On la lit
+                        // dans l'état conservé du champ, et on la peint
+                        // soi-même : un bloc plein, comme vim, là où
+                        // l'insertion reprendra.
+                        if self.editor_mode == EditorMode::Normal
+                            && let Some(state) =
+                                egui::TextEdit::load_state(ui.ctx(), editor_id())
+                            && let Some(range) = state.cursor.char_range()
+                        {
+                            let primary = range.primary;
+                            self.cursor_pos = line_col(&self.source, primary.index.0);
+                            self.cursor_byte = char_to_byte(&self.source, primary.index.0);
+                            let place = output.galley.pos_from_cursor(primary);
+                            // Monospace : la largeur d'une espace est
+                            // celle de n'importe quel caractère, et vaut
+                            // mieux que de mesurer le glyphe visé — il
+                            // n'y en a aucun en fin de ligne.
+                            let largeur = ui.ctx().fonts_mut(|f| f.glyph_width(&font_id, ' '));
+                            let bloc = egui::Rect::from_min_size(
+                                output.galley_pos + place.left_top().to_vec2(),
+                                egui::vec2(largeur, place.height()),
+                            );
+                            // Translucide : le caractère sous le bloc
+                            // doit rester lisible. L'inversion de vim
+                            // demanderait de repeindre le glyphe.
+                            ui.painter().rect_filled(
+                                bloc,
+                                1.0,
+                                self.theme.accent.gamma_multiply(0.45),
+                            );
+                        }
                         if let Some(range) = output.cursor_range {
                             self.cursor_pos = line_col(&self.source, range.primary.index.0);
                             self.cursor_byte = char_to_byte(&self.source, range.primary.index.0);
+                            // La sélection, pour « surligner les
+                            // occurrences » : elle l'emporte sur le
+                            // curseur quand il y en a une.
+                            let (a, b) = (range.primary.index.0, range.secondary.index.0);
+                            self.editor_selection = (a != b).then(|| {
+                                char_to_byte(&self.source, a.min(b))
+                                    ..char_to_byte(&self.source, a.max(b))
+                            });
                             // Entrée garde l'indentation de la ligne
                             // qu'on quitte. egui insère un `\n` nu ; on
                             // ajoute les blancs derrière, et l'on avance
                             // le curseur d'autant.
+                            // Les paires : posées après coup, comme
+                            // l'indentation, parce que le `TextEdit` a
+                            // déjà écrit ce qu'on vient de taper et que
+                            // c'est de là qu'on raisonne.
+                            if self.auto_pairs
+                                && output.response.response.has_focus()
+                                && range.is_empty()
+                            {
+                                let at = self.cursor_byte;
+                                match pair_edit(&self.source, at) {
+                                    PairEdit::Close(fermant) => {
+                                        self.source.insert(at, fermant);
+                                        // Le curseur ne bouge pas : il
+                                        // reste entre les deux, qui est
+                                        // le seul endroit utile.
+                                        set_cursor_byte(ui.ctx(), &self.source, at);
+                                    }
+                                    PairEdit::StepOver => {
+                                        // Retirer le fermant qu'on vient
+                                        // d'écrire revient à traverser
+                                        // celui qui était déjà là.
+                                        let début = at
+                                            - self.source[..at]
+                                                .chars()
+                                                .next_back()
+                                                .map_or(0, char::len_utf8);
+                                        self.source.replace_range(début..at, "");
+                                        set_cursor_byte(ui.ctx(), &self.source, at);
+                                    }
+                                    PairEdit::None => {}
+                                }
+                            }
+                            // Le retour arrière emporte la paire vide
+                            // qu'il rouvrirait sans cela.
+                            if self.auto_pairs
+                                && output.response.response.has_focus()
+                                && range.is_empty()
+                                && ui.input(|i| i.key_pressed(egui::Key::Backspace))
+                                && backspace_clears_pair(&self.source, self.cursor_byte)
+                            {
+                                let at = self.cursor_byte;
+                                let fin = at
+                                    + self.source[at..].chars().next().map_or(0, char::len_utf8);
+                                self.source.replace_range(at..fin, "");
+                            }
                             if self.auto_indent
                                 && output.response.response.has_focus()
                                 && ui.input(|i| i.key_pressed(egui::Key::Enter))
@@ -8181,6 +9563,7 @@ impl NamsdecApp {
                         // Après le `TextEdit` : son état existe, et c'est
                         // lui qu'on déplace.
                         self.apply_goto_line(&ui.ctx().clone());
+                        self.apply_pending_cursor(&ui.ctx().clone());
                         let response = output.response.response;
                         if just_entered_insert {
                             response.request_focus();
@@ -8393,6 +9776,304 @@ impl NamsdecApp {
     /// Une liste flottante sous le curseur plutôt qu'un texte fantôme
     /// dans le champ : le tampon reste exactement ce que l'utilisateur a
     /// tapé, et rien de ce qu'il voit n'est écrit avant qu'il l'accepte.
+    /// Va à l'occurrence suivante — ou précédente — et la sélectionne.
+    ///
+    /// Rien de surligné ? On surligne d'abord ce qui est sous le curseur.
+    /// C'est le `*` puis `n` de vim en un seul geste, et cela évite de
+    /// répondre « il n'y a rien » à quelqu'un qui a le mot sous les yeux.
+    ///
+    /// La boucle est circulaire : après la dernière vient la première.
+    /// Buter contre la fin obligerait à remonter à la main pour repasser
+    /// sur ce qu'on vient de dépasser.
+    fn go_to_match(&mut self, avant: bool) {
+        if self.tracked.is_none() {
+            self.highlight_matches();
+            if self.tracked.is_none() {
+                return;
+            }
+        }
+        self.refresh_matches();
+        if self.tracked_spans.is_empty() {
+            return;
+        }
+        let ici = self.cursor_byte;
+        // La suivante est la première qui commence après le curseur ; à
+        // défaut, on repart du début.
+        let rang = if avant {
+            self.tracked_spans
+                .iter()
+                .position(|é| é.start > ici)
+                .unwrap_or(0)
+        } else {
+            self.tracked_spans
+                .iter()
+                .rposition(|é| é.end < ici)
+                .unwrap_or(self.tracked_spans.len() - 1)
+        };
+        let cible = self.tracked_spans[rang].clone();
+        self.cursor_byte = cible.start;
+        self.pending_selection = Some(cible);
+        // Sélectionner, c'est pouvoir remplacer tout de suite : on passe
+        // donc en insertion, comme après un `i`.
+        self.editor_mode = EditorMode::Insert;
+        self.goto_line = None;
+        self.status = Status::Counted(rang + 1, |s| s.matches_at);
+    }
+
+    /// Ouvre la saisie du nouveau nom.
+    ///
+    /// Il faut avoir surligné d'abord : renommer sans savoir *quoi*
+    /// n'aurait pas de sens, et deviner le mot sous le curseur à ce
+    /// moment-là ferait renommer autre chose que ce qu'on voyait.
+    fn start_rename(&mut self) {
+        if self.tracked.is_none() {
+            // Un geste rendu : on surligne, et l'on pourra renommer.
+            self.highlight_matches();
+            if self.tracked.is_none() {
+                self.status = Status::Note(|s| s.rename_nothing);
+                return;
+            }
+        }
+        self.rename = Some(
+            self.tracked
+                .as_ref()
+                .map(|suivi| suivi.word.clone())
+                .unwrap_or_default(),
+        );
+        self.rename_just_opened = true;
+    }
+
+    /// Applique le nouveau nom à toutes les occurrences surlignées.
+    fn apply_rename(&mut self, nouveau: &str) {
+        self.refresh_matches();
+        let combien = self.tracked_spans.len();
+        if combien == 0 || nouveau.is_empty() {
+            self.rename = None;
+            return;
+        }
+        self.source = occurrences::replace_all(&self.source, &self.tracked_spans, nouveau);
+        // Le surlignage suit le nouveau nom : on vient de le poser
+        // partout, et le voir confirme que rien n'a été oublié.
+        if let Some(suivi) = &mut self.tracked {
+            suivi.word = nouveau.to_owned();
+        }
+        self.tracked_source_len = 0;
+        self.refresh_matches();
+        self.rename = None;
+        self.status = Status::Counted(combien, |s| s.rename_done);
+    }
+
+    /// La barre de renommage, quand elle est ouverte.
+    fn rename_ui(&mut self, ui: &mut egui::Ui) {
+        let Some(mut nouveau) = self.rename.clone() else {
+            return;
+        };
+        let s = strings(self.lang);
+        let theme = self.theme;
+        let just_opened = std::mem::take(&mut self.rename_just_opened);
+        let combien = self.tracked_spans.len();
+        let mut appliquer = false;
+        let mut annuler = false;
+
+        ui.horizontal(|ui| {
+            ui.colored_label(theme.good, format!("{combien} ×"));
+            let champ = ui.add(
+                egui::TextEdit::singleline(&mut nouveau)
+                    .id(egui::Id::new("rename_field"))
+                    .hint_text(s.rename_placeholder)
+                    .font(egui::TextStyle::Monospace)
+                    .desired_width(220.0),
+            );
+            if just_opened {
+                champ.request_focus();
+                // Tout sélectionné : on remplace le nom, on ne le
+                // complète pas.
+                if let Some(mut état) =
+                    egui::TextEdit::load_state(ui.ctx(), egui::Id::new("rename_field"))
+                {
+                    état
+                        .cursor
+                        .set_char_range(Some(egui::text::CCursorRange::two(
+                            egui::text::CCursor::new(0),
+                            egui::text::CCursor::new(nouveau.chars().count()),
+                        )));
+                    état.store(ui.ctx(), egui::Id::new("rename_field"));
+                }
+            }
+            if champ.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                appliquer = true;
+            }
+            if framed_button(ui, theme, s.rename_apply).clicked() {
+                appliquer = true;
+            }
+            if ui.button("x").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                annuler = true;
+            }
+        });
+
+        if appliquer {
+            self.apply_rename(&nouveau);
+        } else if annuler {
+            self.rename = None;
+        } else {
+            self.rename = Some(nouveau);
+        }
+    }
+
+    /// Peint les occurrences suivies.
+    ///
+    /// En vert, parce que c'est la couleur que le thème réserve à « ça va
+    /// bien » — et qu'elle est verte dans tous les thèmes livrés comme
+    /// dans ceux qu'on écrit : chacun choisit la sienne, donc chacun
+    /// garde son contraste. Un vert en dur serait illisible sur un thème
+    /// clair.
+    ///
+    /// Un fond translucide et un liseré plein : le fond seul disparaît
+    /// sur les thèmes très contrastés, le liseré seul se perd dans une
+    /// ligne dense.
+    fn paint_matches(&mut self, ui: &egui::Ui, output: &egui::text_edit::TextEditOutput) {
+        self.refresh_matches();
+        if self.tracked_spans.is_empty() {
+            return;
+        }
+        let peintre = ui.painter_at(output.response.rect);
+        for étendue in &self.tracked_spans {
+            let début = byte_to_char(&self.source, étendue.start);
+            let fin = byte_to_char(&self.source, étendue.end);
+            let gauche = output
+                .galley
+                .pos_from_cursor(egui::text::CCursor::new(début));
+            let droite = output
+                .galley
+                .pos_from_cursor(egui::text::CCursor::new(fin));
+            // Sur deux rangées différentes : le texte s'est replié au
+            // milieu du mot. On ne peint alors rien plutôt qu'un
+            // rectangle qui traverserait la ligne du dessous — un
+            // surlignage faux est pire qu'un surlignage manquant.
+            if (gauche.top() - droite.top()).abs() > 0.5 {
+                continue;
+            }
+            let rect = egui::Rect::from_min_max(
+                output.galley_pos + gauche.left_top().to_vec2(),
+                output.galley_pos + droite.left_bottom().to_vec2(),
+            );
+            if rect.width() <= 0.0 {
+                continue;
+            }
+            peintre.rect_filled(rect, 2.0, self.theme.good.gamma_multiply(0.28));
+            peintre.rect_stroke(
+                rect,
+                2.0,
+                egui::Stroke::new(1.0, self.theme.good),
+                egui::StrokeKind::Inside,
+            );
+        }
+    }
+
+    /// Relève ce qui est sous le curseur et montre où ça revient.
+    ///
+    /// Une sélection l'emporte sur le curseur : quelqu'un qui a
+    /// sélectionné `ax` demande les `ax`, et lui rendre les `rax` serait
+    /// répondre à côté.
+    ///
+    /// Refait sur le même mot, cela efface : c'est la même touche qui
+    /// allume et qui éteint, comme un interrupteur — et l'on n'a pas à
+    /// se souvenir d'un second raccourci pour revenir en arrière.
+    fn highlight_matches(&mut self) {
+        let suivi = match self.editor_selection.clone() {
+            Some(étendue) if étendue.end > étendue.start => {
+                occurrences::tracked_selection(&self.source, étendue)
+            }
+            _ => occurrences::tracked_at(&self.source, self.cursor_byte),
+        };
+        let Some(suivi) = suivi else {
+            self.status = Status::Note(|s| s.matches_none);
+            return;
+        };
+        // Le même que la dernière fois : on éteint.
+        if self
+            .tracked
+            .as_ref()
+            .is_some_and(|actuel| actuel.word == suivi.word && actuel.kind == suivi.kind)
+        {
+            self.clear_matches();
+            return;
+        }
+        self.tracked_spans = occurrences::find_all(&self.source, &suivi);
+        let combien = self.tracked_spans.len();
+        self.tracked = Some(suivi);
+        self.tracked_source_len = self.source.len();
+        self.status = Status::Counted(combien, |s| s.matches_found);
+    }
+
+    /// Éteint le surlignage.
+    fn clear_matches(&mut self) {
+        if self.tracked.is_none() {
+            return;
+        }
+        self.tracked = None;
+        self.tracked_spans.clear();
+        self.status = Status::Note(|s| s.matches_cleared);
+    }
+
+    /// Remet les étendues à jour quand la source a changé.
+    ///
+    /// Les positions sont en octets : taper une lettre plus haut décale
+    /// tout ce qui suit, et garder les anciennes surlignerait le milieu
+    /// des mots. On recalcule plutôt que de deviner le décalage — c'est
+    /// une recherche sur un fichier qu'on a déjà en mémoire, et cela
+    /// coûte moins que de se tromper.
+    fn refresh_matches(&mut self) {
+        let Some(suivi) = self.tracked.clone() else {
+            return;
+        };
+        if self.source.len() == self.tracked_source_len {
+            return;
+        }
+        self.tracked_spans = occurrences::find_all(&self.source, &suivi);
+        self.tracked_source_len = self.source.len();
+    }
+
+    /// Recopie la ligne courante en dessous, et descend dessus.
+    ///
+    /// Sans effet sur un listing venu d'un binaire : celui-ci est
+    /// reconstruit, et y insérer une ligne décalerait toutes les
+    /// correspondances ligne <-> adresse dont dépendent la gouttière, les
+    /// points d'arrêt et le suivi de RIP.
+    fn duplicate_line(&mut self) {
+        if self.buffer_came_from_a_binary() {
+            return;
+        }
+        let (source, curseur) = duplicated_line(&self.source, self.cursor_byte);
+        self.source = source;
+        self.cursor_byte = curseur;
+        self.pending_cursor = Some(curseur);
+    }
+
+    /// Retire du clavier ce que la liste de propositions veut pour elle.
+    ///
+    /// À appeler **avant** le `TextEdit` : Tab, les flèches et Échap ont
+    /// un sens dans l'éditeur, et celui-ci les appliquerait le premier.
+    /// Ne prend rien quand aucune liste n'est ouverte — Tab indente alors
+    /// comme d'habitude, et les flèches déplacent le curseur.
+    fn claim_completion_keys(&mut self, ui: &egui::Ui) {
+        self.completion_keys = CompletionKeys::default();
+        if self.suggestions.is_none() || !self.completion {
+            return;
+        }
+        // `consume_key` retire l'événement : ce que la liste prend,
+        // l'éditeur ne le verra pas.
+        ui.input_mut(|i| {
+            let vide = egui::Modifiers::NONE;
+            self.completion_keys = CompletionKeys {
+                accept: i.consume_key(vide, egui::Key::Tab),
+                down: i.consume_key(vide, egui::Key::ArrowDown),
+                up: i.consume_key(vide, egui::Key::ArrowUp),
+                dismiss: i.consume_key(vide, egui::Key::Escape),
+            };
+        });
+    }
+
     fn completion_ui(&mut self, ui: &mut egui::Ui, output: &egui::text_edit::TextEditOutput) {
         let s = strings(self.lang);
         let theme = self.theme;
@@ -8421,21 +10102,56 @@ impl NamsdecApp {
             return;
         }
 
+        let touches = self.completion_keys;
+        // Échap referme sans rien écrire. La liste revient au caractère
+        // suivant : ce n'est pas « plus jamais », c'est « pas celle-ci ».
+        if touches.dismiss {
+            self.suggestions = None;
+            self.completion_dismissed = true;
+            return;
+        }
+
         let cursor = range.primary.index.0;
         let byte = char_to_byte(&self.source, cursor);
+        let avant = self.suggestions.clone();
         self.suggestions = completion::suggest(&self.source, byte);
+        // Une liste qu'on vient d'écarter ne se rouvre qu'une fois le mot
+        // changé : la rouvrir sur le même mot rendrait Échap inopérant.
+        if self.completion_dismissed {
+            if self.suggestions.as_ref().map(|s| &s.prefix) == avant.as_ref().map(|s| &s.prefix) {
+                self.suggestions = None;
+                return;
+            }
+            self.completion_dismissed = false;
+        }
+        // Le choix repart du haut dès que la liste change : il désignait
+        // une proposition qui n'y est peut-être plus.
+        if self.suggestions.as_ref().map(|s| &s.prefix) != avant.as_ref().map(|s| &s.prefix) {
+            self.completion_index = 0;
+        }
         let Some(suggestions) = self.suggestions.clone() else {
             return;
         };
 
-        // `Alt` accepte : elle ne sert à rien d'autre dans l'éditeur, là
-        // où Tab et Entrée ont déjà un sens.
-        if alt_pressed {
+        // Les flèches choisissent. Sans elles, on ne pouvait accepter que
+        // la première proposition, et la liste ne servait qu'à regarder.
+        if touches.down || touches.up {
+            self.completion_index = completion::next_index(
+                self.completion_index,
+                suggestions.candidates.len(),
+                touches.down,
+            );
+        }
+
+        // Tab accepte, comme partout ailleurs, et `Alt` aussi — celle-ci
+        // était le seul moyen jusqu'ici, ce qui ne se devinait pas.
+        if alt_pressed || touches.accept {
             self.accept_completion(ui.ctx(), &suggestions);
             return;
         }
 
         // Sous le curseur, comme une bulle : la liste suit la frappe.
+        let mut cliqué: Option<usize> = None;
         let cursor_rect = output.galley.pos_from_cursor(range.primary);
         let at = output.galley_pos + cursor_rect.left_bottom().to_vec2();
         egui::Area::new(egui::Id::new("completion"))
@@ -8444,30 +10160,51 @@ impl NamsdecApp {
             .show(ui.ctx(), |ui| {
                 egui::Frame::popup(ui.style()).show(ui, |ui| {
                     ui.spacing_mut().item_spacing.y = 2.0;
+                    let choisi = self
+                        .completion_index
+                        .min(suggestions.candidates.len().saturating_sub(1));
                     for (index, candidate) in suggestions.candidates.iter().enumerate() {
                         let colour = candidate.kind.colour(theme);
                         let text = egui::RichText::new(&candidate.text).monospace();
-                        // Le premier est celui qu'`Alt` prendra : il est
-                        // le seul en couleur pleine.
-                        if index == 0 {
+                        // Celui qui sera pris, et non plus le premier :
+                        // les flèches déplacent ce choix, et ne rien
+                        // montrer bouger rendrait les flèches inutiles.
+                        if index == choisi {
                             ui.horizontal(|ui| {
                                 ui.colored_label(colour, text.strong());
                                 ui.colored_label(theme.dim, s.completion_accept);
                             });
                         } else {
-                            ui.colored_label(theme.dim, text);
+                            // Cliquable : la liste est sous le curseur,
+                            // et viser une ligne à la souris est parfois
+                            // plus court que de compter les flèches.
+                            if ui
+                                .add(
+                                    egui::Label::new(text.color(theme.dim))
+                                        .sense(egui::Sense::click()),
+                                )
+                                .clicked()
+                            {
+                                cliqué = Some(index);
+                            }
                         }
                     }
                 });
             });
+        if let Some(index) = cliqué {
+            self.completion_index = index;
+            self.accept_completion(ui.ctx(), &suggestions);
+        }
     }
 
-    /// Écrit la première proposition à la place du mot commencé, et
+    /// Écrit la proposition choisie à la place du mot commencé, et
     /// replace le curseur derrière.
     fn accept_completion(&mut self, ctx: &egui::Context, suggestions: &completion::Suggestions) {
-        let Some(accepted) = suggestions.accepted() else {
+        let Some(accepted) = suggestions.accepted_at(self.completion_index) else {
             return;
         };
+        let accepted = accepted.to_owned();
+        let accepted = accepted.as_str();
         // Le mot commencé est *remplacé*, et non complété : le candidat
         // porte sa propre casse, et une étiquette écrite `Boucle` doit
         // s'écrire `Boucle`.
@@ -8486,6 +10223,7 @@ impl NamsdecApp {
             state.store(ctx, editor_id());
         }
         self.suggestions = None;
+        self.completion_index = 0;
     }
 
     /// La fiche de l'instruction survolée, en infobulle.
@@ -8576,6 +10314,29 @@ impl NamsdecApp {
         ctx.memory_mut(|m| m.request_focus(editor_id()));
     }
 
+    /// Replace le curseur là où la dernière modification l'attend.
+    fn apply_pending_cursor(&mut self, ctx: &egui::Context) {
+        if let Some(étendue) = self.pending_selection.take() {
+            let début = byte_to_char(&self.source, étendue.start.min(self.source.len()));
+            let fin = byte_to_char(&self.source, étendue.end.min(self.source.len()));
+            if let Some(mut état) = egui::TextEdit::load_state(ctx, editor_id()) {
+                état
+                    .cursor
+                    .set_char_range(Some(egui::text::CCursorRange::two(
+                        egui::text::CCursor::new(début),
+                        egui::text::CCursor::new(fin),
+                    )));
+                état.store(ctx, editor_id());
+            }
+            ctx.memory_mut(|m| m.request_focus(editor_id()));
+            return;
+        }
+        let Some(at) = self.pending_cursor.take() else {
+            return;
+        };
+        set_cursor_byte(ctx, &self.source, at.min(self.source.len()));
+    }
+
     /// Le panneau bas : la console du programme et les diagnostics de
     /// nasm, sur toute la largeur de la fenêtre.
     ///
@@ -8611,21 +10372,102 @@ impl NamsdecApp {
         };
         // Les onglets, le séparateur et les marges du panneau.
         let chrome = ui.text_style_height(&egui::TextStyle::Button) + 28.0;
-        // Le champ d'entrée n'existe que s'il y a quelqu'un pour lire.
-        let entrée = if self.emulator.is_some()
+        // La zone de saisie, comptée ligne à ligne comme elle se dessine.
+        //
+        // Une seule ligne y était réservée. Elle en porte jusqu'à quatre
+        // — la mention d'attente, les arguments, l'en-tête de
+        // l'environnement, l'entrée elle-même —, plus les marges de son
+        // cadre : le panneau était trop court, et le champ se faisait
+        // rogner par le bas. On ne voyait plus où taper au moment précis
+        // où le programme le demandait.
+        // Ce que la zone de saisie réclame. La mesure de l'image
+        // précédente quand elle est plus grande — l'environnement déplié
+        // découvre un champ de deux lignes —, jamais quand elle est plus
+        // petite : voir `console_input_estimate`.
+        let entrée = self
+            .console_input_estimate(ui)
+            .max(self.console_input_height.unwrap_or(0.0));
+        let contenu = ligne * lignes.min(12) as f32;
+        (chrome + entrée + contenu).max(CONSOLE_MIN_HEIGHT)
+    }
+
+    /// La hauteur que la zone de saisie réclame, comptée rangée par
+    /// rangée. Zéro quand il n'y a pas de saisie à montrer.
+    ///
+    /// **Calculée, et non mesurée** — et c'est tout le point. On se
+    /// servait de la hauteur que la zone avait prise à l'image
+    /// précédente, ce qui paraît plus juste puisqu'elle seule connaît sa
+    /// vraie taille. Mais cette hauteur est celle qu'on lui a *allouée* :
+    /// trop courte, la zone est tronquée, la mesure rend la hauteur
+    /// tronquée, et le plancher qu'elle sert à calculer reste sous ce
+    /// qu'il faut. Le panneau restait court parce qu'il était court.
+    ///
+    /// C'est ce qui faisait disparaître la rangée « Entrée : » — avec
+    /// ses deux boutons — sur une console dont la hauteur avait été
+    /// fixée à la main à 128 px : le programme demandait un mot de
+    /// passe, et il n'y avait nulle part où le taper.
+    fn console_input_estimate(&self, ui: &egui::Ui) -> f32 {
+        let montrée = self.emulator.is_some()
             && (self.program_reads
                 || matches!(self.status, Status::WaitingForInput)
                 || self
                     .emulator
                     .as_ref()
-                    .is_some_and(|e| e.pending_input() > 0))
+                    .is_some_and(|e| e.pending_input() > 0));
+        if !montrée {
+            return 0.0;
+        }
+        let rangée = ui
+            .spacing()
+            .interact_size
+            .y
+            .max(ui.text_style_height(&egui::TextStyle::Body))
+            + ui.spacing().item_spacing.y;
+        // L'entrée, toujours : c'est la rangée qui porte le champ et ses
+        // deux boutons.
+        let mut hauteur = rangée;
+        if matches!(self.status, Status::WaitingForInput) {
+            hauteur += rangée;
+        }
+        if self
+            .assemble_state
+            .as_ref()
+            .is_some_and(|état| état.from_binary.is_some())
         {
-            ui.text_style_height(&egui::TextStyle::Body) + 16.0
+            // Les arguments, et l'en-tête de l'environnement.
+            hauteur += rangée * 2.0;
+            if self.console_env_open {
+                // Déplié : une ligne d'aide et un champ de deux lignes.
+                hauteur += rangée * 3.0;
+            }
+        }
+        // Ce qui n'est pas une rangée, compté terme à terme plutôt
+        // qu'arrondi : un forfait de 24 px paraissait large et manquait
+        // de neuf — juste assez pour couper la rangée « Entrée » en
+        // deux, dont on ne voyait plus que le haut, champ et boutons
+        // sous le bord de la fenêtre.
+        let espacement = ui.spacing().item_spacing.y;
+        // Le trait de séparation, et le blanc de part et d'autre.
+        let séparateur = 6.0 + espacement * 2.0;
+        // Les marges hautes et basses du cadre qui entoure la saisie,
+        // plus son liseré quand il y en a un — deux pixels en haut, deux
+        // en bas. Les oublier suffisait à couper « Envoyer » d'un
+        // cheveu : le cadre a été épaissi pour se voir, et il fallait
+        // que la place suive.
+        let marges_du_cadre = if matches!(self.status, Status::WaitingForInput) {
+            12.0 + 4.0
         } else {
-            0.0
+            12.0
         };
-        let contenu = ligne * lignes.min(12) as f32;
-        (chrome + entrée + contenu).max(CONSOLE_MIN_HEIGHT)
+        // La ligne d'attente porte une pastille, qui prend la hauteur
+        // d'une rangée déjà comptée — rien à ajouter pour elle.
+        // Le `add_space` posé avant la dernière rangée.
+        let respiration = 2.0;
+        // Et de quoi ne pas jouer au pixel près : les hauteurs de
+        // police varient d'un thème à l'autre, et deux pixels de trop ne
+        // coûtent rien quand deux de moins coupent la ligne où l'on tape.
+        let sûreté = 8.0;
+        hauteur + séparateur + marges_du_cadre + respiration + sûreté
     }
 
     fn console_panel_ui(&mut self, ui: &mut egui::Ui) {
@@ -8705,7 +10547,7 @@ impl NamsdecApp {
             }
             // Le dire plutôt que de ne rien faire : une touche qui ne
             // répond pas laisse croire qu'elle n'existe pas.
-            None => self.status = Status::Note(strings(self.lang).goto_label_unknown),
+            None => self.status = Status::Note(|s| s.goto_label_unknown),
         }
     }
 
@@ -8773,7 +10615,7 @@ impl NamsdecApp {
             *meilleur = exécutées;
         }
         if self.exercises_done.insert(id) {
-            self.status = Status::Note(strings(self.lang).exercises_done_note);
+            self.status = Status::Note(|s| s.exercises_done_note);
         }
     }
 
@@ -9089,14 +10931,16 @@ impl NamsdecApp {
             .map(|state| state.addr_to_line.clone())
             .unwrap_or_default();
 
-        egui::Window::new(s.disassembly_title)
+        let fenêtre_disassembly_window = egui::Window::new(s.disassembly_title)
             .id(egui::Id::new("disassembly_window"))
             .open(&mut open)
             .resizable(true)
             .collapsible(false)
             .default_size([680.0, 560.0])
             .pivot(egui::Align2::CENTER_CENTER)
-            .default_pos(ctx.viewport_rect().center())
+            .default_pos(ctx.viewport_rect().center());
+        let rendue_disassembly_window = self
+            .maximizable(fenêtre_disassembly_window, Self::DISASSEMBLY_WINDOW, ctx)
             .show(ctx, |ui| {
                 // Le choix du moteur, en tête : c'est lui qui décide de
                 // tout ce qu'on lit en dessous.
@@ -9364,6 +11208,7 @@ impl NamsdecApp {
                     }
                 });
             });
+        self.place_maximize_button(ctx, Self::DISASSEMBLY_WINDOW, rendue_disassembly_window);
         if let Some(ligne) = aller {
             self.goto_line = Some(ligne);
         }
@@ -9454,7 +11299,7 @@ impl NamsdecApp {
                 ui.horizontal_wrapped(|ui| {
                     if ui.button(s.cyclic_copy).clicked() {
                         ui.ctx().copy_text(motif.clone());
-                        self.status = Status::Note(s.cyclic_copied);
+                        self.status = Status::Note(|s| s.cyclic_copied);
                     }
                     // Le motif sert à être *mangé* par le programme :
                     // l'envoyer dans l'entrée évite le détour par le
@@ -9509,9 +11354,21 @@ impl NamsdecApp {
             self.console_input = motif;
             self.console_tab = ConsoleTab::Output;
             self.show_console = true;
-            self.status = Status::Note(s.cyclic_sent);
+            self.status = Status::Note(|s| s.cyclic_sent);
         }
         self.show_cyclic = open;
+    }
+
+    /// Le parcours entier, tel que l'émulateur l'a retenu.
+    ///
+    /// Sans filtre : c'est celui de la barre, dont la forme n'aurait
+    /// aucun sens si on lui retirait les pas ordinaires — une boucle de
+    /// mille tours y paraîtrait aussi courte qu'un appel.
+    fn timeline_trace(&self) -> Vec<namsdec_emu::Step> {
+        self.emulator
+            .as_ref()
+            .map(|emulator| emulator.trace().iter().copied().collect())
+            .unwrap_or_default()
     }
 
     fn timeline_window_ui(&mut self, ctx: &egui::Context) {
@@ -9545,14 +11402,16 @@ impl NamsdecApp {
             })
             .unwrap_or_default();
 
-        egui::Window::new(s.timeline_title)
+        let fenêtre_timeline_window = egui::Window::new(s.timeline_title)
             .id(egui::Id::new("timeline_window"))
             .open(&mut open)
             .resizable(true)
             .collapsible(false)
             .default_size([520.0, 420.0])
             .pivot(egui::Align2::CENTER_CENTER)
-            .default_pos(ctx.viewport_rect().center())
+            .default_pos(ctx.viewport_rect().center());
+        let rendue_timeline_window = self
+            .maximizable(fenêtre_timeline_window, Self::TIMELINE_WINDOW, ctx)
             .show(ctx, |ui| {
                 if pas.is_empty() {
                     ui.weak(if self.timeline_notable_only {
@@ -9563,6 +11422,15 @@ impl NamsdecApp {
                     return;
                 }
                 ui.weak(s.timeline_hint);
+                // La barre, avant la liste : elle répond à « où j'en
+                // suis », question qui vient avant « qu'est-ce qui s'est
+                // passé ». Le filtre ne la touche pas — c'est le parcours
+                // entier qu'elle montre, sans quoi sa forme mentirait.
+                if let Some(index) = timeline_bar(ui, theme, self.timeline_trace()) {
+                    let total = self.timeline_trace().len();
+                    revenir = Some(timeline::rewind_to(total, index));
+                }
+                ui.add_space(4.0);
                 ui.horizontal(|ui| {
                     ui.checkbox(&mut self.timeline_notable_only, s.timeline_notable);
                 });
@@ -9644,6 +11512,7 @@ impl NamsdecApp {
                         }
                     });
             });
+        self.place_maximize_button(ctx, Self::TIMELINE_WINDOW, rendue_timeline_window);
 
         if let Some(recul) = revenir {
             self.rewind(recul);
@@ -9763,7 +11632,7 @@ impl NamsdecApp {
         }
         let s = strings(self.lang);
         let mut open = true;
-        egui::Window::new(s.analysis_title)
+        let fenêtre_analysis_window = egui::Window::new(s.analysis_title)
             // Un identifiant explicite : le titre change avec la langue,
             // et la fenêtre perdrait sa position en passant à l'anglais.
             .id(egui::Id::new("analysis_window"))
@@ -9774,7 +11643,9 @@ impl NamsdecApp {
             // large, et se redimensionne.
             .default_size([620.0, 760.0])
             .pivot(egui::Align2::CENTER_CENTER)
-            .default_pos(ctx.viewport_rect().center())
+            .default_pos(ctx.viewport_rect().center());
+        let rendue_analysis_window = self
+            .maximizable(fenêtre_analysis_window, Self::ANALYSIS_WINDOW, ctx)
             .show(ctx, |ui| {
                 ui.horizontal_wrapped(|ui| {
                     ui.weak(s.analysis_hint);
@@ -9787,7 +11658,7 @@ impl NamsdecApp {
                         && let Some(report) = self.analysis_report()
                     {
                         ui.ctx().copy_text(report);
-                        self.status = Status::Note(s.analysis_copied);
+                        self.status = Status::Note(|s| s.analysis_copied);
                     }
                     // Et sur le disque : un compte rendu se garde, se
                     // relit, s'attache à un courriel. Le presse-papier
@@ -9805,6 +11676,7 @@ impl NamsdecApp {
                     .auto_shrink([false, false])
                     .show(ui, |ui| self.re_modules_ui(ui, true));
             });
+        self.place_maximize_button(ctx, Self::ANALYSIS_WINDOW, rendue_analysis_window);
         self.show_analysis = open;
     }
 
@@ -10074,7 +11946,7 @@ impl NamsdecApp {
             self.open_help(name);
         }
         if copié {
-            self.status = Status::Note(s.help_example_copied);
+            self.status = Status::Note(|s| s.help_example_copied);
         }
     }
 
@@ -10175,7 +12047,7 @@ impl NamsdecApp {
             );
             if ui.small_button(s.profile_copy).clicked() {
                 ui.ctx().copy_text(self.profile_text(&classement, total));
-                self.status = Status::Note(s.profile_copied);
+                self.status = Status::Note(|s| s.profile_copied);
             }
         });
         // Le budget de l'exercice, quand il y en a un : c'est ici qu'on
@@ -10357,7 +12229,7 @@ impl NamsdecApp {
                 .clicked()
             {
                 ui.ctx().copy_text(commandes.join("\n"));
-                self.status = Status::Note(s.assemble_commands_copied);
+                self.status = Status::Note(|s| s.assemble_commands_copied);
             }
         });
         for commande in &commandes {
@@ -10468,6 +12340,14 @@ impl NamsdecApp {
                     }
                     self.console_input_ui(ui, pending);
                 });
+            // Ce que la zone a vraiment pris : c'est cela qu'il faudra
+            // réserver à l'image suivante.
+            self.console_input_height =
+                egui::containers::panel::PanelState::load(ui.ctx(), egui::Id::new("console_input"))
+                    .map(|état| état.outer_rect.height())
+                    .filter(|hauteur| *hauteur > 1.0);
+        } else {
+            self.console_input_height = None;
         }
 
         // Le reste de la hauteur revient à la sortie, sur le fond sombre
@@ -10523,12 +12403,144 @@ impl NamsdecApp {
         let waiting = matches!(self.status, Status::WaitingForInput);
 
         ui.separator();
-        if waiting {
-            ui.colored_label(self.theme.accent, s.console_waiting);
-        }
+
+        // Quand le programme attend, la ligne de saisie se distingue du
+        // reste : elle est en bas d'un panneau lui-même en bas, sur un
+        // fond de terminal, et l'on ne la trouvait pas — on cherchait
+        // « où taper » en regardant la sortie.
+        // Quand le programme attend, la zone doit se voir sans qu'on la
+        // cherche : c'est le seul moment où l'application demande
+        // quelque chose, et le manquer, c'est croire qu'elle a planté.
+        // Un liseré d'un pixel et un fond à dix pour cent ne suffisaient
+        // pas — sur un panneau déjà sombre, cela passait pour une nuance.
+        let cadre = if waiting {
+            egui::Frame::new()
+                .fill(self.theme.accent.gamma_multiply(0.18))
+                .stroke(egui::Stroke::new(2.0, self.theme.accent))
+                .corner_radius(4)
+                .inner_margin(egui::Margin::symmetric(8, 6))
+        } else {
+            egui::Frame::new().inner_margin(egui::Margin::symmetric(8, 2))
+        };
 
         let mut send = false;
+        let mut relancer = false;
+        cadre.show(ui, |ui| {
+        if waiting {
+            ui.horizontal(|ui| {
+                // Une pastille pleine devant la phrase : l'oeil s'y pose
+                // avant de lire, et c'est ce qu'on veut d'un état qui ne
+                // dure que le temps d'une réponse.
+                let (rect, _) = ui.allocate_exact_size(
+                    egui::vec2(10.0, ui.text_style_height(&egui::TextStyle::Body)),
+                    egui::Sense::hover(),
+                );
+                ui.painter()
+                    .circle_filled(rect.center(), 4.0, self.theme.accent);
+                ui.colored_label(
+                    self.theme.accent,
+                    egui::RichText::new(s.console_waiting).strong(),
+                );
+                ui.colored_label(self.theme.dim, s.console_waiting_how);
+            });
+        }
+
+        // Les deux lignes — les arguments, puis l'entrée — sont bâties
+        // pareil : un libellé de largeur commune, un champ qui prend ce
+        // qui reste, des boutons calés à droite. Sans cette largeur
+        // commune les deux champs commençaient à des abscisses
+        // différentes ; sans le calage à droite, « Recharger » sortait
+        // du cadre.
+        let libellés = [s.console_args, s.console_input_label];
+        let colonne = libellés
+            .iter()
+            .map(|texte| {
+                ui.painter()
+                    .layout_no_wrap(
+                        (*texte).to_owned(),
+                        egui::TextStyle::Body.resolve(ui.style()),
+                        egui::Color32::PLACEHOLDER,
+                    )
+                    .rect
+                    .width()
+            })
+            .fold(0.0_f32, f32::max);
+
+        // Les arguments : l'autre chose qu'un programme attend, et la
+        // première pour un crackme, qui lit souvent son mot de passe
+        // dans `argv[1]` plutôt que sur l'entrée standard. Ils ne se
+        // tapent pas pendant qu'il tourne — ils sont posés sur la pile
+        // avant la première instruction —, d'où le bouton qui recharge.
+        if self
+            .assemble_state
+            .as_ref()
+            .is_some_and(|état| état.from_binary.is_some())
+        {
+            ui.horizontal(|ui| {
+                ui.allocate_ui_with_layout(
+                    egui::vec2(colonne, ui.spacing().interact_size.y),
+                    egui::Layout::left_to_right(egui::Align::Center),
+                    |ui| {
+                        ui.colored_label(self.theme.dim, s.console_args);
+                    },
+                );
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let appliquer = framed_button(ui, self.theme, s.console_args_apply)
+                        .on_hover_text(s.console_args_apply_hint)
+                        .clicked();
+                    let réponse = ui.add(
+                        egui::TextEdit::singleline(&mut self.program_args)
+                            .hint_text(s.console_args_hint)
+                            .font(egui::TextStyle::Monospace)
+                            .desired_width(ui.available_width()),
+                    );
+                    let entrée =
+                        réponse.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                    relancer = appliquer || entrée;
+                });
+            });
+            // L'environnement, replié : on s'en sert moins souvent que
+            // des arguments, et une ligne de plus toujours ouverte
+            // repousserait la saisie vers le bas.
+            let ouvert = egui::CollapsingHeader::new(s.console_env)
+                .id_salt("console_env")
+                .open(Some(self.console_env_open))
+                .show(ui, |ui| {
+                    ui.weak(s.console_env_hint);
+                    let réponse = ui.add(
+                        egui::TextEdit::multiline(&mut self.program_env)
+                            .hint_text("SECRET=sesame")
+                            .font(egui::TextStyle::Monospace)
+                            .desired_rows(2)
+                            .desired_width(f32::INFINITY),
+                    );
+                    if réponse.lost_focus() {
+                        relancer = true;
+                    }
+                });
+            if ouvert.header_response.clicked() {
+                self.console_env_open = !self.console_env_open;
+            }
+            ui.add_space(2.0);
+        }
         ui.horizontal(|ui| {
+            ui.allocate_ui_with_layout(
+                egui::vec2(colonne, ui.spacing().interact_size.y),
+                egui::Layout::left_to_right(egui::Align::Center),
+                |ui| {
+                    // En accent et en gras pendant l'attente : c'est la
+                    // ligne où il faut taper, et rien d'autre à l'écran
+                    // ne le dit.
+                    if waiting {
+                        ui.colored_label(
+                            self.theme.accent,
+                            egui::RichText::new(s.console_input_label).strong(),
+                        );
+                    } else {
+                        ui.colored_label(self.theme.dim, s.console_input_label);
+                    }
+                },
+            );
             // Les boutons sont posés en premier, calés à droite, et le
             // champ prend ce qui reste. Deviner sa largeur (« la place
             // disponible moins 120 px ») la surestimait de quelques
@@ -10537,6 +12549,15 @@ impl NamsdecApp {
             // frame suivante. L'onglet Console élargissait donc le
             // panneau sans fin, jusqu'à ce qu'il occupe la fenêtre.
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                // Les deux touches relevées **avant** le champ, et sans
+                // les consommer : un `TextEdit` qui traite Entrée la
+                // retire de la file, si bien que la guetter après lui ne
+                // voyait plus rien. Le champ gardait le texte, le
+                // programme continuait d'attendre, et il fallait cliquer
+                // « Envoyer » — ce qui est exactement ce qu'on voulait
+                // éviter.
+                let entrée_frappée = ui.input(|i| i.key_pressed(egui::Key::Enter));
+                let échap_frappé = ui.input(|i| i.key_pressed(egui::Key::Escape));
                 // Fin d'entrée : un programme qui lit jusqu'au bout de son
                 // entrée attendrait indéfiniment sans ce bouton.
                 if ui
@@ -10556,10 +12577,34 @@ impl NamsdecApp {
                 );
                 // Le programme réclame de quoi lire : le curseur va là où
                 // l'utilisateur doit taper, sans qu'il ait à le chercher.
-                if waiting && !response.has_focus() {
+                // Échap le lui reprend — sans cette porte, le champ
+                // gardait toutes les touches tant que durait l'attente,
+                // et l'éditeur ne répondait plus : « i » s'écrivait ici
+                // au lieu de passer en Insertion.
+                //
+                // `lost_focus` et non `has_focus` : egui rend déjà le
+                // focus du champ sur Échap. Le guetter ici sur le focus
+                // encore détenu ne voyait donc rien, et la reprise plus
+                // bas le récupérait dans la même frame — la touche
+                // n'avait aucun effet visible.
+                if response.lost_focus() && échap_frappé {
+                    self.console_input_released = true;
+                    // Personne ne prend le focus derrière : c'est
+                    // l'absence de champ focalisé qui réarme les
+                    // commandes de l'éditeur.
+                    self.editor_mode = EditorMode::Normal;
+                } else if response.has_focus() {
+                    // Revenu dedans de son plein gré : l'attente suivante
+                    // pourra de nouveau l'y amener.
+                    self.console_input_released = false;
+                } else if waiting && !self.console_input_released {
                     response.request_focus();
                 }
-                send |= response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                // Le champ a le focus et l'on vient de frapper Entrée :
+                // c'est un envoi. On ne demande pas `lost_focus`, qui
+                // dépend de ce qu'egui a décidé de faire du focus, ni
+                // `key_pressed` après coup, qui ne voit plus rien.
+                send |= entrée_frappée && (response.has_focus() || response.lost_focus());
             });
         });
 
@@ -10574,6 +12619,14 @@ impl NamsdecApp {
             );
         }
 
+        });
+
+        // Reposer les arguments demande de refaire la pile : c'est un
+        // rechargement, et le dire vaut mieux que de le faire en
+        // silence sous un programme à demi exécuté.
+        if relancer {
+            self.do_reset();
+        }
         if send {
             let line = std::mem::take(&mut self.console_input);
             self.send_input(Some(line));
@@ -10720,6 +12773,146 @@ impl NamsdecApp {
             theme.good,
             &re_status,
         );
+
+        // Les modules d'analyse, un par ligne plutôt qu'en énumération
+        // dans la carte : à neuf titres séparés par des virgules, on ne
+        // lisait plus lequel était là ni ce qu'il fait.
+        if !titles.is_empty() {
+            ui.add_space(2.0);
+            // Repliés : neuf lignes de plus allongeaient la page d'autant,
+            // et l'on vient d'abord y voir l'état des modules, non la
+            // liste de ce que l'analyse sait faire.
+            egui::CollapsingHeader::new(format!("{} ({})", s.modules_re_detail, titles.len()))
+                .id_salt("modules_re_detail")
+                .show(ui, |ui| {
+                    for titre in &titles {
+                        ui.horizontal(|ui| {
+                            status_dot(ui, theme.good);
+                            ui.label(*titre);
+                        });
+                    }
+                });
+            ui.add_space(6.0);
+        }
+
+        // Ce que namsdec porte en propre, et qui n'avait aucune carte :
+        // l'explorateur, la documentation, les exercices, les thèmes et
+        // la recherche de mise à jour. L'onglet annonçait les modules de
+        // namsdec et en montrait la moitié.
+        module_card(
+            ui,
+            "namsdec-explorer",
+            namsdec_explorer::VERSION,
+            self.explorer.root.is_some(),
+            theme.accent,
+            &match self.explorer.root.as_ref() {
+                Some(racine) => format!("{} {}", s.modules_explorer_root, racine.display()),
+                None => s.modules_explorer_none.to_string(),
+            },
+        );
+
+        module_card(
+            ui,
+            "namsdec-doc",
+            namsdec_doc::VERSION,
+            true,
+            theme.good,
+            &if fr {
+                format!("{} fiches d'instructions", namsdec_doc::count())
+            } else {
+                format!("{} instruction entries", namsdec_doc::count())
+            },
+        );
+
+        let exercices = self
+            .exercise_packs
+            .iter()
+            .map(|pack| pack.exercises.len())
+            .sum::<usize>();
+        module_card(
+            ui,
+            "namsdec-exercises",
+            namsdec_exercises::VERSION,
+            self.exercises,
+            theme.accent,
+            &if self.exercises {
+                if fr {
+                    format!(
+                        "{} série(s), {exercices} exercice(s)",
+                        self.exercise_packs.len()
+                    )
+                } else {
+                    format!(
+                        "{} pack(s), {exercices} exercise(s)",
+                        self.exercise_packs.len()
+                    )
+                }
+            } else {
+                s.modules_inactive.to_string()
+            },
+        );
+
+        let thèmes = namsdec_theme::all().len();
+        module_card(
+            ui,
+            "namsdec-theme",
+            namsdec_theme::VERSION,
+            true,
+            theme.good,
+            &if fr {
+                format!(
+                    "{thèmes} thème(s), dont {} venu(s) de fichiers",
+                    self.theme_files.len()
+                )
+            } else {
+                format!(
+                    "{thèmes} theme(s), {} of them from files",
+                    self.theme_files.len()
+                )
+            },
+        );
+
+        let (maj_ok, maj_couleur, maj_texte) = match &self.update_result {
+            Some(Ok(verdict)) => (true, theme.good, format!("{verdict:?}")),
+            Some(Err(raison)) => (false, theme.bad, raison.clone()),
+            None => (false, theme.dim, s.modules_update_idle.to_string()),
+        };
+        module_card(
+            ui,
+            "namsdec-update",
+            namsdec_update::VERSION,
+            maj_ok,
+            maj_couleur,
+            &maj_texte,
+        );
+
+        // Et ce qui vient de fichiers : thèmes et outils déposés dans le
+        // dossier des greffons. Ils ne figuraient que dans l'onglet
+        // Plugins, alors qu'ils sont chargés au même titre que le reste.
+        ui.add_space(4.0);
+        ui.strong(s.modules_plugins);
+        ui.weak(s.modules_plugins_hint);
+        ui.add_space(2.0);
+        let mut venus_de_fichiers = false;
+        for (id, chemin) in &self.theme_files {
+            venus_de_fichiers = true;
+            ui.horizontal(|ui| {
+                status_dot(ui, theme.accent);
+                ui.label(id);
+                ui.weak(chemin.display().to_string());
+            });
+        }
+        for outil in &self.decompilers {
+            venus_de_fichiers = true;
+            ui.horizontal(|ui| {
+                status_dot(ui, theme.accent);
+                ui.label(&outil.name);
+                ui.weak(&outil.command);
+            });
+        }
+        if !venus_de_fichiers {
+            ui.weak(s.modules_none_loaded);
+        }
     }
 }
 
@@ -10760,6 +12953,124 @@ fn step_mark(
 /// Où mène un retour à la ligne qui garde l'indentation courante.
 ///
 /// Rend le texte à insérer et de combien le curseur doit avancer. On
+/// Ce qu'il faut faire après la frappe d'une parenthèse ou d'un
+/// guillemet.
+///
+/// Une paire s'ouvre et se ferme : taper `(` et devoir taper `)` est le
+/// genre de travail qu'une machine fait mieux. Mais mal fait, c'est pire
+/// que rien — un `'` posé au milieu d'un commentaire français, et l'on
+/// passe son temps à effacer ce qu'on n'a pas demandé.
+///
+/// D'où trois règles, et pas une de plus :
+///
+/// - on ne ferme pas devant un mot : `(` tapé avant `rax` ouvrirait un
+///   `()` autour de rien ;
+/// - on ne ferme pas une apostrophe qui suit une lettre — « l'adresse »
+///   n'appelle aucune fermeture ;
+/// - taper le fermant qui est déjà là ne l'écrit pas deux fois, il le
+///   traverse.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+enum PairEdit {
+    /// Poser ce caractère derrière le curseur, sans l'y déplacer.
+    Close(char),
+    /// Le fermant était déjà là : retirer celui qu'on vient de taper et
+    /// laisser le curseur devant lui.
+    StepOver,
+    /// Ne rien faire.
+    None,
+}
+
+/// Le fermant qui va avec cet ouvrant.
+fn closing_of(open: char) -> Option<char> {
+    match open {
+        '(' => Some(')'),
+        '[' => Some(']'),
+        '{' => Some('}'),
+        '"' => Some('"'),
+        '\'' => Some('\''),
+        _ => None,
+    }
+}
+
+/// Ce qu'on fait du caractère qui vient d'être tapé, `at` étant la
+/// position du curseur **après** la frappe, en octets.
+fn pair_edit(source: &str, at: usize) -> PairEdit {
+    if at == 0 || at > source.len() || !source.is_char_boundary(at) {
+        return PairEdit::None;
+    }
+    let Some(tapé) = source[..at].chars().next_back() else {
+        return PairEdit::None;
+    };
+    let suivant = source[at..].chars().next();
+    let précédent = {
+        let avant = at - tapé.len_utf8();
+        source[..avant].chars().next_back()
+    };
+
+    // Traverser un fermant déjà posé. Vaut pour les guillemets, qui sont
+    // leur propre fermant : `"abc|"` puis `"` doit sortir de la chaîne,
+    // non en ouvrir une seconde.
+    let ferme = matches!(tapé, ')' | ']' | '}' | '"' | '\'');
+    if ferme && suivant == Some(tapé) {
+        return PairEdit::StepOver;
+    }
+
+    let Some(fermant) = closing_of(tapé) else {
+        return PairEdit::None;
+    };
+    // Une apostrophe après une lettre est une apostrophe, pas une
+    // chaîne : « l'adresse », « d'où ». C'est le cas qui rend
+    // insupportables les éditeurs qui ferment tout.
+    if matches!(tapé, '"' | '\'') && précédent.is_some_and(is_word_char) {
+        return PairEdit::None;
+    }
+    // Ni devant un mot : on est en train d'écrire au milieu de quelque
+    // chose, et la fermeture tomberait au mauvais endroit.
+    if suivant.is_some_and(is_word_char) {
+        return PairEdit::None;
+    }
+    PairEdit::Close(fermant)
+}
+
+/// Un effacement doit-il emporter la paire vide qu'il ouvre ?
+///
+/// `(|)` puis retour arrière : effacer la seule parenthèse ouvrante
+/// laisserait la fermante orpheline — celle-là même qu'on n'avait pas
+/// tapée.
+fn backspace_clears_pair(source: &str, at: usize) -> bool {
+    if at == 0 || at >= source.len() || !source.is_char_boundary(at) {
+        return false;
+    }
+    let (Some(avant), Some(après)) = (
+        source[..at].chars().next_back(),
+        source[at..].chars().next(),
+    ) else {
+        return false;
+    };
+    closing_of(avant) == Some(après)
+}
+
+/// Place le curseur de l'éditeur à cet indice d'octet.
+///
+/// Les positions d'egui se comptent en *caractères*, celles d'une chaîne
+/// Rust en octets : la conversion est ce qui sépare un curseur juste
+/// d'un curseur qui dérive d'un cran à chaque accent.
+fn set_cursor_byte(ctx: &egui::Context, source: &str, at: usize) {
+    let Some(mut state) = egui::TextEdit::load_state(ctx, editor_id()) else {
+        return;
+    };
+    let cible = byte_to_char(source, at);
+    state.cursor.set_char_range(Some(egui::text::CCursorRange::one(
+        egui::text::CCursor::new(cible),
+    )));
+    state.store(ctx, editor_id());
+}
+
+/// Un caractère qui fait partie d'un mot, pour les règles ci-dessus.
+fn is_word_char(c: char) -> bool {
+    c.is_alphanumeric() || c == '_'
+}
+
 /// écrit l'assembleur en colonnes — les étiquettes à gauche, les
 /// instructions en retrait — et retaper quatre espaces à chaque ligne
 /// use la patience avant d'user le clavier.
@@ -10826,7 +13137,95 @@ fn flow_legend_ui(ui: &mut egui::Ui, theme: &'static Theme, s: &Strings) {
     });
 }
 
-/// Le dessin du graphe. Rend la ligne où aller, si l'on a cliqué un bloc.
+/// Ce que prend l'en-tête d'un bloc : « 0x0001d491  ? ».
+const ENTÊTE_COLONNES: usize = 16;
+
+/// La largeur qu'il faut aux boîtes pour que leur texte y tienne.
+///
+/// Une largeur commune à tout le graphe, et non une par boîte : les
+/// colonnes restent alignées, ce qui est la moitié de ce qu'un tel dessin
+/// sert à montrer. Bornée des deux côtés — en deçà on ne lit plus rien,
+/// au-delà une seule instruction bavarde étalerait le graphe entier.
+fn flow_box_width(
+    ui: &egui::Ui,
+    cfg: &namsdec_re::cfg::Cfg,
+    s: &Strings,
+    police: &egui::FontId,
+    zoom: f32,
+) -> f32 {
+    const LIGNES_MAX: usize = 8;
+    let plus_longue = cfg
+        .blocks
+        .iter()
+        .flat_map(|bloc| bloc.instructions.iter().take(LIGNES_MAX))
+        .map(|texte| texte.chars().count())
+        .max()
+        .unwrap_or(24)
+        // L'en-tête doit tenir lui aussi — et il porte, sur le bloc où
+        // le programme en est, « le programme est ici » à sa droite. Les
+        // deux étaient peints sans se demander la place : sur une boîte
+        // étroite, le libellé venait recouvrir l'adresse.
+        .max(ENTÊTE_COLONNES + s.flow_here.chars().count() + 3);
+    let glyphe = ui.ctx().fonts_mut(|f| f.glyph_width(police, ' ')).max(1.0);
+    (plus_longue as f32 * glyphe + 12.0 * zoom).clamp(220.0 * zoom, 560.0 * zoom)
+}
+
+/// La place que prendrait le graphe entier à ce zoom.
+///
+/// Sert au bouton « Tout voir », qui en déduit le facteur : on mesure
+/// avant de dessiner plutôt que de dessiner pour voir si ça dépasse.
+fn flow_extent(
+    ui: &egui::Ui,
+    cfg: &namsdec_re::cfg::Cfg,
+    s: &Strings,
+    zoom: f32,
+) -> egui::Vec2 {
+    const LIGNES_MAX: usize = 8;
+    let niveaux = cfg.layers();
+    let profondeur = niveaux.iter().max().copied().unwrap_or(0) + 1;
+    let mut par_rangée: Vec<Vec<usize>> = vec![Vec::new(); profondeur];
+    for (index, niveau) in niveaux.iter().enumerate() {
+        par_rangée[*niveau].push(index);
+    }
+    let police = egui::FontId::monospace(11.0 * zoom);
+    let hauteur_ligne = ui.ctx().fonts_mut(|f| f.row_height(&police));
+    let large = flow_box_width(ui, cfg, s, &police, zoom);
+    let marge = 18.0 * zoom;
+
+    let mut largeur = 0.0f32;
+    let mut hauteur = 0.0f32;
+    for rangée in &par_rangée {
+        let mut x = 0.0f32;
+        let mut haut = 0.0f32;
+        for index in rangée {
+            let lignes = cfg.blocks[*index].instructions.len().min(LIGNES_MAX) + 1;
+            haut = haut.max(lignes as f32 * hauteur_ligne + 10.0 * zoom);
+            x += large + marge;
+        }
+        largeur = largeur.max(x);
+        hauteur += haut + marge * 2.0;
+    }
+    egui::vec2(largeur.max(100.0), hauteur.max(100.0))
+}
+
+/// Le texte, coupé à la largeur de la boîte, avec de quoi le dire.
+///
+/// Couper vaut mieux que laisser déborder : une instruction trop longue
+/// se posait sur la boîte voisine, et les deux devenaient illisibles.
+fn flow_ellipsis(texte: &str, colonnes: usize) -> String {
+    if texte.chars().count() <= colonnes {
+        return texte.to_owned();
+    }
+    let gardé: String = texte.chars().take(colonnes.saturating_sub(1)).collect();
+    format!("{gardé}…")
+}
+
+/// Le dessin du graphe.
+///
+/// Rend la ligne où aller si l'on a cliqué un bloc, et de combien la
+/// main a tiré le graphe : c'est la fenêtre qui tient la position de la
+/// vue, puisque les barres de défilement et les boutons la déplacent
+/// aussi.
 ///
 /// La mise en page tient en deux règles : un bloc se range au niveau de
 /// son plus court chemin depuis l'entrée, et les blocs d'un même niveau
@@ -10844,7 +13243,7 @@ fn flow_graph_ui(
     lignes: &BTreeMap<u64, u32>,
     zoom: f32,
     route: &std::collections::BTreeSet<usize>,
-) -> Option<u32> {
+) -> (Option<u32>, egui::Vec2) {
     use namsdec_re::cfg::Exit;
 
     let niveaux = cfg.layers();
@@ -10857,14 +13256,25 @@ fn flow_graph_ui(
 
     let police = egui::FontId::monospace(11.0 * zoom);
     let hauteur_ligne = ui.ctx().fonts_mut(|f| f.row_height(&police));
-    let large = 260.0 * zoom;
+    // La largeur d'une boîte suit ce qu'elle contient. Fixée à deux cent
+    // soixante pixels, elle laissait « jne near 000000000001D903h » sortir
+    // de son cadre et se poser sur la boîte voisine — sur un vrai binaire,
+    // le dessin devenait illisible avant même d'être grand.
+    let large = flow_box_width(ui, cfg, s, &police, zoom);
     let marge = 18.0 * zoom;
+    let glyphe = ui.ctx().fonts_mut(|f| f.glyph_width(&police, ' ')).max(1.0);
+    // Ce qui tient dans une boîte, marges déduites.
+    let colonnes = (((large - 12.0 * zoom) / glyphe).floor() as usize).max(8);
 
     // La hauteur d'un bloc dépend de ce qu'il contient : on borne à
     // huit lignes, au-delà le dessin ne montrerait plus la forme.
     const LIGNES_MAX: usize = 8;
     let hauteur_de = |index: usize| {
-        let lignes = cfg.blocks[index].instructions.len().min(LIGNES_MAX) + 1;
+        let combien = cfg.blocks[index].instructions.len();
+        // L'en-tête, les instructions montrées, et la ligne « … n » qui
+        // dit ce qu'on ne montre pas. Cette dernière manquait au compte :
+        // elle se peignait sous le cadre, à côté du bloc suivant.
+        let lignes = 1 + combien.min(LIGNES_MAX) + usize::from(combien > LIGNES_MAX);
         lignes as f32 * hauteur_ligne + 10.0 * zoom
     };
 
@@ -10887,8 +13297,10 @@ fn flow_graph_ui(
 
     let (réponse, painter) = ui.allocate_painter(
         egui::vec2(largeur_totale.max(100.0), y.max(100.0)),
-        egui::Sense::click(),
+        egui::Sense::click_and_drag(),
     );
+    // De combien la main a tiré le graphe pendant cette frame.
+    let tiré = réponse.drag_delta();
     let origine = réponse.rect.min.to_vec2();
     let décalé = |rect: egui::Rect| rect.translate(origine);
 
@@ -10962,7 +13374,7 @@ fn flow_graph_ui(
         painter.text(
             egui::pos2(rect.left() + 6.0 * zoom, ligne_y),
             egui::Align2::LEFT_TOP,
-            entête,
+            entête.clone(),
             police.clone(),
             if courant { theme.accent } else { theme.dim },
         );
@@ -10981,12 +13393,16 @@ fn flow_graph_ui(
             painter.text(
                 egui::pos2(rect.left() + 6.0 * zoom, ligne_y),
                 egui::Align2::LEFT_TOP,
-                texte,
+                flow_ellipsis(texte, colonnes),
                 police.clone(),
                 theme.text,
             );
             ligne_y += hauteur_ligne;
         }
+        // « le programme est ici », à droite de l'en-tête. La largeur
+        // des boîtes réserve de quoi les mettre côte à côte : sans cela
+        // le libellé venait recouvrir l'adresse dès que la boîte était
+        // étroite, et l'on ne lisait plus ni l'un ni l'autre.
         if courant {
             painter.text(
                 egui::pos2(rect.right() - 6.0 * zoom, rect.top() + 4.0 * zoom),
@@ -11007,7 +13423,7 @@ fn flow_graph_ui(
         }
     }
     réponse.on_hover_text(s.flow_goto);
-    aller
+    (aller, tiré)
 }
 
 /// La route vers une adresse : ce qu'il faut satisfaire, dans l'ordre.
@@ -11660,6 +14076,11 @@ fn action_label(s: &Strings, action: Action) -> &'static str {
         Action::NextTab => s.action_next_tab,
         Action::PreviousTab => s.action_previous_tab,
         Action::CloseTab => s.action_close_tab,
+        Action::DuplicateLine => s.action_duplicate_line,
+        Action::HighlightMatches => s.action_highlight_matches,
+        Action::RenameMatches => s.action_rename_matches,
+        Action::NextMatch => s.action_next_match,
+        Action::PreviousMatch => s.action_previous_match,
         Action::RunToCursor => s.action_run_to_cursor,
         Action::RunToCall => s.action_run_to_call,
         Action::RunToReturn => s.action_run_to_return,
@@ -11877,6 +14298,72 @@ fn icon_step_back(painter: &egui::Painter, rect: egui::Rect, color: egui::Color3
     );
 }
 
+/// La réinitialisation : une flèche qui fait presque le tour et revient
+/// d'où elle part. L'ouverture est en haut, là où l'œil attend la
+/// boucle ; la pointe marque le sens de la course.
+fn icon_reset(painter: &egui::Painter, rect: egui::Rect, color: egui::Color32) {
+    let stroke = egui::Stroke::new(1.6, color);
+    let centre = rect.center();
+    let rayon = rect.width().min(rect.height()) / 2.0 - 1.5;
+
+    // Un arc de trois cents degrés : le tour est fait, mais on voit
+    // encore qu'il s'agit d'un cycle et non d'un disque.
+    let depart = -std::f32::consts::PI * 0.35;
+    let arrivee = depart + std::f32::consts::PI * 1.7;
+    let points: Vec<egui::Pos2> = (0..=28)
+        .map(|i| {
+            let t = depart + (arrivee - depart) * (i as f32 / 28.0);
+            centre + egui::vec2(t.cos(), t.sin()) * rayon
+        })
+        .collect();
+    painter.add(egui::Shape::line(points, stroke));
+
+    // La pointe, au bout de l'arc : deux traits en chevron, l'un et
+    // l'autre pris sur la tangente et la normale du cercle en ce point,
+    // pour qu'elle suive la courbe au lieu de la couper.
+    let bout = centre + egui::vec2(arrivee.cos(), arrivee.sin()) * rayon;
+    let tangente = egui::vec2(-arrivee.sin(), arrivee.cos());
+    let normale = egui::vec2(arrivee.cos(), arrivee.sin());
+    let taille = 3.5;
+    painter.line_segment([bout, bout - tangente * taille + normale * taille * 0.8], stroke);
+    painter.line_segment([bout, bout - tangente * taille - normale * taille * 0.8], stroke);
+}
+
+/// Agrandir : le cadre qu'on veut voir occuper toute la place.
+fn icon_maximize(painter: &egui::Painter, rect: egui::Rect, color: egui::Color32) {
+    painter.rect_stroke(
+        rect.shrink(1.5),
+        1.0,
+        egui::Stroke::new(1.5, color),
+        egui::StrokeKind::Inside,
+    );
+}
+
+/// Rendre sa taille : deux cadres décalés, celui de devant plus petit.
+fn icon_restore(painter: &egui::Painter, rect: egui::Rect, color: egui::Color32) {
+    let trait_ = egui::Stroke::new(1.4, color);
+    let petit = rect.shrink(1.5);
+    // Celui de derrière, décalé vers le haut à droite.
+    let derrière = egui::Rect::from_min_size(
+        petit.min + egui::vec2(3.0, -2.0),
+        petit.size() - egui::vec2(1.0, 1.0),
+    );
+    painter.rect_stroke(derrière, 1.0, trait_, egui::StrokeKind::Inside);
+    // Celui de devant : peint par-dessus, fond compris, pour que le
+    // recouvrement se lise.
+    painter.rect_filled(
+        egui::Rect::from_min_size(petit.min + egui::vec2(0.0, 2.0), petit.size()),
+        1.0,
+        egui::Color32::TRANSPARENT,
+    );
+    painter.rect_stroke(
+        egui::Rect::from_min_size(petit.min + egui::vec2(0.0, 2.0), petit.size()),
+        1.0,
+        trait_,
+        egui::StrokeKind::Inside,
+    );
+}
+
 fn icon_step_over(painter: &egui::Painter, rect: egui::Rect, color: egui::Color32) {
     let y = rect.center().y;
     let stroke = egui::Stroke::new(1.6, color);
@@ -12081,6 +14568,222 @@ fn theme_card_width(ui: &egui::Ui, themes: &[&Theme], active_word: &str) -> f32 
 /// Une ligne de la vue d'ensemble des modules : nom, version, point coloré
 /// de statut, et une courte description de ce que fait ce module là,
 /// maintenant.
+/// Le bouton d'agrandissement, posé dans le bandeau d'une fenêtre.
+///
+/// `egui::Window` ne laisse rien mettre dans son bandeau : la croix y est
+/// posée par son propre agencement, hors d'atteinte. On dessine donc le
+/// bouton par-dessus, une fois la fenêtre rendue — mais à la géométrie
+/// exacte de la croix, et non à vue de nez.
+///
+/// Cette géométrie est celle qu'egui emploie pour ses propres boutons de
+/// bandeau : une case carrée de la hauteur d'une ligne de titre, dans
+/// laquelle l'icône est centrée à `icon_width`. La case allouée est plus
+/// grande que l'icône, faute de quoi les boutons paraîtraient décalés
+/// vers le haut à côté d'un titre plus haut qu'eux. Le nôtre se range
+/// d'une case à gauche, séparé par l'écart ordinaire entre éléments.
+fn title_bar_maximize_button(
+    ctx: &egui::Context,
+    id: &'static str,
+    fenêtre: egui::Rect,
+    theme: &'static Theme,
+    s: &Strings,
+    agrandie: bool,
+) -> bool {
+    let style = ctx.style_of(ctx.theme());
+    let icône_côté = style.spacing.icon_width;
+    // La hauteur d'une ligne de titre : c'est elle qui donne sa taille à
+    // la case, non l'icône.
+    let case_côté = ctx.fonts_mut(|f| f.row_height(&egui::TextStyle::Heading.resolve(&style)));
+    let écart = style.spacing.item_spacing.x;
+    let marge_droite = f32::from(style.spacing.window_margin.right);
+    let marge_haut = f32::from(style.spacing.window_margin.top);
+
+    // La case de la croix, puis la nôtre juste à sa gauche.
+    let croix = egui::Rect::from_min_size(
+        egui::pos2(
+            fenêtre.right() - marge_droite - case_côté,
+            fenêtre.top() + marge_haut,
+        ),
+        egui::vec2(case_côté, case_côté),
+    );
+    let case = croix.translate(egui::vec2(-(case_côté + écart), 0.0));
+    let dessin = egui::Rect::from_center_size(case.center(), egui::Vec2::splat(icône_côté));
+
+    // Le double-clic sur le bandeau fait la même chose, partout ailleurs.
+    // Il est libre ici : ces fenêtres ne se replient pas, et c'est le
+    // repli qu'egui lui donne d'ordinaire.
+    let bandeau = egui::Rect::from_min_max(
+        fenêtre.min,
+        egui::pos2(croix.left(), croix.bottom()),
+    );
+    let double = ctx.input(|i| {
+        i.pointer.button_double_clicked(egui::PointerButton::Primary)
+            && i.pointer
+                .interact_pos()
+                .is_some_and(|p| bandeau.contains(p))
+    });
+
+    let mut cliqué = double;
+    egui::Area::new(egui::Id::new(("maximize", id)))
+        .order(egui::Order::Foreground)
+        .fixed_pos(case.min)
+        .show(ctx, |ui| {
+            let (rect, réponse) = ui.allocate_exact_size(case.size(), egui::Sense::click());
+            let couleur = if réponse.hovered() {
+                theme.text
+            } else {
+                theme.dim
+            };
+            if réponse.hovered() {
+                ui.painter()
+                    .rect_filled(rect, 3.0, theme.dim.gamma_multiply(0.25));
+            }
+            // L'icône au centre de la case, à la taille des icônes
+            // d'egui : la croix voisine est peinte exactement ainsi.
+            let dessin = egui::Rect::from_center_size(rect.center(), dessin.size());
+            if agrandie {
+                icon_restore(ui.painter(), dessin, couleur);
+            } else {
+                icon_maximize(ui.painter(), dessin, couleur);
+            }
+            let quoi = if agrandie {
+                s.window_restore
+            } else {
+                s.window_maximize
+            };
+            cliqué |= réponse.on_hover_text(quoi).clicked();
+        });
+    cliqué
+}
+
+
+/// Découpe une ligne d'arguments comme un interpréteur de commandes le
+/// ferait, en plus simple.
+///
+/// L'espace sépare, les guillemets — simples ou doubles — groupent ce qui
+/// doit rester ensemble : un mot de passe contenant une espace se donne
+/// ainsi sans qu'on ait à y penser. Pas d'échappement ni de variables :
+/// ce qu'on écrit là part tel quel dans `argv`, et une ligne qui ne se
+/// lit pas à l'œil n'aurait pas sa place devant un programme qu'on
+/// cherche à comprendre.
+fn split_args(ligne: &str) -> Vec<String> {
+    let mut arguments = Vec::new();
+    let mut courant = String::new();
+    let mut ouvert: Option<char> = None;
+    let mut commencé = false;
+    for c in ligne.chars() {
+        match (ouvert, c) {
+            (Some(guillemet), _) if c == guillemet => ouvert = None,
+            (Some(_), _) => courant.push(c),
+            (None, '\'') | (None, '"') => {
+                ouvert = Some(c);
+                commencé = true;
+            }
+            (None, c) if c.is_whitespace() => {
+                if commencé {
+                    arguments.push(std::mem::take(&mut courant));
+                    commencé = false;
+                }
+            }
+            (None, c) => {
+                courant.push(c);
+                commencé = true;
+            }
+        }
+    }
+    if commencé {
+        arguments.push(courant);
+    }
+    arguments
+}
+
+/// Un déplacement du mode Normal, tel que vim le nomme.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Move {
+    Left,
+    Right,
+    Up,
+    Down,
+    LineStart,
+    LineEnd,
+    FileEnd,
+}
+
+/// Où va le curseur, compté en caractères depuis le début du texte.
+///
+/// Le mode Normal n'avait aucun déplacement : `i` entrait en Insertion,
+/// Échap en sortait, et c'était tout. On ne pouvait donc pas se promener
+/// dans le code sans repasser par la souris — la première chose que
+/// cherche quiconque vient de vim.
+///
+/// Compté en caractères et non en octets : une ligne de commentaire
+/// accentuée ferait sauter le curseur au milieu d'un caractère.
+fn move_cursor(source: &str, at: usize, mouvement: Move) -> usize {
+    let caractères: Vec<char> = source.chars().collect();
+    let at = at.min(caractères.len());
+    // Le début de la ligne où l'on est, et sa longueur.
+    let début = caractères[..at]
+        .iter()
+        .rposition(|c| *c == '\n')
+        .map_or(0, |i| i + 1);
+    let fin = caractères[at..]
+        .iter()
+        .position(|c| *c == '\n')
+        .map_or(caractères.len(), |i| at + i);
+    let colonne = at - début;
+
+    match mouvement {
+        // `h` et `l` restent sur leur ligne : dans vim, ils ne la
+        // quittent pas, et c'est ce qui les rend prévisibles.
+        Move::Left => at.saturating_sub(1).max(début),
+        Move::Right => (at + 1).min(fin),
+        Move::LineStart => début,
+        Move::LineEnd => fin,
+        Move::FileEnd => caractères.len(),
+        Move::Up => {
+            if début == 0 {
+                return at;
+            }
+            let fin_précédente = début - 1;
+            let début_précédente = caractères[..fin_précédente]
+                .iter()
+                .rposition(|c| *c == '\n')
+                .map_or(0, |i| i + 1);
+            // La colonne est gardée tant que la ligne visée est assez
+            // longue, comme partout ailleurs.
+            (début_précédente + colonne).min(fin_précédente)
+        }
+        Move::Down => {
+            if fin >= caractères.len() {
+                return at;
+            }
+            let début_suivante = fin + 1;
+            let fin_suivante = caractères[début_suivante..]
+                .iter()
+                .position(|c| *c == '\n')
+                .map_or(caractères.len(), |i| début_suivante + i);
+            (début_suivante + colonne).min(fin_suivante)
+        }
+    }
+}
+
+/// Une ligne de la barre de statut, avec de quoi lire ce qui dépasse.
+///
+/// Les messages longs — celui du binaire lié dynamiquement en fait
+/// trois lignes — se coupaient avec des points de suspension, et rien ne
+/// disait qu'il y avait plus à lire. L'infobulle le donne en entier, et
+/// une mention l'annonce plutôt que de compter sur la curiosité.
+fn status_message(ui: &mut egui::Ui, couleur: egui::Color32, texte: &str, s: &Strings) {
+    // Ce qui tient sans être coupé : au-delà, on le dit.
+    const TIENT: usize = 90;
+    let long = texte.chars().count() > TIENT;
+    let réponse = ui.colored_label(couleur, texte);
+    if long {
+        ui.weak(egui::RichText::new(s.status_more).small());
+        réponse.on_hover_text(texte);
+    }
+}
+
 fn module_card(
     ui: &mut egui::Ui,
     name: &str,
@@ -12235,10 +14938,28 @@ impl NamsdecApp {
                     };
                     ui.ctx().data_mut(|data| data.insert_persisted(id, état));
                 }
+                // Le plancher : ce que la zone de saisie prend, quand il
+                // y en a une. Une hauteur figée à la poignée ne doit pas
+                // pouvoir passer dessous — sinon le champ où l'on tape se
+                // retrouve sous la barre de statut, au moment précis où
+                // le programme attend quelque chose. L'utilisateur règle
+                // la place de la sortie, pas celle de ce qui commande.
+                let saisie = self
+                    .console_input_estimate(ui)
+                    .max(self.console_input_height.unwrap_or(0.0));
+                let plancher = if saisie > 0.0 {
+                    // La saisie, les onglets, et une ligne de journal :
+                    // en dessous, on ne verrait plus où taper.
+                    (saisie + ui.text_style_height(&egui::TextStyle::Button) + 28.0)
+                        .max(CONSOLE_MIN_HEIGHT)
+                        .min(plafond)
+                } else {
+                    CONSOLE_MIN_HEIGHT.min(plafond)
+                };
                 egui::Panel::bottom(id)
                     .resizable(true)
-                    .default_size(self.console_height.unwrap_or(voulue))
-                    .min_size(CONSOLE_MIN_HEIGHT)
+                    .default_size(self.console_height.unwrap_or(voulue).max(plancher))
+                    .min_size(plancher)
                     .max_size(plafond)
                     .show(ui, |ui| self.console_panel_ui(ui));
                 // Ce que le panneau fait vraiment. S'il n'est pas à la
@@ -12325,6 +15046,7 @@ impl NamsdecApp {
             self.disassembly_window_ui(&ctx);
             self.cyclic_window_ui(&ctx);
             self.analysis_window_ui(&ctx);
+            self.calculator_window_ui(&ctx);
             if self.exercises {
                 self.exercises_window_ui(&ctx);
             }
@@ -12348,6 +15070,13 @@ impl NamsdecApp {
 /// son état.
 fn find_field_id() -> egui::Id {
     egui::Id::new("find_field")
+}
+
+/// Le drapeau « la commande vient d'être copiée », pour que le bouton
+/// le dise. Volatil : il n'a de sens que le temps que la fenêtre reste
+/// ouverte.
+fn copie_id() -> egui::Id {
+    egui::Id::new("prerequis_copies")
 }
 
 fn editor_id() -> egui::Id {
@@ -12843,14 +15572,172 @@ fn disassemble_code(output: &namsdec_asm::AssembleOutput) -> Vec<DecodedInstruct
         .collect()
 }
 
+/// Recopie la ligne qui contient `cursor`, juste en dessous.
+///
+/// Rend la source modifiée et la nouvelle position du curseur, qui suit
+/// la copie : on duplique une ligne pour la changer, et la changer
+/// commence par être dessus.
+///
+/// La dernière ligne d'un fichier sans retour final est un cas à part —
+/// il faut en ajouter un, sinon la copie se collerait derrière l'original
+/// et n'en ferait qu'une seule ligne deux fois plus longue.
+fn duplicated_line(source: &str, cursor: usize) -> (String, usize) {
+    let cursor = cursor.min(source.len());
+    let début = source[..cursor].rfind('\n').map_or(0, |i| i + 1);
+    let fin = source[cursor..]
+        .find('\n')
+        .map_or(source.len(), |i| cursor + i);
+    let ligne = &source[début..fin];
+
+    let mut out = String::with_capacity(source.len() + ligne.len() + 1);
+    out.push_str(&source[..fin]);
+    out.push('\n');
+    out.push_str(ligne);
+    out.push_str(&source[fin..]);
+    // Le curseur garde sa colonne, une ligne plus bas.
+    (out, cursor + ligne.len() + 1)
+}
+
+/// Ce que la liste de propositions a pris au clavier cette image-ci.
+#[derive(Default, Clone, Copy)]
+struct CompletionKeys {
+    accept: bool,
+    down: bool,
+    up: bool,
+    dismiss: bool,
+}
+
+/// Ce qu'une erreur de calcul dit à qui l'a faite.
+///
+/// En clair, et en nommant ce qui coince : « erreur de syntaxe » oblige à
+/// chercher soi-même, ce qui est exactement le travail qu'on venait
+/// éviter.
+fn calc_error_text(s: &Strings, erreur: &calc::CalcError) -> String {
+    use calc::CalcError as E;
+    match erreur {
+        E::Empty => String::new(),
+        E::BadChar(c) => format!("{} {c}", s.calc_bad_char),
+        E::Unknown(mot) => format!("{} {mot}", s.calc_unknown),
+        E::Unbalanced => s.calc_unbalanced.to_owned(),
+        E::Missing => s.calc_missing.to_owned(),
+        E::Arity { name, wanted, got } => {
+            format!("{name} {} {wanted}, {} {got}", s.calc_arity_wants, s.calc_arity_got)
+        }
+        E::NoRegisters(nom) => format!("{nom} : {}", s.calc_no_program),
+        E::DivideByZero => s.calc_divide_by_zero.to_owned(),
+        E::Trailing(reste) => format!("{} {reste}", s.calc_trailing),
+    }
+}
+
+/// La barre de chronologie. Rend le rang du pas cliqué, s'il y en a un.
+///
+/// Une colonne par tranche de temps, colorée par ce qui s'y est passé de
+/// plus notable. L'échelle est celle du parcours entier : la barre remplit
+/// toujours toute la largeur, et la position d'un pas dedans dit sa place
+/// dans le temps — non sa place dans une liste qu'on a filtrée.
+fn timeline_bar(
+    ui: &mut egui::Ui,
+    theme: &'static Theme,
+    trace: Vec<namsdec_emu::Step>,
+) -> Option<usize> {
+    const HAUTEUR: f32 = 28.0;
+    if trace.is_empty() {
+        return None;
+    }
+    let largeur = ui.available_width().max(32.0);
+    let (rect, réponse) = ui.allocate_exact_size(
+        egui::vec2(largeur, HAUTEUR),
+        egui::Sense::click_and_drag(),
+    );
+    let peintre = ui.painter_at(rect);
+    peintre.rect_filled(rect, 2.0, ui.visuals().extreme_bg_color);
+
+    // Une colonne par pixel au plus : dessiner plus fin ne se verrait
+    // pas, et regrouper moins coûterait pour rien.
+    let colonnes = timeline::columns(&trace, largeur as usize);
+    let pas = largeur / colonnes.len().max(1) as f32;
+    for (i, colonne) in colonnes.iter().enumerate() {
+        // Un pas ordinaire reste discret : si tout criait, la barre ne
+        // montrerait qu'un mur uni, ce qui est exactement ce qu'elle doit
+        // éviter.
+        let (couleur, part) = match colonne.kind {
+            namsdec_emu::StepKind::Plain => (theme.dim.gamma_multiply(0.5), 0.35),
+            namsdec_emu::StepKind::Jump => (theme.accent.gamma_multiply(0.7), 0.6),
+            namsdec_emu::StepKind::Write => (theme.warn, 0.7),
+            namsdec_emu::StepKind::Return => (theme.label, 0.8),
+            namsdec_emu::StepKind::Call => (theme.accent, 0.9),
+            namsdec_emu::StepKind::Syscall => (theme.bad, 1.0),
+        };
+        let barre = egui::Rect::from_min_max(
+            egui::pos2(
+                rect.left() + i as f32 * pas,
+                rect.bottom() - part * HAUTEUR,
+            ),
+            egui::pos2(rect.left() + (i as f32 + 1.0) * pas, rect.bottom()),
+        );
+        peintre.rect_filled(barre, 0.0, couleur);
+    }
+
+    // Le repère de maintenant, au bout : c'est de là que se compte le
+    // recul, et le voir évite de chercher où l'on est.
+    peintre.line_segment(
+        [
+            egui::pos2(rect.right() - 1.0, rect.top()),
+            egui::pos2(rect.right() - 1.0, rect.bottom()),
+        ],
+        egui::Stroke::new(2.0, theme.text),
+    );
+
+    // Cliquer ou glisser rembobine. Glisser autant que cliquer : on
+    // cherche un endroit en balayant, comme sur une piste de lecteur.
+    let visé = réponse.interact_pointer_pos().or(réponse.hover_pos()).map(|position| {
+        timeline::step_at(trace.len(), (position.x - rect.left()) / largeur)
+    });
+    if let Some(index) = visé {
+        // Le trait de visée, et ce qu'il désigne.
+        let x = rect.left() + (index as f32 / trace.len() as f32) * largeur;
+        peintre.line_segment(
+            [egui::pos2(x, rect.top()), egui::pos2(x, rect.bottom())],
+            egui::Stroke::new(1.0, theme.text),
+        );
+        let recul = timeline::rewind_to(trace.len(), index);
+        réponse.clone().on_hover_text(format!(
+            "-{recul}  ·  {:#010x}",
+            trace.get(index).map(|pas| pas.addr).unwrap_or(0)
+        ));
+    }
+    (réponse.clicked() || réponse.dragged()).then_some(visé?)
+}
+
+/// La taille de départ de la fenêtre des exercices.
+///
+/// Proportionnée à l'écran plutôt que fixe : un chiffre en dur déborde
+/// d'un petit écran et se perd sur un grand. Plafonnée, parce qu'un
+/// énoncé lu sur toute la largeur d'un écran large est illisible — au
+/// delà d'une certaine longueur de ligne, l'oeil ne retrouve plus le
+/// début de la suivante.
+fn exercises_window_size(ctx: &egui::Context) -> egui::Vec2 {
+    let écran = ctx.viewport_rect().size();
+    egui::vec2(
+        (écran.x * 0.8).clamp(420.0, 920.0),
+        (écran.y * 0.8).clamp(320.0, 720.0),
+    )
+}
+
 /// Comment le programme s'est arrêté : de lui-même par `exit`, ou parce
 /// que la machine a rencontré `hlt`. Les deux se voient pareil depuis
 /// `StepResult::Halted`, et ne veulent pourtant pas dire la même chose.
 fn halted_status(emulator: &dyn Backend) -> Status {
-    match emulator.exit_code() {
-        Some(code) => Status::Exited { code },
-        None => Status::Halted,
+    if let Some(code) = emulator.exit_code() {
+        return Status::Exited { code };
     }
+    // Un `int3` n'est pas une fin : c'est une question posée au débogueur.
+    // Dire « arrêté » tout court laisserait croire que le programme a
+    // fini son travail, alors qu'il attend qu'on le relance.
+    if emulator.software_breakpoint().is_some() {
+        return Status::Note(|s| s.status_software_breakpoint);
+    }
+    Status::Halted
 }
 
 /// Le registre que ce nom désigne, en minuscules — les seize généraux.
@@ -12956,6 +15843,7 @@ fn main() -> eframe::Result<()> {
                 });
             }
             app.save_settings_now();
+            app.save_keymap_now();
             app.apply_theme(&cc.egui_ctx);
             Ok(Box::new(app))
         }),

@@ -55,10 +55,40 @@ pub enum Action {
     NextTab,
     PreviousTab,
     CloseTab,
+    /// Surligner toutes les occurrences de ce qui est sous le curseur.
+    ///
+    /// Le `*` de vim, en plus visible : au lieu de sauter à la suivante,
+    /// on les montre toutes d'un coup. C'est la question qu'on se pose en
+    /// lisant — « où d'autre ce registre est-il touché ? » — et qu'on
+    /// résout aujourd'hui avec les yeux.
+    HighlightMatches,
+    /// Aller à l'occurrence suivante de ce qui est suivi, et la
+    /// sélectionner.
+    ///
+    /// Le `n` de vim après un `*`, et le geste qui manque le plus quand
+    /// on ne peut pas poser plusieurs curseurs : on ne les a pas tous en
+    /// même temps, mais on passe de l'un à l'autre sans quitter le
+    /// clavier, et chacun est sélectionné donc prêt à être remplacé.
+    NextMatch,
+    /// La précédente.
+    PreviousMatch,
+    /// Renommer d'un coup toutes les occurrences surlignées.
+    ///
+    /// Ce que le multicurseur sert à faire neuf fois sur dix : changer un
+    /// registre partout, renommer une étiquette. egui ne tient qu'un seul
+    /// curseur — on ne peut donc pas en poser plusieurs —, mais on peut
+    /// faire l'édition elle-même, et c'est elle qu'on voulait.
+    RenameMatches,
+    /// Recopier la ligne où l'on est, juste en dessous.
+    ///
+    /// Le geste qu'on fait sans y penser dans tout éditeur, et qui manque
+    /// cruellement en assembleur : quatre lignes qui ne diffèrent que
+    /// par un registre se dupliquent plus vite qu'elles ne se retapent.
+    DuplicateLine,
 }
 
 impl Action {
-    pub const ALL: [Action; 23] = [
+    pub const ALL: [Action; 28] = [
         Action::ToggleExplorer,
         Action::Assemble,
         Action::Run,
@@ -82,6 +112,11 @@ impl Action {
         Action::NextTab,
         Action::PreviousTab,
         Action::CloseTab,
+        Action::DuplicateLine,
+        Action::HighlightMatches,
+        Action::RenameMatches,
+        Action::NextMatch,
+        Action::PreviousMatch,
     ];
 }
 
@@ -178,6 +213,173 @@ pub struct KeyBindings {
 }
 
 impl Default for KeyBindings {
+    /// Le jeu de départ : celui de vim et de gdb.
+    ///
+    /// namsdec s'adresse à qui apprend l'assembleur, et qui passe donc sa
+    /// vie dans un éditeur modal et un débogueur. Les deux jeux vivent
+    /// dans le binaire ; celui-ci est seulement celui qu'on trouve sans
+    /// rien régler.
+    fn default() -> Self {
+        Self::preset(Preset::Vim)
+    }
+}
+
+#[cfg(test)]
+mod tests_presets {
+    use super::*;
+
+    /// Les deux jeux sont dans le binaire, entiers.
+    ///
+    /// Aucun n'est un fichier à installer : on doit pouvoir passer de
+    /// l'un à l'autre sans réseau, sans dossier de configuration, et sans
+    /// qu'une action se retrouve sans raccourci au passage.
+    #[test]
+    fn both_sets_live_in_the_binary_and_cover_the_same_actions() {
+        let vim = KeyBindings::preset(Preset::Vim);
+        let classic = KeyBindings::preset(Preset::Classic);
+        assert!(!vim.map.is_empty() && !classic.map.is_empty());
+
+        let manquantes: Vec<_> = vim
+            .map
+            .keys()
+            .filter(|action| !classic.map.contains_key(action))
+            .collect();
+        assert!(
+            manquantes.is_empty(),
+            "ces actions n'ont pas de raccourci dans le jeu ordinaire : {manquantes:?}"
+        );
+        let en_trop: Vec<_> = classic
+            .map
+            .keys()
+            .filter(|action| !vim.map.contains_key(action))
+            .collect();
+        assert!(en_trop.is_empty(), "et celles-ci manquent au jeu vim : {en_trop:?}");
+    }
+
+    /// Dans un jeu, deux actions ne partagent pas la même frappe.
+    #[test]
+    fn no_two_actions_answer_to_the_same_keys() {
+        for preset in Preset::ALL {
+            let bindings = KeyBindings::preset(preset);
+            let mut vus: BTreeMap<String, Action> = BTreeMap::new();
+            for (action, chord) in &bindings.map {
+                let touche = format!("{chord:?}");
+                if let Some(autre) = vus.insert(touche.clone(), *action) {
+                    panic!(
+                        "{} : {autre:?} et {action:?} répondent tous deux à {touche}",
+                        preset.id()
+                    );
+                }
+            }
+        }
+    }
+
+    /// Le jeu ordinaire n'a aucune séquence à touche leader.
+    ///
+    /// C'est ce qu'on vient y chercher : une frappe, une action.
+    #[test]
+    fn the_ordinary_set_has_no_leader_sequences() {
+        for (action, chord) in &KeyBindings::preset(Preset::Classic).map {
+            assert!(
+                matches!(chord, Chord::Simple(_)),
+                "{action:?} garde une séquence : {chord:?}"
+            );
+        }
+        // Et le jeu vim, lui, en a bien.
+        assert!(
+            KeyBindings::preset(Preset::Vim)
+                .map
+                .values()
+                .any(|c| matches!(c, Chord::Leader(_))),
+            "le jeu vim doit garder ses séquences"
+        );
+    }
+
+    /// Le nom d'un jeu survit à l'écriture et à la relecture.
+    #[test]
+    fn a_set_is_named_the_same_way_coming_and_going() {
+        for preset in Preset::ALL {
+            assert_eq!(Preset::from_id(preset.id()), Some(preset));
+        }
+        assert_eq!(Preset::from_id("inconnu"), None);
+        assert_eq!(Preset::default(), Preset::Vim, "vim est celui de départ");
+    }
+}
+
+/// Les deux jeux de raccourcis que namsdec porte.
+///
+/// Deux, et toujours les deux : l'un pour qui vient de vim, l'autre pour
+/// qui vient d'un éditeur ordinaire. Aucun n'est un fichier à installer —
+/// ils sont dans le binaire, et le fichier de l'utilisateur ne fait que
+/// s'en écarter là où il le veut.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Preset {
+    /// Touche leader, séquences de lettres, commandes de gdb.
+    #[default]
+    Vim,
+    /// Touches de fonction et Ctrl, comme dans la plupart des éditeurs.
+    Classic,
+}
+
+impl Preset {
+    /// Les deux, dans l'ordre où on les propose.
+    pub const ALL: [Self; 2] = [Self::Vim, Self::Classic];
+
+    /// Le nom écrit dans le fichier — stable, à ne pas traduire.
+    pub fn id(self) -> &'static str {
+        match self {
+            Self::Vim => "vim",
+            Self::Classic => "classic",
+        }
+    }
+
+    /// Le jeu que ce nom désigne, si on le connaît.
+    pub fn from_id(id: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|p| p.id() == id)
+    }
+
+    /// Comment l'appeler à l'écran.
+    pub fn label(self, fr: bool) -> &'static str {
+        match (self, fr) {
+            (Self::Vim, true) => "Vim et gdb",
+            (Self::Vim, false) => "Vim and gdb",
+            (Self::Classic, true) => "Éditeur ordinaire",
+            (Self::Classic, false) => "Ordinary editor",
+        }
+    }
+
+    /// Ce qu'il change, en une phrase.
+    pub fn about(self, fr: bool) -> &'static str {
+        match (self, fr) {
+            (Self::Vim, true) => {
+                "Touche leader (Espace) et séquences de lettres ; les commandes \
+                 d'exécution reprennent celles de gdb."
+            }
+            (Self::Vim, false) => {
+                "Leader key (Space) and letter sequences; the execution commands \
+                 are gdb's."
+            }
+            (Self::Classic, true) => {
+                "Touches de fonction et Ctrl, comme dans la plupart des éditeurs : \
+                 F5 lance, F10 enjambe, F11 entre."
+            }
+            (Self::Classic, false) => {
+                "Function keys and Ctrl, as in most editors: F5 runs, F10 steps \
+                 over, F11 steps into."
+            }
+        }
+    }
+}
+
+impl KeyBindings {
+    /// Le jeu demandé, tel qu'il est dans le binaire.
+    pub fn preset(preset: Preset) -> Self {
+        match preset {
+            Preset::Vim => Self::vim(),
+            Preset::Classic => Self::classic(),
+        }
+    }
+
     /// Les commandes d'exécution reprennent celles de gdb/pwndbg, derrière
     /// la touche leader : `Espace r` pour lancer, `Espace s i` pour entrer
     /// dans l'instruction (`stepi`), `Espace n i` pour l'enjamber
@@ -193,7 +395,78 @@ impl Default for KeyBindings {
     /// F10 = mnémonique "activer le menu" côté GTK). `Quitter` n'a
     /// volontairement aucun raccourci par défaut : une frappe malheureuse
     /// qui ferme l'appli est pire qu'un clic de menu en plus.
-    fn default() -> Self {
+    /// Le jeu de qui vient d'un éditeur ordinaire.
+    ///
+    /// Touches de fonction pour l'exécution — F5 lance, F10 enjambe, F11
+    /// entre —, comme le font Visual Studio, VS Code, Qt Creator et la
+    /// plupart des débogueurs à fenêtres depuis trente ans. Le reste suit
+    /// les habitudes d'édition : Ctrl+S, Ctrl+O, Ctrl+F, Ctrl+W.
+    ///
+    /// Aucune séquence à touche leader ici : c'est précisément ce qu'on
+    /// vient chercher en changeant de jeu.
+    pub fn classic() -> Self {
+        use Modifiers as M;
+        let simple = |m: Modifiers, k: Key| Chord::Simple(KeyboardShortcut::new(m, k));
+        let mut map = BTreeMap::new();
+
+        // Construire et exécuter.
+        map.insert(Action::Assemble, simple(M::CTRL | M::SHIFT, Key::B));
+        map.insert(Action::Run, simple(M::NONE, Key::F5));
+        map.insert(Action::StepInto, simple(M::NONE, Key::F11));
+        map.insert(Action::StepOver, simple(M::NONE, Key::F10));
+        // Le pas arrière n'a pas de tradition : Maj+F11 est « sortir de
+        // la fonction » ailleurs, ce que namsdec ne fait pas.
+        map.insert(Action::StepBack, simple(M::SHIFT, Key::F11));
+        map.insert(Action::Stop, simple(M::SHIFT, Key::F5));
+        map.insert(Action::Reset, simple(M::CTRL | M::SHIFT, Key::F5));
+        map.insert(Action::RunToCursor, simple(M::CTRL, Key::F10));
+
+        // Courir jusqu'au prochain appel, retour ou appel système : sans
+        // équivalent ailleurs, on les range ensemble derrière Ctrl+Alt.
+        map.insert(Action::RunToCall, simple(M::CTRL | M::ALT, Key::C));
+        map.insert(Action::RunToReturn, simple(M::CTRL | M::ALT, Key::R));
+        map.insert(Action::RunToSyscall, simple(M::CTRL | M::ALT, Key::S));
+
+        // Les fichiers.
+        map.insert(Action::New, simple(M::CTRL, Key::N));
+        map.insert(Action::Save, simple(M::CTRL, Key::S));
+        map.insert(Action::OpenFile, simple(M::CTRL, Key::O));
+        map.insert(Action::OpenFolder, simple(M::CTRL | M::SHIFT, Key::O));
+        map.insert(Action::CloseTab, simple(M::CTRL, Key::W));
+        // Ctrl+Maj+D : celui de VS Code. Le jeu ordinaire n'a aucune
+        // séquence — c'est sa raison d'être.
+        map.insert(
+            Action::DuplicateLine,
+            simple(M::CTRL.plus(M::SHIFT), Key::D),
+        );
+        // Ctrl+F2 : celui de VS Code pour « toutes les occurrences ».
+        // Ctrl+F2 : « sélectionner toutes les occurrences » de VS Code.
+        map.insert(
+            Action::HighlightMatches,
+            simple(M::CTRL, Key::F2),
+        );
+        // F2 tout court : « renommer », partout où ce geste existe.
+        map.insert(Action::RenameMatches, simple(M::NONE, Key::F2));
+        // F3 / Maj+F3 : « suivant » et « précédent », partout où l'on
+        // cherche quelque chose.
+        map.insert(Action::NextMatch, simple(M::NONE, Key::F3));
+        map.insert(Action::PreviousMatch, simple(M::SHIFT, Key::F3));
+        map.insert(Action::NextTab, simple(M::CTRL, Key::Tab));
+        map.insert(Action::PreviousTab, simple(M::CTRL | M::SHIFT, Key::Tab));
+
+        // Chercher et se déplacer.
+        map.insert(Action::Find, simple(M::CTRL, Key::F));
+        map.insert(Action::GoToLabel, simple(M::NONE, Key::F12));
+        map.insert(Action::InstructionHelp, simple(M::NONE, Key::F1));
+
+        // Les panneaux.
+        map.insert(Action::ToggleExplorer, simple(M::CTRL, Key::B));
+        map.insert(Action::ShowFlow, simple(M::CTRL | M::SHIFT, Key::G));
+
+        Self { map }
+    }
+
+    pub fn vim() -> Self {
         let mut map = BTreeMap::new();
         map.insert(
             Action::Assemble,
@@ -284,6 +557,35 @@ impl Default for KeyBindings {
             Action::CloseTab,
             Chord::Simple(KeyboardShortcut::new(Modifiers::CTRL, Key::W)),
         );
+        // `y y` : le doublement de vim, qui copie une ligne. Ici il la
+        // recopie directement — c'est le geste, sans le presse-papiers.
+        map.insert(Action::DuplicateLine, Chord::leader(&[Key::Y, Key::Y]));
+        // `Espace s s`, et non `Espace s` : celui-ci est déjà le préfixe
+        // de `Espace s i` et `Espace s o`, et une séquence qui en
+        // court-circuite une autre la rend inatteignable. Le doublement
+        // est celui de `y y`, et `s` reste la lettre de « similaire ».
+        map.insert(
+            Action::HighlightMatches,
+            Chord::leader(&[Key::Space, Key::S, Key::S]),
+        );
+        // `r` comme renommer, sous le même préfixe que le surlignage :
+        // les deux gestes vont ensemble, on surligne puis on renomme.
+        map.insert(
+            Action::RenameMatches,
+            Chord::leader(&[Key::Space, Key::S, Key::R]),
+        );
+        // `n` et `N` tout court, sans leader : c'est ainsi qu'on passe
+        // d'une occurrence à l'autre dans vim, et une séquence de trois
+        // touches pour un geste qu'on répète dix fois de suite n'en
+        // serait pas une.
+        map.insert(
+            Action::NextMatch,
+            Chord::Simple(KeyboardShortcut::new(Modifiers::NONE, Key::N)),
+        );
+        map.insert(
+            Action::PreviousMatch,
+            Chord::Simple(KeyboardShortcut::new(Modifiers::SHIFT, Key::N)),
+        );
         // Ctrl+F : chercher, comme partout ailleurs.
         map.insert(
             Action::Find,
@@ -312,6 +614,7 @@ impl Default for KeyBindings {
         );
         Self { map }
     }
+
 }
 
 /// Mode choisi pendant la capture d'un nouveau raccourci dans Préférences.
@@ -395,17 +698,29 @@ impl Dispatcher {
             // frame par rapport au `Event::Key` qu'on est en train de
             // traiter. C'est aussi exactement ce que fait en interne
             // `consume_shortcut`/`count_and_consume_key` d'egui.
-            let simple_match = bindings
-                .map
-                .iter()
-                .find_map(|(&action, chord)| match chord {
-                    Chord::Simple(sc)
-                        if sc.logical_key == key && modifiers.matches_exact(sc.modifiers) =>
-                    {
-                        Some(action)
-                    }
-                    _ => None,
-                });
+            //
+            // **Sauf si une séquence est en cours.** Une fois `Espace`
+            // tapé, la touche suivante appartient à la séquence : c'est
+            // ce que fait tout éditeur modal, et sans cette règle,
+            // n'importe quelle lettre servant de deuxième touche
+            // devenait interdite comme raccourci simple. `n` court-
+            // circuitait ainsi `Espace n i` — Step Over n'était plus
+            // atteignable, et l'on ne voyait pas pourquoi.
+            let simple_match = if self.pending.is_empty() {
+                bindings
+                    .map
+                    .iter()
+                    .find_map(|(&action, chord)| match chord {
+                        Chord::Simple(sc)
+                            if sc.logical_key == key && modifiers.matches_exact(sc.modifiers) =>
+                        {
+                            Some(action)
+                        }
+                        _ => None,
+                    })
+            } else {
+                None
+            };
             if let Some(action) = simple_match {
                 self.pending.clear();
                 self.take(ctx, key);
@@ -809,6 +1124,42 @@ mod tests {
 
             assert_eq!(result, Some(expected), "pour {keys:?}");
         }
+    }
+
+    /// Une séquence en cours l'emporte sur un raccourci simple.
+    ///
+    /// `n` seul va à l'occurrence suivante ; `Espace n i` est Step Over.
+    /// Sans cette règle, le `n` de la séquence déclenchait le raccourci
+    /// simple et Step Over n'était plus atteignable — ce qui aurait
+    /// interdit comme raccourci simple toute lettre servant de deuxième
+    /// touche quelque part.
+    #[test]
+    fn a_sequence_in_progress_beats_a_simple_shortcut() {
+        let bindings = KeyBindings::default();
+        // La touche est bien un raccourci simple à elle seule.
+        let ctx = egui::Context::default();
+        let mut dispatcher = Dispatcher::default();
+        let mut seule = None;
+        run(&ctx, vec![key_event(Key::N)], |ui| {
+            seule = dispatcher.poll(ui.ctx(), &bindings, false);
+        });
+        assert_eq!(seule, Some(Action::NextMatch), "`n` seul avance");
+
+        // Mais au milieu d'une séquence, elle appartient à la séquence.
+        let ctx = egui::Context::default();
+        let mut dispatcher = Dispatcher::default();
+        let mut suite = None;
+        run(
+            &ctx,
+            vec![Key::Space, Key::N, Key::I]
+                .into_iter()
+                .map(key_event)
+                .collect(),
+            |ui| {
+                suite = dispatcher.poll(ui.ctx(), &bindings, false);
+            },
+        );
+        assert_eq!(suite, Some(Action::StepOver), "`Espace n i` reste Step Over");
     }
 
     /// Les deux premières touches de `Espace s i` ne déclenchent rien

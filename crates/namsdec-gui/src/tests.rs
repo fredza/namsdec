@@ -1979,21 +1979,27 @@ fn the_cpu_banner_opens_deployed() {
     );
 }
 
-/// L'onglet RE n'apparaît dans la barre latérale que si on l'a
-/// demandé, **et seulement pour la session en cours**.
+/// L'onglet RE est absent tant qu'on ne l'a pas demandé — et une fois
+/// demandé, il le reste d'un lancement à l'autre.
 ///
-/// Il ouvre un module de reverse engineering encore à l'état
-/// d'ébauche. Tant que le « oui » était enregistré dans
-/// `settings.json`, il suffisait de l'avoir donné une fois — ou de
-/// l'avoir donné sans le vouloir, ce que la commande « Affichage :
-/// RE » de la palette faisait au passage — pour le retrouver à tous
-/// les lancements suivants, sans savoir d'où il venait.
+/// Il n'en allait pas ainsi : le « oui » ne durait que la session. La
+/// raison tenait alors : le module était une ébauche, et la commande
+/// « Affichage : RE » de la palette pouvait l'allumer sans qu'on l'ait
+/// voulu, si bien qu'on le retrouvait ensuite sans savoir d'où il
+/// venait. Ce n'est plus le cas — les modules sont là, et la case vit
+/// dans les Préférences, visible et décochable. Refaire ce choix à
+/// chaque lancement est exactement ce qu'un réglage sert à éviter.
+///
+/// Le champ a changé de nom au passage (`re_tab`, non `show_re_tab`) :
+/// un fichier écrit du temps où le « oui » pouvait être involontaire ne
+/// rallume donc rien.
 #[test]
-fn the_re_tab_is_absent_at_every_launch_until_it_is_asked_for() {
+fn the_re_tab_is_absent_until_asked_for_then_remembered() {
     assert!(!NamsdecApp::default().show_re_tab, "application par défaut");
 
-    // Un fichier de réglages n'a plus voix au chapitre, même celui
-    // d'une version qui écrivait encore ce champ.
+    // Un ancien fichier, écrit quand le champ s'appelait autrement, ne
+    // rallume rien : ce « oui »-là pouvait avoir été donné sans le
+    // vouloir.
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("settings.json");
     std::fs::write(
@@ -2001,11 +2007,10 @@ fn the_re_tab_is_absent_at_every_launch_until_it_is_asked_for() {
         r#"{"version": 2, "show_re_tab": true, "language": "fr"}"#,
     )
     .unwrap();
-    let settings = Settings::load_from(&path);
-    let app = NamsdecApp::from_settings(settings);
+    let app = NamsdecApp::from_settings(Settings::load_from(&path));
     assert!(
         !app.show_re_tab,
-        "un ancien fichier ne doit plus pouvoir rallumer l'onglet"
+        "l'ancien nom ne doit pas rallumer l'onglet"
     );
 
     // Et la rangée d'onglets ne le propose pas.
@@ -2016,16 +2021,18 @@ fn the_re_tab_is_absent_at_every_launch_until_it_is_asked_for() {
         .collect();
     assert_eq!(shown, ["Pile", "Mémoire", "Tas", "Octets"]);
 
-    // Ce qu'on coche dans Préférences vaut pour la session, et ne
-    // part pas dans les réglages enregistrés.
+    // Mais ce qu'on coche dans Préférences, lui, part sur le disque et
+    // revient.
     let app = NamsdecApp {
         show_re_tab: true,
         ..Default::default()
     };
-    let written = serde_json::to_string(&app.settings_snapshot()).unwrap();
+    let écrit = serde_json::to_string(&app.settings_snapshot()).unwrap();
+    assert!(écrit.contains("re_tab"), "le champ doit être écrit : {écrit}");
+    let relu: Settings = serde_json::from_str(&écrit).unwrap();
     assert!(
-        !written.contains("show_re_tab"),
-        "le champ n'a plus à être écrit : {written}"
+        NamsdecApp::from_settings(relu).show_re_tab,
+        "et relu au lancement suivant"
     );
 }
 
@@ -4841,7 +4848,13 @@ fn the_command_palette_shows_everything_it_can_without_scrolling() {
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
-            egui::vec2(1280.0, 1400.0),
+            // Assez haut pour les tenir toutes, quel qu'en soit le
+            // nombre : une hauteur en dur devenait fausse dès qu'on
+            // ajoutait une commande, et le test tombait alors sans rien
+            // révéler. Ce qu'on vérifie n'est pas qu'elles tiennent dans
+            // 1400 px, c'est qu'elles ne défilent pas quand il y a la
+            // place.
+            egui::vec2(1280.0, palette_commands(strings(Lang::Fr), true, true).len() as f32 * 40.0 + 200.0),
         )),
         ..Default::default()
     };
@@ -5535,7 +5548,10 @@ hlt
     assert!(
         app.diagnostics
             .iter()
-            .any(|d| d.message.contains("not writable")),
+            // Le lint parle la langue de l'application : « inscriptible »
+            // en français, « not writable » en anglais.
+            .any(|d| d.message.contains("inscriptible")
+                || d.message.contains("not writable")),
         "l'avertissement doit précéder l'exécution : {:?}",
         app.diagnostics
     );
@@ -6953,7 +6969,10 @@ fn the_extra_checks_warn_without_crying_wolf() {
     assert!(
         sans_fin
             .iter()
-            .any(|d| d.message.contains("run off the end")),
+            // Le lint parle la langue de l'application : en français par
+            // défaut, ce message dit « sortir par la fin ».
+            .any(|d| d.message.contains("sortir par la fin")
+                || d.message.contains("run off the end")),
         "{sans_fin:?}"
     );
 
@@ -7491,11 +7510,12 @@ fn every_setting_survives_a_round_trip() {
     assert_eq!(revenu.show_tooltips, app.show_tooltips);
     assert_eq!(revenu.completion, app.completion);
     assert_eq!(revenu.auto_indent, app.auto_indent);
+    assert_eq!(revenu.auto_pairs, app.auto_pairs);
+    assert_eq!(revenu.program_args, app.program_args);
+    assert_eq!(revenu.program_env, app.program_env);
+    assert_eq!(revenu.active_tab, app.active_tab);
     assert_eq!(revenu.exercises, app.exercises);
-    // `show_re_tab` est délibérément absent des réglages : voir
-    // `the_re_tab_is_absent_at_every_launch_until_it_is_asked_for`. Ce
-    // qu'on vérifie ici, c'est qu'il le reste.
-    assert!(!revenu.show_re_tab, "l'onglet RE ne se persiste pas");
+    assert_eq!(revenu.show_re_tab, app.show_re_tab);
     assert_eq!(revenu.memory_format, app.memory_format);
     assert_eq!(revenu.disabled_packs, app.disabled_packs);
     assert_eq!(revenu.current_exercise, app.current_exercise);
@@ -9541,7 +9561,7 @@ fn opening_a_binary_shows_its_code_not_its_header() {
 #[test]
 fn both_languages_say_the_same_things() {
     /// Les champs dont les deux langues partagent le texte, et pourquoi.
-    const LES_MÊMES: [&str; 22] = [
+    const LES_MÊMES: [&str; 26] = [
         // Une adresse d'exemple : elle s'écrit pareil partout.
         "flow_goal_hint",
         // Une adresse et deux noms propres : les traduire n'aurait pas
@@ -9570,6 +9590,12 @@ fn both_languages_say_the_same_things() {
         "tab_re",
         "view_console",
         "x87_empty",
+        // Le mot est le même des deux côtés de la Manche.
+        "calculator_expression",
+        "reading_octal",
+        "reading_ascii",
+        // Une expression de calcul : `0xff & 0x0f` ne se traduit pas.
+        "calculator_hint_text",
     ];
 
     let source = include_str!("i18n.rs");
@@ -9863,6 +9889,1401 @@ fn the_sidebar_tabs_live_in_the_toolbar() {
     app.show_sidebar = false;
     let painted = paint(&mut app);
     assert!(!painted.contains(s.tab_heap), "{painted}");
+}
+
+/// Réinitialiser se prend dans la barre d'outils.
+///
+/// Le programme terminé, Exécuter, Step Into et Step Over s'éteignent —
+/// et c'est justement là qu'on veut repartir de `_start`. L'action
+/// existait, mais ses trois chemins — le menu Outils, la palette,
+/// Ctrl+Maj+F5 — ont ceci de commun qu'aucun ne se voit : rien dans la
+/// barre ne disait qu'on pouvait recommencer.
+#[test]
+fn the_toolbar_offers_reset() {
+    let mut app = NamsdecApp {
+        show_toolbar: true,
+        ..Default::default()
+    };
+    let s = strings(app.lang);
+
+    let painted = paint(&mut app);
+    assert!(
+        painted.contains(s.action_reset),
+        "« {} » manque dans la barre d'outils : {painted}",
+        s.action_reset
+    );
+
+    // Et c'est bien la barre qui le porte, non un menu resté ouvert :
+    // sans elle, le libellé disparaît.
+    app.show_toolbar = false;
+    let painted = paint(&mut app);
+    assert!(
+        !painted.contains(s.action_reset),
+        "sans barre d'outils, le bouton ne doit venir de nulle part ailleurs : {painted}"
+    );
+}
+
+/// Réinitialiser remet tout ce qui décrivait la course précédente.
+///
+/// Le processeur repartait bien du point d'entrée, mais le reste de
+/// l'écran ne bougeait pas : les diagnostics du binaire restaient
+/// affichés avec leur compte, l'onglet restait ouvert dessus, et le
+/// listing ne quittait pas la ligne où l'exécution s'était arrêtée. Le
+/// bouton avait l'air de n'avoir rien fait.
+#[test]
+fn reset_clears_what_the_previous_run_left_behind() {
+    let Ok(octets) = std::fs::read("/bin/ls") else {
+        return;
+    };
+    let mut app = NamsdecApp::default();
+    assert!(app.load_elf(&octets, "ls"), "l'ELF se charge");
+
+    // Une séance ordinaire : on avance, puis on frappe Assembler par
+    // habitude — ce que namsdec refuse sur un listing de binaire.
+    for _ in 0..50 {
+        app.dispatch(Action::StepInto);
+    }
+    app.dispatch(Action::Assemble);
+    app.console_tab = ConsoleTab::Diagnostics;
+    app.follow_rip = false;
+    let entree = namsdec_asm::elf::parse(&octets).expect("un ELF").entry;
+    assert!(
+        matches!(app.status, Status::Error(_)),
+        "le refus de réassembler est bien affiché"
+    );
+    assert_ne!(
+        app.emulator.as_ref().expect("un émulateur").cpu().regs.rip,
+        entree,
+        "l'exécution a quitté le point d'entrée"
+    );
+
+    app.dispatch(Action::Reset);
+
+    assert_eq!(
+        app.emulator.as_ref().expect("un émulateur").cpu().regs.rip,
+        entree,
+        "le programme repart de son point d'entrée"
+    );
+    assert!(matches!(app.status, Status::Idle), "obtenu {:?}", app.status);
+    assert!(
+        app.diagnostics.is_empty(),
+        "les diagnostics du binaire s'en vont comme au chargement : {:?}",
+        app.diagnostics
+    );
+    assert_eq!(
+        app.console_tab,
+        ConsoleTab::Output,
+        "l'onglet ne reste pas ouvert sur des diagnostics qui n'existent plus"
+    );
+    assert!(app.follow_rip, "et le listing retourne au point d'entrée");
+    assert_eq!(app.run_steps_taken, 0);
+}
+
+/// Assembler se grise sur un listing de binaire, et revient dès qu'on
+/// touche au texte.
+///
+/// Le refus existait déjà, mais il arrivait après le clic : on frappait
+/// Assembler, on récoltait une erreur rouge, et rien ne l'avait annoncé.
+/// Un bouton qui échouera à tous les coups doit se voir avant, comme
+/// Exécuter et Step Into se grisent quand plus rien ne tourne.
+#[test]
+fn assembling_is_greyed_out_on_a_binary_listing() {
+    let Ok(octets) = std::fs::read("/bin/ls") else {
+        return;
+    };
+    let mut app = NamsdecApp::default();
+    assert!(
+        app.can_assemble(),
+        "sur un source ordinaire, rien n'empêche d'assembler"
+    );
+
+    assert!(app.load_elf(&octets, "ls"), "l'ELF se charge");
+    assert!(
+        !app.can_assemble(),
+        "le listing d'un binaire ouvert n'est pas un source"
+    );
+
+    // Réinitialiser ne rend pas un désassemblage assemblable : il remet
+    // la machine à son point d'entrée, pas le texte à l'état de source.
+    app.dispatch(Action::Reset);
+    assert!(!app.can_assemble(), "Réinitialiser ne change rien à cela");
+
+    // La porte de sortie est celle qu'annonce le message : modifier le
+    // texte. La première frappe suffit.
+    app.source.push_str("\n; à moi\n");
+    assert!(
+        app.can_assemble(),
+        "dès que le texte est touché, c'est un source comme un autre"
+    );
+
+    // Et le raccourci, lui, continue de passer par le refus expliqué :
+    // un geste qui ne vient pas d'un bouton visible mérite sa raison.
+    let mut app = NamsdecApp::default();
+    assert!(app.load_elf(&octets, "ls"));
+    app.dispatch(Action::Assemble);
+    assert!(
+        matches!(&app.status, Status::Error(e) if e == strings(app.lang).binary_no_reassemble),
+        "obtenu {:?}",
+        app.status
+    );
+}
+
+/// Échap reprend au champ d'entrée le focus qu'il avait pris.
+///
+/// Tant que le programme attend de quoi lire, le champ réclame le
+/// curseur à chaque frame. C'est ce qu'on veut — mais cela confisquait
+/// aussi les touches de l'éditeur, et « i » s'écrivait dans le champ au
+/// lieu de passer en Insertion, sans autre issue que la souris.
+#[test]
+fn escape_gives_the_keyboard_back_to_the_editor() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: "\
+section .bss
+buf resb 64
+section .text
+global _start
+_start:
+mov rax, 0
+mov rdi, 0
+mov rsi, buf
+mov rdx, 8
+syscall
+mov rax, 60
+mov rdi, 0
+syscall
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    app.do_run();
+    for _ in 0..40 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&egui::Context::default());
+    }
+    assert!(
+        matches!(app.status, Status::WaitingForInput),
+        "le programme attend son entrée : {:?}",
+        app.status
+    );
+
+    let ctx = egui::Context::default();
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 1400.0),
+        )),
+        ..Default::default()
+    };
+    let frame = |app: &mut NamsdecApp, ctx: &egui::Context, input: egui::RawInput| {
+        let mut output = ctx.run_ui(input, |ui| app.draw(ui));
+        output.textures_delta.clear();
+    };
+
+    frame(&mut app, &ctx, input.clone());
+    let au_champ = ctx.memory(|m| m.focused());
+    assert!(
+        au_champ.is_some(),
+        "le champ prend le curseur quand le programme attend"
+    );
+    assert_ne!(au_champ, Some(editor_id()), "et ce n'est pas l'éditeur");
+
+    // Échap, et le clavier revient aux commandes.
+    let mut avec_echap = input.clone();
+    avec_echap.events.push(egui::Event::Key {
+        key: egui::Key::Escape,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: egui::Modifiers::NONE,
+    });
+    frame(&mut app, &ctx, avec_echap);
+    assert_eq!(
+        ctx.memory(|m| m.focused()),
+        None,
+        "plus aucun champ ne retient les touches"
+    );
+    assert!(app.console_input_released, "et le champ ne le reprendra pas");
+    assert_eq!(app.editor_mode, EditorMode::Normal);
+
+    // Il ne le reprend pas à la frame suivante, bien que l'attente dure.
+    frame(&mut app, &ctx, input.clone());
+    assert!(matches!(app.status, Status::WaitingForInput));
+    assert_eq!(
+        ctx.memory(|m| m.focused()),
+        None,
+        "ce qu'on a refusé une fois ne revient pas de soi-même"
+    );
+
+    // Mais une nouvelle attente, elle, ramène le curseur : ce qu'on a
+    // refusé une fois, on ne le refuse pas pour toujours.
+    app.wait_for_input();
+    assert!(!app.console_input_released);
+}
+
+/// En mode Normal, la position du curseur se voit.
+///
+/// Le `TextEdit` n'y est pas interactif — c'est ce qui laisse les
+/// touches aux commandes —, donc egui ne peint aucun caret et ne rend
+/// plus de `cursor_range`. La barre de statut restait figée sur la
+/// première colonne et rien, dans le code, ne disait où l'insertion
+/// reprendrait.
+#[test]
+fn normal_mode_still_shows_where_the_cursor_is() {
+    let mut app = NamsdecApp {
+        source: "mov rax, 60\nmov rdi, 0\nsyscall\n".to_owned(),
+        editor_mode: EditorMode::Normal,
+        ..Default::default()
+    };
+    let ctx = egui::Context::default();
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 1400.0),
+        )),
+        ..Default::default()
+    };
+    let frame = |app: &mut NamsdecApp| {
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        let rects = output
+            .shapes
+            .iter()
+            .filter_map(|clipped| match &clipped.shape {
+                egui::epaint::Shape::Rect(forme) => Some(forme.rect),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        output.textures_delta.clear();
+        rects
+    };
+
+    frame(&mut app);
+    // Le curseur est posé sur la deuxième ligne, comme le ferait un clic.
+    let cible = "mov rax, 60\n".chars().count() + 4;
+    if let Some(mut state) = egui::TextEdit::load_state(&ctx, editor_id()) {
+        state
+            .cursor
+            .set_char_range(Some(egui::text::CCursorRange::one(
+                egui::text::CCursor::new(cible),
+            )));
+        state.store(&ctx, editor_id());
+    }
+    let rects = frame(&mut app);
+
+    assert_eq!(
+        app.cursor_pos,
+        (2, 5),
+        "la barre de statut suit le curseur même sans focus"
+    );
+    // Un bloc de la largeur d'un caractère : assez fin pour n'être ni le
+    // fond de l'éditeur, ni la ligne surlignée.
+    let police = egui::TextStyle::Monospace.resolve(&ctx.style_of(egui::Theme::Dark));
+    let largeur = ctx.fonts_mut(|f| f.glyph_width(&police, ' '));
+    assert!(
+        rects
+            .iter()
+            .any(|r| (r.width() - largeur).abs() < 0.5 && r.height() > 1.0),
+        "un bloc large d'un caractère est peint quelque part"
+    );
+}
+
+/// L'onglet Modules montre tous les modules, pas la moitié.
+///
+/// Il en affichait cinq — core, asm, disasm, emu, re — sur les dix que
+/// namsdec porte. L'explorateur, la documentation, les exercices, les
+/// thèmes et la recherche de mise à jour n'avaient aucune carte : rien
+/// ne disait qu'ils existaient, ni dans quel état ils étaient.
+///
+/// Le test nomme les crates un par un plutôt que de compter : un module
+/// ajouté au dépôt et oublié ici doit faire échouer quelque chose.
+#[test]
+fn the_modules_tab_shows_every_module_namsdec_carries() {
+    let app = NamsdecApp::default();
+
+    // La page seule, sur une hauteur qui la contient tout entière : dans
+    // la fenêtre des préférences elle défile, et egui ne peint pas ce
+    // qu'une zone défilante laisse hors de vue. Ce qu'on vérifie ici est
+    // ce que la page écrit, non ce que la fenêtre en montre d'un coup.
+    let ctx = egui::Context::default();
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 4000.0),
+        )),
+        ..Default::default()
+    };
+    let mut peint = String::new();
+    for _ in 0..2 {
+        peint.clear();
+        let mut sortie = ctx.run_ui(input.clone(), |ui| app.modules_ui(ui));
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(texte) = &clipped.shape {
+                peint.push_str(texte.galley.text());
+                peint.push('|');
+            }
+        }
+        sortie.textures_delta.clear();
+    }
+
+    for module in [
+        "namsdec-core",
+        "namsdec-asm",
+        "namsdec-disasm",
+        "namsdec-emu",
+        "namsdec-re",
+        "namsdec-explorer",
+        "namsdec-doc",
+        "namsdec-exercises",
+        "namsdec-theme",
+        "namsdec-update",
+    ] {
+        assert!(
+            peint.contains(module),
+            "« {module} » doit avoir sa carte dans l'onglet Modules :\n{peint}"
+        );
+    }
+
+    // Les modules d'analyse sont nommés un par un, et non entassés dans
+    // une ligne de titres séparés par des virgules.
+    let s = strings(app.lang);
+    assert!(peint.contains(s.modules_re_detail), "{peint}");
+    for titre in app.re_registry.titles(app.lang.code()) {
+        assert!(
+            peint.contains(titre),
+            "le module d'analyse « {titre} » doit se lire :\n{peint}"
+        );
+    }
+
+    // Et la section de ce qui vient de fichiers, même vide : son absence
+    // et « aucun greffon » ne se disent pas de la même façon.
+    assert!(peint.contains(s.modules_plugins), "{peint}");
+}
+
+/// Une instruction trop longue est coupée, pas laissée à déborder.
+///
+/// Les boîtes avaient une largeur fixe et le texte n'était jamais
+/// mesuré : « jne near 000000000001D903h » sortait de son cadre et se
+/// posait sur la boîte voisine. Sur un binaire réel, le dessin devenait
+/// illisible avant même d'être grand.
+#[test]
+fn a_long_instruction_is_cut_rather_than_spilled() {
+    assert_eq!(flow_ellipsis("mov rax, rbx", 20), "mov rax, rbx");
+    // Pile la largeur : rien à couper.
+    assert_eq!(flow_ellipsis("mov rax, rbx", 12), "mov rax, rbx");
+    // Un caractère de trop : on coupe, et l'on montre qu'on a coupé.
+    let coupé = flow_ellipsis("jne near 000000000001D903h", 12);
+    assert_eq!(coupé.chars().count(), 12, "la coupe tient dans la boîte");
+    assert!(coupé.ends_with('…'), "et se voit : {coupé}");
+    assert!(coupé.starts_with("jne near"), "{coupé}");
+    // Les caractères accentués comptent pour un, pas pour leurs octets.
+    assert_eq!(flow_ellipsis("éééééé", 3), "éé…");
+}
+
+/// La boîte s'élargit pour ce qu'elle porte, entre deux bornes.
+///
+/// Une largeur commune à tout le graphe : les colonnes restent alignées,
+/// ce qui est la moitié de ce qu'un tel dessin sert à montrer.
+#[test]
+fn flow_boxes_take_the_width_their_text_needs() {
+    let ctx = egui::Context::default();
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 900.0),
+        )),
+        ..Default::default()
+    };
+
+    let mesure = |cfg: &namsdec_re::cfg::Cfg| {
+        let mut large = 0.0;
+        for _ in 0..2 {
+            let mut sortie = ctx.run_ui(input.clone(), |ui| {
+                let police = egui::FontId::monospace(11.0);
+                large = flow_box_width(ui, cfg, strings(Lang::Fr), &police, 1.0);
+            });
+            sortie.textures_delta.clear();
+        }
+        large
+    };
+
+    // Un programme aux instructions courtes, et le même avec une
+    // instruction longue : le second doit demander plus de place.
+    let court = namsdec_re::cfg::build(&disassemble_code(
+        &namsdec_asm::assemble("section .text\nglobal _start\n_start:\nnop\nhlt\n", BASE_ADDR)
+            .expect("l'assemblage"),
+    ));
+    let long = namsdec_re::cfg::build(&disassemble_code(
+        &namsdec_asm::assemble(
+            "section .text\nglobal _start\n_start:\nmov qword [rax+rbx*8+0x11223344], 0x55667788\nhlt\n",
+            BASE_ADDR,
+        )
+        .expect("l'assemblage"),
+    ));
+
+    let (étroit, large) = (mesure(&court), mesure(&long));
+    assert!(
+        large > étroit,
+        "une instruction plus longue demande une boîte plus large : {large} contre {étroit}"
+    );
+    // Et jamais au-delà des bornes : une seule instruction bavarde ne
+    // doit pas étaler le graphe entier.
+    assert!((220.0..=560.0).contains(&large), "{large}");
+    assert!((220.0..=560.0).contains(&étroit), "{étroit}");
+}
+
+/// Changer de langue retraduit ce qui est déjà affiché.
+///
+/// La barre de statut gardait le texte figé dans la langue où la note
+/// avait été posée : on chargeait un binaire en anglais, on passait en
+/// français, et l'avertissement restait en anglais — dans la barre comme
+/// dans son infobulle, qui montre la même phrase en entier.
+#[test]
+fn switching_language_retranslates_what_is_already_on_screen() {
+    let mut app = NamsdecApp {
+        lang: Lang::En,
+        ..Default::default()
+    };
+    app.status = Status::Note(|s| s.binary_dynamic);
+
+    let anglais = match &app.status {
+        Status::Note(phrase) => phrase(strings(app.lang)),
+        autre => panic!("obtenu {autre:?}"),
+    };
+    assert!(anglais.contains("dynamically linked"), "{anglais}");
+
+    // La même note, lue en français : c'est la lecture qui traduit.
+    app.lang = Lang::Fr;
+    let français = match &app.status {
+        Status::Note(phrase) => phrase(strings(app.lang)),
+        autre => panic!("obtenu {autre:?}"),
+    };
+    assert!(français.contains("lié dynamiquement"), "{français}");
+    assert_ne!(anglais, français, "la note suit la langue");
+
+    // Et ce que la barre peint suit, elle aussi.
+    let peint = paint(&mut app);
+    assert!(
+        peint.contains("lié dynamiquement"),
+        "la barre de statut doit être en français :\n{peint}"
+    );
+}
+
+/// Une boîte est assez haute pour tout ce qu'elle écrit.
+///
+/// Elle comptait l'en-tête et les huit instructions montrées, mais pas
+/// la ligne « … 4 » qui dit combien restent : celle-ci se peignait sous
+/// le cadre, à côté du bloc d'en dessous.
+#[test]
+fn a_block_is_tall_enough_for_the_line_that_counts_the_rest() {
+    const LIGNES_MAX: usize = 8;
+    // La règle telle que le dessin l'applique : l'en-tête, ce qu'on
+    // montre, et la ligne de reste quand il y en a un.
+    let lignes = |combien: usize| 1 + combien.min(LIGNES_MAX) + usize::from(combien > LIGNES_MAX);
+
+    // Un bloc court : l'en-tête et ses instructions, rien de plus.
+    assert_eq!(lignes(3), 4);
+    // Pile la limite : rien n'est caché, donc pas de ligne de reste.
+    assert_eq!(lignes(LIGNES_MAX), LIGNES_MAX + 1);
+    // Une de trop : la ligne « … 1 » doit avoir sa place.
+    assert_eq!(lignes(LIGNES_MAX + 1), LIGNES_MAX + 2);
+    // Et le bloc de la capture : douze instructions, huit montrées.
+    assert_eq!(lignes(12), 10);
+}
+
+/// L'en-tête d'un bloc et « le programme est ici » ne se recouvrent pas.
+///
+/// Les deux étaient peints aux deux bouts de la même ligne sans que
+/// personne ne mesure la place : sur une boîte étroite, le libellé
+/// venait s'imprimer par-dessus l'adresse, et l'on ne lisait plus ni
+/// l'un ni l'autre. La largeur des boîtes leur réserve désormais de quoi
+/// tenir côte à côte.
+#[test]
+fn a_block_header_and_the_here_label_never_overlap() {
+    let ctx = egui::Context::default();
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 900.0),
+        )),
+        ..Default::default()
+    };
+
+    // Le cas le plus serré : un programme dont toutes les instructions
+    // sont courtes, où rien d'autre ne force la boîte à s'élargir.
+    let cfg = namsdec_re::cfg::build(&disassemble_code(
+        &namsdec_asm::assemble(
+            "section .text\nglobal _start\n_start:\nnop\nhlt\n",
+            BASE_ADDR,
+        )
+        .expect("l'assemblage"),
+    ));
+
+    for lang in [Lang::Fr, Lang::En] {
+        let s = strings(lang);
+        let mut large = 0.0;
+        let mut glyphe = 0.0;
+        for _ in 0..2 {
+            let mut sortie = ctx.run_ui(input.clone(), |ui| {
+                let police = egui::FontId::monospace(11.0);
+                large = flow_box_width(ui, &cfg, s, &police, 1.0);
+                glyphe = ui.ctx().fonts_mut(|f| f.glyph_width(&police, ' '));
+            });
+            sortie.textures_delta.clear();
+        }
+        // Ce qui tient dans la boîte, marges déduites — le même calcul
+        // que le dessin.
+        let colonnes = ((large - 12.0) / glyphe).floor() as usize;
+        // « 0x0001d491  ? » puis le libellé, avec de quoi les séparer.
+        let nécessaire = 16 + s.flow_here.chars().count() + 3;
+        assert!(
+            colonnes >= nécessaire,
+            "{lang:?} : {colonnes} colonnes pour {nécessaire} nécessaires — \
+             « {} » recouvrirait l'adresse",
+            s.flow_here
+        );
+    }
+}
+
+/// Une fenêtre interne s'agrandit et retrouve sa taille.
+///
+/// Une `egui::Window` n'a pas les pastilles du système : elle se traîne
+/// et se redimensionne à la main, ce qui est long quand on veut
+/// simplement tout voir — un graphe de blocs ou du C décompilé se lisent
+/// sur toute la hauteur qu'on a.
+#[test]
+fn an_inner_window_can_be_maximized_and_restored() {
+    let mut app = NamsdecApp::default();
+    assert!(!app.window_maximized(NamsdecApp::FLOW_WINDOW));
+
+    app.toggle_maximized(NamsdecApp::FLOW_WINDOW);
+    assert!(app.window_maximized(NamsdecApp::FLOW_WINDOW));
+    // Chaque fenêtre garde son état : agrandir l'une n'agrandit pas
+    // l'autre.
+    assert!(!app.window_maximized(NamsdecApp::DECOMPILER_WINDOW));
+
+    app.toggle_maximized(NamsdecApp::DECOMPILER_WINDOW);
+    assert!(app.window_maximized(NamsdecApp::DECOMPILER_WINDOW));
+    assert!(app.window_maximized(NamsdecApp::FLOW_WINDOW));
+
+    app.toggle_maximized(NamsdecApp::FLOW_WINDOW);
+    assert!(!app.window_maximized(NamsdecApp::FLOW_WINDOW));
+    assert!(
+        app.window_maximized(NamsdecApp::DECOMPILER_WINDOW),
+        "rendre sa taille à l'une laisse l'autre agrandie"
+    );
+
+    // Le rectangle d'une fenêtre agrandie.
+    let ctx = egui::Context::default();
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 900.0),
+        )),
+        ..Default::default()
+    };
+    let mut sortie = ctx.run_ui(input, |_ui| {});
+    sortie.textures_delta.clear();
+    // Agrandie veut dire tout l'écran. Une marge décorative, même de
+    // douze pixels, laissait voir ce que la fenêtre recouvre : elle
+    // n'avait pas l'air agrandie, elle avait l'air mal posée.
+    let rect = NamsdecApp::maximized_rect(&ctx);
+    assert_eq!(rect, ctx.viewport_rect(), "toute la place, sans marge");
+}
+
+/// Le bouton du bandeau agrandit vraiment la fenêtre.
+///
+/// Il est dessiné par-dessus la fenêtre, à la géométrie que celle-ci
+/// emploie pour sa croix : on vérifie que le clic y arrive, et non
+/// seulement que le dessin tombe au bon endroit.
+#[test]
+fn the_title_bar_button_really_maximizes_the_window() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: "section .text\nglobal _start\n_start:\nnop\nhlt\n".to_owned(),
+        show_flow: true,
+        ..Default::default()
+    };
+    app.do_assemble();
+
+    let ctx = egui::Context::default();
+    let base = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 900.0),
+        )),
+        ..Default::default()
+    };
+    let frame = |app: &mut NamsdecApp, input: egui::RawInput| {
+        let mut sortie = ctx.run_ui(input, |ui| app.draw(ui));
+        sortie.textures_delta.clear();
+    };
+    // Trois passes : la fenêtre doit exister et avoir sa place avant
+    // qu'on vise quoi que ce soit dedans.
+    for _ in 0..3 {
+        frame(&mut app, base.clone());
+    }
+    assert!(!app.window_maximized(NamsdecApp::FLOW_WINDOW));
+
+    // Là où le bouton se trouve, calculé comme le dessin le calcule.
+    let style = ctx.style_of(ctx.theme());
+    let case = ctx.fonts_mut(|f| f.row_height(&egui::TextStyle::Heading.resolve(&style)));
+    let écart = style.spacing.item_spacing.x;
+    let marge_droite = f32::from(style.spacing.window_margin.right);
+    let marge_haut = f32::from(style.spacing.window_margin.top);
+    let rect = ctx
+        .memory(|m| m.area_rect(egui::Id::new("flow_window")))
+        .expect("la fenêtre est ouverte");
+    let croix = egui::Rect::from_min_size(
+        egui::pos2(rect.right() - marge_droite - case, rect.top() + marge_haut),
+        egui::vec2(case, case),
+    );
+    let cible = croix.translate(egui::vec2(-(case + écart), 0.0)).center();
+    assert!(
+        rect.contains(cible),
+        "le bouton doit tomber dans la fenêtre : {cible:?} hors de {rect:?}"
+    );
+
+    let mut presse = base.clone();
+    presse.events.push(egui::Event::PointerMoved(cible));
+    presse.events.push(egui::Event::PointerButton {
+        pos: cible,
+        button: egui::PointerButton::Primary,
+        pressed: true,
+        modifiers: egui::Modifiers::NONE,
+    });
+    frame(&mut app, presse);
+    let mut relâche = base.clone();
+    relâche.events.push(egui::Event::PointerButton {
+        pos: cible,
+        button: egui::PointerButton::Primary,
+        pressed: false,
+        modifiers: egui::Modifiers::NONE,
+    });
+    frame(&mut app, relâche);
+
+    assert!(
+        app.window_maximized(NamsdecApp::FLOW_WINDOW),
+        "le clic sur le bouton du bandeau doit agrandir la fenêtre"
+    );
+    // Et agrandir veut dire tout prendre.
+    frame(&mut app, base.clone());
+    let agrandie = ctx
+        .memory(|m| m.area_rect(egui::Id::new("flow_window")))
+        .expect("toujours ouverte");
+    assert!(
+        agrandie.width() > rect.width() && agrandie.height() > rect.height(),
+        "{agrandie:?} n'est pas plus grande que {rect:?}"
+    );
+}
+
+/// « Installer… » ouvre son plan, et le plan se voit.
+///
+/// Le bouton posait bien la demande, et la fenêtre se dessinait bien —
+/// mais derrière celle des préférences, d'où elle était partie. On
+/// cliquait, et il ne se passait rien de visible.
+#[test]
+fn the_install_button_brings_its_plan_to_the_front() {
+    let mut app = NamsdecApp {
+        show_preferences: true,
+        preferences_tab: PreferencesTab::Tools,
+        show_decompiler_module: true,
+        show_installer_module: true,
+        ..Default::default()
+    };
+    let s = strings(app.lang);
+    let ctx = egui::Context::default();
+    let entrée = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 1400.0),
+        )),
+        ..Default::default()
+    };
+
+    // Où se trouve le bouton, d'après ce qui est peint.
+    let mut cible = None;
+    for _ in 0..3 {
+        cible = None;
+        let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(texte) = &clipped.shape
+                && texte.galley.text() == s.install_button
+            {
+                let milieu = texte.pos + texte.galley.size() / 2.0;
+                // **Visible**, et pas seulement peint : la liste des
+                // outils défile, et le dernier bouton peint est souvent
+                // celui qui dépasse du bas. Cliquer à sa position ne
+                // l'atteindrait pas — le test échouait alors en accusant
+                // le clic, alors que c'est la cible qui était mauvaise.
+                if clipped.clip_rect.contains(milieu) {
+                    cible = Some(milieu);
+                    break;
+                }
+            }
+        }
+        sortie.textures_delta.clear();
+    }
+    // Pas de bouton s'il n'y a rien à installer : sur une machine où
+    // tout est déjà bâti, ce test n'a rien à observer. Il le dit plutôt
+    // que d'échouer sur l'état du poste.
+    let Some(cible) = cible else {
+        return;
+    };
+
+    let mut presse = entrée.clone();
+    presse.events.push(egui::Event::PointerMoved(cible));
+    presse.events.push(egui::Event::PointerButton {
+        pos: cible,
+        button: egui::PointerButton::Primary,
+        pressed: true,
+        modifiers: egui::Modifiers::NONE,
+    });
+    let mut sortie = ctx.run_ui(presse, |ui| app.draw(ui));
+    sortie.textures_delta.clear();
+    let mut relâche = entrée.clone();
+    relâche.events.push(egui::Event::PointerButton {
+        pos: cible,
+        button: egui::PointerButton::Primary,
+        pressed: false,
+        modifiers: egui::Modifiers::NONE,
+    });
+    let mut sortie = ctx.run_ui(relâche, |ui| app.draw(ui));
+    sortie.textures_delta.clear();
+
+    // Le plan demandé est celui d'un outil qui a vraiment besoin d'être
+    // installé — et non un nom écrit en dur : lequel des outils porte un
+    // bouton « Installer » dépend de ce que la machine a déjà. Nommer
+    // « rizin-ghidra » faisait échouer le test sur un poste où rizin
+    // était complet, c'est-à-dire là où tout allait bien.
+    let plan = app
+        .install_plan
+        .as_deref()
+        .expect("le clic doit demander un plan");
+    let outils = data_dir().map(|dir| namsdec_disasm::install::tools_dir(&dir));
+    let outil = namsdec_disasm::known::all()
+        .into_iter()
+        .find(|k| k.plugin.id == plan)
+        .unwrap_or_else(|| panic!("« {plan} » doit être un outil connu"));
+    assert_ne!(
+        outil.availability_in(outils.as_deref()),
+        namsdec_disasm::known::Availability::Ready,
+        "« {plan} » est déjà prêt : son bouton « Installer » n'avait rien à faire là"
+    );
+
+    // Et la fenêtre passe devant : son calque est au premier plan, non
+    // rangé avec les fenêtres ordinaires comme les préférences.
+    let mut sortie = ctx.run_ui(entrée, |ui| app.draw(ui));
+    sortie.textures_delta.clear();
+    let calque = ctx.memory(|m| {
+        m.layer_ids()
+            .find(|id| id.id == egui::Id::new("installer_window"))
+    });
+    assert_eq!(
+        calque.map(|c| c.order),
+        Some(egui::Order::Foreground),
+        "le plan doit se poser au-dessus des préférences d'où il part"
+    );
+}
+
+/// Quand le programme attend de quoi lire, on voit où taper.
+///
+/// Le champ et ses deux boutons sont la seule façon de répondre à un
+/// programme qui demande quelque chose : s'ils manquent, l'exécution
+/// reste suspendue sans qu'on puisse rien y faire.
+#[test]
+fn a_program_waiting_for_input_shows_where_to_type() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: "\
+section .bss
+buf resb 64
+section .text
+global _start
+_start:
+mov rax, 0
+mov rdi, 0
+mov rsi, buf
+mov rdx, 8
+syscall
+mov rax, 60
+mov rdi, 0
+syscall
+"
+        .to_owned(),
+        // La hauteur qu'on obtient en tirant la poignée : c'est dans cet
+        // état que le champ avait disparu.
+        console_height: Some(128.0),
+        ..Default::default()
+    };
+    app.do_assemble();
+    app.do_run();
+    for _ in 0..40 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&egui::Context::default());
+    }
+    assert!(
+        matches!(app.status, Status::WaitingForInput),
+        "obtenu {:?}",
+        app.status
+    );
+
+    let s = strings(app.lang);
+    let ctx = egui::Context::default();
+    // Deux formats : une fenêtre haute et une fenêtre large. La saisie
+    // est en bas d'un panneau lui-même en bas ; c'est le genre de chose
+    // qu'une hauteur mal comptée pousse hors de l'écran.
+    for (largeur, hauteur) in [(1280.0, 1400.0), (1999.0, 1208.0)] {
+        let entrée = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(largeur, hauteur),
+            )),
+            ..Default::default()
+        };
+        let mut peint = String::new();
+        for _ in 0..3 {
+            peint.clear();
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(texte) = &clipped.shape {
+                    peint.push_str(texte.galley.text());
+                    peint.push('|');
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+        for attendu in [s.console_send, s.console_eof, s.console_waiting] {
+            assert!(
+                peint.contains(attendu),
+                "« {attendu} » manque en {largeur}x{hauteur} :\n{peint}"
+            );
+        }
+    }
+}
+
+/// La ligne de saisie s'ouvre dès qu'on sait que le programme lira.
+///
+/// Un binaire lié dynamiquement ne fait aucun `syscall` de lecture : il
+/// appelle `fgets` ou `scanf`, que namsdec fournit lui-même. Le scan des
+/// appels système ne voyait donc rien, et la ligne n'apparaissait qu'au
+/// moment où le programme se bloquait — après coup.
+#[test]
+fn the_input_line_opens_as_soon_as_we_know_the_program_will_read() {
+    // Les noms que l'éditeur de liens écrit de dix façons.
+    for nom in [
+        "fgets",
+        "scanf",
+        "__isoc99_scanf",
+        "gets@GLIBC_2.2.5",
+        "read",
+        "getchar",
+    ] {
+        assert!(
+            namsdec_emu::name_reads_input(nom),
+            "« {nom} » réclame une entrée"
+        );
+    }
+    for nom in ["printf", "puts", "strcmp", "malloc", "exit"] {
+        assert!(
+            !namsdec_emu::name_reads_input(nom),
+            "« {nom} » ne réclame rien"
+        );
+    }
+
+    // Et sur un vrai binaire : celui-ci demande un mot de passe, sans
+    // jamais faire de syscall de lecture lui-même.
+    let Ok(octets) = std::fs::read("/home/fred/CrackMe/crackme-01") else {
+        return;
+    };
+    let mut app = NamsdecApp::default();
+    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    assert!(
+        app.program_reads,
+        "namsdec doit savoir qu'il demandera quelque chose avant de le lancer"
+    );
+
+    // La ligne est donc là dès le chargement, sans avoir rien exécuté.
+    let s = strings(app.lang);
+    let peint = paint(&mut app);
+    for attendu in [s.console_send, s.console_eof] {
+        assert!(peint.contains(attendu), "« {attendu} » manque :\n{peint}");
+    }
+}
+
+/// Les arguments d'un programme se donnent, et arrivent sur sa pile.
+///
+/// Beaucoup de programmes — et la plupart des crackmes — lisent leur mot
+/// de passe dans `argv[1]` plutôt que sur l'entrée standard. Le chargeur
+/// posait une pile avec `argc = 1` et rien d'autre : on ne pouvait
+/// qu'assister à un « usage: … » sans jamais rien pouvoir tenter.
+#[test]
+fn a_program_can_be_given_its_arguments() {
+    // La ligne se découpe comme un interpréteur le ferait.
+    assert_eq!(split_args(""), Vec::<String>::new());
+    assert_eq!(split_args("  "), Vec::<String>::new());
+    assert_eq!(split_args("un deux"), vec!["un", "deux"]);
+    assert_eq!(split_args("  un   deux  "), vec!["un", "deux"]);
+    // Les guillemets groupent : un mot de passe peut contenir une espace.
+    assert_eq!(
+        split_args("\"mon mot de passe\" autre"),
+        vec!["mon mot de passe", "autre"]
+    );
+    assert_eq!(split_args("'a b' c"), vec!["a b", "c"]);
+    // Une chaîne vide entre guillemets reste un argument.
+    assert_eq!(split_args("\"\" x"), vec!["", "x"]);
+
+    // Et sur un vrai binaire : ce qu'on donne se retrouve dans argv.
+    let Ok(octets) = std::fs::read("/home/fred/CrackMe/crackme-01") else {
+        return;
+    };
+    let mut app = NamsdecApp {
+        program_args: "sesame \"deux mots\"".to_owned(),
+        ..Default::default()
+    };
+    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+
+    let binaire = app
+        .assemble_state
+        .as_ref()
+        .and_then(|état| état.from_binary.as_ref())
+        .expect("un binaire chargé");
+    assert_eq!(
+        binaire.load.argv,
+        vec!["crackme-01", "sesame", "deux mots"],
+        "argv[0] est le nom, puis ce qu'on a donné"
+    );
+
+    // La pile le dit aussi : argc vaut trois.
+    let emulator = app.emulator.as_ref().expect("un émulateur");
+    let rsp = emulator.cpu().regs.get64(Reg64::Rsp);
+    let argc = emulator.cpu().mem.read_u64(rsp).expect("argc");
+    assert_eq!(argc, 3, "argc compte le nom du programme et les deux autres");
+}
+
+/// Les deux lignes de la zone de saisie ne se chevauchent pas.
+///
+/// Le champ des arguments avait une largeur devinée — « la place
+/// disponible moins cent quarante » —, si bien que la ligne débordait du
+/// cadre par le haut et que « Recharger » sortait par la droite. Deux
+/// libellés de largeurs différentes faisaient en outre commencer les
+/// champs à des abscisses différentes.
+#[test]
+fn the_input_rows_line_up_and_stay_inside_their_frame() {
+    let Ok(octets) = std::fs::read("/home/fred/CrackMe/crackme-01") else {
+        return;
+    };
+    let mut app = NamsdecApp::default();
+    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+
+    let s = strings(app.lang);
+    let ctx = egui::Context::default();
+    let entrée = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1999.0, 1208.0),
+        )),
+        ..Default::default()
+    };
+    // Où chaque texte est peint, et dans quel rectangle il est découpé.
+    let mut vus: std::collections::BTreeMap<String, (egui::Pos2, egui::Rect)> =
+        std::collections::BTreeMap::new();
+    for _ in 0..3 {
+        vus.clear();
+        let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(texte) = &clipped.shape {
+                vus.insert(
+                    texte.galley.text().to_owned(),
+                    (texte.pos, clipped.clip_rect),
+                );
+            }
+        }
+        sortie.textures_delta.clear();
+    }
+
+    let (args, _) = vus
+        .get(s.console_args)
+        .copied()
+        .expect("le libellé des arguments");
+    let (entrée_lbl, cadre) = vus
+        .get(s.console_input_label)
+        .copied()
+        .expect("le libellé de l'entrée");
+    let (recharger, _) = vus
+        .get(s.console_args_apply)
+        .copied()
+        .expect("le bouton Recharger");
+    let (envoyer, _) = vus.get(s.console_send).copied().expect("le bouton Envoyer");
+
+    // Les deux libellés commencent à la même abscisse.
+    assert!(
+        (args.x - entrée_lbl.x).abs() < 0.5,
+        "les libellés doivent s'aligner : {} contre {}",
+        args.x,
+        entrée_lbl.x
+    );
+    // Les arguments sont au-dessus de l'entrée, sur deux lignes
+    // distinctes.
+    assert!(
+        args.y < entrée_lbl.y,
+        "les arguments viennent avant l'entrée : {args:?} / {entrée_lbl:?}"
+    );
+    // Et les deux boutons de droite tiennent dans le cadre.
+    for (nom, pos) in [("Recharger", recharger), ("Envoyer", envoyer)] {
+        assert!(
+            cadre.contains(pos),
+            "« {nom} » sort du cadre : {pos:?} hors de {cadre:?}"
+        );
+    }
+    // Les boutons de droite sont bien à droite des champs.
+    assert!(recharger.x > args.x + 200.0, "{recharger:?}");
+}
+
+/// Les variables d'environnement se donnent, et l'emportent.
+///
+/// Le chargeur écrivait cinq variables en dur : un programme qui lit
+/// `getenv("SECRET")` ne pouvait rien recevoir.
+#[test]
+fn a_program_can_be_given_its_environment() {
+    let Ok(octets) = std::fs::read("/home/fred/CrackMe/crackme-01") else {
+        return;
+    };
+    let mut app = NamsdecApp {
+        program_env: "SECRET=sesame\n\nLANG=fr_FR.UTF-8\n".to_owned(),
+        ..Default::default()
+    };
+    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+
+    // On relit la pile là où le programme ira les chercher : après argv
+    // et son zéro terminal.
+    let emulator = app.emulator.as_ref().expect("un émulateur");
+    let cpu = emulator.cpu();
+    let rsp = cpu.regs.get64(Reg64::Rsp);
+    let argc = cpu.mem.read_u64(rsp).expect("argc");
+    let mut at = rsp + 8 + argc * 8 + 8; // argc, argv…, le zéro
+    let mut vues = Vec::new();
+    loop {
+        let pointeur = cpu.mem.read_u64(at).expect("une variable");
+        if pointeur == 0 {
+            break;
+        }
+        let mut texte = Vec::new();
+        let mut octet = pointeur;
+        while let Ok(o) = cpu.mem.peek_bytes(octet, 1) {
+            if o[0] == 0 {
+                break;
+            }
+            texte.push(o[0]);
+            octet += 1;
+        }
+        vues.push(String::from_utf8_lossy(&texte).into_owned());
+        at += 8;
+        assert!(vues.len() < 32, "l'environnement se termine");
+    }
+
+    assert!(
+        vues.iter().any(|v| v == "SECRET=sesame"),
+        "la variable ajoutée doit être là : {vues:?}"
+    );
+    // Celle qu'on redéfinit l'emporte, et n'apparaît qu'une fois.
+    assert!(
+        vues.iter().any(|v| v == "LANG=fr_FR.UTF-8"),
+        "la variable redéfinie doit être la nôtre : {vues:?}"
+    );
+    assert!(
+        !vues.iter().any(|v| v == "LANG=C"),
+        "celle d'origine ne doit pas rester à côté : {vues:?}"
+    );
+    // Et celles qu'on n'a pas touchées restent.
+    assert!(vues.iter().any(|v| v.starts_with("PATH=")), "{vues:?}");
+    // Les lignes vides ne deviennent pas des variables vides.
+    assert!(!vues.iter().any(String::is_empty), "{vues:?}");
+}
+
+/// Le mode Normal se promène dans le code.
+///
+/// `i` entrait en Insertion, Échap en sortait, et c'était tout : on ne
+/// pouvait pas bouger le curseur sans repasser par la souris — la
+/// première chose que cherche quiconque vient de vim.
+#[test]
+fn normal_mode_moves_the_cursor_like_vim() {
+    let source = "mov rax, 1\nnop\nsyscall\n";
+    // Position 0 : début de la première ligne.
+    assert_eq!(move_cursor(source, 0, Move::Right), 1);
+    // `h` et `l` ne quittent pas leur ligne, comme dans vim.
+    assert_eq!(move_cursor(source, 0, Move::Left), 0, "rien à gauche du début");
+    assert_eq!(move_cursor(source, 10, Move::Right), 10, "rien après la fin de ligne");
+    // Début et fin de ligne.
+    assert_eq!(move_cursor(source, 5, Move::LineStart), 0);
+    assert_eq!(move_cursor(source, 5, Move::LineEnd), 10);
+    // Descendre garde la colonne quand la ligne visée est assez longue.
+    assert_eq!(move_cursor(source, 2, Move::Down), 13, "ligne 2, colonne 2");
+    // Et la raccourcit sinon : « nop » n'a que trois caractères.
+    assert_eq!(move_cursor(source, 8, Move::Down), 14, "collé à la fin de « nop »");
+    // Remonter de même.
+    assert_eq!(move_cursor(source, 13, Move::Up), 2);
+    assert_eq!(move_cursor(source, 2, Move::Up), 2, "rien au-dessus de la première");
+    // La fin du fichier.
+    assert_eq!(move_cursor(source, 0, Move::FileEnd), source.chars().count());
+
+    // Les caractères comptent pour un, non pour leurs octets : sans quoi
+    // le curseur tomberait au milieu d'un « é ».
+    let accentué = "; déjà vu\nnop\n";
+    let fin = move_cursor(accentué, 0, Move::LineEnd);
+    assert_eq!(fin, 9, "neuf caractères, non douze octets");
+    assert_eq!(move_cursor(accentué, fin, Move::Down), 13);
+}
+
+/// Tous les binaires du dossier d'épreuve se chargent et tournent.
+///
+/// Le dossier `tests/binaires/` est vide dans le dépôt : chacun y dépose
+/// ce qu'il veut voir tenir — crackmes, exercices, programmes tordus. Le
+/// test ne juge pas ce qu'ils font ; il vérifie que namsdec sait les lire
+/// sans se rompre.
+///
+/// Un programme qui s'arrête sur un appel système non simulé n'est pas un
+/// échec : c'est exactement ce que namsdec doit dire plutôt que de partir
+/// dans le décor. Ce qu'on refuse, c'est la panique, le désassemblage
+/// vide, et le point d'entrée qui ne mène nulle part.
+#[test]
+fn every_binary_here_loads_and_runs() {
+    let dossier = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/binaires")
+        .canonicalize();
+    let Ok(dossier) = dossier else {
+        return;
+    };
+    let Ok(entrées) = std::fs::read_dir(&dossier) else {
+        return;
+    };
+
+    let mut vus = 0;
+    for entrée in entrées.filter_map(Result::ok) {
+        let chemin = entrée.path();
+        // Le mode d'emploi et le .gitignore ne sont pas des programmes.
+        if !chemin.is_file()
+            || chemin
+                .extension()
+                .is_some_and(|e| e == "md" || e == "txt" || e == "gitignore")
+            || chemin.file_name().is_some_and(|n| n == ".gitignore")
+        {
+            continue;
+        }
+        let Ok(octets) = std::fs::read(&chemin) else {
+            continue;
+        };
+        let nom = chemin
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+
+        let mut app = NamsdecApp::default();
+        let chargé = app.load_elf(&octets, &nom);
+        // Ce qui n'est pas un ELF chargeable doit être refusé sans
+        // détour : c'est une réponse, pas une panne.
+        if !chargé {
+            vus += 1;
+            continue;
+        }
+        vus += 1;
+
+        // Le désassemblage a produit quelque chose.
+        let état = app.assemble_state.as_ref().expect("un état d'assemblage");
+        assert!(
+            !état.disasm.is_empty(),
+            "{nom} : chargé, mais rien de désassemblé"
+        );
+
+        // Le point d'entrée est une instruction qu'on sait nommer.
+        let emulator = app.emulator.as_ref().expect("un émulateur");
+        let rip = emulator.cpu().regs.rip;
+        assert!(
+            état.disasm.iter().any(|i| i.address == rip),
+            "{nom} : le point d'entrée {rip:#x} n'est pas une instruction connue"
+        );
+
+        // Et il tourne : soit il avance, soit il s'arrête en le disant.
+        app.do_run();
+        for _ in 0..3000 {
+            if !app.running {
+                break;
+            }
+            app.tick_run(&egui::Context::default());
+        }
+        let raisonnable = matches!(
+            app.status,
+            Status::Exited { .. }
+                | Status::WaitingForInput
+                | Status::Running
+                | Status::StepLimit
+                | Status::Idle
+                | Status::Error(_)
+                | Status::Note(_)
+                | Status::Breakpoint(_)
+        );
+        assert!(
+            raisonnable,
+            "{nom} : namsdec ne sait pas dire où il en est — {:?}",
+            app.status
+        );
+    }
+    eprintln!("{vus} binaire(s) passés en revue dans {}", dossier.display());
+}
+
+/// Un binaire qui attend montre TOUTE la zone de saisie.
+///
+/// Sur un binaire, cette zone porte quatre rangées — la mention
+/// d'attente, les arguments, l'en-tête de l'environnement, l'entrée —
+/// alors que le panneau n'en réservait qu'une. Le champ et ses boutons
+/// se faisaient rogner par le bas : il ne restait que « Variables
+/// d'environnement », au moment précis où le programme demandait
+/// quelque chose.
+///
+/// Le test précédent ne l'a pas vu parce qu'il assemblait un source, où
+/// les deux rangées du milieu n'existent pas.
+#[test]
+fn a_waiting_binary_shows_the_whole_input_area() {
+    let Ok(octets) = std::fs::read("/home/fred/CrackMe/crackme-01") else {
+        return;
+    };
+    let mut app = NamsdecApp::default();
+    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    app.do_run();
+    for _ in 0..4000 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&egui::Context::default());
+    }
+    assert!(
+        matches!(app.status, Status::WaitingForInput),
+        "le programme doit attendre : {:?}",
+        app.status
+    );
+
+    let s = strings(app.lang);
+    let ctx = egui::Context::default();
+    // Deux formats, dont celui de la fenêtre où le défaut se voyait.
+    for (largeur, hauteur) in [(1999.0, 1208.0), (1280.0, 900.0)] {
+        let entrée = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(largeur, hauteur),
+            )),
+            ..Default::default()
+        };
+        let mut peint = String::new();
+        for _ in 0..3 {
+            peint.clear();
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(texte) = &clipped.shape {
+                    peint.push_str(texte.galley.text());
+                    peint.push('|');
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+        // Les quatre rangées, toutes présentes.
+        for attendu in [
+            s.console_waiting,
+            s.console_args,
+            s.console_env,
+            s.console_input_label,
+            s.console_send,
+            s.console_eof,
+        ] {
+            assert!(
+                peint.contains(attendu),
+                "« {attendu} » manque en {largeur}x{hauteur} :\n{peint}"
+            );
+        }
+    }
+}
+
+/// La zone de saisie reste à l'écran, même l'environnement déplié.
+///
+/// Sa hauteur ne se devine pas : le bloc des variables se déplie, et ce
+/// qu'il découvre — un texte d'aide et un champ de deux lignes — n'était
+/// compté nulle part. Le panneau restait à la hauteur qu'on lui avait
+/// donnée à la poignée, et le champ d'entrée passait dessous.
+///
+/// Le test regarde **où** le champ est peint, non s'il l'est : egui
+/// dessine aussi ce qu'une zone défilante découpe, et chercher le texte
+/// ne prouve donc rien.
+#[test]
+fn the_input_area_stays_on_screen_when_the_environment_unfolds() {
+    let Ok(octets) = std::fs::read("/home/fred/CrackMe/crackme-01") else {
+        return;
+    };
+    let mut app = NamsdecApp {
+        // La hauteur qu'on obtient en tirant la poignée : une hauteur
+        // figée ne consulte plus celle que la console voudrait.
+        console_height: Some(128.0),
+        ..Default::default()
+    };
+    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    app.do_run();
+    for _ in 0..4000 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&egui::Context::default());
+    }
+    assert!(matches!(app.status, Status::WaitingForInput));
+
+    let s = strings(app.lang);
+    let ctx = egui::Context::default();
+    let écran = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1999.0, 1208.0));
+    let entrée = egui::RawInput {
+        screen_rect: Some(écran),
+        ..Default::default()
+    };
+    // Où le libellé de l'entrée est peint, et dans quel rectangle il est
+    // découpé.
+    let situer = |app: &mut NamsdecApp| -> Option<(egui::Pos2, egui::Rect)> {
+        let mut vu = None;
+        for _ in 0..3 {
+            vu = None;
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(texte) = &clipped.shape
+                    && texte.galley.text() == s.console_input_label
+                {
+                    vu = Some((texte.pos, clipped.clip_rect));
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+        vu
+    };
+
+    for (état, déplié) in [("replié", false), ("déplié", true)] {
+        app.console_env_open = déplié;
+        let (position, découpe) = situer(&mut app).expect("le libellé de l'entrée est peint");
+        assert!(
+            écran.contains(position),
+            "{état} : le champ est peint hors de l'écran, en {position:?}"
+        );
+        // Et il n'est pas rogné par le découpage de son panneau : ce qui
+        // dépasse est dessiné, mais invisible.
+        assert!(
+            découpe.contains(position),
+            "{état} : le champ tombe hors de ce que son panneau montre — \
+             {position:?} hors de {découpe:?}"
+        );
+    }
 }
 
 /// La boîte « À propos » dit où trouver le projet : le site, le salon,
@@ -14333,20 +15754,57 @@ fn the_tools_tab_shows_every_tool_not_just_the_first() {
             "« {attendu} » doit se lire dans l'onglet Outils :\n{peint}"
         );
     }
-    // Et ce qu'il faut taper pour obtenir ce qui manque.
-    assert!(
-        peint.contains("dnf install rizin") || peint.contains("retdec"),
-        "la façon d'obtenir un outil absent doit se lire :\n{peint}"
-    );
+    // Et ce qu'il faut taper pour obtenir ce qui manque — quand il
+    // manque quelque chose. Sur un poste où tous les outils sont bâtis,
+    // aucune fiche n'a de ligne « Pour l'obtenir », et c'est très bien.
+    let outils_dir = data_dir().map(|dir| namsdec_disasm::install::tools_dir(&dir));
+    let un_absent = namsdec_disasm::known::all().iter().any(|outil| {
+        !matches!(
+            outil.availability_in(outils_dir.as_deref()),
+            namsdec_disasm::known::Availability::Ready
+        )
+    });
+    if un_absent {
+        assert!(
+            peint.contains(strings(Lang::Fr).tools_get_it),
+            "la façon d'obtenir un outil absent doit se lire :\n{peint}"
+        );
+    }
     // Les deux états sont dits séparément : « absent » parle du
     // programme, « namsdec s'en sert » parle de namsdec. Les confondre
     // était toute la confusion de l'ancienne page.
-    for attendu in [
-        strings(Lang::Fr).tools_state_found,
-        strings(Lang::Fr).tools_state_absent,
-        strings(Lang::Fr).tools_unused,
-    ] {
-        assert!(peint.contains(attendu), "« {attendu} » :\n{peint}");
+    //
+    // Lesquels sont présents dépend de la machine qui fait tourner les
+    // tests — et depuis que namsdec retrouve ce qu'il a installé
+    // lui-même, une machine où Rizin et RetDec sont bâtis n'a plus un
+    // seul outil absent. On n'exige donc chaque état que là où il a lieu
+    // d'être, plutôt que de tenir pour acquis un poste mal équipé.
+    let outils = data_dir().map(|dir| namsdec_disasm::install::tools_dir(&dir));
+    let états: Vec<_> = namsdec_disasm::known::all()
+        .iter()
+        .map(|outil| outil.availability_in(outils.as_deref()))
+        .collect();
+    let s_fr = strings(Lang::Fr);
+    assert!(peint.contains(s_fr.tools_unused), "{peint}");
+    if états
+        .iter()
+        .any(|état| !matches!(état, namsdec_disasm::known::Availability::Missing))
+    {
+        assert!(
+            peint.contains(s_fr.tools_state_found),
+            "« {} » :\n{peint}",
+            s_fr.tools_state_found
+        );
+    }
+    if états
+        .iter()
+        .any(|état| matches!(état, namsdec_disasm::known::Availability::Missing))
+    {
+        assert!(
+            peint.contains(s_fr.tools_state_absent),
+            "« {} » :\n{peint}",
+            s_fr.tools_state_absent
+        );
     }
     // Et les boutons de la boîte restent visibles : la page ne prend
     // plus toute la hauteur de l'écran.
@@ -14388,7 +15846,9 @@ fn a_dynamically_linked_binary_says_it_cannot_run_here() {
     );
 
     // Mais namsdec prévient, et nomme les bibliothèques réclamées.
-    let dit = matches!(&app.status, Status::Note(texte) if texte.contains("dynamiquement"));
+    // La note porte le chemin vers sa phrase, non la phrase : on la
+    // résout dans la langue de l'application pour la lire.
+    let dit = matches!(&app.status, Status::Note(phrase) if phrase(strings(app.lang)).contains("dynamiquement"));
     assert!(dit, "l'avertissement doit être posé : {:?}", app.status);
     assert!(
         app.diagnostics
@@ -14696,9 +16156,8 @@ fn fetching_a_tool_never_happens_by_itself() {
         strings(Lang::Fr).install_cost,
         "180 Mo à télécharger",
         strings(Lang::Fr).install_where,
-        // L'avertissement et le bouton, tout en bas et toujours peints.
+        // L'avertissement, tout en bas et toujours peint.
         strings(Lang::Fr).install_warning,
-        strings(Lang::Fr).install_start,
         strings(Lang::Fr).install_plan,
         "github.com/avast/retdec",
         "sha256sum",
@@ -14708,6 +16167,27 @@ fn fetching_a_tool_never_happens_by_itself() {
             "« {attendu} » doit se lire avant tout lancement :\n{peint}"
         );
     }
+    // Le bouton de lancement, ou le constat que c'est déjà fait : l'un
+    // ou l'autre, selon ce que la machine a. L'exiger en dur faisait
+    // échouer le test sur un poste où RetDec était déjà installé — et
+    // c'est précisément là qu'il ne faut plus inviter à recommencer.
+    let outils = data_dir().map(|dir| namsdec_disasm::install::tools_dir(&dir));
+    let prêt = namsdec_disasm::known::all()
+        .into_iter()
+        .find(|k| k.plugin.id == "retdec")
+        .map(|k| {
+            k.availability_in(outils.as_deref()) == namsdec_disasm::known::Availability::Ready
+        })
+        .unwrap_or(false);
+    let attendu = if prêt {
+        strings(Lang::Fr).install_already_done
+    } else {
+        strings(Lang::Fr).install_start
+    };
+    assert!(
+        peint.contains(attendu),
+        "« {attendu} » doit se lire avant tout lancement :\n{peint}"
+    );
     assert!(
         app.install_job.is_none(),
         "montrer le plan n'est pas l'exécuter"
@@ -15145,4 +16625,1434 @@ fn every_function_namsdec_claims_to_provide_really_answers() {
             "« {variante} » doit être reconnue comme sa fonction d'origine"
         );
     }
+}
+
+
+
+
+
+
+
+
+
+
+
+/// Le champ de saisie est visible quelle que soit la hauteur de la console.
+///
+/// Le défaut s'était vu en photo : le programme affichait « Enter the
+/// password: », la barre du bas disait « En attente d'une entrée… », et il
+/// n'y avait nulle part où taper. Seul l'en-tête replié de l'environnement
+/// dépassait — le reste du cadre passait sous le bord de la fenêtre.
+///
+/// Un test qui ne vérifierait qu'une hauteur ne prouverait rien : la
+/// console se tire à la poignée, et c'est justement à certaines hauteurs
+/// que le compte tombait faux. On les balaie donc, celle qu'aucune main
+/// n'a fixée comprise.
+#[test]
+fn the_input_row_is_visible_at_every_console_height() {
+    let Ok(octets) = std::fs::read("/home/fred/CrackMe/crackme-01") else {
+        return;
+    };
+    let s = strings(Lang::Fr);
+    let écran = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1999.0, 1208.0));
+    // Ce qu'il faut pouvoir lire et atteindre pour répondre au programme.
+    let rangées = [
+        s.console_waiting,
+        s.console_args,
+        s.console_env,
+        s.console_input_label,
+        s.console_send,
+        s.console_eof,
+    ];
+
+    for hauteur in [None, Some(96.0), Some(128.0), Some(200.0), Some(260.0)] {
+      for env_ouvert in [false, true] {
+        let mut app = NamsdecApp {
+            console_height: hauteur,
+            console_env_open: env_ouvert,
+            ..Default::default()
+        };
+        assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+        app.do_run();
+        for _ in 0..4000 {
+            if !app.running {
+                break;
+            }
+            app.tick_run(&egui::Context::default());
+        }
+        assert!(
+            matches!(app.status, Status::WaitingForInput),
+            "{hauteur:?} : le programme devrait attendre une entrée — {:?}",
+            app.status
+        );
+
+        let ctx = egui::Context::default();
+        // Le thème posé, et c'est **indispensable** : il change les
+        // espacements, donc la hauteur des rangées. Sans lui, ce test
+        // passait alors que la rangée « Entrée » disparaissait pour de
+        // vrai sur la machine, à 128 px de console — il mesurait une
+        // application qui n'existe nulle part.
+        app.apply_theme(&ctx);
+        let entrée = egui::RawInput {
+            screen_rect: Some(écran),
+            ..Default::default()
+        };
+        // Quatre images : la zone se mesure elle-même, et la hauteur
+        // qu'elle réserve à la suivante vient de ce qu'elle a pris.
+        let mut vus: std::collections::BTreeMap<&str, (egui::Rect, egui::Rect)> =
+            std::collections::BTreeMap::new();
+        for _ in 0..4 {
+            vus.clear();
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(texte) = &clipped.shape
+                    && let Some(rangée) = rangées.iter().find(|r| **r == texte.galley.text())
+                {
+                    // Le rectangle ENTIER du texte, et non sa position.
+                    // C'est le trou qu'avait ce test : `pos` est le coin
+                    // supérieur gauche, si bien qu'une rangée dont seul
+                    // le haut dépassait dans le panneau passait pour
+                    // visible — alors qu'à l'écran elle était coupée en
+                    // deux, champ et boutons sous le bord.
+                    let boîte = egui::Rect::from_min_size(texte.pos, texte.galley.size());
+                    vus.insert(rangée, (boîte, clipped.clip_rect));
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+
+        let état = if env_ouvert { "déplié" } else { "replié" };
+        for rangée in rangées {
+            // Le rectangle entier, et non la seule présence : egui peint
+            // aussi ce qu'un découpage escamote, et chercher le texte ne
+            // prouverait donc rien.
+            let (boîte, découpe) = vus.get(rangée).copied().unwrap_or_else(|| {
+                panic!("{hauteur:?}, environnement {état} : « {rangée} » n'est pas peint du tout")
+            });
+            assert!(
+                écran.contains_rect(boîte),
+                "{hauteur:?}, environnement {état} : « {rangée} » déborde de l'écran — {boîte:?}"
+            );
+            assert!(
+                découpe.contains_rect(boîte),
+                "{hauteur:?}, environnement {état} : « {rangée} » est coupée — {boîte:?} \
+                 dépasse de {découpe:?}. À l'écran, on en voit le haut et rien d'autre."
+            );
+        }
+      }
+    }
+}
+
+/// La fenêtre des exercices s'ouvre assez large, sur tous les écrans.
+///
+/// 480 px de large étaient trop peu : un énoncé y tombait sur six lignes.
+/// Une taille fixe plus grande aurait déplacé le problème — elle déborde
+/// d'un petit écran —, d'où une taille proportionnée et plafonnée.
+#[test]
+fn the_exercises_window_opens_wide_enough_on_any_screen() {
+    for (largeur, hauteur) in [(1280.0, 800.0), (1999.0, 1208.0), (3840.0, 2160.0)] {
+        let ctx = egui::Context::default();
+        let entrée = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(largeur, hauteur),
+            )),
+            ..Default::default()
+        };
+        let mut taille = egui::Vec2::ZERO;
+        let mut sortie = ctx.run_ui(entrée, |ui| {
+            taille = exercises_window_size(ui.ctx());
+        });
+        sortie.textures_delta.clear();
+
+        assert!(
+            taille.x >= 480.0,
+            "{largeur}x{hauteur} : {} de large, ce n'est pas plus qu'avant",
+            taille.x
+        );
+        // Et jamais plus grande que l'écran : une fenêtre dont on ne
+        // peut pas atteindre le bord ne se redimensionne plus.
+        assert!(
+            taille.x <= largeur && taille.y <= hauteur,
+            "{largeur}x{hauteur} : {taille:?} déborde de l'écran"
+        );
+    }
+
+    // Sur un écran minuscule, elle se contente de ce qu'il y a — mais
+    // reste utilisable.
+    let ctx = egui::Context::default();
+    let entrée = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(500.0, 400.0),
+        )),
+        ..Default::default()
+    };
+    let mut taille = egui::Vec2::ZERO;
+    let mut sortie = ctx.run_ui(entrée, |ui| taille = exercises_window_size(ui.ctx()));
+    sortie.textures_delta.clear();
+    assert!(taille.x >= 420.0 && taille.y >= 320.0, "{taille:?}");
+}
+
+/// Les paires se ferment toutes seules — et se taisent quand il le faut.
+///
+/// C'est la moitié difficile : un éditeur qui ferme tout, tout le temps,
+/// se fait détester en une journée. On mesure donc autant ce qu'il ne
+/// fait pas que ce qu'il fait.
+#[test]
+fn pairs_close_themselves_but_know_when_to_keep_quiet() {
+    // Le curseur est noté « | » : la fonction reçoit sa position en
+    // octets, et le texte sans la barre.
+    let cas = |texte: &str| -> PairEdit {
+        let at = texte.find('|').expect("le curseur est noté |");
+        pair_edit(&texte.replace('|', ""), at)
+    };
+
+    // Ce qu'elle fait.
+    assert_eq!(cas("    mov rax, [|"), PairEdit::Close(']'));
+    assert_eq!(cas("%macro f (|"), PairEdit::Close(')'));
+    assert_eq!(cas("msg db \"|"), PairEdit::Close('"'));
+
+    // Ce qu'elle ne fait pas, et c'est le plus important.
+    assert_eq!(
+        cas("    ; l'|adresse"),
+        PairEdit::None,
+        "une apostrophe après une lettre est une apostrophe"
+    );
+    assert_eq!(
+        cas("    mov rax, [|rsi]"),
+        PairEdit::None,
+        "on n'ouvre pas une paire devant un mot"
+    );
+
+    // Traverser ce qui est déjà là, plutôt que de l'écrire deux fois.
+    assert_eq!(cas("    mov rax, [rsi]|]"), PairEdit::StepOver);
+    assert_eq!(
+        cas("msg db \"salut\"|\""),
+        PairEdit::StepOver,
+        "un guillemet est son propre fermant : il faut pouvoir en sortir"
+    );
+
+    // Et l'effacement emporte la paire vide qu'on vient d'ouvrir.
+    let vide = "    mov rax, []";
+    assert!(backspace_clears_pair(vide, vide.find(']').unwrap()));
+    let pleine = "    mov rax, [rsi]";
+    assert!(
+        !backspace_clears_pair(pleine, pleine.find('r').unwrap() + 1),
+        "mais pas une paire qui contient quelque chose"
+    );
+}
+
+/// Aucun cas ne fait paniquer, y compris sur du texte accentué.
+///
+/// Les positions sont en octets et « é » en prend deux : une borne prise
+/// au milieu d'un caractère ferait tomber l'éditeur pendant qu'on écrit
+/// un commentaire.
+#[test]
+fn the_pair_rules_never_panic_mid_character() {
+    for texte in ["", "é", "; drapeau à zéro", "«»", "[é]", "'é'"] {
+        for at in 0..=texte.len() {
+            let _ = pair_edit(texte, at);
+            let _ = backspace_clears_pair(texte, at);
+        }
+    }
+}
+
+/// La calculatrice s'ouvre, calcule, et montre toutes les bases.
+///
+/// Le test regarde ce qui est **peint** : l'évaluateur est déjà couvert
+/// au caractère près ailleurs, ce qu'on vérifie ici est que la fenêtre
+/// montre bien ce qu'il rend.
+#[test]
+fn the_calculator_shows_every_reading_of_what_is_typed() {
+    let mut app = NamsdecApp {
+        show_calculator: true,
+        calc_input: "0xff & 0x0f".to_owned(),
+        ..Default::default()
+    };
+    let ctx = egui::Context::default();
+    let entrée = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 900.0),
+        )),
+        ..Default::default()
+    };
+    let mut peint = String::new();
+    for _ in 0..3 {
+        peint.clear();
+        let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(texte) = &clipped.shape {
+                peint.push_str(texte.galley.text());
+                peint.push('|');
+            }
+        }
+        sortie.textures_delta.clear();
+    }
+
+    // 0xff & 0x0f fait 15 : on doit le lire dans chaque base, sans avoir
+    // à cliquer quoi que ce soit.
+    for attendu in ["0xf", "15", "0o17", "00001111"] {
+        assert!(
+            peint.contains(attendu),
+            "« {attendu} » manque dans la calculatrice :\n{peint}"
+        );
+    }
+}
+
+/// Une expression fautive se dit en clair, et ne fait rien tomber.
+#[test]
+fn the_calculator_names_what_went_wrong() {
+    let ctx = egui::Context::default();
+    let entrée = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 900.0),
+        )),
+        ..Default::default()
+    };
+    // Chacune des fautes qu'on fait en tapant, y compris les états
+    // intermédiaires d'une frappe.
+    for (expression, attendu) in [
+        ("1 / 0", strings(Lang::Fr).calc_divide_by_zero),
+        ("(1", strings(Lang::Fr).calc_unbalanced),
+        ("1 +", strings(Lang::Fr).calc_missing),
+    ] {
+        let mut app = NamsdecApp {
+            show_calculator: true,
+            calc_input: expression.to_owned(),
+            ..Default::default()
+        };
+        let mut peint = String::new();
+        for _ in 0..2 {
+            peint.clear();
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(texte) = &clipped.shape {
+                    peint.push_str(texte.galley.text());
+                    peint.push('|');
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+        assert!(
+            peint.contains(attendu),
+            "« {expression} » devrait dire « {attendu} » :\n{peint}"
+        );
+    }
+
+    // Et une fenêtre vide ne reproche rien : elle vient de s'ouvrir.
+    let mut app = NamsdecApp {
+        show_calculator: true,
+        ..Default::default()
+    };
+    let mut peint = String::new();
+    for _ in 0..2 {
+        peint.clear();
+        let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(texte) = &clipped.shape {
+                peint.push_str(texte.galley.text());
+            }
+        }
+        sortie.textures_delta.clear();
+    }
+    assert!(
+        !peint.contains(strings(Lang::Fr).calc_missing),
+        "rien de tapé, rien à reprocher :\n{peint}"
+    );
+}
+
+/// Sur un écran ordinaire, la palette défile — et c'est le bon repli.
+///
+/// Elle porte cinquante-deux commandes : aucune fenêtre courante ne les
+/// tient toutes. Le test voisin vérifie qu'on ne défile pas *quand il y a
+/// la place* ; celui-ci vérifie l'autre moitié, qui est le cas réel :
+/// quand il n'y en a pas, la liste défile au lieu de couper la fin.
+#[test]
+fn on_a_real_screen_the_palette_scrolls_rather_than_cutting_the_end() {
+    let mut app = NamsdecApp {
+        command_palette: Some(CommandPalette::default()),
+        ..Default::default()
+    };
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    // La hauteur d'un écran d'ordinateur portable ordinaire.
+    let entrée = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 900.0),
+        )),
+        ..Default::default()
+    };
+
+    let s = strings(Lang::Fr);
+    let mut première = None;
+    let mut fond = 0.0f32;
+    for _ in 0..3 {
+        première = None;
+        fond = 0.0;
+        let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(texte) = &clipped.shape {
+                if texte.galley.text() == s.action_assemble {
+                    première = Some(texte.pos);
+                }
+                fond = fond.max(texte.pos.y);
+            }
+        }
+        sortie.textures_delta.clear();
+    }
+
+    // La première commande est là : la liste commence bien au début.
+    assert!(première.is_some(), "la première commande doit être visible");
+    // Et rien n'est peint sous le bord de l'écran — ce qui ne tient pas
+    // est derrière la barre de défilement, non coupé dans le vide.
+    assert!(
+        fond <= 900.0,
+        "quelque chose est peint sous le bord de l'écran, en y={fond}"
+    );
+}
+
+/// La barre de chronologie se dessine, et rembobine où l'on clique.
+///
+/// Le regroupement est déjà couvert dans son module ; ce qu'on vérifie
+/// ici est qu'elle apparaît dans la fenêtre et qu'un clic remonte bien
+/// dans le temps du programme.
+#[test]
+fn the_timeline_bar_appears_and_rewinds() {
+    let mut app = NamsdecApp {
+        source: "\
+section .text
+global _start
+_start:
+    mov rcx, 20
+boucle:
+    add rax, rcx
+    dec rcx
+    jnz boucle
+    hlt
+"
+        .to_owned(),
+        show_timeline: true,
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+    app.do_run();
+    for _ in 0..2000 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&egui::Context::default());
+    }
+
+    let avant = app
+        .emulator
+        .as_ref()
+        .map(|e| e.trace().len())
+        .expect("un émulateur");
+    assert!(avant > 20, "la boucle a dû tourner : {avant} pas");
+
+    // La barre occupe la largeur de la fenêtre et porte une colonne par
+    // tranche de temps : elle se dessine donc, et sur tout le parcours.
+    let colonnes = timeline::columns(&app.timeline_trace(), 400);
+    assert!(!colonnes.is_empty(), "la barre doit avoir des colonnes");
+    let couvert: usize = colonnes.iter().map(|c| c.count).sum();
+    assert_eq!(couvert, avant, "elle couvre tout le parcours");
+
+    // Et cliquer au milieu rembobine jusque-là, sans dépasser.
+    let visé = timeline::step_at(avant, 0.5);
+    let recul = timeline::rewind_to(avant, visé);
+    assert!(recul > 0 && recul <= avant, "recul de {recul} sur {avant}");
+    for _ in 0..recul {
+        app.do_step_back();
+    }
+    let après = app
+        .emulator
+        .as_ref()
+        .map(|e| e.trace().len())
+        .unwrap();
+    assert!(
+        après < avant,
+        "le rembobinage doit avoir reculé : {avant} -> {après}"
+    );
+}
+
+/// On retrouve le travail commencé sur un binaire au lancement suivant.
+///
+/// Les sources se rouvraient depuis longtemps ; un binaire, non — et
+/// c'est pourtant là qu'il y a du travail à perdre. Rouvrir namsdec
+/// demandait de retrouver le fichier, de le recharger, de reposer ses
+/// points d'arrêt et de retaper ses arguments.
+#[test]
+fn a_binary_session_comes_back_at_the_next_launch() {
+    let Ok(octets) = std::fs::read("/home/fred/CrackMe/crackme-01") else {
+        return;
+    };
+    let dossier = tempfile::tempdir().unwrap();
+    let binaire = dossier.path().join("crackme-01");
+    std::fs::write(&binaire, &octets).unwrap();
+
+    // Une séance : on ouvre le binaire, on pose des repères, on règle
+    // des arguments.
+    let mut app = NamsdecApp::default();
+    app.open_file_now(binaire.clone());
+    assert!(
+        app.assemble_state.is_some(),
+        "le binaire doit être chargé : {:?}",
+        app.status
+    );
+    assert_eq!(app.binary_path.as_deref(), Some(binaire.as_path()));
+    app.breakpoint_lines.insert(12);
+    app.breakpoint_lines.insert(40);
+    app.watchpoints.push((0x404000, 8));
+    app.watched_registers.insert("RAX");
+    app.program_args = "mot_de_passe".to_owned();
+    app.active_tab = SidebarTab::Bytes;
+
+    // On quitte : ce qui part sur le disque.
+    let enregistré = app.settings_snapshot();
+    assert_eq!(
+        enregistré.open_binary.as_deref(),
+        Some(binaire.display().to_string().as_str())
+    );
+
+    // On relance.
+    // `from_settings` rouvre déjà la séance : c'est ce que fait le
+    // lancement réel.
+    let revenu = NamsdecApp::from_settings(enregistré);
+    assert!(
+        revenu.assemble_state.is_some(),
+        "le binaire doit être rouvert : {:?}",
+        revenu.status
+    );
+    assert_eq!(
+        revenu.breakpoint_lines.iter().copied().collect::<Vec<_>>(),
+        vec![12, 40],
+        "les points d'arrêt reviennent"
+    );
+    assert_eq!(revenu.watchpoints, vec![(0x404000, 8)]);
+    assert!(revenu.watched_registers.contains("RAX"));
+    assert_eq!(revenu.program_args, "mot_de_passe");
+    assert_eq!(revenu.active_tab, SidebarTab::Bytes);
+}
+
+/// Mais si le binaire a changé, les repères ne reviennent pas — et on le
+/// dit.
+///
+/// Ils se comptent en numéros de ligne d'un listing reconstruit à chaque
+/// ouverture. Sur un binaire recompilé entre-temps, ils désigneraient
+/// d'autres instructions : poser des points d'arrêt au hasard est pire
+/// que de ne pas en poser, et le faire en silence est pire encore.
+#[test]
+fn a_changed_binary_drops_its_marks_and_says_so() {
+    let Ok(octets) = std::fs::read("/home/fred/CrackMe/crackme-01") else {
+        return;
+    };
+    let dossier = tempfile::tempdir().unwrap();
+    let binaire = dossier.path().join("crackme-01");
+    std::fs::write(&binaire, &octets).unwrap();
+
+    let mut app = NamsdecApp::default();
+    app.open_file_now(binaire.clone());
+    app.breakpoint_lines.insert(12);
+    let enregistré = app.settings_snapshot();
+
+    // Le binaire est recompilé : même nom, autre contenu.
+    let mut autre = octets.clone();
+    autre.extend_from_slice(&[0u8; 4096]);
+    std::fs::write(&binaire, &autre).unwrap();
+
+    let revenu = NamsdecApp::from_settings(enregistré);
+    assert!(
+        revenu.assemble_state.is_some(),
+        "le binaire lui-même se rouvre quand même"
+    );
+    assert!(
+        revenu.breakpoint_lines.is_empty(),
+        "mais pas ses points d'arrêt : {:?}",
+        revenu.breakpoint_lines
+    );
+    assert!(
+        matches!(revenu.status, Status::Note(_)),
+        "et l'application le dit : {:?}",
+        revenu.status
+    );
+}
+
+/// Dupliquer une ligne la recopie dessous, et descend dessus.
+///
+/// Le geste qu'on fait sans y penser dans tout éditeur, et qui manque le
+/// plus en assembleur : quatre lignes qui ne diffèrent que par un
+/// registre se dupliquent plus vite qu'elles ne se retapent.
+#[test]
+fn duplicating_a_line_copies_it_below() {
+    let source = "mov rax, 1\nmov rbx, 2\nmov rcx, 3\n";
+    // Le curseur au milieu de la deuxième ligne.
+    let au_milieu = source.find("rbx").unwrap() + 1;
+    let (après, curseur) = duplicated_line(source, au_milieu);
+    assert_eq!(après, "mov rax, 1\nmov rbx, 2\nmov rbx, 2\nmov rcx, 3\n");
+    // Le curseur a gardé sa colonne, une ligne plus bas.
+    assert_eq!(
+        après[..curseur].lines().count(),
+        3,
+        "le curseur est sur la copie : {curseur}"
+    );
+    let colonne_avant = au_milieu - source[..au_milieu].rfind('\n').map_or(0, |i| i + 1);
+    let colonne_après = curseur - après[..curseur].rfind('\n').map_or(0, |i| i + 1);
+    assert_eq!(colonne_avant, colonne_après, "et sa colonne");
+}
+
+/// La dernière ligne d'un fichier sans retour final se duplique aussi.
+///
+/// C'est le cas qui casse une implémentation naïve : sans ajouter le
+/// retour à la ligne, la copie se colle derrière l'original et n'en fait
+/// qu'une seule, deux fois plus longue.
+#[test]
+fn the_last_line_duplicates_even_without_a_trailing_newline() {
+    let source = "mov rax, 1\nhlt";
+    let (après, _) = duplicated_line(source, source.len());
+    assert_eq!(après, "mov rax, 1\nhlt\nhlt");
+
+    // Et un fichier vide, ou d'une seule ligne, ne fait rien tomber.
+    assert_eq!(duplicated_line("", 0).0, "\n");
+    assert_eq!(duplicated_line("hlt", 0).0, "hlt\nhlt");
+}
+
+/// Aucune position ne fait paniquer, y compris au milieu d'un accent.
+#[test]
+fn duplicating_never_panics_mid_character() {
+    for source in ["", "\n", "é", "; drapeau à zéro\nhlt", "a\né\nb"] {
+        for at in 0..=source.len() {
+            // Les positions au milieu d'un caractère sont bornées par la
+            // fonction elle-même : ce qu'on vérifie est qu'aucune ne
+            // tombe.
+            if !source.is_char_boundary(at) {
+                continue;
+            }
+            let (après, curseur) = duplicated_line(source, at);
+            assert!(curseur <= après.len(), "{source:?} à {at}");
+        }
+    }
+}
+
+/// Mais pas sur un listing venu d'un binaire.
+///
+/// Celui-ci est reconstruit, et y insérer une ligne décalerait toutes les
+/// correspondances ligne <-> adresse dont dépendent la gouttière, les
+/// points d'arrêt et le suivi de RIP.
+#[test]
+fn a_binary_listing_does_not_duplicate_lines() {
+    let Ok(octets) = std::fs::read("/home/fred/CrackMe/crackme-01") else {
+        return;
+    };
+    let mut app = NamsdecApp::default();
+    assert!(app.load_elf(&octets, "crackme-01"));
+    let avant = app.source.clone();
+    app.cursor_byte = 40;
+    app.duplicate_line();
+    assert_eq!(app.source, avant, "le listing ne doit pas bouger");
+}
+
+/// « Il lui manque… » ne s'écrit que s'il manque vraiment quelque chose.
+///
+/// Le message était affiché sans condition, si bien qu'un outil installé
+/// et parfaitement fonctionnel s'annonçait cassé : « programme détecté »
+/// et « namsdec s'en sert » d'un côté, « Il lui manque le greffon
+/// rz-ghidra » juste en dessous. On en concluait, très logiquement, que
+/// l'installation n'avait pas marché.
+#[test]
+fn a_working_tool_is_not_announced_as_missing_something() {
+    let s = strings(Lang::Fr);
+    let outils = data_dir().map(|dir| namsdec_disasm::install::tools_dir(&dir));
+
+    let rizin = namsdec_disasm::known::all()
+        .into_iter()
+        .find(|k| k.plugin.id == "rizin-ghidra")
+        .expect("la fiche rizin existe");
+    let dispo = rizin.availability_in(outils.as_deref());
+
+    let mut app = NamsdecApp {
+        show_preferences: true,
+        preferences_tab: PreferencesTab::Tools,
+        ..Default::default()
+    };
+    let ctx = egui::Context::default();
+    let entrée = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1600.0, 1200.0),
+        )),
+        ..Default::default()
+    };
+    let mut peint = String::new();
+    for _ in 0..3 {
+        peint.clear();
+        let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(texte) = &clipped.shape {
+                peint.push_str(texte.galley.text());
+                peint.push('|');
+            }
+        }
+        sortie.textures_delta.clear();
+    }
+
+    // Le test s'adapte à la machine plutôt que de supposer : ce qu'on
+    // vérifie est la cohérence entre l'état et ce qui est écrit.
+    use namsdec_disasm::known::Availability;
+    if dispo == Availability::Ready {
+        assert!(
+            !peint.contains(s.tools_needs),
+            "rizin+rz-ghidra fonctionne ici : rien ne doit dire qu'il manque \
+             quelque chose.\n{peint}"
+        );
+    } else if dispo == Availability::Incomplete {
+        assert!(
+            peint.contains(s.tools_needs),
+            "le greffon manque vraiment : il faut le dire.\n{peint}"
+        );
+    }
+}
+
+/// La fenêtre du plan d'installation reste entièrement à l'écran.
+///
+/// Le plan de rizin compte neuf étapes et un journal : la fenêtre
+/// dépassait en haut comme en bas, et sa barre de titre — avec la croix
+/// qui s'y trouve — passait hors champ. On ne pouvait plus la fermer du
+/// tout.
+#[test]
+fn the_install_plan_window_never_runs_off_the_screen() {
+    for (largeur, hauteur) in [(1280.0, 800.0), (1999.0, 1248.0)] {
+        let mut app = NamsdecApp {
+            show_installer_module: true,
+            install_plan: Some("rizin-ghidra".to_owned()),
+            ..Default::default()
+        };
+        let ctx = egui::Context::default();
+        app.apply_theme(&ctx);
+        let écran = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(largeur, hauteur));
+        let entrée = egui::RawInput {
+            screen_rect: Some(écran),
+            ..Default::default()
+        };
+        let mut haut = f32::MAX;
+        let mut bas = f32::MIN;
+        for _ in 0..3 {
+            haut = f32::MAX;
+            bas = f32::MIN;
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(texte) = &clipped.shape {
+                    haut = haut.min(texte.pos.y);
+                    bas = bas.max(texte.pos.y);
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+        // La fenêtre n'est peut-être pas ouverte : sans dossier de
+        // données, le plan se referme tout seul. Le test le dit plutôt
+        // que d'échouer sur l'état du poste.
+        if app.install_plan.is_none() {
+            return;
+        }
+        assert!(
+            haut >= 0.0,
+            "{largeur}x{hauteur} : quelque chose est peint au-dessus de l'écran (y={haut})"
+        );
+        assert!(
+            bas <= hauteur,
+            "{largeur}x{hauteur} : quelque chose est peint sous l'écran (y={bas})"
+        );
+    }
+}
+
+/// Échap referme le plan, et le bouton « Fermer » aussi.
+///
+/// La croix vit dans la barre de titre, qu'on perd de vue sur un plan de
+/// neuf étapes. Il faut un second chemin — et le geste qu'on fait sans y
+/// penser devant une fenêtre dont on a fini, c'est Échap.
+#[test]
+fn escape_closes_the_install_plan() {
+    let mut app = NamsdecApp {
+        show_installer_module: true,
+        install_plan: Some("rizin-ghidra".to_owned()),
+        ..Default::default()
+    };
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let écran = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1600.0, 1000.0));
+    let mut sortie = ctx.run_ui(
+        egui::RawInput {
+            screen_rect: Some(écran),
+            ..Default::default()
+        },
+        |ui| app.draw(ui),
+    );
+    sortie.textures_delta.clear();
+    if app.install_plan.is_none() {
+        return;
+    }
+
+    let mut échap = egui::RawInput {
+        screen_rect: Some(écran),
+        ..Default::default()
+    };
+    échap.events.push(egui::Event::Key {
+        key: egui::Key::Escape,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: egui::Modifiers::NONE,
+    });
+    let mut sortie = ctx.run_ui(échap, |ui| app.draw(ui));
+    sortie.textures_delta.clear();
+    assert!(
+        app.install_plan.is_none(),
+        "Échap doit refermer le plan d'installation"
+    );
+}
+
+/// Un outil déjà installé ne propose plus « Lancer l'installation ».
+///
+/// Le bouton restait invitant après coup : on ne savait donc pas si
+/// l'installation avait abouti, et la seule façon de s'en assurer était
+/// de tout relancer — un quart d'heure de compilation pour rien.
+#[test]
+fn an_installed_tool_offers_to_close_not_to_install_again() {
+    let Some(data) = data_dir() else { return };
+    let outils = namsdec_disasm::install::tools_dir(&data);
+    let rizin = namsdec_disasm::known::all()
+        .into_iter()
+        .find(|k| k.plugin.id == "rizin-ghidra")
+        .expect("la fiche rizin existe");
+    let prêt = rizin.availability_in(Some(&outils)) == namsdec_disasm::known::Availability::Ready;
+
+    let mut app = NamsdecApp {
+        show_installer_module: true,
+        install_plan: Some("rizin-ghidra".to_owned()),
+        ..Default::default()
+    };
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let entrée = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1600.0, 1200.0),
+        )),
+        ..Default::default()
+    };
+    let mut peint = String::new();
+    for _ in 0..3 {
+        peint.clear();
+        let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(texte) = &clipped.shape {
+                peint.push_str(texte.galley.text());
+                peint.push('|');
+            }
+        }
+        sortie.textures_delta.clear();
+    }
+    if app.install_plan.is_none() {
+        return;
+    }
+
+    let s = strings(Lang::Fr);
+    // Le test s'adapte à la machine : ce qu'on vérifie est la cohérence
+    // entre l'état réel de l'outil et ce que la fenêtre propose.
+    if prêt {
+        assert!(
+            peint.contains(s.install_already_done),
+            "rizin répond ici : la fenêtre doit le dire.\n{peint}"
+        );
+        assert!(
+            !peint.contains(s.install_start),
+            "et ne plus inviter à lancer l'installation.\n{peint}"
+        );
+    } else {
+        assert!(
+            peint.contains(s.install_start),
+            "rizin n'est pas prêt : il faut pouvoir lancer.\n{peint}"
+        );
+    }
+}
+
+/// `keymap.json` existe dès le premier lancement — mais jamais depuis un
+/// test.
+///
+/// Il n'était posé qu'au premier changement de raccourci, si bien que
+/// personne ne pouvait le lire pour savoir de quel jeu il partait. Le
+/// garde-fou compte autant : construire une application dans un test ne
+/// doit rien écrire, sinon la suite écraserait les raccourcis de la
+/// machine — c'est `settings_file` qui fait la différence, et il est vide
+/// partout sauf au vrai lancement.
+#[test]
+fn the_keymap_file_is_written_at_launch_and_never_by_a_test() {
+    let mut app = NamsdecApp::default();
+    assert!(
+        app.settings_file.is_none(),
+        "une application de test n'a pas de fichier de réglages"
+    );
+    // Sans fichier de réglages, l'écriture ne part pas : on peut donc
+    // l'appeler ici sans toucher au disque de l'utilisateur.
+    app.save_keymap_now();
+
+    // Et le contenu qui serait écrit est bien celui du jeu courant.
+    let keymap = settings::Keymap::from_bindings(app.keymap_preset, &app.keybindings);
+    assert_eq!(
+        keymap.preset(),
+        keybindings::Preset::Vim,
+        "le jeu de départ est celui de vim et gdb"
+    );
+    assert!(
+        keymap.shortcuts.is_empty(),
+        "et rien ne s'en écarte tant qu'on n'a rien changé : {:?}",
+        keymap.shortcuts
+    );
+}
+
+/// Les deux jeux de raccourcis se choisissent dans les Préférences.
+///
+/// Ils sont tous les deux dans le binaire, et Vim est le défaut — d'où le
+/// « NORMAL » de la barre d'état au premier lancement.
+#[test]
+fn both_keymap_presets_are_offered_in_the_preferences() {
+    let mut app = NamsdecApp {
+        show_preferences: true,
+        preferences_tab: PreferencesTab::Shortcuts,
+        ..Default::default()
+    };
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let entrée = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1600.0, 1200.0),
+        )),
+        ..Default::default()
+    };
+    let mut peint = String::new();
+    for _ in 0..3 {
+        peint.clear();
+        let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(texte) = &clipped.shape {
+                peint.push_str(texte.galley.text());
+                peint.push('|');
+            }
+        }
+        sortie.textures_delta.clear();
+    }
+    for preset in keybindings::Preset::ALL {
+        assert!(
+            peint.contains(preset.label(true)),
+            "« {} » doit se lire dans l'onglet Raccourcis :\n{peint}",
+            preset.label(true)
+        );
+    }
+}
+
+/// Les deux dossiers de fiches sont bien deux, et le README le dit.
+///
+/// namsdec lit `disassemblers/` et `decompilers/` séparément : les deux
+/// ne répondent pas à la même question, et une fiche rangée dans le
+/// mauvais dossier est simplement ignorée — sans message, puisque namsdec
+/// ne sait pas qu'elle existe. Le mode d'emploi n'en annonçait qu'un, ce
+/// qui fait perdre une soirée à qui écrit son premier outil.
+#[test]
+fn the_readme_names_both_plugin_directories() {
+    let racine = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let sommaire =
+        std::fs::read_to_string(racine.join("plugins/README.md")).expect("plugins/README.md");
+    // Les noms exacts que le code emploie, relevés ici même : si l'un
+    // change, ce test le rappelle.
+    for dossier in ["disassemblers/", "decompilers/", "themes/", "exercises/"] {
+        assert!(
+            sommaire.contains(dossier),
+            "le mode d'emploi doit nommer « {dossier} » : c'est là que namsdec regarde"
+        );
+    }
+    // Et le code lit bien ces deux-là, sous ces noms.
+    let data = data_dir().expect("un dossier de données");
+    assert_eq!(
+        decompilers_dir().expect("decompilers"),
+        data.join("decompilers")
+    );
+    assert!(
+        data.join("disassemblers").ends_with("disassemblers"),
+        "c'est le dossier que load_disassembler_plugins lit"
+    );
+}
+
+/// Un désassembleur maison déclaré devient un moteur de listing.
+///
+/// C'est tout le point du format : DZF est écrit à la main, dans un autre
+/// dépôt, en C++ sans dépendance — et namsdec doit pouvoir s'en servir
+/// sans rien savoir de lui d'autre que la commande à lancer.
+#[test]
+fn a_home_made_disassembler_can_become_the_listing_engine() {
+    let fiche = data_dir()
+        .map(|dir| dir.join("disassemblers/dzf.json"))
+        .filter(|p| p.is_file());
+    // DZF vit ailleurs : sur une machine qui ne l'a pas déclaré, il n'y a
+    // rien à vérifier, et le test le dit plutôt que d'échouer.
+    let Some(fiche) = fiche else { return };
+
+    let plugin = namsdec_disasm::plugin::read(&fiche).expect("la fiche déclarée doit être lisible");
+    assert_eq!(plugin.id, "dzf");
+    // Le programme qu'elle nomme doit exister, sans quoi la déclarer
+    // n'aurait servi qu'à promettre.
+    let programme = std::path::Path::new(&plugin.command);
+    if !programme.is_file() {
+        return;
+    }
+    // Et il rend un listing sur les octets d'une vraie fonction.
+    let octets: &[u8] = &[0x55, 0x48, 0x89, 0xe5, 0x5d, 0xc3];
+    let listing = plugin.run(octets).expect("DZF doit répondre");
+    for attendu in ["push rbp", "mov rbp, rsp", "pop rbp", "ret"] {
+        assert!(
+            listing.contains(attendu),
+            "« {attendu} » manque :\n{listing}"
+        );
+    }
+}
+
+/// Surligner les occurrences : la marque est peinte, en vert du thème.
+///
+/// Le test regarde les rectangles peints, et non l'état interne : ce
+/// qu'on promet est de *voir* où le mot revient.
+#[test]
+fn highlighting_matches_paints_them_in_the_theme_green() {
+    let mut app = NamsdecApp {
+        source: "\
+_start:
+    mov rax, 1
+    add rax, rbx
+    hlt
+"
+        .to_owned(),
+        editor_mode: EditorMode::Insert,
+        ..Default::default()
+    };
+    // Le curseur sur le premier `rax`.
+    app.cursor_byte = app.source.find("rax").unwrap() + 1;
+    app.highlight_matches();
+
+    assert_eq!(app.tracked_spans.len(), 2, "deux `rax` : {:?}", app.tracked_spans);
+    assert!(
+        matches!(app.status, Status::Counted(2, _)),
+        "la barre d'état dit combien : {:?}",
+        app.status
+    );
+
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let entrée = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1400.0, 900.0),
+        )),
+        ..Default::default()
+    };
+    let vert = app.theme.good;
+    let mut marques = 0usize;
+    for _ in 0..3 {
+        marques = 0;
+        let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Rect(rect) = &clipped.shape {
+                // Le liseré, qui porte la couleur pleine du thème.
+                if rect.stroke.color == vert {
+                    marques += 1;
+                }
+            }
+        }
+        sortie.textures_delta.clear();
+    }
+    assert_eq!(
+        marques, 2,
+        "les deux occurrences doivent être peintes en vert du thème"
+    );
+}
+
+/// La même touche allume et éteint, et Échap efface.
+#[test]
+fn the_same_key_lights_and_clears_the_highlighting() {
+    let mut app = NamsdecApp {
+        source: "    mov rax, 1\n    add rax, rbx\n".to_owned(),
+        ..Default::default()
+    };
+    app.cursor_byte = app.source.find("rax").unwrap() + 1;
+
+    app.highlight_matches();
+    assert!(app.tracked.is_some());
+    // Refait sur le même mot : on éteint, comme un interrupteur.
+    app.highlight_matches();
+    assert!(app.tracked.is_none(), "la même touche doit éteindre");
+    assert!(app.tracked_spans.is_empty());
+
+    // Et sur un mot où il n'y a rien à suivre, on le dit.
+    app.cursor_byte = 1; // un blanc en tête de ligne
+    app.highlight_matches();
+    assert!(matches!(app.status, Status::Note(_)), "{:?}", app.status);
+}
+
+/// Le surlignage suit le texte quand on tape.
+///
+/// Les étendues sont des positions en octets : taper une lettre plus
+/// haut décale tout ce qui suit, et garder les anciennes surlignerait le
+/// milieu des mots.
+#[test]
+fn the_highlighting_follows_the_text_as_it_is_typed() {
+    let mut app = NamsdecApp {
+        source: "    mov rax, 1\n    add rax, rbx\n".to_owned(),
+        ..Default::default()
+    };
+    app.cursor_byte = app.source.find("rax").unwrap() + 1;
+    app.highlight_matches();
+    let avant = app.tracked_spans.clone();
+    assert_eq!(avant.len(), 2);
+
+    // Une ligne insérée au-dessus : tout ce qui suit se décale.
+    app.source.insert_str(0, "; un commentaire\n");
+    app.refresh_matches();
+    assert_eq!(app.tracked_spans.len(), 2, "toujours deux");
+    for étendue in &app.tracked_spans {
+        assert_eq!(
+            &app.source[étendue.clone()],
+            "rax",
+            "chaque marque doit tomber sur un vrai `rax`, non au milieu d'un mot"
+        );
+    }
+    assert_ne!(app.tracked_spans, avant, "et les positions ont bougé");
+}
+
+/// Renommer toutes les occurrences d'un coup.
+///
+/// C'est ce que le multicurseur sert à faire neuf fois sur dix : changer
+/// un registre partout, renommer une étiquette. egui ne tient qu'un seul
+/// curseur — impossible d'en poser plusieurs —, mais l'édition
+/// elle-même, on peut la faire, et c'est elle qu'on voulait.
+#[test]
+fn renaming_changes_every_match_at_once() {
+    let mut app = NamsdecApp {
+        source: "\
+boucle:
+    add rax, 1
+    dec rcx
+    jnz boucle
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.cursor_byte = 2; // sur `boucle:`
+    app.highlight_matches();
+    assert_eq!(app.tracked_spans.len(), 2, "{:?}", app.tracked_spans);
+
+    app.start_rename();
+    assert_eq!(
+        app.rename.as_deref(),
+        Some("boucle"),
+        "le champ s'ouvre sur le nom actuel"
+    );
+    app.apply_rename("encore");
+
+    assert!(app.source.contains("encore:"), "{}", app.source);
+    assert!(app.source.contains("jnz encore"), "{}", app.source);
+    assert!(!app.source.contains("boucle"), "plus aucun ancien nom : {}", app.source);
+    assert!(matches!(app.status, Status::Counted(2, _)), "{:?}", app.status);
+    // Et le surlignage suit le nouveau nom : le voir confirme que rien
+    // n'a été oublié.
+    assert_eq!(app.tracked_spans.len(), 2);
+    for étendue in &app.tracked_spans {
+        assert_eq!(&app.source[étendue.clone()], "encore");
+    }
+}
+
+/// Renommer un registre ne touche pas au texte des commentaires.
+///
+/// C'est la différence avec un chercher-remplacer, et c'est tout
+/// l'intérêt : le surlignage passe par la découpe du code, donc le `rax`
+/// d'un commentaire français n'en fait pas partie.
+#[test]
+fn renaming_leaves_comments_alone() {
+    let mut app = NamsdecApp {
+        source: "    mov rax, 1   ; rax reçoit un\n    add rax, rbx\n".to_owned(),
+        ..Default::default()
+    };
+    app.cursor_byte = app.source.find("rax").unwrap() + 1;
+    app.highlight_matches();
+    assert_eq!(app.tracked_spans.len(), 2, "deux `rax` de code");
+
+    app.apply_rename("rdx");
+    assert!(
+        app.source.contains("; rax reçoit un"),
+        "le commentaire n'est pas du code : {}",
+        app.source
+    );
+    assert!(app.source.contains("mov rdx, 1"), "{}", app.source);
+    assert!(app.source.contains("add rdx, rbx"), "{}", app.source);
+}
+
+/// Renommer sans rien avoir surligné surligne d'abord.
+///
+/// Un geste rendu plutôt qu'un refus : on est sur le mot, on demande à le
+/// renommer, c'est de celui-là qu'on parle.
+#[test]
+fn renaming_without_a_selection_highlights_first() {
+    let mut app = NamsdecApp {
+        source: "    mov rax, 1\n    add rax, rbx\n".to_owned(),
+        ..Default::default()
+    };
+    app.cursor_byte = app.source.find("rax").unwrap() + 1;
+    app.start_rename();
+    assert_eq!(app.rename.as_deref(), Some("rax"));
+    assert_eq!(app.tracked_spans.len(), 2);
+
+    // Mais sur un blanc, il n'y a rien à renommer, et on le dit.
+    let mut app = NamsdecApp {
+        source: "    mov rax, 1\n".to_owned(),
+        ..Default::default()
+    };
+    app.cursor_byte = 1;
+    app.start_rename();
+    assert!(app.rename.is_none());
+    assert!(matches!(app.status, Status::Note(_)), "{:?}", app.status);
+}
+
+/// Une touche passe à l'occurrence suivante, et la sélectionne.
+///
+/// C'est le geste qui manque le plus quand on ne peut pas poser
+/// plusieurs curseurs : on ne les a pas tous en même temps, mais on va
+/// de l'un à l'autre sans quitter le clavier, et chacun arrive
+/// sélectionné — donc prêt à être remplacé.
+#[test]
+fn one_key_walks_from_match_to_match() {
+    let mut app = NamsdecApp {
+        source: "    mov rax, 1\n    add rax, rbx\n    xor rax, rax\n".to_owned(),
+        ..Default::default()
+    };
+    app.cursor_byte = 0;
+    app.highlight_matches();
+    // Le curseur est en tête de ligne : rien à suivre là, on prend donc
+    // le premier mot suivi explicitement.
+    app.cursor_byte = app.source.find("rax").unwrap();
+    app.highlight_matches();
+    let total = app.tracked_spans.len();
+    assert_eq!(total, 4, "quatre `rax` : {:?}", app.tracked_spans);
+
+    // On avance : chaque saut doit tomber sur une occurrence, et la
+    // sélectionner.
+    let mut vus = Vec::new();
+    for _ in 0..total {
+        app.go_to_match(true);
+        let sélection = app
+            .pending_selection
+            .clone()
+            .expect("aller à une occurrence doit la sélectionner");
+        assert_eq!(
+            &app.source[sélection.clone()],
+            "rax",
+            "la sélection doit tomber sur le mot, non à côté"
+        );
+        vus.push(sélection.start);
+    }
+    // Les quatre, chacune une fois, puis on revient au début.
+    let mut triés = vus.clone();
+    triés.sort_unstable();
+    triés.dedup();
+    assert_eq!(triés.len(), total, "chaque occurrence une fois : {vus:?}");
+
+    // Et en arrière, on repart en sens inverse.
+    app.cursor_byte = app.source.len();
+    app.go_to_match(false);
+    let dernière = app.pending_selection.clone().unwrap();
+    assert_eq!(dernière.start, *triés.last().unwrap());
+}
+
+/// La boucle est circulaire, dans les deux sens.
+///
+/// Buter contre la fin obligerait à remonter à la main pour repasser sur
+/// ce qu'on vient de dépasser.
+#[test]
+fn walking_past_the_last_match_comes_back_to_the_first() {
+    let mut app = NamsdecApp {
+        source: "    mov rax, 1\n    add rax, rbx\n".to_owned(),
+        ..Default::default()
+    };
+    app.cursor_byte = app.source.find("rax").unwrap();
+    app.highlight_matches();
+    let premières = app.tracked_spans.clone();
+    assert_eq!(premières.len(), 2);
+
+    // Curseur après la dernière : la suivante est la première.
+    app.cursor_byte = app.source.len();
+    app.go_to_match(true);
+    assert_eq!(app.pending_selection.clone().unwrap().start, premières[0].start);
+
+    // Curseur avant la première : la précédente est la dernière.
+    app.cursor_byte = 0;
+    app.go_to_match(false);
+    assert_eq!(app.pending_selection.clone().unwrap().start, premières[1].start);
+}
+
+/// Sans rien de surligné, la touche surligne d'abord puis avance.
+///
+/// Répondre « il n'y a rien » à quelqu'un qui a le mot sous les yeux
+/// serait lui demander un geste de plus pour rien.
+#[test]
+fn walking_without_a_highlight_starts_one() {
+    let mut app = NamsdecApp {
+        source: "    mov rax, 1\n    add rax, rbx\n".to_owned(),
+        ..Default::default()
+    };
+    app.cursor_byte = app.source.find("rax").unwrap() + 1;
+    assert!(app.tracked.is_none());
+    app.go_to_match(true);
+    assert!(app.tracked.is_some(), "la touche doit surligner d'abord");
+    assert!(app.pending_selection.is_some(), "puis avancer");
+}
+
+/// Entrée envoie la ligne au programme — sans toucher à la souris.
+///
+/// Elle ne le faisait pas : un `TextEdit` qui traite Entrée la retire de
+/// la file d'évènements, si bien que la guetter *après* lui ne voyait
+/// plus rien. Le champ gardait le texte, le programme continuait
+/// d'attendre, et il fallait cliquer « Envoyer » — ce qui est exactement
+/// ce que le focus automatique cherchait à éviter.
+#[test]
+fn pressing_enter_sends_the_line_to_the_program() {
+    let Ok(octets) = std::fs::read("/home/fred/CrackMe/crackme-01") else {
+        return;
+    };
+    let mut app = NamsdecApp::default();
+    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    app.do_run();
+    for _ in 0..4000 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&egui::Context::default());
+    }
+    assert!(matches!(app.status, Status::WaitingForInput), "{:?}", app.status);
+
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let écran = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1600.0, 1100.0));
+    let base = egui::RawInput {
+        screen_rect: Some(écran),
+        ..Default::default()
+    };
+    // Deux images : le champ réclame le focus, et l'obtient.
+    for _ in 0..2 {
+        let mut sortie = ctx.run_ui(base.clone(), |ui| app.draw(ui));
+        sortie.textures_delta.clear();
+    }
+    assert!(
+        ctx.memory(|m| m.focused()).is_some(),
+        "le curseur doit aller tout seul là où il faut taper"
+    );
+
+    // On tape, sans avoir rien cliqué.
+    let mut frappe = base.clone();
+    frappe.events.push(egui::Event::Text("secret".to_owned()));
+    let mut sortie = ctx.run_ui(frappe, |ui| app.draw(ui));
+    sortie.textures_delta.clear();
+    assert_eq!(app.console_input, "secret", "ce qu'on tape arrive dans le champ");
+
+    // Puis Entrée.
+    let mut entrée = base.clone();
+    entrée.events.push(egui::Event::Key {
+        key: egui::Key::Enter,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: egui::Modifiers::NONE,
+    });
+    let mut sortie = ctx.run_ui(entrée, |ui| app.draw(ui));
+    sortie.textures_delta.clear();
+
+    assert!(
+        app.console_input.is_empty(),
+        "le champ se vide : la ligne est partie — {:?}",
+        app.console_input
+    );
+    assert!(
+        !matches!(app.status, Status::WaitingForInput),
+        "et le programme repart au lieu d'attendre encore : {:?}",
+        app.status
+    );
+}
+
+/// Pendant l'attente, la zone de saisie se voit sans qu'on la cherche.
+///
+/// C'est le seul moment où l'application demande quelque chose ; la
+/// manquer, c'est croire qu'elle a planté. Un liseré d'un pixel sur un
+/// panneau déjà sombre passait pour une nuance.
+#[test]
+fn the_waiting_input_area_announces_itself() {
+    let Ok(octets) = std::fs::read("/home/fred/CrackMe/crackme-01") else {
+        return;
+    };
+    let mut app = NamsdecApp::default();
+    assert!(app.load_elf(&octets, "crackme-01"));
+    app.do_run();
+    for _ in 0..4000 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&egui::Context::default());
+    }
+
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let entrée = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1600.0, 1100.0),
+        )),
+        ..Default::default()
+    };
+    let accent = app.theme.accent;
+    let mut peint = String::new();
+    let mut liserés = 0usize;
+    let mut pastilles = 0usize;
+    for _ in 0..3 {
+        peint.clear();
+        liserés = 0;
+        pastilles = 0;
+        let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+        for clipped in &sortie.shapes {
+            match &clipped.shape {
+                egui::epaint::Shape::Text(texte) => {
+                    peint.push_str(texte.galley.text());
+                    peint.push('|');
+                }
+                // Le cadre : deux pixels d'accent, et non plus un.
+                egui::epaint::Shape::Rect(rect)
+                    if rect.stroke.color == accent && rect.stroke.width >= 2.0 =>
+                {
+                    liserés += 1;
+                }
+                egui::epaint::Shape::Circle(cercle) if cercle.fill == accent => {
+                    pastilles += 1;
+                }
+                _ => {}
+            }
+        }
+        sortie.textures_delta.clear();
+    }
+
+    let s = strings(Lang::Fr);
+    assert!(liserés >= 1, "le cadre d'attente doit être franc");
+    assert!(pastilles >= 1, "la pastille doit accrocher l'oeil");
+    // Et le geste à faire est écrit, pas seulement suggéré.
+    assert!(
+        peint.contains(s.console_waiting_how),
+        "il faut dire quoi faire : « {} »\n{peint}",
+        s.console_waiting_how
+    );
 }

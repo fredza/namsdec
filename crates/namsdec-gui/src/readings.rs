@@ -27,7 +27,7 @@ pub fn of(lang: Lang, value: u64) -> String {
     // Le signé n'est dit que s'il diffère : répéter « 42 » sous « 42 »
     // ne fait que noyer la ligne qui compte.
     let signed = value as i64;
-    if signed != value as i64 || signed < 0 {
+    if signed < 0 {
         line(s.reading_signed, signed.to_string());
     }
     line(s.reading_hex, format!("{value:#x}"));
@@ -52,6 +52,69 @@ pub fn of(lang: Lang, value: u64) -> String {
     }
     out.pop();
     out
+}
+
+/// Les deux lectures qu'on veut d'un coup d'oeil : le décimal, et le
+/// signé quand il diffère.
+///
+/// L'infobulle du *nom* d'un registre parlait de son rôle et de sa
+/// provenance, mais pas de ce qu'il contient — il fallait viser la
+/// valeur, à côté, pour l'apprendre. Or « combien ça fait ? » est la
+/// question qu'on se pose en survolant RCX, et non « à quoi sert RCX ».
+pub fn short(lang: Lang, value: u64) -> String {
+    let s = strings(lang);
+    let signed = value as i64;
+    if signed < 0 {
+        format!("{} {value}   {} {signed}", s.reading_unsigned, s.reading_signed)
+    } else {
+        format!("{} {value}", s.reading_unsigned)
+    }
+}
+
+/// Toutes les bases d'une même valeur, étiquetées, dans l'ordre où on
+/// les consulte.
+///
+/// Pour la calculatrice, qui les montre **toutes en même temps** — c'est
+/// même tout son objet : on tape `0x1f` et l'on voit 31, `11111`, `37`,
+/// sans rien convertir. `of` ci-dessus tait ce qui n'apprend rien, ce qui
+/// est juste dans une infobulle ; ici, une ligne qui disparaît selon la
+/// valeur ferait bouger l'affichage sous les doigts.
+pub fn all_bases(lang: Lang, value: u64) -> Vec<(&'static str, String)> {
+    let s = strings(lang);
+    vec![
+        (s.reading_hex, format!("{value:#x}")),
+        (s.reading_unsigned, value.to_string()),
+        (s.reading_signed, (value as i64).to_string()),
+        (s.reading_octal, format!("{value:#o}")),
+        (s.reading_binary, binary(value)),
+        (s.reading_ascii, ascii(value)),
+        (s.reading_bytes, little_endian(value)),
+    ]
+}
+
+/// Les huit octets lus comme des caractères, **dans l'ordre où ils sont
+/// en mémoire** — le moins significatif d'abord.
+///
+/// C'est le point de toute la ligne. `0x6c6c6568` écrit à l'endroit se
+/// lit « lleh », ce qui n'apprend rien ; les mêmes octets rangés comme le
+/// processeur les range donnent « hell », et l'on a reconnu la chaîne.
+/// Une valeur devient une chaîne en passant par la mémoire, et c'est donc
+/// la mémoire qu'il faut montrer — la même que la ligne d'en dessous.
+///
+/// Ce qui n'est pas imprimable devient un point, comme dans tout vidage
+/// hexadécimal depuis quarante ans.
+fn ascii(value: u64) -> String {
+    value
+        .to_le_bytes()
+        .iter()
+        .map(|b| {
+            if b.is_ascii_graphic() || *b == b' ' {
+                *b as char
+            } else {
+                '.'
+            }
+        })
+        .collect()
 }
 
 /// La valeur en binaire, par groupes de huit — sans les octets de tête
@@ -121,6 +184,44 @@ mod tests {
     fn real_float_bits_read_as_a_number() {
         let text = of(Lang::Fr, 2.5f64.to_bits());
         assert!(text.contains("2.5"), "{text}");
+    }
+
+    /// La calculatrice montre toutes les bases, toujours les mêmes.
+    ///
+    /// Aucune ne disparaît selon la valeur : une ligne qui va et vient
+    /// ferait bouger l'affichage pendant qu'on tape.
+    #[test]
+    fn the_calculator_shows_every_base_every_time() {
+        let petite = all_bases(Lang::Fr, 31);
+        let grande = all_bases(Lang::Fr, u64::MAX);
+        assert_eq!(petite.len(), grande.len(), "le même nombre de lignes");
+        let valeurs: Vec<&str> = petite.iter().map(|(_, v)| v.as_str()).collect();
+        assert!(valeurs.contains(&"0x1f"), "{valeurs:?}");
+        assert!(valeurs.contains(&"31"), "{valeurs:?}");
+        assert!(valeurs.contains(&"0o37"), "{valeurs:?}");
+        assert!(valeurs.contains(&"00011111"), "{valeurs:?}");
+        // Le signé est toujours là, même quand il répète le non signé :
+        // c'est ce qu'on vient vérifier devant un `cmp`.
+        assert!(
+            all_bases(Lang::Fr, u64::MAX)
+                .iter()
+                .any(|(_, v)| v == "-1"),
+            "0xffffffffffffffff, c'est -1"
+        );
+    }
+
+    /// Les octets se lisent comme des lettres quand ils en sont.
+    #[test]
+    fn a_value_that_spells_something_says_so() {
+        // Les octets 68 65 6c 6c en mémoire : « hell ». Écrite à
+        // l'endroit, la même valeur donnerait « lleh », qui n'apprend
+        // rien — c'est la mémoire qu'on veut lire, pas le nombre.
+        let lignes = all_bases(Lang::Fr, 0x6c6c6568);
+        let ascii = lignes
+            .iter()
+            .find(|(nom, _)| *nom == strings(Lang::Fr).reading_ascii)
+            .expect("la ligne ASCII");
+        assert_eq!(ascii.1, "hell....", "{lignes:?}");
     }
 
     /// Et les deux langues disent la même chose autrement.

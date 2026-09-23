@@ -23,7 +23,7 @@ use egui::{Key, KeyboardShortcut, Modifiers};
 use serde::{Deserialize, Serialize};
 
 use crate::i18n::Lang;
-use crate::keybindings::{Action, Chord, KeyBindings, Sequence};
+use crate::keybindings::{Action, Chord, KeyBindings, Preset, Sequence};
 
 /// `#[serde(default)]` au niveau de la struct : un champ absent du fichier
 /// est repris de `Settings::default()`, donc une configuration écrite par
@@ -64,6 +64,9 @@ pub struct Settings {
     /// Entrée garde l'indentation de la ligne qu'on quitte.
     #[serde(default = "vrai")]
     pub auto_indent: bool,
+    /// Les paires — ( ) [ ] { } " ' — se ferment toutes seules.
+    #[serde(default = "vrai")]
+    pub auto_pairs: bool,
     /// La fiche de l'instruction au survol du code.
     #[serde(default = "vrai")]
     pub hover_help: bool,
@@ -138,6 +141,15 @@ pub struct Settings {
     /// laisse.
     #[serde(default)]
     pub sidebar_tab_height: Option<u32>,
+    /// L'onglet de rétro-ingénierie est-il montré ?
+    ///
+    /// C'est une case des préférences, cochée à la main, et elle tient
+    /// donc sur le disque comme les autres. Elle était restée hors du
+    /// fichier au motif qu'un repli d'en-tête ne se sauvegarde pas —
+    /// mais ce n'est pas un repli : c'est un choix, et le refaire à
+    /// chaque lancement est exactement ce qu'un réglage sert à éviter.
+    #[serde(default)]
+    pub re_tab: bool,
     /// Le module de décompilation est-il autorisé ?
     ///
     /// Faux par défaut, et ce défaut compte : cocher cette case donne à
@@ -174,6 +186,47 @@ pub struct Settings {
     /// pas : il n'a jamais quitté la mémoire.
     #[serde(default)]
     pub open_files: Vec<String>,
+    /// Le binaire ouvert quand on a quitté, s'il y en avait un.
+    ///
+    /// Son **chemin**, comme pour les sources — mais pour une autre
+    /// raison : un binaire ne s'édite pas ici, et ce qu'on veut retrouver
+    /// n'est pas son contenu mais le travail qu'on avait commencé dessus.
+    /// `current_file` ne peut pas servir : il est délibérément vide pour
+    /// un binaire, afin qu'un Ctrl+S distrait n'écrase pas l'exécutable
+    /// par son propre désassemblage.
+    #[serde(default)]
+    pub open_binary: Option<String>,
+    /// Sa taille et sa date, au moment où on l'a quitté.
+    ///
+    /// Ce qui suit — points d'arrêt, zones surveillées — se repère par
+    /// numéro de ligne du listing, et un listing est reconstruit à chaque
+    /// ouverture. Tant que le fichier est le même, les lignes le sont
+    /// aussi. S'il a changé, ces repères désignent autre chose, et les
+    /// restaurer poserait des points d'arrêt au hasard : on les oublie
+    /// alors, et on le dit.
+    #[serde(default)]
+    pub open_binary_len: Option<u64>,
+    #[serde(default)]
+    pub open_binary_mtime: Option<u64>,
+    /// Les lignes où l'on avait posé un point d'arrêt.
+    #[serde(default)]
+    pub breakpoints: Vec<u32>,
+    /// Les zones de mémoire surveillées : adresse et longueur.
+    #[serde(default)]
+    pub watchpoints: Vec<(u64, u32)>,
+    /// Les registres surveillés, par nom.
+    #[serde(default)]
+    pub watched_registers: Vec<String>,
+    /// Ce qu'on donne au programme : ses arguments, et son
+    /// environnement. Réglés à la main, donc gardés — les retaper à
+    /// chaque lancement est exactement ce qu'un réglage évite.
+    #[serde(default)]
+    pub program_args: String,
+    #[serde(default)]
+    pub program_env: String,
+    /// L'onglet du panneau latéral qu'on regardait.
+    #[serde(default)]
+    pub sidebar_tab: Option<String>,
     /// Identifiant d'action -> raccourci, en texte.
     pub shortcuts: BTreeMap<String, String>,
 }
@@ -195,6 +248,7 @@ impl Default for Settings {
             completion: true,
             exercises: false,
             auto_indent: true,
+            auto_pairs: true,
             hover_help: true,
             disabled_packs: Vec::new(),
             current_exercise: None,
@@ -207,10 +261,20 @@ impl Default for Settings {
             system_titlebar: false,
             console_height: None,
             sidebar_tab_height: None,
+            re_tab: false,
             decompiler_module: false,
             installer_module: false,
             decompiler: String::new(),
             memory_follow: fixe_par_défaut(),
+            open_binary: None,
+            open_binary_len: None,
+            open_binary_mtime: None,
+            breakpoints: Vec::new(),
+            watchpoints: Vec::new(),
+            watched_registers: Vec::new(),
+            program_args: String::new(),
+            program_env: String::new(),
+            sidebar_tab: None,
             explorer_root: None,
             current_file: None,
             open_files: Vec::new(),
@@ -330,6 +394,197 @@ pub fn settings_path() -> Option<PathBuf> {
     Some(base.join("namsdec").join("settings.json"))
 }
 
+#[cfg(test)]
+mod tests_keymap {
+    use super::*;
+
+    /// Le fichier de raccourcis dit le jeu, et ce qui s'en écarte.
+    ///
+    /// Écrire seulement l'écart plutôt que la liste entière : on voit
+    /// d'un coup d'œil ce qu'on a changé, et le jour où un jeu gagne une
+    /// action, elle arrive sans qu'on ait rien à faire.
+    #[test]
+    fn a_keymap_records_only_what_departs_from_its_set() {
+        // Rien changé : rien à écrire.
+        let tel_quel = Keymap::from_bindings(Preset::Vim, &KeyBindings::preset(Preset::Vim));
+        assert_eq!(tel_quel.preset, "vim");
+        assert!(
+            tel_quel.shortcuts.is_empty(),
+            "obtenu {:?}",
+            tel_quel.shortcuts
+        );
+
+        // Une touche déplacée, et elle seule.
+        let mut à_moi = KeyBindings::preset(Preset::Classic);
+        à_moi.map.insert(
+            Action::Run,
+            Chord::Simple(egui::KeyboardShortcut::new(
+                egui::Modifiers::CTRL,
+                egui::Key::Enter,
+            )),
+        );
+        let écrit = Keymap::from_bindings(Preset::Classic, &à_moi);
+        assert_eq!(écrit.preset, "classic");
+        assert_eq!(écrit.shortcuts.len(), 1, "obtenu {:?}", écrit.shortcuts);
+        assert!(écrit.shortcuts.contains_key("run"));
+
+        // Et relu, on retrouve exactement ce qu'on avait.
+        assert_eq!(écrit.bindings().map, à_moi.map);
+    }
+
+    /// Un fichier abîmé ne fait pas perdre le reste des raccourcis.
+    #[test]
+    fn an_unreadable_line_costs_only_its_own_shortcut() {
+        let keymap = Keymap {
+            preset: "classic".to_owned(),
+            shortcuts: [
+                ("run".to_owned(), "Ctrl+Enter".to_owned()),
+                ("stop".to_owned(), "n'importe quoi".to_owned()),
+                ("action_qui_nexiste_pas".to_owned(), "Ctrl+Z".to_owned()),
+            ]
+            .into_iter()
+            .collect(),
+        };
+        let bindings = keymap.bindings();
+        let socle = KeyBindings::preset(Preset::Classic);
+
+        // Celle qu'on a su lire est prise.
+        assert_ne!(bindings.map.get(&Action::Run), socle.map.get(&Action::Run));
+        // Celle qu'on n'a pas su lire garde celle du jeu.
+        assert_eq!(bindings.map.get(&Action::Stop), socle.map.get(&Action::Stop));
+        // Et une action inconnue est simplement passée.
+        assert_eq!(bindings.map.len(), socle.map.len());
+    }
+
+    /// Un jeu inconnu retombe sur celui de départ, sans rien perdre.
+    #[test]
+    fn an_unknown_set_falls_back_to_the_starting_one() {
+        let keymap = Keymap {
+            preset: "emacs".to_owned(),
+            shortcuts: BTreeMap::new(),
+        };
+        assert_eq!(keymap.preset(), Preset::default());
+        assert_eq!(keymap.bindings().map, KeyBindings::default().map);
+    }
+
+    /// Le fichier se relit tel qu'on l'a écrit.
+    #[test]
+    fn a_keymap_survives_a_round_trip_through_json() {
+        let keymap = Keymap::from_bindings(Preset::Classic, &KeyBindings::preset(Preset::Vim));
+        let texte = serde_json::to_string_pretty(&keymap).expect("écriture");
+        let relu: Keymap = serde_json::from_str(&texte).expect("lecture");
+        assert_eq!(relu.preset, keymap.preset);
+        assert_eq!(relu.shortcuts, keymap.shortcuts);
+        // Et le fichier se lit à l'œil : une ligne par raccourci.
+        assert!(texte.contains("\"preset\""), "{texte}");
+        assert!(texte.contains("\"shortcuts\""), "{texte}");
+    }
+}
+
+/// `$XDG_CONFIG_HOME/namsdec/keymap.json`, sinon
+/// `$HOME/.config/namsdec/keymap.json`.
+///
+/// Un fichier à part de `settings.json` : on y touche autrement — on
+/// l'ouvre pour le lire, on le copie d'une machine à l'autre, on le met
+/// dans un dépôt de fichiers de configuration. Le mêler aux réglages
+/// obligerait à trier tout cela à la main.
+pub fn keymap_path() -> Option<PathBuf> {
+    settings_path().map(|p| p.with_file_name("keymap.json"))
+}
+
+/// Ce que le fichier de raccourcis contient.
+///
+/// Un jeu de départ nommé, et ce dont l'utilisateur s'en écarte. Écrire
+/// les deux plutôt que la seule liste finale : on voit ainsi d'un coup
+/// d'œil ce qui a été changé, et le jour où un jeu gagne une action, elle
+/// arrive sans qu'on ait rien à faire.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct Keymap {
+    /// `vim` ou `classic`.
+    pub preset: String,
+    /// Les frappes, par identifiant d'action. Celles qui manquent
+    /// viennent du jeu.
+    #[serde(default)]
+    pub shortcuts: BTreeMap<String, String>,
+}
+
+impl Default for Keymap {
+    fn default() -> Self {
+        Self {
+            preset: Preset::default().id().to_owned(),
+            shortcuts: BTreeMap::new(),
+        }
+    }
+}
+
+impl Keymap {
+    /// Le jeu nommé, ou celui de départ si le nom ne dit rien.
+    pub fn preset(&self) -> Preset {
+        Preset::from_id(&self.preset).unwrap_or_default()
+    }
+
+    /// Les raccourcis qu'il décrit : le jeu, puis ce qui s'en écarte.
+    pub fn bindings(&self) -> KeyBindings {
+        let mut bindings = KeyBindings::preset(self.preset());
+        for (id, frappe) in &self.shortcuts {
+            let Some(action) = action_from_id(id) else {
+                continue;
+            };
+            match chord_from_string(frappe) {
+                Some(chord) => {
+                    bindings.map.insert(action, chord);
+                }
+                // Une frappe illisible ne doit pas emporter le reste du
+                // fichier : on garde celle du jeu et l'on passe.
+                None => continue,
+            }
+        }
+        bindings
+    }
+
+    /// Ce qui s'écarte du jeu, et cela seulement.
+    pub fn from_bindings(preset: Preset, bindings: &KeyBindings) -> Self {
+        let socle = KeyBindings::preset(preset);
+        let shortcuts = bindings
+            .map
+            .iter()
+            .filter(|(action, chord)| socle.map.get(action) != Some(chord))
+            .map(|(action, chord)| (action_id(*action).to_owned(), chord_to_string(chord)))
+            .collect();
+        Self {
+            preset: preset.id().to_owned(),
+            shortcuts,
+        }
+    }
+}
+
+/// Lit le fichier de raccourcis, s'il existe et se laisse lire.
+///
+/// Un fichier absent n'est pas une faute : c'est le cas de qui n'a jamais
+/// rien changé, et le jeu de départ répond pour lui.
+pub fn load_keymap() -> Keymap {
+    let Some(chemin) = keymap_path() else {
+        return Keymap::default();
+    };
+    let Ok(texte) = std::fs::read_to_string(&chemin) else {
+        return Keymap::default();
+    };
+    serde_json::from_str(&texte).unwrap_or_default()
+}
+
+/// Écrit le fichier de raccourcis.
+pub fn save_keymap(keymap: &Keymap) -> std::io::Result<()> {
+    let Some(chemin) = keymap_path() else {
+        return Ok(());
+    };
+    if let Some(dossier) = chemin.parent() {
+        std::fs::create_dir_all(dossier)?;
+    }
+    let texte = serde_json::to_string_pretty(keymap)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    std::fs::write(chemin, texte + "\n")
+}
+
 pub fn shortcuts_to_strings(bindings: &KeyBindings) -> BTreeMap<String, String> {
     bindings
         .map
@@ -384,6 +639,11 @@ fn action_id(action: Action) -> &'static str {
         Action::NextTab => "next_tab",
         Action::PreviousTab => "previous_tab",
         Action::CloseTab => "close_tab",
+        Action::DuplicateLine => "duplicate_line",
+        Action::HighlightMatches => "highlight_matches",
+        Action::RenameMatches => "rename_matches",
+        Action::NextMatch => "next_match",
+        Action::PreviousMatch => "previous_match",
     }
 }
 

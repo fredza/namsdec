@@ -23,10 +23,10 @@ use crate::{AssembleOutput, Diagnostic, Severity};
 /// métier : c'est l'interface qui les traduit. Ils portent leur ligne
 /// source quand on peut la retrouver, et la ligne 0 — « le programme
 /// entier » — sinon.
-pub fn check(output: &AssembleOutput) -> Vec<Diagnostic> {
+pub fn check(output: &AssembleOutput, fr: bool) -> Vec<Diagnostic> {
     let mut found = Vec::new();
-    falls_off_the_end(output, &mut found);
-    writes_to_read_only(output, &mut found);
+    falls_off_the_end(output, fr, &mut found);
+    writes_to_read_only(output, fr, &mut found);
     found
 }
 
@@ -37,7 +37,7 @@ pub fn check(output: &AssembleOutput) -> Vec<Diagnostic> {
 /// processeur exécutera ce qui la suit — les données, puis n'importe
 /// quoi. C'est la faute qui fait dire « mon programme marche mais il
 /// plante à la fin ».
-fn falls_off_the_end(output: &AssembleOutput, found: &mut Vec<Diagnostic>) {
+fn falls_off_the_end(output: &AssembleOutput, fr: bool, found: &mut Vec<Diagnostic>) {
     for section in output.sections.iter().filter(|s| s.executable) {
         let Some(code) = section_bytes(output, section) else {
             continue;
@@ -69,11 +69,20 @@ fn falls_off_the_end(output: &AssembleOutput, found: &mut Vec<Diagnostic>) {
                     .map(|(line, _)| *line)
                     .unwrap_or(0),
                 severity: Severity::Warning,
-                message: format!(
-                    "execution can run off the end of {}: the last instruction is `{}`, \
-                     which neither stops nor jumps — add `hlt`, or exit with syscall 60",
-                    section.name, last.text
-                ),
+                message: if fr {
+                    format!(
+                        "l'exécution peut sortir par la fin de {} : la dernière \
+                         instruction est « {} », qui n'arrête ni ne saute — ajoutez \
+                         « hlt », ou sortez par l'appel système 60",
+                        section.name, last.text
+                    )
+                } else {
+                    format!(
+                        "execution can run off the end of {}: the last instruction is `{}`, \
+                         which neither stops nor jumps — add `hlt`, or exit with syscall 60",
+                        section.name, last.text
+                    )
+                },
             });
         }
     }
@@ -86,7 +95,7 @@ fn falls_off_the_end(output: &AssembleOutput, found: &mut Vec<Diagnostic>) {
 /// soit pour savoir que `mov [message], al` échouera si `message` est
 /// dans `.rodata` — ou dans `.text`, ce qui arrive quand on a oublié
 /// d'ouvrir une section de données.
-fn writes_to_read_only(output: &AssembleOutput, found: &mut Vec<Diagnostic>) {
+fn writes_to_read_only(output: &AssembleOutput, fr: bool, found: &mut Vec<Diagnostic>) {
     // Les zones en lecture seule, par adresse de début.
     let protégées: BTreeMap<u64, &str> = output
         .sections
@@ -117,11 +126,19 @@ fn writes_to_read_only(output: &AssembleOutput, found: &mut Vec<Diagnostic>) {
                     .map(|(line, _)| *line)
                     .unwrap_or(0),
                 severity: Severity::Warning,
-                message: format!(
-                    "this writes to {addr:#x}, inside {nom}, which is not writable — \
-                     data that changes while running belongs in `section .data` or \
-                     `section .bss`"
-                ),
+                message: if fr {
+                    format!(
+                        "ceci écrit en {addr:#x}, dans {nom}, qui n'est pas \
+                         inscriptible — ce qui change pendant l'exécution a sa place \
+                         dans « section .data » ou « section .bss »"
+                    )
+                } else {
+                    format!(
+                        "this writes to {addr:#x}, inside {nom}, which is not writable — \
+                         data that changes while running belongs in `section .data` or \
+                         `section .bss`"
+                    )
+                },
             });
         }
     }
@@ -195,7 +212,7 @@ mod tests {
         let Some(out) = build("global _start\nsection .text\n_start:\n    mov rax, 1\n") else {
             return;
         };
-        let found = check(&out);
+        let found = check(&out, false);
         assert_eq!(found.len(), 1, "{found:?}");
         assert!(found[0].message.contains("run off the end"), "{found:?}");
         assert_eq!(found[0].severity, Severity::Warning);
@@ -214,7 +231,7 @@ mod tests {
             )) else {
                 return;
             };
-            let found = check(&out);
+            let found = check(&out, false);
             assert!(
                 found.iter().all(|d| !d.message.contains("run off the end")),
                 "« {fin} » arrête le programme : {found:?}"
@@ -237,7 +254,7 @@ mod tests {
         ) else {
             return;
         };
-        let found = check(&out);
+        let found = check(&out, false);
         assert_eq!(found.len(), 1, "{found:?}");
         assert!(found[0].message.contains("not writable"), "{found:?}");
         assert!(found[0].message.contains("section .data"), "{found:?}");
@@ -264,7 +281,7 @@ mod tests {
         ) else {
             return;
         };
-        let found = check(&out);
+        let found = check(&out, false);
         assert_eq!(found.len(), 1, "{found:?}");
         assert!(found[0].message.contains("not writable"), "{found:?}");
     }
@@ -288,7 +305,7 @@ mod tests {
         ) else {
             return;
         };
-        assert!(check(&out).is_empty(), "{:?}", check(&out));
+        assert!(check(&out, false).is_empty(), "{:?}", check(&out, false));
     }
 
     /// Une écriture par registre ne se juge pas ici : personne ne sait
@@ -308,6 +325,6 @@ mod tests {
         ) else {
             return;
         };
-        assert!(check(&out).is_empty(), "{:?}", check(&out));
+        assert!(check(&out, false).is_empty(), "{:?}", check(&out, false));
     }
 }

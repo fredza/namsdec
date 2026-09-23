@@ -1023,6 +1023,16 @@ impl NamsdecApp {
                     let provenance = self.last_write_line(name);
                     let response = response.on_hover_ui(|ui| {
                         ui.strong(name);
+                        // Ce qu'il contient, avant ce à quoi il sert :
+                        // on survole un registre pour savoir combien ça
+                        // fait, et l'hexadécimal seul oblige à convertir
+                        // de tête pour voir qu'un compteur vaut 10 ou
+                        // qu'un retour vaut -1.
+                        ui.label(
+                            egui::RichText::new(format!("{value:#018x}")).monospace(),
+                        );
+                        ui.colored_label(theme.accent, readings::short(lang, value));
+                        ui.add_space(4.0);
                         ui.label(roles::of(lang, name));
                         // D'où vient la valeur : le pas qui l'a écrite,
                         // son rang et sa ligne. « Qui a mis ça là ? » est
@@ -1164,7 +1174,7 @@ impl NamsdecApp {
         };
         match emulator.cpu_mut().mem.poke(addr, bytes) {
             Ok(()) => {
-                self.status = Status::Note(s.poke_done);
+                self.status = Status::Note(|s| s.poke_done);
                 // Le vidage compare avec l'image d'avant : sans cela, ce
                 // qu'on vient d'écrire ne ressortirait pas.
                 self.mem_before = None;
@@ -1189,7 +1199,7 @@ impl NamsdecApp {
         } else {
             return;
         }
-        self.status = Status::Note(strings(self.lang).register_set);
+        self.status = Status::Note(|s| s.register_set);
     }
 
     fn flags_ui(&mut self, ui: &mut egui::Ui) {
@@ -1237,7 +1247,7 @@ impl NamsdecApp {
         };
         let flags = &mut emulator.cpu_mut().flags;
         flags.toggle(bit);
-        self.status = Status::Note(strings(self.lang).flag_set);
+        self.status = Status::Note(|s| s.flag_set);
     }
 
     fn stack_ui(&self, ui: &mut egui::Ui) {

@@ -43,6 +43,13 @@ BUILT="$SOURCE_DIR/target/release/$BIN_NAME"
 # --- Binaire -----------------------------------------------------------
 say "Installation du binaire dans $BIN_DIR/$APP"
 install -Dm755 "$BUILT" "$BIN_DIR/$APP"
+# Les symboles pèsent deux mégaoctets et ne servent qu'à lire une
+# trace de panique. Celui de `target/release` les garde — c'est lui
+# qu'on ouvre dans un débogueur ; celui qu'on installe s'en passe.
+# Le BuildID reste, de quoi apparier les deux si besoin.
+if command -v strip >/dev/null; then
+    strip "$BIN_DIR/$APP" 2>/dev/null || true
+fi
 
 # --- Exercices ---------------------------------------------------------
 # Le parcours n'est pas dans le binaire : c'est un fichier de données,

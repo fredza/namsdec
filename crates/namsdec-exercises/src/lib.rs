@@ -17,6 +17,9 @@
 //! répond. Vérifier à la place de l'utilisateur lui retirerait le geste
 //! qu'il est venu apprendre.
 
+/// La version de ce module, telle que Cargo la connaît.
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 pub mod pack;
 
 /// Un texte dans les deux langues de l'interface.

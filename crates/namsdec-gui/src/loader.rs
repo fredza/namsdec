@@ -225,7 +225,13 @@ pub enum LoadError {
 /// `name` est le nom sous lequel le programme se verra lui-même :
 /// `argv[0]`, et `AT_EXECFN`. Un programme qui se plaint le cite, et le
 /// voir juste vaut mieux que de le voir vide.
-pub fn load(elf: &Elf, name: &str, max: usize) -> Result<Loaded, LoadError> {
+pub fn load(
+    elf: &Elf,
+    name: &str,
+    args: &[String],
+    env: &[String],
+    max: usize,
+) -> Result<Loaded, LoadError> {
     let Some((load_addr, mut image)) = elf.load_image() else {
         return Err(LoadError::NotLoadable);
     };
@@ -285,7 +291,7 @@ pub fn load(elf: &Elf, name: &str, max: usize) -> Result<Loaded, LoadError> {
         tls: tls_posé,
         argv: vec![name.to_owned()],
     };
-    let rsp = build_stack(&mut memory, elf, &layout, name, &mut report);
+    let rsp = build_stack(&mut memory, elf, &layout, name, args, env, &mut report);
 
     Ok(Loaded {
         memory,
@@ -415,8 +421,13 @@ fn build_stack(
     elf: &Elf,
     layout: &Layout,
     name: &str,
+    args: &[String],
+    env_extra: &[String],
     report: &mut Report,
 ) -> u64 {
+    // Ce qu'un programme trouve quand on ne lui a rien dit. Cinq
+    // variables : assez pour qu'une bibliothèque C se croie chez elle,
+    // pas assez pour qu'on s'y perde.
     const ENVIRONNEMENT: [&str; 5] = [
         "LANG=C",
         "PATH=/usr/bin:/bin",
@@ -429,12 +440,40 @@ fn build_stack(
     let execfn = pose_texte(memory, &mut curseur, name);
     let argv0 = execfn;
     let plateforme = pose_texte(memory, &mut curseur, "x86_64");
-    let env: Vec<u64> = ENVIRONNEMENT
+    // Les variables : celles d'origine, puis celles qu'on a ajoutées.
+    // Une variable donnée deux fois l'emporte sur celle d'origine —
+    // `getenv` rend la première trouvée, et l'on veut que ce soit la
+    // sienne.
+    let mut variables: Vec<String> = env_extra
+        .iter()
+        .filter(|texte| !texte.trim().is_empty())
+        .map(|texte| texte.trim().to_owned())
+        .collect();
+    for origine in ENVIRONNEMENT {
+        let nom = origine.split('=').next().unwrap_or(origine);
+        let déjà = variables
+            .iter()
+            .any(|v| v.split('=').next().unwrap_or(v) == nom);
+        if !déjà {
+            variables.push(origine.to_owned());
+        }
+    }
+    let env: Vec<u64> = variables
         .iter()
         .map(|variable| pose_texte(memory, &mut curseur, variable))
         .collect();
+    // Les arguments, après `argv[0]` : beaucoup de programmes — et la
+    // plupart des crackmes — attendent leur mot de passe là plutôt que
+    // sur l'entrée standard. Sans eux, on ne pouvait qu'assister à un
+    // « usage: ... » et s'arrêter.
+    let pointeurs: Vec<u64> = args
+        .iter()
+        .map(|argument| pose_texte(memory, &mut curseur, argument))
+        .collect();
     let random = pose_octets(memory, &mut curseur, &AT_RANDOM_BYTES);
-    report.argv = vec![name.to_owned()];
+    report.argv = std::iter::once(name.to_owned())
+        .chain(args.iter().cloned())
+        .collect();
 
     let (phdr, phent, phnum) = elf.phdr.unwrap_or((0, 0, 0));
     let mut aux: Vec<(u64, u64)> = vec![
@@ -470,7 +509,7 @@ fn build_stack(
 
     // Le vecteur, compté en mots de huit octets : argc, argv + zéro,
     // env + zéro, puis les paires du vecteur auxiliaire.
-    let mots = 1 + 1 + 1 + env.len() + 1 + aux.len() * 2;
+    let mots = 1 + 1 + pointeurs.len() + 1 + env.len() + 1 + aux.len() * 2;
     let mut rsp = curseur - mots as u64 * 8;
     // La convention d'appel veut RSP aligné sur seize octets à l'entrée
     // du programme.
@@ -481,8 +520,11 @@ fn build_stack(
         let _ = memory.poke(at, &valeur.to_le_bytes());
         at += 8;
     };
-    mot(memory, 1); // argc
+    mot(memory, 1 + pointeurs.len() as u64); // argc
     mot(memory, argv0);
+    for pointeur in &pointeurs {
+        mot(memory, *pointeur);
+    }
     mot(memory, 0);
     for variable in &env {
         mot(memory, *variable);

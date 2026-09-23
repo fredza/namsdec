@@ -11,6 +11,9 @@
 //! proposée — ce qui vaut mieux que de la proposer sans savoir la
 //! décrire.
 
+/// La version de ce module, telle que Cargo la connaît.
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 mod table;
 
 use std::collections::BTreeMap;

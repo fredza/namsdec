@@ -38,9 +38,20 @@ pub struct Suggestions {
 }
 
 impl Suggestions {
-    /// Le candidat qu'`Alt` accepte.
+    /// Le candidat choisi, `index` étant celui que l'éditeur met en
+    /// avant.
+    ///
+    /// Borné à la liste : elle se raccourcit à chaque caractère tapé, et
+    /// un index resté sur la quatrième ligne d'une liste devenue longue
+    /// de deux ne doit pas accepter le néant.
+    pub fn accepted_at(&self, index: usize) -> Option<&str> {
+        let index = index.min(self.candidates.len().saturating_sub(1));
+        self.candidates.get(index).map(|c| c.text.as_str())
+    }
+
+    /// Le premier candidat — celui qu'on accepte sans avoir rien choisi.
     pub fn accepted(&self) -> Option<&str> {
-        self.candidates.first().map(|first| first.text.as_str())
+        self.accepted_at(0)
     }
 
     /// L'étendue à remplacer, en octets : le mot commencé, en entier.
@@ -52,6 +63,22 @@ impl Suggestions {
     /// n'existe pas.
     pub fn range(&self) -> std::ops::Range<usize> {
         self.start..self.start + self.prefix.len()
+    }
+}
+
+/// L'index suivant quand on descend dans une liste de `len` propositions.
+///
+/// Circulaire : arrivé en bas, on revient en haut. Sur une liste de six
+/// lignes, buter contre le bord obligerait à remonter à la main pour
+/// atteindre ce qu'on vient de dépasser.
+pub fn next_index(index: usize, len: usize, down: bool) -> usize {
+    if len == 0 {
+        return 0;
+    }
+    if down {
+        (index + 1) % len
+    } else {
+        (index + len - 1) % len
     }
 }
 
@@ -351,5 +378,38 @@ mod tests {
     fn the_list_stays_short_enough_to_read() {
         let suggestions = at_end("    mov r").expect("des propositions");
         assert!(suggestions.candidates.len() <= MAX_CANDIDATES);
+    }
+}
+
+#[cfg(test)]
+mod navigation_tests {
+    use super::*;
+
+    /// On choisit dans la liste, et le choix tourne en boucle.
+    #[test]
+    fn the_selection_wraps_around_the_list() {
+        assert_eq!(next_index(0, 3, true), 1);
+        assert_eq!(next_index(2, 3, true), 0, "en bas, on revient en haut");
+        assert_eq!(next_index(0, 3, false), 2, "et réciproquement");
+        // Une liste vide ne fait rien tomber.
+        assert_eq!(next_index(0, 0, true), 0);
+        assert_eq!(next_index(5, 0, false), 0);
+    }
+
+    /// Un index resté trop loin n'accepte pas le néant.
+    ///
+    /// La liste se raccourcit à chaque caractère tapé : choisir la
+    /// quatrième ligne puis taper une lettre peut ne laisser que deux
+    /// propositions.
+    #[test]
+    fn a_stale_index_still_accepts_something_real() {
+        let suggestions = suggest("    mo", 6).expect("« mo » propose quelque chose");
+        let dernier = suggestions.candidates.len() - 1;
+        assert!(suggestions.accepted_at(dernier).is_some());
+        assert_eq!(
+            suggestions.accepted_at(999),
+            suggestions.accepted_at(dernier),
+            "au-delà de la liste, on prend la dernière — jamais rien"
+        );
     }
 }

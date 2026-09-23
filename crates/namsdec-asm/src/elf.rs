@@ -953,6 +953,14 @@ impl Elf {
     /// sur une page) sont comblés par des zéros — comme `.bss`, qui n'a
     /// rien à copier mais doit exister en mémoire.
     pub fn image(&self) -> Option<(u64, Vec<u8>)> {
+        // Un binaire dépouillé de sa table de sections n'en a aucune —
+        // c'est courant sur un crackme, et c'est même le but. Ses
+        // segments, eux, sont toujours là : le noyau ne saurait pas le
+        // charger sinon. On retombe donc sur eux plutôt que de déclarer
+        // illisible un programme qui s'exécute très bien.
+        if self.sections.is_empty() {
+            return self.load_image();
+        }
         let start = self.sections.iter().map(|s| s.addr).min()?;
         let end = self.sections.iter().map(|s| s.addr + s.size as u64).max()?;
         let mut image = vec![0u8; (end - start) as usize];
@@ -961,6 +969,33 @@ impl Elf {
             image[at..at + section.data.len()].copy_from_slice(&section.data);
         }
         Some((start, image))
+    }
+
+    /// Les tranches exécutables, quelle que soit la façon dont le binaire
+    /// se décrit.
+    ///
+    /// Par sections quand il en a — c'est plus précis, `.text` ne
+    /// contient que du code. Par segments sinon : le segment exécutable
+    /// mêle le code et ce que l'éditeur de liens a posé à côté, mais un
+    /// listing approximatif vaut mieux qu'un écran vide.
+    pub fn executable_parts(&self) -> Vec<(u64, &[u8])> {
+        let par_sections: Vec<(u64, &[u8])> = self
+            .sections
+            .iter()
+            .filter(|section| section.executable)
+            .map(|section| (section.addr, section.data.as_slice()))
+            .collect();
+        if !par_sections.is_empty() {
+            return par_sections;
+        }
+        self.segments
+            .iter()
+            .filter(|segment| segment.execute && segment.filesz > 0)
+            .filter_map(|segment| {
+                self.bytes_at(segment.offset, segment.filesz)
+                    .map(|octets| (segment.vaddr, octets))
+            })
+            .collect()
     }
 }
 
