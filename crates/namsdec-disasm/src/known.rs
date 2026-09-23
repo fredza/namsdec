@@ -205,6 +205,74 @@ pub fn program_path_in(command: &str, tools: Option<&Path>) -> Option<PathBuf> {
     })
 }
 
+/// Les paquets qu'une commande d'installation nomme.
+///
+/// `"sudo dnf install rizin"` rend `["rizin"]`. Rien pour ce qui n'est
+/// pas une commande de gestionnaire — l'adresse d'une page de
+/// téléchargement, par exemple : il n'y a alors aucun nom à vérifier.
+///
+/// Sert au contrôle ci-dessous, et il a sa raison d'être : une recette
+/// annonçait `rizin-plugin-ghidra`, qui n'existe dans aucun dépôt
+/// Fedora. Comme dnf refuse la transaction entière, la commande
+/// n'installait même pas Rizin — et rien ne le disait.
+pub fn packages_named(install: &str) -> Vec<&str> {
+    let mots: Vec<&str> = install.split_whitespace().collect();
+    // Après `install`, `-S`, `add` : le verbe du gestionnaire.
+    let Some(rang) = mots
+        .iter()
+        .position(|mot| matches!(*mot, "install" | "add" | "-S"))
+    else {
+        return Vec::new();
+    };
+    mots[rang + 1..]
+        .iter()
+        .copied()
+        // Les options ne sont pas des paquets.
+        .filter(|mot| !mot.starts_with('-'))
+        .collect()
+}
+
+/// Ce que le gestionnaire local sait de ce paquet.
+///
+/// `Some(false)` veut dire « il a répondu, et il ne le connaît pas » :
+/// c'est le seul cas qui compte, celui d'un nom annoncé qui n'existe
+/// nulle part. `None` couvre tout le reste — pas de gestionnaire connu,
+/// pas de cache, une erreur : on ne conclut rien de l'absence de réponse.
+///
+/// Interrogé **sans réseau** (`--cacheonly`) et sans droits : un contrôle
+/// qui exigerait l'un ou l'autre ne serait pas lancé, donc ne servirait
+/// à rien.
+pub fn package_known(name: &str) -> Option<bool> {
+    let dnf = program_path_in("dnf", None)?;
+    let sortie = std::process::Command::new(dnf)
+        .args([
+            "-q",
+            "--cacheonly",
+            "repoquery",
+            "--qf",
+            "%{name}",
+            name,
+        ])
+        .output()
+        .ok()?;
+    if !sortie.status.success() {
+        return None;
+    }
+    let texte = String::from_utf8_lossy(&sortie.stdout);
+    // Une sortie vide veut dire « connais pas ». Encore faut-il que le
+    // cache existe : sans lui, dnf répond vide pour tout, et l'on
+    // conclurait que rien n'existe.
+    if texte.trim().is_empty() {
+        let témoin = std::process::Command::new(program_path_in("dnf", None)?)
+            .args(["-q", "--cacheonly", "repoquery", "--qf", "%{name}", "bash"])
+            .output()
+            .ok()?;
+        let cache_vivant = String::from_utf8_lossy(&témoin.stdout).contains("bash");
+        return cache_vivant.then_some(false);
+    }
+    Some(true)
+}
+
 /// Le programme, s'il est dans le dossier d'outils de namsdec.
 ///
 /// Un niveau de répertoire par outil, un `bin` dedans : c'est ce que les
@@ -418,5 +486,62 @@ mod resolution_tests {
                 outil.plugin.id
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod package_tests {
+    use super::*;
+
+    /// Les noms de paquets se lisent dans la commande annoncée.
+    #[test]
+    fn the_packages_are_read_from_the_command() {
+        assert_eq!(packages_named("sudo dnf install rizin"), vec!["rizin"]);
+        assert_eq!(
+            packages_named("sudo dnf install -y rizin rizin-devel"),
+            vec!["rizin", "rizin-devel"],
+            "les options ne sont pas des paquets"
+        );
+        assert_eq!(packages_named("sudo pacman -S nasm"), vec!["nasm"]);
+        // Une page de téléchargement ne nomme aucun paquet : il n'y a
+        // rien à vérifier, et prétendre le contraire crierait au loup.
+        assert!(packages_named("github.com/avast/retdec/releases").is_empty());
+        assert!(packages_named("").is_empty());
+    }
+
+    /// Chaque paquet annoncé existe vraiment dans les dépôts.
+    ///
+    /// C'est le contrôle qui manquait. Une recette annonçait
+    /// `rizin-plugin-ghidra`, qui n'existe dans aucun dépôt Fedora — et
+    /// comme dnf refuse la transaction entière, la commande n'installait
+    /// même pas Rizin. Personne ne pouvait le savoir avant de la taper.
+    ///
+    /// Le test se tait quand il ne peut pas conclure : pas de dnf, pas de
+    /// cache, une erreur. `None` n'est pas un échec — c'est une absence
+    /// de réponse, et l'on n'en tire rien.
+    #[test]
+    fn every_announced_package_exists() {
+        let mut fautifs: Vec<String> = Vec::new();
+        let mut vérifiés = 0usize;
+        for outil in all() {
+            let Some(install) = &outil.plugin.install else {
+                continue;
+            };
+            for paquet in packages_named(install) {
+                match package_known(paquet) {
+                    Some(true) => vérifiés += 1,
+                    Some(false) => {
+                        fautifs.push(format!("{} annonce « {paquet} »", outil.plugin.id))
+                    }
+                    None => {}
+                }
+            }
+        }
+        assert!(
+            fautifs.is_empty(),
+            "{} paquet(s) annoncé(s) qui n'existent pas ({vérifiés} vérifiés) :\n{}",
+            fautifs.len(),
+            fautifs.join("\n")
+        );
     }
 }

@@ -69,15 +69,27 @@ aujourd'hui ; les suivantes, ce vers quoi l'outil peut aller.
      Piste : vérifier au lancement de la recette que les deux tags existent
      encore, et le dire plutôt que d'échouer à la sixième étape.
 
-1.7  Les noms de paquets annoncés ne sont vérifiés par rien
+1.7  [FAIT] Les noms de paquets annoncés sont vérifiés
      « sudo dnf install rizin rizin-plugin-ghidra » promettait un paquet qui
      n'existe dans aucun dépôt Fedora — et comme dnf refuse la transaction
      entière, la commande n'installait même pas Rizin. Corrigé, mais aucun test
      ne peut vérifier qu'un paquet existe sans réseau ni distribution donnée.
      Les trois autres (binutils, nasm, radare2) ont été vérifiés à la main le
      18 septembre 2026.
-     Piste : une vérification facultative, lancée à la demande, qui interroge le
-     gestionnaire local et signale ce qui a disparu.
+     `every_announced_package_exists` lit les noms dans chaque commande
+     annoncée et demande au gestionnaire local s'il les connaît. Vérifié qu'il
+     attrape le nom d'origine : remettre `rizin-plugin-ghidra` le fait échouer
+     en nommant le fautif.
+     Interrogé SANS réseau (`dnf --cacheonly`) et sans droits : un contrôle qui
+     exigerait l'un ou l'autre ne serait jamais lancé, donc ne servirait à
+     rien.
+     Et il se tait quand il ne peut pas conclure — pas de dnf, pas de cache,
+     une erreur. Une absence de réponse n'est pas un échec. Le piège était là :
+     dnf répond vide pour tout quand son cache est absent, et l'on aurait
+     conclu qu'aucun paquet n'existe. Un témoin (`bash`) vérifie d'abord que le
+     cache répond.
+     RESTE : les gestionnaires autres que dnf. `packages_named` lit déjà
+     `pacman -S` et `apt install`, mais seul dnf est interrogé.
 
 1.8  [FAIT] Les sources sont effacées une fois l'outil bâti
      Dernière étape de la recette de Rizin : 1,3 Go rendus. Reste à faire : un
