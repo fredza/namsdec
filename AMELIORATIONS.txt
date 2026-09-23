@@ -313,14 +313,30 @@ aujourd'hui ; les suivantes, ce vers quoi l'outil peut aller.
      un call par des nop, et relancer.
      C'est la fonctionnalité qui manque le plus à un outil de rétro-ingénierie.
 
-4.2  Nommer les fonctions et les adresses
-     Un binaire dépouillé n'a que des adresses. Pouvoir écrire « vérifie_mdp »
-     en face de 0x1d491, et voir ce nom partout — listing, graphe, pile d'appels —
-     est ce qui fait la différence entre lire un désassemblage et le comprendre.
-     Demande : une table de noms, sauvegardée à côté du binaire.
+4.2  [FAIT] Nommer les fonctions et les adresses
+     `Espace a` (ou Ctrl+Maj+N) nomme l'adresse de la ligne courante. Le nom
+     posé à la main l'emporte sur le symbole du binaire — c'est toute la
+     raison de l'avoir écrit : renommer `sub_1d491` en `vérifie_mdp`, c'est
+     vouloir voir le second. Retiré, on retombe sur le symbole, non sur rien.
+     Rangé dans ~/.local/share/namsdec/notes/, JAMAIS dans le binaire : on
+     n'écrit pas dans l'exécutable de quelqu'un pour y noter ce qu'on en pense.
+     **La clé est le contenu, non le chemin** : un fichier déplacé ou renommé
+     retrouve ses notes, un binaire recompilé n'hérite pas de celles d'un
+     autre. Même leçon que pour les points d'arrêt (1.11) — un repère qui
+     désigne autre chose que ce qu'on croit est pire qu'un repère absent.
+     L'empreinte est un FNV-1a écrit à la main, et c'est délibéré :
+     `DefaultHasher` ne garantit pas la même valeur d'une version de Rust à
+     l'autre, et des notes qui changeraient de fichier à la prochaine mise à
+     jour seraient perdues sans que rien ne le dise. Un test grave la valeur.
+     RESTE : voir ce nom PARTOUT. Il est dans le graphe ; la pile d'appels et
+     le listing montrent encore l'adresse seule.
 
-4.3  Commentaires sur le listing
-     Même besoin, même mécanisme de stockage.
+4.3  [FAIT] Commentaires sur le listing
+     `Espace c` (ou Ctrl+Maj+C) — même stockage. Peints à droite de leur
+     ligne, en couleur de commentaire : un commentaire qu'il faudrait mettre
+     en face de sa ligne de mémoire ne se lit pas.
+     Vider le champ efface la note, dans les deux cas : on retire un nom
+     comme on le corrige, et demander une commande séparée ferait chercher.
 
 4.4  Suivre une valeur à rebours
      « D'où vient ce que RAX contient ? » Le module de provenance existe déjà

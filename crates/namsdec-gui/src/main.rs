@@ -12,6 +12,7 @@ mod keybindings;
 mod loader;
 mod nasm_errors;
 mod calc;
+mod notes;
 mod occurrences;
 mod readings;
 mod timeline;
@@ -850,6 +851,13 @@ struct NamsdecApp {
     /// `current_file` reste vide pour un binaire, exprès. Celui-ci sert
     /// à le retrouver au lancement suivant, et à rien d'autre.
     binary_path: Option<PathBuf>,
+    /// Les noms et commentaires du binaire ouvert, et son empreinte.
+    ///
+    /// L'empreinte est celle du contenu : un fichier déplacé ou renommé
+    /// retrouve ses notes, un binaire recompilé n'hérite pas de celles
+    /// d'un autre.
+    notes: notes::Notes,
+    notes_fingerprint: Option<String>,
     program_args: String,
     /// Les variables d'environnement ajoutées, une par ligne.
     ///
@@ -1372,6 +1380,9 @@ struct NamsdecApp {
     /// Le nouveau nom en cours de frappe, quand on renomme.
     rename: Option<String>,
     rename_just_opened: bool,
+    /// La note en cours d'écriture : son genre, son adresse, son texte.
+    note_edit: Option<(NoteKind, u64, String)>,
+    note_just_opened: bool,
     /// Une étendue à sélectionner à la prochaine image.
     ///
     /// Comme `pending_cursor` : ce qui décide n'a pas le contexte egui
@@ -1722,6 +1733,14 @@ fn palette_commands(
         (
             s.action_rename_matches.to_string(),
             PaletteCommand::Do(Action::RenameMatches),
+        ),
+        (
+            s.action_name_address.to_string(),
+            PaletteCommand::Do(Action::NameAddress),
+        ),
+        (
+            s.action_comment_address.to_string(),
+            PaletteCommand::Do(Action::CommentAddress),
         ),
         (
             s.palette_toggle_toolbar.to_string(),
@@ -2086,6 +2105,8 @@ impl Default for NamsdecApp {
             next_detail_addr: None,
             console_input: String::new(),
             binary_path: None,
+            notes: notes::Notes::default(),
+            notes_fingerprint: None,
             program_args: String::new(),
             program_env: String::new(),
             console_input_height: None,
@@ -2119,6 +2140,8 @@ impl Default for NamsdecApp {
             editor_selection: None,
             rename: None,
             rename_just_opened: false,
+            note_edit: None,
+            note_just_opened: false,
             pending_selection: None,
             g_pending: false,
             completion_index: 0,
@@ -3509,6 +3532,8 @@ impl NamsdecApp {
             Action::DuplicateLine => self.duplicate_line(),
             Action::HighlightMatches => self.highlight_matches(),
             Action::RenameMatches => self.start_rename(),
+            Action::NameAddress => self.start_note(NoteKind::Name),
+            Action::CommentAddress => self.start_note(NoteKind::Comment),
             Action::NextMatch => self.go_to_match(true),
             Action::PreviousMatch => self.go_to_match(false),
         }
@@ -4221,6 +4246,10 @@ impl NamsdecApp {
         let Some(elf) = namsdec_asm::elf::parse(bytes) else {
             return false;
         };
+        // Les notes de ce binaire, s'il en a : on les retrouve avant de
+        // dessiner quoi que ce soit, pour que le premier coup d'oeil
+        // porte déjà les noms qu'on avait trouvés.
+        self.load_notes_for(bytes);
         // Un fichier de réadressage : aucune section n'a d'adresse, et
         // il n'y a pas de point d'entrée. `ld` n'est pas encore passé.
         let relocatable = elf.entry == 0 && elf.sections.iter().all(|section| section.addr == 0);
@@ -4443,6 +4472,10 @@ impl NamsdecApp {
         if self.load_elf(&bytes, name) {
             return;
         }
+        // Des octets bruts : ils ont droit à des notes comme les autres.
+        // C'est même là qu'elles servent le plus — sans en-tête, il n'y a
+        // aucun symbole pour aider.
+        self.load_notes_for(&bytes);
 
         // Le fichier entier est gardé de côté avant toute troncature :
         // l'analyse — protections, sections, symboles — se lit dans ses
@@ -7688,10 +7721,16 @@ impl NamsdecApp {
                     if restreint
                         && let Some(entrée) = cfg.blocks.first()
                     {
+                        // Le nom posé à la main l'emporte sur le
+                        // symbole, ce qui est toute la raison de l'avoir
+                        // écrit. Relevé sans passer par `name_of`, qui
+                        // emprunterait `self` alors que `state` l'est
+                        // déjà pour la durée de la fenêtre.
                         let nom = self
-                            .assemble_state
-                            .as_ref()
-                            .and_then(|état| symbol_at(&état.output.symbols, entrée.start));
+                            .notes
+                            .name(entrée.start)
+                            .map(str::to_owned)
+                            .or_else(|| symbol_at(&state.output.symbols, entrée.start));
                         let texte = match &nom {
                             Some(nom) => format!("{nom}  {:#x}", entrée.start),
                             None => format!("{:#x}", entrée.start),
@@ -9124,6 +9163,7 @@ impl NamsdecApp {
         // ne jamais couvrir ce qu'on vient de trouver.
         self.find_ui(ui);
         self.rename_ui(ui);
+        self.note_ui(ui);
         // Modes façon (n)vim : `i`/`I` pour passer en Insertion, `Échap`
         // pour revenir en Normal — désactivé pendant qu'une autre capture
         // de texte est active (palette de commandes, rebind de raccourci)
@@ -9488,6 +9528,11 @@ impl NamsdecApp {
                         // ternirait les lettres — or c'est le mot qu'on
                         // cherche à lire, pas le rectangle.
                         self.paint_matches(ui, &output);
+                        // Les commentaires qu'on a écrits, à droite de
+                        // leur ligne : c'est là qu'on les lit, et non
+                        // dans un panneau à côté qu'il faudrait mettre
+                        // en face du code de mémoire.
+                        self.paint_notes(ui, &output);
                         // En mode Normal, le `TextEdit` n'est pas
                         // interactif : egui ne peint aucun caret et ne
                         // rend plus de `cursor_range`. La position du
@@ -10021,6 +10066,191 @@ impl NamsdecApp {
                 2.0,
                 egui::Stroke::new(1.0, self.theme.good),
                 egui::StrokeKind::Inside,
+            );
+        }
+    }
+
+    /// Ouvre la saisie d'un nom ou d'un commentaire pour la ligne où
+    /// l'on est.
+    ///
+    /// Il faut une adresse : sur une ligne qui n'en a pas — une
+    /// étiquette, un blanc — il n'y a rien à nommer, et le dire vaut
+    /// mieux que d'ouvrir un champ qui n'écrira nulle part.
+    fn start_note(&mut self, genre: NoteKind) {
+        let ligne = self.cursor_pos.0;
+        let adresse = self
+            .assemble_state
+            .as_ref()
+            .and_then(|état| état.output.line_to_addr.get(&(ligne as u32)).copied());
+        let Some(adresse) = adresse else {
+            self.status = Status::Note(|s| s.notes_no_address);
+            return;
+        };
+        // Le champ s'ouvre sur ce qui est déjà là : on corrige plus
+        // souvent qu'on n'écrit de zéro.
+        let actuel = match genre {
+            NoteKind::Name => self.notes.name(adresse),
+            NoteKind::Comment => self.notes.comment(adresse),
+        }
+        .unwrap_or_default()
+        .to_owned();
+        self.note_edit = Some((genre, adresse, actuel));
+        self.note_just_opened = true;
+    }
+
+    /// La barre de saisie d'une note, quand elle est ouverte.
+    fn note_ui(&mut self, ui: &mut egui::Ui) {
+        let Some((genre, adresse, mut texte)) = self.note_edit.clone() else {
+            return;
+        };
+        let s = strings(self.lang);
+        let theme = self.theme;
+        let just_opened = std::mem::take(&mut self.note_just_opened);
+        let mut appliquer = false;
+        let mut annuler = false;
+
+        ui.horizontal(|ui| {
+            ui.colored_label(
+                theme.accent,
+                egui::RichText::new(format!("{adresse:#x}")).monospace(),
+            );
+            ui.colored_label(
+                theme.dim,
+                match genre {
+                    NoteKind::Name => s.action_name_address,
+                    NoteKind::Comment => s.action_comment_address,
+                },
+            );
+            // Relevées avant le champ : un `TextEdit` qui traite Entrée
+            // la retire de la file, et la guetter après lui ne verrait
+            // rien. Même piège que partout ailleurs.
+            let entrée = ui.input(|i| i.key_pressed(egui::Key::Enter));
+            let échap = ui.input(|i| i.key_pressed(egui::Key::Escape));
+            let champ = ui.add(
+                egui::TextEdit::singleline(&mut texte)
+                    .id(egui::Id::new("note_field"))
+                    .hint_text(match genre {
+                        NoteKind::Name => s.notes_name_placeholder,
+                        NoteKind::Comment => s.notes_comment_placeholder,
+                    })
+                    .font(egui::TextStyle::Monospace)
+                    .desired_width(ui.available_width() - 120.0),
+            );
+            if just_opened {
+                champ.request_focus();
+            }
+            if entrée && (champ.has_focus() || champ.lost_focus()) {
+                appliquer = true;
+            }
+            if échap {
+                annuler = true;
+            }
+            if framed_button(ui, theme, s.dialog_ok).clicked() {
+                appliquer = true;
+            }
+        });
+
+        if appliquer {
+            let vide = texte.trim().is_empty();
+            match genre {
+                NoteKind::Name => self.notes.set_name(adresse, &texte),
+                NoteKind::Comment => self.notes.set_comment(adresse, &texte),
+            }
+            self.save_notes();
+            self.note_edit = None;
+            self.status = if vide {
+                Status::Note(|s| s.notes_cleared)
+            } else {
+                match genre {
+                    NoteKind::Name => Status::Note(|s| s.notes_named),
+                    NoteKind::Comment => Status::Note(|s| s.notes_commented),
+                }
+            };
+        } else if annuler {
+            self.note_edit = None;
+        } else {
+            self.note_edit = Some((genre, adresse, texte));
+        }
+    }
+
+    /// Retrouve les notes de ce binaire, s'il en a.
+    ///
+    /// Appelé à l'ouverture. L'empreinte suit le contenu : un fichier
+    /// déplacé ou renommé retrouve ses notes, et un binaire recompilé
+    /// n'hérite pas de celles d'un autre.
+    fn load_notes_for(&mut self, bytes: &[u8]) {
+        let empreinte = notes::fingerprint(bytes);
+        self.notes = match notes_dir() {
+            Some(dossier) => notes::load(&dossier, &empreinte),
+            None => notes::Notes::default(),
+        };
+        self.notes_fingerprint = Some(empreinte);
+    }
+
+    /// Écrit les notes du binaire ouvert.
+    ///
+    /// Tout de suite après chaque changement : un nom qu'on vient de
+    /// trouver et qui disparaît au prochain lancement se cherche deux
+    /// fois.
+    fn save_notes(&mut self) {
+        let (Some(empreinte), Some(dossier)) = (&self.notes_fingerprint, notes_dir()) else {
+            return;
+        };
+        if let Err(e) = notes::save(&dossier, empreinte, &self.notes) {
+            self.status = Status::Error(format!("{}: {e}", strings(self.lang).notes_not_saved));
+        }
+    }
+
+    /// Le nom d'une adresse : celui qu'on a posé, sinon celui du binaire.
+    ///
+    /// Le nom posé à la main l'emporte, et c'est voulu : quelqu'un qui
+    /// renomme `sub_1d491` en `vérifie_mdp` veut voir le second — c'est
+    /// même toute la raison de l'avoir écrit.
+    fn name_of(&self, addr: u64) -> Option<String> {
+        if let Some(nom) = self.notes.name(addr) {
+            return Some(nom.to_owned());
+        }
+        self.assemble_state
+            .as_ref()
+            .and_then(|état| symbol_at(&état.output.symbols, addr))
+    }
+
+    /// Peint les commentaires à droite de leur ligne.
+    ///
+    /// À droite du code, et non dans un panneau à côté : un commentaire
+    /// qu'il faut mettre en face de sa ligne de mémoire ne se lit pas.
+    /// En couleur de commentaire, comme ceux qu'on écrit dans une source
+    /// — ce sont les mêmes, à ceci près qu'ils ne sont pas dans le
+    /// fichier.
+    fn paint_notes(&self, ui: &egui::Ui, output: &egui::text_edit::TextEditOutput) {
+        if self.notes.comments.is_empty() {
+            return;
+        }
+        let Some(état) = self.assemble_state.as_ref() else {
+            return;
+        };
+        let peintre = ui.painter_at(output.response.rect);
+        let police = egui::TextStyle::Monospace.resolve(ui.style());
+        // Le listing est une ligne par instruction : la rangée `n` du
+        // galley est la ligne `n + 1` de la source.
+        for (rang, rangée) in output.galley.rows.iter().enumerate() {
+            let ligne = rang as u32 + 1;
+            let Some(adresse) = état.output.line_to_addr.get(&ligne) else {
+                continue;
+            };
+            let Some(texte) = self.notes.comment(*adresse) else {
+                continue;
+            };
+            // Après la fin du texte de la ligne, avec un blanc : collé,
+            // on ne saurait plus où finit le code.
+            let rect = rangée.rect().translate(output.galley_pos.to_vec2());
+            let à = egui::pos2(rect.right() + 24.0, rect.top());
+            peintre.text(
+                à,
+                egui::Align2::LEFT_TOP,
+                format!("; {texte}"),
+                police.clone(),
+                self.theme.comment,
             );
         }
     }
@@ -14104,6 +14334,13 @@ fn window_room(ui: &egui::Ui) -> f32 {
     (ui.ctx().input(|i| i.content_rect()).height() * 0.55).max(240.0)
 }
 
+/// Ce qu'on écrit sur une adresse : son nom, ou un commentaire.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NoteKind {
+    Name,
+    Comment,
+}
+
 /// Ce qu'une boîte de dialogue a reçu comme réponse.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Answer {
@@ -14216,6 +14453,8 @@ fn action_label(s: &Strings, action: Action) -> &'static str {
         Action::DuplicateLine => s.action_duplicate_line,
         Action::HighlightMatches => s.action_highlight_matches,
         Action::RenameMatches => s.action_rename_matches,
+        Action::NameAddress => s.action_name_address,
+        Action::CommentAddress => s.action_comment_address,
         Action::NextMatch => s.action_next_match,
         Action::PreviousMatch => s.action_previous_match,
         Action::RunToCursor => s.action_run_to_cursor,
@@ -15592,6 +15831,14 @@ fn load_installed_decompilers() -> Vec<namsdec_disasm::plugin::Plugin> {
 /// elles doivent survivre à une mise à jour de l'application.
 fn exercises_dir() -> Option<PathBuf> {
     data_dir().map(|base| base.join("exercises"))
+}
+
+/// Où vivent les noms et les commentaires qu'on pose sur un binaire.
+///
+/// À côté du binaire, jamais dedans : on n'écrit pas dans l'exécutable
+/// de quelqu'un pour y noter ce qu'on en pense.
+fn notes_dir() -> Option<PathBuf> {
+    data_dir().map(|base| base.join("notes"))
 }
 
 /// Recopie le fichier de thème dans le dossier des plugins, pour qu'il

@@ -18504,3 +18504,94 @@ vérifie:
         "au milieu, le nom porte son décalage : {dedans:?}"
     );
 }
+
+/// Nommer une adresse, et retrouver ce nom au lancement suivant.
+///
+/// Le geste central de la rétro-ingénierie : on passe une soirée à
+/// comprendre que `0x1d491` vérifie le mot de passe, et sans cela il n'y
+/// a plus que `0x1d491` le lendemain.
+#[test]
+fn a_name_given_to_an_address_comes_back_later() {
+    let dossier = tempfile::tempdir().unwrap();
+    let octets: &[u8] = b"\x7fELF un binaire d'essai";
+    let empreinte = notes::fingerprint(octets);
+
+    let mut notes = notes::Notes::default();
+    notes.set_name(0x1d491, "vérifie_mdp");
+    notes.set_comment(0x1d4a0, "compare octet par octet");
+    notes::save(dossier.path(), &empreinte, &notes).unwrap();
+
+    // Le même contenu, sous un autre nom de fichier : les notes suivent.
+    let relues = notes::load(dossier.path(), &notes::fingerprint(octets));
+    assert_eq!(relues.name(0x1d491), Some("vérifie_mdp"));
+    assert_eq!(relues.comment(0x1d4a0), Some("compare octet par octet"));
+
+    // Un binaire recompilé, lui, n'hérite de rien : ses notes
+    // désigneraient d'autres instructions, ce qui est pire que rien.
+    let recompilé = notes::load(dossier.path(), &notes::fingerprint(b"\x7fELF autre chose"));
+    assert!(
+        recompilé.is_empty(),
+        "un autre contenu ne doit pas hériter des notes"
+    );
+}
+
+/// Le nom posé à la main l'emporte sur le symbole du binaire.
+///
+/// C'est toute la raison de l'avoir écrit : quelqu'un qui renomme
+/// `sub_1d491` en `vérifie_mdp` veut voir le second.
+#[test]
+fn a_hand_written_name_wins_over_the_symbol() {
+    let mut app = NamsdecApp {
+        source: "\
+section .text
+global _start
+_start:
+    mov rax, 1
+    hlt
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    let Some(état) = app.assemble_state.as_ref() else {
+        return;
+    };
+    let Some(start) = état
+        .output
+        .symbols
+        .iter()
+        .find(|symbole| symbole.name == "_start")
+        .map(|symbole| symbole.addr)
+    else {
+        return;
+    };
+
+    // Le symbole, d'abord.
+    assert_eq!(app.name_of(start).as_deref(), Some("_start"));
+
+    // Puis le nom posé.
+    app.notes.set_name(start, "le_vrai_début");
+    assert_eq!(
+        app.name_of(start).as_deref(),
+        Some("le_vrai_début"),
+        "le nom écrit à la main doit primer"
+    );
+
+    // Retiré, on retombe sur le symbole — et non sur rien.
+    app.notes.set_name(start, "");
+    assert_eq!(app.name_of(start).as_deref(), Some("_start"));
+}
+
+/// Nommer une ligne qui n'a pas d'adresse le dit, plutôt que d'ouvrir un
+/// champ qui n'écrirait nulle part.
+#[test]
+fn naming_a_line_without_an_address_says_so() {
+    let mut app = NamsdecApp {
+        source: "; rien que du commentaire\n".to_owned(),
+        ..Default::default()
+    };
+    app.cursor_pos = (1, 1);
+    app.start_note(NoteKind::Name);
+    assert!(app.note_edit.is_none(), "aucun champ ne doit s'ouvrir");
+    assert!(matches!(app.status, Status::Note(_)), "{:?}", app.status);
+}

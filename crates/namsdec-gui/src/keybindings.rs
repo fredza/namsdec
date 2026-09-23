@@ -62,6 +62,14 @@ pub enum Action {
     /// lisant — « où d'autre ce registre est-il touché ? » — et qu'on
     /// résout aujourd'hui avec les yeux.
     HighlightMatches,
+    /// Donner un nom à l'adresse de la ligne courante.
+    ///
+    /// Le geste central de la rétro-ingénierie : on passe une soirée à
+    /// comprendre que `0x1d491` vérifie le mot de passe, et sans cela il
+    /// n'y a plus que `0x1d491` le lendemain.
+    NameAddress,
+    /// Écrire un commentaire sur la ligne courante.
+    CommentAddress,
     /// Aller à l'occurrence suivante de ce qui est suivi, et la
     /// sélectionner.
     ///
@@ -88,7 +96,7 @@ pub enum Action {
 }
 
 impl Action {
-    pub const ALL: [Action; 28] = [
+    pub const ALL: [Action; 30] = [
         Action::ToggleExplorer,
         Action::Assemble,
         Action::Run,
@@ -117,6 +125,8 @@ impl Action {
         Action::RenameMatches,
         Action::NextMatch,
         Action::PreviousMatch,
+        Action::NameAddress,
+        Action::CommentAddress,
     ];
 }
 
@@ -451,6 +461,16 @@ impl KeyBindings {
         // cherche quelque chose.
         map.insert(Action::NextMatch, simple(M::NONE, Key::F3));
         map.insert(Action::PreviousMatch, simple(M::SHIFT, Key::F3));
+        // Ctrl+Maj+N pour nommer, Ctrl+Maj+C pour commenter. Ctrl+C seul
+        // reste la copie, qu'on ne touche pas.
+        map.insert(
+            Action::NameAddress,
+            simple(M::CTRL.plus(M::SHIFT), Key::N),
+        );
+        map.insert(
+            Action::CommentAddress,
+            simple(M::CTRL.plus(M::SHIFT), Key::C),
+        );
         map.insert(Action::NextTab, simple(M::CTRL, Key::Tab));
         map.insert(Action::PreviousTab, simple(M::CTRL | M::SHIFT, Key::Tab));
 
@@ -573,6 +593,21 @@ impl KeyBindings {
         map.insert(
             Action::RenameMatches,
             Chord::leader(&[Key::Space, Key::S, Key::R]),
+        );
+        // `Espace a` pour nommer une adresse, `Espace c` pour commenter :
+        // deux gestes qu'on répète en lisant un binaire, donc deux
+        // touches et pas trois.
+        //
+        // `Espace n` aurait été plus naturel — `n` comme nommer, comme
+        // dans tous les outils du métier — mais il est déjà le préfixe de
+        // `Espace n i` (Step Over), et une séquence courte court-circuite
+        // la longue : Step Over serait devenu inatteignable. C'est la
+        // troisième fois que ce jeu de raccourcis force la main, et c'est
+        // noté comme tel dans AMELIORATIONS (1.23).
+        map.insert(Action::NameAddress, Chord::leader(&[Key::Space, Key::A]));
+        map.insert(
+            Action::CommentAddress,
+            Chord::leader(&[Key::Space, Key::C]),
         );
         // `n` et `N` tout court, sans leader : c'est ainsi qu'on passe
         // d'une occurrence à l'autre dans vim, et une séquence de trois

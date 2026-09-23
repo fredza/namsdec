@@ -644,6 +644,8 @@ fn action_id(action: Action) -> &'static str {
         Action::RenameMatches => "rename_matches",
         Action::NextMatch => "next_match",
         Action::PreviousMatch => "previous_match",
+        Action::NameAddress => "name_address",
+        Action::CommentAddress => "comment_address",
     }
 }
 
