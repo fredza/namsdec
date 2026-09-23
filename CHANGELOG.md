@@ -4,6 +4,84 @@ Les dates sont celles des commits ; le format suit [Keep a
 Changelog](https://keepachangelog.com/fr/1.1.0/) d'assez loin — une
 entrée par version, et ce qui change pour qui s'en sert.
 
+## 0.2.5-beta.1 — 23 septembre 2026
+
+Quatre chantiers : franchir l'anti-débogage, calculer sans sortir de
+namsdec, reprendre son travail là où on l'a laissé, et un éditeur qui
+sait où un mot revient.
+
+**L'anti-débogage, en entier**
+- `ptrace` répond « personne ne te regarde », `prctl` accepte, `fork` rend
+  zéro — namsdec joue la branche du fils, celle qui travaille — et le
+  `SIGSTOP` qu'un programme s'envoie à lui-même est encaissé. C'est le
+  montage complet d'un crackme sérieux ; en rater un seul les arrête tous.
+- Tout autre signal s'arrête et se nomme : avaler un `SIGKILL` ferait
+  courir un programme que la vraie machine aurait tué.
+- Ce que cela coûte, et c'est dit à l'écran comme ici : un programme qui
+  se dédouble pour de bon ne s'exécutera pas comme sur la vraie machine.
+  Une seule branche est jouée.
+- `int3` ne se confond plus avec `hlt` : c'est un point d'arrêt que le
+  programme se pose à lui-même, non une fin.
+
+**Une calculatrice**
+- Outils ▸ Calculatrice. Toutes les bases en même temps — hexadécimal,
+  décimal signé et non signé, octal, binaire, ASCII, octets mémoire —,
+  les opérateurs de bits avec la priorité du C, et les registres du
+  programme en cours à toutes leurs largeurs (`rax`, `eax`, `ax`, `ah`).
+- Dix-huit fonctions de rétro-ingénierie : `bswap`, `sext`, `popcnt`,
+  `clz`, `ctz`, `rol`, `ror`, `align`, et les autres.
+- Chaque erreur se nomme : « aucun programme ne tourne, ce registre n'a
+  pas de valeur » plutôt que « erreur ».
+
+**L'entropie, et une chronologie visible**
+- Un module RE de plus, juste après les protections : il répond avant
+  tout le reste à « y a-t-il quelque chose à lire ici ? ». Profil par
+  tranches, échelle fixe de 0 à 8, et l'adresse du bloc le plus dense.
+- La fenêtre Chronologie gagne une barre : une colonne par tranche de
+  temps, colorée par ce qui s'y est passé de plus notable, et sur
+  laquelle on clique pour rembobiner.
+
+**Reprendre son travail**
+- Le binaire ouvert revient au lancement suivant, avec ses points
+  d'arrêt, ses zones surveillées, ses arguments et son onglet.
+- Les repères ne reviennent que si le fichier n'a pas changé : sur un
+  binaire recompilé, ils désigneraient d'autres instructions. Ils sont
+  alors oubliés, et l'application le dit.
+
+**L'éditeur**
+- **Surligner les occurrences** — `Espace s s`, ou `Ctrl+F2`. En vert du
+  thème. Il cherche des jetons et non du texte : le `rax` d'un
+  commentaire n'est pas surligné, et la casse suit NASM (`MOV` = `mov`,
+  mais `Boucle` ≠ `boucle`).
+- **Aller d'une occurrence à l'autre** — `n` et `N`, ou `F3`. Chacune
+  arrive sélectionnée, donc prête à être remplacée.
+- **Renommer toutes les occurrences** — `Espace s r`, ou `F2`. Ce à quoi
+  le multicurseur sert neuf fois sur dix, et sans son défaut : les
+  commentaires ne sont pas touchés.
+- **Fermeture automatique des paires**, avec trois règles et pas une de
+  plus : pas devant un mot, pas après une lettre pour l'apostrophe, et
+  taper le fermant déjà là le traverse.
+- **Duplication de ligne** — `Ctrl+Maj+D`, ou `y y`.
+- L'autocomplétion se pilote enfin : Tab accepte, les flèches
+  choisissent, Échap referme. Elle ne répondait qu'à `Alt`, et seulement
+  pour sa première proposition.
+- La coloration distingue `mov` de `mav` : la liste vient du décodeur
+  qu'emploie namsdec, donc ce qui se décode se colore. Et une étiquette
+  est peinte comme telle là où l'on y saute, pas seulement où on la
+  définit.
+
+**Réparé**
+- Le champ de saisie disparaissait quand la console avait une hauteur
+  fixée à la main : le plancher se calculait d'après une mesure
+  elle-même tronquée.
+- Un outil installé par namsdec est lancé par *son* chemin, et non par le
+  programme de même nom trouvé dans le `PATH` — lequel pouvait être une
+  version plus ancienne, sans le greffon attendu.
+- La fenêtre du plan d'installation tient dans l'écran, se ferme par
+  Échap, et ne propose plus de recommencer ce qui est déjà fait.
+
+---
+
 ## 0.2.4-beta.1 — 18 septembre 2026
 
 Trois chantiers : lire un binaire qu'on n'a pas écrit, ouvrir plusieurs

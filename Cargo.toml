@@ -8,7 +8,7 @@ edition = "2024"
 # Ne JAMAIS monter ce numéro sans demander d'abord à l'utilisateur — règle
 # explicite (voir memory: feedback_version_bump_approval). Le numéro de
 # build (date de compilation) n'est pas concerné, il se met à jour seul.
-version = "0.2.4-beta.1"
+version = "0.2.5-beta.1"
 license = "MIT"
 
 [workspace.dependencies]
@@ -28,7 +28,6 @@ egui = "0.36"
 # boîte « À propos » et des fenêtres d'analyse s'enfonçaient en silence.
 # Elle fait partie des `default` d'eframe, que nous n'activons pas.
 eframe = { version = "0.36", default-features = false, features = ["default_fonts", "glow", "links", "persistence", "wayland", "x11"] }
-egui_extras = "0.36"
 egui_code_editor = "0.4"
 arboard = "3"
 rfd = "0.17"
