@@ -228,13 +228,16 @@ aujourd'hui ; les suivantes, ce vers quoi l'outil peut aller.
  2. ERGONOMIE
 --------------------------------------------------------------------------------
 
-2.1  Les fenêtres internes ne disent pas leur rang
-     Celle du plan d'installation s'ouvrait derrière les préférences d'où elle
-     part : on cliquait « Installer… » et il ne se passait rien de visible.
-     Corrigé en la posant au premier plan, mais le cas se reproduira — rien
-     n'oblige une fenêtre ouverte depuis une autre à passer devant elle.
-     Piste : un helper qui ouvre une fenêtre « au-dessus de celle qui l'appelle »,
-     plutôt qu'un Order choisi fenêtre par fenêtre.
+2.1  [FAIT] Les fenêtres internes ne disent pas leur rang
+     Une règle pour toutes, et non un rang choisi fenêtre par fenêtre : celle
+     qui vient de s'ouvrir passe devant. « Vient de s'ouvrir » et non « est
+     ouverte » — la remettre devant à chaque frame empêcherait d'en poser une
+     autre par-dessus.
+     Une seule table (window_states), et un test vérifie qu'elle les cite
+     toutes : ajouter une fenêtre sans y penser aurait réintroduit le défaut
+     sans qu'on le voie. Le même test refuse une fenêtre sans identifiant
+     explicite — il en a trouvé deux, les préférences et le motif cyclique, qui
+     perdaient leur position en changeant de langue.
 
 2.2  [FAIT] Le code de sortie est écrit dans le journal
      « (code 128) » y figure à la suite de ce que la commande a écrit.
@@ -692,7 +695,7 @@ aujourd'hui ; les suivantes, ce vers quoi l'outil peut aller.
      préférences) sont autonomes et pourraient partir dans leurs propres modules,
      comme sidebar.rs l'a déjà fait.
 
-5.2  Les frames lentes : mesuré, et ce n'est pas ce qu'on croyait
+5.2  [FAIT en partie] Les frames lentes : mesuré, et ce n'est pas ce qu'on croyait
      Sur le crackme (62 386 lignes, 1,0 Mo de listing), en release :
        frame 1 (froide) : 450 ms   ← la mise en page initiale
        frame 2          :  26 ms
@@ -701,8 +704,12 @@ aujourd'hui ; les suivantes, ce vers quoi l'outil peut aller.
      Il n'y a donc PAS de coût continu : le cache fait son travail. Les 450 ms
      sont payés une fois, au chargement, et bloquent l'interface d'un demi-
      seconde. Le message « frame lente » laisse croire à un problème permanent.
-     Piste : ne pas le crier pour la première frame après un chargement, ou
-     mettre le listing en page hors du fil d'affichage.
+     Fait : le message distingue désormais les deux cas. Quand le texte vient
+     de changer, il dit « mise en page » et ajoute que c'est payé une fois. La
+     conjonction « lente ET le texte a changé » suffit à reconnaître le cas,
+     sans qu'aucun des dix endroits qui remplacent le texte ait à le signaler.
+     Reste la vraie correction, qui est 5.3 : mettre le listing en page hors du
+     fil d'affichage, ou ne disposer que les lignes visibles.
 
 5.3  Le listing entier est mis en page en une fois
      Non pas à chaque frame — le cache l'évite —, mais la première fois, et

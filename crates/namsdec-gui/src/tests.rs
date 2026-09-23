@@ -11856,6 +11856,141 @@ fn a_solved_exercise_stays_solved() {
     );
 }
 
+/// Une fenêtre qui vient de s'ouvrir passe devant.
+///
+/// Le plan d'installation s'ouvre depuis les préférences, et se posait
+/// derrière elles : on cliquait « Installer… » et il ne se passait rien
+/// de visible. egui empile les zones dans l'ordre où on les touche, et
+/// une fenêtre qu'on vient de créer n'a jamais été touchée.
+///
+/// La règle vaut pour toutes, d'où une table — et ce test dit qu'aucune
+/// fenêtre ne manque à cette table. Sans lui, ajouter une fenêtre
+/// réintroduirait le défaut sans qu'on le voie.
+#[test]
+fn every_window_is_in_the_table_that_raises_new_ones() {
+    let source = include_str!("main.rs");
+    let connus: std::collections::BTreeSet<&str> = NamsdecApp::default()
+        .window_states()
+        .into_iter()
+        .map(|(nom, _)| nom)
+        .collect();
+
+    // Chaque `egui::Window::new(...)` du fichier, et l'identifiant qui
+    // le suit : il est toujours dans les lignes qui suivent
+    // immédiatement, parce que c'est le premier appel de la chaîne.
+    let mut vus = std::collections::BTreeSet::new();
+    for (position, _) in source.match_indices("egui::Window::new(") {
+        let suite = &source[position..(position + 600).min(source.len())];
+        // La boîte « À propos » nomme son identifiant par une constante,
+        // parce que trois endroits s'y réfèrent ; le reste l'écrit sur
+        // place.
+        let id = suite
+            .find("egui::Id::new(ABOUT_WINDOW)")
+            .map(|_| ABOUT_WINDOW)
+            .or_else(|| {
+                suite
+                    .find("egui::Id::new(\"")
+                    .map(|i| &suite[i + "egui::Id::new(\"".len()..])
+                    .and_then(|reste| reste.find('"').map(|fin| &reste[..fin]))
+            })
+            .unwrap_or_else(|| {
+                panic!(
+                    "une fenêtre sans identifiant explicite — elle perdrait sa \
+                     position en changeant de langue :\n{}",
+                    &suite[..120.min(suite.len())]
+                )
+            });
+        vus.insert(id);
+    }
+
+    assert!(!vus.is_empty(), "le fichier a bien des fenêtres");
+    let manquants: Vec<&&str> = vus.difference(&connus).collect();
+    assert!(
+        manquants.is_empty(),
+        "ces fenêtres ne sont pas dans window_states : {manquants:?}"
+    );
+}
+
+/// Et la règle s'applique : ouvrir une fenêtre la met devant.
+#[test]
+fn opening_a_window_puts_it_in_front() {
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp::default();
+    app.apply_theme(&ctx);
+    let entrée = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1400.0, 900.0),
+        )),
+        ..Default::default()
+    };
+
+    // Les préférences d'abord, puis la calculatrice par-dessus : c'est
+    // l'ordre dans lequel on ouvre la seconde depuis la première.
+    app.show_preferences = true;
+    for _ in 0..2 {
+        ctx.run_ui(entrée.clone(), |ui| app.draw(ui))
+            .textures_delta
+            .clear();
+    }
+    app.show_calculator = true;
+    ctx.run_ui(entrée.clone(), |ui| app.draw(ui))
+        .textures_delta
+        .clear();
+
+    let rang = |nom: &str| -> usize {
+        ctx.memory(|m| {
+            m.layer_ids()
+                .position(|id| id == egui::LayerId::new(egui::Order::Middle, egui::Id::new(nom)))
+                .unwrap_or_else(|| panic!("la fenêtre « {nom} » est dessinée"))
+        })
+    };
+    assert!(
+        rang("calculator_window") > rang("preferences_window"),
+        "la dernière ouverte est au-dessus"
+    );
+}
+
+/// Une frame lente ne dit pas la même chose selon ce qui l'a ralentie.
+///
+/// Ouvrir un binaire de soixante mille lignes demande une demi-seconde
+/// de mise en page — **une fois**. Le cache porte ensuite, et les frames
+/// suivantes tiennent en deux millisecondes. Crier « frame lente » sans
+/// le dire faisait chercher une fuite là où il n'y avait qu'un
+/// chargement.
+#[test]
+fn a_slow_frame_says_whether_it_will_come_back() {
+    use std::time::Duration;
+
+    let étapes = [
+        ("éditeur", Duration::from_millis(440)),
+        ("panneaux", Duration::from_millis(2)),
+    ];
+    let vite = Duration::from_millis(3);
+    let lente = Duration::from_millis(450);
+
+    // En marche normale, rien : l'instrumentation est silencieuse.
+    assert_eq!(slow_frame_note(vite, &étapes, false), None);
+    assert_eq!(slow_frame_note(vite, &étapes, true), None);
+
+    // Lente, et le texte vient de changer : c'est une mise en page.
+    let note = slow_frame_note(lente, &étapes, true).expect("il y a à dire");
+    assert!(note.contains("mise en page"), "{note}");
+    assert!(note.contains("payé une fois"), "{note}");
+    assert!(note.contains("éditeur 440ms"), "{note}");
+
+    // Lente sans que rien n'ait changé : là, c'est un vrai reproche.
+    let note = slow_frame_note(lente, &étapes, false).expect("il y a à dire");
+    assert!(note.contains("frame lente"), "{note}");
+    assert!(!note.contains("payé une fois"), "{note}");
+
+    // Les étapes trop courtes ne noient pas le message, et l'absence de
+    // toute étape mesurée se dit plutôt que de laisser une parenthèse
+    // vide.
+    let note = slow_frame_note(lente, &[], false).expect("il y a à dire");
+    assert!(note.contains("hors des étapes mesurées"), "{note}");
+}
+
 /// Chercher une suite d'octets dans la mémoire du programme.
 ///
 /// C'est le premier réflexe devant un programme qui compare quelque

@@ -929,6 +929,19 @@ struct NamsdecApp {
     active_tab: SidebarTab,
     console_tab: ConsoleTab,
     mem_addr_input: String,
+    /// La longueur du texte à la frame précédente.
+    ///
+    /// Sert à distinguer les deux sortes de frames lentes : celle d'une
+    /// mise en page qu'on paie une fois, et celle qui reviendrait à
+    /// chaque image.
+    last_layout_len: usize,
+    /// Les fenêtres qui étaient ouvertes à la frame précédente.
+    ///
+    /// Sert à reconnaître celles qui viennent de s'ouvrir, pour les
+    /// poser devant. egui empile les zones dans l'ordre où on les
+    /// touche, et une fenêtre qu'on vient de créer n'a jamais été
+    /// touchée : elle se retrouvait derrière celle d'où elle part.
+    windows_open: BTreeSet<&'static str>,
     /// Ce qu'on cherche dans la mémoire, tel qu'on l'a tapé.
     ///
     /// Pas un réglage : une saisie de travail, comme l'adresse juste
@@ -2018,6 +2031,8 @@ impl Default for NamsdecApp {
             active_tab: SidebarTab::Stack,
             console_tab: ConsoleTab::Output,
             mem_addr_input: format!("{BASE_ADDR:#x}"),
+            last_layout_len: 0,
+            windows_open: BTreeSet::new(),
             mem_find_input: String::new(),
             mem_find_hits: Vec::new(),
             mem_find_done: false,
@@ -5510,6 +5525,11 @@ impl NamsdecApp {
         let mut open = self.show_preferences;
         let mut close_keeping: Option<bool> = None;
         egui::Window::new(s.preferences_title)
+            // Un identifiant explicite : sans lui, egui dérive celui de
+            // la fenêtre de son *titre*, qui change avec la langue —
+            // passer en anglais lui faisait perdre sa position et sa
+            // taille.
+            .id(egui::Id::new("preferences_window"))
             .open(&mut open)
             .resizable(true)
             // Pas de flèche de repli : replier une boîte de préférences
@@ -8525,7 +8545,7 @@ impl NamsdecApp {
             // Un identifiant explicite : sans lui, egui dérive celui de
             // la fenêtre de son *titre*, qui change avec la langue —
             // passer en anglais lui faisait perdre sa position.
-            .id(about_window_id())
+            .id(egui::Id::new(ABOUT_WINDOW))
             .open(&mut open)
             .resizable(false)
             .collapsible(false)
@@ -8944,6 +8964,66 @@ impl NamsdecApp {
                 });
             }
         });
+    }
+
+    /// Toutes les fenêtres internes, et si chacune est ouverte.
+    ///
+    /// Une seule table, et un test vérifie qu'elle les cite toutes :
+    /// ajouter une fenêtre sans y penser reviendrait à réintroduire le
+    /// défaut sans le voir. Les noms sont les identifiants qu'on passe à
+    /// `egui::Window::id`, lesquels ne changent pas avec la langue.
+    fn window_states(&self) -> [(&'static str, bool); 16] {
+        [
+            ("preferences_window", self.show_preferences),
+            (ABOUT_WINDOW, self.show_about),
+            ("instruction_help", self.show_help),
+            ("vectors_window", self.show_vectors),
+            ("breakpoints_window", self.show_breakpoints),
+            ("timeline_window", self.show_timeline),
+            ("flow_window", self.show_flow),
+            (
+                "decompiler_window",
+                self.show_decompiler && self.show_decompiler_module,
+            ),
+            (
+                "installer_window",
+                self.install_plan.is_some() && self.show_installer_module,
+            ),
+            ("disassembly_window", self.show_disassembly),
+            ("cyclic_window", self.show_cyclic),
+            ("analysis_window", self.show_analysis),
+            ("calculator_window", self.show_calculator),
+            ("exercises_window_v2", self.exercises && self.show_exercises),
+            ("unsaved_changes", self.pending.is_some()),
+            ("command_palette", self.command_palette.is_some()),
+        ]
+    }
+
+    /// Pose devant toute fenêtre qui vient de s'ouvrir.
+    ///
+    /// Le plan d'installation s'ouvre depuis les préférences, et se
+    /// posait derrière elles : on cliquait « Installer… » et il ne se
+    /// passait rien de visible. Le cas n'avait rien de particulier à
+    /// cette fenêtre-là — rien n'oblige une fenêtre ouverte depuis une
+    /// autre à passer devant elle —, d'où une règle valable pour toutes
+    /// plutôt qu'un rang choisi au cas par cas.
+    ///
+    /// « Vient de s'ouvrir » et non « est ouverte » : la remettre devant
+    /// à chaque frame empêcherait d'en poser une autre par-dessus.
+    fn raise_new_windows(&mut self, ctx: &egui::Context) {
+        let ouvertes: BTreeSet<&'static str> = self
+            .window_states()
+            .into_iter()
+            .filter(|(_, ouverte)| *ouverte)
+            .map(|(nom, _)| nom)
+            .collect();
+        for nom in ouvertes.difference(&self.windows_open) {
+            ctx.move_to_top(egui::LayerId::new(
+                egui::Order::Middle,
+                egui::Id::new(*nom),
+            ));
+        }
+        self.windows_open = ouvertes;
     }
 
     fn statusbar_ui(&self, ui: &mut egui::Ui) {
@@ -11763,6 +11843,9 @@ impl NamsdecApp {
         let mut vers_entrée = None;
 
         egui::Window::new(s.cyclic_title)
+            // Même raison qu'ailleurs : le titre change avec la langue,
+            // l'identifiant ne doit pas.
+            .id(egui::Id::new("cyclic_window"))
             .open(&mut open)
             .resizable(true)
             .default_size([560.0, 400.0])
@@ -15986,6 +16069,9 @@ impl NamsdecApp {
         // L'explorateur relit le disque, d'où sa mesure à part.
         timed(&mut spans, "explorateur", || self.explorer_window_ui(&ctx));
         timed(&mut spans, "fenêtres", || {
+            // Avant de les dessiner : celle qui vient de s'ouvrir doit
+            // passer devant celle d'où elle part.
+            self.raise_new_windows(&ctx);
             self.preferences_window_ui(&ctx);
             self.about_window_ui(&ctx);
             self.help_window_ui(&ctx);
@@ -16013,7 +16099,14 @@ impl NamsdecApp {
             self.persist_settings_if_changed()
         });
 
-        report_slow_frame(frame_start.elapsed(), &spans);
+        // Le texte a-t-il changé pendant cette frame ? Une frappe ne
+        // rend pas une frame lente ; un listing de soixante mille lignes
+        // qui arrive, si. La conjonction des deux désigne donc la mise
+        // en page initiale, sans qu'aucun appelant ait à le signaler —
+        // et il y en a une dizaine qui remplacent le texte.
+        let texte_changé = self.source.len() != self.last_layout_len;
+        self.last_layout_len = self.source.len();
+        report_slow_frame(frame_start.elapsed(), &spans, texte_changé);
     }
 }
 
@@ -16136,8 +16229,16 @@ fn byte_to_char(text: &str, byte: usize) -> usize {
 
 /// La boîte « À propos » porte un identifiant fixe, indépendant de son
 /// titre traduit.
+/// L'identifiant de la boîte « À propos ».
+///
+/// Écrit une fois, employé partout : la fenêtre elle-même, la table qui
+/// remet devant les fenêtres qui s'ouvrent, et le test qui relit sa
+/// position. Trois endroits, un seul mot — sans quoi renommer l'un
+/// laisserait les autres chercher une fenêtre qui n'existe plus.
+pub(crate) const ABOUT_WINDOW: &str = "about_window";
+
 fn about_window_id() -> egui::Id {
-    egui::Id::new("about_window")
+    egui::Id::new(ABOUT_WINDOW)
 }
 
 /// Les seize registres SSE, dans l'ordre de leur numéro.
@@ -16819,26 +16920,52 @@ fn timed<R>(
     out
 }
 
-/// N'écrit rien tant que la frame tient dans son budget : en marche
-/// normale cette instrumentation est silencieuse.
-fn report_slow_frame(total: Duration, spans: &[(&'static str, Duration)]) {
+/// Ce qu'il y a à dire d'une frame, s'il y a quelque chose à dire.
+///
+/// Rien tant qu'elle tient dans son budget : en marche normale cette
+/// instrumentation est silencieuse.
+///
+/// `texte_changé` distingue les deux sortes de lenteur, et la distinction
+/// n'est pas cosmétique. Ouvrir un binaire de soixante mille lignes
+/// demande une demi-seconde de mise en page, **une fois** : le cache
+/// porte ensuite, et les frames suivantes tiennent en deux
+/// millisecondes. Crier « frame lente » sans le dire laissait croire à
+/// un coût permanent, et l'on cherchait une fuite là où il n'y avait
+/// qu'un chargement.
+fn slow_frame_note(
+    total: Duration,
+    spans: &[(&'static str, Duration)],
+    texte_changé: bool,
+) -> Option<String> {
     if total < SLOW_FRAME {
-        return;
+        return None;
     }
     let detail: Vec<String> = spans
         .iter()
         .filter(|(_, d)| *d >= Duration::from_millis(1))
         .map(|(name, d)| format!("{name} {}ms", d.as_millis()))
         .collect();
-    eprintln!(
-        "namsdec: frame lente — {}ms au total ({})",
-        total.as_millis(),
-        if detail.is_empty() {
-            "hors des étapes mesurées".to_owned()
-        } else {
-            detail.join(", ")
-        }
-    );
+    let detail = if detail.is_empty() {
+        "hors des étapes mesurées".to_owned()
+    } else {
+        detail.join(", ")
+    };
+    Some(if texte_changé {
+        format!(
+            "namsdec: mise en page — {}ms ({detail}). Le texte vient de changer : \
+             c'est payé une fois, les frames suivantes n'en gardent rien.",
+            total.as_millis()
+        )
+    } else {
+        format!("namsdec: frame lente — {}ms au total ({detail})", total.as_millis())
+    })
+}
+
+/// Écrit sur la sortie d'erreur ce que `slow_frame_note` a trouvé à dire.
+fn report_slow_frame(total: Duration, spans: &[(&'static str, Duration)], texte_changé: bool) {
+    if let Some(note) = slow_frame_note(total, spans, texte_changé) {
+        eprintln!("{note}");
+    }
 }
 
 fn main() -> eframe::Result<()> {
