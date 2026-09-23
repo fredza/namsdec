@@ -4,6 +4,66 @@ Les dates sont celles des commits ; le format suit [Keep a
 Changelog](https://keepachangelog.com/fr/1.1.0/) d'assez loin — une
 entrée par version, et ce qui change pour qui s'en sert.
 
+## 0.2.5-beta.2 — 23 septembre 2026
+
+La liste des améliorations, exécutée : sept entrées traitées, et deux
+défauts trouvés en chemin.
+
+**L'éditeur**
+- Les déplacements par mot du mode Normal : `w`, `b`, `e`, `gg`. La
+  notion de mot est celle de vim — dans `mov qword [rbp-0x18], rax`,
+  `w` s'arrête sur le crochet puis sur `rbp`, au lieu de sauter la
+  moitié de la ligne.
+
+**Lire un binaire**
+- **Nommer une adresse** et **commenter une ligne**. Le nom apparaît
+  partout où l'adresse se montre — pile, adresses de retour, cibles de
+  saut, graphe — et l'emporte sur le symbole du binaire.
+- Rangé à côté du binaire, jamais dedans. La clé est le **contenu** du
+  fichier, non son chemin : un binaire déplacé retrouve ses notes, un
+  binaire recompilé n'hérite pas de celles d'un autre.
+- Le graphe nomme la fonction qu'il montre, et garde son adresse à côté —
+  c'est elle qu'on tape, et elle qui lève l'ambiguïté quand la fermeture
+  par sauts se trompe.
+
+**Les boîtes de dialogue**
+- Une barre unique partout : bouton principal à droite en couleur
+  d'accent, second de même largeur, Entrée et Échap. C'est la couleur qui
+  dit lequel est le principal, pas la taille.
+- « Annuler » ne défait rien dans les préférences, qui s'appliquent à
+  mesure qu'on coche : c'est donc « Quitter », qui dit ce qu'il fait.
+
+**Réparé**
+- Entrée validait enfin la saisie du programme. Un champ de texte qui
+  traite Entrée la retire de la file d'évènements, et la guetter après
+  lui ne voyait rien.
+- La zone d'attente se voit sans qu'on la cherche : liseré franc,
+  pastille, et le geste écrit en toutes lettres.
+- La rangée « Entrée » était coupée en deux, et le test ne le voyait pas
+  — il vérifiait la position du texte, non son rectangle.
+- Un diagnostic déjà affiché suit la langue quand on la change : il garde
+  son motif et non sa phrase, laquelle se reforme au dessin.
+- Échap ne déclenche plus l'action secondaire d'une fenêtre. La fenêtre
+  d'installation y avait mis « Recommencer » : la touche qui veut dire
+  « je m'en vais » lançait vingt minutes de compilation.
+- Une séquence de touches en cours l'emporte sur un raccourci simple.
+  Sans cette règle, toute lettre servant de deuxième touche quelque part
+  serait interdite comme raccourci simple.
+
+**Vérifié plutôt que supposé**
+- Les paquets que les recettes annoncent existent : demandé au
+  gestionnaire local, sans réseau ni droits.
+- Les deux étiquettes de rizin et rz-ghidra existent encore : demandé à
+  `git ls-remote` avant, et non découvert après dix minutes de
+  compilation.
+- La recette de rz-ghidra a été suivie en entier, de bout en bout : c'est
+  la première fois qu'on peut dire qu'elle est juste.
+- Les tests ne parlent plus du disque de leur auteur : ils cherchent les
+  binaires d'épreuve dans `tests/binaires/`, que le dépôt ignore
+  désormais.
+
+---
+
 ## 0.2.5-beta.1 — 23 septembre 2026
 
 Quatre chantiers : franchir l'anti-débogage, calculer sans sortir de

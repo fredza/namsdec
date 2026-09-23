@@ -8,7 +8,7 @@ edition = "2024"
 # Ne JAMAIS monter ce numéro sans demander d'abord à l'utilisateur — règle
 # explicite (voir memory: feedback_version_bump_approval). Le numéro de
 # build (date de compilation) n'est pas concerné, il se met à jour seul.
-version = "0.2.5-beta.1"
+version = "0.2.5-beta.2"
 license = "MIT"
 
 [workspace.dependencies]

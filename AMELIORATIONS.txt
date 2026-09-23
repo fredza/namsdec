@@ -695,6 +695,168 @@ aujourd'hui ; les suivantes, ce vers quoi l'outil peut aller.
 
 
 --------------------------------------------------------------------------------
+ 7. CE QUE JE PROPOSE — rangé par ce que ça apporte
+--------------------------------------------------------------------------------
+
+Écrit le 23 septembre 2026, à la demande. Ce ne sont pas des tâches
+reçues : ce sont des pistes que le travail des dernières séances a fait
+apparaître, chacune avec ce qu'elle apporte, ce qu'elle coûte, et ce qui
+pourrait mal tourner. À trier, à refuser, à reprendre.
+
+--- D'abord, parce que ça gêne tous les jours -----------------------------
+
+7.1  LES RACCOURCIS, REPRIS PAR LE SENS (voir 1.23)
+     C'est ce que je ferais en premier, et pas pour des raisons d'élégance :
+     le jeu vim m'a forcé la main TROIS fois en une séance. `n` court-circuite
+     `Espace n i`. `Espace n` aussi. `Espace s` sert à la fois aux pas
+     (`s i`, `s o`) et à la recherche (`s s`, `s r`). J'ai dû prendre
+     `Espace a` pour « nommer » alors que `n` est la touche de tous les outils
+     du métier.
+     Le fond du problème : les séquences sont rangées par la première lettre
+     de l'ACTION, si bien que chaque ajout se place où il reste de la place.
+     Proposition : ranger par FAMILLE.
+       `Espace p…`  pas et exécution  (p i, p o, p b, p r)
+       `Espace /…`  chercher          (/ / surligner, / n suivant, / r renommer)
+       `Espace m…`  marquer           (m n nommer, m c commenter)
+       `Espace v…`  voir              (v g graphe, v e explorateur, v t chrono)
+     Ce qui se perd : les habitudes déjà prises sur `Espace r`, `Espace b`,
+     `Espace s i`. Ce n'est pas rien — et c'est pour cela que la décision te
+     revient, pas à moi.
+     Ce qui aiderait à décider : un écran qui montre les DEUX jeux côte à
+     côte, action par action. Aujourd'hui l'onglet Raccourcis n'en montre
+     qu'un, ce qui empêche justement de voir les trous et les doublons.
+
+7.2  DÉCOUPER main.rs (voir 5.1)
+     Il passe les 15 000 lignes. Ce n'est pas qu'une question de goût : cette
+     séance, deux corrections ont dû contourner un emprunt de `self` parce que
+     tout vit dans la même structure — `name_of` était devenue inutilisable là
+     où elle servait, et je ne l'ai vu que par un avertissement du compilateur.
+     Ce que je propose, dans cet ordre (chaque étape se teste seule) :
+       1. `dialogs.rs` — la barre d'action, déjà isolée en une fonction.
+       2. `console.rs` — le panneau bas et sa saisie ; c'est là que trois
+          défauts de suite se sont logés, et il est mesurable à part.
+       3. `windows/` — un fichier par fenêtre (graphe, décompilateur,
+          installateur, analyse, exercices, calculatrice, chronologie).
+     Ce qui pourrait mal tourner : un découpage qui multiplie les `pub(crate)`
+     sans rien clarifier. La règle que je tiendrais : on ne sort un morceau que
+     s'il peut être testé sans le reste.
+
+--- Ensuite, parce que ça manque pour travailler -------------------------
+
+7.3  PATCHER UN BINAIRE (voir 4.1)
+     C'est la fonctionnalité qui manque le plus à un outil de RE, et le fichier
+     le dit depuis le début. On voit le `je` qu'il faudrait inverser, et l'on
+     ne peut rien en faire.
+     Proposition mesurée, en trois temps :
+       1. Écrire des octets dans l'image chargée, et le montrer — l'onglet
+          Octets en vue éditable (4.8), avec ce qui a changé marqué.
+       2. Les « recettes » du métier, en un clic : inverser une condition,
+          neutraliser un appel par des `nop`, forcer un retour. Ce sont les
+          trois quarts des cas, et les nommer évite de compter les octets.
+       3. Réécrire le fichier, JAMAIS par-dessus l'original. Un `-patché`
+          dans le nom, et le dire.
+     Ce qui pourrait mal tourner, et qu'il faut décider avant d'écrire : un
+     binaire patché qui ne tourne plus, sans qu'on sache si c'est le patch ou
+     le programme. D'où l'ordre ci-dessus : voir avant de faire, et garder
+     l'original intact.
+
+7.4  CHERCHER DANS LA MÉMOIRE (voir 4.9)
+     Une suite d'octets, une chaîne, un motif. C'est le premier réflexe devant
+     un programme qui compare quelque chose, et il n'y a rien.
+     Peu coûteux : la mémoire est déjà là, et `occurrences.rs` a montré le
+     patron — une fonction pure qui rend des étendues, l'interface qui peint.
+     Ce que j'ajouterais que les autres outils ne font pas : chercher aussi
+     dans ce que le programme a DÉJÀ ÉCRIT (le journal des pas garde les
+     adresses touchées), et non seulement dans l'état courant. « Où cette
+     valeur est-elle passée ? » est la vraie question.
+
+7.5  SUIVRE UNE VALEUR À REBOURS (voir 4.4)
+     « D'où vient ce que RAX contient ? » Le module de provenance existe et
+     répond pour un pas ; l'étendre à plusieurs en s'appuyant sur le pas à pas
+     inverse donnerait l'outil le plus utile devant un contrôle de mot de
+     passe.
+     C'est là que namsdec a un avantage qu'un débogueur n'a pas : il garde
+     l'histoire. Personne d'autre ne peut répondre à cette question sans
+     réexécuter.
+
+--- Ce qui rendrait l'outil plus sûr de lui ------------------------------
+
+7.6  UN CONTRÔLE QUI DIT CE QUI N'EST PAS TESTÉ
+     Cette séance, quatre défauts réels sont passés sous des tests qui
+     paraissaient les couvrir :
+       - le champ de saisie coupé : le test vérifiait la POSITION du texte,
+         non son rectangle ;
+       - le même, plus tôt : le test ne posait pas le thème, donc mesurait des
+         espacements qui n'existent nulle part ;
+       - Entrée qui ne validait pas : aucun test ne frappait Entrée ;
+       - Échap qui lançait une compilation : aucun test ne frappait Échap sur
+         cette fenêtre.
+     Le point commun n'est pas le manque de tests, c'est que les tests
+     regardaient la mauvaise chose. Proposition : une règle écrite, et tenue —
+     tout test d'interface pose le thème, et vérifie des RECTANGLES, jamais
+     des positions. Puis une relecture des tests d'affichage existants à cette
+     aune. C'est ingrat et ça n'ajoute aucune fonctionnalité ; c'est aussi ce
+     qui m'a fait te dire deux fois qu'un défaut était réglé alors qu'il ne
+     l'était pas.
+
+7.7  egui_kittest (voir 3.5)
+     La dépendance est là et ne sert à rien. Elle sait simuler des frappes et
+     comparer des captures, ce que je fais à la main dans chaque test
+     d'affichage — d'où leur longueur, et d'où les erreurs de 7.6.
+     À évaluer sur UN test d'abord, pas sur tous : si elle ne raccourcit pas
+     visiblement, elle sort des dépendances.
+
+7.8  LE LISTING QUI NE VIRTUALISE PAS (voir 5.3)
+     450 ms à la première image d'un gros binaire, et le message « frame
+     lente » qui laisse croire à un problème permanent alors que le cache
+     porte ensuite.
+     Deux choses distinctes, et la seconde est presque gratuite : ne pas crier
+     « frame lente » pour la première image après un chargement. Le message
+     est faux tel quel — il décrit un coût payé une fois comme s'il revenait.
+
+--- Ce qui servirait ta vocation pédagogique ----------------------------
+
+7.9  UN MODE « EXPLIQUE-MOI CETTE FONCTION »
+     namsdec explique déjà chaque instruction. Il n'explique pas un ENSEMBLE :
+     ce que fait une boucle, ce qu'une suite de `cmp`/`je` vérifie au total.
+     Proposition : à partir du graphe et du profil d'exécution, une phrase par
+     bloc — « cette boucle tourne 20 fois et additionne rcx à rax »,
+     « ce bloc compare octet par octet et sort au premier écart ». Rien
+     d'inventé : tout est mesuré, et ce qu'on ne sait pas dire, on ne le dit
+     pas.
+     C'est ce qui distinguerait le plus namsdec des autres outils, et c'est
+     dans la ligne de ce que tu en attends. C'est aussi le plus difficile à
+     faire honnêtement — une explication fausse est pire qu'une absence
+     d'explication, et il faudra savoir se taire.
+
+7.10 LES ÉCHECS DES EXERCICES, EXPLIQUÉS
+     Les 96 exercices disent « atteint » ou rien. Un exercice raté ne dit pas
+     POURQUOI : quel but n'est pas rempli, et ce que le programme a fait à la
+     place.
+     Peu coûteux — les buts sont déjà des conditions vérifiables — et c'est
+     exactement le moment où quelqu'un qui apprend abandonne ou comprend.
+
+--- Ce que je ne propose pas, et pourquoi -------------------------------
+
+     LE MULTICURSEUR LIBRE. Le widget de texte d'egui ne tient qu'un curseur ;
+     en poser plusieurs demande de le remplacer. Ce qui est livré — surligner,
+     parcourir, renommer d'un coup — couvre son usage réel. Je n'y reviendrais
+     que le jour où l'éditeur serait réécrit pour une autre raison.
+
+     UN DÉBOGUEUR RÉEL (ptrace sur un vrai processus). Ce serait un autre
+     programme, et cela ferait perdre ce qui fait namsdec : le pas en arrière,
+     la mémoire inspectable sans conséquence, l'exécution sans risque. Un
+     interpréteur qui mentit un peu vaut mieux ici qu'un débogueur qui ne
+     mente pas.
+
+     DÉLIVRER LES SIGNAUX AU GESTIONNAIRE (ce qui bloque LeetCrackme3). C'est
+     un vrai chantier — table de gestionnaires, pile de signaux, masquage — et
+     il ne servirait aujourd'hui qu'à deux crackmes. À reprendre si d'autres
+     binaires butent au même endroit : ce sera alors un manque, non une
+     curiosité.
+
+
+--------------------------------------------------------------------------------
  6. CE QUI A ÉTÉ FAIT PENDANT CETTE SÉANCE (pour mémoire)
 --------------------------------------------------------------------------------
   --- séance du 18 septembre 2026, seconde partie ---

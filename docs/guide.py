@@ -200,6 +200,45 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "au-dessus de l'éditeur, chacun gardant son texte, son curseur, ses points d'arrêt "
          "et son exécution en cours. Ctrl+Tab passe au suivant, Ctrl+W ferme."),
 
+        ("h2", "Ce que l'éditeur sait faire"),
+        ("p",
+         "En mode NORMAL, les déplacements sont ceux de vim : "
+         "<font face='Courier'>h j k l</font> pour un caractère ou une ligne, "
+         "<font face='Courier'>w b e</font> pour un mot, <font face='Courier'>0</font> et "
+         "Fin pour les bords de la ligne, <font face='Courier'>gg</font> et "
+         "<font face='Courier'>G</font> pour ceux du fichier. La notion de mot est celle de "
+         "vim, non celle d'un traitement de texte : dans "
+         "<font face='Courier'>mov qword [rbp-0x18], rax</font>, "
+         "<font face='Courier'>w</font> s'arrête sur le crochet puis sur "
+         "<font face='Courier'>rbp</font>, au lieu de sauter la moitié de la ligne."),
+        ("liste", [
+         "<b>Surligner les occurrences</b> — le mot sous le curseur, ou la sélection, est "
+         "montré partout où il revient. Il cherche des jetons et non du texte : le "
+         "<font face='Courier'>rax</font> d'un commentaire n'est pas surligné, et la casse "
+         "suit nasm — <font face='Courier'>MOV</font> est <font face='Courier'>mov</font>, "
+         "mais <font face='Courier'>Boucle</font> n'est pas "
+         "<font face='Courier'>boucle</font>.",
+         "<b>Aller d'une occurrence à l'autre</b> — chacune arrive sélectionnée, donc prête "
+         "à être remplacée. On tape, on repasse à la suivante, on retape.",
+         "<b>Renommer les occurrences</b> — toutes d'un coup. À la différence d'un "
+         "chercher-remplacer, les commentaires ne sont pas touchés.",
+         "<b>Dupliquer la ligne</b> — quatre lignes qui ne diffèrent que par un registre se "
+         "dupliquent plus vite qu'elles ne se retapent.",
+         "<b>Fermeture automatique des paires</b> — et trois règles pour qu'elle ne se "
+         "fasse pas détester : pas devant un mot, pas d'apostrophe fermée après une lettre "
+         "(« l'adresse »), et taper le fermant déjà là le traverse.",
+        ]),
+        ("p",
+         "La <b>coloration</b> distingue ce qui existe de ce qui n'existe pas : "
+         "<font face='Courier'>mav</font> ne reçoit pas la couleur de "
+         "<font face='Courier'>mov</font>. La liste vient du décodeur que namsdec emploie "
+         "déjà, donc ce qui se décode se colore. Les étiquettes du fichier sont peintes "
+         "comme telles là où l'on y saute, et pas seulement où on les définit."),
+        ("p",
+         "L'<b>autocomplétion</b> propose selon l'endroit : une instruction en tête de "
+         "ligne, un registre ou une étiquette dans une opérande. Tab accepte, les flèches "
+         "choisissent, Échap referme."),
+
         ("h2", "Le panneau de droite"),
         ("p", "Il se lit de haut en bas, et se partage en trois zones fixes :"),
         ("liste", [
@@ -247,6 +286,19 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "Le <b>pas en arrière</b> est ce qu'un débogueur ordinaire rend laborieux et qu'un "
          "interpréteur offre : namsdec garde l'histoire de l'exécution, et la chronologie "
          "(Outils ▸ Chronologie) permet de cliquer un pas passé pour y revenir."),
+        ("p",
+         "Cette fenêtre montre deux choses distinctes. La <b>liste</b> répond à « qu'est-ce "
+         "qui s'est passé » : un pas par ligne, avec sa nature, son adresse et sa ligne. La "
+         "<b>barre</b>, en haut, répond à la question qui vient avant — « où j'en suis » : "
+         "une colonne par tranche de temps, colorée par ce qui s'y est passé de plus "
+         "notable. On clique ou l'on glisse dessus pour rembobiner, comme sur la piste d'un "
+         "lecteur."),
+        ("note",
+         "La couleur de chaque colonne est celle du pas le plus notable de sa tranche, non "
+         "du premier venu : un appel système passe devant un appel, qui passe devant une "
+         "écriture, qui passe devant un saut. C'est ce classement qui fait qu'un "
+         "<font face='Courier'>call</font> seul au milieu de deux mille instructions "
+         "ordinaires reste visible — et c'est justement le rare qu'on cherche des yeux."),
 
         ("h2", "Les points d'arrêt"),
         ("p",
@@ -326,6 +378,33 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "de chaque ligne, et se copie en texte. Quand un exercice impose un budget "
          "d'instructions, le profil le rappelle et désigne la ligne par où reprendre."),
 
+        ("h2", "La calculatrice"),
+        ("p",
+         "Outils ▸ <b>Calculatrice</b>. Le besoin revient tout le temps : on lit "
+         "<font face='Courier'>and eax, 0x1f</font> et l'on veut savoir ce que ça garde ; "
+         "on voit <font face='Courier'>shr rax, 3</font> et l'on cherche le diviseur ; on "
+         "trouve <font face='Courier'>0x6c6c6568</font> dans un registre et l'on se demande "
+         "quelles lettres c'est."),
+        ("p",
+         "Elle lit l'hexadécimal, le binaire, l'octal, le décimal, le suffixe "
+         "<font face='Courier'>h</font> de nasm et les caractères "
+         "(<font face='Courier'>'A'</font>), avec les opérateurs de bits à la priorité du "
+         "C. Les <b>registres du programme en cours</b> sont des noms comme les autres, à "
+         "toutes leurs largeurs — <font face='Courier'>rax</font>, "
+         "<font face='Courier'>eax</font>, <font face='Courier'>ax</font>, "
+         "<font face='Courier'>ah</font> : <font face='Courier'>rax &amp; 0xff</font> se lit "
+         "comme on le pense."),
+        ("p",
+         "S'y ajoutent les fonctions qu'on écrit à la main en lisant un désassemblage : "
+         "permutation d'octets, extension de signe, comptage de bits, rotations, "
+         "alignement. Le résultat s'affiche dans <b>toutes les bases en même temps</b>, "
+         "chaque ligne se copiant d'un clic."),
+        ("note",
+         "La lecture ASCII suit l'ordre de la <b>mémoire</b>, non celui de l'écriture : "
+         "<font face='Courier'>0x6c6c6568</font> donne « hell » et non « lleh ». Une valeur "
+         "devient une chaîne en passant par la mémoire, c'est donc la mémoire qu'il faut "
+         "montrer."),
+
         ("h1", "Le parcours d'exercices"),
         ("p",
          "Le parcours compte <b>%d étapes</b>, rangées en quatre paliers de difficulté "
@@ -381,11 +460,34 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "adresse. Une adresse qu'un `call` vise est une fonction, même dépouillée de son "
          "nom.",
          "<b>Gadgets</b> — les fins de séquence utiles à une chaîne ROP.",
+         "<b>Entropie</b> — combien de bits d'information porte un octet, sur tout le "
+         "fichier puis par tranches. C'est ce qui répond avant tout le reste à « y a-t-il "
+         "seulement quelque chose à lire ici ? » : un binaire empaqueté montre un petit "
+         "déchiffreur en clair et un gros bloc illisible, et les autres modules "
+         "analyseraient le déchiffreur en croyant analyser le programme.",
         ]),
         ("p",
          "Le <b>motif cyclique</b> (Outils ▸ Motif cyclique) est celui de pwntools, octet "
          "pour octet : on l'envoie au programme, et le décalage relu depuis un registre dit "
          "exactement de combien un débordement a dépassé."),
+        ("h2", "Écrire ce qu'on a compris"),
+        ("p",
+         "Un binaire dépouillé n'a que des adresses. On passe une soirée à comprendre que "
+         "<font face='Courier'>0x1d491</font> vérifie le mot de passe, et le lendemain il "
+         "n'y a plus que <font face='Courier'>0x1d491</font>."),
+        ("p",
+         "<b>Nommer cette adresse</b> et <b>Commenter cette ligne</b> gardent ce qu'on a "
+         "trouvé. Le nom apparaît ensuite partout où cette adresse se montre — pile, "
+         "adresses de retour, cibles de saut, graphe —, et il l'emporte sur le symbole du "
+         "binaire : renommer <font face='Courier'>sub_1d491</font> en "
+         "<font face='Courier'>vérifie_mdp</font>, c'est vouloir voir le second. Le "
+         "commentaire se lit à droite de sa ligne. Vider le champ retire la note."),
+        ("note",
+         "Les notes sont rangées à côté du binaire, <b>jamais dedans</b> : on n'écrit pas "
+         "dans l'exécutable de quelqu'un pour y noter ce qu'on en pense. Et leur clé est "
+         "le <b>contenu</b> du fichier, non son chemin — un binaire déplacé ou renommé "
+         "retrouve ses notes, un binaire recompilé n'hérite pas de celles d'un autre. Un "
+         "repère qui désigne autre chose que ce qu'on croit est pire qu'un repère absent."),
         ("p",
          "Le rapport d'analyse se copie en Markdown ou s'enregistre, pour être collé dans "
          "un compte rendu."),
@@ -461,6 +563,18 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "<font face='Courier'>~/.local/share/namsdec/</font>. Un désassembleur externe est "
          "un <i>programme</i> : il ne s'exécute que sur demande, et le panneau annonce la "
          "commande avant de la lancer."),
+
+        ("h2", "Reprendre son travail"),
+        ("p",
+         "namsdec rouvre ce qu'on avait : les fichiers sources et leurs onglets, le "
+         "<b>binaire</b> ouvert, ses points d'arrêt, ses zones surveillées, les arguments "
+         "et variables d'environnement du programme, et l'onglet latéral qu'on regardait."),
+        ("note",
+         "Les repères posés sur un binaire ne reviennent que si le <b>fichier n'a pas "
+         "changé</b> — taille et date. Ils se comptent en numéros de ligne d'un listing "
+         "reconstruit à chaque ouverture ; sur un binaire recompilé entre-temps, ils "
+         "désigneraient d'autres instructions. Le binaire se rouvre quand même, les repères "
+         "sont oubliés, et namsdec le dit."),
 
         ("h1", "Les raccourcis"),
         ("p",

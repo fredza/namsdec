@@ -211,7 +211,7 @@ demande explicite, et écrit la commande complète avant de la lancer.
 ## Le guide
 
 Un **guide de l'utilisateur en PDF** accompagne chaque version :
-[`docs/guide-namsdec-0.2.5-beta.1.pdf`](docs/guide-namsdec-0.2.5-beta.1.pdf)
+[`docs/guide-namsdec-0.2.5-beta.2.pdf`](docs/guide-namsdec-0.2.5-beta.2.pdf)
 — installation, prise en main, chaque panneau, l'exécution pas à pas, la
 mémoire, le manuel, le déroulement, le parcours, la rétro-ingénierie, les
 raccourcis et les limites connues.
