@@ -9,6 +9,8 @@ mod binary_info;
 pub mod cfg;
 pub mod cyclic;
 pub mod elf_scan;
+pub mod entropy;
+mod entropy_module;
 pub mod functions;
 mod functions_module;
 pub mod gadgets;
@@ -29,6 +31,7 @@ pub mod table;
 pub mod xrefs;
 mod xrefs_module;
 
+pub use entropy_module::EntropyModule;
 pub use binary_info::BinaryInfoModule;
 pub use functions_module::FunctionsModule;
 pub use gadgets_module::GadgetsModule;
