@@ -319,7 +319,14 @@ mod dzf_tests {
     /// savoir que le branchement tient.
     #[test]
     fn dzf_disassembles_real_bytes_when_it_is_built() {
-        let binaire = std::path::Path::new("/home/fred/Projects/DZF/x64-disassembler/build/x64-disassembler");
+        // DZF vit dans son propre dépôt : `NAMSDEC_DZF` dit où trouver
+        // son binaire, et à défaut on regarde à côté de celui-ci. Sans
+        // lui, le test se tait — il n'a rien à juger.
+        let binaire = match std::env::var_os("NAMSDEC_DZF") {
+            Some(ailleurs) => std::path::PathBuf::from(ailleurs),
+            None => std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../../DZF/x64-disassembler/build/x64-disassembler"),
+        };
         if !binaire.is_file() {
             return;
         }

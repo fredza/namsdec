@@ -147,9 +147,15 @@ const TREAT_IMAGE_SHOWN: f32 = 84.0;
 /// Le texte de la licence sous laquelle namsdec est publié.
 /// Le thème d'exemple, volontairement **hors du dépôt** : c'est un
 /// plugin, il doit s'installer depuis n'importe où sur le disque.
+///
+/// D'où la variable d'environnement plutôt qu'un chemin en dur : celui
+/// qui était écrit ici ne désignait quelque chose que sur une seule
+/// machine, et disait au passage où vivaient ses dossiers.
 #[cfg(test)]
-const EXTERNAL_ABYSS: &str =
-    "/home/fred/Projects/Rust/namsdec-plugin-abyss/abyss.namsdec-theme.json";
+fn external_abyss() -> Option<std::path::PathBuf> {
+    let chemin = std::path::PathBuf::from(std::env::var_os("NAMSDEC_EXTERNAL_THEME")?);
+    chemin.is_file().then_some(chemin)
+}
 
 const MIT_LICENSE_URL: &str = "https://opensource.org/license/mit";
 /// Où l'on trouve namsdec, et où l'on en parle.

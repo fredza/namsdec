@@ -583,7 +583,9 @@ fn theme_cards_share_a_width_set_by_the_longest_name() {
 fn the_remove_buttons_line_up_whatever_the_names() {
     // Deux thèmes installés, aux noms de longueurs très différentes.
     let dir = tempfile::tempdir().unwrap();
-    let sample = std::fs::read_to_string(EXTERNAL_ABYSS).unwrap_or_else(|_| return_sample());
+    let sample = external_abyss()
+        .and_then(|chemin| std::fs::read_to_string(chemin).ok())
+        .unwrap_or_else(return_sample);
     let mut app = NamsdecApp::default();
     for (id, name) in [("court-a", "Ab"), ("long-a", "Un nom vraiment très long")] {
         let file = sample
@@ -678,8 +680,9 @@ fn a_framed_button_draws_the_outline_a_flat_one_does_not() {
 fn removing_an_installed_theme_deletes_its_file_and_frees_the_id() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("jetable.namsdec-theme.json");
-    let file = std::fs::read_to_string(EXTERNAL_ABYSS)
-        .unwrap_or_else(|_| return_sample())
+    let file = external_abyss()
+        .and_then(|chemin| std::fs::read_to_string(chemin).ok())
+        .unwrap_or_else(return_sample)
         .replace("\"abyss\"", "\"abyss-a-retirer\"");
     std::fs::write(&path, &file).unwrap();
 
@@ -731,8 +734,9 @@ fn return_sample() -> String {
 #[test]
 #[ignore = "écrit dans le dossier de plugins de l'utilisateur"]
 fn installs_the_external_theme_for_real() {
-    let path = std::path::Path::new(EXTERNAL_ABYSS);
-    assert!(path.exists(), "le plugin doit être là : {EXTERNAL_ABYSS}");
+    let chemin = external_abyss()
+        .expect("NAMSDEC_EXTERNAL_THEME doit désigner le fichier du thème");
+    let path = chemin.as_path();
 
     let mut app = NamsdecApp::default();
     let before = app.theme.id;
@@ -810,12 +814,12 @@ fn uninstalls_the_external_theme_for_real() {
 /// faire dans le dossier de plugins de qui exécute la suite.
 #[test]
 fn an_external_theme_file_installs_and_joins_the_list() {
-    let path = std::path::Path::new(EXTERNAL_ABYSS);
-    if !path.exists() {
-        // Le plugin vit hors du dépôt : sur une autre machine, ce
-        // test n'a rien à vérifier.
+    // Le plugin vit hors du dépôt : sans `NAMSDEC_EXTERNAL_THEME`, ce
+    // test n'a rien à vérifier.
+    let Some(path) = external_abyss() else {
         return;
-    }
+    };
+    let path = path.as_path();
     let theme = namsdec_theme::plugin::read(path).expect("le thème doit se lire");
     assert_eq!(theme.name, "Abyss");
 
@@ -10803,7 +10807,7 @@ fn the_input_line_opens_as_soon_as_we_know_the_program_will_read() {
 
     // Et sur un vrai binaire : celui-ci demande un mot de passe, sans
     // jamais faire de syscall de lecture lui-même.
-    let Ok(octets) = std::fs::read("/home/fred/CrackMe/crackme-01") else {
+    let Some(octets) = binaire_dépreuve("crackme-01") else {
         return;
     };
     let mut app = NamsdecApp::default();
@@ -10844,7 +10848,7 @@ fn a_program_can_be_given_its_arguments() {
     assert_eq!(split_args("\"\" x"), vec!["", "x"]);
 
     // Et sur un vrai binaire : ce qu'on donne se retrouve dans argv.
-    let Ok(octets) = std::fs::read("/home/fred/CrackMe/crackme-01") else {
+    let Some(octets) = binaire_dépreuve("crackme-01") else {
         return;
     };
     let mut app = NamsdecApp {
@@ -10880,7 +10884,7 @@ fn a_program_can_be_given_its_arguments() {
 /// champs à des abscisses différentes.
 #[test]
 fn the_input_rows_line_up_and_stay_inside_their_frame() {
-    let Ok(octets) = std::fs::read("/home/fred/CrackMe/crackme-01") else {
+    let Some(octets) = binaire_dépreuve("crackme-01") else {
         return;
     };
     let mut app = NamsdecApp::default();
@@ -10956,7 +10960,7 @@ fn the_input_rows_line_up_and_stay_inside_their_frame() {
 /// `getenv("SECRET")` ne pouvait rien recevoir.
 #[test]
 fn a_program_can_be_given_its_environment() {
-    let Ok(octets) = std::fs::read("/home/fred/CrackMe/crackme-01") else {
+    let Some(octets) = binaire_dépreuve("crackme-01") else {
         return;
     };
     let mut app = NamsdecApp {
@@ -11045,6 +11049,31 @@ fn normal_mode_moves_the_cursor_like_vim() {
     assert_eq!(move_cursor(accentué, fin, Move::Down), 13);
 }
 
+/// Le dossier des binaires d'épreuve : `tests/binaires/` du dépôt.
+///
+/// Voir son LISEZMOI. `NAMSDEC_TEST_BINARIES` le déplace ailleurs, pour
+/// qui garde ses programmes hors du dépôt.
+fn dossier_dépreuve() -> Option<std::path::PathBuf> {
+    if let Some(ailleurs) = std::env::var_os("NAMSDEC_TEST_BINARIES") {
+        let chemin = std::path::PathBuf::from(ailleurs);
+        return chemin.is_dir().then_some(chemin);
+    }
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/binaires")
+        .canonicalize()
+        .ok()
+}
+
+/// Un binaire d'épreuve, s'il est là.
+///
+/// `None` plutôt qu'une panique : ces programmes ne sont pas dans le
+/// dépôt — ce sont ceux de chacun —, et un test qui exigerait leur
+/// présence échouerait sur toute machine fraîchement clonée. Il se tait,
+/// et c'est la bonne réponse : il n'a rien à juger.
+fn binaire_dépreuve(nom: &str) -> Option<Vec<u8>> {
+    std::fs::read(dossier_dépreuve()?.join(nom)).ok()
+}
+
 /// Tous les binaires du dossier d'épreuve se chargent et tournent.
 ///
 /// Le dossier `tests/binaires/` est vide dans le dépôt : chacun y dépose
@@ -11058,10 +11087,7 @@ fn normal_mode_moves_the_cursor_like_vim() {
 /// vide, et le point d'entrée qui ne mène nulle part.
 #[test]
 fn every_binary_here_loads_and_runs() {
-    let dossier = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/binaires")
-        .canonicalize();
-    let Ok(dossier) = dossier else {
+    let Some(dossier) = dossier_dépreuve() else {
         return;
     };
     let Ok(entrées) = std::fs::read_dir(&dossier) else {
@@ -11154,7 +11180,7 @@ fn every_binary_here_loads_and_runs() {
 /// les deux rangées du milieu n'existent pas.
 #[test]
 fn a_waiting_binary_shows_the_whole_input_area() {
-    let Ok(octets) = std::fs::read("/home/fred/CrackMe/crackme-01") else {
+    let Some(octets) = binaire_dépreuve("crackme-01") else {
         return;
     };
     let mut app = NamsdecApp::default();
@@ -11224,7 +11250,7 @@ fn a_waiting_binary_shows_the_whole_input_area() {
 /// ne prouve donc rien.
 #[test]
 fn the_input_area_stays_on_screen_when_the_environment_unfolds() {
-    let Ok(octets) = std::fs::read("/home/fred/CrackMe/crackme-01") else {
+    let Some(octets) = binaire_dépreuve("crackme-01") else {
         return;
     };
     let mut app = NamsdecApp {
@@ -16650,7 +16676,7 @@ fn every_function_namsdec_claims_to_provide_really_answers() {
 /// n'a fixée comprise.
 #[test]
 fn the_input_row_is_visible_at_every_console_height() {
-    let Ok(octets) = std::fs::read("/home/fred/CrackMe/crackme-01") else {
+    let Some(octets) = binaire_dépreuve("crackme-01") else {
         return;
     };
     let s = strings(Lang::Fr);
@@ -17088,7 +17114,7 @@ boucle:
 /// points d'arrêt et de retaper ses arguments.
 #[test]
 fn a_binary_session_comes_back_at_the_next_launch() {
-    let Ok(octets) = std::fs::read("/home/fred/CrackMe/crackme-01") else {
+    let Some(octets) = binaire_dépreuve("crackme-01") else {
         return;
     };
     let dossier = tempfile::tempdir().unwrap();
@@ -17148,7 +17174,7 @@ fn a_binary_session_comes_back_at_the_next_launch() {
 /// que de ne pas en poser, et le faire en silence est pire encore.
 #[test]
 fn a_changed_binary_drops_its_marks_and_says_so() {
-    let Ok(octets) = std::fs::read("/home/fred/CrackMe/crackme-01") else {
+    let Some(octets) = binaire_dépreuve("crackme-01") else {
         return;
     };
     let dossier = tempfile::tempdir().unwrap();
@@ -17245,7 +17271,7 @@ fn duplicating_never_panics_mid_character() {
 /// points d'arrêt et le suivi de RIP.
 #[test]
 fn a_binary_listing_does_not_duplicate_lines() {
-    let Ok(octets) = std::fs::read("/home/fred/CrackMe/crackme-01") else {
+    let Some(octets) = binaire_dépreuve("crackme-01") else {
         return;
     };
     let mut app = NamsdecApp::default();
@@ -17925,7 +17951,7 @@ fn walking_without_a_highlight_starts_one() {
 /// ce que le focus automatique cherchait à éviter.
 #[test]
 fn pressing_enter_sends_the_line_to_the_program() {
-    let Ok(octets) = std::fs::read("/home/fred/CrackMe/crackme-01") else {
+    let Some(octets) = binaire_dépreuve("crackme-01") else {
         return;
     };
     let mut app = NamsdecApp::default();
@@ -17994,7 +18020,7 @@ fn pressing_enter_sends_the_line_to_the_program() {
 /// panneau déjà sombre passait pour une nuance.
 #[test]
 fn the_waiting_input_area_announces_itself() {
-    let Ok(octets) = std::fs::read("/home/fred/CrackMe/crackme-01") else {
+    let Some(octets) = binaire_dépreuve("crackme-01") else {
         return;
     };
     let mut app = NamsdecApp::default();

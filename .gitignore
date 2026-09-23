@@ -1,2 +1,6 @@
 /target
 docs/__pycache__/
+
+# Les binaires d'épreuve : ceux de chacun, jamais du dépôt.
+# Voir tests/binaires/LISEZMOI.md.
+/tests/binaires/
