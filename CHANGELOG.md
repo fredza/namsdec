@@ -4,6 +4,74 @@ Les dates sont celles des commits ; le format suit [Keep a
 Changelog](https://keepachangelog.com/fr/1.1.0/) d'assez loin — une
 entrée par version, et ce qui change pour qui s'en sert.
 
+## 0.2.5-beta.3 — 23 septembre 2026
+
+Ce qu'on avait sous les yeux sans le voir : une croix qui ne ressemblait
+à rien d'autre dans l'application, un bouton gris qu'on prenait pour un
+titre, un nom de fichier qui se déplaçait à chaque redimensionnement. Et
+six fautes d'assembleur que namsdec sait désormais reconnaître.
+
+**Corriger sans réécrire**
+- namsdec regarde la ligne du curseur, dit en français ce qui cloche, et
+  montre la ligne réécrite dans la barre d'état. **Alt** la pose — la
+  même touche qui accepte une proposition de complétion, laquelle garde
+  la priorité quand les deux s'offrent ensemble.
+- Six règles, et six seulement : un crochet jamais refermé ; un
+  mnémonique qui n'existe pas, à une inversion près d'un qui existe
+  (`mvo` propose `mov`, `tralala` ne propose rien) ; `int 0x80` en code
+  64 bits ; un saut vers une étiquette qui n'existe nulle part, casse
+  comprise ; deux registres de tailles différentes, sauf `movzx` et
+  `movsx` ; une écriture en mémoire dont rien ne dit la taille.
+- Rien ne s'applique tout seul. Une correction dont on ne saurait pas
+  dire pourquoi elle est juste apprendrait le faux, ce qui est pire que
+  de se taire.
+
+**Ce qu'on voit**
+- Les quinze fenêtres internes se ferment par la **même pastille** que la
+  fenêtre principale, au coin haut gauche. egui posait sa croix à lui,
+  deux traits maigres à droite : deux grammaires pour le même geste, et
+  c'est celle qu'on voyait le moins qui fermait le plus de choses.
+- Le **nom du fichier** est aligné sur la fin du menu, à trois
+  tabulations d'« Aide ». Centré, il se déplaçait à chaque panneau ouvert
+  et à chaque redimensionnement : un repère qui bouge n'en est pas un.
+- La **calculatrice** a son bouton juste à gauche de l'onglet Pile, là où
+  le besoin naît : on lit une valeur, on veut la même dans une autre
+  base. Elle était dans le menu Outils, à trois gestes de là.
+- L'onglet **RE** ne porte plus qu'un grand bouton, rempli de la couleur
+  d'accent, avec l'icône de Desdec — l'autre atelier de la maison. Les
+  sept modules empilés dessous faisaient deux mille pixels à parcourir
+  dans une colonne de trois cents ; la fenêtre d'analyse montre les mêmes
+  en grand et tout dépliés. Deux fois la même chose, dont une mal.
+
+**Réparé**
+- `y y` et `g g` ne faisaient rien. egui marque la seconde frappe d'une
+  même touche comme une répétition, et le collecteur écartait toutes les
+  répétitions — la bonne règle pour tenir un raccourci enfoncé, la
+  mauvaise pour doubler une touche.
+- Cliquer la pastille des préférences ou d'« À propos » ne fermait rien :
+  la barre d'action écrasait sèchement ce que la pastille venait de dire.
+- Le dernier test instable du dépôt ne l'est plus. Le binaire produit n'y
+  était pour rien : les tests tournent en parallèle dans le même
+  processus, et le `fork` d'un voisin qui lance nasm hérite du
+  descripteur ouvert en écriture. Tant qu'il n'a pas fait son `exec`, le
+  noyau refuse d'exécuter le fichier — `ETXTBSY`.
+
+**Le manuel**
+- Un chapitre **« Comment une instruction est faite »** : les sept
+  morceaux d'une instruction x86-64, l'octet ModR/M et ses trois champs,
+  les quatre tailles d'un même registre, et pourquoi un décodeur linéaire
+  se trompe. Tiré du cours de mini-désassembleur en C++ de l'auteur.
+- Un chapitre **« Quatre séances, et ce qu'elles apprennent »** : quatre
+  crackmes analysés avec namsdec — un XOR contre une constante, un sérial
+  qui se calcule, une garde `ptrace`, un programme qui se déballe. Le
+  dernier n'est pas résolu, et c'est aussi une leçon.
+- Le guide refuse désormais de s'écrire s'il emploie un caractère que la
+  police du PDF n'a pas. Il en employait trois, qui sortaient en carrés
+  noirs — la même leçon que dans le programme, où un test vérifie chaque
+  glyphe de l'interface.
+
+---
+
 ## 0.2.5-beta.2 — 23 septembre 2026
 
 La liste des améliorations, exécutée : sept entrées traitées, et deux

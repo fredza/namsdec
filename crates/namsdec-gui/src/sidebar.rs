@@ -2212,32 +2212,38 @@ impl NamsdecApp {
         }
     }
 
+    /// L'onglet RE : un bouton, et rien d'autre.
+    ///
+    /// Il portait les sept modules empilés sous un bouton gris. Dans une
+    /// colonne de trois cents pixels, cela donnait une page de deux
+    /// mille pixels qu'on parcourait en faisant défiler pour retrouver
+    /// un titre — et la fenêtre d'analyse, qui montre exactement les
+    /// mêmes modules en grand et tout dépliés, était le vrai endroit
+    /// pour les lire. Deux fois la même chose, dont une mal.
+    ///
+    /// Reste ce que l'onglet sait faire de mieux : conduire là-bas.
     fn re_ui(&mut self, ui: &mut egui::Ui) {
-        // Le chemin vers la fenêtre, en tête : sept modules dans une
-        // colonne de trois cents pixels, cela se consulte ; une analyse
-        // se lit en grand, tout déplié, et c'est là qu'elle se copie ou
-        // s'enregistre.
         let s = strings(self.lang);
-        if ui
-            .button(s.analysis_open)
-            .on_hover_text(s.analysis_hint)
+        let theme = self.theme;
+        let prêt = self.emulator.is_some() && self.assemble_state.is_some();
+
+        ui.add_space(10.0);
+        let bouton = ui
+            .add_enabled_ui(prêt, |ui| {
+                big_action_button(ui, theme, chrome::icon_analysis, s.analysis_open)
+            })
+            .inner;
+        if bouton
+            .on_hover_text(if prêt {
+                s.analysis_hint
+            } else {
+                s.no_binary_assembled
+            })
             .clicked()
         {
             self.show_analysis = true;
         }
-        ui.add_space(4.0);
-        // Défilement vertical seulement : les modules posent des widgets
-        // ordinaires, qui prennent la largeur qu'on leur laisse. Dans une
-        // zone qui défile aussi horizontalement, cette largeur n'a plus
-        // de fin.
-        egui::ScrollArea::vertical().show(ui, |ui| {
-            // Les modules écrivent ce qu'ils ont trouvé — une adresse, une
-            // chaîne, une liste d'appelants — et rien ne borne ce que ça
-            // mesure. Sans cette limite, le panneau adopte la largeur du
-            // plus long et pousse l'éditeur hors de la fenêtre.
-            ui.set_max_width(ui.available_width());
-            self.re_modules_ui(ui, false);
-        });
+        ui.add_space(10.0);
     }
 
     /// Les modules de rétro-ingénierie, les uns sous les autres.

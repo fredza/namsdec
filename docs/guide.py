@@ -225,6 +225,24 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "l'assemblage : il continuerait dans ce qui suit son code, ce qui n'a aucun sens."),
 
         ("h1", "La fenêtre"),
+        ("h2", "La barre de titre"),
+        ("p",
+         "namsdec dessine sa propre décoration : les menus <i>sont</i> la barre de "
+         "titre, ce qui économise une rangée de trente pixels au-dessus d'une "
+         "application qui a déjà une barre de menus. Trois pastilles au coin haut "
+         "gauche — fermer, réduire, agrandir —, le nom du fichier à la "
+         "suite du menu Aide, et le reste de la bande déplace la fenêtre ; le "
+         "double-clic l'agrandit, les bords la redimensionnent."),
+        ("p",
+         "Les fenêtres internes portent la <b>même pastille</b> de fermeture, au "
+         "même endroit. Une seule façon de fermer quelque chose, partout."),
+        ("note",
+         "Préférences › Général rend la barre du système à "
+         "qui la préfère. Tout ce que le système faisait — déplacer, "
+         "agrandir, redimensionner — revient à notre charge quand on la dessine "
+         "soi-même, et il faut pouvoir revenir en arrière si un bureau s'y prend "
+         "autrement."),
+
         ("h2", "L'éditeur"),
         ("p",
          "L'éditeur a deux modes, comme vim : <b>NORMAL</b> pour lire et se déplacer, "
@@ -280,6 +298,39 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "ligne, un registre ou une étiquette dans une opérande. Tab accepte, les flèches "
          "choisissent, Échap referme."),
 
+        ("h2", "Les corrections proposées"),
+        ("p",
+         "nasm répond « operation size not specified » et s'arrête. Celui qui apprend "
+         "relit sa ligne sans savoir ce qu'on lui reproche ; celui qui sait perd trente "
+         "secondes à réécrire ce qu'il savait déjà. namsdec regarde la ligne du curseur, "
+         "dit en français ce qui cloche, et montre la ligne réécrite dans la barre d'état. "
+         "<b>Alt</b> la pose — la même touche qui accepte une proposition de complétion, "
+         "laquelle garde la priorité quand les deux s'offrent ensemble."),
+        ("p",
+         "Six règles, et six seulement : une correction dont on ne saurait pas dire "
+         "pourquoi elle est juste apprendrait le faux, ce qui est pire que de se taire."),
+        ("table", [
+            ["Ce qui est écrit", "Ce qui est proposé", "Pourquoi"],
+            ["mov rax, [rbp-8", "mov rax, [rbp-8]", "un crochet reste ouvert"],
+            ["mvo rax, 1", "mov rax, 1", "deux lettres sous les doigts"],
+            ["int 0x80", "syscall", "l'appel système 32 bits en code 64 bits"],
+            ["jmp bouce", "jmp boucle", "aucune étiquette de ce nom"],
+            ["mov rax, ebx", "mov rax, rbx", "deux tailles différentes"],
+            ["mov [n], 1", "mov qword [n], 1", "la taille de l'écriture n'est pas dite"],
+        ]),
+        ("note",
+         "Rien ne s'applique tout seul, et l'ordre des règles n'est pas arbitraire : on ne "
+         "juge pas les opérandes d'une instruction dont le nom n'existe pas. La détection "
+         "du mnémonique inconnu est d'ailleurs <b>celle de la coloration</b> — ce que "
+         "l'éditeur peint en rouge est exactement ce qu'il propose de corriger, et les "
+         "deux ne peuvent pas diverger."),
+        ("p",
+         "<font face='Courier'>movzx</font> et <font face='Courier'>movsx</font> ne sont "
+         "jamais signalées pour leurs tailles : elles existent précisément pour aller "
+         "d'une taille à une autre. Et la casse compte pour une étiquette — "
+         "<font face='Courier'>Boucle</font> n'est pas "
+         "<font face='Courier'>boucle</font> —, parce qu'elle compte pour nasm."),
+
         ("h2", "Le panneau de droite"),
         ("p", "Il se lit de haut en bas, et se partage en trois zones fixes :"),
         ("liste", [
@@ -294,7 +345,7 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "Les onglets sont en haut à droite, dans la barre d'outils.",
         ]),
         ("p",
-         "La séparation entre le bandeau et la vue se règle à la poignée, et Affichage ▸ "
+         "La séparation entre le bandeau et la vue se règle à la poignée, et Affichage › "
          "« Panneau latéral partagé tout seul » rend le partage automatique."),
 
         ("h2", "La console"),
@@ -326,7 +377,7 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
         ("p",
          "Le <b>pas en arrière</b> est ce qu'un débogueur ordinaire rend laborieux et qu'un "
          "interpréteur offre : namsdec garde l'histoire de l'exécution, et la chronologie "
-         "(Outils ▸ Chronologie) permet de cliquer un pas passé pour y revenir."),
+         "(Outils › Chronologie) permet de cliquer un pas passé pour y revenir."),
         ("p",
          "Cette fenêtre montre deux choses distinctes. La <b>liste</b> répond à « qu'est-ce "
          "qui s'est passé » : un pas par ligne, avec sa nature, son adresse et sa ligne. La "
@@ -421,7 +472,9 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
 
         ("h2", "La calculatrice"),
         ("p",
-         "Outils ▸ <b>Calculatrice</b>. Le besoin revient tout le temps : on lit "
+         "Son bouton est dans la barre d'outils, juste à gauche de l'onglet "
+         "<b>Pile</b> — là où le besoin naît —, et Outils › "
+         "Calculatrice l'ouvre aussi. Le besoin revient tout le temps : on lit "
          "<font face='Courier'>and eax, 0x1f</font> et l'on veut savoir ce que ça garde ; "
          "on voit <font face='Courier'>shr rax, 3</font> et l'on cherche le diviseur ; on "
          "trouve <font face='Courier'>0x6c6c6568</font> dans un registre et l'on se demande "
@@ -466,25 +519,113 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "<font face='Courier'>lea</font>, les décalages, ou qu'une boucle se remplace par "
          "une formule." % total_exos),
         ("note",
-         "Le module est éteint par défaut : Préférences ▸ Modules l'allume. Chaque exercice "
+         "Le module est éteint par défaut : Préférences › Modules l'allume. Chaque exercice "
          "ouvert prend son propre onglet, sous son titre — on passe au suivant sans "
          "abandonner ce qu'on a écrit dans le précédent."),
         ("p",
          "Le parcours <b>n'est pas dans le binaire</b> : c'est un fichier de données, "
          "<font face='Courier'>~/.local/share/namsdec/exercises/namsdec.json</font>. "
          "Corriger un énoncé ne demande donc pas de recompiler, et une série que vous "
-         "écrivez s'installe exactement de la même façon (Outils ▸ Exercices)."),
+         "écrivez s'installe exactement de la même façon (Outils › Exercices)."),
+
+        ("h1", "Comment une instruction est faite"),
+        ("p",
+         "La vue <b>Octets</b> et le bandeau « Prochaine instruction » montrent les mêmes "
+         "octets sous deux formes. Ce chapitre explique la seconde : ce qu'un décodeur "
+         "lit, dans l'ordre où il le lit. On n'a pas besoin de le savoir pour se servir de "
+         "namsdec — on en a besoin pour croire ce qu'il affiche, et pour voir où il "
+         "s'arrête."),
+        ("p",
+         "Une instruction x86-64 n'a pas de longueur fixe : elle va d'un octet "
+         "(<font face='Courier'>c3</font>, c'est-à-dire <font face='Courier'>ret</font>) à "
+         "quinze. Elle se lit de gauche à droite, et chaque morceau décide de ce qui "
+         "suit :"),
+        ("table", [
+            ["Morceau", "Taille", "Ce qu'il dit"],
+            ["Préfixes", "0 à 4 octets", "répétition, verrou, changement de taille"],
+            ["REX", "0 ou 1", "on travaille sur 64 bits, ou sur r8 à r15"],
+            ["Opcode", "1 à 3", "le verbe : déplacer, ajouter, sauter"],
+            ["ModR/M", "0 ou 1", "sur quoi : quels registres, ou quelle adresse"],
+            ["SIB", "0 ou 1", "l'adresse quand elle est un calcul"],
+            ["Déplacement", "0, 1, 2 ou 4", "la constante ajoutée à l'adresse"],
+            ["Immédiat", "0, 1, 2, 4 ou 8", "la valeur écrite dans l'instruction"],
+        ]),
+
+        ("h2", "L'octet ModR/M"),
+        ("p",
+         "C'est le plus instructif des sept, et le plus court à expliquer. Huit bits, "
+         "trois champs : <b>mod</b> sur deux bits dit le type d'accès, <b>reg</b> sur "
+         "trois bits désigne un registre, <b>r/m</b> sur trois bits désigne un registre ou "
+         "une mémoire. L'opcode dit « déplacer » ; il ne dit pas encore d'où vers où, et "
+         "c'est ModR/M qui l'ajoute — comme l'adresse écrite sur une enveloppe complète le "
+         "verbe « livrer »."),
+        ("code",
+         "0xE5  =  1110 0101\n"
+         "\n"
+         "   mod = 11   (3)   deux registres, aucune memoire\n"
+         "   reg = 100  (4)\n"
+         "   r/m = 101  (5)"),
+        ("p",
+         "Reste à nommer les numéros, et l'ordre est le premier piège de "
+         "x86-64 : il n'est ni alphabétique ni celui qu'on récite. C'est "
+         "<font face='Courier'>rax, rcx, rdx, rbx, rsp, rbp, rsi, rdi</font> — donc "
+         "le 4 est <font face='Courier'>rsp</font> et le 5 est "
+         "<font face='Courier'>rbp</font>."),
+        ("p",
+         "Avec l'opcode <font face='Courier'>89</font> (« déplacer vers r/m ») "
+         "et le préfixe <font face='Courier'>48</font> (« sur 64 bits »), les "
+         "trois octets <font face='Courier'>48 89 e5</font> disent donc "
+         "<font face='Courier'>mov rbp, rsp</font> : le premier geste de presque toutes "
+         "les fonctions compilées. On le reconnaît à l'œil une fois "
+         "qu'on l'a décodé une fois."),
+        ("note",
+         "<font face='Courier'>mod = 3</font> veut dire « pas de mémoire ». Les trois "
+         "autres valeurs annoncent une adresse, et c'est là qu'arrivent le SIB et le "
+         "déplacement : <font face='Courier'>[rbp-0x18]</font> est un ModR/M qui dit "
+         "« mémoire, base rbp, déplacement d'un octet », suivi de l'octet "
+         "<font face='Courier'>0xe8</font> — soit -24 en complément à deux."),
+
+        ("h2", "Un registre, quatre tailles"),
+        ("p",
+         "Le même registre porte quatre noms selon la largeur qu'on en prend. Ce n'est pas "
+         "une convenance d'écriture : écrire dans "
+         "<font face='Courier'>eax</font> met à zéro les 32 bits hauts de "
+         "<font face='Courier'>rax</font>, tandis qu'écrire dans "
+         "<font face='Courier'>ax</font> ou <font face='Courier'>al</font> les laisse "
+         "intacts. C'est une source d'erreurs constante, et le panneau des registres la "
+         "montre en toutes lettres."),
+        ("code",
+         "RAX  [63 ............................ 0]\n"
+         "EAX              [31 ............... 0]\n"
+         "AX                        [15 ...... 0]\n"
+         "AH                        [15 .. 8]\n"
+         "AL                                [7 . 0]"),
+
+        ("h2", "Ce que le décodeur ne peut pas savoir"),
+        ("p",
+         "Un décodeur linéaire lit les octets dans l'ordre et suppose qu'ils sont tous du "
+         "code. C'est faux dès qu'une table de données est posée au milieu d'une fonction, "
+         "ou qu'un octet a été glissé pour désaligner la lecture. Le listing repart alors "
+         "sur un mauvais pied et invente des instructions qui n'existent pas."),
+        ("p",
+         "D'où le classement de namsdec : ce qu'il <b>sait</b> — les octets, leur adresse — "
+         "et ce qu'il <b>déduit</b> — les fonctions, les chaînes, les figures. Les seconds "
+         "sont signalés comme tels, et l'entropie se lit avant tout le reste : sur un "
+         "binaire empaqueté, il n'y a rien à décoder tant qu'on n'a pas déballé."),
 
         ("h1", "Lire un binaire qu'on n'a pas écrit"),
         ("p",
-         "Fichier ▸ Ouvrir accepte un ELF64 : ses sections vont à leur adresse, son point "
+         "Fichier › Ouvrir accepte un ELF64 : ses sections vont à leur adresse, son point "
          "d'entrée est celui qu'il déclare, et seul le code est désassemblé. Le listing "
          "obtenu remplit l'éditeur, une instruction par ligne — ce qui donne aussi la "
          "correspondance ligne/adresse dont dépendent la gouttière, le suivi de RIP et les "
          "points d'arrêt."),
         ("p",
-         "Le module <b>RE</b> (Préférences ▸ Modules) ajoute un onglet et une fenêtre "
-         "d'analyse, où tout se lit déplié :"),
+         "Le module <b>RE</b> (Préférences › Modules) ajoute un onglet au panneau "
+         "latéral et une fenêtre d'analyse. L'onglet ne porte qu'un bouton, celui qui "
+         "ouvre la fenêtre : sept modules empilés dans une colonne de trois cents "
+         "pixels se parcourent à l'ascenseur, alors qu'ils tiennent en entier et tout "
+         "dépliés dans la fenêtre. C'est là qu'on les lit :"),
         ("liste", [
          "<b>Protections</b> — PIE, NX, RELRO, canari de pile, FORTIFY, IBT et pile "
          "fantôme, segments W+X, symboles, bibliothèques, RPATH — avec, pour chacune, ce "
@@ -508,7 +649,7 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "analyseraient le déchiffreur en croyant analyser le programme.",
         ]),
         ("p",
-         "Le <b>motif cyclique</b> (Outils ▸ Motif cyclique) est celui de pwntools, octet "
+         "Le <b>motif cyclique</b> (Outils › Motif cyclique) est celui de pwntools, octet "
          "pour octet : on l'envoie au programme, et le décalage relu depuis un registre dit "
          "exactement de combien un débordement a dépassé."),
         ("h2", "Écrire ce qu'on a compris"),
@@ -533,9 +674,164 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "Le rapport d'analyse se copie en Markdown ou s'enregistre, pour être collé dans "
          "un compte rendu."),
 
+        ("h1", "Quatre séances, et ce qu'elles apprennent"),
+        ("p",
+         "Quatre crackmes, analysés avec namsdec et racontés en entier. Ils sont rangés "
+         "par ce qu'ils enseignent, non par difficulté — et le dernier n'est pas résolu, "
+         "ce qui est aussi une leçon. Chacun tient en trois questions : que dit le "
+         "fichier de lui-même, où se prend la décision, et que retenir pour la fois "
+         "suivante."),
+        ("note",
+         "Un compte rendu se relit. Tout ce qu'on trouve — l'adresse de "
+         "<font face='Courier'>main</font>, le nom d'une fonction, la raison d'un saut — "
+         "se note dans namsdec (« Nommer cette adresse », « Commenter cette ligne ») et "
+         "ressort en Markdown par le rapport d'analyse. Une soirée de lecture qui ne "
+         "laisse rien derrière elle est à refaire."),
+
+        ("h2", "Un XOR contre une constante"),
+        ("p",
+         "Un ELF de 315 Ko, PIE, dépouillé. Trois constats, et chacun oriente la suite : "
+         "PIE, donc les adresses sont des décalages ; dépouillé, donc "
+         "<font face='Courier'>main</font> est à retrouver ; 315 Ko pour un crackme, donc "
+         "ce n'est pas de l'assembleur écrit à la main."),
+        ("p",
+         "Le module <b>Chaînes</b> répond au troisième point : quarante et une occurrences "
+         "de <font face='Courier'>rustc</font>. C'est du Rust, et cela décide de la "
+         "méthode — en Rust, une chaîne n'a pas de zéro final, c'est un couple (adresse, "
+         "longueur). Un <font face='Courier'>strings</font> ordinaire y lit donc des pâtés "
+         "où trois messages se suivent sans séparation. La découpe n'est pas dans les "
+         "données : elle est dans le code, où chaque chargement d'adresse est suivi du "
+         "chargement de sa longueur. namsdec rend alors les chaînes telles que le "
+         "programmeur les a écrites — dont "
+         "<font face='Courier'>\"Correct Password\"</font>, et donc l'adresse où le "
+         "programme décide qu'on a gagné."),
+        ("p",
+         "<b>Où lire ?</b> Le code d'amorçage ne saute pas dans "
+         "<font face='Courier'>main</font> : il le <i>passe</i> en premier argument à "
+         "<font face='Courier'>__libc_start_main</font>. Le "
+         "<font face='Courier'>lea rdi, [rip + …]</font> qui précède cet appel donne donc "
+         "son adresse, dans un binaire qui n'a plus un seul nom."),
+        ("p",
+         "Le module <b>Figures</b> range ce qu'il reconnaît de la plus rare à la plus "
+         "commune, et c'est ce classement qui fait le travail : 1 758 tests de nullité "
+         "sont la ponctuation du langage machine, quatre comparaisons par XOR sur 62 382 "
+         "instructions sont une piste."),
+        ("code",
+         "cmp  rsi, 7               ; la longueur saisie doit valoir 7\n"
+         "jne  incorrect\n"
+         "mov  ecx, 0x48555648\n"
+         "xor  ecx, [rbx + rax]     ; les 4 premiers octets saisis\n"
+         "mov  edx, 0x4E444148\n"
+         "xor  edx, [rbx + rax + 3] ; les octets 3 à 6\n"
+         "or   edx, ecx             ; les deux doivent être nuls\n"
+         "je   correct"),
+        ("liste", [
+         "<b>Un XOR est une comparaison déguisée.</b> "
+         "<font face='Courier'>a xor b</font> ne vaut zéro que si "
+         "<font face='Courier'>a == b</font> : il n'y a rien à inverser, la constante "
+         "<i>est</i> la valeur attendue.",
+         "<b>Les octets sortent en petit-boutiste.</b> "
+         "<font face='Courier'>0x48555648</font> ne se prononce pas « 48 55 56 48 » : en "
+         "mémoire, c'est <font face='Courier'>H V U H</font>. Un octet de décalage dans "
+         "cette lecture, et l'on cherche un mot de passe qui n'existe pas.",
+         "<b>Les deux tests se recouvrent.</b> Le premier porte sur les octets 0 à 3, le "
+         "second sur les octets 3 à 6. La position 3 est lue deux fois, et les deux "
+         "lectures coïncident sur un "
+         "<font face='Courier'>H</font> — ce qui confirme le décodage et explique la "
+         "longueur attendue : 4 + 4 - 1 = 7.",
+        ]),
+        ("p",
+         "La réponse est <font face='Courier'>HVUHADN</font>. Et la leçon dépasse le "
+         "crackme : tout entier de quatre ou huit octets dont chaque octet est un "
+         "caractère imprimable mérite d'être lu comme du texte. Le réflexe vaut pour les "
+         "magies de format (<font face='Courier'>\\x7fELF</font>, "
+         "<font face='Courier'>PK\\x03\\x04</font>), les protocoles et les jetons."),
+
+        ("h2", "Un sérial qui se calcule"),
+        ("p",
+         "Seize kilo-octets, lié dynamiquement, <b>non dépouillé</b> : "
+         "<font face='Courier'>main</font> porte son nom. C'est le cas le plus simple "
+         "qu'on rencontre, et le bon premier exercice."),
+        ("p",
+         "Quatre phrases et trois fonctions suffisent à deviner la forme : "
+         "<font face='Courier'>\"Enter your name:\"</font>, "
+         "<font face='Courier'>\"Enter your serial:\"</font>, un message de réussite, un "
+         "d'échec, puis <font face='Courier'>scanf</font>, "
+         "<font face='Courier'>strlen</font> et <font face='Courier'>printf</font>. "
+         "<font face='Courier'>strlen</font> annonce une boucle sur le nom, donc un calcul "
+         "qui en dépend — et non une constante cachée."),
+        ("p",
+         "C'est toute la différence entre un crackme et un <i>keygen</i>me : il ne s'agit "
+         "pas de trouver une réponse, mais la <b>règle</b> qui les produit toutes. Ici "
+         "elle tient en une ligne — la somme des codes des lettres du nom, multipliée par "
+         "sept, plus cent vingt-trois."),
+        ("note",
+         "Un détail d'époque, relevé dans ce binaire : la fonction importée est "
+         "<font face='Courier'>__isoc23_scanf</font>, et non "
+         "<font face='Courier'>__isoc99_scanf</font>. La bibliothèque C préfixe ses "
+         "fonctions à nombre variable d'arguments du millésime de la norme qu'elles "
+         "suivent, et elle est passée à C23. Un outil qui ne connaît que l'ancien nom ne "
+         "reconnaît plus rien — c'est le genre de détail qui fait qu'une analyse "
+         "automatique vieillit."),
+
+        ("h2", "Un programme qui refuse d'être observé"),
+        ("p",
+         "Quatorze kilo-octets pour un « hard » : la difficulté n'est pas dans le volume. "
+         "Le vocabulaire est costumé — un « rituel », un « sigil » — mais la structure ne "
+         "l'est pas : un nom, une empreinte de vingt-quatre caractères hexadécimaux, une "
+         "phrase de réussite. Vingt-quatre hexadécimaux font douze octets, soit trois mots "
+         "de trente-deux bits : un indice, avant d'avoir lu une seule instruction."),
+        ("p",
+         "Et une fonction importée trahit le reste : "
+         "<font face='Courier'>ptrace</font>. Le programme appelle "
+         "<font face='Courier'>ptrace(PTRACE_TRACEME)</font> à l'entrée — un processus ne "
+         "pouvant être suivi que par un seul autre, l'appel échoue si un débogueur est "
+         "déjà là, et le programme s'arrête en disant que « les esprits sentent un "
+         "observateur »."),
+        ("p",
+         "namsdec <b>fournit</b> <font face='Courier'>ptrace</font> et "
+         "<font face='Courier'>prctl</font> : ils rendent ce que le programme espère, et "
+         "la garde passe. Ce n'est pas un contournement caché, c'est la même chose que "
+         "fournir <font face='Courier'>write</font> — un appel système simulé rend une "
+         "valeur, et celle-ci est dite dans le journal."),
+        ("liste", [
+         "Une garde anti-débogage se lit dans la liste des fonctions empruntées avant de "
+         "se rencontrer à l'exécution. Le module <b>Fonctions empruntées</b> la montre en "
+         "premier.",
+         "<font face='Courier'>ptrace</font> n'est que la plus connue. "
+         "<font face='Courier'>prctl</font>, un "
+         "<font face='Courier'>fork</font> qui se surveille lui-même, la lecture de "
+         "<font face='Courier'>/proc/self/status</font> : toutes posent la même question, "
+         "et toutes se répondent de la même façon.",
+        ]),
+
+        ("h2", "Un programme qui se déballe — et qui résiste"),
+        ("p",
+         "Trente et un kilo-octets, et pourtant "
+         "<font face='Courier'>strings</font> ne rend presque rien : pas de message de "
+         "réussite, pas d'invite. Les seules fonctions importées qui comptent sont "
+         "<font face='Courier'>mmap</font>, "
+         "<font face='Courier'>mprotect</font>, "
+         "<font face='Courier'>memcpy</font> et "
+         "<font face='Courier'>malloc</font>."),
+        ("p",
+         "Cette liste suffit à annoncer la couleur : <b>le programme se déballe "
+         "lui-même</b>. Un bloc compressé devient vingt-trois kilo-octets de code, posé "
+         "dans une page anonyme rendue exécutable par "
+         "<font face='Courier'>mprotect</font>. Le code qu'on lit dans le fichier n'est "
+         "pas celui qui décidera — et c'est exactement ce que l'entropie disait déjà, "
+         "avant qu'on ouvre quoi que ce soit."),
+        ("p",
+         "Cette analyse-là n'a pas abouti : la structure est établie, la logique de "
+         "validation ne l'est pas. Le compte rendu dit où elle se trouve et pourquoi elle "
+         "coûte cher, ce qui vaut mieux qu'une conclusion inventée. <b>Un compte rendu "
+         "honnête sur ce qu'il n'a pas trouvé est plus utile qu'un compte rendu qui "
+         "conclut à tout prix</b> : le suivant reprend là où celui-ci s'arrête, au lieu "
+         "de refaire le chemin en doutant."),
+
         ("h1", "Sortir de l'atelier"),
         ("p",
-         "Fichier ▸ <b>Exporter le binaire</b> écrit le programme tel que "
+         "Fichier › <b>Exporter le binaire</b> écrit le programme tel que "
          "<font face='Courier'>ld</font> l'a produit : un ELF exécutable, celui que la ligne "
          "de commande aurait donné. Il se lance dans un terminal, se lit avec "
          "<font face='Courier'>objdump</font>, se compare avec ce que namsdec en dit."),
@@ -561,12 +857,12 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
         ("h2", "Où ils vivent"),
         ("code",
          "~/.local/share/namsdec/\n"
-         "├── themes/          les thèmes\n"
-         "├── decompilers/     les désassembleurs et décompilateurs\n"
-         "└── exercises/       les séries d'exercices"),
+         "|-- themes/          les thèmes\n"
+         "|-- decompilers/     les désassembleurs et décompilateurs\n"
+         "`-- exercises/       les séries d'exercices"),
         ("p",
          "Installer, c'est copier un fichier JSON dans le bon dossier. Depuis namsdec : "
-         "Préférences ▸ Plugins pour un thème, Préférences ▸ Outils pour un décompilateur. Le "
+         "Préférences › Plugins pour un thème, Préférences › Outils pour un décompilateur. Le "
          "dépôt en contient des exemples prêts à l'emploi, dans son dossier "
          "<font face='Courier'>plugins/</font>, avec le format décrit champ par champ."),
         ("h2", "Installer un décompilateur"),
@@ -588,7 +884,7 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "<font face='Courier'>rz-pm -i rz-ghidra</font> l'installe. namsdec vérifie sa présence "
          "et affiche « incomplet » plutôt que de vous laisser essayer."),
         ("p",
-         "Le module reste éteint tant qu'on ne l'allume pas (Préférences ▸ Modules), l'entrée de "
+         "Le module reste éteint tant qu'on ne l'allume pas (Préférences › Modules), l'entrée de "
          "menu n'apparaît qu'ensuite, et rien ne part sans le bouton « Lancer ». Passé deux "
          "minutes, un outil qui ne rend pas la main est arrêté."),
 
@@ -803,6 +1099,49 @@ def _monospace(texte):
     return re.sub(r"`([^`]+)`", r"<font face='Courier'>\1</font>", texte)
 
 
+def _verifie_les_glyphes(blocs):
+    """Tout caractère du guide existe-t-il dans la police du PDF ?
+
+    Les polices de base d'un PDF — Helvetica, Courier — sont encodées en
+    WinAnsi, qui ne connaît ni la flèche pleine « U+25B8 » ni les traits
+    d'arborescence. reportlab ne s'en plaint pas : il pose un carré noir
+    à la place, et l'on ne s'en aperçoit qu'en relisant le PDF fini.
+    Mieux vaut refuser de l'écrire.
+
+    C'est la même leçon que dans le programme, où un test vérifie que
+    chaque glyphe de l'interface existe dans sa police : une police qui
+    n'a pas le caractère demandé ne le dit pas, elle dessine autre chose.
+    """
+    fautifs = {}
+
+    def regarde(texte):
+        texte = str(texte)
+        for c in texte:
+            try:
+                c.encode("cp1252")
+            except UnicodeEncodeError:
+                fautifs.setdefault(c, texte[:60])
+
+    for bloc in blocs:
+        corps = bloc[1]
+        if isinstance(corps, list):
+            for élément in corps:
+                if isinstance(élément, list):
+                    for case in élément:
+                        regarde(case)
+                else:
+                    regarde(élément)
+        else:
+            regarde(corps)
+    if fautifs:
+        détails = ", ".join(
+            "%r dans « %s… »" % (c, t) for c, t in sorted(fautifs.items())
+        )
+        raise SystemExit(
+            "le guide emploie des caractères absents de la police du PDF : " + détails
+        )
+
+
 def main():
     v = version()
     total, avec_but, paliers = exercices()
@@ -832,7 +1171,7 @@ def main():
     ]))
     blocs.append(("h1", "Mises à jour, licence et contact"))
     blocs.append(("p",
-        "« À propos ▸ Rechercher une mise à jour » interroge les versions publiées sur "
+        "« À propos › Rechercher une mise à jour » interroge les versions publiées sur "
         "GitHub et compare avec la vôtre, préversions comprises. Rien n'est téléchargé ni "
         "installé sans vous : namsdec ouvre la page de la version."))
     blocs.append(("p",
@@ -840,6 +1179,7 @@ def main():
         "pour être transmis. Le site est <b>namsdec.io</b>, le code et les tickets sont sur "
         "GitHub, et la boîte « À propos » mène aux deux ainsi qu'au salon Discord."))
 
+    _verifie_les_glyphes(blocs)
     sortie = RACINE / "docs" / ("guide-namsdec-%s.pdf" % v)
     rendre(sortie, v, blocs)
     print("écrit : %s" % sortie)

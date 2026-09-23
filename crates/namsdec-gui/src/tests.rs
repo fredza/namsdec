@@ -11856,6 +11856,175 @@ fn a_solved_exercise_stays_solved() {
     );
 }
 
+/// Le nom du fichier suit les menus, il ne flotte pas au centre.
+///
+/// Centré dans la place qui reste, il se déplaçait à chaque panneau
+/// ouvert et à chaque redimensionnement de la fenêtre. Un repère qui
+/// bouge n'en est pas un : on le cherche au lieu de le voir.
+#[test]
+fn the_file_name_follows_the_menus_instead_of_floating() {
+    let s = strings(Lang::Fr);
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp::default();
+    app.apply_theme(&ctx);
+    assert!(!app.system_titlebar, "la barre maison, celle qui porte le nom");
+
+    let large = egui::vec2(1600.0, 1000.0);
+    let étroite = egui::vec2(1100.0, 1000.0);
+
+    // Les textes de la barre de titre : les quarante premiers pixels.
+    let barre = |app: &mut NamsdecApp, taille: egui::Vec2| -> Vec<(String, f32, f32)> {
+        let entrée = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, taille)),
+            ..Default::default()
+        };
+        let mut vus = Vec::new();
+        for _ in 0..2 {
+            vus.clear();
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(texte) = &clipped.shape
+                    && texte.pos.y < 40.0
+                {
+                    vus.push((
+                        texte.galley.text().to_owned(),
+                        texte.pos.x,
+                        texte.pos.x + texte.galley.size().x,
+                    ));
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+        vus
+    };
+
+    let position = |vus: &[(String, f32, f32)], quoi: &str| -> (f32, f32) {
+        vus.iter()
+            .find(|(t, _, _)| t == quoi)
+            .map(|(_, g, d)| (*g, *d))
+            .unwrap_or_else(|| panic!("« {quoi} » n'est pas dans la barre : {vus:?}"))
+    };
+
+    let vus = barre(&mut app, large);
+    let (_, fin_du_menu) = position(&vus, s.menu_help);
+    let (début_du_nom, _) = position(&vus, s.untitled_buffer);
+
+    assert!(
+        début_du_nom > fin_du_menu,
+        "le nom vient après « {} » : {fin_du_menu} puis {début_du_nom}",
+        s.menu_help
+    );
+    // Quelques tabulations, pas un collage : « Aide sans titre » se
+    // lirait comme un sixième menu.
+    let écart = début_du_nom - fin_du_menu;
+    assert!(
+        (12.0..120.0).contains(&écart),
+        "l'écart après le menu vaut {écart}"
+    );
+    // Et loin du milieu, qui est là où il était.
+    assert!(
+        début_du_nom < large.x * 0.4,
+        "le nom est à {début_du_nom} pour une fenêtre de {}",
+        large.x
+    );
+
+    // Rétrécir la fenêtre ne le déplace pas : c'est tout le point.
+    let vus = barre(&mut app, étroite);
+    let (après, _) = position(&vus, s.untitled_buffer);
+    assert!(
+        (après - début_du_nom).abs() < 0.5,
+        "le nom a bougé de {} en changeant la largeur",
+        après - début_du_nom
+    );
+}
+
+/// La calculatrice se prend juste à gauche de l'onglet Pile.
+///
+/// C'est là qu'on s'en sert : on lit une valeur dans la pile ou dans un
+/// registre, et l'on veut la même dans une autre base. Elle était dans
+/// le menu Outils, à trois gestes de l'endroit où le besoin naît.
+#[test]
+fn the_calculator_sits_just_left_of_the_stack_tab() {
+    let s = strings(Lang::Fr);
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp::default();
+    app.apply_theme(&ctx);
+
+    let entrée = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1600.0, 1000.0),
+        )),
+        ..Default::default()
+    };
+    let mut touches = Vec::new();
+    let mut pile: Option<f32> = None;
+    for _ in 0..2 {
+        touches.clear();
+        pile = None;
+        let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+        for clipped in &sortie.shapes {
+            match &clipped.shape {
+                // Les quatre touches de l'icône : des points, les seuls
+                // cercles aussi petits de la barre d'outils.
+                // La barre d'outils occupe la deuxième rangée : « Pile »
+                // est aussi le titre du panneau, plus bas, et c'est le
+                // titre qu'on attrapait.
+                egui::epaint::Shape::Circle(cercle)
+                    if cercle.radius < 1.5 && cercle.center.y < 60.0 =>
+                {
+                    touches.push(cercle.center);
+                }
+                egui::epaint::Shape::Text(texte)
+                    if texte.galley.text() == s.tab_stack && texte.pos.y < 60.0 =>
+                {
+                    pile = Some(texte.pos.x);
+                }
+                _ => {}
+            }
+        }
+        sortie.textures_delta.clear();
+    }
+
+    let pile = pile.expect("l'onglet Pile est peint");
+    assert_eq!(touches.len(), 4, "les quatre touches de la calculatrice");
+    for point in &touches {
+        assert!(
+            point.x < pile,
+            "la calculatrice est à gauche de « {} » : {} contre {pile}",
+            s.tab_stack,
+            point.x
+        );
+    }
+    // Dans la barre d'outils, non perdue ailleurs dans la fenêtre.
+    let haut = touches.iter().map(|p| p.y).fold(f32::MAX, f32::min);
+    assert!(haut > 30.0, "dans la barre d'outils, non dans les menus : {haut}");
+}
+
+/// L'onglet RE ne porte plus qu'un bouton.
+///
+/// Les sept modules empilés dessous faisaient deux mille pixels à
+/// parcourir dans une colonne de trois cents. La fenêtre d'analyse
+/// montre exactement les mêmes, en grand et tout dépliés : c'est là
+/// qu'on les lit.
+#[test]
+fn the_re_tab_carries_only_its_button() {
+    let s = strings(Lang::Fr);
+    let mut app = NamsdecApp {
+        show_re_tab: true,
+        active_tab: SidebarTab::Re,
+        ..Default::default()
+    };
+    let peint = paint(&mut app);
+    assert!(peint.contains(s.analysis_open), "le bouton est là :\n{peint}");
+    for module in ["En bref", "Fonctions importées", "Fragments réutilisables (ROP)"] {
+        assert!(
+            !peint.contains(module),
+            "« {module} » n'a plus sa place dans le panneau :\n{peint}"
+        );
+    }
+}
+
 /// La correction proposée s'écrit dans la barre d'état, et Alt la pose.
 ///
 /// Deux choses à vérifier, et la seconde compte autant que la première :

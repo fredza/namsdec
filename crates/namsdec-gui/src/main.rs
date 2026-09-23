@@ -8909,6 +8909,21 @@ impl NamsdecApp {
                             self.active_tab = *tab;
                         }
                     }
+                    // La calculatrice, juste à gauche de « Pile ». La
+                    // disposition est de droite à gauche, donc elle vient
+                    // après la boucle. Sa place est là parce que c'est là
+                    // qu'on s'en sert : on lit une valeur dans la pile ou
+                    // dans un registre, et l'on veut savoir ce qu'elle
+                    // vaut dans une autre base. Elle était dans le menu
+                    // Outils, à trois gestes de l'endroit où le besoin
+                    // naît.
+                    ui.add_space(4.0);
+                    if icon_square_button(ui, chrome::icon_calculator)
+                        .on_hover_text(s.calculator_title)
+                        .clicked()
+                    {
+                        self.show_calculator = true;
+                    }
                 });
             }
         });
@@ -14858,6 +14873,71 @@ fn shortcut_hint(
 /// vides ou des glyphes de repli erratiques (voir commit 5d95e09 et le
 /// retour utilisateur qui a suivi). Peindre la forme soi-même élimine le
 /// risque une fois pour toutes.
+/// Un grand bouton d'action : pleine largeur, rempli de la couleur
+/// d'accent, une icône et un mot.
+///
+/// Pour les endroits où il n'y a **qu'une** chose à faire. Un bouton
+/// ordinaire y est un rectangle gris de la taille de son texte, posé en
+/// haut d'une colonne : on le prend pour une étiquette, et l'on cherche
+/// ailleurs la commande qu'on a sous les yeux. Celui-ci occupe la
+/// largeur, porte la couleur que le thème réserve à ce qui compte, et
+/// se voit sans être lu.
+///
+/// Rendu désactivé quand il n'y a rien à faire, plutôt que caché : un
+/// bouton qui disparaît laisse croire que la fonction n'existe pas.
+fn big_action_button(
+    ui: &mut egui::Ui,
+    theme: &Theme,
+    icon: impl FnOnce(&egui::Painter, egui::Rect, egui::Color32),
+    label: &str,
+) -> egui::Response {
+    const HAUTEUR: f32 = 42.0;
+    const TAILLE_ICÔNE: f32 = 18.0;
+    const ÉCART: f32 = 10.0;
+
+    let largeur = ui.available_width();
+    let (rect, réponse) =
+        ui.allocate_exact_size(egui::vec2(largeur, HAUTEUR), egui::Sense::click());
+    if !ui.is_rect_visible(rect) {
+        return réponse;
+    }
+
+    let actif = ui.is_enabled();
+    // Le survol éclaircit, le clic assombrit : la même grammaire que les
+    // boutons d'egui, avec la couleur du thème.
+    let fond = match (actif, réponse.is_pointer_button_down_on(), réponse.hovered()) {
+        (false, _, _) => theme.dim.gamma_multiply(0.25),
+        (true, true, _) => theme.accent.gamma_multiply(0.80),
+        (true, false, true) => theme.accent.gamma_multiply(1.15),
+        (true, false, false) => theme.accent,
+    };
+    let encre = if actif { theme.bg } else { theme.dim };
+
+    ui.painter().rect_filled(rect, 8.0, fond);
+
+    let galley = ui.painter().layout_no_wrap(
+        label.to_owned(),
+        egui::FontId::proportional(14.0),
+        encre,
+    );
+    // Icône et texte comptés ensemble, puis centrés d'un bloc : centrer
+    // chacun de son côté laisse le texte de travers dès que le libellé
+    // change de langue.
+    let bloc = TAILLE_ICÔNE + ÉCART + galley.size().x;
+    let gauche = rect.center().x - bloc * 0.5;
+    let case = egui::Rect::from_min_size(
+        egui::pos2(gauche, rect.center().y - TAILLE_ICÔNE * 0.5),
+        egui::vec2(TAILLE_ICÔNE, TAILLE_ICÔNE),
+    );
+    icon(ui.painter(), case, encre);
+    ui.painter().galley(
+        egui::pos2(case.right() + ÉCART, rect.center().y - galley.size().y * 0.5),
+        galley,
+        encre,
+    );
+    réponse
+}
+
 fn icon_button(
     ui: &mut egui::Ui,
     icon: impl FnOnce(&egui::Painter, egui::Rect, egui::Color32),

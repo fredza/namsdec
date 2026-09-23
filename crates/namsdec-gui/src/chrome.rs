@@ -256,9 +256,23 @@ pub fn window_head(ui: &mut egui::Ui, theme: &'static Theme, s: &Strings, titre:
     réponse.on_hover_text(s.window_close).clicked()
 }
 
+/// L'écart entre le dernier menu et le nom du fichier, en largeurs
+/// d'espace.
+///
+/// Trois tabulations de quatre espaces : assez pour qu'on ne lise pas
+/// « Aide sans titre » comme un sixième menu, assez peu pour que le nom
+/// reste rattaché à la barre plutôt que perdu au milieu.
+const TITLE_GAP_SPACES: f32 = 12.0;
+
 /// Rend la zone vide de la barre de menus déplaçable, et le double-clic
 /// maximisant — les deux gestes qu'on fait sans y penser sur une barre
 /// de titre. Y écrit aussi ce qu'on y cherche : le nom du fichier.
+///
+/// Le nom est posé **à la suite des menus**, non au centre de la bande.
+/// Centré, il se déplaçait à chaque fois qu'on ouvrait un panneau ou
+/// qu'on redimensionnait la fenêtre : un repère qui bouge n'en est pas
+/// un. Aligné sur la fin du dernier menu, il est toujours au même
+/// endroit, et l'œil le trouve sans le chercher.
 pub fn title_drag_ui(
     ui: &mut egui::Ui,
     theme: &'static Theme,
@@ -271,22 +285,30 @@ pub fn title_drag_ui(
         return;
     }
     let (bande, réponse) = ui.allocate_exact_size(reste, egui::Sense::click_and_drag());
-    // Le nom du fichier, centré dans ce qui reste entre les menus et les
-    // pastilles. Une barre de titre sans titre laisse deviner, à l'alt-
-    // tab comme au réveil, sur quoi l'on travaillait.
     let texte = if modifié {
         format!("{titre} •")
     } else {
         titre.to_owned()
     };
+    let police = egui::TextStyle::Body.resolve(ui.style());
+    // L'écart est mesuré dans la police courante, non posé en pixels :
+    // le réglage de zoom et le thème changent la taille du texte, et un
+    // blanc figé se retrouverait deux fois trop grand ou invisible.
+    let espace = ui.ctx().fonts_mut(|f| f.glyph_width(&police, ' '));
     let galley = ui.painter().layout_no_wrap(
         texte,
-        egui::TextStyle::Body.resolve(ui.style()),
+        police,
         if modifié { theme.changed } else { theme.dim },
     );
-    if galley.size().x < bande.width() {
-        ui.painter()
-            .galley(bande.center() - galley.size() * 0.5, galley, theme.dim);
+    let départ = bande.left() + espace * TITLE_GAP_SPACES;
+    // Écrit seulement s'il tient : sur une fenêtre étroite, mieux vaut
+    // pas de titre qu'un titre qui passe sous les pastilles.
+    if départ + galley.size().x < bande.right() {
+        ui.painter().galley(
+            egui::pos2(départ, bande.center().y - galley.size().y * 0.5),
+            galley,
+            theme.dim,
+        );
     }
     if réponse.drag_started() {
         ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
@@ -506,4 +528,91 @@ pub fn icon_search(painter: &egui::Painter, rect: egui::Rect, color: egui::Color
     painter.circle_stroke(centre, r, trait_);
     let départ = centre + egui::vec2(r * 0.72, r * 0.72);
     painter.line_segment([départ, rect.right_bottom() - egui::vec2(1.0, 1.0)], trait_);
+}
+
+/// L'icône de l'analyse : un engrenage, et une clé dedans.
+///
+/// C'est celle de Desdec, l'autre atelier de la maison. Reprendre le
+/// même dessin n'est pas une coquetterie : deux programmes qui font le
+/// même geste — ouvrir un binaire et le démonter — gagnent à le dire de
+/// la même façon, et l'on reconnaît un bouton avant de lire son
+/// libellé.
+///
+/// Dessinée plutôt qu'importée : une image au trait perd tout à seize
+/// pixels, et surtout elle ne suit pas la couleur du thème. Ici le trait
+/// est celui qu'on lui passe, et il change avec le thème comme le reste.
+pub fn icon_analysis(painter: &egui::Painter, rect: egui::Rect, color: egui::Color32) {
+    let trait_ = egui::Stroke::new(1.3, color);
+    let centre = rect.center();
+    // Le corps de l'engrenage occupe un peu plus du tiers : le reste est
+    // pour les dents, qui doivent dépasser sans toucher le bord.
+    let r = rect.width().min(rect.height()) * 0.33;
+
+    painter.circle_stroke(centre, r, trait_);
+    // Huit dents. Des segments radiaux plutôt qu'un contour denté : à la
+    // taille d'un bouton, un contour se referme en bouillie, alors que
+    // huit traits lisibles disent « engrenage » sans hésitation.
+    for dent in 0..8 {
+        let angle = std::f32::consts::TAU * dent as f32 / 8.0;
+        let direction = egui::vec2(angle.cos(), angle.sin());
+        painter.line_segment(
+            [centre + direction * r, centre + direction * (r * 1.42)],
+            trait_,
+        );
+    }
+
+    // La clé, posée en diagonale dans l'engrenage : le manche part du
+    // bas-droit, la fourche s'ouvre en haut-gauche.
+    let bout_du_manche = centre + egui::vec2(r * 0.80, r * 0.80);
+    let base_de_la_fourche = centre - egui::vec2(r * 0.30, r * 0.30);
+    painter.line_segment([bout_du_manche, base_de_la_fourche], trait_);
+
+    // La fourche : deux branches qui prolongent le manche, et le fond
+    // qui les relie. Ouverte vers l'extérieur, comme une vraie clé.
+    let direction = (base_de_la_fourche - bout_du_manche).normalized();
+    let travers = egui::vec2(-direction.y, direction.x) * (r * 0.30);
+    let gauche = base_de_la_fourche + travers;
+    let droite = base_de_la_fourche - travers;
+    let longueur = direction * (r * 0.40);
+    painter.line_segment([gauche, droite], trait_);
+    painter.line_segment([gauche, gauche + longueur], trait_);
+    painter.line_segment([droite, droite + longueur], trait_);
+}
+
+/// L'icône de la calculatrice : un boîtier, un écran, quatre touches.
+pub fn icon_calculator(painter: &egui::Painter, rect: egui::Rect, color: egui::Color32) {
+    let trait_ = egui::Stroke::new(1.2, color);
+    // Plus haut que large, comme l'objet : un carré se lirait comme une
+    // fenêtre.
+    let largeur = rect.width() * 0.62;
+    let boîtier = egui::Rect::from_center_size(
+        rect.center(),
+        egui::vec2(largeur, rect.height() * 0.88),
+    );
+    painter.rect_stroke(boîtier, 2.0, trait_, egui::StrokeKind::Inside);
+
+    let marge = boîtier.width() * 0.18;
+    let écran = egui::Rect::from_min_max(
+        egui::pos2(boîtier.left() + marge, boîtier.top() + marge * 0.9),
+        egui::pos2(
+            boîtier.right() - marge,
+            boîtier.top() + boîtier.height() * 0.32,
+        ),
+    );
+    painter.rect_stroke(écran, 1.0, trait_, egui::StrokeKind::Inside);
+
+    // Quatre touches, deux par deux. Des points et non des carrés : à
+    // cette taille, un carré de deux pixels est un point qui a l'air
+    // raté.
+    let rayon = (boîtier.width() * 0.07).max(0.8);
+    let haut = écran.bottom() + (boîtier.bottom() - écran.bottom()) * 0.32;
+    let bas = écran.bottom() + (boîtier.bottom() - écran.bottom()) * 0.72;
+    for y in [haut, bas] {
+        for x in [
+            boîtier.left() + marge * 1.1,
+            boîtier.right() - marge * 1.1,
+        ] {
+            painter.circle_filled(egui::pos2(x, y), rayon, color);
+        }
+    }
 }
