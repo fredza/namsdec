@@ -10659,10 +10659,10 @@ impl NamsdecApp {
             .show(ui, |ui| {
                 ui.horizontal_wrapped(|ui| {
                     ui.colored_label(theme.warn, s.disk_changed);
-                    if ui.button(s.disk_reload).clicked() {
+                    if framed_button(ui, theme, s.disk_reload).clicked() {
                         self.reload_from_disk();
                     }
-                    if ui.button(s.disk_keep).clicked() {
+                    if framed_button(ui, theme, s.disk_keep).clicked() {
                         // Garder, c'est accepter la version du disque
                         // comme point de comparaison : sans cela,
                         // l'avertissement reviendrait à chaque regard.
@@ -10783,11 +10783,11 @@ impl NamsdecApp {
                 aller = true;
                 champ.request_focus();
             }
-            if ui.button("<").on_hover_text(s.find_previous).clicked() && !matches.is_empty() {
+            if framed_button(ui, theme, "<").on_hover_text(s.find_previous).clicked() && !matches.is_empty() {
                 current = (current + matches.len() - 1) % matches.len();
                 aller = true;
             }
-            if ui.button(">").on_hover_text(s.find_next).clicked() && !matches.is_empty() {
+            if framed_button(ui, theme, ">").on_hover_text(s.find_next).clicked() && !matches.is_empty() {
                 current = (current + 1) % matches.len();
                 aller = true;
             }
@@ -10807,7 +10807,7 @@ impl NamsdecApp {
             } else {
                 ui.colored_label(theme.dim, format!("{}/{}", current + 1, matches.len()));
             }
-            if ui.button("x").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            if framed_button(ui, theme, "x").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                 fermer = true;
             }
         });
@@ -10961,7 +10961,7 @@ impl NamsdecApp {
             if framed_button(ui, theme, s.rename_apply).clicked() {
                 appliquer = true;
             }
-            if ui.button("x").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            if framed_button(ui, theme, "x").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                 annuler = true;
             }
         });
@@ -12280,7 +12280,7 @@ impl NamsdecApp {
                     {
                         décision = Some(false);
                     }
-                    if ui.button(s.unsaved_cancel).clicked() {
+                    if framed_button(ui, theme, s.unsaved_cancel).clicked() {
                         annuler = true;
                     }
                 });
@@ -12445,7 +12445,7 @@ impl NamsdecApp {
                         }
                         None => {
                             ui.weak(format!("{} {}", s.disassembly_will_run, plugin.command));
-                            if ui.button(s.disassembly_run).clicked() {
+                            if framed_button(ui, theme, s.disassembly_run).clicked() {
                                 let octets = state.output.file.clone();
                                 let octets = if octets.is_empty() {
                                     state.output.bytes.clone()
@@ -12472,7 +12472,7 @@ impl NamsdecApp {
                             .hint_text(s.find_placeholder)
                             .desired_width(200.0),
                     );
-                    if !self.disassembly_query.is_empty() && ui.button("x").clicked() {
+                    if !self.disassembly_query.is_empty() && framed_button(ui, theme, "x").clicked() {
                         self.disassembly_query.clear();
                     }
                 });
@@ -12551,7 +12551,7 @@ impl NamsdecApp {
                             .map(|s| s.name.clone())
                             .unwrap_or_else(|| format!("{addr:#x}"));
                         ui.colored_label(theme.accent, format!("{} {nom}", s.disassembly_from));
-                        if ui.button(s.disassembly_all).clicked() {
+                        if framed_button(ui, theme, s.disassembly_all).clicked() {
                             revenir_au_début = true;
                         }
                     });
@@ -12744,7 +12744,7 @@ impl NamsdecApp {
                         .wrap_mode(egui::TextWrapMode::Wrap),
                 );
                 ui.horizontal_wrapped(|ui| {
-                    if ui.button(s.cyclic_copy).clicked() {
+                    if framed_button(ui, theme, s.cyclic_copy).clicked() {
                         ui.ctx().copy_text(motif.clone());
                         self.status = Status::Note(|s| s.cyclic_copied);
                     }
@@ -13075,7 +13075,7 @@ impl NamsdecApp {
                             );
                             ui.colored_label(theme.bad, s.breakpoints_condition_bad);
                         }
-                        if ui.button("x").on_hover_text(s.breakpoints_remove).clicked() {
+                        if framed_button(ui, theme, "x").on_hover_text(s.breakpoints_remove).clicked() {
                             retirer = Some(ligne);
                         }
                     });
@@ -13150,7 +13150,7 @@ impl NamsdecApp {
                     })
                     .show(ui, |ui| {
                         ui.horizontal_wrapped(|ui| {
-                            if ui.button(s.analysis_copy).clicked()
+                            if framed_button(ui, self.theme, s.analysis_copy).clicked()
                                 && let Some(report) = self.analysis_report()
                             {
                                 ui.ctx().copy_text(report);
@@ -13424,7 +13424,7 @@ impl NamsdecApp {
                     .font(egui::TextStyle::Monospace)
                     .desired_width((ui.available_width() - 180.0).max(180.0)),
             );
-            if !self.help_query.is_empty() && ui.button("x").clicked() {
+            if !self.help_query.is_empty() && framed_button(ui, theme, "x").clicked() {
                 self.help_query.clear();
             }
             // De quoi revenir sur ses pas, puis au sommaire : une fiche
@@ -13439,7 +13439,7 @@ impl NamsdecApp {
                 self.help = Some((precedent.clone(), namsdec_doc::lookup(&precedent)));
                 self.help_query.clear();
             }
-            if self.help.is_some() && ui.button(s.help_index).clicked() {
+            if self.help.is_some() && framed_button(ui, theme, s.help_index).clicked() {
                 self.help = None;
                 self.help_back.clear();
                 self.help_query.clear();
@@ -14309,7 +14309,7 @@ impl NamsdecApp {
                                   quoi: PatchGeste| {
                     ui.horizontal(|ui| {
                         ui.add_enabled_ui(aperçu.is_some(), |ui| {
-                            if ui.button(libellé).clicked() {
+                            if framed_button(ui, theme, libellé).clicked() {
                                 geste = Some(quoi);
                             }
                         });
@@ -14780,7 +14780,7 @@ impl NamsdecApp {
                 {
                     self.send_input(None);
                 }
-                send = ui.button(s.console_send).clicked();
+                send = framed_button(ui, self.theme, s.console_send).clicked();
 
                 let response = ui.add(
                     egui::TextEdit::singleline(&mut self.console_input)

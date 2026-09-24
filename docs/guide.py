@@ -245,6 +245,11 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "mémoire, les blocs alloués, les octets de chaque ligne. C’est "
          "l’écran qu’on a sous les yeux la première fois."),
         ("p",
+         "Les boutons sont <b>plats dans les menus et encadrés ailleurs</b>. Dans un "
+         "menu, la platitude est le dessin ; dans une fenêtre, un bouton qui ne se "
+         "distingue d’une étiquette qu’au survol ne se trouve pas. Ce qu’on "
+         "peut cliquer doit se voir sans qu’on le cherche."),
+        ("p",
          "Les couleurs sont tenues à un <b>plancher de contraste</b> : tout texte actif "
          "se détache de son fond d’au moins 3 pour 1, la mesure des recommandations "
          "d’accessibilité, dans chacun des trois thèmes livrés. Une commande "

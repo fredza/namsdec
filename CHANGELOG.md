@@ -264,6 +264,19 @@ six fautes d'assembleur que namsdec sait désormais reconnaître.
   dans une colonne de trois cents ; la fenêtre d'analyse montre les mêmes
   en grand et tout dépliés. Deux fois la même chose, dont une mal.
 
+**Dix-sept boutons qu'on ne voyait pas**
+- Le thème rend les boutons **plats au repos** — fond transparent,
+  liseré absent — et c'est voulu : sans cela la barre de menus et la
+  barre d'outils se ressemblent trop. Mais la règle valait pour *tous*
+  les boutons, y compris ceux des fenêtres et des boîtes de dialogue,
+  qui ne se distinguaient donc d'une étiquette qu'au survol.
+- Dix-sept l'étaient : « Recharger » et « Garder » après une
+  modification sur le disque, « Copier le rapport », « Envoyer » de la
+  console, « Tout » du désassemblage, « Lancer », les flèches de la
+  recherche, les croix de fermeture des champs… Tous encadrés.
+- Les vingt-quatre des menus restent plats : là, la platitude est le
+  dessin. Un contrôle nomme l'exception et interdit les autres.
+
 **La palette tient sa promesse**
 - Un test exige qu'elle propose **les trente actions**, et qu'aucune
   entrée n'ait de libellé vide. Le code le promettait déjà en

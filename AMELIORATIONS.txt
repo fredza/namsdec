@@ -892,6 +892,12 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
          simulé pour de vrai : un mouvement de pointeur, puis des images où
          il ne bouge plus, parce qu'une infobulle attend que la main
          s'arrête) ;
+       - hors des menus, un bouton se voit sans qu'on le survole. Le thème
+         rend les boutons plats au repos (fond transparent, liseré absent) et
+         c'est voulu pour la barre de menus et la barre d'outils ; la règle
+         valait pour tous, si bien que dix-sept boutons de fenêtres ne se
+         distinguaient d'une étiquette qu'au survol. Le contrôle lit le source,
+         parce que c'est là qu'est la règle, et il nomme l'exception.
        - la palette propose vraiment TOUTES les commandes : les trente
          actions y sont, et aucune entrée n'a de libellé vide. Le code le
          promettait déjà en commentaire — « une commande que la palette ne

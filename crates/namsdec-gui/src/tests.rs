@@ -22541,3 +22541,48 @@ fn what_the_tools_answer_is_asked_once_and_kept() {
         "le relevé n'est pas refait à chaque image"
     );
 }
+
+/// Hors des menus, un bouton se voit sans qu'on le survole.
+///
+/// Le thème rend les boutons **plats au repos** — fond transparent,
+/// liseré absent — et c'est voulu : sans cela la barre de menus et la
+/// barre d'outils se ressemblent trop. Mais la règle s'appliquait à
+/// *tous* les boutons, y compris ceux des fenêtres et des boîtes de
+/// dialogue, qui ne se distinguaient donc d'une étiquette qu'au survol.
+/// Dix-sept l'étaient : « Recharger », « Copier le rapport », « Envoyer »,
+/// les croix de fermeture des champs de recherche…
+///
+/// `framed_button` pose le liseré. Ce contrôle lit le source parce que
+/// c'est là qu'est la règle : ce qu'on peut cliquer doit se voir, et
+/// l'exception — les menus, où la platitude est le dessin — est nommée.
+#[test]
+fn outside_the_menus_a_button_shows_itself_without_being_hovered() {
+    let source = include_str!("main.rs");
+    let mut fonction = "";
+    let mut plats: Vec<(usize, &str, String)> = Vec::new();
+    for (n, ligne) in source.lines().enumerate() {
+        // Le nom de la fonction englobante : les `fn` de premier niveau
+        // dans un `impl` sont indentés de quatre espaces.
+        if let Some(reste) = ligne.strip_prefix("    ")
+            && let Some(nom) = reste
+                .trim_start_matches("pub(crate) ")
+                .trim_start_matches("pub ")
+                .strip_prefix("fn ")
+        {
+            fonction = nom.split('(').next().unwrap_or("").trim();
+        }
+        if ligne.contains("ui.button(") && fonction != "menu_bar_ui" {
+            plats.push((n + 1, fonction, ligne.trim().chars().take(70).collect()));
+        }
+    }
+    assert!(
+        plats.is_empty(),
+        "{} bouton(s) invisible(s) au repos — `framed_button` les encadre :\n  {}",
+        plats.len(),
+        plats
+            .iter()
+            .map(|(n, f, l)| format!("main.rs:{n} ({f}) {l}"))
+            .collect::<Vec<_>>()
+            .join("\n  ")
+    );
+}
