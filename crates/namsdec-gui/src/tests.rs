@@ -21009,3 +21009,115 @@ fn typing_y_y_duplicates_the_line() {
 }
 
 
+
+/// Une fenêtre qu'on ne touche pas ne bouge pas.
+///
+/// C'est la règle la plus simple d'une interface en mode immédiat, et
+/// c'est justement celle qu'elle ne garantit pas : chaque image est
+/// redessinée depuis zéro, et rien n'empêche une mesure d'être reprise
+/// en entrée de la mesure suivante. Quand cela arrive, la fenêtre se
+/// déplace toute seule — d'un peu à chaque image, donc d'autant plus
+/// vite qu'on remue la souris, puisque chaque mouvement de souris vaut
+/// une image de plus. C'était le cas de la barre « OK », dont la rangée
+/// prenait toute la hauteur restante du panneau bas, laquelle était
+/// précisément mesurée sur cette rangée : la fenêtre d'analyse montait
+/// de cinq pixels par image jusqu'à n'avoir plus de contenu visible.
+///
+/// On dessine donc chaque fenêtre une douzaine de fois sans rien
+/// changer, et on demande que les six dernières images soient la même.
+#[test]
+fn a_window_that_is_left_alone_stays_where_it_is() {
+    /// Comment ouvrir une fenêtre, et comment la nommer dans l'échec.
+    type Ouverture = (&'static str, &'static str, fn(&mut NamsdecApp));
+    let fenêtres: Vec<Ouverture> = vec![
+        ("préférences", "preferences_window", |app| {
+            app.show_preferences = true;
+        }),
+        ("à propos", ABOUT_WINDOW, |app| app.show_about = true),
+        ("calculatrice", "calculator_window", |app| {
+            app.show_calculator = true;
+        }),
+        ("aide", "instruction_help", |app| app.show_help = true),
+        ("registres étendus", "vectors_window", |app| {
+            app.show_vectors = true;
+        }),
+        ("points d'arrêt", "breakpoints_window", |app| {
+            app.show_breakpoints = true;
+        }),
+        ("chronologie", "timeline_window", |app| {
+            app.show_timeline = true;
+        }),
+        ("motif cyclique", "cyclic_window", |app| app.show_cyclic = true),
+        ("analyse", "analysis_window", |app| app.show_analysis = true),
+        ("désassemblage", "disassembly_window", |app| {
+            app.show_disassembly = true;
+        }),
+        ("graphe", "flow_window", |app| app.show_flow = true),
+        ("décompilateur", "decompiler_window", |app| {
+            app.show_decompiler_module = true;
+            app.show_decompiler = true;
+        }),
+        ("saisie du programme", INPUT_DIALOG, |app| {
+            app.show_input_dialog = true;
+        }),
+        ("correctifs", PATCHES_WINDOW, |app| app.show_patches = true),
+    ];
+
+    let entrée = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1600.0, 1100.0),
+        )),
+        ..Default::default()
+    };
+
+    for (nom, id, ouvre) in fenêtres {
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp::default();
+        app.apply_theme(&ctx);
+        ouvre(&mut app);
+
+        // Ce qui est écrit dans la fenêtre, et où — arrondi au pixel,
+        // parce qu'un demi-pixel de fondu n'est pas un déplacement.
+        let mut images: Vec<Vec<(String, i32, i32)>> = Vec::new();
+        for _ in 0..12 {
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            let cadre = egui::AreaState::load(&ctx, egui::Id::new(id)).map(|a| a.rect());
+            let mut posés = Vec::new();
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(texte) = &clipped.shape
+                    && cadre.is_some_and(|c| c.contains(texte.pos))
+                {
+                    posés.push((
+                        texte.galley.text().to_owned(),
+                        texte.pos.x.round() as i32,
+                        texte.pos.y.round() as i32,
+                    ));
+                }
+            }
+            sortie.textures_delta.clear();
+            images.push(posés);
+        }
+
+        let repère = &images[6];
+        assert!(
+            !repère.is_empty(),
+            "la fenêtre « {nom} » ne peint aucun texte : le test ne prouverait rien"
+        );
+        for (n, image) in images.iter().enumerate().skip(7) {
+            if image != repère {
+                let bougé = repère
+                    .iter()
+                    .zip(image.iter())
+                    .find(|(a, b)| a != b)
+                    .map(|(a, b)| format!("« {} » de {:?} à {:?}", a.0, (a.1, a.2), (b.1, b.2)))
+                    .unwrap_or_else(|| {
+                        format!("{} textes puis {}", repère.len(), image.len())
+                    });
+                panic!(
+                    "la fenêtre « {nom} » bouge toute seule entre l'image 6 et l'image {n} : {bougé}"
+                );
+            }
+        }
+    }
+}

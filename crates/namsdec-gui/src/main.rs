@@ -15894,7 +15894,26 @@ fn dialog_bar_hinted(
             réponse = Some(Answer::Cancel);
         }
     });
-    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+    // La rangée reçoit une hauteur, et c'est tout le sujet.
+    //
+    // `with_layout` aurait donné à cette rangée *toute* la place qui
+    // restait, parce qu'une disposition horizontale calée en
+    // `Align::Center` doit connaître la hauteur dans laquelle centrer :
+    // elle prend donc celle de son cadre entier. Dans un panneau bas,
+    // dont la hauteur est justement mesurée sur son contenu, cela se
+    // referme en boucle — le panneau redonne à la frame suivante la
+    // hauteur qu'il vient de lire, augmentée des marges qui l'entourent,
+    // et grandit de cinq pixels par image. C'est ce qu'on voyait :
+    // la fenêtre « montait » tant qu'on remuait la souris, puisque
+    // chaque mouvement vaut une image de plus.
+    //
+    // Une hauteur imposée coupe la boucle : la rangée ne lit plus rien
+    // de son parent. C'est le même remède que pour la ligne de la
+    // console, dont la largeur s'emballait de la même manière.
+    ui.allocate_ui_with_layout(
+        egui::vec2(ui.available_width(), ui.spacing().interact_size.y),
+        egui::Layout::right_to_left(egui::Align::Center),
+        |ui| {
         let ok = egui::Button::new(egui::RichText::new(principal).color(theme.bg))
             .fill(theme.accent)
             .min_size(egui::vec2(96.0, 0.0));
@@ -15913,7 +15932,8 @@ fn dialog_bar_hinted(
                 réponse = Some(Answer::Cancel);
             }
         }
-    });
+        },
+    );
     réponse
 }
 

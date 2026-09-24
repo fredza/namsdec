@@ -265,6 +265,20 @@ six fautes d'assembleur que namsdec sait désormais reconnaître.
   en grand et tout dépliés. Deux fois la même chose, dont une mal.
 
 **Réparé**
+- Les fenêtres **montaient toutes seules** — et d'autant plus vite qu'on
+  remuait la souris, puisque chaque mouvement vaut une image de plus.
+  La barre « OK » en était la cause : sa rangée de boutons, posée en
+  `Align::Center`, prenait toute la hauteur restante du panneau bas,
+  laquelle était justement mesurée sur cette rangée. Chaque image lui
+  rendait la hauteur lue, augmentée des marges qui l'entourent, et la
+  fenêtre d'analyse perdait cinq pixels de contenu par image jusqu'à
+  n'avoir plus rien à montrer. La rangée reçoit maintenant une hauteur,
+  et ne lit plus rien de son parent.
+- Un test demande qu'**une fenêtre qu'on ne touche pas ne bouge pas** :
+  quatorze fenêtres, une douzaine d'images chacune, et les six
+  dernières doivent être identiques. C'est la règle la plus simple
+  d'une interface en mode immédiat, et justement celle qu'elle ne
+  garantit pas.
 - La fenêtre du décompilateur était **illisible** : chaque bloc se
   posait une ligne trop haut et recouvrait le précédent. Une commande de
   cent cinquante caractères — celle du pont DZF — s'allouait la hauteur
