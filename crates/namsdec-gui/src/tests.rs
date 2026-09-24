@@ -21116,24 +21116,86 @@ fn fenêtres_ouvrables() -> Vec<Ouverture> {
 /// pour les fenêtres laisserait l'essentiel hors contrôle.
 type Scène = (String, Option<&'static str>, Box<dyn Fn(&mut NamsdecApp)>);
 
-/// Tout ce que le banc regarde : les quatorze fenêtres, puis
-/// l'application nue sur chacun des onglets de son panneau.
+/// Le programme du banc : court, et il touche à tout ce que
+/// l'interface sait montrer.
+///
+/// Deux sections, un appel système, une pile qu'on remue, une boucle.
+/// Assemblé et avancé de quelques pas, il remplit les registres, la
+/// pile, le listing, le graphe et la chronologie — c'est-à-dire tout
+/// ce qui reste vide dans une application qu'on vient d'ouvrir, et
+/// donc tout ce que le banc ne regardait pas.
+const PROGRAMME_DU_BANC: &str = "\
+section .data
+message db \"bonjour\", 10
+longueur equ $ - message
+
+section .text
+global _start
+_start:
+    mov rax, 1
+    mov rdi, 1
+    mov rsi, message
+    mov rdx, longueur
+    syscall
+    push rax
+    mov rcx, 3
+boucle:
+    dec rcx
+    jnz boucle
+    pop rax
+    mov rax, 60
+    xor rdi, rdi
+    syscall
+";
+
+/// Tout ce que le banc regarde : les quatorze fenêtres et les cinq
+/// onglets du panneau, à vide puis programme en marche.
+///
+/// « En marche » n'est pas un raffinement : une application qu'on vient
+/// d'ouvrir n'affiche presque rien, et les défauts de mise en page se
+/// révèlent avec le contenu. Cette moitié-là du banc demande nasm ;
+/// faute de lui, elle est simplement absente, et le reste tient.
 fn scènes() -> Vec<Scène> {
-    let mut scènes: Vec<Scène> = fenêtres_ouvrables()
-        .into_iter()
-        .map(|(nom, id, ouvre)| -> Scène {
-            (nom.to_owned(), Some(id), Box::new(ouvre))
-        })
-        .collect();
-    for onglet in SidebarTab::ALL {
-        scènes.push((
-            format!("application / {}", onglet.id()),
-            None,
-            Box::new(move |app| {
-                app.show_sidebar = true;
-                app.active_tab = onglet;
-            }),
-        ));
+    let mut scènes: Vec<Scène> = Vec::new();
+    let en_marche = namsdec_asm::find_nasm().is_some() && namsdec_asm::find_linker();
+    for marche in [false, true] {
+        if marche && !en_marche {
+            continue;
+        }
+        let suffixe = if marche { " (en marche)" } else { "" };
+        /// Pose le programme du banc et avance de quelques pas.
+        fn démarre(app: &mut NamsdecApp) {
+            app.source = PROGRAMME_DU_BANC.to_owned();
+            app.do_assemble();
+            for _ in 0..8 {
+                app.do_step();
+            }
+        }
+        for (nom, id, ouvre) in fenêtres_ouvrables() {
+            scènes.push((
+                format!("{nom}{suffixe}"),
+                Some(id),
+                Box::new(move |app| {
+                    if marche {
+                        démarre(app);
+                    }
+                    ouvre(app);
+                }),
+            ));
+        }
+        for onglet in SidebarTab::ALL {
+            scènes.push((
+                format!("application / {}{suffixe}", onglet.id()),
+                None,
+                Box::new(move |app| {
+                    if marche {
+                        démarre(app);
+                    }
+                    app.show_sidebar = true;
+                    app.active_tab = onglet;
+                }),
+            ));
+        }
     }
     scènes
 }
@@ -21181,7 +21243,29 @@ fn ce_qui_est_écrit(
     for _ in 0..images {
         lignes.clear();
         let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+        let cadre = id.and_then(|id| {
+            egui::AreaState::load(ctx, egui::Id::new(id)).map(|a| a.rect())
+        });
         for clipped in &sortie.shapes {
+            // Ce que la fenêtre peint *elle-même*, et non ce qui se
+            // trouve sous elle. Sans ce tri, un registre caché derrière
+            // la fenêtre d'aide passait pour un recouvrement — et cela
+            // n'arrivait qu'une fois un programme chargé, c'est-à-dire
+            // jamais dans les tests d'alors.
+            //
+            // Le tri se fait sur la LARGEUR du rectangle de découpe. Une
+            // fenêtre découpe son contenu à sa propre largeur ; un
+            // panneau, lui, est découpé à celle de l'écran ou part de
+            // son bord — jamais à l'intérieur d'une fenêtre. La hauteur
+            // ne dirait rien : egui laisse au découpage d'une fenêtre
+            // plus de hauteur qu'elle n'en occupe.
+            if cadre.is_some_and(|c| {
+                let large = c.x_range().expand(2.0);
+                !large.contains(clipped.clip_rect.left())
+                    || !large.contains(clipped.clip_rect.right())
+            }) {
+                continue;
+            }
             if let egui::epaint::Shape::Text(t) = &clipped.shape {
                 for ligne in &t.galley.rows {
                     if ligne.glyphs.is_empty() {
@@ -21208,11 +21292,7 @@ fn ce_qui_est_écrit(
             .unwrap_or_else(|| panic!("la fenêtre « {id} » est affichée"))
             .rect()
     });
-    let dedans = lignes
-        .into_iter()
-        .filter(|(_, r)| cadre.is_none_or(|c| c.contains_rect(r.shrink(1.0))))
-        .collect();
-    (cadre, dedans)
+    (cadre, lignes)
 }
 
 /// Ce qu'on ne touche pas ne bouge pas.
@@ -21228,8 +21308,14 @@ fn ce_qui_est_écrit(
 /// précisément mesurée sur cette rangée : la fenêtre d'analyse montait
 /// de cinq pixels par image jusqu'à n'avoir plus de contenu visible.
 ///
-/// On dessine donc chaque fenêtre une douzaine de fois sans rien
-/// changer, et on demande que les six dernières images soient la même.
+/// On dessine donc chaque scène vingt fois sans rien changer, et on
+/// demande que les huit dernières images soient la même.
+///
+/// Vingt et non douze : egui n'installe pas une fenêtre à sa taille
+/// d'un coup, il l'y amène — la fenêtre d'analyse met neuf images à
+/// gagner son dernier pixel de largeur. Une mise en place qui converge
+/// n'est pas une dérive ; ce qu'on refuse, c'est ce qui ne s'arrête
+/// jamais.
 #[test]
 fn a_window_that_is_left_alone_stays_where_it_is() {
     let entrée = écran_du_banc();
@@ -21243,7 +21329,7 @@ fn a_window_that_is_left_alone_stays_where_it_is() {
         // Ce qui est écrit dans la fenêtre, et où — arrondi au pixel,
         // parce qu'un demi-pixel de fondu n'est pas un déplacement.
         let mut images: Vec<Vec<(String, i32, i32)>> = Vec::new();
-        for _ in 0..12 {
+        for _ in 0..20 {
             let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
             let cadre = id.and_then(|id| {
                 egui::AreaState::load(&ctx, egui::Id::new(id)).map(|a| a.rect())
@@ -21264,12 +21350,12 @@ fn a_window_that_is_left_alone_stays_where_it_is() {
             images.push(posés);
         }
 
-        let repère = &images[6];
+        let repère = &images[12];
         assert!(
             !repère.is_empty(),
             "« {nom} » ne peint aucun texte : le test ne prouverait rien"
         );
-        for (n, image) in images.iter().enumerate().skip(7) {
+        for (n, image) in images.iter().enumerate().skip(13) {
             if image != repère {
                 let bougé = repère
                     .iter()
@@ -21280,7 +21366,7 @@ fn a_window_that_is_left_alone_stays_where_it_is() {
                         format!("{} textes puis {}", repère.len(), image.len())
                     });
                 panic!(
-                    "« {nom} » bouge tout seul entre l'image 6 et l'image {n} : {bougé}"
+                    "« {nom} » bouge tout seul entre l'image 12 et l'image {n} : {bougé}"
                 );
             }
         }
@@ -21583,5 +21669,8 @@ fn every_text_stands_out_from_its_background() {
         fautes.join("\n  ")
     );
 }
+
+
+
 
 

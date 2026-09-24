@@ -316,6 +316,10 @@ six fautes d'assembleur que namsdec sait désormais reconnaître.
   aussitôt aux quatorze. Deux pour l'instant — rien ne bouge tout seul,
   deux textes ne se recouvrent jamais, un texte tronqué se lit encore en
   entier au survol, et tout texte se détache de son fond.
+- Chaque scène du banc est regardée **deux fois** : à vide, puis avec un
+  programme assemblé et avancé de huit pas. Une application qu'on vient
+  d'ouvrir n'affiche presque rien, et les défauts de mise en page
+  viennent avec le contenu.
 - Le banc ne regarde plus seulement les fenêtres : il passe aussi sur
   **l'application nue**, barre d'outils, panneau latéral et barre
   d'état comprises, et le contraste y est mesuré dans **chacun des

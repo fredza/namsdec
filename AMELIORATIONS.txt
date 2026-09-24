@@ -871,7 +871,22 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
          l'ordre des formes peintes, sans quoi la règle serait vide.
      Le banc ne regarde plus seulement les fenêtres : la notion de SCÈNE
      couvre aussi l'application nue, sur chacun des onglets du panneau, et le
-     contraste y passe dans les trois thèmes livrés.
+     contraste y passe dans les trois thèmes livrés. Chaque scène est en outre
+     regardée DEUX FOIS — à vide, puis avec un programme assemblé et avancé de
+     huit pas —, parce qu'une application qu'on vient d'ouvrir n'affiche
+     presque rien et que les défauts de mise en page viennent avec le contenu.
+     Deux leçons de cette extension, toutes deux des erreurs du banc et non de
+     l'interface :
+       - il faut trier les formes d'une fenêtre par la LARGEUR de leur
+         rectangle de découpe. Une fenêtre découpe son contenu à sa propre
+         largeur ; un panneau est découpé à celle de l'écran. Sans ce tri, un
+         registre caché derrière la fenêtre d'aide passait pour un
+         recouvrement. La hauteur ne dirait rien : egui laisse au découpage
+         d'une fenêtre plus de hauteur qu'elle n'en occupe.
+       - egui n'installe pas une fenêtre à sa taille d'un coup, il l'y amène :
+         la fenêtre d'analyse met neuf images à gagner son dernier pixel. Le
+         contrôle d'immobilité compare donc les images 12 à 20, et non 6 à 12.
+         Une mise en place qui converge n'est pas une dérive.
      Huit défauts réels trouvés le jour de leur écriture : la barre « OK » qui
      faisait monter toutes les fenêtres ; la calculatrice qui écrivait
      par-dessus son bouton (là depuis des semaines) ; le bleu de sélection, où
