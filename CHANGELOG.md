@@ -264,6 +264,24 @@ six fautes d'assembleur que namsdec sait désormais reconnaître.
   dans une colonne de trois cents ; la fenêtre d'analyse montre les mêmes
   en grand et tout dépliés. Deux fois la même chose, dont une mal.
 
+**« Base » et « Largeur » se lisent comme deux jumeaux**
+- Les deux listes prenaient la largeur de ce qu'elles affichaient :
+  « Binaire » et « 8 bits » donnaient deux boîtes de tailles
+  différentes, et deux flèches qui ne tombaient pas au même endroit.
+- Les largeurs sont maintenant mesurées sur les textes les plus longs —
+  « Hexadécimal », « Largeur » — et non écrites en dur : un chiffre posé
+  à la main alignerait le français en désalignant l'anglais.
+- Trois pièges d'egui traversés en chemin, et chacun vaut d'être su :
+  une rangée horizontale centre chaque élément sur la hauteur qu'elle a
+  *à cet instant* et ne recale pas ce qui est déjà posé, d'où « Base »
+  deux pixels au-dessus de « Largeur » ; une case allouée avance sur ce
+  qu'elle **contient**, non sur la taille demandée, d'où une colonne
+  d'étiquettes qui ne réservait rien ; et une liste prend la plus grande
+  de sa largeur demandée et de celle de son texte, d'où six pixels
+  d'écart quand la marge devinée est trop courte de quatre.
+- Le contrôle mesure les deux étiquettes, les deux valeurs et les deux
+  flèches, dans les deux langues.
+
 **L'état du processeur défilait**
 - Une **barre de défilement** coupait les registres sur une fenêtre de
   1280×820 — la taille par défaut. C'est ce qu'on regarde entre deux

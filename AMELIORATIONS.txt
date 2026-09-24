@@ -997,6 +997,25 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      « frame lente » pour la première image après un chargement. Le message
      est faux tel quel — il décrit un coût payé une fois comme s'il revenait.
 
+7.11 REVUE UX/UI COMPLÈTE, avant de reprendre les fonctions
+     Demandée le 25 septembre 2026, à faire le 26 : parcourir tout le
+     programme, fenêtre par fenêtre, et supprimer les incohérences de FORME
+     plutôt que de comportement. Les défauts trouvés en septembre sont presque
+     tous de ce genre — deux réglages jumeaux de tailles différentes, des
+     boutons plats dans les fenêtres et encadrés ailleurs, des icônes
+     illisibles en petit, la même phrase trois fois sur un écran.
+     Ce qu'il faut regarder : largeurs des champs jumeaux, alignement des
+     étiquettes et de leurs valeurs, styles de boutons, textes répétés,
+     icônes, espacements.
+     Déjà relevé et non corrigé : « Aucun binaire assemblé. » s'affiche TROIS
+     fois sur le même écran (bandeau des registres, onglet du panneau,
+     console) ; la console devrait dire ce qu'elle montrera plutôt que de
+     répéter le constat. Et dans le bandeau, la zone défilante coupe « EAX =
+     0 » au milieu d'une ligne quand la fenêtre est courte — la coupe devrait
+     tomber entre deux lignes.
+     Les captures se font en lançant namsdec sur un profil neuf (voir 3.2) :
+     c'est le seul moyen de voir ce que les tests laissent passer.
+
 --- Ce qui servirait ta vocation pédagogique ----------------------------
 
 7.9  UN MODE « EXPLIQUE-MOI CETTE FONCTION »

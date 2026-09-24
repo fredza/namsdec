@@ -7618,37 +7618,114 @@ impl NamsdecApp {
                         );
                     });
                 ui.add_space(6.0);
-                // Une boîte de largeur posée, dont le contenu est centré :
-                // les libellés changent de longueur avec la langue, et
-                // c'est la boîte qui se centre, non les mots.
-                centered_row(ui, 380.0, |ui| {
+                // Deux couples « étiquette + liste » de mesures
+                // identiques, de part et d'autre du filet.
+                //
+                // Ils ne l'étaient pas : chaque liste prenait la largeur
+                // de ce qu'elle affichait, si bien que « Binaire » et
+                // « 8 bits » donnaient deux boîtes de tailles
+                // différentes et deux flèches qui ne tombaient pas au
+                // même endroit. Deux réglages jumeaux doivent se lire
+                // comme jumeaux.
+                //
+                // Les largeurs sont mesurées sur les textes les plus
+                // longs — « Hexadécimal », « Largeur » — et non écrites
+                // en dur : les libellés changent de longueur avec la
+                // langue, et un chiffre posé à la main aligne le
+                // français en désalignant l'anglais.
+                let (étiquette, liste) = calculator_pick_widths(ui, s);
+                let couple = étiquette + 6.0 + liste;
+                let rangée = (couple * 2.0 + 20.0).min(CALC_LARGEUR);
+                // Chaque couple dans sa propre case, de mesures
+                // identiques : c'est ce qui les aligne vraiment.
+                //
+                // Tout dans une seule rangée ne suffisait pas. Une
+                // rangée horizontale d'egui centre chaque élément sur sa
+                // hauteur du moment, et ne recale pas ce qui est déjà
+                // posé quand un élément plus haut arrive ensuite — la
+                // liste est plus haute qu'une étiquette, si bien que
+                // « Base », posé avant la première liste, se retrouvait
+                // deux pixels au-dessus de « Largeur », posé après.
+                // Dans deux cases jumelles, les deux subissent la même
+                // chose, donc rien ne bouge.
+                // Une hauteur qui dépasse tout ce que la rangée porte, la
+                // liste comprise.
+                //
+                // C'est la clé, et elle a demandé trois essais. Une
+                // rangée horizontale d'egui centre chaque élément sur la
+                // hauteur qu'elle a *à cet instant*, et ne recale pas ce
+                // qui est déjà posé quand un élément plus haut arrive
+                // ensuite. La liste est plus haute qu'une étiquette :
+                // « Base », posé avant la première liste, se retrouvait
+                // deux pixels au-dessus de « Largeur », posé après. Si
+                // rien ne fait grandir la rangée, personne ne se décale.
+                let hauteur = ui.spacing().interact_size.y.max(30.0);
+                centered_row(ui, rangée, |ui| {
+                    ui.spacing_mut().item_spacing.x = 6.0;
                     ui.allocate_ui_with_layout(
-                        egui::vec2(380.0, 24.0),
-                        egui::Layout::left_to_right(egui::Align::Center)
-                            .with_main_align(egui::Align::Center),
+                        egui::vec2(couple, hauteur),
+                        egui::Layout::left_to_right(egui::Align::Center),
                         |ui| {
-                        ui.colored_label(theme.dim, s.calculator_base_label);
-                        egui::ComboBox::from_id_salt("calculator_base")
-                            .selected_text(self.calc_base.label(s))
-                            .show_ui(ui, |ui| {
-                                for base in CalcBase::ALL {
-                                    ui.selectable_value(&mut self.calc_base, base, base.label(s));
-                                }
-                            });
-                        ui.separator();
-                        ui.colored_label(theme.dim, s.calculator_width_label);
-                        egui::ComboBox::from_id_salt("calculator_width")
-                            .selected_text(format!("{} bits", self.calc_width.bits()))
-                            .show_ui(ui, |ui| {
-                                for largeur in CalcWidth::ALL {
-                                    ui.selectable_value(
-                                        &mut self.calc_width,
-                                        largeur,
-                                        format!("{} bits", largeur.bits()),
-                                    );
-                                }
-                            });
-                    });
+                            ui.spacing_mut().item_spacing.x = 6.0;
+                            ui.allocate_ui_with_layout(
+                                egui::vec2(étiquette, hauteur),
+                                egui::Layout::left_to_right(egui::Align::Center),
+                                |ui| {
+                                    // `set_min_width` en plus de la
+                                    // taille demandée : une case
+                                    // allouée avance sur ce qu'elle
+                                    // CONTIENT, non sur ce qu'on lui a
+                                    // donné. Sans cela, « Base », plus
+                                    // court que « Largeur », laissait
+                                    // sa liste remonter de dix-sept
+                                    // pixels — et les deux flèches ne
+                                    // tombaient pas au même endroit.
+                                    ui.set_min_width(étiquette);
+                                    ui.colored_label(theme.dim, s.calculator_base_label)
+                                },
+                            );
+                            egui::ComboBox::from_id_salt("calculator_base")
+                                .width(liste)
+                                .selected_text(self.calc_base.label(s))
+                                .show_ui(ui, |ui| {
+                                    for base in CalcBase::ALL {
+                                        ui.selectable_value(
+                                            &mut self.calc_base,
+                                            base,
+                                            base.label(s),
+                                        );
+                                    }
+                                });
+                        },
+                    );
+                    ui.separator();
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(couple, hauteur),
+                        egui::Layout::left_to_right(egui::Align::Center),
+                        |ui| {
+                            ui.spacing_mut().item_spacing.x = 6.0;
+                            ui.allocate_ui_with_layout(
+                                egui::vec2(étiquette, hauteur),
+                                egui::Layout::left_to_right(egui::Align::Center),
+                                |ui| {
+                                    ui.set_min_width(étiquette);
+                                    ui.colored_label(theme.dim, s.calculator_width_label)
+                                },
+                            );
+                            egui::ComboBox::from_id_salt("calculator_width")
+                                .width(liste)
+                                .selected_text(format!("{} bits", self.calc_width.bits()))
+                                .show_ui(ui, |ui| {
+                                    for largeur in CalcWidth::ALL {
+                                        ui.selectable_value(
+                                            &mut self.calc_width,
+                                            largeur,
+                                            format!("{} bits", largeur.bits()),
+                                        );
+                                    }
+                                });
+                        },
+                    );
                 });
 
                 ui.add_space(6.0);
@@ -18576,6 +18653,47 @@ const COLONNES: usize = 6;
 /// même largeur a l'air monté de deux morceaux. La valeur vient de la
 /// grille de bits, qui est celle des deux qu'on ne peut pas resserrer —
 /// trente-deux colonnes lisibles.
+/// La largeur d'une étiquette et celle d'une liste, dans la rangée
+/// « Base » / « Largeur » de la calculatrice.
+///
+/// Mesurées sur les textes les plus longs de chaque colonne, dans la
+/// langue courante : c'est ce qui fait que les deux couples ont la même
+/// taille et que les deux flèches tombent au même endroit. Un chiffre
+/// écrit en dur alignerait le français en désalignant l'anglais.
+fn calculator_pick_widths(ui: &egui::Ui, s: &Strings) -> (f32, f32) {
+    let police = egui::TextStyle::Body.resolve(ui.style());
+    let mesure = |texte: String| {
+        ui.painter()
+            .layout_no_wrap(texte, police.clone(), egui::Color32::PLACEHOLDER)
+            .size()
+            .x
+    };
+    let étiquette = mesure(s.calculator_base_label.to_owned())
+        .max(mesure(s.calculator_width_label.to_owned()));
+    let choix = CalcBase::ALL
+        .iter()
+        .map(|base| mesure(base.label(s).to_owned()))
+        .chain(
+            CalcWidth::ALL
+                .iter()
+                .map(|largeur| mesure(format!("{} bits", largeur.bits()))),
+        )
+        .fold(0.0_f32, f32::max);
+    // Ce qu'une liste ajoute autour de son texte, demandé au style et
+    // non deviné : l'écart avant la flèche, la flèche, et les deux
+    // marges du bouton.
+    //
+    // Deviné, il l'était de quatre pixels trop peu — et c'est tout ce
+    // qu'il fallait pour que la largeur demandée ne suffise plus au plus
+    // long des choix. egui prend alors la plus grande des deux, si bien
+    // que la liste des bases était six pixels plus large que celle des
+    // largeurs, et les deux flèches ne tombaient pas au même endroit.
+    let autour = ui.spacing().icon_spacing
+        + ui.spacing().icon_width
+        + ui.spacing().button_padding.x * 2.0;
+    (étiquette.ceil(), (choix + autour).ceil() + 1.0)
+}
+
 const CALC_LARGEUR: f32 = 366.0;
 
 /// La largeur d'une touche, déduite de celle du bloc.

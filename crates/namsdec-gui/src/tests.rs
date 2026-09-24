@@ -22705,3 +22705,131 @@ fn the_cpu_state_never_scrolls_at_any_window_size() {
         }
     }
 }
+
+/// « Base » et « Largeur » sont deux réglages jumeaux, et se lisent
+/// comme tels.
+///
+/// Chaque liste prenait la largeur de ce qu'elle affichait : « Binaire »
+/// et « 8 bits » donnaient deux boîtes de tailles différentes, et deux
+/// flèches qui ne tombaient pas au même endroit. Les largeurs sont
+/// maintenant mesurées sur les textes les plus longs — et dans les deux
+/// langues, parce qu'un chiffre écrit en dur alignerait le français en
+/// désalignant l'anglais.
+#[test]
+fn the_base_and_the_width_are_two_twins_and_read_as_twins() {
+    for lang in [Lang::Fr, Lang::En] {
+        let s = strings(lang);
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp {
+            lang,
+            show_calculator: true,
+            ..Default::default()
+        };
+        app.apply_theme(&ctx);
+        let entrée = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1600.0, 1100.0),
+            )),
+            ..Default::default()
+        };
+        // Où chaque texte est peint, une fois la fenêtre posée.
+        let mut posés: Vec<(String, egui::Rect)> = Vec::new();
+        for _ in 0..4 {
+            posés.clear();
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                    posés.push((
+                        t.galley.text().to_owned(),
+                        egui::Rect::from_min_size(t.pos, t.galley.size()),
+                    ));
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+        let où = |quoi: &str| -> egui::Rect {
+            posés
+                .iter()
+                .find(|(t, _)| t == quoi)
+                .map(|(_, r)| *r)
+                .unwrap_or_else(|| panic!("{lang:?} : « {quoi} » est peint"))
+        };
+
+        let base = où(s.calculator_base_label);
+        let largeur = où(s.calculator_width_label);
+        // Les deux étiquettes sur la même ligne — comparées par leur
+        // MILIEU : « Largeur » a une hampe descendante et « Base » non,
+        // si bien que leurs galettes n'ont pas la même hauteur et que
+        // leurs bords hauts ne coïncident pas alors qu'elles sont
+        // pourtant sur la même ligne.
+        assert!(
+            (base.center().y - largeur.center().y).abs() < 2.0,
+            "{lang:?} : les deux étiquettes doivent être sur la même ligne — \
+             {:.1} contre {:.1}",
+            base.center().y,
+            largeur.center().y
+        );
+        let valeur_base = où(app.calc_base.label(s));
+        let valeur_largeur = où(&format!("{} bits", app.calc_width.bits()));
+        let écart_base = valeur_base.left() - base.left();
+        let écart_largeur = valeur_largeur.left() - largeur.left();
+        assert!(
+            (écart_base - écart_largeur).abs() < 1.0,
+            "{lang:?} : la valeur doit être au même écart de son étiquette — \
+             {écart_base:.1} px pour « {} », {écart_largeur:.1} px pour « {} »",
+            s.calculator_base_label,
+            s.calculator_width_label
+        );
+
+        // Et les deux flèches tombent au même endroit : c'est ce qui se
+        // voit d'abord. egui les dessine en triangle, calées à droite de
+        // la liste — deux listes de même largeur donnent donc deux
+        // flèches au même écart de leur étiquette.
+        let mut flèches: Vec<f32> = flèches_de_la_rangée(&ctx, &mut app, base.center().y);
+        flèches.sort_by(f32::total_cmp);
+        assert_eq!(
+            flèches.len(),
+            2,
+            "{lang:?} : deux listes, donc deux flèches — {flèches:?}"
+        );
+        let vers_flèche_base = flèches[0] - base.left();
+        let vers_flèche_largeur = flèches[1] - largeur.left();
+        assert!(
+            (vers_flèche_base - vers_flèche_largeur).abs() < 1.0,
+            "{lang:?} : les deux flèches doivent tomber au même endroit — \
+             {vers_flèche_base:.1} px contre {vers_flèche_largeur:.1} px"
+        );
+    }
+}
+
+/// Les abscisses des flèches de liste posées sur cette ligne.
+///
+/// egui dessine la flèche d'une `ComboBox` en triangle fermé de trois
+/// points, calée à droite de la boîte. C'est le repère le plus proche du
+/// bord droit de la liste, et donc le meilleur pour dire si deux listes
+/// ont la même largeur.
+fn flèches_de_la_rangée(ctx: &egui::Context, app: &mut NamsdecApp, ligne: f32) -> Vec<f32> {
+    let entrée = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1600.0, 1100.0),
+        )),
+        ..Default::default()
+    };
+    let mut sortie = ctx.run_ui(entrée, |ui| app.draw(ui));
+    let mut x = Vec::new();
+    for clipped in &sortie.shapes {
+        if let egui::epaint::Shape::Path(chemin) = &clipped.shape
+            && chemin.closed
+            && chemin.points.len() == 3
+        {
+            let boîte = egui::Rect::from_points(&chemin.points);
+            if (boîte.center().y - ligne).abs() < 12.0 {
+                x.push(boîte.left());
+            }
+        }
+    }
+    sortie.textures_delta.clear();
+    x
+}

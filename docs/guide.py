@@ -638,6 +638,13 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "du code. C'est la même raison qui fait écrire "
          "<font face='Courier'>qword [rsp]</font> plutôt qu'une notation à nous."),
         ("p",
+         "<b>Base</b> et <b>Largeur</b> sont deux réglages jumeaux, et se lisent "
+         "comme tels : même largeur d’étiquette, même largeur de liste, "
+         "les deux flèches au même endroit. Les mesures sont prises sur les "
+         "textes les plus longs de chaque colonne, dans la langue affichée — un "
+         "chiffre écrit en dur alignerait le français en désalignant "
+         "l’anglais."),
+        ("p",
          "La <b>base</b> gouverne les deux sens : le grand résultat est écrit "
          "dedans, et un chiffre tapé au clavier de l'écran y entre avec le "
          "préfixe qui va avec — en hexadécimal, "
