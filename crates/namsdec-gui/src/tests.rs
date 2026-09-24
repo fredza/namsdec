@@ -9572,7 +9572,7 @@ fn opening_a_binary_shows_its_code_not_its_header() {
 #[test]
 fn both_languages_say_the_same_things() {
     /// Les champs dont les deux langues partagent le texte, et pourquoi.
-    const LES_MÊMES: [&str; 27] = [
+    const LES_MÊMES: [&str; 26] = [
         // Une adresse d'exemple : elle s'écrit pareil partout.
         "flow_goal_hint",
         // Une adresse et deux noms propres : les traduire n'aurait pas
@@ -9602,7 +9602,6 @@ fn both_languages_say_the_same_things() {
         "view_console",
         "x87_empty",
         // Le mot est le même des deux côtés de la Manche.
-        "calculator_expression",
         "calculator_base_label",
         "reading_octal",
         "reading_ascii",
@@ -12547,6 +12546,97 @@ fn a_truncated_status_message_can_be_read_in_full() {
         let (texte, _, _) = app.status_line();
         assert!(!texte.trim().is_empty(), "un état sans phrase : {:?}", app.status);
     }
+}
+
+/// L'expression se tape dans l'écran, au-dessus du résultat.
+///
+/// Un champ de saisie encadré, posé au-dessus avec son étiquette
+/// « Expression », faisait un formulaire. Sur une calculatrice, la ligne
+/// du haut de l'écran *est* le champ : c'est là que les chiffres
+/// arrivent, et le résultat s'écrit dessous.
+#[test]
+fn the_expression_is_typed_inside_the_screen_above_the_result() {
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp {
+        show_calculator: true,
+        calc_input: "0xff & 0x0f".to_owned(),
+        ..Default::default()
+    };
+    app.apply_theme(&ctx);
+    let entrée = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1600.0, 1200.0),
+        )),
+        ..Default::default()
+    };
+
+    let mut textes: Vec<(String, egui::Rect)> = Vec::new();
+    let mut écran: Option<egui::Rect> = None;
+    for _ in 0..3 {
+        textes.clear();
+        écran = None;
+        let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+        for clipped in &sortie.shapes {
+            match &clipped.shape {
+                egui::epaint::Shape::Text(t) => {
+                    textes.push((
+                        t.galley.text().to_owned(),
+                        egui::Rect::from_min_size(t.pos, t.galley.size()),
+                    ));
+                }
+                // Le cadre de l'écran : la seule forme à cette largeur.
+                // Deux pixels de tolérance, parce que le liseré déborde
+                // du rectangle qu'on lui a donné.
+                egui::epaint::Shape::Rect(cadre)
+                    if (cadre.rect.width() - (CALC_LARGEUR + 20.0)).abs() < 3.0 =>
+                {
+                    écran = Some(cadre.rect);
+                }
+                _ => {}
+            }
+        }
+        sortie.textures_delta.clear();
+    }
+    let écran = écran.expect("l'écran a son cadre");
+
+    let où = |quoi: &str| -> egui::Rect {
+        textes
+            .iter()
+            .find(|(t, _)| t == quoi)
+            .map(|(_, r)| *r)
+            .unwrap_or_else(|| panic!("« {quoi} » doit être peint"))
+    };
+    let expression = où("0xff & 0x0f");
+    // `0xff & 0x0f` vaut 15, écrit en hexadécimal comme le veut la base
+    // par défaut.
+    let résultat = où("0xf");
+
+    assert!(
+        écran.contains_rect(expression.shrink(1.0)),
+        "l'expression est dans l'écran : {expression:?} dans {écran:?}"
+    );
+    assert!(
+        écran.contains_rect(résultat.shrink(1.0)),
+        "et le résultat aussi : {résultat:?}"
+    );
+    assert!(
+        expression.bottom() <= résultat.top() + 1.0,
+        "l'expression est au-dessus du résultat : {expression:?} puis {résultat:?}"
+    );
+    // En grand, et pas à la taille d'un champ ordinaire.
+    assert!(
+        expression.height() > 20.0,
+        "l'expression se lit en grand : {} de haut",
+        expression.height()
+    );
+    // Les deux calées à gauche, au même bord : on écrit une expression,
+    // qui se lit de gauche à droite comme la ligne de code d'où elle
+    // sort.
+    assert!(
+        (expression.left() - résultat.left()).abs() < 4.0,
+        "les deux lignes partagent un bord gauche : {expression:?} et {résultat:?}"
+    );
 }
 
 /// Les touches du clavier sont de vrais boutons, et le bloc est centré.

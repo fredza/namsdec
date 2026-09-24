@@ -74,9 +74,21 @@ six fautes d'assembleur que namsdec sait désormais reconnaître.
   s'assombrissent sous le clic — un bouton auquel on impose un fond
   garde le même dans tous les états, et le clavier avait l'air d'une
   image.
-- L'**écran** — le résultat et les bits — a son cadre, sur le fond de
-  l'éditeur : ce que l'appareil montre se distingue de ce sur quoi on
-  appuie. Les deux blocs ont la même largeur au pixel.
+- L'**écran** — l'expression, le résultat et les bits — a son cadre, sur
+  le fond de l'éditeur : ce que l'appareil montre se distingue de ce sur
+  quoi on appuie. Les deux blocs ont la même largeur au pixel.
+- **On tape dans l'écran**, sur sa première ligne et en dix-neuf points,
+  sans cadre ni étiquette. Un champ encadré posé au-dessus avec son
+  libellé « Expression » faisait un formulaire ; sur une calculatrice,
+  la ligne du haut de l'écran *est* le champ.
+- Les **dix opérateurs et les dix-huit fonctions** sont désormais
+  croisés avec la sémantique de Rust sur seize valeurs limites — zéro,
+  un, les puissances de deux, les bords de chaque largeur, `u64::MAX` :
+  deux mille cinq cents comparaisons pour les opérateurs, autant pour
+  les fonctions, et quatorze expressions confrontées à leur forme
+  entièrement parenthésée. Une priorité inversée donne des résultats
+  *plausibles*, ce qui la rend dangereuse : `1 | 2 & 3` vaut 3 dans un
+  sens et 2 dans l'autre, et rien à l'écran ne dit lequel on a obtenu.
 - La fenêtre est bornée en largeur. La rangée des dix-huit fonctions la
   poussait à douze cents pixels, où un clavier de trois cent
   soixante-six flottait au milieu du vide.

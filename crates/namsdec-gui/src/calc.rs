@@ -763,6 +763,165 @@ mod tests {
         assert_eq!(lis("[0x1000"), Err(CalcError::Unbalanced));
     }
 
+    /// Un jeu de valeurs qui couvre les cas où l'arithmétique trébuche.
+    ///
+    /// Zéro, un, les puissances de deux, les bords de chaque largeur, et
+    /// quelques valeurs quelconques. C'est là que se cachent les
+    /// débordements, les décalages de soixante-quatre et les signes mal
+    /// étendus — jamais au milieu.
+    const ÉPREUVES: [u64; 16] = [
+        0,
+        1,
+        2,
+        7,
+        0xff,
+        0x100,
+        0xffff,
+        0x1_0000,
+        0xffff_ffff,
+        0x1_0000_0000,
+        0x8000_0000_0000_0000,
+        0xffff_ffff_ffff_fffe,
+        u64::MAX,
+        0x1234_5678_9abc_def0,
+        0xdead_beef,
+        0x0f0f_0f0f_0f0f_0f0f,
+    ];
+
+    /// Chaque opérateur rend ce que Rust rendrait.
+    ///
+    /// Non pas une poignée d'exemples choisis, mais tout le produit
+    /// croisé des valeurs limites : seize par seize, pour chacun des dix
+    /// opérateurs. Une calculatrice de rétro-ingénierie qui se trompe
+    /// d'un bit fait chercher un mot de passe qui n'existe pas, et l'on
+    /// accuse le binaire.
+    #[test]
+    fn every_operator_gives_what_the_machine_gives() {
+        for a in ÉPREUVES {
+            for b in ÉPREUVES {
+                let attendu: [(&str, Option<u64>); 10] = [
+                    ("+", Some(a.wrapping_add(b))),
+                    ("-", Some(a.wrapping_sub(b))),
+                    ("*", Some(a.wrapping_mul(b))),
+                    ("/", (b != 0).then(|| a / b)),
+                    ("%", (b != 0).then(|| a % b)),
+                    ("&", Some(a & b)),
+                    ("|", Some(a | b)),
+                    ("^", Some(a ^ b)),
+                    // Décaler de soixante-quatre ou plus rend zéro. Le
+                    // processeur, lui, ne regarde que les six bits de
+                    // bas — `shl rax, 64` ne fait rien du tout — mais
+                    // une calculatrice doit la réponse mathématique.
+                    ("<<", Some(if b >= 64 { 0 } else { a << b })),
+                    (">>", Some(if b >= 64 { 0 } else { a >> b })),
+                ];
+                for (op, veut) in attendu {
+                    let écrit = format!("{a:#x} {op} {b:#x}");
+                    match veut {
+                        Some(valeur) => assert_eq!(
+                            eval(&écrit, None),
+                            Ok(valeur),
+                            "{écrit} doit valoir {valeur:#x}"
+                        ),
+                        None => assert_eq!(
+                            eval(&écrit, None),
+                            Err(CalcError::DivideByZero),
+                            "{écrit} divise par zéro"
+                        ),
+                    }
+                }
+                // Les unaires, sur la même série.
+                assert_eq!(eval(&format!("~{a:#x}"), None), Ok(!a), "~{a:#x}");
+                assert_eq!(
+                    eval(&format!("-{a:#x}"), None),
+                    Ok(0u64.wrapping_sub(a)),
+                    "-{a:#x}"
+                );
+            }
+        }
+    }
+
+    /// Les dix-huit fonctions rendent ce que leur nom promet.
+    ///
+    /// Comparées à l'opération de Rust qu'elles nomment, sur la même
+    /// série de valeurs limites : `popcnt` compte les bits à un,
+    /// `bswap32` permute quatre octets et pas huit, `sext8` étend le
+    /// signe d'un octet — et l'on veut que ce soit vrai pour
+    /// `0x8000_0000_0000_0000` comme pour 7.
+    #[test]
+    fn every_function_does_what_its_name_promises() {
+        for a in ÉPREUVES {
+            let un = |nom: &str| eval(&format!("{nom}({a:#x})"), None);
+            assert_eq!(un("bswap16"), Ok(u64::from((a as u16).swap_bytes())));
+            assert_eq!(un("bswap32"), Ok(u64::from((a as u32).swap_bytes())));
+            assert_eq!(un("bswap64"), Ok(a.swap_bytes()));
+            assert_eq!(un("sext8"), Ok(a as u8 as i8 as i64 as u64));
+            assert_eq!(un("sext16"), Ok(a as u16 as i16 as i64 as u64));
+            assert_eq!(un("sext32"), Ok(a as u32 as i32 as i64 as u64));
+            assert_eq!(un("lo8"), Ok(a & 0xff));
+            assert_eq!(un("lo16"), Ok(a & 0xffff));
+            assert_eq!(un("lo32"), Ok(a & 0xffff_ffff));
+            assert_eq!(un("hi32"), Ok(a >> 32));
+            assert_eq!(un("popcnt"), Ok(u64::from(a.count_ones())));
+            assert_eq!(un("clz"), Ok(u64::from(a.leading_zeros())));
+            assert_eq!(un("ctz"), Ok(u64::from(a.trailing_zeros())));
+
+            for b in ÉPREUVES {
+                let deux = |nom: &str| eval(&format!("{nom}({a:#x}, {b:#x})"), None);
+                assert_eq!(deux("rol"), Ok(a.rotate_left((b % 64) as u32)));
+                assert_eq!(deux("ror"), Ok(a.rotate_right((b % 64) as u32)));
+                assert_eq!(deux("min"), Ok(a.min(b)));
+                assert_eq!(deux("max"), Ok(a.max(b)));
+                // Aligner sur zéro ne veut rien dire : on rend la valeur
+                // telle quelle plutôt que de diviser par zéro.
+                let aligné = if b == 0 {
+                    a
+                } else {
+                    a.div_ceil(b).wrapping_mul(b)
+                };
+                assert_eq!(deux("align"), Ok(aligné), "align({a:#x}, {b:#x})");
+            }
+        }
+    }
+
+    /// Les priorités sont bien celles du C, vérifiées par parenthèses.
+    ///
+    /// Une priorité inversée donne des résultats *plausibles* — c'est ce
+    /// qui la rend dangereuse : `1 | 2 & 3` vaut 3 dans un sens et 2
+    /// dans l'autre, et rien à l'écran ne dit lequel on a obtenu. On
+    /// compare donc chaque expression à sa forme entièrement
+    /// parenthésée.
+    #[test]
+    fn precedence_matches_the_fully_parenthesised_form() {
+        const CAS: [(&str, &str); 14] = [
+            ("1 + 2 * 3", "1 + (2 * 3)"),
+            ("2 * 3 + 1", "(2 * 3) + 1"),
+            ("8 / 4 / 2", "(8 / 4) / 2"),
+            ("10 - 3 - 2", "(10 - 3) - 2"),
+            ("1 << 2 + 3", "1 << (2 + 3)"),
+            ("0xff >> 2 * 2", "0xff >> (2 * 2)"),
+            ("1 | 2 & 3", "1 | (2 & 3)"),
+            ("1 ^ 2 & 3", "1 ^ (2 & 3)"),
+            ("1 | 2 ^ 3", "1 | (2 ^ 3)"),
+            ("0xf0 & 0x30 | 0x0f", "(0xf0 & 0x30) | 0x0f"),
+            ("~1 + 1", "(~1) + 1"),
+            ("-2 * 3", "(-2) * 3"),
+            ("1 + 2 << 1", "(1 + 2) << 1"),
+            ("7 % 4 * 2", "(7 % 4) * 2"),
+        ];
+        for (nu, parenthésé) in CAS {
+            assert_eq!(
+                eval(nu, None),
+                eval(parenthésé, None),
+                "« {nu} » doit se lire « {parenthésé} »"
+            );
+        }
+        // Et les priorités sont bien celles du C, non l'ordre d'écriture.
+        assert_eq!(eval("1 + 2 * 3", None), Ok(7), "et non 9");
+        assert_eq!(eval("1 | 2 & 3", None), Ok(3), "et non 0");
+        assert_eq!(eval("1 << 2 + 3", None), Ok(32), "et non 7");
+    }
+
     /// Mal écrit, ou seulement incalculable ici ?
     ///
     /// La distinction décide si un champ de condition doit devenir

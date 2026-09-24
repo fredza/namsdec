@@ -7203,21 +7203,6 @@ impl NamsdecApp {
                 centered_row(ui, CALC_LARGEUR + 20.0, |ui| {
                     ui.vertical(|ui| {
                         ui.set_width(CALC_LARGEUR + 20.0);
-                ui.horizontal(|ui| {
-                    ui.colored_label(theme.dim, s.calculator_expression);
-                    let champ = ui.add(
-                        egui::TextEdit::singleline(&mut self.calc_input)
-                            .hint_text(s.calculator_hint_text)
-                            .font(egui::TextStyle::Monospace)
-                            .desired_width(ui.available_width()),
-                    );
-                    // Le curseur est dans le champ dès l'ouverture : on
-                    // vient là pour taper, pas pour cliquer d'abord.
-                    if !self.calculator_was_open {
-                        champ.request_focus();
-                    }
-                });
-
                 // Le résultat en grand, dans la base choisie et sur la
                 // largeur choisie. C'est la ligne qu'on regarde, elle a
                 // donc la taille qui va avec.
@@ -7246,6 +7231,8 @@ impl NamsdecApp {
                             ui,
                             theme,
                             s,
+                            &mut self.calc_input,
+                            !self.calculator_was_open,
                             &résultat,
                             valeur,
                             self.calc_base,
@@ -17687,6 +17674,8 @@ fn écran_calculatrice(
     ui: &mut egui::Ui,
     theme: &'static Theme,
     s: &Strings,
+    expression: &mut String,
+    prendre_le_clavier: bool,
     résultat: &Result<u64, calc::CalcError>,
     valeur: Option<u64>,
     base: CalcBase,
@@ -17694,7 +17683,35 @@ fn écran_calculatrice(
     à_copier: &mut Option<String>,
     bit_basculé: &mut Option<u32>,
 ) {
-    ui.vertical_centered(|ui| match (résultat, valeur) {
+    // L'expression **dans** l'écran, en grand : c'est la ligne du haut
+    // d'une calculatrice, celle où l'on tape. Un champ de saisie
+    // encadré, posé au-dessus avec son étiquette « Expression »,
+    // faisait un formulaire.
+    //
+    // Alignée à gauche, et le résultat aussi. Une calculatrice de
+    // bureau cale à droite parce qu'on y entre un nombre chiffre par
+    // chiffre ; ici on écrit une *expression*, qui se lit de gauche à
+    // droite comme la ligne de code d'où elle sort.
+    //
+    // Sans cadre et sans fond : le cadre de l'écran est déjà là, et un
+    // second liseré à l'intérieur ferait deux boîtes imbriquées. C'est
+    // le curseur qui dit que la ligne s'écrit.
+    let champ = ui.add(
+        egui::TextEdit::singleline(expression)
+            .hint_text(s.calculator_hint_text)
+            .font(egui::FontId::monospace(19.0))
+            .frame(egui::Frame::NONE)
+            .margin(egui::Margin::ZERO)
+            .desired_width(ui.available_width()),
+    );
+    // Le curseur y est dès l'ouverture : on vient là pour taper, pas
+    // pour cliquer d'abord.
+    if prendre_le_clavier {
+        champ.request_focus();
+    }
+    ui.add_space(2.0);
+
+    match (résultat, valeur) {
         (Ok(_), Some(valeur)) => {
             let texte = base.écrire(valeur);
             let réponse = ui.add(
@@ -17722,7 +17739,7 @@ fn écran_calculatrice(
             }
         }
         _ => {}
-    });
+    }
     ui.add_space(8.0);
     calculator_bits_ui(
         ui,

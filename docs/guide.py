@@ -561,9 +561,13 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "vaut <font face='Courier'>0x1f</font> avec le quatrième bit en moins, et "
          "l'écrire à la main est plus long que de le cliquer."),
         ("p",
-         "L'écran — le résultat et les bits — vit dans son cadre, sur le fond de "
-         "l'éditeur : c'est ce qui distingue ce que l'appareil <i>montre</i> de ce sur "
-         "quoi on <i>appuie</i>. Les deux blocs ont la même largeur, au pixel, parce "
+         "L'écran — l'expression, le résultat et les bits — vit dans son cadre, "
+         "sur le fond de l'éditeur : c'est ce qui distingue ce que l'appareil "
+         "<i>montre</i> de ce sur quoi on <i>appuie</i>. <b>On tape dans l'écran</b>, "
+         "sur sa première ligne et en grand ; le résultat s'écrit dessous, plus "
+         "grand encore. Les deux se lisent de gauche à droite, comme la ligne de code "
+         "d'où l'expression sort — une calculatrice de bureau cale à droite parce "
+         "qu'on y entre un nombre chiffre par chiffre, ce qui n'est pas ce qu'on fait ici. Les deux blocs ont la même largeur, au pixel, parce "
          "qu'un appareil dont l'écran et le clavier n'ont pas la même largeur a l'air "
          "monté de deux morceaux."),
         ("p",
