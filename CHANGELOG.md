@@ -110,6 +110,11 @@ six fautes d'assembleur que namsdec sait désormais reconnaître.
   cherchant un titre à l'ascenseur.
 - « Tout » les remet à la file, qui est la forme d'un compte rendu —
   c'est cette vue-là qu'on copie. Le module choisi est un réglage.
+- Les chaînes d'un binaire s'alignent à gauche, quelle que soit leur
+  longueur. Elles flottaient au milieu du panneau, chacune à une
+  abscisse différente : `add_sized` centre son contenu, et dire à
+  l'étiquette de s'aligner à gauche ne suffisait pas à l'en empêcher. On
+  cherchait chaque ligne au lieu de descendre la colonne.
 - Le contenu ne s'étire plus au-delà d'une largeur de lecture. Sur un
   écran large, une table à deux colonnes posait la seconde à mille
   pixels de la première, et l'on suivait la ligne du doigt.

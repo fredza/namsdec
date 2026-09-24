@@ -308,14 +308,28 @@ impl ReModule for StringsModule {
                         // largeur. Dimensionnée explicitement, sinon
                         // `truncate` coupe à la largeur idéale du texte
                         // et laisse le reste de la ligne vide.
+                        //
+                        // `allocate_ui_with_layout` et non `add_sized` :
+                        // ce dernier centre son contenu dans la case
+                        // qu'il alloue, si bien que les chaînes
+                        // flottaient au milieu d'un panneau large, à des
+                        // abscisses différentes selon leur longueur. On
+                        // lit une liste de gauche à droite, avec un bord
+                        // commun.
                         let reste = ui.available_width().max(24.0);
-                        ui.add_sized(
-                            [reste, ui.spacing().interact_size.y],
-                            egui::Label::new(egui::RichText::new(&found.text).monospace())
-                                .truncate()
-                                .halign(egui::Align::LEFT),
-                        )
-                        .on_hover_text(&found.text);
+                        ui.allocate_ui_with_layout(
+                            egui::vec2(reste, ui.spacing().interact_size.y),
+                            egui::Layout::left_to_right(egui::Align::Center),
+                            |ui| {
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(&found.text).monospace(),
+                                    )
+                                    .truncate(),
+                                )
+                                .on_hover_text(&found.text);
+                            },
+                        );
                     });
                 }
             });
@@ -325,6 +339,80 @@ impl ReModule for StringsModule {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// La liste des chaînes s'aligne à gauche, quelle que soit leur
+    /// longueur.
+    ///
+    /// Elles flottaient au milieu du panneau, à des abscisses
+    /// différentes selon leur longueur : `add_sized` centre son contenu
+    /// dans la case qu'il alloue, et dire à l'étiquette de s'aligner à
+    /// gauche ne suffisait pas à l'en empêcher. Sur un écran large, la
+    /// liste devenait illisible — on cherchait chaque ligne au lieu de
+    /// descendre la colonne.
+    #[test]
+    fn the_list_lines_up_on_the_left_whatever_the_length() {
+        use namsdec_core::{Cpu, Memory};
+
+        // Deux chaînes de longueurs très différentes, posées en
+        // mémoire : c'est l'écart de longueur qui révélait le
+        // centrage.
+        let mut mémoire = Memory::new(0x400000, 0x1000);
+        let données = b"court\0une chaine beaucoup plus longue que la premiere\0";
+        mémoire.poke(0x400000, données).expect("la mémoire accepte");
+        let cpu = Cpu::new(mémoire);
+        let ctx = ReContext {
+            cpu: &cpu,
+            disasm: &[],
+            source: "",
+            // Pas d'ELF : le module lit alors la mémoire telle quelle.
+            binary: &[],
+            lang: "fr",
+        };
+        let mut module = StringsModule::default();
+        module.on_binary_loaded(&ctx);
+        assert!(
+            module.found.len() >= 2,
+            "les deux chaînes sont trouvées : {:?}",
+            module.found
+        );
+
+        // Peintes dans une fenêtre large : c'est là que le centrage se
+        // voyait.
+        let egui_ctx = egui::Context::default();
+        let entrée = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1600.0, 900.0),
+            )),
+            ..Default::default()
+        };
+        let mut posés: Vec<(String, f32)> = Vec::new();
+        for _ in 0..2 {
+            posés.clear();
+            let mut sortie = egui_ctx.run_ui(entrée.clone(), |ui| module.ui(ui, &ctx));
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(texte) = &clipped.shape {
+                    posés.push((texte.galley.text().to_owned(), texte.pos.x));
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+
+        let où = |quoi: &str| -> f32 {
+            posés
+                .iter()
+                .find(|(t, _)| t == quoi)
+                .map(|(_, x)| *x)
+                .unwrap_or_else(|| panic!("« {quoi} » doit être peinte : {posés:?}"))
+        };
+        let courte = où("court");
+        let longue = où("une chaine beaucoup plus longue que la premiere");
+        assert!(
+            (courte - longue).abs() < 0.5,
+            "deux chaînes de longueurs différentes commencent au même endroit : \
+             {courte} et {longue}"
+        );
+    }
 
     /// Sur un vrai binaire, les chaînes cherchées dans les données
     /// valent celles qu'on lirait avec `strings -d` — et non les
