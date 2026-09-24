@@ -12730,6 +12730,53 @@ fn the_patch_window_says_what_it_would_do_before_one_clicks() {
     );
 }
 
+/// La calculatrice ne laisse pas de vide sous sa dernière ligne.
+///
+/// Une hauteur figée laissait cent pixels entre la dernière ligne et le
+/// bouton : un appareil ne se termine pas par du vide. La fenêtre
+/// épouse la hauteur de son contenu.
+#[test]
+fn the_calculator_ends_where_its_content_ends() {
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp {
+        show_calculator: true,
+        ..Default::default()
+    };
+    app.apply_theme(&ctx);
+    let entrée = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1600.0, 1200.0),
+        )),
+        ..Default::default()
+    };
+    let mut bas_du_texte = f32::MIN;
+    for _ in 0..3 {
+        bas_du_texte = f32::MIN;
+        let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                // Ce que la calculatrice écrit, et rien d'autre : le
+                // reste de la fenêtre principale est ailleurs.
+                let dans = t.pos.x > 400.0 && t.pos.x < 1200.0;
+                if dans {
+                    bas_du_texte = bas_du_texte.max(t.pos.y + t.galley.size().y);
+                }
+            }
+        }
+        sortie.textures_delta.clear();
+    }
+
+    let fenêtre = egui::AreaState::load(&ctx, egui::Id::new("calculator_window"))
+        .expect("la calculatrice est affichée")
+        .rect();
+    let vide = fenêtre.bottom() - bas_du_texte;
+    assert!(
+        vide < 40.0,
+        "la fenêtre traîne {vide} pixels de vide sous sa dernière ligne"
+    );
+}
+
 /// L'expression se tape dans l'écran, au-dessus du résultat.
 ///
 /// Un champ de saisie encadré, posé au-dessus avec son étiquette
@@ -12888,10 +12935,36 @@ fn the_keypad_is_made_of_real_buttons_and_is_centred() {
             .map(|(a, b)| (a - b).abs())
             .sum();
         assert!(
-            distance >= 18,
-            "une touche doit se détacher du panneau : {couleur:?} contre {fond_panneau:?}"
+            distance >= 60,
+            "une touche doit se détacher franchement du panneau : {couleur:?} contre \
+             {fond_panneau:?}"
         );
     }
+
+    // Trois familles, trois teintes : les chiffres, les opérateurs et ce
+    // qui efface ne se ressemblent pas. Des mélanges timides donnaient
+    // six nuances du même bleu sombre, où il fallait lire chaque touche
+    // pour la trouver.
+    let familles: std::collections::BTreeSet<[i32; 3]> =
+        touches.iter().map(|(_, fond)| teinte(*fond)).collect();
+    assert!(
+        familles.len() >= 2,
+        "les chiffres et les opérateurs n'ont pas la même couleur : {familles:?}"
+    );
+    let écart = |a: &[i32; 3], b: &[i32; 3]| -> i32 {
+        a.iter().zip(b.iter()).map(|(x, y)| (x - y).abs()).sum()
+    };
+    let familles: Vec<[i32; 3]> = familles.into_iter().collect();
+    let plus_proches = familles
+        .iter()
+        .enumerate()
+        .flat_map(|(i, a)| familles[i + 1..].iter().map(move |b| écart(a, b)))
+        .min()
+        .unwrap_or(0);
+    assert!(
+        plus_proches >= 40,
+        "deux familles doivent se distinguer d'un coup d'œil : {familles:?}"
+    );
 
     // Centré dans la fenêtre : le milieu du bloc et celui de la fenêtre
     // tombent au même endroit.
@@ -20795,4 +20868,5 @@ fn typing_y_y_duplicates_the_line() {
         "la ligne doit être recopiée dessous"
     );
 }
+
 

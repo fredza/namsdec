@@ -67,10 +67,20 @@ six fautes d'assembleur que namsdec sait désormais reconnaître.
   des boutons transparent et le liseré invisible — le clavier n'était
   qu'une trentaine de caractères posés dans du vide, qu'on ne pensait
   même pas à cliquer.
-- Les touches sont peintes en couleurs **opaques** mélangées au fond, et
-  non par transparence : `gamma_multiply` ne touche que l'alpha, et une
-  touche à vingt pour cent sur un panneau sombre est une touche sombre,
-  qu'on ne distingue pas du fond. Elles s'éclaircissent au survol et
+- Les touches sont peintes en couleurs **opaques et franches** : les
+  chiffres sur un gris net, les opérateurs sur la couleur d'accent, ce
+  qui efface sur du rouge. Des mélanges timides donnaient six nuances du
+  même bleu sombre, où il fallait lire chaque touche pour la trouver.
+  L'encre est celle des deux couleurs du thème qui contraste le plus
+  avec le fond — la règle vaut pour un thème clair comme pour un sombre.
+  (`gamma_multiply` ne touche que l'alpha, et une touche à vingt pour
+  cent sur un panneau sombre est une touche sombre.)
+- La fenêtre **épouse la hauteur de son contenu**. Une hauteur figée
+  laissait cent pixels de vide entre la dernière ligne et le bouton : un
+  appareil ne se termine pas par du vide.
+- Les deux filets horizontaux sont partis, et les espacements resserrés.
+  Le clavier et les fonctions se distinguent déjà par leur forme ; une
+  barre de plus dans une fenêtre qui en a déjà deux fait un formulaire. Elles s'éclaircissent au survol et
   s'assombrissent sous le clic — un bouton auquel on impose un fond
   garde le même dans tous les états, et le clavier avait l'air d'une
   image.

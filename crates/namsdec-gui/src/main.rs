@@ -7204,14 +7204,17 @@ impl NamsdecApp {
             .open(&mut open)
             .resizable(true)
             .collapsible(false)
-            // Plus grande qu'avant : un clavier et une grille de bits ne
-            // tiennent pas dans quatre cents pixels de haut. Mais bornée
-            // en largeur : la rangée des dix-huit fonctions poussait la
-            // fenêtre à douze cents pixels, où un clavier de trois cent
-            // soixante-six flottait au milieu du vide. Bornée, la rangée
-            // se replie et l'appareil garde sa forme.
-            .default_size([520.0, 760.0])
-            .min_size([420.0, 520.0])
+            // Bornée en largeur : la rangée des dix-huit fonctions
+            // poussait la fenêtre à douze cents pixels, où un clavier de
+            // trois cent soixante-six flottait au milieu du vide.
+            // Bornée, la rangée se replie et l'appareil garde sa forme.
+            //
+            // Aucune hauteur imposée : la fenêtre épouse celle de son
+            // contenu. Une hauteur figée laissait cent pixels de vide
+            // entre la dernière ligne et le bouton — un appareil ne se
+            // termine pas par du vide.
+            .default_width(500.0)
+            .min_width(420.0)
             .max_width(560.0)
             .pivot(egui::Align2::CENTER_CENTER)
             .default_pos(ctx.viewport_rect().center());
@@ -7272,7 +7275,7 @@ impl NamsdecApp {
                             &mut bit_basculé,
                         );
                     });
-                ui.add_space(10.0);
+                ui.add_space(6.0);
                 // Une boîte de largeur posée, dont le contenu est centré :
                 // les libellés changent de longueur avec la langue, et
                 // c'est la boîte qui se centre, non les mots.
@@ -7306,18 +7309,20 @@ impl NamsdecApp {
                     });
                 });
 
-                ui.add_space(8.0);
+                ui.add_space(6.0);
                 calculator_keypad_ui(ui, theme, s, self.calc_base, &self.calc_input, &mut frappe);
 
+                // Pas de filet entre le clavier et les fonctions : les
+                // deux blocs se distinguent déjà par leur forme, et une
+                // barre de plus dans une fenêtre qui en a déjà deux
+                // (le bandeau, la barre d'action) fait un formulaire.
                 ui.add_space(8.0);
-                ui.separator();
                 if regs.is_none() {
                     ui.colored_label(theme.dim, s.calculator_no_registers);
                 }
                 calculator_functions_ui(ui, theme, s, lang, &mut frappe.écrire);
 
-                ui.add_space(8.0);
-                ui.separator();
+                ui.add_space(6.0);
                 // Toutes les bases à la fois, en petit : c'est ce qu'on
                 // vient chercher quand on ne sait pas encore *laquelle*
                 // on veut. Chacune se copie d'un clic.
@@ -17860,29 +17865,45 @@ fn mélange(a: egui::Color32, b: egui::Color32, part: f32) -> egui::Color32 {
     )
 }
 
+/// La clarté perçue d'une couleur, de 0 à 255.
+///
+/// Les trois canaux ne pèsent pas le même poids dans l'œil : le vert
+/// fait presque les trois quarts de ce qu'on perçoit, le bleu moins d'un
+/// dixième. Un bleu franc et un jaune franc ont la même « valeur » si
+/// l'on fait la moyenne, et des clartés très différentes si l'on pèse.
+fn clarté(c: egui::Color32) -> f32 {
+    0.2126 * f32::from(c.r()) + 0.7152 * f32::from(c.g()) + 0.0722 * f32::from(c.b())
+}
+
+/// L'encre qui se lit le mieux sur ce fond.
+///
+/// Celle des deux du thème — le texte ou le fond de l'éditeur — qui en
+/// est la plus éloignée. Choisir à la main marcherait sur un thème
+/// sombre et donnerait du gris sur gris sur un thème clair ; ici la
+/// règle vaut pour les deux, et pour ceux qu'on installera.
+fn encre_sur(fond: egui::Color32, theme: &Theme) -> egui::Color32 {
+    if (clarté(fond) - clarté(theme.text)).abs() >= (clarté(fond) - clarté(theme.bg)).abs() {
+        theme.text
+    } else {
+        theme.bg
+    }
+}
+
 impl TouchePour {
     /// Le fond et l'encre de cette famille, dans le thème courant.
     ///
-    /// Des couleurs opaques, mélangées au fond du panneau : c'est ce qui
-    /// donne des touches qu'on voit. Les chiffres tirent vers le texte —
-    /// un gris franc —, les opérateurs vers l'accent, ce qui efface vers
-    /// le rouge. Trois familles, trois teintes, et l'on vise une touche
-    /// sans la lire.
+    /// Des couleurs opaques et **franches** : les chiffres sur un gris
+    /// net, les opérateurs sur la couleur d'accent, ce qui efface sur du
+    /// rouge. Trois familles, trois teintes, et l'on vise une touche
+    /// sans la lire. Des mélanges timides donnaient six nuances du même
+    /// bleu sombre, où il fallait lire chaque touche pour la trouver.
     fn couleurs(self, theme: &Theme) -> (egui::Color32, egui::Color32) {
-        match self {
-            TouchePour::Chiffre => (
-                mélange(theme.surface, theme.text, 0.16),
-                theme.text,
-            ),
-            TouchePour::Opérateur => (
-                mélange(theme.surface, theme.accent, 0.32),
-                mélange(theme.text, theme.accent, 0.85),
-            ),
-            TouchePour::Effacer => (
-                mélange(theme.surface, theme.bad, 0.30),
-                mélange(theme.text, theme.bad, 0.85),
-            ),
-        }
+        let fond = match self {
+            TouchePour::Chiffre => mélange(theme.surface, theme.text, 0.30),
+            TouchePour::Opérateur => mélange(theme.surface, theme.accent, 0.72),
+            TouchePour::Effacer => mélange(theme.surface, theme.bad, 0.66),
+        };
+        (fond, encre_sur(fond, theme))
     }
 }
 
@@ -18220,9 +18241,16 @@ fn calculator_functions_ui(
             } else {
                 format!("{nom}(x)")
             };
+            let fond = mélange(theme.surface, theme.text, 0.14);
             let réponse = ui.add(
-                egui::Button::new(egui::RichText::new(&appel).monospace().size(11.5))
-                    .fill(theme.dim.gamma_multiply(0.10)),
+                egui::Button::new(
+                    egui::RichText::new(&appel)
+                        .monospace()
+                        .size(12.0)
+                        .color(encre_sur(fond, theme)),
+                )
+                .fill(fond)
+                .corner_radius(6.0),
             );
             if réponse.hovered() {
                 survolée = Some(if lang == Lang::Fr { *fr } else { *en });
