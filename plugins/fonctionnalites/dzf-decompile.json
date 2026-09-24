@@ -1,0 +1,15 @@
+{
+  "id": "dzf-decompile",
+  "name": "DZF — décompilation ELF64 (beta)",
+  "command": "/usr/bin/python3",
+  "args": [
+    "/home/fred/Projects/DZF/integrations/namsdec/dzf_namsdec.py",
+    "--cli",
+    "/home/fred/Projects/DZF/build-dzf/x64-disassembler",
+    "--input",
+    "{file}",
+    "--output",
+    "{out}"
+  ],
+  "install": "cd /home/fred/Projects/DZF && cmake -S x64-disassembler -B build-dzf && cmake --build build-dzf"
+}

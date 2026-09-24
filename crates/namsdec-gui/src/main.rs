@@ -7216,6 +7216,10 @@ impl NamsdecApp {
             .default_width(500.0)
             .min_width(420.0)
             .max_width(560.0)
+            // Jamais plus haute que l'écran : une fenêtre qui le dépasse
+            // pose son bouton hors de vue, et l'on ne sait plus comment
+            // la fermer.
+            .max_height((ctx.viewport_rect().height() - 60.0).max(320.0))
             .pivot(egui::Align2::CENTER_CENTER)
             .default_pos(ctx.viewport_rect().center());
         let rendue = self
@@ -7234,6 +7238,11 @@ impl NamsdecApp {
                 // chaque bloc de son côté les faisait diverger dès que la
                 // fenêtre changeait de largeur — l'écran d'un côté, le
                 // clavier de l'autre, à quarante pixels l'un de l'autre.
+                //
+                // Dans une zone qui défile : la fenêtre épouse la hauteur
+                // de son contenu, mais pas au-delà de l'écran. Sans cela,
+                // sur une fenêtre moins haute que l'appareil, les
+                // dernières lignes passaient sous le bouton.
                 centered_row(ui, CALC_LARGEUR + 20.0, |ui| {
                     ui.vertical(|ui| {
                         ui.set_width(CALC_LARGEUR + 20.0);
@@ -7327,20 +7336,34 @@ impl NamsdecApp {
                 // vient chercher quand on ne sait pas encore *laquelle*
                 // on veut. Chacune se copie d'un clic.
                 if let Some(valeur) = valeur {
+                    // Deux paires par rangée : sept lectures empilées
+                    // faisaient une colonne plus haute que le clavier,
+                    // et sur un écran de portable les dernières
+                    // passaient sous le bouton. Côte à côte, elles
+                    // tiennent en quatre lignes — et l'on compare
+                    // d'autant mieux deux bases qu'on les voit
+                    // ensemble.
+                    let lectures = readings::all_bases(lang, valeur);
                     egui::Grid::new("calculator_bases")
-                        .num_columns(2)
-                        .spacing([16.0, 4.0])
+                        .num_columns(4)
+                        .min_col_width(0.0)
+                        .spacing([10.0, 3.0])
                         .show(ui, |ui| {
-                            for (nom, texte) in readings::all_bases(lang, valeur) {
-                                ui.colored_label(theme.dim, nom);
-                                let réponse = ui.add(
-                                    egui::Label::new(
-                                        egui::RichText::new(&texte).monospace().color(theme.text),
-                                    )
-                                    .sense(egui::Sense::click()),
-                                );
-                                if réponse.on_hover_text(s.calculator_copy).clicked() {
-                                    à_copier = Some(texte.clone());
+                            for paire in lectures.chunks(2) {
+                                for (nom, texte) in paire {
+                                    ui.colored_label(theme.dim, *nom);
+                                    let réponse = ui.add(
+                                        egui::Label::new(
+                                            egui::RichText::new(texte)
+                                                .monospace()
+                                                .size(11.5)
+                                                .color(theme.text),
+                                        )
+                                        .sense(egui::Sense::click()),
+                                    );
+                                    if réponse.on_hover_text(s.calculator_copy).clicked() {
+                                        à_copier = Some(texte.clone());
+                                    }
                                 }
                                 ui.end_row();
                             }
@@ -15768,12 +15791,15 @@ fn ok_bar(ui: &mut egui::Ui, theme: &'static Theme, s: &Strings, id: &str) -> bo
     egui::Panel::bottom(egui::Id::new(format!("{id}_ok")))
         .frame(egui::Frame::NONE)
         .show(ui, |ui| {
-            ui.add_space(4.0);
-            ui.separator();
-            ui.add_space(4.0);
+            // Du blanc, et non un filet. Une fenêtre qui porte déjà un
+            // trait sous son titre et un autre au-dessus de son bouton
+            // se lit comme un formulaire : trois bandes empilées. C'est
+            // l'espace qui sépare, et il sépare aussi bien.
+            ui.add_space(8.0);
             if dialog_bar(ui, theme, s.dialog_ok, None).is_some() {
                 fermer = true;
             }
+            ui.add_space(2.0);
         });
     fermer
 }

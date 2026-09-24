@@ -78,7 +78,16 @@ six fautes d'assembleur que namsdec sait désormais reconnaître.
 - La fenêtre **épouse la hauteur de son contenu**. Une hauteur figée
   laissait cent pixels de vide entre la dernière ligne et le bouton : un
   appareil ne se termine pas par du vide.
-- Les deux filets horizontaux sont partis, et les espacements resserrés.
+- **Aucun filet horizontal** dans les fenêtres : ni sous le titre, ni
+  au-dessus du bouton. Une fenêtre qui en porte deux se lit comme un
+  formulaire — trois bandes empilées —, et c'est l'espace qui sépare
+  aussi bien. Un test les compte, et exige zéro.
+- Les sept lectures du résultat sont rangées **deux par rangée** : elles
+  tiennent en quatre lignes au lieu de sept, et l'on compare d'autant
+  mieux deux bases qu'on les voit ensemble. Empilées, les dernières
+  passaient sous le bouton sur un écran de portable.
+- Les filets internes du clavier sont partis, et les espacements
+  resserrés.
   Le clavier et les fonctions se distinguent déjà par leur forme ; une
   barre de plus dans une fenêtre qui en a déjà deux fait un formulaire. Elles s'éclaircissent au survol et
   s'assombrissent sous le clic — un bouton auquel on impose un fond

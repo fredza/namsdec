@@ -245,14 +245,11 @@ pub fn window_head(ui: &mut egui::Ui, theme: &'static Theme, s: &Strings, titre:
         );
     }
 
-    // Le filet : sans lui, le titre flotte au-dessus du contenu et la
-    // fenêtre n'a plus de haut.
-    ui.painter().hline(
-        bande.x_range(),
-        bande.bottom(),
-        egui::Stroke::new(1.0, theme.surface),
-    );
-    ui.add_space(4.0);
+    // Pas de filet sous le titre : une fenêtre qui en porte un ici et un
+    // autre au-dessus de son bouton se lit comme un formulaire, trois
+    // bandes empilées. Le bandeau se distingue déjà par sa pastille et
+    // par le blanc qui le suit, et c'est assez.
+    ui.add_space(6.0);
     réponse.on_hover_text(s.window_close).clicked()
 }
 

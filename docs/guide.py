@@ -561,6 +561,12 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "vaut <font face='Courier'>0x1f</font> avec le quatrième bit en moins, et "
          "l'écrire à la main est plus long que de le cliquer."),
         ("p",
+         "Aucun filet horizontal : ni sous le titre, ni au-dessus du bouton. Une "
+         "fenêtre qui en porte deux se lit comme un formulaire — trois bandes "
+         "empilées —, et c'est l'espace qui sépare aussi bien. Les sept lectures "
+         "du résultat sont rangeées deux par rangée, ce qui les fait tenir en "
+         "quatre lignes et permet d'en comparer deux d'un coup d'œil."),
+        ("p",
          "L'écran — l'expression, le résultat et les bits — vit dans son cadre, "
          "sur le fond de l'éditeur : c'est ce qui distingue ce que l'appareil "
          "<i>montre</i> de ce sur quoi on <i>appuie</i>. <b>On tape dans l'écran</b>, "

@@ -3015,8 +3015,12 @@ fn paint(app: &mut NamsdecApp) -> String {
         )),
         ..Default::default()
     };
+    // Trois images, et non deux : une fenêtre dont la hauteur épouse son
+    // contenu ne connaît sa taille qu'après l'avoir disposé, et ne se
+    // pose donc qu'à la troisième. Deux suffisaient tant que toutes les
+    // fenêtres avaient une taille imposée ; ce n'est plus le cas.
     let mut painted = String::new();
-    for _ in 0..2 {
+    for _ in 0..3 {
         painted.clear();
         let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
         for clipped in &output.shapes {
@@ -12727,6 +12731,58 @@ fn the_patch_window_says_what_it_would_do_before_one_clicks() {
     assert!(
         peint.contains(s.patch_none_yet),
         "et l'on n'a encore rien changé :\n{peint}"
+    );
+}
+
+/// Aucune fenêtre ne porte de filet horizontal sous son titre ni
+/// au-dessus de son bouton.
+///
+/// Une fenêtre qui en porte deux se lit comme un formulaire : trois
+/// bandes empilées. C'est l'espace qui sépare, et il sépare aussi bien.
+#[test]
+fn a_window_separates_with_space_not_with_bars() {
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp {
+        show_calculator: true,
+        ..Default::default()
+    };
+    app.apply_theme(&ctx);
+    let entrée = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1600.0, 1200.0),
+        )),
+        ..Default::default()
+    };
+
+    let fenêtre = {
+        let mut rect = None;
+        for _ in 0..3 {
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            sortie.textures_delta.clear();
+            rect = egui::AreaState::load(&ctx, egui::Id::new("calculator_window"))
+                .map(|état| état.rect());
+        }
+        rect.expect("la calculatrice est affichée")
+    };
+
+    // Un filet, c'est un rectangle d'un pixel de haut sur presque toute
+    // la largeur de la fenêtre. On les compte.
+    let mut filets = Vec::new();
+    let mut sortie = ctx.run_ui(entrée, |ui| app.draw(ui));
+    for clipped in &sortie.shapes {
+        if let egui::epaint::Shape::Rect(cadre) = &clipped.shape
+            && cadre.rect.height() <= 2.0
+            && cadre.rect.width() > fenêtre.width() * 0.6
+            && fenêtre.contains(cadre.rect.center())
+        {
+            filets.push(cadre.rect);
+        }
+    }
+    sortie.textures_delta.clear();
+    assert!(
+        filets.is_empty(),
+        "la fenêtre ne doit porter aucun filet horizontal : {filets:?}"
     );
 }
 
