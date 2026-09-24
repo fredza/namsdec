@@ -12,7 +12,13 @@
 //!   programme prend l'autre branche ;
 //! - **neutraliser une instruction** — la remplacer par des `nop`, ce
 //!   qui supprime un appel de vérification sans déplacer quoi que ce
-//!   soit.
+//!   soit ;
+//! - **forcer un saut conditionnel** — `je` devient `jmp`, et le
+//!   programme prend *toujours* la branche. Inverser et forcer ne
+//!   répondent pas à la même question : inverser demande « et si la
+//!   condition était l'autre ? », forcer demande « et si on y allait
+//!   quoi qu'il arrive ? ». C'est le second qu'on veut devant un
+//!   contrôle qu'on n'a pas encore compris.
 //!
 //! Les deux gardent la **longueur exacte** de ce qu'ils remplacent.
 //! C'est la règle qui rend l'opération sûre : un octet de plus ou de
@@ -61,6 +67,42 @@ pub fn inverted_jump(bytes: &[u8]) -> Option<Vec<u8>> {
         [0x0f, opcode, reste @ ..] if (0x80..=0x8f).contains(opcode) => {
             let mut out = vec![0x0f, opcode ^ 1];
             out.extend_from_slice(reste);
+            Some(out)
+        }
+        _ => None,
+    }
+}
+
+/// Le même saut, mais inconditionnel — `je` devient `jmp`.
+///
+/// La longueur est gardée, comme pour les deux autres gestes, et c'est
+/// ce qui demande un peu de soin :
+///
+/// * **saut court** (`0x70`–`0x7F`, deux octets) : `jmp` court est
+///   `0xEB`, deux octets lui aussi, et son déplacement se compte depuis
+///   le même endroit. L'octet de condition est simplement remplacé.
+/// * **saut long** (`0x0F` `0x80`–`0x8F`, six octets) : `jmp` long est
+///   `0xE9` suivi de quatre octets — cinq en tout, un de moins. Le
+///   sixième est un `nop`, posé **après** le saut, où il ne sera jamais
+///   exécuté puisque le saut est désormais toujours pris. Et le
+///   déplacement gagne 1 : il se compte depuis la fin de
+///   l'instruction, qui vient d'avancer d'un octet. Sans cette
+///   correction, le saut arriverait un octet trop tôt.
+///
+/// Rend `None` sur ce qui n'est pas un saut conditionnel, et sur un
+/// déplacement qui déborderait — mieux vaut refuser que d'écrire un
+/// saut vers autre chose que ce qui était visé.
+pub fn forced_jump(bytes: &[u8]) -> Option<Vec<u8>> {
+    match bytes {
+        [opcode, déplacement] if (0x70..=0x7f).contains(opcode) => {
+            Some(vec![0xeb, *déplacement])
+        }
+        [0x0f, opcode, d0, d1, d2, d3] if (0x80..=0x8f).contains(opcode) => {
+            let déplacement = i32::from_le_bytes([*d0, *d1, *d2, *d3]).checked_add(1)?;
+            let mut out = vec![0xe9];
+            out.extend_from_slice(&déplacement.to_le_bytes());
+            // Le compte est bon : cinq octets de saut, un de bourrage.
+            out.push(0x90);
             Some(out)
         }
         _ => None,
@@ -192,5 +234,55 @@ mod tests {
         assert_eq!(apply(&mut image, 3, &[0, 0]), None);
         assert_eq!(apply(&mut image, 99, &[0]), None);
         assert_eq!(image, vec![0x74, 0x05, 0xcc, 0xcc]);
+    }
+}
+
+#[cfg(test)]
+mod tests_forced {
+    use super::*;
+
+    /// Un saut court forcé garde sa longueur et sa cible.
+    #[test]
+    fn a_short_jump_keeps_its_length_and_its_target() {
+        // `je +0x10` à l'adresse 0 : la cible est 0 + 2 + 0x10 = 0x12.
+        let forcé = forced_jump(&[0x74, 0x10]).expect("un saut court se force");
+        assert_eq!(forcé, vec![0xeb, 0x10], "`jmp` court, même déplacement");
+        assert_eq!(forcé.len(), 2, "la longueur ne change pas");
+    }
+
+    /// Un saut long forcé garde sa longueur, sa cible, et se complète
+    /// d'un `nop` — c'est l'octet de différence entre `0f 8x` et `e9`.
+    #[test]
+    fn a_near_jump_keeps_its_target_thanks_to_one_added_byte() {
+        // `jne +0x40` en six octets à l'adresse 0 : cible 0 + 6 + 0x40.
+        let avant = [0x0f, 0x85, 0x40, 0x00, 0x00, 0x00];
+        let forcé = forced_jump(&avant).expect("un saut long se force");
+        assert_eq!(forcé.len(), avant.len(), "la longueur ne change pas");
+        assert_eq!(forcé[0], 0xe9, "`jmp` long");
+        assert_eq!(*forcé.last().unwrap(), 0x90, "et un `nop` derrière");
+
+        // La cible est la même, comptée comme le processeur la compte.
+        let cible_avant = avant.len() as i64 + i64::from(i32::from_le_bytes([0x40, 0, 0, 0]));
+        let d = i32::from_le_bytes([forcé[1], forcé[2], forcé[3], forcé[4]]);
+        let cible_après = 5_i64 + i64::from(d);
+        assert_eq!(
+            cible_avant, cible_après,
+            "le saut forcé doit arriver exactement où l'autre arrivait"
+        );
+    }
+
+    /// Ce qui n'est pas un saut conditionnel est refusé, et `jrcxz`
+    /// avec — il n'a pas d'équivalent inconditionnel d'une instruction.
+    #[test]
+    fn what_is_not_a_conditional_jump_is_refused() {
+        assert_eq!(forced_jump(&[0x90]), None, "un `nop`");
+        assert_eq!(forced_jump(&[0xeb, 0x10]), None, "un `jmp` déjà inconditionnel");
+        assert_eq!(forced_jump(&[0xe3, 0x10]), None, "`jrcxz`");
+        assert_eq!(forced_jump(&[]), None, "rien du tout");
+        // Un saut court à qui il manque son déplacement : refusé plutôt
+        // que complété au hasard.
+        assert_eq!(forced_jump(&[0x74]), None);
+        // Un déplacement au maximum : ajouter 1 déborderait.
+        assert_eq!(forced_jump(&[0x0f, 0x84, 0xff, 0xff, 0xff, 0x7f]), None);
     }
 }

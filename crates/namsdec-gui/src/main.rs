@@ -13968,6 +13968,7 @@ impl NamsdecApp {
         let nouveaux = match geste {
             PatchGeste::Inverser => namsdec_re::patch::inverted_jump(&instruction.bytes)?,
             PatchGeste::Neutraliser => namsdec_re::patch::nops(instruction.bytes.len()),
+            PatchGeste::Forcer => namsdec_re::patch::forced_jump(&instruction.bytes)?,
         };
         if nouveaux == instruction.bytes {
             return None;
@@ -14103,6 +14104,7 @@ impl NamsdecApp {
         let mut défaire: Option<usize> = None;
         let inversion = self.patch_preview(PatchGeste::Inverser);
         let neutralisation = self.patch_preview(PatchGeste::Neutraliser);
+        let forçage = self.patch_preview(PatchGeste::Forcer);
 
         egui::Window::new(s.patch_title)
             .id(egui::Id::new(PATCHES_WINDOW))
@@ -14124,7 +14126,7 @@ impl NamsdecApp {
                 ui.weak(s.patch_hint);
                 ui.add_space(8.0);
 
-                // Ce que les deux gestes feraient à la ligne du curseur,
+                // Ce que les trois gestes feraient à la ligne du curseur,
                 // écrit avant qu'on clique : on ne change pas les octets
                 // de quelqu'un à l'aveugle.
                 let mut bouton = |ui: &mut egui::Ui,
@@ -14152,6 +14154,7 @@ impl NamsdecApp {
                     });
                 };
                 bouton(ui, s.patch_invert, &inversion, PatchGeste::Inverser);
+                bouton(ui, s.patch_force, &forçage, PatchGeste::Forcer);
                 bouton(
                     ui,
                     s.patch_neutralise,
@@ -16475,7 +16478,10 @@ fn icon_square_button(
             stroke,
             egui::StrokeKind::Inside,
         );
-        icon(ui.painter(), rect.shrink(5.0), visuals.text_color());
+        // Trois pixels, et non cinq : sur un bouton de dix-huit, cinq
+        // ne laissaient que huit pixels à l'icône — de quoi faire une
+        // tache, pas un dessin. Le cadre reste lisible.
+        icon(ui.painter(), rect.shrink(3.0), visuals.text_color());
     }
     response
 }
@@ -17616,6 +17622,13 @@ pub(crate) const PATCHES_WINDOW: &str = "patches_window";
 enum PatchGeste {
     Inverser,
     Neutraliser,
+    /// Prendre la branche quoi qu'il arrive : `je` devient `jmp`.
+    ///
+    /// Inverser et forcer ne répondent pas à la même question.
+    /// Inverser demande « et si la condition était l'autre ? » ; forcer
+    /// demande « et si on y allait de toute façon ? ». C'est le second
+    /// qu'on veut devant un contrôle qu'on n'a pas encore compris.
+    Forcer,
 }
 
 /// La largeur au-delà de laquelle le contenu de la fenêtre d'analyse ne

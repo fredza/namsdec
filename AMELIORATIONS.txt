@@ -322,9 +322,9 @@ aujourd'hui ; les suivantes, ce vers quoi l'outil peut aller.
 --------------------------------------------------------------------------------
 
 4.1  [FAIT] Patcher un binaire
-     Outils > Patcher le binaire…, sur la ligne du curseur. Deux gestes :
-     inverser un saut conditionnel, neutraliser une instruction par des nop.
-     Les deux gardent la longueur exacte — un octet de plus ou de moins
+     Outils > Patcher le binaire…, sur la ligne du curseur. Trois gestes :
+     inverser un saut conditionnel, le forcer, neutraliser une instruction par
+     des nop. Les trois gardent la longueur exacte — un octet de plus ou de moins
      décalerait tout ce qui suit, et chaque adresse du fichier deviendrait fausse.
      L'inversion tient en un bit : les conditions vont par paires et le bit de
      poids faible de l'opcode dit laquelle des deux (je 0x74, jne 0x75). Aucune
@@ -335,8 +335,18 @@ aujourd'hui ; les suivantes, ce vers quoi l'outil peut aller.
      Trouvé en chemin : file_offset ne regardait que les sections, donc rien sur
      un binaire dépouillé — précisément le cas des crackmes. Repli par les
      segments, que le noyau lit toujours.
-     Reste à faire : forcer un saut (Jcc -> jmp), qui change la longueur en forme
-     longue et demande un nop de complément.
+     Forcer un saut est fait (24 septembre 2026), et le cas long est celui qui
+     demandait du soin : `jmp` long (e9 + 4 octets) fait UN OCTET DE MOINS que
+     0f 8x + 4. Le sixième est un nop posé APRÈS le saut, là où il ne sera
+     jamais exécuté puisque le saut est désormais toujours pris ; et le
+     déplacement gagne 1, parce qu'il se compte depuis la fin de l'instruction,
+     qui vient d'avancer d'un octet. Sans cette correction, le saut arriverait
+     un octet trop tôt — c'est ce que le test vérifie, en recalculant la cible
+     des deux côtés.
+     Inverser et forcer ne répondent pas à la même question : inverser demande
+     « et si la condition était l'autre ? », forcer « et si on y allait de
+     toute façon ? ». C'est le second qu'on veut devant un contrôle qu'on n'a
+     pas encore compris.
 
 4.2  [FAIT] Nommer les fonctions et les adresses
      `Espace a` (ou Ctrl+Maj+N) nomme l'adresse de la ligne courante. Le nom
@@ -820,7 +830,7 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
 
 --- Ensuite, parce que ça manque pour travailler -------------------------
 
-7.3  PATCHER UN BINAIRE (voir 4.1)
+7.3  [FAIT] PATCHER UN BINAIRE (voir 4.1)
      C'est la fonctionnalité qui manque le plus à un outil de RE, et le fichier
      le dit depuis le début. On voit le `je` qu'il faudrait inverser, et l'on
      ne peut rien en faire.
@@ -871,6 +881,14 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
          simulé pour de vrai : un mouvement de pointeur, puis des images où
          il ne bouge plus, parce qu'une infobulle attend que la main
          s'arrête) ;
+       - une icône ne se peint pas en bouillie : un rectangle tracé garde un
+         intérieur au moins aussi épais que son trait, et deux points de même
+         taille ne se touchent pas. Aux TROIS tailles auxquelles les icônes
+         sont réellement posées (12, 14, 18 px) — c'est en petit que les
+         dessins se cassent, et c'est en petit qu'on ne les regarde jamais.
+         Venu de l'icône de la calculatrice, « qui ne ressemblait à rien » :
+         huit pixels de dessin, deux rectangles tracés au trait de 1,2 px, et
+         quatre points qui débordaient du boîtier.
        - tout texte se détache de son fond — 3 au moins pour un texte actif,
          2 pour une commande inactive (egui grise en baissant l'alpha, ce qui
          donne un signal net ; les recommandations d'accessibilité exemptent

@@ -1034,16 +1034,28 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
             ["Geste", "Ce qu'il fait"],
             ["Inverser ce saut", "<font face='Courier'>je</font> devient "
              "<font face='Courier'>jne</font> : le programme prend l'autre branche"],
+            ["Forcer le saut (jmp)", "<font face='Courier'>je</font> devient "
+             "<font face='Courier'>jmp</font> : la branche est prise quoi qu’il "
+             "arrive"],
             ["Neutraliser (nop)", "l'instruction est remplac\u00e9e par des "
              "<font face='Courier'>nop</font> : un appel de v\u00e9rification dispara\u00eet"],
         ]),
         ("p",
-         "Les deux gardent la <b>longueur exacte</b> de ce qu'ils remplacent. C'est la "
+         "Les trois gardent la <b>longueur exacte</b> de ce qu'ils remplacent. C'est la "
          "r\u00e8gle qui rend l'op\u00e9ration s\u00fbre : un octet de plus ou de moins "
          "d\u00e9calerait tout ce qui suit, et chaque adresse du fichier deviendrait "
          "fausse. La fen\u00eatre \u00e9crit les octets d'avant et ceux d'apr\u00e8s "
          "<i>avant</i> qu'on clique \u2014 on ne change pas les octets de quelqu'un \u00e0 "
          "l'aveugle \u2014 et chaque changement se d\u00e9fait."),
+        ("p",
+         "Inverser et forcer ne r\u00e9pondent pas \u00e0 la m\u00eame question. "
+         "Inverser demande \u00ab et si la condition \u00e9tait l\u2019autre ? \u00bb ; "
+         "forcer demande \u00ab et si on y allait de toute fa\u00e7on ? \u00bb \u2014 "
+         "c\u2019est celui qu\u2019on veut devant un contr\u00f4le qu\u2019on n\u2019a pas "
+         "encore compris. Le saut long y gagne un <font face='Courier'>nop</font> : "
+         "<font face='Courier'>jmp</font> long fait un octet de moins que "
+         "<font face='Courier'>0f 8x</font>, et le d\u00e9placement est corrig\u00e9 "
+         "d\u2019autant pour arriver exactement o\u00f9 l\u2019autre arrivait."),
         ("note",
          "L'inversion d'un saut tient en un bit, et c'est le processeur qui l'a voulu "
          "ainsi : les conditions vont par paires, et le bit de poids faible de l'opcode dit "

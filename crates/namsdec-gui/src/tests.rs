@@ -13700,7 +13700,7 @@ fn the_calculator_sits_just_left_of_the_stack_tab() {
         let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
         for clipped in &sortie.shapes {
             match &clipped.shape {
-                // Les quatre touches de l'icône : des points, les seuls
+                // Les six touches de l'icône : des points, les seuls
                 // cercles aussi petits de la barre d'outils.
                 // La barre d'outils occupe la deuxième rangée : « Pile »
                 // est aussi le titre du panneau, plus bas, et c'est le
@@ -13722,7 +13722,7 @@ fn the_calculator_sits_just_left_of_the_stack_tab() {
     }
 
     let pile = pile.expect("l'onglet Pile est peint");
-    assert_eq!(touches.len(), 4, "les quatre touches de la calculatrice");
+    assert_eq!(touches.len(), 6, "les six touches de la calculatrice");
     for point in &touches {
         assert!(
             point.x < pile,
@@ -22112,4 +22112,180 @@ fn a_keymap_edited_on_disk_is_picked_up_while_running() {
         "l'intervalle est respecté : pas d'accès au disque à chaque image"
     );
     assert_eq!(app.keybindings.map, avant);
+}
+
+/// Toutes les icônes dessinées, avec la taille qu'elles reçoivent
+/// vraiment.
+///
+/// Le bouton carré du panneau donne douze pixels, la barre d'outils
+/// quatorze, le gros bouton d'analyse dix-huit. Une icône qui n'a été
+/// regardée qu'en grand ment sur ce qu'elle sera.
+type Icône = (&'static str, fn(&egui::Painter, egui::Rect, egui::Color32));
+
+fn icônes_du_banc() -> Vec<Icône> {
+    vec![
+        ("calculatrice", chrome::icon_calculator),
+        ("analyse", chrome::icon_analysis),
+        ("recherche", chrome::icon_search),
+        ("globe", chrome::icon_globe),
+        ("github", chrome::icon_github),
+        ("discord", chrome::icon_discord),
+        ("retour arrière", chrome::icon_backspace),
+        ("œil", icon_watch),
+        ("aller", icon_go),
+        ("exécuter", icon_run),
+        ("arrêter", icon_stop),
+        ("pas dans", icon_step_into),
+        ("pas sur", icon_step_over),
+        ("pas arrière", icon_step_back),
+        ("réinitialiser", icon_reset),
+        ("agrandir", icon_maximize),
+        ("restaurer", icon_restore),
+    ]
+}
+
+/// Une icône ne se peint jamais en bouillie.
+///
+/// La règle vient d'un défaut qu'on a vu à l'écran avant de le
+/// mesurer : l'icône de la calculatrice « ne ressemblait à rien ». Elle
+/// superposait deux rectangles tracés au trait de 1,2 px dans un
+/// boîtier de cinq pixels de large. Le contour du boîtier en mangeait
+/// deux et demi, l'écran intérieur — 1,45 px de haut pour 1,2 px de
+/// trait — se remplissait de son propre contour, et les quatre touches
+/// débordaient. Rendue, une tache blanche avec un trou.
+///
+/// Deux mesures suffisent à l'interdire :
+///
+/// * **un rectangle tracé garde un intérieur** au moins aussi épais que
+///   son trait — sinon les deux bords se rejoignent et la forme est
+///   pleine, ce qui n'est pas ce qu'on a demandé ;
+/// * **deux points pleins de même taille ne se touchent pas** — sinon
+///   la grille de touches devient un pâté. De même taille seulement :
+///   un petit rond posé sur un grand disque est une composition (l'œil
+///   de la pupille, l'oreille du chat de GitHub), pas un défaut.
+///
+/// Aux trois tailles auxquelles les icônes sont réellement posées :
+/// c'est en petit que les dessins se cassent, et c'est en petit qu'on
+/// ne les regarde jamais.
+#[test]
+fn an_icon_never_paints_itself_into_a_blob() {
+    let ctx = egui::Context::default();
+    let entrée = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(200.0, 200.0),
+        )),
+        ..Default::default()
+    };
+    for (nom, dessin) in icônes_du_banc() {
+        for taille in [12.0_f32, 14.0, 18.0] {
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| {
+                let boîte = egui::Rect::from_min_size(
+                    egui::pos2(20.0, 20.0),
+                    egui::vec2(taille, taille),
+                );
+                dessin(ui.painter(), boîte, egui::Color32::WHITE);
+            });
+            let mut ronds: Vec<(egui::Pos2, f32)> = Vec::new();
+            for clipped in &sortie.shapes {
+                match &clipped.shape {
+                    egui::epaint::Shape::Rect(r) if r.stroke.width > 0.0 => {
+                        let mince = r.rect.width().min(r.rect.height());
+                        assert!(
+                            mince >= r.stroke.width * 3.0,
+                            "« {nom} » à {taille} px : un rectangle de {mince:.2} px \
+                             tracé au trait de {:.2} se remplit de son propre contour",
+                            r.stroke.width
+                        );
+                    }
+                    egui::epaint::Shape::Circle(c) if c.fill.a() > 0 => {
+                        ronds.push((c.center, c.radius));
+                    }
+                    _ => {}
+                }
+            }
+            sortie.textures_delta.clear();
+            for (i, (a, ra)) in ronds.iter().enumerate() {
+                for (b, rb) in &ronds[i + 1..] {
+                    // Des points d'une même famille : au-delà du simple
+                    // au double, c'est une composition et non une grille.
+                    if ra.max(*rb) > ra.min(*rb) * 2.0 {
+                        continue;
+                    }
+                    let écart = a.distance(*b);
+                    assert!(
+                        écart >= ra + rb + 0.3,
+                        "« {nom} » à {taille} px : deux points se touchent \
+                         ({écart:.2} px pour des rayons de {ra:.2} et {rb:.2})"
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// Forcer un saut : il est pris quoi qu'il arrive, et la cible ne
+/// bouge pas.
+///
+/// Le troisième geste manquait, et ce n'est pas le même que
+/// l'inversion. Inverser demande « et si la condition était l'autre ? »,
+/// forcer demande « et si on y allait de toute façon ? » — c'est celui
+/// qu'on veut devant un contrôle qu'on n'a pas encore compris.
+#[test]
+fn a_jump_can_be_forced_and_still_lands_where_it_pointed() {
+    let Some(octets) = binaire_dépreuve("crackme-01") else {
+        return;
+    };
+    let mut app = NamsdecApp::default();
+    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+
+    // On cherche un saut conditionnel long : c'est le cas qui demande
+    // du soin, puisque `jmp` long fait un octet de moins.
+    let état = app.assemble_state.as_ref().expect("chargé");
+    let trouvé = état.disasm.iter().find_map(|instruction| {
+        let long = instruction.bytes.len() == 6
+            && instruction.bytes[0] == 0x0f
+            && (0x80..=0x8f).contains(&instruction.bytes[1]);
+        let ligne = état.addr_to_line.get(&instruction.address)?;
+        long.then(|| (instruction.address, *ligne, instruction.bytes.clone()))
+    });
+    let Some((adresse, ligne, avant)) = trouvé else {
+        // Pas de saut long dans ce binaire-là : la règle est déjà
+        // vérifiée sur les octets, dans namsdec-re.
+        return;
+    };
+    app.cursor_pos = (ligne as usize, 1);
+
+    let (vu, origine, après) = app
+        .patch_preview(PatchGeste::Forcer)
+        .expect("un saut conditionnel se force");
+    assert_eq!(vu, adresse);
+    assert_eq!(origine, avant);
+    assert_eq!(après.len(), avant.len(), "la longueur ne bouge pas");
+    assert_eq!(après[0], 0xe9, "`jmp` long");
+    assert_eq!(*après.last().unwrap(), 0x90, "et le `nop` de bourrage");
+
+    // La cible : comptée depuis la fin de chaque instruction, elle doit
+    // tomber au même endroit.
+    let cible_avant = adresse as i64
+        + avant.len() as i64
+        + i64::from(i32::from_le_bytes([avant[2], avant[3], avant[4], avant[5]]));
+    let cible_après = adresse as i64
+        + 5
+        + i64::from(i32::from_le_bytes([après[1], après[2], après[3], après[4]]));
+    assert_eq!(
+        cible_avant, cible_après,
+        "un saut forcé qui n'arrive pas où l'autre arrivait ne sert à rien"
+    );
+
+    // Appliqué, puis défait : comme les deux autres gestes.
+    app.apply_patch(PatchGeste::Forcer);
+    assert!(matches!(app.status, Status::Note(_)), "{:?}", app.status);
+    let offset = app.patches[0].offset;
+    let patché = &app.assemble_state.as_ref().expect("rechargé").output.file;
+    assert_eq!(&patché[offset..offset + après.len()], après.as_slice());
+    assert_eq!(patché.len(), octets.len(), "le fichier garde sa taille");
+    app.undo_patch(0);
+    let rendu = &app.assemble_state.as_ref().expect("rechargé").output.file;
+    assert_eq!(&rendu[offset..offset + avant.len()], avant.as_slice());
 }

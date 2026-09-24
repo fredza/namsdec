@@ -264,6 +264,37 @@ six fautes d'assembleur que namsdec sait désormais reconnaître.
   dans une colonne de trois cents ; la fenêtre d'analyse montre les mêmes
   en grand et tout dépliés. Deux fois la même chose, dont une mal.
 
+**Les icônes, regardées à la taille qu'elles ont vraiment**
+- **L'icône de la calculatrice ne ressemblait à rien**, et c'était
+  exact : sur un bouton de dix-huit pixels, cinq de marge n'en
+  laissaient que huit au dessin, où se superposaient deux rectangles
+  tracés au trait de 1,2 px. Le contour du boîtier en mangeait deux et
+  demi, l'écran intérieur se remplissait de son propre contour, et les
+  quatre touches débordaient. Redessinée : un boîtier, un écran **plein**,
+  et six touches en trois colonnes — la grille est ce qui fait
+  reconnaître une calculatrice.
+- **L'icône d'analyse** superposait la clé et l'engrenage de Desdec : la
+  clé tenait dans le moyeu, ce qui donnait une rayure en travers d'un
+  rouage. Les deux sont maintenant croisés, chacun sur sa diagonale et
+  avec la moitié de la place.
+- Un test interdit à une icône de **se peindre en bouillie**, aux trois
+  tailles auxquelles elles sont réellement posées : un rectangle tracé
+  garde un intérieur au moins aussi épais que son trait, et deux points
+  de même taille ne se touchent pas. C'est en petit que les dessins se
+  cassent, et c'est en petit qu'on ne les regarde jamais.
+
+**Forcer un saut**
+- Le troisième geste de la fenêtre des patchs, qui manquait : `je`
+  devient `jmp`, et la branche est prise quoi qu'il arrive. Inverser et
+  forcer ne répondent pas à la même question — inverser demande « et si
+  la condition était l'autre ? », forcer « et si on y allait de toute
+  façon ? ». C'est le second qu'on veut devant un contrôle qu'on n'a pas
+  encore compris.
+- La longueur est gardée, comme pour les deux autres. Le saut long y
+  gagne un `nop` : `jmp` long fait un octet de moins que `0f 8x`, et le
+  déplacement est corrigé d'autant — sans quoi le saut arriverait un
+  octet trop tôt.
+
 **Ce qui était écrit et jamais relu**
 - **Les points d'arrêt d'un fichier source revenaient de nulle part.**
   Ils étaient écrits dans `settings.json` depuis toujours, et relus

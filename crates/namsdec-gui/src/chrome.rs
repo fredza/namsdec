@@ -544,76 +544,92 @@ pub fn icon_search(painter: &egui::Painter, rect: egui::Rect, color: egui::Color
 /// pixels, et surtout elle ne suit pas la couleur du thème. Ici le trait
 /// est celui qu'on lui passe, et il change avec le thème comme le reste.
 pub fn icon_analysis(painter: &egui::Painter, rect: egui::Rect, color: egui::Color32) {
-    let trait_ = egui::Stroke::new(1.3, color);
-    let centre = rect.center();
-    // Le corps de l'engrenage occupe un peu plus du tiers : le reste est
-    // pour les dents, qui doivent dépasser sans toucher le bord.
-    let r = rect.width().min(rect.height()) * 0.33;
+    // L'engrenage et la clé de Desdec — mais côte à côte, et non l'un
+    // dans l'autre.
+    //
+    // Superposés, comme ils l'étaient, la clé tenait dans le moyeu :
+    // quatre pixels pour un manche et une fourche, ce qui donnait une
+    // rayure en travers d'un rouage. Chacun sur sa diagonale, chacun a
+    // la moitié de la place, et les deux se reconnaissent.
+    let côté = rect.width().min(rect.height());
+    let trait_ = egui::Stroke::new((côté * 0.09).clamp(1.0, 1.6), color);
 
-    painter.circle_stroke(centre, r, trait_);
-    // Huit dents. Des segments radiaux plutôt qu'un contour denté : à la
-    // taille d'un bouton, un contour se referme en bouillie, alors que
-    // huit traits lisibles disent « engrenage » sans hésitation.
-    for dent in 0..8 {
-        let angle = std::f32::consts::TAU * dent as f32 / 8.0;
+    // L'engrenage, en haut à gauche. Six dents et non huit : à trois
+    // pixels de rayon, huit traits se rejoignent en un disque.
+    let moyeu = rect.min + egui::vec2(côté * 0.34, côté * 0.34);
+    let r = côté * 0.18;
+    painter.circle_stroke(moyeu, r, trait_);
+    for dent in 0..6 {
+        let angle = std::f32::consts::TAU * dent as f32 / 6.0;
         let direction = egui::vec2(angle.cos(), angle.sin());
-        painter.line_segment(
-            [centre + direction * r, centre + direction * (r * 1.42)],
-            trait_,
-        );
+        painter.line_segment([moyeu + direction * r, moyeu + direction * (r * 1.7)], trait_);
     }
 
-    // La clé, posée en diagonale dans l'engrenage : le manche part du
-    // bas-droit, la fourche s'ouvre en haut-gauche.
-    let bout_du_manche = centre + egui::vec2(r * 0.80, r * 0.80);
-    let base_de_la_fourche = centre - egui::vec2(r * 0.30, r * 0.30);
-    painter.line_segment([bout_du_manche, base_de_la_fourche], trait_);
-
-    // La fourche : deux branches qui prolongent le manche, et le fond
-    // qui les relie. Ouverte vers l'extérieur, comme une vraie clé.
-    let direction = (base_de_la_fourche - bout_du_manche).normalized();
-    let travers = egui::vec2(-direction.y, direction.x) * (r * 0.30);
-    let gauche = base_de_la_fourche + travers;
-    let droite = base_de_la_fourche - travers;
-    let longueur = direction * (r * 0.40);
+    // La clé, en bas à droite — mais sur l'AUTRE diagonale. Alignée
+    // sur celle de l'engrenage, elle en prolongeait les dents et les
+    // deux se lisaient comme une clé de porte : un panneton et un
+    // anneau. Croisée, chacune garde sa forme.
+    let bout = rect.min + egui::vec2(côté * 0.94, côté * 0.52);
+    let tête = rect.min + egui::vec2(côté * 0.52, côté * 0.94);
+    painter.line_segment([bout, tête], trait_);
+    let direction = (tête - bout).normalized();
+    let travers = egui::vec2(-direction.y, direction.x) * (côté * 0.13);
+    let gauche = tête - direction * (côté * 0.14) + travers;
+    let droite = tête - direction * (côté * 0.14) - travers;
     painter.line_segment([gauche, droite], trait_);
-    painter.line_segment([gauche, gauche + longueur], trait_);
-    painter.line_segment([droite, droite + longueur], trait_);
+    painter.line_segment([gauche, gauche + direction * (côté * 0.14)], trait_);
+    painter.line_segment([droite, droite + direction * (côté * 0.14)], trait_);
 }
 
 /// L'icône de la calculatrice : un boîtier, un écran, quatre touches.
 pub fn icon_calculator(painter: &egui::Painter, rect: egui::Rect, color: egui::Color32) {
-    let trait_ = egui::Stroke::new(1.2, color);
-    // Plus haut que large, comme l'objet : un carré se lirait comme une
-    // fenêtre.
-    let largeur = rect.width() * 0.62;
+    // Dessinée pour douze pixels, et c'est tout le sujet.
+    //
+    // Le premier dessin superposait deux rectangles tracés au trait de
+    // 1,2 px dans un boîtier de cinq pixels de large : le contour seul
+    // en mangeait deux et demi, l'écran s'y peignait plein, et les
+    // quatre touches débordaient du boîtier. Rendue, l'icône était une
+    // tache blanche avec un trou — « elle ne ressemble à rien », et
+    // c'était exact.
+    //
+    // Trois règles en sont sorties, et elles valent pour toute icône de
+    // cette taille : un seul trait tracé (le boîtier), ce qui est petit
+    // est PLEIN plutôt que tracé, et l'espace entre deux marques ne
+    // descend jamais sous l'épaisseur du trait.
+    let trait_ = egui::Stroke::new(1.0, color);
+    // Plus haut que large, comme l'objet — mais pas au point d'être une
+    // barre : les trois quarts de la largeur laissent trois colonnes de
+    // touches, qui sont ce qui fait reconnaître une calculatrice.
     let boîtier = egui::Rect::from_center_size(
         rect.center(),
-        egui::vec2(largeur, rect.height() * 0.88),
+        egui::vec2(rect.width() * 0.76, rect.height() * 0.96),
     );
-    painter.rect_stroke(boîtier, 2.0, trait_, egui::StrokeKind::Inside);
+    painter.rect_stroke(boîtier, 1.5, trait_, egui::StrokeKind::Inside);
 
-    let marge = boîtier.width() * 0.18;
+    let marge = (boîtier.width() * 0.16).max(1.0);
+    let dedans = boîtier.shrink(marge);
+
+    // L'écran : une barre pleine. Tracée, à cette taille, elle se
+    // remplit toute seule de son propre contour.
     let écran = egui::Rect::from_min_max(
-        egui::pos2(boîtier.left() + marge, boîtier.top() + marge * 0.9),
-        egui::pos2(
-            boîtier.right() - marge,
-            boîtier.top() + boîtier.height() * 0.32,
-        ),
+        dedans.left_top(),
+        egui::pos2(dedans.right(), dedans.top() + dedans.height() * 0.26),
     );
-    painter.rect_stroke(écran, 1.0, trait_, egui::StrokeKind::Inside);
+    painter.rect_filled(écran, 0.5, color);
 
-    // Quatre touches, deux par deux. Des points et non des carrés : à
-    // cette taille, un carré de deux pixels est un point qui a l'air
-    // raté.
-    let rayon = (boîtier.width() * 0.07).max(0.8);
-    let haut = écran.bottom() + (boîtier.bottom() - écran.bottom()) * 0.32;
-    let bas = écran.bottom() + (boîtier.bottom() - écran.bottom()) * 0.72;
-    for y in [haut, bas] {
-        for x in [
-            boîtier.left() + marge * 1.1,
-            boîtier.right() - marge * 1.1,
-        ] {
+    // Trois colonnes, deux rangées : la grille est ce qu'on reconnaît.
+    // Des points pleins, espacés d'au moins l'épaisseur du trait, sans
+    // quoi ils se rejoignent en un pâté.
+    let clavier = egui::Rect::from_min_max(
+        egui::pos2(dedans.left(), écran.bottom() + marge * 0.7),
+        dedans.right_bottom(),
+    );
+    let rayon = (clavier.width() * 0.09).max(0.6);
+    for colonne in 0..3 {
+        let x = clavier.left() + rayon + (clavier.width() - rayon * 2.0) * colonne as f32 / 2.0;
+        for rangée in 0..2 {
+            let y =
+                clavier.top() + rayon + (clavier.height() - rayon * 2.0) * rangée as f32;
             painter.circle_filled(egui::pos2(x, y), rayon, color);
         }
     }
