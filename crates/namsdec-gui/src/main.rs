@@ -1487,6 +1487,9 @@ struct NamsdecApp {
     /// qu'on doit poser la part de l'onglet *avant* de dessiner le
     /// bandeau, et qu'elle change avec ce qui est replié.
     sidebar_banner_height: f32,
+    /// La hauteur de l'état du processeur seul : elle lui est garantie,
+    /// et le partage avec l'onglet s'en sert.
+    sidebar_cpu_height: f32,
     /// La hauteur qu'a réellement prise la part de l'onglet à la
     /// dernière image : celle qu'on fige quand on cesse de la calculer.
     sidebar_tab_last: f32,
@@ -2384,6 +2387,7 @@ impl Default for NamsdecApp {
             console_height: None,
             sidebar_tab_height: None,
             sidebar_banner_height: 0.0,
+            sidebar_cpu_height: 0.0,
             sidebar_tab_last: SIDEBAR_TAB_MIN,
             mem_poke: String::new(),
             show_disassembly: false,

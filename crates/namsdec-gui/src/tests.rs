@@ -22586,3 +22586,122 @@ fn outside_the_menus_a_button_shows_itself_without_being_hovered() {
             .join("\n  ")
     );
 }
+
+/// SONDE : le bandeau déborde-t-il, et à quelles tailles ?
+#[test]
+fn sonde_bandeau_deborde() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    for (l, h) in [(1280.0_f32, 820.0_f32), (1600.0, 1000.0), (1920.0, 1230.0), (1920.0, 1600.0)] {
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp {
+            source: DEFAULT_SOURCE.to_owned(),
+            show_sidebar: true,
+            ..Default::default()
+        };
+        app.apply_theme(&ctx);
+        app.do_assemble();
+        let entrée = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(l, h),
+            )),
+            ..Default::default()
+        };
+        for _ in 0..4 {
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            sortie.textures_delta.clear();
+        }
+        let état = egui::scroll_area::State::load(&ctx, egui::Id::new("sidebar_banner"));
+        eprintln!(
+            "{l}x{h} : bandeau voulu {:.0}, onglet {:?}, offset {:?}",
+            app.sidebar_banner_height,
+            app.sidebar_tab_height,
+            état.map(|e| e.offset.y),
+        );
+    }
+}
+
+/// L'état du processeur ne défile jamais, à aucune taille de fenêtre.
+///
+/// C'est ce qu'on regarde entre deux pas : devoir le faire défiler pour
+/// voir R15 ou ZF coupe la lecture. Il partageait sa zone défilante avec
+/// la prochaine instruction, laquelle est au-dessus — et une zone qui
+/// défile coupe par le bas. Sur une fenêtre de 1280×820, la taille par
+/// défaut, le compte ne tombait pas juste : c'étaient donc les registres
+/// qui passaient sous la barre.
+///
+/// Vu à l'écran avant d'être mesuré, et c'est la leçon : le contrôle
+/// d'alors regardait les colonnes, pas la barre.
+#[test]
+fn the_cpu_state_never_scrolls_at_any_window_size() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    // De la fenêtre minimale à un grand écran, en passant par la taille
+    // par défaut — celle où le défaut se voyait.
+    for (largeur, hauteur) in [
+        (800.0_f32, 520.0_f32),
+        (1280.0, 820.0),
+        (1600.0, 1000.0),
+        (1920.0, 1230.0),
+    ] {
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp {
+            source: DEFAULT_SOURCE.to_owned(),
+            show_sidebar: true,
+            ..Default::default()
+        };
+        app.apply_theme(&ctx);
+        app.do_assemble();
+        assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+        let entrée = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(largeur, hauteur),
+            )),
+            ..Default::default()
+        };
+        // Le partage se stabilise en quelques images : il se règle sur
+        // ce que l'image précédente a mesuré.
+        let mut entiers: std::collections::BTreeSet<&str> = Default::default();
+        let mut rognés: Vec<String> = Vec::new();
+        for _ in 0..6 {
+            entiers.clear();
+            rognés.clear();
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            for clipped in &sortie.shapes {
+                let egui::epaint::Shape::Text(t) = &clipped.shape else {
+                    continue;
+                };
+                let Some((nom, _)) = REGISTERS.iter().find(|(n, _)| *n == t.galley.text())
+                else {
+                    continue;
+                };
+                let posé = egui::Rect::from_min_size(t.pos, t.galley.size());
+                // Ce qui se voit : l'intersection avec le découpage. Un
+                // demi-pixel de tolérance pour les arrondis.
+                let vu = posé.intersect(clipped.clip_rect);
+                if vu.height() >= posé.height() - 0.5 {
+                    entiers.insert(nom);
+                } else if vu.height() > 0.0 {
+                    rognés.push(format!("{nom} ({:.0} px sur {:.0})", vu.height(), posé.height()));
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+        assert!(
+            rognés.is_empty(),
+            "à {largeur}×{hauteur}, des registres sont coupés par une barre de \
+             défilement : {rognés:?}"
+        );
+        for (nom, _) in REGISTERS {
+            assert!(
+                entiers.contains(nom),
+                "à {largeur}×{hauteur}, {nom} ne se voit pas : l'état du processeur \
+                 doit tenir en entier, sans défilement"
+            );
+        }
+    }
+}

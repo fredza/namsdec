@@ -264,6 +264,24 @@ six fautes d'assembleur que namsdec sait désormais reconnaître.
   dans une colonne de trois cents ; la fenêtre d'analyse montre les mêmes
   en grand et tout dépliés. Deux fois la même chose, dont une mal.
 
+**L'état du processeur défilait**
+- Une **barre de défilement** coupait les registres sur une fenêtre de
+  1280×820 — la taille par défaut. C'est ce qu'on regarde entre deux
+  pas : devoir le faire défiler pour voir R15 ou ZF coupe la lecture.
+- La cause : l'état du processeur partageait sa zone défilante avec la
+  prochaine instruction, laquelle est **au-dessus** — et une zone qui
+  défile coupe par le bas. Le compte ne tombait juste que sur une
+  fenêtre haute.
+- L'état du processeur est maintenant ancré au bas du bandeau, hors de
+  toute zone défilante : il a toujours sa hauteur entière. Ce qui cède,
+  quand la fenêtre est courte, c'est la prochaine instruction — qui se
+  replie d'un clic, contrairement aux registres.
+- Le contrôle d'alors regardait les **colonnes**, pas la barre. Le
+  nouveau mesure ce que chaque nom de registre laisse voir, à quatre
+  tailles de fenêtre, et refuse le moindre pixel rogné. Vu à l'écran
+  avant d'être mesuré : c'est la première fois de cette série qu'une
+  capture d'écran trouve ce que les tests laissaient passer.
+
 **Dix-sept boutons qu'on ne voyait pas**
 - Le thème rend les boutons **plats au repos** — fond transparent,
   liseré absent — et c'est voulu : sans cela la barre de menus et la

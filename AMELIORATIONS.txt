@@ -301,7 +301,13 @@ aujourd'hui ; les suivantes, ce vers quoi l'outil peut aller.
      s'ils manquent. Un jeu de binaires de référence dans le dépôt rendrait ces
      tests inconditionnels.
 
-3.2  Le rendu hors écran n'est pas testable tel quel
+3.2  Le rendu hors écran n'est pas testable tel quel — et une capture, si
+     Pas de serveur X virtuel sur la machine, donc pas de rendu hors écran.
+     En revanche, lancer namsdec en forçant X11 (WAYLAND_DISPLAY vide) et
+     capturer sa fenêtre avec `import -window` marche, et sur un PROFIL NEUF
+     (XDG_CONFIG_HOME et XDG_DATA_HOME dans un dossier temporaire) cela ne
+     touche pas aux réglages de l'utilisateur. C'est ainsi qu'on a vu la barre
+     de défilement de l'état du processeur, que les tests laissaient passer.
      egui ne peint pas ce qu'une ScrollArea laisse hors de vue : deux tests ont
      dû mesurer le contenu d'une page plutôt que ce que la fenêtre en montre.
      Utile à savoir avant d'en écrire d'autres.
@@ -892,6 +898,11 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
          simulé pour de vrai : un mouvement de pointeur, puis des images où
          il ne bouge plus, parce qu'une infobulle attend que la main
          s'arrête) ;
+       - l'état du processeur ne défile jamais, à aucune taille de fenêtre :
+         on mesure ce que chaque nom de registre laisse voir une fois rogné
+         par le découpage, et le moindre pixel manquant est refusé. Le contrôle
+         d'avant regardait les COLONNES et non la barre, si bien qu'il passait
+         sur une fenêtre de 1280x820 — la taille par défaut.
        - hors des menus, un bouton se voit sans qu'on le survole. Le thème
          rend les boutons plats au repos (fond transparent, liseré absent) et
          c'est voulu pour la barre de menus et la barre d'outils ; la règle

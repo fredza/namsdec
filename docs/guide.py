@@ -250,6 +250,13 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "distingue d’une étiquette qu’au survol ne se trouve pas. Ce qu’on "
          "peut cliquer doit se voir sans qu’on le cherche."),
         ("p",
+         "L’<b>état du processeur ne défile jamais</b> : c’est ce qu’on "
+         "regarde entre deux pas, et devoir le faire défiler pour voir R15 ou ZF "
+         "coupe la lecture. Il garde sa hauteur entière quelle que soit la taille de "
+         "la fenêtre ; quand la place manque, c’est la <b>prochaine "
+         "instruction</b> qui cède — elle se replie d’un clic, les registres "
+         "non."),
+        ("p",
          "Les couleurs sont tenues à un <b>plancher de contraste</b> : tout texte actif "
          "se détache de son fond d’au moins 3 pour 1, la mesure des recommandations "
          "d’accessibilité, dans chacun des trois thèmes livrés. Une commande "

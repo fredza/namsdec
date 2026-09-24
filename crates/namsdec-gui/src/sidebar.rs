@@ -43,14 +43,27 @@ impl NamsdecApp {
         // défile — il se replie d'un clic, l'analyse non.
         self.sidebar_tab_panel_ui(ui);
 
-        // Le bandeau prend ce qui reste, dans **une** zone qui défile.
+        // L'état du processeur, ancré au bas du bandeau, **hors de toute
+        // zone qui défile**.
         //
-        // Une zone, et non deux panneaux empilés : un panneau hors
-        // défilement dont le contenu dépasse la hauteur allouée n'est
-        // pas rogné, il déborde — et l'état du processeur se peignait
-        // par-dessus la vue du dessous, les deux illisibles. Une zone
-        // qui défile, elle, coupe net, et la barre n'apparaît que
-        // lorsque la fenêtre est vraiment trop courte.
+        // C'est ce qu'on regarde entre deux pas : devoir le faire
+        // défiler pour voir R15 ou ZF coupe la lecture. Il partageait sa
+        // zone avec la prochaine instruction, laquelle est au-dessus —
+        // et une zone qui défile coupe par le bas. Sur une fenêtre de
+        // 1280×820, la taille par défaut, le compte ne tombait pas juste
+        // et c'étaient donc les registres qui passaient sous la barre.
+        //
+        // Un panneau bas prend la hauteur de son contenu, mesurée à
+        // l'image précédente : l'état du processeur a toujours la
+        // sienne, et ce qui manque est pris à ce qui peut se replier.
+        egui::Panel::bottom(egui::Id::new("sidebar_cpu_state"))
+            .frame(egui::Frame::NONE)
+            .show(ui, |ui| self.cpu_state_section_ui(ui));
+
+        // Ce qui vient avant : la prochaine instruction, le dernier pas,
+        // les conseils. Repliables, et c'est à eux de céder quand la
+        // fenêtre est courte — d'un clic on les range, l'état du
+        // processeur, non.
         let bandeau = egui::ScrollArea::vertical()
             .id_salt("sidebar_banner")
             .auto_shrink([false, true])
@@ -58,7 +71,7 @@ impl NamsdecApp {
         // Ce que le bandeau mesurerait s'il avait toute la place : c'est
         // cette hauteur qui décide, à l'image suivante, de la part de
         // l'onglet — et le partage se stabilise dès que tout tient.
-        self.sidebar_banner_height = bandeau.content_size.y;
+        self.sidebar_banner_height = bandeau.content_size.y + self.sidebar_cpu_height;
     }
 
     /// Le haut du bandeau : la prochaine instruction et le dernier pas.
@@ -77,10 +90,15 @@ impl NamsdecApp {
         }
         self.last_step_ui(ui);
         self.advice_ui(ui);
+    }
 
-        // L'état du processeur, sous ce qui vient : c'est ce qu'on
-        // regarde entre deux pas, et il garde sa place entière tant que
-        // la fenêtre en a une à lui donner.
+    /// L'état du processeur, et le lien vers les vectoriels.
+    ///
+    /// Séparé du reste du bandeau parce qu'il ne défile pas : voir
+    /// `sidebar_ui`.
+    fn cpu_state_section_ui(&mut self, ui: &mut egui::Ui) {
+        let s = strings(self.lang);
+        let départ = ui.cursor().top();
         rule(ui, self.theme);
         // `show_unindented` : le retrait qu'ajoute un en-tête repliable
         // vaut une vingtaine de pixels, et une valeur de registre fait
@@ -107,6 +125,9 @@ impl NamsdecApp {
         // milieu de l'état du processeur. Ils ont maintenant une fenêtre
         // à eux, où ils tiennent en entier.
         self.vectors_link_ui(ui);
+        // Sa hauteur, pour que le partage avec l'onglet en tienne compte
+        // à l'image suivante.
+        self.sidebar_cpu_height = (ui.cursor().top() - départ).max(0.0);
     }
 
     /// La part du panneau réservée au contenu de l'onglet.
