@@ -274,11 +274,24 @@ six fautes d'assembleur que namsdec sait désormais reconnaître.
   fenêtre d'analyse perdait cinq pixels de contenu par image jusqu'à
   n'avoir plus rien à montrer. La rangée reçoit maintenant une hauteur,
   et ne lit plus rien de son parent.
+- La calculatrice écrivait « Survolez une fonction… » **à travers son
+  bouton OK**. Un panneau bas s'ancre au bas du cadre de la fenêtre ;
+  quand ce cadre est mesuré sur le contenu — c'est le cas d'une fenêtre
+  sans hauteur imposée —, les deux se poursuivent jusqu'à un équilibre
+  où la dernière ligne passe sous le bouton. Ce n'était pas un réglage
+  à ajuster mais la géométrie du montage : la barre d'action est
+  maintenant posée dans le flux, en dernier.
 - Un test demande qu'**une fenêtre qu'on ne touche pas ne bouge pas** :
   quatorze fenêtres, une douzaine d'images chacune, et les six
   dernières doivent être identiques. C'est la règle la plus simple
   d'une interface en mode immédiat, et justement celle qu'elle ne
   garantit pas.
+- Et un **banc de mise en page** : une liste de fenêtres déclarée une
+  fois, des invariants qui valent pour toutes. Une fenêtre nouvelle est
+  contrôlée sans qu'on y pense ; un invariant nouveau s'applique
+  aussitôt aux quatorze. Deux pour l'instant — rien ne bouge tout seul,
+  deux textes ne se recouvrent jamais. Le second a trouvé le défaut de
+  la calculatrice, que personne ne cherchait.
 - La fenêtre du décompilateur était **illisible** : chaque bloc se
   posait une ligne trop haut et recouvrait le précédent. Une commande de
   cent cinquante caractères — celle du pont DZF — s'allouait la hauteur

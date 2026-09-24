@@ -7229,9 +7229,9 @@ impl NamsdecApp {
                 if chrome::window_head(ui, self.theme, s, s.calculator_title) {
                     fermer_ok = true;
                 }
-                if ok_bar(ui, theme, s, "calculator") {
-                    fermer_ok = true;
-                }
+                // La barre d'action est à la fin du corps, et non en
+                // panneau bas : cette fenêtre-ci n'a pas de hauteur
+                // imposée. Voir `ok_bar_inline`.
 
                 // Une seule colonne, centrée une seule fois : tout ce qui
                 // suit s'y range et partage donc le même bord. Centrer
@@ -7371,6 +7371,9 @@ impl NamsdecApp {
                 }
                     });
                 });
+                if ok_bar_inline(ui, theme, s) {
+                    fermer_ok = true;
+                }
             });
         self.place_maximize_button(ctx, Self::CALCULATOR_WINDOW, rendue);
 
@@ -15812,6 +15815,28 @@ enum NoteKind {
 ///
 /// Rend `true` quand il faut fermer. Le séparateur au-dessus est léger :
 /// une barre d'action doit se voir sans découper la fenêtre en deux.
+/// La même barre, mais posée dans le flux — pour une fenêtre dont la
+/// hauteur épouse son contenu.
+///
+/// Un panneau bas est ancré en bas du cadre de la fenêtre. Quand ce
+/// cadre est mesuré sur le contenu, les deux se poursuivent : le
+/// contenu déborde sous le panneau, la fenêtre grandit d'autant, le
+/// panneau redescend, et l'équilibre trouvé laisse la dernière ligne
+/// *sous* le bouton. Ce n'est pas un réglage à ajuster, c'est la
+/// géométrie du montage — la calculatrice écrivait « Survolez une
+/// fonction… » à travers son OK.
+///
+/// Posée en dernier dans le flux, la barre n'a plus rien à quoi
+/// s'ancrer et suit simplement ce qui la précède. À n'employer que là :
+/// dans une fenêtre haute, un contenu long la repousserait hors de
+/// l'écran, ce qui est la raison d'être du panneau.
+fn ok_bar_inline(ui: &mut egui::Ui, theme: &'static Theme, s: &Strings) -> bool {
+    ui.add_space(8.0);
+    let fermer = dialog_bar(ui, theme, s.dialog_ok, None).is_some();
+    ui.add_space(2.0);
+    fermer
+}
+
 fn ok_bar(ui: &mut egui::Ui, theme: &'static Theme, s: &Strings, id: &str) -> bool {
     let mut fermer = false;
     egui::Panel::bottom(egui::Id::new(format!("{id}_ok")))

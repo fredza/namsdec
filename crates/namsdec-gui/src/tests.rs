@@ -21010,26 +21010,36 @@ fn typing_y_y_duplicates_the_line() {
 
 
 
-/// Une fenêtre qu'on ne touche pas ne bouge pas.
+// ============================================================
+//  Le banc de mise en page
+// ============================================================
+//
+// Quatre défauts de suite ont été trouvés par l'œil et non par la suite
+// de tests : des textes qui se recouvraient, une fenêtre qui montait
+// toute seule, un champ de saisie absent, une colonne centrée au lieu
+// d'être alignée. Aucun n'était subtil ; tous étaient visibles à la
+// première capture d'écran. Ce qui manquait n'était pas des tests — il
+// y en a des centaines — mais des tests qui regardent la *mise en
+// page* au lieu de regarder un détail choisi d'avance.
+//
+// D'où ce banc : une liste de fenêtres, déclarée une fois, et des
+// invariants qui valent pour toutes. Ajouter une fenêtre à la liste la
+// soumet d'un coup à tout ce qui suit ; et un invariant nouveau
+// s'applique aussitôt aux quatorze.
+
+/// Comment ouvrir une fenêtre : son nom dans l'échec, son identifiant
+/// egui, et ce qu'il faut poser dans l'application pour qu'elle
+/// s'affiche.
+type Ouverture = (&'static str, &'static str, fn(&mut NamsdecApp));
+
+/// Les fenêtres qu'un démarrage nu sait ouvrir.
 ///
-/// C'est la règle la plus simple d'une interface en mode immédiat, et
-/// c'est justement celle qu'elle ne garantit pas : chaque image est
-/// redessinée depuis zéro, et rien n'empêche une mesure d'être reprise
-/// en entrée de la mesure suivante. Quand cela arrive, la fenêtre se
-/// déplace toute seule — d'un peu à chaque image, donc d'autant plus
-/// vite qu'on remue la souris, puisque chaque mouvement de souris vaut
-/// une image de plus. C'était le cas de la barre « OK », dont la rangée
-/// prenait toute la hauteur restante du panneau bas, laquelle était
-/// précisément mesurée sur cette rangée : la fenêtre d'analyse montait
-/// de cinq pixels par image jusqu'à n'avoir plus de contenu visible.
-///
-/// On dessine donc chaque fenêtre une douzaine de fois sans rien
-/// changer, et on demande que les six dernières images soient la même.
-#[test]
-fn a_window_that_is_left_alone_stays_where_it_is() {
-    /// Comment ouvrir une fenêtre, et comment la nommer dans l'échec.
-    type Ouverture = (&'static str, &'static str, fn(&mut NamsdecApp));
-    let fenêtres: Vec<Ouverture> = vec![
+/// Une seule liste, et non une par test : c'est ce qui fait qu'une
+/// fenêtre nouvelle est contrôlée sans qu'on y pense. Celles qui
+/// demandent un binaire chargé ou une exécution en cours n'y sont pas —
+/// elles se contrôlent séparément, avec ce qu'il leur faut.
+fn fenêtres_ouvrables() -> Vec<Ouverture> {
+    vec![
         ("préférences", "preferences_window", |app| {
             app.show_preferences = true;
         }),
@@ -21061,17 +21071,104 @@ fn a_window_that_is_left_alone_stays_where_it_is() {
             app.show_input_dialog = true;
         }),
         ("correctifs", PATCHES_WINDOW, |app| app.show_patches = true),
-    ];
+    ]
+}
 
-    let entrée = egui::RawInput {
+/// L'écran du banc : assez grand pour qu'aucune fenêtre n'ait à se
+/// serrer, et fixe, pour que deux exécutions disent la même chose.
+fn écran_du_banc() -> egui::RawInput {
+    egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
             egui::vec2(1600.0, 1100.0),
         )),
         ..Default::default()
-    };
+    }
+}
 
-    for (nom, id, ouvre) in fenêtres {
+/// Ce qu'une fenêtre écrit, ligne par ligne, et l'encre que chaque
+/// ligne occupe vraiment.
+///
+/// Trois précautions, et chacune vient d'une erreur commise :
+///
+/// * **Le rectangle, non la position.** Un test qui compare des
+///   positions laisse passer un texte qui déborde — c'est ce qui est
+///   arrivé au champ de saisie coupé.
+/// * **La ligne, non la galley.** Un texte de trois lignes a un cadre
+///   qui couvre toute sa largeur, y compris le blanc au bout de la
+///   dernière ligne ; deux de ces cadres se croisent sans qu'aucune
+///   lettre ne se touche.
+/// * **Sans l'espace de tête.** Dans une rangée qui se replie, egui
+///   pose la galley au *début* de la rangée et décale son premier mot
+///   à l'intérieur. Mesurée depuis son origine, une étiquette paraît
+///   alors recouvrir celle qui la précède, alors qu'à l'écran les deux
+///   se suivent. On demande donc à egui l'encre, et non le cadre.
+///
+/// `images` dit combien de fois dessiner avant de relever — une fenêtre
+/// dont la hauteur épouse son contenu ne se pose qu'à la troisième.
+fn ce_que_la_fenêtre_écrit(
+    ctx: &egui::Context,
+    app: &mut NamsdecApp,
+    id: &str,
+    images: usize,
+) -> (egui::Rect, Vec<(String, egui::Rect)>) {
+    let entrée = écran_du_banc();
+    let mut lignes: Vec<(String, egui::Rect)> = Vec::new();
+    for _ in 0..images {
+        lignes.clear();
+        let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                for ligne in &t.galley.rows {
+                    if ligne.glyphs.is_empty() {
+                        continue;
+                    }
+                    // Ce qui se voit, et non ce qui est peint : une
+                    // ligne sortie d'un ascenseur est bien dans la
+                    // liste des formes, mais rognée à néant.
+                    let encre = ligne
+                        .rect_without_leading_space()
+                        .translate(t.pos.to_vec2())
+                        .intersect(clipped.clip_rect);
+                    if encre.width() <= 0.0 || encre.height() <= 0.0 {
+                        continue;
+                    }
+                    lignes.push((t.galley.text().to_owned(), encre));
+                }
+            }
+        }
+        sortie.textures_delta.clear();
+    }
+    let cadre = egui::AreaState::load(ctx, egui::Id::new(id))
+        .unwrap_or_else(|| panic!("la fenêtre « {id} » est affichée"))
+        .rect();
+    let dedans = lignes
+        .into_iter()
+        .filter(|(_, r)| cadre.contains_rect(r.shrink(1.0)))
+        .collect();
+    (cadre, dedans)
+}
+
+/// Une fenêtre qu'on ne touche pas ne bouge pas.
+///
+/// C'est la règle la plus simple d'une interface en mode immédiat, et
+/// c'est justement celle qu'elle ne garantit pas : chaque image est
+/// redessinée depuis zéro, et rien n'empêche une mesure d'être reprise
+/// en entrée de la mesure suivante. Quand cela arrive, la fenêtre se
+/// déplace toute seule — d'un peu à chaque image, donc d'autant plus
+/// vite qu'on remue la souris, puisque chaque mouvement de souris vaut
+/// une image de plus. C'était le cas de la barre « OK », dont la rangée
+/// prenait toute la hauteur restante du panneau bas, laquelle était
+/// précisément mesurée sur cette rangée : la fenêtre d'analyse montait
+/// de cinq pixels par image jusqu'à n'avoir plus de contenu visible.
+///
+/// On dessine donc chaque fenêtre une douzaine de fois sans rien
+/// changer, et on demande que les six dernières images soient la même.
+#[test]
+fn a_window_that_is_left_alone_stays_where_it_is() {
+    let entrée = écran_du_banc();
+
+    for (nom, id, ouvre) in fenêtres_ouvrables() {
         let ctx = egui::Context::default();
         let mut app = NamsdecApp::default();
         app.apply_theme(&ctx);
@@ -21121,3 +21218,38 @@ fn a_window_that_is_left_alone_stays_where_it_is() {
         }
     }
 }
+
+/// Deux textes d'une même fenêtre ne se recouvrent jamais.
+///
+/// Le défaut le plus visible qui soit, et le plus mal diagnostiqué : on
+/// voit « une fenêtre illisible » et l'on cherche la couleur, la
+/// police, l'ascenseur. Mesuré, il se dit en une ligne — tel texte et
+/// tel autre occupent le même endroit. C'était le cas du décompilateur,
+/// dont une commande longue s'allouait la hauteur d'une ligne et s'en
+/// peignait deux ; la règle vaut pour toutes les fenêtres, parce que
+/// rien dans egui ne l'empêche nulle part.
+#[test]
+fn no_two_texts_of_a_window_ever_overlap() {
+    for (nom, id, ouvre) in fenêtres_ouvrables() {
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp::default();
+        app.apply_theme(&ctx);
+        ouvre(&mut app);
+        let (_, textes) = ce_que_la_fenêtre_écrit(&ctx, &mut app, id, 3);
+        assert!(
+            textes.len() > 2,
+            "la fenêtre « {nom} » n'écrit presque rien : le test ne prouverait rien"
+        );
+        for (i, (texte_a, a)) in textes.iter().enumerate() {
+            for (texte_b, b) in &textes[i + 1..] {
+                // Deux pixels de tolérance : les jambages d'une ligne
+                // frôlent les hampes de la suivante sans se gêner.
+                assert!(
+                    !a.shrink(2.0).intersects(b.shrink(2.0)),
+                    "fenêtre « {nom} » : « {texte_a} » et « {texte_b} » se recouvrent\n  {a:?}\n  {b:?}"
+                );
+            }
+        }
+    }
+}
+

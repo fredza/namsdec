@@ -851,7 +851,23 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
 
 --- Ce qui rendrait l'outil plus sûr de lui ------------------------------
 
-7.6  UN CONTRÔLE QUI DIT CE QUI N'EST PAS TESTÉ
+7.6  [COMMENCÉ] UN CONTRÔLE QUI DIT CE QUI N'EST PAS TESTÉ
+     Commencé le 24 septembre 2026 : un BANC DE MISE EN PAGE, dans tests.rs.
+     Une liste de quatorze fenêtres déclarée une fois (`fenêtres_ouvrables`),
+     un relevé commun qui rend l'ENCRE de chaque ligne — et non la position du
+     texte, ni le cadre de la galley, ni la galley avec son espace de tête —,
+     et des invariants qui valent pour toutes :
+       - une fenêtre qu'on ne touche pas ne bouge pas (douze images, les six
+         dernières identiques) ;
+       - deux textes d'une même fenêtre ne se recouvrent jamais.
+     Les deux ont trouvé un défaut réel dès leur écriture : la barre « OK »
+     qui faisait monter toutes les fenêtres, et la calculatrice qui écrivait
+     par-dessus son bouton. Le second était là depuis des semaines.
+     Reste à écrire, par ordre d'utilité : un texte tronqué se lit autrement
+     (infobulle) ; le contraste d'un texte sur son fond ; et la relecture des
+     tests d'affichage existants à cette aune.
+
+     Ce qui l'a motivé :
      Cette séance, quatre défauts réels sont passés sous des tests qui
      paraissaient les couvrir :
        - le champ de saisie coupé : le test vérifiait la POSITION du texte,
