@@ -12163,6 +12163,68 @@ fn the_input_dialog_opens_when_the_program_waits_and_shows_what_it_asked() {
     );
 }
 
+/// Après la réponse, la boîte montre ce que le programme a répondu.
+///
+/// C'est tout l'intérêt de la garder ouverte. On tape « sesame », le
+/// programme écrit « Incorrect password » et s'arrête : refermer la
+/// boîte renvoyait devant une console souvent repliée, où l'on ne
+/// voyait rien de ce qu'on venait de provoquer — on croyait que rien ne
+/// s'était passé.
+#[test]
+fn after_the_answer_the_dialog_shows_what_the_program_said() {
+    let s = strings(Lang::Fr);
+    let Some(octets) = binaire_dépreuve("crackme-01") else {
+        return;
+    };
+    let mut app = NamsdecApp::default();
+    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    // La console repliée, comme sur la capture qui a servi à trouver le
+    // défaut : rien d'autre que la boîte ne dira ce qui s'est passé.
+    app.show_console = false;
+
+    app.do_run();
+    for _ in 0..8000 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&egui::Context::default());
+    }
+    assert!(matches!(app.status, Status::WaitingForInput), "{:?}", app.status);
+    let peint = paint(&mut app);
+    assert!(peint.contains("Enter the password:"), "l'invite :\n{peint}");
+
+    // On répond, et le programme va au bout.
+    app.send_input(Some("sesame".to_owned()));
+    for _ in 0..8000 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&egui::Context::default());
+    }
+    assert!(matches!(app.status, Status::Exited { .. }), "{:?}", app.status);
+
+    let peint = paint(&mut app);
+    assert!(app.show_input_dialog, "la boîte reste ouverte");
+    assert!(
+        peint.contains("Incorrect password"),
+        "elle doit montrer ce que le programme a répondu :\n{peint}"
+    );
+    assert!(
+        peint.contains(s.input_dialog_answered),
+        "et le dire comme tel :\n{peint}"
+    );
+    // Plus rien à taper : un seul bouton.
+    assert!(peint.contains(s.dialog_ok), "{peint}");
+    assert!(
+        !peint.contains(s.console_send),
+        "on ne propose plus d'envoyer à un programme terminé :\n{peint}"
+    );
+
+    // Relancer la referme : elle parlait de la course précédente.
+    app.do_run();
+    assert!(!app.show_input_dialog, "une nouvelle course repart à zéro");
+}
+
 /// Le vidage s'enregistre, au format que `diff` sait lire.
 ///
 /// Un vidage sert à être comparé : à celui qu'on a sous les yeux, à
@@ -19487,8 +19549,8 @@ fn pressing_enter_sends_the_line_to_the_program() {
         app.input_dialog_text
     );
     assert!(
-        !app.show_input_dialog,
-        "et la boîte se referme : on a répondu"
+        app.show_input_dialog,
+        "et la boîte reste : c'est elle qui montrera ce que le programme répond"
     );
     assert!(
         !matches!(app.status, Status::WaitingForInput),
@@ -20325,3 +20387,4 @@ fn typing_y_y_duplicates_the_line() {
         "la ligne doit être recopiée dessous"
     );
 }
+

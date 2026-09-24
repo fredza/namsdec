@@ -141,8 +141,14 @@ six fautes d'assembleur que namsdec sait désormais reconnaître.
   au premier plan, le curseur déjà dans le champ. Elle montre **ce que
   le programme vient d'écrire** — neuf fois sur dix c'est l'invite, et
   c'est la seule chose qui dise ce qu'on attend de nous.
-- Entrée envoie, Échap referme sans rien envoyer, « Fin d'entrée » ferme
-  l'entrée. La ligne de la console reste, pour qui préfère.
+- Entrée envoie, et la boîte **reste ouverte** : elle montre alors ce que
+  le programme a répondu — « Incorrect password » — avant de s'arrêter.
+  La refermer aussitôt renvoyait devant une console souvent repliée, où
+  l'on ne voyait rien de ce qu'on venait de provoquer, et l'on croyait
+  qu'il ne s'était rien passé. Échap ou OK la ferment ; relancer aussi,
+  puisqu'elle parlerait de la course précédente.
+- « Fin d'entrée » ferme l'entrée du programme. La ligne de la console
+  reste, pour qui préfère.
 - Elle sert précisément quand la console est repliée ou couverte par une
   fenêtre d'analyse : on restait sinon devant un programme qui ne répond
   plus, sans savoir qu'il attendait *nous*.

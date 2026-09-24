@@ -691,6 +691,7 @@ pub struct Strings {
     // La boîte de saisie, qui s'ouvre quand le programme attend.
     pub input_dialog_title: &'static str,
     pub input_dialog_asked: &'static str,
+    pub input_dialog_answered: &'static str,
     pub input_dialog_nothing_asked: &'static str,
     pub filter_text: &'static str,
     pub dump_save: &'static str,
@@ -1421,6 +1422,7 @@ const FR: Strings = Strings {
     console_no_read: "Ce programme ne lit rien pour l'instant : ce qu'on tape ici attendra qu'il le demande.",
     input_dialog_title: "Entrée du programme",
     input_dialog_asked: "Ce que le programme vient d'écrire :",
+    input_dialog_answered: "Ce que le programme a répondu :",
     input_dialog_nothing_asked: "Le programme n'a rien écrit avant de demander : il attend sans invite.",
     filter_text: "Fichier texte",
     dump_save: "Enregistrer le vidage…",
@@ -2136,6 +2138,7 @@ const EN: Strings = Strings {
     console_no_read: "This program reads nothing yet: what you type here will wait until it asks.",
     input_dialog_title: "Program input",
     input_dialog_asked: "What the program just wrote:",
+    input_dialog_answered: "What the program answered:",
     input_dialog_nothing_asked: "The program wrote nothing before asking: it waits without a prompt.",
     filter_text: "Text file",
     dump_save: "Save the dump…",

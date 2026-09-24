@@ -3043,6 +3043,7 @@ impl NamsdecApp {
     /// vient de ramener à son point d'entrée, et le bouton passait pour
     /// n'avoir rien fait.
     fn do_reset(&mut self) {
+        self.show_input_dialog = false;
         // Les diagnostics d'un binaire ouvert ne viennent pas d'un
         // assemblage : `load_elf` les vide en le chargeant, et les
         // laisser ici ferait de « Réinitialiser » un demi-chargement.
@@ -3412,6 +3413,9 @@ impl NamsdecApp {
         if self.emulator.is_none() {
             return;
         }
+        // La boîte de saisie parlait de la course précédente : elle se
+        // rouvrira d'elle-même si celle-ci demande quelque chose.
+        self.show_input_dialog = false;
         // Une course n'a pas « un » dernier pas : le bandeau se tait
         // plutôt que de montrer la première instruction d'un millier.
         self.last_step = None;
@@ -13576,9 +13580,6 @@ impl NamsdecApp {
             self.show_input_dialog = true;
             self.input_dialog_focus = true;
         }
-        if !attend {
-            self.show_input_dialog = false;
-        }
         self.was_waiting_for_input = attend;
         if !self.show_input_dialog {
             return;
@@ -13620,15 +13621,28 @@ impl NamsdecApp {
                         egui::vec2(10.0, ui.text_style_height(&egui::TextStyle::Body)),
                         egui::Sense::hover(),
                     );
-                    ui.painter().circle_filled(rect.center(), 4.0, theme.accent);
-                    ui.colored_label(
-                        theme.accent,
-                        egui::RichText::new(s.console_waiting).strong(),
-                    );
+                    let (couleur, phrase) = if attend {
+                        (theme.accent, s.console_waiting.to_owned())
+                    } else {
+                        // Le programme a repris et n'attend plus : la
+                        // boîte reste pour montrer ce qu'il a répondu,
+                        // et dit où il en est.
+                        let (texte, couleur, _) = self.status_line();
+                        (couleur, texte)
+                    };
+                    ui.painter().circle_filled(rect.center(), 4.0, couleur);
+                    ui.colored_label(couleur, egui::RichText::new(phrase).strong());
                 });
 
                 ui.add_space(8.0);
-                ui.colored_label(theme.dim, s.input_dialog_asked);
+                ui.colored_label(
+                    theme.dim,
+                    if attend {
+                        s.input_dialog_asked
+                    } else {
+                        s.input_dialog_answered
+                    },
+                );
                 ui.add_space(2.0);
                 // Ce que le programme vient d'écrire, sur le fond d'un
                 // terminal : c'est sa voix, elle ne doit pas se confondre
@@ -13646,73 +13660,94 @@ impl NamsdecApp {
                         }
                     });
 
-                ui.add_space(10.0);
                 // Les deux touches relevées avant le champ : un
                 // `TextEdit` qui traite Entrée la retire de la file, si
                 // bien que la guetter après lui ne verrait plus rien.
                 let entrée_frappée = ui.input(|i| i.key_pressed(egui::Key::Enter));
                 let échap_frappé = ui.input(|i| i.key_pressed(egui::Key::Escape));
-                let champ = ui.add(
-                    egui::TextEdit::singleline(&mut self.input_dialog_text)
-                        .hint_text(s.console_input_hint)
-                        .font(egui::TextStyle::Monospace)
-                        .desired_width(ui.available_width()),
-                );
-                // Le curseur y va à l'ouverture, une fois : la boîte
-                // s'est ouverte parce qu'on nous demande quelque chose,
-                // et la seule chose à faire est d'écrire. Le redemander
-                // à chaque image empêcherait Échap de rendre le clavier.
-                if self.input_dialog_focus {
-                    champ.request_focus();
-                    self.input_dialog_focus = false;
-                }
-                envoyer |= entrée_frappée && (champ.has_focus() || champ.lost_focus());
                 fermer |= échap_frappé;
+
+                if attend {
+                    ui.add_space(10.0);
+                    let champ = ui.add(
+                        egui::TextEdit::singleline(&mut self.input_dialog_text)
+                            .hint_text(s.console_input_hint)
+                            .font(egui::TextStyle::Monospace)
+                            .desired_width(ui.available_width()),
+                    );
+                    // Le curseur y va à l'ouverture, une fois : la boîte
+                    // s'est ouverte parce qu'on nous demande quelque
+                    // chose, et la seule chose à faire est d'écrire. Le
+                    // redemander à chaque image empêcherait Échap de
+                    // rendre le clavier.
+                    if self.input_dialog_focus {
+                        champ.request_focus();
+                        self.input_dialog_focus = false;
+                    }
+                    envoyer |= entrée_frappée && (champ.has_focus() || champ.lost_focus());
+                }
 
                 ui.add_space(10.0);
                 ui.separator();
                 ui.add_space(4.0);
                 ui.horizontal(|ui| {
-                    // « Fin d'entrée » à gauche, loin du bouton qu'on
-                    // vise : fermer l'entrée d'un programme est sans
-                    // retour pour lui, et ce n'est pas ce qu'on venait
-                    // faire.
-                    if ui
-                        .button(s.console_eof)
-                        .on_hover_text(s.console_eof_hint)
-                        .clicked()
-                    {
-                        fin = true;
-                    }
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let envoi =
-                            egui::Button::new(egui::RichText::new(s.console_send).color(theme.bg))
-                                .fill(theme.accent)
-                                .min_size(egui::vec2(110.0, 0.0));
-                        envoyer |= ui.add(envoi).clicked();
+                    if attend {
+                        // « Fin d'entrée » à gauche, loin du bouton
+                        // qu'on vise : fermer l'entrée d'un programme
+                        // est sans retour pour lui, et ce n'est pas ce
+                        // qu'on venait faire.
                         if ui
-                            .add(
-                                egui::Button::new(s.input_dialog_later)
-                                    .stroke(egui::Stroke::new(1.0, theme.dim))
-                                    .min_size(egui::vec2(110.0, 0.0)),
-                            )
-                            .on_hover_text(s.input_dialog_later_hint)
+                            .button(s.console_eof)
+                            .on_hover_text(s.console_eof_hint)
                             .clicked()
                         {
-                            fermer = true;
+                            fin = true;
+                        }
+                    }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if attend {
+                            let envoi = egui::Button::new(
+                                egui::RichText::new(s.console_send).color(theme.bg),
+                            )
+                            .fill(theme.accent)
+                            .min_size(egui::vec2(110.0, 0.0));
+                            envoyer |= ui.add(envoi).clicked();
+                            if ui
+                                .add(
+                                    egui::Button::new(s.input_dialog_later)
+                                        .stroke(egui::Stroke::new(1.0, theme.dim))
+                                        .min_size(egui::vec2(110.0, 0.0)),
+                                )
+                                .on_hover_text(s.input_dialog_later_hint)
+                                .clicked()
+                            {
+                                fermer = true;
+                            }
+                        } else {
+                            // Plus rien à répondre : un seul bouton, et
+                            // Entrée le presse.
+                            let ok = egui::Button::new(
+                                egui::RichText::new(s.dialog_ok).color(theme.bg),
+                            )
+                            .fill(theme.accent)
+                            .min_size(egui::vec2(110.0, 0.0));
+                            fermer |= ui.add(ok).clicked() || entrée_frappée;
                         }
                     });
                 });
             });
 
+        // Envoyer ne referme pas : c'est tout le point. Le programme
+        // reprend, écrit sa réponse — « Incorrect password » —, et la
+        // boîte la montre. Refermer aussitôt renvoyait devant une
+        // console souvent repliée, où l'on ne voyait rien de ce qu'on
+        // venait de provoquer.
         if envoyer {
             let ligne = std::mem::take(&mut self.input_dialog_text);
             self.send_input(Some(ligne));
-            self.show_input_dialog = false;
         }
         if fin {
             self.send_input(None);
-            self.show_input_dialog = false;
         }
         if fermer {
             self.show_input_dialog = false;

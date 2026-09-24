@@ -364,9 +364,13 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "d'elle-m\u00eame, au premier plan, le curseur d\u00e9j\u00e0 dans le champ. Elle montre "
          "<b>ce que le programme vient d'\u00e9crire</b> \u2014 neuf fois sur dix c'est "
          "l'invite, et c'est la seule chose qui dise ce qu'on attend de nous. Entr\u00e9e "
-         "envoie, \u00c9chap referme sans rien envoyer. Elle sert pr\u00e9cis\u00e9ment quand la "
-         "console est repli\u00e9e ou couverte par une autre fen\u00eatre : on reste sinon "
-         "devant un programme qui ne r\u00e9pond plus, sans savoir qu'il attend <i>nous</i>."),
+         "envoie. Elle <b>reste ouverte</b> ensuite, et montre ce que le programme a "
+         "r\u00e9pondu \u2014 « Incorrect password » \u2014 avant de s'arr\u00eater : la refermer "
+         "aussit\u00f4t renverrait devant une console souvent repli\u00e9e, o\u00f9 l'on ne verrait "
+         "rien de ce qu'on vient de provoquer. \u00c9chap ou OK la ferment. Elle sert "
+         "pr\u00e9cis\u00e9ment quand la console est repli\u00e9e ou couverte par une autre "
+         "fen\u00eatre : on reste sinon devant un programme qui ne r\u00e9pond plus, sans "
+         "savoir qu'il attend <i>nous</i>."),
         ("p",
          "La ligne <b>Entrée</b> est l\u00e0 d\u00e8s qu'un programme est assembl\u00e9, "
          "qu'il lise ou non. On \u00e9crit son programme, on a pos\u00e9 ses cha\u00eenes, "
