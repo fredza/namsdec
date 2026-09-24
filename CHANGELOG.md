@@ -67,6 +67,19 @@ six fautes d'assembleur que namsdec sait désormais reconnaître.
   des boutons transparent et le liseré invisible — le clavier n'était
   qu'une trentaine de caractères posés dans du vide, qu'on ne pensait
   même pas à cliquer.
+- Les touches sont peintes en couleurs **opaques** mélangées au fond, et
+  non par transparence : `gamma_multiply` ne touche que l'alpha, et une
+  touche à vingt pour cent sur un panneau sombre est une touche sombre,
+  qu'on ne distingue pas du fond. Elles s'éclaircissent au survol et
+  s'assombrissent sous le clic — un bouton auquel on impose un fond
+  garde le même dans tous les états, et le clavier avait l'air d'une
+  image.
+- L'**écran** — le résultat et les bits — a son cadre, sur le fond de
+  l'éditeur : ce que l'appareil montre se distingue de ce sur quoi on
+  appuie. Les deux blocs ont la même largeur au pixel.
+- La fenêtre est bornée en largeur. La rangée des dix-huit fonctions la
+  poussait à douze cents pixels, où un clavier de trois cent
+  soixante-six flottait au milieu du vide.
 - **Tout est centré** : le résultat, la grille de bits, les sélecteurs et
   le clavier. `vertical_centered` ne centre que les enfants de largeur
   connue, et une rangée horizontale prend toute la largeur : elle ne se

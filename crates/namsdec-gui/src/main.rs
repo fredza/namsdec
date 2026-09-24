@@ -7174,9 +7174,14 @@ impl NamsdecApp {
             .resizable(true)
             .collapsible(false)
             // Plus grande qu'avant : un clavier et une grille de bits ne
-            // tiennent pas dans quatre cents pixels de haut.
-            .default_size([520.0, 720.0])
-            .min_size([440.0, 520.0])
+            // tiennent pas dans quatre cents pixels de haut. Mais bornée
+            // en largeur : la rangée des dix-huit fonctions poussait la
+            // fenêtre à douze cents pixels, où un clavier de trois cent
+            // soixante-six flottait au milieu du vide. Bornée, la rangée
+            // se replie et l'appareil garde sa forme.
+            .default_size([520.0, 760.0])
+            .min_size([420.0, 520.0])
+            .max_width(560.0)
             .pivot(egui::Align2::CENTER_CENTER)
             .default_pos(ctx.viewport_rect().center());
         let rendue = self
@@ -7190,6 +7195,14 @@ impl NamsdecApp {
                     fermer_ok = true;
                 }
 
+                // Une seule colonne, centrée une seule fois : tout ce qui
+                // suit s'y range et partage donc le même bord. Centrer
+                // chaque bloc de son côté les faisait diverger dès que la
+                // fenêtre changeait de largeur — l'écran d'un côté, le
+                // clavier de l'autre, à quarante pixels l'un de l'autre.
+                centered_row(ui, CALC_LARGEUR + 20.0, |ui| {
+                    ui.vertical(|ui| {
+                        ui.set_width(CALC_LARGEUR + 20.0);
                 ui.horizontal(|ui| {
                     ui.colored_label(theme.dim, s.calculator_expression);
                     let champ = ui.add(
@@ -7209,56 +7222,39 @@ impl NamsdecApp {
                 // largeur choisie. C'est la ligne qu'on regarde, elle a
                 // donc la taille qui va avec.
                 let valeur = résultat.as_ref().ok().map(|v| *v & self.calc_width.mask());
-                ui.add_space(6.0);
+                ui.add_space(8.0);
                 // Tout ce qui suit est centré : le résultat, les bits,
                 // les sélecteurs et le clavier. Alignés à gauche dans une
                 // fenêtre large, ils flottaient contre un bord avec du
                 // vide en face — une page, et non un appareil.
-                ui.vertical_centered(|ui| match (&résultat, valeur) {
-                    (Ok(_), Some(valeur)) => {
-                        let texte = self.calc_base.écrire(valeur);
-                        let réponse = ui.add(
-                            egui::Label::new(
-                                egui::RichText::new(&texte)
-                                    .monospace()
-                                    .size(26.0)
-                                    .color(theme.accent),
-                            )
-                            .sense(egui::Sense::click()),
+                //
+                // Le résultat et les bits vivent dans un cadre à part,
+                // sur le fond de l'éditeur : c'est l'écran de
+                // l'appareil, et il se distingue des touches comme sur
+                // n'importe quelle calculatrice.
+                // La lunette de l'écran : dix pixels de chaque côté du
+                // clavier, et son contenu fait exactement la largeur de
+                // celui-ci.
+                egui::Frame::new()
+                    .fill(theme.bg)
+                    .stroke(egui::Stroke::new(1.0, mélange(theme.bg, theme.text, 0.18)))
+                    .corner_radius(10.0)
+                    .inner_margin(egui::Margin::symmetric(10, 10))
+                    .show(ui, |ui| {
+                        ui.set_width(CALC_LARGEUR);
+                        écran_calculatrice(
+                            ui,
+                            theme,
+                            s,
+                            &résultat,
+                            valeur,
+                            self.calc_base,
+                            self.calc_width,
+                            &mut à_copier,
+                            &mut bit_basculé,
                         );
-                        if réponse.on_hover_text(s.calculator_copy).clicked() {
-                            à_copier = Some(texte);
-                        }
-                    }
-                    (Err(erreur), _) => {
-                        // Vide, on ne reproche rien : la fenêtre vient de
-                        // s'ouvrir, il n'y a pas d'erreur à signaler. La
-                        // place reste prise, sinon tout ce qui suit
-                        // sauterait d'une ligne à la première frappe.
-                        if matches!(erreur, calc::CalcError::Empty) {
-                            ui.add_space(32.0);
-                        } else {
-                            ui.colored_label(theme.bad, calc_error_text(s, erreur));
-                        }
-                    }
-                    _ => {}
-                });
-
-                ui.add_space(8.0);
-                calculator_bits_ui(
-                    ui,
-                    theme,
-                    s,
-                    valeur.unwrap_or(0),
-                    self.calc_width,
-                    valeur.is_some(),
-                    &mut bit_basculé,
-                );
-
-                ui.add_space(8.0);
-                // `vertical_centered` autour d'une rangée : c'est ainsi
-                // qu'on centre un groupe de largeur naturelle dans egui,
-                // qui ne sait centrer que les enfants d'une colonne.
+                    });
+                ui.add_space(10.0);
                 // Une boîte de largeur posée, dont le contenu est centré :
                 // les libellés changent de longueur avec la langue, et
                 // c'est la boîte qui se centre, non les mots.
@@ -7327,6 +7323,8 @@ impl NamsdecApp {
                             }
                         });
                 }
+                    });
+                });
             });
         self.place_maximize_button(ctx, Self::CALCULATOR_WINDOW, rendue);
 
@@ -17407,9 +17405,9 @@ fn calculator_bits_ui(
     const PAR_RANGÉE: u32 = 32;
     /// La case d'un index, celle d'un bit, et le blanc entre deux
     /// quartets.
-    const INDEX_L: f32 = 26.0;
-    const BIT_L: f32 = 11.0;
-    const QUARTET: f32 = 5.0;
+    const INDEX_L: f32 = 22.0;
+    const BIT_L: f32 = 9.0;
+    const QUARTET: f32 = 4.0;
 
     let bits = largeur.bits();
     let rangées = bits.div_ceil(PAR_RANGÉE);
@@ -17506,7 +17504,10 @@ fn centered_row<R>(
     largeur: f32,
     contenu: impl FnOnce(&mut egui::Ui) -> R,
 ) -> R {
-    let marge = ((ui.available_width() - largeur) * 0.5).max(0.0);
+    // `max_rect` et non `available_width` : la seconde part du curseur,
+    // qui a déjà avancé si quelque chose a été posé sur la ligne. On
+    // veut la largeur de la place *allouée*, qui ne bouge pas.
+    let marge = ((ui.max_rect().width() - largeur) * 0.5).max(0.0);
     ui.horizontal(|ui| {
         ui.add_space(marge);
         contenu(ui)
@@ -17529,13 +17530,46 @@ enum TouchePour {
     Effacer,
 }
 
+/// Mélange deux couleurs. `part` vaut 0 pour la première, 1 pour la
+/// seconde.
+///
+/// Et non `gamma_multiply`, qui ne touche que l'alpha : une touche
+/// peinte à vingt pour cent d'opacité sur un panneau sombre donne une
+/// touche sombre, qu'on ne distingue pas du fond. Un mélange rend une
+/// couleur **opaque**, celle qu'on aurait choisie à la main, et le
+/// clavier se détache alors du panneau au lieu de s'y fondre.
+fn mélange(a: egui::Color32, b: egui::Color32, part: f32) -> egui::Color32 {
+    let part = part.clamp(0.0, 1.0);
+    let mêle = |x: u8, y: u8| (f32::from(x) + (f32::from(y) - f32::from(x)) * part) as u8;
+    egui::Color32::from_rgb(
+        mêle(a.r(), b.r()),
+        mêle(a.g(), b.g()),
+        mêle(a.b(), b.b()),
+    )
+}
+
 impl TouchePour {
     /// Le fond et l'encre de cette famille, dans le thème courant.
+    ///
+    /// Des couleurs opaques, mélangées au fond du panneau : c'est ce qui
+    /// donne des touches qu'on voit. Les chiffres tirent vers le texte —
+    /// un gris franc —, les opérateurs vers l'accent, ce qui efface vers
+    /// le rouge. Trois familles, trois teintes, et l'on vise une touche
+    /// sans la lire.
     fn couleurs(self, theme: &Theme) -> (egui::Color32, egui::Color32) {
         match self {
-            TouchePour::Chiffre => (theme.dim.gamma_multiply(0.22), theme.text),
-            TouchePour::Opérateur => (theme.accent.gamma_multiply(0.22), theme.accent),
-            TouchePour::Effacer => (theme.bad.gamma_multiply(0.22), theme.bad),
+            TouchePour::Chiffre => (
+                mélange(theme.surface, theme.text, 0.16),
+                theme.text,
+            ),
+            TouchePour::Opérateur => (
+                mélange(theme.surface, theme.accent, 0.32),
+                mélange(theme.text, theme.accent, 0.85),
+            ),
+            TouchePour::Effacer => (
+                mélange(theme.surface, theme.bad, 0.30),
+                mélange(theme.text, theme.bad, 0.85),
+            ),
         }
     }
 }
@@ -17546,10 +17580,21 @@ impl TouchePour {
 /// dont les touches s'étirent n'a plus de forme qu'on reconnaisse, et
 /// l'on rate celle qu'on visait après un redimensionnement. C'est le
 /// bloc entier qui se centre, pas chaque touche qui s'allonge.
-const TOUCHE_L: f32 = 48.0;
-const TOUCHE_H: f32 = 36.0;
-const TOUCHE_ÉCART: f32 = 6.0;
+const TOUCHE_H: f32 = 40.0;
+const TOUCHE_ÉCART: f32 = 7.0;
 const COLONNES: usize = 6;
+
+/// La largeur commune de l'écran et du clavier.
+///
+/// Les deux blocs sont alignés au pixel, et ce n'est pas une
+/// coquetterie : un appareil dont l'écran et le clavier n'ont pas la
+/// même largeur a l'air monté de deux morceaux. La valeur vient de la
+/// grille de bits, qui est celle des deux qu'on ne peut pas resserrer —
+/// trente-deux colonnes lisibles.
+const CALC_LARGEUR: f32 = 366.0;
+
+/// La largeur d'une touche, déduite de celle du bloc.
+const TOUCHE_L: f32 = (CALC_LARGEUR - (COLONNES as f32 - 1.0) * TOUCHE_ÉCART) / COLONNES as f32;
 
 /// Cinq rangées de six touches.
 ///
@@ -17580,6 +17625,11 @@ fn famille_de(touche: &str) -> TouchePour {
 }
 
 /// Une touche du clavier, posée et peinte. Rend sa réponse.
+///
+/// Peinte à la main plutôt que confiée à `egui::Button` : dès qu'on
+/// impose un fond à un bouton, egui le garde tel quel dans tous les
+/// états, et la touche ne répond plus au survol ni au clic. Un clavier
+/// qui ne bouge pas sous le doigt a l'air d'une image.
 fn calculator_key(
     ui: &mut egui::Ui,
     theme: &Theme,
@@ -17588,25 +17638,101 @@ fn calculator_key(
     largeur: f32,
     permis: bool,
 ) -> egui::Response {
+    let (rect, réponse) =
+        ui.allocate_exact_size(egui::vec2(largeur, TOUCHE_H), egui::Sense::click());
     let (fond, encre) = famille.couleurs(theme);
+
     // Éteinte, et non cachée : savoir qu'une touche existe mais ne sert
     // pas dans cette base en apprend plus que de la voir disparaître.
-    let (fond, encre) = if permis {
-        (fond, encre)
+    let (fond, encre) = if !permis {
+        (
+            mélange(theme.surface, fond, 0.35),
+            mélange(theme.surface, encre, 0.45),
+        )
+    } else if réponse.is_pointer_button_down_on() {
+        // Enfoncée : elle s'assombrit, comme une vraie touche qui
+        // descend.
+        (mélange(fond, theme.bg, 0.30), encre)
+    } else if réponse.hovered() {
+        (mélange(fond, theme.text, 0.14), encre)
     } else {
-        (fond.gamma_multiply(0.35), encre.gamma_multiply(0.35))
+        (fond, encre)
     };
-    let bouton = egui::Button::new(
-        egui::RichText::new(texte)
-            .monospace()
-            .size(15.0)
-            .color(encre),
-    )
-    .fill(fond)
-    .stroke(egui::Stroke::new(1.0, encre.gamma_multiply(0.35)))
-    .corner_radius(6.0)
-    .min_size(egui::vec2(largeur, TOUCHE_H));
-    ui.add_enabled(permis, bouton)
+
+    ui.painter().rect(
+        rect,
+        8.0,
+        fond,
+        egui::Stroke::new(1.0, mélange(fond, theme.text, 0.18)),
+        egui::StrokeKind::Inside,
+    );
+    ui.painter().text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        texte,
+        egui::FontId::monospace(16.0),
+        encre,
+    );
+    réponse
+}
+
+/// L'écran de la calculatrice : le résultat, et les bits.
+///
+/// Dans son cadre, sur le fond de l'éditeur : c'est ce qui distingue ce
+/// que l'appareil *montre* de ce sur quoi on *appuie*. Sans cette
+/// séparation, le résultat n'était qu'une ligne de texte parmi d'autres,
+/// et l'on cherchait des yeux la réponse qu'on venait de demander.
+#[allow(clippy::too_many_arguments)]
+fn écran_calculatrice(
+    ui: &mut egui::Ui,
+    theme: &'static Theme,
+    s: &Strings,
+    résultat: &Result<u64, calc::CalcError>,
+    valeur: Option<u64>,
+    base: CalcBase,
+    largeur: CalcWidth,
+    à_copier: &mut Option<String>,
+    bit_basculé: &mut Option<u32>,
+) {
+    ui.vertical_centered(|ui| match (résultat, valeur) {
+        (Ok(_), Some(valeur)) => {
+            let texte = base.écrire(valeur);
+            let réponse = ui.add(
+                egui::Label::new(
+                    egui::RichText::new(&texte)
+                        .monospace()
+                        .size(28.0)
+                        .color(theme.accent),
+                )
+                .sense(egui::Sense::click()),
+            );
+            if réponse.on_hover_text(s.calculator_copy).clicked() {
+                *à_copier = Some(texte);
+            }
+        }
+        (Err(erreur), _) => {
+            // Vide, on ne reproche rien : la fenêtre vient de s'ouvrir,
+            // il n'y a pas d'erreur à signaler. La place reste prise,
+            // sinon tout ce qui suit sauterait d'une ligne à la première
+            // frappe.
+            if matches!(erreur, calc::CalcError::Empty) {
+                ui.add_space(34.0);
+            } else {
+                ui.colored_label(theme.bad, calc_error_text(s, erreur));
+            }
+        }
+        _ => {}
+    });
+    ui.add_space(8.0);
+    calculator_bits_ui(
+        ui,
+        theme,
+        s,
+        valeur.unwrap_or(0),
+        largeur,
+        valeur.is_some(),
+        bit_basculé,
+    );
 }
 
 /// Le clavier de la calculatrice.
@@ -17634,7 +17760,7 @@ fn calculator_keypad_ui(
     courant: &str,
     frappe: &mut Frappe,
 ) {
-    let total = COLONNES as f32 * TOUCHE_L + (COLONNES as f32 - 1.0) * TOUCHE_ÉCART;
+    let total = CALC_LARGEUR;
     let moitié = (total - TOUCHE_ÉCART) / 2.0;
 
     ui.vertical(|ui| {
@@ -17660,15 +17786,18 @@ fn calculator_keypad_ui(
             let (fond, encre) = TouchePour::Effacer.couleurs(theme);
             let (rect, réponse) =
                 ui.allocate_exact_size(egui::vec2(moitié, TOUCHE_H), egui::Sense::click());
+            let fond = if réponse.is_pointer_button_down_on() {
+                mélange(fond, theme.bg, 0.30)
+            } else if réponse.hovered() {
+                mélange(fond, theme.text, 0.14)
+            } else {
+                fond
+            };
             ui.painter().rect(
                 rect,
-                6.0,
-                if réponse.hovered() {
-                    fond.gamma_multiply(1.6)
-                } else {
-                    fond
-                },
-                egui::Stroke::new(1.0, encre.gamma_multiply(0.35)),
+                8.0,
+                fond,
+                egui::Stroke::new(1.0, mélange(fond, theme.text, 0.18)),
                 egui::StrokeKind::Inside,
             );
             chrome::icon_backspace(

@@ -12580,8 +12580,8 @@ fn the_keypad_is_made_of_real_buttons_and_is_centred() {
         let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
         for clipped in &sortie.shapes {
             if let egui::epaint::Shape::Rect(cadre) = &clipped.shape
-                && (cadre.rect.width() - 48.0).abs() < 0.5
-                && (cadre.rect.height() - 36.0).abs() < 0.5
+                && (cadre.rect.width() - TOUCHE_L).abs() < 0.5
+                && (cadre.rect.height() - TOUCHE_H).abs() < 0.5
             {
                 touches.push((cadre.rect, cadre.fill));
             }
@@ -12590,10 +12590,34 @@ fn the_keypad_is_made_of_real_buttons_and_is_centred() {
     }
 
     assert_eq!(touches.len(), 30, "cinq rangées de six touches");
+    // La teinte rendue à son opacité pleine : egui fait apparaître une
+    // fenêtre en fondu, et ses formes arrivent en alpha prémultiplié
+    // tant que le fondu dure. On juge la couleur, non l'avancement
+    // d'une animation.
+    let teinte = |c: egui::Color32| -> [i32; 3] {
+        let a = i32::from(c.a()).max(1);
+        [
+            i32::from(c.r()) * 255 / a,
+            i32::from(c.g()) * 255 / a,
+            i32::from(c.b()) * 255 / a,
+        ]
+    };
+    let fond_panneau = teinte(app.theme.surface);
     for (rect, fond) in &touches {
+        assert!(fond.a() > 0, "une touche invisible : {rect:?}");
+        // Assez loin du fond pour se voir : c'est ce qui manquait quand
+        // les touches étaient peintes à vingt pour cent d'opacité —
+        // elles prenaient la couleur du panneau, à peine plus claires,
+        // et le clavier n'avait plus l'air d'un clavier.
+        let couleur = teinte(*fond);
+        let distance: i32 = couleur
+            .iter()
+            .zip(fond_panneau.iter())
+            .map(|(a, b)| (a - b).abs())
+            .sum();
         assert!(
-            fond.a() > 0,
-            "une touche sans fond ne se voit pas comme un bouton : {rect:?}"
+            distance >= 18,
+            "une touche doit se détacher du panneau : {couleur:?} contre {fond_panneau:?}"
         );
     }
 

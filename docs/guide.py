@@ -561,6 +561,17 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "vaut <font face='Courier'>0x1f</font> avec le quatrième bit en moins, et "
          "l'écrire à la main est plus long que de le cliquer."),
         ("p",
+         "L'écran — le résultat et les bits — vit dans son cadre, sur le fond de "
+         "l'éditeur : c'est ce qui distingue ce que l'appareil <i>montre</i> de ce sur "
+         "quoi on <i>appuie</i>. Les deux blocs ont la même largeur, au pixel, parce "
+         "qu'un appareil dont l'écran et le clavier n'ont pas la même largeur a l'air "
+         "monté de deux morceaux."),
+        ("p",
+         "Les touches sont peintes en couleurs <b>opaques</b> mélangées au fond, et "
+         "non par transparence : les chiffres tirent vers le texte, les opérateurs vers "
+         "l'accent du thème, ce qui efface vers le rouge. Elles s'éclaircissent au "
+         "survol et s'assombrissent sous le clic, comme une vraie touche qui descend."),
+        ("p",
          "Le clavier écrit <b>ce que l'évaluateur lit</b> — "
          "<font face='Courier'>&amp;</font>, <font face='Courier'>|</font>, "
          "<font face='Courier'>^</font>, <font face='Courier'>&lt;&lt;</font> — et non "
