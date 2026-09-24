@@ -336,8 +336,7 @@ aujourd'hui ; les suivantes, ce vers quoi l'outil peut aller.
      un binaire dépouillé — précisément le cas des crackmes. Repli par les
      segments, que le noyau lit toujours.
      Reste à faire : forcer un saut (Jcc -> jmp), qui change la longueur en forme
-     longue et demande un nop de complément ; et patcher depuis le vidage
-     hexadécimal (4.8).
+     longue et demande un nop de complément.
 
 4.2  [FAIT] Nommer les fonctions et les adresses
      `Espace a` (ou Ctrl+Maj+N) nomme l'adresse de la ligne courante. Le nom
@@ -402,8 +401,18 @@ aujourd'hui ; les suivantes, ce vers quoi l'outil peut aller.
      Bouton « Copier en DOT » : Graphviz en fait une image avec « dot -Tsvg ».
      Reste à faire : l'écrire dans un fichier plutôt que dans le presse-papiers.
 
-4.8  Vue hexadécimale éditable
-     L'onglet Octets montre ; il ne laisse pas écrire. Lié à 4.1.
+4.8  [FAIT] Vue hexadécimale éditable
+     Le module « Vidage du fichier » laisse écrire : on choisit la tranche, on
+     tape les octets, et le changement rejoint la liste des patchs — donc il se
+     défait, et l'export le porte. Autant d'octets que la tranche en compte,
+     exactement : la même règle que pour l'inversion d'un saut.
+     Un module ne connaît ni le disque ni l'historique des patchs. Il décrit ce
+     qu'il voudrait (ReRequest), l'application relève et décide — relevé après
+     le dessin, parce que pendant, l'application est déjà empruntée.
+     Reste à faire : l'onglet Octets du panneau latéral, qui montre les octets
+     produits par chaque ligne du source, n'est toujours pas modifiable. C'est
+     un autre besoin : là on change son propre programme, et le changer par son
+     source est plus simple et plus sûr.
 
 4.9  [FAIT] Chercher dans la mémoire
      Le champ « Chercher » de l'onglet Mémoire. Trois écritures qui se mélangent

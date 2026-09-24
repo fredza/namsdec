@@ -12548,6 +12548,48 @@ fn a_truncated_status_message_can_be_read_in_full() {
     }
 }
 
+/// Le vidage laisse écrire, et ce qu'il écrit devient un patch qu'on
+/// peut défaire.
+///
+/// Le vidage montrait ; il laisse maintenant changer, ce qui est la
+/// suite naturelle : on a repéré la constante qu'on veut voir
+/// autrement, et l'on n'avait aucun moyen de la poser.
+#[test]
+fn the_dump_can_write_bytes_and_the_change_is_a_patch() {
+    let Some(octets) = binaire_dépreuve("crackme-01") else {
+        return;
+    };
+    let mut app = NamsdecApp::default();
+    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    assert!(app.patches.is_empty());
+
+    // Ce qu'un module demande, l'application le fait : c'est le chemin
+    // que suit le bouton « Écrire » du vidage.
+    let offset = 0x1000;
+    let nouveaux = vec![0x90u8, 0x90, 0x90, 0x90];
+    let avant = octets[offset..offset + nouveaux.len()].to_vec();
+    assert_ne!(avant, nouveaux, "de quoi voir la différence");
+    app.write_patch(offset, nouveaux.clone(), 0);
+
+    assert_eq!(app.patches.len(), 1, "un changement enregistré");
+    assert_eq!(app.patches[0].offset, offset);
+    assert_eq!(app.patches[0].before, avant);
+    assert_eq!(app.patches[0].addr, 0, "une position, non une adresse");
+    let patché = &app.assemble_state.as_ref().expect("rechargé").output.file;
+    assert_eq!(&patché[offset..offset + nouveaux.len()], nouveaux.as_slice());
+
+    // Écrire ce qui s'y trouve déjà n'enregistre rien : un patch qui ne
+    // change rien encombrerait la liste de ce qu'on peut défaire.
+    app.write_patch(offset, nouveaux.clone(), 0);
+    assert_eq!(app.patches.len(), 1, "et toujours un seul");
+
+    // Et il se défait comme les autres.
+    app.undo_patch(0);
+    assert!(app.patches.is_empty());
+    let rendu = &app.assemble_state.as_ref().expect("rechargé").output.file;
+    assert_eq!(&rendu[offset..offset + avant.len()], avant.as_slice());
+}
+
 /// Patcher un binaire : inverser un saut, et le retrouver dans le
 /// fichier exporté.
 ///

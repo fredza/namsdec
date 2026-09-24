@@ -129,6 +129,11 @@ six fautes d'assembleur que namsdec sait désormais reconnaître.
   ainsi : les conditions vont par paires, et le bit de poids faible de
   l'opcode dit laquelle des deux. Aucune table à tenir à jour, et
   l'inverse de l'inverse retombe sur l'original.
+- Le module **Vidage du fichier** laisse écrire : on choisit la tranche,
+  on tape les octets, et le changement rejoint la liste des patchs —
+  donc il se défait, et l'export le porte. Un module ne connaît ni le
+  disque ni l'historique des changements : il décrit ce qu'il voudrait,
+  l'application relève et décide.
 - Trouvé en chemin : la conversion adresse → position dans le fichier ne
   regardait que les **sections**, donc rien sur un binaire dépouillé —
   précisément le cas des crackmes. Elle se rabat sur les segments, que

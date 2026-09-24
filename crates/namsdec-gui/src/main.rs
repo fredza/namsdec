@@ -12748,6 +12748,7 @@ impl NamsdecApp {
                     });
             });
         self.place_maximize_button(ctx, Self::ANALYSIS_WINDOW, rendue_analysis_window);
+        self.apply_re_requests();
         self.show_analysis = open && !fermer_ok;
     }
 
@@ -13609,32 +13610,26 @@ impl NamsdecApp {
         Some((adresse, instruction.bytes.clone(), nouveaux))
     }
 
-    /// Écrit le patch dans l'image, puis recharge le binaire.
+    /// Écrit des octets à une position du fichier, puis recharge.
     ///
-    /// Recharger plutôt que rapiécer l'état en place : les octets
-    /// changés donnent un autre désassemblage, d'autres fonctions,
-    /// d'autres références croisées. Reprendre le fichier depuis le
-    /// début est ce qui garantit que tout ce qu'on lit ensuite parle du
-    /// binaire qu'on vient d'écrire — et l'exécution repart de zéro,
-    /// ce qui est de toute façon ce qu'on veut après avoir changé le
-    /// programme.
-    fn apply_patch(&mut self, geste: PatchGeste) {
+    /// Le fond commun des deux gestes et de l'écriture depuis le vidage :
+    /// tous finissent ici. `adresse` ne sert qu'à le dire à l'écran —
+    /// zéro quand on ne l'a pas, comme depuis le vidage, où l'on désigne
+    /// une position et non une instruction.
+    fn write_patch(&mut self, offset: usize, après: Vec<u8>, adresse: u64) {
         let s = strings(self.lang);
-        let Some((adresse, avant, après)) = self.patch_preview(geste) else {
-            self.status = Status::Error(s.patch_impossible.to_owned());
-            return;
-        };
         let Some(state) = &self.assemble_state else {
             return;
         };
         let mut image = state.output.file.clone();
-        let Some(offset) = namsdec_re::imports::file_offset(&image, adresse) else {
+        let Some(avant) = namsdec_re::patch::apply(&mut image, offset, &après) else {
             self.status = Status::Error(s.patch_no_offset.to_owned());
             return;
         };
-        let offset = offset as usize;
-        if namsdec_re::patch::apply(&mut image, offset, &après).is_none() {
-            self.status = Status::Error(s.patch_no_offset.to_owned());
+        if avant == après {
+            // Rien à faire, et surtout rien à enregistrer : un patch qui
+            // ne change rien encombrerait la liste de ce qu'on peut
+            // défaire.
             return;
         }
         let nom = state
@@ -13651,6 +13646,55 @@ impl NamsdecApp {
             });
             self.status = Status::Note(|s| s.patch_applied);
         }
+    }
+
+    /// Relève ce que les modules d'analyse demandent, et l'exécute.
+    ///
+    /// Un module ne connaît ni le disque ni l'historique des
+    /// changements : il décrit ce qu'il voudrait, et c'est ici qu'on
+    /// décide. Relevé **après** que la fenêtre s'est dessinée, parce que
+    /// pendant, `self` est déjà emprunté.
+    fn apply_re_requests(&mut self) {
+        let mut demandes = Vec::new();
+        for module in self.re_registry.iter_mut() {
+            if let Some(demande) = module.take_request() {
+                demandes.push(demande);
+            }
+        }
+        for demande in demandes {
+            match demande {
+                namsdec_re::ReRequest::PatchBytes { offset, bytes } => {
+                    self.write_patch(offset, bytes, 0);
+                }
+            }
+        }
+    }
+
+    /// Écrit le patch dans l'image, puis recharge le binaire.
+    ///
+    /// Recharger plutôt que rapiécer l'état en place : les octets
+    /// changés donnent un autre désassemblage, d'autres fonctions,
+    /// d'autres références croisées. Reprendre le fichier depuis le
+    /// début est ce qui garantit que tout ce qu'on lit ensuite parle du
+    /// binaire qu'on vient d'écrire — et l'exécution repart de zéro,
+    /// ce qui est de toute façon ce qu'on veut après avoir changé le
+    /// programme.
+    fn apply_patch(&mut self, geste: PatchGeste) {
+        let s = strings(self.lang);
+        let Some((adresse, _, après)) = self.patch_preview(geste) else {
+            self.status = Status::Error(s.patch_impossible.to_owned());
+            return;
+        };
+        let Some(state) = &self.assemble_state else {
+            return;
+        };
+        // L'adresse virtuelle de l'instruction, ramenée à sa position
+        // dans le fichier : c'est là qu'on écrit.
+        let Some(offset) = namsdec_re::imports::file_offset(&state.output.file, adresse) else {
+            self.status = Status::Error(s.patch_no_offset.to_owned());
+            return;
+        };
+        self.write_patch(offset as usize, après, adresse);
     }
 
     /// Défait un patch : on remet les octets d'avant, et l'on recharge.
@@ -13774,9 +13818,19 @@ impl NamsdecApp {
                                     if ui.small_button(s.patch_undo).clicked() {
                                         défaire = Some(rang);
                                     }
+                                    // Sans adresse — un patch venu du
+                                    // vidage désigne une position dans
+                                    // le fichier, non une instruction —
+                                    // on écrit la position, précédée
+                                    // d'un plus pour qu'on ne la
+                                    // confonde pas avec une adresse.
+                                    let où = if patch.addr == 0 {
+                                        format!("+{:#x}", patch.offset)
+                                    } else {
+                                        format!("{:#x}", patch.addr)
+                                    };
                                     ui.monospace(format!(
-                                        "{:#x} : {} -> {}",
-                                        patch.addr,
+                                        "{où} : {} -> {}",
                                         namsdec_re::digest::hex(&patch.before),
                                         namsdec_re::digest::hex(&patch.after)
                                     ));

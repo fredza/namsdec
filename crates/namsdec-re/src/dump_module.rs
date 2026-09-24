@@ -1,4 +1,4 @@
-use crate::{ReContext, ReModule, digest, entropy};
+use crate::{ReContext, ReModule, ReRequest, digest, entropy};
 
 /// Le vidage hexadécimal du fichier, et l'empreinte de ce qu'on y
 /// sélectionne.
@@ -21,6 +21,11 @@ pub struct DumpModule {
     longueur: String,
     /// Où le vidage doit se rendre à la prochaine image, s'il le doit.
     aller_à: Option<usize>,
+    /// Les octets qu'on veut écrire à la place de la tranche, tels qu'on
+    /// les a tapés.
+    remplacement: String,
+    /// Ce qu'on demande à l'application, relevé à l'image suivante.
+    demande: Option<ReRequest>,
 }
 
 impl Default for DumpModule {
@@ -32,6 +37,8 @@ impl Default for DumpModule {
             // tout de suite plutôt qu'un champ vide.
             longueur: "0x10".to_owned(),
             aller_à: None,
+            remplacement: String::new(),
+            demande: None,
         }
     }
 }
@@ -115,6 +122,10 @@ impl ReModule for DumpModule {
         } else {
             "File dump"
         }
+    }
+
+    fn take_request(&mut self) -> Option<ReRequest> {
+        self.demande.take()
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
@@ -228,6 +239,62 @@ impl ReModule for DumpModule {
                         ui.monospace(lisible(morceau, 48));
                         ui.end_row();
                     });
+
+                // Et l'écriture. Le vidage montrait ; il laisse
+                // maintenant changer, ce qui est la suite naturelle : on
+                // a repéré la constante qu'on veut voir autrement, et
+                // l'on n'avait jusqu'ici aucun moyen de la poser.
+                //
+                // Autant d'octets que la tranche en compte, exactement.
+                // C'est la même règle que pour l'inversion d'un saut :
+                // un octet de plus ou de moins décalerait tout ce qui
+                // suit, et chaque adresse du fichier deviendrait fausse.
+                ui.add_space(6.0);
+                let attendus = morceau.len();
+                let écrits = octets_écrits(&self.remplacement);
+                ui.horizontal(|ui| {
+                    ui.weak(ctx.t("Remplacer par", "Replace with"));
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.remplacement)
+                            .hint_text(ctx.t("41 42 43…", "41 42 43…"))
+                            .font(egui::TextStyle::Monospace)
+                            .desired_width(220.0),
+                    );
+                    let prêt = écrits.as_ref().is_some_and(|o| o.len() == attendus);
+                    ui.add_enabled_ui(prêt, |ui| {
+                        if ui
+                            .button(ctx.t("Écrire", "Write"))
+                            .on_hover_text(ctx.t(
+                                "Le changement se défait depuis Outils > Patcher le binaire.",
+                                "The change can be undone from Tools > Patch the binary.",
+                            ))
+                            .clicked()
+                            && let Some(bytes) = écrits.clone()
+                        {
+                            self.demande = Some(ReRequest::PatchBytes { offset: début, bytes });
+                            self.remplacement.clear();
+                        }
+                    });
+                });
+                match &écrits {
+                    _ if self.remplacement.trim().is_empty() => {}
+                    None => {
+                        ui.weak(ctx.t(
+                            "Des octets en hexadécimal, par paires : « 90 90 » ou « 9090 ».",
+                            "Bytes in hexadecimal, in pairs: \"90 90\" or \"9090\".",
+                        ));
+                    }
+                    Some(o) if o.len() != attendus => {
+                        ui.weak(format!(
+                            "{} {attendus} {} {} {}",
+                            ctx.t("La tranche en compte", "The range holds"),
+                            ctx.t("octets", "bytes"),
+                            ctx.t("; vous en donnez", "; you give"),
+                            o.len()
+                        ));
+                    }
+                    Some(_) => {}
+                }
             }
             None => {
                 ui.add_space(4.0);
@@ -300,6 +367,28 @@ impl ReModule for DumpModule {
             self.début = format!("{position:#x}");
         }
     }
+}
+
+/// Les octets qu'on a tapés, ou `None` si ce n'en sont pas.
+///
+/// Par paires, espacées ou collées : « 90 90 » et « 9090 » donnent la
+/// même chose. Un nombre impair de chiffres est refusé plutôt que
+/// complété — un octet fait deux chiffres, et deviner le second
+/// reviendrait à écrire autre chose que ce qu'on a demandé.
+fn octets_écrits(texte: &str) -> Option<Vec<u8>> {
+    let chiffres: String = texte.chars().filter(|c| !c.is_whitespace()).collect();
+    if chiffres.is_empty() || !chiffres.len().is_multiple_of(2) {
+        return None;
+    }
+    let paires: Vec<char> = chiffres.chars().collect();
+    paires
+        .chunks(2)
+        .map(|paire| {
+            let haut = paire[0].to_digit(16)?;
+            let bas = paire[1].to_digit(16)?;
+            Some((haut * 16 + bas) as u8)
+        })
+        .collect()
 }
 
 /// Les octets lus comme du texte, le reste en points — comme dans tout
@@ -384,6 +473,22 @@ mod tests {
         assert_eq!(barre(lignes[0]), barre(lignes[1]), "{lignes:?}");
 
         assert!(hex_dump(&[]).is_empty(), "rien à vider");
+    }
+
+    /// Les octets qu'on tape se lisent par paires, espacées ou collées.
+    #[test]
+    fn typed_bytes_read_in_pairs() {
+        assert_eq!(octets_écrits("90 90"), Some(vec![0x90, 0x90]));
+        assert_eq!(octets_écrits("9090"), Some(vec![0x90, 0x90]));
+        assert_eq!(octets_écrits("  41  42  "), Some(vec![0x41, 0x42]));
+        assert_eq!(octets_écrits("EB"), Some(vec![0xeb]));
+        // Un nombre impair de chiffres est refusé plutôt que complété :
+        // un octet fait deux chiffres, et deviner le second reviendrait
+        // à écrire autre chose que ce qu'on a demandé.
+        assert_eq!(octets_écrits("909"), None);
+        assert_eq!(octets_écrits("9z"), None);
+        assert_eq!(octets_écrits(""), None);
+        assert_eq!(octets_écrits("   "), None);
     }
 
     /// Le texte d'un vidage : ce qui se lit, et des points pour le

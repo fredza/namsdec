@@ -85,9 +85,33 @@ impl ReContext<'_> {
     }
 }
 
+/// Ce qu'un module demande à l'application, faute de pouvoir le faire
+/// lui-même.
+///
+/// Un module ne connaît ni le disque, ni les fenêtres, ni l'historique
+/// des changements : il décrit ce qu'il voudrait, et l'application
+/// décide. C'est ce qui permet au vidage d'offrir l'écriture d'octets
+/// sans rien savoir des patchs — et à un module futur d'en demander
+/// autant sans qu'on lui ouvre l'application en grand.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReRequest {
+    /// Écrire ces octets à cette position du fichier.
+    PatchBytes { offset: usize, bytes: Vec<u8> },
+}
+
 pub trait ReModule {
     /// Identifiant stable (pour retrouver/désactiver un module).
     fn id(&self) -> &'static str;
+
+    /// Relève ce que le module demande, et l'oublie.
+    ///
+    /// Relevé et non agi : le module se dessine pendant que
+    /// l'application tient déjà ses propres emprunts, et ne peut donc
+    /// rien lui faire faire sur-le-champ. Rien à demander, dans le cas
+    /// général — d'où la réponse par défaut.
+    fn take_request(&mut self) -> Option<ReRequest> {
+        None
+    }
     /// Titre affiché en tête du panneau du module, dans la langue
     /// demandée.
     fn title(&self, lang: &str) -> &'static str;

@@ -789,7 +789,7 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "adresse. Une adresse qu'un `call` vise est une fonction, même dépouillée de son "
          "nom.",
          "<b>Gadgets</b> — les fins de séquence utiles à une chaîne ROP.",
-         "<b>Vidage du fichier</b> — les octets tels qu'ils sont sur le disque, et pour "
+         "<b>Vidage du fichier</b> — les octets tels qu'ils sont sur le disque — et qu'on peut changer, voir « Patcher un binaire » —, et pour "
          "la tranche qu'on choisit : sa taille, son SHA-256, son CRC-32 et son entropie. "
          "Il se copie et s'enregistre au format de <font face='Courier'>xxd</font>, celui "
          "qu'un <font face='Courier'>diff</font> sait lire — c'est ce qui permet de "
@@ -1012,6 +1012,12 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "<font face='Courier'>0x74</font>, <font face='Courier'>jne</font> est "
          "<font face='Courier'>0x75</font>. Il n'y a donc aucune table \u00e0 tenir \u00e0 "
          "jour, et l'inverse de l'inverse retombe toujours sur l'original."),
+        ("p",
+         "On \u00e9crit aussi les octets \u00e0 la main, depuis le module <b>Vidage du "
+         "fichier</b> de la fen\u00eatre d'analyse : on choisit la tranche, on tape ce "
+         "qu'on veut \u00e0 la place, et le changement rejoint la liste des patchs. "
+         "Autant d'octets que la tranche en compte, exactement \u2014 c'est la m\u00eame "
+         "r\u00e8gle, et c'est elle qui garde toutes les autres adresses justes."),
         ("p",
          "Le binaire est recharg\u00e9 apr\u00e8s chaque changement : les octets chang\u00e9s "
          "donnent un autre d\u00e9sassemblage, d'autres fonctions, d'autres r\u00e9f\u00e9rences "
