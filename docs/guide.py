@@ -571,10 +571,14 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "qu'un appareil dont l'écran et le clavier n'ont pas la même largeur a l'air "
          "monté de deux morceaux."),
         ("p",
-         "Les touches sont peintes en couleurs <b>opaques</b> mélangées au fond, et "
-         "non par transparence : les chiffres tirent vers le texte, les opérateurs vers "
-         "l'accent du thème, ce qui efface vers le rouge. Elles s'éclaircissent au "
-         "survol et s'assombrissent sous le clic, comme une vraie touche qui descend."),
+         "Les touches sont peintes en couleurs <b>opaques et franches</b> : les chiffres "
+         "sur un gris net, les op\u00e9rateurs sur la couleur d'accent du th\u00e8me, ce "
+         "qui efface sur du rouge. Trois familles, trois teintes \u2014 on vise une touche "
+         "sans la lire. L'encre est celle des deux couleurs du th\u00e8me qui contraste le "
+         "plus avec le fond de la touche, en pesant les canaux comme l'\u0153il les p\u00e8se : "
+         "la r\u00e8gle vaut pour un th\u00e8me clair comme pour un sombre. Elles "
+         "s'\u00e9claircissent au survol et s'assombrissent sous le clic, comme une vraie "
+         "touche qui descend."),
         ("p",
          "Le clavier écrit <b>ce que l'évaluateur lit</b> — "
          "<font face='Courier'>&amp;</font>, <font face='Courier'>|</font>, "
