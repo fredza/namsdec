@@ -8499,7 +8499,17 @@ impl NamsdecApp {
         } else {
             fenêtre
                 .resizable(true)
-                .default_size([720.0, 520.0])
+                .default_size([760.0, 560.0])
+                // Bornée en largeur, et ce n'est pas une préférence de
+                // goût : sans borne, la première passe de mise en page
+                // dispose le texte sur une largeur infinie. Une commande
+                // de cent cinquante caractères tient alors sur une
+                // ligne, s'alloue la hauteur d'une ligne, puis se peint
+                // sur deux une fois la fenêtre ramenée à sa taille — et
+                // tout ce qui suit se retrouve dessous d'une ligne trop
+                // haut. De proche en proche, la fenêtre entière se
+                // chevauche.
+                .max_width(900.0)
                 .pivot(egui::Align2::CENTER_CENTER)
                 .default_pos(ctx.viewport_rect().center())
         };
@@ -8512,6 +8522,16 @@ impl NamsdecApp {
                 if ok_bar(ui, self.theme, strings(self.lang), "decompiler") {
                     fermer_ok = true;
                 }
+                // La largeur de retour à la ligne, dite explicitement :
+                // une fenêtre agrandie n'a pas de borne, et le texte
+                // s'allouerait de nouveau une ligne pour s'en peindre
+                // deux.
+                let large = ui.available_width();
+                ui.set_max_width(if large.is_finite() && large > 0.0 {
+                    large.min(900.0)
+                } else {
+                    760.0
+                });
                 if self.decompilers.is_empty() {
                     ui.colored_label(theme.warn, s.decompiler_none_installed);
                     ui.add_space(4.0);
@@ -8593,9 +8613,6 @@ impl NamsdecApp {
                     });
                     if occupé {
                         ui.spinner();
-                        ui.colored_label(theme.dim, s.decompiler_working);
-                    } else if !prêt {
-                        ui.colored_label(theme.dim, s.decompiler_no_binary);
                     }
                     if let Some(Ok(texte)) = &self.decompile_result
                         && ui.small_button(s.decompiler_copy).clicked()
@@ -8603,6 +8620,15 @@ impl NamsdecApp {
                         ui.ctx().copy_text(texte.clone());
                     }
                 });
+                // La phrase sur sa propre ligne, et non à la suite des
+                // boutons : une rangée qui se replie place son dernier
+                // élément à la ligne suivante sans savoir de combien
+                // descendre, et le texte se posait sur le bouton.
+                if occupé_maintenant(self) {
+                    ui.colored_label(theme.dim, s.decompiler_working);
+                } else if self.assemble_state.is_none() {
+                    ui.colored_label(theme.dim, s.decompiler_no_binary);
+                }
 
                 // Ce qui a été décompilé, et de quel programme il
                 // s'agissait : sans cela, un texte resté à l'écran passe
@@ -18212,6 +18238,14 @@ fn calculator_keypad_ui(
             });
         }
     });
+}
+
+/// Un travail de décompilation est-il en cours ?
+///
+/// Nommé plutôt qu'écrit deux fois : la rangée de boutons le lit pour
+/// éteindre « Lancer », la ligne d'en dessous pour dire ce qu'on attend.
+fn occupé_maintenant(app: &NamsdecApp) -> bool {
+    app.decompile_job.is_some()
 }
 
 /// Ce qu'une touche du clavier écrit dans l'expression.

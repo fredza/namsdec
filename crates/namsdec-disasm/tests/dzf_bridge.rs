@@ -14,12 +14,30 @@ fn dzf_bridge_preserves_partial_diagnostics_and_translates_elf() {
     let source = dir.path().join("sample.asm");
     let object = dir.path().join("sample.o");
     for (body, status) in [
-        ("xor eax,eax\nor eax,1\nand eax,3\nret", "TRANSLATED_REGIONS"),
+        (
+            "xor eax,eax\nor eax,1\nand eax,3\nret",
+            "TRANSLATED_REGIONS",
+        ),
         ("nop\nud2", "PARTIAL_OR_FAILED"),
     ] {
-        std::fs::write(&source, format!("bits 64\nsection .text\nglobal _start\n_start:\n{body}\n")).unwrap();
-        assert!(Command::new("nasm").args(["-f", "elf64"]).arg(&source).arg("-o").arg(&object).status().unwrap().success());
-        let result = tool.run(&std::fs::read(&object).unwrap()).expect("bridge process");
+        std::fs::write(
+            &source,
+            format!("bits 64\nsection .text\nglobal _start\n_start:\n{body}\n"),
+        )
+        .unwrap();
+        assert!(
+            Command::new("nasm")
+                .args(["-f", "elf64"])
+                .arg(&source)
+                .arg("-o")
+                .arg(&object)
+                .status()
+                .unwrap()
+                .success()
+        );
+        let result = tool
+            .run(&std::fs::read(&object).unwrap())
+            .expect("bridge process");
         assert!(result.contains(&format!("Status: {status}")), "{result}");
         if status == "TRANSLATED_REGIONS" {
             assert!(result.contains("flags_logic32"), "{result}");

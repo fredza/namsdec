@@ -265,6 +265,20 @@ six fautes d'assembleur que namsdec sait désormais reconnaître.
   en grand et tout dépliés. Deux fois la même chose, dont une mal.
 
 **Réparé**
+- La fenêtre du décompilateur était **illisible** : chaque bloc se
+  posait une ligne trop haut et recouvrait le précédent. Une commande de
+  cent cinquante caractères — celle du pont DZF — s'allouait la hauteur
+  d'une ligne et s'en peignait deux, parce que sans largeur bornée la
+  première passe de mise en page dispose sur une largeur infinie. La
+  fenêtre a maintenant une borne, et son contenu une largeur de retour à
+  la ligne dite explicitement.
+- Et la phrase « Assemblez d'abord » est sortie de la rangée de
+  boutons : une rangée qui se replie place son dernier élément à la
+  ligne suivante sans savoir de combien descendre, et le texte se posait
+  sur le bouton.
+- Un test interdit désormais à **deux textes d'une même fenêtre de se
+  recouvrir**. C'est un défaut qui se voit tout de suite et se
+  diagnostique mal ; mesuré, il se dit en une ligne.
 - **La ligne de saisie est toujours là** dès qu'un programme est
   assemblé. Elle n'apparaissait que si namsdec avait repéré un `read`
   dans le code — donc jamais pour qui écrit son programme, a posé ses

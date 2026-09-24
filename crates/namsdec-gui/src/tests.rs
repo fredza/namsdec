@@ -12734,6 +12734,89 @@ fn the_patch_window_says_what_it_would_do_before_one_clicks() {
     );
 }
 
+/// Deux textes d'une même fenêtre ne se recouvrent jamais.
+///
+/// Le défaut se voit tout de suite et se diagnostique mal : une commande
+/// de cent cinquante caractères s'allouait la hauteur d'une ligne et
+/// s'en peignait deux, si bien que tout ce qui suivait se posait une
+/// ligne trop haut. De proche en proche, la fenêtre entière se
+/// chevauchait — « illisible ».
+///
+/// La cause est une largeur de retour à la ligne indéterminée : sans
+/// borne, la première passe de mise en page dispose sur une largeur
+/// infinie, et le texte ne revient à la ligne qu'à la peinture.
+#[test]
+fn two_texts_of_a_window_never_overlap() {
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp {
+        show_decompiler: true,
+        show_decompiler_module: true,
+        // Une commande volontairement longue : c'est elle qui révélait
+        // le défaut, et c'est celle du pont DZF.
+        decompilers: vec![namsdec_disasm::plugin::Plugin {
+            id: "dzf".to_owned(),
+            name: "DZF — décompilation ELF64 (beta)".to_owned(),
+            command: "/usr/bin/python3".to_owned(),
+            args: vec![
+                "/home/quelquun/Projects/DZF/integrations/namsdec/dzf_namsdec.py".to_owned(),
+                "--cli".to_owned(),
+                "/home/quelquun/Projects/DZF/build-dzf/x64-disassembler".to_owned(),
+                "--input".to_owned(),
+                "{file}".to_owned(),
+                "--output".to_owned(),
+                "{out}".to_owned(),
+            ],
+            install: None,
+        }],
+        decompiler: "dzf".to_owned(),
+        ..Default::default()
+    };
+    app.apply_theme(&ctx);
+    let entrée = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1900.0, 1200.0),
+        )),
+        ..Default::default()
+    };
+
+    let mut textes: Vec<(String, egui::Rect)> = Vec::new();
+    for _ in 0..3 {
+        textes.clear();
+        let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                textes.push((
+                    t.galley.text().to_owned(),
+                    egui::Rect::from_min_size(t.pos, t.galley.size()),
+                ));
+            }
+        }
+        sortie.textures_delta.clear();
+    }
+
+    let fenêtre = egui::AreaState::load(&ctx, egui::Id::new("decompiler_window"))
+        .expect("la fenêtre est affichée")
+        .rect();
+    let dedans: Vec<&(String, egui::Rect)> = textes
+        .iter()
+        .filter(|(_, r)| fenêtre.contains_rect(r.shrink(1.0)))
+        .collect();
+    assert!(dedans.len() > 4, "la fenêtre écrit bien : {}", dedans.len());
+
+    for (i, (texte_a, a)) in dedans.iter().enumerate() {
+        for (texte_b, b) in &dedans[i + 1..] {
+            // Deux pixels de tolérance : les jambages se frôlent d'une
+            // ligne à l'autre sans se gêner.
+            let chevauche = a.shrink(2.0).intersects(b.shrink(2.0));
+            assert!(
+                !chevauche,
+                "« {texte_a} » et « {texte_b} » se recouvrent : {a:?} et {b:?}"
+            );
+        }
+    }
+}
+
 /// Aucune fenêtre ne porte de filet horizontal sous son titre ni
 /// au-dessus de son bouton.
 ///
