@@ -581,8 +581,13 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "sur un gris net, les op\u00e9rateurs sur la couleur d'accent du th\u00e8me, ce "
          "qui efface sur du rouge. Trois familles, trois teintes \u2014 on vise une touche "
          "sans la lire. L'encre est celle des deux couleurs du th\u00e8me qui contraste le "
-         "plus avec le fond de la touche, en pesant les canaux comme l'\u0153il les p\u00e8se : "
-         "la r\u00e8gle vaut pour un th\u00e8me clair comme pour un sombre. Elles "
+         "plus avec le fond de la touche — le contraste au sens des "
+         "recommandations d’accessibilité, mesuré sur la clarté que "
+         "l’œil reçoit vraiment, et non sur les nombres que reçoit "
+         "l’écran. Les deux ne classent pas pareil, et namsdec s’y était "
+         "trompé : les touches d’opérateur portaient l’encre la moins "
+         "lisible des deux. La règle vaut pour un thème clair comme pour un "
+         "sombre. Elles "
          "s'\u00e9claircissent au survol et s'assombrissent sous le clic, comme une vraie "
          "touche qui descend."),
         ("p",

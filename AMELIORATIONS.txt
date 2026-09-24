@@ -859,13 +859,28 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      et des invariants qui valent pour toutes :
        - une fenêtre qu'on ne touche pas ne bouge pas (douze images, les six
          dernières identiques) ;
-       - deux textes d'une même fenêtre ne se recouvrent jamais.
-     Les deux ont trouvé un défaut réel dès leur écriture : la barre « OK »
-     qui faisait monter toutes les fenêtres, et la calculatrice qui écrivait
-     par-dessus son bouton. Le second était là depuis des semaines.
-     Reste à écrire, par ordre d'utilité : un texte tronqué se lit autrement
-     (infobulle) ; le contraste d'un texte sur son fond ; et la relecture des
-     tests d'affichage existants à cette aune.
+       - deux textes d'une même fenêtre ne se recouvrent jamais ;
+       - un texte tronqué se lit encore en entier au survol (le survol est
+         simulé pour de vrai : un mouvement de pointeur, puis des images où
+         il ne bouge plus, parce qu'une infobulle attend que la main
+         s'arrête) ;
+       - tout texte se détache de son fond — 3 au moins au sens des
+         recommandations d'accessibilité, le fond étant composé dans l'ordre
+         des formes peintes, sans quoi la règle serait vide.
+     Six défauts réels trouvés le jour de leur écriture : la barre « OK » qui
+     faisait monter toutes les fenêtres ; la calculatrice qui écrivait
+     par-dessus son bouton (là depuis des semaines) ; le bleu de sélection, où
+     toute étiquette choisie tombait à 2,07 ; les zéros de la calculatrice à
+     2,10 ; les touches d'opérateur, qui portaient l'encre la MOINS lisible
+     des deux ; et l'indication du champ « retrouver », coupée en deux.
+     Le plancher de contraste est 3 et non 4,5 À DESSEIN : au-dessus, la
+     nuance entre `text` et `dim` est une décision de thème, qui ne regarde
+     pas un test. 98 textes sur 291 sont entre 3 et 4,5 — les monter
+     aplatirait la hiérarchie visuelle, et c'est un choix à prendre, pas un
+     défaut à corriger.
+     Reste à écrire : la relecture des tests d'affichage existants à cette
+     aune (ils comparent souvent des positions là où il faudrait des
+     rectangles).
 
      Ce qui l'a motivé :
      Cette séance, quatre défauts réels sont passés sous des tests qui

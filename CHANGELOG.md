@@ -286,12 +286,31 @@ six fautes d'assembleur que namsdec sait désormais reconnaître.
   dernières doivent être identiques. C'est la règle la plus simple
   d'une interface en mode immédiat, et justement celle qu'elle ne
   garantit pas.
+- **Le texte sélectionné se lisait mal** — 2,07 de contraste, c'est-à-dire
+  du gris clair sur un bleu vif. Le thème employait `focusBorder` comme
+  couleur de sélection ; VS Code Dark+ emploie `editor.selectionBackground`,
+  un bleu sombre, qui en donne 5,7. Corrigé de même pour Light+ (2,65 → 11,0).
+- **Les touches de la calculatrice portaient l'encre la moins lisible des
+  deux.** `encre_sur` comparait des clartés brutes, ce qui revient à
+  mesurer ce que l'écran reçoit et non ce que l'œil en fait ; elle compare
+  maintenant de vrais contrastes. Les opérateurs passent de 3,09 à 3,64,
+  « Effacer tout » de 2,85 à 3,95.
+- **Les zéros de la calculatrice**, quand rien n'est encore tapé,
+  tombaient à 2,10 : ils étaient obtenus par `gamma_multiply`, qui ne
+  touche que la transparence. Un mélange opaque les rend lisibles (3,4)
+  sans les rendre bavards.
+- **L'indication du champ « retrouver »** du motif cyclique était coupée
+  en deux. Une indication s'affiche avant qu'on ait tapé quoi que ce
+  soit — c'est le moment où l'on en a besoin. Le champ est plus large.
 - Et un **banc de mise en page** : une liste de fenêtres déclarée une
   fois, des invariants qui valent pour toutes. Une fenêtre nouvelle est
   contrôlée sans qu'on y pense ; un invariant nouveau s'applique
   aussitôt aux quatorze. Deux pour l'instant — rien ne bouge tout seul,
-  deux textes ne se recouvrent jamais. Le second a trouvé le défaut de
-  la calculatrice, que personne ne cherchait.
+  deux textes ne se recouvrent jamais, un texte tronqué se lit encore en
+  entier au survol, et tout texte se détache de son fond (3 de contraste
+  au moins, la mesure des recommandations d'accessibilité). Les quatre
+  ont trouvé un défaut réel le jour de leur écriture — six en tout, dont
+  aucun n'était cherché.
 - La fenêtre du décompilateur était **illisible** : chaque bloc se
   posait une ligne trop haut et recouvrait le précédent. Une commande de
   cent cinquante caractères — celle du pont DZF — s'allouait la hauteur

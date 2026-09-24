@@ -12292,7 +12292,14 @@ impl NamsdecApp {
                     ui.add(
                         egui::TextEdit::singleline(&mut self.cyclic_find)
                             .font(egui::TextStyle::Monospace)
-                            .desired_width(180.0)
+                            // Assez large pour son indication : 180 px
+                            // la coupaient au milieu, et une indication
+                            // s'affiche justement avant qu'on ait tapé
+                            // quoi que ce soit — c'est le moment où
+                            // l'on en a besoin. Une infobulle ne
+                            // remplacerait pas ce qui doit se lire sans
+                            // qu'on cherche.
+                            .desired_width(280.0)
                             .hint_text(s.cyclic_find_hint),
                     );
                     // Les registres où l'on retrouve le motif après un
@@ -17863,7 +17870,13 @@ fn calculator_bits_ui(
                     if mis { "1" } else { "0" },
                     police.clone(),
                     if !actif {
-                        theme.dim.gamma_multiply(0.5)
+                        // Un mélange, et non une transparence :
+                        // `gamma_multiply` ne touche que l'alpha, si
+                        // bien que ce gris tombait à 2,1 de contraste
+                        // sur le fond — on devinait les zéros plus
+                        // qu'on ne les lisait. Mélangé au fond d'un
+                        // quart, il reste discret et se lit (3,4).
+                        mélange(theme.dim, theme.bg, 0.25)
                     } else if mis {
                         theme.accent
                     } else {
@@ -17962,28 +17975,23 @@ fn mélange(a: egui::Color32, b: egui::Color32, part: f32) -> egui::Color32 {
     )
 }
 
-/// La clarté perçue d'une couleur, de 0 à 255.
-///
-/// Les trois canaux ne pèsent pas le même poids dans l'œil : le vert
-/// fait presque les trois quarts de ce qu'on perçoit, le bleu moins d'un
-/// dixième. Un bleu franc et un jaune franc ont la même « valeur » si
-/// l'on fait la moyenne, et des clartés très différentes si l'on pèse.
-fn clarté(c: egui::Color32) -> f32 {
-    0.2126 * f32::from(c.r()) + 0.7152 * f32::from(c.g()) + 0.0722 * f32::from(c.b())
-}
-
 /// L'encre qui se lit le mieux sur ce fond.
 ///
-/// Celle des deux du thème — le texte ou le fond de l'éditeur — qui en
-/// est la plus éloignée. Choisir à la main marcherait sur un thème
-/// sombre et donnerait du gris sur gris sur un thème clair ; ici la
-/// règle vaut pour les deux, et pour ceux qu'on installera.
+/// Celle des deux du thème — le texte ou le fond de l'éditeur — qui
+/// contraste le plus avec lui. Choisir à la main marcherait sur un
+/// thème sombre et donnerait du gris sur gris sur un thème clair ; ici
+/// la règle vaut pour les deux, et pour ceux qu'on installera.
+///
+/// Le *contraste*, et non l'écart de clarté : les deux ne classent pas
+/// pareil. La clarté d'un `#d4d4d4` est à 79 d'un bleu franc et à 187
+/// du fond sombre, ce qui désignait le gris clair ; mesuré comme l'œil
+/// le reçoit, ce gris ne donne que 2,9 sur ce bleu quand l'encre sombre
+/// en donne 4,0. Les touches d'opérateur de la calculatrice portaient
+/// donc l'encre la moins lisible des deux.
 fn encre_sur(fond: egui::Color32, theme: &Theme) -> egui::Color32 {
-    if (clarté(fond) - clarté(theme.text)).abs() >= (clarté(fond) - clarté(theme.bg)).abs() {
-        theme.text
-    } else {
-        theme.bg
-    }
+    let clair = namsdec_theme::contrast_ratio(fond, theme.text);
+    let sombre = namsdec_theme::contrast_ratio(fond, theme.bg);
+    if clair >= sombre { theme.text } else { theme.bg }
 }
 
 impl TouchePour {

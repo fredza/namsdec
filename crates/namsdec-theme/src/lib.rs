@@ -140,7 +140,11 @@ pub static VSCODE_DARK: Theme = Theme {
     folder_open: Color32::from_rgb(0x38, 0xbd, 0xf8),
     folder_text: Color32::from_rgb(0x9c, 0xdc, 0xfe),
     header: Color32::from_rgb(0xe0, 0x9a, 0x5a),
-    selection: Color32::from_rgb(0x37, 0x94, 0xff),
+    // `editor.selectionBackground` de Dark+, et non `focusBorder` : le
+    // bleu vif qui était là ne laissait lire aucun texte posé dessus —
+    // 2,07 de contraste, là où le bleu sombre en donne 5,7. Le thème
+    // dit « VS Code Dark+ », et c'est bien celle-ci que VS Code emploie.
+    selection: Color32::from_rgb(0x26, 0x4f, 0x78),
 };
 
 /// VS Code Light+.
@@ -169,7 +173,10 @@ pub static VSCODE_LIGHT: Theme = Theme {
     folder_open: Color32::from_rgb(0x00, 0x6b, 0x9c),
     folder_text: Color32::from_rgb(0x0a, 0x53, 0x94),
     header: Color32::from_rgb(0xb5, 0x6a, 0x1f),
-    selection: Color32::from_rgb(0x00, 0x5f, 0xb8),
+    // Même raison, et la couleur de Light+ : un bleu pâle, sur lequel
+    // l'encre sombre du thème se lit (11,0), quand le bleu franc qui
+    // était là n'en donnait que 2,65.
+    selection: Color32::from_rgb(0xad, 0xd6, 0xff),
 };
 
 /// Tokyo Night — le thème nvim de référence.
@@ -222,6 +229,42 @@ pub fn perceptual_distance(a: Color32, b: Color32) -> f32 {
         + 4.0 * dg * dg
         + (2.0 + (255.0 - red_mean) / 256.0) * db * db)
         .sqrt()
+}
+
+/// La clarté d'une couleur, telle que l'œil la reçoit — de 0 (noir) à
+/// 1 (blanc).
+///
+/// Ce n'est pas la moyenne des composantes, et ce n'est pas non plus
+/// leur moyenne pondérée : il faut d'abord défaire la correction gamma
+/// que l'écran applique. Sans cela le gris moyen `#808080` compte pour
+/// la moitié du blanc, alors qu'il n'en renvoie que le cinquième. C'est
+/// l'erreur qui faisait choisir du gris clair sur du bleu vif.
+pub fn relative_luminance(c: Color32) -> f32 {
+    let droit = |v: u8| {
+        let v = f32::from(v) / 255.0;
+        if v <= 0.040_45 {
+            v / 12.92
+        } else {
+            ((v + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    0.2126 * droit(c.r()) + 0.7152 * droit(c.g()) + 0.0722 * droit(c.b())
+}
+
+/// Le contraste entre deux couleurs, de 1 (identiques) à 21 (noir et
+/// blanc).
+///
+/// C'est la mesure des recommandations d'accessibilité : 4,5 pour un
+/// texte courant, 3 pour un gros titre ou un élément d'interface. En
+/// dessous de 3, un texte se devine plus qu'il ne se lit ; en dessous
+/// de 2, il disparaît dès que l'écran n'est pas de face.
+///
+/// Les deux couleurs doivent être opaques : un contraste ne se calcule
+/// qu'entre ce qu'on voit, et une encre translucide se compose d'abord
+/// avec son fond.
+pub fn contrast_ratio(a: Color32, b: Color32) -> f32 {
+    let (x, y) = (relative_luminance(a), relative_luminance(b));
+    (x.max(y) + 0.05) / (x.min(y) + 0.05)
 }
 
 /// Les couleurs qui doivent distinguer le code les unes des autres, avec

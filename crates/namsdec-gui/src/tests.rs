@@ -21253,3 +21253,241 @@ fn no_two_texts_of_a_window_ever_overlap() {
     }
 }
 
+
+/// Un texte tronqué se lit encore en entier, au survol.
+///
+/// Tronquer est souvent la bonne réponse : une barre d'état ne
+/// s'allonge pas, une colonne ne se déforme pas pour un nom trop long.
+/// Mais ce qui est coupé doit rester atteignable, sans quoi
+/// l'information est perdue et rien ne le dit. On cherche donc chaque
+/// texte que egui a dû élider, on pose le pointeur dessus, et l'on
+/// demande que le texte entier apparaisse.
+///
+/// Le survol est simulé pour de vrai — un mouvement de pointeur, puis
+/// des images où il ne bouge plus, parce qu'une infobulle attend que la
+/// main s'arrête.
+#[test]
+fn a_truncated_text_can_still_be_read_in_full() {
+    /// Une situation à contrôler : son nom, l'écran, et ce qu'on ouvre.
+    type Situation = (String, egui::Vec2, fn(&mut NamsdecApp));
+    let mut situations: Vec<Situation> = fenêtres_ouvrables()
+        .into_iter()
+        .map(|(nom, _, ouvre)| (nom.to_owned(), egui::vec2(1600.0, 1100.0), ouvre))
+        .collect();
+    // Et l'application nue sur un petit écran : c'est là que la barre
+    // d'état coupe, et c'est le cas qui a motivé la règle.
+    for largeur in [1000.0, 760.0] {
+        situations.push((
+            format!("application à {largeur:.0} px"),
+            egui::vec2(largeur, 620.0),
+            |app| app.status = Status::Note(|s| s.analysis_copied),
+        ));
+    }
+
+    for (nom, écran, ouvre) in situations {
+        let écran = egui::Rect::from_min_size(egui::Pos2::ZERO, écran);
+        let repos = egui::RawInput {
+            screen_rect: Some(écran),
+            ..Default::default()
+        };
+
+        // Premier passage : ce qui est coupé, et où.
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp::default();
+        app.apply_theme(&ctx);
+        ouvre(&mut app);
+        let mut coupés: Vec<(String, egui::Rect)> = Vec::new();
+        for _ in 0..3 {
+            coupés.clear();
+            let mut sortie = ctx.run_ui(repos.clone(), |ui| app.draw(ui));
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(t) = &clipped.shape
+                    && t.galley.elided
+                {
+                    coupés.push((
+                        t.galley.text().to_owned(),
+                        egui::Rect::from_min_size(t.pos, t.galley.size()),
+                    ));
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+
+        // Second passage, un par texte coupé : une application neuve à
+        // chaque fois, pour qu'un survol n'en explique pas un autre.
+        for (entier, place) in coupés {
+            let ctx = egui::Context::default();
+            let mut app = NamsdecApp::default();
+            app.apply_theme(&ctx);
+            ouvre(&mut app);
+            for _ in 0..3 {
+                let mut sortie = ctx.run_ui(repos.clone(), |ui| app.draw(ui));
+                sortie.textures_delta.clear();
+            }
+
+            let survol = egui::RawInput {
+                screen_rect: Some(écran),
+                predicted_dt: 0.5,
+                events: vec![egui::Event::PointerMoved(place.center())],
+                ..Default::default()
+            };
+            let immobile = egui::RawInput {
+                screen_rect: Some(écran),
+                predicted_dt: 0.5,
+                ..Default::default()
+            };
+            let mut sortie = ctx.run_ui(survol, |ui| app.draw(ui));
+            sortie.textures_delta.clear();
+
+            let mut lu = false;
+            for _ in 0..4 {
+                let mut sortie = ctx.run_ui(immobile.clone(), |ui| app.draw(ui));
+                lu |= sortie.shapes.iter().any(|c| {
+                    matches!(&c.shape, egui::epaint::Shape::Text(t)
+                        if !t.galley.elided && t.galley.text().contains(entier.trim()))
+                });
+                sortie.textures_delta.clear();
+            }
+            assert!(
+                lu,
+                "{nom} : « {entier} » est coupé et rien ne le donne en entier — \
+                 il y faut une infobulle"
+            );
+        }
+    }
+}
+
+/// Tout texte se détache de son fond.
+///
+/// La mesure est celle des recommandations d'accessibilité : 4,5 pour
+/// un texte courant, 3 pour un titre ou un élément d'interface. Le
+/// plancher tenu ici est **3** — en dessous, un texte se devine plus
+/// qu'il ne se lit, et c'est un défaut, non un choix de hiérarchie.
+/// Au-dessus, la nuance entre `text` et `dim` est une décision de
+/// thème, qui ne regarde pas un test.
+///
+/// Le fond est celui qu'on a peint dessous, composé dans l'ordre des
+/// formes : un texte sur une touche colorée est mesuré sur la couleur
+/// de la touche, non sur celle de la fenêtre. Sans cela la règle serait
+/// vide — c'est justement sur les fonds colorés qu'une encre se perd.
+///
+/// Trois défauts trouvés le jour où elle a été écrite : le bleu de
+/// sélection, où toute étiquette choisie tombait à 2,07 ; les zéros de
+/// la calculatrice, à 2,10 ; et les touches d'opérateur, qui portaient
+/// l'encre la moins lisible des deux parce que `encre_sur` comparait
+/// des clartés brutes au lieu de contrastes.
+#[test]
+fn every_text_stands_out_from_its_background() {
+    /// Une encre posée sur un fond : ce que l'œil reçoit.
+    fn composé(dessus: egui::Color32, dessous: egui::Color32) -> egui::Color32 {
+        let a = f32::from(dessus.a()) / 255.0;
+        let [r1, g1, b1, _] = dessus.to_srgba_unmultiplied();
+        let [r2, g2, b2, _] = dessous.to_srgba_unmultiplied();
+        let m = |x: u8, y: u8| (f32::from(x) * a + f32::from(y) * (1.0 - a)) as u8;
+        egui::Color32::from_rgb(m(r1, r2), m(g1, g2), m(b1, b2))
+    }
+
+    /// Les couleurs d'encre d'une galley : une par section, car un
+    /// texte riche en porte plusieurs.
+    fn encres(t: &egui::epaint::TextShape) -> Vec<egui::Color32> {
+        if let Some(imposée) = t.override_text_color {
+            return vec![imposée];
+        }
+        let mut couleurs: Vec<egui::Color32> = t
+            .galley
+            .job
+            .sections
+            .iter()
+            .map(|s| {
+                if s.format.color == egui::Color32::PLACEHOLDER {
+                    t.fallback_color
+                } else {
+                    s.format.color
+                }
+            })
+            .collect();
+        couleurs.dedup();
+        if couleurs.is_empty() {
+            couleurs.push(t.fallback_color);
+        }
+        couleurs
+    }
+
+    const PLANCHER: f32 = 3.0;
+    let mut fautes: Vec<String> = Vec::new();
+
+    for (nom, id, ouvre) in fenêtres_ouvrables() {
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp::default();
+        app.apply_theme(&ctx);
+        ouvre(&mut app);
+        // Un pas de temps franc, et six images : egui fait apparaître
+        // une fenêtre en fondu, et tant qu'il dure les couleurs
+        // peintes ne sont pas celles qu'on verra.
+        let entrée = egui::RawInput {
+            predicted_dt: 0.5,
+            ..écran_du_banc()
+        };
+        let mut formes = Vec::new();
+        let mut cadre = egui::Rect::NOTHING;
+        for _ in 0..6 {
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            cadre = egui::AreaState::load(&ctx, egui::Id::new(id))
+                .unwrap_or_else(|| panic!("la fenêtre « {nom} » est affichée"))
+                .rect();
+            formes = std::mem::take(&mut sortie.shapes);
+            sortie.textures_delta.clear();
+        }
+
+        let mut mesurés = 0;
+        let mut fonds: Vec<(egui::Rect, egui::Color32)> = Vec::new();
+        for clipped in &formes {
+            match &clipped.shape {
+                egui::epaint::Shape::Rect(r) if r.fill.a() > 0 => {
+                    fonds.push((r.rect, r.fill));
+                }
+                egui::epaint::Shape::Text(t) => {
+                    let place = egui::Rect::from_min_size(t.pos, t.galley.size());
+                    if !cadre.contains_rect(place.shrink(1.0)) {
+                        continue;
+                    }
+                    // Tout ce qui a été peint dessous, dans l'ordre.
+                    let mut fond = DEFAULT_THEME.bg;
+                    for (rect, couleur) in &fonds {
+                        if rect.contains(place.center()) {
+                            fond = composé(*couleur, fond);
+                        }
+                    }
+                    mesurés += 1;
+                    for encre in encres(t) {
+                        let vu = composé(encre, fond);
+                        let contraste = namsdec_theme::contrast_ratio(vu, fond);
+                        if contraste < PLANCHER {
+                            let quoi: String =
+                                t.galley.text().chars().take(40).collect();
+                            fautes.push(format!(
+                                "[{nom}] {contraste:.2} — « {quoi} » {:?} sur {:?}",
+                                vu.to_srgba_unmultiplied(),
+                                fond.to_srgba_unmultiplied()
+                            ));
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        assert!(
+            mesurés > 2,
+            "la fenêtre « {nom} » n'écrit presque rien : le test ne prouverait rien"
+        );
+    }
+
+    fautes.sort();
+    fautes.dedup();
+    assert!(
+        fautes.is_empty(),
+        "{} texte(s) sous {PLANCHER} de contraste :\n  {}",
+        fautes.len(),
+        fautes.join("\n  ")
+    );
+}
