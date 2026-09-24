@@ -264,6 +264,35 @@ six fautes d'assembleur que namsdec sait désormais reconnaître.
   dans une colonne de trois cents ; la fenêtre d'analyse montre les mêmes
   en grand et tout dépliés. Deux fois la même chose, dont une mal.
 
+**Ce qui était écrit et jamais relu**
+- **Les points d'arrêt d'un fichier source revenaient de nulle part.**
+  Ils étaient écrits dans `settings.json` depuis toujours, et relus
+  seulement quand la séance portait sur un *binaire* : celui qui écrit
+  son propre programme — le cas ordinaire — retrouvait son fichier, ses
+  onglets, ses arguments, et pas un seul de ses points d'arrêt. Les
+  zones surveillées et les registres suivis non plus.
+- Ils ne reviennent que si le fichier n'a pas bougé : les réglages
+  gardent maintenant sa date, comme ils gardaient celle du binaire. Un
+  fichier réécrit ailleurs entre deux séances ferait désigner d'autres
+  lignes, et la barre d'état le dit au lieu de les laisser disparaître
+  en silence.
+- Un test compare les deux structures **champ par champ** : un réglage
+  ajouté demain sans être relu le fera échouer sans qu'on ait pensé à lui.
+
+**Ce qui manquait pour s'en servir vraiment**
+- **`keymap.json` est surveillé.** Modifié pendant que namsdec tourne, il
+  était repris au lancement suivant et rien ne le disait : on éditait, on
+  essayait la touche, il ne se passait rien. Il est maintenant repris dans
+  la seconde. Une capture de raccourci en cours suspend la reprise.
+- **Le jeu de raccourcis s'exporte en entier**, à plat : les trente
+  actions écrites une par une. Le fichier de réglages ne garde que les
+  écarts — c'est ce qu'on veut d'un réglage — mais un fichier de deux
+  lignes ne dit pas ce que namsdec sait faire.
+- **Le graphe s'enregistre dans un fichier**, et pas seulement dans le
+  presse-papier, qui ne survit pas à la copie suivante. C'est le graphe
+  qu'on regarde qui part : la fonction seule ou le programme entier,
+  selon la case cochée.
+
 **Un but manqué dit ce qui manque**
 - Le bandeau des registres écrit maintenant **une ligne par condition**
   du but, avec un point plein pour ce qui tient et un cercle vide pour

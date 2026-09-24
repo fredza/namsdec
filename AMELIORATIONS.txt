@@ -378,11 +378,14 @@ aujourd'hui ; les suivantes, ce vers quoi l'outil peut aller.
      de pile et non à la valeur. Reste à faire : continuer par la mémoire, ce
      qui demande de savoir quelle adresse l'instruction désignait à ce pas-là.
 
-4.5  keymap.json : ce qui reste à faire
-     Le fichier existe et se relit, mais rien ne le surveille : modifié pendant
-     que namsdec tourne, il n'est repris qu'au lancement suivant. Et il n'y a
-     pas d'export « le jeu entier, à plat » pour qui veut partir d'une liste
-     complète plutôt que d'un écart.
+4.5  [FAIT] keymap.json : surveillé, et exportable en entier
+     Le fichier est relu dans la seconde quand il change sur le disque — au
+     plus un accès disque par seconde, et la reprise est suspendue pendant une
+     capture de raccourci : changer le jeu sous les doigts de quelqu'un qui
+     appuie serait la dernière chose à faire. La barre d'état annonce la
+     reprise, sans quoi on ne saurait pas si le fichier a été compris.
+     Et Préférences › Raccourcis exporte le jeu ENTIER, à plat : les trente
+     actions une par une, pour partir d'une liste complète.
 
 4.6  [FAIT] Points d'arrêt conditionnels sur expression
      L'évaluateur n'était pas à écrire : la calculatrice en est un, complet.
@@ -398,8 +401,12 @@ aujourd'hui ; les suivantes, ce vers quoi l'outil peut aller.
      quand il n'y a ni registre ni mémoire à lire.
 
 4.7  [FAIT] Le graphe s'exporte en DOT
-     Bouton « Copier en DOT » : Graphviz en fait une image avec « dot -Tsvg ».
-     Reste à faire : l'écrire dans un fichier plutôt que dans le presse-papiers.
+     Deux boutons : « Copier en DOT » pour le presse-papier, « Enregistrer le
+     graphe… » pour un fichier — un graphe se garde, et le presse-papier ne
+     survit pas à la copie suivante. Graphviz en fait une image avec
+     « dot -Tsvg ». C'est le graphe QU'ON REGARDE qui part : la fonction seule
+     ou le programme entier, selon la case cochée ; `flow_dot` est sorti de la
+     fenêtre pour que les deux boutons lisent la même chose.
 
 4.8  [FAIT] Vue hexadécimale éditable
      Le module « Vidage du fichier » laisse écrire : on choisit la tranche, on

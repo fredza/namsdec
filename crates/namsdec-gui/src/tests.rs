@@ -21750,3 +21750,366 @@ _start:
     assert!(atteint, "15 est 15");
     assert_eq!(lignes[0].constat, None, "rien à expliquer d'un but atteint");
 }
+
+/// SONDE : les points d'arrêt d'un fichier source survivent-ils ?
+#[test]
+fn sonde_points_arret_source() {
+    let dir = tempfile::tempdir().unwrap();
+    let chemin = dir.path().join("prog.asm");
+    std::fs::write(&chemin, "bits 64\nglobal _start\n_start:\n    mov rax, 1\n    hlt\n").unwrap();
+
+    // Ce qu'on avait en quittant : un fichier source et deux points d'arrêt.
+    let mut app = NamsdecApp {
+        source: std::fs::read_to_string(&chemin).unwrap(),
+        current_file: Some(chemin.clone()),
+        ..Default::default()
+    };
+    app.breakpoint_lines.insert(4);
+    app.watched_registers.insert("RAX");
+    let écrit = app.settings_snapshot();
+    eprintln!("écrit : breakpoints={:?} watched={:?} current_file={:?} open_binary={:?}",
+        écrit.breakpoints, écrit.watched_registers, écrit.current_file, écrit.open_binary);
+
+    // Et au lancement suivant.
+    let relu = NamsdecApp::from_settings(écrit);
+    eprintln!("relu  : breakpoints={:?} watched={:?} source={} octets",
+        relu.breakpoint_lines, relu.watched_registers, relu.source.len());
+}
+
+/// Les points d'arrêt d'un fichier source reviennent à la séance
+/// suivante — et seulement si le fichier n'a pas bougé.
+///
+/// Ils étaient écrits dans les réglages depuis toujours, et relus
+/// nulle part : seule une séance sur un *binaire* les reposait. Celui
+/// qui écrit son propre programme — le cas ordinaire — retrouvait donc
+/// son fichier, ses onglets, ses arguments, et pas un seul de ses
+/// points d'arrêt.
+#[test]
+fn the_breakpoints_of_a_source_come_back_next_time() {
+    let dir = tempfile::tempdir().expect("un dossier temporaire");
+    let chemin = dir.path().join("prog.asm");
+    let programme = "bits 64\nglobal _start\nsection .text\n_start:\n    mov rax, 1\n    hlt\n";
+    std::fs::write(&chemin, programme).unwrap();
+
+    // Ce qu'on avait en quittant.
+    let mut app = NamsdecApp {
+        source: programme.to_owned(),
+        current_file: Some(chemin.clone()),
+        ..Default::default()
+    };
+    app.breakpoint_lines.insert(5);
+    app.watched_registers.insert("RAX");
+    let écrit = app.settings_snapshot();
+    assert_eq!(écrit.breakpoints, vec![5], "les réglages les portent");
+    assert!(
+        écrit.current_file_mtime.is_some(),
+        "avec la date du fichier, sans quoi on ne saurait pas s'il a bougé"
+    );
+
+    // Au lancement suivant, tout revient.
+    let relu = NamsdecApp::from_settings(écrit.clone());
+    assert_eq!(relu.source, programme, "le fichier est rouvert");
+    assert!(
+        relu.breakpoint_lines.contains(&5),
+        "et le point d'arrêt avec lui : {:?}",
+        relu.breakpoint_lines
+    );
+    assert!(relu.watched_registers.contains("RAX"), "le registre suivi aussi");
+
+    // Mais pas si le fichier a été réécrit ailleurs entre-temps : les
+    // lignes ont pu bouger, et un point d'arrêt au hasard est pire que
+    // pas de point d'arrêt du tout.
+    std::fs::write(&chemin, format!("; une ligne de plus\n{programme}")).unwrap();
+    filetime_plus_tard(&chemin);
+    let après = NamsdecApp::from_settings(écrit);
+    assert!(
+        après.breakpoint_lines.is_empty(),
+        "un fichier changé ne reprend pas ses repères : {:?}",
+        après.breakpoint_lines
+    );
+    // Et cela se dit, au lieu de disparaître en silence.
+    assert!(
+        matches!(après.status, Status::Note(f) if f(strings(Lang::Fr))
+            == strings(Lang::Fr).session_file_changed),
+        "l'oubli est annoncé : {:?}",
+        après.status
+    );
+}
+
+/// Pousse la date de dernière écriture d'un fichier d'une seconde, pour
+/// que le changement soit visible d'un test qui écrit deux fois dans la
+/// même seconde.
+fn filetime_plus_tard(chemin: &std::path::Path) {
+    let plus_tard = std::time::SystemTime::now() + std::time::Duration::from_secs(2);
+    let f = std::fs::File::options().write(true).open(chemin).unwrap();
+    f.set_modified(plus_tard).unwrap();
+}
+
+/// Tout réglage écrit est relu.
+///
+/// Un réglage qui part dans `settings.json` et que personne ne
+/// reprend au lancement suivant est pire qu'un réglage absent : il
+/// donne l'impression d'avoir été gardé. C'était le cas des points
+/// d'arrêt d'un fichier source, écrits depuis toujours et relus
+/// seulement pour un binaire.
+///
+/// Le contrôle est exhaustif par construction : il compare les deux
+/// structures **champ par champ, en JSON**, si bien qu'un réglage
+/// ajouté demain sans être relu fait échouer ce test sans qu'on ait
+/// pensé à lui.
+#[test]
+fn every_setting_that_is_written_is_read_back() {
+    let dir = tempfile::tempdir().expect("un dossier temporaire");
+    let source = dir.path().join("prog.asm");
+    std::fs::write(&source, "bits 64\nglobal _start\n_start:\n    hlt\n").unwrap();
+    let date = std::fs::metadata(&source)
+        .ok()
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs());
+
+    // Chaque champ à une valeur qui n'est pas celle par défaut : un
+    // réglage perdu ne peut donc pas se confondre avec un réglage
+    // resté à sa valeur d'origine.
+    let écrits = Settings {
+        version: settings::SETTINGS_VERSION,
+        theme: namsdec_theme::TOKYO_NIGHT.id.to_owned(),
+        language: "en".to_owned(),
+        show_toolbar: false,
+        show_sidebar: false,
+        show_statusbar: false,
+        show_console: false,
+        show_tooltips: false,
+        completion: false,
+        exercises: true,
+        auto_indent: false,
+        auto_pairs: false,
+        hover_help: false,
+        disabled_packs: vec!["une-serie".to_owned()],
+        current_exercise: Some("namsdec/boucle".to_owned()),
+        recent_files: vec![source.display().to_string()],
+        exercises_done: vec!["namsdec/boucle".to_owned()],
+        exercises_best: vec![("namsdec/boucle".to_owned(), 7)],
+        disassembler: "iced".to_owned(),
+        memory_format: "words".to_owned(),
+        analysis_module: "dump".to_owned(),
+        calc_base: "dec".to_owned(),
+        calc_width: "32".to_owned(),
+        heat_legend: false,
+        system_titlebar: true,
+        console_height: Some(321),
+        sidebar_tab_height: Some(222),
+        re_tab: true,
+        decompiler_module: true,
+        installer_module: true,
+        decompiler: "dzf".to_owned(),
+        memory_follow: "rsp".to_owned(),
+        // Les trois champs du binaire demandent un ELF sur le disque
+        // pour revenir ; leur reprise a son propre test.
+        open_binary: None,
+        open_binary_len: None,
+        open_binary_mtime: None,
+        breakpoints: vec![3],
+        watchpoints: vec![(0x1000, 4)],
+        watched_registers: vec!["RAX".to_owned()],
+        program_args: "-v --long".to_owned(),
+        program_env: "A=1".to_owned(),
+        sidebar_tab: Some("heap".to_owned()),
+        explorer_root: Some(dir.path().display().to_string()),
+        current_file: Some(source.display().to_string()),
+        current_file_mtime: date,
+        open_files: Vec::new(),
+        shortcuts: Settings::default().shortcuts,
+    };
+
+    let relus = NamsdecApp::from_settings(écrits.clone()).settings_snapshot();
+    let avant = serde_json::to_value(&écrits).unwrap();
+    let après = serde_json::to_value(&relus).unwrap();
+    let mut perdus = Vec::new();
+    for (clé, valeur) in avant.as_object().unwrap() {
+        let revenu = après.as_object().unwrap().get(clé);
+        if revenu != Some(valeur) {
+            perdus.push(format!("{clé} : {valeur} devient {revenu:?}"));
+        }
+    }
+    assert!(
+        perdus.is_empty(),
+        "{} réglage(s) écrit(s) puis perdu(s) :\n  {}",
+        perdus.len(),
+        perdus.join("\n  ")
+    );
+}
+
+/// Toute action a un raccourci, dans chacun des deux jeux.
+///
+/// Une action sans raccourci n'est pas forcément inaccessible — la
+/// plupart ont aussi un bouton ou une entrée de menu —, mais elle est
+/// invisible dans Préférences › Raccourcis, où l'on vient justement
+/// voir ce que namsdec sait faire. Et changer de jeu ne doit pas faire
+/// disparaître une commande : les deux couvrent donc les mêmes trente.
+#[test]
+fn every_action_has_a_shortcut_in_both_presets() {
+    for preset in crate::keybindings::Preset::ALL {
+        let jeu = KeyBindings::preset(preset);
+        let sans: Vec<Action> = Action::ALL
+            .into_iter()
+            .filter(|a| !jeu.map.contains_key(a))
+            .collect();
+        assert!(
+            sans.is_empty(),
+            "jeu « {} » : {} action(s) sans raccourci — {sans:?}",
+            preset.id(),
+            sans.len()
+        );
+        // Et deux actions ne partagent pas la même frappe : la seconde
+        // ne se déclencherait jamais.
+        let mut vus: std::collections::BTreeMap<String, Action> = Default::default();
+        for (action, chord) in &jeu.map {
+            let touches = format!("{chord:?}");
+            if let Some(déjà) = vus.insert(touches.clone(), *action) {
+                panic!(
+                    "jeu « {} » : {déjà:?} et {action:?} partagent {touches}",
+                    preset.id()
+                );
+            }
+        }
+    }
+}
+
+
+/// SONDE : chaque module de RE dit-il quelque chose ?
+#[test]
+fn sonde_modules_re() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp {
+        source: PROGRAMME_DU_BANC.to_owned(),
+        ..Default::default()
+    };
+    app.apply_theme(&ctx);
+    app.do_assemble();
+    for _ in 0..8 { app.do_step(); }
+    app.show_analysis = true;
+    let ids: Vec<String> = app.re_registry.entries("fr").iter().map(|(id, _)| (*id).to_owned()).collect();
+    for id in ids {
+        app.analysis_module = id.clone();
+        let (_, textes) = ce_qui_est_écrit(&ctx, &mut app, Some("analysis_window"), 4);
+        let mots: usize = textes.len();
+        let échantillon: Vec<&str> = textes.iter().map(|(t, _)| t.as_str()).skip(6).take(3).collect();
+        eprintln!("{id:24} {mots:4} textes  {échantillon:?}");
+    }
+}
+
+/// Le graphe s'écrit dans un fichier, et pas seulement dans le
+/// presse-papier.
+///
+/// Un graphe se garde : celui d'avant le correctif, celui d'après,
+/// celui qu'on joint au compte rendu. Le presse-papier, lui, ne survit
+/// pas à la copie suivante.
+#[test]
+fn the_graph_goes_to_a_file_and_not_only_to_the_clipboard() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let dir = tempfile::tempdir().expect("un dossier temporaire");
+    let chemin = dir.path().join("graphe.dot");
+
+    let mut app = NamsdecApp {
+        source: PROGRAMME_DU_BANC.to_owned(),
+        ..Default::default()
+    };
+    // Sans programme, rien à écrire — et on le dit plutôt que d'écrire
+    // un fichier vide.
+    app.export_dot(&chemin);
+    assert!(matches!(app.status, Status::Error(_)), "{:?}", app.status);
+    assert!(!chemin.exists(), "aucun fichier n'est créé pour rien");
+
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+    app.export_dot(&chemin);
+    assert!(matches!(app.status, Status::Note(_)), "{:?}", app.status);
+    let dot = std::fs::read_to_string(&chemin).expect("le fichier est écrit");
+    assert!(dot.starts_with("digraph"), "du DOT, et pas autre chose :\n{dot}");
+    assert!(dot.contains("->") || dot.contains("label"), "{dot}");
+    // Et c'est bien le graphe qu'on regarde : la case « la fonction
+    // seule » change ce qui est écrit.
+    assert_eq!(
+        dot,
+        app.flow_dot().expect("le même graphe qu'à l'écran"),
+        "le fichier et l'écran doivent montrer le même graphe"
+    );
+}
+
+/// Le jeu de raccourcis s'exporte **en entier**, à plat.
+///
+/// `keymap.json` ne garde que les écarts, et c'est ce qu'on veut d'un
+/// fichier de réglages : il suit le jeu quand celui-ci gagne une
+/// action. Mais un fichier de deux lignes ne dit pas ce que namsdec
+/// sait faire, et l'on n'avait rien à quoi se raccrocher pour partir
+/// d'une liste complète.
+#[test]
+fn the_whole_shortcut_set_can_be_exported_flat() {
+    let dir = tempfile::tempdir().expect("un dossier temporaire");
+    let chemin = dir.path().join("keymap.json");
+    let mut app = NamsdecApp::default();
+    app.export_keymap(&chemin);
+    assert!(matches!(app.status, Status::Note(_)), "{:?}", app.status);
+
+    let écrit = std::fs::read_to_string(&chemin).expect("le fichier est écrit");
+    let relu: settings::Keymap = serde_json::from_str(&écrit).expect("du JSON valide");
+    assert_eq!(
+        relu.shortcuts.len(),
+        Action::ALL.len(),
+        "les trente actions y sont, une par une"
+    );
+    // Et il décrit exactement le jeu courant : relu, il rend les mêmes
+    // raccourcis.
+    assert_eq!(relu.bindings().map, app.keybindings.map);
+}
+
+/// `keymap.json` modifié pendant que namsdec tourne est repris.
+///
+/// C'est un fichier qu'on donne à éditer ; il n'était relu qu'au
+/// lancement suivant. On l'éditait, on essayait la touche, il ne se
+/// passait rien — et rien ne disait pourquoi.
+#[test]
+fn a_keymap_edited_on_disk_is_picked_up_while_running() {
+    let mut app = NamsdecApp::default();
+    let avant = app.keybindings.map.clone();
+
+    // Le fichier n'a pas de date connue : la première visite en prend
+    // une sans rien changer.
+    app.keymap_mtime = None;
+    app.keymap_checked = None;
+    app.reload_keymap_if_changed();
+
+    // Une capture de raccourci en cours suspend la reprise : changer le
+    // jeu sous les doigts de quelqu'un qui appuie serait la dernière
+    // chose à faire.
+    app.rebinding = Some(keybindings::Rebinding::new(
+        Action::Assemble,
+        keybindings::RebindMode::Simple,
+    ));
+    app.keymap_checked = None;
+    app.keymap_mtime = Some(std::time::SystemTime::UNIX_EPOCH);
+    app.reload_keymap_if_changed();
+    assert_eq!(
+        app.keymap_mtime,
+        Some(std::time::SystemTime::UNIX_EPOCH),
+        "pendant une capture, on ne regarde même pas"
+    );
+    app.rebinding = None;
+
+    // Et l'on ne se réveille pas plus d'une fois par seconde.
+    app.keymap_checked = Some(std::time::Instant::now());
+    app.keymap_mtime = Some(std::time::SystemTime::UNIX_EPOCH);
+    app.reload_keymap_if_changed();
+    assert_eq!(
+        app.keymap_mtime,
+        Some(std::time::SystemTime::UNIX_EPOCH),
+        "l'intervalle est respecté : pas d'accès au disque à chaque image"
+    );
+    assert_eq!(app.keybindings.map, avant);
+}

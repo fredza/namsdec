@@ -546,6 +546,12 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
         ("p",
          "Un saut dont la cible se calcule — table de sauts, pointeur de fonction — est "
          "signalé comme tel : aucune flèche n'est inventée vers une adresse inconnue."),
+        ("p",
+         "Le graphe s’emporte : <b>Copier en DOT</b> le met dans le presse-papier, "
+         "<b>Enregistrer le graphe…</b> l’écrit dans un fichier. "
+         "<font face='Courier'>dot -Tsvg graphe.dot</font> en fait une image. C’est le "
+         "graphe <i>qu’on regarde</i> qui part — la fonction seule ou le programme "
+         "entier, selon la case cochée."),
         ("h2", "Le profil"),
         ("p",
          "La bande de chaleur dit <i>où</i> ça chauffe ; le profil dit <i>de combien</i>. "
@@ -1146,6 +1152,15 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "Les séquences notées « Espace puis … » sont des touches relâchées l'une après "
          "l'autre, à la façon de la touche « leader » de vim. Elles ne s'arment que lorsque "
          "l'éditeur n'a pas le focus, sinon un espace tapé dans le code déclencherait tout."),
+        ("p",
+         "Les raccourcis vivent dans <font face='Courier'>~/.config/namsdec/keymap.json</font>, "
+         "qui ne garde que ce qui <b>s’écarte</b> du jeu choisi : un jeu qui gagne une "
+         "action l’apporte alors sans qu’on ait rien à faire. Le fichier est "
+         "<b>surveillé</b> — modifié pendant que namsdec tourne, il est repris dans "
+         "la seconde, et la barre d’état le dit. Et Préférences › Raccourcis "
+         "propose d’<b>exporter le jeu entier</b>, à plat : les trente actions "
+         "écrites une par une, pour partir d’une liste complète plutôt que d’un "
+         "écart."),
     ]
 
 

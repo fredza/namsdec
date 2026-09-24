@@ -191,6 +191,17 @@ pub struct Settings {
     /// peut l'éditer avec autre chose, et en recopier une version dans les
     /// réglages ne ferait qu'y entretenir un double périmé.
     pub current_file: Option<String>,
+    /// La date qu'avait ce fichier quand on a quitté, en secondes depuis
+    /// 1970.
+    ///
+    /// Elle sert à la même chose que celle du binaire : les points
+    /// d'arrêt se comptent en numéros de ligne, et un fichier réécrit
+    /// ailleurs entre deux séances les ferait désigner d'autres
+    /// instructions. Absente d'un fichier de réglages écrit par une
+    /// version antérieure — les repères sont alors simplement laissés de
+    /// côté, ce qui est le comportement d'avant.
+    #[serde(default)]
+    pub current_file_mtime: Option<u64>,
     /// Les autres fichiers ouverts au moment où l'on a quitté, dans
     /// l'ordre des onglets — leurs **chemins**, pour les mêmes raisons
     /// que ci-dessus. Ce qu'on y avait tapé sans l'enregistrer n'y est
@@ -302,6 +313,7 @@ impl Default for Settings {
             sidebar_tab: None,
             explorer_root: None,
             current_file: None,
+            current_file_mtime: None,
             open_files: Vec::new(),
             shortcuts: shortcuts_to_strings(&KeyBindings::default()),
         }
@@ -639,7 +651,7 @@ fn vrai() -> bool {
 /// Identifiant stable d'une action dans le fichier — délibérément distinct
 /// du nom de la variante Rust, qu'on doit pouvoir renommer sans casser la
 /// configuration des utilisateurs.
-fn action_id(action: Action) -> &'static str {
+pub fn action_id(action: Action) -> &'static str {
     match action {
         Action::ToggleExplorer => "toggle_explorer",
         Action::Assemble => "assemble",
@@ -682,7 +694,7 @@ fn action_from_id(id: &str) -> Option<Action> {
 /// séquence. La virgule ne peut pas apparaître dans un nom de touche
 /// (`Key::name()` rend `"Comma"`), elle distingue donc les deux formes
 /// sans ambiguïté, et en sépare les touches quel qu'en soit le nombre.
-fn chord_to_string(chord: &Chord) -> String {
+pub fn chord_to_string(chord: &Chord) -> String {
     match chord {
         Chord::Leader(sequence) => sequence
             .as_slice()

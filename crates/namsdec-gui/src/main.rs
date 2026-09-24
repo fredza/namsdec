@@ -315,6 +315,13 @@ const SIDEBAR_MAX_FRACTION: f32 = 0.5;
 /// assez serré pour que le fichier choisi apparaisse sans délai visible.
 const DIALOG_POLL_INTERVAL: Duration = Duration::from_millis(100);
 
+/// Tous les combien on regarde si `keymap.json` a changé sur le disque.
+///
+/// Une seconde : bien en deçà du temps qu'il faut pour passer de son
+/// éditeur à namsdec et essayer la touche, et bien au-delà de ce qu'un
+/// appel système par image coûterait.
+const KEYMAP_POLL_INTERVAL: Duration = Duration::from_secs(1);
+
 /// Numéro de version SemVer — ne JAMAIS le monter sans l'accord explicite
 /// de l'utilisateur (voir memory: feedback_version_bump_approval).
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -1286,6 +1293,21 @@ struct NamsdecApp {
     /// Les deux sont dans le binaire. Celui-ci dit seulement lequel sert
     /// de socle ; ce que l'utilisateur a déplacé lui-même vient par-dessus.
     keymap_preset: keybindings::Preset,
+    /// La date de `keymap.json` telle qu'on l'a lue ou écrite.
+    ///
+    /// Elle sert à repérer une modification venue d'ailleurs — un
+    /// éditeur de texte, un dépôt qu'on synchronise. Sans elle, le
+    /// fichier n'était repris qu'au lancement suivant, et rien ne le
+    /// disait : on éditait, on essayait la touche, il ne se passait
+    /// rien.
+    keymap_mtime: Option<std::time::SystemTime>,
+    /// Quand on a regardé la date pour la dernière fois.
+    ///
+    /// Interroger le disque soixante fois par seconde pour un fichier
+    /// qu'on modifie deux fois par an serait absurde ; une fois par
+    /// seconde suffit à ce qu'un essai au clavier vienne après la
+    /// sauvegarde.
+    keymap_checked: Option<std::time::Instant>,
     dispatcher: Dispatcher,
     rebinding: Option<Rebinding>,
     running: bool,
@@ -1686,6 +1708,10 @@ enum FileDialogKind {
     ExportBinary,
     /// Choisir où écrire le vidage hexadécimal du fichier chargé.
     ExportDump,
+    /// Choisir où écrire le graphe du programme, en DOT.
+    ExportDot,
+    /// Choisir où écrire le jeu de raccourcis **entier**, à plat.
+    ExportKeymap,
 }
 
 /// Les fiches dont un programme se sert, dans l'ordre où il les emploie.
@@ -2291,6 +2317,8 @@ impl Default for NamsdecApp {
             update_result: None,
             keybindings: KeyBindings::default(),
             keymap_preset: keybindings::Preset::default(),
+            keymap_mtime: None,
+            keymap_checked: None,
             dispatcher: Dispatcher::default(),
             rebinding: None,
             running: false,
@@ -2446,6 +2474,7 @@ impl NamsdecApp {
                 }
             },
             keymap_preset: settings::load_keymap().preset(),
+            keymap_mtime: settings::keymap_path().as_deref().and_then(file_mtime),
             show_toolbar: settings.show_toolbar,
             show_sidebar: settings.show_sidebar,
             show_statusbar: settings.show_statusbar,
@@ -2551,6 +2580,31 @@ impl NamsdecApp {
         {
             self.go_to_tab(rang);
         }
+
+        // Puis les repères posés sur ce fichier — mais seulement s'il
+        // est bien celui qu'on a quitté. Ils se comptent en numéros de
+        // ligne : réécrit ailleurs entre deux séances, le fichier les
+        // ferait désigner d'autres instructions, et poser des points
+        // d'arrêt au hasard est pire que de ne pas en poser.
+        //
+        // Sans date enregistrée — un fichier de réglages d'une version
+        // antérieure —, on s'abstient : c'est ce qui se passait avant,
+        // et cela ne surprendra personne.
+        let date = self
+            .current_file
+            .as_deref()
+            .and_then(file_mtime)
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs());
+        let repères = !self.saved_settings.breakpoints.is_empty()
+            || !self.saved_settings.watchpoints.is_empty();
+        if date.is_some() && date == self.saved_settings.current_file_mtime {
+            self.restore_session_marks();
+        } else if repères && self.saved_settings.current_file_mtime.is_some() {
+            // Le dire : quelqu'un qui a édité son programme ailleurs
+            // doit savoir pourquoi ses points d'arrêt ont disparu.
+            self.status = Status::Note(|s| s.session_file_changed);
+        }
     }
 
     /// Reprend le travail commencé sur un binaire : le binaire lui-même,
@@ -2604,6 +2658,18 @@ impl NamsdecApp {
             return;
         }
 
+        self.restore_session_marks();
+    }
+
+    /// Repose les repères de la séance précédente : points d'arrêt,
+    /// zones surveillées, registres suivis.
+    ///
+    /// Un seul endroit pour les deux sortes de séance. Ils n'étaient
+    /// reposés que pour un binaire, si bien que quelqu'un qui travaille
+    /// son propre programme — le cas ordinaire — retrouvait son fichier
+    /// mais aucun de ses points d'arrêt. Ils étaient pourtant écrits
+    /// dans les réglages : personne ne les relisait.
+    fn restore_session_marks(&mut self) {
         self.breakpoint_lines = self.saved_settings.breakpoints.iter().copied().collect();
         self.watchpoints = self
             .saved_settings
@@ -2622,6 +2688,63 @@ impl NamsdecApp {
             })
             .collect();
         self.sync_watchpoints();
+    }
+
+    /// Écrit `keymap.json` et retient sa nouvelle date.
+    ///
+    /// La date, sans quoi la surveillance prendrait notre propre
+    /// écriture pour une modification venue d'ailleurs et annoncerait
+    /// une reprise à chaque changement de raccourci.
+    fn write_keymap(&mut self, keymap: &settings::Keymap) {
+        let _ = settings::save_keymap(keymap);
+        self.keymap_mtime = settings::keymap_path().as_deref().and_then(file_mtime);
+    }
+
+    /// Reprend `keymap.json` s'il a changé sur le disque.
+    ///
+    /// Le fichier se relisait au lancement et nulle part ailleurs : on
+    /// l'éditait pendant que namsdec tournait, on essayait la touche, et
+    /// il ne se passait rien — sans que rien ne dise pourquoi. C'est un
+    /// fichier qu'on donne à éditer ; il doit donc être écouté.
+    ///
+    /// La date est relevée au plus une fois par seconde : un appel
+    /// système par image pour un fichier qu'on modifie deux fois par an
+    /// serait absurde, et une seconde est bien en deçà du temps qu'il
+    /// faut pour passer de son éditeur à namsdec.
+    ///
+    /// Une capture de raccourci en cours suspend la reprise : changer le
+    /// jeu sous les doigts de quelqu'un qui appuie sur une touche serait
+    /// la dernière chose à faire.
+    fn reload_keymap_if_changed(&mut self) {
+        if self.rebinding.is_some() {
+            return;
+        }
+        let maintenant = std::time::Instant::now();
+        if self
+            .keymap_checked
+            .is_some_and(|vu| maintenant.duration_since(vu) < KEYMAP_POLL_INTERVAL)
+        {
+            return;
+        }
+        self.keymap_checked = Some(maintenant);
+        let Some(chemin) = settings::keymap_path() else {
+            return;
+        };
+        let date = file_mtime(&chemin);
+        // Rien n'a bougé — ou le fichier n'existe pas encore, ce qui
+        // n'est pas un changement.
+        if date.is_none() || date == self.keymap_mtime {
+            return;
+        }
+        self.keymap_mtime = date;
+        let keymap = settings::load_keymap();
+        let nouveaux = keymap.bindings();
+        if nouveaux.map == self.keybindings.map && keymap.preset() == self.keymap_preset {
+            return;
+        }
+        self.keybindings = nouveaux;
+        self.keymap_preset = keymap.preset();
+        self.status = Status::Note(|s| s.shortcuts_reloaded);
     }
 
     /// Écrit le fichier de réglages sans attendre qu'un réglage change :
@@ -2649,10 +2772,8 @@ impl NamsdecApp {
         if self.settings_file.is_none() {
             return;
         }
-        let _ = settings::save_keymap(&settings::Keymap::from_bindings(
-            self.keymap_preset,
-            &self.keybindings,
-        ));
+        let keymap = settings::Keymap::from_bindings(self.keymap_preset, &self.keybindings);
+        self.write_keymap(&keymap);
     }
 
     fn save_settings_now(&mut self) {
@@ -2752,6 +2873,15 @@ impl NamsdecApp {
                 .collect(),
             explorer_root: self.explorer.root.as_ref().map(|p| p.display().to_string()),
             current_file: self.current_file.as_ref().map(|p| p.display().to_string()),
+            // La date du source, pour la même raison que celle du
+            // binaire : elle dit, au retour, si les points d'arrêt
+            // désignent encore les mêmes lignes.
+            current_file_mtime: self
+                .current_file
+                .as_deref()
+                .and_then(file_mtime)
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs()),
             // Les autres onglets, dans leur ordre : au lancement
             // suivant, on retrouve les fichiers sur lesquels on
             // travaillait, et non le seul dernier.
@@ -3842,6 +3972,8 @@ impl NamsdecApp {
                 | FileDialogKind::ExportManual
                 | FileDialogKind::ExportReport
                 | FileDialogKind::ExportDump
+                | FileDialogKind::ExportDot
+                | FileDialogKind::ExportKeymap
                 | FileDialogKind::ExportBinary => dialog.save_file(),
             };
             // Si l'application s'est arrêtée entre-temps, le résultat
@@ -3906,6 +4038,19 @@ impl NamsdecApp {
                         .map(|name| name.to_string_lossy().into_owned())
                         .unwrap_or_else(|| "namsdec".to_owned())
                 )),
+            FileDialogKind::ExportDot => dialog
+                .add_filter(s.filter_dot, &["dot", "gv"])
+                .set_file_name(format!(
+                    "{}-graphe.dot",
+                    self.current_file
+                        .as_ref()
+                        .and_then(|path| path.file_stem())
+                        .map(|name| name.to_string_lossy().into_owned())
+                        .unwrap_or_else(|| "namsdec".to_owned())
+                )),
+            FileDialogKind::ExportKeymap => dialog
+                .add_filter(s.filter_theme, &["json"])
+                .set_file_name("keymap.json"),
             FileDialogKind::OpenFolder | FileDialogKind::SaveAs => dialog,
         }
     }
@@ -3954,6 +4099,87 @@ impl NamsdecApp {
             FileDialogKind::ExportReport => self.export_report(&path),
             FileDialogKind::ExportBinary => self.export_binary(&path),
             FileDialogKind::ExportDump => self.export_dump(&path),
+            FileDialogKind::ExportDot => self.export_dot(&path),
+            FileDialogKind::ExportKeymap => self.export_keymap(&path),
+        }
+    }
+
+    /// Le graphe du programme en DOT, tel que la fenêtre le montre —
+    /// la fonction seule ou le programme entier, selon la case cochée.
+    ///
+    /// Sorti de la fenêtre pour que l'enregistrement le lise aussi : un
+    /// bouton qui n'écrit pas le même graphe que celui qu'on regarde
+    /// serait un piège.
+    fn flow_dot(&self) -> Option<String> {
+        let state = self.assemble_state.as_ref()?;
+        let entier = namsdec_re::cfg::build(&state.disasm);
+        if entier.blocks.is_empty() {
+            return None;
+        }
+        let ancre = self
+            .emulator
+            .as_ref()
+            .and_then(|e| entier.block_at(e.cpu().regs.rip))
+            .unwrap_or(0);
+        let cfg = if self.flow_current_only && entier.blocks.len() > 1 {
+            entier.subgraph(&entier.function_around(ancre))
+        } else {
+            entier
+        };
+        (!cfg.blocks.is_empty()).then(|| cfg.to_dot())
+    }
+
+    /// Écrit le graphe du programme dans un fichier DOT.
+    ///
+    /// Le presse-papier ne survit pas à la copie suivante, et un graphe
+    /// se garde : celui d'avant le correctif, celui d'après, celui qu'on
+    /// joint au compte rendu. `dot -Tsvg graphe.dot` en fait une image.
+    fn export_dot(&mut self, path: &Path) {
+        let s = strings(self.lang);
+        let Some(dot) = self.flow_dot() else {
+            self.status = Status::Error(s.flow_none.to_owned());
+            return;
+        };
+        match std::fs::write(path, dot) {
+            Ok(()) => self.status = Status::Note(|s| s.flow_dot_saved),
+            Err(e) => self.status = Status::Error(format!("{} : {e}", s.flow_dot_save_failed)),
+        }
+    }
+
+    /// Écrit le jeu de raccourcis **entier**, à plat.
+    ///
+    /// `keymap.json` ne garde que les écarts : c'est ce qu'on veut d'un
+    /// fichier de réglages — il suit le jeu quand celui-ci gagne une
+    /// action. Mais qui veut partir d'une liste complète, la relire, la
+    /// donner à quelqu'un ou la ranger dans un dépôt, n'a rien à quoi se
+    /// raccrocher : un fichier de deux lignes ne dit pas ce que namsdec
+    /// sait faire.
+    fn export_keymap(&mut self, path: &Path) {
+        let s = strings(self.lang);
+        let entier = settings::Keymap {
+            preset: self.keymap_preset.id().to_owned(),
+            shortcuts: self
+                .keybindings
+                .map
+                .iter()
+                .map(|(action, chord)| {
+                    (
+                        settings::action_id(*action).to_owned(),
+                        settings::chord_to_string(chord),
+                    )
+                })
+                .collect(),
+        };
+        let texte = match serde_json::to_string_pretty(&entier) {
+            Ok(texte) => texte,
+            Err(e) => {
+                self.status = Status::Error(format!("{} : {e}", s.shortcuts_export_failed));
+                return;
+            }
+        };
+        match std::fs::write(path, texte) {
+            Ok(()) => self.status = Status::Note(|s| s.shortcuts_exported),
+            Err(e) => self.status = Status::Error(format!("{} : {e}", s.shortcuts_export_failed)),
         }
     }
 
@@ -5933,13 +6159,16 @@ impl NamsdecApp {
             shortcuts: écarts.shortcuts,
         };
         self.keybindings = keymap.bindings();
-        let _ = settings::save_keymap(&keymap);
+        self.write_keymap(&keymap);
     }
 
     fn preferences_shortcuts_ui(&mut self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
         let theme = self.theme;
         let ctx = ui.ctx().clone();
+        // Relevé ici, agi à la fin : ouvrir un sélecteur de fichier
+        // emprunte `self` en écriture.
+        let mut exporter_raccourcis = false;
 
         // Une capture en cours avance ici plutôt que dans le dispatch
         // normal (voir App::ui, qui saute le dispatch tant que
@@ -5952,10 +6181,8 @@ impl NamsdecApp {
             self.rebinding = None;
             // Écrit tout de suite : un raccourci qu'on vient de poser et
             // qui disparaît au prochain lancement se repose deux fois.
-            let _ = settings::save_keymap(&settings::Keymap::from_bindings(
-                self.keymap_preset,
-                &self.keybindings,
-            ));
+            let keymap = settings::Keymap::from_bindings(self.keymap_preset, &self.keybindings);
+            self.write_keymap(&keymap);
         }
 
         // Le jeu dont on part. Les deux sont dans le binaire : en changer
@@ -5990,6 +6217,19 @@ impl NamsdecApp {
                     .selectable(true),
                 );
             });
+        }
+        ui.add_space(4.0);
+        // Le jeu entier, à plat. Le fichier de réglages ne garde que les
+        // écarts — c'est ce qu'on veut d'un réglage, qui suit alors le
+        // jeu quand celui-ci gagne une action. Mais un fichier de deux
+        // lignes ne dit pas ce que namsdec sait faire, et l'on n'a rien
+        // à quoi se raccrocher pour partir d'une liste complète, la
+        // relire, ou la donner à quelqu'un.
+        if framed_button(ui, theme, s.shortcuts_export)
+            .on_hover_text(s.shortcuts_export_hint)
+            .clicked()
+        {
+            exporter_raccourcis = true;
         }
         ui.add_space(6.0);
         ui.separator();
@@ -6045,6 +6285,9 @@ impl NamsdecApp {
                     ui.end_row();
                 }
             });
+        if exporter_raccourcis {
+            self.spawn_file_dialog(FileDialogKind::ExportKeymap);
+        }
     }
 
     fn preferences_modules_ui(&mut self, ui: &mut egui::Ui) {
@@ -7975,6 +8218,7 @@ impl NamsdecApp {
         // refermée, car tant qu'elle se dessine, ce qu'elle montre est
         // emprunté à `self`.
         let mut bascule = false;
+        let mut enregistrer_dot = false;
         let mut fenêtre = egui::Window::new(s.flow_title)
             .id(egui::Id::new("flow_window"))
             .open(&mut open)
@@ -8168,6 +8412,16 @@ impl NamsdecApp {
                         ui.ctx().copy_text(cfg.to_dot());
                         self.status = Status::Note(|s| s.flow_dot_copied);
                     }
+                    // Et sur le disque : un graphe se garde. Celui
+                    // d'avant le correctif, celui d'après, celui qu'on
+                    // joint au compte rendu — le presse-papier ne
+                    // survit pas à la copie suivante.
+                    if framed_button(ui, theme, s.flow_save_dot)
+                        .on_hover_text(s.flow_save_dot_hint)
+                        .clicked()
+                    {
+                        enregistrer_dot = true;
+                    }
                     ui.separator();
                     ui.checkbox(&mut self.flow_current_only, s.flow_current_only);
                     // Et laquelle. Le nom quand le binaire en porte un,
@@ -8259,6 +8513,9 @@ impl NamsdecApp {
         }
         if bascule {
             self.toggle_maximized(Self::FLOW_WINDOW);
+        }
+        if enregistrer_dot {
+            self.spawn_file_dialog(FileDialogKind::ExportDot);
         }
         if let Some(ligne) = aller {
             self.goto_line = Some(ligne);
@@ -16959,6 +17216,11 @@ impl NamsdecApp {
         if focus && !self.had_focus {
             self.check_disk_change();
         }
+        // Le fichier de raccourcis, lui, se surveille en continu : on
+        // l'édite souvent sans quitter namsdec des yeux, et un jeu qui
+        // n'arrive qu'au lancement suivant passe pour un fichier qui ne
+        // sert à rien.
+        self.reload_keymap_if_changed();
         self.had_focus = focus;
         self.apply_tooltip_setting(&ctx);
         self.tick_run(&ctx);
