@@ -12816,6 +12816,39 @@ fn two_texts_of_a_window_never_overlap() {
         }
     }
 }
+/// Deux textes d'une même scène ne se recouvrent jamais.
+///
+/// Le défaut le plus visible qui soit, et le plus mal diagnostiqué : on
+/// voit « une fenêtre illisible » et l'on cherche la couleur, la
+/// police, l'ascenseur. Mesuré, il se dit en une ligne — tel texte et
+/// tel autre occupent le même endroit. C'était le cas du décompilateur,
+/// dont une commande longue s'allouait la hauteur d'une ligne et s'en
+/// peignait deux ; la règle vaut partout, parce que rien dans egui ne
+/// l'empêche nulle part.
+#[test]
+fn no_two_texts_of_a_scene_ever_overlap() {
+    for (nom, id, prépare) in scènes() {
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp::default();
+        app.apply_theme(&ctx);
+        prépare(&mut app);
+        let (_, textes) = ce_qui_est_écrit(&ctx, &mut app, id, 3);
+        assert!(
+            textes.len() > 2,
+            "« {nom} » n'écrit presque rien : le test ne prouverait rien"
+        );
+        for (i, (texte_a, a)) in textes.iter().enumerate() {
+            for (texte_b, b) in &textes[i + 1..] {
+                // Deux pixels de tolérance : les jambages d'une ligne
+                // frôlent les hampes de la suivante sans se gêner.
+                assert!(
+                    !a.shrink(2.0).intersects(b.shrink(2.0)),
+                    "« {nom} » : « {texte_a} » et « {texte_b} » se recouvrent\n  {a:?}\n  {b:?}"
+                );
+            }
+        }
+    }
+}
 
 /// Aucune fenêtre ne porte de filet horizontal sous son titre ni
 /// au-dessus de son bouton.
@@ -21074,6 +21107,37 @@ fn fenêtres_ouvrables() -> Vec<Ouverture> {
     ]
 }
 
+/// Une scène à contrôler : son nom, la fenêtre où regarder (`None`
+/// pour l'application entière), et ce qu'il faut poser pour l'obtenir.
+///
+/// Les fenêtres ne sont pas tout : la barre d'outils, le panneau
+/// latéral et la barre d'état sont sous les yeux en permanence, et
+/// c'est là qu'on passe ses journées. Une règle qui ne vaudrait que
+/// pour les fenêtres laisserait l'essentiel hors contrôle.
+type Scène = (String, Option<&'static str>, Box<dyn Fn(&mut NamsdecApp)>);
+
+/// Tout ce que le banc regarde : les quatorze fenêtres, puis
+/// l'application nue sur chacun des onglets de son panneau.
+fn scènes() -> Vec<Scène> {
+    let mut scènes: Vec<Scène> = fenêtres_ouvrables()
+        .into_iter()
+        .map(|(nom, id, ouvre)| -> Scène {
+            (nom.to_owned(), Some(id), Box::new(ouvre))
+        })
+        .collect();
+    for onglet in SidebarTab::ALL {
+        scènes.push((
+            format!("application / {}", onglet.id()),
+            None,
+            Box::new(move |app| {
+                app.show_sidebar = true;
+                app.active_tab = onglet;
+            }),
+        ));
+    }
+    scènes
+}
+
 /// L'écran du banc : assez grand pour qu'aucune fenêtre n'ait à se
 /// serrer, et fixe, pour que deux exécutions disent la même chose.
 fn écran_du_banc() -> egui::RawInput {
@@ -21106,12 +21170,12 @@ fn écran_du_banc() -> egui::RawInput {
 ///
 /// `images` dit combien de fois dessiner avant de relever — une fenêtre
 /// dont la hauteur épouse son contenu ne se pose qu'à la troisième.
-fn ce_que_la_fenêtre_écrit(
+fn ce_qui_est_écrit(
     ctx: &egui::Context,
     app: &mut NamsdecApp,
-    id: &str,
+    id: Option<&str>,
     images: usize,
-) -> (egui::Rect, Vec<(String, egui::Rect)>) {
+) -> (Option<egui::Rect>, Vec<(String, egui::Rect)>) {
     let entrée = écran_du_banc();
     let mut lignes: Vec<(String, egui::Rect)> = Vec::new();
     for _ in 0..images {
@@ -21139,17 +21203,19 @@ fn ce_que_la_fenêtre_écrit(
         }
         sortie.textures_delta.clear();
     }
-    let cadre = egui::AreaState::load(ctx, egui::Id::new(id))
-        .unwrap_or_else(|| panic!("la fenêtre « {id} » est affichée"))
-        .rect();
+    let cadre = id.map(|id| {
+        egui::AreaState::load(ctx, egui::Id::new(id))
+            .unwrap_or_else(|| panic!("la fenêtre « {id} » est affichée"))
+            .rect()
+    });
     let dedans = lignes
         .into_iter()
-        .filter(|(_, r)| cadre.contains_rect(r.shrink(1.0)))
+        .filter(|(_, r)| cadre.is_none_or(|c| c.contains_rect(r.shrink(1.0))))
         .collect();
     (cadre, dedans)
 }
 
-/// Une fenêtre qu'on ne touche pas ne bouge pas.
+/// Ce qu'on ne touche pas ne bouge pas.
 ///
 /// C'est la règle la plus simple d'une interface en mode immédiat, et
 /// c'est justement celle qu'elle ne garantit pas : chaque image est
@@ -21168,22 +21234,24 @@ fn ce_que_la_fenêtre_écrit(
 fn a_window_that_is_left_alone_stays_where_it_is() {
     let entrée = écran_du_banc();
 
-    for (nom, id, ouvre) in fenêtres_ouvrables() {
+    for (nom, id, prépare) in scènes() {
         let ctx = egui::Context::default();
         let mut app = NamsdecApp::default();
         app.apply_theme(&ctx);
-        ouvre(&mut app);
+        prépare(&mut app);
 
         // Ce qui est écrit dans la fenêtre, et où — arrondi au pixel,
         // parce qu'un demi-pixel de fondu n'est pas un déplacement.
         let mut images: Vec<Vec<(String, i32, i32)>> = Vec::new();
         for _ in 0..12 {
             let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
-            let cadre = egui::AreaState::load(&ctx, egui::Id::new(id)).map(|a| a.rect());
+            let cadre = id.and_then(|id| {
+                egui::AreaState::load(&ctx, egui::Id::new(id)).map(|a| a.rect())
+            });
             let mut posés = Vec::new();
             for clipped in &sortie.shapes {
                 if let egui::epaint::Shape::Text(texte) = &clipped.shape
-                    && cadre.is_some_and(|c| c.contains(texte.pos))
+                    && (id.is_none() || cadre.is_some_and(|c| c.contains(texte.pos)))
                 {
                     posés.push((
                         texte.galley.text().to_owned(),
@@ -21199,7 +21267,7 @@ fn a_window_that_is_left_alone_stays_where_it_is() {
         let repère = &images[6];
         assert!(
             !repère.is_empty(),
-            "la fenêtre « {nom} » ne peint aucun texte : le test ne prouverait rien"
+            "« {nom} » ne peint aucun texte : le test ne prouverait rien"
         );
         for (n, image) in images.iter().enumerate().skip(7) {
             if image != repère {
@@ -21212,46 +21280,13 @@ fn a_window_that_is_left_alone_stays_where_it_is() {
                         format!("{} textes puis {}", repère.len(), image.len())
                     });
                 panic!(
-                    "la fenêtre « {nom} » bouge toute seule entre l'image 6 et l'image {n} : {bougé}"
+                    "« {nom} » bouge tout seul entre l'image 6 et l'image {n} : {bougé}"
                 );
             }
         }
     }
 }
 
-/// Deux textes d'une même fenêtre ne se recouvrent jamais.
-///
-/// Le défaut le plus visible qui soit, et le plus mal diagnostiqué : on
-/// voit « une fenêtre illisible » et l'on cherche la couleur, la
-/// police, l'ascenseur. Mesuré, il se dit en une ligne — tel texte et
-/// tel autre occupent le même endroit. C'était le cas du décompilateur,
-/// dont une commande longue s'allouait la hauteur d'une ligne et s'en
-/// peignait deux ; la règle vaut pour toutes les fenêtres, parce que
-/// rien dans egui ne l'empêche nulle part.
-#[test]
-fn no_two_texts_of_a_window_ever_overlap() {
-    for (nom, id, ouvre) in fenêtres_ouvrables() {
-        let ctx = egui::Context::default();
-        let mut app = NamsdecApp::default();
-        app.apply_theme(&ctx);
-        ouvre(&mut app);
-        let (_, textes) = ce_que_la_fenêtre_écrit(&ctx, &mut app, id, 3);
-        assert!(
-            textes.len() > 2,
-            "la fenêtre « {nom} » n'écrit presque rien : le test ne prouverait rien"
-        );
-        for (i, (texte_a, a)) in textes.iter().enumerate() {
-            for (texte_b, b) in &textes[i + 1..] {
-                // Deux pixels de tolérance : les jambages d'une ligne
-                // frôlent les hampes de la suivante sans se gêner.
-                assert!(
-                    !a.shrink(2.0).intersects(b.shrink(2.0)),
-                    "fenêtre « {nom} » : « {texte_a} » et « {texte_b} » se recouvrent\n  {a:?}\n  {b:?}"
-                );
-            }
-        }
-    }
-}
 
 
 /// Un texte tronqué se lit encore en entier, au survol.
@@ -21359,25 +21394,42 @@ fn a_truncated_text_can_still_be_read_in_full() {
 
 /// Tout texte se détache de son fond.
 ///
-/// La mesure est celle des recommandations d'accessibilité : 4,5 pour
-/// un texte courant, 3 pour un titre ou un élément d'interface. Le
-/// plancher tenu ici est **3** — en dessous, un texte se devine plus
-/// qu'il ne se lit, et c'est un défaut, non un choix de hiérarchie.
-/// Au-dessus, la nuance entre `text` et `dim` est une décision de
-/// thème, qui ne regarde pas un test.
+/// La mesure est celle des recommandations d'accessibilité, appliquée à
+/// ce que l'œil reçoit : la clarté d'une couleur n'est pas la moyenne
+/// de ses canaux, et c'est l'erreur qui faisait choisir la moins
+/// lisible des deux encres.
+///
+/// **Deux planchers**, parce qu'il y a deux sortes de texte :
+///
+/// * `PLANCHER` (3) pour ce qui est actif. En dessous, un texte se
+///   devine plus qu'il ne se lit, et c'est un défaut, non une
+///   hiérarchie. Au-dessus, la nuance entre `text` et `dim` est une
+///   décision de thème, qui ne regarde pas un test — c'est pourquoi le
+///   plancher n'est pas 4,5.
+/// * `PLANCHER_ESTOMPÉ` (2) pour ce qu'egui peint en transparence,
+///   c'est-à-dire les commandes inactives. Un bouton grisé DOIT être
+///   moins lisible — c'est ce que « grisé » veut dire, et les
+///   recommandations d'accessibilité exemptent d'ailleurs les commandes
+///   désactivées. Il doit rester visible, cela dit : sans plancher du
+///   tout, une barre d'outils au démarrage pourrait être vide.
 ///
 /// Le fond est celui qu'on a peint dessous, composé dans l'ordre des
 /// formes : un texte sur une touche colorée est mesuré sur la couleur
-/// de la touche, non sur celle de la fenêtre. Sans cela la règle serait
-/// vide — c'est justement sur les fonds colorés qu'une encre se perd.
+/// de la touche. Sans cela la règle serait vide — c'est justement sur
+/// les fonds colorés qu'une encre se perd.
 ///
-/// Trois défauts trouvés le jour où elle a été écrite : le bleu de
+/// Cinq défauts trouvés le jour où elle a été écrite : le bleu de
 /// sélection, où toute étiquette choisie tombait à 2,07 ; les zéros de
-/// la calculatrice, à 2,10 ; et les touches d'opérateur, qui portaient
-/// l'encre la moins lisible des deux parce que `encre_sur` comparait
-/// des clartés brutes au lieu de contrastes.
+/// la calculatrice, à 2,10 ; les touches d'opérateur, qui portaient
+/// l'encre la moins lisible des deux ; la pastille du mode, dont le
+/// noir fixe ne tenait que sur un thème sombre ; et le gris-bleu de
+/// Tokyo Night, à 2,35, qui porte le nom de l'onglet et les
+/// commentaires du programme.
 #[test]
 fn every_text_stands_out_from_its_background() {
+    const PLANCHER: f32 = 3.0;
+    const PLANCHER_ESTOMPÉ: f32 = 2.0;
+
     /// Une encre posée sur un fond : ce que l'œil reçoit.
     fn composé(dessus: egui::Color32, dessous: egui::Color32) -> egui::Color32 {
         let a = f32::from(dessus.a()) / 255.0;
@@ -21413,46 +21465,30 @@ fn every_text_stands_out_from_its_background() {
         couleurs
     }
 
-    const PLANCHER: f32 = 3.0;
-    let mut fautes: Vec<String> = Vec::new();
-
-    for (nom, id, ouvre) in fenêtres_ouvrables() {
-        let ctx = egui::Context::default();
-        let mut app = NamsdecApp::default();
-        app.apply_theme(&ctx);
-        ouvre(&mut app);
-        // Un pas de temps franc, et six images : egui fait apparaître
-        // une fenêtre en fondu, et tant qu'il dure les couleurs
-        // peintes ne sont pas celles qu'on verra.
-        let entrée = egui::RawInput {
-            predicted_dt: 0.5,
-            ..écran_du_banc()
-        };
-        let mut formes = Vec::new();
-        let mut cadre = egui::Rect::NOTHING;
-        for _ in 0..6 {
-            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
-            cadre = egui::AreaState::load(&ctx, egui::Id::new(id))
-                .unwrap_or_else(|| panic!("la fenêtre « {nom} » est affichée"))
-                .rect();
-            formes = std::mem::take(&mut sortie.shapes);
-            sortie.textures_delta.clear();
-        }
-
+    /// Relève les contrastes d'une situation déjà dessinée.
+    ///
+    /// `dans` borne la mesure à une fenêtre ; `None` prend tout ce que
+    /// l'application peint.
+    fn relève(
+        formes: &[egui::epaint::ClippedShape],
+        fond_initial: egui::Color32,
+        dans: Option<egui::Rect>,
+        situation: &str,
+        fautes: &mut Vec<String>,
+    ) -> usize {
         let mut mesurés = 0;
         let mut fonds: Vec<(egui::Rect, egui::Color32)> = Vec::new();
-        for clipped in &formes {
+        for clipped in formes {
             match &clipped.shape {
                 egui::epaint::Shape::Rect(r) if r.fill.a() > 0 => {
                     fonds.push((r.rect, r.fill));
                 }
                 egui::epaint::Shape::Text(t) => {
                     let place = egui::Rect::from_min_size(t.pos, t.galley.size());
-                    if !cadre.contains_rect(place.shrink(1.0)) {
+                    if dans.is_some_and(|c| !c.contains_rect(place.shrink(1.0))) {
                         continue;
                     }
-                    // Tout ce qui a été peint dessous, dans l'ordre.
-                    let mut fond = DEFAULT_THEME.bg;
+                    let mut fond = fond_initial;
                     for (rect, couleur) in &fonds {
                         if rect.contains(place.center()) {
                             fond = composé(*couleur, fond);
@@ -21460,13 +21496,16 @@ fn every_text_stands_out_from_its_background() {
                     }
                     mesurés += 1;
                     for encre in encres(t) {
+                        // Une encre transparente est une commande
+                        // inactive : egui grise en baissant l'alpha.
+                        let estompé = encre.a() < 255;
+                        let seuil = if estompé { PLANCHER_ESTOMPÉ } else { PLANCHER };
                         let vu = composé(encre, fond);
                         let contraste = namsdec_theme::contrast_ratio(vu, fond);
-                        if contraste < PLANCHER {
-                            let quoi: String =
-                                t.galley.text().chars().take(40).collect();
+                        if contraste < seuil {
+                            let quoi: String = t.galley.text().chars().take(40).collect();
                             fautes.push(format!(
-                                "[{nom}] {contraste:.2} — « {quoi} » {:?} sur {:?}",
+                                "[{situation}] {contraste:.2} < {seuil} — « {quoi} » {:?} sur {:?}",
                                 vu.to_srgba_unmultiplied(),
                                 fond.to_srgba_unmultiplied()
                             ));
@@ -21476,18 +21515,73 @@ fn every_text_stands_out_from_its_background() {
                 _ => {}
             }
         }
+        mesurés
+    }
+
+    /// Six images et un pas de temps franc : egui fait apparaître une
+    /// fenêtre en fondu, et tant qu'il dure les couleurs peintes ne
+    /// sont pas celles qu'on verra.
+    fn dessine(ctx: &egui::Context, app: &mut NamsdecApp) -> Vec<egui::epaint::ClippedShape> {
+        let entrée = egui::RawInput {
+            predicted_dt: 0.5,
+            ..écran_du_banc()
+        };
+        let mut formes = Vec::new();
+        for _ in 0..6 {
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            formes = std::mem::take(&mut sortie.shapes);
+            sortie.textures_delta.clear();
+        }
+        formes
+    }
+
+    let mut fautes: Vec<String> = Vec::new();
+
+    // Les fenêtres, chacune sur son propre fond.
+    for (nom, id, ouvre) in fenêtres_ouvrables() {
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp::default();
+        app.apply_theme(&ctx);
+        ouvre(&mut app);
+        let formes = dessine(&ctx, &mut app);
+        let cadre = egui::AreaState::load(&ctx, egui::Id::new(id))
+            .unwrap_or_else(|| panic!("la fenêtre « {nom} » est affichée"))
+            .rect();
+        let mesurés = relève(&formes, DEFAULT_THEME.bg, Some(cadre), nom, &mut fautes);
         assert!(
             mesurés > 2,
             "la fenêtre « {nom} » n'écrit presque rien : le test ne prouverait rien"
         );
     }
 
+    // Et l'application entière, dans chacun de ses thèmes et sur
+    // chacun de ses onglets : c'est là que vivent les couleurs des
+    // thèmes, et un thème ne se relit pas en le regardant.
+    for theme in namsdec_theme::BUILT_IN {
+        for onglet in SidebarTab::ALL {
+            let ctx = egui::Context::default();
+            let mut app = NamsdecApp {
+                theme,
+                show_sidebar: true,
+                active_tab: onglet,
+                ..Default::default()
+            };
+            app.apply_theme(&ctx);
+            let formes = dessine(&ctx, &mut app);
+            let situation = format!("{} / {}", theme.id, onglet.id());
+            let mesurés = relève(&formes, theme.bg, None, &situation, &mut fautes);
+            assert!(mesurés > 20, "{situation} : presque rien n'est peint");
+        }
+    }
+
     fautes.sort();
     fautes.dedup();
     assert!(
         fautes.is_empty(),
-        "{} texte(s) sous {PLANCHER} de contraste :\n  {}",
+        "{} texte(s) sous leur plancher de contraste :\n  {}",
         fautes.len(),
         fautes.join("\n  ")
     );
 }
+
+

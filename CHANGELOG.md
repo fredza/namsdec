@@ -286,6 +286,14 @@ six fautes d'assembleur que namsdec sait désormais reconnaître.
   dernières doivent être identiques. C'est la règle la plus simple
   d'une interface en mode immédiat, et justement celle qu'elle ne
   garantit pas.
+- **La pastille du mode** (NORMAL / INSERTION) portait un noir écrit en
+  dur, « pour le contraste ». Il l'avait sur le bleu vif d'un thème
+  sombre, et pas du tout sur le bleu profond du thème clair : 2,9, où le
+  blanc en donne 6,3. L'encre est maintenant choisie d'après le fond.
+- **Tokyo Night** écrivait son gris-bleu `#565f89` — le nom de l'onglet,
+  les libellés secondaires, les commentaires du programme — à 2,35 de
+  contraste. Éclairci, à un écart assumé d'avec le thème d'origine : un
+  commentaire qui explique et qu'on doit deviner ne sert à rien.
 - **Le texte sélectionné se lisait mal** — 2,07 de contraste, c'est-à-dire
   du gris clair sur un bleu vif. Le thème employait `focusBorder` comme
   couleur de sélection ; VS Code Dark+ emploie `editor.selectionBackground`,
@@ -307,10 +315,19 @@ six fautes d'assembleur que namsdec sait désormais reconnaître.
   contrôlée sans qu'on y pense ; un invariant nouveau s'applique
   aussitôt aux quatorze. Deux pour l'instant — rien ne bouge tout seul,
   deux textes ne se recouvrent jamais, un texte tronqué se lit encore en
-  entier au survol, et tout texte se détache de son fond (3 de contraste
-  au moins, la mesure des recommandations d'accessibilité). Les quatre
-  ont trouvé un défaut réel le jour de leur écriture — six en tout, dont
-  aucun n'était cherché.
+  entier au survol, et tout texte se détache de son fond.
+- Le banc ne regarde plus seulement les fenêtres : il passe aussi sur
+  **l'application nue**, barre d'outils, panneau latéral et barre
+  d'état comprises, et le contraste y est mesuré dans **chacun des
+  trois thèmes**. C'est là qu'on passe ses journées, et c'est là que
+  vivent les couleurs d'un thème — qu'on ne relit pas en le regardant.
+- Le plancher de contraste est **3 pour un texte actif** et **2 pour
+  une commande inactive** : un bouton grisé doit être moins lisible,
+  c'est ce que « grisé » veut dire, mais il doit rester visible. Au-delà
+  de 3, la nuance entre `text` et `dim` est une décision de thème, qui
+  ne regarde pas un test.
+- Les quatre invariants ont trouvé un défaut réel le jour de leur
+  écriture — huit en tout, dont aucun n'était cherché.
 - La fenêtre du décompilateur était **illisible** : chaque bloc se
   posait une ligne trop haut et recouvrait le précédent. Une commande de
   cent cinquante caractères — celle du pont DZF — s'allouait la hauteur

@@ -16381,15 +16381,22 @@ fn icon_step_over(painter: &egui::Painter, rect: egui::Rect, color: egui::Color3
     ));
 }
 
-/// Pastille de mode façon vim-airline : fond plein de la couleur du mode,
-/// texte sombre par-dessus pour le contraste.
+/// Pastille de mode façon vim-airline : fond plein de la couleur du
+/// mode, et par-dessus l'encre qui s'y lit le mieux.
+///
+/// Un noir fixe était écrit ici, avec pour raison « le contraste ». Il
+/// l'avait sur le bleu vif d'un thème sombre, et pas du tout sur le
+/// bleu profond d'un thème clair — 2,9, où le blanc en donne 6,3. Le
+/// fond change avec le thème et avec le mode ; l'encre doit changer
+/// avec lui.
 fn mode_pill_ui(ui: &mut egui::Ui, theme: &Theme, mode: EditorMode) {
+    let fond = mode.color(theme);
     egui::Frame::new()
-        .fill(mode.color(theme))
+        .fill(fond)
         .corner_radius(3)
         .inner_margin(egui::Margin::symmetric(6, 1))
         .show(ui, |ui| {
-            ui.colored_label(egui::Color32::from_rgb(0x14, 0x14, 0x14), mode.label());
+            ui.colored_label(encre_sur(fond, theme), mode.label());
         });
 }
 

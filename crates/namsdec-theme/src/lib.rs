@@ -188,7 +188,12 @@ pub static TOKYO_NIGHT: Theme = Theme {
     panel: Color32::from_rgb(0x1f, 0x23, 0x35),
     surface: Color32::from_rgb(0x24, 0x28, 0x3b),
     text: Color32::from_rgb(0xc0, 0xca, 0xf5),
-    dim: Color32::from_rgb(0x56, 0x5f, 0x89),
+    // Plus clair que le `#565f89` d'origine, et c'est un écart assumé :
+    // ce gris-bleu ne donne que 2,4 de contraste sur le fond des
+    // panneaux, où il porte le nom de l'onglet, les libellés secondaires
+    // et les commentaires du programme. Un commentaire qui explique et
+    // qu'on doit deviner ne sert à rien.
+    dim: Color32::from_rgb(0x7a, 0x83, 0xad),
     accent: Color32::from_rgb(0x7a, 0xa2, 0xf7),
     good: Color32::from_rgb(0x9e, 0xce, 0x6a),
     warn: Color32::from_rgb(0xe0, 0xaf, 0x68),
@@ -197,7 +202,8 @@ pub static TOKYO_NIGHT: Theme = Theme {
     mnemonic: Color32::from_rgb(0xbb, 0x9a, 0xf7),
     number: Color32::from_rgb(0xff, 0x9e, 0x64),
     label: Color32::from_rgb(0x7d, 0xcf, 0xff),
-    comment: Color32::from_rgb(0x56, 0x5f, 0x89),
+    // Même valeur que `dim`, et pour la même raison.
+    comment: Color32::from_rgb(0x7a, 0x83, 0xad),
     register: Color32::from_rgb(0x2a, 0xc3, 0xde),
     string: Color32::from_rgb(0x9e, 0xce, 0x6a),
     directive: Color32::from_rgb(0xf7, 0x76, 0x8e),

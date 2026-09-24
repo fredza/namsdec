@@ -864,15 +864,23 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
          simulé pour de vrai : un mouvement de pointeur, puis des images où
          il ne bouge plus, parce qu'une infobulle attend que la main
          s'arrête) ;
-       - tout texte se détache de son fond — 3 au moins au sens des
-         recommandations d'accessibilité, le fond étant composé dans l'ordre
-         des formes peintes, sans quoi la règle serait vide.
-     Six défauts réels trouvés le jour de leur écriture : la barre « OK » qui
+       - tout texte se détache de son fond — 3 au moins pour un texte actif,
+         2 pour une commande inactive (egui grise en baissant l'alpha, ce qui
+         donne un signal net ; les recommandations d'accessibilité exemptent
+         d'ailleurs les commandes désactivées). Le fond est composé dans
+         l'ordre des formes peintes, sans quoi la règle serait vide.
+     Le banc ne regarde plus seulement les fenêtres : la notion de SCÈNE
+     couvre aussi l'application nue, sur chacun des onglets du panneau, et le
+     contraste y passe dans les trois thèmes livrés.
+     Huit défauts réels trouvés le jour de leur écriture : la barre « OK » qui
      faisait monter toutes les fenêtres ; la calculatrice qui écrivait
      par-dessus son bouton (là depuis des semaines) ; le bleu de sélection, où
      toute étiquette choisie tombait à 2,07 ; les zéros de la calculatrice à
      2,10 ; les touches d'opérateur, qui portaient l'encre la MOINS lisible
-     des deux ; et l'indication du champ « retrouver », coupée en deux.
+     des deux ; l'indication du champ « retrouver », coupée en deux ; la
+     pastille du mode, dont le noir écrit en dur ne tenait que sur un thème
+     sombre ; et le gris-bleu de Tokyo Night, à 2,35 là où il porte les
+     commentaires du programme.
      Le plancher de contraste est 3 et non 4,5 À DESSEIN : au-dessus, la
      nuance entre `text` et `dim` est une décision de thème, qui ne regarde
      pas un test. 98 textes sur 291 sont entre 3 et 4,5 — les monter

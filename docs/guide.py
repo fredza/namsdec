@@ -236,6 +236,15 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
         ("p",
          "Les fenêtres internes portent la <b>même pastille</b> de fermeture, au "
          "même endroit. Une seule façon de fermer quelque chose, partout."),
+        ("p",
+         "Les couleurs sont tenues à un <b>plancher de contraste</b> : tout texte actif "
+         "se détache de son fond d’au moins 3 pour 1, la mesure des recommandations "
+         "d’accessibilité, dans chacun des trois thèmes livrés. Une commande "
+         "inactive descend plus bas — c’est ce que « grisé » veut dire — mais reste "
+         "visible. Ce n’est pas une intention : un test mesure ce qui est peint, "
+         "compose chaque texte avec le fond qu’il a réellement sous lui, et refuse "
+         "la compilation en dessous. Un thème installé ensuite n’y est pas soumis, "
+         "et c’est à son auteur d’y veiller."),
         ("note",
          "Préférences › Général rend la barre du système à "
          "qui la préfère. Tout ce que le système faisait — déplacer, "
