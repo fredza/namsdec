@@ -70,6 +70,25 @@ impl Condition {
             Comparison::GreaterOrEqual => left >= right,
         }
     }
+
+    /// Ce qu'on compare, tel qu'il est écrit.
+    ///
+    /// Utile pour *dire* pourquoi une condition ne tient pas : « rax »
+    /// se relit à l'écran à côté de la valeur qu'il porte.
+    pub fn left(&self) -> &str {
+        &self.left
+    }
+
+    /// Ce que les deux côtés valent en ce moment.
+    ///
+    /// `None` quand l'un des deux ne se calcule pas encore — un registre
+    /// sans programme, une adresse hors des pages chargées. C'est un cas
+    /// normal, et non une faute : on le dit, on ne l'invente pas.
+    pub fn sides(&self, regs: &Registers, mem: Option<&dyn calc::Memory>) -> Option<(u64, u64)> {
+        let left = calc::eval_with(&self.left, Some(regs), mem).ok()?;
+        let right = calc::eval_with(&self.right, Some(regs), mem).ok()?;
+        Some((left, right))
+    }
 }
 
 /// Lit une condition. Rend `None` sur ce qui n'en est pas une.

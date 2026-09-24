@@ -221,10 +221,6 @@ impl NamsdecApp {
         ui.horizontal_wrapped(|ui| {
             ui.colored_label(theme.dim, s.goal_label);
             ui.colored_label(
-                if atteint { theme.good } else { theme.dim },
-                egui::RichText::new(conditions.join(", ")).monospace(),
-            );
-            ui.colored_label(
                 if atteint { theme.good } else { theme.warn },
                 if atteint {
                     s.goal_reached
@@ -235,6 +231,48 @@ impl NamsdecApp {
         })
         .response
         .on_hover_text(s.goal_hint);
+
+        // Une ligne par condition, et son constat quand elle manque.
+        //
+        // « pas encore » ne dit rien à qui ne voit pas LAQUELLE manque :
+        // un but à trois conditions se lisait comme un verdict global,
+        // et l'on relançait au hasard. Écrite, la condition qui manque
+        // dit quel registre regarder ; le constat dit ce qu'il porte à
+        // la place. C'est le geste qu'on vient apprendre — comparer ce
+        // qu'on voulait et ce qu'on a — et non une correction.
+        for ligne in &conditions {
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing.x = 6.0;
+                // Un point plein pour ce qui tient, un cercle vide pour
+                // ce qui manque : dessinés, parce qu'aucune coche ni
+                // aucune croix n'existe dans la police de l'interface.
+                let (cadre, _) = ui.allocate_exact_size(
+                    egui::vec2(10.0, 10.0),
+                    egui::Sense::hover(),
+                );
+                let couleur = if ligne.tenue { theme.good } else { theme.warn };
+                if ligne.tenue {
+                    ui.painter().circle_filled(cadre.center(), 4.0, couleur);
+                } else {
+                    ui.painter().circle_stroke(
+                        cadre.center(),
+                        3.5,
+                        egui::Stroke::new(1.5, couleur),
+                    );
+                }
+                ui.colored_label(
+                    if ligne.tenue { theme.good } else { theme.text },
+                    egui::RichText::new(&ligne.texte).monospace(),
+                );
+                if let Some((gauche, valeur)) = &ligne.constat {
+                    ui.colored_label(
+                        theme.warn,
+                        egui::RichText::new(format!("{gauche} {} {valeur:#x}", s.goal_is))
+                            .monospace(),
+                    );
+                }
+            });
+        }
 
         // Le coût, à côté du verdict : un programme juste peut être deux
         // fois plus court, et c'est en cherchant comment qu'on apprend

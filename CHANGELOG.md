@@ -264,6 +264,22 @@ six fautes d'assembleur que namsdec sait désormais reconnaître.
   dans une colonne de trois cents ; la fenêtre d'analyse montre les mêmes
   en grand et tout dépliés. Deux fois la même chose, dont une mal.
 
+**Un but manqué dit ce qui manque**
+- Le bandeau des registres écrit maintenant **une ligne par condition**
+  du but, avec un point plein pour ce qui tient et un cercle vide pour
+  ce qui manque. « Pas encore » tout seul est un verdict, non une
+  explication : sur un but à plusieurs conditions, on ne savait pas
+  laquelle regarder.
+- Et sous la condition qui manque, **ce que l'expression vaut à la
+  place** — `rax == 0xf` suivi de `rax vaut 0xc`. C'est le geste qu'on
+  vient apprendre : comparer ce qu'on voulait et ce qu'on a.
+- Rien n'est écrit sous une condition qui tient (il n'y a rien à
+  expliquer), ni sous une condition qu'on ne sait pas encore calculer —
+  une adresse hors des pages chargées ne se devine pas, et une valeur
+  inventée serait pire que le silence.
+- Comment y arriver, namsdec continue de se taire. Corriger à la place
+  de l'utilisateur lui retirerait ce qu'il est venu apprendre.
+
 **Réparé**
 - Les fenêtres **montaient toutes seules** — et d'autant plus vite qu'on
   remuait la souris, puisque chaque mouvement vaut une image de plus.

@@ -665,6 +665,15 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "encore », au lieu de laisser vérifier à l'œil. Ce qui a été réussi une fois le "
          "reste, d'une session à l'autre." % (avec_but, total_exos)),
         ("p",
+         "Un but manqu\u00e9 dit <b>laquelle</b> de ses conditions manque, et ce que "
+         "l\u2019expression vaut \u00e0 la place \u2014 <font face='Courier'>rax == 0xf</font> "
+         "suivi de <font face='Courier'>rax vaut 0xc</font>. Un point plein marque ce qui "
+         "tient, un cercle vide ce qui manque. \u00ab Pas encore \u00bb tout seul est un "
+         "verdict : sur un but \u00e0 plusieurs conditions, on ne savait pas laquelle "
+         "regarder, et l\u2019on relan\u00e7ait au hasard. Ce que namsdec sait \u2014 la "
+         "valeur \u2014 il le dit ; comment y arriver, il se tait, parce que c\u2019est le "
+         "geste qu\u2019on est venu apprendre."),
+        ("p",
          "La plupart portent aussi un <b>budget</b> : le nombre d'instructions exécutées "
          "qu'il faut tenir. Il est <i>mesuré</i>, jamais estimé — un test exécute les %d "
          "exercices et vérifie que chacun atteint son but dans son budget. Un programme "

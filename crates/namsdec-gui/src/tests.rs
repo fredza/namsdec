@@ -9146,7 +9146,10 @@ fn an_exercise_says_whether_its_goal_is_reached() {
     app.do_assemble();
     assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
     let (conditions, atteint) = app.exercise_goal().expect("un but à vérifier");
-    assert_eq!(conditions, vec!["rax == 0xf".to_owned()]);
+    assert_eq!(
+        conditions.iter().map(|l| l.texte.as_str()).collect::<Vec<_>>(),
+        vec!["rax == 0xf"]
+    );
     assert!(!atteint, "le programme n'a pas encore tourné");
 
     // Il tourne, et le but est atteint : 5+4+3+2+1 = 15.
@@ -9310,7 +9313,8 @@ fn every_goal_is_readable_and_on_the_right_side() {
         assert_eq!(
             atteint,
             attendu,
-            "{id} : {conditions:?} — attendu {}",
+            "{id} : {:?} — attendu {}",
+            conditions.iter().map(|l| l.texte.as_str()).collect::<Vec<_>>(),
             if attendu {
                 "atteint d'emblée"
             } else {
@@ -21674,3 +21678,75 @@ fn every_text_stands_out_from_its_background() {
 
 
 
+
+/// Un but manqué dit laquelle de ses conditions manque, et ce que
+/// l'expression vaut à la place.
+///
+/// « pas encore » tout seul est un verdict, non une explication : sur un
+/// but à plusieurs conditions on ne savait pas laquelle regarder, et
+/// l'on relançait au hasard. Ce que namsdec sait — la valeur — il le
+/// dit. Ce qu'il ne sait pas — comment y arriver — il se tait, parce
+/// que c'est le geste qu'on est venu apprendre.
+#[test]
+fn a_missed_goal_says_which_condition_misses_and_what_the_value_is() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = app_with_exercises();
+    app.load_exercise("namsdec/boucle");
+    // Un programme qui s'arrête proprement, mais avec la mauvaise
+    // valeur : c'est exactement le cas où l'on veut être renseigné.
+    app.source = "\
+bits 64
+global _start
+section .text
+_start:
+    mov rax, 12
+    hlt
+"
+    .to_owned();
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+    app.do_run();
+    for _ in 0..50 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&egui::Context::default());
+    }
+
+    let (lignes, atteint) = app.exercise_goal().expect("un but à vérifier");
+    assert!(!atteint, "12 n'est pas 15");
+    let ligne = lignes.first().expect("une condition");
+    assert_eq!(ligne.texte, "rax == 0xf");
+    assert!(!ligne.tenue);
+    assert_eq!(
+        ligne.constat,
+        Some(("rax".to_owned(), 12)),
+        "le constat nomme l'expression et donne sa valeur"
+    );
+
+    // Et cela s'écrit à l'écran, là où l'on regarde déjà les registres.
+    let peint = paint(&mut app);
+    let s = strings(app.lang);
+    assert!(peint.contains("rax == 0xf"), "la condition manquante :\n{peint}");
+    assert!(
+        peint.contains(&format!("rax {} 0xc", s.goal_is)),
+        "et ce que rax vaut à la place :\n{peint}"
+    );
+
+    // Une fois le but atteint, plus de constat : répéter la valeur sous
+    // une condition qui tient n'apprend rien.
+    app.source = app.source.replace("mov rax, 12", "mov rax, 15");
+    app.do_assemble();
+    app.do_run();
+    for _ in 0..50 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&egui::Context::default());
+    }
+    let (lignes, atteint) = app.exercise_goal().expect("un but à vérifier");
+    assert!(atteint, "15 est 15");
+    assert_eq!(lignes[0].constat, None, "rien à expliquer d'un but atteint");
+}

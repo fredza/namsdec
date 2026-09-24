@@ -867,6 +867,20 @@ impl EditorMode {
     }
 }
 
+/// Une condition du but d'un exercice, et où elle en est.
+///
+/// `constat` porte le côté gauche tel qu'il est écrit et ce qu'il vaut
+/// en ce moment — de quoi dire « rax vaut 12 » sous « rax == 15 ».
+/// Absent quand la condition tient (il n'y a rien à expliquer) ou quand
+/// elle ne se calcule pas encore : une adresse hors des pages chargées
+/// ne se devine pas, et une valeur inventée serait pire que le silence.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct GoalLine {
+    texte: String,
+    tenue: bool,
+    constat: Option<(String, u64)>,
+}
+
 /// Un fichier ouvert, tel qu'on l'a laissé.
 ///
 /// namsdec ne tient qu'un seul jeu de champs de travail — la source,
@@ -11576,7 +11590,12 @@ impl NamsdecApp {
     ///
     /// Le but est une liste de conditions — la grammaire des points
     /// d'arrêt conditionnels — et elles doivent toutes tenir.
-    fn exercise_goal(&self) -> Option<(Vec<String>, bool)> {
+    ///
+    /// Chacune est rendue avec son constat, parce que « pas encore » ne
+    /// dit rien à qui ne voit pas laquelle manque : un but à trois
+    /// conditions dont une seule échoue se lit alors d'un coup d'œil,
+    /// et l'on sait quel registre regarder.
+    fn exercise_goal(&self) -> Option<(Vec<GoalLine>, bool)> {
         let id = self.current_exercise.as_deref()?;
         let exercise = namsdec_exercises::find(&self.exercise_packs, id)?;
         if exercise.goal.is_empty() {
@@ -11585,12 +11604,37 @@ impl NamsdecApp {
         let emulator = self.emulator.as_ref()?;
         let cpu = emulator.cpu();
         let mémoire = PeekMemory(&cpu.mem);
-        // Une condition qu'on ne sait pas lire ne vaut pas « atteint » :
-        // mieux vaut un but qu'on n'atteint jamais qu'un faux succès.
-        let atteint = exercise.goal.iter().all(|texte| {
-            condition::parse(texte).is_some_and(|c| c.holds(&cpu.regs, Some(&mémoire)))
-        });
-        Some((exercise.goal.clone(), atteint))
+        let lignes: Vec<GoalLine> = exercise
+            .goal
+            .iter()
+            .map(|texte| {
+                // Une condition qu'on ne sait pas lire ne vaut pas
+                // « atteint » : mieux vaut un but qu'on n'atteint
+                // jamais qu'un faux succès.
+                let Some(c) = condition::parse(texte) else {
+                    return GoalLine {
+                        texte: texte.clone(),
+                        tenue: false,
+                        constat: None,
+                    };
+                };
+                let tenue = c.holds(&cpu.regs, Some(&mémoire));
+                // Le constat n'est écrit que pour ce qui manque :
+                // répéter « rax vaut 15 » sous « rax == 15 » n'apprend
+                // rien, et allonge ce qu'on relit à chaque pas.
+                let constat = (!tenue)
+                    .then(|| c.sides(&cpu.regs, Some(&mémoire)))
+                    .flatten()
+                    .map(|(gauche, _)| (c.left().to_owned(), gauche));
+                GoalLine {
+                    texte: texte.clone(),
+                    tenue,
+                    constat,
+                }
+            })
+            .collect();
+        let atteint = lignes.iter().all(|l| l.tenue);
+        Some((lignes, atteint))
     }
 
     /// L'état du processeur, en texte : ce qu'on colle pour demander de

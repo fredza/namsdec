@@ -953,10 +953,16 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      faire honnêtement — une explication fausse est pire qu'une absence
      d'explication, et il faudra savoir se taire.
 
-7.10 LES ÉCHECS DES EXERCICES, EXPLIQUÉS
-     Les 96 exercices disent « atteint » ou rien. Un exercice raté ne dit pas
-     POURQUOI : quel but n'est pas rempli, et ce que le programme a fait à la
-     place.
+7.10 [FAIT en partie] LES ÉCHECS DES EXERCICES, EXPLIQUÉS
+     Fait le 24 septembre 2026 pour la moitié qui se mesure : le bandeau écrit
+     une ligne par condition du but — point plein pour ce qui tient, cercle
+     vide pour ce qui manque — et, sous celle qui manque, ce que l'expression
+     vaut à la place (« rax == 0xf » puis « rax vaut 0xc »). Rien n'est écrit
+     sous une condition qui tient, ni sous une qu'on ne sait pas encore
+     calculer : une valeur inventée serait pire que le silence.
+     Reste la moitié qui ne se mesure pas : ce que le programme a fait À LA
+     PLACE — quelle branche il a prise, où la boucle s'est arrêtée. Cela
+     demande le profil d'exécution, donc 7.9.
      Peu coûteux — les buts sont déjà des conditions vérifiables — et c'est
      exactement le moment où quelqu'un qui apprend abandonne ou comprend.
 
