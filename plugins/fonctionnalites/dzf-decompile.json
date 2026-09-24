@@ -1,11 +1,11 @@
 {
   "id": "dzf-decompile",
-  "name": "DZF — décompilation ELF64 (beta)",
+  "name": "DZF — décompilation ELF64 (JSON v1)",
   "command": "/usr/bin/python3",
   "args": [
-    "/home/fred/Projects/DZF/integrations/namsdec/dzf_namsdec.py",
-    "--cli",
-    "/home/fred/Projects/DZF/build-dzf/x64-disassembler",
+    "/home/fred/Projects/DZF/integrations/plugins/dzf_client.py",
+    "--engine",
+    "/home/fred/Projects/DZF/build-dzf/dzf-plugin-engine",
     "--input",
     "{file}",
     "--output",

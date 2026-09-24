@@ -1301,6 +1301,21 @@ struct NamsdecApp {
     /// disait : on éditait, on essayait la touche, il ne se passait
     /// rien.
     keymap_mtime: Option<std::time::SystemTime>,
+    /// Ce que chaque outil connu répond, relevé une fois.
+    ///
+    /// Savoir si un outil est là et complet demande de **le lancer** :
+    /// `rizin` sans `rz-ghidra` a le programme et pas la commande, et on
+    /// le lui demande plutôt que de le supposer. Cette réponse était
+    /// redemandée à chaque image — ouvrir Préférences › Outils lançait
+    /// donc `rizin` soixante fois par seconde, ce qui saturait un cœur
+    /// et faisait hésiter l'interface. Et deux réponses successives
+    /// pouvaient différer sous la charge, ce qui rendait le test de la
+    /// fenêtre d'installation instable : c'est par là qu'on l'a vu.
+    ///
+    /// Vide tant qu'on n'a pas demandé. Rempli d'un coup, et refait
+    /// quand quelque chose a pu changer : une installation qui
+    /// s'achève, une fenêtre qui s'ouvre, ou le bouton « Revérifier ».
+    tools_ready: std::collections::BTreeMap<String, namsdec_disasm::known::Availability>,
     /// Quand on a regardé la date pour la dernière fois.
     ///
     /// Interroger le disque soixante fois par seconde pour un fichier
@@ -2317,6 +2332,7 @@ impl Default for NamsdecApp {
             update_result: None,
             keybindings: KeyBindings::default(),
             keymap_preset: keybindings::Preset::default(),
+            tools_ready: std::collections::BTreeMap::new(),
             keymap_mtime: None,
             keymap_checked: None,
             dispatcher: Dispatcher::default(),
@@ -2698,6 +2714,32 @@ impl NamsdecApp {
     fn write_keymap(&mut self, keymap: &settings::Keymap) {
         let _ = settings::save_keymap(keymap);
         self.keymap_mtime = settings::keymap_path().as_deref().and_then(file_mtime);
+    }
+
+    /// Demande à chaque outil connu s'il est là, et retient la réponse.
+    ///
+    /// Une fois, et non à chaque image : la question se pose en lançant
+    /// le programme, ce qui coûte un processus par outil.
+    fn refresh_tool_availability(&mut self) {
+        let outils = data_dir().map(|dir| namsdec_disasm::install::tools_dir(&dir));
+        self.tools_ready = namsdec_disasm::known::all()
+            .into_iter()
+            .map(|outil| {
+                let dispo = outil.availability_in(outils.as_deref());
+                (outil.plugin.id, dispo)
+            })
+            .collect();
+    }
+
+    /// Ce que cet outil répond, relevé si on ne le sait pas encore.
+    fn tool_availability(&mut self, id: &str) -> namsdec_disasm::known::Availability {
+        if self.tools_ready.is_empty() {
+            self.refresh_tool_availability();
+        }
+        self.tools_ready
+            .get(id)
+            .copied()
+            .unwrap_or(namsdec_disasm::known::Availability::Missing)
     }
 
     /// Reprend `keymap.json` s'il a changé sur le disque.
@@ -6357,6 +6399,18 @@ impl NamsdecApp {
         ui.add_space(2.0);
         ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
         ui.colored_label(theme.dim, s.tools_legend);
+        ui.add_space(6.0);
+        // Le relevé tient tant qu'on ne demande pas autre chose : il
+        // coûte un processus par outil. Ce bouton est la porte de
+        // sortie — on vient d'installer quelque chose dans un terminal
+        // et l'on veut que namsdec le voie sans redémarrer.
+        if framed_button(ui, theme, s.tools_recheck)
+            .on_hover_text(s.tools_recheck_hint)
+            .clicked()
+        {
+            self.refresh_tool_availability();
+            self.status = Status::Note(|s| s.tools_rechecked);
+        }
         ui.add_space(10.0);
 
         let utilisés: std::collections::BTreeSet<String> =
@@ -6369,9 +6423,21 @@ impl NamsdecApp {
         // Le dossier où namsdec pose ce qu'il installe : un outil bâti
         // par le module d'installation n'est dans le PATH de personne, et
         // sans cela il restait « absent » alors qu'il tournait très bien.
+        // Le relevé est fait une fois, avant la boucle : le demander
+        // par outil et par image lançait `rizin` soixante fois par
+        // seconde.
+        if self.tools_ready.is_empty() {
+            self.refresh_tool_availability();
+        }
+        let état = self.tools_ready.clone();
+        // Le dossier où namsdec pose ce qu'il installe : un outil bâti
+        // par le module d'installation n'est dans le PATH de personne.
         let outils = data_dir().map(|dir| namsdec_disasm::install::tools_dir(&dir));
         for outil in namsdec_disasm::known::all() {
-            let dispo = outil.availability_in(outils.as_deref());
+            let dispo = état
+                .get(&outil.plugin.id)
+                .copied()
+                .unwrap_or(namsdec_disasm::known::Availability::Missing);
             let sert = utilisés.contains(&outil.plugin.id);
             // Une fiche par outil. La grille d'avant mettait sur une même
             // ligne un nom, un état, une commande d'installation et deux
@@ -6597,14 +6663,8 @@ impl NamsdecApp {
         // fait qu'un travail s'est terminé : une installation peut
         // aboutir sans que l'outil marche, et l'inverse aussi — celui du
         // système peut l'avoir précédée.
-        let outils = namsdec_disasm::install::tools_dir(&data);
-        let déjà_prêt = namsdec_disasm::known::all()
-            .into_iter()
-            .find(|connu| connu.plugin.id == outil)
-            .map(|connu| {
-                connu.availability_in(Some(&outils)) == namsdec_disasm::known::Availability::Ready
-            })
-            .unwrap_or(false);
+        let déjà_prêt =
+            self.tool_availability(&outil) == namsdec_disasm::known::Availability::Ready;
         let en_cours = self
             .install_job
             .as_ref()
@@ -8698,6 +8758,10 @@ impl NamsdecApp {
         // lire.
         if fini.is_some() {
             self.install_log = job.log.lock().expect("le journal").clone();
+            // Une installation qui s'achève change la réponse des
+            // outils : le relevé est jeté, et refait à la première
+            // demande.
+            self.tools_ready.clear();
         }
         match fini {
             Some(Ok(programme)) => {
@@ -9680,6 +9744,14 @@ impl NamsdecApp {
                 egui::Order::Middle,
                 egui::Id::new(*nom),
             ));
+            // Les préférences et le plan d'installation parlent des
+            // outils : on redemande à la machine en les ouvrant, parce
+            // qu'on a pu en installer un à la main dans un terminal
+            // depuis la dernière fois. Le reste du temps, le relevé
+            // tient — c'est un processus par outil.
+            if matches!(*nom, "preferences_window" | "installer_window") {
+                self.tools_ready.clear();
+            }
         }
         self.windows_open = ouvertes;
     }
@@ -12337,11 +12409,11 @@ impl NamsdecApp {
                 ui.separator();
 
                 let Some(state) = &self.assemble_state else {
-                    ui.weak(s.no_binary_assembled);
+                    empty_state(ui, theme, s.no_binary_assembled, Some(s.empty_disassembly), None);
                     return;
                 };
                 if state.disasm.is_empty() {
-                    ui.weak(s.no_binary_assembled);
+                    empty_state(ui, theme, s.no_binary_assembled, Some(s.empty_disassembly), None);
                     return;
                 }
 
@@ -16552,6 +16624,49 @@ fn icon_button(
     }
 
     response
+}
+
+/// Un panneau vide qui dit ce qui manque, et propose ce qui le corrige.
+///
+/// La règle vient de l'explorateur, qui l'appliquait seul : « un panneau
+/// simplement vide se lit comme cassé ». Ailleurs, six panneaux du
+/// bandeau latéral disaient « Aucun binaire assemblé. » et s'arrêtaient
+/// là — un constat, pas une porte. Or c'est exactement l'écran qu'on a
+/// sous les yeux la première fois qu'on ouvre namsdec.
+///
+/// Trois étages, et les deux derniers sont facultatifs : la phrase qui
+/// dit ce qui manque, celle qui dit ce qu'on verra là une fois le
+/// programme lancé, et le bouton qui y mène. Rend `true` quand on a
+/// cliqué.
+pub(crate) fn empty_state(
+    ui: &mut egui::Ui,
+    theme: &Theme,
+    phrase: &str,
+    détail: Option<&str>,
+    action: Option<&str>,
+) -> bool {
+    let mut cliqué = false;
+    ui.add_space(10.0);
+    // Toute la largeur, et le texte replié dedans : centrer une phrase
+    // longue sans la replier la ferait déborder du panneau.
+    ui.vertical_centered(|ui| {
+        ui.set_max_width(ui.available_width() - 16.0);
+        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
+        ui.colored_label(theme.text, phrase);
+        if let Some(détail) = détail {
+            ui.add_space(4.0);
+            ui.colored_label(theme.dim, egui::RichText::new(détail).small());
+        }
+        if let Some(action) = action {
+            ui.add_space(10.0);
+            let bouton = egui::Button::new(egui::RichText::new(action).color(theme.bg))
+                .fill(theme.accent)
+                .corner_radius(6.0);
+            cliqué = ui.add(bouton).clicked();
+        }
+    });
+    ui.add_space(10.0);
+    cliqué
 }
 
 /// Un bouton carré qui ne porte qu'une icône, pour les commandes serrées

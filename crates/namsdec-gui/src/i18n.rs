@@ -301,6 +301,10 @@ pub struct Strings {
     pub tools_turn_on: &'static str,
     pub tools_title: &'static str,
     pub tools_legend: &'static str,
+    /// Bouton : redemander à la machine où en sont les outils.
+    pub tools_recheck: &'static str,
+    pub tools_recheck_hint: &'static str,
+    pub tools_rechecked: &'static str,
     pub tools_needs: &'static str,
     pub tools_declared: &'static str,
     pub tools_undeclared: &'static str,
@@ -695,6 +699,17 @@ pub struct Strings {
     // Phrases "rien à afficher pour l'instant", réutilisées à plusieurs
     // endroits
     pub no_binary_assembled: &'static str,
+    /// Ce qu'on fait quand rien n'est assemblé, dit sous le constat.
+    pub empty_assemble_hint: &'static str,
+    /// Ce que chaque onglet du panneau montrera, une fois le programme
+    /// lancé. Un panneau vide qui ne dit pas à quoi il sert n'apprend
+    /// rien à qui le découvre.
+    pub empty_stack: &'static str,
+    pub empty_memory: &'static str,
+    pub empty_heap: &'static str,
+    pub empty_bytes: &'static str,
+    pub empty_re: &'static str,
+    pub empty_disassembly: &'static str,
     pub no_binary_assembled_yet: &'static str,
     pub no_program_loaded: &'static str,
     pub no_re_module_registered: &'static str,
@@ -1116,6 +1131,9 @@ const FR: Strings = Strings {
     tools_turn_on: "Allumer ce module",
     tools_title: "Désassembleurs et décompilateurs",
     tools_legend: "Chaque fiche dit deux choses distinctes : le programme est installé sur la machine, ou non ; et namsdec s'en sert, ou non. S'en servir n'écrit qu'un fichier de quelques lignes — rien n'est téléchargé ni lancé tant que vous ne le demandez pas.",
+    tools_recheck: "Revérifier",
+    tools_recheck_hint: "Redemande à chaque outil s'il est là et complet. Le relevé est gardé entre deux demandes : la question se pose en lançant le programme.",
+    tools_rechecked: "Outils revérifiés.",
     tools_needs: "Il lui manque",
     tools_declared: "Outil déclaré :",
     tools_undeclared: "Outil retiré de la liste. Le programme, lui, reste installé.",
@@ -1463,6 +1481,13 @@ const FR: Strings = Strings {
     binary_not_text: "Fichier binaire chargé et désassemblé (le code affiché est reconstruit).",
 
     no_binary_assembled: "Aucun binaire assemblé.",
+    empty_assemble_hint: "Écrivez un programme, puis assemblez-le : tout ce qui suit décrira ce qu'il fait au processeur.",
+    empty_stack: "Ici s'afficheront la pile, la chaîne des appels et ce que la convention d'appel promet.",
+    empty_memory: "Ici s'afficheront les pages du programme, leurs droits, et de quoi y chercher un motif.",
+    empty_heap: "Ici s'afficheront les blocs alloués, leur taille et ce qu'ils contiennent.",
+    empty_bytes: "Ici s'afficheront les octets produits par chaque ligne du programme.",
+    empty_re: "Ici s'afficheront les analyses du binaire : protections, chaînes, fonctions, appels système.",
+    empty_disassembly: "Ici s'afficheront les instructions telles que le processeur les lit, avec leurs octets et leurs adresses.",
     no_binary_assembled_yet: "Aucun binaire assemblé pour l'instant.",
     no_program_loaded: "Aucun programme chargé.",
     no_re_module_registered: "Aucun module RE enregistré.",
@@ -1863,6 +1888,9 @@ const EN: Strings = Strings {
     tools_turn_on: "Turn that module on",
     tools_title: "Disassemblers and decompilers",
     tools_legend: "Each card states two distinct things: the program is installed on the machine, or not; and namsdec uses it, or not. Using one only writes a few-line file — nothing is downloaded or run until you ask.",
+    tools_recheck: "Check again",
+    tools_recheck_hint: "Asks each tool again whether it is there and complete. The answer is kept between requests: asking means running the program.",
+    tools_rechecked: "Tools checked again.",
     tools_needs: "It is missing",
     tools_declared: "Tool declared:",
     tools_undeclared: "Tool removed from the list. The program itself stays installed.",
@@ -2210,6 +2238,13 @@ const EN: Strings = Strings {
     binary_not_text: "Binary file loaded and disassembled (the code shown is reconstructed).",
 
     no_binary_assembled: "No binary assembled.",
+    empty_assemble_hint: "Write a program, then assemble it: everything below will describe what it does to the processor.",
+    empty_stack: "The stack, the call chain and what the calling convention promises will appear here.",
+    empty_memory: "The program's pages, their permissions, and a way to search them will appear here.",
+    empty_heap: "Allocated blocks, their size and their contents will appear here.",
+    empty_bytes: "The bytes produced by each line of the program will appear here.",
+    empty_re: "The binary's analyses will appear here: protections, strings, functions, system calls.",
+    empty_disassembly: "The instructions as the processor reads them will appear here, with their bytes and addresses.",
     no_binary_assembled_yet: "No binary assembled yet.",
     no_program_loaded: "No program loaded.",
     no_re_module_registered: "No RE module registered.",

@@ -46,5 +46,5 @@ fn dzf_bridge_preserves_partial_diagnostics_and_translates_elf() {
         }
     }
     let refused = tool.run(b"MZ not ELF").unwrap();
-    assert!(refused.contains("Status: REFUSED"), "{refused}");
+    assert!(refused.contains("Status: BRIDGE_ERROR"), "{refused}");
 }

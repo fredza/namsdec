@@ -22355,3 +22355,189 @@ fn pasting_inserts_at_the_cursor_instead_of_replacing_the_program() {
     }
 }
 
+
+/// Un panneau vide dit ce qui manque, ce qu'on y verra, et propose ce
+/// qui y mène.
+///
+/// La règle venait de l'explorateur, qui l'appliquait seul : « un
+/// panneau simplement vide se lit comme cassé ». Les six panneaux du
+/// bandeau latéral, eux, disaient « Aucun binaire assemblé. » et
+/// s'arrêtaient là — un constat, pas une porte. Or c'est exactement
+/// l'écran qu'on a sous les yeux la première fois qu'on ouvre namsdec.
+#[test]
+fn an_empty_panel_says_what_is_missing_and_offers_the_way_out() {
+    let s = strings(Lang::Fr);
+    // Une application au démarrage : un programme écrit, rien
+    // d'assemblé.
+    let mut app = NamsdecApp {
+        source: DEFAULT_SOURCE.to_owned(),
+        show_sidebar: true,
+        ..Default::default()
+    };
+    assert!(app.emulator.is_none(), "rien n'a encore tourné");
+
+    let peint = paint(&mut app);
+    assert!(peint.contains(s.no_binary_assembled), "le constat :\n{peint}");
+    assert!(
+        peint.contains(s.empty_assemble_hint),
+        "ce qu'il faut faire :\n{peint}"
+    );
+    assert!(
+        peint.contains(s.action_assemble),
+        "et le bouton qui le fait :\n{peint}"
+    );
+
+    // Chaque onglet dit ce qu'il montrera : un panneau vide qui ne dit
+    // pas à quoi il sert n'apprend rien à qui le découvre.
+    for (onglet, attendu) in [
+        (SidebarTab::Stack, s.empty_stack),
+        (SidebarTab::Memory, s.empty_memory),
+        (SidebarTab::Heap, s.empty_heap),
+        (SidebarTab::Bytes, s.empty_bytes),
+    ] {
+        app.active_tab = onglet;
+        let peint = paint(&mut app);
+        assert!(
+            peint.contains(attendu),
+            "l'onglet {} doit dire ce qu'il montrera :\n{peint}",
+            onglet.id()
+        );
+    }
+
+    // Et le bouton assemble vraiment : il ne décore pas.
+    if namsdec_asm::find_nasm().is_some() && namsdec_asm::find_linker() {
+        app.dispatch(Action::Assemble);
+        assert!(
+            app.emulator.is_some(),
+            "le bouton du panneau vide fait ce qu'il dit : {:?}",
+            app.status
+        );
+        let peint = paint(&mut app);
+        assert!(
+            !peint.contains(s.empty_assemble_hint),
+            "et il disparaît une fois qu'il n'a plus lieu d'être"
+        );
+    }
+}
+
+
+/// La palette propose vraiment **toutes** les commandes.
+///
+/// Elle le promet — « toutes les commandes » — et le code le dit déjà :
+/// une commande que la palette ne propose pas n'existe que pour qui
+/// connaît déjà son raccourci. Rien ne l'imposait, et une action
+/// ajoutée demain n'y entrerait pas d'elle-même.
+#[test]
+fn the_palette_offers_every_single_action() {
+    let s = strings(Lang::Fr);
+    // Tout allumé : les modules facultatifs ajoutent des entrées, et
+    // c'est l'inventaire complet qu'on veut contrôler.
+    let commandes = palette_commands(s, true, true);
+    let proposées: std::collections::BTreeSet<String> = commandes
+        .iter()
+        .filter_map(|(_, c)| match c {
+            PaletteCommand::Do(action) => Some(format!("{action:?}")),
+            _ => None,
+        })
+        .collect();
+    let manquantes: Vec<String> = Action::ALL
+        .into_iter()
+        .filter(|a| !proposées.contains(&format!("{a:?}")))
+        .map(|a| format!("{a:?}"))
+        .collect();
+    assert!(
+        manquantes.is_empty(),
+        "{} action(s) absente(s) de la palette : {manquantes:?}",
+        manquantes.len()
+    );
+    // Et aucune entrée ne porte un libellé vide : on ne cherche pas une
+    // commande qui n'a pas de nom.
+    for (libellé, _) in &commandes {
+        assert!(
+            !libellé.trim().is_empty(),
+            "une entrée de la palette sans libellé ne se cherche pas"
+        );
+    }
+}
+
+/// L'état des outils est relevé une fois, et non à chaque image.
+///
+/// Savoir si `rizin` est complet demande de **le lancer** : `rizin` sans
+/// `rz-ghidra` a le programme et pas la commande, et namsdec le lui
+/// demande plutôt que de le supposer. Cette réponse était redemandée à
+/// chaque image, si bien qu'ouvrir Préférences › Outils lançait `rizin`
+/// soixante fois par seconde.
+///
+/// On l'a vu par un test instable : le contrôle de la fenêtre
+/// d'installation demandait la réponse, la fenêtre la redemandait, et
+/// les deux pouvaient différer sous la charge. Un test qui échoue au
+/// hasard apprend à ignorer la suite.
+#[test]
+fn what_the_tools_answer_is_asked_once_and_kept() {
+    let mut app = NamsdecApp::default();
+    assert!(app.tools_ready.is_empty(), "rien n'est demandé sans raison");
+
+    // Première demande : le relevé se remplit, pour tous les outils
+    // d'un coup.
+    let première = app.tool_availability("rizin-ghidra");
+    assert_eq!(
+        app.tools_ready.len(),
+        namsdec_disasm::known::all().len(),
+        "un seul relevé couvre tous les outils"
+    );
+
+    // Les demandes suivantes ne relancent rien : elles lisent. On le
+    // vérifie en faussant le relevé — s'il était refait, la valeur
+    // posée à la main disparaîtrait.
+    app.tools_ready.insert(
+        "rizin-ghidra".to_owned(),
+        namsdec_disasm::known::Availability::Incomplete,
+    );
+    assert_eq!(
+        app.tool_availability("rizin-ghidra"),
+        namsdec_disasm::known::Availability::Incomplete,
+        "la réponse gardée est celle qu'on lit"
+    );
+
+    // Et le relevé se refait quand on le jette : à la fin d'une
+    // installation, à l'ouverture des préférences, ou sur demande.
+    app.tools_ready.clear();
+    assert_eq!(
+        app.tool_availability("rizin-ghidra"),
+        première,
+        "jeté, il se refait et retrouve ce que la machine répond"
+    );
+
+    // L'ouverture des préférences le jette une fois : on a pu
+    // installer un outil à la main dans un terminal entre-temps.
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    app.show_preferences = true;
+    app.preferences_tab = PreferencesTab::Tools;
+    let entrée = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1600.0, 1100.0),
+        )),
+        ..Default::default()
+    };
+    let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+    sortie.textures_delta.clear();
+
+    // Et les images suivantes le gardent : c'est tout l'objet. Faussé à
+    // la main, il doit survivre au dessin — s'il était refait par
+    // image, la valeur posée disparaîtrait.
+    app.tools_ready.insert(
+        "objdump".to_owned(),
+        namsdec_disasm::known::Availability::Incomplete,
+    );
+    for _ in 0..4 {
+        let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+        sortie.textures_delta.clear();
+    }
+    assert_eq!(
+        app.tools_ready.get("objdump").copied(),
+        Some(namsdec_disasm::known::Availability::Incomplete),
+        "le relevé n'est pas refait à chaque image"
+    );
+}

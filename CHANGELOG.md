@@ -264,6 +264,47 @@ six fautes d'assembleur que namsdec sait désormais reconnaître.
   dans une colonne de trois cents ; la fenêtre d'analyse montre les mêmes
   en grand et tout dépliés. Deux fois la même chose, dont une mal.
 
+**La palette tient sa promesse**
+- Un test exige qu'elle propose **les trente actions**, et qu'aucune
+  entrée n'ait de libellé vide. Le code le promettait déjà en
+  commentaire — « une commande que la palette ne propose pas n'existe
+  que pour qui connaît déjà son raccourci » — sans que rien ne
+  l'impose. Passé du premier coup ; une action ajoutée demain n'y
+  entrerait pas d'elle-même.
+
+**namsdec relançait `rizin` soixante fois par seconde**
+- Savoir si un outil est là **et complet** demande de le lancer :
+  `rizin` sans `rz-ghidra` a le programme et pas la commande, et namsdec
+  le lui demande plutôt que de le supposer. Cette réponse était
+  redemandée **à chaque image**, pour chaque outil connu — ouvrir
+  Préférences › Outils saturait donc un cœur et faisait hésiter
+  l'interface.
+- Le relevé est maintenant gardé. Il est refait quand quelque chose a pu
+  changer : une installation qui s'achève, la fenêtre qui s'ouvre (on a
+  pu installer l'outil à la main dans un terminal), ou le bouton
+  **Revérifier**, qui est la porte de sortie explicite.
+- Trouvé par un **test instable** : il échouait au hasard dans la suite
+  complète et jamais seul, parce qu'il posait la question une fois et
+  que la fenêtre la reposait en se dessinant. Un test qui échoue au
+  hasard apprend à ignorer la suite ; celui-ci disait quelque chose.
+
+**Un panneau vide dit quoi faire**
+- Six panneaux du bandeau latéral disaient « Aucun binaire assemblé. »
+  et s'arrêtaient là — un constat, pas une porte. Or c'est exactement
+  l'écran qu'on a sous les yeux la première fois qu'on ouvre namsdec.
+- Le bandeau des registres porte maintenant **le bouton** qui lance
+  l'assemblage, avec la phrase qui dit ce que l'assemblage montrera.
+  Un seul bouton : le répéter dans chaque onglet en mettrait deux
+  identiques à l'écran en même temps.
+- Et **chaque onglet dit ce qu'il affichera** — la pile et la chaîne des
+  appels, les pages de mémoire et leurs droits, les blocs alloués, les
+  octets de chaque ligne, les analyses du binaire, les instructions
+  telles que le processeur les lit. Un panneau vide qui ne dit pas à
+  quoi il sert n'apprend rien à qui le découvre.
+- La règle existait déjà dans le code, écrite dans l'explorateur de
+  fichiers — « un panneau simplement vide se lit comme cassé » — et
+  n'était appliquée que là.
+
 **« Coller » collait par-dessus tout le programme**
 - L'entrée du menu Édition remplaçait le **programme entier** par le
   presse-papier. Elle s'appelait « Coller ». On cherchait à recopier

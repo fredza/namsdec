@@ -237,6 +237,14 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "Les fenêtres internes portent la <b>même pastille</b> de fermeture, au "
          "même endroit. Une seule façon de fermer quelque chose, partout."),
         ("p",
+         "Un panneau vide <b>dit ce qui manque et propose ce qui le corrige</b> : un "
+         "panneau simplement vide se lit comme cassé. Au démarrage, le bandeau "
+         "des registres annonce qu’aucun binaire n’est assemblé, dit ce que "
+         "l’assemblage montrera, et porte le bouton qui le lance. Chaque onglet du "
+         "panneau dit, lui, ce qu’il affichera — la pile, les pages de "
+         "mémoire, les blocs alloués, les octets de chaque ligne. C’est "
+         "l’écran qu’on a sous les yeux la première fois."),
+        ("p",
          "Les couleurs sont tenues à un <b>plancher de contraste</b> : tout texte actif "
          "se détache de son fond d’au moins 3 pour 1, la mesure des recommandations "
          "d’accessibilité, dans chacun des trois thèmes livrés. Une commande "
@@ -1134,6 +1142,13 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "du greffon <font face='Courier'>rz-ghidra</font>. Là où il n'est pas empaqueté, "
          "<font face='Courier'>rz-pm -i rz-ghidra</font> l'installe. namsdec vérifie sa présence "
          "et affiche « incomplet » plutôt que de vous laisser essayer."),
+        ("p",
+         "Cette vérification <b>lance l’outil</b> — c’est la seule façon de "
+         "savoir si <font face='Courier'>pdg</font> répond. Son résultat est donc "
+         "gardé : il est refait à la fin d’une installation, à l’ouverture "
+         "de la fenêtre, et sur le bouton <b>Revérifier</b>. Ce dernier est là "
+         "pour le cas où l’on vient d’installer quelque chose dans un terminal et "
+         "où l’on veut que namsdec le voie sans redémarrer."),
         ("p",
          "Le module reste éteint tant qu'on ne l'allume pas (Préférences › Modules), l'entrée de "
          "menu n'apparaît qu'ensuite, et rien ne part sans le bouton « Lancer ». Passé deux "

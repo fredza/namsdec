@@ -1039,8 +1039,30 @@ impl NamsdecApp {
     }
 
     fn registers_ui(&mut self, ui: &mut egui::Ui) {
+        if self.emulator.is_none() {
+            // Le seul des six panneaux vides à porter le bouton : il
+            // est toujours visible, et c'est lui qui répond à « et
+            // maintenant ? ». Le répéter dans chaque onglet ferait
+            // deux boutons identiques à l'écran en même temps.
+            let s = strings(self.lang);
+            let theme = self.theme;
+            let peut = self.can_assemble();
+            let mut lancer = false;
+            ui.add_enabled_ui(peut, |ui| {
+                lancer = empty_state(
+                    ui,
+                    theme,
+                    s.no_binary_assembled,
+                    Some(s.empty_assemble_hint),
+                    Some(s.action_assemble),
+                );
+            });
+            if lancer {
+                self.dispatch(Action::Assemble);
+            }
+            return;
+        }
         let Some(emulator) = &self.emulator else {
-            ui.label(strings(self.lang).no_binary_assembled);
             return;
         };
         let theme = self.theme;
@@ -1377,7 +1399,9 @@ impl NamsdecApp {
     fn stack_ui(&self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
         let Some(emulator) = &self.emulator else {
-            ui.label(s.no_binary_assembled);
+            // Ce que l'onglet montrera : un panneau vide qui ne dit
+            // pas à quoi il sert n'apprend rien à qui le découvre.
+            empty_state(ui, self.theme, s.no_binary_assembled, Some(s.empty_stack), None);
             return;
         };
         // Tout l'onglet dans une zone qui défile : la chaîne des appels,
@@ -1609,7 +1633,9 @@ impl NamsdecApp {
         let s = strings(self.lang);
         let theme = self.theme;
         let Some(emulator) = &self.emulator else {
-            ui.label(s.no_binary_assembled);
+            // Ce que l'onglet montrera : un panneau vide qui ne dit
+            // pas à quoi il sert n'apprend rien à qui le découvre.
+            empty_state(ui, self.theme, s.no_binary_assembled, Some(s.empty_heap), None);
             return;
         };
         let heap = emulator.heap();
@@ -1812,7 +1838,9 @@ impl NamsdecApp {
         let s = strings(self.lang);
         let theme = self.theme;
         let Some(state) = &self.assemble_state else {
-            ui.label(s.no_binary_assembled);
+            // Ce que l'onglet montrera : un panneau vide qui ne dit
+            // pas à quoi il sert n'apprend rien à qui le découvre.
+            empty_state(ui, self.theme, s.no_binary_assembled, Some(s.empty_bytes), None);
             return;
         };
         let rip = self.emulator.as_ref().map(|e| e.cpu().regs.rip);
@@ -2004,7 +2032,9 @@ impl NamsdecApp {
     fn memory_ui(&mut self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
         let Some(emulator) = &self.emulator else {
-            ui.label(s.no_binary_assembled);
+            // Ce que l'onglet montrera : un panneau vide qui ne dit
+            // pas à quoi il sert n'apprend rien à qui le découvre.
+            empty_state(ui, self.theme, s.no_binary_assembled, Some(s.empty_memory), None);
             return;
         };
         // Le champ est posé *avant* la zone de défilement, et non dedans :
@@ -2487,7 +2517,9 @@ impl NamsdecApp {
     pub(crate) fn re_modules_ui(&mut self, ui: &mut egui::Ui, seul: Option<&str>) {
         let s = strings(self.lang);
         let (Some(emulator), Some(state)) = (&self.emulator, &self.assemble_state) else {
-            ui.label(s.no_binary_assembled);
+            // Ce que l'onglet montrera : un panneau vide qui ne dit
+            // pas à quoi il sert n'apprend rien à qui le découvre.
+            empty_state(ui, self.theme, s.no_binary_assembled, Some(s.empty_re), None);
             return;
         };
         let ctx = ReContext {
