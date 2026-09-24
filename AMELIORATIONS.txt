@@ -354,11 +354,20 @@ aujourd'hui ; les suivantes, ce vers quoi l'outil peut aller.
      Vider le champ efface la note, dans les deux cas : on retire un nom
      comme on le corrige, et demander une commande séparée ferait chercher.
 
-4.4  Suivre une valeur à rebours
-     « D'où vient ce que RAX contient ? » Le module de provenance existe déjà
-     (where a value comes from) ; l'étendre à plusieurs pas en arrière, en
-     s'appuyant sur le pas à pas inverse, donnerait l'outil le plus utile devant
-     un contrôle de mot de passe.
+4.4  [FAIT] Suivre une valeur à rebours
+     Survoler un registre rend maintenant la chaîne, et non le seul dernier pas :
+     RAX vient de ce pas, qui lisait RCX, lequel vient de celui-là. Jusqu'à
+     quatre maillons, chacun avec son rang et sa ligne.
+     Elle s'appuie sur l'historique et non sur le code : celui-ci dit ce que le
+     programme pourrait avoir fait, celui-là ce qu'il a fait. Devant plusieurs
+     chemins qui mènent au même endroit, seul l'historique sait lequel a été pris.
+     Elle suit l'ingrédient *nouveau* : dans « add rax, rcx », RAX est
+     l'accumulateur et RCX ce qu'on ajoute — suivre l'accumulateur ne ferait que
+     redescendre la même somme d'un cran.
+     Et elle s'arrête à la mémoire en le disant : une valeur qui vient d'un
+     [rbp-8] ne se remonte pas par son registre de base, cela mènerait au cadre
+     de pile et non à la valeur. Reste à faire : continuer par la mémoire, ce
+     qui demande de savoir quelle adresse l'instruction désignait à ce pas-là.
 
 4.5  keymap.json : ce qui reste à faire
      Le fichier existe et se relit, mais rien ne le surveille : modifié pendant

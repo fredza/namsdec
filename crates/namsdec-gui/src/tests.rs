@@ -12163,6 +12163,111 @@ fn the_input_dialog_opens_when_the_program_waits_and_shows_what_it_asked() {
     );
 }
 
+/// La provenance remonte plusieurs pas, et non un seul.
+///
+/// « D'où vient ce que RAX contient ? » est la question qu'on pose
+/// devant chaque comparaison d'un programme qu'on ne connaît pas, et
+/// une seule réponse ne suffit presque jamais : le pas qui a écrit RAX
+/// lisait RCX, et c'est RCX qu'il faut alors remonter. On le faisait à
+/// la main, un survol après l'autre.
+#[test]
+fn the_provenance_goes_back_several_steps() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    // Une chaîne volontairement nette : RDX vient de RCX, qui vient de
+    // RBX, qui vient d'une constante.
+    let mut app = NamsdecApp {
+        source: "\
+global _start
+section .text
+_start:
+    mov rbx, 7
+    mov rcx, rbx
+    mov rdx, rcx
+    hlt
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+    app.do_run();
+    for _ in 0..50 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&egui::Context::default());
+    }
+
+    let chaîne = app.provenance_chain("RDX", 4);
+    assert!(
+        chaîne.len() >= 3,
+        "trois maillons au moins : RDX, RCX, RBX — {chaîne:?}"
+    );
+    // Chaque maillon nomme le registre qu'il explique, et l'instruction
+    // qui l'a écrit.
+    assert!(chaîne[0].starts_with("RDX"), "{:?}", chaîne[0]);
+    assert!(chaîne[0].contains("mov rdx, rcx"), "{:?}", chaîne[0]);
+    assert!(chaîne[1].starts_with("RCX"), "{:?}", chaîne[1]);
+    assert!(chaîne[1].contains("mov rcx, rbx"), "{:?}", chaîne[1]);
+    assert!(chaîne[2].starts_with("RBX"), "{:?}", chaîne[2]);
+    // `mov ebx, 7` et non `mov rbx, 7` : nasm choisit la forme 32 bits
+    // pour un petit immédiat, et l'écriture d'un registre de 32 bits met
+    // à zéro la moitié haute du registre de 64. C'est le même effet en
+    // deux octets de moins, et c'est ce que le désassemblage montre.
+    assert!(chaîne[2].contains("bx, 7"), "{:?}", chaîne[2]);
+
+    // Bornée : on demande quatre maillons, on n'en reçoit pas cinq.
+    assert!(app.provenance_chain("RDX", 2).len() <= 2);
+    // Un registre que personne n'a écrit n'a pas de provenance.
+    assert!(app.provenance_chain("R15", 4).is_empty());
+}
+
+/// La chaîne s'arrête à la mémoire, et le dit.
+///
+/// Une valeur qui vient d'un `[rbp-8]` ne se remonte pas par son
+/// registre de base : cela mènerait à la mise en place du cadre de
+/// pile, pas à la valeur. Mieux vaut s'arrêter en le disant que de
+/// conduire ailleurs avec assurance.
+#[test]
+fn the_chain_stops_at_memory_and_says_so() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let s = strings(Lang::Fr);
+    let mut app = NamsdecApp {
+        source: "\
+global _start
+section .data
+valeur dq 42
+section .text
+_start:
+    mov rax, [valeur]
+    hlt
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+    app.do_run();
+    for _ in 0..50 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&egui::Context::default());
+    }
+
+    let chaîne = app.provenance_chain("RAX", 4);
+    assert!(chaîne.len() >= 2, "{chaîne:?}");
+    assert!(chaîne[0].contains("mov rax,"), "{:?}", chaîne[0]);
+    assert_eq!(
+        chaîne[1], s.provenance_from_memory,
+        "la piste s'arrête là, et le dit"
+    );
+}
+
 /// Après la réponse, la boîte montre ce que le programme a répondu.
 ///
 /// C'est tout l'intérêt de la garder ouverte. On tape « sesame », le

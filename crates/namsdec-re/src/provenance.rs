@@ -31,6 +31,28 @@ pub struct Step {
 /// traversé un saut sans le savoir.
 const REMONTÉE: usize = 64;
 
+/// Cette instruction lit-elle la mémoire ?
+///
+/// La question décide de ce qu'on peut promettre. Une valeur qui vient
+/// d'un registre se remonte de proche en proche ; une valeur qui vient
+/// d'un `[rbp-8]` vient de la **mémoire**, et remonter le registre de
+/// base mènerait à la mise en place du cadre de pile — pas à la valeur.
+/// Mieux vaut s'arrêter là en le disant que de conduire ailleurs avec
+/// assurance.
+pub fn reads_memory(instr: &namsdec_disasm::Decoded) -> bool {
+    (0..instr.op_count()).any(|index| {
+        matches!(
+            instr.op_kind(index),
+            OpKind::Memory
+        )
+    })
+}
+
+/// Les registres que cette instruction lit, et celui qu'elle écrit.
+pub fn registers(instr: &namsdec_disasm::Decoded) -> (Vec<Register>, Option<Register>) {
+    lit_écrit(instr)
+}
+
 /// Les registres que cette instruction lit, et celui qu'elle écrit.
 fn lit_écrit(instr: &namsdec_disasm::Decoded) -> (Vec<Register>, Option<Register>) {
     let mut lus = Vec::new();

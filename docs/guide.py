@@ -345,6 +345,18 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "Les onglets sont en haut à droite, dans la barre d'outils.",
         ]),
         ("p",
+         "<b>Survoler un registre</b> répond à « d'où vient ce qu'il contient ? », et pas "
+         "seulement d'un pas : le pas qui a écrit RAX lisait RCX, et la chaîne remonte "
+         "jusqu'à quatre maillons, chacun avec son rang et sa ligne. Elle s'appuie sur "
+         "l'<b>historique</b> et non sur le code — celui-ci dit ce que le programme "
+         "<i>pourrait</i> avoir fait, celui-là ce qu'il a fait, et devant plusieurs chemins "
+         "qui mènent au même endroit, seul l'historique sait lequel a été pris."),
+        ("note",
+         "La chaîne s'arrête à la mémoire, et le dit. Une valeur qui vient "
+         "d'un <font face='Courier'>[rbp-8]</font> ne se remonte pas par son registre de "
+         "base : cela mènerait à la mise en place du cadre de pile, pas à la "
+         "valeur. Pour aller plus haut, on pose une surveillance sur l'adresse."),
+        ("p",
          "La séparation entre le bandeau et la vue se règle à la poignée, et Affichage › "
          "« Panneau latéral partagé tout seul » rend le partage automatique."),
 

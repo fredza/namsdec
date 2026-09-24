@@ -128,6 +128,23 @@ six fautes d'assembleur que namsdec sait désormais reconnaître.
   Et un tableau collé au trait de séparation donne l'impression d'être
   coupé.
 
+**D'où vient ce que ce registre contient ?**
+- Survoler un registre rend la **chaîne** des écritures, et non le seul
+  dernier pas : RAX vient de ce pas, qui lisait RCX, lequel vient de
+  celui-là. Jusqu'à quatre maillons, chacun avec son rang et sa ligne.
+  On le faisait à la main, un survol après l'autre.
+- Elle s'appuie sur l'**historique** et non sur le code : celui-ci dit
+  ce que le programme *pourrait* avoir fait, celui-là ce qu'il a fait.
+  Devant plusieurs chemins qui mènent au même endroit, seul l'historique
+  sait lequel a été pris.
+- Elle suit l'ingrédient **nouveau** : dans `add rax, rcx`, RAX est
+  l'accumulateur et RCX ce qu'on ajoute — suivre l'accumulateur ne
+  ferait que redescendre la même somme d'un cran.
+- Et elle **s'arrête à la mémoire en le disant**. Une valeur qui vient
+  d'un `[rbp-8]` ne se remonte pas par son registre de base : cela
+  mènerait à la mise en place du cadre de pile, pas à la valeur. Mieux
+  vaut s'arrêter en le disant que de conduire ailleurs avec assurance.
+
 **Chercher dans la mémoire**
 - Un champ dans l'onglet Mémoire, et trois écritures qui se mélangent
   dans la même case : `"pass"` pour un texte, `41 42 43` ou `414243`

@@ -529,6 +529,19 @@ pub trait Backend {
     /// le sait : il garde les registres d'avant chaque pas.
     fn last_write_to(&self, reg: Reg64) -> Option<usize>;
 
+    /// Le pas qui a écrit ce registre pour la dernière fois **avant** un
+    /// pas donné.
+    ///
+    /// C'est ce qui permet de remonter une chaîne : RAX vient de ce pas,
+    /// qui lisait RCX, lequel vient de ce pas-là. Sans la borne, on
+    /// retrouverait chaque fois la même écriture, la plus récente, et la
+    /// chaîne tournerait en rond.
+    ///
+    /// `avant` est exclusif : la longueur de l'historique désigne
+    /// « maintenant », et rend alors la même réponse que
+    /// `last_write_to`.
+    fn last_write_to_before(&self, reg: Reg64, avant: usize) -> Option<usize>;
+
     /// Le pas qui a écrit à cette adresse pour la dernière fois.
     ///
     /// La même question que pour un registre, posée à la mémoire : « qui
@@ -787,17 +800,28 @@ impl Backend for Emulator {
     }
 
     fn last_write_to(&self, reg: Reg64) -> Option<usize> {
+        self.last_write_to_before(reg, self.history.len())
+    }
+
+    fn last_write_to_before(&self, reg: Reg64, avant: usize) -> Option<usize> {
         // On remonte le journal en gardant la valeur « d'après » : le
         // premier pas dont la valeur d'avant diffère est celui qui a
         // écrit. Les autres ne l'ont pas touché, quoi qu'ils aient fait
         // par ailleurs.
-        let mut après = self.cpu.regs.get64(reg);
-        for (index, undo) in self.history.iter().enumerate().rev() {
-            let avant = undo.regs.get64(reg);
-            if avant != après {
+        let avant = avant.min(self.history.len());
+        // La valeur du registre juste avant le pas `avant` : celle que
+        // ce pas a lue. Au bout de l'historique, c'est celle de
+        // maintenant.
+        let mut après = match self.history.get(avant) {
+            Some(undo) => undo.regs.get64(reg),
+            None => self.cpu.regs.get64(reg),
+        };
+        for (index, undo) in self.history.iter().enumerate().take(avant).rev() {
+            let valeur = undo.regs.get64(reg);
+            if valeur != après {
                 return Some(index);
             }
-            après = avant;
+            après = valeur;
         }
         None
     }

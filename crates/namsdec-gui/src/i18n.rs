@@ -435,6 +435,8 @@ pub struct Strings {
     pub report_save_failed: &'static str,
     pub analysis_copied: &'static str,
     pub written_at: &'static str,
+    /// La chaîne de provenance s'arrête : la valeur vient de la mémoire.
+    pub provenance_from_memory: &'static str,
     pub line_word: &'static str,
     /// Le préfixe des étiquettes dans la palette de commandes.
     pub palette_goto_label: &'static str,
@@ -1205,6 +1207,7 @@ const FR: Strings = Strings {
     report_save_failed: "Le rapport n'a pas pu être écrit",
     analysis_copied: "Rapport copié : il se colle tel quel dans un compte rendu ou un cours.",
     written_at: "Écrit au pas",
+    provenance_from_memory: "La valeur vient de la mémoire : posez une surveillance sur cette adresse pour remonter plus haut.",
     line_word: "ligne",
     palette_goto_label: "Aller à :",
     step_plain: "un calcul, une copie : rien qui change de direction",
@@ -1921,6 +1924,7 @@ const EN: Strings = Strings {
     report_save_failed: "The report could not be written",
     analysis_copied: "Report copied: it pastes as it is into a write-up or a lesson.",
     written_at: "Written at step",
+    provenance_from_memory: "The value comes from memory: set a watchpoint on that address to go further back.",
     line_word: "line",
     palette_goto_label: "Go to:",
     step_plain: "a computation, a copy: nothing that changes direction",

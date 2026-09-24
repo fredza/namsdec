@@ -868,6 +868,85 @@ impl NamsdecApp {
         self.step_description(rang)
     }
 
+    /// La chaîne des écritures qui ont mené à ce registre, d'après
+    /// l'historique.
+    ///
+    /// « D'où vient ce que RAX contient ? » est la question qu'on pose
+    /// devant chaque comparaison d'un programme qu'on ne connaît pas, et
+    /// une seule réponse ne suffit presque jamais : le pas qui a écrit
+    /// RAX lisait RCX, et c'est RCX qu'il faut alors remonter. On le
+    /// faisait à la main, un survol après l'autre.
+    ///
+    /// Elle s'appuie sur l'historique et non sur le code : celui-ci dit
+    /// ce que le programme *pourrait* avoir fait, celui-là ce qu'il a
+    /// fait. Devant plusieurs chemins qui mènent au même endroit, il n'y
+    /// a que l'historique qui sache lequel a été pris.
+    ///
+    /// **Elle s'arrête à la mémoire, et le dit.** Une valeur qui vient
+    /// d'un `[rbp-8]` ne se remonte pas par son registre de base : cela
+    /// mènerait à la mise en place du cadre de pile, pas à la valeur.
+    /// Mieux vaut s'arrêter en le disant que de conduire ailleurs avec
+    /// assurance.
+    pub(crate) fn provenance_chain(&self, name: &str, combien: usize) -> Vec<String> {
+        let s = strings(self.lang);
+        let (Some(emulator), Some(state)) = (&self.emulator, &self.assemble_state) else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        let mut cherché = name.to_owned();
+        let mut borne = emulator.trace().len();
+        for _ in 0..combien {
+            let Some(reg) = register_by_name(&cherché) else {
+                break;
+            };
+            let Some(rang) = emulator.last_write_to_before(reg, borne) else {
+                break;
+            };
+            let Some(texte) = self.step_description(rang) else {
+                break;
+            };
+            // Le registre expliqué en tête de ligne : sans lui, quatre
+            // lignes de provenance ne disent plus laquelle explique
+            // quoi.
+            out.push(format!("{} — {texte}", cherché.to_uppercase()));
+
+            // Ce que ce pas lisait, pour continuer.
+            let suivant = emulator
+                .trace()
+                .get(rang)
+                .and_then(|pas| {
+                    state
+                        .disasm
+                        .iter()
+                        .find(|instruction| instruction.address == pas.addr)
+                })
+                .and_then(|instruction| {
+                    namsdec_disasm::decode_one(&instruction.bytes, instruction.address)
+                });
+            let Some(décodée) = suivant else { break };
+            if namsdec_re::provenance::reads_memory(&décodée) {
+                out.push(s.provenance_from_memory.to_owned());
+                break;
+            }
+            let (lus, _) = namsdec_re::provenance::registers(&décodée);
+            // Un registre **autre** que celui qu'on explique, quand il y
+            // en a un : dans `add rax, rcx`, RAX est l'accumulateur et
+            // RCX l'ingrédient nouveau. C'est l'ingrédient qu'on veut
+            // remonter — suivre l'accumulateur ne fait que redescendre
+            // la même somme d'un cran. À défaut, on suit ce qu'il y a.
+            let cible = cherché.to_ascii_uppercase();
+            let source = lus
+                .iter()
+                .map(|r| format!("{r:?}").to_ascii_uppercase())
+                .find(|nom| *nom != cible)
+                .or_else(|| lus.first().map(|r| format!("{r:?}").to_ascii_uppercase()));
+            let Some(nom) = source else { break };
+            cherché = nom;
+            borne = rang;
+        }
+        out
+    }
+
     /// D'où vient cette valeur, **en lisant le code** et non
     /// l'historique.
     ///
@@ -1038,9 +1117,16 @@ impl NamsdecApp {
                         // son rang et sa ligne. « Qui a mis ça là ? » est
                         // la question qu'on pose devant un registre qui
                         // ne contient pas ce qu'on croyait.
-                        if let Some(texte) = &provenance {
+                        if provenance.is_some() {
                             ui.add_space(4.0);
-                            ui.colored_label(theme.accent, texte);
+                            // La chaîne, et non le seul dernier pas : le
+                            // pas qui a écrit RAX lisait RCX, et c'est
+                            // RCX qu'il faut alors remonter. On le
+                            // faisait à la main, un survol après
+                            // l'autre.
+                            for ligne in self.provenance_chain(name, 4) {
+                                ui.colored_label(theme.accent, ligne);
+                            }
                         }
                         // À défaut d'historique — un binaire qu'on ne
                         // peut pas exécuter n'en a pas —, la lecture du
