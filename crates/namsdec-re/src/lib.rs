@@ -23,6 +23,7 @@ pub mod imports;
 mod imports_module;
 pub mod libc;
 pub mod literals;
+pub mod patch;
 pub mod patterns;
 mod patterns_module;
 mod protections;

@@ -12548,6 +12548,146 @@ fn a_truncated_status_message_can_be_read_in_full() {
     }
 }
 
+/// Patcher un binaire : inverser un saut, et le retrouver dans le
+/// fichier exporté.
+///
+/// C'est le geste qui manquait le plus. On ouvre un crackme, on voit le
+/// `je` qu'il faudrait inverser, et l'on ne pouvait rien en faire :
+/// réassembler le listing est refusé — à juste titre, un désassemblage
+/// n'est pas un source.
+#[test]
+fn a_jump_can_be_inverted_and_the_change_reaches_the_exported_file() {
+    let Some(octets) = binaire_dépreuve("crackme-01") else {
+        return;
+    };
+    let mut app = NamsdecApp::default();
+    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+
+    // La ligne d'un saut conditionnel : on la cherche dans le listing,
+    // comme on la chercherait des yeux.
+    let état = app.assemble_state.as_ref().expect("chargé");
+    let (adresse, ligne, avant) = état
+        .disasm
+        .iter()
+        .find_map(|instruction| {
+            let court = instruction
+                .bytes
+                .first()
+                .is_some_and(|o| (0x70..=0x7f).contains(o));
+            let ligne = état.addr_to_line.get(&instruction.address)?;
+            court.then(|| (instruction.address, *ligne, instruction.bytes.clone()))
+        })
+        .expect("un crackme a bien un saut conditionnel");
+    app.cursor_pos = (ligne as usize, 1);
+
+    // Ce que le geste ferait, dit avant de cliquer.
+    let (vu, origine, nouveaux) = app
+        .patch_preview(PatchGeste::Inverser)
+        .expect("l'inversion est possible sur cette ligne");
+    assert_eq!(vu, adresse);
+    assert_eq!(origine, avant);
+    assert_eq!(nouveaux[0], avant[0] ^ 1, "un bit, et un seul");
+    assert_eq!(nouveaux.len(), avant.len(), "la longueur ne bouge pas");
+
+    // Appliqué : le binaire est rechargé avec les octets changés.
+    app.apply_patch(PatchGeste::Inverser);
+    assert!(matches!(app.status, Status::Note(_)), "{:?}", app.status);
+    assert_eq!(app.patches.len(), 1);
+
+    let patché = &app.assemble_state.as_ref().expect("rechargé").output.file;
+    let offset = app.patches[0].offset;
+    assert_eq!(
+        &patché[offset..offset + nouveaux.len()],
+        nouveaux.as_slice(),
+        "les octets changés sont dans l'image"
+    );
+    assert_ne!(patché[offset], octets[offset], "et ils ont bien changé");
+
+    // Et le fichier exporté les porte : c'est tout l'intérêt.
+    let dossier = tempfile::tempdir().unwrap();
+    let chemin = dossier.path().join("patché");
+    app.export_binary(&chemin);
+    let écrit = std::fs::read(&chemin).expect("le binaire exporté");
+    assert_eq!(écrit.len(), octets.len(), "même taille, à l'octet près");
+    assert_eq!(&écrit[offset..offset + nouveaux.len()], nouveaux.as_slice());
+
+    // Défait : on retrouve le fichier d'origine, octet pour octet.
+    app.undo_patch(0);
+    assert!(app.patches.is_empty());
+    let rendu = &app.assemble_state.as_ref().expect("rechargé").output.file;
+    assert_eq!(
+        &rendu[offset..offset + avant.len()],
+        avant.as_slice(),
+        "un patch qu'on ne peut pas défaire n'est pas un outil d'analyse"
+    );
+}
+
+/// Neutraliser une instruction garde la longueur du fichier.
+///
+/// C'est la règle qui rend l'opération sûre : un octet de plus ou de
+/// moins décalerait tout ce qui suit, et chaque adresse du fichier
+/// deviendrait fausse.
+#[test]
+fn neutralising_an_instruction_keeps_every_other_address() {
+    let Some(octets) = binaire_dépreuve("crackme-01") else {
+        return;
+    };
+    let mut app = NamsdecApp::default();
+    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+
+    let état = app.assemble_state.as_ref().expect("chargé");
+    let (ligne, longueur) = état
+        .disasm
+        .iter()
+        .find_map(|instruction| {
+            let ligne = état.addr_to_line.get(&instruction.address)?;
+            (instruction.bytes.len() >= 3).then_some((*ligne, instruction.bytes.len()))
+        })
+        .expect("une instruction d'au moins trois octets");
+    app.cursor_pos = (ligne as usize, 1);
+
+    app.apply_patch(PatchGeste::Neutraliser);
+    assert!(matches!(app.status, Status::Note(_)), "{:?}", app.status);
+
+    let patché = app.assemble_state.as_ref().expect("rechargé").output.file.clone();
+    assert_eq!(patché.len(), octets.len(), "le fichier garde sa taille");
+    let offset = app.patches[0].offset;
+    assert_eq!(
+        &patché[offset..offset + longueur],
+        vec![0x90u8; longueur].as_slice(),
+        "autant de nop que d'octets remplacés"
+    );
+    // Et rien d'autre n'a bougé : c'est ce qui garantit que toutes les
+    // autres adresses restent justes.
+    let différents = patché
+        .iter()
+        .zip(octets.iter())
+        .filter(|(a, b)| a != b)
+        .count();
+    assert_eq!(différents, longueur, "seuls ces octets-là ont changé");
+}
+
+/// La fenêtre des patchs dit ce qu'elle ferait avant qu'on clique.
+#[test]
+fn the_patch_window_says_what_it_would_do_before_one_clicks() {
+    let s = strings(Lang::Fr);
+    let Some(octets) = binaire_dépreuve("crackme-01") else {
+        return;
+    };
+    let mut app = NamsdecApp::default();
+    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    app.show_patches = true;
+
+    let peint = paint(&mut app);
+    assert!(peint.contains(s.patch_title), "{peint}");
+    assert!(peint.contains(s.patch_invert), "{peint}");
+    assert!(peint.contains(s.patch_neutralise), "{peint}");
+    assert!(
+        peint.contains(s.patch_none_yet),
+        "et l'on n'a encore rien changé :\n{peint}"
+    );
+}
+
 /// L'expression se tape dans l'écran, au-dessus du résultat.
 ///
 /// Un champ de saisie encadré, posé au-dessus avec son étiquette
@@ -12907,18 +13047,25 @@ fn every_window_is_in_the_table_that_raises_new_ones() {
     let mut vus = std::collections::BTreeSet::new();
     for (position, _) in source.match_indices("egui::Window::new(") {
         let suite = &source[position..(position + 600).min(source.len())];
-        // Deux fenêtres nomment leur identifiant par une constante,
+        // Certaines fenêtres nomment leur identifiant par une constante,
         // parce que plusieurs endroits s'y réfèrent ; le reste l'écrit
-        // sur place.
+        // sur place. On résout la constante en relisant sa déclaration,
+        // plutôt qu'en tenant ici une liste qu'il faudrait allonger à
+        // chaque fenêtre — et qu'on oublierait.
         let id = suite
-            .find("egui::Id::new(ABOUT_WINDOW)")
-            .map(|_| ABOUT_WINDOW)
-            .or_else(|| suite.find("egui::Id::new(INPUT_DIALOG)").map(|_| INPUT_DIALOG))
+            .find("egui::Id::new(\"")
+            .map(|i| &suite[i + "egui::Id::new(\"".len()..])
+            .and_then(|reste| reste.find('"').map(|fin| &reste[..fin]))
             .or_else(|| {
-                suite
-                    .find("egui::Id::new(\"")
-                    .map(|i| &suite[i + "egui::Id::new(\"".len()..])
-                    .and_then(|reste| reste.find('"').map(|fin| &reste[..fin]))
+                let i = suite.find("egui::Id::new(")? + "egui::Id::new(".len();
+                let nom = &suite[i..i + suite[i..].find(')')?];
+                if !nom.chars().all(|c| c.is_ascii_uppercase() || c == '_') {
+                    return None;
+                }
+                let déclaration = format!("const {nom}: &str = \"");
+                let j = source.find(&déclaration)? + déclaration.len();
+                let reste = &source[j..];
+                reste.find('"').map(|fin| &reste[..fin])
             })
             .unwrap_or_else(|| {
                 panic!(

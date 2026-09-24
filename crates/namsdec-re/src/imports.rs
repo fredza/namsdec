@@ -112,6 +112,27 @@ pub fn file_offset(bytes: &[u8], vaddr: u64) -> Option<u64> {
             return Some(offset + (vaddr - addr));
         }
     }
+    // À défaut de sections, les segments. Un binaire dépouillé n'a plus
+    // de table de sections — il tourne quand même, parce que le noyau ne
+    // lit que les segments —, et sans ce repli aucune adresse ne se
+    // retrouverait dans le fichier. C'est précisément le cas des
+    // crackmes.
+    let phoff = u64_at(bytes, 0x20)? as usize;
+    let phentsize = u16_at(bytes, 0x36)? as usize;
+    let phnum = u16_at(bytes, 0x38)? as usize;
+    for index in 0..phnum {
+        let header = phoff.checked_add(index.checked_mul(phentsize)?)?;
+        // Seuls les segments chargeables portent des adresses.
+        if u32_at(bytes, header)? != 1 {
+            continue;
+        }
+        let offset = u64_at(bytes, header + 0x08)?;
+        let vaddr_segment = u64_at(bytes, header + 0x10)?;
+        let filesz = u64_at(bytes, header + 0x20)?;
+        if vaddr >= vaddr_segment && vaddr < vaddr_segment + filesz {
+            return Some(offset + (vaddr - vaddr_segment));
+        }
+    }
     None
 }
 

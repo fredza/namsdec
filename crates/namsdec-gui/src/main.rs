@@ -1081,6 +1081,15 @@ struct NamsdecApp {
     /// focus en boucle empêche Échap de le rendre, et la boîte gardait
     /// alors le clavier pour toujours.
     input_dialog_focus: bool,
+    /// Les octets qu'on a changés dans le binaire chargé, du plus ancien
+    /// au plus récent.
+    ///
+    /// Gardés avec ce qu'il y avait avant : un patch qu'on ne peut pas
+    /// défaire n'est pas un outil d'analyse, c'est une décision
+    /// définitive — et l'on patche justement pour *essayer*.
+    patches: Vec<namsdec_re::patch::Patch>,
+    /// La fenêtre des patchs est-elle ouverte ?
+    show_patches: bool,
     /// La boîte de saisie est-elle ouverte ?
     ///
     /// Elle s'ouvre d'elle-même quand le programme se met à attendre, et
@@ -2214,6 +2223,8 @@ impl Default for NamsdecApp {
             analysis_module: String::new(),
             input_dialog_text: String::new(),
             input_dialog_focus: false,
+            patches: Vec::new(),
+            show_patches: false,
             show_input_dialog: false,
             was_waiting_for_input: false,
             calc_base: CalcBase::Hex,
@@ -5465,6 +5476,26 @@ impl NamsdecApp {
                     self.show_analysis = true;
                     ui.close();
                 }
+                // Patcher : le geste qui manquait. On ouvre un crackme,
+                // on voit le `je` qu'il faudrait inverser, et jusqu'ici
+                // l'on ne pouvait rien en faire. Grisé sans binaire
+                // ouvert — un programme qu'on vient d'assembler se
+                // change en changeant son source, ce qui est plus simple
+                // et plus sûr.
+                let ouvert = self
+                    .assemble_state
+                    .as_ref()
+                    .is_some_and(|état| état.from_binary.is_some());
+                ui.add_enabled_ui(ouvert, |ui| {
+                    if ui
+                        .button(s.patch_open)
+                        .on_hover_text(s.patch_hint)
+                        .clicked()
+                    {
+                        self.show_patches = true;
+                        ui.close();
+                    }
+                });
                 // Le déroulement du programme : là où l'on comprend sa
                 // forme, et non sa suite d'instructions.
                 if ui
@@ -9257,7 +9288,7 @@ impl NamsdecApp {
     /// ajouter une fenêtre sans y penser reviendrait à réintroduire le
     /// défaut sans le voir. Les noms sont les identifiants qu'on passe à
     /// `egui::Window::id`, lesquels ne changent pas avec la langue.
-    fn window_states(&self) -> [(&'static str, bool); 17] {
+    fn window_states(&self) -> [(&'static str, bool); 18] {
         [
             ("preferences_window", self.show_preferences),
             (ABOUT_WINDOW, self.show_about),
@@ -9282,6 +9313,7 @@ impl NamsdecApp {
             ("unsaved_changes", self.pending.is_some()),
             ("command_palette", self.command_palette.is_some()),
             (INPUT_DIALOG, self.show_input_dialog),
+            (PATCHES_WINDOW, self.show_patches),
         ]
     }
 
@@ -13544,6 +13576,229 @@ impl NamsdecApp {
     /// qu'un programme attend d'un terminal : il lit jusqu'au `\n`, et une
     /// ligne sans fin de ligne le laisserait croire qu'elle n'est pas
     /// terminée.
+    /// Ce que le patch de la ligne du curseur ferait, s'il peut faire
+    /// quelque chose.
+    ///
+    /// Rend l'adresse, les octets d'origine et ceux qu'on écrirait.
+    /// Séparé de l'action pour que le bouton puisse dire *avant* de
+    /// cliquer ce qu'il s'apprête à faire : on ne change pas les octets
+    /// de quelqu'un à l'aveugle.
+    fn patch_preview(&self, geste: PatchGeste) -> Option<(u64, Vec<u8>, Vec<u8>)> {
+        let state = self.assemble_state.as_ref()?;
+        // Un binaire ouvert, non un programme qu'on vient d'assembler :
+        // celui-ci se change en changeant son source, ce qui est plus
+        // simple et plus sûr.
+        state.from_binary.as_ref()?;
+        let ligne = self.cursor_pos.0 as u32;
+        let adresse = state
+            .addr_to_line
+            .iter()
+            .find(|(_, l)| **l == ligne)
+            .map(|(addr, _)| *addr)?;
+        let instruction = state
+            .disasm
+            .iter()
+            .find(|instruction| instruction.address == adresse)?;
+        let nouveaux = match geste {
+            PatchGeste::Inverser => namsdec_re::patch::inverted_jump(&instruction.bytes)?,
+            PatchGeste::Neutraliser => namsdec_re::patch::nops(instruction.bytes.len()),
+        };
+        if nouveaux == instruction.bytes {
+            return None;
+        }
+        Some((adresse, instruction.bytes.clone(), nouveaux))
+    }
+
+    /// Écrit le patch dans l'image, puis recharge le binaire.
+    ///
+    /// Recharger plutôt que rapiécer l'état en place : les octets
+    /// changés donnent un autre désassemblage, d'autres fonctions,
+    /// d'autres références croisées. Reprendre le fichier depuis le
+    /// début est ce qui garantit que tout ce qu'on lit ensuite parle du
+    /// binaire qu'on vient d'écrire — et l'exécution repart de zéro,
+    /// ce qui est de toute façon ce qu'on veut après avoir changé le
+    /// programme.
+    fn apply_patch(&mut self, geste: PatchGeste) {
+        let s = strings(self.lang);
+        let Some((adresse, avant, après)) = self.patch_preview(geste) else {
+            self.status = Status::Error(s.patch_impossible.to_owned());
+            return;
+        };
+        let Some(state) = &self.assemble_state else {
+            return;
+        };
+        let mut image = state.output.file.clone();
+        let Some(offset) = namsdec_re::imports::file_offset(&image, adresse) else {
+            self.status = Status::Error(s.patch_no_offset.to_owned());
+            return;
+        };
+        let offset = offset as usize;
+        if namsdec_re::patch::apply(&mut image, offset, &après).is_none() {
+            self.status = Status::Error(s.patch_no_offset.to_owned());
+            return;
+        }
+        let nom = state
+            .from_binary
+            .as_ref()
+            .map(|binaire| binaire.name.clone())
+            .unwrap_or_default();
+        if self.load_elf(&image, &nom) {
+            self.patches.push(namsdec_re::patch::Patch {
+                offset,
+                before: avant,
+                after: après,
+                addr: adresse,
+            });
+            self.status = Status::Note(|s| s.patch_applied);
+        }
+    }
+
+    /// Défait un patch : on remet les octets d'avant, et l'on recharge.
+    fn undo_patch(&mut self, rang: usize) {
+        let Some(patch) = self.patches.get(rang).cloned() else {
+            return;
+        };
+        let Some(state) = &self.assemble_state else {
+            return;
+        };
+        let mut image = state.output.file.clone();
+        if namsdec_re::patch::apply(&mut image, patch.offset, &patch.before).is_none() {
+            return;
+        }
+        let nom = state
+            .from_binary
+            .as_ref()
+            .map(|binaire| binaire.name.clone())
+            .unwrap_or_default();
+        if self.load_elf(&image, &nom) {
+            self.patches.remove(rang);
+            self.status = Status::Note(|s| s.patch_undone);
+        }
+    }
+
+    /// La fenêtre des patchs : ce qu'on peut changer, et ce qu'on a
+    /// changé.
+    ///
+    /// On ouvre un crackme, on voit le `je` qu'il faudrait inverser, et
+    /// jusqu'ici l'on ne pouvait rien en faire. Réassembler le listing
+    /// est refusé — à juste titre, un désassemblage n'est pas un
+    /// source. Écrire les octets à leur place, si.
+    fn patches_window_ui(&mut self, ctx: &egui::Context) {
+        if !self.show_patches {
+            return;
+        }
+        let s = strings(self.lang);
+        let theme = self.theme;
+        let mut fermer = false;
+        let mut geste: Option<PatchGeste> = None;
+        let mut défaire: Option<usize> = None;
+        let inversion = self.patch_preview(PatchGeste::Inverser);
+        let neutralisation = self.patch_preview(PatchGeste::Neutraliser);
+
+        egui::Window::new(s.patch_title)
+            .id(egui::Id::new(PATCHES_WINDOW))
+            .resizable(true)
+            .collapsible(false)
+            .title_bar(false)
+            .default_size([560.0, 420.0])
+            .min_size([460.0, 300.0])
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(ctx.viewport_rect().center())
+            .show(ctx, |ui| {
+                if chrome::window_head(ui, theme, s, s.patch_title) {
+                    fermer = true;
+                }
+                if ok_bar(ui, theme, s, "patches") {
+                    fermer = true;
+                }
+                ui.add_space(6.0);
+                ui.weak(s.patch_hint);
+                ui.add_space(8.0);
+
+                // Ce que les deux gestes feraient à la ligne du curseur,
+                // écrit avant qu'on clique : on ne change pas les octets
+                // de quelqu'un à l'aveugle.
+                let mut bouton = |ui: &mut egui::Ui,
+                                  libellé: &str,
+                                  aperçu: &Option<(u64, Vec<u8>, Vec<u8>)>,
+                                  quoi: PatchGeste| {
+                    ui.horizontal(|ui| {
+                        ui.add_enabled_ui(aperçu.is_some(), |ui| {
+                            if ui.button(libellé).clicked() {
+                                geste = Some(quoi);
+                            }
+                        });
+                        match aperçu {
+                            Some((addr, avant, après)) => {
+                                ui.monospace(format!(
+                                    "{addr:#x} : {} -> {}",
+                                    namsdec_re::digest::hex(avant),
+                                    namsdec_re::digest::hex(après)
+                                ));
+                            }
+                            None => {
+                                ui.weak(s.patch_nothing_here);
+                            }
+                        }
+                    });
+                };
+                bouton(ui, s.patch_invert, &inversion, PatchGeste::Inverser);
+                bouton(
+                    ui,
+                    s.patch_neutralise,
+                    &neutralisation,
+                    PatchGeste::Neutraliser,
+                );
+
+                ui.add_space(10.0);
+                ui.separator();
+                ui.add_space(6.0);
+                if self.patches.is_empty() {
+                    ui.weak(s.patch_none_yet);
+                } else {
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "{} {}",
+                            self.patches.len(),
+                            s.patch_applied_count
+                        ))
+                        .strong(),
+                    );
+                    ui.add_space(4.0);
+                    egui::ScrollArea::vertical()
+                        .id_salt("patch_list")
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            for (rang, patch) in self.patches.iter().enumerate() {
+                                ui.horizontal(|ui| {
+                                    if ui.small_button(s.patch_undo).clicked() {
+                                        défaire = Some(rang);
+                                    }
+                                    ui.monospace(format!(
+                                        "{:#x} : {} -> {}",
+                                        patch.addr,
+                                        namsdec_re::digest::hex(&patch.before),
+                                        namsdec_re::digest::hex(&patch.after)
+                                    ));
+                                });
+                            }
+                        });
+                    ui.add_space(6.0);
+                    ui.weak(s.patch_export_hint);
+                }
+            });
+
+        if let Some(quoi) = geste {
+            self.apply_patch(quoi);
+        }
+        if let Some(rang) = défaire {
+            self.undo_patch(rang);
+        }
+        if fermer {
+            self.show_patches = false;
+        }
+    }
+
     /// La boîte de saisie : là où l'on répond au programme.
     ///
     /// La ligne de la console suffit quand on la voit. Elle ne suffit pas
@@ -16713,6 +16968,7 @@ impl NamsdecApp {
                 self.exercises_window_ui(&ctx);
             }
             self.command_palette_ui(&ctx);
+            self.patches_window_ui(&ctx);
             self.unsaved_window_ui(&ctx);
             // En dernier : c'est la seule fenêtre qui réclame une
             // réponse, elle passe donc devant toutes les autres.
@@ -16870,6 +17126,21 @@ pub(crate) const ABOUT_WINDOW: &str = "about_window";
 /// les fenêtres qui s'ouvrent aussi — c'est elle qui fait passer la
 /// boîte au-dessus d'une fenêtre d'analyse ouverte en grand.
 pub(crate) const INPUT_DIALOG: &str = "input_dialog";
+
+/// L'identifiant de la fenêtre des patchs.
+pub(crate) const PATCHES_WINDOW: &str = "patches_window";
+
+/// Ce qu'on fait aux octets d'une instruction.
+///
+/// Deux gestes, et ils couvrent presque tous les cas : inverser un saut
+/// conditionnel pour prendre l'autre branche, ou neutraliser une
+/// instruction pour qu'elle ne fasse rien. Les deux gardent la longueur
+/// exacte — un octet de plus ou de moins décalerait tout ce qui suit.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PatchGeste {
+    Inverser,
+    Neutraliser,
+}
 
 /// La largeur au-delà de laquelle le contenu de la fenêtre d'analyse ne
 /// s'étire plus.

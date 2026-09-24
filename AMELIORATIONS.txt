@@ -321,13 +321,23 @@ aujourd'hui ; les suivantes, ce vers quoi l'outil peut aller.
  4. FONCTIONNALITÉS À VENIR
 --------------------------------------------------------------------------------
 
-4.1  Patcher un binaire
-     Le besoin est apparu naturellement : on ouvre un crackme, on voit le je qu'il
-     faudrait inverser, et l'on ne peut rien en faire. Réassembler le listing est
-     refusé — à juste titre. Ce qu'il faudrait est l'écriture d'octets dans
-     l'image ELF et sa réécriture sur disque : changer un je en jne, neutraliser
-     un call par des nop, et relancer.
-     C'est la fonctionnalité qui manque le plus à un outil de rétro-ingénierie.
+4.1  [FAIT] Patcher un binaire
+     Outils > Patcher le binaire…, sur la ligne du curseur. Deux gestes :
+     inverser un saut conditionnel, neutraliser une instruction par des nop.
+     Les deux gardent la longueur exacte — un octet de plus ou de moins
+     décalerait tout ce qui suit, et chaque adresse du fichier deviendrait fausse.
+     L'inversion tient en un bit : les conditions vont par paires et le bit de
+     poids faible de l'opcode dit laquelle des deux (je 0x74, jne 0x75). Aucune
+     table à tenir à jour, et l'inverse de l'inverse retombe sur l'original —
+     c'est ce que le test vérifie sur les trente-deux conditions.
+     Le binaire est rechargé après chaque changement, et Fichier > Exporter le
+     binaire écrit le fichier patché. Chaque patch se défait.
+     Trouvé en chemin : file_offset ne regardait que les sections, donc rien sur
+     un binaire dépouillé — précisément le cas des crackmes. Repli par les
+     segments, que le noyau lit toujours.
+     Reste à faire : forcer un saut (Jcc -> jmp), qui change la longueur en forme
+     longue et demande un nop de complément ; et patcher depuis le vidage
+     hexadécimal (4.8).
 
 4.2  [FAIT] Nommer les fonctions et les adresses
      `Espace a` (ou Ctrl+Maj+N) nomme l'adresse de la ligne courante. Le nom

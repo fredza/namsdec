@@ -984,6 +984,40 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "conclut à tout prix</b> : le suivant reprend là où celui-ci s'arrête, au lieu "
          "de refaire le chemin en doutant."),
 
+        ("h1", "Patcher un binaire"),
+        ("p",
+         "On ouvre un crackme, on voit le <font face='Courier'>je</font> qu'il faudrait "
+         "inverser, et jusqu'ici l'on ne pouvait rien en faire : r\u00e9assembler le "
+         "listing est refus\u00e9, et \u00e0 juste titre \u2014 un d\u00e9sassemblage "
+         "n'est pas un source. \u00c9crire les octets \u00e0 leur place, si. Outils \u203a "
+         "<b>Patcher le binaire\u2026</b>, sur la ligne o\u00f9 est le curseur."),
+        ("table", [
+            ["Geste", "Ce qu'il fait"],
+            ["Inverser ce saut", "<font face='Courier'>je</font> devient "
+             "<font face='Courier'>jne</font> : le programme prend l'autre branche"],
+            ["Neutraliser (nop)", "l'instruction est remplac\u00e9e par des "
+             "<font face='Courier'>nop</font> : un appel de v\u00e9rification dispara\u00eet"],
+        ]),
+        ("p",
+         "Les deux gardent la <b>longueur exacte</b> de ce qu'ils remplacent. C'est la "
+         "r\u00e8gle qui rend l'op\u00e9ration s\u00fbre : un octet de plus ou de moins "
+         "d\u00e9calerait tout ce qui suit, et chaque adresse du fichier deviendrait "
+         "fausse. La fen\u00eatre \u00e9crit les octets d'avant et ceux d'apr\u00e8s "
+         "<i>avant</i> qu'on clique \u2014 on ne change pas les octets de quelqu'un \u00e0 "
+         "l'aveugle \u2014 et chaque changement se d\u00e9fait."),
+        ("note",
+         "L'inversion d'un saut tient en un bit, et c'est le processeur qui l'a voulu "
+         "ainsi : les conditions vont par paires, et le bit de poids faible de l'opcode dit "
+         "laquelle des deux. <font face='Courier'>je</font> est "
+         "<font face='Courier'>0x74</font>, <font face='Courier'>jne</font> est "
+         "<font face='Courier'>0x75</font>. Il n'y a donc aucune table \u00e0 tenir \u00e0 "
+         "jour, et l'inverse de l'inverse retombe toujours sur l'original."),
+        ("p",
+         "Le binaire est recharg\u00e9 apr\u00e8s chaque changement : les octets chang\u00e9s "
+         "donnent un autre d\u00e9sassemblage, d'autres fonctions, d'autres r\u00e9f\u00e9rences "
+         "crois\u00e9es. Puis <b>Fichier \u203a Exporter le binaire</b> \u00e9crit le fichier "
+         "patch\u00e9, qui se lance dans un vrai terminal."),
+
         ("h1", "Sortir de l'atelier"),
         ("p",
          "Fichier › <b>Exporter le binaire</b> écrit le programme tel que "

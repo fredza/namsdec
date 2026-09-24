@@ -114,6 +114,26 @@ six fautes d'assembleur que namsdec sait désormais reconnaître.
   parle-t-on ? » est la question qu'un compte rendu doit trancher en
   premier.
 
+**Patcher un binaire**
+- Outils ▸ *Patcher le binaire…*, sur la ligne du curseur. **Inverser ce
+  saut** — `je` devient `jne`, le programme prend l'autre branche — et
+  **neutraliser** — l'instruction devient des `nop`, un appel de
+  vérification disparaît.
+- Les deux gardent la **longueur exacte** : un octet de plus ou de moins
+  décalerait tout ce qui suit, et chaque adresse du fichier deviendrait
+  fausse.
+- La fenêtre écrit les octets d'avant et ceux d'après **avant** qu'on
+  clique — on ne change pas les octets de quelqu'un à l'aveugle — et
+  chaque changement se défait.
+- L'inversion tient en un bit, et c'est le processeur qui l'a voulu
+  ainsi : les conditions vont par paires, et le bit de poids faible de
+  l'opcode dit laquelle des deux. Aucune table à tenir à jour, et
+  l'inverse de l'inverse retombe sur l'original.
+- Trouvé en chemin : la conversion adresse → position dans le fichier ne
+  regardait que les **sections**, donc rien sur un binaire dépouillé —
+  précisément le cas des crackmes. Elle se rabat sur les segments, que
+  le noyau lit toujours.
+
 **Où est quoi, et ce que ces octets-là sont**
 - **Carte du fichier** : les segments, ce que le noyau charge, avec
   leurs droits — un `rwx` se voit en rouge — ; et les sections, ce que
