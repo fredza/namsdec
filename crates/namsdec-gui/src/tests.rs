@@ -22289,3 +22289,69 @@ fn a_jump_can_be_forced_and_still_lands_where_it_pointed() {
     let rendu = &app.assemble_state.as_ref().expect("rechargé").output.file;
     assert_eq!(&rendu[offset..offset + avant.len()], avant.as_slice());
 }
+
+/// « Coller » colle à l'endroit du curseur, et ne remplace pas tout le
+/// programme.
+///
+/// L'entrée du menu Édition remplaçait le programme entier par le
+/// presse-papier. Elle s'appelait « Coller ». On cherchait à recopier
+/// trois lignes d'un cours, on perdait son travail, et rien ne
+/// prévenait — pas même un intitulé qui l'aurait laissé deviner.
+#[test]
+fn pasting_inserts_at_the_cursor_instead_of_replacing_the_program() {
+    // Par la fonction qui prend le texte, et non par le presse-papier :
+    // un test n'écrit pas dans celui de l'utilisateur, pas plus que
+    // dans ses réglages.
+    const COLLÉ: &str = "    mov rax, 60\n";
+
+    let programme = "bits 64\nglobal _start\n_start:\n    hlt\n";
+    let mut app = NamsdecApp {
+        source: programme.to_owned(),
+        ..Default::default()
+    };
+    // Curseur au début de la ligne « hlt ».
+    let position = programme.find("    hlt").expect("la ligne existe");
+    app.cursor_byte = position;
+
+    app.insert_at_cursor(COLLÉ);
+    assert_eq!(
+        app.source, "bits 64\nglobal _start\n_start:\n    mov rax, 60\n    hlt\n",
+        "le texte s'insère où était le curseur, et rien n'est perdu"
+    );
+    assert_eq!(
+        app.cursor_byte,
+        position + COLLÉ.len(),
+        "le curseur suit ce qu'on vient de coller"
+    );
+
+    // Avec une sélection, le collé la remplace — comme partout ailleurs.
+    let mut app = NamsdecApp {
+        source: programme.to_owned(),
+        ..Default::default()
+    };
+    let début = programme.find("    hlt").unwrap();
+    app.editor_selection = Some(début..début + "    hlt\n".len());
+    app.insert_at_cursor(COLLÉ);
+    assert_eq!(app.source, "bits 64\nglobal _start\n_start:\n    mov rax, 60\n");
+    assert!(app.editor_selection.is_none(), "la sélection est consommée");
+
+    // Et le remplacement total existe toujours, sous son propre nom.
+    let mut app = NamsdecApp {
+        source: programme.to_owned(),
+        ..Default::default()
+    };
+    app.replace_all_with(COLLÉ);
+    assert_eq!(app.source, COLLÉ);
+
+    // Sur un listing venu d'un binaire, les deux refusent : y insérer
+    // du texte décalerait les correspondances ligne ↔ adresse.
+    if let Some(octets) = binaire_dépreuve("crackme-01") {
+        let mut app = NamsdecApp::default();
+        assert!(app.load_elf(&octets, "crackme-01"));
+        let listing = app.source.clone();
+        app.insert_at_cursor(COLLÉ);
+        app.replace_all_with(COLLÉ);
+        assert_eq!(app.source, listing, "un listing ne se colle pas dedans");
+    }
+}
+

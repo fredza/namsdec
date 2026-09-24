@@ -54,6 +54,10 @@ pub struct Strings {
     pub context_calls: &'static str,
     pub listing_copied: &'static str,
     pub edit_paste: &'static str,
+    pub edit_paste_hint: &'static str,
+    /// Remplacer tout le programme par le presse-papier.
+    pub edit_replace_all: &'static str,
+    pub edit_replace_all_hint: &'static str,
     pub help_about: &'static str,
 
     // Barre d'outils / menu Outils (mêmes libellés, réutilisés)
@@ -912,6 +916,9 @@ const FR: Strings = Strings {
     context_calls: "Appels en cours :",
     listing_copied: "Désassemblage copié : adresses, octets et étiquettes compris.",
     edit_paste: "Coller",
+    edit_paste_hint: "Colle le presse-papier à l'endroit du curseur, en remplaçant la sélection s'il y en a une.",
+    edit_replace_all: "Remplacer tout le code…",
+    edit_replace_all_hint: "Remplace le programme entier par le presse-papier. Pour reprendre un programme complet d'un cours ou d'un sujet.",
     help_about: "À propos…",
 
     action_assemble: "Assembler",
@@ -1656,6 +1663,9 @@ const EN: Strings = Strings {
     context_calls: "Calls in progress:",
     listing_copied: "Disassembly copied: addresses, bytes and labels included.",
     edit_paste: "Paste",
+    edit_paste_hint: "Pastes the clipboard at the cursor, replacing the selection if there is one.",
+    edit_replace_all: "Replace all code…",
+    edit_replace_all_hint: "Replaces the whole program with the clipboard. For taking a complete program from a course or an assignment.",
     help_about: "About…",
 
     action_assemble: "Assemble",

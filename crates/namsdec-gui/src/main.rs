@@ -5622,22 +5622,34 @@ impl NamsdecApp {
                         ui.close();
                     }
                 });
-                if ui.button(s.edit_paste).clicked() {
-                    match arboard::Clipboard::new().and_then(|mut c| c.get_text()) {
-                        Ok(text) => {
-                            self.source = text;
-                            self.status = Status::Idle;
-                        }
-                        Err(e) => {
-                            self.status = Status::Error(if self.lang == Lang::Fr {
-                                format!("presse-papiers inaccessible : {e}")
-                            } else {
-                                format!("clipboard unavailable: {e}")
-                            });
-                        }
+                ui.separator();
+                // « Coller » colle à l'endroit du curseur, comme partout
+                // ailleurs. Cette entrée remplaçait TOUT le programme,
+                // sans le dire et sans retour possible : on cherchait à
+                // recopier trois lignes d'un cours et l'on perdait son
+                // travail.
+                ui.add_enabled_ui(!self.buffer_came_from_a_binary(), |ui| {
+                    if ui
+                        .button(s.edit_paste)
+                        .on_hover_text(s.edit_paste_hint)
+                        .clicked()
+                    {
+                        self.paste_at_cursor();
+                        ui.close();
                     }
-                    ui.close();
-                }
+                });
+                // Remplacer tout, c'est un autre geste, et il porte
+                // maintenant son nom.
+                ui.add_enabled_ui(!self.buffer_came_from_a_binary(), |ui| {
+                    if ui
+                        .button(s.edit_replace_all)
+                        .on_hover_text(s.edit_replace_all_hint)
+                        .clicked()
+                    {
+                        self.replace_all_from_clipboard();
+                        ui.close();
+                    }
+                });
             });
 
             ui.menu_button(s.menu_tools, |ui| {
@@ -11205,6 +11217,96 @@ impl NamsdecApp {
         self.source = source;
         self.cursor_byte = curseur;
         self.pending_cursor = Some(curseur);
+    }
+
+    /// Le presse-papier, ou ce qui empêche de le lire.
+    fn clipboard_text(&mut self) -> Option<String> {
+        match arboard::Clipboard::new().and_then(|mut c| c.get_text()) {
+            Ok(texte) => Some(texte),
+            Err(e) => {
+                self.status = Status::Error(if self.lang == Lang::Fr {
+                    format!("presse-papiers inaccessible : {e}")
+                } else {
+                    format!("clipboard unavailable: {e}")
+                });
+                None
+            }
+        }
+    }
+
+    /// Colle le presse-papier **à l'endroit du curseur**, en remplaçant
+    /// la sélection s'il y en a une.
+    ///
+    /// C'est ce que « Coller » veut dire, et ce que l'entrée du menu ne
+    /// faisait pas : elle remplaçait tout le programme. On cherchait à
+    /// recopier trois lignes d'un cours, on perdait son travail, et rien
+    /// ne prévenait — pas même un intitulé qui l'aurait laissé deviner.
+    ///
+    /// Refusé sur un listing venu d'un binaire, comme la duplication de
+    /// ligne : celui-ci est reconstruit, et y insérer du texte
+    /// décalerait les correspondances ligne ↔ adresse dont dépendent la
+    /// gouttière, les points d'arrêt et le suivi de RIP.
+    fn paste_at_cursor(&mut self) {
+        let Some(texte) = self.clipboard_text() else {
+            return;
+        };
+        self.insert_at_cursor(&texte);
+    }
+
+    /// Insère ce texte à l'endroit du curseur, en remplaçant la
+    /// sélection s'il y en a une.
+    ///
+    /// Séparé de la lecture du presse-papier, et c'est ce qui rend le
+    /// geste vérifiable : un test qui passerait par le presse-papier
+    /// écraserait celui de l'utilisateur, ce qui n'est pas plus
+    /// acceptable que d'écrire dans ses réglages.
+    fn insert_at_cursor(&mut self, texte: &str) {
+        if self.buffer_came_from_a_binary() {
+            return;
+        }
+        let étendue = match self.editor_selection.clone() {
+            Some(étendue) if étendue.start != étendue.end => étendue,
+            _ => self.cursor_byte..self.cursor_byte,
+        };
+        // Bornes sûres : la sélection et le curseur sont relevés au
+        // rendu, et le texte a pu changer depuis.
+        let début = étendue.start.min(self.source.len());
+        let fin = étendue.end.clamp(début, self.source.len());
+        if !self.source.is_char_boundary(début) || !self.source.is_char_boundary(fin) {
+            return;
+        }
+        self.source.replace_range(début..fin, texte);
+        let après = début + texte.len();
+        self.cursor_byte = après;
+        self.pending_cursor = Some(après);
+        self.editor_selection = None;
+        self.status = Status::Idle;
+    }
+
+    /// Remplace **tout** le programme par le presse-papier.
+    ///
+    /// Séparé de « Coller », et nommé pour ce qu'il fait : c'est le
+    /// geste de qui reprend un programme entier d'un cours ou d'un
+    /// sujet. Il reste utile ; ce qui ne l'était pas, c'est qu'il se
+    /// cache derrière le mot « Coller ».
+    fn replace_all_from_clipboard(&mut self) {
+        let Some(texte) = self.clipboard_text() else {
+            return;
+        };
+        self.replace_all_with(&texte);
+    }
+
+    /// Remplace tout le programme par ce texte. Voir
+    /// `replace_all_from_clipboard`, dont c'est la moitié vérifiable.
+    fn replace_all_with(&mut self, texte: &str) {
+        if self.buffer_came_from_a_binary() {
+            return;
+        }
+        self.source = texte.to_owned();
+        self.cursor_byte = 0;
+        self.pending_cursor = Some(0);
+        self.editor_selection = None;
+        self.status = Status::Idle;
     }
 
     /// Calcule, si besoin, la correction proposée pour la ligne du

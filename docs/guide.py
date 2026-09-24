@@ -295,6 +295,11 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "<b>Fermeture automatique des paires</b> — et trois règles pour qu'elle ne se "
          "fasse pas détester : pas devant un mot, pas d'apostrophe fermée après une lettre "
          "(« l'adresse »), et taper le fermant déjà là le traverse.",
+         "<b>Coller</b> (menu Édition) colle à l’endroit du curseur, en remplaçant "
+         "la sélection s’il y en a une. Pour reprendre un programme entier d’un "
+         "cours, l’entrée s’appelle <b>Remplacer tout le code</b> — et elle le "
+         "dit, ce qui n’était pas le cas quand les deux gestes partageaient le mot "
+         "« Coller ».",
         ]),
         ("p",
          "La <b>coloration</b> distingue ce qui existe de ce qui n'existe pas : "

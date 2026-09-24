@@ -264,6 +264,22 @@ six fautes d'assembleur que namsdec sait désormais reconnaître.
   dans une colonne de trois cents ; la fenêtre d'analyse montre les mêmes
   en grand et tout dépliés. Deux fois la même chose, dont une mal.
 
+**« Coller » collait par-dessus tout le programme**
+- L'entrée du menu Édition remplaçait le **programme entier** par le
+  presse-papier. Elle s'appelait « Coller ». On cherchait à recopier
+  trois lignes d'un cours, on perdait son travail, et rien ne prévenait
+  — pas même un intitulé qui l'aurait laissé deviner.
+- « Coller » colle maintenant **à l'endroit du curseur**, en remplaçant
+  la sélection s'il y en a une, comme partout ailleurs.
+- Le remplacement total existe toujours, sous son propre nom :
+  **Remplacer tout le code…**. C'est le geste de qui reprend un
+  programme entier d'un cours ; ce qui ne servait personne, c'est qu'il
+  se cache derrière le mot « Coller ».
+- Les deux refusent sur un listing venu d'un binaire, comme la
+  duplication de ligne : y insérer du texte décalerait les
+  correspondances ligne ↔ adresse dont dépendent la gouttière, les
+  points d'arrêt et le suivi de RIP.
+
 **Les icônes, regardées à la taille qu'elles ont vraiment**
 - **L'icône de la calculatrice ne ressemblait à rien**, et c'était
   exact : sur un bouton de dix-huit pixels, cinq de marge n'en
