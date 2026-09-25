@@ -308,6 +308,11 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "Rien de tout cela ne s'apprend dans un manuel qu'on n'a pas encore ouvert — la "
          "colonne le dit elle-même."),
         ("p",
+         "<b>Fichier > Fermer le fichier</b> (Ctrl+W) ferme celui qu'on regarde, y compris "
+         "quand c'est le seul ouvert : on revient alors à un éditeur vide. L'entrée "
+         "disparaissait autrefois du menu dès qu'il ne restait qu'un fichier, c'est-à-dire "
+         "au moment où on la cherchait."),
+        ("p",
          "Plusieurs fichiers peuvent être ouverts à la fois : une barre d'onglets apparaît "
          "au-dessus de l'éditeur, chacun gardant son texte, son curseur, ses points d'arrêt "
          "et son exécution en cours. Ctrl+Tab passe au suivant, Ctrl+W ferme."),

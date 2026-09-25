@@ -16726,10 +16726,24 @@ fn several_files_stay_open_each_where_it_was_left() {
     assert!(app.tabs.is_empty());
     assert_eq!(app.current_file.as_deref(), Some(un.as_path()));
 
-    // Le dernier ne se ferme pas : un éditeur sans fichier n'a rien à
-    // montrer, et Fichier ▸ Nouveau est là pour repartir de zéro.
+    // LE DERNIER SE FERME AUSSI, et c'est un revirement demandé le
+    // 25 septembre 2026. Il ne se fermait pas — « un éditeur sans
+    // fichier n'a rien à montrer, et Fichier ▸ Nouveau est là pour
+    // repartir de zéro » — mais le geste manquait là où on le cherche :
+    // avec un seul fichier ouvert, l'entrée « Fermer le fichier »
+    // disparaissait même du menu, faute d'onglet voisin.
+    //
+    // Fermer, c'est revenir à un tampon vierge : plus de chemin, plus de
+    // texte. Vide et non le programme d'accueil — on a demandé à
+    // fermer, pas à ouvrir autre chose.
     app.close_tab(0);
-    assert_eq!(app.current_file.as_deref(), Some(un.as_path()));
+    assert_eq!(app.current_file, None, "le dernier fichier se ferme");
+    assert!(app.source.is_empty(), "et il laisse un tampon vide");
+
+    // Et un tampon déjà vide n'a plus rien à fermer : le geste ne
+    // redemande pas une question à laquelle il n'y a rien à répondre.
+    app.close_tab(0);
+    assert!(app.pending.is_none(), "rien à fermer, rien à demander");
 }
 
 /// Les fichiers ouverts reviennent au lancement suivant.
@@ -21674,6 +21688,9 @@ fn every_text_stands_out_from_its_background() {
             let mut app = NamsdecApp {
                 theme,
                 show_sidebar: true,
+                show_console: true,
+                console_height: Some(169.0),
+                sidebar_tab_height: Some(180.0),
                 active_tab: onglet,
                 ..Default::default()
             };
@@ -22616,7 +22633,26 @@ fn outside_the_menus_a_button_shows_itself_without_being_hovered() {
         // d'entre eux ont été retrouvés sur une CAPTURE, posés à côté
         // d'un bouton encadré — c'est dire ce que le contrôle laissait
         // passer.
+        // TROISIÈME écriture, et elle a coûté soixante boutons :
+        // `egui::Button::new(…)` posé à la main, ce que fait
+        // `add_enabled` quand il faut griser le bouton. Les deux boutons
+        // de chaque rangée de Préférences › Raccourcis — « Touche
+        // simple… » et « Séquence… », trente rangées — étaient dans ce
+        // cas, et le contrôle ne les voyait pas.
+        //
+        // Un `Button::new` suivi d'un `.fill(` ou d'un `.stroke(` dans
+        // les dix lignes qui suivent se voit déjà : c'est le bouton
+        // plein des barres de dialogue, ou l'encadré lui-même. Dix et
+        // non six : le libellé d'un bouton plein tient sur sept lignes
+        // quand il porte une couleur, une police et une taille.
+        let nu = ligne.contains("egui::Button::new(")
+            && !source
+                .lines()
+                .skip(n)
+                .take(10)
+                .any(|d| d.contains(".fill(") || d.contains(".stroke("));
         let plat = ligne.contains("ui.button(")
+            || nu
             || (ligne.trim_start().starts_with(".button(")
                 && source
                     .lines()

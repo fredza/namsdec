@@ -71,9 +71,19 @@ impl NamsdecApp {
         // les conseils. Repliables, et c'est à eux de céder quand la
         // fenêtre est courte — d'un clic on les range, l'état du
         // processeur, non.
+        // `auto_shrink` FAUX dans les deux sens : la zone prend
+        // exactement la place qui lui reste et fait défiler ce qui n'y
+        // tient pas. Réglée sur « vrai » en hauteur, elle épousait son
+        // contenu — et quand celui-ci dépassait, elle débordait sur le
+        // panneau de l'état du processeur au lieu de défiler. C'est là
+        // que « État du processeur » se peignait sur « Dernier pas ».
+        //
+        // Défiler ici est permis, et c'est même la règle du panneau :
+        // ce qui ne doit jamais défiler — l'état du processeur — est
+        // sorti de cette zone, et n'y reviendra pas.
         let bandeau = egui::ScrollArea::vertical()
             .id_salt("sidebar_banner")
-            .auto_shrink([false, true])
+            .auto_shrink([false, false])
             .show(ui, |ui| self.sidebar_banner_ui(ui));
         // Ce que le bandeau mesurerait s'il avait toute la place : c'est
         // cette hauteur qui décide, à l'image suivante, de la part de
@@ -147,7 +157,29 @@ impl NamsdecApp {
         // Ce que l'onglet peut prendre au plus : il reste toujours au
         // bandeau de quoi montrer ce qui vient et les premiers
         // registres. Le reste est à l'onglet, et il n'en manque plus.
-        let plafond = (total - SIDEBAR_BANNER_MIN).max(0.0);
+        // Le plancher du bandeau n'est PAS une constante : il vaut au
+        // moins ce que l'état du processeur occupe vraiment.
+        //
+        // La constante valait 280 quand l'état du processeur en demande
+        // 335 — seize registres, six indicateurs, un compteur et un
+        // lien. L'onglet pouvait donc prendre jusqu'à ce qu'il ne reste
+        // que 280 px au bandeau, et le panneau bas de l'état du
+        // processeur, qui prend la hauteur de son contenu et non celle
+        // qu'on lui laisse, se peignait PAR-DESSUS « Prochaine
+        // instruction ». Vu sur une capture à 1280x800, onglet Mémoire :
+        // « État du processeur » écrit sur « Prochaine instruction »,
+        // « RAX » sur une adresse, sept chevauchements en tout.
+        //
+        // La hauteur de l'état du processeur est relevée à l'image
+        // précédente, comme celle du bandeau — et elle ne dépend de rien
+        // qui dépende d'elle : son contenu est fixe, et sa largeur est
+        // celle du panneau. Rien ne peut donc se reboucler.
+        //
+        // Plus de quoi replier « Prochaine instruction » : un titre et
+        // son filet, sans quoi le repli n'aurait plus où se poser.
+        const TITRE_REPLIÉ: f32 = 44.0;
+        let plancher = SIDEBAR_BANNER_MIN.max(self.sidebar_cpu_height + TITRE_REPLIÉ);
+        let plafond = (total - plancher).max(0.0);
         // Ce que le bandeau laisse, mesuré à l'image précédente. Au
         // tout premier passage on ne sait rien : la moitié du panneau
         // est un départ honnête, et l'image suivante corrige.

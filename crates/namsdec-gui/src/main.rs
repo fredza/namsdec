@@ -2498,20 +2498,24 @@ impl NamsdecApp {
         let mut app = Self {
             theme: settings.theme(),
             lang: settings.lang(),
-            // Le fichier de raccourcis d'abord, quand il existe : c'est
-            // celui qu'on ouvre et qu'on copie d'une machine à l'autre.
-            // `settings.json` garde les siens pour les versions qui ne
-            // connaissaient que lui.
-            keybindings: {
-                let keymap = settings::load_keymap();
-                if settings::keymap_path().is_some_and(|p| p.exists()) {
-                    keymap.bindings()
-                } else {
-                    settings.keybindings()
-                }
-            },
-            keymap_preset: settings::load_keymap().preset(),
-            keymap_mtime: settings::keymap_path().as_deref().and_then(file_mtime),
+            // Ce que les RÉGLAGES DONNÉS portent, et rien d'autre.
+            //
+            // Le fichier `keymap.json` de la machine était lu ici, ce
+            // qui paraissait juste — c'est lui qu'on ouvre et qu'on
+            // copie d'une machine à l'autre. Mais `from_settings` sert
+            // aussi à construire l'application dans les tests, et ceux-ci
+            // recevaient alors les raccourcis de l'utilisateur : le jour
+            // où Fred est passé au jeu « Éditeur ordinaire », DIX-SEPT
+            // tests ont échoué d'un coup. Une suite qui passe ou échoue
+            // selon ce que l'utilisateur a réglé la veille ne prouve
+            // rien.
+            //
+            // C'est `adopt_keymap_from_disk`, appelé au démarrage juste
+            // après que l'application a reçu son fichier de réglages, qui
+            // lit le disque. Un seul endroit, et il est nommé.
+            keybindings: settings.keybindings(),
+            keymap_preset: keybindings::Preset::default(),
+            keymap_mtime: None,
             show_toolbar: settings.show_toolbar,
             show_sidebar: settings.show_sidebar,
             show_statusbar: settings.show_statusbar,
@@ -2567,6 +2571,28 @@ impl NamsdecApp {
         // la séance revenue.
         app.reopen_windows();
         app
+    }
+
+    /// Prend les raccourcis du fichier `keymap.json` de la machine.
+    ///
+    /// Appelé une seule fois, au démarrage, et seulement par
+    /// l'application qui a vraiment un fichier de réglages : c'est ce
+    /// qui empêche les tests de lire — et donc de dépendre de — la
+    /// configuration de l'utilisateur.
+    ///
+    /// `settings.json` garde les siens pour les versions qui ne
+    /// connaissaient que lui : sans fichier de raccourcis sur le disque,
+    /// on ne touche à rien.
+    fn adopt_keymap_from_disk(&mut self) {
+        if self.settings_file.is_none() {
+            return;
+        }
+        let keymap = settings::load_keymap();
+        self.keymap_preset = keymap.preset();
+        self.keymap_mtime = settings::keymap_path().as_deref().and_then(file_mtime);
+        if settings::keymap_path().is_some_and(|p| p.exists()) {
+            self.keybindings = keymap.bindings();
+        }
     }
 
     /// Rouvre les fenêtres qu'on avait laissées ouvertes.
@@ -2800,7 +2826,20 @@ impl NamsdecApp {
     /// jeu sous les doigts de quelqu'un qui appuie sur une touche serait
     /// la dernière chose à faire.
     fn reload_keymap_if_changed(&mut self) {
-        if self.rebinding.is_some() {
+        // Pas de fichier de réglages, pas de surveillance.
+        //
+        // C'est le même garde que pour l'écriture, et pour une raison
+        // aussi forte : une application construite par un test n'a pas
+        // de fichier de réglages, et celle-ci lisait quand même le
+        // `keymap.json` de l'utilisateur à chaque image. Le jour où Fred
+        // est passé au jeu « Éditeur ordinaire » dans les Préférences,
+        // DIX-SEPT tests ont échoué d'un coup — ils comparaient le jeu
+        // Vim et recevaient celui que la machine venait d'enregistrer.
+        //
+        // Un test ne doit pas écrire chez l'utilisateur ; il ne doit pas
+        // non plus le LIRE, sans quoi la suite passe ou échoue selon ce
+        // que l'utilisateur a réglé la veille.
+        if self.settings_file.is_none() || self.rebinding.is_some() {
             return;
         }
         let maintenant = std::time::Instant::now();
@@ -4576,7 +4615,8 @@ impl NamsdecApp {
     /// n'a rien à montrer. Fermer celui-là revient à repartir d'un
     /// programme neuf, ce que Fichier ▸ Nouveau fait déjà.
     fn close_tab(&mut self, index: usize) {
-        if self.tabs.is_empty() {
+        // Un tampon déjà vide et sans fichier n'a rien à fermer.
+        if self.tabs.is_empty() && self.current_file.is_none() && self.source.is_empty() {
             return;
         }
         // Un onglet dont le texte n'est pas enregistré ne part pas sur
@@ -4609,6 +4649,27 @@ impl NamsdecApp {
     /// Ferme sans plus rien demander.
     fn close_tab_now(&mut self, index: usize) {
         if self.tabs.is_empty() {
+            // Le DERNIER fichier se ferme aussi.
+            //
+            // Il ne se fermait pas : `tabs` ne porte que les fichiers
+            // qu'on ne regarde PAS, si bien qu'avec un seul ouvert elle
+            // est vide et que « Fermer le fichier » ne faisait rien —
+            // l'entrée du menu disparaissait même, ce qui donnait à
+            // croire qu'un fichier seul ne se ferme pas.
+            //
+            // Fermer, ici, c'est revenir à un tampon vierge : plus de
+            // chemin, plus de programme assemblé, plus de points
+            // d'arrêt. Vide et non le programme d'accueil : on a demandé
+            // à fermer, pas à ouvrir autre chose.
+            self.source.clear();
+            self.saved_source.clear();
+            self.current_file = None;
+            self.file_mtime = None;
+            self.assemble_state = None;
+            self.emulator = None;
+            self.diagnostics.clear();
+            self.breakpoint_lines.clear();
+            self.status = Status::Idle;
             return;
         }
         if index == self.active_tab_index {
@@ -5580,8 +5641,14 @@ impl NamsdecApp {
                 }
                 // Fermer le fichier qu'on regarde : le geste existe dans
                 // la barre d'onglets, mais il se cherche d'abord ici.
-                if !self.tabs.is_empty() {
-                    if ui
+                //
+                // L'entrée ne dépend PLUS du nombre d'onglets ouverts.
+                // `tabs` ne porte que les fichiers qu'on ne regarde pas :
+                // avec un seul ouvert elle est vide, et « Fermer le
+                // fichier » disparaissait du menu au moment précis où
+                // l'on en avait besoin.
+                if (self.current_file.is_some() || !self.tabs.is_empty())
+                    && ui
                         .button(shortcut_hint(
                             &self.keybindings,
                             &ctx,
@@ -5589,11 +5656,14 @@ impl NamsdecApp {
                             Action::CloseTab,
                         ))
                         .clicked()
-                    {
-                        self.dispatch(Action::CloseTab);
-                        ui.close();
-                    }
-                    if ui
+                {
+                    self.dispatch(Action::CloseTab);
+                    ui.close();
+                }
+                // « Fichier suivant » demande, lui, qu'il y en ait un
+                // autre : c'est une navigation, pas une fermeture.
+                if !self.tabs.is_empty()
+                    && ui
                         .button(shortcut_hint(
                             &self.keybindings,
                             &ctx,
@@ -5601,10 +5671,9 @@ impl NamsdecApp {
                             Action::NextTab,
                         ))
                         .clicked()
-                    {
-                        self.dispatch(Action::NextTab);
-                        ui.close();
-                    }
+                {
+                    self.dispatch(Action::NextTab);
+                    ui.close();
                 }
                 // Les derniers ouverts : on retravaille le même fichier
                 // trois fois dans une séance, et le sélecteur natif
@@ -6394,14 +6463,14 @@ impl NamsdecApp {
                     }
 
                     if ui
-                        .add_enabled(!is_rebinding, egui::Button::new(s.rebind_simple))
+                        .add_enabled(!is_rebinding, framed(theme, s.rebind_simple))
                         .clicked()
                     {
                         self.rebinding =
                             Some(Rebinding::new(action, keybindings::RebindMode::Simple));
                     }
                     if ui
-                        .add_enabled(!is_rebinding, egui::Button::new(s.rebind_leader))
+                        .add_enabled(!is_rebinding, framed(theme, s.rebind_leader))
                         .clicked()
                     {
                         self.rebinding =
@@ -17295,11 +17364,22 @@ fn status_dot(ui: &mut egui::Ui, color: egui::Color32) {
 /// de dialogue, l'effet se retourne contre nous : « Ajouter un thème… »
 /// se lisait comme une phrase, et personne n'allait cliquer dessus.
 fn framed_button(ui: &mut egui::Ui, theme: &Theme, label: &str) -> egui::Response {
-    ui.add(
-        egui::Button::new(label)
-            .stroke(egui::Stroke::new(1.0, theme.dim))
-            .corner_radius(egui::CornerRadius::from(6)),
-    )
+    ui.add(framed(theme, label))
+}
+
+/// Le bouton encadré, non encore posé.
+///
+/// `framed_button` l'ajoute tout de suite ; celui-ci le rend, pour les
+/// endroits qui ont besoin de le poser eux-mêmes — `add_enabled`, par
+/// exemple, qui grise un bouton tant qu'une autre capture est en cours.
+/// C'est le cas des deux boutons de chaque rangée de Préférences ›
+/// Raccourcis, « Touche simple… » et « Séquence… », qui n'avaient donc
+/// pas de liseré : trente rangées de deux boutons qu'on ne distinguait
+/// d'une étiquette qu'au survol.
+fn framed<'a>(theme: &Theme, label: impl Into<egui::WidgetText>) -> egui::Button<'a> {
+    egui::Button::new(label)
+        .stroke(egui::Stroke::new(1.0, theme.dim))
+        .corner_radius(egui::CornerRadius::from(6))
 }
 
 /// La vignette d'un thème, de largeur imposée.
@@ -19711,6 +19791,11 @@ fn main() -> eframe::Result<()> {
             // Le seul endroit qui donne ce chemin : c'est ici que
             // l'application devient celle qui écrit vraiment.
             app.settings_file = settings::settings_path();
+            // Et maintenant seulement, les raccourcis de la machine :
+            // `from_settings` ne lit pas le disque, pour que les tests
+            // qui s'en servent ne dépendent pas de ce que l'utilisateur
+            // a réglé.
+            app.adopt_keymap_from_disk();
             app.theme_files = theme_files;
             // Toutes les séries lues sur le disque, celle qui est
             // livrée en tête.

@@ -56,6 +56,15 @@ processeur est ancré.
 - [x] Les boîtes de dialogue parlent la même langue (A 1.24)
 - [x] Les fenêtres internes disent leur rang (A 2.1)
 - [x] Six fenêtres s'agrandissent (A 2.9)
+- [x] « Touche simple… » et « Séquence… » sont des boutons encadrés — et
+      le contrôle voit maintenant la troisième façon d'écrire un bouton,
+      `egui::Button::new` posé à la main
+- [x] Le plancher du bandeau suit la hauteur réelle de l'état du
+      processeur (335 px) au lieu d'une constante de 280
+- [x] La zone du bandeau prend la place qui lui reste et fait défiler ce
+      qui n'y tient pas, au lieu d'épouser son contenu et de déborder
+- [x] **Fichier > Fermer le fichier** marche aussi sur le dernier
+      fichier ouvert, et l'entrée ne disparaît plus du menu
 
 ## 2. Interface — ce que la revue a mesuré et pas corrigé
 
@@ -104,6 +113,19 @@ Détail chiffré dans `AMELIORATIONS.txt` 7.11, section « REVUE DU
       caractères. Changer la police casserait ce calcul.
 - [ ] **Le vide sous « Prochaine instruction »** fait encore ~260 px.
       Même nœud que le vide de 56 px : l'état du processeur est ancré.
+
+## 2 bis. Ce qui reste à reproduire
+
+- [ ] **Le bandeau se peint par-dessus l'onglet** — vu sur une capture
+      du 25 septembre au soir : « État du processeur » écrit sur
+      « Prochaine instruction », « RAX » sur une adresse, sept
+      chevauchements. **Pas reproduit** : le banc ne le retrouve à
+      aucune des tailles essayées (1152x696, 1280x800, 1366x768,
+      1600x1100), avec la console ouverte à 169 px et l'onglet épinglé à
+      180 comme dans les réglages de la machine. Deux corrections
+      mesurées ont été faites au passage (voir §1), mais rien ne prouve
+      qu'elles ferment ce cas-là. Il manque une donnée : **la taille de
+      la fenêtre et le facteur d'échelle de l'écran**.
 
 ## 3. L'éditeur
 
