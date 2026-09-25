@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **25 septembre
-2026**, version 0.2.5-beta.3, 567 tests au vert.
+2026**, version 0.2.5-beta.3, 568 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -62,6 +62,15 @@ processeur est ancré.
       survol. C'est l'écran qu'on a sous les yeux tant qu'on n'a pas
       assemblé.
 - [x] Un changement d'échelle de l'écran redemande une image
+- [x] **namsdec répond à sa ligne de commande** — `namsdec fichier.asm`
+      ouvre le fichier, `--version` et `--help` répondent sans ouvrir de
+      fenêtre. Le lanceur déclarait `Exec=namsdec %f` et
+      `MimeType=text/x-asm` : « Ouvrir avec namsdec » ouvrait une fenêtre
+      vide, ce qui est pire que de ne rien proposer.
+- [x] **Remettre une fenêtre devant marche aussi au premier plan** — les
+      trois fenêtres qui y vivent (plan d'installation, « À propos »,
+      saisie) recevaient un ordre adressé au rang ordinaire, donc à un
+      calque vide portant leur nom.
 - [x] « Touche simple… » et « Séquence… » sont des boutons encadrés — et
       le contrôle voit maintenant la troisième façon d'écrire un bouton,
       `egui::Button::new` posé à la main
@@ -193,7 +202,11 @@ Détail chiffré dans `AMELIORATIONS.txt` 7.11, section « REVUE DU
 ## 6. Tests et robustesse
 
 - [~] **Des tests dépendent encore de la machine** (A 3.1) — un dossier
-      `tests/binaires/` existe, le reste passe encore par nasm et ld
+      `tests/binaires/` existe, le reste passe encore par nasm et ld.
+      Deux fuites trouvées et bouchées le 25-26 septembre : le
+      `keymap.json` de l'utilisateur, lu par dix-sept tests, et la liste
+      des outils installés, lue par le test du plan d'installation —
+      lequel a échoué le jour où namsdec a été installé sur la machine.
 - [x] `the_assembled_program_can_leave_the_workbench` stabilisé (A 3.4)
 - [x] Le rendu hors écran est mesuré, et les captures sont outillées (A 3.2)
 - [~] **Un contrôle qui dit ce qui n'est pas testé** (A 7.6) — commencé ;

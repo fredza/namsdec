@@ -207,6 +207,13 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "hors de votre dossier personnel : aucun droit d'administrateur n'est demandé. "
          "<font face='Courier'>./uninstall.sh</font> défait exactement cela."),
 
+        ("p",
+         "En ligne de commande : <font face='Courier'>namsdec fichier.asm</font> ouvre "
+         "ce fichier, <font face='Courier'>namsdec --version</font> donne la version et "
+         "<font face='Courier'>namsdec --help</font> rappelle le reste. Le lanceur "
+         "installé déclare namsdec pour les fichiers <font face='Courier'>.asm</font> : "
+         "« Ouvrir avec » depuis le gestionnaire de fichiers marche donc aussi."),
+
         ("h1", "Le premier programme"),
         ("p",
          "Au premier lancement, l'éditeur contient un programme d'accueil. Trois gestes "

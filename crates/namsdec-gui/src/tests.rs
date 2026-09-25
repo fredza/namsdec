@@ -10646,6 +10646,28 @@ fn the_install_button_brings_its_plan_to_the_front() {
         preferences_tab: PreferencesTab::Tools,
         show_decompiler_module: true,
         show_installer_module: true,
+        // CE QUE LA MACHINE RÉPOND, POSÉ ICI plutôt que demandé au
+        // disque. Le test lisait vraiment `~/.local/share` pour savoir
+        // quels outils portent un bouton « Installer » — il dépendait
+        // donc de ce qui est installé sur le poste, et il a fini par
+        // échouer le jour où namsdec lui-même a été installé dessus.
+        //
+        // Un seul outil manquant, tous les autres prêts : le bouton
+        // cherché est alors le sien, et il n'y en a qu'un.
+        tools_ready: namsdec_disasm::known::all()
+            .into_iter()
+            .map(|k| {
+                // rizin-ghidra et non un autre : le bouton ne paraît
+                // que pour un outil dont une recette existe, et c'est
+                // lui qui en a une.
+                let état = if k.plugin.id == "rizin-ghidra" {
+                    namsdec_disasm::known::Availability::Incomplete
+                } else {
+                    namsdec_disasm::known::Availability::Ready
+                };
+                (k.plugin.id.clone(), état)
+            })
+            .collect(),
         ..Default::default()
     };
     let s = strings(app.lang);
@@ -10717,28 +10739,28 @@ fn the_install_button_brings_its_plan_to_the_front() {
         .install_plan
         .as_deref()
         .expect("le clic doit demander un plan");
-    let outils = data_dir().map(|dir| namsdec_disasm::install::tools_dir(&dir));
-    let outil = namsdec_disasm::known::all()
-        .into_iter()
-        .find(|k| k.plugin.id == plan)
-        .unwrap_or_else(|| panic!("« {plan} » doit être un outil connu"));
-    assert_ne!(
-        outil.availability_in(outils.as_deref()),
-        namsdec_disasm::known::Availability::Ready,
-        "« {plan} » est déjà prêt : son bouton « Installer » n'avait rien à faire là"
+    assert_eq!(
+        plan, "rizin-ghidra",
+        "le bouton cliqué est celui du seul outil qu'on a dit incomplet"
     );
 
     // Et la fenêtre passe devant : son calque est au premier plan, non
     // rangé avec les fenêtres ordinaires comme les préférences.
     let mut sortie = ctx.run_ui(entrée, |ui| app.draw(ui));
     sortie.textures_delta.clear();
-    let calque = ctx.memory(|m| {
-        m.layer_ids()
-            .find(|id| id.id == egui::Id::new("installer_window"))
+    // UN calque au premier plan, et non « le premier calque trouvé ».
+    // Remettre une fenêtre devant crée un calque à son nom au rang
+    // ordinaire, même quand la fenêtre vit au premier plan : deux
+    // calques portent alors le même nom, et `find` rendait celui qui se
+    // présentait en premier.
+    let au_premier_plan = ctx.memory(|m| {
+        m.layer_ids().any(|id| {
+            id.id == egui::Id::new("installer_window")
+                && id.order == egui::Order::Foreground
+        })
     });
-    assert_eq!(
-        calque.map(|c| c.order),
-        Some(egui::Order::Foreground),
+    assert!(
+        au_premier_plan,
         "le plan doit se poser au-dessus des préférences d'où il part"
     );
 }
@@ -24270,5 +24292,67 @@ fn a_greyed_command_says_why() {
         "{} commande(s) grisée(s) qui ne disent pas pourquoi :\n  {}",
         muettes.len(),
         muettes.join("\n  ")
+    );
+}
+
+/// namsdec répond à sa ligne de commande.
+///
+/// Il l'ignorait purement et simplement — alors que son propre lanceur
+/// déclare `Exec=namsdec %f` et `MimeType=text/x-asm`, c'est-à-dire
+/// qu'il se propose d'ouvrir les fichiers `.asm` du gestionnaire de
+/// fichiers. « Ouvrir avec namsdec » ouvrait une fenêtre vide, ce qui
+/// est pire que de ne rien proposer. Et `namsdec --version` lançait
+/// l'interface graphique : un programme installé dans le PATH doit
+/// savoir répondre à la question la plus simple qu'on lui pose.
+///
+/// Le contrôle porte sur la décision, séparée du reste pour cela : elle
+/// ne touche ni au disque ni à l'écran.
+#[test]
+fn namsdec_answers_its_command_line() {
+    use crate::Intention;
+    let dit = |args: &[&str]| {
+        let v: Vec<String> = args.iter().map(|a| (*a).to_owned()).collect();
+        crate::intention(&v)
+    };
+
+    assert_eq!(
+        dit(&[]),
+        Intention::Ouvrir(None),
+        "sans argument, on ouvre l'interface"
+    );
+    assert_eq!(
+        dit(&["bonjour.asm"]),
+        Intention::Ouvrir(Some(std::path::PathBuf::from("bonjour.asm"))),
+        "avec un chemin, on l'ouvre — c'est ce que le lanceur promet"
+    );
+
+    for drapeau in ["--version", "-V"] {
+        let Intention::Dire(texte) = dit(&[drapeau]) else {
+            panic!("{drapeau} doit répondre sans ouvrir de fenêtre")
+        };
+        assert!(
+            texte.contains(crate::APP_VERSION),
+            "{drapeau} donne la version : {texte:?}"
+        );
+    }
+    for drapeau in ["--help", "-h"] {
+        let Intention::Dire(texte) = dit(&[drapeau]) else {
+            panic!("{drapeau} doit répondre sans ouvrir de fenêtre")
+        };
+        assert!(
+            texte.contains("--version") && texte.contains("FICHIER"),
+            "{drapeau} dit ce que le programme accepte : {texte:?}"
+        );
+    }
+
+    // Une faute de frappe n'est pas un nom de fichier : la prendre pour
+    // tel donnerait « fichier introuvable : --verison », ce qui n'aide
+    // personne.
+    let Intention::Dire(texte) = dit(&["--verison"]) else {
+        panic!("un argument inconnu ne s'ouvre pas comme un fichier")
+    };
+    assert!(
+        texte.contains("--verison") && texte.contains("--help"),
+        "il nomme l'argument fautif et dit où regarder : {texte:?}"
     );
 }

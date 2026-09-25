@@ -10028,10 +10028,22 @@ impl NamsdecApp {
             .map(|(nom, _)| nom)
             .collect();
         for nom in ouvertes.difference(&self.windows_open) {
-            ctx.move_to_top(egui::LayerId::new(
-                egui::Order::Middle,
-                egui::Id::new(*nom),
-            ));
+            // LES DEUX RANGS, et non le seul rang ordinaire.
+            //
+            // Trois fenêtres vivent au premier plan — le plan
+            // d'installation, « À propos », la saisie du programme — et
+            // les remettre devant au rang ordinaire ne faisait rien :
+            // on déplaçait un calque vide qui porte leur nom, pendant
+            // que le vrai restait où il était. Pire, ce calque fantôme
+            // existe ensuite pour de bon, et un test qui cherche « le
+            // calque de cette fenêtre » peut tomber sur lui.
+            //
+            // Remettre les deux devant coûte un appel et ne suppose
+            // rien : la fenêtre est à l'un des deux rangs, jamais aux
+            // deux.
+            for rang in [egui::Order::Middle, egui::Order::Foreground] {
+                ctx.move_to_top(egui::LayerId::new(rang, egui::Id::new(*nom)));
+            }
             // Les préférences et le plan d'installation parlent des
             // outils : on redemande à la machine en les ouvrant, parce
             // qu'on a pu en installer un à la main dans un terminal
@@ -19843,7 +19855,69 @@ fn report_slow_frame(total: Duration, spans: &[(&'static str, Duration)], texte_
     }
 }
 
+/// Ce que la ligne de commande demande.
+///
+/// namsdec ignorait purement et simplement ses arguments — alors que son
+/// propre lanceur déclare `Exec=namsdec %f` et `MimeType=text/x-asm`,
+/// c'est-à-dire qu'il se propose d'ouvrir les fichiers `.asm` du
+/// gestionnaire de fichiers. « Ouvrir avec namsdec » ouvrait donc une
+/// fenêtre vide, ce qui est pire que de ne rien proposer.
+///
+/// Et `namsdec --version` lançait l'interface graphique : un programme
+/// qu'on installe dans son PATH doit savoir répondre à la question la
+/// plus simple qu'on lui pose depuis un terminal.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Intention {
+    /// Ouvrir l'interface, éventuellement sur un fichier.
+    Ouvrir(Option<PathBuf>),
+    /// Écrire une ligne et s'arrêter.
+    Dire(String),
+}
+
+/// Lit les arguments et dit ce qu'ils demandent.
+///
+/// Séparée de `main` pour être éprouvée : elle ne touche ni au disque ni
+/// à l'écran, elle ne fait que décider.
+pub fn intention(arguments: &[String]) -> Intention {
+    let mut fichier = None;
+    for argument in arguments {
+        match argument.as_str() {
+            "--version" | "-V" => {
+                return Intention::Dire(format!("{APP_NAME} {APP_VERSION}"));
+            }
+            "--help" | "-h" => {
+                return Intention::Dire(format!(
+                    "{APP_NAME} {APP_VERSION}\n\n\
+                     Usage : namsdec [FICHIER]\n\n\
+                     \x20 FICHIER       un source assembleur ou un binaire à ouvrir\n\
+                     \x20 -h, --help    afficher cette aide\n\
+                     \x20 -V, --version afficher la version"
+                ));
+            }
+            // Un argument inconnu qui commence par un tiret est une
+            // faute de frappe, non un nom de fichier : le prendre pour
+            // un fichier donnerait « fichier introuvable : --verison »,
+            // ce qui n'aide personne.
+            autre if autre.starts_with('-') => {
+                return Intention::Dire(format!(
+                    "namsdec : argument inconnu « {autre} ». Essayez namsdec --help."
+                ));
+            }
+            autre => fichier = Some(PathBuf::from(autre)),
+        }
+    }
+    Intention::Ouvrir(fichier)
+}
+
 fn main() -> eframe::Result<()> {
+    let arguments: Vec<String> = std::env::args().skip(1).collect();
+    let à_ouvrir = match intention(&arguments) {
+        Intention::Dire(texte) => {
+            println!("{texte}");
+            return Ok(());
+        }
+        Intention::Ouvrir(fichier) => fichier,
+    };
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1280.0, 820.0])
@@ -19896,6 +19970,12 @@ fn main() -> eframe::Result<()> {
                         failures.join(" ; ")
                     ),
                 });
+            }
+            // Le fichier passé sur la ligne de commande, en dernier :
+            // il prend la place de ce que la séance précédente avait
+            // rouvert, parce qu'on vient de le demander explicitement.
+            if let Some(chemin) = à_ouvrir.clone() {
+                app.open_file(chemin);
             }
             app.save_settings_now();
             app.save_keymap_now();
