@@ -6238,10 +6238,18 @@ impl NamsdecApp {
         ui.add_space(6.0);
         ui.checkbox(&mut self.completion, s.preferences_completion);
         ui.weak(s.preferences_completion_hint);
+        // Le même blanc avant chacun : il manquait devant les quatre
+        // derniers, et la colonne changeait de rythme à mi-liste —
+        // 13,5 px trois fois puis 7,5 px trois fois. Huit réglages du
+        // même rang, deux respirations : on ne sait pas le nommer en le
+        // voyant, mais on voit que quelque chose ne va pas.
+        ui.add_space(6.0);
         ui.checkbox(&mut self.auto_indent, s.preferences_auto_indent);
         ui.weak(s.preferences_auto_indent_hint);
+        ui.add_space(6.0);
         ui.checkbox(&mut self.auto_pairs, s.preferences_auto_pairs);
         ui.weak(s.preferences_auto_pairs_hint);
+        ui.add_space(6.0);
         ui.checkbox(&mut self.hover_help, s.preferences_hover_help);
         ui.weak(s.preferences_hover_help_hint);
 
@@ -6840,7 +6848,7 @@ impl NamsdecApp {
                                         let texte = egui::RichText::new(valeur);
                                         ui.add(
                                             egui::Label::new(if mono {
-                                                texte.monospace().small()
+                                                small_monospace(ui, texte.text())
                                             } else {
                                                 texte
                                             })
@@ -7017,9 +7025,7 @@ impl NamsdecApp {
                                 .show(ui, |ui| {
                                     for ligne in &journal {
                                         ui.add(
-                                            egui::Label::new(
-                                                egui::RichText::new(ligne).monospace().small(),
-                                            )
+                                            egui::Label::new(small_monospace(ui, ligne))
                                             .selectable(true),
                                         );
                                     }
@@ -9035,9 +9041,7 @@ impl NamsdecApp {
                     ui.add_space(6.0);
                     ui.colored_label(theme.dim, s.decompiler_example);
                     ui.add(
-                        egui::Label::new(
-                            egui::RichText::new(DECOMPILER_EXAMPLE).monospace().small(),
-                        )
+                        egui::Label::new(small_monospace(ui, DECOMPILER_EXAMPLE))
                         .selectable(true),
                     );
                     return;
@@ -13619,7 +13623,7 @@ impl NamsdecApp {
                             if !autres.is_empty() {
                                 ui.colored_label(
                                     theme.dim,
-                                    egui::RichText::new(autres.join(" ")).monospace().small(),
+                                    small_monospace(ui, autres.join(" ")),
                                 );
                             }
                         });
@@ -16564,8 +16568,15 @@ fn dialog_bar_hinted(
         egui::vec2(ui.available_width(), ui.spacing().interact_size.y),
         egui::Layout::right_to_left(egui::Align::Center),
         |ui| {
+        // Le liseré est de la couleur du fond du bouton : on ne le voit
+        // pas, et il sert quand même. egui ajoute la largeur du trait à
+        // la taille d'un bouton tracé — « Quitter » faisait donc 27 px
+        // de haut et « OK », posé huit pixels à sa gauche, 25. Deux
+        // pixels sur une rangée de deux boutons, c'est peu à dire et
+        // très visible : l'un dépasse l'autre en haut ET en bas.
         let ok = egui::Button::new(egui::RichText::new(principal).color(theme.bg))
             .fill(theme.accent)
+            .stroke(egui::Stroke::new(1.0, theme.accent))
             .min_size(egui::vec2(96.0, 0.0));
         if ui.add(ok).clicked() {
             réponse = Some(Answer::Ok);
@@ -17853,6 +17864,24 @@ fn editor_id() -> egui::Id {
 /// Décalage en octets du `n`-ième caractère, et l'inverse. egui compte
 /// les curseurs en caractères, Rust tranche les chaînes en octets, et
 /// confondre les deux coupe un « é » en deux.
+/// Un texte court en chasse fixe.
+///
+/// `RichText::monospace().small()` ne fait PAS ce qu'il dit. Les deux
+/// posent le même champ — `text_style` —, si bien que le second efface
+/// le premier : on demandait du code en petit et l'on obtenait du
+/// proportionnel en petit. Le JSON d'exemple du décompilateur
+/// s'affichait ainsi en proportionnel, accolades et indentation
+/// désalignées, trente pixels sous un chemin en chasse fixe et dans la
+/// même fenêtre. Trois autres endroits faisaient la même chose.
+///
+/// Un `FontId` explicite dit les deux à la fois. La taille est celle du
+/// style « petit » du thème en cours, et non un nombre écrit ici : ce
+/// qui doit rester petit doit le rester quand le thème change d'échelle.
+fn small_monospace(ui: &egui::Ui, texte: impl Into<String>) -> egui::RichText {
+    let taille = egui::TextStyle::Small.resolve(ui.style()).size;
+    egui::RichText::new(texte.into()).font(egui::FontId::monospace(taille))
+}
+
 /// Un texte d'explication où les morceaux de code sont écrits comme du
 /// code.
 ///

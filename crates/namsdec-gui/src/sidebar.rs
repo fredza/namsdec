@@ -106,23 +106,21 @@ impl NamsdecApp {
     fn cpu_state_section_ui(&mut self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
         let départ = ui.cursor().top();
-        rule(ui, self.theme);
-        // `show_unindented` : le retrait qu'ajoute un en-tête repliable
-        // vaut une vingtaine de pixels, et une valeur de registre fait
-        // seize chiffres — avec le retrait, la ligne débordait du
-        // panneau.
+        // Le MÊME en-tête que « Prochaine instruction » et « Détail ».
         //
-        // `open(Some(...))` plutôt que `default_open(true)` : le premier
-        // impose l'état à chaque image, le second ne vaut qu'à la toute
-        // première ouverture et laisse ensuite egui ressortir ce qu'il a
-        // retenu de la session précédente.
-        let banner = egui::CollapsingHeader::new(s.cpu_state)
-            .open(Some(self.cpu_state_open))
-            .show_unindented(ui, |ui| self.cpu_state_ui(ui));
-        // L'état imposé prive l'en-tête de son propre clic : on le
-        // reprend ici, sinon le bandeau ne se replierait plus.
-        if banner.header_response.clicked() {
-            self.cpu_state_open = !self.cpu_state_open;
+        // Cette section employait l'en-tête repliable d'egui, ses deux
+        // voisines `section_toggle`, et la troisième `section_header` :
+        // trois dessins pour trois sections du même panneau. Le chevron
+        // n'était pas le même — « ▾ » dessiné par egui d'un côté, un
+        // « v » écrit de l'autre — et les titres partaient de trois
+        // abscisses différentes, 1229, 1243,2 et 1247. Presque rien, et
+        // c'est justement ce qui se voit sans qu'on sache le nommer.
+        //
+        // `section_toggle` pose son propre filet, d'où la disparition du
+        // `rule` qui ouvrait cette fonction : deux traits à vingt pixels
+        // l'un de l'autre feraient un bandeau rayé.
+        if section_toggle(ui, self.theme, s.cpu_state, &mut self.cpu_state_open) {
+            self.cpu_state_ui(ui);
         }
 
         // Les vectoriels ne sont plus ici : seize registres SSE et huit
@@ -184,7 +182,13 @@ impl NamsdecApp {
             .min_size(SIDEBAR_TAB_MIN.min(plafond))
             .max_size(plafond)
             .show(ui, |ui| {
-                rule(ui, self.theme);
+                // Pas de filet ici : `section_header` en pose un sous le
+                // titre, exactement comme `section_toggle` le fait pour
+                // les deux zones du dessus. Il y en avait donc DEUX à
+                // trente-quatre pixels l'un de l'autre au-dessus de
+                // « Pile », là où « Prochaine instruction » et « État du
+                // processeur » n'en portent qu'un. On lisait une rayure
+                // sans savoir d'où elle venait.
                 // Le titre de la vue qu'on regarde. Les onglets sont
                 // montés dans la barre d'outils, et le panneau se
                 // retrouvait à montrer des adresses sans dire de quoi :
@@ -2842,11 +2846,7 @@ pub(crate) fn section_toggle(
     if réponse.clicked() {
         *ouvert = !*ouvert;
     }
-    let (rect, _) =
-        ui.allocate_exact_size(egui::vec2(ui.available_width(), 1.0), egui::Sense::hover());
-    ui.painter()
-        .rect_filled(rect, 0.0, theme.dim.gamma_multiply(0.35));
-    ui.add_space(4.0);
+    rule(ui, theme);
     *ouvert
 }
 
@@ -2874,11 +2874,7 @@ pub(crate) fn rule(ui: &mut egui::Ui, theme: &'static Theme) {
 pub(crate) fn section_header(ui: &mut egui::Ui, theme: &'static Theme, titre: &str) {
     ui.add_space(2.0);
     ui.label(egui::RichText::new(titre).strong().color(theme.text));
-    let (rect, _) =
-        ui.allocate_exact_size(egui::vec2(ui.available_width(), 1.0), egui::Sense::hover());
-    ui.painter()
-        .rect_filled(rect, 0.0, theme.dim.gamma_multiply(0.35));
-    ui.add_space(4.0);
+    rule(ui, theme);
 }
 
 /// Les droits d'une zone, à la façon d'un `vmmap` : `rwx`, un tiret pour

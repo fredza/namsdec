@@ -1973,8 +1973,23 @@ fn the_cpu_banner_opens_deployed() {
 
     let déployé = hauteur_de_l_onglet(true);
     let replié = hauteur_de_l_onglet(false);
+    // QUATRE-VINGT-DIX ET NON CENT, et le pourquoi mérite d'être écrit,
+    // parce qu'abaisser un seuil pour faire passer un changement est
+    // exactement la mauvaise manière.
+    //
+    // Le seuil valait 100 quand l'état du processeur portait l'en-tête
+    // repliable d'egui PRÉCÉDÉ d'un filet à lui. Unifier les trois
+    // en-têtes du bandeau a supprimé ce filet en double : le bandeau
+    // DÉPLOYÉ a maigri de quinze pixels, que l'onglet a gagnés — 826 au
+    // lieu de 811. Le repli rend donc 99 px au lieu de 114, non parce
+    // qu'il rend moins, mais parce qu'il y avait moins à rendre.
+    //
+    // Ce que la règle protège est intact : replier doit valoir la peine.
+    // Ce qu'elle mesurait par ricochet — la taille du bandeau déployé —
+    // a bougé dans le bon sens, et c'est l'autre assertion, celle du
+    // plancher de l'onglet, qui le dit.
     assert!(
-        replié > déployé + 100.0,
+        replié > déployé + 90.0,
         "replié, l'état du processeur rend sa place à l'onglet : {replié} contre {déployé}"
     );
     assert!(
@@ -23383,5 +23398,312 @@ fn two_identical_words_never_sit_side_by_side() {
                 );
             }
         }
+    }
+}
+
+/// Ce qui se dit « chasse fixe » l'est vraiment.
+///
+/// `RichText::monospace()` et `RichText::small()` posent le MÊME champ,
+/// `text_style` : enchaînés, le second efface le premier. Quatre
+/// endroits écrivaient `.monospace().small()` en croyant demander du
+/// code en petit, et obtenaient du proportionnel en petit — le JSON
+/// d'exemple du décompilateur s'affichait accolades et indentation
+/// désalignées, trente pixels sous un chemin en chasse fixe, dans la
+/// même fenêtre. L'intention était écrite dans le code ; le résultat
+/// peint disait le contraire.
+///
+/// Le contrôle lit le source, parce que la règle est là : un style de
+/// texte s'écrase, donc on n'en enchaîne pas deux. `small_monospace`
+/// pose un `FontId` explicite, qui dit la famille ET la taille.
+#[test]
+fn what_calls_itself_monospace_really_is() {
+    let source = include_str!("main.rs");
+    let fautives: Vec<String> = source
+        .lines()
+        .enumerate()
+        .filter(|(_, l)| {
+            (l.contains(".monospace().small()") || l.contains(".small().monospace()"))
+                && !l.trim_start().starts_with("//")
+        })
+        .map(|(n, l)| format!("main.rs:{} {}", n + 1, l.trim()))
+        .collect();
+    assert!(
+        fautives.is_empty(),
+        "{} texte(s) qui se croient en chasse fixe et ne le sont pas — \
+         `small_monospace` le dit pour de bon :\n  {}",
+        fautives.len(),
+        fautives.join("\n  ")
+    );
+}
+
+/// Une colonne de réglages garde le même rythme.
+///
+/// Dans Préférences › Général, huit cases à cocher du même rang se
+/// suivaient avec deux respirations : 13,5 px entre les quatre
+/// premières, 7,5 px entre les quatre dernières. La cause était un
+/// `add_space(6.0)` posé devant les premières et oublié devant les
+/// autres. Personne ne sait nommer ce défaut en le voyant ; tout le
+/// monde voit que quelque chose cloche, sur l'écran où l'on regarde le
+/// plus longtemps une colonne.
+///
+/// Le contrôle mesure les écarts entre les étiquettes successives et
+/// demande qu'ils soient tous égaux. Un demi-pixel de tolérance : les
+/// hampes et les jambages changent la hauteur d'une encre selon les
+/// lettres qu'elle porte.
+#[test]
+fn a_column_of_settings_keeps_one_rhythm() {
+    let s = strings(Lang::Fr);
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp {
+        show_preferences: true,
+        ..Default::default()
+    };
+    app.apply_theme(&ctx);
+    let (_, lignes) = ce_qui_est_écrit(&ctx, &mut app, Some("preferences_window"), 4);
+    // La DERNIÈRE ligne du texte, et la PREMIÈRE de l'étiquette : une
+    // explication qui se replie sur deux lignes rend autant d'entrées
+    // que de lignes, et prendre la première ferait compter l'écart
+    // depuis le milieu du paragraphe. Ce faux positif a été rencontré
+    // ici même : la première explication se replie, et l'écart qui la
+    // suit paraissait deux fois plus grand que les autres.
+    let bas_de = |quoi: &str| -> f32 {
+        lignes
+            .iter()
+            .filter(|(t, _)| t == quoi)
+            .map(|(_, r)| r.bottom())
+            .fold(f32::NEG_INFINITY, f32::max)
+    };
+    let haut_de = |quoi: &str| -> f32 {
+        lignes
+            .iter()
+            .filter(|(t, _)| t == quoi)
+            .map(|(_, r)| r.top())
+            .fold(f32::INFINITY, f32::min)
+    };
+    // Les sept réglages de la page Général, dans l'ordre où on les lit.
+    let colonne = [
+        (s.preferences_system_titlebar, s.preferences_system_titlebar_hint),
+        (s.preferences_heat_legend, s.preferences_heat_legend_hint),
+        (s.preferences_tooltips, s.preferences_tooltips_hint),
+        (s.preferences_completion, s.preferences_completion_hint),
+        (s.preferences_auto_indent, s.preferences_auto_indent_hint),
+        (s.preferences_auto_pairs, s.preferences_auto_pairs_hint),
+        (s.preferences_hover_help, s.preferences_hover_help_hint),
+    ];
+    let mut écarts: Vec<(String, f32)> = Vec::new();
+    for paire in colonne.windows(2) {
+        let bas = bas_de(paire[0].1);
+        let haut = haut_de(paire[1].0);
+        assert!(
+            bas.is_finite() && haut.is_finite(),
+            "« {} » et « {} » sont peints dans les préférences",
+            paire[0].1,
+            paire[1].0
+        );
+        écarts.push((paire[1].0.to_owned(), haut - bas));
+    }
+    let premier = écarts[0].1;
+    let hors: Vec<String> = écarts
+        .iter()
+        .filter(|(_, e)| (e - premier).abs() > 0.5)
+        .map(|(quoi, e)| format!("« {quoi} » à {e:.1} px"))
+        .collect();
+    assert!(
+        hors.is_empty(),
+        "la colonne change de rythme : {premier:.1} px partout, sauf {}",
+        hors.join(", ")
+    );
+}
+
+/// Deux boutons côte à côte ont la même hauteur.
+///
+/// Dans la barre des Préférences, « OK » faisait 25 px et « Quitter »,
+/// posé huit pixels à sa droite, 27 : egui ajoute la largeur du trait à
+/// la taille d'un bouton tracé, et « OK » est plein quand « Quitter »
+/// est encadré. Deux pixels sur une rangée de deux boutons, c'est peu à
+/// dire et très visible — l'un dépasse l'autre en haut ET en bas.
+///
+/// Le remède est un liseré de la couleur du fond : invisible, et il
+/// rend la même hauteur. Le contrôle, lui, ne connaît ni l'un ni
+/// l'autre : il relève les rectangles arrondis d'une taille de bouton,
+/// et n'accepte pas deux voisins de hauteurs différentes.
+#[test]
+fn two_buttons_side_by_side_share_a_height() {
+    for (nom, _, ouvre) in scènes() {
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp::default();
+        app.apply_theme(&ctx);
+        ouvre(&mut app);
+        let entrée = écran_du_banc();
+        let mut boîtes: Vec<egui::Rect> = Vec::new();
+        for _ in 0..4 {
+            boîtes.clear();
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            for clipped in &sortie.shapes {
+                // Un rectangle arrondi, de la taille d'un bouton. Les
+                // bornes écartent les fonds de fenêtre et les pastilles
+                // d'indicateur, qui ne sont pas des boutons.
+                //
+                // VINGT PIXELS AU MOINS, et ce plancher vient d'un faux
+                // positif : un article de la barre de menus fait dix-huit
+                // pixels de haut et il est arrondi comme un bouton. Il
+                // n'en est pas un — on ne lui demande pas de s'aligner
+                // sur les boutons d'un formulaire, et la règle n'a rien
+                // à dire entre deux barres différentes.
+                if let egui::epaint::Shape::Rect(r) = &clipped.shape
+                    && r.corner_radius.nw > 0
+                    && (20.0..40.0).contains(&r.rect.height())
+                    && (40.0..300.0).contains(&r.rect.width())
+                {
+                    boîtes.push(r.rect);
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+        for (i, a) in boîtes.iter().enumerate() {
+            for b in &boîtes[i + 1..] {
+                // Sur la même rangée : six pixels de tolérance, un
+                // bouton plus haut que son voisin décale son centre.
+                if (a.center().y - b.center().y).abs() > 6.0 {
+                    continue;
+                }
+                let trou = (b.left() - a.right()).abs().min((a.left() - b.right()).abs());
+                if trou >= 40.0 {
+                    continue;
+                }
+                assert!(
+                    (a.height() - b.height()).abs() <= 0.5,
+                    "« {nom} » : deux boutons voisins de hauteurs différentes — \
+                     {:.1} px contre {:.1} px, à {trou:.0} px l'un de l'autre",
+                    a.height(),
+                    b.height()
+                );
+            }
+        }
+    }
+}
+
+
+/// Les titres du bandeau partent tous du même bord.
+///
+/// Le panneau latéral a trois zones, et elles avaient trois en-têtes
+/// différents : « État du processeur » par l'en-tête repliable d'egui,
+/// « Prochaine instruction » et « Détail » par `section_toggle`, « Pile »
+/// par `section_header`. Trois dessins, deux chevrons — « ▾ » dessiné
+/// par egui d'un côté, un « v » écrit de l'autre — et trois abscisses :
+/// 1229,0, 1243,2 et 1247,0. Presque rien, et c'est exactement ce qui se
+/// voit sans qu'on sache le nommer.
+///
+/// Un titre replié s'écarte légitimement : il porte un chevron devant
+/// lui. Le contrôle demande donc que les titres À CHEVRON soient tous
+/// alignés entre eux, et que celui qui n'en porte pas parte du bord du
+/// panneau.
+#[test]
+fn the_banner_titles_all_start_at_one_edge() {
+    let s = strings(Lang::Fr);
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp {
+        source: DEFAULT_SOURCE.to_owned(),
+        show_sidebar: true,
+        ..Default::default()
+    };
+    app.apply_theme(&ctx);
+    let (_, lignes) = ce_qui_est_écrit(&ctx, &mut app, None, 4);
+    let gauche = |quoi: &str| -> f32 {
+        lignes
+            .iter()
+            .filter(|(t, _)| t == quoi)
+            .map(|(_, r)| r.left())
+            .fold(f32::INFINITY, f32::min)
+    };
+    let à_chevron = [s.next_instruction, s.cpu_state];
+    let bords: Vec<(&str, f32)> = à_chevron.iter().map(|t| (*t, gauche(t))).collect();
+    for (quoi, x) in &bords {
+        assert!(
+            x.is_finite(),
+            "« {quoi} » est peint dans le bandeau"
+        );
+    }
+    let premier = bords[0].1;
+    let hors: Vec<String> = bords
+        .iter()
+        .filter(|(_, x)| (x - premier).abs() > 0.5)
+        .map(|(quoi, x)| format!("« {quoi} » à {x:.1}"))
+        .collect();
+    assert!(
+        hors.is_empty(),
+        "les titres du bandeau ne partent pas du même bord : {premier:.1} px, \
+         sauf {}",
+        hors.join(", ")
+    );
+}
+
+/// Les trois zones du panneau se soulignent de la même façon.
+///
+/// Un titre de zone porte un filet EN DESSOUS, et rien au-dessus. C'est
+/// vrai de « Prochaine instruction » et de « État du processeur », qui
+/// passent par `section_toggle` ; ce ne l'était pas de « Pile », que le
+/// panneau d'onglet faisait précéder d'un filet à lui avant que
+/// `section_header` n'en pose un second. Deux traits à trente-quatre
+/// pixels l'un de l'autre, un seul titre entre eux : on lisait une
+/// rayure sans savoir d'où elle venait, et la troisième zone ne
+/// ressemblait pas aux deux autres.
+///
+/// Le contrôle demande qu'aucun filet ne passe juste AU-DESSUS d'un
+/// titre de zone. « Juste » vaut vingt-quatre pixels : au-delà, le
+/// filet appartient à ce qui précède.
+#[test]
+fn a_zone_title_is_underlined_and_not_boxed() {
+    let s = strings(Lang::Fr);
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp {
+        source: DEFAULT_SOURCE.to_owned(),
+        show_sidebar: true,
+        ..Default::default()
+    };
+    app.apply_theme(&ctx);
+    let entrée = écran_du_banc();
+    let mut filets: Vec<f32> = Vec::new();
+    for _ in 0..4 {
+        filets.clear();
+        let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+        for clipped in &sortie.shapes {
+            // Un trait plein, pleine largeur, dans le panneau de droite.
+            if let egui::epaint::Shape::Rect(r) = &clipped.shape
+                && r.rect.height() <= 1.5
+                && r.rect.width() > 200.0
+                && r.rect.left() > 1200.0
+            {
+                filets.push(r.rect.top());
+            }
+        }
+        sortie.textures_delta.clear();
+    }
+    let (_, lignes) = ce_qui_est_écrit(&ctx, &mut app, None, 4);
+    // Les titres se cherchent DE HAUT EN BAS, chacun sous le précédent.
+    // « Pile » est écrit deux fois à l'écran — l'onglet de la barre
+    // d'outils et le titre de la zone — et prendre le plus haut des deux
+    // faisait mesurer la barre d'outils : le contrôle passait alors même
+    // avec le défaut remis, ce qui est la pire sorte de contrôle.
+    let mut plancher = 0.0f32;
+    for titre in [s.next_instruction, s.cpu_state, SidebarTab::Stack.label(s)] {
+        let haut = lignes
+            .iter()
+            .filter(|(t, r)| t == titre && r.top() > plancher)
+            .map(|(_, r)| r.top())
+            .fold(f32::INFINITY, f32::min);
+        assert!(haut.is_finite(), "« {titre} » est peint dans le bandeau");
+        plancher = haut + 1.0;
+        let dessus: Vec<f32> = filets
+            .iter()
+            .copied()
+            .filter(|y| *y < haut && haut - *y < 24.0)
+            .collect();
+        assert!(
+            dessus.is_empty(),
+            "« {titre} » porte un filet au-dessus de lui, en y = {dessus:?} \
+             pour un titre en {haut:.0} — les trois zones doivent se souligner \
+             de la même façon"
+        );
     }
 }
