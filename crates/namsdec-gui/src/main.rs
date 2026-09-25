@@ -18916,7 +18916,15 @@ fn calculator_bits_ui(
         + par_rangée as f32 * BIT_L
         + (quartets.saturating_sub(1)) as f32 * QUARTET
         + 6.0;
-    let police = egui::FontId::monospace(12.0);
+    // La MÊME police que les autres grilles de données de
+    // l'application — registres, pile, vidage, octets — et non douze
+    // points écrits ici. Un point d'écart est trop peu pour se lire
+    // comme une intention et assez pour se voir ; et une taille écrite
+    // en dur ne suit pas le thème quand celui-ci change d'échelle.
+    //
+    // La case d'un bit fait neuf pixels, quelle que soit la police :
+    // rien ne bouge en largeur.
+    let police = egui::TextStyle::Monospace.resolve(ui.style());
 
     for rangée in 0..rangées {
         // De haut en bas, du poids fort au poids faible : la rangée 0

@@ -1164,15 +1164,23 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
          « Console » est une pastille cliquable : son FOND part à 16 comme le
          corps, et son TEXTE à 18 parce qu'une pastille a un rembourrage. Le
          relevé comparait des textes, donc un texte nu à un texte encadré.
-       - [RETIRÉ après trois essais] l'étiquette et sa liste déroulante, 3,5 px.
+       - [RETIRÉ après CINQ essais] l'étiquette et sa liste déroulante, 3,5 px.
          Mesuré : « Base » centre y 230,09 ; sa liste, boîte de 114x25, centre
          233,59. Essayé d'imposer la hauteur de la case de l'étiquette, puis
          d'employer `add_sized`, puis d'annuler l'espacement vertical de la
          rangée, puis d'imposer la hauteur de la rangée entière avant d'y rien
          poser : les quatre donnent exactement le même écart. Ce n'est donc pas
          la case de l'étiquette qui est mal centrée — c'est la liste d'egui qui
-         ne se pose pas au centre de la rangée. La suite demande de lire le
-         code de `ComboBox`, ce qui vaut mieux qu'un décalage écrit en dur.
+         ne se pose pas au centre de la rangée.
+         Deux essais de plus le 25 au soir, après avoir lu le code d'egui :
+         aligner la rangée par le haut (`Align::Min`) retourne l'écart — 2,5 px
+         dans l'autre sens — et enfermer la liste dans une boîte centrée de la
+         hauteur d'un widget ne change rien du tout. L'écart est donc INVARIANT
+         sous tout ce qu'on fait au conteneur, ce qui le situe à l'intérieur de
+         `ComboBox` : `button_frame` part de `available_rect_before_wrap()` et
+         non du centre de la rangée. La sortie est d'écrire notre propre liste
+         déroulante, ou de poser l'étiquette AU-DESSUS de la liste plutôt qu'à
+         côté — les deux sont des décisions de produit, pas des réglages.
        - reste, de la même famille : la barre de saisie de la console, 4,5 px
          d'amplitude sur une rangée (étiquette 1020,5 ; bouton 1024,0 ; champ
          1024,9 ; bouton 1025,0).

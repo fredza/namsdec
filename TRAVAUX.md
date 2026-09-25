@@ -95,17 +95,22 @@ Détail chiffré dans `AMELIORATIONS.txt` 7.11, section « REVUE DU
       essais retirés — imposer la hauteur de la case, `add_sized`,
       annuler l'espacement vertical, imposer la hauteur de la rangée
       avant d'y rien poser : les quatre donnent exactement le même
-      écart. Ce n'est pas l'étiquette qui est mal centrée, c'est la
-      liste d'egui qui ne se pose pas au centre de sa rangée. La suite
-      demande de lire le code de `ComboBox`.
+      écart, et deux essais de plus après lecture du code d'egui n'ont
+      pas mieux marché : aligner la rangée par le haut retourne l'écart,
+      enfermer la liste dans une boîte centrée ne change rien. L'écart
+      est INVARIANT sous tout ce qu'on fait au conteneur — il est donc
+      dans `ComboBox`, qui part de `available_rect_before_wrap()` et non
+      du centre de la rangée. La sortie est d'écrire notre propre liste,
+      ou de poser l'étiquette au-dessus plutôt qu'à côté.
 - [x] **Deux marges gauches dans le châssis**, 16 et 18 px — examiné,
       ce n'est pas un défaut : l'onglet « Console » est une pastille
       cliquable, son fond part à 16 comme le corps et son texte à 18
       parce qu'une pastille a un rembourrage. Le relevé comparait un
       texte nu à un texte encadré.
-- [ ] **La grille de bits de la calculatrice est en 12 pt** quand toute
-      autre grille de données est en 13. Attention : remonter peut faire
-      déborder les soixante-quatre colonnes.
+- [x] **La grille de bits de la calculatrice est en 12 pt** — elle prend
+      maintenant le style Monospace du thème, comme les registres, la
+      pile et le vidage. La case d'un bit fait neuf pixels quelle que
+      soit la police : rien n'a bougé en largeur.
 - [x] **Le graphe écrit ses instructions en 11 pt**, et « le programme
       est ici » y est en chasse fixe — examiné, gardé : dans une boîte
       où tout est en colonnes, l'annotation est cohérente avec son
@@ -116,7 +121,7 @@ Détail chiffré dans `AMELIORATIONS.txt` 7.11, section « REVUE DU
 
 ## 2 bis. Ce qui reste à reproduire
 
-- [ ] **Le bandeau se peint par-dessus l'onglet** — vu sur une capture
+- [ ] **Le bandeau se peint par-dessus l'onglet** — vu sur deux captures
       du 25 septembre au soir : « État du processeur » écrit sur
       « Prochaine instruction », « RAX » sur une adresse, sept
       chevauchements. **Pas reproduit** : le banc ne le retrouve à
@@ -124,8 +129,15 @@ Détail chiffré dans `AMELIORATIONS.txt` 7.11, section « REVUE DU
       1600x1100), avec la console ouverte à 169 px et l'onglet épinglé à
       180 comme dans les réglages de la machine. Deux corrections
       mesurées ont été faites au passage (voir §1), mais rien ne prouve
-      qu'elles ferment ce cas-là. Il manque une donnée : **la taille de
-      la fenêtre et le facteur d'échelle de l'écran**.
+      qu'elles ferment ce cas-là. Trois hypothèses ont été essayées et
+      écartées : le plancher du bandeau trop bas (corrigé, mais le
+      défaut ne s'y réduit pas), la zone qui déborde au lieu de défiler
+      (corrigée de même), et une IMAGE FIGÉE — le partage demande deux
+      images et egui ne redessine que sur demande. Cette dernière a été
+      mesurée et réfutée : les hauteurs sont stables dès la première
+      image (598 et 335) et l'application redessine de toute façon en
+      continu. Il manque une donnée : **la taille de la fenêtre et le
+      facteur d'échelle de l'écran**.
 
 ## 3. L'éditeur
 
