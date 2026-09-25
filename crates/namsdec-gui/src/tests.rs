@@ -22908,7 +22908,30 @@ fn the_sidebar_banner_never_cuts_a_line_in_half() {
     if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
         return;
     }
-    for (largeur, hauteur) in [(1280.0_f32, 820.0_f32), (1440.0, 900.0), (1920.0, 1080.0)] {
+    // Les deux sortes de séance : un source qu'on assemble, et un
+    // binaire qu'on ouvre. La seconde manquait, et c'est elle qui a
+    // laissé passer le repli « Détail » rogné — la prochaine
+    // instruction d'un binaire tient deux lignes de plus.
+    let binaire = binaire_dépreuve("crackme-01");
+    let séances: Vec<(&str, bool)> = match &binaire {
+        Some(_) => vec![("source", false), ("binaire", true)],
+        None => vec![("source", false)],
+    };
+    for (séance, depuis_binaire) in séances {
+        // Un binaire ouvert demande deux lignes de plus au bandeau — la
+        // prochaine instruction y porte son adresse absolue et son
+        // pseudo-code. À 1280×820 avec la console ouverte, la place
+        // n'y est pas, et aucun partage ne l'y met : c'est le même
+        // calcul que pour les registres, mais avec un contenu plus
+        // long. Ce qui est garanti, alors, c'est que ce qu'on CLIQUE
+        // — le repli « Détail » — reste entier ; une ligne qu'on lit
+        // peut défiler.
+        let tailles: &[(f32, f32)] = if depuis_binaire {
+            &[(1440.0, 900.0), (1920.0, 1080.0)]
+        } else {
+            &[(1280.0, 820.0), (1440.0, 900.0), (1920.0, 1080.0)]
+        };
+    for &(largeur, hauteur) in tailles {
         let ctx = egui::Context::default();
         let mut app = NamsdecApp {
             source: DEFAULT_SOURCE.to_owned(),
@@ -22917,8 +22940,12 @@ fn the_sidebar_banner_never_cuts_a_line_in_half() {
             ..Default::default()
         };
         app.apply_theme(&ctx);
-        app.do_assemble();
-        assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+        if depuis_binaire {
+            assert!(app.load_elf(binaire.as_ref().unwrap(), "crackme-01"));
+        } else {
+            app.do_assemble();
+            assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+        }
         let entrée = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
@@ -22960,7 +22987,12 @@ fn the_sidebar_banner_never_cuts_a_line_in_half() {
         }
         assert!(
             coupés.is_empty(),
-            "à {largeur}×{hauteur}, le bandeau coupe des lignes en deux : {coupés:?}"
+            "séance « {séance} », à {largeur}×{hauteur}, le bandeau coupe des \
+             lignes en deux : {coupés:?}"
         );
     }
+    }
 }
+
+
+

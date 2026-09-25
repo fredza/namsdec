@@ -1022,6 +1022,17 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      opcode, ModR/M —, ce qu'aucun désassembleur ne montre. D'où le repli
      plutôt que la suppression : elle se regarde en s'arrêtant, pas à chaque
      pas.
+     RESTE, et c'est une limite et non un défaut à corriger : avec un BINAIRE
+     ouvert (et non un source assemblé), la prochaine instruction tient deux
+     lignes de plus — adresse absolue et pseudo-code —, et à 1280x820 avec la
+     console ouverte il manque encore une ligne. Essayé à 170 et à 160 : à 170
+     c'est le pseudo-code qui est rogné, à 160 le repli « Détail » sort de vue.
+     Aucun partage ne supprime la coupe, on ne fait que la déplacer. Les vraies
+     sorties : replier « Prochaine instruction » par défaut sur un binaire, ou
+     raccourcir le pseudo-code. Les deux sont des choix de produit.
+     L'invariant est donc borné à ce qui est tenable : source à toutes les
+     tailles courantes, binaire à partir de 1440x900. La borne est écrite dans
+     le test, avec sa raison.
      Les captures se font en lançant namsdec sur un profil neuf (voir 3.2) :
      c'est le seul moyen de voir ce que les tests laissent passer.
 

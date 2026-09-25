@@ -353,9 +353,16 @@ six fautes d'assembleur que namsdec sait désormais reconnaître.
   sans toucher au reste, la coupe ne disparaissait jamais — elle se
   déplaçait, de « EAX = 0 » à la ligne d'octets puis à « Détail ».
 - Un contrôle interdit désormais au bandeau de couper une ligne en deux,
-  à trois tailles de fenêtre. Il ne regarde que ce qui est au-dessus de
-  l'onglet : en dessous, la pile et la mémoire sont des listes, et leur
-  dernière ligne a le droit d'être coupée.
+  à trois tailles de fenêtre et pour les deux sortes de séance — un
+  source qu'on assemble, un binaire qu'on ouvre. Il ne regarde que ce
+  qui est au-dessus de l'onglet : en dessous, la pile et la mémoire sont
+  des listes, et leur dernière ligne a le droit d'être coupée.
+- Une limite reste, écrite noir sur blanc dans le test : avec un
+  **binaire** ouvert, la prochaine instruction tient deux lignes de plus
+  — adresse absolue et pseudo-code — et à 1280×820 avec la console il
+  manque encore une ligne. Essayé à 170 et à 160 : la coupe se déplace,
+  elle ne disparaît pas. Le contrôle est donc borné au tenable, et
+  `AMELIORATIONS` dit les deux vraies sorties.
 
 **La même phrase trois fois sur un écran**
 - Au démarrage, « Aucun binaire assemblé. » s'affichait **trois fois en

@@ -307,6 +307,15 @@ fn sidebar_min_width(ui: &egui::Ui) -> f32 {
 /// nombre : la coupe ne disparaissait pas, elle se déplaçait, jusqu'à
 /// ce que la ligne d'octets passe sous le repli et libère ses
 /// vingt-quatre pixels. Les deux changements ensemble suffisent.
+///
+/// Cent quatre-vingts, et c'est un arbitrage assumé. Avec un *source*
+/// assemblé — le cas de qui apprend — le bandeau ne coupe plus rien, à
+/// aucune des tailles courantes. Avec un *binaire* ouvert, dont la
+/// prochaine instruction tient deux lignes de plus, il manque encore une
+/// ligne à 1280×820 quand la console est ouverte : aucun partage n'y
+/// change rien, on ne fait que déplacer la coupe. Essayé à 170 et à
+/// 160 : à 170 c'est le pseudo-code qui est rogné, à 160 le repli
+/// « Détail » sort de vue. Le mur est arithmétique, pas dans le réglage.
 const SIDEBAR_TAB_MIN: f32 = 180.0;
 
 /// Et ce qui reste au bandeau, quoi qu'il arrive : de quoi lire ce qui
