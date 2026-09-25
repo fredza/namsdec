@@ -2561,7 +2561,28 @@ impl NamsdecApp {
         // est précisément le cas quand on travaillait un binaire —
         // `current_file` reste vide pour lui.
         app.restore_binary_session();
+        // En dernier, et volontairement : deux des fenêtres reprises
+        // dépendent d'un module dont l'état vient d'être posé plus haut,
+        // et l'une d'elles — le désassemblage — n'a de sens qu'une fois
+        // la séance revenue.
+        app.reopen_windows();
         app
+    }
+
+    /// Rouvre les fenêtres qu'on avait laissées ouvertes.
+    ///
+    /// Les noms inconnus sont ignorés sans bruit : un fichier de réglages
+    /// écrit par une version plus récente peut nommer une fenêtre que
+    /// celle-ci n'a pas, et ce n'est pas une raison de se plaindre.
+    fn reopen_windows(&mut self) {
+        let voulues = self.saved_settings.open_windows.clone();
+        for nom in &voulues {
+            if let Some((_, _, ouvre)) =
+                FENÊTRES_REPRISES.iter().find(|(id, _, _)| id == nom)
+            {
+                ouvre(self);
+            }
+        }
     }
 
     /// Rouvre le fichier sur lequel on travaillait au lancement précédent,
@@ -2897,6 +2918,11 @@ impl NamsdecApp {
             program_args: self.program_args.clone(),
             program_env: self.program_env.clone(),
             sidebar_tab: Some(self.active_tab.id().to_owned()),
+            open_windows: FENÊTRES_REPRISES
+                .iter()
+                .filter(|(_, ouverte, _)| ouverte(self))
+                .map(|(nom, _, _)| (*nom).to_owned())
+                .collect(),
             show_toolbar: self.show_toolbar,
             show_sidebar: self.show_sidebar,
             show_statusbar: self.show_statusbar,
@@ -17949,6 +17975,47 @@ pub(crate) const INPUT_DIALOG: &str = "input_dialog";
 
 /// L'identifiant de la fenêtre des patchs.
 pub(crate) const PATCHES_WINDOW: &str = "patches_window";
+
+/// Les fenêtres qui reviennent d'une séance à l'autre.
+///
+/// Fermer la barre d'outils la gardait fermée au lancement suivant ;
+/// ouvrir la calculatrice, non — elle partait avec la séance. Deux
+/// gestes de même nature, deux réponses différentes : c'est cette
+/// incohérence-là qu'on enlève. Ce qu'on a disposé autour de son code
+/// est un réglage comme un autre, et un réglage se retrouve.
+///
+/// Toutes les fenêtres n'y sont pas. Préférences, « À propos » et la
+/// saisie du programme s'ouvrent sur une question et se ferment sur la
+/// réponse ; les rouvrir au lancement serait répondre à une question
+/// que personne n'a posée. Ne reviennent que les fenêtres d'**établi**,
+/// celles qu'on laisse ouvertes à côté du code parce qu'on s'en sert.
+///
+/// Deux d'entre elles appartiennent à un module qui peut avoir été
+/// éteint entre-temps : leur reprise le redemande plutôt que de le
+/// supposer, si bien qu'éteindre le module emporte bien sa fenêtre.
+#[allow(clippy::type_complexity)]
+pub(crate) const FENÊTRES_REPRISES: &[(
+    &str,
+    fn(&NamsdecApp) -> bool,
+    fn(&mut NamsdecApp),
+)] = &[
+    ("calculator", |a| a.show_calculator, |a| a.show_calculator = true),
+    ("help", |a| a.show_help, |a| a.show_help = true),
+    ("vectors", |a| a.show_vectors, |a| a.show_vectors = true),
+    ("breakpoints", |a| a.show_breakpoints, |a| a.show_breakpoints = true),
+    ("timeline", |a| a.show_timeline, |a| a.show_timeline = true),
+    ("cyclic", |a| a.show_cyclic, |a| a.show_cyclic = true),
+    ("analysis", |a| a.show_analysis, |a| a.show_analysis = true),
+    ("disassembly", |a| a.show_disassembly, |a| a.show_disassembly = true),
+    ("flow", |a| a.show_flow, |a| a.show_flow = true),
+    ("patches", |a| a.show_patches, |a| a.show_patches = true),
+    ("decompiler", |a| a.show_decompiler, |a| {
+        a.show_decompiler = a.show_decompiler_module;
+    }),
+    ("exercises", |a| a.show_exercises, |a| {
+        a.show_exercises = a.exercises;
+    }),
+];
 
 /// Ce qu'on fait aux octets d'une instruction.
 ///

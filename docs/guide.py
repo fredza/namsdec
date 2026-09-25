@@ -1203,6 +1203,15 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "namsdec rouvre ce qu'on avait : les fichiers sources et leurs onglets, le "
          "<b>binaire</b> ouvert, ses points d'arrêt, ses zones surveillées, les arguments "
          "et variables d'environnement du programme, et l'onglet latéral qu'on regardait."),
+        ("p",
+         "Les <b>fenêtres d'établi</b> reviennent aussi : la calculatrice, le graphe, la "
+         "chronologie, le désassemblage, les registres étendus, les points d'arrêt, "
+         "l'analyse, les correctifs, le motif cyclique, l'aide, les exercices et le "
+         "décompilateur. Ce qu'on a disposé autour de son code est un réglage comme un "
+         "autre. Les boîtes qui posent une question — Préférences, « À propos », la saisie "
+         "du programme — ne se rouvrent pas toutes seules : elles se ferment sur leur "
+         "réponse. Les deux fenêtres qui appartiennent à un module ne reviennent que si le "
+         "module est encore allumé."),
         ("note",
          "Les repères posés sur un binaire ne reviennent que si le <b>fichier n'a pas "
          "changé</b> — taille et date. Ils se comptent en numéros de ligne d'un listing "

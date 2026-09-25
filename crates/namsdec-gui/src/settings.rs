@@ -249,6 +249,15 @@ pub struct Settings {
     /// L'onglet du panneau latéral qu'on regardait.
     #[serde(default)]
     pub sidebar_tab: Option<String>,
+    /// Les fenêtres laissées ouvertes à la dernière séance.
+    ///
+    /// Une liste de noms plutôt qu'un booléen par fenêtre : le fichier
+    /// ne porte alors que ce qui est ouvert — une ligne courte et
+    /// lisible — et une fenêtre retirée d'une version à l'autre ne
+    /// laisse pas un réglage orphelin derrière elle. La table qui dit
+    /// quel nom ouvre quoi est dans `main.rs`, sous `FENÊTRES_REPRISES`.
+    #[serde(default)]
+    pub open_windows: Vec<String>,
     /// Identifiant d'action -> raccourci, en texte.
     pub shortcuts: BTreeMap<String, String>,
 }
@@ -311,6 +320,7 @@ impl Default for Settings {
             program_args: String::new(),
             program_env: String::new(),
             sidebar_tab: None,
+            open_windows: Vec::new(),
             explorer_root: None,
             current_file: None,
             current_file_mtime: None,

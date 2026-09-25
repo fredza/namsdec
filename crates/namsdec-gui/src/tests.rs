@@ -21921,6 +21921,7 @@ fn every_setting_that_is_written_is_read_back() {
         program_args: "-v --long".to_owned(),
         program_env: "A=1".to_owned(),
         sidebar_tab: Some("heap".to_owned()),
+        open_windows: vec!["calculator".to_owned(), "timeline".to_owned()],
         explorer_root: Some(dir.path().display().to_string()),
         current_file: Some(source.display().to_string()),
         current_file_mtime: date,
@@ -23040,3 +23041,73 @@ fn the_next_instruction_folds_for_a_binary_and_not_for_a_source() {
     );
 }
 
+
+
+/// Les fenêtres qu'on avait laissées ouvertes sont là au retour.
+///
+/// Fermer la barre d'outils la gardait fermée au lancement suivant ;
+/// ouvrir la calculatrice, non. Ce qu'on a disposé autour de son code
+/// est pourtant un réglage comme un autre, et il n'y a pas de raison
+/// que la moitié des gestes survive à la séance et l'autre pas.
+///
+/// Le test passe par le fichier — instantané, puis reconstruction à
+/// partir de lui — et non par une copie du champ : c'est le voyage
+/// complet qui compte, et c'est lui qui casse quand on ajoute une
+/// fenêtre en oubliant de la nommer dans la table.
+///
+/// Il dit aussi ce qui ne revient PAS. Préférences, « À propos » et la
+/// saisie du programme s'ouvrent sur une question et se ferment sur la
+/// réponse ; les retrouver au lancement serait répondre à une question
+/// que personne n'a posée.
+#[test]
+fn the_windows_left_open_come_back_next_time() {
+    for (nom, ouverte, ouvre) in FENÊTRES_REPRISES {
+        let mut app = NamsdecApp {
+            // Les deux fenêtres de module ne s'ouvrent que si leur
+            // module est allumé — c'est le sens de leur reprise.
+            show_decompiler_module: true,
+            exercises: true,
+            ..Default::default()
+        };
+        ouvre(&mut app);
+        assert!(
+            ouverte(&app),
+            "« {nom} » doit s'ouvrir quand on le lui demande"
+        );
+        let revenue = NamsdecApp::from_settings(app.settings_snapshot());
+        assert!(
+            ouverte(&revenue),
+            "« {nom} » était ouverte, elle doit revenir ouverte"
+        );
+    }
+
+    // Et l'inverse : ce qui n'est pas d'établi ne revient pas.
+    let mut app = NamsdecApp {
+        show_preferences: true,
+        show_about: true,
+        show_input_dialog: true,
+        ..Default::default()
+    };
+    app.show_calculator = true;
+    let revenue = NamsdecApp::from_settings(app.settings_snapshot());
+    assert!(
+        revenue.show_calculator,
+        "la calculatrice, elle, revient — sans quoi ce test ne prouve rien"
+    );
+    for (quoi, encore) in [
+        ("les préférences", revenue.show_preferences),
+        ("« À propos »", revenue.show_about),
+        ("la saisie du programme", revenue.show_input_dialog),
+    ] {
+        assert!(
+            !encore,
+            "{quoi} ne doit pas se rouvrir tout seul au lancement"
+        );
+    }
+
+    // Un nom venu d'une version plus récente ne fait pas de bruit.
+    let _ = NamsdecApp::from_settings(Settings {
+        open_windows: vec!["une_fenetre_du_futur".to_owned()],
+        ..Settings::default()
+    });
+}
