@@ -22833,3 +22833,54 @@ fn flèches_de_la_rangée(ctx: &egui::Context, app: &mut NamsdecApp, ligne: f32)
     sortie.textures_delta.clear();
     x
 }
+
+/// Une même phrase ne se répète pas sur un écran.
+///
+/// Au démarrage, « Aucun binaire assemblé. » s'affichait **trois fois**
+/// en même temps : le bandeau des registres, l'onglet du panneau, et la
+/// console. La première dit ce qui manque et propose le bouton ; les
+/// deux autres ne faisaient que la répéter, là où elles pouvaient dire
+/// ce qu'elles montreraient.
+///
+/// Deux fois est acceptable — un constat et son écho là où l'on
+/// regarde — trois fois est du remplissage.
+#[test]
+fn no_sentence_is_said_three_times_on_one_screen() {
+    for onglet in SidebarTab::ALL {
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp {
+            source: DEFAULT_SOURCE.to_owned(),
+            show_sidebar: true,
+            show_console: true,
+            active_tab: onglet,
+            ..Default::default()
+        };
+        app.apply_theme(&ctx);
+        let entrée = écran_du_banc();
+        let mut comptes: std::collections::BTreeMap<String, usize> = Default::default();
+        for _ in 0..3 {
+            comptes.clear();
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                    let texte = t.galley.text().trim();
+                    // Les phrases seulement : un nombre, un nom de
+                    // registre ou un libellé d'onglet se répètent à bon
+                    // droit.
+                    if texte.len() > 20 && texte.contains(' ') {
+                        *comptes.entry(texte.to_owned()).or_default() += 1;
+                    }
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+        for (phrase, combien) in &comptes {
+            assert!(
+                *combien < 3,
+                "onglet {} : « {phrase} » est écrit {combien} fois sur le même écran",
+                onglet.id()
+            );
+        }
+    }
+}
+

@@ -337,6 +337,18 @@ six fautes d'assembleur que namsdec sait désormais reconnaître.
   que la fenêtre la reposait en se dessinant. Un test qui échoue au
   hasard apprend à ignorer la suite ; celui-ci disait quelque chose.
 
+**La même phrase trois fois sur un écran**
+- Au démarrage, « Aucun binaire assemblé. » s'affichait **trois fois en
+  même temps** : le bandeau des registres, l'onglet du panneau, et la
+  console. La première dit ce qui manque et porte le bouton ; les deux
+  autres ne faisaient que la répéter.
+- La console dit maintenant ce qu'elle montrera — « la sortie du
+  programme s'affichera ici : ce qu'il écrit, et ce que vous lui
+  répondez » — et la fenêtre des registres étendus de même.
+- Un contrôle interdit à une phrase de plus de vingt caractères d'être
+  écrite trois fois sur le même écran. Deux fois passe : un constat et
+  son écho là où l'on regarde. Trois est du remplissage.
+
 **Un panneau vide dit quoi faire**
 - Six panneaux du bandeau latéral disaient « Aucun binaire assemblé. »
   et s'arrêtaient là — un constat, pas une porte. Or c'est exactement

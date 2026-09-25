@@ -13455,7 +13455,7 @@ impl NamsdecApp {
                     fermer_ok = true;
                 }
                 if self.emulator.is_none() {
-                    ui.label(s.no_binary_assembled);
+                    empty_state(ui, self.theme, s.no_binary_assembled, Some(s.empty_vectors), None);
                     return;
                 }
                 // Aucune zone de défilement : les vingt-quatre valeurs
@@ -14162,7 +14162,14 @@ impl NamsdecApp {
                     .stick_to_bottom(true)
                     .show(ui, |ui| {
                         if self.emulator.is_none() {
-                            ui.colored_label(self.theme.dim, s.no_binary_assembled);
+                            // Sa phrase à elle, et non le constat qui
+                            // est déjà écrit deux fois plus haut. Au
+                            // démarrage, « Aucun binaire assemblé. »
+                            // s'affichait trois fois sur le même écran
+                            // — le bandeau, l'onglet, et ici — sans que
+                            // la troisième apprenne rien de plus. Une
+                            // console dit ce qu'elle montrera.
+                            ui.colored_label(self.theme.dim, s.console_before_run);
                         } else if output.is_empty() {
                             // Dire *pourquoi* c'est vide. « Le programme
                             // n'a rien écrit » devant un programme qui

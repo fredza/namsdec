@@ -245,6 +245,11 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "mémoire, les blocs alloués, les octets de chaque ligne. C’est "
          "l’écran qu’on a sous les yeux la première fois."),
         ("p",
+         "Et chaque panneau dit ce qu’il montrera <b>dans ses propres mots</b> : la "
+         "console annonce la sortie du programme, l’onglet Pile la pile et la chaîne "
+         "des appels. Répéter le même constat à trois endroits d’un même "
+         "écran n’apprend rien la deuxième fois, et agace la troisième."),
+        ("p",
          "Les boutons sont <b>plats dans les menus et encadrés ailleurs</b>. Dans un "
          "menu, la platitude est le dessin ; dans une fenêtre, un bouton qui ne se "
          "distingue d’une étiquette qu’au survol ne se trouve pas. Ce qu’on "

@@ -1007,12 +1007,17 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      Ce qu'il faut regarder : largeurs des champs jumeaux, alignement des
      étiquettes et de leurs valeurs, styles de boutons, textes répétés,
      icônes, espacements.
-     Déjà relevé et non corrigé : « Aucun binaire assemblé. » s'affiche TROIS
-     fois sur le même écran (bandeau des registres, onglet du panneau,
-     console) ; la console devrait dire ce qu'elle montrera plutôt que de
-     répéter le constat. Et dans le bandeau, la zone défilante coupe « EAX =
-     0 » au milieu d'une ligne quand la fenêtre est courte — la coupe devrait
-     tomber entre deux lignes.
+     [FAIT] La répétition triple : la console et les registres étendus disent
+     maintenant ce qu'ils montreront, et un contrôle interdit à une phrase de
+     plus de vingt caractères d'être écrite trois fois sur le même écran.
+     La coupe en milieu de ligne, en revanche, ne se corrige pas par un
+     rééquilibrage : MESURÉ en faisant varier SIDEBAR_TAB_MIN de 220 à 150, la
+     coupe ne disparaît jamais, elle se DÉPLACE — à 190 sur la ligne d'octets,
+     à 170 sur « Détail », à 150 sur la pile. À 1280x820 avec la console
+     ouverte, le contenu excède la place ; c'est arithmétique. Les vraies
+     sorties seraient de réduire ce que le bandeau demande (la ligne d'octets
+     de « Prochaine instruction » fait doublon avec l'onglet Octets) ou
+     d'accepter la coupe. C'est un choix de produit, pas de mise en page.
      Les captures se font en lançant namsdec sur un profil neuf (voir 3.2) :
      c'est le seul moyen de voir ce que les tests laissent passer.
 
