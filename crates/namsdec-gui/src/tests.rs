@@ -23799,3 +23799,75 @@ fn the_gutter_shows_what_a_click_would_do() {
         app.breakpoint_lines
     );
 }
+
+/// La ligne où le processeur est arrêté se voit sans qu'on la cherche.
+///
+/// Une flèche dans la gouttière et un numéro en couleur d'accent la
+/// disaient, mais tous deux sont à GAUCHE : on suit du regard la colonne
+/// du code, et il fallait revenir au bord de l'écran pour retrouver où
+/// l'on en était. Une bande pâle sur toute la largeur se voit sans
+/// effort, et c'est ce que fait tout débogueur.
+///
+/// Le contrôle demande la bande, sa largeur, et qu'elle ne paraisse que
+/// là où le processeur est : une bande qui suivrait le curseur de saisie
+/// dirait autre chose.
+#[test]
+fn the_line_where_the_cpu_stopped_wears_a_band() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp {
+        source: PROGRAMME_DU_BANC.to_owned(),
+        ..Default::default()
+    };
+    app.apply_theme(&ctx);
+    let entrée = écran_du_banc();
+
+    /// Les bandes pâles peintes en travers de l'éditeur.
+    fn bandes(sortie: &egui::FullOutput) -> Vec<egui::Rect> {
+        let mut vues = Vec::new();
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Rect(r) = &clipped.shape
+                && r.rect.left() < 4.0
+                && r.rect.width() > 400.0
+                && (10.0..24.0).contains(&r.rect.height())
+                && r.fill.a() > 0
+                && r.fill.a() < 128
+            {
+                vues.push(r.rect);
+            }
+        }
+        vues
+    }
+
+    // À l'arrêt, rien ne tourne : aucune bande.
+    let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+    let avant = bandes(&sortie);
+    sortie.textures_delta.clear();
+    assert!(
+        avant.is_empty(),
+        "sans programme en marche, aucune ligne n'est marquée — {avant:?}"
+    );
+
+    app.do_assemble();
+    app.do_step();
+    let mut vues = Vec::new();
+    for _ in 0..3 {
+        let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+        vues = bandes(&sortie);
+        sortie.textures_delta.clear();
+    }
+    assert_eq!(
+        vues.len(),
+        1,
+        "une ligne est marquée, et une seule : celle où le processeur est \
+         arrêté — {vues:?}"
+    );
+    assert!(
+        vues[0].width() > 600.0,
+        "et la bande traverse l'éditeur, sinon elle ne se voit pas mieux que \
+         la flèche qu'elle remplace : {:.0} px",
+        vues[0].width()
+    );
+}

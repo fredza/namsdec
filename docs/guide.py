@@ -289,6 +289,10 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "programme, jaune et orange entre les deux. Le compte exact vient au survol, et la "
          "légende sous l'éditeur donne l'échelle."),
         ("p",
+         "Quand le programme est arrêté quelque part, la ligne où il l'est porte une "
+         "<b>bande pâle</b> sur toute la largeur, en plus de la flèche dans la gouttière. "
+         "La flèche est au bord de l'écran ; la bande est là où l'œil lit le code."),
+        ("p",
          "Survolez la gouttière et un <b>point pâle</b> paraît là où le point d'arrêt se "
          "posera ; le pointeur devient une main, et une infobulle dit ce que le clic fera. "
          "Rien de tout cela ne s'apprend dans un manuel qu'on n'a pas encore ouvert — la "

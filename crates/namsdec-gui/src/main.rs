@@ -10523,7 +10523,32 @@ impl NamsdecApp {
                                 clicked_line = Some(line);
                             }
 
-                            // Le bandeau d'abord, sous tout le reste.
+                            // La ligne où le processeur est arrêté, en
+                            // premier : une bande pâle sur toute la
+                            // largeur. La flèche de la gouttière et le
+                            // numéro en couleur d'accent la disaient
+                            // déjà, mais tous deux sont à GAUCHE — on
+                            // suit du regard la colonne du code, et il
+                            // fallait revenir en bord d'écran pour
+                            // retrouver où l'on en était. Une bande se
+                            // voit sans qu'on la cherche.
+                            //
+                            // Douze pour cent : assez pour distinguer la
+                            // ligne d'un coup d'œil, assez peu pour que
+                            // la coloration syntaxique se lise dessus
+                            // sans rien perdre.
+                            if current_line == Some(line) {
+                                painter.rect_filled(
+                                    egui::Rect::from_min_size(
+                                        row_rect.min,
+                                        egui::vec2(largeur_ligne, row_rect.height()),
+                                    ),
+                                    0.0,
+                                    theme.accent.gamma_multiply(0.12),
+                                );
+                            }
+                            // Le bandeau des diagnostics ensuite, sous le
+                            // reste.
                             if let Some(severity) = fautives.get(&line) {
                                 let teinte = if *severity == Severity::Error {
                                     theme.bad
