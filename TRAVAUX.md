@@ -63,9 +63,11 @@ processeur est ancré.
       assemblé.
 - [x] Un changement d'échelle de l'écran redemande une image
 - [x] **On voit qu'on peut ouvrir plusieurs fichiers** — la barre
-      d'onglets paraît dès le PREMIER fichier, avec un « + » au bout.
-      Elle n'apparaissait qu'à partir du second : rien, jamais, ne
-      disait que le mécanisme existait.
+      d'onglets est là **dès le premier écran**, tampon « sans titre »
+      compris, avec un « + » au bout. Elle n'apparaissait qu'à partir du
+      second fichier : rien, jamais, ne disait que le mécanisme
+      existait. Premier remède insuffisant — « dès le premier fichier
+      OUVERT » — parce que l'écran d'accueil n'en a pas.
 - [x] **« Fermer le fichier » ne disparaît plus du menu** — elle
       s'effaçait quand aucun fichier n'était ouvert, c'est-à-dire au
       moment où on la cherche. Grisée, avec sa raison.

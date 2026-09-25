@@ -11069,19 +11069,21 @@ impl NamsdecApp {
     /// Un seul fichier ouvert : pas de barre. Elle n'apprend rien tant
     /// qu'il n'y a rien à choisir, et l'éditeur gagne sa hauteur.
     fn tabs_bar_ui(&mut self, ui: &mut egui::Ui) {
-        // DÈS LE PREMIER FICHIER, et non à partir du second.
+        // TOUJOURS, y compris sur un tampon « sans titre ».
         //
-        // La barre n'apparaissait qu'avec deux fichiers ouverts, si bien
-        // que rien, jamais, ne disait qu'on pouvait en ouvrir plusieurs :
-        // « Ouvrir un fichier… » rangeait bien le second dans un onglet,
-        // mais il fallait l'avoir deviné pour s'en servir. Un mécanisme
-        // qu'on ne découvre qu'en l'ayant déjà employé n'existe pas.
+        // Elle n'apparaissait qu'avec DEUX fichiers ouverts : rien,
+        // jamais, ne disait qu'on pouvait en ouvrir plusieurs. Premier
+        // remède, insuffisant : la montrer dès le premier fichier
+        // OUVERT. Or l'écran d'accueil n'en a pas — il porte un tampon
+        // « sans titre » —, si bien que la barre restait invisible
+        // exactement là où elle enseigne quelque chose. Corrigé après
+        // que Fred a regardé son écran et n'a rien vu ; je l'avais
+        // vérifié sur une séance où un fichier était ouvert, c'est-à-dire
+        // dans le seul cas qui marchait déjà.
         //
-        // Elle porte donc un « + » : c'est là qu'on le cherche, et c'est
-        // lui qui enseigne que les fichiers se rangent en onglets.
-        if self.tabs.is_empty() && self.current_file.is_none() {
-            return;
-        }
+        // Le tampon sans titre EST un onglet — `tab_labels` le compte
+        // depuis toujours. Le montrer comme tel ne coûte qu'une rangée,
+        // et c'est elle qui porte le « + ».
         let theme = self.theme;
         let s = strings(self.lang);
         let mut aller = None;

@@ -16844,16 +16844,18 @@ fn the_tab_bar_shows_the_open_files() {
         "le point dit ce qui n'est pas enregistré : {peint}"
     );
 
-    // Un seul fichier : pas de barre du tout — elle n'apprend rien tant
-    // qu'il n'y a rien à choisir.
+    // UN SEUL TAMPON, et la barre est là quand même.
+    //
+    // Elle ne l'était pas : « elle n'apprend rien tant qu'il n'y a rien
+    // à choisir », disait ce test. C'est faux, et c'est même l'inverse —
+    // l'écran d'accueil est le seul moment où personne ne sait encore
+    // que les fichiers se rangent en onglets, donc le seul où la barre
+    // a quelque chose à apprendre. Sans elle, rien ne le dit jamais.
     let mut seul = NamsdecApp::default();
     let peint = paint(&mut seul);
-    // La croix de fermeture n'apparaît qu'avec la barre : c'est elle
-    // qui dit si la barre est là, « sans titre » se lisant par ailleurs
-    // dans la barre de titre et celle d'état.
     assert!(
-        !peint.contains('×'),
-        "pas de barre d'onglets pour un seul fichier : {peint}"
+        peint.contains('×') && peint.contains('+'),
+        "la barre d'onglets et son « + » sont là dès l'accueil : {peint}"
     );
 }
 
@@ -24363,7 +24365,7 @@ fn namsdec_answers_its_command_line() {
     );
 }
 
-/// On voit qu'on peut ouvrir plusieurs fichiers.
+/// On voit qu'on peut ouvrir plusieurs fichiers, dès le premier écran.
 ///
 /// On le pouvait depuis longtemps : « Ouvrir un fichier… » range le
 /// second dans un onglet. Mais la barre d'onglets n'apparaissait qu'à
@@ -24371,11 +24373,19 @@ fn namsdec_answers_its_command_line() {
 /// disait — il fallait l'avoir deviné pour s'en servir. Un mécanisme
 /// qu'on ne découvre qu'en l'ayant déjà employé n'existe pas.
 ///
-/// La barre paraît donc dès le premier fichier, et porte un « + » :
-/// c'est là qu'on le cherche, et c'est lui qui enseigne que les fichiers
-/// se rangent en onglets.
+/// Premier remède, insuffisant : la montrer dès le premier fichier
+/// OUVERT. Or l'écran d'accueil n'en a pas — il porte un tampon « sans
+/// titre » —, si bien que la barre restait invisible exactement là où
+/// elle enseigne quelque chose. Et ce contrôle AFFIRMAIT que c'était
+/// normal : mon erreur, posée en invariant. Il a fallu que Fred regarde
+/// son écran et n'y voie rien.
+///
+/// La leçon tient en une ligne : j'avais vérifié sur une séance où un
+/// fichier était ouvert, c'est-à-dire dans le seul cas qui marchait
+/// déjà. Vérifier dans l'état où le défaut a été signalé, pas dans
+/// celui qui arrange.
 #[test]
-fn one_open_file_already_shows_the_tab_bar_and_its_plus() {
+fn the_tab_bar_and_its_plus_are_there_from_the_first_screen() {
     let dir = tempfile::tempdir().expect("un dossier temporaire");
     let un = dir.path().join("un.asm");
     std::fs::write(&un, "bits 64\nglobal _start\n_start:\n    hlt\n").unwrap();
@@ -24384,12 +24394,25 @@ fn one_open_file_already_shows_the_tab_bar_and_its_plus() {
     let mut app = NamsdecApp::default();
     app.apply_theme(&ctx);
 
-    // Tampon vierge, jamais enregistré : pas de barre, il n'y a pas de
-    // fichier dont parler.
-    let (_, avant) = ce_qui_est_écrit(&ctx, &mut app, None, 3);
+    // DÈS L'ÉCRAN D'ACCUEIL, sur le tampon « sans titre ».
+    //
+    // La première version de ce contrôle affirmait le contraire — « sans
+    // fichier ouvert, la barre n'a rien à montrer » — et c'était mon
+    // erreur mise en invariant. L'écran d'accueil est justement celui où
+    // personne ne sait encore qu'on peut ouvrir plusieurs fichiers ;
+    // cacher là ce qui l'enseigne revient à ne rien enseigner. Fred a
+    // regardé son écran et n'a rien vu, ce que ce test affirmait normal.
+    let (_, accueil) = ce_qui_est_écrit(&ctx, &mut app, None, 3);
     assert!(
-        !avant.iter().any(|(t, _)| t == "+"),
-        "sans fichier ouvert, la barre d'onglets n'a rien à montrer"
+        accueil.iter().any(|(t, _)| t == "+"),
+        "le « + » est là dès l'accueil : c'est lui qui dit que les fichiers \
+         se rangent en onglets"
+    );
+    assert!(
+        accueil
+            .iter()
+            .any(|(t, _)| t == strings(app.lang).untitled_buffer),
+        "et le tampon sans titre s'y montre comme un onglet"
     );
 
     // Un seul fichier : la barre est là, avec son nom et le « + ».
