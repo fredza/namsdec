@@ -23707,3 +23707,95 @@ fn a_zone_title_is_underlined_and_not_boxed() {
         );
     }
 }
+
+/// La gouttière montre ce qu'un clic y ferait.
+///
+/// On y pose les points d'arrêt, et rien ne le disait : le manuel
+/// l'écrit, la fenêtre des points d'arrêt l'écrit, l'écran où l'on
+/// travaille se taisait. Quelqu'un qui n'a pas lu le manuel n'a aucune
+/// raison de cliquer dans une colonne de numéros.
+///
+/// Au survol, un point pâle paraît donc à l'endroit exact où le vrai se
+/// posera — c'est ce que fait n'importe quel éditeur, et c'est là que ça
+/// s'apprend. Pâle, parce qu'il montre ce qui VA se passer et ne
+/// prétend pas que c'est fait.
+///
+/// Le survol se simule pour de vrai : un mouvement de pointeur, puis
+/// des images où il ne bouge plus.
+#[test]
+fn the_gutter_shows_what_a_click_would_do() {
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp {
+        source: PROGRAMME_DU_BANC.to_owned(),
+        ..Default::default()
+    };
+    app.apply_theme(&ctx);
+    let entrée = écran_du_banc();
+
+    // Où sont les numéros de ligne : dans la gouttière, à gauche, et ce
+    // sont les seuls nombres peints là.
+    let (_, lignes) = ce_qui_est_écrit(&ctx, &mut app, None, 3);
+    let numéro = lignes
+        .iter()
+        .find(|(t, r)| t == "5" && r.left() < 80.0)
+        .map(|(_, r)| *r)
+        .expect("le numéro de la cinquième ligne est peint dans la gouttière");
+    // Le point se pose à huit pixels du bord gauche de la gouttière,
+    // laquelle commence au bord du panneau.
+    let visée = egui::pos2(8.0, numéro.center().y);
+
+    /// Les ronds pleins d'un rayon de point d'arrêt peints sur cette ligne.
+    fn points(sortie: &egui::FullOutput, y: f32) -> Vec<egui::Color32> {
+        let mut trouvés = Vec::new();
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Circle(c) = &clipped.shape
+                && (c.radius - 4.0).abs() < 0.5
+                && (c.center.y - y).abs() < 4.0
+                && c.center.x < 40.0
+            {
+                trouvés.push(c.fill);
+            }
+        }
+        trouvés
+    }
+
+    // Sans le pointeur : rien.
+    let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+    let avant = points(&sortie, visée.y);
+    sortie.textures_delta.clear();
+    assert!(
+        avant.is_empty(),
+        "sans survol, la gouttière ne montre aucun point — {avant:?}"
+    );
+
+    // Le pointeur arrive, puis ne bouge plus.
+    let survol = egui::RawInput {
+        events: vec![egui::Event::PointerMoved(visée)],
+        ..entrée.clone()
+    };
+    let mut sortie = ctx.run_ui(survol, |ui| app.draw(ui));
+    sortie.textures_delta.clear();
+    let mut fantômes = Vec::new();
+    for _ in 0..3 {
+        let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+        fantômes = points(&sortie, visée.y);
+        sortie.textures_delta.clear();
+    }
+    assert_eq!(
+        fantômes.len(),
+        1,
+        "au survol, un point et un seul paraît à l'endroit du futur point \
+         d'arrêt — {fantômes:?}"
+    );
+    assert!(
+        fantômes[0].a() < 255,
+        "et il est pâle : il montre ce qui va se passer, il ne dit pas que \
+         c'est fait — {:?}",
+        fantômes[0]
+    );
+    assert!(
+        app.breakpoint_lines.is_empty(),
+        "survoler ne pose rien : {:?}",
+        app.breakpoint_lines
+    );
+}

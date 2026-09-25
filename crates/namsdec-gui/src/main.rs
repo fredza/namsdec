@@ -2843,7 +2843,7 @@ impl NamsdecApp {
     /// pour les réglages.
     ///
     /// Le fichier n'était posé qu'au premier changement de raccourci.
-    /// Deux jeux vivent pourtant dans le binaire — Vim et gdb, qui est
+    /// Deux jeux vivent pourtant dans le binaire — Fake Vim-GDB, qui est
     /// le défaut, et l'éditeur ordinaire — et rien ne le disait à qui
     /// n'ouvrait pas les Préférences : on cherchait un fichier qui
     /// n'existait pas encore pour savoir de quoi on partait.
@@ -10453,6 +10453,28 @@ impl NamsdecApp {
                             .map(|d| (d.line, d.severity))
                             .collect();
                         let largeur_ligne = gutter_rect.width() + ui.available_width();
+                        // La ligne sous le pointeur, s'il est dans la
+                        // gouttière. Rien à l'écran ne disait qu'on
+                        // pouvait cliquer là : le manuel l'écrit, la
+                        // gouttière se taisait. Un point fantôme le dit
+                        // maintenant, comme le fait n'importe quel
+                        // éditeur — et c'est là que ça s'apprend.
+                        //
+                        // La position du POINTEUR, et non
+                        // `gutter_resp.hover_pos()` : la gouttière vit
+                        // dans une zone de défilement, laquelle s'inscrit
+                        // elle-même comme sensible au glisser pour se
+                        // faire tirer. Elle passe donc devant, et la
+                        // gouttière n'est jamais « survolée » au sens
+                        // d'egui — c'est pour cela que l'infobulle du
+                        // nombre de passages ne paraissait pas non plus.
+                        // Une bande de gouttière est une géométrie : on
+                        // la traite comme telle.
+                        let survolée = ui
+                            .ctx()
+                            .pointer_latest_pos()
+                            .filter(|p| gutter_rect.contains(*p) && ui.clip_rect().contains(*p))
+                            .and_then(|p| ligne_sous(&galley, gutter_rect, p));
                         let painter = ui.painter();
 
                         // Les occurrences de la recherche, peintes sous
@@ -10521,11 +10543,17 @@ impl NamsdecApp {
                             }
 
                             let is_current = current_line == Some(line);
+                            let point = egui::pos2(gutter_rect.left() + 8.0, row_rect.center().y);
                             if self.breakpoint_lines.contains(&line) {
+                                painter.circle_filled(point, 4.0, theme.bad);
+                            } else if survolée == Some(line) {
+                                // Pâle, et au même endroit que le vrai :
+                                // il montre ce qui va se passer, il ne
+                                // prétend pas que c'est déjà fait.
                                 painter.circle_filled(
-                                    egui::pos2(gutter_rect.left() + 8.0, row_rect.center().y),
+                                    point,
                                     4.0,
-                                    theme.bad,
+                                    theme.bad.gamma_multiply(0.38),
                                 );
                             }
                             if is_current {
@@ -10569,15 +10597,30 @@ impl NamsdecApp {
                         // trois ». Quel que soit le mode de l'éditeur —
                         // on regarde un programme bien plus souvent
                         // qu'on ne le tape.
+                        // La main sur la gouttière : le pointeur dit
+                        // « ceci se clique » avant même qu'on ait lu quoi
+                        // que ce soit.
+                        if survolée.is_some() {
+                            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                        }
                         if self.show_tooltips
-                            && let Some(pos) = gutter_resp.hover_pos()
-                            && let Some(ligne) = ligne_sous(&galley, gutter_rect, pos)
-                            && let Some(count) = passages.get(&ligne)
+                            && let Some(ligne) = survolée
                         {
-                            let texte = if self.lang == Lang::Fr {
-                                format!("Ligne {ligne} : exécutée {count} fois")
-                            } else {
-                                format!("Line {ligne}: run {count} times")
+                            // Le nombre de passages s'il existe — la
+                            // bande dit « souvent », le nombre dit « mille
+                            // deux cent trois ». Sinon, ce que le clic
+                            // ferait : c'est la question qu'on se pose la
+                            // première fois, et la seule fois qui compte.
+                            let phrases = strings(self.lang);
+                            let texte = match passages.get(&ligne) {
+                                Some(count) if self.lang == Lang::Fr => {
+                                    format!("Ligne {ligne} : exécutée {count} fois")
+                                }
+                                Some(count) => format!("Line {ligne}: run {count} times"),
+                                None if self.breakpoint_lines.contains(&ligne) => {
+                                    phrases.gutter_clear_breakpoint.to_owned()
+                                }
+                                None => phrases.gutter_set_breakpoint.to_owned(),
                             };
                             gutter_resp.clone().show_tooltip_text(texte);
                         }

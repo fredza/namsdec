@@ -289,6 +289,11 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "programme, jaune et orange entre les deux. Le compte exact vient au survol, et la "
          "légende sous l'éditeur donne l'échelle."),
         ("p",
+         "Survolez la gouttière et un <b>point pâle</b> paraît là où le point d'arrêt se "
+         "posera ; le pointeur devient une main, et une infobulle dit ce que le clic fera. "
+         "Rien de tout cela ne s'apprend dans un manuel qu'on n'a pas encore ouvert — la "
+         "colonne le dit elle-même."),
+        ("p",
          "Plusieurs fichiers peuvent être ouverts à la fois : une barre d'onglets apparaît "
          "au-dessus de l'éditeur, chacun gardant son texte, son curseur, ses points d'arrêt "
          "et son exécution en cours. Ctrl+Tab passe au suivant, Ctrl+W ferme."),
@@ -1226,6 +1231,13 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "sont oubliés, et namsdec le dit."),
 
         ("h1", "Les raccourcis"),
+        ("p",
+         "Deux jeux sont livrés. <b>Fake Vim-GDB</b>, celui d'origine, s'inspire de vim "
+         "et de gdb sans les imiter : il en reprend les gestes — les modes, la touche "
+         "« leader », les noms des commandes d'exécution — mais ni le langage de commande "
+         "de l'un ni celui de l'autre. <b>Éditeur ordinaire</b> emploie les raccourcis "
+         "auxquels on s'attend ailleurs. On change de jeu dans Préférences › Raccourcis, "
+         "et les deux couvrent les mêmes actions."),
         ("p",
          "Les séquences notées « Espace puis … » sont des touches relâchées l'une après "
          "l'autre, à la façon de la touche « leader » de vim. Elles ne s'arment que lorsque "

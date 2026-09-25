@@ -349,10 +349,14 @@ impl Preset {
     }
 
     /// Comment l'appeler à l'écran.
+    ///
+    /// « Fake Vim-GDB » et non « Vim et gdb » : le jeu s'inspire des deux
+    /// sans les imiter — il n'y a ni `:` ni registres de Vim, ni langage
+    /// de commande de gdb. Le nom le dit maintenant plutôt que de le
+    /// laisser découvrir, et il ne se traduit pas : c'est un nom propre.
     pub fn label(self, fr: bool) -> &'static str {
         match (self, fr) {
-            (Self::Vim, true) => "Vim et gdb",
-            (Self::Vim, false) => "Vim and gdb",
+            (Self::Vim, _) => "Fake Vim-GDB",
             (Self::Classic, true) => "Éditeur ordinaire",
             (Self::Classic, false) => "Ordinary editor",
         }

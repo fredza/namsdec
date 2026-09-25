@@ -722,6 +722,10 @@ pub struct Strings {
     /// programme n'était assemblé : un titre, un filet, et deux cents
     /// pixels de blanc, entre deux voisines qui, elles, s'expliquaient.
     pub empty_next_instruction: &'static str,
+    /// Ce que la gouttière propose au survol. Rien ne disait qu'on
+    /// pouvait cliquer là : le manuel l'écrit, l'écran non.
+    pub gutter_set_breakpoint: &'static str,
+    pub gutter_clear_breakpoint: &'static str,
     /// Ce que la console montrera, tant qu'aucun programme n'est chargé.
     pub console_before_run: &'static str,
     pub no_binary_assembled_yet: &'static str,
@@ -1504,6 +1508,8 @@ const FR: Strings = Strings {
     empty_disassembly: "Ici s'afficheront les instructions telles que le processeur les lit, avec leurs octets et leurs adresses.",
     empty_vectors: "Ici s'afficheront les registres SSE et AVX, et la pile x87.",
     empty_next_instruction: "Ici s'afficheront l'adresse de la prochaine instruction, ce qu'elle fait, et les octets qui la composent.",
+    gutter_set_breakpoint: "Cliquez pour poser un point d'arrêt : l'exécution s'arrêtera avant cette ligne.",
+    gutter_clear_breakpoint: "Cliquez pour retirer ce point d'arrêt.",
     console_before_run: "La sortie du programme s'affichera ici : ce qu'il écrit, et ce que vous lui répondez.",
     no_binary_assembled_yet: "Aucun binaire assemblé pour l'instant.",
     no_program_loaded: "Aucun programme chargé.",
@@ -2264,6 +2270,8 @@ const EN: Strings = Strings {
     empty_disassembly: "The instructions as the processor reads them will appear here, with their bytes and addresses.",
     empty_vectors: "The SSE and AVX registers, and the x87 stack, will appear here.",
     empty_next_instruction: "The address of the next instruction, what it does, and the bytes that make it up will appear here.",
+    gutter_set_breakpoint: "Click to set a breakpoint: execution will stop before this line.",
+    gutter_clear_breakpoint: "Click to remove this breakpoint.",
     console_before_run: "The program's output will appear here: what it writes, and what you answer it.",
     no_binary_assembled_yet: "No binary assembled yet.",
     no_program_loaded: "No program loaded.",
