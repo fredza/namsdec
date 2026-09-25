@@ -11848,21 +11848,27 @@ fn the_title_bar_carries_the_file_name() {
     assert!(!painted.contains("exemple.asm •"), "rien à enregistrer");
 
     app.source.push_str("    nop\n");
-    // Deux fois : la barre de titre et la barre de statut, qui le dit
-    // aussi depuis toujours.
+    // TROIS fois depuis que la barre d'onglets paraît dès le premier
+    // fichier : le titre de la fenêtre, l'onglet, et la barre d'état.
+    // Trois rôles distincts, et c'est ce que fait tout éditeur — le
+    // titre dit de quel fichier la fenêtre parle, l'onglet lequel on
+    // regarde, la barre d'état ce qu'il en est. La règle qui interdit
+    // de répéter ne vise pas un nom de fichier mais une PHRASE, et elle
+    // ne se déclenche qu'au-delà de vingt signes.
     assert_eq!(
         paint(&mut app).matches("exemple.asm •").count(),
-        2,
-        "le titre et le statut"
+        3,
+        "le titre, l'onglet et le statut"
     );
 
     // Et quand la barre du système reprend la main, namsdec n'écrit
-    // plus de titre : ce serait le dire deux fois.
+    // plus de titre : ce serait le dire deux fois. Restent l'onglet et
+    // la barre d'état.
     app.system_titlebar = true;
     assert_eq!(
         paint(&mut app).matches("exemple.asm •").count(),
-        1,
-        "le statut seul"
+        2,
+        "l'onglet et le statut"
     );
 }
 
@@ -24354,5 +24360,95 @@ fn namsdec_answers_its_command_line() {
     assert!(
         texte.contains("--verison") && texte.contains("--help"),
         "il nomme l'argument fautif et dit où regarder : {texte:?}"
+    );
+}
+
+/// On voit qu'on peut ouvrir plusieurs fichiers.
+///
+/// On le pouvait depuis longtemps : « Ouvrir un fichier… » range le
+/// second dans un onglet. Mais la barre d'onglets n'apparaissait qu'à
+/// partir de DEUX fichiers ouverts, si bien que rien, jamais, ne le
+/// disait — il fallait l'avoir deviné pour s'en servir. Un mécanisme
+/// qu'on ne découvre qu'en l'ayant déjà employé n'existe pas.
+///
+/// La barre paraît donc dès le premier fichier, et porte un « + » :
+/// c'est là qu'on le cherche, et c'est lui qui enseigne que les fichiers
+/// se rangent en onglets.
+#[test]
+fn one_open_file_already_shows_the_tab_bar_and_its_plus() {
+    let dir = tempfile::tempdir().expect("un dossier temporaire");
+    let un = dir.path().join("un.asm");
+    std::fs::write(&un, "bits 64\nglobal _start\n_start:\n    hlt\n").unwrap();
+
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp::default();
+    app.apply_theme(&ctx);
+
+    // Tampon vierge, jamais enregistré : pas de barre, il n'y a pas de
+    // fichier dont parler.
+    let (_, avant) = ce_qui_est_écrit(&ctx, &mut app, None, 3);
+    assert!(
+        !avant.iter().any(|(t, _)| t == "+"),
+        "sans fichier ouvert, la barre d'onglets n'a rien à montrer"
+    );
+
+    // Un seul fichier : la barre est là, avec son nom et le « + ».
+    app.open_file(un.clone());
+    assert!(app.tabs.is_empty(), "un seul fichier ne fait pas d'onglet voisin");
+    let (_, après) = ce_qui_est_écrit(&ctx, &mut app, None, 3);
+    assert!(
+        après.iter().any(|(t, _)| t == "un.asm"),
+        "le fichier ouvert se nomme dans la barre — {:?}",
+        après.iter().map(|(t, _)| t).take(12).collect::<Vec<_>>()
+    );
+    let plus = après
+        .iter()
+        .find(|(t, _)| t == "+")
+        .map(|(_, r)| *r)
+        .expect("le « + » est peint : c'est lui qui dit qu'on peut en ouvrir un autre");
+    // Le nom SUR LA MÊME RANGÉE que le « + », et non le premier trouvé :
+    // « un.asm » est écrit trois fois à l'écran — la barre de titre, la
+    // barre d'état, et l'onglet — et prendre le premier faisait comparer
+    // le « + » de la barre d'onglets au titre de la fenêtre.
+    let nom = après
+        .iter()
+        .find(|(t, r)| t == "un.asm" && (r.center().y - plus.center().y).abs() < 6.0)
+        .map(|(_, r)| *r)
+        .expect("le nom du fichier est écrit dans la barre d'onglets");
+    assert!(
+        plus.left() > nom.right(),
+        "et il est au bout de la file, non devant elle"
+    );
+}
+
+/// « Fermer le fichier » ne disparaît pas du menu.
+///
+/// Elle s'effaçait quand aucun fichier n'était ouvert — c'est-à-dire,
+/// pour qui ouvre le menu Fichier en se demandant comment fermer,
+/// exactement au mauvais moment. Une entrée qui s'efface laisse croire
+/// qu'elle n'existe pas ; une entrée grise qui dit pourquoi enseigne
+/// l'état du programme.
+#[test]
+fn the_close_entry_never_leaves_the_file_menu() {
+    let source = include_str!("main.rs");
+    // L'entrée est posée sous un `add_enabled_ui`, et non sous un `if`
+    // qui la ferait disparaître.
+    let posée = source
+        .lines()
+        .enumerate()
+        .find(|(_, l)| l.contains("s.action_close_tab,"))
+        .map(|(n, _)| n)
+        .expect("l'entrée « Fermer le fichier » est dans le menu");
+    let autour = source.lines().skip(posée.saturating_sub(12)).take(18);
+    let autour: Vec<&str> = autour.collect();
+    assert!(
+        autour.iter().any(|l| l.contains("add_enabled_ui")),
+        "elle est grisée, non retirée :\n{}",
+        autour.join("\n")
+    );
+    assert!(
+        autour.iter().any(|l| l.contains("why_nothing_to_close")),
+        "et elle dit pourquoi elle est grise :\n{}",
+        autour.join("\n")
     );
 }

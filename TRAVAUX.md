@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **25 septembre
-2026**, version 0.2.5-beta.3, 568 tests au vert.
+2026**, version 0.2.5-beta.3, 570 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -62,6 +62,13 @@ processeur est ancré.
       survol. C'est l'écran qu'on a sous les yeux tant qu'on n'a pas
       assemblé.
 - [x] Un changement d'échelle de l'écran redemande une image
+- [x] **On voit qu'on peut ouvrir plusieurs fichiers** — la barre
+      d'onglets paraît dès le PREMIER fichier, avec un « + » au bout.
+      Elle n'apparaissait qu'à partir du second : rien, jamais, ne
+      disait que le mécanisme existait.
+- [x] **« Fermer le fichier » ne disparaît plus du menu** — elle
+      s'effaçait quand aucun fichier n'était ouvert, c'est-à-dire au
+      moment où on la cherche. Grisée, avec sa raison.
 - [x] **namsdec répond à sa ligne de commande** — `namsdec fichier.asm`
       ouvre le fichier, `--version` et `--help` répondent sans ouvrir de
       fenêtre. Le lanceur déclarait `Exec=namsdec %f` et

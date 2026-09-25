@@ -5651,19 +5651,31 @@ impl NamsdecApp {
                 // avec un seul ouvert elle est vide, et « Fermer le
                 // fichier » disparaissait du menu au moment précis où
                 // l'on en avait besoin.
-                if (self.current_file.is_some() || !self.tabs.is_empty())
-                    && ui
+                // TOUJOURS PRÉSENTE, grisée s'il n'y a rien à fermer.
+                //
+                // Elle disparaissait quand aucun fichier n'était ouvert
+                // — c'est-à-dire, pour qui ouvre le menu Fichier en se
+                // demandant comment fermer, exactement au mauvais
+                // moment. Une entrée qui s'efface laisse croire qu'elle
+                // n'existe pas ; une entrée grise qui dit pourquoi
+                // enseigne l'état du programme.
+                let quelque_chose_à_fermer =
+                    self.current_file.is_some() || !self.tabs.is_empty();
+                ui.add_enabled_ui(quelque_chose_à_fermer, |ui| {
+                    if ui
                         .button(shortcut_hint(
                             &self.keybindings,
                             &ctx,
                             s.action_close_tab,
                             Action::CloseTab,
                         ))
+                        .on_disabled_hover_text(s.why_nothing_to_close)
                         .clicked()
-                {
-                    self.dispatch(Action::CloseTab);
-                    ui.close();
-                }
+                    {
+                        self.dispatch(Action::CloseTab);
+                        ui.close();
+                    }
+                });
                 // « Fichier suivant » demande, lui, qu'il y en ait un
                 // autre : c'est une navigation, pas une fermeture.
                 if !self.tabs.is_empty()
@@ -11057,13 +11069,24 @@ impl NamsdecApp {
     /// Un seul fichier ouvert : pas de barre. Elle n'apprend rien tant
     /// qu'il n'y a rien à choisir, et l'éditeur gagne sa hauteur.
     fn tabs_bar_ui(&mut self, ui: &mut egui::Ui) {
-        if self.tabs.is_empty() {
+        // DÈS LE PREMIER FICHIER, et non à partir du second.
+        //
+        // La barre n'apparaissait qu'avec deux fichiers ouverts, si bien
+        // que rien, jamais, ne disait qu'on pouvait en ouvrir plusieurs :
+        // « Ouvrir un fichier… » rangeait bien le second dans un onglet,
+        // mais il fallait l'avoir deviné pour s'en servir. Un mécanisme
+        // qu'on ne découvre qu'en l'ayant déjà employé n'existe pas.
+        //
+        // Elle porte donc un « + » : c'est là qu'on le cherche, et c'est
+        // lui qui enseigne que les fichiers se rangent en onglets.
+        if self.tabs.is_empty() && self.current_file.is_none() {
             return;
         }
         let theme = self.theme;
         let s = strings(self.lang);
         let mut aller = None;
         let mut fermer = None;
+        let mut ouvrir = false;
         egui::ScrollArea::horizontal()
             .id_salt("tabs_bar")
             .auto_shrink([false, true])
@@ -11097,9 +11120,21 @@ impl NamsdecApp {
                         }
                         ui.add_space(6.0);
                     }
+                    // Le « + », au bout de la file : l'endroit où tout
+                    // le monde le cherche.
+                    if ui
+                        .small_button("+")
+                        .on_hover_text(s.tab_open_another)
+                        .clicked()
+                    {
+                        ouvrir = true;
+                    }
                 });
             });
         ui.add_space(2.0);
+        if ouvrir {
+            self.dispatch(Action::OpenFile);
+        }
         if let Some(rang) = aller {
             self.go_to_tab(rang);
         }

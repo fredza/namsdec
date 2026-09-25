@@ -822,6 +822,13 @@ pub struct Strings {
     pub why_program_finished: &'static str,
     pub why_nothing_to_undo: &'static str,
     pub why_nothing_running: &'static str,
+    /// Le « + » de la barre d'onglets, et ce qu'il enseigne : les
+    /// fichiers ouverts se rangent en onglets. Rien ne le disait — on
+    /// pouvait ouvrir un second fichier depuis le menu, mais il fallait
+    /// le deviner.
+    pub tab_open_another: &'static str,
+    /// Pourquoi « Fermer le fichier » est grisé.
+    pub why_nothing_to_close: &'static str,
     /// L'appel qui sort du programme : ce qu'on dit quand l'exécution
     /// tombe sur une fonction qu'aucune bibliothèque n'a fournie.
     /// Ce que le programme emprunte, et ce que namsdec sait en faire.
@@ -1613,6 +1620,8 @@ const FR: Strings = Strings {
     why_program_finished: "Le programme est terminé. Réinitialisez pour repartir du début.",
     why_nothing_to_undo: "Aucun pas à défaire : avancez d'abord d'un pas.",
     why_nothing_running: "Rien ne tourne en ce moment : il n'y a rien à arrêter.",
+    tab_open_another: "Ouvrir un autre fichier — les fichiers ouverts se rangent en onglets, ici.",
+    why_nothing_to_close: "Aucun fichier ouvert : il n'y a rien à fermer.",
     binary_not_linked: "Objet non lié : ses sections n'ont pas encore d'adresse et il n'a pas de point d'entrée. Il se lit et s'analyse, mais ne s'exécute pas — liez-le : ld -Ttext 0x400000 -o programme fichier.o",
     assemble_commands: "Les deux commandes lancées :",
     assemble_commands_copy: "Copier",
@@ -2383,6 +2392,8 @@ const EN: Strings = Strings {
     why_program_finished: "The program has finished. Reset to start again.",
     why_nothing_to_undo: "No step to undo: take a step first.",
     why_nothing_running: "Nothing is running: there is nothing to stop.",
+    tab_open_another: "Open another file — open files line up as tabs, here.",
+    why_nothing_to_close: "No file open: there is nothing to close.",
     binary_not_linked: "Unlinked object: its sections have no address yet and it has no entry point. It reads and analyses, but does not run — link it: ld -Ttext 0x400000 -o program file.o",
     assemble_commands: "The two commands run:",
     assemble_commands_copy: "Copy",
