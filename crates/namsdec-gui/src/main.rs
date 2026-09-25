@@ -5782,6 +5782,7 @@ impl NamsdecApp {
                     if ui
                         .button(s.edit_copy_context)
                         .on_hover_text(s.edit_copy_context_hint)
+                        .on_disabled_hover_text(s.why_no_program)
                         .clicked()
                     {
                         if let Some(contexte) = self.context_text() {
@@ -5792,7 +5793,11 @@ impl NamsdecApp {
                     }
                 });
                 ui.add_enabled_ui(self.assemble_state.is_some(), |ui| {
-                    if ui.button(s.edit_copy_listing).clicked() {
+                    if ui
+                        .button(s.edit_copy_listing)
+                        .on_disabled_hover_text(s.why_no_program)
+                        .clicked()
+                    {
                         if let Some(listing) = self.listing_text() {
                             ui.ctx().copy_text(listing);
                             self.status = Status::Note(|s| s.listing_copied);
@@ -5836,16 +5841,35 @@ impl NamsdecApp {
                     ui.close();
                 }
                 let can_exec = self.can_execute();
+                // La même explication que dans la barre d'outils : une
+                // entrée de menu grisée qui ne dit rien laisse chercher.
+                let pourquoi_pas = if self.emulator.is_none() {
+                    s.why_no_program
+                } else {
+                    s.why_program_finished
+                };
                 ui.add_enabled_ui(can_exec, |ui| {
-                    if ui.button(s.action_step_into).clicked() {
+                    if ui
+                        .button(s.action_step_into)
+                        .on_disabled_hover_text(pourquoi_pas)
+                        .clicked()
+                    {
                         self.dispatch(Action::StepInto);
                         ui.close();
                     }
-                    if ui.button(s.action_step_over).clicked() {
+                    if ui
+                        .button(s.action_step_over)
+                        .on_disabled_hover_text(pourquoi_pas)
+                        .clicked()
+                    {
                         self.dispatch(Action::StepOver);
                         ui.close();
                     }
-                    if ui.button(s.action_run).clicked() {
+                    if ui
+                        .button(s.action_run)
+                        .on_disabled_hover_text(pourquoi_pas)
+                        .clicked()
+                    {
                         self.dispatch(Action::Run);
                         ui.close();
                     }
@@ -5856,13 +5880,18 @@ impl NamsdecApp {
                             s.action_run_to_cursor,
                             Action::RunToCursor,
                         ))
+                        .on_disabled_hover_text(pourquoi_pas)
                         .clicked()
                     {
                         self.dispatch(Action::RunToCursor);
                         ui.close();
                     }
                     ui.add_enabled_ui(self.running, |ui| {
-                        if ui.button(s.action_stop).clicked() {
+                        if ui
+                            .button(s.action_stop)
+                            .on_disabled_hover_text(s.why_nothing_running)
+                            .clicked()
+                        {
                             self.dispatch(Action::Stop);
                             ui.close();
                         }
@@ -5884,6 +5913,7 @@ impl NamsdecApp {
                                 label,
                                 action,
                             ))
+                            .on_disabled_hover_text(pourquoi_pas)
                             .clicked()
                         {
                             self.dispatch(action);
@@ -9800,6 +9830,18 @@ impl NamsdecApp {
             });
 
             let can_exec = self.can_execute();
+            // POURQUOI la commande est grise. `on_hover_text` ne dit
+            // rien sur un widget éteint — egui réserve l'infobulle
+            // ordinaire aux widgets vivants —, si bien qu'on survolait
+            // « Exécuter » grisé et qu'il ne se passait rien du tout.
+            // Une commande éteinte qui se tait passe pour cassée ; celle
+            // qui dit ce qui manque enseigne l'ordre des gestes, et
+            // c'est ce que namsdec est là pour faire.
+            let pourquoi_pas = if self.emulator.is_none() {
+                s.why_no_program
+            } else {
+                s.why_program_finished
+            };
             // Le pas arrière a son propre grisé : il ne dépend pas de
             // l'état d'exécution mais de l'existence d'un pas à défaire.
             let can_undo = self.emulator.as_ref().is_some_and(|e| e.can_step_back());
@@ -9811,6 +9853,7 @@ impl NamsdecApp {
                         s.action_run,
                         Action::Run,
                     ))
+                    .on_disabled_hover_text(pourquoi_pas)
                     .clicked()
                 {
                     self.dispatch(Action::Run);
@@ -9822,6 +9865,7 @@ impl NamsdecApp {
                         s.action_step_into,
                         Action::StepInto,
                     ))
+                    .on_disabled_hover_text(pourquoi_pas)
                     .clicked()
                 {
                     self.dispatch(Action::StepInto);
@@ -9833,6 +9877,7 @@ impl NamsdecApp {
                         s.action_step_over,
                         Action::StepOver,
                     ))
+                    .on_disabled_hover_text(pourquoi_pas)
                     .clicked()
                 {
                     self.dispatch(Action::StepOver);
@@ -9846,6 +9891,7 @@ impl NamsdecApp {
                         s.action_step_back,
                         Action::StepBack,
                     ))
+                    .on_disabled_hover_text(s.why_nothing_to_undo)
                     .clicked()
                 {
                     self.dispatch(Action::StepBack);
@@ -9859,6 +9905,7 @@ impl NamsdecApp {
                         s.action_stop,
                         Action::Stop,
                     ))
+                    .on_disabled_hover_text(s.why_nothing_running)
                     .clicked()
                 {
                     self.dispatch(Action::Stop);
@@ -9878,6 +9925,7 @@ impl NamsdecApp {
                         s.action_reset,
                         Action::Reset,
                     ))
+                    .on_disabled_hover_text(s.why_no_program)
                     .clicked()
                 {
                     self.dispatch(Action::Reset);

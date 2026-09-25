@@ -815,6 +815,13 @@ pub struct Strings {
     /// La même chose en une ligne : le message long ne tient pas dans
     /// une infobulle, et l'infobulle se lit avant le clic, non après.
     pub binary_no_reassemble_hint: &'static str,
+    /// Pourquoi une commande d'exécution est grisée. Une commande
+    /// éteinte qui ne dit rien laisse croire qu'elle est cassée ; celle
+    /// qui dit ce qui manque enseigne l'ordre des gestes.
+    pub why_no_program: &'static str,
+    pub why_program_finished: &'static str,
+    pub why_nothing_to_undo: &'static str,
+    pub why_nothing_running: &'static str,
     /// L'appel qui sort du programme : ce qu'on dit quand l'exécution
     /// tombe sur une fonction qu'aucune bibliothèque n'a fournie.
     /// Ce que le programme emprunte, et ce que namsdec sait en faire.
@@ -1602,6 +1609,10 @@ const FR: Strings = Strings {
     binary_dynamic: "Ce binaire est lié dynamiquement : il emprunte des fonctions à des bibliothèques que namsdec ne charge pas. namsdec en fournit lui-même une poignée, écrites en Rust — afficher, lire, comparer des chaînes, demander de la mémoire —, de quoi faire tourner beaucoup de programmes ; il s'arrête en nommant la première qu'il ne fournit pas. Bibliothèques réclamées :",
     binary_no_reassemble: "Ce listing vient d'un binaire ouvert : le réassembler donnerait un programme sans ses données ni sa table de liaison. Rien n'a été touché — modifiez le texte si vous voulez vraiment en faire un source.",
     binary_no_reassemble_hint: "Ce listing vient d'un binaire ouvert. Modifiez le texte pour en faire un source.",
+    why_no_program: "Rien à exécuter : assemblez d'abord le programme.",
+    why_program_finished: "Le programme est terminé. Réinitialisez pour repartir du début.",
+    why_nothing_to_undo: "Aucun pas à défaire : avancez d'abord d'un pas.",
+    why_nothing_running: "Rien ne tourne en ce moment : il n'y a rien à arrêter.",
     binary_not_linked: "Objet non lié : ses sections n'ont pas encore d'adresse et il n'a pas de point d'entrée. Il se lit et s'analyse, mais ne s'exécute pas — liez-le : ld -Ttext 0x400000 -o programme fichier.o",
     assemble_commands: "Les deux commandes lancées :",
     assemble_commands_copy: "Copier",
@@ -2368,6 +2379,10 @@ const EN: Strings = Strings {
     binary_dynamic: "This binary is dynamically linked: it borrows functions from libraries namsdec does not load. namsdec provides a handful itself, written in Rust — printing, reading, comparing strings, asking for memory — enough to run many programs; it stops by naming the first one it does not provide. Libraries required:",
     binary_no_reassemble: "This listing comes from an opened binary: reassembling it would give a program without its data or its linkage table. Nothing was touched — edit the text if you really mean to turn it into a source.",
     binary_no_reassemble_hint: "This listing comes from an opened binary. Edit the text to turn it into a source.",
+    why_no_program: "Nothing to run: assemble the program first.",
+    why_program_finished: "The program has finished. Reset to start again.",
+    why_nothing_to_undo: "No step to undo: take a step first.",
+    why_nothing_running: "Nothing is running: there is nothing to stop.",
     binary_not_linked: "Unlinked object: its sections have no address yet and it has no entry point. It reads and analyses, but does not run — link it: ld -Ttext 0x400000 -o program file.o",
     assemble_commands: "The two commands run:",
     assemble_commands_copy: "Copy",

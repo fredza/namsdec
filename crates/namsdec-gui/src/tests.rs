@@ -24203,3 +24203,72 @@ fn a_change_of_scale_asks_for_a_new_frame() {
         "et la nouvelle échelle est retenue à son tour"
     );
 }
+
+/// Une commande grisée dit pourquoi elle l'est.
+///
+/// `on_hover_text` ne s'affiche PAS sur un widget éteint — egui réserve
+/// l'infobulle ordinaire aux widgets vivants. La barre d'outils portait
+/// donc cinq boutons gris — Exécuter, Step Into, Step Over, Step Back,
+/// Stop — qui ne disaient rien du tout au survol. C'est l'écran qu'on a
+/// sous les yeux tant qu'on n'a pas assemblé, et une commande éteinte
+/// qui se tait passe pour cassée.
+///
+/// Dire ce qui manque, c'est enseigner l'ordre des gestes : « Rien à
+/// exécuter : assemblez d'abord le programme. » C'est ce que namsdec est
+/// là pour faire.
+///
+/// Le contrôle lit le source, parce que la règle est là. Il porte sur
+/// les conditions qui parlent de **l'état du programme** — `can_exec`,
+/// `can_undo`, `self.running`, `self.emulator.is_some()` : ce sont
+/// celles dont la réponse s'apprend. Une entrée grisée parce que la
+/// liste des récents est vide se comprend sans phrase.
+#[test]
+fn a_greyed_command_says_why() {
+    let source = include_str!("main.rs");
+    let lignes: Vec<&str> = source.lines().collect();
+    let conditions = [
+        "add_enabled_ui(can_exec",
+        "add_enabled_ui(can_undo",
+        "add_enabled_ui(self.running",
+        "add_enabled_ui(self.emulator.is_some()",
+    ];
+    let mut muettes = Vec::new();
+    for (n, ligne) in lignes.iter().enumerate() {
+        if !conditions.iter().any(|c| ligne.contains(c)) {
+            continue;
+        }
+        // CHAQUE bouton du bloc, et non le bloc entier : un premier
+        // essai se contentait d'un `on_disabled_hover_text` quelque part
+        // dans les trente lignes qui suivent, et il passait au vert avec
+        // le défaut remis — les voisins du bouton muet avaient le leur.
+        //
+        // On repère donc chaque `.clicked()` du bloc et l'on remonte
+        // jusqu'au début de sa chaîne, c'est-à-dire jusqu'au `if` qui
+        // l'ouvre. L'explication doit être dans cette chaîne-là.
+        let fin = (n + 30).min(lignes.len());
+        for (m, l) in lignes[n..fin].iter().enumerate() {
+            if !l.trim_start().starts_with(".clicked()") && !l.contains(".clicked()") {
+                continue;
+            }
+            let mut début = n + m;
+            while début > n && !lignes[début].contains("if ") {
+                début -= 1;
+            }
+            let chaîne = lignes[début..=(n + m)].join("\n");
+            if !chaîne.contains("on_disabled_hover_text") {
+                muettes.push(format!(
+                    "main.rs:{} {} (sous « {} »)",
+                    début + 1,
+                    lignes[début].trim(),
+                    ligne.trim()
+                ));
+            }
+        }
+    }
+    assert!(
+        muettes.is_empty(),
+        "{} commande(s) grisée(s) qui ne disent pas pourquoi :\n  {}",
+        muettes.len(),
+        muettes.join("\n  ")
+    );
+}

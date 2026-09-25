@@ -260,6 +260,11 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "une phrase. Ouverte vide puis remplie, elle garde sa petite taille : elle "
          "se redimensionne, et son contenu défile."),
         ("p",
+         "Une commande <b>grisée dit pourquoi</b> elle l'est : survolez « Exécuter » "
+         "avant d'avoir assemblé et namsdec répond « Rien à exécuter : assemblez "
+         "d'abord le programme ». Une commande éteinte qui se tait passe pour cassée ; "
+         "celle qui dit ce qui manque enseigne l'ordre des gestes."),
+        ("p",
          "Les boutons sont <b>plats dans les menus et encadrés ailleurs</b>. Dans un "
          "menu, la platitude est le dessin ; dans une fenêtre, un bouton qui ne se "
          "distingue d’une étiquette qu’au survol ne se trouve pas. Ce qu’on "

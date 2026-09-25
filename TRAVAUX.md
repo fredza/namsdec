@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **25 septembre
-2026**, version 0.2.5-beta.3, 566 tests au vert.
+2026**, version 0.2.5-beta.3, 567 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -56,6 +56,12 @@ processeur est ancré.
 - [x] Les boîtes de dialogue parlent la même langue (A 1.24)
 - [x] Les fenêtres internes disent leur rang (A 2.1)
 - [x] Six fenêtres s'agrandissent (A 2.9)
+- [x] **Une commande grisée dit pourquoi elle l'est** — `on_hover_text`
+      ne s'affiche pas sur un widget éteint, si bien que cinq boutons de
+      la barre d'outils et six entrées de menu ne disaient rien au
+      survol. C'est l'écran qu'on a sous les yeux tant qu'on n'a pas
+      assemblé.
+- [x] Un changement d'échelle de l'écran redemande une image
 - [x] « Touche simple… » et « Séquence… » sont des boutons encadrés — et
       le contrôle voit maintenant la troisième façon d'écrire un bouton,
       `egui::Button::new` posé à la main
