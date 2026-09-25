@@ -7613,7 +7613,7 @@ impl NamsdecApp {
             // la fermer.
             .max_height((ctx.viewport_rect().height() - 60.0).max(320.0))
             .pivot(egui::Align2::CENTER_CENTER)
-            .default_pos(ctx.viewport_rect().center());
+            .default_pos(default_window_pos(ctx, "calculator"));
         let rendue = self
             .maximizable(fenêtre, Self::CALCULATOR_WINDOW, ctx)
             .title_bar(false)
@@ -7904,7 +7904,7 @@ impl NamsdecApp {
             .pivot(egui::Align2::CENTER_CENTER)
             // `default_pos` et non `current_pos` : la seconde replace la
             // fenêtre à chaque frame, et l'on ne peut plus la déplacer.
-            .default_pos(ctx.viewport_rect().center());
+            .default_pos(default_window_pos(ctx, "exercises"));
         let rendue_exercises_window = self
             .maximizable(fenêtre_exercises_window, Self::EXERCISES_WINDOW, ctx)
             .title_bar(false)
@@ -8453,7 +8453,7 @@ impl NamsdecApp {
                 })
                 .min_size([640.0, 420.0])
                 .pivot(egui::Align2::CENTER_CENTER)
-                .default_pos(ctx.viewport_rect().center())
+                .default_pos(default_window_pos(ctx, "flow"))
         };
         let rendue = fenêtre
             .title_bar(false)
@@ -9001,7 +9001,7 @@ impl NamsdecApp {
                 // chevauche.
                 .max_width(900.0)
                 .pivot(egui::Align2::CENTER_CENTER)
-                .default_pos(ctx.viewport_rect().center())
+                .default_pos(default_window_pos(ctx, "decompiler"))
         };
         let rendue = fenêtre
             .title_bar(false)
@@ -12507,7 +12507,7 @@ impl NamsdecApp {
             .collapsible(false)
             .default_size([680.0, 560.0])
             .pivot(egui::Align2::CENTER_CENTER)
-            .default_pos(ctx.viewport_rect().center());
+            .default_pos(default_window_pos(ctx, "disassembly"));
         let rendue_disassembly_window = self
             .maximizable(fenêtre_disassembly_window, Self::DISASSEMBLY_WINDOW, ctx)
             .title_bar(false)
@@ -12848,7 +12848,7 @@ impl NamsdecApp {
             .resizable(true)
             .default_size([560.0, 400.0])
             .pivot(egui::Align2::CENTER_CENTER)
-            .default_pos(ctx.viewport_rect().center())
+            .default_pos(default_window_pos(ctx, "cyclic"))
             .title_bar(false)
             .show(ctx, |ui| {
                 if chrome::window_head(ui, self.theme, s, s.cyclic_title) {
@@ -13004,7 +13004,7 @@ impl NamsdecApp {
             .collapsible(false)
             .default_size([520.0, 420.0])
             .pivot(egui::Align2::CENTER_CENTER)
-            .default_pos(ctx.viewport_rect().center());
+            .default_pos(default_window_pos(ctx, "timeline"));
         let rendue_timeline_window = self
             .maximizable(fenêtre_timeline_window, Self::TIMELINE_WINDOW, ctx)
             .title_bar(false)
@@ -13176,7 +13176,7 @@ impl NamsdecApp {
             .collapsible(false)
             .default_size([480.0, 320.0])
             .pivot(egui::Align2::CENTER_CENTER)
-            .default_pos(ctx.viewport_rect().center())
+            .default_pos(default_window_pos(ctx, "breakpoints"))
             .title_bar(false)
             .show(ctx, |ui| {
                 if chrome::window_head(ui, self.theme, s, s.breakpoints_title) {
@@ -13262,7 +13262,7 @@ impl NamsdecApp {
             .default_size(analysis_window_size(ctx))
             .min_size([560.0, 420.0])
             .pivot(egui::Align2::CENTER_CENTER)
-            .default_pos(ctx.viewport_rect().center());
+            .default_pos(default_window_pos(ctx, "analysis"));
         let rendue_analysis_window = self
             .maximizable(fenêtre_analysis_window, Self::ANALYSIS_WINDOW, ctx)
             .title_bar(false)
@@ -13504,7 +13504,7 @@ impl NamsdecApp {
             .collapsible(false)
             .default_size([520.0, 620.0])
             .pivot(egui::Align2::CENTER_CENTER)
-            .default_pos(ctx.viewport_rect().center())
+            .default_pos(default_window_pos(ctx, "vectors"))
             .title_bar(false)
             .show(ctx, |ui| {
                 if chrome::window_head(ui, self.theme, s, s.vectors_title) {
@@ -14435,7 +14435,7 @@ impl NamsdecApp {
             .default_size([560.0, 420.0])
             .min_size([460.0, 300.0])
             .pivot(egui::Align2::CENTER_CENTER)
-            .default_pos(ctx.viewport_rect().center())
+            .default_pos(default_window_pos(ctx, "patches"))
             .show(ctx, |ui| {
                 if chrome::window_head(ui, theme, s, s.patch_title) {
                     fermer = true;
@@ -17993,6 +17993,44 @@ pub(crate) const PATCHES_WINDOW: &str = "patches_window";
 /// Deux d'entre elles appartiennent à un module qui peut avoir été
 /// éteint entre-temps : leur reprise le redemande plutôt que de le
 /// supposer, si bien qu'éteindre le module emporte bien sa fenêtre.
+/// Où poser une fenêtre d'établi qu'on ouvre pour la première fois.
+///
+/// Toutes partaient du centre exact du viewport, avec un pivot centré :
+/// deux fenêtres ouvertes ensemble se superposaient AU PIXEL PRÈS, et
+/// celle du dessous devenait introuvable. On ne s'en apercevait guère
+/// tant qu'on les ouvrait une à une — depuis que la séance rouvre celles
+/// qu'on avait laissées, on peut en retrouver douze au même endroit.
+///
+/// Chacune reçoit donc un cran sur une diagonale, comme un jeu de cartes
+/// qu'on étale. Le cran vient du RANG de la fenêtre dans
+/// `FENÊTRES_REPRISES`, c'est-à-dire d'une table fixe : la place d'une
+/// fenêtre ne dépend ni de ce qu'elle contient, ni de sa taille, ni de
+/// ce qui est déjà ouvert. Rien ne se mesure, donc rien ne peut se
+/// reboucler d'une image à l'autre — c'est le premier piège de cette
+/// interface, et il a déjà coûté trois corrections retirées.
+///
+/// L'éventail est CENTRÉ sur le milieu de l'écran : la première fenêtre
+/// se pose en haut à gauche de ce milieu, la dernière en bas à droite,
+/// et l'ensemble reste groupé là où l'œil va le chercher. Le pas se
+/// resserre sur un petit écran, de sorte que l'éventail n'occupe jamais
+/// plus du tiers de la hauteur.
+///
+/// Une fenêtre absente de la table garde le centre : c'est ce qu'il faut
+/// pour les boîtes modales — Préférences, « À propos », la saisie du
+/// programme —, qui ne s'ouvrent jamais à plusieurs. La fiche d'aide,
+/// elle, a son propre coin en bas à droite et ne demande pas de cran :
+/// on la lit en continuant d'écrire.
+fn default_window_pos(ctx: &egui::Context, nom: &str) -> egui::Pos2 {
+    let écran = ctx.viewport_rect();
+    let Some(rang) = FENÊTRES_REPRISES.iter().position(|(id, _, _)| *id == nom) else {
+        return écran.center();
+    };
+    let combien = FENÊTRES_REPRISES.len() as f32;
+    let pas = (écran.height() / (3.0 * combien)).clamp(8.0, 24.0);
+    let cran = rang as f32 - (combien - 1.0) / 2.0;
+    écran.center() + egui::vec2(cran * pas, cran * pas)
+}
+
 #[allow(clippy::type_complexity)]
 pub(crate) const FENÊTRES_REPRISES: &[(
     &str,

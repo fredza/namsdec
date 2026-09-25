@@ -1211,7 +1211,9 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "autre. Les boîtes qui posent une question — Préférences, « À propos », la saisie "
          "du programme — ne se rouvrent pas toutes seules : elles se ferment sur leur "
          "réponse. Les deux fenêtres qui appartiennent à un module ne reviennent que si le "
-         "module est encore allumé."),
+         "module est encore allumé. Elles se posent en <b>escalier</b> et non les unes "
+         "sur les autres : chacune a son cran, si bien qu'on voit du premier coup "
+         "combien il y en a et qu'on attrape celle qu'on veut par sa barre de titre."),
         ("note",
          "Les repères posés sur un binaire ne reviennent que si le <b>fichier n'a pas "
          "changé</b> — taille et date. Ils se comptent en numéros de ligne d'un listing "

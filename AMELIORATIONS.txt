@@ -1035,15 +1035,25 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      parce que les invariants se contredisent parfois (voir le vide de 56 px)
      et qu'il faut une seule tête pour arbitrer.
 
-     TROUVÉ, et en tête de la liste : LES FENÊTRES S'EMPILENT AU PIXEL PRÈS.
+     [FAIT] LES FENÊTRES S'EMPILAIENT AU PIXEL PRÈS.
      Toutes appellent `default_pos(viewport.center())` avec un pivot centré ;
      en ouvrir deux les superpose exactement. Cela se voyait peu tant qu'on
      les ouvrait une à une ; depuis que la séance rouvre celles qu'on avait
      laissées, on peut en retrouver douze au même endroit — vu sur la capture
      du 25 septembre, calculatrice et chronologie l'une sur l'autre. La sortie
-     est un ESCALIER : un décalage par fenêtre, pris sur une table fixe, sans
-     état ni mesure — donc sans risque de boucle. Vérifier au passage qu'une
-     fenêtre décalée ne sorte pas de l'écran sur un petit affichage.
+     était un ESCALIER : un décalage par fenêtre, pris sur le rang dans
+     FENÊTRES_REPRISES — table fixe, rien de mesuré, donc rien qui puisse se
+     reboucler. L'éventail est centré sur le milieu de l'écran et son pas se
+     resserre sur un petit affichage, de sorte qu'il n'occupe jamais plus du
+     tiers de la hauteur ; l'invariant vérifie aussi que chaque fenêtre tient
+     dans l'écran. Les boîtes modales gardent le centre, la fiche d'aide son
+     coin en bas à droite.
+     LE PREMIER JET DU TEST NE VOYAIT RIEN : il comparait les coins haut-gauche.
+     Le pivot des fenêtres est CENTER_CENTER — posées au même point, deux
+     fenêtres de tailles différentes ont des coins différents tout en étant
+     parfaitement concentriques. Le coin ne dit pas où la fenêtre a été posée ;
+     le centre, si. Test éprouvé dans les deux sens : replacé sur le centre de
+     l'écran, il échoue en nommant les fenêtres confondues.
      [FAIT] La répétition triple : la console et les registres étendus disent
      maintenant ce qu'ils montreront, et un contrôle interdit à une phrase de
      plus de vingt caractères d'être écrite trois fois sur le même écran.

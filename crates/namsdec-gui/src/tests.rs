@@ -23111,3 +23111,81 @@ fn the_windows_left_open_come_back_next_time() {
         ..Settings::default()
     });
 }
+
+/// Deux fenêtres ouvertes ensemble ne se posent pas au même endroit.
+///
+/// Toutes partaient du centre exact du viewport, avec un pivot centré :
+/// elles se superposaient AU PIXEL PRÈS, et celle du dessous devenait
+/// introuvable — on la cherchait dans le menu Affichage en la croyant
+/// fermée. Le défaut dormait tant qu'on les ouvrait une à une ; la
+/// reprise de séance, qui peut en rouvrir douze, l'a mis au jour.
+///
+/// Le contrôle porte sur le CENTRE, et c'est le premier essai de ce test
+/// qui l'a appris : comparer les coins haut-gauche ne voyait rien du
+/// tout. Le pivot des fenêtres est `CENTER_CENTER` — posées au même
+/// point, deux fenêtres de tailles différentes ont des coins différents
+/// tout en étant parfaitement concentriques, c'est-à-dire empilées. Le
+/// coin ne dit pas où la fenêtre a été posée ; le centre, si.
+///
+/// Le test a donc été éprouvé dans les deux sens : replacé sur le centre
+/// de l'écran, il échoue en nommant les fenêtres confondues.
+///
+/// Et elles restent sur l'écran : un éventail qui pousse la dernière
+/// fenêtre hors du viewport échange un défaut contre un pire.
+#[test]
+fn two_windows_opened_together_do_not_land_on_the_same_spot() {
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp {
+        // Les deux fenêtres de module ne s'ouvrent qu'avec lui.
+        show_decompiler_module: true,
+        exercises: true,
+        ..Default::default()
+    };
+    app.apply_theme(&ctx);
+    for (_, _, ouvre) in FENÊTRES_REPRISES {
+        ouvre(&mut app);
+    }
+    let entrée = écran_du_banc();
+    let écran = entrée.screen_rect.expect("l'écran du banc");
+    // Quatre images : une fenêtre dont la hauteur épouse son contenu ne
+    // se pose pas du premier coup.
+    for _ in 0..4 {
+        let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+        sortie.textures_delta.clear();
+    }
+
+    let mut posées: Vec<(&str, egui::Rect)> = Vec::new();
+    for (nom, ouverte) in app.window_states() {
+        if !ouverte {
+            continue;
+        }
+        let Some(état) = egui::AreaState::load(&ctx, egui::Id::new(nom)) else {
+            continue;
+        };
+        posées.push((nom, état.rect()));
+    }
+    assert!(
+        posées.len() >= 10,
+        "il faut plusieurs fenêtres pour que le test prouve quelque chose — {} \
+         seulement : {:?}",
+        posées.len(),
+        posées.iter().map(|(n, _)| *n).collect::<Vec<_>>()
+    );
+
+    for (i, (nom_a, a)) in posées.iter().enumerate() {
+        for (nom_b, b) in &posées[i + 1..] {
+            let écart = a.center().distance(b.center());
+            assert!(
+                écart > 8.0,
+                "« {nom_a} » et « {nom_b} » se posent au même endroit — \
+                 centre {:?} contre {:?}",
+                a.center(),
+                b.center()
+            );
+        }
+        assert!(
+            écran.expand(1.0).contains_rect(*a),
+            "« {nom_a} » doit tenir dans l'écran — {a:?} pour un écran de {écran:?}"
+        );
+    }
+}
