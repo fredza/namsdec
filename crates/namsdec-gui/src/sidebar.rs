@@ -652,17 +652,19 @@ impl NamsdecApp {
             ui.colored_label(theme.good, egui::RichText::new(clair).monospace());
         }
 
-        // Les octets, découpés par rôle : un préfixe n'est pas un
-        // opcode, et une instruction x86 se lit comme une suite de
-        // champs. C'est ce qu'on apprend en lisant un manuel Intel, et
-        // ce qu'aucun désassembleur ne montre.
-        self.encoding_ui(ui, &instr, window);
-
-        // Trois lignes en tout jusqu'ici : où l'on est, ce que
-        // l'instruction dit en clair, et ses octets. Le reste — la
-        // fiche, les opérandes résolus, les arguments d'un appel — est
-        // derrière un repli, qui s'ouvre de lui-même devant ce qui
-        // mérite une explication.
+        // Deux lignes en tout jusqu'ici : où l'on est, et ce que
+        // l'instruction dit en clair. Le reste — les octets découpés par
+        // rôle, la fiche, les opérandes résolus, les arguments d'un
+        // appel — est derrière un repli, qui s'ouvre de lui-même devant
+        // ce qui mérite une explication.
+        //
+        // Les octets sont passés sous le repli, et c'est une place
+        // gagnée qui se mesure : sur une fenêtre de 1280×820 avec la
+        // console ouverte, le bandeau demandait plus que la place
+        // disponible et la zone défilante coupait une ligne en deux.
+        // Ils n'ont rien perdu de leur intérêt — ils découpent
+        // l'instruction par champs, ce qu'aucun désassembleur ne montre
+        // — mais on les regarde en s'arrêtant, pas à chaque pas.
         let mérite = matches!(
             instr.flow_control(),
             namsdec_disasm::FlowControl::Call
@@ -695,6 +697,12 @@ impl NamsdecApp {
             ui.separator();
             return;
         }
+
+        // Les octets, découpés par rôle : un préfixe n'est pas un
+        // opcode, et une instruction x86 se lit comme une suite de
+        // champs. C'est ce qu'on apprend en lisant un manuel Intel, et
+        // ce qu'aucun désassembleur ne montre.
+        self.encoding_ui(ui, &instr, window);
 
         // La fiche de l'instruction, en une ligne : « Copier une valeur ».
         // Le reste est sous F1 — ici, c'est le rappel qui évite d'y aller.

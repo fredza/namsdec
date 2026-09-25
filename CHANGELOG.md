@@ -337,6 +337,26 @@ six fautes d'assembleur que namsdec sait désormais reconnaître.
   que la fenêtre la reposait en se dessinant. Un test qui échoue au
   hasard apprend à ignorer la suite ; celui-ci disait quelque chose.
 
+**Le bandeau ne coupe plus de ligne en deux**
+- Sur une fenêtre de 1280×820 — la taille par défaut — avec la console
+  ouverte, la zone défilante du bandeau tranchait « EAX = 0 » au milieu.
+  Une zone qui défile se coupe, et c'est son métier ; mais dans une
+  liste, où l'on fait défiler exprès. Dans le bandeau du haut, une
+  demi-ligne ne se lit pas comme un choix.
+- Deux changements, et il fallait les deux. **La ligne d'octets passe
+  sous le repli « Détail »** : elle découpe l'instruction par champs —
+  préfixe, opcode, ModR/M — ce qu'aucun désassembleur ne montre, mais on
+  la regarde en s'arrêtant, pas à chaque pas. Elle libère 24 px. Et le
+  **plancher de l'onglet passe de 220 à 180** : les deux ensemble
+  suffisent, aucun des deux seul.
+- Mesuré plutôt que deviné : en faisant varier le plancher de 220 à 150
+  sans toucher au reste, la coupe ne disparaissait jamais — elle se
+  déplaçait, de « EAX = 0 » à la ligne d'octets puis à « Détail ».
+- Un contrôle interdit désormais au bandeau de couper une ligne en deux,
+  à trois tailles de fenêtre. Il ne regarde que ce qui est au-dessus de
+  l'onglet : en dessous, la pile et la mémoire sont des listes, et leur
+  dernière ligne a le droit d'être coupée.
+
 **La même phrase trois fois sur un écran**
 - Au démarrage, « Aucun binaire assemblé. » s'affichait **trois fois en
   même temps** : le bandeau des registres, l'onglet du panneau, et la

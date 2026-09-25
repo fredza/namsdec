@@ -373,10 +373,14 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
         ("h2", "Le panneau de droite"),
         ("p", "Il se lit de haut en bas, et se partage en trois zones fixes :"),
         ("liste", [
-         "<b>Prochaine instruction</b> — l'adresse, le texte, le pseudo-code "
+         "<b>Prochaine instruction</b> — l’adresse et le pseudo-code "
          "(<font face='Courier'>RAX = RAX + RCX</font> plutôt que "
-         "<font face='Courier'>add rax, rcx</font>), les octets, et le détail des opérandes : "
-         "l'adresse effective qu'un calcul désigne, et l'octet qui s'y trouve.",
+         "<font face='Courier'>add rax, rcx</font>). Sous le repli <b>Détail</b> : les "
+         "octets découpés par champs, la fiche de l’instruction, et l’adresse "
+         "effective qu’un calcul désigne avec l’octet qui s’y trouve. Deux lignes "
+         "dépliées et le reste à un clic : c’est ce qu’on lit à chaque pas, et "
+         "le bandeau doit tenir sans rien couper. Le repli s’ouvre de lui-même devant "
+         "un appel, un saut conditionnel ou un appel système.",
          "<b>État du processeur</b> — seize registres, RIP, les six indicateurs en "
          "pastilles, le nombre d'instructions exécutées. Un clic sur un nom de registre pose "
          "une surveillance ; un clic sur une valeur permet de la remplacer.",

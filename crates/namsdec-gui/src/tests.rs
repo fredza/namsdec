@@ -5216,7 +5216,6 @@ hlt
     };
     app.do_assemble();
     assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
-
     let ctx = egui::Context::default();
     app.apply_theme(&ctx);
     let input = egui::RawInput {
@@ -6026,6 +6025,13 @@ syscall
     };
     app.do_assemble();
     assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+    // Les octets sont passés sous le repli « Détail » : ils découpent
+    // l'instruction par champs, ce qu'on regarde en s'arrêtant, non à
+    // chaque pas — le bandeau n'avait plus la place de les montrer sans
+    // couper une ligne en deux sur une fenêtre par défaut. Le repli
+    // s'ouvre de lui-même devant un appel ou un saut ; devant un `mov`,
+    // c'est à nous de l'ouvrir.
+    app.next_detail_open = true;
 
     let ctx = egui::Context::default();
     app.apply_theme(&ctx);
@@ -22884,3 +22890,77 @@ fn no_sentence_is_said_three_times_on_one_screen() {
     }
 }
 
+
+
+/// Le bandeau latéral ne coupe aucune ligne en deux.
+///
+/// Une zone qui défile se coupe, et c'est son métier — mais dans une
+/// liste, où l'on fait défiler exprès. Dans le bandeau du haut, qui
+/// n'est pas une liste, une demi-ligne tranchée au milieu ne se lit pas
+/// comme un choix : elle se lit comme un défaut. C'était le cas de
+/// « EAX = 0 » sur une fenêtre de 1280×820, la taille par défaut.
+///
+/// La mesure ne regarde que ce qui est **au-dessus** de l'onglet : en
+/// dessous, la pile et la mémoire sont des listes, et leur dernière
+/// ligne a le droit d'être coupée.
+#[test]
+fn the_sidebar_banner_never_cuts_a_line_in_half() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    for (largeur, hauteur) in [(1280.0_f32, 820.0_f32), (1440.0, 900.0), (1920.0, 1080.0)] {
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp {
+            source: DEFAULT_SOURCE.to_owned(),
+            show_sidebar: true,
+            show_console: true,
+            ..Default::default()
+        };
+        app.apply_theme(&ctx);
+        app.do_assemble();
+        assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+        let entrée = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(largeur, hauteur),
+            )),
+            ..Default::default()
+        };
+        let mut coupés: Vec<String> = Vec::new();
+        for _ in 0..6 {
+            coupés.clear();
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            // Le haut de l'onglet : ce qui est en dessous est une liste.
+            let onglet = egui::containers::panel::PanelState::load(
+                &ctx,
+                egui::Id::new("sidebar_tab"),
+            )
+            .map(|é| é.outer_rect.top())
+            .unwrap_or(f32::INFINITY);
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                    let posé = egui::Rect::from_min_size(t.pos, t.galley.size());
+                    if posé.bottom() > onglet {
+                        continue;
+                    }
+                    let vu = posé.intersect(clipped.clip_rect);
+                    // Coupée « en deux » : une part visible, mais pas
+                    // toute. Rognée à néant, c'est du défilement.
+                    if vu.height() > 0.5 && vu.height() < posé.height() - 0.5 {
+                        coupés.push(format!(
+                            "« {} » {:.0} px sur {:.0}",
+                            t.galley.text().chars().take(24).collect::<String>(),
+                            vu.height(),
+                            posé.height()
+                        ));
+                    }
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+        assert!(
+            coupés.is_empty(),
+            "à {largeur}×{hauteur}, le bandeau coupe des lignes en deux : {coupés:?}"
+        );
+    }
+}

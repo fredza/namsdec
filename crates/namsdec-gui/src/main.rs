@@ -299,7 +299,15 @@ fn sidebar_min_width(ui: &egui::Ui) -> f32 {
 /// il finissait par tout prendre et l'onglet se réduisait à son titre et
 /// à deux lignes — l'analyse d'un binaire à travers une meurtrière. Ce
 /// plancher lui garantit de quoi être lu.
-const SIDEBAR_TAB_MIN: f32 = 220.0;
+///
+/// Deux cent vingt auparavant, et c'était vingt de trop : sur une
+/// fenêtre de 1280×820 — la taille par défaut — avec la console
+/// ouverte, le bandeau n'avait plus la place de finir et la zone
+/// défilante coupait une ligne en deux. Mesuré en faisant varier ce
+/// nombre : la coupe ne disparaissait pas, elle se déplaçait, jusqu'à
+/// ce que la ligne d'octets passe sous le repli et libère ses
+/// vingt-quatre pixels. Les deux changements ensemble suffisent.
+const SIDEBAR_TAB_MIN: f32 = 180.0;
 
 /// Et ce qui reste au bandeau, quoi qu'il arrive : de quoi lire ce qui
 /// vient et les premières lignes de l'état du processeur.
