@@ -24147,3 +24147,59 @@ fn the_listing_keeps_its_columns_from_line_to_line() {
         hors.join(", ")
     );
 }
+
+/// Un changement d'échelle redemande une image.
+///
+/// Deux captures du 25 septembre au soir montraient le panneau de droite
+/// avec deux blocs sur les mêmes pixels : l'état du processeur et le
+/// haut de l'onglet Mémoire. Mesuré SUR L'IMAGE : « RIP » et « Carte de
+/// la mémoire » font 33 et 31 pixels de haut, et les textes superposés à
+/// eux en font dix-huit. Ce n'est donc pas une mise en page qui se
+/// recouvre — egui dessine une image à une seule échelle — mais une
+/// bande restée d'un rendu précédent, plus petit, que rien n'a
+/// repeinte : le facteur d'échelle de l'écran avait changé entre les
+/// deux.
+///
+/// Trois hypothèses de mise en page avaient été essayées avant celle-là,
+/// et le banc ne retrouvait le défaut à aucune taille. Il ne pouvait
+/// pas : le banc dessine à une échelle et une seule.
+///
+/// On ne répare pas le compositeur ; on ne l'attend pas non plus.
+#[test]
+fn a_change_of_scale_asks_for_a_new_frame() {
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp::default();
+    app.apply_theme(&ctx);
+    let écran = |échelle: f32| egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1600.0, 1100.0),
+        )),
+        viewports: std::iter::once((
+            egui::ViewportId::ROOT,
+            egui::ViewportInfo {
+                native_pixels_per_point: Some(échelle),
+                ..Default::default()
+            },
+        ))
+        .collect(),
+        ..Default::default()
+    };
+    // Deux images à la même échelle : le compte est posé.
+    for _ in 0..2 {
+        let mut sortie = ctx.run_ui(écran(2.0), |ui| app.draw(ui));
+        sortie.textures_delta.clear();
+    }
+    let posée = app.dernière_échelle;
+    assert_eq!(posée, Some(2.0), "l'échelle courante est retenue");
+
+    // Elle change : l'application doit redemander une image, sans quoi
+    // ce que le compositeur a agrandi reste à l'écran.
+    let mut sortie = ctx.run_ui(écran(3.0), |ui| app.draw(ui));
+    sortie.textures_delta.clear();
+    assert_eq!(
+        app.dernière_échelle,
+        Some(3.0),
+        "et la nouvelle échelle est retenue à son tour"
+    );
+}

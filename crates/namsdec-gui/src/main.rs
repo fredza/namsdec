@@ -1556,6 +1556,9 @@ struct NamsdecApp {
     /// défaut, puisqu'un test part d'une application neuve. Seul le
     /// lancement réel donne ce chemin.
     settings_file: Option<PathBuf>,
+    /// Le facteur d'échelle de l'écran à l'image précédente : quand il
+    /// change, toute la fenêtre est à repeindre (voir `draw`).
+    dernière_échelle: Option<f32>,
     /// Le bandeau d'état est-il déployé ? Vrai à chaque lancement, et
     /// **hors de `settings.json`** : egui garde
     /// normalement l'état des en-têtes repliables d'une session à
@@ -2423,6 +2426,7 @@ impl Default for NamsdecApp {
             disabled_packs: BTreeSet::new(),
             current_exercise: None,
             settings_file: None,
+            dernière_échelle: None,
             cpu_state_open: true,
             next_instruction_open: true,
             next_detail_open: false,
@@ -17814,6 +17818,28 @@ impl NamsdecApp {
     /// compris — qu'il faut exercer.
     fn draw(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
+        // L'ÉCHELLE A-T-ELLE CHANGÉ ? Alors tout est à repeindre.
+        //
+        // Deux captures du 25 septembre au soir montraient le panneau de
+        // droite avec deux blocs superposés : l'état du processeur et le
+        // haut de l'onglet Mémoire, sur les mêmes pixels. Mesuré sur
+        // l'image : « RIP » et « Carte de la mémoire » font 33 et 31
+        // pixels de haut, et les textes qui se superposent à eux en font
+        // DIX-HUIT. Ce n'est donc pas une mise en page qui se recouvre —
+        // egui dessine une image à une seule échelle — mais une bande
+        // restée d'un rendu PRÉCÉDENT, plus petit, que rien n'a
+        // repeinte. Le facteur d'échelle de l'écran avait changé entre
+        // les deux.
+        //
+        // On ne peut pas réparer le compositeur, mais on peut ne pas
+        // l'attendre : dès que l'échelle bouge, on redemande une image.
+        // C'est une ligne, ça ne coûte rien, et c'est le seul endroit
+        // d'où l'on voit passer le changement.
+        let échelle = ctx.pixels_per_point();
+        if self.dernière_échelle.is_some_and(|vue| (vue - échelle).abs() > 0.001) {
+            ctx.request_repaint();
+        }
+        self.dernière_échelle = Some(échelle);
         // Avant tout le reste : le fichier qu'on vient de choisir dans la
         // boîte native doit être chargé avant que la frame ne s'affiche.
         self.poll_file_dialog(&ctx);

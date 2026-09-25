@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **25 septembre
-2026**, version 0.2.5-beta.3, 565 tests au vert.
+2026**, version 0.2.5-beta.3, 566 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -119,25 +119,24 @@ Détail chiffré dans `AMELIORATIONS.txt` 7.11, section « REVUE DU
 - [ ] **Le vide sous « Prochaine instruction »** fait encore ~260 px.
       Même nœud que le vide de 56 px : l'état du processeur est ancré.
 
-## 2 bis. Ce qui reste à reproduire
+## 2 bis. Le chevauchement des captures — élucidé
 
-- [ ] **Le bandeau se peint par-dessus l'onglet** — vu sur deux captures
-      du 25 septembre au soir : « État du processeur » écrit sur
-      « Prochaine instruction », « RAX » sur une adresse, sept
-      chevauchements. **Pas reproduit** : le banc ne le retrouve à
-      aucune des tailles essayées (1152x696, 1280x800, 1366x768,
-      1600x1100), avec la console ouverte à 169 px et l'onglet épinglé à
-      180 comme dans les réglages de la machine. Deux corrections
-      mesurées ont été faites au passage (voir §1), mais rien ne prouve
-      qu'elles ferment ce cas-là. Trois hypothèses ont été essayées et
-      écartées : le plancher du bandeau trop bas (corrigé, mais le
-      défaut ne s'y réduit pas), la zone qui déborde au lieu de défiler
-      (corrigée de même), et une IMAGE FIGÉE — le partage demande deux
-      images et egui ne redessine que sur demande. Cette dernière a été
-      mesurée et réfutée : les hauteurs sont stables dès la première
-      image (598 et 335) et l'application redessine de toute façon en
-      continu. Il manque une donnée : **la taille de la fenêtre et le
-      facteur d'échelle de l'écran**.
+- [x] **Ce n'était pas un défaut de mise en page.** Les deux captures du
+      25 septembre au soir montraient l'état du processeur et le haut de
+      l'onglet Mémoire sur les mêmes pixels. Mesuré SUR L'IMAGE : « RIP »
+      et « Carte de la mémoire » font 33 et 31 pixels de haut, les
+      textes superposés à eux en font **dix-huit**. Deux échelles sur
+      une même image — egui n'en dessine qu'une. C'est une bande restée
+      d'un rendu précédent, plus petit, que rien n'a repeinte : le
+      facteur d'échelle de l'écran avait changé entre les deux.
+      Le banc ne pouvait pas le retrouver : il dessine à une échelle et
+      une seule. Quatre hypothèses de mise en page ont été essayées
+      avant celle-là ; deux ont trouvé de vrais défauts au passage (le
+      plancher du bandeau, la zone qui débordait au lieu de défiler),
+      deux ont été réfutées par la mesure.
+      **Fait depuis** : un changement d'échelle redemande une image, ce
+      qui évite d'attendre que le compositeur se réveille. On ne répare
+      pas le compositeur, on ne l'attend pas non plus.
 
 ## 3. L'éditeur
 
