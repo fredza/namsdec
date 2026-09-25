@@ -1007,6 +1007,43 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      Ce qu'il faut regarder : largeurs des champs jumeaux, alignement des
      étiquettes et de leurs valeurs, styles de boutons, textes répétés,
      icônes, espacements.
+
+     COMMENT S'Y PRENDRE — l'ordre compte, et il vient des erreurs de
+     septembre. On ne relit pas le code pour juger d'une mise en page : on
+     MESURE ce qui est peint, et on REGARDE ce que les mesures ne savent pas
+     demander. Les deux défauts que le banc n'a jamais vus — la barre de
+     défilement de l'état du processeur, le repli « Détail » rogné — ont été
+     trouvés sur une capture.
+
+     1. Lancer le banc complet et partir d'une page propre : les 33 scènes
+        (14 fenêtres + 5 onglets, à vide puis programme en marche) doivent
+        passer tous les invariants avant qu'on cherche du nouveau.
+     2. Capturer, scène par scène, sur un PROFIL NEUF. On atteint une scène
+        en SEMANT le settings.json du profil temporaire — fichier rouvert,
+        open_windows, sidebar_tab — puisque les frappes simulées n'arrivent
+        pas jusqu'à l'application sous Wayland. Le script du skill
+        audit-ui-egui le fait et connaît maintenant le piège de la fenêtre
+        cherchée par son nom (il attrapait le terminal).
+     3. Pour chaque écart de FORME trouvé à l'œil, écrire l'invariant qui
+        l'attrape AVANT de corriger. Un défaut corrigé sans invariant revient.
+     4. Corriger, puis relancer les 33 scènes en entier : chaque correction
+        de septembre qui a cassé quelque chose l'a cassé ailleurs.
+
+     Le travail se répartit bien : les scènes sont indépendantes les unes des
+     autres, et plusieurs agents peuvent en relever chacun un tiers et rendre
+     une liste d'écarts. Ce qui ne se répartit PAS : la correction elle-même,
+     parce que les invariants se contredisent parfois (voir le vide de 56 px)
+     et qu'il faut une seule tête pour arbitrer.
+
+     TROUVÉ, et en tête de la liste : LES FENÊTRES S'EMPILENT AU PIXEL PRÈS.
+     Toutes appellent `default_pos(viewport.center())` avec un pivot centré ;
+     en ouvrir deux les superpose exactement. Cela se voyait peu tant qu'on
+     les ouvrait une à une ; depuis que la séance rouvre celles qu'on avait
+     laissées, on peut en retrouver douze au même endroit — vu sur la capture
+     du 25 septembre, calculatrice et chronologie l'une sur l'autre. La sortie
+     est un ESCALIER : un décalage par fenêtre, pris sur une table fixe, sans
+     état ni mesure — donc sans risque de boucle. Vérifier au passage qu'une
+     fenêtre décalée ne sorte pas de l'écran sur un petit affichage.
      [FAIT] La répétition triple : la console et les registres étendus disent
      maintenant ce qu'ils montreront, et un contrôle interdit à une phrase de
      plus de vingt caractères d'être écrite trois fois sur le même écran.
