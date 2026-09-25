@@ -4839,6 +4839,22 @@ impl NamsdecApp {
         let Some(elf) = namsdec_asm::elf::parse(bytes) else {
             return false;
         };
+        // « Prochaine instruction » se replie sur un binaire, et pas sur
+        // un source qu'on assemble.
+        //
+        // Ce n'est pas une préférence de goût : une instruction de
+        // binaire porte deux lignes de plus — son adresse absolue et son
+        // pseudo-code — et sur une fenêtre de 1280×820 avec la console
+        // ouverte, le bandeau n'avait plus la place de finir. La coupe
+        // ne se réglait pas par un partage : elle se déplaçait.
+        //
+        // Replié, il reste le titre et sa flèche, que l'on rouvre d'un
+        // clic — et qui se rouvre de lui-même devant un appel, un saut
+        // conditionnel ou un appel système, là où il y a quelque chose à
+        // comprendre. Devant un binaire, ce qu'on lit d'abord est le
+        // listing et les registres ; devant son propre programme, c'est
+        // l'instruction qui vient.
+        self.next_instruction_open = false;
         // Les notes de ce binaire, s'il en a : on les retrouve avant de
         // dessiner quoi que ce soit, pour que le premier coup d'oeil
         // porte déjà les noms qu'on avait trouvés.

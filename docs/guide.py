@@ -380,7 +380,10 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "effective qu’un calcul désigne avec l’octet qui s’y trouve. Deux lignes "
          "dépliées et le reste à un clic : c’est ce qu’on lit à chaque pas, et "
          "le bandeau doit tenir sans rien couper. Le repli s’ouvre de lui-même devant "
-         "un appel, un saut conditionnel ou un appel système.",
+         "un appel, un saut conditionnel ou un appel système. Devant un <b>binaire "
+         "ouvert</b>, la section entière part repliée : une instruction y porte deux "
+         "lignes de plus, et ce qu’on lit d’abord est le listing et les registres. "
+         "Un clic la rouvre.",
          "<b>État du processeur</b> — seize registres, RIP, les six indicateurs en "
          "pastilles, le nombre d'instructions exécutées. Un clic sur un nom de registre pose "
          "une surveillance ; un clic sur une valeur permet de la remplacer.",

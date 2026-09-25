@@ -1022,17 +1022,28 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      opcode, ModR/M —, ce qu'aucun désassembleur ne montre. D'où le repli
      plutôt que la suppression : elle se regarde en s'arrêtant, pas à chaque
      pas.
-     RESTE, et c'est une limite et non un défaut à corriger : avec un BINAIRE
-     ouvert (et non un source assemblé), la prochaine instruction tient deux
-     lignes de plus — adresse absolue et pseudo-code —, et à 1280x820 avec la
-     console ouverte il manque encore une ligne. Essayé à 170 et à 160 : à 170
-     c'est le pseudo-code qui est rogné, à 160 le repli « Détail » sort de vue.
-     Aucun partage ne supprime la coupe, on ne fait que la déplacer. Les vraies
-     sorties : replier « Prochaine instruction » par défaut sur un binaire, ou
-     raccourcir le pseudo-code. Les deux sont des choix de produit.
-     L'invariant est donc borné à ce qui est tenable : source à toutes les
-     tailles courantes, binaire à partir de 1440x900. La borne est écrite dans
-     le test, avec sa raison.
+     Le cas du BINAIRE demandait deux lignes de plus — adresse absolue et
+     pseudo-code — et à 1280x820 avec la console il manquait encore une ligne.
+     Essayé à 170 et à 160 : à 170 le pseudo-code était rogné, à 160 le repli
+     « Détail » sortait de vue ; aucun partage ne supprimait la coupe, on ne
+     faisait que la déplacer. Réglé autrement, et c'est un choix de produit
+     assumé : « Prochaine instruction » SE REPLIE SUR UN BINAIRE, pas sur un
+     source. Devant un binaire on lit d'abord le listing et les registres ;
+     devant son propre programme, l'instruction qui vient. Le titre reste, un
+     clic rouvre, et le repli se rouvre de lui-même devant un appel, un saut
+     conditionnel ou un appel système.
+     L'invariant couvre donc désormais les deux sortes de séance à toutes les
+     tailles courantes, sans borne.
+     RESTE, petit : l'état du processeur est ancré en BAS de sa région, si bien
+     qu'un bandeau replié laisse cinquante-six pixels de vide entre le titre et
+     les registres. Essayé de les rendre à l'onglet en mesurant le creux à
+     l'image précédente : la mesure se referme en boucle — le contenu rogné
+     n'est pas compté dans la hauteur voulue, donc le creux paraît plus grand
+     qu'il n'est, on donne trop, et il se rogne davantage. Trois tests ont vu
+     du contenu disparaître. RETIRÉ. La bonne sortie est structurelle : que
+     l'état du processeur suive le contenu au lieu d'être ancré, tout en
+     gardant sa garantie de ne jamais défiler — ce qui demande de connaître sa
+     hauteur avant de la dessiner.
      Les captures se font en lançant namsdec sur un profil neuf (voir 3.2) :
      c'est le seul moyen de voir ce que les tests laissent passer.
 

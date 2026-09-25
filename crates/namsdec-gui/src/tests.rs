@@ -22918,20 +22918,12 @@ fn the_sidebar_banner_never_cuts_a_line_in_half() {
         None => vec![("source", false)],
     };
     for (séance, depuis_binaire) in séances {
-        // Un binaire ouvert demande deux lignes de plus au bandeau — la
-        // prochaine instruction y porte son adresse absolue et son
-        // pseudo-code. À 1280×820 avec la console ouverte, la place
-        // n'y est pas, et aucun partage ne l'y met : c'est le même
-        // calcul que pour les registres, mais avec un contenu plus
-        // long. Ce qui est garanti, alors, c'est que ce qu'on CLIQUE
-        // — le repli « Détail » — reste entier ; une ligne qu'on lit
-        // peut défiler.
-        let tailles: &[(f32, f32)] = if depuis_binaire {
-            &[(1440.0, 900.0), (1920.0, 1080.0)]
-        } else {
-            &[(1280.0, 820.0), (1440.0, 900.0), (1920.0, 1080.0)]
-        };
-    for &(largeur, hauteur) in tailles {
+        // Les deux sortes de séance, et à toutes les tailles courantes.
+        // Le cas du binaire à 1280×820 a longtemps été hors de portée :
+        // une instruction de binaire porte deux lignes de plus, et
+        // aucun partage n'y changeait rien. Il tient depuis que
+        // « Prochaine instruction » se replie sur un binaire.
+    for &(largeur, hauteur) in &[(1280.0_f32, 820.0_f32), (1440.0, 900.0), (1920.0, 1080.0)] {
         let ctx = egui::Context::default();
         let mut app = NamsdecApp {
             source: DEFAULT_SOURCE.to_owned(),
@@ -22995,4 +22987,56 @@ fn the_sidebar_banner_never_cuts_a_line_in_half() {
 }
 
 
+
+
+/// « Prochaine instruction » se replie sur un binaire, et pas sur un
+/// source.
+///
+/// Une instruction de binaire porte deux lignes de plus — son adresse
+/// absolue et son pseudo-code — et le bandeau n'avait plus la place de
+/// finir sur une fenêtre de 1280×820. Repliée, la section laisse son
+/// titre, qu'un clic rouvre.
+///
+/// Et elle reste dépliée devant un source qu'on assemble : c'est là
+/// qu'on regarde l'instruction qui vient, pas le listing.
+#[test]
+fn the_next_instruction_folds_for_a_binary_and_not_for_a_source() {
+    if namsdec_asm::find_nasm().is_some() && namsdec_asm::find_linker() {
+        let mut app = NamsdecApp {
+            source: DEFAULT_SOURCE.to_owned(),
+            ..Default::default()
+        };
+        app.do_assemble();
+        assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+        assert!(
+            app.next_instruction_open,
+            "devant son propre programme, l'instruction qui vient est ce qu'on lit"
+        );
+    }
+
+    let Some(octets) = binaire_dépreuve("crackme-01") else {
+        return;
+    };
+    let mut app = NamsdecApp::default();
+    assert!(app.next_instruction_open, "dépliée au départ");
+    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    assert!(
+        !app.next_instruction_open,
+        "un binaire replie la section : elle porte deux lignes de plus, \
+         et la place manque"
+    );
+
+    // Mais ce n'est qu'un départ : rouverte, elle le reste — on ne
+    // referme pas sous les doigts de quelqu'un qui vient d'ouvrir.
+    app.next_instruction_open = true;
+    let peint = paint(&mut app);
+    assert!(
+        peint.contains(strings(Lang::Fr).next_instruction),
+        "le titre est toujours là :\n{peint}"
+    );
+    assert!(
+        app.next_instruction_open,
+        "dessiner ne referme pas ce que l'on a ouvert"
+    );
+}
 

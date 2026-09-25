@@ -357,12 +357,15 @@ six fautes d'assembleur que namsdec sait désormais reconnaître.
   source qu'on assemble, un binaire qu'on ouvre. Il ne regarde que ce
   qui est au-dessus de l'onglet : en dessous, la pile et la mémoire sont
   des listes, et leur dernière ligne a le droit d'être coupée.
-- Une limite reste, écrite noir sur blanc dans le test : avec un
-  **binaire** ouvert, la prochaine instruction tient deux lignes de plus
-  — adresse absolue et pseudo-code — et à 1280×820 avec la console il
-  manque encore une ligne. Essayé à 170 et à 160 : la coupe se déplace,
-  elle ne disparaît pas. Le contrôle est donc borné au tenable, et
-  `AMELIORATIONS` dit les deux vraies sorties.
+- Et **« Prochaine instruction » se replie sur un binaire**, pas sur un
+  source. Une instruction de binaire porte deux lignes de plus —
+  adresse absolue et pseudo-code — et à 1280×820 avec la console, le
+  bandeau n'avait plus la place de finir : la coupe ne se réglait par
+  aucun partage, elle se déplaçait. Repliée, la section laisse son
+  titre, qu'un clic rouvre — et qui se rouvre de lui-même devant un
+  appel, un saut conditionnel ou un appel système. Devant un binaire on
+  lit d'abord le listing et les registres ; devant son propre
+  programme, l'instruction qui vient.
 
 **La même phrase trois fois sur un écran**
 - Au démarrage, « Aucun binaire assemblé. » s'affichait **trois fois en
