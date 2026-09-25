@@ -1040,10 +1040,25 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      l'image précédente : la mesure se referme en boucle — le contenu rogné
      n'est pas compté dans la hauteur voulue, donc le creux paraît plus grand
      qu'il n'est, on donne trop, et il se rogne davantage. Trois tests ont vu
-     du contenu disparaître. RETIRÉ. La bonne sortie est structurelle : que
-     l'état du processeur suive le contenu au lieu d'être ancré, tout en
-     gardant sa garantie de ne jamais défiler — ce qui demande de connaître sa
-     hauteur avant de la dessiner.
+     du contenu disparaître. RETIRÉ.
+     DEUXIÈME tentative : poser l'état du processeur à la suite du contenu au
+     lieu de l'ancrer, et borner la zone du dessus à ce qui reste. Le vide
+     tombe de 56 à 30 px et aucune mesure ne se referme en boucle — mais le
+     bandeau DÉBORDE sur la vue du dessous dès que le compte ne tombe pas
+     juste, ce qu'un panneau ancré ne fait jamais. L'invariant « le bandeau ne
+     peint pas sur l'onglet » l'a dit en nommant CF et ZF. RETIRÉ.
+     TROISIÈME : retirer le filet en double entre la section repliée et l'état
+     du processeur, deux traits à vingt pixels l'un de l'autre. Quatorze pixels
+     gagnés, mais l'onglet touche alors son plafond et replier l'état du
+     processeur ne lui rend plus sa place : moins de 100 px au lieu de deux
+     cents. RETIRÉ.
+     Le vide reste donc, et il est le prix de deux garanties qui valent plus
+     que lui : l'état du processeur ne défile jamais, et le bandeau ne peint
+     jamais par-dessus la vue du dessous. La raison est écrite dans le code
+     (sidebar.rs, au-dessus du Panel::bottom), pour que personne ne recommence.
+     Une sortie resterait possible — que l'état du processeur suive le contenu
+     sans jamais défiler — mais elle demande de connaître sa hauteur avant de
+     la dessiner, ce qu'egui ne donne qu'à l'image suivante.
      Les captures se font en lançant namsdec sur un profil neuf (voir 3.2) :
      c'est le seul moyen de voir ce que les tests laissent passer.
 
