@@ -23871,3 +23871,185 @@ fn the_line_where_the_cpu_stopped_wears_a_band() {
         vues[0].width()
     );
 }
+
+/// Un panneau vide se dit toujours de la même façon.
+///
+/// Neuf panneaux employaient `empty_state` — un bloc centré : le
+/// constat, puis ce qu'on verra là quand il y aura quelque chose.
+/// Cinq fenêtres écrivaient à la main une phrase seule, alignée à
+/// gauche, qui disait le constat et taisait le reste : la chronologie,
+/// les points d'arrêt, les correctifs, le graphe, le décompilateur.
+/// Deux formes pour un même rôle, et aucune assez majoritaire pour
+/// servir de norme — c'est le bloc qui l'emporte, parce qu'il DIT
+/// quelque chose de plus.
+///
+/// Le contrôle demande que chaque constat soit CENTRÉ dans sa fenêtre
+/// et suivi de son explication. Centré : c'est ce qui distingue les
+/// deux formes à l'œil, et c'est mesurable sans rien savoir du reste.
+///
+/// Une exception nommée : « Aucun décompilateur installé. » n'est pas
+/// un état vide mais un mode d'emploi — le constat, puis le dossier où
+/// déposer un fichier, puis un exemple de ce fichier. Centrer les deux
+/// premières lignes et laisser le reste à gauche ferait pire que le
+/// défaut qu'on corrige.
+#[test]
+fn an_empty_panel_always_says_it_the_same_way() {
+    for lang in [Lang::Fr, Lang::En] {
+        let s = strings(lang);
+        let constats = [
+            (s.no_binary_assembled, true),
+            (s.timeline_empty, true),
+            (s.breakpoints_empty, true),
+            (s.patch_none_yet, true),
+            (s.flow_empty, true),
+            (s.decompiler_no_binary, true),
+        ];
+        for (nom, id, ouvre) in scènes() {
+            let Some(id) = id else { continue };
+            let ctx = egui::Context::default();
+            let mut app = NamsdecApp {
+                lang,
+                ..Default::default()
+            };
+            app.apply_theme(&ctx);
+            ouvre(&mut app);
+            let (_, lignes) = ce_qui_est_écrit(&ctx, &mut app, Some(id), 4);
+            for (constat, _) in constats.iter().filter(|(_, exigé)| *exigé) {
+                let Some((_, place)) = lignes.iter().find(|(t, _)| t == constat) else {
+                    continue;
+                };
+                // L'explication, juste dessous : le constat dit ce qui
+                // manque, elle dit ce qu'on verra là quand il y aura
+                // quelque chose.
+                let dessous = lignes
+                    .iter()
+                    .filter(|(t, r)| {
+                        t != constat
+                            && r.top() > place.bottom()
+                            && r.top() - place.bottom() < 40.0
+                    })
+                    .min_by(|a, b| a.1.top().total_cmp(&b.1.top()));
+                let Some((_, détail)) = dessous else {
+                    panic!(
+                        "{lang:?} « {nom} » : « {constat} » ne dit que ce qui manque, \
+                         pas ce que le panneau montrera"
+                    )
+                };
+                // CENTRÉS L'UN SUR L'AUTRE, et non centrés dans la
+                // fenêtre : la fenêtre d'analyse porte une liste de
+                // sections à gauche, si bien que son bloc est centré
+                // dans sa colonne et non dans son cadre — la mesurer
+                // depuis le cadre accusait un panneau parfaitement
+                // rangé, à cent quatre pixels du milieu. Deux lignes de
+                // longueurs différentes qui partagent leur milieu sont
+                // centrées ; deux lignes alignées à gauche ne le sont
+                // pas. La règle n'a besoin de rien d'autre.
+                let écart = (place.center().x - détail.center().x).abs();
+                assert!(
+                    écart < 6.0,
+                    "{lang:?} « {nom} » : « {constat} » et son explication ne sont \
+                     pas centrés l'un sur l'autre — {écart:.0} px d'écart, \
+                     c'est la forme alignée à gauche"
+                );
+            }
+        }
+    }
+}
+
+/// Le plus grand vide vertical d'une fenêtre, toutes formes comptées.
+///
+/// Les textes ne suffisent pas : l'image du bouton de don, l'histogramme
+/// d'analyse et le tracé de la chronologie sont du contenu, et les
+/// compter pour rien accuserait des fenêtres pleines.
+///
+/// Les fonds de la fenêtre elle-même, eux, ne comptent pas : un
+/// rectangle qui couvre tout le cadre remplirait le vide à lui seul.
+fn plus_grand_vide(ctx: &egui::Context, app: &mut NamsdecApp, id: &str) -> (f32, egui::Rect) {
+    let entrée = écran_du_banc();
+    let mut bandes: Vec<(f32, f32)> = Vec::new();
+    let mut cadre = egui::Rect::NOTHING;
+    for _ in 0..5 {
+        bandes.clear();
+        let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+        cadre = egui::AreaState::load(ctx, egui::Id::new(id))
+            .map(|a| a.rect())
+            .unwrap_or(egui::Rect::NOTHING);
+        for clipped in &sortie.shapes {
+            let large = cadre.x_range().expand(2.0);
+            if !large.contains(clipped.clip_rect.left())
+                || !large.contains(clipped.clip_rect.right())
+            {
+                continue;
+            }
+            let vu = clipped.shape.visual_bounding_rect().intersect(clipped.clip_rect);
+            if !vu.is_positive() {
+                continue;
+            }
+            // Un fond de fenêtre n'est pas du contenu.
+            if vu.width() > cadre.width() * 0.8 && vu.height() > cadre.height() * 0.8 {
+                continue;
+            }
+            bandes.push((vu.top(), vu.bottom()));
+        }
+        sortie.textures_delta.clear();
+    }
+    bandes.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let mut fusion: Vec<(f32, f32)> = Vec::new();
+    for (haut, bas) in bandes {
+        match fusion.last_mut() {
+            Some(dernière) if haut <= dernière.1 => dernière.1 = dernière.1.max(bas),
+            _ => fusion.push((haut, bas)),
+        }
+    }
+    let trou = fusion
+        .windows(2)
+        .map(|p| p[1].0 - p[0].1)
+        .fold(0.0f32, f32::max);
+    (trou, cadre)
+}
+
+/// Une fenêtre s'ouvre à la taille de ce qu'elle montre.
+///
+/// Elles s'ouvraient à la taille de ce qu'elles montrent QUAND elles
+/// montrent quelque chose. Sans binaire, le graphe prenait donc
+/// quatre-vingt-douze pour cent de l'écran pour une phrase et son
+/// explication — 1472 px de large, 380 px de vide entre le texte et le
+/// bouton « OK » — et les registres étendus 520 x 620 pour deux lignes.
+/// C'est l'écran du PREMIER lancement.
+///
+/// La mesure est le plus grand VIDE entre deux bandes de contenu, et
+/// non le blanc sous le dernier texte : celui-ci vaut vingt-six pixels
+/// dans toutes les fenêtres, la barre « OK » étant ancrée au bas du
+/// cadre, et ne tomberait jamais. Elle compte toutes les formes et pas
+/// seulement les textes : l'image du bouton de don, l'histogramme
+/// d'analyse et le tracé de la chronologie sont du contenu.
+///
+/// Quatre-vingts pixels : la plus grande fenêtre saine en montre
+/// soixante-onze, et c'est le motif cyclique, dont le champ de saisie
+/// laisse de l'air autour de lui.
+///
+/// UNE EXCEPTION NOMMÉE : le graphe, programme chargé. C'est une toile
+/// où l'on se déplace et où l'on zoome ; le blanc autour du dessin n'y
+/// est pas du vide mais de la place pour bouger. À vide, en revanche,
+/// il n'y a pas de toile et la règle s'applique.
+#[test]
+fn a_window_opens_at_the_size_of_what_it_shows() {
+    for (nom, id, ouvre) in scènes() {
+        let Some(id) = id else { continue };
+        if nom.starts_with("graphe (en marche)") {
+            continue;
+        }
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp::default();
+        app.apply_theme(&ctx);
+        ouvre(&mut app);
+        let (trou, cadre) = plus_grand_vide(&ctx, &mut app, id);
+        assert!(
+            trou <= 80.0,
+            "« {nom} » s'ouvre en {:.0}x{:.0} et laisse {trou:.0} px de vide au \
+             milieu : elle est plus grande que ce qu'elle montre",
+            cadre.width(),
+            cadre.height()
+        );
+    }
+}

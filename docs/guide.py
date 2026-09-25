@@ -250,6 +250,16 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "des appels. Répéter le même constat à trois endroits d’un même "
          "écran n’apprend rien la deuxième fois, et agace la troisième."),
         ("p",
+         "La <b>forme</b> est la même partout : le constat, puis l’explication, "
+         "centrés l’un sur l’autre. Les fenêtres l’écrivaient de deux façons — un "
+         "bloc centré ici, une phrase seule alignée à gauche là — et deux formes "
+         "pour un même rôle se remarquent sans qu’on sache les nommer."),
+        ("p",
+         "Une fenêtre s’ouvre enfin <b>à la taille de ce qu’elle montre</b>. Sans "
+         "binaire, le graphe prenait quatre-vingt-douze pour cent de l’écran pour "
+         "une phrase. Ouverte vide puis remplie, elle garde sa petite taille : elle "
+         "se redimensionne, et son contenu défile."),
+        ("p",
          "Les boutons sont <b>plats dans les menus et encadrés ailleurs</b>. Dans un "
          "menu, la platitude est le dessin ; dans une fenêtre, un bouton qui ne se "
          "distingue d’une étiquette qu’au survol ne se trouve pas. Ce qu’on "

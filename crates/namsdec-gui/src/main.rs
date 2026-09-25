@@ -8455,9 +8455,20 @@ impl NamsdecApp {
                 .resizable(true)
                 .default_size({
                     let écran = ctx.viewport_rect().size();
-                    egui::vec2(écran.x * 0.92, écran.y * 0.88)
+                    window_size(
+                        self.assemble_state.is_some(),
+                        egui::vec2(écran.x * 0.92, écran.y * 0.88),
+                        egui::vec2(540.0, 220.0),
+                    )
                 })
-                .min_size([640.0, 420.0])
+                .min_size(window_size(
+                    self.assemble_state.is_some(),
+                    egui::vec2(640.0, 420.0),
+                    // Le plancher suit la taille d'ouverture : laissé à
+                    // 640 x 420, il imposait sa hauteur à une fenêtre
+                    // qui n'a qu'une phrase à montrer.
+                    egui::vec2(420.0, 180.0),
+                ))
                 .pivot(egui::Align2::CENTER_CENTER)
                 .default_pos(default_window_pos(ctx, "flow"))
         };
@@ -8471,12 +8482,12 @@ impl NamsdecApp {
                     fermer_ok = true;
                 }
                 let Some(state) = &self.assemble_state else {
-                    ui.colored_label(theme.dim, s.flow_empty);
+                    empty_state(ui, theme, s.flow_empty, Some(s.empty_flow), None);
                     return;
                 };
                 let entier = namsdec_re::cfg::build(&state.disasm);
                 if entier.blocks.is_empty() {
-                    ui.colored_label(theme.dim, s.flow_empty);
+                    empty_state(ui, theme, s.flow_empty, Some(s.empty_flow), None);
                     return;
                 }
                 // Le bloc d'où l'on regarde : celui où le programme en
@@ -8496,7 +8507,7 @@ impl NamsdecApp {
                     entier.clone()
                 };
                 if cfg.blocks.is_empty() {
-                    ui.colored_label(theme.dim, s.flow_empty);
+                    empty_state(ui, theme, s.flow_empty, Some(s.empty_flow), None);
                     return;
                 }
                 ui.colored_label(theme.dim, s.flow_hint);
@@ -8995,7 +9006,14 @@ impl NamsdecApp {
         } else {
             fenêtre
                 .resizable(true)
-                .default_size([760.0, 560.0])
+                .default_size(window_size(
+                    !self.decompilers.is_empty(),
+                    egui::vec2(760.0, 560.0),
+                    // Sans outil installé, la fenêtre montre un mode
+                    // d'emploi : le dossier où déposer un fichier, et un
+                    // exemple de ce fichier. C'est court et c'est fixe.
+                    egui::vec2(700.0, 400.0),
+                ))
                 // Bornée en largeur, et ce n'est pas une préférence de
                 // goût : sans borne, la première passe de mise en page
                 // dispose le texte sur une largeur infinie. Une commande
@@ -9121,7 +9139,13 @@ impl NamsdecApp {
                 if occupé_maintenant(self) {
                     ui.colored_label(theme.dim, s.decompiler_working);
                 } else if self.assemble_state.is_none() {
-                    ui.colored_label(theme.dim, s.decompiler_no_binary);
+                    empty_state(
+                        ui,
+                        theme,
+                        s.decompiler_no_binary,
+                        Some(s.empty_decompiler),
+                        None,
+                    );
                 }
 
                 // Ce qui a été décompilé, et de quel programme il
@@ -12576,7 +12600,11 @@ impl NamsdecApp {
             .open(&mut open)
             .resizable(true)
             .collapsible(false)
-            .default_size([680.0, 560.0])
+            .default_size(window_size(
+                self.assemble_state.is_some(),
+                egui::vec2(680.0, 560.0),
+                egui::vec2(540.0, 280.0),
+            ))
             .pivot(egui::Align2::CENTER_CENTER)
             .default_pos(default_window_pos(ctx, "disassembly"));
         let rendue_disassembly_window = self
@@ -13072,7 +13100,11 @@ impl NamsdecApp {
             .open(&mut open)
             .resizable(true)
             .collapsible(false)
-            .default_size([520.0, 420.0])
+            .default_size(window_size(
+                self.emulator.is_some(),
+                egui::vec2(520.0, 420.0),
+                egui::vec2(540.0, 220.0),
+            ))
             .pivot(egui::Align2::CENTER_CENTER)
             .default_pos(default_window_pos(ctx, "timeline"));
         let rendue_timeline_window = self
@@ -13086,11 +13118,21 @@ impl NamsdecApp {
                     fermer_ok = true;
                 }
                 if pas.is_empty() {
-                    ui.weak(if self.timeline_notable_only {
-                        s.timeline_nothing_notable
+                    // La même forme que les neuf autres panneaux : le
+                    // constat, puis ce que la fenêtre montrera. Une
+                    // phrase seule alignée à gauche disait le premier et
+                    // taisait le second.
+                    if self.timeline_notable_only {
+                        empty_state(ui, self.theme, s.timeline_nothing_notable, None, None);
                     } else {
-                        s.timeline_empty
-                    });
+                        empty_state(
+                            ui,
+                            self.theme,
+                            s.timeline_empty,
+                            Some(s.empty_timeline),
+                            None,
+                        );
+                    }
                     return;
                 }
                 ui.weak(s.timeline_hint);
@@ -13244,7 +13286,11 @@ impl NamsdecApp {
             .open(&mut open)
             .resizable(true)
             .collapsible(false)
-            .default_size([480.0, 320.0])
+            .default_size(window_size(
+                !self.breakpoint_lines.is_empty(),
+                egui::vec2(480.0, 320.0),
+                egui::vec2(540.0, 220.0),
+            ))
             .pivot(egui::Align2::CENTER_CENTER)
             .default_pos(default_window_pos(ctx, "breakpoints"))
             .title_bar(false)
@@ -13256,7 +13302,13 @@ impl NamsdecApp {
                     fermer_ok = true;
                 }
                 if self.breakpoint_lines.is_empty() {
-                    ui.weak(s.breakpoints_empty);
+                    empty_state(
+                        ui,
+                        self.theme,
+                        s.breakpoints_empty,
+                        Some(s.empty_breakpoints),
+                        None,
+                    );
                     return;
                 }
                 ui.weak(s.breakpoints_hint);
@@ -13570,7 +13622,17 @@ impl NamsdecApp {
             .open(&mut open)
             .resizable(true)
             .collapsible(false)
-            .default_size([520.0, 620.0])
+            .default_size(window_size(
+                self.emulator.is_some(),
+                // Seize XMM et huit ST : un contenu de taille fixe et
+                // connue, qui tenait dans 374 x 381 pixels quand la
+                // fenêtre en demandait 520 x 620.
+                egui::vec2(440.0, 480.0),
+                // Plus courte que les autres fenêtres vides : son
+                // explication tient sur une ligne quand celles du
+                // désassemblage et de la chronologie en prennent trois.
+                egui::vec2(540.0, 220.0),
+            ))
             .pivot(egui::Align2::CENTER_CENTER)
             .default_pos(default_window_pos(ctx, "vectors"))
             .title_bar(false)
@@ -14499,7 +14561,11 @@ impl NamsdecApp {
             .resizable(true)
             .collapsible(false)
             .title_bar(false)
-            .default_size([560.0, 420.0])
+            .default_size(window_size(
+                !self.patches.is_empty(),
+                egui::vec2(560.0, 420.0),
+                egui::vec2(560.0, 330.0),
+            ))
             .min_size([460.0, 300.0])
             .pivot(egui::Align2::CENTER_CENTER)
             .default_pos(default_window_pos(ctx, "patches"))
@@ -14554,7 +14620,7 @@ impl NamsdecApp {
                 ui.separator();
                 ui.add_space(6.0);
                 if self.patches.is_empty() {
-                    ui.weak(s.patch_none_yet);
+                    empty_state(ui, self.theme, s.patch_none_yet, Some(s.empty_patches), None);
                 } else {
                     ui.label(
                         egui::RichText::new(format!(
@@ -15151,7 +15217,7 @@ impl NamsdecApp {
                     )
                 }
             }
-            None => s.no_binary_assembled_yet.to_string(),
+            None => s.no_binary_assembled.to_string(),
         };
         module_card(
             ui,
@@ -18111,6 +18177,27 @@ pub(crate) const PATCHES_WINDOW: &str = "patches_window";
 /// Deux d'entre elles appartiennent à un module qui peut avoir été
 /// éteint entre-temps : leur reprise le redemande plutôt que de le
 /// supposer, si bien qu'éteindre le module emporte bien sa fenêtre.
+/// La taille d'ouverture d'une fenêtre, selon qu'elle a de quoi la
+/// remplir.
+///
+/// Une fenêtre s'ouvrait toujours à la taille de ce qu'elle montre QUAND
+/// elle montre quelque chose. Sans binaire, le graphe prenait donc
+/// quatre-vingt-douze pour cent de l'écran pour une phrase et son
+/// explication : mille quatre cent soixante-douze pixels de large, trois
+/// cent quatre-vingts de vide entre le texte et le bouton « OK ». Les
+/// registres étendus, cinq cent vingt sur six cent vingt pour deux
+/// lignes. C'est l'écran du PREMIER lancement, celui que voit quelqu'un
+/// qui découvre namsdec, et c'est celui qu'on avait laissé pour la fin.
+///
+/// `default_size` ne vaut qu'à la création de la fenêtre, c'est-à-dire
+/// au moment où on l'ouvre : on sait alors s'il y a quelque chose
+/// dedans. Ouverte à vide puis remplie, elle garde sa petite taille —
+/// elle est redimensionnable, et son contenu défile ; c'est un moindre
+/// mal devant une fenêtre vide grande comme l'écran.
+fn window_size(plein: bool, pleine: egui::Vec2, vide: egui::Vec2) -> egui::Vec2 {
+    if plein { pleine } else { vide }
+}
+
 /// Où poser une fenêtre d'établi qu'on ouvre pour la première fois.
 ///
 /// Toutes partaient du centre exact du viewport, avec un pivot centré :

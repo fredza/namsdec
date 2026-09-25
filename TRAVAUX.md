@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **25 septembre
-2026**, version 0.2.5-beta.3, 562 tests au vert.
+2026**, version 0.2.5-beta.3, 564 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -19,15 +19,16 @@ Tenue à jour au fil des séances. Dernière mise à jour : **25 septembre
 
 **Non, l'UX/UI n'est pas terminée.** Une passe complète a été faite le
 25 septembre : seize scènes capturées sur profil neuf, deux relevés de
-mesure sur les trente-trois scènes du banc, **quinze écarts corrigés,
-quatorze contrôles nouveaux et un élargi**. Ce que cette passe a mesuré
+mesure sur les trente-trois scènes du banc, **dix-neuf écarts corrigés,
+seize contrôles nouveaux et un élargi**. Ce que cette passe a mesuré
 et **pas** corrigé est en bas de la section suivante, chiffré. C'est du
 travail identifié, pas de l'exploration : il n'y a plus de relevé à
 refaire.
 
-Ce qui manque encore n'est pas de la finition mais du fond : huit
-fenêtres s'ouvrent plus grandes que ce qu'elles montrent, et les états
-vides parlent avec deux formes et quatre formulations différentes.
+Ce qui reste est de la finition mesurée : des alignements de quelques
+pixels, deux tailles de police, et le vide sous « Prochaine
+instruction », qui tient au même nœud que le vide de 56 px — l'état du
+processeur est ancré.
 
 ---
 
@@ -61,20 +62,21 @@ vides parlent avec deux formes et quatre formulations différentes.
 Détail chiffré dans `AMELIORATIONS.txt` 7.11, section « REVUE DU
 25 SEPTEMBRE — CE QUI RESTE ».
 
-- [ ] **Huit fenêtres plus grandes que ce qu'elles montrent** — de 138 à
-      863 px de trou, quand aucune fenêtre saine ne dépasse 59. Cinq se
-      remplissent une fois le programme chargé : c'est l'état vide qui
-      est en cause, donc l'écran du premier lancement.
-- [ ] **« Registres étendus » est trop grande même pleine** — seize XMM
-      et huit ST, contenu de taille fixe et connue, dans une fenêtre qui
-      lui laisse 197 px de trop en hauteur et 146 en largeur. Le plus net
-      des huit.
-- [ ] **Les états vides ont deux formes** — neuf blocs centrés à trois
-      étages, huit phrases seules alignées à gauche. Aucune n'est
-      majoritaire au point de servir de norme.
-- [ ] **Le même fait s'écrit de quatre façons** — « Aucun binaire
-      assemblé. », « … pour l'instant. », « Assemblez d'abord : … »,
-      « Aucun programme chargé : … ».
+- [x] **Huit fenêtres plus grandes que ce qu'elles montrent** — une
+      fenêtre s'ouvre maintenant à la taille de ce qu'elle a à montrer,
+      et le contrôle mesure le plus grand vide entre deux bandes de
+      contenu. Le graphe est passé de 863 px de trou à moins de 80.
+- [x] **« Registres étendus » est trop grande même pleine** — 440 x 480
+      pleine au lieu de 520 x 620, et 540 x 220 à vide.
+- [x] **Les états vides ont deux formes** — une seule maintenant : le
+      constat, puis l'explication, centrés l'un sur l'autre. Cinq
+      fenêtres converties. Exception nommée : « Aucun décompilateur
+      installé. » est un mode d'emploi, pas un état vide.
+- [x] **Le même fait s'écrit de quatre façons** — deux maintenant :
+      « Aucun binaire assemblé. » pour le bandeau et ses onglets,
+      « Aucun programme lié. » pour les fenêtres qui flottent par-dessus.
+      Deux, et non une : les trois pourraient être à l'écran en même
+      temps, et le contrôle des répétitions veille.
 - [ ] **Le listing de désassemblage perd ses colonnes de 54,8 px** sur
       les lignes qui portent une étiquette.
 - [ ] **La barre de saisie de la console** : 4,5 px d'amplitude sur une
