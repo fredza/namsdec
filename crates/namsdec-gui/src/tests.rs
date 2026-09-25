@@ -24053,3 +24053,61 @@ fn a_window_opens_at_the_size_of_what_it_shows() {
         );
     }
 }
+
+/// Les colonnes du listing ne dansent pas d'une ligne à l'autre.
+///
+/// La colonne des étiquettes n'avait pas de largeur : une rangée sans
+/// étiquette ne réservait rien, et les octets comme le texte de
+/// l'instruction reculaient de cinquante-cinq pixels dès qu'une ligne en
+/// portait une. Un listing dont les colonnes bougent ne se lit plus en
+/// colonnes, et c'est tout ce qu'on lui demande.
+///
+/// Le contrôle relève les abscisses de la colonne des octets — repérable
+/// à sa forme, des paires hexadécimales séparées par des espaces — et
+/// demande qu'elles soient toutes les mêmes.
+#[test]
+fn the_listing_keeps_its_columns_from_line_to_line() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp {
+        source: PROGRAMME_DU_BANC.to_owned(),
+        show_disassembly: true,
+        ..Default::default()
+    };
+    app.apply_theme(&ctx);
+    app.do_assemble();
+    let (_, lignes) = ce_qui_est_écrit(&ctx, &mut app, Some("disassembly_window"), 5);
+
+    // La colonne des octets : du texte qui n'est que des chiffres
+    // hexadécimaux et des espaces, et qui en contient au moins quatre.
+    let mut bords: Vec<(String, f32)> = Vec::new();
+    for (texte, place) in &lignes {
+        let net = texte.trim_end();
+        if net.len() >= 4
+            && net
+                .chars()
+                .all(|c| c.is_ascii_hexdigit() || c == ' ')
+            && net.contains(' ')
+        {
+            bords.push((net.to_owned(), place.left()));
+        }
+    }
+    assert!(
+        bords.len() >= 4,
+        "il faut plusieurs lignes d'octets pour que le test prouve quelque \
+         chose — {bords:?}"
+    );
+    let premier = bords[0].1;
+    let hors: Vec<String> = bords
+        .iter()
+        .filter(|(_, x)| (x - premier).abs() > 1.0)
+        .map(|(t, x)| format!("« {t} » à {x:.1}"))
+        .collect();
+    assert!(
+        hors.is_empty(),
+        "la colonne des octets commence à {premier:.1}, sauf {}",
+        hors.join(", ")
+    );
+}

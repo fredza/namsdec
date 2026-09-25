@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **25 septembre
-2026**, version 0.2.5-beta.3, 564 tests au vert.
+2026**, version 0.2.5-beta.3, 565 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -19,8 +19,8 @@ Tenue à jour au fil des séances. Dernière mise à jour : **25 septembre
 
 **Non, l'UX/UI n'est pas terminée.** Une passe complète a été faite le
 25 septembre : seize scènes capturées sur profil neuf, deux relevés de
-mesure sur les trente-trois scènes du banc, **dix-neuf écarts corrigés,
-seize contrôles nouveaux et un élargi**. Ce que cette passe a mesuré
+mesure sur les trente-trois scènes du banc, **vingt et un écarts corrigés,
+dix-sept contrôles nouveaux et un élargi**. Ce que cette passe a mesuré
 et **pas** corrigé est en bas de la section suivante, chiffré. C'est du
 travail identifié, pas de l'exploration : il n'y a plus de relevé à
 refaire.
@@ -77,19 +77,31 @@ Détail chiffré dans `AMELIORATIONS.txt` 7.11, section « REVUE DU
       « Aucun programme lié. » pour les fenêtres qui flottent par-dessus.
       Deux, et non une : les trois pourraient être à l'écran en même
       temps, et le contrôle des répétitions veille.
-- [ ] **Le listing de désassemblage perd ses colonnes de 54,8 px** sur
-      les lignes qui portent une étiquette.
+- [x] **Le listing de désassemblage perd ses colonnes de 54,8 px** — la
+      colonne des étiquettes a une largeur fixe, prise sur le plus long
+      symbole et bornée à vingt signes.
 - [ ] **La barre de saisie de la console** : 4,5 px d'amplitude sur une
       seule rangée.
-- [ ] **Étiquette contre liste déroulante** : 3,5 px, deux fois. Avec un
-      `DragValue` l'écart tombe à 0,5 — c'est le couple qui est mal
-      centré, pas une fatalité d'egui.
-- [ ] **Deux marges gauches dans le châssis**, 16 et 18 px.
+- [ ] **Étiquette contre liste déroulante** : 3,5 px, deux fois. Quatre
+      essais retirés — imposer la hauteur de la case, `add_sized`,
+      annuler l'espacement vertical, imposer la hauteur de la rangée
+      avant d'y rien poser : les quatre donnent exactement le même
+      écart. Ce n'est pas l'étiquette qui est mal centrée, c'est la
+      liste d'egui qui ne se pose pas au centre de sa rangée. La suite
+      demande de lire le code de `ComboBox`.
+- [x] **Deux marges gauches dans le châssis**, 16 et 18 px — examiné,
+      ce n'est pas un défaut : l'onglet « Console » est une pastille
+      cliquable, son fond part à 16 comme le corps et son texte à 18
+      parce qu'une pastille a un rembourrage. Le relevé comparait un
+      texte nu à un texte encadré.
 - [ ] **La grille de bits de la calculatrice est en 12 pt** quand toute
       autre grille de données est en 13. Attention : remonter peut faire
       déborder les soixante-quatre colonnes.
-- [ ] **Le graphe écrit ses instructions en 11 pt à 100 %**, et « le
-      programme est ici » y est de la prose posée en chasse fixe.
+- [x] **Le graphe écrit ses instructions en 11 pt**, et « le programme
+      est ici » y est en chasse fixe — examiné, gardé : dans une boîte
+      où tout est en colonnes, l'annotation est cohérente avec son
+      contexte, et la largeur des boîtes se calcule en colonnes de
+      caractères. Changer la police casserait ce calcul.
 - [ ] **Le vide sous « Prochaine instruction »** fait encore ~260 px.
       Même nœud que le vide de 56 px : l'état du processeur est ancré.
 

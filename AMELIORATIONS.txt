@@ -1155,7 +1155,28 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      « Aucun programme chargé : … ». Une seule forme et une seule phrase
      réparerait aussi une partie de A, l'explication occupant le vide.
 
-     C. ALIGNEMENTS, mesurés :
+     C. ALIGNEMENTS, mesurés — et voici ce qu'ils sont devenus :
+       - [FAIT] le listing garde ses colonnes : la colonne des étiquettes a
+         une largeur fixe, prise sur le plus long symbole et bornée à vingt
+         signes. Zéro s'il n'y a aucun symbole, auquel cas la colonne
+         disparaît au lieu de laisser un blanc.
+       - [EXAMINÉ, PAS UN DÉFAUT] les marges 16 et 18 px du châssis. L'onglet
+         « Console » est une pastille cliquable : son FOND part à 16 comme le
+         corps, et son TEXTE à 18 parce qu'une pastille a un rembourrage. Le
+         relevé comparait des textes, donc un texte nu à un texte encadré.
+       - [RETIRÉ après trois essais] l'étiquette et sa liste déroulante, 3,5 px.
+         Mesuré : « Base » centre y 230,09 ; sa liste, boîte de 114x25, centre
+         233,59. Essayé d'imposer la hauteur de la case de l'étiquette, puis
+         d'employer `add_sized`, puis d'annuler l'espacement vertical de la
+         rangée, puis d'imposer la hauteur de la rangée entière avant d'y rien
+         poser : les quatre donnent exactement le même écart. Ce n'est donc pas
+         la case de l'étiquette qui est mal centrée — c'est la liste d'egui qui
+         ne se pose pas au centre de la rangée. La suite demande de lire le
+         code de `ComboBox`, ce qui vaut mieux qu'un décalage écrit en dur.
+       - reste, de la même famille : la barre de saisie de la console, 4,5 px
+         d'amplitude sur une rangée (étiquette 1020,5 ; bouton 1024,0 ; champ
+         1024,9 ; bouton 1025,0).
+     Le relevé disait :
        - le listing de désassemblage perd ses colonnes de 54,8 px sur les
          lignes qui portent une étiquette : l'étiquette est insérée dans la
          rangée au lieu d'occuper une colonne à elle ;

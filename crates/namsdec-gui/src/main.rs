@@ -12700,6 +12700,25 @@ impl NamsdecApp {
                 }
                 let rip = self.emulator.as_ref().map(|e| e.cpu().regs.rip);
                 let symbols = &state.output.symbols;
+                // La colonne des étiquettes, sur une largeur FIXE.
+                //
+                // Elle n'en avait pas : une rangée sans étiquette ne
+                // réservait rien, et les octets comme le texte de
+                // l'instruction reculaient de cinquante-cinq pixels dès
+                // qu'une ligne en portait une. Un listing dont les
+                // colonnes dansent d'une ligne à l'autre ne se lit plus
+                // en colonnes, et c'est tout ce qu'on lui demande.
+                //
+                // Vingt signes au plus : au-delà, un nom long pousserait
+                // le code hors de la fenêtre pour le confort d'une seule
+                // ligne. Zéro quand il n'y a aucun symbole, auquel cas la
+                // colonne disparaît au lieu de laisser un blanc.
+                let colonne_étiquette = symbols
+                    .iter()
+                    .map(|s| s.name.chars().count() + 1)
+                    .max()
+                    .unwrap_or(0)
+                    .min(20);
                 let pseudo = self.disassembler == PSEUDO_ID;
 
                 // Ce qu'on cherche : une étiquette, un registre, une
@@ -12843,10 +12862,15 @@ impl NamsdecApp {
                                     .find(|s| s.addr == ligne.address)
                                     .map(|s| format!("{}:", s.name))
                                     .unwrap_or_default();
-                                ui.colored_label(
-                                    theme.label,
-                                    egui::RichText::new(étiquette).monospace(),
-                                );
+                                if colonne_étiquette > 0 {
+                                    ui.colored_label(
+                                        theme.label,
+                                        egui::RichText::new(format!(
+                                            "{étiquette:<colonne_étiquette$}"
+                                        ))
+                                        .monospace(),
+                                    );
+                                }
                                 // Les octets : ce qui distingue un
                                 // désassemblage d'une traduction. Sur une
                                 // largeur fixe, sinon les colonnes
