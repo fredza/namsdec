@@ -1109,6 +1109,86 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      Les captures se font en lançant namsdec sur un profil neuf (voir 3.2) :
      c'est le seul moyen de voir ce que les tests laissent passer.
 
+     REVUE DU 25 SEPTEMBRE — CE QUI RESTE.
+     Seize scènes capturées sur profil neuf, deux relevés de mesure sur les
+     trente-trois scènes du banc. Onze écarts corrigés et onze contrôles
+     posés (voir les trois commits du jour). Ce qui suit est mesuré, non
+     corrigé, et rangé par ce que ça coûte de le réparer.
+
+     A. LES FENÊTRES SONT PLUS GRANDES QUE CE QU'ELLES MONTRENT.
+     Le plus grand vide vertical entre deux bandes de contenu, fenêtre
+     ouverte sans binaire, écran 1600x1100 :
+        graphe            1472x968  ratio 0,58 %  trou 863 px
+        registres étendus  520x620  ratio 1,88 %  trou 485 px
+        désassemblage      680x560  ratio 6,62 %  trou 346 px
+        analyse           1100x900  ratio 4,16 %  trou 339 px
+        chronologie        520x420  ratio 2,82 %  trou 315 px
+        points d'arrêt     480x320  ratio 4,74 %  trou 215 px
+        décompilateur      760x560  ratio 6,60 %  trou 246 px
+        correctifs         560x420  ratio 12,3 %  trou 138 px
+     Aucune fenêtre saine ne dépasse 59 px. Cinq de ces huit se remplissent
+     une fois le programme chargé et leur taille se défend alors ; le défaut
+     est celui de l'ÉTAT VIDE, qui est justement l'écran du premier
+     lancement. Deux ne se défendent dans aucun cas :
+       - REGISTRES ÉTENDUS, plein : le contenu s'arrête à 381 px de haut et
+         374 px de large dans une fenêtre de 620 x 520. Contenu de taille
+         FIXE et connue — seize XMM et huit ST —, donc rien ne justifie ces
+         nombres. C'est le plus net des huit.
+       - DÉCOMPILATEUR : 296 px de largeur jamais employée sur 760, dans les
+         deux états. Prudence toutefois — le relevé n'a pas pu faire tourner
+         un vrai décompilateur, et sa sortie peut être large.
+     L'invariant à écrire mesure le TROU MAXIMUM entre deux bandes, et non le
+     vide sous le dernier texte : celui-ci vaut 26 px partout, la barre « OK »
+     étant ancrée au bas du cadre, et ne tombera jamais. Il doit compter
+     TOUTES les formes et non les seuls textes, sans quoi l'image de don
+     d'« À propos », l'histogramme d'analyse et le tracé de chronologie
+     deviennent des faux positifs.
+
+     B. LES ÉTATS VIDES ONT DEUX FORMES ET QUATRE FORMULATIONS.
+     Neuf passent par `empty_state` : bloc centré, phrase en 13, explication
+     en 9, parfois un bouton. Huit sont écrits à la main : une phrase seule,
+     alignée à gauche, sans explication — chronologie, points d'arrêt,
+     correctifs, graphe, décompilateur, calculatrice, console, saisie. Aucune
+     des deux formes n'est majoritaire au point de servir de norme.
+     Et le même fait s'écrit de quatre façons : « Aucun binaire assemblé. »,
+     « Aucun binaire assemblé pour l'instant. », « Assemblez d'abord : … »,
+     « Aucun programme chargé : … ». Une seule forme et une seule phrase
+     réparerait aussi une partie de A, l'explication occupant le vide.
+
+     C. ALIGNEMENTS, mesurés :
+       - le listing de désassemblage perd ses colonnes de 54,8 px sur les
+         lignes qui portent une étiquette : l'étiquette est insérée dans la
+         rangée au lieu d'occuper une colonne à elle ;
+       - la barre de saisie de la console a 4,5 px d'amplitude sur une seule
+         rangée — « Entrée : » à 1020,5 ; « Fin d'entrée » à 1024,0 ; le champ
+         à 1024,9 ; « Envoyer » à 1025,0 ;
+       - étiquette contre liste déroulante : 3,5 px, deux fois (calculatrice
+         « Base » et « Largeur », désassemblage « Moteur : »). Là où le voisin
+         est un DragValue, l'écart tombe à 0,5 px — c'est donc le couple
+         étiquette/liste qui est mal centré, pas une fatalité d'egui ;
+       - deux marges gauches dans le châssis, 16 et 18 px : dans le panneau
+         bas, l'onglet « Console » et son contenu ne partent pas du même bord.
+
+     D. TAILLES DE POLICE, ce qui reste après les corrections du jour :
+       - la grille de bits de la calculatrice est en 12 pt quand toute autre
+         grille de données de l'application est en 13 ; un point d'écart,
+         trop peu pour être une intention, assez pour se voir. Attention :
+         remonter à 13 peut faire déborder les soixante-quatre colonnes ;
+       - les boîtes du graphe écrivent les instructions en 11 pt à 100 % de
+         grossissement ; un compactage se défend, mais pas à taille réelle ;
+       - « le programme est ici », dans le graphe, est de la prose posée en
+         chasse fixe. Partout ailleurs la prose est proportionnelle.
+       - deux tailles existent dans le code sans qu'aucune scène du banc les
+         atteigne : 15 pt en titre de section (sidebar.rs quand un seul module
+         RE est choisi, et l'onglet Outils des préférences) et 11,5 pt en
+         chasse fixe. Si elles sont peintes, ce sont deux tailles de plus pour
+         des rôles qui en ont déjà une.
+
+     E. LE VIDE SOUS « PROCHAINE INSTRUCTION », à vide, fait encore ~260 px :
+     le bandeau donne à cette zone la place que l'onglet ne prend pas. Même
+     famille que le vide de 56 px ci-dessus, et même contrainte : l'état du
+     processeur est ancré.
+
 --- Ce qui servirait ta vocation pédagogique ----------------------------
 
 7.9  UN MODE « EXPLIQUE-MOI CETTE FONCTION »
