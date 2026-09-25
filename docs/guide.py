@@ -383,7 +383,9 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "un appel, un saut conditionnel ou un appel système. Devant un <b>binaire "
          "ouvert</b>, la section entière part repliée : une instruction y porte deux "
          "lignes de plus, et ce qu’on lit d’abord est le listing et les registres. "
-         "Un clic la rouvre.",
+         "Un clic la rouvre. Tant qu'aucun programme n'est assemblé, elle annonce ce "
+         "qu'elle montrera, comme les deux zones qui la suivent — une section ouverte "
+         "ne reste jamais muette.",
          "<b>État du processeur</b> — seize registres, RIP, les six indicateurs en "
          "pastilles, le nombre d'instructions exécutées. Un clic sur un nom de registre pose "
          "une surveillance ; un clic sur une valeur permet de la remplacer.",
@@ -579,7 +581,9 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "qu'on ne peut qu'entrer par le haut et quitter par le bas ; les flèches disent le "
          "saut pris (vert), le saut non pris (rouge) et l'appel (bleu) ; une boucle se voit "
          "à ce qu'elle remonte. Le bloc où le programme se trouve est mis en avant, un clic "
-         "y emmène dans l'éditeur, et Ctrl+molette recule pour voir la forme d'ensemble."),
+         "y emmène dans l'éditeur, et Ctrl+molette recule pour voir la forme d'ensemble. "
+         "<b>Tout voir</b> cadre le graphe entier, <b>Taille réelle</b> revient au "
+         "grossissement d'origine."),
         ("p",
          "Un saut dont la cible se calcule — table de sauts, pointeur de fonction — est "
          "signalé comme tel : aucune flèche n'est inventée vers une adresse inconnue."),

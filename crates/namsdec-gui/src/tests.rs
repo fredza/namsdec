@@ -22560,8 +22560,15 @@ fn what_the_tools_answer_is_asked_once_and_kept() {
 /// les croix de fermeture des champs de recherche…
 ///
 /// `framed_button` pose le liseré. Ce contrôle lit le source parce que
-/// c'est là qu'est la règle : ce qu'on peut cliquer doit se voir, et
-/// l'exception — les menus, où la platitude est le dessin — est nommée.
+/// c'est là qu'est la règle : ce qu'on peut cliquer doit se voir, et les
+/// exceptions — la barre de menus et la barre d'outils, où la platitude
+/// EST le dessin et où un liseré par bouton ferait une grille — sont
+/// nommées.
+///
+/// La barre d'outils n'était pas nommée jusqu'ici, et elle passait
+/// seulement parce que son bouton « Assembler » est écrit sur plusieurs
+/// lignes, c'est-à-dire par le trou même que ce contrôle avait. Une
+/// exception qui tient à un défaut n'est pas une exception.
 #[test]
 fn outside_the_menus_a_button_shows_itself_without_being_hovered() {
     let source = include_str!("main.rs");
@@ -22578,7 +22585,29 @@ fn outside_the_menus_a_button_shows_itself_without_being_hovered() {
         {
             fonction = nom.split('(').next().unwrap_or("").trim();
         }
-        if ligne.contains("ui.button(") && fonction != "menu_bar_ui" {
+        // Deux écritures, et la seconde avait été oubliée : `ui.button(…)`
+        // sur une ligne, mais aussi la chaîne coupée en plusieurs lignes,
+        // que rustfmt produit dès qu'on ajoute `.on_hover_text(…)` —
+        //
+        //     if ui
+        //         .button(s.analysis_save)
+        //         .on_hover_text(s.analysis_save_hint)
+        //
+        // Le contrôle ne voyait que la première, et sept boutons sont
+        // passés au travers pendant des semaines : « Enregistrer… » et
+        // « Enregistrer le vidage » dans l'analyse, « Vers l'entrée du
+        // programme » dans le motif cyclique, « Fin d'entrée » deux fois,
+        // « Retour » dans l'aide, « Rechercher une mise à jour ». Trois
+        // d'entre eux ont été retrouvés sur une CAPTURE, posés à côté
+        // d'un bouton encadré — c'est dire ce que le contrôle laissait
+        // passer.
+        let plat = ligne.contains("ui.button(")
+            || (ligne.trim_start().starts_with(".button(")
+                && source
+                    .lines()
+                    .nth(n.saturating_sub(1))
+                    .is_some_and(|d| d.trim_end().ends_with("ui")));
+        if plat && !matches!(fonction, "menu_bar_ui" | "toolbar_ui") {
             plats.push((n + 1, fonction, ligne.trim().chars().take(70).collect()));
         }
     }
@@ -23187,5 +23216,172 @@ fn two_windows_opened_together_do_not_land_on_the_same_spot() {
             écran.expand(1.0).contains_rect(*a),
             "« {nom_a} » doit tenir dans l'écran — {a:?} pour un écran de {écran:?}"
         );
+    }
+}
+
+/// Aucun écran ne montre son balisage.
+///
+/// Les textes d'explication sont écrits dans une petite convention :
+/// accents graves pour le code, doubles astérisques pour un passage
+/// appuyé. `prose` les rend — mais il ne rendait que les accents graves,
+/// et l'explication du motif cyclique s'affichait « une suite dont
+/// \*\*toute tranche de quatre octets est unique\*\* », astérisques
+/// comprises. Une capture l'a montré ; aucun test ne le demandait.
+///
+/// Le contrôle porte sur ce qui est PEINT et non sur les chaînes du
+/// fichier de traduction : c'est le rendu qui est en cause, pas le
+/// texte. Écrire `**` dans une nouvelle phrase est donc permis — ce qui
+/// ne l'est pas, c'est de l'afficher à travers un chemin qui ne le rend
+/// pas.
+#[test]
+fn no_screen_shows_its_own_markup() {
+    for (nom, id, ouvre) in scènes() {
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp::default();
+        app.apply_theme(&ctx);
+        ouvre(&mut app);
+        let (_, lignes) = ce_qui_est_écrit(&ctx, &mut app, id, 4);
+        for (texte, _) in &lignes {
+            assert!(
+                !texte.contains("**"),
+                "« {nom} » montre son balisage : {:?}",
+                texte.chars().take(90).collect::<String>()
+            );
+        }
+    }
+}
+
+/// Les points de suspension sont des points de suspension.
+///
+/// Soixante-huit libellés portaient le caractère « … » et dix portaient
+/// trois points ASCII : « Motif cyclique... » dans le menu Outils juste
+/// au-dessus de « Calculatrice… ». À l'écran, les deux ne font pas la
+/// même largeur ni le même gris — c'est le genre d'écart qu'on ne sait
+/// pas nommer en le voyant, et qui donne l'impression que le programme
+/// a été écrit par deux personnes qui ne se parlaient pas.
+///
+/// Le contrôle lit le fichier des traductions plutôt que l'écran :
+/// toutes les phrases ne sont pas affichées en même temps, et celle qui
+/// ne l'est pas aujourd'hui le sera demain.
+#[test]
+fn an_ellipsis_is_written_as_an_ellipsis() {
+    let source = include_str!("i18n.rs");
+    let fautives: Vec<String> = source
+        .lines()
+        .enumerate()
+        .filter(|(_, l)| l.contains("...") && l.contains('"'))
+        .map(|(n, l)| format!("i18n.rs:{} {}", n + 1, l.trim()))
+        .collect();
+    assert!(
+        fautives.is_empty(),
+        "{} libellé(s) avec trois points au lieu de « … » :\n  {}",
+        fautives.len(),
+        fautives.join("\n  ")
+    );
+}
+
+/// Une section dépliée n'est jamais muette.
+///
+/// Au premier lancement, « Prochaine instruction » était dépliée — c'est
+/// voulu devant un source — et ne peignait RIEN : un titre, un filet, et
+/// deux cents pixels de blanc, entre deux voisines qui, elles,
+/// annonçaient ce qu'elles montreraient. Le vide n'était pas un défaut
+/// de mise en page mais un défaut de PAROLE : la section avait la place,
+/// elle n'avait pas la phrase.
+///
+/// Le contrôle regarde ce qui est peint entre le titre d'une section et
+/// le titre suivant. Replié, un titre n'a rien en dessous et c'est
+/// normal : on ne regarde donc que les sections ouvertes, reconnues au
+/// chevron « ▾ » qu'egui pose devant elles.
+#[test]
+fn an_open_section_always_has_something_to_say() {
+    for lang in [Lang::Fr, Lang::En] {
+        let s = strings(lang);
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp {
+            lang,
+            source: DEFAULT_SOURCE.to_owned(),
+            show_sidebar: true,
+            ..Default::default()
+        };
+        app.apply_theme(&ctx);
+        let (_, lignes) = ce_qui_est_écrit(&ctx, &mut app, None, 4);
+
+        // Le bandeau seul : les titres des sections y sont, et le reste
+        // de l'écran ne nous regarde pas ici.
+        let titre = |quoi: &str| -> egui::Rect {
+            lignes
+                .iter()
+                .find(|(t, _)| t == quoi)
+                .map(|(_, r)| *r)
+                .unwrap_or_else(|| panic!("{lang:?} : « {quoi} » est peint"))
+        };
+        let haut = titre(s.next_instruction);
+        let bas = titre(s.cpu_state);
+        assert!(
+            haut.bottom() < bas.top(),
+            "{lang:?} : « {} » est au-dessus de « {} »",
+            s.next_instruction,
+            s.cpu_state
+        );
+        let dedans = lignes.iter().any(|(t, r)| {
+            r.top() > haut.bottom()
+                && r.bottom() < bas.top()
+                && r.left() > haut.left() - 40.0
+                && !t.is_empty()
+        });
+        assert!(
+            dedans,
+            "{lang:?} : « {} » est dépliée et ne dit rien — {:.0} px de blanc \
+             entre elle et « {} »",
+            s.next_instruction,
+            bas.top() - haut.bottom(),
+            s.cpu_state
+        );
+    }
+}
+
+/// Deux mots identiques ne se touchent pas sur une même ligne.
+///
+/// Dans la fenêtre du graphe, le bouton qui remet le dessin à sa taille
+/// s'appelait « 100 % » — comme l'affichage du grossissement posé vingt
+/// pixels à sa gauche. L'un gris, l'autre encadré, et le même texte :
+/// on lisait un bégaiement, et rien ne disait ce que le bouton faisait.
+/// Il s'appelle maintenant « Taille réelle », du nom de son geste et non
+/// de la valeur qu'il rétablit.
+///
+/// QUATRE SIGNES AU MOINS, et ce seuil vient d'un faux positif : à un
+/// signe, la calculatrice déclenchait la règle des dizaines de fois, ses
+/// soixante-quatre bits affichant « 0 » côte à côte. Un chiffre répété
+/// dans un tableau est une donnée ; un mot répété à côté de lui-même est
+/// une maladresse. Le seuil sépare les deux sans avoir à les nommer.
+#[test]
+fn two_identical_words_never_sit_side_by_side() {
+    for (nom, id, ouvre) in scènes() {
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp::default();
+        app.apply_theme(&ctx);
+        ouvre(&mut app);
+        let (_, lignes) = ce_qui_est_écrit(&ctx, &mut app, id, 4);
+        for (i, (ta, ra)) in lignes.iter().enumerate() {
+            for (tb, rb) in &lignes[i + 1..] {
+                if ta != tb || ta.trim().chars().count() < 4 {
+                    continue;
+                }
+                // Sur la même ligne : quatre pixels de tolérance, les
+                // hampes et les jambages ne décalent pas un centre.
+                if (ra.center().y - rb.center().y).abs() > 4.0 {
+                    continue;
+                }
+                let trou = (rb.left() - ra.right())
+                    .abs()
+                    .min((ra.left() - rb.right()).abs());
+                assert!(
+                    trou >= 60.0,
+                    "« {nom} » bégaie : « {ta} » deux fois sur la même ligne, \
+                     à {trou:.0} px l'un de l'autre"
+                );
+            }
+        }
     }
 }

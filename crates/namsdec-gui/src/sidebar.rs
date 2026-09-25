@@ -619,6 +619,14 @@ impl NamsdecApp {
         let s = strings(self.lang);
         let theme = self.theme;
         let Some(emulator) = &self.emulator else {
+            // La section est dépliée devant un source, et elle ne disait
+            // rien tant qu'aucun programme n'était assemblé : un titre,
+            // un filet, et deux cents pixels de blanc — entre deux
+            // voisines qui, elles, annonçaient ce qu'elles montreraient.
+            // Sa propre phrase, et non « Aucun binaire assemblé. » une
+            // troisième fois : c'est ce que le panneau fera qui manque
+            // ici, pas le constat, déjà dit deux fois plus bas.
+            crate::empty_state(ui, theme, s.empty_next_instruction, None, None);
             return;
         };
         if emulator.cpu().halted {

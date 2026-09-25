@@ -9546,8 +9546,7 @@ impl NamsdecApp {
                 // et rien n'est envoyé d'autre que la requête.
                 ui.horizontal_wrapped(|ui| {
                     ui.add_enabled_ui(self.update_check.is_none(), |ui| {
-                        if ui
-                            .button(s.about_check_update)
+                        if framed_button(ui, self.theme, s.about_check_update)
                             .on_hover_text(s.about_check_update_hint)
                             .clicked()
                         {
@@ -12891,8 +12890,7 @@ impl NamsdecApp {
                     // Le motif sert à être *mangé* par le programme :
                     // l'envoyer dans l'entrée évite le détour par le
                     // presse-papier.
-                    if ui
-                        .button(s.cyclic_to_input)
+                    if framed_button(ui, self.theme, s.cyclic_to_input)
                         .on_hover_text(s.cyclic_to_input_hint)
                         .clicked()
                     {
@@ -13300,8 +13298,7 @@ impl NamsdecApp {
                             // garde, se relit, s'attache à un courriel.
                             // Le presse-papier ne survit pas à la
                             // fenêtre suivante.
-                            if ui
-                                .button(s.analysis_save)
+                            if framed_button(ui, self.theme, s.analysis_save)
                                 .on_hover_text(s.analysis_save_hint)
                                 .clicked()
                             {
@@ -13311,8 +13308,7 @@ impl NamsdecApp {
                             // ce n'est pas un rapport, c'est le fichier
                             // lui-même, et il sert à être comparé.
                             if self.analysis_module == "dump"
-                                && ui
-                                    .button(s.dump_save)
+                                && framed_button(ui, self.theme, s.dump_save)
                                     .on_hover_text(s.dump_save_hint)
                                     .clicked()
                             {
@@ -13570,8 +13566,7 @@ impl NamsdecApp {
             // De quoi revenir sur ses pas, puis au sommaire : une fiche
             // ouverte ne doit pas être un cul-de-sac.
             if !self.help_back.is_empty()
-                && ui
-                    .button(s.help_back)
+                && framed_button(ui, self.theme, s.help_back)
                     .on_hover_text(s.help_back_hint)
                     .clicked()
                 && let Some(precedent) = self.help_back.pop()
@@ -14679,8 +14674,7 @@ impl NamsdecApp {
                         // qu'on vise : fermer l'entrée d'un programme
                         // est sans retour pour lui, et ce n'est pas ce
                         // qu'on venait faire.
-                        if ui
-                            .button(s.console_eof)
+                        if framed_button(ui, self.theme, s.console_eof)
                             .on_hover_text(s.console_eof_hint)
                             .clicked()
                         {
@@ -14920,8 +14914,7 @@ impl NamsdecApp {
                 let échap_frappé = ui.input(|i| i.key_pressed(egui::Key::Escape));
                 // Fin d'entrée : un programme qui lit jusqu'au bout de son
                 // entrée attendrait indéfiniment sans ce bouton.
-                if ui
-                    .button(s.console_eof)
+                if framed_button(ui, self.theme, s.console_eof)
                     .on_hover_text(s.console_eof_hint)
                     .clicked()
                 {
@@ -17868,11 +17861,27 @@ fn editor_id() -> egui::Id {
 /// rdx` » ; les retirer sans rien mettre à la place perdrait la
 /// distinction. Un `LayoutJob` permet de changer de police au milieu
 /// d'une phrase, sans casser le retour à la ligne.
+///
+/// Les DOUBLES ASTÉRISQUES appuient un passage, et ils avaient été
+/// oubliés : l'explication du motif cyclique s'affichait « une suite dont
+/// \*\*toute tranche de quatre octets est unique\*\* », astérisques
+/// comprises. On les voyait sur une capture et nulle part ailleurs — le
+/// texte est juste, il est simplement écrit dans une convention que
+/// personne n'honorait.
+///
+/// L'appui se rend par une encre plus vive et non par un gras : egui
+/// n'a qu'une graisse par famille, et c'est ainsi qu'il marque lui-même
+/// un texte fort. Ce qui est entre accents graves reste du code, même
+/// s'il contient des astérisques.
 fn prose(ui: &egui::Ui, theme: &'static Theme, text: &str) -> egui::text::LayoutJob {
     let normal = egui::TextFormat {
         font_id: egui::TextStyle::Body.resolve(ui.style()),
         color: ui.visuals().text_color(),
         ..Default::default()
+    };
+    let fort = egui::TextFormat {
+        color: ui.visuals().strong_text_color(),
+        ..normal.clone()
     };
     let code = egui::TextFormat {
         font_id: egui::TextStyle::Monospace.resolve(ui.style()),
@@ -17886,8 +17895,20 @@ fn prose(ui: &egui::Ui, theme: &'static Theme, text: &str) -> egui::text::Layout
             continue;
         }
         // Un accent grave sur deux ouvre un morceau de code.
-        let format = if index % 2 == 0 { &normal } else { &code };
-        job.append(part, 0.0, format.clone());
+        if index % 2 == 1 {
+            job.append(part, 0.0, code.clone());
+            continue;
+        }
+        // Hors du code, une paire d'astérisques sur deux ouvre un
+        // passage appuyé. Une astérisque solitaire ne ferme rien et
+        // reste donc telle quelle, ce qui est le comportement voulu :
+        // une phrase peut parler d'une multiplication.
+        for (morceau, appuyé) in part.split("**").zip([false, true].into_iter().cycle()) {
+            if morceau.is_empty() {
+                continue;
+            }
+            job.append(morceau, 0.0, if appuyé { fort.clone() } else { normal.clone() });
+        }
     }
     job
 }
