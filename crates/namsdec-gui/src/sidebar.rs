@@ -49,9 +49,16 @@ impl NamsdecApp {
         // C'est ce qu'on regarde entre deux pas : devoir le faire
         // défiler pour voir R15 ou ZF coupe la lecture. Il partageait sa
         // zone avec la prochaine instruction, laquelle est au-dessus —
-        // et une zone qui défile coupe par le bas. Sur une fenêtre de
-        // 1280×820, la taille par défaut, le compte ne tombait pas juste
-        // et c'étaient donc les registres qui passaient sous la barre.
+        // et une zone qui défile coupe par le bas : c'étaient donc les
+        // registres qui passaient dessous.
+        //
+        // Ancré, et non simplement posé à la suite. Posé à la suite,
+        // avec la zone du dessus bornée, il remonterait quand celle-ci
+        // se replie et le trou disparaîtrait — mais il DÉBORDERAIT sur
+        // la vue du dessous dès que le compte ne tombe pas juste, ce
+        // qu'un panneau, lui, ne fait jamais. Essayé, mesuré, et rendu :
+        // c'est l'invariant « le bandeau ne peint pas sur l'onglet » qui
+        // l'a dit, en nommant CF et ZF.
         //
         // Un panneau bas prend la hauteur de son contenu, mesurée à
         // l'image précédente : l'état du processeur a toujours la
