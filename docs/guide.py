@@ -328,8 +328,9 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "Plusieurs fichiers peuvent être ouverts à la fois : une barre d'onglets apparaît "
          "au-dessus de l'éditeur <b>dès le premier écran</b>, chacun gardant son "
          "texte, son curseur, ses points d'arrêt et son exécution en cours. Le "
-         "<b>+</b> au bout de la file en ouvre un autre, le <b>×</b> ferme celui qu'il "
-         "suit. Ctrl+Tab passe au suivant, Ctrl+W ferme."),
+         "<b>+</b> au bout de la file propose les deux façons d'en avoir un de plus — "
+         "<b>Nouveau programme</b> (Ctrl+N) ou <b>Ouvrir un fichier…</b> (Ctrl+O) — et le "
+         "<b>×</b> ferme celui qu'il suit. Ctrl+Tab passe au suivant, Ctrl+W ferme."),
 
         ("h2", "Ce que l'éditeur sait faire"),
         ("p",

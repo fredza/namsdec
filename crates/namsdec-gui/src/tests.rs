@@ -22639,6 +22639,16 @@ fn outside_the_menus_a_button_shows_itself_without_being_hovered() {
     for (n, ligne) in source.lines().enumerate() {
         // Le nom de la fonction englobante : les `fn` de premier niveau
         // dans un `impl` sont indentés de quatre espaces.
+        // Les fonctions de premier niveau AUSSI : `tab_plus_menu` vit au
+        // niveau du module, et le contrôle ne voyait que les méthodes.
+        // Une exception qui ne peut pas être nommée n'en est pas une.
+        if let Some(nom) = ligne
+            .strip_prefix("fn ")
+            .or_else(|| ligne.strip_prefix("pub fn "))
+            .or_else(|| ligne.strip_prefix("pub(crate) fn "))
+        {
+            fonction = nom.split('(').next().unwrap_or("").trim();
+        }
         if let Some(reste) = ligne.strip_prefix("    ")
             && let Some(nom) = reste
                 .trim_start_matches("pub(crate) ")
@@ -22688,7 +22698,10 @@ fn outside_the_menus_a_button_shows_itself_without_being_hovered() {
                     .lines()
                     .nth(n.saturating_sub(1))
                     .is_some_and(|d| d.trim_end().ends_with("ui")));
-        if plat && !matches!(fonction, "menu_bar_ui" | "toolbar_ui") {
+        // `tab_plus_menu` est un menu, et son nom le dit : les deux
+        // entrées du « + » de la barre d'onglets se dessinent comme
+        // celles de la barre de menus, plates.
+        if plat && !matches!(fonction, "menu_bar_ui" | "toolbar_ui" | "tab_plus_menu") {
             plats.push((n + 1, fonction, ligne.trim().chars().take(70).collect()));
         }
     }
@@ -24408,6 +24421,52 @@ fn the_tab_bar_and_its_plus_are_there_from_the_first_screen() {
         "le « + » est là dès l'accueil : c'est lui qui dit que les fichiers \
          se rangent en onglets"
     );
+    // Et il PROPOSE LES DEUX. Il menait droit au sélecteur de fichiers,
+    // alors que dans une barre d'onglets « + » veut d'abord dire « un de
+    // plus », c'est-à-dire un programme neuf. Ouvrir un fichier existant
+    // est l'autre moitié de la question, pas toute la question.
+    assert_eq!(
+        crate::tab_plus_menu_actions(),
+        vec![Action::New, Action::OpenFile],
+        "le « + » propose un programme neuf ET l'ouverture d'un fichier"
+    );
+
+    // Et on l'ouvre POUR DE BON : un clic simulé par egui, puis on lit
+    // ce qui est peint. Les clics de `xdotool` n'atteignent pas
+    // l'application sous Wayland — c'est le banc, et lui seul, qui peut
+    // répondre à « qu'y a-t-il dans ce menu ».
+    let plus_place = accueil
+        .iter()
+        .find(|(t, _)| t == "+")
+        .map(|(_, r)| *r)
+        .expect("le « + » est peint");
+    let entrée = écran_du_banc();
+    for pressé in [true, false] {
+        let clic = egui::RawInput {
+            events: vec![
+                egui::Event::PointerMoved(plus_place.center()),
+                egui::Event::PointerButton {
+                    pos: plus_place.center(),
+                    button: egui::PointerButton::Primary,
+                    pressed: pressé,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+            ..entrée.clone()
+        };
+        let mut sortie = ctx.run_ui(clic, |ui| app.draw(ui));
+        sortie.textures_delta.clear();
+    }
+    let (_, ouvert) = ce_qui_est_écrit(&ctx, &mut app, None, 3);
+    let écrit: Vec<&str> = ouvert.iter().map(|(t, _)| t.as_str()).collect();
+    let s = strings(app.lang);
+    for attendu in [s.file_new, s.file_open_file] {
+        assert!(
+            écrit.iter().any(|t| t.contains(attendu)),
+            "« {attendu} » est dans le menu du « + » — vu : {:?}",
+            &écrit[..écrit.len().min(14)]
+        );
+    }
     assert!(
         accueil
             .iter()

@@ -67,7 +67,10 @@ processeur est ancré.
       compris, avec un « + » au bout. Elle n'apparaissait qu'à partir du
       second fichier : rien, jamais, ne disait que le mécanisme
       existait. Premier remède insuffisant — « dès le premier fichier
-      OUVERT » — parce que l'écran d'accueil n'en a pas.
+      OUVERT » — parce que l'écran d'accueil n'en a pas. Le « + » ouvre
+      un menu de deux entrées, « Nouveau programme » et « Ouvrir un
+      fichier… » : dans une barre d'onglets, « + » veut d'abord dire
+      « un de plus ».
 - [x] **« Fermer le fichier » ne disparaît plus du menu** — elle
       s'effaçait quand aucun fichier n'était ouvert, c'est-à-dire au
       moment où on la cherche. Grisée, avec sa raison.

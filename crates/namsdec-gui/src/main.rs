@@ -11088,7 +11088,18 @@ impl NamsdecApp {
         let s = strings(self.lang);
         let mut aller = None;
         let mut fermer = None;
-        let mut ouvrir = false;
+        let mut demande = None;
+        // Les deux libellés, préparés avant la rangée : la fermeture qui
+        // dessine le menu ne peut pas emprunter `self` une seconde fois.
+        let ctx_raccourcis = ui.ctx().clone();
+        let neuf = shortcut_hint(&self.keybindings, &ctx_raccourcis, s.file_new, Action::New);
+        let depuis_un_fichier = shortcut_hint(
+            &self.keybindings,
+            &ctx_raccourcis,
+            s.file_open_file,
+            Action::OpenFile,
+        );
+        let infobulle = s.tab_open_another;
         egui::ScrollArea::horizontal()
             .id_salt("tabs_bar")
             .auto_shrink([false, true])
@@ -11123,19 +11134,24 @@ impl NamsdecApp {
                         ui.add_space(6.0);
                     }
                     // Le « + », au bout de la file : l'endroit où tout
-                    // le monde le cherche.
-                    if ui
-                        .small_button("+")
-                        .on_hover_text(s.tab_open_another)
-                        .clicked()
+                    // le monde le cherche. Il ouvre un petit MENU de
+                    // deux entrées, et non directement le sélecteur de
+                    // fichiers — dans une barre d'onglets, « + » veut
+                    // d'abord dire « un de plus », c'est-à-dire un
+                    // programme neuf ; ouvrir un fichier existant est
+                    // l'autre moitié de la question, pas toute la
+                    // question. Les deux entrées portent leur raccourci,
+                    // ce qui les apprend au passage.
+                    if let Some(action) =
+                        tab_plus_menu(ui, &neuf, &depuis_un_fichier, infobulle)
                     {
-                        ouvrir = true;
+                        demande = Some(action);
                     }
                 });
             });
         ui.add_space(2.0);
-        if ouvrir {
-            self.dispatch(Action::OpenFile);
+        if let Some(action) = demande {
+            self.dispatch(action);
         }
         if let Some(rang) = aller {
             self.go_to_tab(rang);
@@ -17457,6 +17473,45 @@ fn status_dot(ui: &mut egui::Ui, color: egui::Color32) {
 /// couleurs du thème lui-même (fond, panneau, accents) plutôt qu'un nom
 /// seul — c'est le thème qui se décrit, donc rien à écrire de plus quand
 /// un nouveau s'ajoute.
+/// Ce que le « + » de la barre d'onglets propose, dans l'ordre.
+///
+/// Déclaré ici plutôt qu'écrit deux fois : `tab_plus_menu` dessine cette
+/// liste, et le contrôle la lit. Sans cela il faudrait piloter un menu
+/// ouvert pour savoir ce qu'il contient, ce qui vérifierait surtout
+/// qu'egui sait ouvrir un menu.
+pub fn tab_plus_menu_actions() -> Vec<Action> {
+    vec![Action::New, Action::OpenFile]
+}
+
+/// Le petit menu du « + » de la barre d'onglets.
+///
+/// Une fonction à elle, et non trois lignes dans `tabs_bar_ui` : le
+/// contrôle « hors des menus, un bouton se voit sans qu'on le survole »
+/// nomme ses exceptions par le nom de la fonction, et celle-ci EST un
+/// menu — ses deux entrées doivent être plates comme toutes les autres.
+///
+/// Rend l'action demandée, s'il y en a une : la fermeture ne peut pas
+/// emprunter l'application une seconde fois.
+fn tab_plus_menu(
+    ui: &mut egui::Ui,
+    neuf: &str,
+    depuis_un_fichier: &str,
+    infobulle: &str,
+) -> Option<Action> {
+    let mut demande = None;
+    let libellés = [neuf, depuis_un_fichier];
+    let bouton = ui.menu_button("+", |ui| {
+        for (action, libellé) in tab_plus_menu_actions().into_iter().zip(libellés) {
+            if ui.button(libellé).clicked() {
+                demande = Some(action);
+                ui.close();
+            }
+        }
+    });
+    bouton.response.on_hover_text(infobulle);
+    demande
+}
+
 /// Un bouton **encadré**, pour les endroits où il doit se voir sans
 /// qu'on ait à le survoler.
 ///
