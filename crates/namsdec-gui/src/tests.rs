@@ -11848,27 +11848,24 @@ fn the_title_bar_carries_the_file_name() {
     assert!(!painted.contains("exemple.asm •"), "rien à enregistrer");
 
     app.source.push_str("    nop\n");
-    // TROIS fois depuis que la barre d'onglets paraît dès le premier
-    // fichier : le titre de la fenêtre, l'onglet, et la barre d'état.
-    // Trois rôles distincts, et c'est ce que fait tout éditeur — le
-    // titre dit de quel fichier la fenêtre parle, l'onglet lequel on
-    // regarde, la barre d'état ce qu'il en est. La règle qui interdit
-    // de répéter ne vise pas un nom de fichier mais une PHRASE, et elle
-    // ne se déclenche qu'au-delà de vingt signes.
-    assert_eq!(
-        paint(&mut app).matches("exemple.asm •").count(),
-        3,
-        "le titre, l'onglet et le statut"
-    );
-
-    // Et quand la barre du système reprend la main, namsdec n'écrit
-    // plus de titre : ce serait le dire deux fois. Restent l'onglet et
-    // la barre d'état.
-    app.system_titlebar = true;
+    // DEUX fois avec le point : le titre de la fenêtre et la barre
+    // d'état. L'onglet le dit aussi, mais par un ROND peint à la place
+    // de sa croix — c'est ce que fait tout éditeur, et cela ne se
+    // compte pas dans le texte.
     assert_eq!(
         paint(&mut app).matches("exemple.asm •").count(),
         2,
-        "l'onglet et le statut"
+        "le titre et le statut portent le point ; l'onglet, un rond"
+    );
+
+    // Et quand la barre du système reprend la main, namsdec n'écrit
+    // plus de titre : ce serait le dire deux fois. Reste la barre
+    // d'état.
+    app.system_titlebar = true;
+    assert_eq!(
+        paint(&mut app).matches("exemple.asm •").count(),
+        1,
+        "le statut seul"
     );
 }
 
@@ -16839,10 +16836,23 @@ fn the_tab_bar_shows_the_open_files() {
 
     let peint = paint(&mut app);
     assert!(peint.contains("un.asm"), "{peint}");
-    assert!(
-        peint.contains("deux.asm •"),
-        "le point dit ce qui n'est pas enregistré : {peint}"
-    );
+    assert!(peint.contains("deux.asm"), "{peint}");
+
+    // LE POINT N'EST PLUS UN SUFFIXE mais un rond peint dans l'onglet,
+    // à la place de sa croix — c'est ce que fait tout éditeur, et la
+    // croix reparaît quand on s'approche. Le chercher dans le texte ne
+    // donnerait plus rien ; on le cherche donc dans les formes.
+    let ctx = egui::Context::default();
+    let mut posé = false;
+    for _ in 0..3 {
+        let mut sortie = ctx.run_ui(écran_du_banc(), |ui| app.draw(ui));
+        posé = sortie.shapes.iter().any(|c| {
+            matches!(&c.shape, egui::epaint::Shape::Circle(rond)
+                if (rond.radius - 3.5).abs() < 0.5 && rond.center.y < 120.0)
+        });
+        sortie.textures_delta.clear();
+    }
+    assert!(posé, "le rond dit, dans l'onglet, ce qui n'est pas enregistré");
 
     // UN SEUL TAMPON, et la barre est là quand même.
     //
@@ -16852,10 +16862,16 @@ fn the_tab_bar_shows_the_open_files() {
     // que les fichiers se rangent en onglets, donc le seul où la barre
     // a quelque chose à apprendre. Sans elle, rien ne le dit jamais.
     let mut seul = NamsdecApp::default();
-    let peint = paint(&mut seul);
+    let ctx = egui::Context::default();
+    let (_, accueil) = ce_qui_est_écrit(&ctx, &mut seul, None, 3);
+    let onglet = accueil
+        .iter()
+        .filter(|(t, _)| t == strings(seul.lang).untitled_buffer)
+        .any(|(_, r)| r.top() < 120.0);
     assert!(
-        peint.contains('×') && peint.contains('+'),
-        "la barre d'onglets et son « + » sont là dès l'accueil : {peint}"
+        onglet,
+        "la barre d'onglets est là dès l'accueil : {:?}",
+        accueil.iter().map(|(t, _)| t).take(14).collect::<Vec<_>>()
     );
 }
 
@@ -22698,10 +22714,7 @@ fn outside_the_menus_a_button_shows_itself_without_being_hovered() {
                     .lines()
                     .nth(n.saturating_sub(1))
                     .is_some_and(|d| d.trim_end().ends_with("ui")));
-        // `tab_plus_menu` est un menu, et son nom le dit : les deux
-        // entrées du « + » de la barre d'onglets se dessinent comme
-        // celles de la barre de menus, plates.
-        if plat && !matches!(fonction, "menu_bar_ui" | "toolbar_ui" | "tab_plus_menu") {
+        if plat && !matches!(fonction, "menu_bar_ui" | "toolbar_ui") {
             plats.push((n + 1, fonction, ligne.trim().chars().take(70).collect()));
         }
     }
@@ -24417,89 +24430,45 @@ fn the_tab_bar_and_its_plus_are_there_from_the_first_screen() {
     // regardé son écran et n'a rien vu, ce que ce test affirmait normal.
     let (_, accueil) = ce_qui_est_écrit(&ctx, &mut app, None, 3);
     assert!(
-        accueil.iter().any(|(t, _)| t == "+"),
-        "le « + » est là dès l'accueil : c'est lui qui dit que les fichiers \
-         se rangent en onglets"
-    );
-    // Et il PROPOSE LES DEUX. Il menait droit au sélecteur de fichiers,
-    // alors que dans une barre d'onglets « + » veut d'abord dire « un de
-    // plus », c'est-à-dire un programme neuf. Ouvrir un fichier existant
-    // est l'autre moitié de la question, pas toute la question.
-    assert_eq!(
-        crate::tab_plus_menu_actions(),
-        vec![Action::New, Action::OpenFile],
-        "le « + » propose un programme neuf ET l'ouverture d'un fichier"
-    );
-
-    // Et on l'ouvre POUR DE BON : un clic simulé par egui, puis on lit
-    // ce qui est peint. Les clics de `xdotool` n'atteignent pas
-    // l'application sous Wayland — c'est le banc, et lui seul, qui peut
-    // répondre à « qu'y a-t-il dans ce menu ».
-    let plus_place = accueil
-        .iter()
-        .find(|(t, _)| t == "+")
-        .map(|(_, r)| *r)
-        .expect("le « + » est peint");
-    let entrée = écran_du_banc();
-    for pressé in [true, false] {
-        let clic = egui::RawInput {
-            events: vec![
-                egui::Event::PointerMoved(plus_place.center()),
-                egui::Event::PointerButton {
-                    pos: plus_place.center(),
-                    button: egui::PointerButton::Primary,
-                    pressed: pressé,
-                    modifiers: egui::Modifiers::NONE,
-                },
-            ],
-            ..entrée.clone()
-        };
-        let mut sortie = ctx.run_ui(clic, |ui| app.draw(ui));
-        sortie.textures_delta.clear();
-    }
-    let (_, ouvert) = ce_qui_est_écrit(&ctx, &mut app, None, 3);
-    let écrit: Vec<&str> = ouvert.iter().map(|(t, _)| t.as_str()).collect();
-    let s = strings(app.lang);
-    for attendu in [s.file_new, s.file_open_file] {
-        assert!(
-            écrit.iter().any(|t| t.contains(attendu)),
-            "« {attendu} » est dans le menu du « + » — vu : {:?}",
-            &écrit[..écrit.len().min(14)]
-        );
-    }
-    assert!(
         accueil
             .iter()
             .any(|(t, _)| t == strings(app.lang).untitled_buffer),
-        "et le tampon sans titre s'y montre comme un onglet"
+        "le tampon sans titre se montre comme un onglet, dès l'accueil"
+    );
+    // Le « + » FAIT un programme de plus.
+    //
+    // Il a d'abord mené au sélecteur de fichiers, puis à un menu de deux
+    // entrées. Les deux fois c'était trop : dans une barre d'onglets,
+    // « + » veut dire « un de plus », un point c'est tout.
+    //
+    // Le contrôle porte sur le GESTE et non sur le dessin : la croix et
+    // le plus sont des traits peints, pas des textes, et un test qui
+    // chercherait « + » dans ce qui est écrit ne trouverait rien.
+    assert!(app.tabs.is_empty(), "un seul tampon au départ");
+    let avant = app.tab_labels().len();
+    app.dispatch(Action::New);
+    assert_eq!(
+        app.tab_labels().len(),
+        avant + 1,
+        "« Nouveau programme » ajoute un onglet, même depuis un tampon vierge"
+    );
+    let noms: Vec<String> = app.tab_labels().into_iter().map(|(n, _)| n).collect();
+    assert!(
+        noms.iter().any(|n| n.ends_with(" 2")),
+        "et les tampons sans titre se numérotent : {noms:?}"
     );
 
-    // Un seul fichier : la barre est là, avec son nom et le « + ».
+    // Un fichier ouvert se nomme dans la barre, à côté des autres.
     app.open_file(un.clone());
-    assert!(app.tabs.is_empty(), "un seul fichier ne fait pas d'onglet voisin");
     let (_, après) = ce_qui_est_écrit(&ctx, &mut app, None, 3);
-    assert!(
-        après.iter().any(|(t, _)| t == "un.asm"),
-        "le fichier ouvert se nomme dans la barre — {:?}",
-        après.iter().map(|(t, _)| t).take(12).collect::<Vec<_>>()
-    );
-    let plus = après
+    let dans_la_barre = après
         .iter()
-        .find(|(t, _)| t == "+")
-        .map(|(_, r)| *r)
-        .expect("le « + » est peint : c'est lui qui dit qu'on peut en ouvrir un autre");
-    // Le nom SUR LA MÊME RANGÉE que le « + », et non le premier trouvé :
-    // « un.asm » est écrit trois fois à l'écran — la barre de titre, la
-    // barre d'état, et l'onglet — et prendre le premier faisait comparer
-    // le « + » de la barre d'onglets au titre de la fenêtre.
-    let nom = après
-        .iter()
-        .find(|(t, r)| t == "un.asm" && (r.center().y - plus.center().y).abs() < 6.0)
-        .map(|(_, r)| *r)
-        .expect("le nom du fichier est écrit dans la barre d'onglets");
+        .filter(|(t, _)| t == "un.asm")
+        .any(|(_, r)| r.top() < 120.0);
     assert!(
-        plus.left() > nom.right(),
-        "et il est au bout de la file, non devant elle"
+        dans_la_barre,
+        "le fichier ouvert se nomme dans la barre d'onglets — {:?}",
+        après.iter().map(|(t, _)| t).take(14).collect::<Vec<_>>()
     );
 }
 

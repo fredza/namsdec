@@ -67,10 +67,19 @@ processeur est ancré.
       compris, avec un « + » au bout. Elle n'apparaissait qu'à partir du
       second fichier : rien, jamais, ne disait que le mécanisme
       existait. Premier remède insuffisant — « dès le premier fichier
-      OUVERT » — parce que l'écran d'accueil n'en a pas. Le « + » ouvre
-      un menu de deux entrées, « Nouveau programme » et « Ouvrir un
-      fichier… » : dans une barre d'onglets, « + » veut d'abord dire
-      « un de plus ».
+      OUVERT » — parce que l'écran d'accueil n'en a pas.
+- [x] **La barre d'onglets ressemble à une barre d'onglets** — des
+      rectangles francs collés à l'éditeur, liseré d'accent sur l'actif,
+      croix à l'intérieur, rond du non-enregistré à sa place. C'étaient
+      trois objets qui flottaient : une pastille arrondie, une croix
+      détachée, un plus.
+- [x] **Le « + » crée un programme neuf** — il menait au sélecteur de
+      fichiers, puis à un menu de deux entrées ; les deux fois c'était
+      trop. Et « Nouveau programme » ne créait PAS d'onglet quand le
+      tampon courant était vierge : le geste n'avait aucun effet
+      visible.
+- [x] **Les tampons sans titre se numérotent** — trois programmes neufs
+      s'appelaient tous « sans titre ».
 - [x] **« Fermer le fichier » ne disparaît plus du menu** — elle
       s'effaçait quand aucun fichier n'était ouvert, c'est-à-dire au
       moment où on la cherche. Grisée, avec sa raison.

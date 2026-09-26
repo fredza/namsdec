@@ -328,9 +328,13 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "Plusieurs fichiers peuvent être ouverts à la fois : une barre d'onglets apparaît "
          "au-dessus de l'éditeur <b>dès le premier écran</b>, chacun gardant son "
          "texte, son curseur, ses points d'arrêt et son exécution en cours. Le "
-         "<b>+</b> au bout de la file propose les deux façons d'en avoir un de plus — "
-         "<b>Nouveau programme</b> (Ctrl+N) ou <b>Ouvrir un fichier…</b> (Ctrl+O) — et le "
-         "<b>×</b> ferme celui qu'il suit. Ctrl+Tab passe au suivant, Ctrl+W ferme."),
+         "<b>+</b> au bout de la file crée un <b>programme neuf</b> (Ctrl+N) dans son "
+         "propre onglet ; le <b>×</b> ferme celui qu'il suit. Un onglet dont le texte "
+         "n'est pas enregistré porte un <b>rond</b> à la place de sa croix — la croix "
+         "revient quand on s'en approche. Les programmes neufs se numérotent : "
+         "« sans titre 2 », « sans titre 3 ». Ctrl+Tab passe au suivant, Ctrl+W ferme, "
+         "et <b>Fichier > Ouvrir un fichier…</b> (Ctrl+O) ouvre un fichier existant, "
+         "lui aussi dans son onglet."),
 
         ("h2", "Ce que l'éditeur sait faire"),
         ("p",

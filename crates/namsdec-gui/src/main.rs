@@ -930,6 +930,10 @@ struct OpenTab {
     current_exercise: Option<String>,
     program_reads: bool,
     program_writes: bool,
+    /// Le rang de ce tampon parmi les « sans titre », quand il n'a pas
+    /// de fichier. Trois tampons neufs s'appelaient tous « sans titre »,
+    /// et l'on ne savait plus lequel on regardait.
+    untitled_no: usize,
 }
 
 impl OpenTab {
@@ -942,6 +946,7 @@ impl OpenTab {
             s,
             packs,
             lang,
+            self.untitled_no,
         )
     }
 
@@ -1559,6 +1564,12 @@ struct NamsdecApp {
     /// Le facteur d'échelle de l'écran à l'image précédente : quand il
     /// change, toute la fenêtre est à repeindre (voir `draw`).
     dernière_échelle: Option<f32>,
+    /// Le rang du tampon courant parmi les « sans titre ».
+    untitled_no: usize,
+    /// Le prochain rang à distribuer. Il ne redescend jamais : fermer
+    /// « sans titre 2 » ne fait pas du suivant un second « sans titre 2 »
+    /// pendant qu'on regarde encore le premier.
+    next_untitled: usize,
     /// Le bandeau d'état est-il déployé ? Vrai à chaque lancement, et
     /// **hors de `settings.json`** : egui garde
     /// normalement l'état des en-têtes repliables d'une session à
@@ -2427,6 +2438,8 @@ impl Default for NamsdecApp {
             current_exercise: None,
             settings_file: None,
             dernière_échelle: None,
+            untitled_no: 1,
+            next_untitled: 2,
             cpu_state_open: true,
             next_instruction_open: true,
             next_detail_open: false,
@@ -4468,11 +4481,13 @@ impl NamsdecApp {
             current_exercise: self.current_exercise.take(),
             program_reads: self.program_reads,
             program_writes: self.program_writes,
+            untitled_no: self.untitled_no,
         }
     }
 
     /// Et l'inverse : l'onglet redevient le fichier de travail.
     fn restore_tab(&mut self, tab: OpenTab) {
+        self.untitled_no = tab.untitled_no;
         self.current_file = tab.path;
         self.file_mtime = tab.file_mtime;
         self.source = tab.source;
@@ -4568,6 +4583,7 @@ impl NamsdecApp {
                 s,
                 &self.exercise_packs,
                 self.lang,
+                self.untitled_no,
             ),
             self.buffer_modified(),
         );
@@ -4773,12 +4789,21 @@ impl NamsdecApp {
     /// Le fichier en cours reste ouvert à côté : « nouveau » veut dire
     /// « un de plus », et non « à la place de ».
     fn new_program(&mut self) {
-        if self.current_file.is_some() || self.buffer_modified() {
-            let courant = self.take_tab();
-            let insertion = self.active_tab_index.min(self.tabs.len());
-            self.tabs.insert(insertion, courant);
-            self.active_tab_index = insertion + 1;
-        }
+        // TOUJOURS un onglet de plus, même quand le tampon courant est
+        // vierge et sans fichier.
+        //
+        // Il ne s'en créait pas dans ce cas : « un tampon vierge n'a
+        // rien à garder ». C'est vrai de son contenu et faux de ce qu'on
+        // vient de demander — on a cliqué « Nouveau programme » et il ne
+        // se passait RIEN de visible, le tampon d'accueil étant remplacé
+        // par un autre qui lui ressemble. Un geste sans effet visible
+        // est un geste cassé, quelle que soit la logique derrière.
+        let courant = self.take_tab();
+        let insertion = self.active_tab_index.min(self.tabs.len());
+        self.tabs.insert(insertion, courant);
+        self.active_tab_index = insertion + 1;
+        self.untitled_no = self.next_untitled;
+        self.next_untitled += 1;
         self.source = NEW_PROGRAM.to_owned();
         self.saved_source = NEW_PROGRAM.to_owned();
         self.current_file = None;
@@ -11068,6 +11093,19 @@ impl NamsdecApp {
     ///
     /// Un seul fichier ouvert : pas de barre. Elle n'apprend rien tant
     /// qu'il n'y a rien à choisir, et l'éditeur gagne sa hauteur.
+    /// La barre d'onglets : une vraie barre, et non des pastilles.
+    ///
+    /// Elle était faite d'un `selectable_label` arrondi suivi d'une
+    /// croix détachée — trois objets qui flottaient, sans lien visible
+    /// entre eux ni avec l'éditeur. Un onglet, c'est autre chose : un
+    /// rectangle franc, collé à ce qu'il montre, dont le bord supérieur
+    /// dit lequel est devant. C'est ce que fait tout éditeur, et ce que
+    /// l'œil sait lire sans qu'on le lui explique.
+    ///
+    /// Dessinée à la main plutôt que composée de widgets : il faut un
+    /// fond qui rejoint celui de l'éditeur, un liseré d'accent sur deux
+    /// pixels, et une croix à l'intérieur du rectangle. Aucun widget
+    /// d'egui ne donne les trois.
     fn tabs_bar_ui(&mut self, ui: &mut egui::Ui) {
         // TOUJOURS, y compris sur un tampon « sans titre ».
         //
@@ -11076,80 +11114,170 @@ impl NamsdecApp {
         // remède, insuffisant : la montrer dès le premier fichier
         // OUVERT. Or l'écran d'accueil n'en a pas — il porte un tampon
         // « sans titre » —, si bien que la barre restait invisible
-        // exactement là où elle enseigne quelque chose. Corrigé après
-        // que Fred a regardé son écran et n'a rien vu ; je l'avais
-        // vérifié sur une séance où un fichier était ouvert, c'est-à-dire
-        // dans le seul cas qui marchait déjà.
-        //
-        // Le tampon sans titre EST un onglet — `tab_labels` le compte
-        // depuis toujours. Le montrer comme tel ne coûte qu'une rangée,
-        // et c'est elle qui porte le « + ».
+        // exactement là où elle enseigne quelque chose.
         let theme = self.theme;
         let s = strings(self.lang);
         let mut aller = None;
         let mut fermer = None;
         let mut demande = None;
-        // Les deux libellés, préparés avant la rangée : la fermeture qui
-        // dessine le menu ne peut pas emprunter `self` une seconde fois.
         let ctx_raccourcis = ui.ctx().clone();
-        let neuf = shortcut_hint(&self.keybindings, &ctx_raccourcis, s.file_new, Action::New);
-        let depuis_un_fichier = shortcut_hint(
-            &self.keybindings,
-            &ctx_raccourcis,
-            s.file_open_file,
-            Action::OpenFile,
+        let neuf_infobulle = format!(
+            "{} — {}",
+            shortcut_hint(&self.keybindings, &ctx_raccourcis, s.file_new, Action::New),
+            s.tab_open_another
         );
-        let infobulle = s.tab_open_another;
+
+        const HAUTEUR: f32 = 30.0;
+        const MARGE: f32 = 12.0;
+        const CROIX: f32 = 16.0;
+        // Le fond de la barre : celui des panneaux, plus sombre que
+        // l'éditeur. C'est le contraste entre les deux qui fait que
+        // l'onglet actif paraît posé PAR-DESSUS l'éditeur.
+        let fond_barre = theme.panel;
+        let fond_actif = ui.visuals().extreme_bg_color;
+        let police = egui::TextStyle::Body.resolve(ui.style());
+
+        let étiquettes = self.tab_labels();
+        let actif = self.active_tab_index;
         egui::ScrollArea::horizontal()
             .id_salt("tabs_bar")
             .auto_shrink([false, true])
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    for (rang, (nom, modifié)) in self.tab_labels().into_iter().enumerate() {
-                        let actif = rang == self.active_tab_index;
-                        let étiquette = format!(
-                            "{}{}",
-                            raccourcir_nom(&nom, 18),
-                            if modifié { " •" } else { "" }
+                    ui.spacing_mut().item_spacing.x = 0.0;
+                    for (rang, (nom, modifié)) in étiquettes.into_iter().enumerate() {
+                        let court = raccourcir_nom(&nom, 18);
+                        let galette = ui.painter().layout_no_wrap(
+                            court.clone(),
+                            police.clone(),
+                            egui::Color32::PLACEHOLDER,
                         );
-                        let texte = egui::RichText::new(étiquette).color(if actif {
-                            theme.text
+                        let largeur = MARGE + galette.size().x + 6.0 + CROIX + MARGE * 0.5;
+                        let (rect, réponse) = ui.allocate_exact_size(
+                            egui::vec2(largeur, HAUTEUR),
+                            egui::Sense::click(),
+                        );
+                        let ici = rang == actif;
+                        let peintre = ui.painter();
+                        peintre.rect_filled(
+                            rect,
+                            0.0,
+                            if ici {
+                                fond_actif
+                            } else if réponse.hovered() {
+                                mélange(fond_barre, fond_actif, 0.5)
+                            } else {
+                                fond_barre
+                            },
+                        );
+                        if ici {
+                            // Le liseré du dessus : c'est lui qui dit
+                            // « celui-ci », plus vite qu'une nuance de
+                            // fond.
+                            peintre.rect_filled(
+                                egui::Rect::from_min_size(
+                                    rect.min,
+                                    egui::vec2(rect.width(), 2.0),
+                                ),
+                                0.0,
+                                theme.accent,
+                            );
+                        }
+                        peintre.galley(
+                            egui::pos2(rect.left() + MARGE, rect.center().y - galette.size().y / 2.0),
+                            galette,
+                            if ici { theme.text } else { theme.dim },
+                        );
+                        // La croix, dans le rectangle : c'est l'onglet
+                        // qu'on ferme, et non un bouton qui traîne à
+                        // côté.
+                        let croix = egui::Rect::from_center_size(
+                            egui::pos2(rect.right() - MARGE * 0.5 - CROIX / 2.0, rect.center().y),
+                            egui::vec2(CROIX, CROIX),
+                        );
+                        let sur_croix = ui.interact(
+                            croix,
+                            egui::Id::new(("tab_close", rang)),
+                            egui::Sense::click(),
+                        );
+                        let peintre = ui.painter();
+                        if modifié && !sur_croix.hovered() {
+                            // Le point du non-enregistré prend la place
+                            // de la croix : les deux au même endroit ne
+                            // tiendraient pas, et c'est ce que font les
+                            // éditeurs — le point devient croix quand on
+                            // s'en approche.
+                            peintre.circle_filled(croix.center(), 3.5, theme.warn);
                         } else {
-                            theme.dim
-                        });
-                        if ui
-                            .selectable_label(actif, texte)
-                            .on_hover_text(&nom)
-                            .clicked()
-                        {
+                            if sur_croix.hovered() {
+                                peintre.rect_filled(
+                                    croix,
+                                    3.0,
+                                    mélange(fond_actif, theme.text, 0.18),
+                                );
+                            }
+                            let trait_ = egui::Stroke::new(
+                                1.4,
+                                if sur_croix.hovered() { theme.text } else { theme.dim },
+                            );
+                            let c = croix.center();
+                            let d = 4.0;
+                            peintre.line_segment(
+                                [egui::pos2(c.x - d, c.y - d), egui::pos2(c.x + d, c.y + d)],
+                                trait_,
+                            );
+                            peintre.line_segment(
+                                [egui::pos2(c.x - d, c.y + d), egui::pos2(c.x + d, c.y - d)],
+                                trait_,
+                            );
+                        }
+                        if sur_croix.on_hover_text(s.tab_close_hint).clicked() {
+                            fermer = Some(rang);
+                        } else if réponse.on_hover_text(&nom).clicked() {
                             aller = Some(rang);
                         }
-                        if ui
-                            .small_button("×")
-                            .on_hover_text(s.tab_close_hint)
-                            .clicked()
-                        {
-                            fermer = Some(rang);
-                        }
-                        ui.add_space(6.0);
                     }
-                    // Le « + », au bout de la file : l'endroit où tout
-                    // le monde le cherche. Il ouvre un petit MENU de
-                    // deux entrées, et non directement le sélecteur de
-                    // fichiers — dans une barre d'onglets, « + » veut
-                    // d'abord dire « un de plus », c'est-à-dire un
-                    // programme neuf ; ouvrir un fichier existant est
-                    // l'autre moitié de la question, pas toute la
-                    // question. Les deux entrées portent leur raccourci,
-                    // ce qui les apprend au passage.
-                    if let Some(action) =
-                        tab_plus_menu(ui, &neuf, &depuis_un_fichier, infobulle)
-                    {
-                        demande = Some(action);
+                    // Le « + », à la même hauteur que les onglets : un
+                    // programme neuf, et rien d'autre.
+                    //
+                    // Il a d'abord mené au sélecteur de fichiers, puis à
+                    // un menu de deux entrées. Les deux fois c'était
+                    // trop : dans une barre d'onglets, « + » veut dire
+                    // « un de plus », un point c'est tout. Ouvrir un
+                    // fichier est un autre geste, et il a sa place dans
+                    // le menu Fichier.
+                    ui.add_space(4.0);
+                    let (plus, réponse) = ui.allocate_exact_size(
+                        egui::vec2(HAUTEUR, HAUTEUR),
+                        egui::Sense::click(),
+                    );
+                    let peintre = ui.painter();
+                    if réponse.hovered() {
+                        peintre.rect_filled(
+                            plus.shrink(5.0),
+                            3.0,
+                            mélange(fond_barre, fond_actif, 0.6),
+                        );
+                    }
+                    let trait_plus = egui::Stroke::new(
+                        1.5,
+                        if réponse.hovered() { theme.text } else { theme.dim },
+                    );
+                    let c = plus.center();
+                    let d = 5.0;
+                    peintre.line_segment(
+                        [egui::pos2(c.x - d, c.y), egui::pos2(c.x + d, c.y)],
+                        trait_plus,
+                    );
+                    peintre.line_segment(
+                        [egui::pos2(c.x, c.y - d), egui::pos2(c.x, c.y + d)],
+                        trait_plus,
+                    );
+                    if réponse.on_hover_text(&neuf_infobulle).clicked() {
+                        demande = Some(Action::New);
                     }
                 });
             });
-        ui.add_space(2.0);
         if let Some(action) = demande {
             self.dispatch(action);
         }
@@ -16298,12 +16426,21 @@ fn tab_label(
     s: &Strings,
     packs: &[namsdec_exercises::Pack],
     lang: Lang,
+    untitled_no: usize,
 ) -> String {
     if let Some(nom) = path.and_then(|p| p.file_name()) {
         return nom.to_string_lossy().into_owned();
     }
     if let Some(exercice) = exercise.and_then(|id| namsdec_exercises::find(packs, id)) {
         return exercice.title.get(lang.code()).to_owned();
+    }
+    // NUMÉROTÉ, comme partout ailleurs. Trois programmes neufs
+    // s'appelaient tous « sans titre » : on ouvrait le troisième et
+    // rien ne disait qu'il y en avait trois, ni lequel on regardait.
+    // Le premier garde son nom nu — tant qu'il est seul, un numéro
+    // n'apprend rien.
+    if untitled_no > 1 {
+        return format!("{} {untitled_no}", s.untitled_buffer);
     }
     s.untitled_buffer.to_owned()
 }
@@ -17473,45 +17610,6 @@ fn status_dot(ui: &mut egui::Ui, color: egui::Color32) {
 /// couleurs du thème lui-même (fond, panneau, accents) plutôt qu'un nom
 /// seul — c'est le thème qui se décrit, donc rien à écrire de plus quand
 /// un nouveau s'ajoute.
-/// Ce que le « + » de la barre d'onglets propose, dans l'ordre.
-///
-/// Déclaré ici plutôt qu'écrit deux fois : `tab_plus_menu` dessine cette
-/// liste, et le contrôle la lit. Sans cela il faudrait piloter un menu
-/// ouvert pour savoir ce qu'il contient, ce qui vérifierait surtout
-/// qu'egui sait ouvrir un menu.
-pub fn tab_plus_menu_actions() -> Vec<Action> {
-    vec![Action::New, Action::OpenFile]
-}
-
-/// Le petit menu du « + » de la barre d'onglets.
-///
-/// Une fonction à elle, et non trois lignes dans `tabs_bar_ui` : le
-/// contrôle « hors des menus, un bouton se voit sans qu'on le survole »
-/// nomme ses exceptions par le nom de la fonction, et celle-ci EST un
-/// menu — ses deux entrées doivent être plates comme toutes les autres.
-///
-/// Rend l'action demandée, s'il y en a une : la fermeture ne peut pas
-/// emprunter l'application une seconde fois.
-fn tab_plus_menu(
-    ui: &mut egui::Ui,
-    neuf: &str,
-    depuis_un_fichier: &str,
-    infobulle: &str,
-) -> Option<Action> {
-    let mut demande = None;
-    let libellés = [neuf, depuis_un_fichier];
-    let bouton = ui.menu_button("+", |ui| {
-        for (action, libellé) in tab_plus_menu_actions().into_iter().zip(libellés) {
-            if ui.button(libellé).clicked() {
-                demande = Some(action);
-                ui.close();
-            }
-        }
-    });
-    bouton.response.on_hover_text(infobulle);
-    demande
-}
-
 /// Un bouton **encadré**, pour les endroits où il doit se voir sans
 /// qu'on ait à le survoler.
 ///
