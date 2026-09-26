@@ -24503,3 +24503,57 @@ fn the_close_entry_never_leaves_the_file_menu() {
         autour.join("\n")
     );
 }
+
+/// Toute action a un chemin qui se VOIT.
+///
+/// Elle a déjà un raccourci dans les deux jeux, et la palette les offre
+/// toutes — mais la palette est un filet, pas un chemin : on l'ouvre
+/// quand on sait déjà ce qu'on cherche. Un menu, lui, se parcourt.
+/// C'est là qu'on découvre ce qu'un programme sait faire.
+///
+/// HUIT ACTIONS SUR TRENTE n'avaient que le clavier : dupliquer une
+/// ligne, surligner les occurrences, aller à la suivante et à la
+/// précédente, les renommer toutes, nommer une adresse, la commenter,
+/// revenir au fichier précédent. Toutes utiles, toutes invisibles.
+///
+/// Ce contrôle est le pendant, du côté de l'œil, de « toute action a un
+/// raccourci dans les deux jeux ». Il est né d'une série de défauts que
+/// le banc ne pouvait pas voir — l'entrée « Fermer » absente du menu, la
+/// barre d'onglets invisible, le « + » qui faisait autre chose — et qui
+/// étaient tous la même chose : le programme savait faire, et rien ne le
+/// disait.
+#[test]
+fn every_action_has_a_path_you_can_see() {
+    let source = include_str!("main.rs");
+    let lignes: Vec<&str> = source.lines().collect();
+    // Les bornes des deux fonctions qui portent ce qui se voit en
+    // permanence : la barre de menus et la barre d'outils.
+    let borne = |nom: &str| -> (usize, usize) {
+        let début = lignes
+            .iter()
+            .position(|l| l.trim_start().starts_with(&format!("fn {nom}(")))
+            .unwrap_or_else(|| panic!("la fonction {nom} existe"));
+        let fin = lignes[début + 1..]
+            .iter()
+            .position(|l| l.starts_with("    fn ") || l.starts_with("fn "))
+            .map(|d| début + 1 + d)
+            .unwrap_or(lignes.len());
+        (début, fin)
+    };
+    let (m0, m1) = borne("menu_bar_ui");
+    let (t0, t1) = borne("toolbar_ui");
+    let visible = format!("{}\n{}", lignes[m0..m1].join("\n"), lignes[t0..t1].join("\n"));
+
+    let sans: Vec<String> = Action::ALL
+        .into_iter()
+        .filter(|action| !visible.contains(&format!("Action::{action:?}")))
+        .map(|action| format!("{action:?}"))
+        .collect();
+    assert!(
+        sans.is_empty(),
+        "{} action(s) qu'on ne peut trouver qu'au clavier — un menu se \
+         parcourt, un raccourci se devine :\n  {}",
+        sans.len(),
+        sans.join("\n  ")
+    );
+}

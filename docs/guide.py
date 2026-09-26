@@ -1268,6 +1268,15 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "désigneraient d'autres instructions. Le binaire se rouvre quand même, les repères "
          "sont oubliés, et namsdec le dit."),
 
+        ("p",
+         "Tout ce que namsdec sait faire a un <b>chemin qui se voit</b> : une entrée de "
+         "menu ou un bouton, avec son raccourci écrit à côté. Huit actions n'avaient que "
+         "le clavier — dupliquer une ligne, surligner les occurrences, aller à la "
+         "suivante, les renommer toutes, nommer ou commenter une adresse, revenir au "
+         "fichier précédent. La palette de commandes les offre toutes elle aussi, mais "
+         "elle est un filet, pas un chemin : on l'ouvre quand on sait déjà ce qu'on "
+         "cherche, tandis qu'un menu se parcourt."),
+
         ("h1", "Les raccourcis"),
         ("p",
          "Deux jeux sont livrés. <b>Fake Vim-GDB</b>, celui d'origine, s'inspire de vim "

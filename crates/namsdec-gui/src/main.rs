@@ -5703,18 +5703,21 @@ impl NamsdecApp {
                 });
                 // « Fichier suivant » demande, lui, qu'il y en ait un
                 // autre : c'est une navigation, pas une fermeture.
-                if !self.tabs.is_empty()
-                    && ui
-                        .button(shortcut_hint(
-                            &self.keybindings,
-                            &ctx,
-                            s.action_next_tab,
-                            Action::NextTab,
-                        ))
-                        .clicked()
-                {
-                    self.dispatch(Action::NextTab);
-                    ui.close();
+                if !self.tabs.is_empty() {
+                    for action in [Action::NextTab, Action::PreviousTab] {
+                        if ui
+                            .button(shortcut_hint(
+                                &self.keybindings,
+                                &ctx,
+                                action_label(s, action),
+                                action,
+                            ))
+                            .clicked()
+                        {
+                            self.dispatch(action);
+                            ui.close();
+                        }
+                    }
                 }
                 // Les derniers ouverts : on retravaille le même fichier
                 // trois fois dans une séance, et le sélecteur natif
@@ -5792,17 +5795,53 @@ impl NamsdecApp {
             });
 
             ui.menu_button(s.menu_edit, |ui| {
-                if ui
-                    .button(shortcut_hint(
-                        &self.keybindings,
-                        &ui.ctx().clone(),
-                        s.action_find,
-                        Action::Find,
-                    ))
-                    .clicked()
-                {
-                    self.dispatch(Action::Find);
-                    ui.close();
+                // CE QUI SE FAIT SUR LE TEXTE, et qui n'avait de chemin
+                // qu'au clavier.
+                //
+                // Huit actions sur trente n'étaient accessibles que par
+                // leur raccourci et par la palette : dupliquer une
+                // ligne, surligner les occurrences, aller à la suivante
+                // et à la précédente, les renommer toutes, nommer une
+                // adresse, la commenter, revenir au fichier précédent.
+                // La palette est un filet, pas un chemin — on l'ouvre
+                // quand on sait déjà ce qu'on cherche. Un menu, lui, se
+                // parcourt : c'est là qu'on découvre ce qu'un programme
+                // sait faire, et chaque entrée porte son raccourci, ce
+                // qui l'apprend au passage.
+                for action in [
+                    Action::Find,
+                    Action::NextMatch,
+                    Action::PreviousMatch,
+                    Action::HighlightMatches,
+                    Action::RenameMatches,
+                ] {
+                    if ui
+                        .button(shortcut_hint(
+                            &self.keybindings,
+                            &ui.ctx().clone(),
+                            action_label(s, action),
+                            action,
+                        ))
+                        .clicked()
+                    {
+                        self.dispatch(action);
+                        ui.close();
+                    }
+                }
+                ui.separator();
+                for action in [Action::DuplicateLine, Action::GoToLabel] {
+                    if ui
+                        .button(shortcut_hint(
+                            &self.keybindings,
+                            &ui.ctx().clone(),
+                            action_label(s, action),
+                            action,
+                        ))
+                        .clicked()
+                    {
+                        self.dispatch(action);
+                        ui.close();
+                    }
                 }
                 ui.separator();
                 if ui.button(s.edit_copy_code).clicked() {
@@ -5984,6 +6023,24 @@ impl NamsdecApp {
                     .as_ref()
                     .is_some_and(|état| état.from_binary.is_some());
                 ui.add_enabled_ui(ouvert, |ui| {
+                    // Nommer et commenter une adresse : deux gestes de
+                    // rétro-ingénierie qui n'avaient de chemin qu'au
+                    // clavier. Ils sont ici, avec le patcheur, parce
+                    // qu'ils portent sur le binaire qu'on lit.
+                    for action in [Action::NameAddress, Action::CommentAddress] {
+                        if ui
+                            .button(shortcut_hint(
+                                &self.keybindings,
+                                &ui.ctx().clone(),
+                                action_label(s, action),
+                                action,
+                            ))
+                            .clicked()
+                        {
+                            self.dispatch(action);
+                            ui.close();
+                        }
+                    }
                     if ui
                         .button(s.patch_open)
                         .on_hover_text(s.patch_hint)

@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **25 septembre
-2026**, version 0.2.5-beta.3, 570 tests au vert.
+2026**, version 0.2.5-beta.3, 571 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -173,6 +173,24 @@ Détail chiffré dans `AMELIORATIONS.txt` 7.11, section « REVUE DU
       **Fait depuis** : un changement d'échelle redemande une image, ce
       qui évite d'attendre que le compositeur se réveille. On ne répare
       pas le compositeur, on ne l'attend pas non plus.
+
+## 2 ter. Découvrabilité — première passe
+
+- [x] **Toute action a un chemin qui se voit** — huit actions sur trente
+      n'avaient que le clavier : dupliquer une ligne, surligner les
+      occurrences, aller à la suivante et à la précédente, les renommer
+      toutes, nommer une adresse, la commenter, revenir au fichier
+      précédent. Elles sont dans les menus Édition et Outils, chacune
+      avec son raccourci. Un contrôle le retient — c'est le pendant, du
+      côté de l'œil, de « toute action a un raccourci dans les deux
+      jeux ».
+- [x] **Les quatorze fenêtres ont toutes un chemin** — vérifié : chacune
+      s'ouvre depuis un menu ou un bouton, aucune n'est réservée à la
+      palette.
+- [ ] **Ce qui reste à regarder** : les gestes qui ne sont pas des
+      « actions » — cliquer dans la gouttière (fait), cliquer sur un
+      nom de registre pour le surveiller, sur une valeur pour la
+      changer, glisser la poignée du panneau. Rien ne les annonce.
 
 ## 3. L'éditeur
 
