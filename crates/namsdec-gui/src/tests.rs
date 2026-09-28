@@ -24557,3 +24557,106 @@ fn every_action_has_a_path_you_can_see() {
         sans.join("\n  ")
     );
 }
+
+/// Une étiquette et sa liste se lisent sur la même ligne.
+///
+/// Elles ne l'étaient pas : le texte de la liste se posait trois pixels
+/// et demi SOUS son étiquette, partout où les deux se suivent. Six
+/// façons d'entourer la liste d'egui ont été essayées — imposer la
+/// hauteur de la case, celle de la rangée, `add_sized`, une boîte
+/// centrée, annuler l'espacement vertical, aligner la rangée par le
+/// haut — et l'écart n'a pas bougé d'un pixel. Il est DANS `ComboBox`,
+/// dont le cadre part de `available_rect_before_wrap()` et non du
+/// centre de la rangée.
+///
+/// La sortie était d'écrire la nôtre, et c'est un gain au-delà de
+/// l'alignement : c'est un bouton encadré comme les autres commandes,
+/// au lieu d'un contrôle qui ne ressemblait à rien d'autre dans
+/// l'application.
+#[test]
+fn a_label_and_its_list_read_on_one_line() {
+    for lang in [Lang::Fr, Lang::En] {
+        let s = strings(lang);
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp {
+            lang,
+            show_calculator: true,
+            ..Default::default()
+        };
+        app.apply_theme(&ctx);
+        let (_, lignes) = ce_qui_est_écrit(&ctx, &mut app, None, 4);
+        let où = |quoi: &str| -> f32 {
+            lignes
+                .iter()
+                .find(|(t, _)| t == quoi)
+                .map(|(_, r)| r.center().y)
+                .unwrap_or_else(|| panic!("{lang:?} : « {quoi} » est peint"))
+        };
+        for (étiquette, valeur) in [
+            (s.calculator_base_label, app.calc_base.label(s).to_owned()),
+            (
+                s.calculator_width_label,
+                format!("{} bits", app.calc_width.bits()),
+            ),
+        ] {
+            let écart = (où(étiquette) - où(&valeur)).abs();
+            assert!(
+                écart < 1.0,
+                "{lang:?} : « {étiquette} » et « {valeur} » doivent se lire sur la \
+                 même ligne — {écart:.1} px d'écart"
+            );
+        }
+    }
+}
+
+/// Une rangée de commandes se lit sur une seule ligne.
+///
+/// La barre de saisie de la console en portait quatre à des hauteurs
+/// différentes : « Entrée : » à 1028, « Fin d'entrée » et « Envoyer » à
+/// 1032,5, le champ à 1032,44. Quatre pixels et demi d'amplitude sur une
+/// rangée, ce qui ne se nomme pas en le voyant mais se voit.
+///
+/// La cause est le deuxième piège d'egui : une rangée horizontale centre
+/// chaque élément sur la hauteur qu'elle a À CET INSTANT et ne recale
+/// pas ce qui est déjà posé. L'étiquette venant en premier se centrait
+/// sur elle-même. Imposer sa propre hauteur n'y change rien — c'est
+/// celle de la RANGÉE qu'il faut fixer, et le seul moyen est que le
+/// premier élément soit déjà le plus haut.
+///
+/// Ce contrôle existe pour retenir le nombre mesuré qui le fait : 34
+/// pixels, trouvé en essayant 27, 30, 34 et 36. Un nombre mesuré n'est
+/// acceptable que si quelque chose le retient.
+#[test]
+fn a_row_of_commands_reads_on_one_line() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let s = strings(Lang::Fr);
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp {
+        source: PROGRAMME_DU_BANC.to_owned(),
+        show_console: true,
+        ..Default::default()
+    };
+    app.apply_theme(&ctx);
+    app.do_assemble();
+    app.do_step();
+    let (_, lignes) = ce_qui_est_écrit(&ctx, &mut app, None, 4);
+    let où = |quoi: &str| -> f32 {
+        lignes
+            .iter()
+            .find(|(t, _)| t == quoi)
+            .map(|(_, r)| r.center().y)
+            .unwrap_or_else(|| panic!("« {quoi} » est peint dans la barre de saisie"))
+    };
+    let repère = où(s.console_send);
+    for quoi in [s.console_input_label, s.console_eof] {
+        let écart = (où(quoi) - repère).abs();
+        assert!(
+            écart < 1.0,
+            "« {quoi} » doit se lire sur la même ligne que « {} » — \
+             {écart:.1} px d'écart",
+            s.console_send
+        );
+    }
+}

@@ -7946,18 +7946,19 @@ impl NamsdecApp {
                                     ui.colored_label(theme.dim, s.calculator_base_label)
                                 },
                             );
-                            egui::ComboBox::from_id_salt("calculator_base")
-                                .width(liste)
-                                .selected_text(self.calc_base.label(s))
-                                .show_ui(ui, |ui| {
-                                    for base in CalcBase::ALL {
-                                        ui.selectable_value(
-                                            &mut self.calc_base,
-                                            base,
-                                            base.label(s),
-                                        );
-                                    }
-                                });
+                            let bases: Vec<(CalcBase, String)> = CalcBase::ALL
+                                .into_iter()
+                                .map(|b| (b, b.label(s).to_owned()))
+                                .collect();
+                            liste_déroulante(
+                                ui,
+                                theme,
+                                egui::Id::new("calculator_base"),
+                                liste,
+                                &mut self.calc_base,
+                                &bases,
+                                "",
+                            );
                         },
                     );
                     ui.separator();
@@ -7974,18 +7975,19 @@ impl NamsdecApp {
                                     ui.colored_label(theme.dim, s.calculator_width_label)
                                 },
                             );
-                            egui::ComboBox::from_id_salt("calculator_width")
-                                .width(liste)
-                                .selected_text(format!("{} bits", self.calc_width.bits()))
-                                .show_ui(ui, |ui| {
-                                    for largeur in CalcWidth::ALL {
-                                        ui.selectable_value(
-                                            &mut self.calc_width,
-                                            largeur,
-                                            format!("{} bits", largeur.bits()),
-                                        );
-                                    }
-                                });
+                            let largeurs: Vec<(CalcWidth, String)> = CalcWidth::ALL
+                                .into_iter()
+                                .map(|l| (l, format!("{} bits", l.bits())))
+                                .collect();
+                            liste_déroulante(
+                                ui,
+                                theme,
+                                egui::Id::new("calculator_width"),
+                                liste,
+                                &mut self.calc_width,
+                                &largeurs,
+                                "",
+                            );
                         },
                     );
                 });
@@ -9271,17 +9273,20 @@ impl NamsdecApp {
                         .find(|outil| outil.id == self.decompiler)
                         .map(|outil| outil.name.clone())
                         .unwrap_or_else(|| s.decompiler_choose.to_owned());
-                    egui::ComboBox::from_id_salt("decompiler_choice")
-                        .selected_text(courant)
-                        .show_ui(ui, |ui| {
-                            for outil in &self.decompilers {
-                                ui.selectable_value(
-                                    &mut self.decompiler,
-                                    outil.id.clone(),
-                                    &outil.name,
-                                );
-                            }
-                        });
+                    let outils: Vec<(String, String)> = self
+                        .decompilers
+                        .iter()
+                        .map(|outil| (outil.id.clone(), outil.name.clone()))
+                        .collect();
+                    liste_déroulante(
+                        ui,
+                        theme,
+                        egui::Id::new("decompiler_choice"),
+                        0.0,
+                        &mut self.decompiler,
+                        &outils,
+                        &courant,
+                    );
                 });
 
                 let choisi = self
@@ -15411,10 +15416,33 @@ impl NamsdecApp {
             ui.add_space(2.0);
         }
         ui.horizontal(|ui| {
+            // La hauteur de la case DÉPASSE tout ce que la rangée porte.
+            //
+            // « Entrée : » se posait quatre pixels et demi au-dessus du
+            // champ et des deux boutons : une rangée horizontale centre
+            // chaque élément sur la hauteur qu'elle a À CET INSTANT et ne
+            // recale pas ce qui est déjà posé. L'étiquette venant en
+            // premier, elle se centrait sur elle-même. Imposer sa propre
+            // hauteur n'y changeait rien — c'est la hauteur de la RANGÉE
+            // qu'il faut fixer, et le seul moyen est que le premier
+            // élément soit déjà le plus haut.
+            //
+            // TRENTE-QUATRE PIXELS, et c'est une mesure, non un calcul :
+            // c'est la hauteur que la rangée prend d'elle-même une fois
+            // le champ et les deux boutons posés. Essayé 27, 30 et 34 —
+            // à 27 l'étiquette reste 3,5 px trop haut, à 30 il en reste
+            // 2, à 34 elle tombe pile.
+            //
+            // Un nombre mesuré n'est acceptable que si quelque chose le
+            // retient : l'invariant « une rangée de commandes se lit sur
+            // une seule ligne » le fait, et dira le jour où il cessera
+            // d'être juste.
+            let rangée = ui.spacing().interact_size.y + 9.0;
             ui.allocate_ui_with_layout(
-                egui::vec2(colonne, ui.spacing().interact_size.y),
+                egui::vec2(colonne, rangée),
                 egui::Layout::left_to_right(egui::Align::Center),
                 |ui| {
+                    ui.set_min_height(rangée);
                     // En accent et en gras pendant l'attente : c'est la
                     // ligne où il faut taper, et rien d'autre à l'écran
                     // ne le dit.
@@ -17667,6 +17695,117 @@ fn status_dot(ui: &mut egui::Ui, color: egui::Color32) {
 /// couleurs du thème lui-même (fond, panneau, accents) plutôt qu'un nom
 /// seul — c'est le thème qui se décrit, donc rien à écrire de plus quand
 /// un nouveau s'ajoute.
+/// Une liste déroulante à nous, et non celle d'egui.
+///
+/// Celle d'egui ne se pose pas au centre de sa rangée : son cadre part
+/// de `available_rect_before_wrap()`, si bien que son texte se retrouve
+/// trois pixels et demi sous l'étiquette qui l'annonce. Six façons de
+/// l'entourer ont été essayées — imposer la hauteur de la case, de la
+/// rangée, `add_sized`, une boîte centrée, annuler l'espacement
+/// vertical, aligner la rangée par le haut — et l'écart n'a pas bougé
+/// d'un pixel : il est dedans, pas autour.
+///
+/// Celle-ci est un BOUTON, et un bouton se centre comme tout le reste.
+/// Elle a le liseré de `framed_button`, donc la même façon que les
+/// autres commandes, et son chevron est posé à droite par egui lui-même.
+/// Un contrôle de moins qui ne ressemble à rien d'autre.
+fn liste_déroulante<T: PartialEq + Clone>(
+    ui: &mut egui::Ui,
+    theme: &Theme,
+    id: egui::Id,
+    largeur: f32,
+    valeur: &mut T,
+    options: &[(T, String)],
+    quand_rien: &str,
+) -> bool {
+    // Ce qui s'écrit quand la valeur courante n'est dans aucune option :
+    // aucun décompilateur choisi, par exemple. Une liste vide qui ne dit
+    // rien laisse croire qu'elle est cassée.
+    let courant = options
+        .iter()
+        .find(|(v, _)| v == valeur)
+        .map(|(_, nom)| nom.clone())
+        .unwrap_or_else(|| quand_rien.to_owned());
+    // Le chevron est PEINT, non écrit : « ▾ » n'existe dans aucune des
+    // polices livrées, et un contrôle l'a dit avant qu'on ne le voie —
+    // il serait sorti en carré vide.
+    //
+    // Sa place est réservée par la LARGEUR du bouton et non par des
+    // espaces ajoutés au texte : deux espaces à la fin changent le
+    // texte peint, et deux contrôles qui cherchaient « Hexadécimal »
+    // ne l'ont plus trouvé. Ce qui est écrit doit rester ce qu'on a
+    // demandé d'écrire.
+    const CHEVRON: f32 = 20.0;
+    let mesure = ui
+        .painter()
+        .layout_no_wrap(
+            courant.clone(),
+            egui::TextStyle::Body.resolve(ui.style()),
+            egui::Color32::PLACEHOLDER,
+        )
+        .size()
+        .x;
+    let voulue = largeur.max(mesure + CHEVRON + ui.spacing().button_padding.x * 2.0);
+    // Le bouton est VIDE, et son texte peint à gauche.
+    //
+    // egui centre le texte d'un bouton. Deux listes de même largeur
+    // portant « Hexadécimal » et « 64 bits » plaçaient donc leurs textes
+    // à dix-sept pixels d'écart, et l'invariant des jumeaux l'a dit :
+    // « la valeur doit être au même écart de son étiquette — 71 px pour
+    // Base, 88,6 px pour Largeur ». Une liste déroulante aligne à
+    // gauche, comme partout ailleurs.
+    //
+    // Et ce n'est PAS un `Button` au libellé vide : celui-ci peint quand
+    // même une galette de largeur nulle, que l'invariant des
+    // recouvrements a trouvée posée sur le texte — « " " et "DZF —
+    // décompilation ELF64 (beta)" se recouvrent ». On alloue donc la
+    // place et l'on peint le cadre soi-même, ce qui est de toute façon
+    // ce que fait `framed_button` en trois lignes.
+    let (cadre, réponse) = ui.allocate_exact_size(
+        egui::vec2(voulue, ui.spacing().interact_size.y),
+        egui::Sense::click(),
+    );
+    let visuels = ui.style().interact(&réponse);
+    ui.painter().rect(
+        cadre,
+        egui::CornerRadius::from(6),
+        visuels.weak_bg_fill,
+        egui::Stroke::new(1.0, theme.dim),
+        egui::StrokeKind::Inside,
+    );
+    ui.painter().text(
+        egui::pos2(cadre.left() + ui.spacing().button_padding.x, cadre.center().y),
+        egui::Align2::LEFT_CENTER,
+        &courant,
+        egui::TextStyle::Body.resolve(ui.style()),
+        theme.text,
+    );
+    let pointe = egui::pos2(cadre.right() - 11.0, cadre.center().y);
+    ui.painter().add(egui::Shape::convex_polygon(
+        vec![
+            egui::pos2(pointe.x - 4.0, pointe.y - 2.0),
+            egui::pos2(pointe.x + 4.0, pointe.y - 2.0),
+            egui::pos2(pointe.x, pointe.y + 3.0),
+        ],
+        theme.dim,
+        egui::Stroke::NONE,
+    ));
+    let mut changé = false;
+    egui::Popup::menu(&réponse)
+        .id(id)
+        .width(largeur.max(réponse.rect.width()))
+        .show(|ui| {
+            for (v, nom) in options {
+                if ui.selectable_label(v == valeur, nom).clicked() {
+                    *valeur = v.clone();
+                    changé = true;
+                    ui.close();
+                }
+            }
+        });
+    changé
+}
+
 /// Un bouton **encadré**, pour les endroits où il doit se voir sans
 /// qu'on ait à le survoler.
 ///

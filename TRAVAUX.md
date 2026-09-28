@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **25 septembre
-2026**, version 0.2.5-beta.3, 571 tests au vert.
+2026**, version 0.2.5-beta.3, 573 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -125,19 +125,20 @@ Détail chiffré dans `AMELIORATIONS.txt` 7.11, section « REVUE DU
 - [x] **Le listing de désassemblage perd ses colonnes de 54,8 px** — la
       colonne des étiquettes a une largeur fixe, prise sur le plus long
       symbole et bornée à vingt signes.
-- [ ] **La barre de saisie de la console** : 4,5 px d'amplitude sur une
-      seule rangée.
-- [ ] **Étiquette contre liste déroulante** : 3,5 px, deux fois. Quatre
-      essais retirés — imposer la hauteur de la case, `add_sized`,
-      annuler l'espacement vertical, imposer la hauteur de la rangée
-      avant d'y rien poser : les quatre donnent exactement le même
-      écart, et deux essais de plus après lecture du code d'egui n'ont
-      pas mieux marché : aligner la rangée par le haut retourne l'écart,
-      enfermer la liste dans une boîte centrée ne change rien. L'écart
-      est INVARIANT sous tout ce qu'on fait au conteneur — il est donc
-      dans `ComboBox`, qui part de `available_rect_before_wrap()` et non
-      du centre de la rangée. La sortie est d'écrire notre propre liste,
-      ou de poser l'étiquette au-dessus plutôt qu'à côté.
+- [x] **La barre de saisie de la console** : 4,5 px d'amplitude sur une
+      seule rangée — l'étiquette venait en premier et se centrait sur sa
+      propre hauteur. Le seul remède est que le premier élément soit
+      déjà le plus haut : trente-quatre pixels, mesurés, et un contrôle
+      les retient.
+- [x] **Étiquette contre liste déroulante** : 3,5 px, partout où les
+      deux se suivent. Six façons d'entourer la liste d'egui ont été
+      essayées, l'écart n'a pas bougé d'un pixel — il est DANS
+      `ComboBox`, dont le cadre part de `available_rect_before_wrap()`.
+      Nous avons donc la nôtre : un cadre alloué et peint, le texte
+      aligné à gauche, le chevron dessiné à droite. Elle se centre comme
+      tout le reste, elle a le liseré des autres commandes, et un
+      contrôle exige que l'étiquette et sa valeur se lisent sur la même
+      ligne.
 - [x] **Deux marges gauches dans le châssis**, 16 et 18 px — examiné,
       ce n'est pas un défaut : l'onglet « Console » est une pastille
       cliquable, son fond part à 16 comme le corps et son texte à 18

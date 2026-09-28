@@ -702,7 +702,10 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "les deux flèches au même endroit. Les mesures sont prises sur les "
          "textes les plus longs de chaque colonne, dans la langue affichée — un "
          "chiffre écrit en dur alignerait le français en désalignant "
-         "l’anglais."),
+         "l’anglais. L’étiquette et sa liste se lisent sur la <b>même ligne</b> : "
+         "les listes déroulantes de namsdec sont les siennes, et non celles de la "
+         "bibliothèque d’interface, dont le cadre se posait trois pixels et demi "
+         "trop bas."),
         ("p",
          "La <b>base</b> gouverne les deux sens : le grand résultat est écrit "
          "dedans, et un chiffre tapé au clavier de l'écran y entre avec le "

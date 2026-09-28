@@ -2300,13 +2300,19 @@ impl NamsdecApp {
             // pas sur la largeur d'un panneau, et repassait à la ligne
             // par-dessus le reste.
             ui.colored_label(theme.dim, s.memory_format_label);
-            egui::ComboBox::from_id_salt("memory_format")
-                .selected_text(self.memory_format.label(s))
-                .show_ui(ui, |ui| {
-                    for format in MemoryFormat::ALL {
-                        ui.selectable_value(&mut self.memory_format, format, format.label(s));
-                    }
-                });
+            let formats: Vec<(MemoryFormat, String)> = MemoryFormat::ALL
+                .into_iter()
+                .map(|f| (f, f.label(s).to_owned()))
+                .collect();
+            crate::liste_déroulante(
+                ui,
+                theme,
+                egui::Id::new("memory_format"),
+                0.0,
+                &mut self.memory_format,
+                &formats,
+                "",
+            );
         });
         if let Some(addr) = self.memory_follow.address(&regs) {
             self.mem_addr = addr;
