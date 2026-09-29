@@ -25857,3 +25857,76 @@ fn the_pseudo_code_indentation_can_be_seen() {
         "les deux crans doivent être égaux : {premier} puis {second}"
     );
 }
+
+/// Le déroulement dit ce qu'il sait de la FONCTION, pas seulement de
+/// ses blocs.
+///
+/// Chaque boîte porte déjà une phrase quand namsdec sait la dire. Il
+/// manquait le cran au-dessus : devant une fonction sans symboles, la
+/// première question n'est pas « que fait ce bloc » mais « que prend-elle
+/// et que rend-elle ». La convention System V répond pour les
+/// arguments, et les retours répondent pour la valeur — à condition que
+/// TOUS les chemins s'accordent.
+///
+/// La phrase ne paraît que sur une FONCTION : « lit RDI » n'a aucun sens
+/// devant un programme entier, qui en contient plusieurs.
+#[test]
+fn the_flow_window_says_what_the_whole_function_does() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    // Une fonction qui compare ses deux premiers arguments et rend 0
+    // ou 1 : le squelette de toute vérification de mot de passe.
+    // Elle finit par `ret` et non par `hlt` : une fonction rend la
+    // main, elle n'arrête pas la machine — et c'est le `ret` qui dit
+    // qu'une valeur est rendue.
+    let source = "section .text\nglobal _start\n_start:\n\
+                  \x20   cmp rdi, rsi\n    jne different\n\
+                  \x20   mov eax, 1\n    ret\ndifferent:\n    xor eax, eax\n    ret\n";
+    let mut app = NamsdecApp {
+        source: source.to_owned(),
+        show_flow: true,
+        ..Default::default()
+    };
+    app.do_assemble();
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let (_, lignes) = ce_qui_est_écrit(&ctx, &mut app, Some("flow_window"), 4);
+    let peint: Vec<&String> = lignes.iter().map(|(t, _)| t).collect();
+    assert!(
+        peint.iter().any(|t| t.contains("RDI et RSI")),
+        "les arguments lus se disent : {peint:?}"
+    );
+    assert!(
+        peint.iter().any(|t| t.contains("0 ou 1")),
+        "et ce que la fonction rend : {peint:?}"
+    );
+}
+
+/// Et il se tait quand il n'aurait que le banal à dire.
+///
+/// « Contient une boucle » devant un dessin où la boucle se voit
+/// n'apprend rien, et une phrase de trop fait cesser de lire celles qui
+/// apprennent quelque chose.
+#[test]
+fn the_flow_window_keeps_quiet_when_the_drawing_already_says_it() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let source = "section .text\nglobal _start\n_start:\n    mov ecx, 3\n\
+                  boucle:\n    dec ecx\n    jnz boucle\n    hlt\n";
+    let mut app = NamsdecApp {
+        source: source.to_owned(),
+        show_flow: true,
+        ..Default::default()
+    };
+    app.do_assemble();
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let (_, lignes) = ce_qui_est_écrit(&ctx, &mut app, Some("flow_window"), 4);
+    let peint: Vec<&String> = lignes.iter().map(|(t, _)| t).collect();
+    assert!(
+        !peint.iter().any(|t| t.contains("contient une boucle")),
+        "le dessin le montre déjà : {peint:?}"
+    );
+}

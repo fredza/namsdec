@@ -1618,3 +1618,60 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
   plus. La capture sert donc à REGARDER un état qu'on a semé dans
   `settings.json`, jamais à en atteindre un autre. Ce qui se mesure se mesure
   au banc.
+
+================================================================================
+29 SEPTEMBRE 2026 (suite) — « EXPLIQUE-MOI CETTE FONCTION », LE SECOND CRAN
+================================================================================
+
+  --- ce qui manquait ---
+  Chaque boîte du graphe portait déjà une phrase. Il manquait le cran
+  au-dessus, et 7.9 le disait : dire ce qu'une FONCTION fait, et non un bloc.
+  Devant une fonction sans symboles, la première question n'est pas « que fait
+  ce bloc » mais « que prend-elle et que rend-elle ».
+
+  --- le portrait, et ce qu'il refuse de dire ---
+  Une fonction ne se résume pas en une phrase comme un bloc : elle fait
+  plusieurs choses. D'où un portrait — quelques constats séparés, chacun
+  certain ou absent.
+
+  LES ARGUMENTS. Les registres de la convention System V (RDI, RSI, RDX, RCX,
+  R8, R9) lus avant d'être écrits, DANS LE BLOC D'ENTRÉE SEULEMENT. Ailleurs
+  on ne saurait pas par où l'on est arrivé : un registre lu au fond d'une
+  branche peut avoir été posé par le chemin qui y mène. Le bloc d'entrée
+  s'exécute toujours en premier — ce qu'il lit sans l'avoir écrit vient donc de
+  l'appelant. On en rate quand un argument n'est consommé que plus loin ; on
+  n'en invente aucun.
+
+  LA VALEUR RENDUE. Dite seulement si TOUS les `ret` posent une constante dans
+  RAX. Un seul chemin muet suffit à se taire : « rend 0 ou 1 » serait faux s'il
+  existe un troisième chemin qui rend autre chose. C'est le constat le plus
+  utile du lot — « Lit RDI et RSI, rend 0 ou 1 » est le squelette de toute
+  vérification de mot de passe.
+
+  LES APPELS SYSTÈME, quand le numéro est posé dans le même bloc — la règle
+  déjà employée pour les boîtes.
+
+  --- et ce qu'il ne dit pas, exprès ---
+  Le portrait SE TAIT quand il n'aurait que ce que le dessin montre déjà.
+  « Contient une boucle » devant un graphe où la boucle se voit n'apprend rien,
+  et une phrase de trop fait cesser de lire celles qui apprennent quelque
+  chose. Les boucles et les appels sont comptés, mais ne parlent jamais seuls.
+
+  --- deux dégâts commis en chemin, et ce qu'ils enseignent ---
+  1. `rm -rf crates/namsdec-re/examples` pour retirer un fichier d'essai a
+     emporté `explore.rs`, un outil du dépôt qui vivait dans le même dossier.
+     Retrouvé par `git checkout`. Retirer un fichier qu'on a créé se fait par
+     son nom, jamais par son dossier.
+  2. `git checkout flow.rs` pour défaire un défaut remis exprès a défait AUSSI
+     le travail non commité du même fichier. La bonne façon d'éprouver un
+     contrôle est la copie de sauvegarde, jamais l'index de git tant que rien
+     n'est commité.
+  Les deux ont été rattrapés en moins d'une minute parce que la suite de tests
+  l'a dit tout de suite. C'est à cela qu'elle sert aussi.
+
+  --- et un contrôle qui ne mordait pas ---
+  « Un seul retour muet suffit à se taire » était éprouvé sur une fonction dont
+  AUCUN retour ne posait de constante — cas où le résultat est vide de toute
+  façon. Le défaut remis passait donc au vert. Le bon cas est celui où UN
+  chemin pose une constante et l'autre non : c'est là que la phrase deviendrait
+  fausse, et c'est là qu'il faut mesurer.

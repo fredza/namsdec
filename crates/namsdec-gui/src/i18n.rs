@@ -414,6 +414,8 @@ pub struct Strings {
     /// Case : le pseudo-code structuré plutôt que le graphe.
     pub flow_pseudo: &'static str,
     pub flow_pseudo_hint: &'static str,
+    /// L'infobulle du portrait de fonction : ce qu'il ne dit pas.
+    pub flow_portrait_hint: &'static str,
     /// Pourquoi le zoom est grisé quand on lit du texte.
     pub flow_no_zoom_here: &'static str,
     /// Bouton : le pseudo-code dans le presse-papier.
@@ -1299,6 +1301,9 @@ const FR: Strings = Strings {
     flow_pseudo_empty: "Rien à montrer : aucun code n'est chargé.",
     flow_pseudo_flat: "Cette fonction n'a aucun saut : le pseudo-code est le listing, \
                        dit en clair.",
+    flow_portrait_hint: "Ce que namsdec sait dire de la fonction entière, et rien de plus. \
+                         Ce qui demanderait de supposer un chemin, ou de suivre une valeur \
+                         à travers la mémoire, n'est pas dit du tout.",
     flow_no_zoom_here: "Le pseudo-code est du texte : il n'a pas d'échelle. Décochez \
                         « Pseudo-code » pour revenir au graphe.",
     flow_copy_pseudo: "Copier le pseudo-code",
@@ -2091,6 +2096,9 @@ const EN: Strings = Strings {
     flow_pseudo_empty: "Nothing to show: no code is loaded.",
     flow_pseudo_flat: "This function has no jump: the pseudo-code is the listing, said \
                        in plain words.",
+    flow_portrait_hint: "What namsdec can say about the whole function, and nothing more. \
+                         Anything that would need a path assumed, or a value followed \
+                         through memory, is not said at all.",
     flow_no_zoom_here: "Pseudo-code is text: it has no scale. Uncheck \"Pseudo-code\" \
                         to go back to the graph.",
     flow_copy_pseudo: "Copy the pseudo-code",

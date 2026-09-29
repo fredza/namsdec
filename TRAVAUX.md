@@ -263,13 +263,14 @@ Détail chiffré dans `AMELIORATIONS.txt` 7.11, section « REVUE DU
       « le saut de la ligne 9 n'a jamais été pris ». Des compteurs, non
       des déductions ; un saut dont la suite a d'autres entrées ne dit
       rien du tout.
-- [~] **Un mode « explique-moi cette fonction »** (A 7.9) — commencé :
-      chaque boîte du graphe porte une phrase quand namsdec sait la
-      dire. Cinq reconnaisseurs, chacun certain ou muet : appel système
-      dont le numéro est dans le bloc, boucle avec son nombre de tours,
-      comparaison suivie de son saut, bloc de `nop`, préparation de
-      constantes. Reste à monter d'un cran : dire ce qu'une FONCTION
-      fait, et non un bloc.
+- [x] **Un mode « explique-moi cette fonction »** (A 7.9) — les deux
+      crans sont faits. Le bloc : cinq reconnaisseurs, chacun certain ou
+      muet — appel système dont le numéro est dans le bloc, boucle avec
+      son nombre de tours, comparaison suivie de son saut, bloc de
+      `nop`, préparation de constantes. La FONCTION : un portrait en une
+      ligne — les arguments lus avant d'être écrits, la valeur rendue
+      quand tous les retours s'accordent, les appels système. Il se tait
+      quand il n'aurait que ce que le dessin montre déjà.
 - [x] **Les sauts rendus à leur forme** (A 7.9) — `namsdec-re/structure`
       lit le graphe d'une fonction et en écrit le pseudo-code indenté :
       `si` / `sinon` pour deux branches qui se rejoignent, `tant que`

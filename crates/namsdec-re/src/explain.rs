@@ -554,3 +554,471 @@ mod tests {
         );
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// Une FONCTION, et non plus un bloc
+// ─────────────────────────────────────────────────────────────────────
+
+/// Ce qu'on sait dire d'une fonction entière, sans rien inventer.
+///
+/// Un bloc se résume en une phrase ; une fonction, non — elle fait
+/// plusieurs choses, et les dire toutes d'un trait donnerait un
+/// paragraphe qu'on ne lit pas. D'où un **portrait** : quelques
+/// constats séparés, chacun certain ou absent.
+///
+/// Ce qui est dit se lit dans les instructions. Ce qui demanderait de
+/// suivre une valeur à travers la mémoire, ou de supposer qu'un chemin
+/// est pris, n'est pas dit du tout.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Portrait {
+    /// Les registres d'argument que la fonction LIT avant de les
+    /// écrire, dans l'ordre de la convention System V.
+    pub arguments: Vec<&'static str>,
+    /// Les valeurs que la fonction rend, quand chaque `ret` est précédé
+    /// d'une constante posée dans RAX. Triées, sans doublon.
+    pub rend: Vec<u64>,
+    /// Les appels système faits, nommés.
+    pub syscalls: Vec<&'static str>,
+    /// Combien de boucles elle contient.
+    pub boucles: usize,
+    /// Combien de fois elle appelle ailleurs.
+    pub appels: usize,
+    /// Ne fait-elle rien d'observable — que des `nop` et un retour ?
+    pub vide: bool,
+}
+
+/// Les registres d'argument de la convention System V, dans l'ordre.
+const ARGUMENTS: [(&str, &[&str]); 6] = [
+    ("RDI", &["rdi", "edi", "di", "dil"]),
+    ("RSI", &["rsi", "esi", "si", "sil"]),
+    ("RDX", &["rdx", "edx", "dx", "dl"]),
+    ("RCX", &["rcx", "ecx", "cx", "cl"]),
+    ("R8", &["r8", "r8d", "r8w", "r8b"]),
+    ("R9", &["r9", "r9d", "r9w", "r9b"]),
+];
+
+/// Le portrait d'une fonction, lu dans son graphe.
+///
+/// `cfg` est le graphe de la fonction seule — celui que donne
+/// `subgraph` sur `function_around`. Passer le programme entier ferait
+/// compter les boucles et les retours de tout le monde.
+pub fn portrait(cfg: &crate::cfg::Cfg) -> Portrait {
+    let mut p = Portrait {
+        boucles: crate::structure::têtes_de_boucle(cfg).len(),
+        ..Default::default()
+    };
+    if cfg.blocks.is_empty() {
+        return p;
+    }
+
+    // Les arguments : lus AVANT d'être écrits, et dans le bloc d'entrée
+    // seulement.
+    //
+    // Ailleurs, on ne saurait pas par où l'on est arrivé : un registre
+    // lu au fond d'une branche peut très bien avoir été posé par le
+    // chemin qui y mène. Le bloc d'entrée, lui, s'exécute toujours en
+    // premier — ce qu'il lit sans l'avoir écrit vient donc de
+    // l'appelant. On en rate quand un argument n'est consommé que plus
+    // loin ; on n'en invente aucun.
+    for (nom, formes) in ARGUMENTS {
+        if lu_avant_d_être_écrit(&cfg.blocks[0].instructions, formes) {
+            p.arguments.push(nom);
+        }
+    }
+
+    for bloc in &cfg.blocks {
+        // Les appels système : le numéro doit être posé dans le bloc
+        // même, comme pour une boîte isolée.
+        if let Some(position) = bloc.instructions.iter().position(|i| i.trim() == "syscall")
+            && let Some(numéro) = bloc.instructions[..position]
+                .iter()
+                .rev()
+                .find_map(|i| valeur_posée_dans_rax(i))
+            && let Some(nom) = crate::table::syscall_name(numéro)
+            && !p.syscalls.contains(&nom)
+        {
+            p.syscalls.push(nom);
+        }
+        p.appels += bloc
+            .instructions
+            .iter()
+            .filter(|i| i.trim_start().starts_with("call "))
+            .count();
+    }
+
+    // Ce qu'elle rend : chaque `ret` doit être précédé, dans SON bloc,
+    // d'une constante posée dans RAX que rien n'écrase ensuite.
+    //
+    // Un seul `ret` qui ne dit pas d'où vient sa valeur suffit à se
+    // taire : « rend 0 ou 1 » serait faux s'il existe un troisième
+    // chemin qui rend autre chose.
+    let retours: Vec<&crate::cfg::Block> = cfg
+        .blocks
+        .iter()
+        .filter(|b| b.exit == Exit::Return)
+        .collect();
+    if !retours.is_empty() {
+        let mut valeurs = Vec::new();
+        let mut toutes_connues = true;
+        for bloc in &retours {
+            match constante_rendue(&bloc.instructions) {
+                Some(valeur) => {
+                    if !valeurs.contains(&valeur) {
+                        valeurs.push(valeur);
+                    }
+                }
+                None => toutes_connues = false,
+            }
+        }
+        if toutes_connues {
+            valeurs.sort_unstable();
+            p.rend = valeurs;
+        }
+    }
+
+    p.vide = cfg
+        .blocks
+        .iter()
+        .all(|b| b.instructions.iter().all(|i| est_sans_effet(i)));
+    p
+}
+
+/// Ce registre est-il lu avant d'être écrit ?
+///
+/// Écrit veut dire : premier opérande d'une instruction qui affecte, et
+/// c'est le seul cas qu'on traite — un `xchg`, un `mul` implicite ou une
+/// écriture par la mémoire ne comptent pas comme une écriture connue, et
+/// l'on préfère alors ne rien conclure.
+fn lu_avant_d_être_écrit(instructions: &[String], formes: &[&str]) -> bool {
+    for instruction in instructions {
+        let texte = instruction.trim().to_ascii_lowercase();
+        let Some((mnémonique, reste)) = texte.split_once(' ') else {
+            continue;
+        };
+        let opérandes: Vec<&str> = reste.split(',').map(str::trim).collect();
+        // La source d'abord : `mov rdi, rdi` lit avant d'écrire.
+        if opérandes
+            .iter()
+            .skip(1)
+            .any(|o| formes.iter().any(|f| mentionne(o, f)))
+        {
+            return true;
+        }
+        let premier = opérandes.first().copied().unwrap_or_default();
+        if !formes.iter().any(|f| mentionne(premier, f)) {
+            continue;
+        }
+        // Le premier opérande : écrit par `mov` et `lea`, lu ET écrit
+        // par tout le reste (`add rdi, 8` lit RDI), lu seulement par les
+        // instructions qui ne rendent rien.
+        return !matches!(
+            mnémonique,
+            "mov" | "movzx" | "movsx" | "movsxd" | "lea" | "xor"
+        );
+    }
+    false
+}
+
+/// Ce texte d'opérande parle-t-il de ce registre ?
+///
+/// Un test de sous-chaîne prendrait `rdi` dans `[rdi+8]`, ce qui est
+/// juste, mais aussi dans un nom de symbole. On borne donc aux
+/// caractères qui ne peuvent pas faire partie d'un identifiant.
+fn mentionne(opérande: &str, registre: &str) -> bool {
+    let mut reste = opérande;
+    while let Some(position) = reste.find(registre) {
+        let avant = reste[..position].chars().next_back();
+        let après = reste[position + registre.len()..].chars().next();
+        let bord = |c: Option<char>| !c.is_some_and(|c| c.is_ascii_alphanumeric() || c == '_');
+        if bord(avant) && bord(après) {
+            return true;
+        }
+        reste = &reste[position + registre.len()..];
+    }
+    false
+}
+
+/// La constante que ce bloc laisse dans RAX avant de rendre la main.
+fn constante_rendue(instructions: &[String]) -> Option<u64> {
+    let mut valeur = None;
+    for instruction in instructions {
+        let texte = instruction.trim().to_ascii_lowercase();
+        if let Some(posée) = valeur_posée_dans_rax(&texte) {
+            valeur = Some(posée);
+            continue;
+        }
+        // `xor eax, eax` met RAX à zéro, et c'est la façon dont tout le
+        // monde écrit « rend 0 ».
+        if texte == "xor eax,eax" || texte == "xor rax,rax" || texte == "xor eax, eax" {
+            valeur = Some(0);
+            continue;
+        }
+        // Toute autre écriture de RAX : on ne sait plus.
+        if écrit_rax(&texte) {
+            valeur = None;
+        }
+    }
+    valeur
+}
+
+/// Cette instruction écrit-elle dans RAX autrement qu'en y posant une
+/// constante ?
+fn écrit_rax(texte: &str) -> bool {
+    let Some((mnémonique, reste)) = texte.split_once(' ') else {
+        // `cqo`, `cdq` touchent RDX ; `ret`, `nop`, rien.
+        return false;
+    };
+    if matches!(mnémonique, "cmp" | "test" | "push" | "jmp" | "call") {
+        return false;
+    }
+    let premier = reste.split(',').next().unwrap_or_default().trim();
+    matches!(premier, "rax" | "eax" | "ax" | "al" | "ah")
+}
+
+/// Une instruction qui ne change rien d'observable.
+fn est_sans_effet(instruction: &str) -> bool {
+    let texte = instruction.trim();
+    texte == "nop" || texte == "ret" || texte == "leave" || texte.starts_with("nop ")
+}
+
+/// Une énumération qui se lit : « A, B et C », et non « A, B, C ».
+///
+/// Le dernier séparateur fait la différence entre une phrase et une
+/// liste de courses, et ce module écrit des phrases.
+fn énumère(éléments: &[&str], fr: bool) -> String {
+    match éléments {
+        [] => String::new(),
+        [seul] => (*seul).to_owned(),
+        [début @ .., dernier] => {
+            let et = if fr { " et " } else { " and " };
+            format!("{}{et}{dernier}", début.join(", "))
+        }
+    }
+}
+
+/// Le portrait, dit en une phrase — ou rien du tout.
+///
+/// Rien du tout quand il n'y a que du banal à dire : « contient une
+/// boucle » pour une fonction qui en a une et rien d'autre de
+/// remarquable n'apprend à personne ce que le graphe montre déjà.
+pub fn phrase_de_fonction(p: &Portrait, fr: bool) -> Option<String> {
+    if p.vide {
+        return Some(if fr {
+            "Cette fonction ne fait rien.".to_owned()
+        } else {
+            "This function does nothing.".to_owned()
+        });
+    }
+    let mut morceaux: Vec<String> = Vec::new();
+    if !p.arguments.is_empty() {
+        let liste = énumère(&p.arguments, fr);
+        morceaux.push(if fr {
+            format!("lit {liste}")
+        } else {
+            format!("reads {liste}")
+        });
+    }
+    if p.boucles > 0 {
+        morceaux.push(match (p.boucles, fr) {
+            (1, true) => "contient une boucle".to_owned(),
+            (1, false) => "contains one loop".to_owned(),
+            (n, true) => format!("contient {n} boucles"),
+            (n, false) => format!("contains {n} loops"),
+        });
+    }
+    if !p.syscalls.is_empty() {
+        let liste = énumère(&p.syscalls, fr);
+        morceaux.push(if fr {
+            format!("demande au noyau : {liste}")
+        } else {
+            format!("asks the kernel: {liste}")
+        });
+    }
+    if p.appels > 0 {
+        morceaux.push(match (p.appels, fr) {
+            (1, true) => "appelle une autre fonction".to_owned(),
+            (1, false) => "calls another function".to_owned(),
+            (n, true) => format!("appelle {n} fois ailleurs"),
+            (n, false) => format!("calls out {n} times"),
+        });
+    }
+    match p.rend.len() {
+        0 => {}
+        1 => morceaux.push(if fr {
+            format!("rend toujours {}", p.rend[0])
+        } else {
+            format!("always returns {}", p.rend[0])
+        }),
+        _ => {
+            let liste: Vec<String> = p.rend.iter().map(|v| v.to_string()).collect();
+            let liste = liste.join(if fr { " ou " } else { " or " });
+            morceaux.push(if fr {
+                format!("rend {liste}")
+            } else {
+                format!("returns {liste}")
+            });
+        }
+    }
+    // Se taire quand le seul constat est celui que le graphe montre
+    // déjà : « contient une boucle » devant un dessin où la boucle se
+    // voit n'apprend rien à personne. Un appel système ou des arguments
+    // lus, en revanche, ne se lisent nulle part ailleurs — un seul
+    // suffit alors à parler.
+    let banal = p.arguments.is_empty() && p.syscalls.is_empty() && p.rend.is_empty();
+    if banal {
+        return None;
+    }
+    let mut phrase = morceaux.join(", ");
+    phrase.push('.');
+    let mut lettres = phrase.chars();
+    Some(match lettres.next() {
+        Some(première) => première.to_uppercase().collect::<String>() + lettres.as_str(),
+        None => phrase,
+    })
+}
+
+#[cfg(test)]
+mod tests_fonction {
+    use super::*;
+
+    fn portrait_de(bytes: &[u8]) -> Portrait {
+        portrait(&crate::cfg::build(&namsdec_disasm::disassemble(
+            bytes, 0x401000,
+        )))
+    }
+
+    fn phrase_de(bytes: &[u8]) -> Option<String> {
+        phrase_de_fonction(&portrait_de(bytes), true)
+    }
+
+    /// Les arguments qu'une fonction lit se voient.
+    ///
+    /// C'est la première question qu'on se pose devant une fonction
+    /// sans symboles : combien en prend-elle ? La convention System V
+    /// répond — RDI, RSI, RDX, RCX, R8, R9 —, à condition de ne
+    /// compter que ceux qui sont LUS avant d'être écrits.
+    #[test]
+    fn the_arguments_a_function_reads_are_visible() {
+        // cmp rdi, rsi / jne / mov eax,1 / ret / xor eax,eax / ret
+        let deux = portrait_de(&[
+            0x48, 0x39, 0xF7, 0x75, 0x07, 0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3, 0x31, 0xC0, 0xC3,
+        ]);
+        assert_eq!(deux.arguments, vec!["RDI", "RSI"]);
+        // Et une fonction qui ÉCRIT RDI avant de s'en servir n'en prend
+        // pas : `mov rdi, 1` puis `syscall` est un appelant, non une
+        // fonction à un argument.
+        let aucun = portrait_de(&[0xBF, 0x01, 0x00, 0x00, 0x00, 0x48, 0x01, 0xFF, 0xC3]);
+        assert!(aucun.arguments.is_empty(), "{aucun:?}");
+    }
+
+    /// Ce qu'une fonction rend n'est dit que si TOUS ses retours le
+    /// disent.
+    ///
+    /// « Rend 0 ou 1 » est faux dès qu'il existe un troisième chemin
+    /// dont on ne sait pas ce qu'il laisse dans RAX. Un seul `ret`
+    /// muet suffit donc à se taire sur la valeur.
+    #[test]
+    fn a_return_value_is_said_only_when_every_path_says_it() {
+        let deux = portrait_de(&[
+            0x48, 0x39, 0xF7, 0x75, 0x07, 0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3, 0x31, 0xC0, 0xC3,
+        ]);
+        assert_eq!(deux.rend, vec![0, 1]);
+
+        // Le cas qui compte : UN chemin pose une constante, l'AUTRE non.
+        // Dire « rend 1 » serait faux, et c'est le genre de phrase qu'on
+        // croit sur parole devant un binaire qu'on ne connaît pas.
+        //
+        //   cmp rdi, rsi / jne autre / mov eax,1 / ret
+        //   autre: add rax, rdi / ret
+        let mélangé = portrait_de(&[
+            0x48, 0x39, 0xF7, // cmp rdi, rsi
+            0x75, 0x07, // jne +7
+            0xB8, 0x01, 0x00, 0x00, 0x00, // mov eax, 1
+            0xC3, // ret
+            0x48, 0x01, 0xF8, // add rax, rdi
+            0xC3, // ret
+        ]);
+        assert!(
+            mélangé.rend.is_empty(),
+            "un seul retour muet suffit à se taire : {mélangé:?}"
+        );
+
+        // add rax, rdi / ret : la valeur rendue dépend de l'argument.
+        let inconnu = portrait_de(&[0x48, 0x01, 0xF8, 0xC3]);
+        assert!(inconnu.rend.is_empty(), "{inconnu:?}");
+        assert!(
+            !phrase_de(&[0x48, 0x01, 0xF8, 0xC3])
+                .unwrap_or_default()
+                .contains("rend"),
+            "rien ne doit être dit de la valeur rendue"
+        );
+    }
+
+    /// Une fonction vide le dit, et c'est utile.
+    ///
+    /// Une fonction qui ne fait rien est presque toujours un reste :
+    /// une vérification retirée, un correctif déjà posé. C'est ce qu'on
+    /// cherche dans un binaire modifié.
+    #[test]
+    fn a_function_that_does_nothing_says_so() {
+        let phrase = phrase_de(&[0x90, 0x90, 0xC3]).expect("une phrase");
+        assert!(phrase.contains("ne fait rien"), "{phrase}");
+    }
+
+    /// Ce que le graphe montre déjà n'est pas répété.
+    ///
+    /// « Contient une boucle » devant un dessin où la boucle se voit
+    /// n'apprend rien. Le portrait ne parle que de ce qui ne se lit pas
+    /// ailleurs : les arguments, les appels système, la valeur rendue.
+    #[test]
+    fn what_the_graph_already_shows_is_not_repeated() {
+        // mov ecx,3 / dec ecx / jnz / ret : une boucle, et rien d'autre
+        // à en dire.
+        let seule = &[0xB9, 0x03, 0x00, 0x00, 0x00, 0xFF, 0xC9, 0x75, 0xFC, 0xC3][..];
+        assert_eq!(portrait_de(seule).boucles, 1);
+        assert_eq!(phrase_de(seule), None, "il n'y a rien à ajouter au dessin");
+    }
+
+    /// Un appel système se dit, même seul.
+    ///
+    /// Il ne se lit nulle part ailleurs : le graphe montre un bloc, non
+    /// ce que ce bloc demande au noyau.
+    #[test]
+    fn a_system_call_is_worth_saying_on_its_own() {
+        // mov eax,1 / mov edi,1 / syscall / ret
+        let phrase = phrase_de(&[
+            0xB8, 0x01, 0x00, 0x00, 0x00, 0xBF, 0x01, 0x00, 0x00, 0x00, 0x0F, 0x05, 0xC3,
+        ])
+        .expect("une phrase");
+        assert!(phrase.contains("write"), "{phrase}");
+    }
+
+    /// L'énumération se lit comme une phrase.
+    #[test]
+    fn a_list_reads_like_a_sentence() {
+        assert_eq!(énumère(&["RDI", "RSI"], true), "RDI et RSI");
+        assert_eq!(énumère(&["A", "B", "C"], false), "A, B and C");
+        assert_eq!(énumère(&["seul"], true), "seul");
+        assert_eq!(énumère(&[], true), "");
+    }
+
+    /// Les deux langues disent la même chose.
+    #[test]
+    fn both_languages_draw_the_same_portrait() {
+        let p = portrait_de(&[
+            0x48, 0x39, 0xF7, 0x75, 0x07, 0xB8, 0x01, 0x00, 0x00, 0x00, 0xC3, 0x31, 0xC0, 0xC3,
+        ]);
+        let fr = phrase_de_fonction(&p, true).expect("français");
+        let en = phrase_de_fonction(&p, false).expect("anglais");
+        assert!(fr.contains("Lit RDI et RSI"), "{fr}");
+        assert!(en.contains("Reads RDI and RSI"), "{en}");
+        assert_ne!(fr, en, "la traduction ne doit pas être oubliée");
+    }
+
+    /// Un graphe vide ne fait rien tomber.
+    #[test]
+    fn an_empty_graph_draws_no_portrait() {
+        let p = portrait(&crate::cfg::Cfg::default());
+        assert_eq!(p, Portrait::default());
+    }
+}

@@ -141,6 +141,19 @@ struct Contexte<'a> {
 /// pleine, ce qui n'est rien.
 const PROFONDEUR_MAX: usize = 24;
 
+/// Par où l'on entre dans chaque boucle d'un graphe.
+///
+/// La cible d'une arête ARRIÈRE, c'est-à-dire d'une arête qui remonte
+/// vers un bloc encore sur la pile du parcours en profondeur. Il y en a
+/// une par boucle, et c'est celle par où l'on entre.
+///
+/// Exposé parce que le portrait d'une fonction compte ses boucles : les
+/// recompter ailleurs, avec une autre définition, les ferait diverger —
+/// et la première définition essayée ici était fausse.
+pub fn têtes_de_boucle(cfg: &Cfg) -> BTreeSet<usize> {
+    Contexte::têtes_de_boucle(cfg)
+}
+
 impl<'a> Contexte<'a> {
     fn new(cfg: &'a Cfg, dis: &'a [DecodedInstruction], lang: &'a str) -> Self {
         Self {

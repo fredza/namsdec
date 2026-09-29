@@ -126,6 +126,30 @@ impl NamsdecApp {
             ui.colored_label(theme.dim, s.flow_hint);
             flow_legend_ui(ui, theme, s);
 
+            // Ce qu'on sait dire de la fonction ENTIÈRE, quand c'est
+            // une fonction qu'on regarde. Sur le programme entier, la
+            // question n'a pas de sens : « lit RDI » ne veut rien dire
+            // d'un ensemble de fonctions qui en prennent chacune les
+            // leurs.
+            //
+            // Le portrait ne parle que de ce qui ne se lit pas sur le
+            // dessin — les arguments, les appels système, la valeur
+            // rendue —, et se tait quand il n'aurait que du banal à
+            // dire. Une phrase de plus qui répète le graphe ferait
+            // cesser de lire celles qui apprennent quelque chose.
+            if restreint
+                && let Some(portrait) = namsdec_re::explain::phrase_de_fonction(
+                    &namsdec_re::explain::portrait(&cfg),
+                    self.lang == Lang::Fr,
+                )
+            {
+                ui.horizontal_wrapped(|ui| {
+                    ui.colored_label(theme.accent, "≡");
+                    cliquable(ui, egui::Label::new(egui::RichText::new(&portrait)))
+                        .on_hover_text(s.flow_portrait_hint);
+                });
+            }
+
             // « Comment arrive-t-on là ? » — la question qu'on pose
             // devant un programme qui refuse un mot de passe : on
             // connaît l'adresse du succès, on cherche la route.

@@ -657,6 +657,26 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
         ("p",
          "Un saut dont la cible se calcule — table de sauts, pointeur de fonction — est "
          "signalé comme tel : aucune flèche n'est inventée vers une adresse inconnue."),
+        ("h2", "Ce que fait la fonction entière"),
+        ("p",
+         "Quand <b>Fonction courante</b> est coché, une ligne en tête dit ce que namsdec "
+         "sait de la fonction <i>dans son ensemble</i> : « Lit RDI et RSI, rend 0 ou 1. » "
+         "C'est la première question devant une fonction sans symboles — que prend-elle, "
+         "que rend-elle — et le dessin n'y répond pas."),
+        ("liste", [
+            "<b>Les arguments</b> : les registres de la convention System V lus avant "
+            "d'être écrits, dans le bloc d'entrée. Un argument consommé plus loin est "
+            "manqué ; aucun n'est inventé.",
+            "<b>La valeur rendue</b> : dite seulement si <i>tous</i> les retours posent une "
+            "constante. Un seul chemin muet suffit à se taire — « rend 0 ou 1 » serait "
+            "faux s'il en existe un troisième.",
+            "<b>Les appels système</b>, quand leur numéro est posé dans le même bloc.",
+        ]),
+        ("note",
+         "La ligne <b>ne répète pas le dessin</b>. « Contient une boucle » devant un graphe "
+         "où la boucle se voit n'apprend rien, et une phrase de trop fait cesser de lire "
+         "celles qui apprennent quelque chose. Quand namsdec n'a que du banal à dire, il "
+         "ne dit rien."),
         ("h2", "Le pseudo-code : les sauts rendus à leur forme"),
         ("p",
          "La case <b>Pseudo-code</b> remplace le dessin par le <b>texte</b> de la même "

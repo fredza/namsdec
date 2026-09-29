@@ -35,6 +35,16 @@ précédaient.
 - Une fonction sans aucun saut le dit en une ligne, au lieu de laisser
   chercher un « si » qui n'y est pas.
 
+**Le déroulement dit ce que fait la fonction entière**
+- Quand « Fonction courante » est coché, une ligne en tête résume ce que
+  namsdec sait de la fonction : « Lit RDI et RSI, rend 0 ou 1. »
+- Les arguments sont ceux que le bloc d'entrée lit avant de les écrire ;
+  la valeur rendue n'est dite que si **tous** les retours posent une
+  constante — un seul chemin muet suffit à se taire.
+- La ligne ne répète pas le dessin : « contient une boucle » devant un
+  graphe où la boucle se voit n'apprend rien, et namsdec préfère ne rien
+  dire.
+
 **Un outil extérieur reçoit du code, non un fichier**
 - Deux marqueurs de plus dans la fiche d'un désassembleur : `{text}` reçoit
   les octets **exécutables seuls**, `{base}` l'adresse où ils sont chargés.
