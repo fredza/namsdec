@@ -24941,3 +24941,61 @@ fn the_bytes_of_an_instruction_can_be_rewritten_where_they_are_read() {
     );
     assert!(app.patches.is_empty());
 }
+
+/// Le graphe dit ce que chaque bloc fait, quand il le sait.
+///
+/// namsdec expliquait chaque instruction et jamais un ENSEMBLE : ce que
+/// fait une boucle, ce qu'une suite de `cmp`/`je` vérifie au total.
+///
+/// La règle du module est qu'une explication fausse est pire qu'une
+/// absence d'explication. Ce contrôle vérifie donc les deux moitiés :
+/// que le graphe DIT quelque chose là où c'est certain, et qu'il se TAIT
+/// sur ce qu'il ne sait pas.
+#[test]
+fn the_flow_says_what_a_block_does_when_it_knows() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp {
+        source: PROGRAMME_DU_BANC.to_owned(),
+        show_flow: true,
+        ..Default::default()
+    };
+    app.apply_theme(&ctx);
+    app.do_assemble();
+    for _ in 0..40 {
+        app.do_step();
+    }
+    let (_, lignes) = ce_qui_est_écrit(&ctx, &mut app, Some("flow_window"), 5);
+    let écrit: Vec<&str> = lignes.iter().map(|(t, _)| t.as_str()).collect();
+
+    // Le programme du banc écrit son message : le bloc qui le fait doit
+    // le dire, parce que son numéro d'appel est posé juste avant.
+    assert!(
+        écrit.iter().any(|t| t.contains("demande au noyau : write")),
+        "le graphe nomme l'appel système dont le numéro est dans le bloc — {écrit:?}"
+    );
+    // Et sa boucle est une boucle, qui a tourné.
+    assert!(
+        écrit.iter().any(|t| t.starts_with("boucle")),
+        "le graphe reconnaît la boucle — {écrit:?}"
+    );
+
+    // Ce qu'il ne sait pas, il ne le dit pas : aucune phrase ne peut
+    // apparaître pour un bloc dont les instructions ne se résument pas.
+    // On le vérifie sur le module, qui est la seule porte d'entrée.
+    assert_eq!(
+        namsdec_re::explain::phrase(
+            &namsdec_re::explain::Bloc {
+                instructions: &["add rax,rcx".to_owned()],
+                exit: namsdec_re::cfg::Exit::Fallthrough,
+                boucle: false,
+                passages: Some(3),
+            },
+            true
+        ),
+        None,
+        "un bloc dont on ne sait rien dire n'a pas de phrase, même s'il a tourné"
+    );
+}

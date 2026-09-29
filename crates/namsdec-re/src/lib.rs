@@ -13,6 +13,7 @@ mod digest_module;
 pub mod dump_module;
 mod map_module;
 pub mod elf_scan;
+pub mod explain;
 pub mod entropy;
 mod entropy_module;
 pub mod functions;

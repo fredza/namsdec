@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **25 septembre
-2026**, version 0.2.5-beta.3, 577 tests au vert.
+2026**, version 0.2.5-beta.3, 578 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -255,8 +255,13 @@ Détail chiffré dans `AMELIORATIONS.txt` 7.11, section « REVUE DU
 - [~] **Les échecs des exercices, expliqués** (A 7.10) — la moitié est
       faite : chaque condition manquée dit laquelle et avec quelle
       valeur. La seconde moitié demande 7.9.
-- [ ] **Un mode « explique-moi cette fonction »** (A 7.9) — le profil
-      d'exécution existe déjà ; ce qui manque est la mise en phrase.
+- [~] **Un mode « explique-moi cette fonction »** (A 7.9) — commencé :
+      chaque boîte du graphe porte une phrase quand namsdec sait la
+      dire. Cinq reconnaisseurs, chacun certain ou muet : appel système
+      dont le numéro est dans le bloc, boucle avec son nombre de tours,
+      comparaison suivie de son saut, bloc de `nop`, préparation de
+      constantes. Reste à monter d'un cran : dire ce qu'une FONCTION
+      fait, et non un bloc.
 
 ## 6. Tests et robustesse
 

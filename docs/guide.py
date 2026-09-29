@@ -646,6 +646,15 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "<b>Tout voir</b> cadre le graphe entier, <b>Taille réelle</b> revient au "
          "grossissement d'origine."),
         ("p",
+         "Chaque boîte porte, quand namsdec sait le dire, <b>une phrase qui résume ce "
+         "que le bloc fait</b> : « demande au noyau : write », « boucle, a tourné 20 "
+         "fois », « compare RAX et RBX, et part si c'est différent », « ne fait rien ». "
+         "Rien n'est deviné — le numéro d'un appel système n'est nommé que s'il est posé "
+         "dans le bloc même, et une comparaison n'est dite que si le saut la suit "
+         "immédiatement. <b>Un bloc sans phrase n'est pas un échec</b> : c'est un bloc "
+         "dont on ne sait rien dire de plus que ce que ses instructions disent déjà, et "
+         "une explication fausse serait pire qu'une absence d'explication."),
+        ("p",
          "Un saut dont la cible se calcule — table de sauts, pointeur de fonction — est "
          "signalé comme tel : aucune flèche n'est inventée vers une adresse inconnue."),
         ("p",

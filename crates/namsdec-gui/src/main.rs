@@ -8919,11 +8919,55 @@ impl NamsdecApp {
                     .as_ref()
                     .and_then(|e| cfg.block_at(e.cpu().regs.rip));
                 let lignes = &state.addr_to_line;
+                // Ce qu'on sait dire de chaque bloc. Calculé ici parce
+                // que seul l'appelant connaît ce que l'exécution a
+                // compté : le dessin, lui, ne sait rien de l'émulateur.
+                let passages: BTreeMap<u64, u64> = self
+                    .emulator
+                    .as_ref()
+                    .map(|e| e.visits().iter().map(|(a, c)| (*a, *c)).collect())
+                    .unwrap_or_default();
+                let phrases: Vec<Option<String>> = cfg
+                    .blocks
+                    .iter()
+                    .enumerate()
+                    .map(|(index, bloc)| {
+                        // Une boucle : une arête qui part d'ici vers
+                        // soi-même ou vers plus haut. C'est la seule
+                        // définition qu'on puisse tenir sans calculer
+                        // les dominateurs, et elle ne se trompe pas dans
+                        // le sens qui compte — elle ne dit « boucle »
+                        // que s'il y a vraiment un retour en arrière.
+                        let boucle = cfg.edges.iter().any(|arête| {
+                            arête.from == index
+                                && cfg.blocks[arête.to].start <= bloc.start
+                        });
+                        namsdec_re::explain::phrase(
+                            &namsdec_re::explain::Bloc {
+                                instructions: &bloc.instructions,
+                                exit: bloc.exit,
+                                boucle,
+                                passages: passages.get(&bloc.start).copied(),
+                            },
+                            self.lang == Lang::Fr,
+                        )
+                    })
+                    .collect();
                 let sortie = egui::ScrollArea::both()
                     .auto_shrink([false, false])
                     .scroll_offset(self.flow_offset)
                     .show(ui, |ui| {
-                        flow_graph_ui(ui, theme, s, &cfg, ici, lignes, zoom, &sur_la_route)
+                        flow_graph_ui(
+                            ui,
+                            theme,
+                            s,
+                            &cfg,
+                            ici,
+                            lignes,
+                            zoom,
+                            &sur_la_route,
+                            &phrases,
+                        )
                     });
                 let (destination, tiré) = sortie.inner;
                 aller = destination;
@@ -16219,6 +16263,9 @@ fn flow_graph_ui(
     lignes: &BTreeMap<u64, u32>,
     zoom: f32,
     route: &std::collections::BTreeSet<usize>,
+    // Ce qu'on sait dire de chaque bloc, ou rien. Calculé par
+    // l'appelant, qui seul connaît ce que l'exécution a compté.
+    phrases: &[Option<String>],
 ) -> (Option<u32>, egui::Vec2) {
     use namsdec_re::cfg::Exit;
 
@@ -16250,7 +16297,11 @@ fn flow_graph_ui(
         // L'en-tête, les instructions montrées, et la ligne « … n » qui
         // dit ce qu'on ne montre pas. Cette dernière manquait au compte :
         // elle se peignait sous le cadre, à côté du bloc suivant.
-        let lignes = 1 + combien.min(LIGNES_MAX) + usize::from(combien > LIGNES_MAX);
+        let dit = phrases.get(index).and_then(|p| p.as_ref()).is_some();
+        let lignes = 1
+            + combien.min(LIGNES_MAX)
+            + usize::from(combien > LIGNES_MAX)
+            + usize::from(dit);
         lignes as f32 * hauteur_ligne + 10.0 * zoom
     };
 
@@ -16375,6 +16426,23 @@ fn flow_graph_ui(
             );
             ligne_y += hauteur_ligne;
         }
+        // CE QUE LE BLOC FAIT, en une phrase, sous ses instructions.
+        //
+        // namsdec explique chaque instruction depuis longtemps ; il
+        // n'expliquait pas un ENSEMBLE. Une phrase par bloc, quand on
+        // sait en dire une — et le module se tait le reste du temps,
+        // parce qu'une explication fausse est pire qu'une absence
+        // d'explication.
+        if let Some(phrase) = phrases.get(index).and_then(|p| p.as_ref()) {
+            painter.text(
+                egui::pos2(rect.left() + 6.0 * zoom, rect.bottom() - 4.0 * zoom),
+                egui::Align2::LEFT_BOTTOM,
+                flow_ellipsis(phrase, colonnes),
+                police.clone(),
+                theme.good,
+            );
+        }
+
         // « le programme est ici », à droite de l'en-tête. La largeur
         // des boîtes réserve de quoi les mettre côte à côte : sans cela
         // le libellé venait recouvrir l'adresse dès que la boîte était
