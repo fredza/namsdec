@@ -24791,3 +24791,62 @@ fn a_handle_says_that_it_can_be_pulled() {
         "au milieu du code, le pointeur reste ce qu'il est"
     );
 }
+
+/// Le bandeau ne laisse pas un trou entre ses deux zones.
+///
+/// L'état du processeur était ancré au bas de sa région : tout le blanc
+/// que le bandeau ne prenait pas tombait ENTRE le contenu de « Prochaine
+/// instruction » et lui. Quatre cent cinquante-six pixels sur l'écran
+/// d'accueil, où le bandeau n'a qu'une phrase à dire — la première zone
+/// paraissait cassée, et non vide.
+///
+/// Trois tentatives de rééquilibrage avaient échoué avant. Aucune
+/// n'avait vu la vraie cause, qui n'était pas dans le partage : le
+/// panneau croyait que la POIGNÉE AVAIT ÉTÉ TIRÉE dès que la première
+/// image ne rendait pas la hauteur demandée — ce qui arrive toujours,
+/// puisque cette image-là ne connaît encore ni la hauteur du bandeau ni
+/// celle de l'état du processeur. La part de l'onglet était donc gelée
+/// à son plancher pour toute la séance, et le bandeau gardait tout le
+/// reste. Une poignée ne bouge que sous un doigt : c'est la seule
+/// question à poser, et elle n'était pas posée.
+///
+/// Désancrer l'état du processeur a aussi été essayé, et mesuré : vingt-
+/// six pixels de trou au lieu de trente-huit. Douze pixels ne valent pas
+/// de reprendre le risque qui avait fait échouer la deuxième tentative —
+/// posé à la suite, il débordait sur la vue du dessous dès que le compte
+/// ne tombait pas juste. Il reste ancré.
+#[test]
+fn the_banner_leaves_no_hole_between_its_two_zones() {
+    let s = strings(Lang::Fr);
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp {
+        source: DEFAULT_SOURCE.to_owned(),
+        show_sidebar: true,
+        ..Default::default()
+    };
+    app.apply_theme(&ctx);
+    let (_, lignes) = ce_qui_est_écrit(&ctx, &mut app, None, 5);
+    // La dernière ligne de « Prochaine instruction », et le titre qui
+    // suit : entre les deux, il ne doit y avoir que de l'air normal.
+    let titre = lignes
+        .iter()
+        .filter(|(t, r)| t == s.cpu_state && r.left() > 1200.0)
+        .map(|(_, r)| r.top())
+        .fold(f32::INFINITY, f32::min);
+    let bas_du_bandeau = lignes
+        .iter()
+        .filter(|(_, r)| r.left() > 1200.0 && r.bottom() < titre)
+        .map(|(_, r)| r.bottom())
+        .fold(f32::NEG_INFINITY, f32::max);
+    assert!(
+        titre.is_finite() && bas_du_bandeau.is_finite(),
+        "les deux zones du bandeau sont peintes"
+    );
+    let trou = titre - bas_du_bandeau;
+    assert!(
+        trou < 80.0,
+        "« {} » doit suivre ce qui le précède, non flotter tout en bas : \
+         {trou:.0} px de blanc",
+        s.cpu_state
+    );
+}

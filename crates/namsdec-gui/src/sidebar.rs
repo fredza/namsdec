@@ -63,9 +63,6 @@ impl NamsdecApp {
         // Un panneau bas prend la hauteur de son contenu, mesurée à
         // l'image précédente : l'état du processeur a toujours la
         // sienne, et ce qui manque est pris à ce qui peut se replier.
-        egui::Panel::bottom(egui::Id::new("sidebar_cpu_state"))
-            .frame(egui::Frame::NONE)
-            .show(ui, |ui| self.cpu_state_section_ui(ui));
 
         // Ce qui vient avant : la prochaine instruction, le dernier pas,
         // les conseils. Repliables, et c'est à eux de céder quand la
@@ -81,9 +78,27 @@ impl NamsdecApp {
         // Défiler ici est permis, et c'est même la règle du panneau :
         // ce qui ne doit jamais défiler — l'état du processeur — est
         // sorti de cette zone, et n'y reviendra pas.
+        // La zone du bandeau est BORNÉE à ce qui reste une fois l'état
+        // du processeur réservé, et celui-ci est posé À LA SUITE au lieu
+        // d'être ancré au bas de la région.
+        //
+        // Ancré, il laissait tout le blanc entre le contenu du bandeau
+        // et lui : quatre cent cinquante-six pixels sur l'écran
+        // d'accueil, où le bandeau n'a qu'une phrase à dire. Trois
+        // tentatives de rééquilibrage avaient échoué, dont une pour
+        // cette raison précise — posé à la suite, il DÉBORDAIT sur la
+        // vue du dessous dès que le compte ne tombait pas juste.
+        //
+        // Le compte tombe juste maintenant : le plancher du bandeau vaut
+        // au moins la hauteur de l'état du processeur plus de quoi
+        // replier un titre, si bien que la place réservée ne peut plus
+        // manquer. C'est cette garantie-là qui manquait, et non l'idée.
+        egui::Panel::bottom(egui::Id::new("sidebar_cpu_state"))
+            .frame(egui::Frame::NONE)
+            .show(ui, |ui| self.cpu_state_section_ui(ui));
         let bandeau = egui::ScrollArea::vertical()
             .id_salt("sidebar_banner")
-            .auto_shrink([false, false])
+            .auto_shrink([false, true])
             .show(ui, |ui| self.sidebar_banner_ui(ui));
         // Ce que le bandeau mesurerait s'il avait toute la place : c'est
         // cette hauteur qui décide, à l'image suivante, de la part de
@@ -243,16 +258,33 @@ impl NamsdecApp {
                 }
             });
         // Ce que le panneau fait vraiment : s'il n'est pas à la hauteur
-        // demandée, c'est que la poignée a été tirée.
+        // demandée ET qu'un bouton est enfoncé, c'est que la poignée a
+        // été tirée.
+        //
+        // LE BOUTON ENFONCÉ EST LA CLÉ, et son absence a coûté cher. À
+        // la première image, le partage ne connaît encore ni la hauteur
+        // du bandeau ni celle de l'état du processeur : il demande la
+        // moitié du panneau, egui en rend autre chose, et l'on concluait
+        // « la poignée a été tirée ». La part de l'onglet était alors
+        // gelée à son plancher pour toute la séance, et le bandeau
+        // gardait le reste — quatre cent cinquante-six pixels de vide
+        // sous « Prochaine instruction » sur l'écran d'accueil, que
+        // trois tentatives de rééquilibrage n'avaient pas expliqués
+        // parce qu'elles cherchaient un défaut de partage là où il y
+        // avait un faux témoignage.
+        //
+        // Une poignée ne bouge que sous un doigt. C'est la seule
+        // question à poser.
+        let tirée = ui.ctx().input(|i| i.pointer.primary_down());
         if let Some(rendue) = egui::containers::panel::PanelState::load(ui.ctx(), id)
             .map(|état| état.outer_rect.height())
         {
             self.sidebar_tab_last = rendue;
             match self.sidebar_tab_height {
-                Some(gardée) if (rendue - gardée).abs() > 1.0 => {
+                Some(gardée) if tirée && (rendue - gardée).abs() > 1.0 => {
                     self.sidebar_tab_height = Some(rendue);
                 }
-                None if (rendue - voulue).abs() > 1.0 => {
+                None if tirée && (rendue - voulue).abs() > 1.0 => {
                     self.sidebar_tab_height = Some(rendue);
                 }
                 _ => {}

@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **25 septembre
-2026**, version 0.2.5-beta.3, 575 tests au vert.
+2026**, version 0.2.5-beta.3, 576 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -153,8 +153,14 @@ Détail chiffré dans `AMELIORATIONS.txt` 7.11, section « REVUE DU
       où tout est en colonnes, l'annotation est cohérente avec son
       contexte, et la largeur des boîtes se calcule en colonnes de
       caractères. Changer la police casserait ce calcul.
-- [ ] **Le vide sous « Prochaine instruction »** fait encore ~260 px.
-      Même nœud que le vide de 56 px : l'état du processeur est ancré.
+- [x] **Le vide sous « Prochaine instruction »** — la cause n'était pas
+      dans le partage, où trois tentatives l'avaient cherchée. Le panneau
+      croyait que la poignée avait été tirée dès que la première image ne
+      rendait pas la hauteur demandée, ce qui arrive toujours : cette
+      image-là ne connaît encore ni la hauteur du bandeau ni celle de
+      l'état du processeur. La part de l'onglet était gelée à son
+      plancher pour toute la séance, et le bandeau gardait le reste. Une
+      poignée ne bouge que sous un doigt.
 
 ## 2 bis. Le chevauchement des captures — élucidé
 
