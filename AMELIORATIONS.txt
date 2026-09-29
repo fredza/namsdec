@@ -1452,3 +1452,28 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
   lignes en faisait mille huit cents. Il a refusé de couper — et c'est le bon
   comportement : un refus se voit, une coupe au mauvais endroit se découvre
   trois jours plus tard.
+
+  --- et la CI, elle, lisait une autre machine ---
+  Le dépôt passait ses trois vérifications ici et échouait sur le coureur
+  GitHub, depuis plusieurs jours. La cause : `what_this_machine_runs_can_be_
+  explained` désassemble soixante binaires de /usr/bin et exige une fiche pour
+  chaque mnémonique rencontré. Sur Fedora et ce processeur-ci, tout passe ;
+  sur Ubuntu et le sien, seize instructions manquaient.
+
+  C'est la troisième façon de mentir — lire la machine — sauf que celle-ci est
+  assumée, et pour une raison : ce qu'elle trouve n'est jamais un faux
+  positif. Une instruction qu'un binaire réel contient et que le manuel ignore
+  est un manque du manuel, où qu'on soit. Un échec de ce contrôle n'est pas un
+  défaut de l'application ; c'est une liste de fiches à écrire.
+
+  Neuf fiches, donc : additionner sans déborder (les formes saturantes),
+  multiplier en parallèle, multiplier et additionner d'un coup, additionner
+  voisin à voisin, élargir chaque élément, charger seize octets mal alignés,
+  prévenir le cache, demander ce que ce processeur sait faire, parler à
+  l'hyperviseur. Le manuel passe de 155 à 164 fiches.
+
+  Et un autre contrôle a aussitôt demandé son dû : une fiche dont l'exemple ne
+  s'exécute pas doit DIRE que namsdec ne simule pas l'instruction. Les neuf le
+  disent. Décrire ce qu'on ne sait pas exécuter sans le dire serait une
+  promesse en l'air — et c'est exactement le genre de promesse qu'un débutant
+  croit.

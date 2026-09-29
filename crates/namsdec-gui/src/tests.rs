@@ -9809,6 +9809,23 @@ fn both_languages_say_the_same_things() {
 /// tout mnémonique qui revient — le seuil laisse passer l'exotique isolé,
 /// parce qu'écrire une fiche pour une instruction vue une fois dans une
 /// bibliothèque de compression n'apprend à personne.
+///
+/// IL LIT LA MACHINE, ET C'EST ASSUMÉ. Un test qui lit la machine ment
+/// d'ordinaire : il passe ou échoue selon ce qui a été installé la
+/// veille. Celui-ci est l'exception, parce que ce qu'il trouve n'est
+/// jamais un faux positif — une instruction qu'un binaire réel contient
+/// et que le manuel ignore est un manque du manuel, où qu'on soit.
+///
+/// La conséquence est qu'il peut rougir sur une machine où il n'a jamais
+/// tourné. C'est arrivé : le coureur d'intégration continue, sur une
+/// autre distribution et un autre processeur, a trouvé seize mnémoniques
+/// que la machine de développement ne contenait nulle part —
+/// multiplications parallèles, additions saturantes, préchargement de
+/// cache, appels à l'hyperviseur. Neuf fiches ont été écrites, et le
+/// manuel est meilleur qu'avant.
+///
+/// Donc : un échec ici n'est pas un défaut de l'application. C'est une
+/// liste de fiches à écrire.
 #[test]
 fn what_this_machine_runs_can_be_explained() {
     let Ok(dir) = std::fs::read_dir("/usr/bin") else {
@@ -9868,7 +9885,9 @@ fn what_this_machine_runs_can_be_explained() {
     assert!(
         manquants.is_empty(),
         "ces instructions reviennent dans les binaires de cette machine sans pouvoir \
-         s'expliquer : {manquants:?}"
+         s'expliquer — ce sont autant de fiches à écrire dans \
+         `namsdec-doc`, non un défaut de l'application ({lus} binaires \
+         lus) : {manquants:?}"
     );
 }
 
