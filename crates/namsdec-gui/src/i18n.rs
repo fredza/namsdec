@@ -170,6 +170,13 @@ pub struct Strings {
     pub bytes_instructions: &'static str,
     pub bytes_octets: &'static str,
     pub bytes_length_hint: &'static str,
+    /// L'onglet Octets, en vue éditable. La vue mémoire se modifiait
+    /// déjà ; les octets d'une instruction, non — alors que c'est là
+    /// qu'on lit ce qu'on voudrait changer.
+    pub bytes_edit_hint: &'static str,
+    pub bytes_edit_length: &'static str,
+    pub bytes_edit_bad: &'static str,
+    pub bytes_changed: &'static str,
     /// Le tas vu de haut : début, rupture, plafond.
     pub heap_start: &'static str,
     pub heap_break: &'static str,
@@ -1078,6 +1085,10 @@ const FR: Strings = Strings {
     bytes_instructions: "instructions",
     bytes_octets: "octets",
     bytes_length_hint: "Longueur de l'instruction en octets — comparez une ligne à l'autre",
+    bytes_edit_hint: "Cliquez pour récrire ces octets : l'exécution suivra ce que vous mettez.",
+    bytes_edit_length: "Il faut le même nombre d'octets : récrire une instruction ne déplace pas celles qui suivent.",
+    bytes_edit_bad: "Des paires hexadécimales, séparées par des espaces — « 48 31 c0 ».",
+    bytes_changed: "Octets changés. La fenêtre Correctifs les liste et sait les défaire.",
     heap_start: "Début",
     heap_break: "Rupture",
     heap_limit: "Plafond",
@@ -1850,6 +1861,10 @@ const EN: Strings = Strings {
     bytes_instructions: "instructions",
     bytes_octets: "bytes",
     bytes_length_hint: "The instruction's length in bytes — compare one line with another",
+    bytes_edit_hint: "Click to rewrite these bytes: execution will follow what you put there.",
+    bytes_edit_length: "It must be the same number of bytes: rewriting an instruction does not move the ones after it.",
+    bytes_edit_bad: "Hexadecimal pairs, separated by spaces — “48 31 c0”.",
+    bytes_changed: "Bytes changed. The Patches window lists them and can undo them.",
     heap_start: "Start",
     heap_break: "Break",
     heap_limit: "Ceiling",

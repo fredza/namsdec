@@ -444,7 +444,13 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "<b>État du processeur</b> — seize registres, RIP, les six indicateurs en "
          "pastilles, le nombre d'instructions exécutées. Un clic sur un nom de registre pose "
          "une surveillance ; un clic sur une valeur permet de la remplacer.",
-         "<b>La vue choisie</b> — Pile, Mémoire, Tas, Octets, et RE si le module est activé. "
+         "<b>La vue choisie</b> — Pile, Mémoire, Tas, Octets, et RE si le module est "
+         "activé. Devant un <b>binaire ouvert</b>, la vue Octets se récrit : un clic sur "
+         "les octets d'une instruction ouvre un champ, Entrée valide, Échap annule. Le "
+         "nombre d'octets doit rester le même — en récrire plus ou moins déplacerait "
+         "tout ce qui suit, donc toutes les adresses et tous les sauts ; pour cela, "
+         "Outils > Patcher le binaire propose « Neutraliser (nop) ». Ce qui a changé "
+         "porte la couleur des changements, et la fenêtre Correctifs sait le défaire. "
          "Les onglets sont en haut à droite, dans la barre d'outils.",
         ]),
         ("p",

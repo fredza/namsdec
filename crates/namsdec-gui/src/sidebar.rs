@@ -2013,6 +2013,16 @@ impl NamsdecApp {
             let milieu = (index as f32 + 0.5) * row_height;
             zone = zone.vertical_scroll_offset((milieu - ui.available_height() / 2.0).max(0.0));
         }
+        // Ce qu'on peut récrire : les octets d'un BINAIRE ouvert. Un
+        // listing venu d'un source se réassemble — le récrire à la main
+        // serait effacé au prochain Ctrl+Maj+B, et l'on ne propose pas
+        // un geste qui ne tient pas.
+        let éditable = state.from_binary.is_some();
+        let changés: std::collections::BTreeSet<u64> =
+            self.patches.iter().map(|patch| patch.addr).collect();
+        let mut ouvrir = None;
+        let mut valider = None;
+        let mut annuler = false;
         zone.show_rows(ui, row_height, state.disasm.len(), |ui, rows| {
             // Un panneau egui adopte la largeur de son contenu, et dix
             // octets en hexadécimal suivis d'un texte d'instruction en
@@ -2056,18 +2066,69 @@ impl NamsdecApp {
                         egui::RichText::new(format!("{:2}", instruction.bytes.len())).monospace(),
                     )
                     .on_hover_text(s.bytes_length_hint);
-                    ui.add(
-                        egui::Label::new(
+                    if self.bytes_edit == Some(instruction.address) {
+                        // Le champ prend la place des octets, l'instruction
+                        // reste lisible à côté : on récrit en voyant ce
+                        // qu'on récrit.
+                        let champ = ui.add(
+                            egui::TextEdit::singleline(&mut self.bytes_edit_input)
+                                .font(egui::TextStyle::Monospace)
+                                .desired_width(
+                                    (instruction.bytes.len() * 3) as f32 * 9.0 + 16.0,
+                                ),
+                        );
+                        champ.request_focus();
+                        if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                            valider =
+                                Some((instruction.address, self.bytes_edit_input.clone()));
+                        }
+                        if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                            annuler = true;
+                        }
+                        ui.colored_label(
+                            theme.dim,
+                            egui::RichText::new(&instruction.text).monospace(),
+                        );
+                    } else {
+                        // Les octets changés portent la couleur qui dit
+                        // « ceci n'est plus ce qu'il y avait » — la même
+                        // que partout ailleurs dans namsdec.
+                        let encre = if changés.contains(&instruction.address) {
+                            theme.changed
+                        } else {
+                            colour
+                        };
+                        let étiquette = egui::Label::new(
                             egui::RichText::new(format!("{octets}  {}", instruction.text))
                                 .monospace()
-                                .color(colour),
+                                .color(encre),
                         )
-                        .truncate(),
-                    )
-                    .on_hover_text(&instruction.text);
+                        .truncate();
+                        if éditable {
+                            if crate::cliquable(ui, étiquette)
+                                .on_hover_text(s.bytes_edit_hint)
+                                .clicked()
+                            {
+                                ouvrir = Some((instruction.address, octets.clone()));
+                            }
+                        } else {
+                            ui.add(étiquette).on_hover_text(&instruction.text);
+                        }
+                    }
                 });
             }
         });
+        if let Some((adresse, hexa)) = ouvrir {
+            self.bytes_edit = Some(adresse);
+            self.bytes_edit_input = hexa;
+        }
+        if annuler {
+            self.bytes_edit = None;
+        }
+        if let Some((adresse, saisie)) = valider {
+            self.bytes_edit = None;
+            self.write_bytes_at(adresse, &saisie);
+        }
         self.follow_rip = false;
     }
 

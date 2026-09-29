@@ -1564,6 +1564,11 @@ struct NamsdecApp {
     /// Le facteur d'échelle de l'écran à l'image précédente : quand il
     /// change, toute la fenêtre est à repeindre (voir `draw`).
     dernière_échelle: Option<f32>,
+    /// L'instruction dont on récrit les octets, s'il y en a une, et ce
+    /// qui est tapé. L'adresse et non le rang : la liste est reconstruite
+    /// à chaque rechargement, les rangs bougent, l'adresse non.
+    bytes_edit: Option<u64>,
+    bytes_edit_input: String,
     /// Le rang du tampon courant parmi les « sans titre ».
     untitled_no: usize,
     /// Le prochain rang à distribuer. Il ne redescend jamais : fermer
@@ -2438,6 +2443,8 @@ impl Default for NamsdecApp {
             current_exercise: None,
             settings_file: None,
             dernière_échelle: None,
+            bytes_edit: None,
+            bytes_edit_input: String::new(),
             untitled_no: 1,
             next_untitled: 2,
             cpu_state_open: true,
@@ -14914,6 +14921,50 @@ impl NamsdecApp {
         self.write_patch(offset as usize, après, adresse);
     }
 
+    /// Récrit les octets d'une instruction, depuis l'onglet Octets.
+    ///
+    /// Le même chemin que les trois gestes du patcheur — `write_patch`,
+    /// donc la fenêtre Correctifs les liste et sait les défaire. Écrire
+    /// à la main depuis l'onglet n'est pas un autre mécanisme, c'est la
+    /// même chose dite autrement : on voit les octets là où on les lit.
+    ///
+    /// LA LONGUEUR NE CHANGE PAS, et c'est refusé plutôt que rattrapé.
+    /// Récrire une instruction plus courte ou plus longue déplacerait
+    /// tout ce qui suit dans le fichier, donc toutes les adresses, donc
+    /// tous les sauts. Neutraliser par des `nop` est le geste qui répond
+    /// à ce besoin, et le patcheur le propose déjà.
+    fn write_bytes_at(&mut self, adresse: u64, saisie: &str) {
+        let s = strings(self.lang);
+        let Some(state) = &self.assemble_state else {
+            return;
+        };
+        let Some(instruction) = state
+            .disasm
+            .iter()
+            .find(|instruction| instruction.address == adresse)
+        else {
+            return;
+        };
+        let attendu = instruction.bytes.len();
+        let Some(nouveaux) = lire_octets(saisie) else {
+            self.status = Status::Error(s.bytes_edit_bad.to_owned());
+            return;
+        };
+        if nouveaux.len() != attendu {
+            self.status = Status::Error(s.bytes_edit_length.to_owned());
+            return;
+        }
+        if nouveaux == instruction.bytes {
+            return;
+        }
+        let Some(offset) = namsdec_re::imports::file_offset(&state.output.file, adresse) else {
+            self.status = Status::Error(s.patch_no_offset.to_owned());
+            return;
+        };
+        self.write_patch(offset as usize, nouveaux, adresse);
+        self.status = Status::Note(|s| s.bytes_changed);
+    }
+
     /// Défait un patch : on remet les octets d'avant, et l'on recharge.
     fn undo_patch(&mut self, rang: usize) {
         let Some(patch) = self.patches.get(rang).cloned() else {
@@ -17696,6 +17747,27 @@ fn status_dot(ui: &mut egui::Ui, color: egui::Color32) {
 /// couleurs du thème lui-même (fond, panneau, accents) plutôt qu'un nom
 /// seul — c'est le thème qui se décrit, donc rien à écrire de plus quand
 /// un nouveau s'ajoute.
+/// Des paires hexadécimales, séparées comme on veut.
+///
+/// « 48 31 c0 », « 4831c0 », « 48,31,c0 » : on recopie ce qu'on lit
+/// ailleurs, et ce qu'on lit ailleurs n'a pas toujours la même ponctuation.
+/// Ce qui est refusé, c'est un nombre impair de chiffres — là, on ne sait
+/// pas ce que la personne voulait dire.
+fn lire_octets(saisie: &str) -> Option<Vec<u8>> {
+    let chiffres: String = saisie.chars().filter(|c| !c.is_whitespace() && *c != ',').collect();
+    if chiffres.is_empty() || !chiffres.len().is_multiple_of(2) {
+        return None;
+    }
+    if !chiffres.chars().all(|c| c.is_ascii_hexdigit()) {
+        return None;
+    }
+    chiffres
+        .as_bytes()
+        .chunks(2)
+        .map(|paire| u8::from_str_radix(std::str::from_utf8(paire).ok()?, 16).ok())
+        .collect()
+}
+
 /// Le sens du clic, et le pointeur qui l'annonce.
 ///
 /// Une étiquette qu'on peut cliquer ne ressemble à rien : c'est du

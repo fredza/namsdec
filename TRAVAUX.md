@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **25 septembre
-2026**, version 0.2.5-beta.3, 576 tests au vert.
+2026**, version 0.2.5-beta.3, 577 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -241,7 +241,12 @@ Détail chiffré dans `AMELIORATIONS.txt` 7.11, section « REVUE DU
 - [x] DZF branché comme désassembleur (A 4.16)
 - [x] `keymap.json` surveillé et exportable en entier (A 4.5)
 - [x] Les raccourcis, repris par famille puis par le sens (A 1.23, 7.1)
-- [ ] **L'onglet Octets n'est pas éditable** alors que la vue mémoire l'est
+- [x] **L'onglet Octets est éditable** — devant un binaire ouvert, un
+      clic sur les octets d'une instruction ouvre un champ ; Entrée
+      valide, Échap annule. Même chemin que les trois gestes du
+      patcheur, donc la fenêtre Correctifs les liste et sait les
+      défaire. La longueur ne change pas, et c'est refusé plutôt que
+      rattrapé.
 - [ ] **La provenance à travers la mémoire** — suivre une valeur qui
       transite par la pile, pas seulement par les registres
 

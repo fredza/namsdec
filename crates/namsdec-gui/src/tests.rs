@@ -24850,3 +24850,94 @@ fn the_banner_leaves_no_hole_between_its_two_zones() {
         s.cpu_state
     );
 }
+
+/// Les octets d'une instruction se récrivent là où on les lit.
+///
+/// La vue mémoire se modifiait déjà ; l'onglet Octets, non — alors que
+/// c'est là qu'on lit ce qu'on voudrait changer. On voyait le `je` qu'il
+/// faudrait inverser et il fallait passer par une autre fenêtre.
+///
+/// Le même chemin que les trois gestes du patcheur : la fenêtre
+/// Correctifs les liste et sait les défaire. Écrire à la main n'est pas
+/// un autre mécanisme, c'est la même chose dite autrement.
+///
+/// LA LONGUEUR NE CHANGE PAS, et c'est refusé plutôt que rattrapé :
+/// récrire une instruction plus courte ou plus longue déplacerait tout
+/// ce qui suit, donc toutes les adresses, donc tous les sauts.
+#[test]
+fn the_bytes_of_an_instruction_can_be_rewritten_where_they_are_read() {
+    // Ce que la saisie accepte, et ce qu'elle refuse.
+    assert_eq!(crate::lire_octets("48 31 c0"), Some(vec![0x48, 0x31, 0xc0]));
+    assert_eq!(
+        crate::lire_octets("4831c0"),
+        Some(vec![0x48, 0x31, 0xc0]),
+        "on recopie ce qu'on lit ailleurs, et ailleurs n'a pas toujours d'espaces"
+    );
+    assert_eq!(crate::lire_octets("48,31,c0"), Some(vec![0x48, 0x31, 0xc0]));
+    assert_eq!(crate::lire_octets(""), None, "rien n'est pas zéro octet");
+    assert_eq!(
+        crate::lire_octets("48 3"),
+        None,
+        "un nombre impair de chiffres ne dit pas ce qu'on voulait"
+    );
+    assert_eq!(crate::lire_octets("48 zz"), None, "et « zz » n'est pas un octet");
+
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: PROGRAMME_DU_BANC.to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    let Some(state) = &app.assemble_state else {
+        panic!("le programme du banc s'assemble")
+    };
+    let instruction = state.disasm[1].clone();
+    let adresse = instruction.address;
+    let avant = instruction.bytes.clone();
+
+    // Une longueur différente est refusée, et le dit.
+    app.write_bytes_at(adresse, "90");
+    assert!(
+        matches!(&app.status, Status::Error(_)),
+        "récrire avec un autre nombre d'octets est refusé"
+    );
+    let après_refus = app.assemble_state.as_ref().unwrap().disasm[1].bytes.clone();
+    assert_eq!(après_refus, avant, "et rien n'a bougé");
+
+    // La même longueur passe, et le changement se voit là où on l'a
+    // écrit — puis dans la fenêtre Correctifs, qui sait le défaire.
+    let offset = namsdec_re::imports::file_offset(
+        &app.assemble_state.as_ref().unwrap().output.file,
+        adresse,
+    )
+    .expect("l'adresse a une place dans le fichier") as usize;
+    let nops: String = vec!["90"; avant.len()].join(" ");
+    app.write_bytes_at(adresse, &nops);
+    // Le contrôle porte sur le FICHIER et non sur le désassemblage :
+    // cinq octets remplacés par cinq `nop` ne font plus une instruction
+    // de cinq octets mais cinq d'un octet, ce qui est exactement ce
+    // qu'on voulait et pas ce qu'un test naïf attend.
+    let fichier = &app.assemble_state.as_ref().expect("rechargé").output.file;
+    assert_eq!(
+        &fichier[offset..offset + avant.len()],
+        vec![0x90; avant.len()].as_slice(),
+        "les octets écrits sont ceux qui sont dans le fichier"
+    );
+    assert_eq!(
+        app.patches.len(),
+        1,
+        "et le changement est dans la liste de ce qu'on peut défaire"
+    );
+
+    // Défait, on retrouve exactement ce qu'il y avait.
+    app.undo_patch(0);
+    let fichier = &app.assemble_state.as_ref().unwrap().output.file;
+    assert_eq!(
+        &fichier[offset..offset + avant.len()],
+        avant.as_slice(),
+        "défaire rend les octets d'origine"
+    );
+    assert!(app.patches.is_empty());
+}
