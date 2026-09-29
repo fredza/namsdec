@@ -29,6 +29,20 @@ précédaient.
   compris.
 - Le choix de la vue se garde dans `settings.json`.
 
+**Un outil extérieur reçoit du code, non un fichier**
+- Deux marqueurs de plus dans la fiche d'un désassembleur : `{text}` reçoit
+  les octets **exécutables seuls**, `{base}` l'adresse où ils sont chargés.
+- Sans eux, un outil qui ne lit pas l'ELF — et c'est le cas du premier
+  désassembleur que quiconque écrit — commençait par désassembler
+  l'en-tête comme du code, et adressait tout son listing à partir de
+  zéro. C'est namsdec qui sait lire l'ELF ; il n'y a pas de raison de le
+  faire réapprendre à chaque outil.
+- **DZF** en profite sans avoir rien eu à changer : c'est sa fiche qui dit
+  ce qu'il veut recevoir. Le `0x401000` qu'elle portait en dur disparaît
+  au passage — il n'était juste que pour les binaires produits ici.
+- Une fiche qui demande `{text}` alors que namsdec n'a pas su isoler le
+  code reçoit le fichier entier, c'est-à-dire ce qu'elle recevait avant.
+
 **Neuf fiches de plus au manuel** (155 → 164)
 - Additionner sans déborder (les formes saturantes), multiplier en
   parallèle, multiplier et additionner d'un coup, additionner voisin à

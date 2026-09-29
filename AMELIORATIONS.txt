@@ -477,10 +477,25 @@ aujourd'hui ; les suivantes, ce vers quoi l'outil peut aller.
      Vérifié de bout en bout par namsdec lui-même (plugin::read puis run) sur
      `push rbp ; mov rbp, rsp ; mov rax, 42 ; pop rbp ; ret` : le listing sort
      juste, adresses comprises.
-     LIMITE À CONNAÎTRE : DZF ne lit pas l'en-tête ELF. namsdec lui passe le
-     binaire entier, donc l'en-tête est désassemblé comme du code et le début
-     du listing ne veut rien dire. C'est la prochaine étape de son côté ; la
-     même fiche continuera de marcher sans y toucher.
+     LIMITE LEVÉE LE 29 SEPTEMBRE 2026, ET DU CÔTÉ DE NAMSDEC.
+     Elle disait : DZF ne lit pas l'en-tête ELF, namsdec lui passe le binaire
+     entier, donc l'en-tête est désassemblé comme du code et le début du
+     listing ne veut rien dire. On attendait que DZF apprenne à lire l'ELF.
+     C'était prendre le problème à l'envers. namsdec SAIT déjà lire l'ELF — il
+     le fait pour son propre listing — et le format de plugin existe
+     précisément pour qu'un outil n'ait pas à réapprendre ce que l'hôte sait.
+     Deux marqueurs de plus dans la fiche :
+       {text}  les octets EXÉCUTABLES seuls, sans en-tête ni données
+       {base}  l'adresse où ces octets sont chargés, en hexadécimal
+     La fiche de DZF passe donc de ["--base","0x401000","{file}"] à
+     ["--base","{base}","{text}"], et DZF n'a rien à changer. Le `0x401000`
+     codé en dur disparaît au passage : il était juste pour les binaires que
+     nasm produit ici, faux pour tout autre.
+     Ce qui vaut pour DZF vaut pour le premier désassembleur que quiconque
+     écrit — c'est exactement le public de namsdec.
+     Repli honnête : une fiche qui demande {text} alors que namsdec n'a pas su
+     isoler le code reçoit le fichier entier, c'est-à-dire ce qu'elle recevait
+     avant. Au pire, rien ne change pour elle.
 
 4.10 [FAIT] Calculatrice multi-bases
      Outils > Calculatrice, ou la palette de commandes.

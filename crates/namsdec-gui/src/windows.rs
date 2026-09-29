@@ -12,6 +12,61 @@
 use super::*;
 
 impl NamsdecApp {
+    /// Lance un désassembleur extérieur sur le binaire ouvert.
+    ///
+    /// On lui donne trois choses, et il prend celles que sa fiche
+    /// nomme : le fichier entier, les octets exécutables seuls, et
+    /// l'adresse où ceux-ci sont chargés. Un outil qui ne lit pas l'ELF
+    /// — DZF, ou le premier désassembleur que quiconque écrit — n'a
+    /// ainsi plus à désassembler l'en-tête comme du code, ni à adresser
+    /// son listing à partir de zéro.
+    ///
+    /// C'est namsdec qui sait lire l'ELF. Le lui faire réapprendre à
+    /// chaque outil serait le contraire d'un format de plugin.
+    fn lancer_désassembleur(
+        &self,
+        plugin: &namsdec_disasm::plugin::Plugin,
+        state: &AssembleState,
+    ) -> String {
+        let fichier = if state.output.file.is_empty() {
+            &state.output.bytes
+        } else {
+            &state.output.file
+        };
+        // La première section exécutable : celle où vit le programme.
+        // S'il y en a plusieurs, c'est celle du point d'entrée qu'on
+        // veut, et elle vient en premier dans tous les ELF ordinaires.
+        let code = state
+            .output
+            .sections
+            .iter()
+            .find(|section| section.executable && section.size > 0)
+            .and_then(|section| {
+                let début = section.addr.checked_sub(state.output.load_addr)? as usize;
+                state.output.bytes.get(début..début + section.size)
+            });
+        let cible = namsdec_disasm::plugin::Cible {
+            fichier,
+            code,
+            base: code
+                .and_then(|_| {
+                    state
+                        .output
+                        .sections
+                        .iter()
+                        .find(|s| s.executable && s.size > 0)
+                        .map(|s| s.addr)
+                })
+                .unwrap_or(state.output.load_addr),
+        };
+        plugin
+            .run_on(&cible, namsdec_disasm::plugin::TIMEOUT)
+            // Le message brut, comme avant : la traduction de
+            // `namsdec-theme::PluginError` ne couvre pas celle-ci, et
+            // inventer une correspondance dirait autre chose que l'outil.
+            .unwrap_or_else(|e| format!("{e}"))
+    }
+
     /// Le panneau de désassemblage : le programme, lu par le moteur
     /// qu'on a choisi.
     ///
@@ -141,13 +196,7 @@ impl NamsdecApp {
                         None => {
                             ui.weak(format!("{} {}", s.disassembly_will_run, plugin.command));
                             if framed_button(ui, theme, s.disassembly_run).clicked() {
-                                let octets = state.output.file.clone();
-                                let octets = if octets.is_empty() {
-                                    state.output.bytes.clone()
-                                } else {
-                                    octets
-                                };
-                                let texte = plugin.run(&octets).unwrap_or_else(|e| format!("{e}"));
+                                let texte = self.lancer_désassembleur(plugin, state);
                                 self.plugin_output = Some((plugin.id.clone(), texte));
                             }
                         }

@@ -361,8 +361,39 @@ qui n'est qu'une palette, **un tel plugin est un programme** : namsdec ne
 le lance qu'au clic, annonce la commande avant de le faire, passe le
 binaire par un fichier temporaire plutôt que par un interpréteur de
 commandes, et borne la sortie. Un fichier qui ne peut pas marcher —
-commande vide, `{file}` oublié — est refusé à la lecture plutôt que
-découvert au premier essai.
+commande vide, ni `{file}` ni `{text}` — est refusé à la lecture plutôt
+que découvert au premier essai.
+
+**Si l'outil ne lit pas l'ELF**, deux autres marqueurs le dispensent de
+l'apprendre :
+
+| marqueur | ce que namsdec y met |
+|---|---|
+| `{file}` | le binaire entier, tel qu'il est sur le disque |
+| `{text}` | les octets **exécutables seuls**, sans en-tête ni données |
+| `{base}` | l'adresse où ces octets sont chargés, en hexadécimal |
+| `{out}` | un fichier où écrire, pour les outils qui ne parlent pas sur la sortie standard |
+
+Sans eux, un désassembleur qui décode des octets bruts commence par
+désassembler l'en-tête ELF comme du code — les vingt premières lignes ne
+veulent rien dire — et adresse tout son listing à partir de zéro, si bien
+qu'aucun saut ne tombe juste. C'est namsdec qui sait lire l'ELF ; il n'y
+a pas de raison de le faire réapprendre à chaque outil.
+
+C'est le cas de **DZF** (`plugins/fonctionnalites/dzf.json`), le
+désassembleur x86-64 maison — C++23, écrit à la main, sans dépendance :
+
+```json
+{
+  "id": "dzf",
+  "name": "DZF — désassemblage x86-64 (maison)",
+  "command": "x64-disassembler",
+  "args": ["--base", "{base}", "{text}"]
+}
+```
+
+Il n'a rien eu à changer pour cela : c'est la fiche qui dit ce qu'il
+veut recevoir.
 
 ## Le code
 

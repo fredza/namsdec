@@ -34,7 +34,9 @@ pub enum PluginError {
     BadId(String),
     #[error("the command is empty")]
     NoCommand,
-    #[error("the command does not say where the file goes: add {{file}} to its arguments")]
+    #[error(
+        "the command does not say where the file goes: add {{file}} or {{text}} to its arguments"
+    )]
     NoFilePlaceholder,
 }
 
@@ -55,6 +57,21 @@ pub struct Plugin {
     /// terminé. C'est nécessaire pour ceux qui écrivent leur résultat
     /// dans un fichier plutôt que sur la sortie standard — RetDec, par
     /// exemple, à qui l'on passe `-o {out}`.
+    ///
+    /// Deux autres marqueurs servent les outils qui **ne lisent pas
+    /// l'ELF** — et il y en a, à commencer par celui qu'on écrit
+    /// soi-même le premier jour :
+    ///
+    /// - `{text}` reçoit les octets EXÉCUTABLES seuls, sans en-tête ni
+    ///   données. Sans lui, un tel outil désassemble l'en-tête ELF comme
+    ///   du code, et les vingt premières lignes de son listing ne
+    ///   veulent rien dire ;
+    /// - `{base}` reçoit l'adresse à laquelle ces octets sont chargés,
+    ///   en hexadécimal — sans quoi tout le listing serait adressé à
+    ///   partir de zéro, et aucun saut ne tomberait juste.
+    ///
+    /// C'est namsdec qui sait lire l'ELF ; il n'y a pas de raison de
+    /// demander à chaque outil de réapprendre à le faire.
     pub args: Vec<String>,
     /// Comment installer l'outil, quand il n'est pas là.
     ///
@@ -65,9 +82,39 @@ pub struct Plugin {
     pub install: Option<String>,
 }
 
+/// Ce que namsdec sait du binaire, et qu'il peut passer à l'outil.
+///
+/// Séparé des octets bruts parce que tous les outils n'en veulent pas
+/// autant : celui qui lit l'ELF se passe de tout le reste, celui qui
+/// décode des octets a besoin qu'on lui dise lesquels et à quelle
+/// adresse. Une seule structure, et la fiche choisit.
+#[derive(Debug, Clone, Copy)]
+pub struct Cible<'a> {
+    /// Le binaire entier, tel qu'il est sur le disque.
+    pub fichier: &'a [u8],
+    /// Les octets exécutables seuls, quand on sait les isoler.
+    pub code: Option<&'a [u8]>,
+    /// L'adresse à laquelle ces octets sont chargés.
+    pub base: u64,
+}
+
+impl<'a> Cible<'a> {
+    /// Des octets dont on ne sait rien d'autre.
+    pub fn brute(bytes: &'a [u8]) -> Self {
+        Self {
+            fichier: bytes,
+            code: None,
+            base: 0,
+        }
+    }
+}
+
 /// Ce qu'on tolère d'un outil extérieur : il analyse un binaire, il ne
 /// tourne pas en fond.
-const TIMEOUT: Duration = Duration::from_secs(10);
+///
+/// Exposé parce qu'un appelant qui passe une [`Cible`] emploie `run_on`
+/// et doit pouvoir dire le même délai que `run` — sans le recopier.
+pub const TIMEOUT: Duration = Duration::from_secs(10);
 /// Au-delà, ce n'est plus un listing qu'on lit, c'est un vidage.
 const MAX_OUTPUT: usize = 4 * 1024 * 1024;
 
@@ -85,7 +132,13 @@ pub fn read(path: &Path) -> Result<Plugin, PluginError> {
     if plugin.command.trim().is_empty() {
         return Err(PluginError::NoCommand);
     }
-    if !plugin.args.iter().any(|arg| arg.contains("{file}")) {
+    // `{file}` ou `{text}` : le binaire entier, ou son code seul. L'un
+    // des deux, sans quoi l'outil ne saurait pas quoi lire.
+    if !plugin
+        .args
+        .iter()
+        .any(|arg| arg.contains("{file}") || arg.contains("{text}"))
+    {
         return Err(PluginError::NoFilePlaceholder);
     }
     Ok(plugin)
@@ -128,9 +181,28 @@ impl Plugin {
     /// tué, et l'on dit qu'il a été tué plutôt que d'attendre pour
     /// toujours.
     pub fn run_within(&self, bytes: &[u8], délai: Duration) -> Result<String, PluginError> {
+        self.run_on(&Cible::brute(bytes), délai)
+    }
+
+    /// La même chose, en disant à l'outil ce que namsdec sait du binaire.
+    ///
+    /// Un outil qui lit l'ELF n'a besoin que de `{file}` et ignore le
+    /// reste. Un outil qui ne le lit pas — et c'est le cas du premier
+    /// désassembleur que quiconque écrit — reçoit avec `{text}` les
+    /// octets exécutables seuls, et avec `{base}` l'adresse où ils
+    /// vivent. Ni l'un ni l'autre n'a à changer pour cela : c'est la
+    /// fiche qui dit ce qu'il veut recevoir.
+    pub fn run_on(&self, cible: &Cible<'_>, délai: Duration) -> Result<String, PluginError> {
         let dir = tempfile::tempdir()?;
         let file: PathBuf = dir.path().join("program");
-        std::fs::write(&file, bytes)?;
+        std::fs::write(&file, cible.fichier)?;
+        // Le code seul, quand la fiche le demande. Faute de savoir le
+        // découper, on lui donne le binaire entier : c'est ce qu'il
+        // recevait avant, donc au pire rien ne change pour lui.
+        let text: PathBuf = dir.path().join("text");
+        if self.args.iter().any(|arg| arg.contains("{text}")) {
+            std::fs::write(&text, cible.code.unwrap_or(cible.fichier))?;
+        }
         // Le fichier où l'outil écrira, s'il en veut un. Dans le même
         // dossier temporaire : il disparaît avec lui.
         let sortie: PathBuf = dir.path().join("sortie");
@@ -141,6 +213,8 @@ impl Plugin {
             .iter()
             .map(|arg| {
                 arg.replace("{file}", &file.to_string_lossy())
+                    .replace("{text}", &text.to_string_lossy())
+                    .replace("{base}", &format!("{:#x}", cible.base))
                     .replace("{out}", &sortie.to_string_lossy())
             })
             .collect();
@@ -252,6 +326,74 @@ mod tests {
         assert!(matches!(read(&mauvais_id), Err(PluginError::BadId(_))));
     }
 
+    /// `{text}` suffit : un outil qui ne veut que du code est accepté.
+    ///
+    /// La règle disait « il faut `{file}` ». Elle écartait exactement les
+    /// outils pour lesquels `{text}` a été ajouté — ceux qui ne lisent
+    /// pas l'ELF et n'ont que faire du fichier entier.
+    #[test]
+    fn asking_only_for_the_code_is_enough() {
+        let dir = tempfile::tempdir().unwrap();
+        let fiche = write(
+            dir.path(),
+            "t.json",
+            r#"{"id":"t","name":"t","command":"x","args":["--base","{base}","{text}"]}"#,
+        );
+        assert!(read(&fiche).is_ok(), "{:?}", read(&fiche));
+    }
+
+    /// L'outil reçoit le CODE, et non le fichier entier.
+    ///
+    /// C'est tout l'objet de `{text}` : un désassembleur qui décode des
+    /// octets bruts commençait par décoder l'en-tête ELF, et ses vingt
+    /// premières lignes ne voulaient rien dire. On vérifie donc ce qui
+    /// arrive vraiment sur le disque, et non ce que la substitution
+    /// prétend écrire.
+    #[test]
+    fn the_tool_receives_the_code_and_its_address() {
+        let dir = tempfile::tempdir().unwrap();
+        let fiche = write(
+            dir.path(),
+            "cat.json",
+            r#"{"id":"cat","name":"cat","command":"sh","args":["-c","echo base={base}; cat \"$0\"","{text}"]}"#,
+        );
+        let plugin = read(&fiche).expect("la fiche est valide");
+        let cible = Cible {
+            fichier: b"\x7fELF--en-tete--CODE",
+            code: Some(b"CODE"),
+            base: 0x401000,
+        };
+        let réponse = plugin
+            .run_on(&cible, Duration::from_secs(5))
+            .expect("l'outil répond");
+        assert!(réponse.contains("base=0x401000"), "{réponse}");
+        assert!(réponse.contains("CODE"), "{réponse}");
+        assert!(
+            !réponse.contains("en-tete"),
+            "l'en-tête ne doit pas partir avec le code : {réponse}"
+        );
+    }
+
+    /// Faute de savoir découper, l'outil reçoit ce qu'il recevait avant.
+    ///
+    /// Un plugin ne doit pas cesser de marcher parce que namsdec n'a pas
+    /// su isoler le code — un objet sans section exécutable, un format
+    /// qu'il ne connaît pas. Au pire, rien ne change pour lui.
+    #[test]
+    fn without_a_code_section_the_whole_file_is_passed() {
+        let dir = tempfile::tempdir().unwrap();
+        let fiche = write(
+            dir.path(),
+            "cat2.json",
+            r#"{"id":"cat2","name":"cat2","command":"cat","args":["{text}"]}"#,
+        );
+        let plugin = read(&fiche).expect("la fiche est valide");
+        let réponse = plugin
+            .run_on(&Cible::brute(b"tout le fichier"), Duration::from_secs(5))
+            .expect("l'outil répond");
+        assert!(réponse.contains("tout le fichier"), "{réponse}");
+    }
+
     /// Un fichier abîmé est ignoré, les autres servent quand même.
     #[test]
     fn a_broken_file_does_not_take_the_others_down() {
@@ -293,8 +435,12 @@ mod dzf_tests {
     /// DZF est un désassembleur x86-64 écrit à la main, sans dépendance :
     /// c'est le genre d'outil pour lequel ce format existe. Le test lit
     /// la fiche livrée et vérifie qu'elle passe les contrôles — un
-    /// identifiant propre, une commande, et `{file}` quelque part, sans
-    /// quoi l'outil ne saurait pas quoi lire.
+    /// identifiant propre, une commande, et de quoi savoir quoi lire.
+    ///
+    /// DZF ne lit pas l'en-tête ELF, et n'a pas à l'apprendre : sa fiche
+    /// demande `{text}` — les octets exécutables seuls — et `{base}` —
+    /// l'adresse où ils vivent. Sans eux, il désassemblait l'en-tête
+    /// comme du code et adressait tout son listing à partir de zéro.
     #[test]
     fn the_dzf_plugin_file_is_valid() {
         let chemin = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -302,8 +448,13 @@ mod dzf_tests {
         let plugin = read(&chemin).expect("la fiche de DZF doit être valide");
         assert_eq!(plugin.id, "dzf");
         assert!(
-            plugin.args.iter().any(|a| a.contains("{file}")),
-            "namsdec doit pouvoir dire où est le binaire : {:?}",
+            plugin.args.iter().any(|a| a.contains("{text}")),
+            "DZF reçoit le code seul, non le fichier entier : {:?}",
+            plugin.args
+        );
+        assert!(
+            plugin.args.iter().any(|a| a.contains("{base}")),
+            "et l'adresse où ce code est chargé : {:?}",
             plugin.args
         );
         // Et elle dit comment l'obtenir : un outil qu'on n'a pas et dont

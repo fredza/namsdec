@@ -4,8 +4,8 @@
   "command": "x64-disassembler",
   "args": [
     "--base",
-    "0x401000",
-    "{file}"
+    "{base}",
+    "{text}"
   ],
   "install": "cd DZF/x64-disassembler && cmake -S . -B build && cmake --build build"
 }

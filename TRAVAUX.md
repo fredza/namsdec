@@ -238,7 +238,12 @@ Détail chiffré dans `AMELIORATIONS.txt` 7.11, section « REVUE DU
 - [x] Reprendre le travail après extinction (A 4.11)
 - [x] Chronologie de l'exécution (A 4.12)
 - [x] Entropie dans l'onglet RE (A 4.13)
-- [x] DZF branché comme désassembleur (A 4.16)
+- [x] DZF branché comme désassembleur (A 4.16) — et sa limite levée le
+      29 septembre : `{text}` lui donne les octets exécutables seuls,
+      `{base}` leur adresse. Il ne désassemble plus l'en-tête ELF comme
+      du code, sans avoir rien eu à changer. Le contrat vaut pour tout
+      outil qui ne lit pas l'ELF, ce qui est le cas du premier
+      désassembleur que quiconque écrit.
 - [x] `keymap.json` surveillé et exportable en entier (A 4.5)
 - [x] Les raccourcis, repris par famille puis par le sens (A 1.23, 7.1)
 - [x] **L'onglet Octets est éditable** — devant un binaire ouvert, un

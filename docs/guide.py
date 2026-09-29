@@ -1295,6 +1295,35 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "Le module reste éteint tant qu'on ne l'allume pas (Préférences › Modules), l'entrée de "
          "menu n'apparaît qu'ensuite, et rien ne part sans le bouton « Lancer ». Passé deux "
          "minutes, un outil qui ne rend pas la main est arrêté."),
+        ("h2", "Brancher son propre outil"),
+        ("p",
+         "La fiche dit ce que l'outil veut recevoir, et namsdec le lui donne. Quatre "
+         "marqueurs, à poser dans ses arguments :"),
+        ("table", [
+            ["Marqueur", "Ce que namsdec y met"],
+            ["{file}", "le binaire entier, tel qu'il est sur le disque"],
+            ["{text}", "les octets exécutables seuls, sans en-tête ni données"],
+            ["{base}", "l'adresse où ces octets sont chargés, en hexadécimal"],
+            ["{out}", "un fichier où écrire, pour qui ne parle pas sur la sortie standard"],
+        ]),
+        ("p",
+         "Les deux du milieu servent les outils qui <b>ne lisent pas l'ELF</b> — et c'est le "
+         "cas du premier désassembleur que quiconque écrit. Sans eux, un tel outil commence "
+         "par désassembler l'en-tête du fichier comme s'il s'agissait de code (les vingt "
+         "premières lignes ne veulent rien dire) et adresse tout son listing à partir de "
+         "zéro, si bien qu'aucun saut ne tombe juste. <b>C'est namsdec qui sait lire "
+         "l'ELF</b> ; il n'y a pas de raison de le faire réapprendre à chaque outil."),
+        ("code",
+         '{\n'
+         '  "id": "dzf",\n'
+         '  "name": "DZF - desassemblage x86-64 (maison)",\n'
+         '  "command": "x64-disassembler",\n'
+         '  "args": ["--base", "{base}", "{text}"]\n'
+         '}'),
+        ("p",
+         "C'est la fiche livrée avec DZF, le désassembleur x86-64 maison écrit en C++ sans "
+         "aucune dépendance. Il n'a rien eu à changer pour recevoir du code propre : c'est "
+         "la fiche qui dit ce qu'il veut."),
 
         ("h1", "Régler namsdec"),
         ("p",
