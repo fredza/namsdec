@@ -11,6 +11,9 @@ use super::*;
 // Le graphe vit dans son propre module depuis le 29 septembre 2026 ;
 // deux de ses fonctions libres se mesurent ici.
 use crate::flow::{flow_box_width, flow_ellipsis};
+// L'éditeur aussi a son module ; le banc mesure trois de ses
+// fonctions libres.
+use crate::editor::{editor_width, layout_code, word_at};
 // Le panneau latéral a ses propres fonctions : les tests les
 // nomment sans préfixe, comme avant leur déménagement.
 use crate::sidebar::*;
