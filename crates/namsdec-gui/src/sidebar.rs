@@ -640,6 +640,20 @@ impl NamsdecApp {
         if link.on_hover_text(s.vectors_hint).clicked() {
             self.show_vectors = true;
         }
+        // De l'air sous le dernier élément de la zone.
+        //
+        // Sans lui, ce lien touche le bord du panneau, c'est-à-dire la
+        // ligne qu'on tire pour partager le bandeau et l'onglet. Le
+        // pointeur y disait « main » au lieu de « ça se tire » — mesuré :
+        // `PointingHand` sur la poignée de l'onglet, `ResizeVertical`
+        // sur celle de la console, qui n'a rien sous elle. Une poignée
+        // qui ment est pire qu'une poignée muette.
+        //
+        // DEUX pixels et non quatre : à quatre, le bandeau coupait
+        // « Détail » en deux à 1280x820 — un pixel sur quinze. Le compte
+        // du panneau est serré à ce point-là, et l'invariant de la coupe
+        // l'a dit tout de suite.
+        ui.add_space(2.0);
     }
 
     /// Ce que l'instruction sur le point de s'exécuter va manipuler.

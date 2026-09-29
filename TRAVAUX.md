@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **25 septembre
-2026**, version 0.2.5-beta.3, 574 tests au vert.
+2026**, version 0.2.5-beta.3, 575 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -194,9 +194,12 @@ Détail chiffré dans `AMELIORATIONS.txt` 7.11, section « REVUE DU
       et l'on ne s'arrête que sur ce qu'on soupçonne d'être cliquable.
       egui réserve la main aux liens ; `cliquable` la pose, et un
       contrôle l'exige.
-- [ ] **Reste, de la même famille** : glisser la poignée entre le
-      bandeau et l'onglet, ou celle de la console. Rien n'annonce
-      qu'elles se tirent.
+- [x] **Les poignées disent qu'elles se tirent** — egui pose le
+      pointeur de redimensionnement, mais le lien « Registres étendus »
+      touchait le bord du panneau et réclamait la main : le pointeur
+      disait « cliquable » là où il fallait tirer. Une poignée qui ment
+      est pire qu'une poignée muette. Deux pixels d'air le règlent — pas
+      quatre, qui coupaient « Détail » à 1280x820.
 
 ## 3. L'éditeur
 

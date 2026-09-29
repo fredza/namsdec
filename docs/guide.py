@@ -267,6 +267,12 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "une phrase. Ouverte vide puis remplie, elle garde sa petite taille : elle "
          "se redimensionne, et son contenu défile."),
         ("p",
+         "Les <b>poignées</b> se disent de la même façon : le bord du panneau de "
+         "droite, celui qui le partage entre le bandeau et la vue, celui de la "
+         "console. Rien ne les distingue d'un filet décoratif — ils sont gris et "
+         "larges d'un pixel comme les autres —, c'est le pointeur qui change de "
+         "forme en passant dessus."),
+        ("p",
          "<b>Ce qui se clique change le pointeur.</b> Une étiquette cliquable ne "
          "ressemble à rien — c'est du texte —, et namsdec en a douze : un nom de "
          "registre qu'on surveille, une valeur qu'on remplace, une ligne de pile où "

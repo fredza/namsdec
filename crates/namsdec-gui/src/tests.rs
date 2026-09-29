@@ -24709,3 +24709,85 @@ fn what_can_be_clicked_changes_the_pointer() {
         muets.join("\n  ")
     );
 }
+
+/// Une poignée dit qu'elle se tire.
+///
+/// Trois bords se tirent dans namsdec : celui du panneau de droite,
+/// celui qui partage ce panneau entre le bandeau et l'onglet, et celui
+/// de la console. Rien ne les distingue d'un filet décoratif — ils sont
+/// gris et larges d'un pixel comme les autres. Ce qui les annonce est le
+/// POINTEUR, qui change de forme en passant dessus ; egui le fait, et
+/// c'est le seul signe qu'on reçoive sans s'être arrêté.
+///
+/// Encore faut-il qu'il arrive jusque-là. Le lien « Registres étendus »
+/// touchait le bord du panneau de l'onglet et réclamait la main :
+/// mesuré, le pointeur disait `PointingHand` sur cette poignée-là et
+/// `ResizeVertical` sur celle de la console, qui n'a rien sous elle. Une
+/// poignée qui ment est pire qu'une poignée muette — on croit cliquer
+/// sur quelque chose et l'on déplace une cloison.
+#[test]
+fn a_handle_says_that_it_can_be_pulled() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp {
+        source: PROGRAMME_DU_BANC.to_owned(),
+        show_sidebar: true,
+        show_console: true,
+        ..Default::default()
+    };
+    app.apply_theme(&ctx);
+    app.do_assemble();
+    app.do_step();
+    let entrée = écran_du_banc();
+    for _ in 0..4 {
+        let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+        sortie.textures_delta.clear();
+    }
+    let haut_de = |id: &str| -> f32 {
+        egui::containers::panel::PanelState::load(&ctx, egui::Id::new(id))
+            .map(|p| p.outer_rect.top())
+            .unwrap_or_else(|| panic!("le panneau « {id} » est posé"))
+    };
+
+    /// Ce que le pointeur devient quand on le pose là.
+    fn pointeur(
+        ctx: &egui::Context,
+        app: &mut NamsdecApp,
+        entrée: &egui::RawInput,
+        place: egui::Pos2,
+    ) -> egui::CursorIcon {
+        let survol = egui::RawInput {
+            events: vec![egui::Event::PointerMoved(place)],
+            ..entrée.clone()
+        };
+        let mut sortie = ctx.run_ui(survol, |ui| app.draw(ui));
+        sortie.textures_delta.clear();
+        // La seconde image : la première pose le pointeur, la seconde
+        // dit ce que les widgets en ont fait.
+        let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+        let curseur = sortie.platform_output.cursor_icon;
+        sortie.textures_delta.clear();
+        curseur
+    }
+
+    for (nom, place) in [
+        ("le partage du panneau", egui::pos2(1400.0, haut_de("sidebar_tab"))),
+        ("le haut de la console", egui::pos2(600.0, haut_de("console"))),
+    ] {
+        assert_eq!(
+            pointeur(&ctx, &mut app, &entrée, place),
+            egui::CursorIcon::ResizeVertical,
+            "{nom} se tire, et le pointeur doit le dire"
+        );
+    }
+
+    // Et ailleurs, il ne dit rien : une poignée partout n'est pas une
+    // poignée.
+    assert_eq!(
+        pointeur(&ctx, &mut app, &entrée, egui::pos2(400.0, 300.0)),
+        egui::CursorIcon::Default,
+        "au milieu du code, le pointeur reste ce qu'il est"
+    );
+}
