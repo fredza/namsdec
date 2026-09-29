@@ -145,8 +145,12 @@ impl NamsdecApp {
             {
                 ui.horizontal_wrapped(|ui| {
                     ui.colored_label(theme.accent, "≡");
-                    cliquable(ui, egui::Label::new(egui::RichText::new(&portrait)))
-                        .on_hover_text(s.flow_portrait_hint);
+                    // Une étiquette ordinaire, et non `cliquable` : le
+                    // curseur en main annonce un clic, et ce clic ne
+                    // ferait rien. Ce qui change le pointeur doit se
+                    // cliquer, sans quoi l'on apprend à ne plus croire
+                    // le pointeur.
+                    ui.label(&portrait).on_hover_text(s.flow_portrait_hint);
                 });
             }
 

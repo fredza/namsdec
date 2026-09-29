@@ -25930,3 +25930,80 @@ fn the_flow_window_keeps_quiet_when_the_drawing_already_says_it() {
         "le dessin le montre déjà : {peint:?}"
     );
 }
+
+/// Ce qui change le pointeur se clique VRAIMENT.
+///
+/// `cliquable` fait deux choses : elle rend une étiquette sensible au
+/// clic, et elle met le curseur en main au survol. La seconde est une
+/// promesse — dans toute interface, une main annonce que quelque chose
+/// va se produire. Une étiquette qui prend la main sans rien faire au
+/// clic enseigne à ne plus croire le pointeur, et c'est alors tous les
+/// autres liens de l'application qui cessent d'être lus.
+///
+/// Le défaut a été commis ici même : le portrait de fonction, en tête
+/// du déroulement, a été posé avec `cliquable` par simple habitude de
+/// frappe. Rien ne l'a signalé — il s'affichait bien, l'infobulle
+/// marchait, et seul le curseur mentait.
+///
+/// Le contrôle lit le source parce que la règle y est : une réponse de
+/// `cliquable` dont on ne lit jamais `clicked()` est une main promise
+/// pour rien.
+#[test]
+fn what_turns_the_cursor_into_a_hand_really_answers_a_click() {
+    let mut muettes = Vec::new();
+    for (fichier, source) in SOURCES_DE_L_INTERFACE {
+        let lignes: Vec<&str> = source.lines().collect();
+        for (n, ligne) in lignes.iter().enumerate() {
+            // La définition elle-même, et les mentions en commentaire,
+            // ne sont pas des appels.
+            if !ligne.contains("cliquable(")
+                || ligne.trim_start().starts_with("//")
+                || ligne.contains("fn cliquable")
+            {
+                continue;
+            }
+            // Par la VARIABLE qui garde la réponse, et non par un
+            // nombre de lignes.
+            //
+            // Le premier jet cherchait `clicked()` dans les vingt lignes
+            // suivantes, et accusait à tort le bandeau des registres :
+            // son infobulle fait soixante lignes — le rôle du registre,
+            // sa valeur dans toutes les bases, sa provenance — avant que
+            // le clic ne soit lu. Un contrôle trop étroit accuse ; un
+            // contrôle trop large absout. Le nom de la variable ne se
+            // trompe ni dans un sens ni dans l'autre.
+            let gardée = ligne
+                .split_once("let ")
+                .and_then(|(_, reste)| reste.split_once(" ="))
+                .map(|(nom, _)| nom.trim().trim_start_matches("mut ").to_owned());
+            let répond = match &gardée {
+                // Une ligne qui parle de la variable ET lit un clic.
+                // Chercher « nom.clicked() » tel quel ratait
+                // `réponse.on_hover_text(…).clicked()`, qui est la forme
+                // la plus courante : l'infobulle s'intercale entre la
+                // réponse et la lecture du clic.
+                Some(nom) => lignes
+                    .iter()
+                    .skip(n)
+                    .any(|l| l.contains(nom.as_str()) && l.contains(".clicked()")),
+                // Sans variable, la chaîne se lit sur place : quelques
+                // lignes suffisent, le temps d'une infobulle courte.
+                None => lignes
+                    .iter()
+                    .skip(n)
+                    .take(8)
+                    .any(|l| l.contains(".clicked()")),
+            };
+            if !répond {
+                muettes.push(format!("{fichier}:{} {}", n + 1, ligne.trim()));
+            }
+        }
+    }
+    assert!(
+        muettes.is_empty(),
+        "{} main(s) promise(s) pour rien — le curseur annonce un clic \
+         qui ne fait rien :\n  {}",
+        muettes.len(),
+        muettes.join("\n  ")
+    );
+}

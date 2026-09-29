@@ -1675,3 +1675,38 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
   façon. Le défaut remis passait donc au vert. Le bon cas est celui où UN
   chemin pose une constante et l'autre non : c'est là que la phrase deviendrait
   fausse, et c'est là qu'il faut mesurer.
+
+  --- « tu ne sais pas trouver une solution sans casser » ---
+  Le reproche est fondé, et daté du même jour. Dans une seule séance :
+    - `rm -rf crates/namsdec-re/examples` pour retirer un fichier d'essai a
+      emporté `explore.rs`, un outil du dépôt qui vivait dans le même dossier ;
+    - `git checkout flow.rs`, pour défaire un défaut remis exprès, a défait
+      aussi le travail non commité du même fichier ;
+    - la vue livrée la veille laissait cinq commandes d'échelle actives sur du
+      texte, un état vide inatteignable, et — trouvé en relisant — un curseur
+      « main » sur une phrase qui ne se clique pas.
+  Rattraper vite n'est pas ne pas casser.
+
+  DEUX GESTES BANNIS. On retire un fichier par son nom, jamais par son
+  dossier. On éprouve un invariant par une copie de sauvegarde, jamais par
+  l'index de git tant que rien n'est commité.
+
+  ET UN CONTRÔLE DE PLUS, parce qu'un défaut qui se répète se mécanise :
+  `cliquable` fait deux choses — rendre une étiquette sensible au clic, et
+  mettre le curseur en main. La seconde est une PROMESSE : dans toute
+  interface, une main annonce que quelque chose va se produire. Une étiquette
+  qui prend la main sans répondre au clic enseigne à ne plus croire le
+  pointeur, et ce sont alors tous les autres liens de l'application qui
+  cessent d'être lus. Le contrôle vérifie que chaque réponse de `cliquable`
+  est lue par un `clicked()`.
+
+  Il a fallu TROIS essais pour qu'il ne mente pas :
+    1. « clicked() dans les vingt lignes qui suivent » accusait le bandeau des
+       registres, dont l'infobulle fait soixante lignes avant que le clic ne
+       soit lu ;
+    2. « la variable suivie de .clicked() » ratait
+       `réponse.on_hover_text(…).clicked()`, qui est la forme la plus courante ;
+    3. « une ligne qui parle de la variable ET lit un clic » : juste.
+  Un contrôle trop étroit accuse, un contrôle trop large absout. Le vert
+  obtenu en élargissant ne prouve rien — c'est en remettant le défaut qu'on
+  sait.
