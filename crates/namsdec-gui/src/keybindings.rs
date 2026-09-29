@@ -397,21 +397,6 @@ impl KeyBindings {
         }
     }
 
-    /// Les commandes d'exécution reprennent celles de gdb/pwndbg, derrière
-    /// la touche leader : `Espace r` pour lancer, `Espace s i` pour entrer
-    /// dans l'instruction (`stepi`), `Espace n i` pour l'enjamber
-    /// (`nexti`). Quelqu'un qui apprend l'assembleur passe sa vie dans un
-    /// débogueur : autant que les mêmes lettres y fassent la même chose,
-    /// plutôt que d'inventer des raccourcis propres à namsdec.
-    ///
-    /// Le reste suit les conventions de VS Code dans la mesure où elles
-    /// survivent au bureau Linux : Maj+F5/Ctrl+Maj+F5 pour Stop/Reset et
-    /// Ctrl+Maj+B pour Assembler ("Run Build Task"). F10/F11 nus sont trop
-    /// souvent interceptés avant même d'atteindre l'appli (F11 = plein
-    /// écran quasi universel au niveau du gestionnaire de fenêtres,
-    /// F10 = mnémonique "activer le menu" côté GTK). `Quitter` n'a
-    /// volontairement aucun raccourci par défaut : une frappe malheureuse
-    /// qui ferme l'appli est pire qu'un clic de menu en plus.
     /// Le jeu de qui vient d'un éditeur ordinaire.
     ///
     /// Touches de fonction pour l'exécution — F5 lance, F10 enjambe, F11
@@ -487,6 +472,21 @@ impl KeyBindings {
         Self { map }
     }
 
+    /// Les commandes d'exécution reprennent celles de gdb/pwndbg, derrière
+    /// la touche leader : `Espace r` pour lancer, `Espace s i` pour entrer
+    /// dans l'instruction (`stepi`), `Espace n i` pour l'enjamber
+    /// (`nexti`). Quelqu'un qui apprend l'assembleur passe sa vie dans un
+    /// débogueur : autant que les mêmes lettres y fassent la même chose,
+    /// plutôt que d'inventer des raccourcis propres à namsdec.
+    ///
+    /// Le reste suit les conventions de VS Code dans la mesure où elles
+    /// survivent au bureau Linux : Maj+F5/Ctrl+Maj+F5 pour Stop/Reset et
+    /// Ctrl+Maj+B pour Assembler ("Run Build Task"). F10/F11 nus sont trop
+    /// souvent interceptés avant même d'atteindre l'appli (F11 = plein
+    /// écran quasi universel au niveau du gestionnaire de fenêtres,
+    /// F10 = mnémonique "activer le menu" côté GTK). `Quitter` n'a
+    /// volontairement aucun raccourci par défaut : une frappe malheureuse
+    /// qui ferme l'appli est pire qu'un clic de menu en plus.
     pub fn vim() -> Self {
         let mut map = BTreeMap::new();
         map.insert(
@@ -1146,7 +1146,6 @@ mod tests {
         assert_eq!(result, Some(Action::OpenFile));
     }
 
-    /// Les commandes d'exécution de gdb/pwndbg, en trois touches.
     /// Une séquence armée ne survit pas au clavier qui part dans un
     /// champ de texte.
     ///
@@ -1247,6 +1246,7 @@ mod tests {
         // chose que ce qu'il annonce.
     }
 
+    /// Les commandes d'exécution de gdb/pwndbg, en trois touches.
     #[test]
     fn a_three_key_sequence_resolves() {
         for (keys, expected) in [

@@ -303,14 +303,6 @@ impl NamsdecApp {
         }
     }
 
-    /// Un vrai éditeur : gouttière avec numéros de ligne et points d'arrêt
-    /// cliquables (plus de saisie de numéro à la main), ligne courante en
-    /// surbrillance. La gouttière et le `TextEdit` partagent la même
-    /// `ScrollArea` pour rester synchronisés au défilement ; le
-    /// retour-à-la-ligne automatique du `TextEdit` est désactivé
-    /// (`desired_width(INFINITY)` + défilement horizontal disponible) pour
-    /// qu'une ligne logique corresponde toujours à une seule ligne visuelle
-    /// — sinon la gouttière se décale sur une ligne trop longue.
     /// La légende de la barre de chaleur : ce que chaque teinte vaut.
     ///
     /// Une bande de couleur sans échelle ne dit rien — « plus rouge »

@@ -538,13 +538,6 @@ const TOUCHE_ÉCART: f32 = 7.0;
 
 const COLONNES: usize = 6;
 
-/// La largeur commune de l'écran et du clavier.
-///
-/// Les deux blocs sont alignés au pixel, et ce n'est pas une
-/// coquetterie : un appareil dont l'écran et le clavier n'ont pas la
-/// même largeur a l'air monté de deux morceaux. La valeur vient de la
-/// grille de bits, qui est celle des deux qu'on ne peut pas resserrer —
-/// trente-deux colonnes lisibles.
 /// La largeur d'une étiquette et celle d'une liste, dans la rangée
 /// « Base » / « Largeur » de la calculatrice.
 ///
@@ -585,6 +578,13 @@ fn calculator_pick_widths(ui: &egui::Ui, s: &Strings) -> (f32, f32) {
     (étiquette.ceil(), (choix + autour).ceil() + 1.0)
 }
 
+/// La largeur commune de l'écran et du clavier.
+///
+/// Les deux blocs sont alignés au pixel, et ce n'est pas une
+/// coquetterie : un appareil dont l'écran et le clavier n'ont pas la
+/// même largeur a l'air monté de deux morceaux. La valeur vient de la
+/// grille de bits, qui est celle des deux qu'on ne peut pas resserrer —
+/// trente-deux colonnes lisibles.
 pub(crate) const CALC_LARGEUR: f32 = 366.0;
 
 /// La largeur d'une touche, déduite de celle du bloc.

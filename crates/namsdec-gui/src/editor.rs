@@ -11,6 +11,14 @@
 use super::*;
 
 impl NamsdecApp {
+    /// Un vrai éditeur : gouttière avec numéros de ligne et points d'arrêt
+    /// cliquables (plus de saisie de numéro à la main), ligne courante en
+    /// surbrillance. La gouttière et le `TextEdit` partagent la même
+    /// `ScrollArea` pour rester synchronisés au défilement ; le
+    /// retour-à-la-ligne automatique du `TextEdit` est désactivé
+    /// (`desired_width(INFINITY)` + défilement horizontal disponible) pour
+    /// qu'une ligne logique corresponde toujours à une seule ligne visuelle
+    /// — sinon la gouttière se décale sur une ligne trop longue.
     pub(crate) fn editor_ui(&mut self, ui: &mut egui::Ui) {
         // Avant de dessiner : la barre d'état, peinte plus tôt dans la
         // frame, lit ce qu'on calcule ici.
@@ -610,8 +618,6 @@ impl NamsdecApp {
         });
     }
 
-    /// La barre de recherche : ce qu'on cherche, combien de fois on le
-    /// trouve, et de quoi passer d'une occurrence à l'autre.
     /// L'avertissement d'un fichier changé sous nos pieds.
     ///
     /// Non bloquant : une fenêtre modale au retour d'un `git checkout`
@@ -862,6 +868,8 @@ impl NamsdecApp {
         }
     }
 
+    /// La barre de recherche : ce qu'on cherche, combien de fois on le
+    /// trouve, et de quoi passer d'une occurrence à l'autre.
     pub(crate) fn find_ui(&mut self, ui: &mut egui::Ui) {
         let Some(find) = &mut self.find else {
             return;

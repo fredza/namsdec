@@ -2854,15 +2854,6 @@ pub(crate) fn register_pair_width(ui: &egui::Ui) -> f32 {
     width("RAX") + ui.spacing().item_spacing.x + width("0000000000000000")
 }
 
-/// Une pastille de flag. Allumée, elle prend la couleur « bon » du thème ;
-/// éteinte, elle reste un contour discret. Le 0/1 est gardé à côté du
-/// nom : c'est la valeur du flag, et c'est elle qu'on apprend à lire.
-///
-/// Peinte à la main sur une place réservée d'avance, et non montée en
-/// `Frame` : dans une rangée qui se replie, egui décide du passage à la
-/// ligne d'après la taille annoncée par l'élément. Un `Frame` ne l'annonce
-/// qu'une fois son contenu posé — les six pastilles restaient donc sur une
-/// seule ligne, qui dépassait du panneau.
 /// Les noms des registres dont la valeur a changé depuis la photographie
 /// prise avant la dernière avancée.
 ///
@@ -3187,6 +3178,15 @@ pub(crate) fn xmm_tooltip(s: &Strings, value: [u128; 2]) -> String {
     )
 }
 
+/// Une pastille de flag. Allumée, elle prend la couleur « bon » du thème ;
+/// éteinte, elle reste un contour discret. Le 0/1 est gardé à côté du
+/// nom : c'est la valeur du flag, et c'est elle qu'on apprend à lire.
+///
+/// Peinte à la main sur une place réservée d'avance, et non montée en
+/// `Frame` : dans une rangée qui se replie, egui décide du passage à la
+/// ligne d'après la taille annoncée par l'élément. Un `Frame` ne l'annonce
+/// qu'une fois son contenu posé — les six pastilles restaient donc sur une
+/// seule ligne, qui dépassait du panneau.
 pub(crate) fn flag_chip(
     ui: &mut egui::Ui,
     theme: &'static Theme,

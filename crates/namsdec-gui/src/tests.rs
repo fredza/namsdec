@@ -49,6 +49,7 @@ const SOURCES_DE_L_INTERFACE: &[(&str, &str)] = &[
     ("editor.rs", include_str!("editor.rs")),
     ("editing.rs", include_str!("editing.rs")),
     ("errors.rs", include_str!("errors.rs")),
+    ("exercises.rs", include_str!("exercises.rs")),
     ("fixes.rs", include_str!("fixes.rs")),
     ("files.rs", include_str!("files.rs")),
     ("flow.rs", include_str!("flow.rs")),
@@ -69,13 +70,82 @@ const SOURCES_DE_L_INTERFACE: &[(&str, &str)] = &[
     ("roles.rs", include_str!("roles.rs")),
     ("run.rs", include_str!("run.rs")),
     ("settings.rs", include_str!("settings.rs")),
+    ("session.rs", include_str!("session.rs")),
     ("sidebar.rs", include_str!("sidebar.rs")),
     ("statusbar.rs", include_str!("statusbar.rs")),
     ("syntax.rs", include_str!("syntax.rs")),
+    ("text.rs", include_str!("text.rs")),
     ("timeline.rs", include_str!("timeline.rs")),
     ("tools.rs", include_str!("tools.rs")),
     ("windows.rs", include_str!("windows.rs")),
 ];
+
+/// Aucun commentaire de documentation n'a perdu sa fonction.
+///
+/// Rust laisse deux blocs de `///` se suivre : ils se concatènent sur
+/// l'item d'après. Donc quand un item disparaît — renommé, supprimé,
+/// déplacé sans son commentaire —, le sien reste, se colle au suivant,
+/// et **plus rien ne le signale**. Ni le compilateur, ni clippy, ni les
+/// cinq cent quatre-vingts contrôles de ce fichier.
+///
+/// Vingt-cinq blocs étaient dans ce cas, dont vingt-deux antérieurs au
+/// découpage de `main.rs`. `module_card` était annoncé par le
+/// commentaire de la barre de statut ; `flag_chip` n'en avait plus ;
+/// `can_assemble` portait celui de `wait_for_input`. Un lecteur qui
+/// ouvre ce dépôt pour apprendre lit donc la description d'autre chose
+/// que ce qu'il a sous les yeux — c'est le contraire de ce qu'on a
+/// voulu écrire.
+///
+/// La règle tient à la forme des blocs de ce dépôt : un résumé, une
+/// ligne `///` vide, l'explication. Un bloc qui RECOMMENCE au milieu
+/// d'un autre — une phrase finie en bout de ligne, puis une majuscule
+/// qui ouvre la ligne suivante, puis un `///` vide juste après — est un
+/// bloc collé, donc un commentaire qui a perdu sa fonction.
+///
+/// Le remède, quand ce contrôle rougit, n'est pas de couper le texte :
+/// c'est de retrouver ce que le bloc documentait. `git log -S` sur sa
+/// première ligne le dit en une commande.
+#[test]
+fn aucun_commentaire_n_a_perdu_sa_fonction() {
+    let mut collés = Vec::new();
+    for (fichier, source) in SOURCES_DE_L_INTERFACE {
+        let lignes: Vec<&str> = source.lines().collect();
+        for i in 1..lignes.len().saturating_sub(3) {
+            let (avant, ici) = (lignes[i - 1].trim(), lignes[i].trim());
+            let (Some(a), Some(b)) = (avant.strip_prefix("///"), ici.strip_prefix("///")) else {
+                continue;
+            };
+            let (a, b) = (a.trim(), b.trim());
+            // Une phrase finie en bout de ligne, une majuscule qui ouvre
+            // la suivante. Une puce n'en est pas une : une énumération
+            // se poursuit ligne à ligne sans séparation.
+            if a.is_empty()
+                || b.is_empty()
+                || !a.ends_with('.')
+                || !b.starts_with(char::is_uppercase)
+                || b.starts_with("- ")
+                || b.starts_with("* ")
+            {
+                continue;
+            }
+            // Et un nouveau bloc commence vraiment : son résumé est
+            // suivi d'une ligne `///` vide, alors que le bloc d'avant
+            // n'en avait pas.
+            let suivantes = (1..4).map(|k| lignes[i + k].trim());
+            let précédentes = (1..4).map(|k| lignes[i - 1 - k].trim());
+            if suivantes.clone().any(|l| l == "///") && !précédentes.clone().any(|l| l == "///") {
+                collés.push(format!("{fichier}:{}\n      …{a}\n      {b}", i + 1));
+            }
+        }
+    }
+    assert!(
+        collés.is_empty(),
+        "{} commentaire(s) collé(s) au suivant — leur fonction a disparu \
+         entre les deux, cherchez-la avec `git log -S` :\n  {}",
+        collés.len(),
+        collés.join("\n  ")
+    );
+}
 
 /// La liste ci-dessus n'oublie aucun module.
 ///

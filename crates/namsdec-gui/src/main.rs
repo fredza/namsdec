@@ -12,6 +12,7 @@ mod console;
 mod editing;
 mod editor;
 mod errors;
+mod exercises;
 mod files;
 mod fixes;
 mod flow;
@@ -31,10 +32,12 @@ mod preferences;
 mod readings;
 mod roles;
 mod run;
+mod session;
 mod settings;
 mod sidebar;
 mod statusbar;
 mod syntax;
+mod text;
 mod timeline;
 mod tools;
 mod windows;
@@ -45,6 +48,12 @@ use tools::{decompilers_dir, load_installed_decompilers};
 // L'éditeur vit dans son module depuis le 29 septembre 2026 ;
 // `main.rs` a encore besoin de ces deux-là.
 use editor::{editor_id, word_at};
+// Le parcours d'exercices aussi ; le démarrage lit ce qui est installé.
+use exercises::load_installed_exercises;
+// Les fonctions sur le texte sont réclamées par la moitié des modules ;
+// les rouvrir ici leur évite à chacun sa ligne d'import, puisqu'ils
+// font tous `use super::*`.
+use text::*;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -171,7 +180,6 @@ const TREAT_IMAGE_SIDE: usize = 128;
 /// plus grande, pour rester nette sur un écran à forte densité.
 const TREAT_IMAGE_SHOWN: f32 = 84.0;
 
-/// Le texte de la licence sous laquelle namsdec est publié.
 /// Le thème d'exemple, volontairement **hors du dépôt** : c'est un
 /// plugin, il doit s'installer depuis n'importe où sur le disque.
 ///
@@ -184,6 +192,7 @@ fn external_abyss() -> Option<std::path::PathBuf> {
     chemin.is_file().then_some(chemin)
 }
 
+/// Le texte de la licence sous laquelle namsdec est publié.
 const MIT_LICENSE_URL: &str = "https://opensource.org/license/mit";
 /// Où l'on trouve namsdec, et où l'on en parle.
 ///
@@ -204,7 +213,6 @@ const DONATION_URL: &str = "https://example.com/namsdec/offrir-un-repas";
 /// réglage ne fait que les remplacer par un délai qui n'échoit jamais.
 const TOOLTIP_DELAY: f32 = 0.5;
 const TOOLTIP_GRACE_TIME: f32 = 0.2;
-/// En deçà, le panneau ne montrerait plus rien de lisible.
 /// Une installation en cours : ce qu'elle fait, et ce qu'elle a dit.
 ///
 /// Le journal est gardé en entier. Une installation qui échoue à la
@@ -291,6 +299,7 @@ const DECOMPILER_EXAMPLE: &str = r#"{
   "args": ["--stdout", "{file}"]
 }"#;
 
+/// En deçà, le panneau ne montrerait plus rien de lisible.
 const SIDEBAR_MIN_WIDTH: f32 = 200.0;
 
 /// La largeur au-dessous de laquelle le panneau latéral ne se resserre
@@ -1115,7 +1124,6 @@ struct NamsdecApp {
     flags_before: Option<RFlags>,
     /// Le conseil qui accompagne la dernière erreur d'exécution : par où
     /// reprendre, quand l'erreur appelle un geste précis.
-    /// Le conseil qui accompagne la dernière erreur d'exécution.
     ///
     /// Une chaîne possédée, et non statique : certains conseils nomment
     /// ce sur quoi on vient de buter — la fonction de bibliothèque qu'on
@@ -1445,7 +1453,6 @@ struct NamsdecApp {
     show_timeline: bool,
     /// La fenêtre du déroulement — le graphe des blocs du programme.
     show_flow: bool,
-    /// Le grossissement du dessin, réglé à la molette.
     /// Les fenêtres internes qu'on a agrandies.
     ///
     /// Une `egui::Window` n'a pas les pastilles du système : elle se
@@ -1460,6 +1467,7 @@ struct NamsdecApp {
     /// compte des milliers de blocs, où l'on ne trouve rien. La fonction
     /// courante est ce qu'on regarde neuf fois sur dix.
     flow_current_only: bool,
+    /// Le grossissement du dessin, réglé à la molette.
     flow_zoom: f32,
     /// Où l'on regarde dans le graphe, en pixels depuis son coin haut
     /// gauche. Tenu ici plutôt que laissé à la zone défilante : le
@@ -1637,6 +1645,7 @@ struct NamsdecApp {
     explorer_focused: bool,
     current_file: Option<PathBuf>,
     /// Les autres fichiers ouverts, rangés tels qu'on les a laissés.
+    ///
     /// L'onglet actif n'y est pas : c'est l'état de travail lui-même.
     tabs: Vec<OpenTab>,
     /// La date du fichier ouvert, telle qu'on l'a lue ou écrite.
@@ -1984,26 +1993,6 @@ struct Find {
     just_opened: bool,
 }
 
-/// Les positions, en octets, de toutes les occurrences de `query` dans
-/// `text`, sans tenir compte de la casse.
-///
-/// Sans la casse : on écrit `RAX` dans un source et `rax` dans un
-/// listing désassemblé, et chercher l'un doit trouver l'autre.
-fn find_matches(text: &str, query: &str) -> Vec<usize> {
-    if query.is_empty() {
-        return Vec::new();
-    }
-    let haystack = text.to_lowercase();
-    let needle = query.to_lowercase();
-    // `to_lowercase` peut changer la longueur d'un texte (ß → ss) : les
-    // offsets ne vaudraient plus rien. Le cas ne se présente pas dans un
-    // source assembleur, mais on ne le suppose pas.
-    if haystack.len() != text.len() {
-        return text.match_indices(query).map(|(at, _)| at).collect();
-    }
-    haystack.match_indices(&needle).map(|(at, _)| at).collect()
-}
-
 /// Une ligne du panneau de désassemblage : l'adresse, et ce que le
 /// moteur choisi en dit.
 struct Ligne {
@@ -2315,303 +2304,6 @@ impl Default for NamsdecApp {
 }
 
 impl NamsdecApp {
-    /// Construit l'application à partir des réglages relus sur le disque.
-    fn from_settings(settings: Settings) -> Self {
-        // Le dossier des réglages s'il est toujours là, sinon celui d'où
-        // l'application a été lancée : l'explorateur ne doit jamais
-        // s'ouvrir sur du vide.
-        let root = settings
-            .explorer_root()
-            .filter(|p| p.is_dir())
-            .or_else(default_explorer_root);
-        let explorer = FileExplorer::with_root(root);
-        let mut app = Self {
-            theme: settings.theme(),
-            lang: settings.lang(),
-            // Ce que les RÉGLAGES DONNÉS portent, et rien d'autre.
-            //
-            // Le fichier `keymap.json` de la machine était lu ici, ce
-            // qui paraissait juste — c'est lui qu'on ouvre et qu'on
-            // copie d'une machine à l'autre. Mais `from_settings` sert
-            // aussi à construire l'application dans les tests, et ceux-ci
-            // recevaient alors les raccourcis de l'utilisateur : le jour
-            // où Fred est passé au jeu « Éditeur ordinaire », DIX-SEPT
-            // tests ont échoué d'un coup. Une suite qui passe ou échoue
-            // selon ce que l'utilisateur a réglé la veille ne prouve
-            // rien.
-            //
-            // C'est `adopt_keymap_from_disk`, appelé au démarrage juste
-            // après que l'application a reçu son fichier de réglages, qui
-            // lit le disque. Un seul endroit, et il est nommé.
-            keybindings: settings.keybindings(),
-            keymap_preset: keybindings::Preset::default(),
-            keymap_mtime: None,
-            show_toolbar: settings.show_toolbar,
-            show_sidebar: settings.show_sidebar,
-            show_statusbar: settings.show_statusbar,
-            show_console: settings.show_console,
-            show_tooltips: settings.show_tooltips,
-            completion: settings.completion,
-            auto_indent: settings.auto_indent,
-            auto_pairs: settings.auto_pairs,
-            hover_help: settings.hover_help,
-            exercises: settings.exercises,
-            disabled_packs: settings.disabled_packs.iter().cloned().collect(),
-            current_exercise: settings.current_exercise.clone(),
-            memory_format: MemoryFormat::by_id(&settings.memory_format),
-            analysis_module: settings.analysis_module.clone(),
-            calc_base: CalcBase::by_id(&settings.calc_base),
-            calc_width: CalcWidth::by_id(&settings.calc_width),
-            memory_follow: MemFollow::by_id(&settings.memory_follow),
-            console_height: settings.console_height.map(|h| h as f32),
-            sidebar_tab_height: settings.sidebar_tab_height.map(|h| h as f32),
-            show_re_tab: settings.re_tab,
-            program_args: settings.program_args.clone(),
-            program_env: settings.program_env.clone(),
-            active_tab: settings
-                .sidebar_tab
-                .as_deref()
-                .and_then(SidebarTab::from_id)
-                .unwrap_or(SidebarTab::Stack),
-            show_decompiler_module: settings.decompiler_module,
-            show_installer_module: settings.installer_module,
-            decompiler: settings.decompiler.clone(),
-            sidebar_banner_height: 0.0,
-            sidebar_tab_last: SIDEBAR_TAB_MIN,
-            system_titlebar: settings.system_titlebar,
-            heat_legend: settings.heat_legend,
-            exercises_done: settings.exercises_done.iter().cloned().collect(),
-            exercises_best: settings.exercises_best.iter().cloned().collect(),
-            recent_files: settings.recent_files.iter().map(PathBuf::from).collect(),
-            disassembler: settings.disassembler.clone(),
-            explorer,
-            saved_settings: settings,
-            ..Default::default()
-        };
-        app.ensure_explorer_root();
-        app.reopen_last_file();
-        // Après les sources, et hors de `reopen_last_file` : celle-ci
-        // rend la main dès qu'il n'y a pas de source à rouvrir, ce qui
-        // est précisément le cas quand on travaillait un binaire —
-        // `current_file` reste vide pour lui.
-        app.restore_binary_session();
-        // En dernier, et volontairement : deux des fenêtres reprises
-        // dépendent d'un module dont l'état vient d'être posé plus haut,
-        // et l'une d'elles — le désassemblage — n'a de sens qu'une fois
-        // la séance revenue.
-        app.reopen_windows();
-        app
-    }
-
-    /// Prend les raccourcis du fichier `keymap.json` de la machine.
-    ///
-    /// Appelé une seule fois, au démarrage, et seulement par
-    /// l'application qui a vraiment un fichier de réglages : c'est ce
-    /// qui empêche les tests de lire — et donc de dépendre de — la
-    /// configuration de l'utilisateur.
-    ///
-    /// `settings.json` garde les siens pour les versions qui ne
-    /// connaissaient que lui : sans fichier de raccourcis sur le disque,
-    /// on ne touche à rien.
-    fn adopt_keymap_from_disk(&mut self) {
-        if self.settings_file.is_none() {
-            return;
-        }
-        let keymap = settings::load_keymap();
-        self.keymap_preset = keymap.preset();
-        self.keymap_mtime = settings::keymap_path().as_deref().and_then(file_mtime);
-        if settings::keymap_path().is_some_and(|p| p.exists()) {
-            self.keybindings = keymap.bindings();
-        }
-    }
-
-    /// Rouvre les fenêtres qu'on avait laissées ouvertes.
-    ///
-    /// Les noms inconnus sont ignorés sans bruit : un fichier de réglages
-    /// écrit par une version plus récente peut nommer une fenêtre que
-    /// celle-ci n'a pas, et ce n'est pas une raison de se plaindre.
-    fn reopen_windows(&mut self) {
-        let voulues = self.saved_settings.open_windows.clone();
-        for nom in &voulues {
-            if let Some((_, _, ouvre)) = FENÊTRES_REPRISES.iter().find(|(id, _, _)| id == nom) {
-                ouvre(self);
-            }
-        }
-    }
-
-    /// Rouvre le fichier sur lequel on travaillait au lancement précédent,
-    /// pour reprendre où l'on s'était arrêté.
-    ///
-    /// Seul le chemin a été enregistré : c'est le fichier du disque qui
-    /// fait foi, y compris s'il a été modifié ailleurs entre-temps. En
-    /// garder une copie dans les réglages n'y entretiendrait qu'un double
-    /// périmé.
-    ///
-    /// Un fichier disparu ou devenu illisible ne doit ni empêcher de
-    /// démarrer, ni accueillir par une erreur quelqu'un qui vient
-    /// seulement d'ouvrir l'application : on retombe sur le programme
-    /// d'exemple, et l'entrée périmée disparaît des réglages d'elle-même.
-    fn reopen_last_file(&mut self) {
-        let Some(path) = self
-            .saved_settings
-            .current_file()
-            .filter(|path| path.is_file())
-        else {
-            self.current_file = None;
-            return;
-        };
-        self.restoring_session = true;
-        self.open_file(path);
-        self.restoring_session = false;
-        if matches!(self.status, Status::Error(_)) {
-            self.current_file = None;
-            self.source = DEFAULT_SOURCE.to_owned();
-            self.status = Status::Idle;
-        }
-        // Puis les autres fichiers de la dernière séance, dans leur
-        // ordre. Ceux qui ont disparu du disque sont simplement passés :
-        // une erreur au démarrage pour un fichier déplacé hier
-        // n'apprendrait rien à personne.
-        let autres: Vec<PathBuf> = self
-            .saved_settings
-            .open_files
-            .iter()
-            .map(PathBuf::from)
-            .filter(|path| path.is_file() && Some(path.as_path()) != self.current_file.as_deref())
-            .collect();
-        // On revient ensuite sur celui qu'on regardait : ouvrir les
-        // autres a déplacé l'onglet actif.
-        let actif = self.current_file.clone();
-        self.restoring_session = true;
-        for path in autres {
-            self.open_file(path);
-        }
-        self.restoring_session = false;
-        if let Some(actif) = actif
-            && let Some(rang) = self.tab_index_of(&actif)
-        {
-            self.go_to_tab(rang);
-        }
-
-        // Puis les repères posés sur ce fichier — mais seulement s'il
-        // est bien celui qu'on a quitté. Ils se comptent en numéros de
-        // ligne : réécrit ailleurs entre deux séances, le fichier les
-        // ferait désigner d'autres instructions, et poser des points
-        // d'arrêt au hasard est pire que de ne pas en poser.
-        //
-        // Sans date enregistrée — un fichier de réglages d'une version
-        // antérieure —, on s'abstient : c'est ce qui se passait avant,
-        // et cela ne surprendra personne.
-        let date = self
-            .current_file
-            .as_deref()
-            .and_then(file_mtime)
-            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|d| d.as_secs());
-        let repères = !self.saved_settings.breakpoints.is_empty()
-            || !self.saved_settings.watchpoints.is_empty();
-        if date.is_some() && date == self.saved_settings.current_file_mtime {
-            self.restore_session_marks();
-        } else if repères && self.saved_settings.current_file_mtime.is_some() {
-            // Le dire : quelqu'un qui a édité son programme ailleurs
-            // doit savoir pourquoi ses points d'arrêt ont disparu.
-            self.status = Status::Note(|s| s.session_file_changed);
-        }
-    }
-
-    /// Reprend le travail commencé sur un binaire : le binaire lui-même,
-    /// puis les repères posés dessus.
-    ///
-    /// Les sources se rouvrent depuis longtemps ; un binaire, non — et
-    /// c'est pourtant là qu'il y a du travail à perdre. Rouvrir namsdec
-    /// demandait de retrouver le fichier, de le recharger, de reposer ses
-    /// points d'arrêt et de retaper ses arguments.
-    ///
-    /// **Les repères ne reviennent que si le fichier est le même.** Ils se
-    /// comptent en numéros de ligne d'un listing reconstruit à chaque
-    /// ouverture : sur un binaire recompilé entre-temps, ils désigneraient
-    /// d'autres instructions, et poser des points d'arrêt au hasard est
-    /// pire que de ne pas en poser.
-    fn restore_binary_session(&mut self) {
-        let Some(chemin) = self.saved_settings.open_binary.clone().map(PathBuf::from) else {
-            return;
-        };
-        if !chemin.is_file() {
-            return;
-        }
-        let Ok(octets) = std::fs::read(&chemin) else {
-            return;
-        };
-        let nom = chemin
-            .file_name()
-            .map(|nom| nom.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "programme".to_owned());
-        self.load_binary(octets, &nom);
-        self.binary_path = Some(chemin.clone());
-
-        // Le fichier est-il celui qu'on avait quitté ? Taille et date :
-        // deux mesures qu'on a sous la main, et qui suffisent à écarter
-        // le cas qui compte — un binaire recompilé depuis.
-        let taille = std::fs::metadata(&chemin).ok().map(|m| m.len());
-        let date = file_mtime(&chemin)
-            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|d| d.as_secs());
-        let même = taille == self.saved_settings.open_binary_len
-            && date == self.saved_settings.open_binary_mtime;
-        if !même {
-            // Le dire, plutôt que de laisser croire que rien n'a été
-            // perdu : quelqu'un qui a recompilé son binaire doit savoir
-            // pourquoi ses points d'arrêt ont disparu.
-            if !self.saved_settings.breakpoints.is_empty()
-                || !self.saved_settings.watchpoints.is_empty()
-            {
-                self.status = Status::Note(|s| s.session_binary_changed);
-            }
-            return;
-        }
-
-        self.restore_session_marks();
-    }
-
-    /// Repose les repères de la séance précédente : points d'arrêt,
-    /// zones surveillées, registres suivis.
-    ///
-    /// Un seul endroit pour les deux sortes de séance. Ils n'étaient
-    /// reposés que pour un binaire, si bien que quelqu'un qui travaille
-    /// son propre programme — le cas ordinaire — retrouvait son fichier
-    /// mais aucun de ses points d'arrêt. Ils étaient pourtant écrits
-    /// dans les réglages : personne ne les relisait.
-    fn restore_session_marks(&mut self) {
-        self.breakpoint_lines = self.saved_settings.breakpoints.iter().copied().collect();
-        self.watchpoints = self
-            .saved_settings
-            .watchpoints
-            .iter()
-            .map(|(addr, len)| (*addr, *len as usize))
-            .collect();
-        self.watched_registers = REGISTERS
-            .iter()
-            .map(|(nom, _)| *nom)
-            .filter(|nom| {
-                self.saved_settings
-                    .watched_registers
-                    .iter()
-                    .any(|gardé| gardé == nom)
-            })
-            .collect();
-        self.sync_watchpoints();
-    }
-
-    /// Écrit `keymap.json` et retient sa nouvelle date.
-    ///
-    /// La date, sans quoi la surveillance prendrait notre propre
-    /// écriture pour une modification venue d'ailleurs et annoncerait
-    /// une reprise à chaque changement de raccourci.
-    fn write_keymap(&mut self, keymap: &settings::Keymap) {
-        let _ = settings::save_keymap(keymap);
-        self.keymap_mtime = settings::keymap_path().as_deref().and_then(file_mtime);
-    }
-
     /// Demande à chaque outil connu s'il est là, et retient la réponse.
     ///
     /// Une fois, et non à chaque image : la question se pose en lançant
@@ -2636,283 +2328,6 @@ impl NamsdecApp {
             .get(id)
             .copied()
             .unwrap_or(namsdec_disasm::known::Availability::Missing)
-    }
-
-    /// Reprend `keymap.json` s'il a changé sur le disque.
-    ///
-    /// Le fichier se relisait au lancement et nulle part ailleurs : on
-    /// l'éditait pendant que namsdec tournait, on essayait la touche, et
-    /// il ne se passait rien — sans que rien ne dise pourquoi. C'est un
-    /// fichier qu'on donne à éditer ; il doit donc être écouté.
-    ///
-    /// La date est relevée au plus une fois par seconde : un appel
-    /// système par image pour un fichier qu'on modifie deux fois par an
-    /// serait absurde, et une seconde est bien en deçà du temps qu'il
-    /// faut pour passer de son éditeur à namsdec.
-    ///
-    /// Une capture de raccourci en cours suspend la reprise : changer le
-    /// jeu sous les doigts de quelqu'un qui appuie sur une touche serait
-    /// la dernière chose à faire.
-    fn reload_keymap_if_changed(&mut self) {
-        // Pas de fichier de réglages, pas de surveillance.
-        //
-        // C'est le même garde que pour l'écriture, et pour une raison
-        // aussi forte : une application construite par un test n'a pas
-        // de fichier de réglages, et celle-ci lisait quand même le
-        // `keymap.json` de l'utilisateur à chaque image. Le jour où Fred
-        // est passé au jeu « Éditeur ordinaire » dans les Préférences,
-        // DIX-SEPT tests ont échoué d'un coup — ils comparaient le jeu
-        // Vim et recevaient celui que la machine venait d'enregistrer.
-        //
-        // Un test ne doit pas écrire chez l'utilisateur ; il ne doit pas
-        // non plus le LIRE, sans quoi la suite passe ou échoue selon ce
-        // que l'utilisateur a réglé la veille.
-        if self.settings_file.is_none() || self.rebinding.is_some() {
-            return;
-        }
-        let maintenant = std::time::Instant::now();
-        if self
-            .keymap_checked
-            .is_some_and(|vu| maintenant.duration_since(vu) < KEYMAP_POLL_INTERVAL)
-        {
-            return;
-        }
-        self.keymap_checked = Some(maintenant);
-        let Some(chemin) = settings::keymap_path() else {
-            return;
-        };
-        let date = file_mtime(&chemin);
-        // Rien n'a bougé — ou le fichier n'existe pas encore, ce qui
-        // n'est pas un changement.
-        if date.is_none() || date == self.keymap_mtime {
-            return;
-        }
-        self.keymap_mtime = date;
-        let keymap = settings::load_keymap();
-        let nouveaux = keymap.bindings();
-        if nouveaux.map == self.keybindings.map && keymap.preset() == self.keymap_preset {
-            return;
-        }
-        self.keybindings = nouveaux;
-        self.keymap_preset = keymap.preset();
-        self.status = Status::Note(|s| s.shortcuts_reloaded);
-    }
-
-    /// Écrit le fichier de réglages sans attendre qu'un réglage change :
-    /// appelé au démarrage pour que l'utilisateur puisse le trouver et
-    /// l'éditer dès le premier lancement, avec les défauts du jour gravés
-    /// dedans plutôt que de suivre en silence ceux d'une version future.
-    ///
-    /// Volontairement hors de `from_settings` : construire l'application
-    /// ne doit pas écrire sur le disque, sinon les tests qui la
-    /// construisent écraseraient la configuration de la machine.
-    /// Écrit `keymap.json` dès le premier lancement, comme on le fait
-    /// pour les réglages.
-    ///
-    /// Le fichier n'était posé qu'au premier changement de raccourci.
-    /// Deux jeux vivent pourtant dans le binaire — Fake Vim-GDB, qui est
-    /// le défaut, et l'éditeur ordinaire — et rien ne le disait à qui
-    /// n'ouvrait pas les Préférences : on cherchait un fichier qui
-    /// n'existait pas encore pour savoir de quoi on partait.
-    ///
-    /// Hors de `from_settings`, pour la même raison que les réglages :
-    /// construire l'application ne doit pas écrire sur le disque, sinon
-    /// les tests qui la construisent écraseraient les raccourcis de
-    /// l'utilisateur.
-    fn save_keymap_now(&mut self) {
-        if self.settings_file.is_none() {
-            return;
-        }
-        let keymap = settings::Keymap::from_bindings(self.keymap_preset, &self.keybindings);
-        self.write_keymap(&keymap);
-    }
-
-    fn save_settings_now(&mut self) {
-        let Some(path) = self.settings_file.clone() else {
-            return;
-        };
-        if let Err(e) = self.saved_settings.save_to(&path) {
-            self.status = Status::Error(if self.lang == Lang::Fr {
-                format!("impossible d'enregistrer les réglages : {e}")
-            } else {
-                format!("could not save settings: {e}")
-            });
-        }
-    }
-
-    /// L'état courant des réglages, sous la forme qui part dans le
-    /// fichier. Tout ce qui est réglable par l'utilisateur doit figurer
-    /// ici — c'est le point unique à compléter en ajoutant un réglage.
-    fn settings_snapshot(&self) -> Settings {
-        Settings {
-            // Toujours la version courante : l'instantané décrit l'état de
-            // *cette* version de l'application. Reprendre la version lue
-            // dans le fichier ferait diverger l'instantané de ce qui est
-            // enregistré, et l'application réécrirait le fichier à chaque
-            // frame en croyant qu'un réglage a bougé.
-            version: settings::SETTINGS_VERSION,
-            theme: self.theme.id.to_owned(),
-            language: match self.lang {
-                Lang::Fr => "fr".to_owned(),
-                Lang::En => "en".to_owned(),
-            },
-            open_binary: self.binary_path.as_ref().map(|p| p.display().to_string()),
-            open_binary_len: self
-                .binary_path
-                .as_ref()
-                .and_then(|p| std::fs::metadata(p).ok())
-                .map(|m| m.len()),
-            open_binary_mtime: self
-                .binary_path
-                .as_deref()
-                .and_then(file_mtime)
-                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                .map(|d| d.as_secs()),
-            breakpoints: self.breakpoint_lines.iter().copied().collect(),
-            watchpoints: self
-                .watchpoints
-                .iter()
-                .map(|(addr, len)| (*addr, *len as u32))
-                .collect(),
-            watched_registers: self
-                .watched_registers
-                .iter()
-                .map(|nom| (*nom).to_owned())
-                .collect(),
-            program_args: self.program_args.clone(),
-            program_env: self.program_env.clone(),
-            sidebar_tab: Some(self.active_tab.id().to_owned()),
-            open_windows: FENÊTRES_REPRISES
-                .iter()
-                .filter(|(_, ouverte, _)| ouverte(self))
-                .map(|(nom, _, _)| (*nom).to_owned())
-                .collect(),
-            show_toolbar: self.show_toolbar,
-            show_sidebar: self.show_sidebar,
-            show_statusbar: self.show_statusbar,
-            show_console: self.show_console,
-            show_tooltips: self.show_tooltips,
-            completion: self.completion,
-            auto_indent: self.auto_indent,
-            auto_pairs: self.auto_pairs,
-            hover_help: self.hover_help,
-            exercises: self.exercises,
-            disabled_packs: self.disabled_packs.iter().cloned().collect(),
-            current_exercise: self.current_exercise.clone(),
-            disassembler: self.disassembler.clone(),
-            memory_format: self.memory_format.id().to_owned(),
-            analysis_module: self.analysis_module.clone(),
-            calc_base: self.calc_base.id().to_owned(),
-            calc_width: self.calc_width.id(),
-            memory_follow: self.memory_follow.id().to_owned(),
-            console_height: self.console_height.map(|h| h.round() as u32),
-            sidebar_tab_height: self.sidebar_tab_height.map(|h| h.round() as u32),
-            re_tab: self.show_re_tab,
-            decompiler_module: self.show_decompiler_module,
-            installer_module: self.show_installer_module,
-            decompiler: self.decompiler.clone(),
-            system_titlebar: self.system_titlebar,
-            heat_legend: self.heat_legend,
-            exercises_done: self.exercises_done.iter().cloned().collect(),
-            exercises_best: self
-                .exercises_best
-                .iter()
-                .map(|(id, compte)| (id.clone(), *compte))
-                .collect(),
-            recent_files: self
-                .recent_files
-                .iter()
-                .map(|path| path.to_string_lossy().into_owned())
-                .collect(),
-            explorer_root: self.explorer.root.as_ref().map(|p| p.display().to_string()),
-            current_file: self.current_file.as_ref().map(|p| p.display().to_string()),
-            // La date du source, pour la même raison que celle du
-            // binaire : elle dit, au retour, si les points d'arrêt
-            // désignent encore les mêmes lignes.
-            current_file_mtime: self
-                .current_file
-                .as_deref()
-                .and_then(file_mtime)
-                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                .map(|d| d.as_secs()),
-            // Les autres onglets, dans leur ordre : au lancement
-            // suivant, on retrouve les fichiers sur lesquels on
-            // travaillait, et non le seul dernier.
-            open_files: self
-                .tabs
-                .iter()
-                .filter_map(|tab| tab.path.as_ref())
-                .map(|p| p.display().to_string())
-                .collect(),
-            shortcuts: settings::shortcuts_to_strings(&self.keybindings),
-        }
-    }
-
-    /// Appelé à chaque frame : n'écrit que si un réglage a bougé. Une
-    /// écriture qui échoue est signalée une seule fois (l'instantané est
-    /// mis à jour quoi qu'il arrive) plutôt que retentée à chaque frame.
-    fn persist_settings_if_changed(&mut self) {
-        let Some(path) = self.settings_file.clone() else {
-            return;
-        };
-        let current = self.settings_snapshot();
-        if current == self.saved_settings {
-            return;
-        }
-        let result = current.save_to(&path);
-        self.saved_settings = current;
-        if let Err(e) = result {
-            self.status = Status::Error(if self.lang == Lang::Fr {
-                format!("impossible d'enregistrer les réglages : {e}")
-            } else {
-                format!("could not save settings: {e}")
-            });
-        }
-    }
-
-    /// Les infobulles s'éteignent par le délai avant affichage plutôt
-    /// qu'au cas par cas : porté par le style d'egui, le réglage vaut pour
-    /// **toutes** les bulles, y compris celles de l'explorateur — qui est
-    /// une crate à part — et celles qu'on ajoutera plus tard. Un délai
-    /// infini n'arrive jamais à échéance ; le délai de grâce (qui laisse
-    /// la bulle suivante s'afficher tout de suite après une première)
-    /// tombe à zéro pour qu'aucune ne passe par cette porte.
-    fn apply_tooltip_setting(&self, ctx: &egui::Context) {
-        let delay = if self.show_tooltips {
-            TOOLTIP_DELAY
-        } else {
-            f32::INFINITY
-        };
-        // Le style du thème clair et celui du thème sombre sont deux
-        // objets distincts, réglés ensemble juste en dessous : il suffit
-        // d'en interroger un.
-        if ctx.style_of(egui::Theme::Dark).interaction.tooltip_delay == delay {
-            return;
-        }
-        ctx.all_styles_mut(|style| {
-            style.interaction.tooltip_delay = delay;
-            style.interaction.tooltip_grace_time = if self.show_tooltips {
-                TOOLTIP_GRACE_TIME
-            } else {
-                0.0
-            };
-        });
-    }
-
-    fn apply_theme(&self, ctx: &egui::Context) {
-        ctx.set_visuals(self.theme.visuals());
-        ctx.all_styles_mut(|style| {
-            style.spacing.item_spacing = egui::vec2(8.0, 6.0);
-            style.spacing.button_padding = egui::vec2(10.0, 5.0);
-            style.spacing.window_margin = egui::Margin::from(12);
-            // Des barres de défilement qui prennent leur place, au lieu
-            // de flotter par-dessus le contenu et de s'effacer dès que la
-            // souris s'en va : flottantes, elles n'apparaissaient qu'au
-            // survol, et rien ne disait qu'il y avait quelque chose de
-            // plus bas. Elles restent affichées seulement quand il y a de
-            // quoi défiler.
-            style.spacing.scroll.floating = false;
-        });
     }
 
     /// Ce tampon vient-il d'un binaire ouvert ?
@@ -3199,21 +2614,6 @@ impl NamsdecApp {
         self.show_preferences = false;
     }
 
-    /// Passe d'un jeu de raccourcis à l'autre.
-    ///
-    /// Ce qu'on a déplacé soi-même est gardé : changer de jeu répond à
-    /// « d'où je pars », non à « efface ce que j'ai réglé ».
-    fn apply_keymap_preset(&mut self, preset: keybindings::Preset) {
-        let écarts = settings::Keymap::from_bindings(self.keymap_preset, &self.keybindings);
-        self.keymap_preset = preset;
-        let keymap = settings::Keymap {
-            preset: preset.id().to_owned(),
-            shortcuts: écarts.shortcuts,
-        };
-        self.keybindings = keymap.bindings();
-        self.write_keymap(&keymap);
-    }
-
     /// Écrit la description d'un outil dans le dossier des
     /// décompilateurs. Aucun programme n'est téléchargé, aucun n'est
     /// lancé : on pose un fichier de quelques lignes.
@@ -3339,190 +2739,6 @@ impl NamsdecApp {
                 ctx.load_texture("namsdec-icon", image, egui::TextureOptions::LINEAR)
             })
             .clone()
-    }
-
-    /// Installe une série d'exercices choisie sur le disque.
-    ///
-    /// Lue d'abord, copiée ensuite : une série illisible est refusée en
-    /// le disant, et rien n'est écrit dans le dossier des données.
-    fn install_exercises(&mut self, path: &Path) {
-        let s = strings(self.lang);
-        let note = match namsdec_exercises::pack::read(path) {
-            Err(e) => PluginNote {
-                ok: false,
-                text: errors::exercise_pack(self.lang, &e),
-            },
-            Ok(pack) => {
-                if pack.id == namsdec_exercises::BUILTIN_ID {
-                    // Le nom de la série livrée est pris : la laisser
-                    // écraser ferait disparaître les exercices d'origine
-                    // sans que personne ne l'ait demandé.
-                    PluginNote {
-                        ok: false,
-                        text: format!("{} ({})", s.exercises_id_taken, pack.id),
-                    }
-                } else {
-                    let name = pack.name.clone();
-                    let id = pack.id.clone();
-                    match copy_into_dir(path, exercises_dir()) {
-                        Err(e) => PluginNote {
-                            ok: false,
-                            text: format!("{} ({e})", s.exercises_pack_not_kept),
-                        },
-                        Ok(destination) => {
-                            // Une série réinstallée remplace la
-                            // précédente au lieu de s'ajouter à côté.
-                            self.exercise_packs.retain(|p| p.id != id);
-                            self.exercise_packs.push(pack);
-                            self.exercise_files.insert(id, destination);
-                            PluginNote {
-                                ok: true,
-                                text: format!("{} — {name}", s.exercises_pack_added),
-                            }
-                        }
-                    }
-                }
-            }
-        };
-        self.plugin_note = Some(note);
-    }
-
-    /// Retire une série installée : son fichier est supprimé, et elle
-    /// quitte la liste. La série livrée avec l'application n'est pas
-    /// concernée — elle n'est nulle part sur le disque.
-    fn remove_exercises(&mut self, id: &str) {
-        let s = strings(self.lang);
-        let Some(path) = self.exercise_files.get(id).cloned() else {
-            return;
-        };
-        if let Err(e) = std::fs::remove_file(&path)
-            && e.kind() != std::io::ErrorKind::NotFound
-        {
-            self.plugin_note = Some(PluginNote {
-                ok: false,
-                text: format!("{} ({e})", s.plugins_remove_failed),
-            });
-            return;
-        }
-        let name = self
-            .exercise_packs
-            .iter()
-            .find(|p| p.id == id)
-            .map(|p| p.name.clone())
-            .unwrap_or_else(|| id.to_owned());
-        self.exercise_packs.retain(|p| p.id != id);
-        self.exercise_files.remove(id);
-        self.plugin_note = Some(PluginNote {
-            ok: true,
-            text: format!("{} — {name}", s.plugins_removed),
-        });
-    }
-
-    /// La liste des exercices : un titre, ce qu'on y cherche, et de quoi
-    /// le charger dans l'éditeur.
-    ///
-    /// Charger remplace le tampon — d'où l'avertissement quand le fichier
-    /// courant n'a pas été enregistré. Il n'y a pas de correction
-    /// automatique : l'énoncé dit ce qu'on doit obtenir, et c'est le
-    /// bandeau des registres qui répond.
-    /// L'exercice qui suit `id` dans sa série : son identifiant et son
-    /// titre. `None` pour le dernier — un parcours a une fin.
-    fn exercise_after(&self, id: &str) -> Option<(String, String)> {
-        for pack in &self.exercise_packs {
-            let Some(position) = pack
-                .exercises
-                .iter()
-                .position(|exercise| namsdec_exercises::full_id(pack, exercise) == id)
-            else {
-                continue;
-            };
-            // La prochaine **non réussie**, et non la suivante dans la
-            // liste : reprendre un parcours ne doit pas obliger à
-            // repasser sur ce qu'on a déjà fait. À défaut — tout est
-            // réussi jusqu'au bout —, celle qui suit.
-            let suivant = pack
-                .exercises
-                .iter()
-                .skip(position + 1)
-                .find(|exercise| {
-                    !self
-                        .exercises_done
-                        .contains(&namsdec_exercises::full_id(pack, exercise))
-                })
-                .or_else(|| pack.exercises.get(position + 1))?;
-            return Some((
-                namsdec_exercises::full_id(pack, suivant),
-                suivant.title.get(self.lang.code()).to_owned(),
-            ));
-        }
-        None
-    }
-
-    /// Le rang de l'exercice `id` dans sa série, le nombre d'étapes, et
-    /// l'exercice lui-même.
-    fn exercise_rank(&self, id: &str) -> Option<(usize, usize, &namsdec_exercises::Exercise)> {
-        for pack in &self.exercise_packs {
-            for (index, exercise) in pack.exercises.iter().enumerate() {
-                if namsdec_exercises::full_id(pack, exercise) == id {
-                    return Some((index + 1, pack.exercises.len(), exercise));
-                }
-            }
-        }
-        None
-    }
-
-    /// Met le programme de départ d'un exercice dans l'éditeur.
-    ///
-    /// `current_file` repart à zéro : ce qui est chargé est un modèle, pas
-    /// le fichier de l'utilisateur, et « Enregistrer » ne doit pas écrire
-    /// par-dessus celui qu'il avait ouvert.
-    fn load_exercise(&mut self, id: &str) {
-        self.guard(Pending::Exercise(id.to_owned()));
-    }
-
-    fn load_exercise_now(&mut self, id: &str) {
-        let Some(exercise) = namsdec_exercises::find(&self.exercise_packs, id) else {
-            return;
-        };
-        // Déjà ouvert : on y retourne, avec ce qu'on y avait écrit.
-        if let Some(rang) = self.exercise_tab_index(id) {
-            self.go_to_tab(rang);
-            return;
-        }
-        // Sinon un onglet à lui, sauf si le tampon courant est vierge :
-        // on garde ainsi son propre programme à côté de l'exercice, et
-        // l'on peut comparer deux étapes du parcours.
-        if self.current_file.is_some() || self.buffer_modified() || self.current_exercise.is_some()
-        {
-            let courant = self.take_tab();
-            let insertion = self.active_tab_index.min(self.tabs.len());
-            self.tabs.insert(insertion, courant);
-            self.active_tab_index = insertion + 1;
-            // `find` a emprunté `self` : on le refait après le
-            // déplacement, sur un état stable.
-            let Some(exercise) = namsdec_exercises::find(&self.exercise_packs, id) else {
-                return;
-            };
-            self.current_exercise = Some(id.to_owned());
-            self.saved_source = exercise.starter_code.clone();
-            self.source = exercise.starter_code.clone();
-            self.current_file = None;
-            self.assemble_state = None;
-            self.emulator = None;
-            self.diagnostics.clear();
-            self.breakpoint_lines.clear();
-            self.status = Status::Idle;
-            return;
-        }
-        self.current_exercise = Some(id.to_owned());
-        self.saved_source = exercise.starter_code.clone();
-        self.source = exercise.starter_code.clone();
-        self.current_file = None;
-        self.assemble_state = None;
-        self.emulator = None;
-        self.diagnostics.clear();
-        self.breakpoint_lines.clear();
-        self.status = Status::Idle;
     }
 
     /// Les fenêtres qui peuvent s'agrandir, nommées une fois pour que
@@ -3667,14 +2883,6 @@ impl NamsdecApp {
         set_cursor_byte(ctx, &self.source, at.min(self.source.len()));
     }
 
-    /// Le panneau bas : la console du programme et les diagnostics de
-    /// nasm, sur toute la largeur de la fenêtre.
-    ///
-    /// La console y a la largeur d'un terminal — un programme écrit en 80
-    /// colonnes, le panneau latéral n'en offrait que trente-quatre — et
-    /// les diagnostics y trouvent enfin de quoi être lus : ils étaient
-    /// jusqu'ici entassés sous la barre de statut, sur deux lignes
-    /// hautes de rien.
     /// La hauteur que la console réclame pour ce qu'elle a à dire.
     ///
     /// Une console qui annonce « le programme n'a rien écrit » n'a pas
@@ -3864,97 +3072,6 @@ impl NamsdecApp {
             }
         }
         self.help = Some((word.to_owned(), namsdec_doc::lookup(word)));
-    }
-
-    /// Note l'exercice en cours comme réussi si son but est atteint.
-    ///
-    /// Appelé à chaque image, mais n'écrit qu'une fois : le premier
-    /// passage au vert suffit, et repasser sur un exercice déjà fait ne
-    /// le défait pas — on ne retire pas ce qu'on a compris.
-    fn note_goal_reached(&mut self) {
-        let Some((_, true)) = self.exercise_goal() else {
-            return;
-        };
-        // Un but atteint sans avoir rien exécuté n'est pas une
-        // solution : « rax == 0 » est vrai avant le premier pas, et
-        // remettre à zéro suffisait à s'attribuer un score de zéro
-        // instruction — imbattable, et faux. On exige que le programme
-        // ait tourné *et* qu'il soit allé jusqu'à son arrêt.
-        let Some(emulator) = &self.emulator else {
-            return;
-        };
-        if emulator.executed() == 0 || !emulator.cpu().halted {
-            return;
-        }
-        let Some(id) = self.current_exercise.clone() else {
-            return;
-        };
-        // Le coût de la course qui vient de réussir. Le meilleur est
-        // gardé, jamais le dernier : on essaie une idée plus courte, elle
-        // échoue, et le score d'avant n'a pas à en pâtir.
-        let exécutées = self.emulator.as_ref().map(|e| e.executed()).unwrap_or(0);
-        let meilleur = self.exercises_best.entry(id.clone()).or_insert(exécutées);
-        if exécutées < *meilleur {
-            *meilleur = exécutées;
-        }
-        if self.exercises_done.insert(id) {
-            self.status = Status::Note(|s| s.exercises_done_note);
-        }
-    }
-
-    /// Où en est le but de l'exercice en cours.
-    ///
-    /// `None` quand aucun exercice n'est chargé, qu'il n'a pas de but
-    /// vérifiable, ou qu'aucun programme ne tourne : on ne dit pas
-    /// « pas atteint » à quelqu'un qui n'a encore rien lancé.
-    ///
-    /// Le but est une liste de conditions — la grammaire des points
-    /// d'arrêt conditionnels — et elles doivent toutes tenir.
-    ///
-    /// Chacune est rendue avec son constat, parce que « pas encore » ne
-    /// dit rien à qui ne voit pas laquelle manque : un but à trois
-    /// conditions dont une seule échoue se lit alors d'un coup d'œil,
-    /// et l'on sait quel registre regarder.
-    fn exercise_goal(&self) -> Option<(Vec<GoalLine>, bool)> {
-        let id = self.current_exercise.as_deref()?;
-        let exercise = namsdec_exercises::find(&self.exercise_packs, id)?;
-        if exercise.goal.is_empty() {
-            return None;
-        }
-        let emulator = self.emulator.as_ref()?;
-        let cpu = emulator.cpu();
-        let mémoire = PeekMemory(&cpu.mem);
-        let lignes: Vec<GoalLine> = exercise
-            .goal
-            .iter()
-            .map(|texte| {
-                // Une condition qu'on ne sait pas lire ne vaut pas
-                // « atteint » : mieux vaut un but qu'on n'atteint
-                // jamais qu'un faux succès.
-                let Some(c) = condition::parse(texte) else {
-                    return GoalLine {
-                        texte: texte.clone(),
-                        tenue: false,
-                        constat: None,
-                    };
-                };
-                let tenue = c.holds(&cpu.regs, Some(&mémoire));
-                // Le constat n'est écrit que pour ce qui manque :
-                // répéter « rax vaut 15 » sous « rax == 15 » n'apprend
-                // rien, et allonge ce qu'on relit à chaque pas.
-                let constat = (!tenue)
-                    .then(|| c.sides(&cpu.regs, Some(&mémoire)))
-                    .flatten()
-                    .map(|(gauche, _)| (c.left().to_owned(), gauche));
-                GoalLine {
-                    texte: texte.clone(),
-                    tenue,
-                    constat,
-                }
-            })
-            .collect();
-        let atteint = lignes.iter().all(|l| l.tenue);
-        Some((lignes, atteint))
     }
 
     /// L'état du processeur, en texte : ce qu'on colle pour demander de
@@ -4169,12 +3286,6 @@ impl NamsdecApp {
         out
     }
 
-    /// Le côté « entrée » de la console.
-    ///
-    /// Une ligne validée part avec son saut de ligne, parce que c'est ce
-    /// qu'un programme attend d'un terminal : il lit jusqu'au `\n`, et une
-    /// ligne sans fin de ligne le laisserait croire qu'elle n'est pas
-    /// terminée.
     /// Ce que le patch de la ligne du curseur ferait, s'il peut faire
     /// quelque chose.
     ///
@@ -4408,179 +3519,6 @@ impl NamsdecApp {
             };
         }
     }
-}
-
-/// Rangée de boutons commune à toutes les boîtes de dialogue, alignée à
-/// droite. Renvoie `Some(true)` pour OK, `Some(false)` pour Quitter,
-/// `None` tant que rien n'est cliqué.
-///
-/// Ces deux-là sont dessinés avec un fond et un contour explicites : le
-/// style de l'appli rend les boutons plats au repos, ce qui convient aux
-/// barres d'outils mais laisserait les boutons d'une boîte de dialogue
-/// se confondre avec du texte.
-/// Ce qu'une liste posée dans une fenêtre flottante peut prendre en
-/// hauteur : une bonne moitié de l'écran.
-///
-/// Un plafond en pixels — trois cent soixante, trois cent vingt — faisait
-/// défiler quatre thèmes au milieu d'un écran qui en aurait montré
-/// quinze. Celui-ci suit l'écran qu'on a.
-/// La marque d'un pas : un signe, sa couleur, et ce qu'il veut dire.
-///
-/// Un signe et non un mot : la colonne reste étroite, et l'on repère un
-/// appel ou une écriture en parcourant la liste plutôt qu'en la lisant.
-fn step_mark(
-    s: &Strings,
-    kind: namsdec_emu::StepKind,
-    theme: &'static Theme,
-) -> (&'static str, egui::Color32, &'static str) {
-    use namsdec_emu::StepKind as K;
-    match kind {
-        K::Plain => ("   ", theme.dim, s.step_plain),
-        K::Call => ("app", theme.accent, s.step_call),
-        K::Return => ("ret", theme.accent, s.step_return),
-        K::Jump => ("saut", theme.warn, s.step_jump),
-        K::Syscall => ("sys", theme.good, s.step_syscall),
-        K::Write => ("écr", theme.changed, s.step_write),
-    }
-}
-
-/// Où mène un retour à la ligne qui garde l'indentation courante.
-///
-/// Rend le texte à insérer et de combien le curseur doit avancer. On
-/// Ce qu'il faut faire après la frappe d'une parenthèse ou d'un
-/// guillemet.
-///
-/// Une paire s'ouvre et se ferme : taper `(` et devoir taper `)` est le
-/// genre de travail qu'une machine fait mieux. Mais mal fait, c'est pire
-/// que rien — un `'` posé au milieu d'un commentaire français, et l'on
-/// passe son temps à effacer ce qu'on n'a pas demandé.
-///
-/// D'où trois règles, et pas une de plus :
-///
-/// - on ne ferme pas devant un mot : `(` tapé avant `rax` ouvrirait un
-///   `()` autour de rien ;
-/// - on ne ferme pas une apostrophe qui suit une lettre — « l'adresse »
-///   n'appelle aucune fermeture ;
-/// - taper le fermant qui est déjà là ne l'écrit pas deux fois, il le
-///   traverse.
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-enum PairEdit {
-    /// Poser ce caractère derrière le curseur, sans l'y déplacer.
-    Close(char),
-    /// Le fermant était déjà là : retirer celui qu'on vient de taper et
-    /// laisser le curseur devant lui.
-    StepOver,
-    /// Ne rien faire.
-    None,
-}
-
-/// Le fermant qui va avec cet ouvrant.
-fn closing_of(open: char) -> Option<char> {
-    match open {
-        '(' => Some(')'),
-        '[' => Some(']'),
-        '{' => Some('}'),
-        '"' => Some('"'),
-        '\'' => Some('\''),
-        _ => None,
-    }
-}
-
-/// Ce qu'on fait du caractère qui vient d'être tapé, `at` étant la
-/// position du curseur **après** la frappe, en octets.
-fn pair_edit(source: &str, at: usize) -> PairEdit {
-    if at == 0 || at > source.len() || !source.is_char_boundary(at) {
-        return PairEdit::None;
-    }
-    let Some(tapé) = source[..at].chars().next_back() else {
-        return PairEdit::None;
-    };
-    let suivant = source[at..].chars().next();
-    let précédent = {
-        let avant = at - tapé.len_utf8();
-        source[..avant].chars().next_back()
-    };
-
-    // Traverser un fermant déjà posé. Vaut pour les guillemets, qui sont
-    // leur propre fermant : `"abc|"` puis `"` doit sortir de la chaîne,
-    // non en ouvrir une seconde.
-    let ferme = matches!(tapé, ')' | ']' | '}' | '"' | '\'');
-    if ferme && suivant == Some(tapé) {
-        return PairEdit::StepOver;
-    }
-
-    let Some(fermant) = closing_of(tapé) else {
-        return PairEdit::None;
-    };
-    // Une apostrophe après une lettre est une apostrophe, pas une
-    // chaîne : « l'adresse », « d'où ». C'est le cas qui rend
-    // insupportables les éditeurs qui ferment tout.
-    if matches!(tapé, '"' | '\'') && précédent.is_some_and(is_word_char) {
-        return PairEdit::None;
-    }
-    // Ni devant un mot : on est en train d'écrire au milieu de quelque
-    // chose, et la fermeture tomberait au mauvais endroit.
-    if suivant.is_some_and(is_word_char) {
-        return PairEdit::None;
-    }
-    PairEdit::Close(fermant)
-}
-
-/// Un effacement doit-il emporter la paire vide qu'il ouvre ?
-///
-/// `(|)` puis retour arrière : effacer la seule parenthèse ouvrante
-/// laisserait la fermante orpheline — celle-là même qu'on n'avait pas
-/// tapée.
-fn backspace_clears_pair(source: &str, at: usize) -> bool {
-    if at == 0 || at >= source.len() || !source.is_char_boundary(at) {
-        return false;
-    }
-    let (Some(avant), Some(après)) = (
-        source[..at].chars().next_back(),
-        source[at..].chars().next(),
-    ) else {
-        return false;
-    };
-    closing_of(avant) == Some(après)
-}
-
-/// Place le curseur de l'éditeur à cet indice d'octet.
-///
-/// Les positions d'egui se comptent en *caractères*, celles d'une chaîne
-/// Rust en octets : la conversion est ce qui sépare un curseur juste
-/// d'un curseur qui dérive d'un cran à chaque accent.
-fn set_cursor_byte(ctx: &egui::Context, source: &str, at: usize) {
-    let Some(mut state) = egui::TextEdit::load_state(ctx, editor_id()) else {
-        return;
-    };
-    let cible = byte_to_char(source, at);
-    state
-        .cursor
-        .set_char_range(Some(egui::text::CCursorRange::one(
-            egui::text::CCursor::new(cible),
-        )));
-    state.store(ctx, editor_id());
-}
-
-/// Un caractère qui fait partie d'un mot, pour les règles ci-dessus.
-fn is_word_char(c: char) -> bool {
-    c.is_alphanumeric() || c == '_'
-}
-
-/// écrit l'assembleur en colonnes — les étiquettes à gauche, les
-/// instructions en retrait — et retaper quatre espaces à chaque ligne
-/// use la patience avant d'user le clavier.
-///
-/// L'indentation reprise est celle de la ligne où l'on est, blancs
-/// seulement : ce qui suit appartient au code.
-fn newline_indent(source: &str, cursor: usize) -> String {
-    let cursor = cursor.min(source.len());
-    let line_start = source[..cursor].rfind('\n').map_or(0, |i| i + 1);
-    let indent: String = source[line_start..cursor]
-        .chars()
-        .take_while(|c| *c == ' ' || *c == '\t')
-        .collect();
-    format!("\n{indent}")
 }
 
 /// La date de dernière modification d'un fichier, si on peut la lire.
@@ -5105,13 +4043,6 @@ fn branch_target(text: &str) -> Option<u64> {
     u64::from_str_radix(hex, 16).ok()
 }
 
-/// L'étiquette qui nomme `addr`, telle qu'on l'a écrite dans le source :
-/// `tampon`, ou `tampon+2` deux octets plus loin.
-///
-/// Les symboles sont triés par adresse : on prend le dernier qui commence
-/// avant, et on ne le propose que s'il est assez proche pour dire encore
-/// quelque chose — sa taille déclarée quand nasm en donne une, sinon la
-/// distance jusqu'au symbole suivant.
 /// Le nom d'une adresse : celui qu'on a posé, sinon celui du binaire.
 ///
 /// Le nom posé à la main l'emporte, et c'est voulu : quelqu'un qui
@@ -5134,6 +4065,13 @@ pub(crate) fn named_at(
     symbol_at(symbols, addr)
 }
 
+/// L'étiquette qui nomme `addr`, telle qu'on l'a écrite dans le source :
+/// `tampon`, ou `tampon+2` deux octets plus loin.
+///
+/// Les symboles sont triés par adresse : on prend le dernier qui commence
+/// avant, et on ne le propose que s'il est assez proche pour dire encore
+/// quelque chose — sa taille déclarée quand nasm en donne une, sinon la
+/// distance jusqu'au symbole suivant.
 pub(crate) fn symbol_at(symbols: &[namsdec_asm::elf::Symbol], addr: u64) -> Option<String> {
     let index = symbols.partition_point(|s| s.addr <= addr).checked_sub(1)?;
     let symbol = &symbols[index];
@@ -5382,12 +4320,6 @@ fn shortcut_hint(
     }
 }
 
-/// Bouton de barre d'outils avec une icône dessinée directement plutôt
-/// qu'un glyphe Unicode — "●", puis "↓"/"→"/"🔨" se sont tous révélés
-/// absents de la police par défaut d'egui et retombaient sur des carrés
-/// vides ou des glyphes de repli erratiques (voir commit 5d95e09 et le
-/// retour utilisateur qui a suivi). Peindre la forme soi-même élimine le
-/// risque une fois pour toutes.
 /// Un grand bouton d'action : pleine largeur, rempli de la couleur
 /// d'accent, une icône et un mot.
 ///
@@ -5472,6 +4404,12 @@ fn big_action_button(
     réponse
 }
 
+/// Bouton de barre d'outils avec une icône dessinée directement plutôt
+/// qu'un glyphe Unicode — "●", puis "↓"/"→"/"🔨" se sont tous révélés
+/// absents de la police par défaut d'egui et retombaient sur des carrés
+/// vides ou des glyphes de repli erratiques (voir commit 5d95e09 et le
+/// retour utilisateur qui a suivi). Peindre la forme soi-même élimine le
+/// risque une fois pour toutes.
 fn icon_button(
     ui: &mut egui::Ui,
     icon: impl FnOnce(&egui::Painter, egui::Rect, egui::Color32),
@@ -5812,25 +4750,6 @@ fn default_explorer_root() -> Option<PathBuf> {
         .filter(|path| path.is_dir())
 }
 
-/// Traduit un index de *caractère* dans le texte en (ligne, colonne),
-/// toutes deux 1-indexées. egui ne donne que l'index brut ; le compter
-/// ici plutôt que de lire la géométrie du `Galley` rend la position
-/// indépendante de la mise en page (retour à la ligne automatique,
-/// tabulations) — c'est bien la position dans le *texte* qu'on affiche.
-fn line_col(text: &str, char_index: usize) -> (usize, usize) {
-    let mut line = 1;
-    let mut col = 1;
-    for c in text.chars().take(char_index) {
-        if c == '\n' {
-            line += 1;
-            col = 1;
-        } else {
-            col += 1;
-        }
-    }
-    (line, col)
-}
-
 /// "NASM version 3.02 compiled on Jul 14 2026" -> "NASM 3.02" — la barre
 /// de statut n'a pas besoin de la date de compilation de nasm lui-même,
 /// seulement de savoir qu'il est disponible et sa version.
@@ -5850,10 +4769,6 @@ fn status_dot(ui: &mut egui::Ui, color: egui::Color32) {
     ui.painter().circle_filled(rect.center(), 4.0, color);
 }
 
-/// Une entrée du catalogue de thèmes : un aperçu miniature peint avec les
-/// couleurs du thème lui-même (fond, panneau, accents) plutôt qu'un nom
-/// seul — c'est le thème qui se décrit, donc rien à écrire de plus quand
-/// un nouveau s'ajoute.
 /// Des paires hexadécimales, séparées comme on veut.
 ///
 /// « 48 31 c0 », « 4831c0 », « 48,31,c0 » : on recopie ce qu'on lit
@@ -6135,9 +5050,6 @@ fn theme_card_width(ui: &egui::Ui, themes: &[&Theme], active_word: &str) -> f32 
     76.0 + widest_name + 12.0 + text_width(active_word, 12.0) + 10.0
 }
 
-/// Une ligne de la vue d'ensemble des modules : nom, version, point coloré
-/// de statut, et une courte description de ce que fait ce module là,
-/// maintenant.
 /// Le bouton d'agrandissement, posé dans le bandeau d'une fenêtre.
 ///
 /// `egui::Window` ne laisse rien mettre dans son bandeau : la croix y est
@@ -6224,216 +5136,9 @@ fn title_bar_maximize_button(
     cliqué
 }
 
-/// Découpe une ligne d'arguments comme un interpréteur de commandes le
-/// ferait, en plus simple.
-///
-/// L'espace sépare, les guillemets — simples ou doubles — groupent ce qui
-/// doit rester ensemble : un mot de passe contenant une espace se donne
-/// ainsi sans qu'on ait à y penser. Pas d'échappement ni de variables :
-/// ce qu'on écrit là part tel quel dans `argv`, et une ligne qui ne se
-/// lit pas à l'œil n'aurait pas sa place devant un programme qu'on
-/// cherche à comprendre.
-fn split_args(ligne: &str) -> Vec<String> {
-    let mut arguments = Vec::new();
-    let mut courant = String::new();
-    let mut ouvert: Option<char> = None;
-    let mut commencé = false;
-    for c in ligne.chars() {
-        match (ouvert, c) {
-            (Some(guillemet), _) if c == guillemet => ouvert = None,
-            (Some(_), _) => courant.push(c),
-            (None, '\'') | (None, '"') => {
-                ouvert = Some(c);
-                commencé = true;
-            }
-            (None, c) if c.is_whitespace() => {
-                if commencé {
-                    arguments.push(std::mem::take(&mut courant));
-                    commencé = false;
-                }
-            }
-            (None, c) => {
-                courant.push(c);
-                commencé = true;
-            }
-        }
-    }
-    if commencé {
-        arguments.push(courant);
-    }
-    arguments
-}
-
-/// Un déplacement du mode Normal, tel que vim le nomme.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Move {
-    Left,
-    Right,
-    Up,
-    Down,
-    LineStart,
-    LineEnd,
-    FileEnd,
-    /// Le début du fichier — `gg` dans vim.
-    FileStart,
-    /// Le début du mot suivant — `w`.
-    WordForward,
-    /// Le début du mot précédent — `b`.
-    WordBack,
-    /// La fin du mot où l'on est — `e`.
-    WordEnd,
-}
-
-/// Les trois familles de caractères que vim distingue pour `w` et `b`.
-///
-/// Un mot, une suite de ponctuation, ou du blanc. C'est ce découpage qui
-/// fait que `w` s'arrête sur le `[` de `[rbp-0x18]` au lieu de sauter la
-/// moitié de la ligne.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Classe {
-    Mot,
-    Ponctuation,
-    Blanc,
-}
-
-fn classe_de(c: Option<char>) -> Classe {
-    match c {
-        None => Classe::Blanc,
-        Some(c) if c.is_alphanumeric() || c == '_' => Classe::Mot,
-        Some(c) if c.is_whitespace() => Classe::Blanc,
-        Some(_) => Classe::Ponctuation,
-    }
-}
-
-/// Où va le curseur, compté en caractères depuis le début du texte.
-///
-/// Le mode Normal n'avait aucun déplacement : `i` entrait en Insertion,
-/// Échap en sortait, et c'était tout. On ne pouvait donc pas se promener
-/// dans le code sans repasser par la souris — la première chose que
-/// cherche quiconque vient de vim.
-///
-/// Compté en caractères et non en octets : une ligne de commentaire
-/// accentuée ferait sauter le curseur au milieu d'un caractère.
-fn move_cursor(source: &str, at: usize, mouvement: Move) -> usize {
-    let caractères: Vec<char> = source.chars().collect();
-    let at = at.min(caractères.len());
-    // Le début de la ligne où l'on est, et sa longueur.
-    let début = caractères[..at]
-        .iter()
-        .rposition(|c| *c == '\n')
-        .map_or(0, |i| i + 1);
-    let fin = caractères[at..]
-        .iter()
-        .position(|c| *c == '\n')
-        .map_or(caractères.len(), |i| at + i);
-    let colonne = at - début;
-
-    match mouvement {
-        // `h` et `l` restent sur leur ligne : dans vim, ils ne la
-        // quittent pas, et c'est ce qui les rend prévisibles.
-        Move::Left => at.saturating_sub(1).max(début),
-        Move::Right => (at + 1).min(fin),
-        Move::LineStart => début,
-        Move::LineEnd => fin,
-        Move::FileEnd => caractères.len(),
-        Move::FileStart => 0,
-        // Les mouvements par mot, et c'est eux qu'on réclame en premier
-        // quand on a l'habitude de vim : se déplacer caractère par
-        // caractère dans `mov qword [rbp-0x18], rax` use la patience.
-        //
-        // La notion de mot est celle de vim, pas celle d'un traitement
-        // de texte : une suite de lettres, chiffres et soulignés, ou
-        // bien une suite de ponctuation. `[rbp-0x18]` compte donc pour
-        // plusieurs mots, ce qui est exactement ce qu'on veut pour
-        // atteindre le déplacement sans viser à la souris.
-        Move::WordForward => {
-            let mut i = at;
-            let classe = classe_de(caractères.get(i).copied());
-            // On sort du mot courant…
-            while i < caractères.len()
-                && classe_de(Some(caractères[i])) == classe
-                && classe != Classe::Blanc
-            {
-                i += 1;
-            }
-            // …puis des blancs qui suivent. Les retours à la ligne
-            // arrêtent : `w` en fin de ligne descend d'une ligne dans
-            // vim, mais s'arrête au premier mot — il ne saute pas une
-            // ligne vide.
-            while i < caractères.len() && caractères[i] != '\n' && caractères[i].is_whitespace()
-            {
-                i += 1;
-            }
-            i
-        }
-        Move::WordBack => {
-            let mut i = at;
-            // Les blancs d'abord : on recule jusqu'à toucher un mot.
-            while i > 0 && caractères[i - 1] != '\n' && caractères[i - 1].is_whitespace() {
-                i -= 1;
-            }
-            if i == 0 {
-                return 0;
-            }
-            let classe = classe_de(Some(caractères[i - 1]));
-            while i > 0 && classe_de(Some(caractères[i - 1])) == classe {
-                i -= 1;
-            }
-            i
-        }
-        Move::WordEnd => {
-            let mut i = at;
-            // Si l'on est déjà sur la fin d'un mot, on va à la suivante :
-            // `e` répété doit avancer, non piétiner.
-            if i < caractères.len() {
-                i += 1;
-            }
-            while i < caractères.len() && caractères[i] != '\n' && caractères[i].is_whitespace()
-            {
-                i += 1;
-            }
-            let classe = classe_de(caractères.get(i).copied());
-            while i + 1 < caractères.len()
-                && classe_de(Some(caractères[i + 1])) == classe
-                && classe != Classe::Blanc
-            {
-                i += 1;
-            }
-            i
-        }
-        Move::Up => {
-            if début == 0 {
-                return at;
-            }
-            let fin_précédente = début - 1;
-            let début_précédente = caractères[..fin_précédente]
-                .iter()
-                .rposition(|c| *c == '\n')
-                .map_or(0, |i| i + 1);
-            // La colonne est gardée tant que la ligne visée est assez
-            // longue, comme partout ailleurs.
-            (début_précédente + colonne).min(fin_précédente)
-        }
-        Move::Down => {
-            if fin >= caractères.len() {
-                return at;
-            }
-            let début_suivante = fin + 1;
-            let fin_suivante = caractères[début_suivante..]
-                .iter()
-                .position(|c| *c == '\n')
-                .map_or(caractères.len(), |i| début_suivante + i);
-            (début_suivante + colonne).min(fin_suivante)
-        }
-    }
-}
-
-/// Une ligne de la barre de statut, avec de quoi lire ce qui dépasse.
-///
-/// Les messages longs — celui du binaire lié dynamiquement en fait
-/// trois lignes — se coupaient avec des points de suspension, et rien ne
-/// disait qu'il y avait plus à lire. L'infobulle le donne en entier, et
-/// une mention l'annonce plutôt que de compter sur la curiosité.
+/// Une ligne de la vue d'ensemble des modules : nom, version, point coloré
+/// de statut, et une courte description de ce que fait ce module là,
+/// maintenant.
 fn module_card(
     ui: &mut egui::Ui,
     name: &str,
@@ -6773,9 +5478,6 @@ fn copie_id() -> egui::Id {
     egui::Id::new("prerequis_copies")
 }
 
-/// Décalage en octets du `n`-ième caractère, et l'inverse. egui compte
-/// les curseurs en caractères, Rust tranche les chaînes en octets, et
-/// confondre les deux coupe un « é » en deux.
 /// Un texte court en chasse fixe.
 ///
 /// `RichText::monospace().small()` ne fait PAS ce qu'il dit. Les deux
@@ -6862,26 +5564,6 @@ fn prose(ui: &egui::Ui, theme: &'static Theme, text: &str) -> egui::text::Layout
     job
 }
 
-/// `$` ou `$$` sous le curseur, s'il y en a un.
-fn dollars_at(text: &str, byte: usize) -> Option<&str> {
-    let before = &text[..byte];
-    let start = before.len() - before.chars().rev().take_while(|c| *c == '$').count();
-    let end = byte + text[byte..].chars().take_while(|c| *c == '$').count();
-    (end > start).then(|| &text[start..end])
-}
-
-fn char_to_byte(text: &str, chars: usize) -> usize {
-    text.char_indices()
-        .nth(chars)
-        .map_or(text.len(), |(index, _)| index)
-}
-
-fn byte_to_char(text: &str, byte: usize) -> usize {
-    text[..byte.min(text.len())].chars().count()
-}
-
-/// La boîte « À propos » porte un identifiant fixe, indépendant de son
-/// titre traduit.
 /// L'identifiant de la boîte « À propos ».
 ///
 /// Écrit une fois, employé partout : la fenêtre elle-même, la table qui
@@ -7107,8 +5789,6 @@ const REGISTERS: [(&str, Reg64); 16] = [
     ("R15", Reg64::R15),
 ];
 
-/// Où vivent les thèmes installés : à côté des réglages, dans le dossier
-/// de données de l'utilisateur.
 /// Les désassembleurs installés : un fichier JSON par outil, dans le
 /// dossier des plugins.
 ///
@@ -7122,6 +5802,8 @@ fn load_disassembler_plugins() -> Vec<namsdec_disasm::plugin::Plugin> {
     namsdec_disasm::plugin::read_dir(&dir)
 }
 
+/// Où vivent les thèmes installés : à côté des réglages, dans le dossier
+/// de données de l'utilisateur.
 fn plugins_dir() -> Option<PathBuf> {
     data_dir().map(|base| base.join("themes"))
 }
@@ -7202,13 +5884,6 @@ pub(crate) fn region_label_named(name: &str, executable: bool, writable: bool) -
     }
 }
 
-/// Où vivent les séries d'exercices installées. À côté des thèmes, et
-/// pour la même raison : ce sont des données que l'utilisateur ajoute, et
-/// elles doivent survivre à une mise à jour de l'application.
-fn exercises_dir() -> Option<PathBuf> {
-    data_dir().map(|base| base.join("exercises"))
-}
-
 /// Où vivent les noms et les commentaires qu'on pose sur un binaire.
 ///
 /// À côté du binaire, jamais dedans : on n'écrit pas dans l'exécutable
@@ -7241,49 +5916,6 @@ fn copy_into_dir(path: &Path, dir: Option<PathBuf>) -> std::io::Result<PathBuf> 
         std::fs::copy(path, &destination)?;
     }
     Ok(destination)
-}
-
-/// Charge les séries d'exercices déjà installées. Comme pour les thèmes :
-/// un fichier illisible est nommé dans le compte rendu et n'empêche pas
-/// les autres de se charger.
-fn load_installed_exercises() -> (
-    Vec<namsdec_exercises::Pack>,
-    BTreeMap<String, PathBuf>,
-    Vec<String>,
-) {
-    let mut packs = Vec::new();
-    let mut files = BTreeMap::new();
-    let mut failures = Vec::new();
-    let Some(dir) = exercises_dir() else {
-        return (packs, files, failures);
-    };
-    let Ok(entries) = std::fs::read_dir(&dir) else {
-        return (packs, files, failures);
-    };
-    let mut paths: Vec<PathBuf> = entries
-        .flatten()
-        .map(|entry| entry.path())
-        .filter(|path| path.extension().is_some_and(|ext| ext == "json"))
-        .collect();
-    paths.sort();
-    // La série livrée d'abord, quel que soit l'ordre alphabétique :
-    // c'est par elle qu'on commence, et les autres viennent ensuite.
-    let livrée = dir.join(namsdec_exercises::BUILTIN_FILE);
-    paths.sort_by_key(|path| *path != livrée);
-    for path in paths {
-        let est_livrée = path == livrée;
-        match namsdec_exercises::pack::read(&path) {
-            Ok(pack) if est_livrée || pack.id != namsdec_exercises::BUILTIN_ID => {
-                files.insert(pack.id.clone(), path);
-                packs.push(pack);
-            }
-            // Une série qui se fait passer pour celle d'origine est
-            // ignorée plutôt que de la remplacer en silence.
-            Ok(pack) => failures.push(format!("{} : {}", path.display(), pack.id)),
-            Err(e) => failures.push(format!("{} : {e}", path.display())),
-        }
-    }
-    (packs, files, failures)
 }
 
 /// Charge les thèmes déjà installés. Appelé une fois au démarrage.
@@ -7363,49 +5995,6 @@ fn disassemble_code(output: &namsdec_asm::AssembleOutput) -> Vec<DecodedInstruct
         .filter_map(|s| Some(namsdec_disasm::disassemble(slice(s.addr, s.size)?, s.addr)))
         .flatten()
         .collect()
-}
-
-/// Recopie la ligne qui contient `cursor`, juste en dessous.
-///
-/// Rend la source modifiée et la nouvelle position du curseur, qui suit
-/// la copie : on duplique une ligne pour la changer, et la changer
-/// commence par être dessus.
-///
-/// La dernière ligne d'un fichier sans retour final est un cas à part —
-/// il faut en ajouter un, sinon la copie se collerait derrière l'original
-/// et n'en ferait qu'une seule ligne deux fois plus longue.
-fn duplicated_line(source: &str, cursor: usize) -> (String, usize) {
-    let cursor = cursor.min(source.len());
-    let début = source[..cursor].rfind('\n').map_or(0, |i| i + 1);
-    let fin = source[cursor..]
-        .find('\n')
-        .map_or(source.len(), |i| cursor + i);
-    let ligne = &source[début..fin];
-
-    let mut out = String::with_capacity(source.len() + ligne.len() + 1);
-    out.push_str(&source[..fin]);
-    out.push('\n');
-    out.push_str(ligne);
-    out.push_str(&source[fin..]);
-    // Le curseur garde sa colonne, une ligne plus bas.
-    (out, cursor + ligne.len() + 1)
-}
-
-/// Où commence la ligne de rang `index`, en octets.
-///
-/// `str::lines()` ne rend pas les positions, et les recalculer à la main
-/// à chaque usage finit par diverger de ce que `lines()` appelle une
-/// ligne — notamment sur `\r\n`. Une seule fonction, donc, et les
-/// autres s'y réfèrent.
-fn ligne_début(source: &str, index: usize) -> Option<usize> {
-    let mut reste = index;
-    let mut début = 0usize;
-    while reste > 0 {
-        let saut = source[début..].find('\n')?;
-        début += saut + 1;
-        reste -= 1;
-    }
-    (début <= source.len()).then_some(début)
 }
 
 /// La correction calculée, et ce pour quoi elle l'a été.

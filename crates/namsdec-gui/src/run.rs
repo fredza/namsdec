@@ -260,15 +260,6 @@ impl NamsdecApp {
             .map(<[u8]>::to_vec);
     }
 
-    /// (Re)construit l'émulateur dans l'état du tout début.
-    ///
-    /// Deux chemins, parce qu'il y a deux sortes de programmes. Celui
-    /// qu'on vient d'écrire est posé tel quel, à l'adresse qu'on lui a
-    /// donnée, avec une pile vierge : c'est ce qu'on veut en apprenant, et
-    /// rien d'autre ne doit bouger sous les pieds. Celui qui vient d'un
-    /// fichier, lui, passe par le **chargeur** — segments, relocations,
-    /// TLS, pile de processus —, faute de quoi il ne survit pas à ses dix
-    /// premières instructions.
     /// Remet la machine dans l'état où le chargement l'avait laissée.
     ///
     /// Reconstruire l'émulateur suffit pour le processeur et la mémoire,
@@ -304,6 +295,15 @@ impl NamsdecApp {
         self.status = Status::Idle;
     }
 
+    /// (Re)construit l'émulateur dans l'état du tout début.
+    ///
+    /// Deux chemins, parce qu'il y a deux sortes de programmes. Celui
+    /// qu'on vient d'écrire est posé tel quel, à l'adresse qu'on lui a
+    /// donnée, avec une pile vierge : c'est ce qu'on veut en apprenant, et
+    /// rien d'autre ne doit bouger sous les pieds. Celui qui vient d'un
+    /// fichier, lui, passe par le **chargeur** — segments, relocations,
+    /// TLS, pile de processus —, faute de quoi il ne survit pas à ses dix
+    /// premières instructions.
     pub(crate) fn rebuild_emulator(&mut self) {
         if let Some(elf) = self.binary_elf() {
             self.load_process(&elf);
@@ -929,20 +929,6 @@ impl NamsdecApp {
             .is_some_and(|emulator| emulator.cpu().halted)
     }
 
-    /// Les commandes d'exécution ont-elles encore un sens ?
-    ///
-    /// Il faut un programme chargé, et qu'il lui reste quelque chose à
-    /// faire : relancer Step Into sur un programme terminé ne peut plus
-    /// rien produire, et laisser le bouton actif laisse croire le
-    /// contraire. `Réinitialiser` reste disponible — c'est précisément ce
-    /// qu'on veut faire ensuite.
-    /// Assembler a-t-il une chance d'aboutir ?
-    ///
-    /// Le bouton se grise plutôt que d'échouer : un listing de binaire
-    /// sera refusé à tous les coups, et rien ne l'annonçait avant le
-    /// clic. Le raccourci et la palette, eux, passent toujours par
-    /// `do_assemble` — refuser en disant pourquoi vaut mieux que ne rien
-    /// faire du tout quand le geste ne vient pas d'un bouton qu'on voit.
     /// Le programme réclame de quoi lire.
     ///
     /// Chaque nouvelle attente rend son focus au champ, même si la
@@ -953,10 +939,24 @@ impl NamsdecApp {
         self.console_input_released = false;
     }
 
+    /// Assembler a-t-il une chance d'aboutir ?
+    ///
+    /// Le bouton se grise plutôt que d'échouer : un listing de binaire
+    /// sera refusé à tous les coups, et rien ne l'annonçait avant le
+    /// clic. Le raccourci et la palette, eux, passent toujours par
+    /// `do_assemble` — refuser en disant pourquoi vaut mieux que ne rien
+    /// faire du tout quand le geste ne vient pas d'un bouton qu'on voit.
     pub(crate) fn can_assemble(&self) -> bool {
         !self.buffer_came_from_a_binary()
     }
 
+    /// Les commandes d'exécution ont-elles encore un sens ?
+    ///
+    /// Il faut un programme chargé, et qu'il lui reste quelque chose à
+    /// faire : relancer Step Into sur un programme terminé ne peut plus
+    /// rien produire, et laisser le bouton actif laisse croire le
+    /// contraire. `Réinitialiser` reste disponible — c'est précisément ce
+    /// qu'on veut faire ensuite.
     pub(crate) fn can_execute(&self) -> bool {
         self.emulator.is_some() && !self.program_finished()
     }

@@ -11,6 +11,14 @@
 use super::*;
 
 impl NamsdecApp {
+    /// Le panneau bas : la console du programme et les diagnostics de
+    /// nasm, sur toute la largeur de la fenêtre.
+    ///
+    /// La console y a la largeur d'un terminal — un programme écrit en 80
+    /// colonnes, le panneau latéral n'en offrait que trente-quatre — et
+    /// les diagnostics y trouvent enfin de quoi être lus : ils étaient
+    /// jusqu'ici entassés sous la barre de statut, sur deux lignes
+    /// hautes de rien.
     pub(crate) fn console_panel_ui(&mut self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
         ui.horizontal_wrapped(|ui| {
@@ -39,7 +47,6 @@ impl NamsdecApp {
         }
     }
 
-    /// Ce que nasm a dit de la source, une ligne par diagnostic.
     /// Le profil : où le programme a passé son temps.
     ///
     /// La bande de chaleur dans la gouttière répond à « par où ça
@@ -211,6 +218,7 @@ impl NamsdecApp {
         }
     }
 
+    /// Ce que nasm a dit de la source, une ligne par diagnostic.
     pub(crate) fn diagnostics_ui(&mut self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
         let (lang, theme) = (self.lang, self.theme);
@@ -599,6 +607,12 @@ impl NamsdecApp {
         }
     }
 
+    /// Le côté « entrée » de la console.
+    ///
+    /// Une ligne validée part avec son saut de ligne, parce que c'est ce
+    /// qu'un programme attend d'un terminal : il lit jusqu'au `\n`, et une
+    /// ligne sans fin de ligne le laisserait croire qu'elle n'est pas
+    /// terminée.
     pub(crate) fn console_input_ui(&mut self, ui: &mut egui::Ui, pending: usize) {
         let s = strings(self.lang);
         let waiting = matches!(self.status, Status::WaitingForInput);

@@ -7,6 +7,8 @@
 //! versions et les outils trouvés sur la machine.
 
 use super::*;
+// Le parcours vit dans son module ; l'aide y mène.
+use crate::exercises::exercises_dir;
 
 impl NamsdecApp {
     /// La liste des séries installées, avec de quoi en ajouter et en
