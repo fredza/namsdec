@@ -1508,3 +1508,62 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
   `///` vide, l'explication. Un bloc qui RECOMMENCE au milieu d'un autre est
   un bloc collé. Quand il rougit, le remède n'est pas de couper le texte :
   c'est de retrouver ce que le bloc documentait.
+
+================================================================================
+29 SEPTEMBRE 2026 (suite) — LES SAUTS RENDUS À LEUR FORME
+================================================================================
+
+  --- ce qui manquait ---
+  `pseudo::of` traduit une instruction à la fois : `jne boucle` devient « si
+  différent, aller à boucle ». C'est déjà beaucoup, et ce n'est pas ce qu'on
+  lit quand on comprend un programme. Personne ne pense « aller à » ; on pense
+  « tant que ». Le chaînon qui manquait n'est pas dans l'instruction, il est
+  dans le GRAPHE — une arête qui remonte est une boucle, deux branches qui se
+  rejoignent sont un `si`.
+
+  --- ce que le module reconnaît, et rien d'autre ---
+  - `si` / `sinon` — deux branches qui se rejoignent plus bas ;
+  - `tant que` — le test est en haut, le corps peut ne jamais tourner ;
+  - `répéter … tant que` — le test est en bas, le corps passe au moins une
+    fois.
+
+  La troisième distinction n'est pas cosmétique. « Cette boucle peut-elle ne
+  jamais s'exécuter ? » est souvent LA question devant un binaire qu'on n'a
+  pas écrit, et confondre les deux formes revient à y répondre au hasard.
+
+  Ce qui n'est pas reconnu garde son « aller à » et son étiquette. Un `si`
+  inventé à la mauvaise place coûte plus cher que le saut qu'il remplace : on
+  relit un saut, on ne relit pas ce qu'on croit avoir compris.
+
+  --- la condition est celle du PROGRAMME, non celle du saut ---
+  Un compilateur écrit « si NON condition, sauter par-dessus ». Recopier le
+  mnémonique ferait dire au pseudo-code l'inverse de ce que fait le code — et
+  cela se lirait très bien, ce qui est le pire des cas. D'où
+  `condition_opposée` dans `pseudo.rs`, et un contrôle qui vérifie que
+  `cmp eax,5` + `jne` par-dessus un `inc` se dit bien « si égal ».
+
+  --- trois erreurs de conception, trouvées en mesurant ---
+  1. LE FILTRE DES ÉTIQUETTES MANGEAIT LES MOTS-CLÉS. Il retirait les lignes
+     finissant par deux-points dont le nom n'était pas cité ailleurs — et
+     « si égal : » en finit par un. Tout le pseudo-code disparaissait, ne
+     laissant que l'indentation. Une étiquette se DÉCLARE maintenant
+     (`est_étiquette`), elle ne se devine pas à la ponctuation.
+  2. « TÊTE DE BOUCLE » ÉTAIT MAL DÉFINI. « Un bloc qu'on atteint et qui
+     revient vers lui » désigne TOUS les blocs d'une boucle, puisqu'ils y
+     reviennent tous. Le structureur ouvrait donc une boucle par bloc du
+     corps : soixante-seize lignes de `répéter` emboîtés pour un programme de
+     neuf octets. La bonne définition passe par le parcours en profondeur : la
+     tête est la cible d'une arête ARRIÈRE, et il n'y en a qu'une par boucle.
+  3. UNE BOUCLE SE ROUVRAIT ELLE-MÊME. Le corps d'un `répéter` commence par sa
+     tête ; celle-ci rouvrait sa propre boucle. Une liste des boucles en cours
+     d'écriture y met fin.
+
+  Onze contrôles tiennent tout cela, dont un qui mesure l'indentation : « une
+  boucle ne s'emboîte pas dans elle-même » aurait attrapé le défaut 2 tout
+  seul.
+
+  --- et un défaut du générateur de manuel ---
+  Un genre de bloc inconnu passait à la trappe sans un mot. Un titre écrit
+  « h3 » — qui n'existe pas dans ce générateur — a disparu du PDF, lequel s'est
+  produit comme si de rien n'était. Il refuse désormais de construire plutôt
+  que de perdre du texte en silence.

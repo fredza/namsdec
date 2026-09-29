@@ -453,6 +453,45 @@ fn conditional(instr: &Instruction, fr: bool) -> Option<String> {
     None
 }
 
+/// La condition d'un saut, d'un `setcc` ou d'un `cmovcc`, dite en clair.
+///
+/// Exposée parce que le déroulement en a besoin pour écrire « tant que
+/// plus petit » là où le listing dit `jl` : une structure de contrôle se
+/// nomme par sa condition, et cette condition est déjà traduite ici.
+pub fn condition_of(instr: &Instruction, lang: &str) -> Option<&'static str> {
+    describe_condition(instr.condition_code(), lang.starts_with("fr"))
+}
+
+/// La condition contraire.
+///
+/// Un compilateur écrit `si NON condition, sauter par-dessus` là où le
+/// programme dit « si condition, faire ceci ». Rendre la structure
+/// demande donc de retourner la condition — sans quoi tout `si` du
+/// pseudo-code dirait l'inverse de ce que fait le programme.
+pub fn condition_opposée(instr: &Instruction, lang: &str) -> Option<&'static str> {
+    use ConditionCode as C;
+    let contraire = match instr.condition_code() {
+        C::None => return None,
+        C::o => C::no,
+        C::no => C::o,
+        C::b => C::ae,
+        C::ae => C::b,
+        C::e => C::ne,
+        C::ne => C::e,
+        C::be => C::a,
+        C::a => C::be,
+        C::s => C::ns,
+        C::ns => C::s,
+        C::p => C::np,
+        C::np => C::p,
+        C::l => C::ge,
+        C::ge => C::l,
+        C::le => C::g,
+        C::g => C::le,
+    };
+    describe_condition(contraire, lang.starts_with("fr"))
+}
+
 /// La condition, dite comme on la lit — et non comme elle s'écrit.
 fn describe_condition(code: ConditionCode, fr: bool) -> Option<&'static str> {
     Some(match (code, fr) {

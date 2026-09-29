@@ -411,6 +411,11 @@ pub struct Strings {
     pub flow_blocks: &'static str,
     pub flow_pan_hint: &'static str,
     pub flow_current_only: &'static str,
+    /// Case : le pseudo-code structuré plutôt que le graphe.
+    pub flow_pseudo: &'static str,
+    pub flow_pseudo_hint: &'static str,
+    /// Ce qu'on dit quand la fonction n'a rien qui se structure.
+    pub flow_pseudo_empty: &'static str,
     pub flow_function_hint: &'static str,
     pub flow_copy_dot: &'static str,
     pub flow_copy_dot_hint: &'static str,
@@ -1280,6 +1285,10 @@ const FR: Strings = Strings {
     flow_blocks: "blocs",
     flow_pan_hint: "Glisser · Ctrl+molette",
     flow_current_only: "Fonction courante",
+    flow_pseudo: "Pseudo-code",
+    flow_pseudo_hint: "Les sauts rendus à leur forme : « si », « sinon », « tant que », \
+                       « répéter ». Ce qui ne se reconnaît pas garde son « aller à ».",
+    flow_pseudo_empty: "Rien à structurer ici : cette fonction n'a pas de saut.",
     flow_function_hint: "Le premier bloc de la fonction montrée. Sans symboles, namsdec \
                          la délimite en suivant les sauts, sans franchir les appels.",
     flow_copy_dot: "Copier en DOT",
@@ -2060,6 +2069,10 @@ const EN: Strings = Strings {
     flow_blocks: "blocks",
     flow_pan_hint: "Drag · Ctrl+wheel",
     flow_current_only: "Current function",
+    flow_pseudo: "Pseudo-code",
+    flow_pseudo_hint: "Jumps given back their shape: \"if\", \"else\", \"while\", \
+                       \"repeat\". What is not recognised keeps its \"go to\".",
+    flow_pseudo_empty: "Nothing to structure here: this function has no jump.",
     flow_function_hint: "The first block of the function being shown. Without symbols, \
                          namsdec bounds it by following jumps, never crossing calls.",
     flow_copy_dot: "Copy as DOT",

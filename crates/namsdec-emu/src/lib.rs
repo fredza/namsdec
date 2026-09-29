@@ -457,6 +457,7 @@ pub enum StepOverResult {
 /// pédagogique de namsdec. Un moteur de production (Unicorn, par exemple)
 /// couvre en revanche bien plus d'instructions et va bien plus vite — deux
 /// qualités qui n'ont de sens qu'à côté de la première, pas à sa place.
+///
 /// D'où ce trait plutôt qu'un remplacement : le jour où un second moteur
 /// arrive, il se branche ici et l'interface ne change pas d'une ligne.
 ///

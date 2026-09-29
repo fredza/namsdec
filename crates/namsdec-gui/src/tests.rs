@@ -107,9 +107,53 @@ const SOURCES_DE_L_INTERFACE: &[(&str, &str)] = &[
 /// première ligne le dit en une commande.
 #[test]
 fn aucun_commentaire_n_a_perdu_sa_fonction() {
+    // TOUT le dépôt, et non la seule interface : le premier cas trouvé
+    // hors de ce crate était dans `cfg.rs`, où la description des
+    // couches du graphe annonçait l'export Graphviz. Les fichiers sont
+    // lus sur le disque parce qu'ils sont trop nombreux pour
+    // `include_str!` — et c'est le dépôt qu'on lit, non la machine.
+    let racine = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+    let mut sources: Vec<std::path::PathBuf> = Vec::new();
+    let mut à_voir = vec![racine];
+    while let Some(dossier) = à_voir.pop() {
+        let Ok(entrées) = std::fs::read_dir(&dossier) else {
+            continue;
+        };
+        for entrée in entrées.flatten() {
+            let chemin = entrée.path();
+            if chemin.is_dir() {
+                à_voir.push(chemin);
+            } else if chemin.extension().is_some_and(|e| e == "rs")
+                // `tests.rs` porte des récits en plusieurs paragraphes —
+                // la forme y est trop libre pour que la règle tienne.
+                && chemin.file_name().is_some_and(|n| n != "tests.rs")
+            {
+                sources.push(chemin);
+            }
+        }
+    }
+    sources.sort();
+    assert!(
+        sources.len() > 40,
+        "le relevé ne trouve presque aucun fichier ({}) — il regarde au \
+         mauvais endroit",
+        sources.len()
+    );
+
     let mut collés = Vec::new();
-    for (fichier, source) in SOURCES_DE_L_INTERFACE {
+    for chemin in &sources {
+        let fichier = chemin
+            .strip_prefix(env!("CARGO_MANIFEST_DIR"))
+            .unwrap_or(chemin)
+            .display()
+            .to_string();
+        let Ok(source) = std::fs::read_to_string(chemin) else {
+            continue;
+        };
         let lignes: Vec<&str> = source.lines().collect();
+        if lignes.len() < 5 {
+            continue;
+        }
         for i in 1..lignes.len().saturating_sub(3) {
             let (avant, ici) = (lignes[i - 1].trim(), lignes[i].trim());
             let (Some(a), Some(b)) = (avant.strip_prefix("///"), ici.strip_prefix("///")) else {
@@ -9778,7 +9822,9 @@ fn opening_a_binary_shows_its_code_not_its_header() {
 #[test]
 fn both_languages_say_the_same_things() {
     /// Les champs dont les deux langues partagent le texte, et pourquoi.
-    const LES_MÊMES: [&str; 26] = [
+    const LES_MÊMES: [&str; 27] = [
+        // « Pseudo-code » s'écrit pareil des deux côtés de la Manche.
+        "flow_pseudo",
         // Une adresse d'exemple : elle s'écrit pareil partout.
         "flow_goal_hint",
         // Une adresse et deux noms propres : les traduire n'aurait pas
@@ -22334,6 +22380,7 @@ fn every_setting_that_is_written_is_read_back() {
         show_statusbar: false,
         show_console: false,
         show_tooltips: false,
+        flow_pseudo: true,
         completion: false,
         exercises: true,
         auto_indent: false,
@@ -25489,4 +25536,99 @@ boucle:
         peint.contains("a tourné 4 fois"),
         "et cela s'écrit sous le but :\n{peint}"
     );
+}
+
+/// Le pseudo-code se voit dans le déroulement, et remplace le graphe.
+///
+/// Deux lectures de la même fonction : sa forme, ou son texte. L'une ne
+/// remplace pas l'autre chez personne, d'où une case et non un choix
+/// imposé — mais quand la case est cochée, c'est bien le texte qu'on
+/// voit, et non un graphe avec du texte à côté.
+#[test]
+fn the_flow_window_can_show_the_pseudo_code() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    // Une boucle : `mov ecx, 3` puis un `dec`/`jnz` qui remonte. C'est
+    // la forme la plus courante, et celle qui doit se dire « répéter ».
+    let source = "section .text\nglobal _start\n_start:\n    mov ecx, 3\n\
+                  boucle:\n    dec ecx\n    jnz boucle\n    hlt\n";
+    let mut app = NamsdecApp {
+        source: source.to_owned(),
+        show_flow: true,
+        flow_pseudo: true,
+        ..Default::default()
+    };
+    app.do_assemble();
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let (_, lignes) = ce_qui_est_écrit(&ctx, &mut app, Some("flow_window"), 4);
+    let peint: Vec<&String> = lignes.iter().map(|(t, _)| t).collect();
+    assert!(
+        peint.iter().any(|t| t.contains("répéter")),
+        "la boucle se dit « répéter » : {peint:?}"
+    );
+    assert!(
+        peint.iter().any(|t| t.contains("tant que")),
+        "et sa condition se lit : {peint:?}"
+    );
+    // Le corps de la boucle, dit en clair et non en assembleur.
+    assert!(
+        peint.iter().any(|t| t.contains("ECX = ECX")),
+        "le corps est traduit : {peint:?}"
+    );
+}
+
+/// Et la case décochée rend le graphe.
+///
+/// Sans quoi le pseudo-code ne serait pas une vue de plus mais un
+/// remplacement — et le graphe, lui, montre ce qu'aucun texte ne montre :
+/// la forme d'ensemble d'une fonction qu'on découvre.
+#[test]
+fn unchecking_the_box_gives_the_graph_back() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let source = "section .text\nglobal _start\n_start:\n    mov ecx, 3\n\
+                  boucle:\n    dec ecx\n    jnz boucle\n    hlt\n";
+    let mesure = |pseudo: bool| -> Vec<String> {
+        let mut app = NamsdecApp {
+            source: source.to_owned(),
+            show_flow: true,
+            flow_pseudo: pseudo,
+            ..Default::default()
+        };
+        app.do_assemble();
+        let ctx = egui::Context::default();
+        app.apply_theme(&ctx);
+        let (_, lignes) = ce_qui_est_écrit(&ctx, &mut app, Some("flow_window"), 4);
+        lignes.into_iter().map(|(t, _)| t).collect()
+    };
+    let graphe = mesure(false);
+    assert!(
+        graphe.iter().any(|t| t.contains("dec ecx")),
+        "le graphe montre les instructions telles quelles : {graphe:?}"
+    );
+    assert!(
+        !graphe.iter().any(|t| t.contains("répéter")),
+        "et aucun mot de structure : {graphe:?}"
+    );
+}
+
+/// Le choix de la vue se retrouve à la séance suivante.
+///
+/// C'est la règle du dépôt : un réglage qui se voit dans l'interface
+/// part dans `settings.json` à l'instant où on le règle. Celui-ci tient
+/// à la personne — on lit un graphe pour repérer, un pseudo-code pour
+/// comprendre — et non au binaire qu'on ouvre.
+#[test]
+fn the_chosen_flow_view_survives_the_session() {
+    let app = NamsdecApp {
+        flow_pseudo: true,
+        ..Default::default()
+    };
+    let réglages = app.settings_snapshot();
+    assert!(réglages.flow_pseudo, "le choix part dans les réglages");
+    let relu = NamsdecApp::from_settings(réglages);
+    assert!(relu.flow_pseudo, "et il en revient");
 }

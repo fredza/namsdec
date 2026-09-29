@@ -1467,6 +1467,13 @@ struct NamsdecApp {
     /// compte des milliers de blocs, où l'on ne trouve rien. La fonction
     /// courante est ce qu'on regarde neuf fois sur dix.
     flow_current_only: bool,
+    /// Le pseudo-code structuré à la place du graphe.
+    ///
+    /// Le graphe dit par où l'on passe ; le pseudo-code dit ce qui se
+    /// passe. Un `jne` devient « si égal », une arête qui remonte devient
+    /// « tant que » — c'est le chaînon que tout le monde franchit de
+    /// tête après quelques semaines, et qui manque les premiers jours.
+    flow_pseudo: bool,
     /// Le grossissement du dessin, réglé à la molette.
     flow_zoom: f32,
     /// Où l'on regarde dans le graphe, en pixels depuis son coin haut
@@ -2195,6 +2202,7 @@ impl Default for NamsdecApp {
             show_flow: false,
             maximized_windows: std::collections::BTreeSet::new(),
             flow_current_only: true,
+            flow_pseudo: false,
             flow_zoom: 1.0,
             flow_offset: egui::Vec2::ZERO,
             flow_fit: false,

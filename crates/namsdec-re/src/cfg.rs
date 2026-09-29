@@ -89,13 +89,6 @@ impl Cfg {
         self.blocks.iter().position(|b| b.contains(addr))
     }
 
-    /// Les blocs, rangés par couches : l'entrée au niveau zéro, puis
-    /// ceux qu'on atteint en un saut, en deux…
-    ///
-    /// C'est ce qui donne au dessin sa forme. Un parcours en largeur
-    /// suffit : il place chaque bloc au plus court chemin depuis
-    /// l'entrée, et les arêtes qui remontent — les boucles — se voient
-    /// alors comme telles.
     /// Le graphe en DOT, tel que Graphviz le lit.
     ///
     /// De quoi le mettre dans une note, un rapport ou un cours : `dot -Tsvg`
@@ -202,6 +195,13 @@ impl Cfg {
         Self { blocks, edges }
     }
 
+    /// Les blocs, rangés par couches : l'entrée au niveau zéro, puis
+    /// ceux qu'on atteint en un saut, en deux…
+    ///
+    /// C'est ce qui donne au dessin sa forme. Un parcours en largeur
+    /// suffit : il place chaque bloc au plus court chemin depuis
+    /// l'entrée, et les arêtes qui remontent — les boucles — se voient
+    /// alors comme telles.
     pub fn layers(&self) -> Vec<usize> {
         let mut niveau = vec![usize::MAX; self.blocks.len()];
         if self.blocks.is_empty() {

@@ -199,6 +199,7 @@ pub struct Registers {
     /// modèle plat. FS et GS font exception, et c'est *tout* leur intérêt :
     /// `mov rax, fs:[0x28]` ne lit pas l'adresse 0x28, mais l'adresse
     /// 0x28 **au-dessus de la base du fil**, là où vit le canari de pile.
+    ///
     /// Un programme qui vient d'un compilateur moderne le fait dès sa
     /// première fonction protégée.
     ///

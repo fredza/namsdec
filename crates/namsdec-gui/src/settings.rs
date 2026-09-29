@@ -59,6 +59,14 @@ pub struct Settings {
     /// Les infobulles au survol. Certains les veulent, d'autres les
     /// trouvent envahissantes — d'où un réglage plutôt qu'un choix imposé.
     pub show_tooltips: bool,
+    /// Le déroulement montre-t-il le pseudo-code plutôt que le graphe ?
+    ///
+    /// Deux façons de lire la même fonction : la forme d'un côté, le
+    /// texte de l'autre. Le choix se garde parce qu'il tient à la
+    /// personne — on lit un graphe pour repérer, un pseudo-code pour
+    /// comprendre — et non au binaire qu'on ouvre.
+    #[serde(default)]
+    pub flow_pseudo: bool,
     /// L'autocomplétion de l'éditeur : elle propose, `Alt` accepte.
     pub completion: bool,
     /// Entrée garde l'indentation de la ligne qu'on quitte.
@@ -287,6 +295,9 @@ impl Default for Settings {
             show_statusbar: true,
             show_console: true,
             show_tooltips: true,
+            // Le graphe d'abord : c'est la vue qui montre la FORME, et
+            // c'est elle qui manque quand on découvre un binaire.
+            flow_pseudo: false,
             completion: true,
             exercises: false,
             auto_indent: true,

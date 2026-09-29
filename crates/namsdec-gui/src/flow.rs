@@ -261,6 +261,12 @@ impl NamsdecApp {
                 }
                 ui.separator();
                 ui.checkbox(&mut self.flow_current_only, s.flow_current_only);
+                // Deux lectures de la même fonction : sa forme, ou son
+                // texte. Le graphe dit par où l'on passe, le pseudo-code
+                // dit ce qui se passe — et l'un n'a jamais remplacé
+                // l'autre chez personne.
+                ui.checkbox(&mut self.flow_pseudo, s.flow_pseudo)
+                    .on_hover_text(s.flow_pseudo_hint);
                 // Et laquelle. Le nom quand le binaire en porte un,
                 // l'adresse sinon : « vérifie_mdp » se retient, pas
                 // `0x1d491`. L'adresse reste montrée à côté — c'est
@@ -352,6 +358,11 @@ impl NamsdecApp {
                     )
                 })
                 .collect();
+            if self.flow_pseudo {
+                let ligne_courante = self.emulator.as_ref().map(|e| e.cpu().regs.rip);
+                flow_pseudo_ui(ui, theme, s, &cfg, &state.disasm, self.lang, ligne_courante);
+                return;
+            }
             let sortie = egui::ScrollArea::both()
                 .auto_shrink([false, false])
                 .scroll_offset(self.flow_offset)
@@ -408,6 +419,66 @@ impl NamsdecApp {
 /// et c'est exactement le choix qu'on veut laisser.
 const FLOW_ZOOM_MIN: f32 = 0.4;
 const FLOW_ZOOM_MAX: f32 = 2.0;
+
+/// Le pseudo-code structuré de la fonction montrée.
+///
+/// Une colonne de texte en chasse fixe, indentée par la structure. Les
+/// mots qui la portent — « si », « sinon », « tant que », « répéter » —
+/// sont en couleur d'accent : ils ne viennent d'aucune instruction, ils
+/// viennent du GRAPHE, et cette différence est tout ce qu'il y a à
+/// comprendre ici.
+///
+/// La ligne où le processeur se trouve est surlignée, comme dans
+/// l'éditeur — sans quoi le pseudo-code serait un texte mort à côté d'un
+/// listing vivant.
+pub(crate) fn flow_pseudo_ui(
+    ui: &mut egui::Ui,
+    theme: &'static Theme,
+    s: &Strings,
+    cfg: &namsdec_re::cfg::Cfg,
+    disasm: &[namsdec_disasm::DecodedInstruction],
+    lang: Lang,
+    rip: Option<u64>,
+) {
+    let lignes = namsdec_re::structure::pseudo_code(cfg, disasm, lang.code());
+    if lignes.is_empty() {
+        empty_state(ui, theme, s.flow_pseudo_empty, None, None);
+        return;
+    }
+    egui::ScrollArea::both()
+        .auto_shrink([false, false])
+        .show(ui, |ui| {
+            // Un cran de quatre espaces, mesuré et non deviné : la
+            // largeur d'un caractère dépend de la police et du zoom.
+            let police = egui::TextStyle::Monospace.resolve(ui.style());
+            let cran = ui
+                .painter()
+                .layout_no_wrap("    ".to_owned(), police, egui::Color32::PLACEHOLDER)
+                .size()
+                .x;
+            ui.spacing_mut().item_spacing.y = 2.0;
+            for ligne in &lignes {
+                ui.horizontal(|ui| {
+                    ui.add_space(cran * ligne.profondeur as f32);
+                    let ici = rip.is_some() && ligne.adresse == rip;
+                    let couleur = if ici {
+                        theme.accent
+                    } else if ligne.est_étiquette {
+                        theme.dim
+                    } else if ligne.adresse.is_none() {
+                        // Un mot de structure : il vient du graphe, non
+                        // d'une instruction.
+                        theme.warn
+                    } else {
+                        theme.text
+                    };
+                    let texte = egui::RichText::new(&ligne.texte).monospace().color(couleur);
+                    let texte = if ici { texte.strong() } else { texte };
+                    ui.label(texte);
+                });
+            }
+        });
+}
 
 /// La couleur d'une flèche, selon ce qu'elle veut dire.
 fn flow_edge_colour(theme: &'static Theme, kind: namsdec_re::cfg::Kind) -> egui::Color32 {

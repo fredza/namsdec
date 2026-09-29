@@ -4,6 +4,51 @@ Les dates sont celles des commits ; le format suit [Keep a
 Changelog](https://keepachangelog.com/fr/1.1.0/) d'assez loin — une
 entrée par version, et ce qui change pour qui s'en sert.
 
+## 0.2.5-beta.11 — 29 septembre 2026
+
+Les sauts rendus à leur forme, un `main.rs` qui a maigri des deux tiers,
+et vingt-cinq commentaires qui décrivaient autre chose que ce qu'ils
+précédaient.
+
+**Le pseudo-code lit enfin les sauts**
+- La fenêtre du déroulement montre, au choix, le graphe ou le
+  **pseudo-code structuré** de la fonction. Un `jne` qui enjambe deux
+  instructions devient « si égal : … » ; une arête qui remonte devient
+  « tant que » ou « répéter … tant que ».
+- La distinction entre les deux formes de boucle n'est pas cosmétique :
+  l'une peut ne jamais tourner, l'autre passe toujours au moins une
+  fois. C'est précisément ce qu'on cherche à savoir devant un binaire
+  qu'on n'a pas écrit.
+- La condition affichée est celle du **programme**, non celle du saut.
+  Un compilateur écrit « si NON condition, sauter par-dessus » ;
+  recopier le mnémonique dirait l'inverse de ce que fait le code, et se
+  lirait très bien.
+- Ce qui ne se reconnaît pas garde son « aller à » et son étiquette. Un
+  `si` inventé à la mauvaise place coûte plus cher que le `goto` qu'il
+  remplace : on relit un `goto`, on ne relit pas ce qu'on croit avoir
+  compris.
+- Le choix de la vue se garde dans `settings.json`.
+
+**Neuf fiches de plus au manuel** (155 → 164)
+- Additionner sans déborder (les formes saturantes), multiplier en
+  parallèle, multiplier et additionner d'un coup, additionner voisin à
+  voisin, élargir chaque élément, charger seize octets mal alignés,
+  prévenir le cache, demander ce que ce processeur sait faire, parler à
+  l'hyperviseur.
+- Chacune dit si namsdec sait l'exécuter. Décrire ce qu'on ne simule pas
+  sans le dire serait une promesse en l'air.
+
+**Ce qui ne se voit pas, et qui compte**
+- `main.rs` passe de 20 641 à 6 440 lignes : dix-neuf modules en sont
+  sortis, le texte déplacé sans une virgule de différence.
+- Vingt-cinq commentaires de documentation décrivaient autre chose que
+  ce qu'ils précédaient — Rust laisse deux blocs de `///` se suivre, et
+  rien ne le signalait. Six sont revenus à leur fonction, cinq étaient
+  d'anciennes rédactions déjà remplacées.
+- Le bouton « Écrire » du panneau mémoire est encadré comme les autres :
+  il était indiscernable d'une étiquette tant qu'on ne le survolait pas.
+- L'intégration continue passe pour la première fois.
+
 ## 0.2.5-beta.3 — 23 septembre 2026
 
 Ce qu'on avait sous les yeux sans le voir : une croix qui ne ressemblait

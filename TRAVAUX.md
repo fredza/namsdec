@@ -265,6 +265,14 @@ Détail chiffré dans `AMELIORATIONS.txt` 7.11, section « REVUE DU
       comparaison suivie de son saut, bloc de `nop`, préparation de
       constantes. Reste à monter d'un cran : dire ce qu'une FONCTION
       fait, et non un bloc.
+- [x] **Les sauts rendus à leur forme** (A 7.9) — `namsdec-re/structure`
+      lit le graphe d'une fonction et en écrit le pseudo-code indenté :
+      `si` / `sinon` pour deux branches qui se rejoignent, `tant que`
+      quand le test est en haut, `répéter … tant que` quand il est en
+      bas. La condition affichée est celle du PROGRAMME, non celle du
+      saut. Ce qui ne se reconnaît pas garde son « aller à ». La case
+      « Pseudo-code » de la fenêtre du déroulement bascule entre les
+      deux vues, et le choix part dans `settings.json`.
 
 ## 6. Tests et robustesse
 

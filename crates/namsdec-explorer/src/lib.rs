@@ -1602,8 +1602,6 @@ mod tests {
         assert!(!dir.path().join("ailleurs.asm").exists());
     }
 
-    /// Un chemin tapé à la main qui ne mène pas à un dossier laisse la
-    /// racine où elle est, et le dit.
     /// Le champ de chemin rend le clavier quand on va ailleurs.
     ///
     /// Il redemandait le focus à *chaque* frame tant qu'il était ouvert :
@@ -1641,6 +1639,8 @@ mod tests {
         );
     }
 
+    /// Un chemin tapé à la main qui ne mène pas à un dossier laisse la
+    /// racine où elle est, et le dit.
     #[test]
     fn a_path_that_is_not_a_directory_is_refused() {
         let dir = tempfile::tempdir().unwrap();

@@ -32,6 +32,7 @@ pub mod provenance;
 pub mod report;
 pub mod route;
 pub mod strings;
+pub mod structure;
 pub mod syscalls;
 pub mod table;
 pub mod xrefs;

@@ -657,6 +657,33 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
         ("p",
          "Un saut dont la cible se calcule — table de sauts, pointeur de fonction — est "
          "signalé comme tel : aucune flèche n'est inventée vers une adresse inconnue."),
+        ("h2", "Le pseudo-code : les sauts rendus à leur forme"),
+        ("p",
+         "La case <b>Pseudo-code</b> remplace le dessin par le <b>texte</b> de la même "
+         "fonction. Là où le listing dit <font face='Courier'>jne</font>, le pseudo-code "
+         "dit « si égal : », et il met en retrait ce qui en dépend ; là où une flèche "
+         "remonte, il dit « tant que » ou « répéter … tant que ». C'est le chaînon que "
+         "tout le monde franchit de tête après quelques semaines, et qui manque les "
+         "premiers jours."),
+        ("p",
+         "<b>La condition affichée est celle du programme, non celle du saut.</b> Un "
+         "compilateur écrit « si NON condition, sauter par-dessus » : recopier le "
+         "mnémonique dirait l'inverse de ce que fait le code — et se lirait très bien, ce "
+         "qui est le pire des cas."),
+        ("liste", [
+            "<b>si … sinon</b> — deux branches qui se rejoignent plus bas.",
+            "<b>tant que</b> — le test est en haut : le corps peut ne jamais tourner.",
+            "<b>répéter … tant que</b> — le test est en bas : le corps passe au moins une "
+            "fois. La distinction n'est pas cosmétique, c'est souvent la question qu'on "
+            "se pose devant un binaire qu'on n'a pas écrit.",
+        ]),
+        ("p",
+         "Ce qui ne se reconnaît pas garde son <b>« aller à »</b> et son étiquette. Un "
+         "« si » inventé à la mauvaise place coûterait plus cher que le saut qu'il "
+         "remplace : on relit un saut, on ne relit pas ce qu'on croit avoir compris. Les "
+         "mots de structure sont d'une autre couleur que les instructions, parce qu'ils "
+         "ne viennent d'aucune d'elles — ils viennent du graphe. La ligne où le "
+         "processeur se trouve est surlignée, comme dans l'éditeur."),
         ("p",
          "Le graphe s’emporte : <b>Copier en DOT</b> le met dans le presse-papier, "
          "<b>Enregistrer le graphe…</b> l’écrit dans un fichier. "
@@ -1463,6 +1490,15 @@ def rendre(chemin, v, blocs):
             flux.append(_cadre_note(contenu_bloc, st, doc.width))
         elif genre == "table":
             flux.append(_tableau(contenu_bloc, st, doc.width))
+        else:
+            # Un genre inconnu passait à la trappe sans un mot : un titre
+            # écrit « h3 » — qui n'existe pas ici — a disparu du manuel
+            # sans que rien ne le dise, et le PDF s'est généré comme si
+            # de rien n'était.
+            raise SystemExit(
+                f"genre de bloc inconnu : {genre!r} — "
+                f"attendus : h1, h2, p, liste, code, note, table"
+            )
     doc.build(flux)
 
 
