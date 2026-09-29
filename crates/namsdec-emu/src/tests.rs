@@ -3173,11 +3173,7 @@ hlt
     );
 
     assert_eq!(emu.output(), b"bonjour\n");
-    assert_eq!(
-        emu.cpu.regs.get64(Reg64::Rax),
-        8,
-        "et rend le total écrit"
-    );
+    assert_eq!(emu.cpu.regs.get64(Reg64::Rax), 8, "et rend le total écrit");
 }
 
 /// `fstat` décrit la sortie standard comme un terminal.
@@ -3226,7 +3222,10 @@ fn library_emulator(nom: &str) -> Emulator {
     // La pile porte l'adresse de retour, comme après un `call`.
     cpu.regs.set64(Reg64::Rsp, 0x408000);
     let mut emu = Emulator::new(cpu);
-    emu.cpu.mem.poke(0x408000, &0x402000u64.to_le_bytes()).unwrap();
+    emu.cpu
+        .mem
+        .poke(0x408000, &0x402000u64.to_le_bytes())
+        .unwrap();
     emu.set_heap(0x405000, 0x407000);
     emu.set_externals([(BORNE, nom.to_owned())].into_iter().collect(), 0);
     emu
@@ -3243,7 +3242,10 @@ fn the_provided_printf_formats_like_printf() {
     let mut emu = library_emulator("printf");
     emu.cpu
         .mem
-        .poke(0x403000, b"%s a %d ans, soit %04x en hexadecimal (%5.2f)\n\0")
+        .poke(
+            0x403000,
+            b"%s a %d ans, soit %04x en hexadecimal (%5.2f)\n\0",
+        )
         .unwrap();
     emu.cpu.mem.poke(0x403100, b"Bob\0").unwrap();
     emu.cpu.regs.set64(Reg64::Rdi, 0x403000);

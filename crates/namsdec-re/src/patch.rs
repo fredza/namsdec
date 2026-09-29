@@ -94,9 +94,7 @@ pub fn inverted_jump(bytes: &[u8]) -> Option<Vec<u8>> {
 /// saut vers autre chose que ce qui était visé.
 pub fn forced_jump(bytes: &[u8]) -> Option<Vec<u8>> {
     match bytes {
-        [opcode, déplacement] if (0x70..=0x7f).contains(opcode) => {
-            Some(vec![0xeb, *déplacement])
-        }
+        [opcode, déplacement] if (0x70..=0x7f).contains(opcode) => Some(vec![0xeb, *déplacement]),
         [0x0f, opcode, d0, d1, d2, d3] if (0x80..=0x8f).contains(opcode) => {
             let déplacement = i32::from_le_bytes([*d0, *d1, *d2, *d3]).checked_add(1)?;
             let mut out = vec![0xe9];
@@ -168,7 +166,10 @@ mod tests {
             let inversé = inverted_jump(&original).expect("un saut conditionnel");
             assert_eq!(inversé.len(), 6, "la longueur ne bouge pas");
             assert_eq!(&inversé[2..], &original[2..], "la cible est intacte");
-            assert_eq!(inverted_jump(&inversé).as_deref(), Some(original.as_slice()));
+            assert_eq!(
+                inverted_jump(&inversé).as_deref(),
+                Some(original.as_slice())
+            );
         }
     }
 
@@ -202,7 +203,11 @@ mod tests {
     fn what_is_not_a_conditional_jump_is_refused() {
         assert_eq!(inverted_jump(&[0xeb, 0x05]), None, "jmp court");
         assert_eq!(inverted_jump(&[0xe9, 0, 0, 0, 0]), None, "jmp long");
-        assert_eq!(inverted_jump(&[0xe3, 0x05]), None, "jrcxz n'a pas d'inverse");
+        assert_eq!(
+            inverted_jump(&[0xe3, 0x05]),
+            None,
+            "jrcxz n'a pas d'inverse"
+        );
         assert_eq!(inverted_jump(&[0x48, 0x89, 0xe5]), None, "mov rbp, rsp");
         assert_eq!(inverted_jump(&[]), None);
         assert_eq!(inverted_jump(&[0x0f]), None, "un préfixe seul");
@@ -276,7 +281,11 @@ mod tests_forced {
     #[test]
     fn what_is_not_a_conditional_jump_is_refused() {
         assert_eq!(forced_jump(&[0x90]), None, "un `nop`");
-        assert_eq!(forced_jump(&[0xeb, 0x10]), None, "un `jmp` déjà inconditionnel");
+        assert_eq!(
+            forced_jump(&[0xeb, 0x10]),
+            None,
+            "un `jmp` déjà inconditionnel"
+        );
         assert_eq!(forced_jump(&[0xe3, 0x10]), None, "`jrcxz`");
         assert_eq!(forced_jump(&[]), None, "rien du tout");
         // Un saut court à qui il manque son déplacement : refusé plutôt

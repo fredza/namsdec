@@ -156,7 +156,9 @@ mod tests {
         // Cinquante-six octets : le cas qui déborde sur un second bloc à
         // cause du rembourrage, et que les implémentations ratent.
         assert_eq!(
-            hex(&sha256(b"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq")),
+            hex(&sha256(
+                b"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"
+            )),
             "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1"
         );
         // Un message long, sur plusieurs blocs.
@@ -177,16 +179,46 @@ mod tests {
     #[test]
     fn sha256_crosses_the_block_boundary_correctly() {
         const ATTENDUS: [(usize, &str); 10] = [
-            (55, "9f4390f8d30c2dd92ec9f095b65e2b9ae9b0a925a5258e241c9f1e910f734318"),
-            (56, "b35439a4ac6f0948b6d6f9e3c6af0f5f590ce20f1bde7090ef7970686ec6738a"),
-            (57, "f13b2d724659eb3bf47f2dd6af1accc87b81f09f59f2b75e5c0bed6589dfe8c6"),
-            (58, "d5c039b748aa64665782974ec3dc3025c042edf54dcdc2b5de31385b094cb678"),
-            (59, "111bb261277afd65f0744b247cd3e47d386d71563d0ed995517807d5ebd4fba3"),
-            (60, "11ee391211c6256460b6ed375957fadd8061cafbb31daf967db875aebd5aaad4"),
-            (61, "35d5fc17cfbbadd00f5e710ada39f194c5ad7c766ad67072245f1fad45f0f530"),
-            (62, "f506898cc7c2e092f9eb9fadae7ba50383f5b46a2a4fe5597dbb553a78981268"),
-            (63, "7d3e74a05d7db15bce4ad9ec0658ea98e3f06eeecf16b4c6fff2da457ddc2f34"),
-            (64, "ffe054fe7ae0cb6dc65c3af9b61d5209f439851db43d0ba5997337df154668eb"),
+            (
+                55,
+                "9f4390f8d30c2dd92ec9f095b65e2b9ae9b0a925a5258e241c9f1e910f734318",
+            ),
+            (
+                56,
+                "b35439a4ac6f0948b6d6f9e3c6af0f5f590ce20f1bde7090ef7970686ec6738a",
+            ),
+            (
+                57,
+                "f13b2d724659eb3bf47f2dd6af1accc87b81f09f59f2b75e5c0bed6589dfe8c6",
+            ),
+            (
+                58,
+                "d5c039b748aa64665782974ec3dc3025c042edf54dcdc2b5de31385b094cb678",
+            ),
+            (
+                59,
+                "111bb261277afd65f0744b247cd3e47d386d71563d0ed995517807d5ebd4fba3",
+            ),
+            (
+                60,
+                "11ee391211c6256460b6ed375957fadd8061cafbb31daf967db875aebd5aaad4",
+            ),
+            (
+                61,
+                "35d5fc17cfbbadd00f5e710ada39f194c5ad7c766ad67072245f1fad45f0f530",
+            ),
+            (
+                62,
+                "f506898cc7c2e092f9eb9fadae7ba50383f5b46a2a4fe5597dbb553a78981268",
+            ),
+            (
+                63,
+                "7d3e74a05d7db15bce4ad9ec0658ea98e3f06eeecf16b4c6fff2da457ddc2f34",
+            ),
+            (
+                64,
+                "ffe054fe7ae0cb6dc65c3af9b61d5209f439851db43d0ba5997337df154668eb",
+            ),
         ];
         for (longueur, attendu) in ATTENDUS {
             let message = vec![b'a'; longueur];

@@ -245,14 +245,7 @@ pub fn packages_named(install: &str) -> Vec<&str> {
 pub fn package_known(name: &str) -> Option<bool> {
     let dnf = program_path_in("dnf", None)?;
     let sortie = std::process::Command::new(dnf)
-        .args([
-            "-q",
-            "--cacheonly",
-            "repoquery",
-            "--qf",
-            "%{name}",
-            name,
-        ])
+        .args(["-q", "--cacheonly", "repoquery", "--qf", "%{name}", name])
         .output()
         .ok()?;
     if !sortie.status.success() {

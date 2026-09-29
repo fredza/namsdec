@@ -90,7 +90,10 @@ pub fn hex_dump(octets: &[u8]) -> String {
 /// frappe fait croire qu'on regarde le début du fichier.
 fn nombre(texte: &str) -> Option<usize> {
     let texte = texte.trim();
-    if let Some(hexa) = texte.strip_prefix("0x").or_else(|| texte.strip_prefix("0X")) {
+    if let Some(hexa) = texte
+        .strip_prefix("0x")
+        .or_else(|| texte.strip_prefix("0X"))
+    {
         usize::from_str_radix(hexa, 16).ok()
     } else {
         texte.parse().ok()
@@ -271,7 +274,10 @@ impl ReModule for DumpModule {
                             .clicked()
                             && let Some(bytes) = écrits.clone()
                         {
-                            self.demande = Some(ReRequest::PatchBytes { offset: début, bytes });
+                            self.demande = Some(ReRequest::PatchBytes {
+                                offset: début,
+                                bytes,
+                            });
                             self.remplacement.clear();
                         }
                     });
@@ -458,14 +464,22 @@ mod tests {
         let texte = hex_dump(b"ELF\x01\x02");
         let lignes: Vec<&str> = texte.lines().collect();
         assert_eq!(lignes.len(), 1, "cinq octets tiennent sur une ligne");
-        assert!(lignes[0].starts_with("00000000  45 4c 46 01 02"), "{}", lignes[0]);
+        assert!(
+            lignes[0].starts_with("00000000  45 4c 46 01 02"),
+            "{}",
+            lignes[0]
+        );
         assert!(lignes[0].ends_with("|ELF..|"), "{}", lignes[0]);
 
         // Deux lignes pleines, et les décalages qui vont avec.
         let texte = hex_dump(&[0x41u8; 20]);
         let lignes: Vec<&str> = texte.lines().collect();
         assert_eq!(lignes.len(), 2);
-        assert!(lignes[1].starts_with("00000010  41 41 41 41 "), "{}", lignes[1]);
+        assert!(
+            lignes[1].starts_with("00000010  41 41 41 41 "),
+            "{}",
+            lignes[1]
+        );
         // La colonne de texte reste à la même abscisse sur une ligne
         // incomplète : sans le remplissage, un `diff` verrait une
         // différence là où il n'y en a pas.

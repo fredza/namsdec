@@ -448,9 +448,18 @@ mod mnemonic_tests {
     /// emploient les deux, et ils ont raison.
     #[test]
     fn both_spellings_of_a_condition_are_known() {
-        for paire in [("jne", "jnz"), ("je", "jz"), ("setne", "setnz"), ("cmovae", "cmovnb")] {
+        for paire in [
+            ("jne", "jnz"),
+            ("je", "jz"),
+            ("setne", "setnz"),
+            ("cmovae", "cmovnb"),
+        ] {
             assert!(is_mnemonic(paire.0), "{} devrait être connu", paire.0);
-            assert!(is_mnemonic(paire.1), "{} aussi : c'est le même octet", paire.1);
+            assert!(
+                is_mnemonic(paire.1),
+                "{} aussi : c'est le même octet",
+                paire.1
+            );
         }
         // Mais le synonyme d'une condition qui n'existe pas n'en devient
         // pas une pour autant.

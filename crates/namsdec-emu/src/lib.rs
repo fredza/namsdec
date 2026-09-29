@@ -1076,8 +1076,7 @@ impl Emulator {
     /// `getrandom` : le même programme doit donner deux fois le même
     /// résultat, sans quoi revenir en arrière n'aurait plus de sens.
     fn pseudo_random_u32(&self) -> u32 {
-        let mut state =
-            0x9e37_79b9_7f4a_7c15u64 ^ self.ticks.wrapping_mul(0x2545_f491_4f6c_dd1d);
+        let mut state = 0x9e37_79b9_7f4a_7c15u64 ^ self.ticks.wrapping_mul(0x2545_f491_4f6c_dd1d);
         state ^= state << 13;
         state ^= state >> 7;
         state ^= state << 17;

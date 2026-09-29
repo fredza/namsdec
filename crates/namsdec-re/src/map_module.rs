@@ -145,18 +145,12 @@ impl ReModule for MapModule {
                     // est ce qu'on cherche du regard, et le lire dans
                     // une colonne grise ne le donne pas.
                     let inquiétant = segment.droits.contains('w') && segment.droits.contains('x');
-                    ui.monospace(
-                        egui::RichText::new(&segment.droits)
-                            .color(if inquiétant {
-                                egui::Color32::from_rgb(0xe0, 0x6c, 0x5e)
-                            } else {
-                                ui.visuals().text_color()
-                            }),
-                    );
-                    ui.monospace(format!(
-                        "{:#x} + {:#x}",
-                        segment.offset, segment.filesz
-                    ));
+                    ui.monospace(egui::RichText::new(&segment.droits).color(if inquiétant {
+                        egui::Color32::from_rgb(0xe0, 0x6c, 0x5e)
+                    } else {
+                        ui.visuals().text_color()
+                    }));
+                    ui.monospace(format!("{:#x} + {:#x}", segment.offset, segment.filesz));
                     ui.monospace(format!("{:#x}", segment.vaddr));
                     ui.monospace(format!("{:#x}", segment.memsz));
                     ui.end_row();

@@ -263,7 +263,10 @@ mod tests_presets {
             .keys()
             .filter(|action| !vim.map.contains_key(action))
             .collect();
-        assert!(en_trop.is_empty(), "et celles-ci manquent au jeu vim : {en_trop:?}");
+        assert!(
+            en_trop.is_empty(),
+            "et celles-ci manquent au jeu vim : {en_trop:?}"
+        );
     }
 
     /// Dans un jeu, deux actions ne partagent pas la même frappe.
@@ -455,10 +458,7 @@ impl KeyBindings {
         );
         // Ctrl+F2 : celui de VS Code pour « toutes les occurrences ».
         // Ctrl+F2 : « sélectionner toutes les occurrences » de VS Code.
-        map.insert(
-            Action::HighlightMatches,
-            simple(M::CTRL, Key::F2),
-        );
+        map.insert(Action::HighlightMatches, simple(M::CTRL, Key::F2));
         // F2 tout court : « renommer », partout où ce geste existe.
         map.insert(Action::RenameMatches, simple(M::NONE, Key::F2));
         // F3 / Maj+F3 : « suivant » et « précédent », partout où l'on
@@ -467,10 +467,7 @@ impl KeyBindings {
         map.insert(Action::PreviousMatch, simple(M::SHIFT, Key::F3));
         // Ctrl+Maj+N pour nommer, Ctrl+Maj+C pour commenter. Ctrl+C seul
         // reste la copie, qu'on ne touche pas.
-        map.insert(
-            Action::NameAddress,
-            simple(M::CTRL.plus(M::SHIFT), Key::N),
-        );
+        map.insert(Action::NameAddress, simple(M::CTRL.plus(M::SHIFT), Key::N));
         map.insert(
             Action::CommentAddress,
             simple(M::CTRL.plus(M::SHIFT), Key::C),
@@ -677,7 +674,6 @@ impl KeyBindings {
         );
         Self { map }
     }
-
 }
 
 /// Mode choisi pendant la capture d'un nouveau raccourci dans Préférences.
@@ -1050,9 +1046,13 @@ mod tests {
         let mut dispatcher = Dispatcher::default();
         let mut result = None;
 
-        run(&ctx, vec![key_event(Key::Space), key_event(Key::V), key_event(Key::E)], |ui| {
-            result = dispatcher.poll(ui.ctx(), &bindings, false);
-        });
+        run(
+            &ctx,
+            vec![key_event(Key::Space), key_event(Key::V), key_event(Key::E)],
+            |ui| {
+                result = dispatcher.poll(ui.ctx(), &bindings, false);
+            },
+        );
 
         assert_eq!(result, Some(Action::ToggleExplorer));
     }
@@ -1089,9 +1089,13 @@ mod tests {
         let mut dispatcher = Dispatcher::default();
         let mut result = None;
 
-        run(&ctx, vec![key_event(Key::Space), key_event(Key::V), key_event(Key::E)], |ui| {
-            result = dispatcher.poll(ui.ctx(), &bindings, true);
-        });
+        run(
+            &ctx,
+            vec![key_event(Key::Space), key_event(Key::V), key_event(Key::E)],
+            |ui| {
+                result = dispatcher.poll(ui.ctx(), &bindings, true);
+            },
+        );
 
         assert_eq!(result, None);
     }
@@ -1510,7 +1514,10 @@ mod family_tests {
     /// cours), mais une séquence préfixe d'une autre ne l'est jamais.
     #[test]
     fn no_sequence_is_the_prefix_of_another() {
-        for (nom, jeu) in [("vim", KeyBindings::vim()), ("ordinaire", KeyBindings::classic())] {
+        for (nom, jeu) in [
+            ("vim", KeyBindings::vim()),
+            ("ordinaire", KeyBindings::classic()),
+        ] {
             let séquences: Vec<(Action, Vec<Key>)> = jeu
                 .map
                 .iter()
@@ -1600,11 +1607,7 @@ mod family_tests {
         }
 
         // Et « cours jusqu'à », qui était déjà rangé ainsi.
-        for action in [
-            Action::RunToCall,
-            Action::RunToReturn,
-            Action::RunToSyscall,
-        ] {
+        for action in [Action::RunToCall, Action::RunToReturn, Action::RunToSyscall] {
             assert_eq!(
                 préfixe_de(action),
                 Some(vec![Key::Space, Key::U]),
@@ -1620,7 +1623,10 @@ mod family_tests {
     /// du hasard.
     #[test]
     fn no_shortcut_is_used_twice() {
-        for (nom, jeu) in [("vim", KeyBindings::vim()), ("ordinaire", KeyBindings::classic())] {
+        for (nom, jeu) in [
+            ("vim", KeyBindings::vim()),
+            ("ordinaire", KeyBindings::classic()),
+        ] {
             let mut vus: std::collections::BTreeMap<String, Action> = Default::default();
             for (action, chord) in &jeu.map {
                 let clé = format!("{chord:?}");

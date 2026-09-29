@@ -117,12 +117,7 @@ pub const FUNCTIONS: &[(&str, usize, &str, &str)] = &[
         "permute les 4 octets de bas",
         "swaps the low 4 bytes",
     ),
-    (
-        "bswap64",
-        1,
-        "permute les 8 octets",
-        "swaps all 8 bytes",
-    ),
+    ("bswap64", 1, "permute les 8 octets", "swaps all 8 bytes"),
     (
         "sext8",
         1,
@@ -142,14 +137,39 @@ pub const FUNCTIONS: &[(&str, usize, &str, &str)] = &[
         "sign-extends 32 bits",
     ),
     ("lo8", 1, "garde l'octet de bas", "keeps the low byte"),
-    ("lo16", 1, "garde les 16 bits de bas", "keeps the low 16 bits"),
-    ("lo32", 1, "garde les 32 bits de bas", "keeps the low 32 bits"),
-    ("hi32", 1, "garde les 32 bits de haut", "keeps the high 32 bits"),
+    (
+        "lo16",
+        1,
+        "garde les 16 bits de bas",
+        "keeps the low 16 bits",
+    ),
+    (
+        "lo32",
+        1,
+        "garde les 32 bits de bas",
+        "keeps the low 32 bits",
+    ),
+    (
+        "hi32",
+        1,
+        "garde les 32 bits de haut",
+        "keeps the high 32 bits",
+    ),
     ("popcnt", 1, "compte les bits à 1", "counts the set bits"),
     ("clz", 1, "zéros de tête", "leading zeros"),
     ("ctz", 1, "zéros de queue", "trailing zeros"),
-    ("rol", 2, "rotation à gauche sur 64 bits", "64-bit left rotate"),
-    ("ror", 2, "rotation à droite sur 64 bits", "64-bit right rotate"),
+    (
+        "rol",
+        2,
+        "rotation à gauche sur 64 bits",
+        "64-bit left rotate",
+    ),
+    (
+        "ror",
+        2,
+        "rotation à droite sur 64 bits",
+        "64-bit right rotate",
+    ),
     (
         "align",
         2,
@@ -383,12 +403,7 @@ struct Parser<'a> {
 /// Les mots qui disent la taille d'une lecture mémoire, et combien
 /// d'octets ils valent. Ceux de NASM, parce que c'est ce qu'on lit dans
 /// le listing juste au-dessus du champ.
-const TAILLES: &[(&str, usize)] = &[
-    ("byte", 1),
-    ("word", 2),
-    ("dword", 4),
-    ("qword", 8),
-];
+const TAILLES: &[(&str, usize)] = &[("byte", 1), ("word", 2), ("dword", 4), ("qword", 8)];
 
 /// La force d'un opérateur binaire. Celle du C, parce que c'est celle
 /// qu'on a en tête en lisant du code — et que se tromper là-dessus
@@ -1071,7 +1086,11 @@ mod tests {
         assert_eq!(eval("rip", Some(&regs)), Ok(0x401000));
         // Et dans un calcul, ce qui est le but.
         assert_eq!(eval("al & 0x0f", Some(&regs)), Ok(8));
-        assert_eq!(eval("RAX", Some(&regs)), Ok(0x1122334455667788), "la casse ne compte pas");
+        assert_eq!(
+            eval("RAX", Some(&regs)),
+            Ok(0x1122334455667788),
+            "la casse ne compte pas"
+        );
     }
 
     /// Aucune expression, si tordue soit-elle, ne fait paniquer.
@@ -1082,8 +1101,27 @@ mod tests {
     #[test]
     fn nothing_ever_panics() {
         let morceaux = [
-            "", "(", ")", "1", "+", "-", "~", "*", "0x", "0b", "'", "'a", ",", "rax", "rol", "<<",
-            "%", "/", "é", "0o9", "999999999999999999999999",
+            "",
+            "(",
+            ")",
+            "1",
+            "+",
+            "-",
+            "~",
+            "*",
+            "0x",
+            "0b",
+            "'",
+            "'a",
+            ",",
+            "rax",
+            "rol",
+            "<<",
+            "%",
+            "/",
+            "é",
+            "0o9",
+            "999999999999999999999999",
         ];
         for a in morceaux {
             let _ = eval(a, None);

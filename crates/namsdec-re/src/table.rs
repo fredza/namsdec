@@ -97,10 +97,7 @@ pub fn syscall(number: u64) -> Option<Syscall> {
         262 => ("newfstatat", &["dossier", "chemin", "statbuf", "options"]),
         267 => ("readlinkat", &["dossier", "chemin", "buf", "taille"]),
         273 => ("set_robust_list", &["liste", "taille"]),
-        302 => (
-            "prlimit64",
-            &["pid", "ressource", "nouvelle", "ancienne"],
-        ),
+        302 => ("prlimit64", &["pid", "ressource", "nouvelle", "ancienne"]),
         334 => ("rseq", &["rseq", "taille", "options", "signature"]),
         201 => ("time", &["résultat"]),
         318 => ("getrandom", &["buf", "taille", "options"]),

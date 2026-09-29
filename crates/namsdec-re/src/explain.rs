@@ -45,11 +45,7 @@ pub fn phrase(bloc: &Bloc, fr: bool) -> Option<String> {
     }
     if bloc.instructions.iter().all(|i| i.trim() == "nop") {
         return Some(join(
-            if fr {
-                "ne fait rien"
-            } else {
-                "does nothing"
-            },
+            if fr { "ne fait rien" } else { "does nothing" },
             tours,
         ));
     }
@@ -221,7 +217,6 @@ fn préparation(bloc: &Bloc, fr: bool) -> Option<String> {
     })
 }
 
-
 /// Un fait d'exécution : quelque chose que le programme A FAIT, compté
 /// et non déduit.
 ///
@@ -233,12 +228,19 @@ fn préparation(bloc: &Bloc, fr: bool) -> Option<String> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Fait {
     /// Une boucle, et combien de tours elle a faits.
-    Boucle { adresse: u64, tours: u64 },
+    Boucle {
+        adresse: u64,
+        tours: u64,
+    },
     /// Un saut conditionnel dont une seule des deux suites a été
     /// atteinte — et l'on sait laquelle, parce qu'elle n'a pas d'autre
     /// entrée que celle-là.
-    SautToujoursPris { adresse: u64 },
-    SautJamaisPris { adresse: u64 },
+    SautToujoursPris {
+        adresse: u64,
+    },
+    SautJamaisPris {
+        adresse: u64,
+    },
 }
 
 /// Ce que l'exécution a fait de ce graphe.
@@ -260,15 +262,9 @@ pub fn ce_qui_a_tourné(
     if passages.is_empty() {
         return faits;
     }
-    let tours = |index: usize| -> u64 {
-        passages
-            .get(&cfg.blocks[index].start)
-            .copied()
-            .unwrap_or(0)
-    };
-    let entrées = |index: usize| -> usize {
-        cfg.edges.iter().filter(|a| a.to == index).count()
-    };
+    let tours =
+        |index: usize| -> u64 { passages.get(&cfg.blocks[index].start).copied().unwrap_or(0) };
+    let entrées = |index: usize| -> usize { cfg.edges.iter().filter(|a| a.to == index).count() };
     for (index, bloc) in cfg.blocks.iter().enumerate() {
         // Une boucle : une arête d'ici vers soi-même ou vers plus haut.
         if cfg
@@ -305,12 +301,8 @@ pub fn ce_qui_a_tourné(
             continue;
         }
         match (tours(pris), tours(pas_pris)) {
-            (p, 0) if p > 0 => faits.push(Fait::SautToujoursPris {
-                adresse: bloc.last,
-            }),
-            (0, np) if np > 0 => faits.push(Fait::SautJamaisPris {
-                adresse: bloc.last,
-            }),
+            (p, 0) if p > 0 => faits.push(Fait::SautToujoursPris { adresse: bloc.last }),
+            (0, np) if np > 0 => faits.push(Fait::SautJamaisPris { adresse: bloc.last }),
             _ => {}
         }
     }
@@ -326,7 +318,12 @@ mod tests {
         instructions.iter().map(|i| (*i).to_owned()).collect()
     }
 
-    fn dit(instructions: &[&str], exit: Exit, boucle: bool, passages: Option<u64>) -> Option<String> {
+    fn dit(
+        instructions: &[&str],
+        exit: Exit,
+        boucle: bool,
+        passages: Option<u64>,
+    ) -> Option<String> {
         let textes = bloc(instructions, exit, boucle, passages);
         phrase(
             &Bloc {
@@ -479,11 +476,27 @@ mod tests {
             ],
             edges: vec![
                 // Le bloc 0 se reboucle sur lui-même, et tombe dans 1.
-                Edge { from: 0, to: 0, kind: Kind::Taken },
-                Edge { from: 0, to: 1, kind: Kind::NotTaken },
+                Edge {
+                    from: 0,
+                    to: 0,
+                    kind: Kind::Taken,
+                },
+                Edge {
+                    from: 0,
+                    to: 1,
+                    kind: Kind::NotTaken,
+                },
                 // Le bloc 1 branche vers 2 ou 3, qui n'ont que lui.
-                Edge { from: 1, to: 2, kind: Kind::Taken },
-                Edge { from: 1, to: 3, kind: Kind::NotTaken },
+                Edge {
+                    from: 1,
+                    to: 2,
+                    kind: Kind::Taken,
+                },
+                Edge {
+                    from: 1,
+                    to: 3,
+                    kind: Kind::NotTaken,
+                },
             ],
         }
     }
@@ -495,8 +508,7 @@ mod tests {
 
     #[test]
     fn une_boucle_dit_ses_tours_et_une_branche_dit_son_côté() {
-        let passages: BTreeMap<u64, u64> =
-            [(0x10, 5), (0x20, 1), (0x30, 1)].into_iter().collect();
+        let passages: BTreeMap<u64, u64> = [(0x10, 5), (0x20, 1), (0x30, 1)].into_iter().collect();
         let faits = ce_qui_a_tourné(&graphe(), &passages);
         assert!(faits.contains(&Fait::Boucle {
             adresse: 0x10,
@@ -517,8 +529,7 @@ mod tests {
             to: 2,
             kind: Kind::Next,
         });
-        let passages: BTreeMap<u64, u64> =
-            [(0x10, 5), (0x20, 1), (0x30, 1)].into_iter().collect();
+        let passages: BTreeMap<u64, u64> = [(0x10, 5), (0x20, 1), (0x30, 1)].into_iter().collect();
         let faits = ce_qui_a_tourné(&cfg, &passages);
         assert!(
             !faits
@@ -538,9 +549,7 @@ mod tests {
         let passages: BTreeMap<u64, u64> = [(0x10, 5)].into_iter().collect();
         let faits = ce_qui_a_tourné(&graphe(), &passages);
         assert!(
-            faits
-                .iter()
-                .all(|f| matches!(f, Fait::Boucle { .. })),
+            faits.iter().all(|f| matches!(f, Fait::Boucle { .. })),
             "{faits:?}"
         );
     }

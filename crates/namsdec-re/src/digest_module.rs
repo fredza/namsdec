@@ -52,11 +52,7 @@ impl ReModule for DigestModule {
             .striped(true)
             .show(ui, |ui| {
                 ui.label(ctx.t("Taille", "Size"));
-                ui.monospace(format!(
-                    "{} {}",
-                    self.taille,
-                    ctx.t("octets", "bytes")
-                ));
+                ui.monospace(format!("{} {}", self.taille, ctx.t("octets", "bytes")));
                 ui.end_row();
 
                 // Cliquables, les deux : une empreinte sert à être

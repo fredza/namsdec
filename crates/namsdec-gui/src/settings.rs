@@ -498,7 +498,10 @@ mod tests_keymap {
         // Celle qu'on a su lire est prise.
         assert_ne!(bindings.map.get(&Action::Run), socle.map.get(&Action::Run));
         // Celle qu'on n'a pas su lire garde celle du jeu.
-        assert_eq!(bindings.map.get(&Action::Stop), socle.map.get(&Action::Stop));
+        assert_eq!(
+            bindings.map.get(&Action::Stop),
+            socle.map.get(&Action::Stop)
+        );
         // Et une action inconnue est simplement passée.
         assert_eq!(bindings.map.len(), socle.map.len());
     }

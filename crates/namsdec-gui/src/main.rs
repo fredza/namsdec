@@ -3,25 +3,25 @@
 //! (vérification pédagogique) et exécute pas à pas via `namsdec-emu`,
 //! en affichant les panneaux des modules `ReModule` enregistrés.
 
+mod calc;
 mod chrome;
 mod completion;
 mod condition;
 mod errors;
 mod fixes;
 mod i18n;
-mod memfind;
 mod keybindings;
 mod loader;
+mod memfind;
 mod nasm_errors;
-mod calc;
 mod notes;
 mod occurrences;
 mod readings;
-mod timeline;
 mod roles;
 mod settings;
 mod sidebar;
 mod syntax;
+mod timeline;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -35,9 +35,9 @@ use namsdec_disasm::DecodedInstruction;
 use namsdec_emu::{Backend, Emulator, RunStop, StepOverResult, StepResult};
 use namsdec_explorer::{ExplorerAction, FileExplorer};
 use namsdec_re::{
-    BinaryInfoModule, DigestModule, DumpModule, EntropyModule,
-    MapModule, FunctionsModule, GadgetsModule, ImportsModule, PatternsModule,
-    ProtectionsModule, ReContext, ReModuleRegistry, StringsModule, SyscallsModule, XrefsModule,
+    BinaryInfoModule, DigestModule, DumpModule, EntropyModule, FunctionsModule, GadgetsModule,
+    ImportsModule, MapModule, PatternsModule, ProtectionsModule, ReContext, ReModuleRegistry,
+    StringsModule, SyscallsModule, XrefsModule,
 };
 use namsdec_theme::Theme;
 
@@ -686,7 +686,12 @@ enum CalcWidth {
 }
 
 impl CalcWidth {
-    const ALL: [CalcWidth; 4] = [CalcWidth::W8, CalcWidth::W16, CalcWidth::W32, CalcWidth::W64];
+    const ALL: [CalcWidth; 4] = [
+        CalcWidth::W8,
+        CalcWidth::W16,
+        CalcWidth::W32,
+        CalcWidth::W64,
+    ];
 
     fn bits(self) -> u32 {
         match self {
@@ -2081,7 +2086,10 @@ fn palette_commands(
     // Sans condition : elle ne dépend d'aucun module, d'aucun binaire
     // chargé, et sert autant à qui écrit son premier programme qu'à qui
     // démonte un crackme.
-    commands.push((s.calculator_open.to_string(), PaletteCommand::ShowCalculator));
+    commands.push((
+        s.calculator_open.to_string(),
+        PaletteCommand::ShowCalculator,
+    ));
 
     if show_re_tab {
         commands.push((
@@ -2627,9 +2635,7 @@ impl NamsdecApp {
     fn reopen_windows(&mut self) {
         let voulues = self.saved_settings.open_windows.clone();
         for nom in &voulues {
-            if let Some((_, _, ouvre)) =
-                FENÊTRES_REPRISES.iter().find(|(id, _, _)| id == nom)
-            {
+            if let Some((_, _, ouvre)) = FENÊTRES_REPRISES.iter().find(|(id, _, _)| id == nom) {
                 ouvre(self);
             }
         }
@@ -2952,10 +2958,7 @@ impl NamsdecApp {
                 Lang::Fr => "fr".to_owned(),
                 Lang::En => "en".to_owned(),
             },
-            open_binary: self
-                .binary_path
-                .as_ref()
-                .map(|p| p.display().to_string()),
+            open_binary: self.binary_path.as_ref().map(|p| p.display().to_string()),
             open_binary_len: self
                 .binary_path
                 .as_ref()
@@ -3324,9 +3327,7 @@ impl NamsdecApp {
         let passages: BTreeMap<u64, u64> =
             emulator.visits().iter().map(|(a, c)| (*a, *c)).collect();
         let cfg = namsdec_re::cfg::build(&state.disasm);
-        let ligne_de = |adresse: u64| -> Option<u32> {
-            state.addr_to_line.get(&adresse).copied()
-        };
+        let ligne_de = |adresse: u64| -> Option<u32> { state.addr_to_line.get(&adresse).copied() };
         namsdec_re::explain::ce_qui_a_tourné(&cfg, &passages)
             .into_iter()
             .filter_map(|fait| match fait {
@@ -4226,16 +4227,18 @@ impl NamsdecApp {
                         .map(|name| name.to_string_lossy().into_owned())
                         .unwrap_or_else(|| "namsdec".to_owned())
                 )),
-            FileDialogKind::ExportDump => dialog
-                .add_filter(s.filter_text, &["txt"])
-                .set_file_name(format!(
-                    "{}-vidage.txt",
-                    self.current_file
-                        .as_ref()
-                        .and_then(|path| path.file_stem())
-                        .map(|name| name.to_string_lossy().into_owned())
-                        .unwrap_or_else(|| "namsdec".to_owned())
-                )),
+            FileDialogKind::ExportDump => {
+                dialog
+                    .add_filter(s.filter_text, &["txt"])
+                    .set_file_name(format!(
+                        "{}-vidage.txt",
+                        self.current_file
+                            .as_ref()
+                            .and_then(|path| path.file_stem())
+                            .map(|name| name.to_string_lossy().into_owned())
+                            .unwrap_or_else(|| "namsdec".to_owned())
+                    ))
+            }
             FileDialogKind::ExportDot => dialog
                 .add_filter(s.filter_dot, &["dot", "gv"])
                 .set_file_name(format!(
@@ -5737,8 +5740,7 @@ impl NamsdecApp {
                 // moment. Une entrée qui s'efface laisse croire qu'elle
                 // n'existe pas ; une entrée grise qui dit pourquoi
                 // enseigne l'état du programme.
-                let quelque_chose_à_fermer =
-                    self.current_file.is_some() || !self.tabs.is_empty();
+                let quelque_chose_à_fermer = self.current_file.is_some() || !self.tabs.is_empty();
                 ui.add_enabled_ui(quelque_chose_à_fermer, |ui| {
                     if ui
                         .button(shortcut_hint(
@@ -6887,9 +6889,7 @@ impl NamsdecApp {
                                 ui.add(
                                     egui::Label::new(
                                         egui::RichText::new(
-                                            namsdec_disasm::install::install_command_here(
-                                                commande,
-                                            ),
+                                            namsdec_disasm::install::install_command_here(commande),
                                         )
                                         .monospace()
                                         .small()
@@ -7016,7 +7016,12 @@ impl NamsdecApp {
             .default_pos(ctx.viewport_rect().center())
             .title_bar(false)
             .show(ctx, |ui| {
-                if chrome::window_head(ui, self.theme, s, format!("{} — {}", s.install_title, recette.tool).as_str()) {
+                if chrome::window_head(
+                    ui,
+                    self.theme,
+                    s,
+                    format!("{} — {}", s.install_title, recette.tool).as_str(),
+                ) {
                     fermer = true;
                 }
                 ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
@@ -7139,12 +7144,14 @@ impl NamsdecApp {
                                         .ctx()
                                         .data(|d| d.get_temp::<bool>(copie_id()))
                                         .unwrap_or(false);
-                                    let étiquette =
-                                        if copié { s.install_copied } else { s.install_copy };
+                                    let étiquette = if copié {
+                                        s.install_copied
+                                    } else {
+                                        s.install_copy
+                                    };
                                     if framed_button(ui, theme, étiquette).clicked() {
                                         ui.ctx().copy_text(commande.clone());
-                                        ui.ctx()
-                                            .data_mut(|d| d.insert_temp(copie_id(), true));
+                                        ui.ctx().data_mut(|d| d.insert_temp(copie_id(), true));
                                     }
                                 });
                             }
@@ -7276,7 +7283,7 @@ impl NamsdecApp {
                                     for ligne in &journal {
                                         ui.add(
                                             egui::Label::new(small_monospace(ui, ligne))
-                                            .selectable(true),
+                                                .selectable(true),
                                         );
                                     }
                                 });
@@ -7894,208 +7901,215 @@ impl NamsdecApp {
                 centered_row(ui, CALC_LARGEUR + 20.0, |ui| {
                     ui.vertical(|ui| {
                         ui.set_width(CALC_LARGEUR + 20.0);
-                // Le résultat en grand, dans la base choisie et sur la
-                // largeur choisie. C'est la ligne qu'on regarde, elle a
-                // donc la taille qui va avec.
-                let valeur = résultat.as_ref().ok().map(|v| *v & self.calc_width.mask());
-                ui.add_space(8.0);
-                // Tout ce qui suit est centré : le résultat, les bits,
-                // les sélecteurs et le clavier. Alignés à gauche dans une
-                // fenêtre large, ils flottaient contre un bord avec du
-                // vide en face — une page, et non un appareil.
-                //
-                // Le résultat et les bits vivent dans un cadre à part,
-                // sur le fond de l'éditeur : c'est l'écran de
-                // l'appareil, et il se distingue des touches comme sur
-                // n'importe quelle calculatrice.
-                // La lunette de l'écran : dix pixels de chaque côté du
-                // clavier, et son contenu fait exactement la largeur de
-                // celui-ci.
-                egui::Frame::new()
-                    .fill(theme.bg)
-                    .stroke(egui::Stroke::new(1.0, mélange(theme.bg, theme.text, 0.18)))
-                    .corner_radius(10.0)
-                    .inner_margin(egui::Margin::symmetric(10, 10))
-                    .show(ui, |ui| {
-                        ui.set_width(CALC_LARGEUR);
-                        écran_calculatrice(
+                        // Le résultat en grand, dans la base choisie et sur la
+                        // largeur choisie. C'est la ligne qu'on regarde, elle a
+                        // donc la taille qui va avec.
+                        let valeur = résultat.as_ref().ok().map(|v| *v & self.calc_width.mask());
+                        ui.add_space(8.0);
+                        // Tout ce qui suit est centré : le résultat, les bits,
+                        // les sélecteurs et le clavier. Alignés à gauche dans une
+                        // fenêtre large, ils flottaient contre un bord avec du
+                        // vide en face — une page, et non un appareil.
+                        //
+                        // Le résultat et les bits vivent dans un cadre à part,
+                        // sur le fond de l'éditeur : c'est l'écran de
+                        // l'appareil, et il se distingue des touches comme sur
+                        // n'importe quelle calculatrice.
+                        // La lunette de l'écran : dix pixels de chaque côté du
+                        // clavier, et son contenu fait exactement la largeur de
+                        // celui-ci.
+                        egui::Frame::new()
+                            .fill(theme.bg)
+                            .stroke(egui::Stroke::new(1.0, mélange(theme.bg, theme.text, 0.18)))
+                            .corner_radius(10.0)
+                            .inner_margin(egui::Margin::symmetric(10, 10))
+                            .show(ui, |ui| {
+                                ui.set_width(CALC_LARGEUR);
+                                écran_calculatrice(
+                                    ui,
+                                    theme,
+                                    s,
+                                    &mut self.calc_input,
+                                    !self.calculator_was_open,
+                                    &résultat,
+                                    valeur,
+                                    self.calc_base,
+                                    self.calc_width,
+                                    &mut à_copier,
+                                    &mut bit_basculé,
+                                );
+                            });
+                        ui.add_space(6.0);
+                        // Deux couples « étiquette + liste » de mesures
+                        // identiques, de part et d'autre du filet.
+                        //
+                        // Ils ne l'étaient pas : chaque liste prenait la largeur
+                        // de ce qu'elle affichait, si bien que « Binaire » et
+                        // « 8 bits » donnaient deux boîtes de tailles
+                        // différentes et deux flèches qui ne tombaient pas au
+                        // même endroit. Deux réglages jumeaux doivent se lire
+                        // comme jumeaux.
+                        //
+                        // Les largeurs sont mesurées sur les textes les plus
+                        // longs — « Hexadécimal », « Largeur » — et non écrites
+                        // en dur : les libellés changent de longueur avec la
+                        // langue, et un chiffre posé à la main aligne le
+                        // français en désalignant l'anglais.
+                        let (étiquette, liste) = calculator_pick_widths(ui, s);
+                        let couple = étiquette + 6.0 + liste;
+                        let rangée = (couple * 2.0 + 20.0).min(CALC_LARGEUR);
+                        // Chaque couple dans sa propre case, de mesures
+                        // identiques : c'est ce qui les aligne vraiment.
+                        //
+                        // Tout dans une seule rangée ne suffisait pas. Une
+                        // rangée horizontale d'egui centre chaque élément sur sa
+                        // hauteur du moment, et ne recale pas ce qui est déjà
+                        // posé quand un élément plus haut arrive ensuite — la
+                        // liste est plus haute qu'une étiquette, si bien que
+                        // « Base », posé avant la première liste, se retrouvait
+                        // deux pixels au-dessus de « Largeur », posé après.
+                        // Dans deux cases jumelles, les deux subissent la même
+                        // chose, donc rien ne bouge.
+                        // Une hauteur qui dépasse tout ce que la rangée porte, la
+                        // liste comprise.
+                        //
+                        // C'est la clé, et elle a demandé trois essais. Une
+                        // rangée horizontale d'egui centre chaque élément sur la
+                        // hauteur qu'elle a *à cet instant*, et ne recale pas ce
+                        // qui est déjà posé quand un élément plus haut arrive
+                        // ensuite. La liste est plus haute qu'une étiquette :
+                        // « Base », posé avant la première liste, se retrouvait
+                        // deux pixels au-dessus de « Largeur », posé après. Si
+                        // rien ne fait grandir la rangée, personne ne se décale.
+                        let hauteur = ui.spacing().interact_size.y.max(30.0);
+                        centered_row(ui, rangée, |ui| {
+                            ui.spacing_mut().item_spacing.x = 6.0;
+                            ui.allocate_ui_with_layout(
+                                egui::vec2(couple, hauteur),
+                                egui::Layout::left_to_right(egui::Align::Center),
+                                |ui| {
+                                    ui.spacing_mut().item_spacing.x = 6.0;
+                                    ui.allocate_ui_with_layout(
+                                        egui::vec2(étiquette, hauteur),
+                                        egui::Layout::left_to_right(egui::Align::Center),
+                                        |ui| {
+                                            // `set_min_width` en plus de la
+                                            // taille demandée : une case
+                                            // allouée avance sur ce qu'elle
+                                            // CONTIENT, non sur ce qu'on lui a
+                                            // donné. Sans cela, « Base », plus
+                                            // court que « Largeur », laissait
+                                            // sa liste remonter de dix-sept
+                                            // pixels — et les deux flèches ne
+                                            // tombaient pas au même endroit.
+                                            ui.set_min_width(étiquette);
+                                            ui.colored_label(theme.dim, s.calculator_base_label)
+                                        },
+                                    );
+                                    let bases: Vec<(CalcBase, String)> = CalcBase::ALL
+                                        .into_iter()
+                                        .map(|b| (b, b.label(s).to_owned()))
+                                        .collect();
+                                    liste_déroulante(
+                                        ui,
+                                        theme,
+                                        egui::Id::new("calculator_base"),
+                                        liste,
+                                        &mut self.calc_base,
+                                        &bases,
+                                        "",
+                                    );
+                                },
+                            );
+                            ui.separator();
+                            ui.allocate_ui_with_layout(
+                                egui::vec2(couple, hauteur),
+                                egui::Layout::left_to_right(egui::Align::Center),
+                                |ui| {
+                                    ui.spacing_mut().item_spacing.x = 6.0;
+                                    ui.allocate_ui_with_layout(
+                                        egui::vec2(étiquette, hauteur),
+                                        egui::Layout::left_to_right(egui::Align::Center),
+                                        |ui| {
+                                            ui.set_min_width(étiquette);
+                                            ui.colored_label(theme.dim, s.calculator_width_label)
+                                        },
+                                    );
+                                    let largeurs: Vec<(CalcWidth, String)> = CalcWidth::ALL
+                                        .into_iter()
+                                        .map(|l| (l, format!("{} bits", l.bits())))
+                                        .collect();
+                                    liste_déroulante(
+                                        ui,
+                                        theme,
+                                        egui::Id::new("calculator_width"),
+                                        liste,
+                                        &mut self.calc_width,
+                                        &largeurs,
+                                        "",
+                                    );
+                                },
+                            );
+                        });
+
+                        ui.add_space(6.0);
+                        calculator_keypad_ui(
                             ui,
                             theme,
                             s,
-                            &mut self.calc_input,
-                            !self.calculator_was_open,
-                            &résultat,
-                            valeur,
                             self.calc_base,
-                            self.calc_width,
-                            &mut à_copier,
-                            &mut bit_basculé,
+                            &self.calc_input,
+                            &mut frappe,
                         );
-                    });
-                ui.add_space(6.0);
-                // Deux couples « étiquette + liste » de mesures
-                // identiques, de part et d'autre du filet.
-                //
-                // Ils ne l'étaient pas : chaque liste prenait la largeur
-                // de ce qu'elle affichait, si bien que « Binaire » et
-                // « 8 bits » donnaient deux boîtes de tailles
-                // différentes et deux flèches qui ne tombaient pas au
-                // même endroit. Deux réglages jumeaux doivent se lire
-                // comme jumeaux.
-                //
-                // Les largeurs sont mesurées sur les textes les plus
-                // longs — « Hexadécimal », « Largeur » — et non écrites
-                // en dur : les libellés changent de longueur avec la
-                // langue, et un chiffre posé à la main aligne le
-                // français en désalignant l'anglais.
-                let (étiquette, liste) = calculator_pick_widths(ui, s);
-                let couple = étiquette + 6.0 + liste;
-                let rangée = (couple * 2.0 + 20.0).min(CALC_LARGEUR);
-                // Chaque couple dans sa propre case, de mesures
-                // identiques : c'est ce qui les aligne vraiment.
-                //
-                // Tout dans une seule rangée ne suffisait pas. Une
-                // rangée horizontale d'egui centre chaque élément sur sa
-                // hauteur du moment, et ne recale pas ce qui est déjà
-                // posé quand un élément plus haut arrive ensuite — la
-                // liste est plus haute qu'une étiquette, si bien que
-                // « Base », posé avant la première liste, se retrouvait
-                // deux pixels au-dessus de « Largeur », posé après.
-                // Dans deux cases jumelles, les deux subissent la même
-                // chose, donc rien ne bouge.
-                // Une hauteur qui dépasse tout ce que la rangée porte, la
-                // liste comprise.
-                //
-                // C'est la clé, et elle a demandé trois essais. Une
-                // rangée horizontale d'egui centre chaque élément sur la
-                // hauteur qu'elle a *à cet instant*, et ne recale pas ce
-                // qui est déjà posé quand un élément plus haut arrive
-                // ensuite. La liste est plus haute qu'une étiquette :
-                // « Base », posé avant la première liste, se retrouvait
-                // deux pixels au-dessus de « Largeur », posé après. Si
-                // rien ne fait grandir la rangée, personne ne se décale.
-                let hauteur = ui.spacing().interact_size.y.max(30.0);
-                centered_row(ui, rangée, |ui| {
-                    ui.spacing_mut().item_spacing.x = 6.0;
-                    ui.allocate_ui_with_layout(
-                        egui::vec2(couple, hauteur),
-                        egui::Layout::left_to_right(egui::Align::Center),
-                        |ui| {
-                            ui.spacing_mut().item_spacing.x = 6.0;
-                            ui.allocate_ui_with_layout(
-                                egui::vec2(étiquette, hauteur),
-                                egui::Layout::left_to_right(egui::Align::Center),
-                                |ui| {
-                                    // `set_min_width` en plus de la
-                                    // taille demandée : une case
-                                    // allouée avance sur ce qu'elle
-                                    // CONTIENT, non sur ce qu'on lui a
-                                    // donné. Sans cela, « Base », plus
-                                    // court que « Largeur », laissait
-                                    // sa liste remonter de dix-sept
-                                    // pixels — et les deux flèches ne
-                                    // tombaient pas au même endroit.
-                                    ui.set_min_width(étiquette);
-                                    ui.colored_label(theme.dim, s.calculator_base_label)
-                                },
-                            );
-                            let bases: Vec<(CalcBase, String)> = CalcBase::ALL
-                                .into_iter()
-                                .map(|b| (b, b.label(s).to_owned()))
-                                .collect();
-                            liste_déroulante(
-                                ui,
-                                theme,
-                                egui::Id::new("calculator_base"),
-                                liste,
-                                &mut self.calc_base,
-                                &bases,
-                                "",
-                            );
-                        },
-                    );
-                    ui.separator();
-                    ui.allocate_ui_with_layout(
-                        egui::vec2(couple, hauteur),
-                        egui::Layout::left_to_right(egui::Align::Center),
-                        |ui| {
-                            ui.spacing_mut().item_spacing.x = 6.0;
-                            ui.allocate_ui_with_layout(
-                                egui::vec2(étiquette, hauteur),
-                                egui::Layout::left_to_right(egui::Align::Center),
-                                |ui| {
-                                    ui.set_min_width(étiquette);
-                                    ui.colored_label(theme.dim, s.calculator_width_label)
-                                },
-                            );
-                            let largeurs: Vec<(CalcWidth, String)> = CalcWidth::ALL
-                                .into_iter()
-                                .map(|l| (l, format!("{} bits", l.bits())))
-                                .collect();
-                            liste_déroulante(
-                                ui,
-                                theme,
-                                egui::Id::new("calculator_width"),
-                                liste,
-                                &mut self.calc_width,
-                                &largeurs,
-                                "",
-                            );
-                        },
-                    );
-                });
 
-                ui.add_space(6.0);
-                calculator_keypad_ui(ui, theme, s, self.calc_base, &self.calc_input, &mut frappe);
+                        // Pas de filet entre le clavier et les fonctions : les
+                        // deux blocs se distinguent déjà par leur forme, et une
+                        // barre de plus dans une fenêtre qui en a déjà deux
+                        // (le bandeau, la barre d'action) fait un formulaire.
+                        ui.add_space(8.0);
+                        if regs.is_none() {
+                            ui.colored_label(theme.dim, s.calculator_no_registers);
+                        }
+                        calculator_functions_ui(ui, theme, s, lang, &mut frappe.écrire);
 
-                // Pas de filet entre le clavier et les fonctions : les
-                // deux blocs se distinguent déjà par leur forme, et une
-                // barre de plus dans une fenêtre qui en a déjà deux
-                // (le bandeau, la barre d'action) fait un formulaire.
-                ui.add_space(8.0);
-                if regs.is_none() {
-                    ui.colored_label(theme.dim, s.calculator_no_registers);
-                }
-                calculator_functions_ui(ui, theme, s, lang, &mut frappe.écrire);
-
-                ui.add_space(6.0);
-                // Toutes les bases à la fois, en petit : c'est ce qu'on
-                // vient chercher quand on ne sait pas encore *laquelle*
-                // on veut. Chacune se copie d'un clic.
-                if let Some(valeur) = valeur {
-                    // Deux paires par rangée : sept lectures empilées
-                    // faisaient une colonne plus haute que le clavier,
-                    // et sur un écran de portable les dernières
-                    // passaient sous le bouton. Côte à côte, elles
-                    // tiennent en quatre lignes — et l'on compare
-                    // d'autant mieux deux bases qu'on les voit
-                    // ensemble.
-                    let lectures = readings::all_bases(lang, valeur);
-                    egui::Grid::new("calculator_bases")
-                        .num_columns(4)
-                        .min_col_width(0.0)
-                        .spacing([10.0, 3.0])
-                        .show(ui, |ui| {
-                            for paire in lectures.chunks(2) {
-                                for (nom, texte) in paire {
-                                    ui.colored_label(theme.dim, *nom);
-                                    let réponse = cliquable(
-                                        ui,
-                                        egui::Label::new(
-                                            egui::RichText::new(texte)
-                                                .monospace()
-                                                .size(11.5)
-                                                .color(theme.text),
-                                        ),
-                                    );
-                                    if réponse.on_hover_text(s.calculator_copy).clicked() {
-                                        à_copier = Some(texte.clone());
+                        ui.add_space(6.0);
+                        // Toutes les bases à la fois, en petit : c'est ce qu'on
+                        // vient chercher quand on ne sait pas encore *laquelle*
+                        // on veut. Chacune se copie d'un clic.
+                        if let Some(valeur) = valeur {
+                            // Deux paires par rangée : sept lectures empilées
+                            // faisaient une colonne plus haute que le clavier,
+                            // et sur un écran de portable les dernières
+                            // passaient sous le bouton. Côte à côte, elles
+                            // tiennent en quatre lignes — et l'on compare
+                            // d'autant mieux deux bases qu'on les voit
+                            // ensemble.
+                            let lectures = readings::all_bases(lang, valeur);
+                            egui::Grid::new("calculator_bases")
+                                .num_columns(4)
+                                .min_col_width(0.0)
+                                .spacing([10.0, 3.0])
+                                .show(ui, |ui| {
+                                    for paire in lectures.chunks(2) {
+                                        for (nom, texte) in paire {
+                                            ui.colored_label(theme.dim, *nom);
+                                            let réponse = cliquable(
+                                                ui,
+                                                egui::Label::new(
+                                                    egui::RichText::new(texte)
+                                                        .monospace()
+                                                        .size(11.5)
+                                                        .color(theme.text),
+                                                ),
+                                            );
+                                            if réponse.on_hover_text(s.calculator_copy).clicked() {
+                                                à_copier = Some(texte.clone());
+                                            }
+                                        }
+                                        ui.end_row();
                                     }
-                                }
-                                ui.end_row();
-                            }
-                        });
-                }
+                                });
+                        }
                     });
                 });
                 if ok_bar_inline(ui, theme, s) {
@@ -8565,10 +8579,7 @@ impl NamsdecApp {
     /// s'ajoute autour. Sans retrancher ses marges, la fenêtre dépassait
     /// de l'écran et se faisait rogner. Et `pivot` n'a plus lieu d'être —
     /// c'est un coin qu'on vise, non un centre.
-    fn fill_the_screen<'a>(
-        fenêtre: egui::Window<'a>,
-        ctx: &egui::Context,
-    ) -> egui::Window<'a> {
+    fn fill_the_screen<'a>(fenêtre: egui::Window<'a>, ctx: &egui::Context) -> egui::Window<'a> {
         let place = Self::maximized_rect(ctx);
         let marge = ctx.style_of(ctx.theme()).spacing.window_margin;
         let cadre = egui::vec2(
@@ -8724,305 +8735,296 @@ impl NamsdecApp {
                 .pivot(egui::Align2::CENTER_CENTER)
                 .default_pos(default_window_pos(ctx, "flow"))
         };
-        let rendue = fenêtre
-            .title_bar(false)
-            .show(ctx, |ui| {
-                if chrome::window_head(ui, self.theme, s, s.flow_title) {
-                    fermer_ok = true;
-                }
-                if ok_bar(ui, self.theme, strings(self.lang), "flow") {
-                    fermer_ok = true;
-                }
-                let Some(state) = &self.assemble_state else {
-                    empty_state(ui, theme, s.flow_empty, Some(s.empty_flow), None);
-                    return;
-                };
-                let entier = namsdec_re::cfg::build(&state.disasm);
-                if entier.blocks.is_empty() {
-                    empty_state(ui, theme, s.flow_empty, Some(s.empty_flow), None);
-                    return;
-                }
-                // Le bloc d'où l'on regarde : celui où le programme en
-                // est, ou son point d'entrée tant que rien n'a tourné.
-                let ancre = self
-                    .emulator
-                    .as_ref()
-                    .and_then(|e| entier.block_at(e.cpu().regs.rip))
-                    .unwrap_or(0);
-                // La fonction seule, ou tout. Un vrai sous-graphe : le
-                // dessin, la mise en page et la recherche de route
-                // travaillent dessus sans rien savoir de la restriction.
-                let restreint = self.flow_current_only && entier.blocks.len() > 1;
-                let cfg = if restreint {
-                    entier.subgraph(&entier.function_around(ancre))
-                } else {
-                    entier.clone()
-                };
-                if cfg.blocks.is_empty() {
-                    empty_state(ui, theme, s.flow_empty, Some(s.empty_flow), None);
-                    return;
-                }
-                ui.colored_label(theme.dim, s.flow_hint);
-                flow_legend_ui(ui, theme, s);
+        let rendue = fenêtre.title_bar(false).show(ctx, |ui| {
+            if chrome::window_head(ui, self.theme, s, s.flow_title) {
+                fermer_ok = true;
+            }
+            if ok_bar(ui, self.theme, strings(self.lang), "flow") {
+                fermer_ok = true;
+            }
+            let Some(state) = &self.assemble_state else {
+                empty_state(ui, theme, s.flow_empty, Some(s.empty_flow), None);
+                return;
+            };
+            let entier = namsdec_re::cfg::build(&state.disasm);
+            if entier.blocks.is_empty() {
+                empty_state(ui, theme, s.flow_empty, Some(s.empty_flow), None);
+                return;
+            }
+            // Le bloc d'où l'on regarde : celui où le programme en
+            // est, ou son point d'entrée tant que rien n'a tourné.
+            let ancre = self
+                .emulator
+                .as_ref()
+                .and_then(|e| entier.block_at(e.cpu().regs.rip))
+                .unwrap_or(0);
+            // La fonction seule, ou tout. Un vrai sous-graphe : le
+            // dessin, la mise en page et la recherche de route
+            // travaillent dessus sans rien savoir de la restriction.
+            let restreint = self.flow_current_only && entier.blocks.len() > 1;
+            let cfg = if restreint {
+                entier.subgraph(&entier.function_around(ancre))
+            } else {
+                entier.clone()
+            };
+            if cfg.blocks.is_empty() {
+                empty_state(ui, theme, s.flow_empty, Some(s.empty_flow), None);
+                return;
+            }
+            ui.colored_label(theme.dim, s.flow_hint);
+            flow_legend_ui(ui, theme, s);
 
-                // « Comment arrive-t-on là ? » — la question qu'on pose
-                // devant un programme qui refuse un mot de passe : on
-                // connaît l'adresse du succès, on cherche la route.
-                let mut route = None;
-                ui.horizontal_wrapped(|ui| {
-                    ui.colored_label(theme.dim, s.flow_goal_label);
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.flow_goal)
-                            .hint_text(s.flow_goal_hint)
-                            .font(egui::TextStyle::Monospace)
-                            .desired_width(120.0),
-                    );
-                    if !self.flow_goal.is_empty() && ui.small_button("x").clicked() {
-                        self.flow_goal.clear();
+            // « Comment arrive-t-on là ? » — la question qu'on pose
+            // devant un programme qui refuse un mot de passe : on
+            // connaît l'adresse du succès, on cherche la route.
+            let mut route = None;
+            ui.horizontal_wrapped(|ui| {
+                ui.colored_label(theme.dim, s.flow_goal_label);
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.flow_goal)
+                        .hint_text(s.flow_goal_hint)
+                        .font(egui::TextStyle::Monospace)
+                        .desired_width(120.0),
+                );
+                if !self.flow_goal.is_empty() && ui.small_button("x").clicked() {
+                    self.flow_goal.clear();
+                }
+            });
+            if let Some(visée) = sidebar::eval_address(&self.flow_goal, None) {
+                match namsdec_re::route::to(&cfg, visée) {
+                    Some(trouvée) => {
+                        flow_route_ui(ui, theme, s, &cfg, &trouvée, self.lang);
+                        route = Some(trouvée);
                     }
-                });
-                if let Some(visée) = sidebar::eval_address(&self.flow_goal, None) {
-                    match namsdec_re::route::to(&cfg, visée) {
-                        Some(trouvée) => {
-                            flow_route_ui(ui, theme, s, &cfg, &trouvée, self.lang);
-                            route = Some(trouvée);
-                        }
-                        None => {
-                            ui.colored_label(theme.warn, s.flow_no_route);
-                            // La route se cherche dans ce qu'on montre.
-                            // Si elle existe ailleurs dans le programme,
-                            // le dire vaut mieux que de laisser croire
-                            // qu'il n'y en a aucune — l'adresse visée est
-                            // souvent dans une autre fonction, et c'est
-                            // même tout l'intérêt de la question.
-                            if restreint && namsdec_re::route::to(&entier, visée).is_some() {
-                                ui.horizontal_wrapped(|ui| {
-                                    ui.colored_label(theme.dim, s.flow_route_elsewhere);
-                                    if framed_button(ui, theme, s.flow_show_whole).clicked() {
-                                        self.flow_current_only = false;
-                                    }
-                                });
-                            }
+                    None => {
+                        ui.colored_label(theme.warn, s.flow_no_route);
+                        // La route se cherche dans ce qu'on montre.
+                        // Si elle existe ailleurs dans le programme,
+                        // le dire vaut mieux que de laisser croire
+                        // qu'il n'y en a aucune — l'adresse visée est
+                        // souvent dans une autre fonction, et c'est
+                        // même tout l'intérêt de la question.
+                        if restreint && namsdec_re::route::to(&entier, visée).is_some() {
+                            ui.horizontal_wrapped(|ui| {
+                                ui.colored_label(theme.dim, s.flow_route_elsewhere);
+                                if framed_button(ui, theme, s.flow_show_whole).clicked() {
+                                    self.flow_current_only = false;
+                                }
+                            });
                         }
                     }
                 }
-                let sur_la_route: std::collections::BTreeSet<usize> = route
-                    .as_ref()
-                    .map(|r| {
-                        r.stages
-                            .iter()
-                            .map(|é| é.block)
-                            .chain(std::iter::once(r.target))
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                ui.separator();
+            }
+            let sur_la_route: std::collections::BTreeSet<usize> = route
+                .as_ref()
+                .map(|r| {
+                    r.stages
+                        .iter()
+                        .map(|é| é.block)
+                        .chain(std::iter::once(r.target))
+                        .collect()
+                })
+                .unwrap_or_default();
+            ui.separator();
 
-                // Le zoom à la molette, comme sur une carte : un
-                // programme un peu long ne tient pas à l'échelle d'une
-                // ligne lisible, et l'on veut d'abord voir sa forme.
-                let survolé = ui.rect_contains_pointer(ui.max_rect());
-                if survolé {
-                    let molette = ui.input(|i| i.smooth_scroll_delta.y);
-                    if molette.abs() > 0.5 && ui.input(|i| i.modifiers.ctrl) {
-                        let avant = self.flow_zoom;
-                        self.flow_zoom = (self.flow_zoom * (1.0 + molette * 0.002))
-                            .clamp(FLOW_ZOOM_MIN, FLOW_ZOOM_MAX);
-                        // Zoomer sous le pointeur, comme sur une carte :
-                        // ce qu'on vise reste sous la souris. Zoomer
-                        // depuis le coin faisait fuir le bloc qu'on
-                        // regardait dès le deuxième cran.
-                        if let Some(souris) = ui.input(|i| i.pointer.interact_pos()) {
-                            let facteur = self.flow_zoom / avant;
-                            let vue = ui.min_rect().min.to_vec2();
-                            let sous_souris = self.flow_offset + (souris.to_vec2() - vue);
-                            self.flow_offset =
-                                sous_souris * facteur - (souris.to_vec2() - vue);
-                            self.flow_offset.x = self.flow_offset.x.max(0.0);
-                            self.flow_offset.y = self.flow_offset.y.max(0.0);
-                        }
-                    }
-                }
-
-                // ── 2.8 : « Tout voir » à la touche F ────────────────
-                //
-                // Le bouton existait ; la touche manquait. `f` comme
-                // « fit », et seulement quand aucun champ ne retient les
-                // frappes — la case d'adresse est juste au-dessus.
-                if survolé
-                    && ui.ctx().memory(|m| m.focused()).is_none()
-                    && ui.input(|i| i.key_pressed(egui::Key::F))
-                {
-                    self.flow_fit = true;
-                }
-
-                // Et les mêmes commandes à portée de clic : la molette
-                // avec Ctrl ne s'invente pas, et rien ne l'annonçait.
-                ui.horizontal_wrapped(|ui| {
-                    if framed_button(ui, theme, "−")
-                        .on_hover_text(s.flow_zoom_out)
-                        .clicked()
-                    {
-                        self.flow_zoom = (self.flow_zoom / 1.25).clamp(FLOW_ZOOM_MIN, FLOW_ZOOM_MAX);
-                    }
-                    ui.colored_label(
-                        theme.dim,
-                        format!("{:.0} %", self.flow_zoom * 100.0),
-                    );
-                    if framed_button(ui, theme, "+")
-                        .on_hover_text(s.flow_zoom_in)
-                        .clicked()
-                    {
-                        self.flow_zoom = (self.flow_zoom * 1.25).clamp(FLOW_ZOOM_MIN, FLOW_ZOOM_MAX);
-                    }
-                    if framed_button(ui, theme, s.flow_zoom_reset).clicked() {
-                        self.flow_zoom = 1.0;
-                        self.flow_offset = egui::Vec2::ZERO;
-                    }
-                    if framed_button(ui, theme, s.flow_fit).clicked() {
-                        self.flow_fit = true;
-                    }
-                    // Le graphe s'emporte : dans une note, un rapport,
-                    // un cours. DOT plutôt qu'une image — il se lit à
-                    // l'œil, et `dot -Tsvg` en fait une image quand on en
-                    // veut une.
-                    if framed_button(ui, theme, s.flow_copy_dot)
-                        .on_hover_text(s.flow_copy_dot_hint)
-                        .clicked()
-                    {
-                        ui.ctx().copy_text(cfg.to_dot());
-                        self.status = Status::Note(|s| s.flow_dot_copied);
-                    }
-                    // Et sur le disque : un graphe se garde. Celui
-                    // d'avant le correctif, celui d'après, celui qu'on
-                    // joint au compte rendu — le presse-papier ne
-                    // survit pas à la copie suivante.
-                    if framed_button(ui, theme, s.flow_save_dot)
-                        .on_hover_text(s.flow_save_dot_hint)
-                        .clicked()
-                    {
-                        enregistrer_dot = true;
-                    }
-                    ui.separator();
-                    ui.checkbox(&mut self.flow_current_only, s.flow_current_only);
-                    // Et laquelle. Le nom quand le binaire en porte un,
-                    // l'adresse sinon : « vérifie_mdp » se retient, pas
-                    // `0x1d491`. L'adresse reste montrée à côté — c'est
-                    // elle qu'on tape dans « Comment arrive-t-on à », et
-                    // c'est elle qui lève l'ambiguïté quand la fermeture
-                    // par sauts se trompe, faute de symboles.
-                    if restreint
-                        && let Some(entrée) = cfg.blocks.first()
-                    {
-                        let nom = named_at(&self.notes, &state.output.symbols, entrée.start);
-                        let texte = match &nom {
-                            Some(nom) => format!("{nom}  {:#x}", entrée.start),
-                            None => format!("{:#x}", entrée.start),
-                        };
-                        ui.colored_label(theme.dim, egui::RichText::new(texte).monospace())
-                            .on_hover_text(s.flow_function_hint);
-                    }
-                    ui.separator();
-                    // Combien on en montre, et combien il y en a : sur un
-                    // binaire ordinaire, l'écart est tout le sujet.
-                    ui.colored_label(
-                        theme.dim,
-                        if restreint {
-                            format!(
-                                "{} / {} {}",
-                                cfg.blocks.len(),
-                                entier.blocks.len(),
-                                s.flow_blocks
-                            )
-                        } else {
-                            format!("{} {}", cfg.blocks.len(), s.flow_blocks)
-                        },
-                    );
-                    ui.separator();
-                    ui.weak(s.flow_pan_hint);
-                });
-                ui.add_space(4.0);
-
-                // « Tout voir » : le zoom qui fait entrer le graphe
-                // entier dans la place qu'on a. Il se calcule ici, où
-                // cette place est enfin connue — la demande, elle, a été
-                // faite au clic.
-                let vue = ui.available_size();
-                if self.flow_fit {
-                    self.flow_fit = false;
-                    let naturel = flow_extent(ui, &cfg, s, 1.0);
-                    let facteur = (vue.x / naturel.x.max(1.0))
-                        .min(vue.y / naturel.y.max(1.0))
+            // Le zoom à la molette, comme sur une carte : un
+            // programme un peu long ne tient pas à l'échelle d'une
+            // ligne lisible, et l'on veut d'abord voir sa forme.
+            let survolé = ui.rect_contains_pointer(ui.max_rect());
+            if survolé {
+                let molette = ui.input(|i| i.smooth_scroll_delta.y);
+                if molette.abs() > 0.5 && ui.input(|i| i.modifiers.ctrl) {
+                    let avant = self.flow_zoom;
+                    self.flow_zoom = (self.flow_zoom * (1.0 + molette * 0.002))
                         .clamp(FLOW_ZOOM_MIN, FLOW_ZOOM_MAX);
-                    self.flow_zoom = facteur;
+                    // Zoomer sous le pointeur, comme sur une carte :
+                    // ce qu'on vise reste sous la souris. Zoomer
+                    // depuis le coin faisait fuir le bloc qu'on
+                    // regardait dès le deuxième cran.
+                    if let Some(souris) = ui.input(|i| i.pointer.interact_pos()) {
+                        let facteur = self.flow_zoom / avant;
+                        let vue = ui.min_rect().min.to_vec2();
+                        let sous_souris = self.flow_offset + (souris.to_vec2() - vue);
+                        self.flow_offset = sous_souris * facteur - (souris.to_vec2() - vue);
+                        self.flow_offset.x = self.flow_offset.x.max(0.0);
+                        self.flow_offset.y = self.flow_offset.y.max(0.0);
+                    }
+                }
+            }
+
+            // ── 2.8 : « Tout voir » à la touche F ────────────────
+            //
+            // Le bouton existait ; la touche manquait. `f` comme
+            // « fit », et seulement quand aucun champ ne retient les
+            // frappes — la case d'adresse est juste au-dessus.
+            if survolé
+                && ui.ctx().memory(|m| m.focused()).is_none()
+                && ui.input(|i| i.key_pressed(egui::Key::F))
+            {
+                self.flow_fit = true;
+            }
+
+            // Et les mêmes commandes à portée de clic : la molette
+            // avec Ctrl ne s'invente pas, et rien ne l'annonçait.
+            ui.horizontal_wrapped(|ui| {
+                if framed_button(ui, theme, "−")
+                    .on_hover_text(s.flow_zoom_out)
+                    .clicked()
+                {
+                    self.flow_zoom = (self.flow_zoom / 1.25).clamp(FLOW_ZOOM_MIN, FLOW_ZOOM_MAX);
+                }
+                ui.colored_label(theme.dim, format!("{:.0} %", self.flow_zoom * 100.0));
+                if framed_button(ui, theme, "+")
+                    .on_hover_text(s.flow_zoom_in)
+                    .clicked()
+                {
+                    self.flow_zoom = (self.flow_zoom * 1.25).clamp(FLOW_ZOOM_MIN, FLOW_ZOOM_MAX);
+                }
+                if framed_button(ui, theme, s.flow_zoom_reset).clicked() {
+                    self.flow_zoom = 1.0;
                     self.flow_offset = egui::Vec2::ZERO;
                 }
-                let zoom = self.flow_zoom;
-                // Où le programme en est : le bloc qui contient RIP est
-                // mis en avant, comme la ligne courante dans l'éditeur.
-                let ici = self
-                    .emulator
-                    .as_ref()
-                    .and_then(|e| cfg.block_at(e.cpu().regs.rip));
-                let lignes = &state.addr_to_line;
-                // Ce qu'on sait dire de chaque bloc. Calculé ici parce
-                // que seul l'appelant connaît ce que l'exécution a
-                // compté : le dessin, lui, ne sait rien de l'émulateur.
-                let passages: BTreeMap<u64, u64> = self
-                    .emulator
-                    .as_ref()
-                    .map(|e| e.visits().iter().map(|(a, c)| (*a, *c)).collect())
-                    .unwrap_or_default();
-                let phrases: Vec<Option<String>> = cfg
-                    .blocks
-                    .iter()
-                    .enumerate()
-                    .map(|(index, bloc)| {
-                        // Une boucle : une arête qui part d'ici vers
-                        // soi-même ou vers plus haut. C'est la seule
-                        // définition qu'on puisse tenir sans calculer
-                        // les dominateurs, et elle ne se trompe pas dans
-                        // le sens qui compte — elle ne dit « boucle »
-                        // que s'il y a vraiment un retour en arrière.
-                        let boucle = cfg.edges.iter().any(|arête| {
-                            arête.from == index
-                                && cfg.blocks[arête.to].start <= bloc.start
-                        });
-                        namsdec_re::explain::phrase(
-                            &namsdec_re::explain::Bloc {
-                                instructions: &bloc.instructions,
-                                exit: bloc.exit,
-                                boucle,
-                                passages: passages.get(&bloc.start).copied(),
-                            },
-                            self.lang == Lang::Fr,
+                if framed_button(ui, theme, s.flow_fit).clicked() {
+                    self.flow_fit = true;
+                }
+                // Le graphe s'emporte : dans une note, un rapport,
+                // un cours. DOT plutôt qu'une image — il se lit à
+                // l'œil, et `dot -Tsvg` en fait une image quand on en
+                // veut une.
+                if framed_button(ui, theme, s.flow_copy_dot)
+                    .on_hover_text(s.flow_copy_dot_hint)
+                    .clicked()
+                {
+                    ui.ctx().copy_text(cfg.to_dot());
+                    self.status = Status::Note(|s| s.flow_dot_copied);
+                }
+                // Et sur le disque : un graphe se garde. Celui
+                // d'avant le correctif, celui d'après, celui qu'on
+                // joint au compte rendu — le presse-papier ne
+                // survit pas à la copie suivante.
+                if framed_button(ui, theme, s.flow_save_dot)
+                    .on_hover_text(s.flow_save_dot_hint)
+                    .clicked()
+                {
+                    enregistrer_dot = true;
+                }
+                ui.separator();
+                ui.checkbox(&mut self.flow_current_only, s.flow_current_only);
+                // Et laquelle. Le nom quand le binaire en porte un,
+                // l'adresse sinon : « vérifie_mdp » se retient, pas
+                // `0x1d491`. L'adresse reste montrée à côté — c'est
+                // elle qu'on tape dans « Comment arrive-t-on à », et
+                // c'est elle qui lève l'ambiguïté quand la fermeture
+                // par sauts se trompe, faute de symboles.
+                if restreint && let Some(entrée) = cfg.blocks.first() {
+                    let nom = named_at(&self.notes, &state.output.symbols, entrée.start);
+                    let texte = match &nom {
+                        Some(nom) => format!("{nom}  {:#x}", entrée.start),
+                        None => format!("{:#x}", entrée.start),
+                    };
+                    ui.colored_label(theme.dim, egui::RichText::new(texte).monospace())
+                        .on_hover_text(s.flow_function_hint);
+                }
+                ui.separator();
+                // Combien on en montre, et combien il y en a : sur un
+                // binaire ordinaire, l'écart est tout le sujet.
+                ui.colored_label(
+                    theme.dim,
+                    if restreint {
+                        format!(
+                            "{} / {} {}",
+                            cfg.blocks.len(),
+                            entier.blocks.len(),
+                            s.flow_blocks
                         )
-                    })
-                    .collect();
-                let sortie = egui::ScrollArea::both()
-                    .auto_shrink([false, false])
-                    .scroll_offset(self.flow_offset)
-                    .show(ui, |ui| {
-                        flow_graph_ui(
-                            ui,
-                            theme,
-                            s,
-                            &cfg,
-                            ici,
-                            lignes,
-                            zoom,
-                            &sur_la_route,
-                            &phrases,
-                        )
-                    });
-                let (destination, tiré) = sortie.inner;
-                aller = destination;
-                // Le glisser déplace la vue, comme sur une carte. On
-                // repart de ce que la zone défilante dit d'elle-même :
-                // les barres et la molette la déplacent aussi, et les
-                // trois doivent parler du même point.
-                self.flow_offset = sortie.state.offset - tiré;
+                    } else {
+                        format!("{} {}", cfg.blocks.len(), s.flow_blocks)
+                    },
+                );
+                ui.separator();
+                ui.weak(s.flow_pan_hint);
             });
+            ui.add_space(4.0);
+
+            // « Tout voir » : le zoom qui fait entrer le graphe
+            // entier dans la place qu'on a. Il se calcule ici, où
+            // cette place est enfin connue — la demande, elle, a été
+            // faite au clic.
+            let vue = ui.available_size();
+            if self.flow_fit {
+                self.flow_fit = false;
+                let naturel = flow_extent(ui, &cfg, s, 1.0);
+                let facteur = (vue.x / naturel.x.max(1.0))
+                    .min(vue.y / naturel.y.max(1.0))
+                    .clamp(FLOW_ZOOM_MIN, FLOW_ZOOM_MAX);
+                self.flow_zoom = facteur;
+                self.flow_offset = egui::Vec2::ZERO;
+            }
+            let zoom = self.flow_zoom;
+            // Où le programme en est : le bloc qui contient RIP est
+            // mis en avant, comme la ligne courante dans l'éditeur.
+            let ici = self
+                .emulator
+                .as_ref()
+                .and_then(|e| cfg.block_at(e.cpu().regs.rip));
+            let lignes = &state.addr_to_line;
+            // Ce qu'on sait dire de chaque bloc. Calculé ici parce
+            // que seul l'appelant connaît ce que l'exécution a
+            // compté : le dessin, lui, ne sait rien de l'émulateur.
+            let passages: BTreeMap<u64, u64> = self
+                .emulator
+                .as_ref()
+                .map(|e| e.visits().iter().map(|(a, c)| (*a, *c)).collect())
+                .unwrap_or_default();
+            let phrases: Vec<Option<String>> = cfg
+                .blocks
+                .iter()
+                .enumerate()
+                .map(|(index, bloc)| {
+                    // Une boucle : une arête qui part d'ici vers
+                    // soi-même ou vers plus haut. C'est la seule
+                    // définition qu'on puisse tenir sans calculer
+                    // les dominateurs, et elle ne se trompe pas dans
+                    // le sens qui compte — elle ne dit « boucle »
+                    // que s'il y a vraiment un retour en arrière.
+                    let boucle = cfg.edges.iter().any(|arête| {
+                        arête.from == index && cfg.blocks[arête.to].start <= bloc.start
+                    });
+                    namsdec_re::explain::phrase(
+                        &namsdec_re::explain::Bloc {
+                            instructions: &bloc.instructions,
+                            exit: bloc.exit,
+                            boucle,
+                            passages: passages.get(&bloc.start).copied(),
+                        },
+                        self.lang == Lang::Fr,
+                    )
+                })
+                .collect();
+            let sortie = egui::ScrollArea::both()
+                .auto_shrink([false, false])
+                .scroll_offset(self.flow_offset)
+                .show(ui, |ui| {
+                    flow_graph_ui(
+                        ui,
+                        theme,
+                        s,
+                        &cfg,
+                        ici,
+                        lignes,
+                        zoom,
+                        &sur_la_route,
+                        &phrases,
+                    )
+                });
+            let (destination, tiré) = sortie.inner;
+            aller = destination;
+            // Le glisser déplace la vue, comme sur une carte. On
+            // repart de ce que la zone défilante dit d'elle-même :
+            // les barres et la molette la déplacent aussi, et les
+            // trois doivent parler du même point.
+            self.flow_offset = sortie.state.offset - tiré;
+        });
         self.show_flow = open && !fermer_ok;
         if let Some(rendue) = rendue
             && title_bar_maximize_button(
@@ -9234,7 +9236,13 @@ impl NamsdecApp {
                 let reste = data_dir()
                     .map(|dir| namsdec_disasm::install::tools_dir(&dir).join(&outil))
                     .filter(|chemin| chemin.exists())
-                    .map(|chemin| format!(" {} {}", strings(self.lang).install_leftover, chemin.display()))
+                    .map(|chemin| {
+                        format!(
+                            " {} {}",
+                            strings(self.lang).install_leftover,
+                            chemin.display()
+                        )
+                    })
                     .unwrap_or_default();
                 self.plugin_note = Some(PluginNote {
                     ok: false,
@@ -9323,267 +9331,261 @@ impl NamsdecApp {
                 .pivot(egui::Align2::CENTER_CENTER)
                 .default_pos(default_window_pos(ctx, "decompiler"))
         };
-        let rendue = fenêtre
-            .title_bar(false)
-            .show(ctx, |ui| {
-                if chrome::window_head(ui, self.theme, s, s.decompiler_title) {
-                    fermer_ok = true;
-                }
-                if ok_bar(ui, self.theme, strings(self.lang), "decompiler") {
-                    fermer_ok = true;
-                }
-                // La largeur de retour à la ligne, dite explicitement :
-                // une fenêtre agrandie n'a pas de borne, et le texte
-                // s'allouerait de nouveau une ligne pour s'en peindre
-                // deux.
-                let large = ui.available_width();
-                ui.set_max_width(if large.is_finite() && large > 0.0 {
-                    large.min(900.0)
-                } else {
-                    760.0
-                });
-                if self.decompilers.is_empty() {
-                    ui.colored_label(theme.warn, s.decompiler_none_installed);
-                    ui.add_space(4.0);
-                    ui.colored_label(theme.dim, s.decompiler_install_hint);
-                    if let Some(dir) = decompilers_dir() {
-                        ui.colored_label(
-                            theme.dim,
-                            egui::RichText::new(dir.display().to_string()).monospace(),
-                        );
-                    }
-                    ui.add_space(6.0);
-                    ui.colored_label(theme.dim, s.decompiler_example);
-                    ui.add(
-                        egui::Label::new(small_monospace(ui, DECOMPILER_EXAMPLE))
-                        .selectable(true),
+        let rendue = fenêtre.title_bar(false).show(ctx, |ui| {
+            if chrome::window_head(ui, self.theme, s, s.decompiler_title) {
+                fermer_ok = true;
+            }
+            if ok_bar(ui, self.theme, strings(self.lang), "decompiler") {
+                fermer_ok = true;
+            }
+            // La largeur de retour à la ligne, dite explicitement :
+            // une fenêtre agrandie n'a pas de borne, et le texte
+            // s'allouerait de nouveau une ligne pour s'en peindre
+            // deux.
+            let large = ui.available_width();
+            ui.set_max_width(if large.is_finite() && large > 0.0 {
+                large.min(900.0)
+            } else {
+                760.0
+            });
+            if self.decompilers.is_empty() {
+                ui.colored_label(theme.warn, s.decompiler_none_installed);
+                ui.add_space(4.0);
+                ui.colored_label(theme.dim, s.decompiler_install_hint);
+                if let Some(dir) = decompilers_dir() {
+                    ui.colored_label(
+                        theme.dim,
+                        egui::RichText::new(dir.display().to_string()).monospace(),
                     );
-                    return;
                 }
+                ui.add_space(6.0);
+                ui.colored_label(theme.dim, s.decompiler_example);
+                ui.add(egui::Label::new(small_monospace(ui, DECOMPILER_EXAMPLE)).selectable(true));
+                return;
+            }
 
-                // Le choix de l'outil, retenu d'une session à l'autre.
-                ui.horizontal_wrapped(|ui| {
-                    ui.colored_label(theme.dim, s.decompiler_tool);
-                    let courant = self
-                        .decompilers
-                        .iter()
-                        .find(|outil| outil.id == self.decompiler)
-                        .map(|outil| outil.name.clone())
-                        .unwrap_or_else(|| s.decompiler_choose.to_owned());
-                    let outils: Vec<(String, String)> = self
-                        .decompilers
-                        .iter()
-                        .map(|outil| (outil.id.clone(), outil.name.clone()))
-                        .collect();
-                    liste_déroulante(
-                        ui,
-                        theme,
-                        egui::Id::new("decompiler_choice"),
-                        0.0,
-                        &mut self.decompiler,
-                        &outils,
-                        &courant,
-                    );
-                });
-
-                let choisi = self
+            // Le choix de l'outil, retenu d'une session à l'autre.
+            ui.horizontal_wrapped(|ui| {
+                ui.colored_label(theme.dim, s.decompiler_tool);
+                let courant = self
                     .decompilers
                     .iter()
                     .find(|outil| outil.id == self.decompiler)
-                    .cloned();
-                let Some(outil) = choisi else {
-                    ui.colored_label(theme.dim, s.decompiler_choose_first);
-                    return;
-                };
-
-                // Ce qu'on s'apprête à lancer, en toutes lettres.
-                ui.add_space(4.0);
-                ui.colored_label(theme.dim, s.decompiler_will_run);
-                ui.add(
-                    egui::Label::new(
-                        egui::RichText::new(format!("{} {}", outil.command, outil.args.join(" ")))
-                            .monospace(),
-                    )
-                    .selectable(true),
+                    .map(|outil| outil.name.clone())
+                    .unwrap_or_else(|| s.decompiler_choose.to_owned());
+                let outils: Vec<(String, String)> = self
+                    .decompilers
+                    .iter()
+                    .map(|outil| (outil.id.clone(), outil.name.clone()))
+                    .collect();
+                liste_déroulante(
+                    ui,
+                    theme,
+                    egui::Id::new("decompiler_choice"),
+                    0.0,
+                    &mut self.decompiler,
+                    &outils,
+                    &courant,
                 );
-                ui.weak(s.decompiler_file_hint);
-                ui.add_space(6.0);
+            });
 
-                ui.horizontal_wrapped(|ui| {
-                    let occupé = self.decompile_job.is_some();
-                    let prêt = self.assemble_state.is_some();
-                    ui.add_enabled_ui(!occupé && prêt, |ui| {
-                        lancer = ui
-                            .add(
-                                egui::Button::new(
-                                    egui::RichText::new(s.decompiler_run).color(theme.bg),
-                                )
-                                .fill(theme.accent),
+            let choisi = self
+                .decompilers
+                .iter()
+                .find(|outil| outil.id == self.decompiler)
+                .cloned();
+            let Some(outil) = choisi else {
+                ui.colored_label(theme.dim, s.decompiler_choose_first);
+                return;
+            };
+
+            // Ce qu'on s'apprête à lancer, en toutes lettres.
+            ui.add_space(4.0);
+            ui.colored_label(theme.dim, s.decompiler_will_run);
+            ui.add(
+                egui::Label::new(
+                    egui::RichText::new(format!("{} {}", outil.command, outil.args.join(" ")))
+                        .monospace(),
+                )
+                .selectable(true),
+            );
+            ui.weak(s.decompiler_file_hint);
+            ui.add_space(6.0);
+
+            ui.horizontal_wrapped(|ui| {
+                let occupé = self.decompile_job.is_some();
+                let prêt = self.assemble_state.is_some();
+                ui.add_enabled_ui(!occupé && prêt, |ui| {
+                    lancer = ui
+                        .add(
+                            egui::Button::new(
+                                egui::RichText::new(s.decompiler_run).color(theme.bg),
                             )
-                            .clicked();
-                    });
-                    if occupé {
-                        ui.spinner();
-                    }
-                    if let Some(Ok(texte)) = &self.decompile_result
-                        && ui.small_button(s.decompiler_copy).clicked()
-                    {
-                        ui.ctx().copy_text(texte.clone());
-                    }
+                            .fill(theme.accent),
+                        )
+                        .clicked();
                 });
-                // La phrase sur sa propre ligne, et non à la suite des
-                // boutons : une rangée qui se replie place son dernier
-                // élément à la ligne suivante sans savoir de combien
-                // descendre, et le texte se posait sur le bouton.
-                if occupé_maintenant(self) {
-                    ui.colored_label(theme.dim, s.decompiler_working);
-                } else if self.assemble_state.is_none() {
-                    empty_state(
-                        ui,
-                        theme,
-                        s.decompiler_no_binary,
-                        Some(s.empty_decompiler),
-                        None,
-                    );
+                if occupé {
+                    ui.spinner();
                 }
-
-                // Ce qui a été décompilé, et de quel programme il
-                // s'agissait : sans cela, un texte resté à l'écran passe
-                // pour celui du programme qu'on regarde maintenant.
-                if let Some(origine) = &self.decompiled_from {
-                    ui.weak(format!("{} {origine}", s.decompiler_of));
-                }
-                ui.separator();
-                match &self.decompile_result {
-                    Some(Ok(_)) => {
-                        // Une barre de lecture : chercher un mot, sauter
-                        // à une fonction, savoir combien de lignes on a
-                        // sous les yeux.
-                        ui.horizontal_wrapped(|ui| {
-                            ui.colored_label(theme.dim, s.decompiler_find);
-                            ui.add(
-                                egui::TextEdit::singleline(&mut self.decompile_filter)
-                                    .desired_width(200.0)
-                                    .hint_text(s.decompiler_find_hint),
-                            );
-                            if !self.decompile_functions.is_empty() {
-                                egui::ComboBox::from_id_salt("decompile_functions")
-                                    .selected_text(format!(
-                                        "{} ({})",
-                                        s.decompiler_functions,
-                                        self.decompile_functions.len()
-                                    ))
-                                    .show_ui(ui, |ui| {
-                                        for (rang, titre) in self.decompile_functions.clone() {
-                                            if ui.selectable_label(false, &titre).clicked() {
-                                                self.decompile_filter.clear();
-                                                self.decompile_goto = Some(rang);
-                                            }
-                                        }
-                                    });
-                            }
-                            ui.colored_label(
-                                theme.dim,
-                                format!(
-                                    "{} / {} {}",
-                                    self.decompile_visible.len(),
-                                    self.decompile_lines.len(),
-                                    s.decompiler_lines
-                                ),
-                            );
-                        });
-                        ui.add_space(4.0);
-
-                        // Le filtre ne se recalcule qu'au changement.
-                        if self.decompile_filter != self.decompile_filter_applied {
-                            let cherché = self.decompile_filter.to_lowercase();
-                            self.decompile_visible = if cherché.is_empty() {
-                                (0..self.decompile_lines.len()).collect()
-                            } else {
-                                self.decompile_lines
-                                    .iter()
-                                    .enumerate()
-                                    .filter(|(_, ligne)| ligne.to_lowercase().contains(&cherché))
-                                    .map(|(rang, _)| rang)
-                                    .collect()
-                            };
-                            self.decompile_filter_applied = self.decompile_filter.clone();
-                            // Pas de « decompile_goto = None » ici :
-                            // sauter à une fonction efface justement le
-                            // filtre, et le saut passerait à la trappe.
-                        }
-
-                        // Une ligne = une galette de texte, numéro
-                        // compris : deux widgets par ligne coûteraient
-                        // une espace verticale de plus, et le saut
-                        // tomberait à côté.
-                        let police = egui::TextStyle::Monospace.resolve(ui.style());
-                        // `show_rows` veut la hauteur d'une ligne **sans**
-                        // l'espace qui la sépare de la suivante : il
-                        // l'ajoute lui-même. Le saut, lui, se calcule sur
-                        // le pas complet. Confondre les deux décale
-                        // l'arrivée, d'autant plus qu'on descend loin.
-                        let ligne_seule = ui.ctx().fonts_mut(|f| f.row_height(&police));
-                        let hauteur = ligne_seule + ui.spacing().item_spacing.y;
-                        let mut zone = egui::ScrollArea::both()
-                            .id_salt("decompile_text")
-                            .auto_shrink([false, false]);
-                        // Sauter à une fonction : la zone n'a pas de
-                        // « aller à la ligne n », mais toutes les lignes
-                        // font la même hauteur, alors le calcul suffit.
-                        if let Some(rang) = self.decompile_goto.take() {
-                            let place = self
-                                .decompile_visible
-                                .iter()
-                                .position(|&l| l >= rang)
-                                .unwrap_or(0);
-                            zone = zone.vertical_scroll_offset(place as f32 * hauteur);
-                        }
-                        let largeur =
-                            (self.decompile_lines.len().max(1) as f32).log10() as usize + 1;
-                        zone.show_rows(
-                            ui,
-                            ligne_seule,
-                            self.decompile_visible.len(),
-                            |ui, plage| {
-                                for place in plage {
-                                    let rang = self.decompile_visible[place];
-                                    let mut texte = egui::text::LayoutJob::default();
-                                    texte.append(
-                                        &format!("{:>largeur$} ", rang + 1),
-                                        0.0,
-                                        egui::TextFormat {
-                                            font_id: police.clone(),
-                                            color: theme.dim,
-                                            ..Default::default()
-                                        },
-                                    );
-                                    texte.append(
-                                        &self.decompile_lines[rang],
-                                        0.0,
-                                        egui::TextFormat {
-                                            font_id: police.clone(),
-                                            color: theme.text,
-                                            ..Default::default()
-                                        },
-                                    );
-                                    ui.add(
-                                        egui::Label::new(texte)
-                                            .wrap_mode(egui::TextWrapMode::Extend)
-                                            .selectable(true),
-                                    );
-                                }
-                            },
-                        );
-                    }
-                    Some(Err(erreur)) => {
-                        ui.colored_label(theme.bad, erreur);
-                    }
-                    None => {
-                        ui.colored_label(theme.dim, s.decompiler_idle);
-                    }
+                if let Some(Ok(texte)) = &self.decompile_result
+                    && ui.small_button(s.decompiler_copy).clicked()
+                {
+                    ui.ctx().copy_text(texte.clone());
                 }
             });
+            // La phrase sur sa propre ligne, et non à la suite des
+            // boutons : une rangée qui se replie place son dernier
+            // élément à la ligne suivante sans savoir de combien
+            // descendre, et le texte se posait sur le bouton.
+            if occupé_maintenant(self) {
+                ui.colored_label(theme.dim, s.decompiler_working);
+            } else if self.assemble_state.is_none() {
+                empty_state(
+                    ui,
+                    theme,
+                    s.decompiler_no_binary,
+                    Some(s.empty_decompiler),
+                    None,
+                );
+            }
+
+            // Ce qui a été décompilé, et de quel programme il
+            // s'agissait : sans cela, un texte resté à l'écran passe
+            // pour celui du programme qu'on regarde maintenant.
+            if let Some(origine) = &self.decompiled_from {
+                ui.weak(format!("{} {origine}", s.decompiler_of));
+            }
+            ui.separator();
+            match &self.decompile_result {
+                Some(Ok(_)) => {
+                    // Une barre de lecture : chercher un mot, sauter
+                    // à une fonction, savoir combien de lignes on a
+                    // sous les yeux.
+                    ui.horizontal_wrapped(|ui| {
+                        ui.colored_label(theme.dim, s.decompiler_find);
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.decompile_filter)
+                                .desired_width(200.0)
+                                .hint_text(s.decompiler_find_hint),
+                        );
+                        if !self.decompile_functions.is_empty() {
+                            egui::ComboBox::from_id_salt("decompile_functions")
+                                .selected_text(format!(
+                                    "{} ({})",
+                                    s.decompiler_functions,
+                                    self.decompile_functions.len()
+                                ))
+                                .show_ui(ui, |ui| {
+                                    for (rang, titre) in self.decompile_functions.clone() {
+                                        if ui.selectable_label(false, &titre).clicked() {
+                                            self.decompile_filter.clear();
+                                            self.decompile_goto = Some(rang);
+                                        }
+                                    }
+                                });
+                        }
+                        ui.colored_label(
+                            theme.dim,
+                            format!(
+                                "{} / {} {}",
+                                self.decompile_visible.len(),
+                                self.decompile_lines.len(),
+                                s.decompiler_lines
+                            ),
+                        );
+                    });
+                    ui.add_space(4.0);
+
+                    // Le filtre ne se recalcule qu'au changement.
+                    if self.decompile_filter != self.decompile_filter_applied {
+                        let cherché = self.decompile_filter.to_lowercase();
+                        self.decompile_visible = if cherché.is_empty() {
+                            (0..self.decompile_lines.len()).collect()
+                        } else {
+                            self.decompile_lines
+                                .iter()
+                                .enumerate()
+                                .filter(|(_, ligne)| ligne.to_lowercase().contains(&cherché))
+                                .map(|(rang, _)| rang)
+                                .collect()
+                        };
+                        self.decompile_filter_applied = self.decompile_filter.clone();
+                        // Pas de « decompile_goto = None » ici :
+                        // sauter à une fonction efface justement le
+                        // filtre, et le saut passerait à la trappe.
+                    }
+
+                    // Une ligne = une galette de texte, numéro
+                    // compris : deux widgets par ligne coûteraient
+                    // une espace verticale de plus, et le saut
+                    // tomberait à côté.
+                    let police = egui::TextStyle::Monospace.resolve(ui.style());
+                    // `show_rows` veut la hauteur d'une ligne **sans**
+                    // l'espace qui la sépare de la suivante : il
+                    // l'ajoute lui-même. Le saut, lui, se calcule sur
+                    // le pas complet. Confondre les deux décale
+                    // l'arrivée, d'autant plus qu'on descend loin.
+                    let ligne_seule = ui.ctx().fonts_mut(|f| f.row_height(&police));
+                    let hauteur = ligne_seule + ui.spacing().item_spacing.y;
+                    let mut zone = egui::ScrollArea::both()
+                        .id_salt("decompile_text")
+                        .auto_shrink([false, false]);
+                    // Sauter à une fonction : la zone n'a pas de
+                    // « aller à la ligne n », mais toutes les lignes
+                    // font la même hauteur, alors le calcul suffit.
+                    if let Some(rang) = self.decompile_goto.take() {
+                        let place = self
+                            .decompile_visible
+                            .iter()
+                            .position(|&l| l >= rang)
+                            .unwrap_or(0);
+                        zone = zone.vertical_scroll_offset(place as f32 * hauteur);
+                    }
+                    let largeur = (self.decompile_lines.len().max(1) as f32).log10() as usize + 1;
+                    zone.show_rows(
+                        ui,
+                        ligne_seule,
+                        self.decompile_visible.len(),
+                        |ui, plage| {
+                            for place in plage {
+                                let rang = self.decompile_visible[place];
+                                let mut texte = egui::text::LayoutJob::default();
+                                texte.append(
+                                    &format!("{:>largeur$} ", rang + 1),
+                                    0.0,
+                                    egui::TextFormat {
+                                        font_id: police.clone(),
+                                        color: theme.dim,
+                                        ..Default::default()
+                                    },
+                                );
+                                texte.append(
+                                    &self.decompile_lines[rang],
+                                    0.0,
+                                    egui::TextFormat {
+                                        font_id: police.clone(),
+                                        color: theme.text,
+                                        ..Default::default()
+                                    },
+                                );
+                                ui.add(
+                                    egui::Label::new(texte)
+                                        .wrap_mode(egui::TextWrapMode::Extend)
+                                        .selectable(true),
+                                );
+                            }
+                        },
+                    );
+                }
+                Some(Err(erreur)) => {
+                    ui.colored_label(theme.bad, erreur);
+                }
+                None => {
+                    ui.colored_label(theme.dim, s.decompiler_idle);
+                }
+            }
+        });
         self.show_decompiler = open && !fermer_ok;
         if let Some(rendue) = rendue
             && title_bar_maximize_button(
@@ -10436,11 +10438,7 @@ impl NamsdecApp {
             // Une pastille peinte, pas un glyphe : « ✓ » et « ✗ » ne
             // sont pas dans la police par défaut d'egui et retombaient
             // sur le carré de remplacement.
-            Status::AssembleOk => (
-                s.status_assembled.to_owned(),
-                theme.good,
-                Some(theme.good),
-            ),
+            Status::AssembleOk => (s.status_assembled.to_owned(), theme.good, Some(theme.good)),
             Status::AssembleFailed => (
                 s.status_assemble_failed.to_owned(),
                 theme.bad,
@@ -10469,9 +10467,7 @@ impl NamsdecApp {
             Status::SteppedBack => (s.status_stepped_back.to_owned(), theme.accent, None),
             Status::NothingToUndo => (s.status_nothing_to_undo.to_owned(), theme.dim, None),
             Status::Halted => (s.status_halted.to_owned(), theme.good, None),
-            Status::WaitingForInput => {
-                (s.status_waiting_for_input.to_owned(), theme.accent, None)
-            }
+            Status::WaitingForInput => (s.status_waiting_for_input.to_owned(), theme.accent, None),
             Status::Exited { code } => (
                 if fr {
                     format!("Programme terminé (code {code}).")
@@ -10627,90 +10623,86 @@ impl NamsdecApp {
             let g_armé = self.g_pending;
             let (enter_insert, exit_insert, mouvement, armer_g, désarmer_g) =
                 ui.ctx().input(|inp| {
-                let mut enter = false;
-                let mut exit = false;
-                let mut mouvement = None;
-                let mut armer_g = false;
-                let mut désarmer_g = false;
-                for event in &inp.events {
-                    if let egui::Event::Key {
-                        key,
-                        pressed: true,
-                        repeat: false,
-                        modifiers,
-                        ..
-                    } = event
-                    {
-                        // `Maj+I` doit rester "I" (vim l'utilise pour insérer
-                        // en début de ligne) — seuls Ctrl/Alt/Cmd distinguent
-                        // ça d'un raccourci sans rapport, comme Ctrl+Alt+I
-                        // (Step Into).
-                        let plain = !modifiers.ctrl && !modifiers.alt && !modifiers.mac_cmd;
-                        match key {
-                            egui::Key::I if plain && !consumed.contains(key) => enter = true,
-                            egui::Key::Escape => exit = true,
-                            // Les déplacements, seulement en mode Normal
-                            // et seulement s'ils n'ont pas déjà servi à
-                            // un raccourci.
-                            egui::Key::H if plain && !consumed.contains(key) => {
-                                mouvement = Some(Move::Left);
-                            }
-                            egui::Key::L if plain && !consumed.contains(key) => {
-                                mouvement = Some(Move::Right);
-                            }
-                            egui::Key::K if plain && !consumed.contains(key) => {
-                                mouvement = Some(Move::Up);
-                            }
-                            egui::Key::J if plain && !consumed.contains(key) => {
-                                mouvement = Some(Move::Down);
-                            }
-                            egui::Key::Num0 if plain => mouvement = Some(Move::LineStart),
-                            egui::Key::Home => mouvement = Some(Move::LineStart),
-                            egui::Key::End => mouvement = Some(Move::LineEnd),
-                            // `G` : la fin du fichier, comme dans vim.
-                            egui::Key::G if plain && modifiers.shift => {
-                                mouvement = Some(Move::FileEnd);
-                            }
-                            // `g g` : le début. Deux frappes de la même
-                            // touche, comme dans vim, et donc un témoin
-                            // à garder d'une image à l'autre — `G` est
-                            // la même touche avec Maj, il n'y a pas de
-                            // conflit.
-                            egui::Key::G if plain && !modifiers.shift => {
-                                if g_armé {
-                                    mouvement = Some(Move::FileStart);
-                                    désarmer_g = true;
-                                } else {
-                                    armer_g = true;
+                    let mut enter = false;
+                    let mut exit = false;
+                    let mut mouvement = None;
+                    let mut armer_g = false;
+                    let mut désarmer_g = false;
+                    for event in &inp.events {
+                        if let egui::Event::Key {
+                            key,
+                            pressed: true,
+                            repeat: false,
+                            modifiers,
+                            ..
+                        } = event
+                        {
+                            // `Maj+I` doit rester "I" (vim l'utilise pour insérer
+                            // en début de ligne) — seuls Ctrl/Alt/Cmd distinguent
+                            // ça d'un raccourci sans rapport, comme Ctrl+Alt+I
+                            // (Step Into).
+                            let plain = !modifiers.ctrl && !modifiers.alt && !modifiers.mac_cmd;
+                            match key {
+                                egui::Key::I if plain && !consumed.contains(key) => enter = true,
+                                egui::Key::Escape => exit = true,
+                                // Les déplacements, seulement en mode Normal
+                                // et seulement s'ils n'ont pas déjà servi à
+                                // un raccourci.
+                                egui::Key::H if plain && !consumed.contains(key) => {
+                                    mouvement = Some(Move::Left);
                                 }
+                                egui::Key::L if plain && !consumed.contains(key) => {
+                                    mouvement = Some(Move::Right);
+                                }
+                                egui::Key::K if plain && !consumed.contains(key) => {
+                                    mouvement = Some(Move::Up);
+                                }
+                                egui::Key::J if plain && !consumed.contains(key) => {
+                                    mouvement = Some(Move::Down);
+                                }
+                                egui::Key::Num0 if plain => mouvement = Some(Move::LineStart),
+                                egui::Key::Home => mouvement = Some(Move::LineStart),
+                                egui::Key::End => mouvement = Some(Move::LineEnd),
+                                // `G` : la fin du fichier, comme dans vim.
+                                egui::Key::G if plain && modifiers.shift => {
+                                    mouvement = Some(Move::FileEnd);
+                                }
+                                // `g g` : le début. Deux frappes de la même
+                                // touche, comme dans vim, et donc un témoin
+                                // à garder d'une image à l'autre — `G` est
+                                // la même touche avec Maj, il n'y a pas de
+                                // conflit.
+                                egui::Key::G if plain && !modifiers.shift => {
+                                    if g_armé {
+                                        mouvement = Some(Move::FileStart);
+                                        désarmer_g = true;
+                                    } else {
+                                        armer_g = true;
+                                    }
+                                }
+                                // Les mouvements par mot : ce qu'on réclame
+                                // en premier avec l'habitude de vim. Avancer
+                                // caractère par caractère dans
+                                // `mov qword [rbp-0x18], rax` use la patience.
+                                egui::Key::W if plain && !consumed.contains(key) => {
+                                    mouvement = Some(Move::WordForward);
+                                }
+                                egui::Key::B if plain && !consumed.contains(key) => {
+                                    mouvement = Some(Move::WordBack);
+                                }
+                                egui::Key::E if plain && !consumed.contains(key) => {
+                                    mouvement = Some(Move::WordEnd);
+                                }
+                                _ => {}
                             }
-                            // Les mouvements par mot : ce qu'on réclame
-                            // en premier avec l'habitude de vim. Avancer
-                            // caractère par caractère dans
-                            // `mov qword [rbp-0x18], rax` use la patience.
-                            egui::Key::W if plain && !consumed.contains(key) => {
-                                mouvement = Some(Move::WordForward);
-                            }
-                            egui::Key::B if plain && !consumed.contains(key) => {
-                                mouvement = Some(Move::WordBack);
-                            }
-                            egui::Key::E if plain && !consumed.contains(key) => {
-                                mouvement = Some(Move::WordEnd);
-                            }
-                            _ => {}
                         }
                     }
-                }
-                (enter, exit, mouvement, armer_g, désarmer_g)
-            });
+                    (enter, exit, mouvement, armer_g, désarmer_g)
+                });
             // `g` seul attend son second `g` ; tout le reste le désarme.
             // Sans cela, `g` puis `j` sauterait au début du fichier à la
             // prochaine frappe de `g`, une minute plus tard.
-            self.g_pending = if désarmer_g {
-                false
-            } else {
-                armer_g
-            };
+            self.g_pending = if désarmer_g { false } else { armer_g };
             // Se déplacer avant de changer de mode : `i` entre en
             // Insertion là où le curseur est, non là où il était.
             if self.editor_mode == EditorMode::Normal
@@ -10933,11 +10925,7 @@ impl NamsdecApp {
                                 // Pâle, et au même endroit que le vrai :
                                 // il montre ce qui va se passer, il ne
                                 // prétend pas que c'est déjà fait.
-                                painter.circle_filled(
-                                    point,
-                                    4.0,
-                                    theme.bad.gamma_multiply(0.38),
-                                );
+                                painter.circle_filled(point, 4.0, theme.bad.gamma_multiply(0.38));
                             }
                             if is_current {
                                 let arrow_rect = egui::Rect::from_center_size(
@@ -11066,8 +11054,7 @@ impl NamsdecApp {
                         // soi-même : un bloc plein, comme vim, là où
                         // l'insertion reprendra.
                         if self.editor_mode == EditorMode::Normal
-                            && let Some(state) =
-                                egui::TextEdit::load_state(ui.ctx(), editor_id())
+                            && let Some(state) = egui::TextEdit::load_state(ui.ctx(), editor_id())
                             && let Some(range) = state.cursor.char_range()
                         {
                             let primary = range.primary;
@@ -11148,8 +11135,8 @@ impl NamsdecApp {
                                 && backspace_clears_pair(&self.source, self.cursor_byte)
                             {
                                 let at = self.cursor_byte;
-                                let fin = at
-                                    + self.source[at..].chars().next().map_or(0, char::len_utf8);
+                                let fin =
+                                    at + self.source[at..].chars().next().map_or(0, char::len_utf8);
                                 self.source.replace_range(at..fin, "");
                             }
                             if self.auto_indent
@@ -11339,16 +11326,16 @@ impl NamsdecApp {
                             // « celui-ci », plus vite qu'une nuance de
                             // fond.
                             peintre.rect_filled(
-                                egui::Rect::from_min_size(
-                                    rect.min,
-                                    egui::vec2(rect.width(), 2.0),
-                                ),
+                                egui::Rect::from_min_size(rect.min, egui::vec2(rect.width(), 2.0)),
                                 0.0,
                                 theme.accent,
                             );
                         }
                         peintre.galley(
-                            egui::pos2(rect.left() + MARGE, rect.center().y - galette.size().y / 2.0),
+                            egui::pos2(
+                                rect.left() + MARGE,
+                                rect.center().y - galette.size().y / 2.0,
+                            ),
                             galette,
                             if ici { theme.text } else { theme.dim },
                         );
@@ -11382,7 +11369,11 @@ impl NamsdecApp {
                             }
                             let trait_ = egui::Stroke::new(
                                 1.4,
-                                if sur_croix.hovered() { theme.text } else { theme.dim },
+                                if sur_croix.hovered() {
+                                    theme.text
+                                } else {
+                                    theme.dim
+                                },
                             );
                             let c = croix.center();
                             let d = 4.0;
@@ -11411,10 +11402,8 @@ impl NamsdecApp {
                     // fichier est un autre geste, et il a sa place dans
                     // le menu Fichier.
                     ui.add_space(4.0);
-                    let (plus, réponse) = ui.allocate_exact_size(
-                        egui::vec2(HAUTEUR, HAUTEUR),
-                        egui::Sense::click(),
-                    );
+                    let (plus, réponse) =
+                        ui.allocate_exact_size(egui::vec2(HAUTEUR, HAUTEUR), egui::Sense::click());
                     let peintre = ui.painter();
                     if réponse.hovered() {
                         peintre.rect_filled(
@@ -11425,7 +11414,11 @@ impl NamsdecApp {
                     }
                     let trait_plus = egui::Stroke::new(
                         1.5,
-                        if réponse.hovered() { theme.text } else { theme.dim },
+                        if réponse.hovered() {
+                            theme.text
+                        } else {
+                            theme.dim
+                        },
                     );
                     let c = plus.center();
                     let d = 5.0;
@@ -11496,11 +11489,19 @@ impl NamsdecApp {
                 aller = true;
                 champ.request_focus();
             }
-            if framed_button(ui, theme, "<").on_hover_text(s.find_previous).clicked() && !matches.is_empty() {
+            if framed_button(ui, theme, "<")
+                .on_hover_text(s.find_previous)
+                .clicked()
+                && !matches.is_empty()
+            {
                 current = (current + matches.len() - 1) % matches.len();
                 aller = true;
             }
-            if framed_button(ui, theme, ">").on_hover_text(s.find_next).clicked() && !matches.is_empty() {
+            if framed_button(ui, theme, ">")
+                .on_hover_text(s.find_next)
+                .clicked()
+                && !matches.is_empty()
+            {
                 current = (current + 1) % matches.len();
                 aller = true;
             }
@@ -11520,7 +11521,9 @@ impl NamsdecApp {
             } else {
                 ui.colored_label(theme.dim, format!("{}/{}", current + 1, matches.len()));
             }
-            if framed_button(ui, theme, "x").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            if framed_button(ui, theme, "x").clicked()
+                || ui.input(|i| i.key_pressed(egui::Key::Escape))
+            {
                 fermer = true;
             }
         });
@@ -11674,7 +11677,9 @@ impl NamsdecApp {
             if framed_button(ui, theme, s.rename_apply).clicked() {
                 appliquer = true;
             }
-            if framed_button(ui, theme, "x").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            if framed_button(ui, theme, "x").clicked()
+                || ui.input(|i| i.key_pressed(egui::Key::Escape))
+            {
                 annuler = true;
             }
         });
@@ -11711,9 +11716,7 @@ impl NamsdecApp {
             let gauche = output
                 .galley
                 .pos_from_cursor(egui::text::CCursor::new(début));
-            let droite = output
-                .galley
-                .pos_from_cursor(egui::text::CCursor::new(fin));
+            let droite = output.galley.pos_from_cursor(egui::text::CCursor::new(fin));
             // Sur deux rangées différentes : le texte s'est replié au
             // milieu du mot. On ne peint alors rien plutôt qu'un
             // rectangle qui traverserait la ligne du dessous — un
@@ -11868,7 +11871,6 @@ impl NamsdecApp {
             self.status = Status::Error(format!("{}: {e}", strings(self.lang).notes_not_saved));
         }
     }
-
 
     /// Peint les commentaires à droite de leur ligne.
     ///
@@ -12149,7 +12151,10 @@ impl NamsdecApp {
         let Some(début) = ligne_début(&self.source, index) else {
             return;
         };
-        let fin = début + self.source[début..].find('\n').unwrap_or(self.source.len() - début);
+        let fin = début
+            + self.source[début..]
+                .find('\n')
+                .unwrap_or(self.source.len() - début);
         let nouvelle = correction.ligne.clone();
         self.source.replace_range(début..fin, &nouvelle);
         // Le curseur au bout de la ligne réécrite : c'est là qu'on
@@ -12292,9 +12297,7 @@ impl NamsdecApp {
                             // Cliquable : la liste est sous le curseur,
                             // et viser une ligne à la souris est parfois
                             // plus court que de compter les flèches.
-                            if cliquable(ui, egui::Label::new(text.color(theme.dim)))
-                                .clicked()
-                            {
+                            if cliquable(ui, egui::Label::new(text.color(theme.dim))).clicked() {
                                 cliqué = Some(index);
                             }
                         }
@@ -13122,11 +13125,23 @@ impl NamsdecApp {
                 ui.separator();
 
                 let Some(state) = &self.assemble_state else {
-                    empty_state(ui, theme, s.no_binary_assembled, Some(s.empty_disassembly), None);
+                    empty_state(
+                        ui,
+                        theme,
+                        s.no_binary_assembled,
+                        Some(s.empty_disassembly),
+                        None,
+                    );
                     return;
                 };
                 if state.disasm.is_empty() {
-                    empty_state(ui, theme, s.no_binary_assembled, Some(s.empty_disassembly), None);
+                    empty_state(
+                        ui,
+                        theme,
+                        s.no_binary_assembled,
+                        Some(s.empty_disassembly),
+                        None,
+                    );
                     return;
                 }
 
@@ -13204,7 +13219,8 @@ impl NamsdecApp {
                             .hint_text(s.find_placeholder)
                             .desired_width(200.0),
                     );
-                    if !self.disassembly_query.is_empty() && framed_button(ui, theme, "x").clicked() {
+                    if !self.disassembly_query.is_empty() && framed_button(ui, theme, "x").clicked()
+                    {
                         self.disassembly_query.clear();
                     }
                 });
@@ -13835,7 +13851,10 @@ impl NamsdecApp {
                             );
                             ui.colored_label(theme.bad, s.breakpoints_condition_bad);
                         }
-                        if framed_button(ui, theme, "x").on_hover_text(s.breakpoints_remove).clicked() {
+                        if framed_button(ui, theme, "x")
+                            .on_hover_text(s.breakpoints_remove)
+                            .clicked()
+                        {
                             retirer = Some(ligne);
                         }
                     });
@@ -13986,8 +14005,7 @@ impl NamsdecApp {
                                     egui::Layout::top_down_justified(egui::Align::LEFT),
                                     |ui| {
                                         ui.spacing_mut().item_spacing.y = 3.0;
-                                        ui.spacing_mut().button_padding =
-                                            egui::vec2(8.0, 5.0);
+                                        ui.spacing_mut().button_padding = egui::vec2(8.0, 5.0);
                                         // « Tout » en tête : c'est la
                                         // forme d'un compte rendu, celle
                                         // qu'on copie.
@@ -14035,9 +14053,7 @@ impl NamsdecApp {
                                 // seconde à mille pixels de la première,
                                 // et l'on suivait la ligne du doigt. Ce
                                 // que fait tout volet de détail.
-                                ui.set_max_width(
-                                    ui.available_width().min(ANALYSIS_CONTENT_MAX),
-                                );
+                                ui.set_max_width(ui.available_width().min(ANALYSIS_CONTENT_MAX));
                                 let choisi = self.analysis_module.clone();
                                 let seul = (!choisi.is_empty()).then_some(choisi.as_str());
                                 self.re_modules_ui(ui, seul);
@@ -14142,7 +14158,13 @@ impl NamsdecApp {
                     fermer_ok = true;
                 }
                 if self.emulator.is_none() {
-                    empty_state(ui, self.theme, s.no_binary_assembled, Some(s.empty_vectors), None);
+                    empty_state(
+                        ui,
+                        self.theme,
+                        s.no_binary_assembled,
+                        Some(s.empty_vectors),
+                        None,
+                    );
                     return;
                 }
                 // Aucune zone de défilement : les vingt-quatre valeurs
@@ -14249,10 +14271,7 @@ impl NamsdecApp {
                                 .filter(|nom| *nom != trouvée.name)
                                 .collect();
                             if !autres.is_empty() {
-                                ui.colored_label(
-                                    theme.dim,
-                                    small_monospace(ui, autres.join(" ")),
-                                );
+                                ui.colored_label(theme.dim, small_monospace(ui, autres.join(" ")));
                             }
                         });
                         if ligne
@@ -15162,7 +15181,13 @@ impl NamsdecApp {
                 ui.separator();
                 ui.add_space(6.0);
                 if self.patches.is_empty() {
-                    empty_state(ui, self.theme, s.patch_none_yet, Some(s.empty_patches), None);
+                    empty_state(
+                        ui,
+                        self.theme,
+                        s.patch_none_yet,
+                        Some(s.empty_patches),
+                        None,
+                    );
                 } else {
                     ui.label(
                         egui::RichText::new(format!(
@@ -15383,11 +15408,10 @@ impl NamsdecApp {
                         } else {
                             // Plus rien à répondre : un seul bouton, et
                             // Entrée le presse.
-                            let ok = egui::Button::new(
-                                egui::RichText::new(s.dialog_ok).color(theme.bg),
-                            )
-                            .fill(theme.accent)
-                            .min_size(egui::vec2(110.0, 0.0));
+                            let ok =
+                                egui::Button::new(egui::RichText::new(s.dialog_ok).color(theme.bg))
+                                    .fill(theme.accent)
+                                    .min_size(egui::vec2(110.0, 0.0));
                             fermer |= ui.add(ok).clicked() || entrée_frappée;
                         }
                     });
@@ -15460,231 +15484,230 @@ impl NamsdecApp {
         let mut send = false;
         let mut relancer = false;
         cadre.show(ui, |ui| {
-        if waiting {
-            ui.horizontal(|ui| {
-                // Une pastille pleine devant la phrase : l'oeil s'y pose
-                // avant de lire, et c'est ce qu'on veut d'un état qui ne
-                // dure que le temps d'une réponse.
-                let (rect, _) = ui.allocate_exact_size(
-                    egui::vec2(10.0, ui.text_style_height(&egui::TextStyle::Body)),
-                    egui::Sense::hover(),
-                );
-                ui.painter()
-                    .circle_filled(rect.center(), 4.0, self.theme.accent);
-                ui.colored_label(
-                    self.theme.accent,
-                    egui::RichText::new(s.console_waiting).strong(),
-                );
-                ui.colored_label(self.theme.dim, s.console_waiting_how);
-            });
-        }
+            if waiting {
+                ui.horizontal(|ui| {
+                    // Une pastille pleine devant la phrase : l'oeil s'y pose
+                    // avant de lire, et c'est ce qu'on veut d'un état qui ne
+                    // dure que le temps d'une réponse.
+                    let (rect, _) = ui.allocate_exact_size(
+                        egui::vec2(10.0, ui.text_style_height(&egui::TextStyle::Body)),
+                        egui::Sense::hover(),
+                    );
+                    ui.painter()
+                        .circle_filled(rect.center(), 4.0, self.theme.accent);
+                    ui.colored_label(
+                        self.theme.accent,
+                        egui::RichText::new(s.console_waiting).strong(),
+                    );
+                    ui.colored_label(self.theme.dim, s.console_waiting_how);
+                });
+            }
 
-        // Les deux lignes — les arguments, puis l'entrée — sont bâties
-        // pareil : un libellé de largeur commune, un champ qui prend ce
-        // qui reste, des boutons calés à droite. Sans cette largeur
-        // commune les deux champs commençaient à des abscisses
-        // différentes ; sans le calage à droite, « Recharger » sortait
-        // du cadre.
-        let libellés = [s.console_args, s.console_input_label];
-        let colonne = libellés
-            .iter()
-            .map(|texte| {
-                ui.painter()
-                    .layout_no_wrap(
-                        (*texte).to_owned(),
-                        egui::TextStyle::Body.resolve(ui.style()),
-                        egui::Color32::PLACEHOLDER,
-                    )
-                    .rect
-                    .width()
-            })
-            .fold(0.0_f32, f32::max);
+            // Les deux lignes — les arguments, puis l'entrée — sont bâties
+            // pareil : un libellé de largeur commune, un champ qui prend ce
+            // qui reste, des boutons calés à droite. Sans cette largeur
+            // commune les deux champs commençaient à des abscisses
+            // différentes ; sans le calage à droite, « Recharger » sortait
+            // du cadre.
+            let libellés = [s.console_args, s.console_input_label];
+            let colonne = libellés
+                .iter()
+                .map(|texte| {
+                    ui.painter()
+                        .layout_no_wrap(
+                            (*texte).to_owned(),
+                            egui::TextStyle::Body.resolve(ui.style()),
+                            egui::Color32::PLACEHOLDER,
+                        )
+                        .rect
+                        .width()
+                })
+                .fold(0.0_f32, f32::max);
 
-        // Les arguments : l'autre chose qu'un programme attend, et la
-        // première pour un crackme, qui lit souvent son mot de passe
-        // dans `argv[1]` plutôt que sur l'entrée standard. Ils ne se
-        // tapent pas pendant qu'il tourne — ils sont posés sur la pile
-        // avant la première instruction —, d'où le bouton qui recharge.
-        if self
-            .assemble_state
-            .as_ref()
-            .is_some_and(|état| état.from_binary.is_some())
-        {
+            // Les arguments : l'autre chose qu'un programme attend, et la
+            // première pour un crackme, qui lit souvent son mot de passe
+            // dans `argv[1]` plutôt que sur l'entrée standard. Ils ne se
+            // tapent pas pendant qu'il tourne — ils sont posés sur la pile
+            // avant la première instruction —, d'où le bouton qui recharge.
+            if self
+                .assemble_state
+                .as_ref()
+                .is_some_and(|état| état.from_binary.is_some())
+            {
+                ui.horizontal(|ui| {
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(colonne, ui.spacing().interact_size.y),
+                        egui::Layout::left_to_right(egui::Align::Center),
+                        |ui| {
+                            ui.colored_label(self.theme.dim, s.console_args);
+                        },
+                    );
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let appliquer = framed_button(ui, self.theme, s.console_args_apply)
+                            .on_hover_text(s.console_args_apply_hint)
+                            .clicked();
+                        let réponse = ui.add(
+                            egui::TextEdit::singleline(&mut self.program_args)
+                                .hint_text(s.console_args_hint)
+                                .font(egui::TextStyle::Monospace)
+                                .desired_width(ui.available_width()),
+                        );
+                        let entrée =
+                            réponse.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                        relancer = appliquer || entrée;
+                    });
+                });
+                // L'environnement, replié : on s'en sert moins souvent que
+                // des arguments, et une ligne de plus toujours ouverte
+                // repousserait la saisie vers le bas.
+                let ouvert = egui::CollapsingHeader::new(s.console_env)
+                    .id_salt("console_env")
+                    .open(Some(self.console_env_open))
+                    .show(ui, |ui| {
+                        ui.weak(s.console_env_hint);
+                        let réponse = ui.add(
+                            egui::TextEdit::multiline(&mut self.program_env)
+                                .hint_text("SECRET=sesame")
+                                .font(egui::TextStyle::Monospace)
+                                .desired_rows(2)
+                                .desired_width(f32::INFINITY),
+                        );
+                        if réponse.lost_focus() {
+                            relancer = true;
+                        }
+                    });
+                if ouvert.header_response.clicked() {
+                    self.console_env_open = !self.console_env_open;
+                }
+                ui.add_space(2.0);
+            }
             ui.horizontal(|ui| {
+                // La hauteur de la case DÉPASSE tout ce que la rangée porte.
+                //
+                // « Entrée : » se posait quatre pixels et demi au-dessus du
+                // champ et des deux boutons : une rangée horizontale centre
+                // chaque élément sur la hauteur qu'elle a À CET INSTANT et ne
+                // recale pas ce qui est déjà posé. L'étiquette venant en
+                // premier, elle se centrait sur elle-même. Imposer sa propre
+                // hauteur n'y changeait rien — c'est la hauteur de la RANGÉE
+                // qu'il faut fixer, et le seul moyen est que le premier
+                // élément soit déjà le plus haut.
+                //
+                // TRENTE-QUATRE PIXELS, et c'est une mesure, non un calcul :
+                // c'est la hauteur que la rangée prend d'elle-même une fois
+                // le champ et les deux boutons posés. Essayé 27, 30 et 34 —
+                // à 27 l'étiquette reste 3,5 px trop haut, à 30 il en reste
+                // 2, à 34 elle tombe pile.
+                //
+                // Un nombre mesuré n'est acceptable que si quelque chose le
+                // retient : l'invariant « une rangée de commandes se lit sur
+                // une seule ligne » le fait, et dira le jour où il cessera
+                // d'être juste.
+                let rangée = ui.spacing().interact_size.y + 9.0;
                 ui.allocate_ui_with_layout(
-                    egui::vec2(colonne, ui.spacing().interact_size.y),
+                    egui::vec2(colonne, rangée),
                     egui::Layout::left_to_right(egui::Align::Center),
                     |ui| {
-                        ui.colored_label(self.theme.dim, s.console_args);
+                        ui.set_min_height(rangée);
+                        // En accent et en gras pendant l'attente : c'est la
+                        // ligne où il faut taper, et rien d'autre à l'écran
+                        // ne le dit.
+                        if waiting {
+                            ui.colored_label(
+                                self.theme.accent,
+                                egui::RichText::new(s.console_input_label).strong(),
+                            );
+                        } else {
+                            ui.colored_label(self.theme.dim, s.console_input_label);
+                        }
                     },
                 );
+                // Les boutons sont posés en premier, calés à droite, et le
+                // champ prend ce qui reste. Deviner sa largeur (« la place
+                // disponible moins 120 px ») la surestimait de quelques
+                // pixels : la ligne débordait du panneau latéral, et ce
+                // débordement était repris comme sa nouvelle largeur à la
+                // frame suivante. L'onglet Console élargissait donc le
+                // panneau sans fin, jusqu'à ce qu'il occupe la fenêtre.
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let appliquer = framed_button(ui, self.theme, s.console_args_apply)
-                        .on_hover_text(s.console_args_apply_hint)
-                        .clicked();
-                    let réponse = ui.add(
-                        egui::TextEdit::singleline(&mut self.program_args)
-                            .hint_text(s.console_args_hint)
+                    // Les deux touches relevées **avant** le champ, et sans
+                    // les consommer : un `TextEdit` qui traite Entrée la
+                    // retire de la file, si bien que la guetter après lui ne
+                    // voyait plus rien. Le champ gardait le texte, le
+                    // programme continuait d'attendre, et il fallait cliquer
+                    // « Envoyer » — ce qui est exactement ce qu'on voulait
+                    // éviter.
+                    let entrée_frappée = ui.input(|i| i.key_pressed(egui::Key::Enter));
+                    let échap_frappé = ui.input(|i| i.key_pressed(egui::Key::Escape));
+                    // Fin d'entrée : un programme qui lit jusqu'au bout de son
+                    // entrée attendrait indéfiniment sans ce bouton.
+                    if framed_button(ui, self.theme, s.console_eof)
+                        .on_hover_text(s.console_eof_hint)
+                        .clicked()
+                    {
+                        self.send_input(None);
+                    }
+                    send = framed_button(ui, self.theme, s.console_send).clicked();
+
+                    let response = ui.add(
+                        egui::TextEdit::singleline(&mut self.console_input)
+                            .hint_text(s.console_input_hint)
                             .font(egui::TextStyle::Monospace)
                             .desired_width(ui.available_width()),
                     );
-                    let entrée =
-                        réponse.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-                    relancer = appliquer || entrée;
+                    // Le programme réclame de quoi lire : le curseur va là où
+                    // l'utilisateur doit taper, sans qu'il ait à le chercher.
+                    // Échap le lui reprend — sans cette porte, le champ
+                    // gardait toutes les touches tant que durait l'attente,
+                    // et l'éditeur ne répondait plus : « i » s'écrivait ici
+                    // au lieu de passer en Insertion.
+                    //
+                    // `lost_focus` et non `has_focus` : egui rend déjà le
+                    // focus du champ sur Échap. Le guetter ici sur le focus
+                    // encore détenu ne voyait donc rien, et la reprise plus
+                    // bas le récupérait dans la même frame — la touche
+                    // n'avait aucun effet visible.
+                    if response.lost_focus() && échap_frappé {
+                        self.console_input_released = true;
+                        // Personne ne prend le focus derrière : c'est
+                        // l'absence de champ focalisé qui réarme les
+                        // commandes de l'éditeur.
+                        self.editor_mode = EditorMode::Normal;
+                    } else if response.has_focus() {
+                        // Revenu dedans de son plein gré : l'attente suivante
+                        // pourra de nouveau l'y amener.
+                        self.console_input_released = false;
+                    } else if waiting && !self.console_input_released && !self.show_input_dialog {
+                        // Pas tant que la boîte est ouverte : c'est elle qui
+                        // demande, et deux champs qui réclament le clavier
+                        // dans la même image se l'arrachent.
+                        response.request_focus();
+                    }
+                    // Le champ a le focus et l'on vient de frapper Entrée :
+                    // c'est un envoi. On ne demande pas `lost_focus`, qui
+                    // dépend de ce qu'egui a décidé de faire du focus, ni
+                    // `key_pressed` après coup, qui ne voit plus rien.
+                    send |= entrée_frappée && (response.has_focus() || response.lost_focus());
                 });
             });
-            // L'environnement, replié : on s'en sert moins souvent que
-            // des arguments, et une ligne de plus toujours ouverte
-            // repousserait la saisie vers le bas.
-            let ouvert = egui::CollapsingHeader::new(s.console_env)
-                .id_salt("console_env")
-                .open(Some(self.console_env_open))
-                .show(ui, |ui| {
-                    ui.weak(s.console_env_hint);
-                    let réponse = ui.add(
-                        egui::TextEdit::multiline(&mut self.program_env)
-                            .hint_text("SECRET=sesame")
-                            .font(egui::TextStyle::Monospace)
-                            .desired_rows(2)
-                            .desired_width(f32::INFINITY),
-                    );
-                    if réponse.lost_focus() {
-                        relancer = true;
-                    }
-                });
-            if ouvert.header_response.clicked() {
-                self.console_env_open = !self.console_env_open;
-            }
-            ui.add_space(2.0);
-        }
-        ui.horizontal(|ui| {
-            // La hauteur de la case DÉPASSE tout ce que la rangée porte.
-            //
-            // « Entrée : » se posait quatre pixels et demi au-dessus du
-            // champ et des deux boutons : une rangée horizontale centre
-            // chaque élément sur la hauteur qu'elle a À CET INSTANT et ne
-            // recale pas ce qui est déjà posé. L'étiquette venant en
-            // premier, elle se centrait sur elle-même. Imposer sa propre
-            // hauteur n'y changeait rien — c'est la hauteur de la RANGÉE
-            // qu'il faut fixer, et le seul moyen est que le premier
-            // élément soit déjà le plus haut.
-            //
-            // TRENTE-QUATRE PIXELS, et c'est une mesure, non un calcul :
-            // c'est la hauteur que la rangée prend d'elle-même une fois
-            // le champ et les deux boutons posés. Essayé 27, 30 et 34 —
-            // à 27 l'étiquette reste 3,5 px trop haut, à 30 il en reste
-            // 2, à 34 elle tombe pile.
-            //
-            // Un nombre mesuré n'est acceptable que si quelque chose le
-            // retient : l'invariant « une rangée de commandes se lit sur
-            // une seule ligne » le fait, et dira le jour où il cessera
-            // d'être juste.
-            let rangée = ui.spacing().interact_size.y + 9.0;
-            ui.allocate_ui_with_layout(
-                egui::vec2(colonne, rangée),
-                egui::Layout::left_to_right(egui::Align::Center),
-                |ui| {
-                    ui.set_min_height(rangée);
-                    // En accent et en gras pendant l'attente : c'est la
-                    // ligne où il faut taper, et rien d'autre à l'écran
-                    // ne le dit.
-                    if waiting {
-                        ui.colored_label(
-                            self.theme.accent,
-                            egui::RichText::new(s.console_input_label).strong(),
-                        );
+
+            if pending > 0 {
+                ui.colored_label(
+                    self.theme.dim,
+                    if self.lang == Lang::Fr {
+                        format!("{pending} octet(s) en attente d'être lus.")
                     } else {
-                        ui.colored_label(self.theme.dim, s.console_input_label);
-                    }
-                },
-            );
-            // Les boutons sont posés en premier, calés à droite, et le
-            // champ prend ce qui reste. Deviner sa largeur (« la place
-            // disponible moins 120 px ») la surestimait de quelques
-            // pixels : la ligne débordait du panneau latéral, et ce
-            // débordement était repris comme sa nouvelle largeur à la
-            // frame suivante. L'onglet Console élargissait donc le
-            // panneau sans fin, jusqu'à ce qu'il occupe la fenêtre.
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                // Les deux touches relevées **avant** le champ, et sans
-                // les consommer : un `TextEdit` qui traite Entrée la
-                // retire de la file, si bien que la guetter après lui ne
-                // voyait plus rien. Le champ gardait le texte, le
-                // programme continuait d'attendre, et il fallait cliquer
-                // « Envoyer » — ce qui est exactement ce qu'on voulait
-                // éviter.
-                let entrée_frappée = ui.input(|i| i.key_pressed(egui::Key::Enter));
-                let échap_frappé = ui.input(|i| i.key_pressed(egui::Key::Escape));
-                // Fin d'entrée : un programme qui lit jusqu'au bout de son
-                // entrée attendrait indéfiniment sans ce bouton.
-                if framed_button(ui, self.theme, s.console_eof)
-                    .on_hover_text(s.console_eof_hint)
-                    .clicked()
-                {
-                    self.send_input(None);
-                }
-                send = framed_button(ui, self.theme, s.console_send).clicked();
-
-                let response = ui.add(
-                    egui::TextEdit::singleline(&mut self.console_input)
-                        .hint_text(s.console_input_hint)
-                        .font(egui::TextStyle::Monospace)
-                        .desired_width(ui.available_width()),
+                        format!("{pending} byte(s) waiting to be read.")
+                    },
                 );
-                // Le programme réclame de quoi lire : le curseur va là où
-                // l'utilisateur doit taper, sans qu'il ait à le chercher.
-                // Échap le lui reprend — sans cette porte, le champ
-                // gardait toutes les touches tant que durait l'attente,
-                // et l'éditeur ne répondait plus : « i » s'écrivait ici
-                // au lieu de passer en Insertion.
-                //
-                // `lost_focus` et non `has_focus` : egui rend déjà le
-                // focus du champ sur Échap. Le guetter ici sur le focus
-                // encore détenu ne voyait donc rien, et la reprise plus
-                // bas le récupérait dans la même frame — la touche
-                // n'avait aucun effet visible.
-                if response.lost_focus() && échap_frappé {
-                    self.console_input_released = true;
-                    // Personne ne prend le focus derrière : c'est
-                    // l'absence de champ focalisé qui réarme les
-                    // commandes de l'éditeur.
-                    self.editor_mode = EditorMode::Normal;
-                } else if response.has_focus() {
-                    // Revenu dedans de son plein gré : l'attente suivante
-                    // pourra de nouveau l'y amener.
-                    self.console_input_released = false;
-                } else if waiting && !self.console_input_released && !self.show_input_dialog {
-                    // Pas tant que la boîte est ouverte : c'est elle qui
-                    // demande, et deux champs qui réclament le clavier
-                    // dans la même image se l'arrachent.
-                    response.request_focus();
-                }
-                // Le champ a le focus et l'on vient de frapper Entrée :
-                // c'est un envoi. On ne demande pas `lost_focus`, qui
-                // dépend de ce qu'egui a décidé de faire du focus, ni
-                // `key_pressed` après coup, qui ne voit plus rien.
-                send |= entrée_frappée && (response.has_focus() || response.lost_focus());
-            });
-        });
-
-        if pending > 0 {
-            ui.colored_label(
-                self.theme.dim,
-                if self.lang == Lang::Fr {
-                    format!("{pending} octet(s) en attente d'être lus.")
-                } else {
-                    format!("{pending} byte(s) waiting to be read.")
-                },
-            );
-        } else if !waiting && !self.program_reads {
-            // Le champ est là, mais rien ne le lira tel que le programme
-            // est écrit. Le dire plutôt que de faire disparaître le
-            // champ : celui qui prépare son entrée avant d'avoir tapé
-            // son `read` doit pouvoir la taper, et comprendre pourquoi
-            // elle attend.
-            ui.colored_label(self.theme.dim, s.console_no_read);
-        }
-
+            } else if !waiting && !self.program_reads {
+                // Le champ est là, mais rien ne le lira tel que le programme
+                // est écrit. Le dire plutôt que de faire disparaître le
+                // champ : celui qui prépare son entrée avant d'avoir tapé
+                // son `read` doit pouvoir la taper, et comprendre pourquoi
+                // elle attend.
+                ui.colored_label(self.theme.dim, s.console_no_read);
+            }
         });
 
         // Reposer les arguments demande de refaire la pile : c'est un
@@ -16126,9 +16149,11 @@ fn set_cursor_byte(ctx: &egui::Context, source: &str, at: usize) {
         return;
     };
     let cible = byte_to_char(source, at);
-    state.cursor.set_char_range(Some(egui::text::CCursorRange::one(
-        egui::text::CCursor::new(cible),
-    )));
+    state
+        .cursor
+        .set_char_range(Some(egui::text::CCursorRange::one(
+            egui::text::CCursor::new(cible),
+        )));
     state.store(ctx, editor_id());
 }
 
@@ -16240,12 +16265,7 @@ fn flow_box_width(
 ///
 /// Sert au bouton « Tout voir », qui en déduit le facteur : on mesure
 /// avant de dessiner plutôt que de dessiner pour voir si ça dépasse.
-fn flow_extent(
-    ui: &egui::Ui,
-    cfg: &namsdec_re::cfg::Cfg,
-    s: &Strings,
-    zoom: f32,
-) -> egui::Vec2 {
+fn flow_extent(ui: &egui::Ui, cfg: &namsdec_re::cfg::Cfg, s: &Strings, zoom: f32) -> egui::Vec2 {
     const LIGNES_MAX: usize = 8;
     let niveaux = cfg.layers();
     let profondeur = niveaux.iter().max().copied().unwrap_or(0) + 1;
@@ -16344,10 +16364,8 @@ fn flow_graph_ui(
         // dit ce qu'on ne montre pas. Cette dernière manquait au compte :
         // elle se peignait sous le cadre, à côté du bloc suivant.
         let dit = phrases.get(index).and_then(|p| p.as_ref()).is_some();
-        let lignes = 1
-            + combien.min(LIGNES_MAX)
-            + usize::from(combien > LIGNES_MAX)
-            + usize::from(dit);
+        let lignes =
+            1 + combien.min(LIGNES_MAX) + usize::from(combien > LIGNES_MAX) + usize::from(dit);
         lignes as f32 * hauteur_ligne + 10.0 * zoom
     };
 
@@ -17300,31 +17318,31 @@ fn dialog_bar_hinted(
         egui::vec2(ui.available_width(), ui.spacing().interact_size.y),
         egui::Layout::right_to_left(egui::Align::Center),
         |ui| {
-        // Le liseré est de la couleur du fond du bouton : on ne le voit
-        // pas, et il sert quand même. egui ajoute la largeur du trait à
-        // la taille d'un bouton tracé — « Quitter » faisait donc 27 px
-        // de haut et « OK », posé huit pixels à sa gauche, 25. Deux
-        // pixels sur une rangée de deux boutons, c'est peu à dire et
-        // très visible : l'un dépasse l'autre en haut ET en bas.
-        let ok = egui::Button::new(egui::RichText::new(principal).color(theme.bg))
-            .fill(theme.accent)
-            .stroke(egui::Stroke::new(1.0, theme.accent))
-            .min_size(egui::vec2(96.0, 0.0));
-        if ui.add(ok).clicked() {
-            réponse = Some(Answer::Ok);
-        }
-        if let Some(annuler) = annuler {
-            let autre = egui::Button::new(annuler)
-                .stroke(egui::Stroke::new(1.0, theme.dim))
+            // Le liseré est de la couleur du fond du bouton : on ne le voit
+            // pas, et il sert quand même. egui ajoute la largeur du trait à
+            // la taille d'un bouton tracé — « Quitter » faisait donc 27 px
+            // de haut et « OK », posé huit pixels à sa gauche, 25. Deux
+            // pixels sur une rangée de deux boutons, c'est peu à dire et
+            // très visible : l'un dépasse l'autre en haut ET en bas.
+            let ok = egui::Button::new(egui::RichText::new(principal).color(theme.bg))
+                .fill(theme.accent)
+                .stroke(egui::Stroke::new(1.0, theme.accent))
                 .min_size(egui::vec2(96.0, 0.0));
-            let cliqué = match infobulle {
-                Some(texte) => ui.add(autre).on_hover_text(texte).clicked(),
-                None => ui.add(autre).clicked(),
-            };
-            if cliqué {
-                réponse = Some(Answer::Cancel);
+            if ui.add(ok).clicked() {
+                réponse = Some(Answer::Ok);
             }
-        }
+            if let Some(annuler) = annuler {
+                let autre = egui::Button::new(annuler)
+                    .stroke(egui::Stroke::new(1.0, theme.dim))
+                    .min_size(egui::vec2(96.0, 0.0));
+                let cliqué = match infobulle {
+                    Some(texte) => ui.add(autre).on_hover_text(texte).clicked(),
+                    None => ui.add(autre).clicked(),
+                };
+                if cliqué {
+                    réponse = Some(Answer::Cancel);
+                }
+            }
         },
     );
     réponse
@@ -17419,7 +17437,11 @@ fn big_action_button(
     let actif = ui.is_enabled();
     // Le survol éclaircit, le clic assombrit : la même grammaire que les
     // boutons d'egui, avec la couleur du thème.
-    let fond = match (actif, réponse.is_pointer_button_down_on(), réponse.hovered()) {
+    let fond = match (
+        actif,
+        réponse.is_pointer_button_down_on(),
+        réponse.hovered(),
+    ) {
         (false, _, _) => theme.dim.gamma_multiply(0.25),
         (true, true, _) => theme.accent.gamma_multiply(0.80),
         (true, false, true) => theme.accent.gamma_multiply(1.15),
@@ -17429,11 +17451,9 @@ fn big_action_button(
 
     ui.painter().rect_filled(rect, 8.0, fond);
 
-    let galley = ui.painter().layout_no_wrap(
-        label.to_owned(),
-        egui::FontId::proportional(14.0),
-        encre,
-    );
+    let galley =
+        ui.painter()
+            .layout_no_wrap(label.to_owned(), egui::FontId::proportional(14.0), encre);
     // Icône et texte comptés ensemble, puis centrés d'un bloc : centrer
     // chacun de son côté laisse le texte de travers dès que le libellé
     // change de langue.
@@ -17459,7 +17479,10 @@ fn big_action_button(
     );
     icon(ui.painter(), case, encre);
     ui.painter().galley(
-        egui::pos2(case.right() + ÉCART, rect.center().y - galley.size().y * 0.5),
+        egui::pos2(
+            case.right() + ÉCART,
+            rect.center().y - galley.size().y * 0.5,
+        ),
         galley,
         encre,
     );
@@ -17728,8 +17751,14 @@ fn icon_reset(painter: &egui::Painter, rect: egui::Rect, color: egui::Color32) {
     let tangente = egui::vec2(-arrivee.sin(), arrivee.cos());
     let normale = egui::vec2(arrivee.cos(), arrivee.sin());
     let taille = 3.5;
-    painter.line_segment([bout, bout - tangente * taille + normale * taille * 0.8], stroke);
-    painter.line_segment([bout, bout - tangente * taille - normale * taille * 0.8], stroke);
+    painter.line_segment(
+        [bout, bout - tangente * taille + normale * taille * 0.8],
+        stroke,
+    );
+    painter.line_segment(
+        [bout, bout - tangente * taille - normale * taille * 0.8],
+        stroke,
+    );
 }
 
 /// Agrandir : le cadre qu'on veut voir occuper toute la place.
@@ -17868,7 +17897,10 @@ fn status_dot(ui: &mut egui::Ui, color: egui::Color32) {
 /// Ce qui est refusé, c'est un nombre impair de chiffres — là, on ne sait
 /// pas ce que la personne voulait dire.
 fn lire_octets(saisie: &str) -> Option<Vec<u8>> {
-    let chiffres: String = saisie.chars().filter(|c| !c.is_whitespace() && *c != ',').collect();
+    let chiffres: String = saisie
+        .chars()
+        .filter(|c| !c.is_whitespace() && *c != ',')
+        .collect();
     if chiffres.is_empty() || !chiffres.len().is_multiple_of(2) {
         return None;
     }
@@ -17979,7 +18011,10 @@ fn liste_déroulante<T: PartialEq + Clone>(
         egui::StrokeKind::Inside,
     );
     ui.painter().text(
-        egui::pos2(cadre.left() + ui.spacing().button_padding.x, cadre.center().y),
+        egui::pos2(
+            cadre.left() + ui.spacing().button_padding.x,
+            cadre.center().y,
+        ),
         egui::Align2::LEFT_CENTER,
         &courant,
         egui::TextStyle::Body.resolve(ui.style()),
@@ -18183,12 +18218,10 @@ fn title_bar_maximize_button(
     // Le double-clic sur le bandeau fait la même chose, partout ailleurs.
     // Il est libre ici : ces fenêtres ne se replient pas, et c'est le
     // repli qu'egui lui donne d'ordinaire.
-    let bandeau = egui::Rect::from_min_max(
-        fenêtre.min,
-        egui::pos2(croix.left(), croix.bottom()),
-    );
+    let bandeau = egui::Rect::from_min_max(fenêtre.min, egui::pos2(croix.left(), croix.bottom()));
     let double = ctx.input(|i| {
-        i.pointer.button_double_clicked(egui::PointerButton::Primary)
+        i.pointer
+            .button_double_clicked(egui::PointerButton::Primary)
             && i.pointer
                 .interact_pos()
                 .is_some_and(|p| bandeau.contains(p))
@@ -18226,7 +18259,6 @@ fn title_bar_maximize_button(
         });
     cliqué
 }
-
 
 /// Découpe une ligne d'arguments comme un interpréteur de commandes le
 /// ferait, en plus simple.
@@ -18364,7 +18396,8 @@ fn move_cursor(source: &str, at: usize, mouvement: Move) -> usize {
             // arrêtent : `w` en fin de ligne descend d'une ligne dans
             // vim, mais s'arrête au premier mot — il ne saute pas une
             // ligne vide.
-            while i < caractères.len() && caractères[i] != '\n' && caractères[i].is_whitespace() {
+            while i < caractères.len() && caractères[i] != '\n' && caractères[i].is_whitespace()
+            {
                 i += 1;
             }
             i
@@ -18391,7 +18424,8 @@ fn move_cursor(source: &str, at: usize, mouvement: Move) -> usize {
             if i < caractères.len() {
                 i += 1;
             }
-            while i < caractères.len() && caractères[i] != '\n' && caractères[i].is_whitespace() {
+            while i < caractères.len() && caractères[i] != '\n' && caractères[i].is_whitespace()
+            {
                 i += 1;
             }
             let classe = classe_de(caractères.get(i).copied());
@@ -18487,7 +18521,10 @@ impl NamsdecApp {
         // C'est une ligne, ça ne coûte rien, et c'est le seul endroit
         // d'où l'on voit passer le changement.
         let échelle = ctx.pixels_per_point();
-        if self.dernière_échelle.is_some_and(|vue| (vue - échelle).abs() > 0.001) {
+        if self
+            .dernière_échelle
+            .is_some_and(|vue| (vue - échelle).abs() > 0.001)
+        {
             ctx.request_repaint();
         }
         self.dernière_échelle = Some(échelle);
@@ -18851,7 +18888,15 @@ fn prose(ui: &egui::Ui, theme: &'static Theme, text: &str) -> egui::text::Layout
             if morceau.is_empty() {
                 continue;
             }
-            job.append(morceau, 0.0, if appuyé { fort.clone() } else { normal.clone() });
+            job.append(
+                morceau,
+                0.0,
+                if appuyé {
+                    fort.clone()
+                } else {
+                    normal.clone()
+                },
+            );
         }
     }
     job
@@ -19018,27 +19063,43 @@ fn default_window_pos(ctx: &egui::Context, nom: &str) -> egui::Pos2 {
 }
 
 #[allow(clippy::type_complexity)]
-pub(crate) const FENÊTRES_REPRISES: &[(
-    &str,
-    fn(&NamsdecApp) -> bool,
-    fn(&mut NamsdecApp),
-)] = &[
-    ("calculator", |a| a.show_calculator, |a| a.show_calculator = true),
+pub(crate) const FENÊTRES_REPRISES: &[(&str, fn(&NamsdecApp) -> bool, fn(&mut NamsdecApp))] = &[
+    (
+        "calculator",
+        |a| a.show_calculator,
+        |a| a.show_calculator = true,
+    ),
     ("help", |a| a.show_help, |a| a.show_help = true),
     ("vectors", |a| a.show_vectors, |a| a.show_vectors = true),
-    ("breakpoints", |a| a.show_breakpoints, |a| a.show_breakpoints = true),
+    (
+        "breakpoints",
+        |a| a.show_breakpoints,
+        |a| a.show_breakpoints = true,
+    ),
     ("timeline", |a| a.show_timeline, |a| a.show_timeline = true),
     ("cyclic", |a| a.show_cyclic, |a| a.show_cyclic = true),
     ("analysis", |a| a.show_analysis, |a| a.show_analysis = true),
-    ("disassembly", |a| a.show_disassembly, |a| a.show_disassembly = true),
+    (
+        "disassembly",
+        |a| a.show_disassembly,
+        |a| a.show_disassembly = true,
+    ),
     ("flow", |a| a.show_flow, |a| a.show_flow = true),
     ("patches", |a| a.show_patches, |a| a.show_patches = true),
-    ("decompiler", |a| a.show_decompiler, |a| {
-        a.show_decompiler = a.show_decompiler_module;
-    }),
-    ("exercises", |a| a.show_exercises, |a| {
-        a.show_exercises = a.exercises;
-    }),
+    (
+        "decompiler",
+        |a| a.show_decompiler,
+        |a| {
+            a.show_decompiler = a.show_decompiler_module;
+        },
+    ),
+    (
+        "exercises",
+        |a| a.show_exercises,
+        |a| {
+            a.show_exercises = a.exercises;
+        },
+    ),
 ];
 
 /// Ce qu'on fait aux octets d'une instruction.
@@ -19624,8 +19685,11 @@ fn calculator_bits_ui(
                     ui.allocate_exact_size(egui::vec2(BIT_L, 16.0), egui::Sense::click());
                 let mis = valeur >> rang & 1 == 1;
                 if actif && réponse.hovered() {
-                    ui.painter()
-                        .rect_filled(case.expand(1.0), 2.0, theme.accent.gamma_multiply(0.35));
+                    ui.painter().rect_filled(
+                        case.expand(1.0),
+                        2.0,
+                        theme.accent.gamma_multiply(0.35),
+                    );
                 }
                 ui.painter().text(
                     case.center(),
@@ -19689,11 +19753,7 @@ struct Frappe {
 /// disponible, si bien qu'elle ne se centre jamais — elle se contente
 /// de remplir, et son contenu reste collé à gauche. C'est le piège
 /// classique d'egui, et il s'évite en disant soi-même la largeur.
-fn centered_row<R>(
-    ui: &mut egui::Ui,
-    largeur: f32,
-    contenu: impl FnOnce(&mut egui::Ui) -> R,
-) -> R {
+fn centered_row<R>(ui: &mut egui::Ui, largeur: f32, contenu: impl FnOnce(&mut egui::Ui) -> R) -> R {
     // `max_rect` et non `available_width` : la seconde part du curseur,
     // qui a déjà avancé si quelque chose a été posé sur la ligne. On
     // veut la largeur de la place *allouée*, qui ne bouge pas.
@@ -19731,11 +19791,7 @@ enum TouchePour {
 fn mélange(a: egui::Color32, b: egui::Color32, part: f32) -> egui::Color32 {
     let part = part.clamp(0.0, 1.0);
     let mêle = |x: u8, y: u8| (f32::from(x) + (f32::from(y) - f32::from(x)) * part) as u8;
-    egui::Color32::from_rgb(
-        mêle(a.r(), b.r()),
-        mêle(a.g(), b.g()),
-        mêle(a.b(), b.b()),
-    )
+    egui::Color32::from_rgb(mêle(a.r(), b.r()), mêle(a.g(), b.g()), mêle(a.b(), b.b()))
 }
 
 /// L'encre qui se lit le mieux sur ce fond.
@@ -19754,7 +19810,11 @@ fn mélange(a: egui::Color32, b: egui::Color32, part: f32) -> egui::Color32 {
 fn encre_sur(fond: egui::Color32, theme: &Theme) -> egui::Color32 {
     let clair = namsdec_theme::contrast_ratio(fond, theme.text);
     let sombre = namsdec_theme::contrast_ratio(fond, theme.bg);
-    if clair >= sombre { theme.text } else { theme.bg }
+    if clair >= sombre {
+        theme.text
+    } else {
+        theme.bg
+    }
 }
 
 impl TouchePour {
@@ -19807,8 +19867,8 @@ fn calculator_pick_widths(ui: &egui::Ui, s: &Strings) -> (f32, f32) {
             .size()
             .x
     };
-    let étiquette = mesure(s.calculator_base_label.to_owned())
-        .max(mesure(s.calculator_width_label.to_owned()));
+    let étiquette =
+        mesure(s.calculator_base_label.to_owned()).max(mesure(s.calculator_width_label.to_owned()));
     let choix = CalcBase::ALL
         .iter()
         .map(|base| mesure(base.label(s).to_owned()))
@@ -19827,9 +19887,8 @@ fn calculator_pick_widths(ui: &egui::Ui, s: &Strings) -> (f32, f32) {
     // long des choix. egui prend alors la plus grande des deux, si bien
     // que la liste des bases était six pixels plus large que celle des
     // largeurs, et les deux flèches ne tombaient pas au même endroit.
-    let autour = ui.spacing().icon_spacing
-        + ui.spacing().icon_width
-        + ui.spacing().button_padding.x * 2.0;
+    let autour =
+        ui.spacing().icon_spacing + ui.spacing().icon_width + ui.spacing().button_padding.x * 2.0;
     (étiquette.ceil(), (choix + autour).ceil() + 1.0)
 }
 
@@ -20234,7 +20293,10 @@ fn calc_error_text(s: &Strings, erreur: &calc::CalcError) -> String {
         E::Unbalanced => s.calc_unbalanced.to_owned(),
         E::Missing => s.calc_missing.to_owned(),
         E::Arity { name, wanted, got } => {
-            format!("{name} {} {wanted}, {} {got}", s.calc_arity_wants, s.calc_arity_got)
+            format!(
+                "{name} {} {wanted}, {} {got}",
+                s.calc_arity_wants, s.calc_arity_got
+            )
         }
         E::NoRegisters(nom) => format!("{nom} : {}", s.calc_no_program),
         E::DivideByZero => s.calc_divide_by_zero.to_owned(),
@@ -20260,10 +20322,8 @@ fn timeline_bar(
         return None;
     }
     let largeur = ui.available_width().max(32.0);
-    let (rect, réponse) = ui.allocate_exact_size(
-        egui::vec2(largeur, HAUTEUR),
-        egui::Sense::click_and_drag(),
-    );
+    let (rect, réponse) =
+        ui.allocate_exact_size(egui::vec2(largeur, HAUTEUR), egui::Sense::click_and_drag());
     let peintre = ui.painter_at(rect);
     peintre.rect_filled(rect, 2.0, ui.visuals().extreme_bg_color);
 
@@ -20284,10 +20344,7 @@ fn timeline_bar(
             namsdec_emu::StepKind::Syscall => (theme.bad, 1.0),
         };
         let barre = egui::Rect::from_min_max(
-            egui::pos2(
-                rect.left() + i as f32 * pas,
-                rect.bottom() - part * HAUTEUR,
-            ),
+            egui::pos2(rect.left() + i as f32 * pas, rect.bottom() - part * HAUTEUR),
             egui::pos2(rect.left() + (i as f32 + 1.0) * pas, rect.bottom()),
         );
         peintre.rect_filled(barre, 0.0, couleur);
@@ -20305,9 +20362,10 @@ fn timeline_bar(
 
     // Cliquer ou glisser rembobine. Glisser autant que cliquer : on
     // cherche un endroit en balayant, comme sur une piste de lecteur.
-    let visé = réponse.interact_pointer_pos().or(réponse.hover_pos()).map(|position| {
-        timeline::step_at(trace.len(), (position.x - rect.left()) / largeur)
-    });
+    let visé = réponse
+        .interact_pointer_pos()
+        .or(réponse.hover_pos())
+        .map(|position| timeline::step_at(trace.len(), (position.x - rect.left()) / largeur));
     if let Some(index) = visé {
         // Le trait de visée, et ce qu'il désigne.
         let x = rect.left() + (index as f32 / trace.len() as f32) * largeur;
@@ -20435,7 +20493,10 @@ fn slow_frame_note(
             total.as_millis()
         )
     } else {
-        format!("namsdec: frame lente — {}ms au total ({detail})", total.as_millis())
+        format!(
+            "namsdec: frame lente — {}ms au total ({detail})",
+            total.as_millis()
+        )
     })
 }
 

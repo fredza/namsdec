@@ -407,7 +407,13 @@ pub fn rizin_tags() -> (&'static str, &'static str) {
 pub fn tag_exists(repo: &str, tag: &str) -> Option<bool> {
     let git = crate::known::program_path_in("git", None)?;
     let sortie = std::process::Command::new(git)
-        .args(["ls-remote", "--tags", "--exit-code", repo, &format!("refs/tags/{tag}")])
+        .args([
+            "ls-remote",
+            "--tags",
+            "--exit-code",
+            repo,
+            &format!("refs/tags/{tag}"),
+        ])
         .output()
         .ok()?;
     match sortie.status.code() {
@@ -837,7 +843,6 @@ mod reachability {
         // Rien à installer, rien à dire.
         assert_eq!(requirement_command(&[]), None);
     }
-
 }
 
 #[cfg(test)]

@@ -215,7 +215,11 @@ mod tests {
         regs.set64(Reg64::Rax, 0x1234_5641);
         assert!(parse("(rax & 0xff) == 'A'").unwrap().holds(&regs, None));
         assert!(parse("rax >> 24 == 0x12").unwrap().holds(&regs, None));
-        assert!(parse("bswap32(rax) == 0x41563412").unwrap().holds(&regs, None));
+        assert!(
+            parse("bswap32(rax) == 0x41563412")
+                .unwrap()
+                .holds(&regs, None)
+        );
     }
 
     /// Une condition s'écrit **avant** de lancer le programme.

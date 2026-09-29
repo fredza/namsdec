@@ -11,11 +11,10 @@ pub mod cyclic;
 pub mod digest;
 mod digest_module;
 pub mod dump_module;
-mod map_module;
 pub mod elf_scan;
-pub mod explain;
 pub mod entropy;
 mod entropy_module;
+pub mod explain;
 pub mod functions;
 mod functions_module;
 pub mod gadgets;
@@ -24,6 +23,7 @@ pub mod imports;
 mod imports_module;
 pub mod libc;
 pub mod literals;
+mod map_module;
 pub mod patch;
 pub mod patterns;
 mod patterns_module;
@@ -37,14 +37,14 @@ pub mod table;
 pub mod xrefs;
 mod xrefs_module;
 
-pub use entropy_module::EntropyModule;
 pub use binary_info::BinaryInfoModule;
 pub use digest_module::DigestModule;
 pub use dump_module::DumpModule;
-pub use map_module::MapModule;
+pub use entropy_module::EntropyModule;
 pub use functions_module::FunctionsModule;
 pub use gadgets_module::GadgetsModule;
 pub use imports_module::ImportsModule;
+pub use map_module::MapModule;
 pub use patterns_module::PatternsModule;
 pub use protections::ProtectionsModule;
 pub use strings::StringsModule;
@@ -165,7 +165,10 @@ impl ReModuleRegistry {
     /// colonne de navigation a besoin des deux — l'un pour retenir ce
     /// qu'on a choisi, l'autre pour l'écrire.
     pub fn entries(&self, lang: &str) -> Vec<(&'static str, &'static str)> {
-        self.modules.iter().map(|m| (m.id(), m.title(lang))).collect()
+        self.modules
+            .iter()
+            .map(|m| (m.id(), m.title(lang)))
+            .collect()
     }
 
     pub fn on_binary_loaded(&mut self, ctx: &ReContext) {

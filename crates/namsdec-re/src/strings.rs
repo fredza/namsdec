@@ -322,10 +322,8 @@ impl ReModule for StringsModule {
                             egui::Layout::left_to_right(egui::Align::Center),
                             |ui| {
                                 ui.add(
-                                    egui::Label::new(
-                                        egui::RichText::new(&found.text).monospace(),
-                                    )
-                                    .truncate(),
+                                    egui::Label::new(egui::RichText::new(&found.text).monospace())
+                                        .truncate(),
                                 )
                                 .on_hover_text(&found.text);
                             },

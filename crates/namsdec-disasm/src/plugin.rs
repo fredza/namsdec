@@ -334,7 +334,11 @@ mod dzf_tests {
             id: "dzf".to_owned(),
             name: "DZF".to_owned(),
             command: binaire.display().to_string(),
-            args: vec!["--base".to_owned(), "0x401000".to_owned(), "{file}".to_owned()],
+            args: vec![
+                "--base".to_owned(),
+                "0x401000".to_owned(),
+                "{file}".to_owned(),
+            ],
             install: None,
         };
         // `push rbp ; mov rbp, rsp ; mov rax, 42 ; pop rbp ; ret` — le
@@ -345,7 +349,13 @@ mod dzf_tests {
             0x5d, 0xc3,
         ];
         let listing = plugin.run(octets).expect("DZF doit répondre");
-        for attendu in ["push rbp", "mov rbp, rsp", "mov rax, 0x2a", "pop rbp", "ret"] {
+        for attendu in [
+            "push rbp",
+            "mov rbp, rsp",
+            "mov rax, 0x2a",
+            "pop rbp",
+            "ret",
+        ] {
             assert!(
                 listing.contains(attendu),
                 "« {attendu} » manque dans ce que DZF rend :\n{listing}"
@@ -354,6 +364,9 @@ mod dzf_tests {
         // Les adresses suivent la base demandée, et avancent de la taille
         // de chaque instruction.
         assert!(listing.contains("401000"), "{listing}");
-        assert!(listing.contains("40100f"), "le `ret` est au bon endroit :\n{listing}");
+        assert!(
+            listing.contains("40100f"),
+            "le `ret` est au bon endroit :\n{listing}"
+        );
     }
 }

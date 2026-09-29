@@ -131,8 +131,8 @@ pub fn save(dir: &Path, fingerprint: &str, notes: &Notes) -> std::io::Result<()>
         return Ok(());
     }
     std::fs::create_dir_all(dir)?;
-    let json = serde_json::to_string_pretty(notes)
-        .map_err(|e| std::io::Error::other(e.to_string()))?;
+    let json =
+        serde_json::to_string_pretty(notes).map_err(|e| std::io::Error::other(e.to_string()))?;
     std::fs::write(chemin, json)
 }
 

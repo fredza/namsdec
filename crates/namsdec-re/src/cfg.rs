@@ -513,7 +513,6 @@ mod tests {
     }
 }
 
-
 #[cfg(test)]
 mod tests_fonction {
     use super::*;
@@ -528,14 +527,37 @@ mod tests_fonction {
     fn a_function_stops_at_its_calls() {
         let cfg = Cfg {
             blocks: vec![
-                Block { start: 0x10, last: 0x12, instructions: vec!["jmp".into()], exit: Exit::Jump },
-                Block { start: 0x20, last: 0x22, instructions: vec!["call".into()], exit: Exit::Call },
+                Block {
+                    start: 0x10,
+                    last: 0x12,
+                    instructions: vec!["jmp".into()],
+                    exit: Exit::Jump,
+                },
+                Block {
+                    start: 0x20,
+                    last: 0x22,
+                    instructions: vec!["call".into()],
+                    exit: Exit::Call,
+                },
                 // Le corps de l'appelée : un autre monde.
-                Block { start: 0x90, last: 0x92, instructions: vec!["ret".into()], exit: Exit::Return },
+                Block {
+                    start: 0x90,
+                    last: 0x92,
+                    instructions: vec!["ret".into()],
+                    exit: Exit::Return,
+                },
             ],
             edges: vec![
-                Edge { from: 0, to: 1, kind: Kind::Next },
-                Edge { from: 1, to: 2, kind: Kind::Call },
+                Edge {
+                    from: 0,
+                    to: 1,
+                    kind: Kind::Next,
+                },
+                Edge {
+                    from: 1,
+                    to: 2,
+                    kind: Kind::Call,
+                },
             ],
         };
 
@@ -554,7 +576,12 @@ mod tests_fonction {
         let réduit = cfg.subgraph(&fonction);
         assert_eq!(réduit.blocks.len(), 2);
         assert_eq!(réduit.blocks[0].start, 0x10);
-        assert_eq!(réduit.edges.len(), 1, "le call n'a plus de cible : {:?}", réduit.edges);
+        assert_eq!(
+            réduit.edges.len(),
+            1,
+            "le call n'a plus de cible : {:?}",
+            réduit.edges
+        );
         assert_eq!((réduit.edges[0].from, réduit.edges[0].to), (0, 1));
     }
 
@@ -618,6 +645,10 @@ mod tests_fonction {
     fn an_unknown_block_yields_nothing() {
         let cfg = Cfg::default();
         assert!(cfg.function_around(7).is_empty());
-        assert!(cfg.subgraph(&[3usize].into_iter().collect()).blocks.is_empty());
+        assert!(
+            cfg.subgraph(&[3usize].into_iter().collect())
+                .blocks
+                .is_empty()
+        );
     }
 }

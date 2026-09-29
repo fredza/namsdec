@@ -162,7 +162,10 @@ fn lire_texte(chars: &[char], début: usize) -> Result<(Vec<u8>, usize), Pattern
 /// Une suite de chiffres hexadécimaux, par paires, avec `??` pour joker.
 fn lire_hexa(chars: &[char], début: usize) -> Result<(Vec<Option<u8>>, usize), PatternError> {
     let mut fin = début;
-    while fin < chars.len() && !chars[fin].is_whitespace() && chars[fin] != '"' && chars[fin] != '\''
+    while fin < chars.len()
+        && !chars[fin].is_whitespace()
+        && chars[fin] != '"'
+        && chars[fin] != '\''
     {
         fin += 1;
     }
@@ -296,6 +299,9 @@ mod tests {
     #[test]
     fn the_addresses_are_real_ones() {
         let foin = b"..ABC".to_vec();
-        assert_eq!(motif("\"ABC\"").find_all(&foin, 0x40_1000, 4), vec![0x40_1002]);
+        assert_eq!(
+            motif("\"ABC\"").find_all(&foin, 0x40_1000, 4),
+            vec![0x40_1002]
+        );
     }
 }

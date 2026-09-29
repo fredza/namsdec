@@ -405,7 +405,10 @@ mod tests {
         // compte rendu doit trancher, et elle doit valoir celle que
         // `sha256sum` donne — sinon on ne pourrait pas les comparer.
         assert!(
-            report.contains(&format!("SHA-256 : `{}`", digest::hex(&digest::sha256(&bytes)))),
+            report.contains(&format!(
+                "SHA-256 : `{}`",
+                digest::hex(&digest::sha256(&bytes))
+            )),
             "l'empreinte du fichier entier :\n{report}"
         );
         assert!(

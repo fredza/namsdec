@@ -1055,7 +1055,6 @@ _start:
     }
 }
 
-
 #[cfg(test)]
 mod loader_tests {
     use super::*;
@@ -1098,10 +1097,16 @@ mod loader_tests {
         // Elle couvre le point d'entrée, et ce qu'on y lit est bien le
         // code du fichier.
         let offset = (elf.entry - début) as usize;
-        assert!(offset + 16 < image.len(), "l'image couvre le point d'entrée");
+        assert!(
+            offset + 16 < image.len(),
+            "l'image couvre le point d'entrée"
+        );
         // La table des en-têtes est projetée : c'est par elle que le
         // programme retrouve son propre modèle TLS.
-        assert!(elf.phdr.is_some(), "les en-têtes de programme sont projetés");
+        assert!(
+            elf.phdr.is_some(),
+            "les en-têtes de programme sont projetés"
+        );
     }
 
     /// Les relocations sont lues, et appliquées.

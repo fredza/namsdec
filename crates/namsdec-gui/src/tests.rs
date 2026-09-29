@@ -734,8 +734,8 @@ fn return_sample() -> String {
 #[test]
 #[ignore = "écrit dans le dossier de plugins de l'utilisateur"]
 fn installs_the_external_theme_for_real() {
-    let chemin = external_abyss()
-        .expect("NAMSDEC_EXTERNAL_THEME doit désigner le fichier du thème");
+    let chemin =
+        external_abyss().expect("NAMSDEC_EXTERNAL_THEME doit désigner le fichier du thème");
     let path = chemin.as_path();
 
     let mut app = NamsdecApp::default();
@@ -2047,7 +2047,10 @@ fn the_re_tab_is_absent_until_asked_for_then_remembered() {
         ..Default::default()
     };
     let écrit = serde_json::to_string(&app.settings_snapshot()).unwrap();
-    assert!(écrit.contains("re_tab"), "le champ doit être écrit : {écrit}");
+    assert!(
+        écrit.contains("re_tab"),
+        "le champ doit être écrit : {écrit}"
+    );
     let relu: Settings = serde_json::from_str(&écrit).unwrap();
     assert!(
         NamsdecApp::from_settings(relu).show_re_tab,
@@ -4877,7 +4880,10 @@ fn the_command_palette_shows_everything_it_can_without_scrolling() {
             // révéler. Ce qu'on vérifie n'est pas qu'elles tiennent dans
             // 1400 px, c'est qu'elles ne défilent pas quand il y a la
             // place.
-            egui::vec2(1280.0, palette_commands(strings(Lang::Fr), true, true).len() as f32 * 40.0 + 200.0),
+            egui::vec2(
+                1280.0,
+                palette_commands(strings(Lang::Fr), true, true).len() as f32 * 40.0 + 200.0,
+            ),
         )),
         ..Default::default()
     };
@@ -5579,8 +5585,7 @@ hlt
             .iter()
             // Le lint parle la langue de l'application : « inscriptible »
             // en français, « not writable » en anglais.
-            .any(|d| d.message.contains("inscriptible")
-                || d.message.contains("not writable")),
+            .any(|d| d.message.contains("inscriptible") || d.message.contains("not writable")),
         "l'avertissement doit précéder l'exécution : {:?}",
         app.diagnostics
     );
@@ -5748,7 +5753,9 @@ fn the_readme_tells_the_truth() {
     }
     // Et les limites annoncées le sont toujours : les appels système
     // simulés sont bien ceux-là, ni plus ni moins.
-    for simulé in [0u64, 1, 12, 60, 39, 102, 107, 24, 35, 318, 9, 10, 158, 5, 302] {
+    for simulé in [
+        0u64, 1, 12, 60, 39, 102, 107, 24, 35, 318, 9, 10, 158, 5, 302,
+    ] {
         assert!(
             namsdec_re::table::is_simulated(simulé),
             "l'appel {simulé} est annoncé comme simulé"
@@ -5885,7 +5892,10 @@ ret
     .expect("assemblage");
 
     let mut app = NamsdecApp::default();
-    assert!(app.load_elf(&out.file, "programme"), "l'ELF doit se charger");
+    assert!(
+        app.load_elf(&out.file, "programme"),
+        "l'ELF doit se charger"
+    );
 
     // Les étiquettes du source sont revenues dans le listing.
     assert!(
@@ -9168,7 +9178,10 @@ fn an_exercise_says_whether_its_goal_is_reached() {
     assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
     let (conditions, atteint) = app.exercise_goal().expect("un but à vérifier");
     assert_eq!(
-        conditions.iter().map(|l| l.texte.as_str()).collect::<Vec<_>>(),
+        conditions
+            .iter()
+            .map(|l| l.texte.as_str())
+            .collect::<Vec<_>>(),
         vec!["rax == 0xf"]
     );
     assert!(!atteint, "le programme n'a pas encore tourné");
@@ -9335,7 +9348,10 @@ fn every_goal_is_readable_and_on_the_right_side() {
             atteint,
             attendu,
             "{id} : {:?} — attendu {}",
-            conditions.iter().map(|l| l.texte.as_str()).collect::<Vec<_>>(),
+            conditions
+                .iter()
+                .map(|l| l.texte.as_str())
+                .collect::<Vec<_>>(),
             if attendu {
                 "atteint d'emblée"
             } else {
@@ -10004,7 +10020,11 @@ fn reset_clears_what_the_previous_run_left_behind() {
         entree,
         "le programme repart de son point d'entrée"
     );
-    assert!(matches!(app.status, Status::Idle), "obtenu {:?}", app.status);
+    assert!(
+        matches!(app.status, Status::Idle),
+        "obtenu {:?}",
+        app.status
+    );
     assert!(
         app.diagnostics.is_empty(),
         "les diagnostics du binaire s'en vont comme au chargement : {:?}",
@@ -10159,7 +10179,10 @@ syscall
         None,
         "plus aucun champ ne retient les touches"
     );
-    assert!(app.console_input_released, "et le champ ne le reprendra pas");
+    assert!(
+        app.console_input_released,
+        "et le champ ne le reprendra pas"
+    );
     assert_eq!(app.editor_mode, EditorMode::Normal);
 
     // Il ne le reprend pas à la frame suivante, bien que l'attente dure.
@@ -10365,8 +10388,11 @@ fn flow_boxes_take_the_width_their_text_needs() {
     // Un programme aux instructions courtes, et le même avec une
     // instruction longue : le second doit demander plus de place.
     let court = namsdec_re::cfg::build(&disassemble_code(
-        &namsdec_asm::assemble("section .text\nglobal _start\n_start:\nnop\nhlt\n", BASE_ADDR)
-            .expect("l'assemblage"),
+        &namsdec_asm::assemble(
+            "section .text\nglobal _start\n_start:\nnop\nhlt\n",
+            BASE_ADDR,
+        )
+        .expect("l'assemblage"),
     ));
     let long = namsdec_re::cfg::build(&disassemble_code(
         &namsdec_asm::assemble(
@@ -10759,8 +10785,7 @@ fn the_install_button_brings_its_plan_to_the_front() {
     // présentait en premier.
     let au_premier_plan = ctx.memory(|m| {
         m.layer_ids().any(|id| {
-            id.id == egui::Id::new("installer_window")
-                && id.order == egui::Order::Foreground
+            id.id == egui::Id::new("installer_window") && id.order == egui::Order::Foreground
         })
     });
     assert!(
@@ -10945,7 +10970,10 @@ fn a_program_can_be_given_its_arguments() {
     let emulator = app.emulator.as_ref().expect("un émulateur");
     let rsp = emulator.cpu().regs.get64(Reg64::Rsp);
     let argc = emulator.cpu().mem.read_u64(rsp).expect("argc");
-    assert_eq!(argc, 3, "argc compte le nom du programme et les deux autres");
+    assert_eq!(
+        argc, 3,
+        "argc compte le nom du programme et les deux autres"
+    );
 }
 
 /// Les deux lignes de la zone de saisie ne se chevauchent pas.
@@ -11099,20 +11127,39 @@ fn normal_mode_moves_the_cursor_like_vim() {
     // Position 0 : début de la première ligne.
     assert_eq!(move_cursor(source, 0, Move::Right), 1);
     // `h` et `l` ne quittent pas leur ligne, comme dans vim.
-    assert_eq!(move_cursor(source, 0, Move::Left), 0, "rien à gauche du début");
-    assert_eq!(move_cursor(source, 10, Move::Right), 10, "rien après la fin de ligne");
+    assert_eq!(
+        move_cursor(source, 0, Move::Left),
+        0,
+        "rien à gauche du début"
+    );
+    assert_eq!(
+        move_cursor(source, 10, Move::Right),
+        10,
+        "rien après la fin de ligne"
+    );
     // Début et fin de ligne.
     assert_eq!(move_cursor(source, 5, Move::LineStart), 0);
     assert_eq!(move_cursor(source, 5, Move::LineEnd), 10);
     // Descendre garde la colonne quand la ligne visée est assez longue.
     assert_eq!(move_cursor(source, 2, Move::Down), 13, "ligne 2, colonne 2");
     // Et la raccourcit sinon : « nop » n'a que trois caractères.
-    assert_eq!(move_cursor(source, 8, Move::Down), 14, "collé à la fin de « nop »");
+    assert_eq!(
+        move_cursor(source, 8, Move::Down),
+        14,
+        "collé à la fin de « nop »"
+    );
     // Remonter de même.
     assert_eq!(move_cursor(source, 13, Move::Up), 2);
-    assert_eq!(move_cursor(source, 2, Move::Up), 2, "rien au-dessus de la première");
+    assert_eq!(
+        move_cursor(source, 2, Move::Up),
+        2,
+        "rien au-dessus de la première"
+    );
     // La fin du fichier.
-    assert_eq!(move_cursor(source, 0, Move::FileEnd), source.chars().count());
+    assert_eq!(
+        move_cursor(source, 0, Move::FileEnd),
+        source.chars().count()
+    );
 
     // Les caractères comptent pour un, non pour leurs octets : sans quoi
     // le curseur tomberait au milieu d'un « é ».
@@ -11237,7 +11284,10 @@ fn every_binary_here_loads_and_runs() {
             app.status
         );
     }
-    eprintln!("{vus} binaire(s) passés en revue dans {}", dossier.display());
+    eprintln!(
+        "{vus} binaire(s) passés en revue dans {}",
+        dossier.display()
+    );
 }
 
 /// Un binaire qui attend montre TOUTE la zone de saisie.
@@ -12004,10 +12054,7 @@ fn the_analysis_window_has_margins_and_a_left_aligned_column() {
 
     // Le contenu ne touche pas la colonne : le texte du module commence
     // franchement à droite du plus long libellé.
-    let fin_de_colonne = titres
-        .iter()
-        .map(|t| où(t).1)
-        .fold(f32::MIN, f32::max);
+    let fin_de_colonne = titres.iter().map(|t| où(t).1).fold(f32::MIN, f32::max);
     // Le titre du module est peint deux fois : dans la colonne et en
     // tête du contenu. C'est celui de droite qu'on veut.
     let début_du_contenu = posés
@@ -12044,14 +12091,20 @@ fn the_map_and_the_dump_say_where_and_what() {
         .map(|(id, _)| id)
         .collect();
     for voulu in ["map", "dump"] {
-        assert!(ids.contains(&voulu), "le module « {voulu} » existe : {ids:?}");
+        assert!(
+            ids.contains(&voulu),
+            "le module « {voulu} » existe : {ids:?}"
+        );
     }
 
     // La carte : les segments que le noyau charge, avec leurs droits, et
     // les sections que l'éditeur de liens a rangées.
     app.analysis_module = "map".to_owned();
     let peint = paint(&mut app);
-    assert!(peint.contains("LOAD"), "les segments chargeables :\n{peint}");
+    assert!(
+        peint.contains("LOAD"),
+        "les segments chargeables :\n{peint}"
+    );
     assert!(peint.contains("r-x"), "et leurs droits :\n{peint}");
     assert!(peint.contains(".text"), "les sections nommées :\n{peint}");
 
@@ -12149,7 +12202,10 @@ fn the_analysis_window_reads_across_and_not_only_down() {
     let titres = app.re_registry.titles("fr");
     assert!(titres.len() >= 5, "il y a bien des modules : {titres:?}");
     let peint = peindre(&mut app);
-    assert!(peint.contains(s.analysis_all), "« Tout » est dans la colonne :\n{peint}");
+    assert!(
+        peint.contains(s.analysis_all),
+        "« Tout » est dans la colonne :\n{peint}"
+    );
     for titre in &titres {
         assert!(peint.contains(titre), "« {titre} » est dans la colonne");
     }
@@ -12159,7 +12215,10 @@ fn the_analysis_window_reads_across_and_not_only_down() {
     let (id, titre) = app.re_registry.entries("fr")[1];
     app.analysis_module = id.to_owned();
     let peint = peindre(&mut app);
-    assert!(peint.contains(titre), "le module choisi est montré :\n{peint}");
+    assert!(
+        peint.contains(titre),
+        "le module choisi est montré :\n{peint}"
+    );
 
     // Et le choix se retrouve au retour : c'est un réglage.
     assert_eq!(app.settings_snapshot().analysis_module, id);
@@ -12191,7 +12250,11 @@ fn the_input_dialog_opens_when_the_program_waits_and_shows_what_it_asked() {
         }
         app.tick_run(&egui::Context::default());
     }
-    assert!(matches!(app.status, Status::WaitingForInput), "{:?}", app.status);
+    assert!(
+        matches!(app.status, Status::WaitingForInput),
+        "{:?}",
+        app.status
+    );
 
     let peint = paint(&mut app);
     assert!(app.show_input_dialog, "la boîte s'ouvre d'elle-même");
@@ -12202,13 +12265,20 @@ fn the_input_dialog_opens_when_the_program_waits_and_shows_what_it_asked() {
         peint.contains("Enter the password:"),
         "l'invite du programme doit être montrée :\n{peint}"
     );
-    assert!(peint.contains(s.console_send), "et de quoi répondre :\n{peint}");
+    assert!(
+        peint.contains(s.console_send),
+        "et de quoi répondre :\n{peint}"
+    );
     assert!(peint.contains(s.console_eof), "{peint}");
 
     // « Plus tard » la referme sans rien envoyer : le programme attend
     // toujours, et la ligne de la console reste.
     app.show_input_dialog = false;
-    assert!(matches!(app.status, Status::WaitingForInput), "{:?}", app.status);
+    assert!(
+        matches!(app.status, Status::WaitingForInput),
+        "{:?}",
+        app.status
+    );
     let peint = paint(&mut app);
     assert!(
         !peint.contains(s.input_dialog_asked),
@@ -12351,7 +12421,11 @@ fn after_the_answer_the_dialog_shows_what_the_program_said() {
         }
         app.tick_run(&egui::Context::default());
     }
-    assert!(matches!(app.status, Status::WaitingForInput), "{:?}", app.status);
+    assert!(
+        matches!(app.status, Status::WaitingForInput),
+        "{:?}",
+        app.status
+    );
     let peint = paint(&mut app);
     assert!(peint.contains("Enter the password:"), "l'invite :\n{peint}");
 
@@ -12363,7 +12437,11 @@ fn after_the_answer_the_dialog_shows_what_the_program_said() {
         }
         app.tick_run(&egui::Context::default());
     }
-    assert!(matches!(app.status, Status::Exited { .. }), "{:?}", app.status);
+    assert!(
+        matches!(app.status, Status::Exited { .. }),
+        "{:?}",
+        app.status
+    );
 
     let peint = paint(&mut app);
     assert!(app.show_input_dialog, "la boîte reste ouverte");
@@ -12416,7 +12494,11 @@ fn the_dump_can_be_saved_in_a_shape_one_can_compare() {
     app.export_dump(&chemin);
     assert!(matches!(app.status, Status::Note(_)), "{:?}", app.status);
     let écrit = std::fs::read_to_string(&chemin).expect("le vidage est là");
-    assert!(écrit.starts_with("00000000  7f 45 4c 46"), "un ELF :\n{}", &écrit[..80]);
+    assert!(
+        écrit.starts_with("00000000  7f 45 4c 46"),
+        "un ELF :\n{}",
+        &écrit[..80]
+    );
     assert_eq!(
         écrit.lines().count(),
         octets.len().div_ceil(16),
@@ -12546,7 +12628,10 @@ fn a_truncated_status_message_can_be_read_in_full() {
         sortie.textures_delta.clear();
     }
     let case = case.expect("le message est peint");
-    assert!(élidé, "le message est trop long pour tenir : il doit être coupé");
+    assert!(
+        élidé,
+        "le message est trop long pour tenir : il doit être coupé"
+    );
 
     // Et au survol, il se lit en entier : l'infobulle le répète, donc le
     // texte est peint une seconde fois.
@@ -12602,7 +12687,11 @@ fn a_truncated_status_message_can_be_read_in_full() {
     ] {
         app.status = état;
         let (texte, _, _) = app.status_line();
-        assert!(!texte.trim().is_empty(), "un état sans phrase : {:?}", app.status);
+        assert!(
+            !texte.trim().is_empty(),
+            "un état sans phrase : {:?}",
+            app.status
+        );
     }
 }
 
@@ -12634,7 +12723,10 @@ fn the_dump_can_write_bytes_and_the_change_is_a_patch() {
     assert_eq!(app.patches[0].before, avant);
     assert_eq!(app.patches[0].addr, 0, "une position, non une adresse");
     let patché = &app.assemble_state.as_ref().expect("rechargé").output.file;
-    assert_eq!(&patché[offset..offset + nouveaux.len()], nouveaux.as_slice());
+    assert_eq!(
+        &patché[offset..offset + nouveaux.len()],
+        nouveaux.as_slice()
+    );
 
     // Écrire ce qui s'y trouve déjà n'enregistre rien : un patch qui ne
     // change rien encombrerait la liste de ce qu'on peut défaire.
@@ -12749,7 +12841,13 @@ fn neutralising_an_instruction_keeps_every_other_address() {
     app.apply_patch(PatchGeste::Neutraliser);
     assert!(matches!(app.status, Status::Note(_)), "{:?}", app.status);
 
-    let patché = app.assemble_state.as_ref().expect("rechargé").output.file.clone();
+    let patché = app
+        .assemble_state
+        .as_ref()
+        .expect("rechargé")
+        .output
+        .file
+        .clone();
     assert_eq!(patché.len(), octets.len(), "le fichier garde sa taille");
     let offset = app.patches[0].offset;
     assert_eq!(
@@ -13220,7 +13318,10 @@ fn the_keypad_is_made_of_real_buttons_and_is_centred() {
         if let egui::epaint::Shape::Text(texte) = &clipped.shape {
             let mot = texte.galley.text();
             if ["63", "32"].contains(&mot) {
-                index.insert(mot.to_owned(), (texte.pos.x, texte.pos.x + texte.galley.size().x));
+                index.insert(
+                    mot.to_owned(),
+                    (texte.pos.x, texte.pos.x + texte.galley.size().x),
+                );
             }
         }
     }
@@ -13275,7 +13376,10 @@ fn the_keypad_writes_what_the_evaluator_reads() {
     assert_eq!(calc::eval("0x1F&0xF", None), Ok(15));
 
     // Les opérateurs et les parenthèses s'écrivent tels quels.
-    assert_eq!(tape(CalcBase::Hex, &["(", "1", ")", "<<", "4"]), "(0x1)<<0x4");
+    assert_eq!(
+        tape(CalcBase::Hex, &["(", "1", ")", "<<", "4"]),
+        "(0x1)<<0x4"
+    );
     assert_eq!(calc::eval("(0x1)<<0x4", None), Ok(16));
 }
 
@@ -13306,7 +13410,11 @@ fn the_width_masks_the_reading_not_the_computation() {
 
     let valeur = calc::eval("0 - 1", None).expect("le calcul passe");
     assert_eq!(valeur, u64::MAX, "le calcul déborde comme un registre");
-    assert_eq!(valeur & CalcWidth::W8.mask(), 0xff, "et la lecture se borne");
+    assert_eq!(
+        valeur & CalcWidth::W8.mask(),
+        0xff,
+        "et la lecture se borne"
+    );
 }
 
 /// La base et la largeur se retrouvent au retour.
@@ -13351,7 +13459,10 @@ fn the_calculator_shows_its_keypad_its_bits_and_its_functions() {
     // Le clavier : des chiffres et des opérateurs de code, non des
     // symboles mathématiques qu'il faudrait retraduire.
     for touche in ["7", "F", "&", "<<", "0x"] {
-        assert!(peint.contains(&format!("{touche}|")), "la touche {touche} :\n{peint}");
+        assert!(
+            peint.contains(&format!("{touche}|")),
+            "la touche {touche} :\n{peint}"
+        );
     }
     // Les fonctions, en toutes lettres.
     assert!(peint.contains("popcnt(x)"), "{peint}");
@@ -13652,7 +13763,10 @@ fn the_file_name_follows_the_menus_instead_of_floating() {
     let ctx = egui::Context::default();
     let mut app = NamsdecApp::default();
     app.apply_theme(&ctx);
-    assert!(!app.system_titlebar, "la barre maison, celle qui porte le nom");
+    assert!(
+        !app.system_titlebar,
+        "la barre maison, celle qui porte le nom"
+    );
 
     let large = egui::vec2(1600.0, 1000.0);
     let étroite = egui::vec2(1100.0, 1000.0);
@@ -13783,7 +13897,10 @@ fn the_calculator_sits_just_left_of_the_stack_tab() {
     }
     // Dans la barre d'outils, non perdue ailleurs dans la fenêtre.
     let haut = touches.iter().map(|p| p.y).fold(f32::MAX, f32::min);
-    assert!(haut > 30.0, "dans la barre d'outils, non dans les menus : {haut}");
+    assert!(
+        haut > 30.0,
+        "dans la barre d'outils, non dans les menus : {haut}"
+    );
 }
 
 /// L'onglet RE ne porte plus qu'un bouton.
@@ -13801,8 +13918,15 @@ fn the_re_tab_carries_only_its_button() {
         ..Default::default()
     };
     let peint = paint(&mut app);
-    assert!(peint.contains(s.analysis_open), "le bouton est là :\n{peint}");
-    for module in ["En bref", "Fonctions importées", "Fragments réutilisables (ROP)"] {
+    assert!(
+        peint.contains(s.analysis_open),
+        "le bouton est là :\n{peint}"
+    );
+    for module in [
+        "En bref",
+        "Fonctions importées",
+        "Fragments réutilisables (ROP)",
+    ] {
         assert!(
             !peint.contains(module),
             "« {module} » n'a plus sa place dans le panneau :\n{peint}"
@@ -13856,10 +13980,17 @@ fn a_proposed_fix_is_written_in_the_status_bar_and_alt_applies_it() {
     // ce qui calcule la proposition.
     peindre(&mut app, false);
     let peint = peindre(&mut app, false);
-    let attendu = s
-        .fix_hint
-        .replacen("{}", &s.fix_unknown_mnemonic.replacen("{}", "mvo", 1).replacen("{}", "mov", 1), 1);
-    assert!(peint.contains(&attendu), "attendu « {attendu} » dans :\n{peint}");
+    let attendu = s.fix_hint.replacen(
+        "{}",
+        &s.fix_unknown_mnemonic
+            .replacen("{}", "mvo", 1)
+            .replacen("{}", "mov", 1),
+        1,
+    );
+    assert!(
+        peint.contains(&attendu),
+        "attendu « {attendu} » dans :\n{peint}"
+    );
     assert_eq!(
         app.source, "    mvo rax, 1\n",
         "rien n'est écrit tant qu'on n'a pas confirmé"
@@ -13908,9 +14039,7 @@ fn holding_alt_does_not_correct_twice() {
             })],
             ..Default::default()
         };
-        ctx.run_ui(entrée, |ui| app.draw(ui))
-            .textures_delta
-            .clear();
+        ctx.run_ui(entrée, |ui| app.draw(ui)).textures_delta.clear();
     };
 
     frame(&mut app, false);
@@ -16856,7 +16985,10 @@ fn the_tab_bar_shows_the_open_files() {
         });
         sortie.textures_delta.clear();
     }
-    assert!(posé, "le rond dit, dans l'onglet, ce qui n'est pas enregistré");
+    assert!(
+        posé,
+        "le rond dit, dans l'onglet, ce qui n'est pas enregistré"
+    );
 
     // UN SEUL TAMPON, et la barre est là quand même.
     //
@@ -18477,9 +18609,7 @@ fn fetching_a_tool_never_happens_by_itself() {
     let prêt = namsdec_disasm::known::all()
         .into_iter()
         .find(|k| k.plugin.id == "retdec")
-        .map(|k| {
-            k.availability_in(outils.as_deref()) == namsdec_disasm::known::Availability::Ready
-        })
+        .map(|k| k.availability_in(outils.as_deref()) == namsdec_disasm::known::Availability::Ready)
         .unwrap_or(false);
     let attendu = if prêt {
         strings(Lang::Fr).install_already_done
@@ -18588,8 +18718,6 @@ fn installing_tools_adds_no_dependency_to_the_binary() {
     }
 }
 
-
-
 /// Compile un petit programme C, et rend son binaire.
 ///
 /// `None` quand la machine n'a pas de quoi — pas de `gcc`, pas de
@@ -18611,7 +18739,10 @@ fn compile_c(source: &str, options: &[&str]) -> Option<(tempfile::TempDir, std::
     if !sortie.status.success() {
         eprintln!(
             "gcc n'a pas pu compiler ({}) : test ignoré",
-            String::from_utf8_lossy(&sortie.stderr).lines().next().unwrap_or("")
+            String::from_utf8_lossy(&sortie.stderr)
+                .lines()
+                .next()
+                .unwrap_or("")
         );
         return None;
     }
@@ -18680,7 +18811,11 @@ fn a_binary_is_loaded_the_way_the_kernel_would() {
     let argv0 = cpu.mem.read_u64(rsp + 8).expect("argv[0]");
     let nom = cpu.mem.peek_bytes(argv0, 2).expect("le nom du programme");
     assert_eq!(nom, b"ls", "argv[0] est le nom du fichier ouvert");
-    assert_eq!(cpu.mem.read_u64(rsp + 16), Ok(0), "puis le zéro qui clôt argv");
+    assert_eq!(
+        cpu.mem.read_u64(rsp + 16),
+        Ok(0),
+        "puis le zéro qui clôt argv"
+    );
 
     // 5. Le vecteur auxiliaire dit au programme où il est.
     const AT_NULL: u64 = 0;
@@ -18844,7 +18979,6 @@ fn a_static_c_program_runs_all_the_way_through() {
     );
 }
 
-
 #[test]
 fn a_dynamic_c_program_reads_its_input_and_answers() {
     let Some((_dir, binaire)) = compile_c(
@@ -18921,23 +19055,18 @@ fn every_function_namsdec_claims_to_provide_really_answers() {
     // Les variantes que l'éditeur de liens fabrique désignent la même
     // fonction : c'est ce qui fait marcher un binaire compilé avec les
     // protections de la glibc.
-    for variante in ["printf@GLIBC_2.2.5", "__printf_chk", "__isoc99_scanf", "memcpy@plt"] {
+    for variante in [
+        "printf@GLIBC_2.2.5",
+        "__printf_chk",
+        "__isoc99_scanf",
+        "memcpy@plt",
+    ] {
         assert!(
             namsdec_emu::provides(variante),
             "« {variante} » doit être reconnue comme sa fonction d'origine"
         );
     }
 }
-
-
-
-
-
-
-
-
-
-
 
 /// Le champ de saisie est visible quelle que soit la hauteur de la console.
 ///
@@ -18968,80 +19097,82 @@ fn the_input_row_is_visible_at_every_console_height() {
     ];
 
     for hauteur in [None, Some(96.0), Some(128.0), Some(200.0), Some(260.0)] {
-      for env_ouvert in [false, true] {
-        let mut app = NamsdecApp {
-            console_height: hauteur,
-            console_env_open: env_ouvert,
-            ..Default::default()
-        };
-        assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
-        app.do_run();
-        for _ in 0..4000 {
-            if !app.running {
-                break;
-            }
-            app.tick_run(&egui::Context::default());
-        }
-        assert!(
-            matches!(app.status, Status::WaitingForInput),
-            "{hauteur:?} : le programme devrait attendre une entrée — {:?}",
-            app.status
-        );
-
-        let ctx = egui::Context::default();
-        // Le thème posé, et c'est **indispensable** : il change les
-        // espacements, donc la hauteur des rangées. Sans lui, ce test
-        // passait alors que la rangée « Entrée » disparaissait pour de
-        // vrai sur la machine, à 128 px de console — il mesurait une
-        // application qui n'existe nulle part.
-        app.apply_theme(&ctx);
-        let entrée = egui::RawInput {
-            screen_rect: Some(écran),
-            ..Default::default()
-        };
-        // Quatre images : la zone se mesure elle-même, et la hauteur
-        // qu'elle réserve à la suivante vient de ce qu'elle a pris.
-        let mut vus: std::collections::BTreeMap<&str, (egui::Rect, egui::Rect)> =
-            std::collections::BTreeMap::new();
-        for _ in 0..4 {
-            vus.clear();
-            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
-            for clipped in &sortie.shapes {
-                if let egui::epaint::Shape::Text(texte) = &clipped.shape
-                    && let Some(rangée) = rangées.iter().find(|r| **r == texte.galley.text())
-                {
-                    // Le rectangle ENTIER du texte, et non sa position.
-                    // C'est le trou qu'avait ce test : `pos` est le coin
-                    // supérieur gauche, si bien qu'une rangée dont seul
-                    // le haut dépassait dans le panneau passait pour
-                    // visible — alors qu'à l'écran elle était coupée en
-                    // deux, champ et boutons sous le bord.
-                    let boîte = egui::Rect::from_min_size(texte.pos, texte.galley.size());
-                    vus.insert(rangée, (boîte, clipped.clip_rect));
+        for env_ouvert in [false, true] {
+            let mut app = NamsdecApp {
+                console_height: hauteur,
+                console_env_open: env_ouvert,
+                ..Default::default()
+            };
+            assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+            app.do_run();
+            for _ in 0..4000 {
+                if !app.running {
+                    break;
                 }
+                app.tick_run(&egui::Context::default());
             }
-            sortie.textures_delta.clear();
-        }
+            assert!(
+                matches!(app.status, Status::WaitingForInput),
+                "{hauteur:?} : le programme devrait attendre une entrée — {:?}",
+                app.status
+            );
 
-        let état = if env_ouvert { "déplié" } else { "replié" };
-        for rangée in rangées {
-            // Le rectangle entier, et non la seule présence : egui peint
-            // aussi ce qu'un découpage escamote, et chercher le texte ne
-            // prouverait donc rien.
-            let (boîte, découpe) = vus.get(rangée).copied().unwrap_or_else(|| {
-                panic!("{hauteur:?}, environnement {état} : « {rangée} » n'est pas peint du tout")
-            });
-            assert!(
-                écran.contains_rect(boîte),
-                "{hauteur:?}, environnement {état} : « {rangée} » déborde de l'écran — {boîte:?}"
-            );
-            assert!(
-                découpe.contains_rect(boîte),
-                "{hauteur:?}, environnement {état} : « {rangée} » est coupée — {boîte:?} \
+            let ctx = egui::Context::default();
+            // Le thème posé, et c'est **indispensable** : il change les
+            // espacements, donc la hauteur des rangées. Sans lui, ce test
+            // passait alors que la rangée « Entrée » disparaissait pour de
+            // vrai sur la machine, à 128 px de console — il mesurait une
+            // application qui n'existe nulle part.
+            app.apply_theme(&ctx);
+            let entrée = egui::RawInput {
+                screen_rect: Some(écran),
+                ..Default::default()
+            };
+            // Quatre images : la zone se mesure elle-même, et la hauteur
+            // qu'elle réserve à la suivante vient de ce qu'elle a pris.
+            let mut vus: std::collections::BTreeMap<&str, (egui::Rect, egui::Rect)> =
+                std::collections::BTreeMap::new();
+            for _ in 0..4 {
+                vus.clear();
+                let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+                for clipped in &sortie.shapes {
+                    if let egui::epaint::Shape::Text(texte) = &clipped.shape
+                        && let Some(rangée) = rangées.iter().find(|r| **r == texte.galley.text())
+                    {
+                        // Le rectangle ENTIER du texte, et non sa position.
+                        // C'est le trou qu'avait ce test : `pos` est le coin
+                        // supérieur gauche, si bien qu'une rangée dont seul
+                        // le haut dépassait dans le panneau passait pour
+                        // visible — alors qu'à l'écran elle était coupée en
+                        // deux, champ et boutons sous le bord.
+                        let boîte = egui::Rect::from_min_size(texte.pos, texte.galley.size());
+                        vus.insert(rangée, (boîte, clipped.clip_rect));
+                    }
+                }
+                sortie.textures_delta.clear();
+            }
+
+            let état = if env_ouvert { "déplié" } else { "replié" };
+            for rangée in rangées {
+                // Le rectangle entier, et non la seule présence : egui peint
+                // aussi ce qu'un découpage escamote, et chercher le texte ne
+                // prouverait donc rien.
+                let (boîte, découpe) = vus.get(rangée).copied().unwrap_or_else(|| {
+                    panic!(
+                        "{hauteur:?}, environnement {état} : « {rangée} » n'est pas peint du tout"
+                    )
+                });
+                assert!(
+                    écran.contains_rect(boîte),
+                    "{hauteur:?}, environnement {état} : « {rangée} » déborde de l'écran — {boîte:?}"
+                );
+                assert!(
+                    découpe.contains_rect(boîte),
+                    "{hauteur:?}, environnement {état} : « {rangée} » est coupée — {boîte:?} \
                  dépasse de {découpe:?}. À l'écran, on en voit le haut et rien d'autre."
-            );
+                );
+            }
         }
-      }
     }
 }
 
@@ -19371,11 +19502,7 @@ boucle:
     for _ in 0..recul {
         app.do_step_back();
     }
-    let après = app
-        .emulator
-        .as_ref()
-        .map(|e| e.trace().len())
-        .unwrap();
+    let après = app.emulator.as_ref().map(|e| e.trace().len()).unwrap();
     assert!(
         après < avant,
         "le rembobinage doit avoir reculé : {avant} -> {après}"
@@ -19943,7 +20070,12 @@ _start:
     app.cursor_byte = app.source.find("rax").unwrap() + 1;
     app.highlight_matches();
 
-    assert_eq!(app.tracked_spans.len(), 2, "deux `rax` : {:?}", app.tracked_spans);
+    assert_eq!(
+        app.tracked_spans.len(),
+        2,
+        "deux `rax` : {:?}",
+        app.tracked_spans
+    );
     assert!(
         matches!(app.status, Status::Counted(2, _)),
         "la barre d'état dit combien : {:?}",
@@ -20064,8 +20196,16 @@ boucle:
 
     assert!(app.source.contains("encore:"), "{}", app.source);
     assert!(app.source.contains("jnz encore"), "{}", app.source);
-    assert!(!app.source.contains("boucle"), "plus aucun ancien nom : {}", app.source);
-    assert!(matches!(app.status, Status::Counted(2, _)), "{:?}", app.status);
+    assert!(
+        !app.source.contains("boucle"),
+        "plus aucun ancien nom : {}",
+        app.source
+    );
+    assert!(
+        matches!(app.status, Status::Counted(2, _)),
+        "{:?}",
+        app.status
+    );
     // Et le surlignage suit le nouveau nom : le voir confirme que rien
     // n'a été oublié.
     assert_eq!(app.tracked_spans.len(), 2);
@@ -20193,12 +20333,18 @@ fn walking_past_the_last_match_comes_back_to_the_first() {
     // Curseur après la dernière : la suivante est la première.
     app.cursor_byte = app.source.len();
     app.go_to_match(true);
-    assert_eq!(app.pending_selection.clone().unwrap().start, premières[0].start);
+    assert_eq!(
+        app.pending_selection.clone().unwrap().start,
+        premières[0].start
+    );
 
     // Curseur avant la première : la précédente est la dernière.
     app.cursor_byte = 0;
     app.go_to_match(false);
-    assert_eq!(app.pending_selection.clone().unwrap().start, premières[1].start);
+    assert_eq!(
+        app.pending_selection.clone().unwrap().start,
+        premières[1].start
+    );
 }
 
 /// Sans rien de surligné, la touche surligne d'abord puis avance.
@@ -20242,7 +20388,11 @@ fn pressing_enter_sends_the_line_to_the_program() {
         }
         app.tick_run(&egui::Context::default());
     }
-    assert!(matches!(app.status, Status::WaitingForInput), "{:?}", app.status);
+    assert!(
+        matches!(app.status, Status::WaitingForInput),
+        "{:?}",
+        app.status
+    );
 
     let ctx = egui::Context::default();
     app.apply_theme(&ctx);
@@ -20523,7 +20673,10 @@ fn the_two_dialog_buttons_share_a_width() {
         }
         sortie.textures_delta.clear();
     }
-    assert!(largeurs.len() >= 2, "les deux boutons sont peints : {largeurs:?}");
+    assert!(
+        largeurs.len() >= 2,
+        "les deux boutons sont peints : {largeurs:?}"
+    );
     let plus_petit = largeurs.iter().copied().fold(f32::MAX, f32::min);
     let plus_grand = largeurs.iter().copied().fold(0.0f32, f32::max);
     assert!(
@@ -20809,7 +20962,9 @@ vérifie:
     // où l'on est, et dans quoi.
     let dedans = symbol_at(&état.output.symbols, vérifie.addr + 1);
     assert!(
-        dedans.as_deref().is_some_and(|nom| nom.starts_with("vérifie+")),
+        dedans
+            .as_deref()
+            .is_some_and(|nom| nom.starts_with("vérifie+")),
         "au milieu, le nom porte son décalage : {dedans:?}"
     );
 }
@@ -21130,8 +21285,6 @@ fn typing_y_y_duplicates_the_line() {
     );
 }
 
-
-
 // ============================================================
 //  Le banc de mise en page
 // ============================================================
@@ -21179,7 +21332,9 @@ fn fenêtres_ouvrables() -> Vec<Ouverture> {
         ("chronologie", "timeline_window", |app| {
             app.show_timeline = true;
         }),
-        ("motif cyclique", "cyclic_window", |app| app.show_cyclic = true),
+        ("motif cyclique", "cyclic_window", |app| {
+            app.show_cyclic = true
+        }),
         ("analyse", "analysis_window", |app| app.show_analysis = true),
         ("désassemblage", "disassembly_window", |app| {
             app.show_disassembly = true;
@@ -21332,9 +21487,8 @@ fn ce_qui_est_écrit(
     for _ in 0..images {
         lignes.clear();
         let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
-        let cadre = id.and_then(|id| {
-            egui::AreaState::load(ctx, egui::Id::new(id)).map(|a| a.rect())
-        });
+        let cadre =
+            id.and_then(|id| egui::AreaState::load(ctx, egui::Id::new(id)).map(|a| a.rect()));
         for clipped in &sortie.shapes {
             // Ce que la fenêtre peint *elle-même*, et non ce qui se
             // trouve sous elle. Sans ce tri, un registre caché derrière
@@ -21420,9 +21574,8 @@ fn a_window_that_is_left_alone_stays_where_it_is() {
         let mut images: Vec<Vec<(String, i32, i32)>> = Vec::new();
         for _ in 0..20 {
             let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
-            let cadre = id.and_then(|id| {
-                egui::AreaState::load(&ctx, egui::Id::new(id)).map(|a| a.rect())
-            });
+            let cadre =
+                id.and_then(|id| egui::AreaState::load(&ctx, egui::Id::new(id)).map(|a| a.rect()));
             let mut posés = Vec::new();
             for clipped in &sortie.shapes {
                 if let egui::epaint::Shape::Text(texte) = &clipped.shape
@@ -21451,18 +21604,12 @@ fn a_window_that_is_left_alone_stays_where_it_is() {
                     .zip(image.iter())
                     .find(|(a, b)| a != b)
                     .map(|(a, b)| format!("« {} » de {:?} à {:?}", a.0, (a.1, a.2), (b.1, b.2)))
-                    .unwrap_or_else(|| {
-                        format!("{} textes puis {}", repère.len(), image.len())
-                    });
-                panic!(
-                    "« {nom} » bouge tout seul entre l'image 12 et l'image {n} : {bougé}"
-                );
+                    .unwrap_or_else(|| format!("{} textes puis {}", repère.len(), image.len()));
+                panic!("« {nom} » bouge tout seul entre l'image 12 et l'image {n} : {bougé}");
             }
         }
     }
 }
-
-
 
 /// Un texte tronqué se lit encore en entier, au survol.
 ///
@@ -21674,7 +21821,11 @@ fn every_text_stands_out_from_its_background() {
                         // Une encre transparente est une commande
                         // inactive : egui grise en baissant l'alpha.
                         let estompé = encre.a() < 255;
-                        let seuil = if estompé { PLANCHER_ESTOMPÉ } else { PLANCHER };
+                        let seuil = if estompé {
+                            PLANCHER_ESTOMPÉ
+                        } else {
+                            PLANCHER
+                        };
                         let vu = composé(encre, fond);
                         let contraste = namsdec_theme::contrast_ratio(vu, fond);
                         if contraste < seuil {
@@ -21762,11 +21913,6 @@ fn every_text_stands_out_from_its_background() {
     );
 }
 
-
-
-
-
-
 /// Un but manqué dit laquelle de ses conditions manque, et ce que
 /// l'expression vaut à la place.
 ///
@@ -21817,7 +21963,10 @@ _start:
     // Et cela s'écrit à l'écran, là où l'on regarde déjà les registres.
     let peint = paint(&mut app);
     let s = strings(app.lang);
-    assert!(peint.contains("rax == 0xf"), "la condition manquante :\n{peint}");
+    assert!(
+        peint.contains("rax == 0xf"),
+        "la condition manquante :\n{peint}"
+    );
     assert!(
         peint.contains(&format!("rax {} 0xc", s.goal_is)),
         "et ce que rax vaut à la place :\n{peint}"
@@ -21844,7 +21993,11 @@ _start:
 fn sonde_points_arret_source() {
     let dir = tempfile::tempdir().unwrap();
     let chemin = dir.path().join("prog.asm");
-    std::fs::write(&chemin, "bits 64\nglobal _start\n_start:\n    mov rax, 1\n    hlt\n").unwrap();
+    std::fs::write(
+        &chemin,
+        "bits 64\nglobal _start\n_start:\n    mov rax, 1\n    hlt\n",
+    )
+    .unwrap();
 
     // Ce qu'on avait en quittant : un fichier source et deux points d'arrêt.
     let mut app = NamsdecApp {
@@ -21855,13 +22008,19 @@ fn sonde_points_arret_source() {
     app.breakpoint_lines.insert(4);
     app.watched_registers.insert("RAX");
     let écrit = app.settings_snapshot();
-    eprintln!("écrit : breakpoints={:?} watched={:?} current_file={:?} open_binary={:?}",
-        écrit.breakpoints, écrit.watched_registers, écrit.current_file, écrit.open_binary);
+    eprintln!(
+        "écrit : breakpoints={:?} watched={:?} current_file={:?} open_binary={:?}",
+        écrit.breakpoints, écrit.watched_registers, écrit.current_file, écrit.open_binary
+    );
 
     // Et au lancement suivant.
     let relu = NamsdecApp::from_settings(écrit);
-    eprintln!("relu  : breakpoints={:?} watched={:?} source={} octets",
-        relu.breakpoint_lines, relu.watched_registers, relu.source.len());
+    eprintln!(
+        "relu  : breakpoints={:?} watched={:?} source={} octets",
+        relu.breakpoint_lines,
+        relu.watched_registers,
+        relu.source.len()
+    );
 }
 
 /// Les points d'arrêt d'un fichier source reviennent à la séance
@@ -21902,7 +22061,10 @@ fn the_breakpoints_of_a_source_come_back_next_time() {
         "et le point d'arrêt avec lui : {:?}",
         relu.breakpoint_lines
     );
-    assert!(relu.watched_registers.contains("RAX"), "le registre suivi aussi");
+    assert!(
+        relu.watched_registers.contains("RAX"),
+        "le registre suivi aussi"
+    );
 
     // Mais pas si le fichier a été réécrit ailleurs entre-temps : les
     // lignes ont pu bouger, et un point d'arrêt au hasard est pire que
@@ -22065,7 +22227,6 @@ fn every_action_has_a_shortcut_in_both_presets() {
     }
 }
 
-
 /// SONDE : chaque module de RE dit-il quelque chose ?
 #[test]
 fn sonde_modules_re() {
@@ -22079,14 +22240,26 @@ fn sonde_modules_re() {
     };
     app.apply_theme(&ctx);
     app.do_assemble();
-    for _ in 0..8 { app.do_step(); }
+    for _ in 0..8 {
+        app.do_step();
+    }
     app.show_analysis = true;
-    let ids: Vec<String> = app.re_registry.entries("fr").iter().map(|(id, _)| (*id).to_owned()).collect();
+    let ids: Vec<String> = app
+        .re_registry
+        .entries("fr")
+        .iter()
+        .map(|(id, _)| (*id).to_owned())
+        .collect();
     for id in ids {
         app.analysis_module = id.clone();
         let (_, textes) = ce_qui_est_écrit(&ctx, &mut app, Some("analysis_window"), 4);
         let mots: usize = textes.len();
-        let échantillon: Vec<&str> = textes.iter().map(|(t, _)| t.as_str()).skip(6).take(3).collect();
+        let échantillon: Vec<&str> = textes
+            .iter()
+            .map(|(t, _)| t.as_str())
+            .skip(6)
+            .take(3)
+            .collect();
         eprintln!("{id:24} {mots:4} textes  {échantillon:?}");
     }
 }
@@ -22120,7 +22293,10 @@ fn the_graph_goes_to_a_file_and_not_only_to_the_clipboard() {
     app.export_dot(&chemin);
     assert!(matches!(app.status, Status::Note(_)), "{:?}", app.status);
     let dot = std::fs::read_to_string(&chemin).expect("le fichier est écrit");
-    assert!(dot.starts_with("digraph"), "du DOT, et pas autre chose :\n{dot}");
+    assert!(
+        dot.starts_with("digraph"),
+        "du DOT, et pas autre chose :\n{dot}"
+    );
     assert!(dot.contains("->") || dot.contains("label"), "{dot}");
     // Et c'est bien le graphe qu'on regarde : la case « la fonction
     // seule » change ce qui est écrit.
@@ -22269,10 +22445,8 @@ fn an_icon_never_paints_itself_into_a_blob() {
     for (nom, dessin) in icônes_du_banc() {
         for taille in [12.0_f32, 14.0, 18.0] {
             let mut sortie = ctx.run_ui(entrée.clone(), |ui| {
-                let boîte = egui::Rect::from_min_size(
-                    egui::pos2(20.0, 20.0),
-                    egui::vec2(taille, taille),
-                );
+                let boîte =
+                    egui::Rect::from_min_size(egui::pos2(20.0, 20.0), egui::vec2(taille, taille));
                 dessin(ui.painter(), boîte, egui::Color32::WHITE);
             });
             let mut ronds: Vec<(egui::Pos2, f32)> = Vec::new();
@@ -22421,7 +22595,10 @@ fn pasting_inserts_at_the_cursor_instead_of_replacing_the_program() {
     let début = programme.find("    hlt").unwrap();
     app.editor_selection = Some(début..début + "    hlt\n".len());
     app.insert_at_cursor(COLLÉ);
-    assert_eq!(app.source, "bits 64\nglobal _start\n_start:\n    mov rax, 60\n");
+    assert_eq!(
+        app.source,
+        "bits 64\nglobal _start\n_start:\n    mov rax, 60\n"
+    );
     assert!(app.editor_selection.is_none(), "la sélection est consommée");
 
     // Et le remplacement total existe toujours, sous son propre nom.
@@ -22444,7 +22621,6 @@ fn pasting_inserts_at_the_cursor_instead_of_replacing_the_program() {
     }
 }
 
-
 /// Un panneau vide dit ce qui manque, ce qu'on y verra, et propose ce
 /// qui y mène.
 ///
@@ -22466,7 +22642,10 @@ fn an_empty_panel_says_what_is_missing_and_offers_the_way_out() {
     assert!(app.emulator.is_none(), "rien n'a encore tourné");
 
     let peint = paint(&mut app);
-    assert!(peint.contains(s.no_binary_assembled), "le constat :\n{peint}");
+    assert!(
+        peint.contains(s.no_binary_assembled),
+        "le constat :\n{peint}"
+    );
     assert!(
         peint.contains(s.empty_assemble_hint),
         "ce qu'il faut faire :\n{peint}"
@@ -22508,7 +22687,6 @@ fn an_empty_panel_says_what_is_missing_and_offers_the_way_out() {
         );
     }
 }
-
 
 /// La palette propose vraiment **toutes** les commandes.
 ///
@@ -22740,7 +22918,12 @@ fn sonde_bandeau_deborde() {
     if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
         return;
     }
-    for (l, h) in [(1280.0_f32, 820.0_f32), (1600.0, 1000.0), (1920.0, 1230.0), (1920.0, 1600.0)] {
+    for (l, h) in [
+        (1280.0_f32, 820.0_f32),
+        (1600.0, 1000.0),
+        (1920.0, 1230.0),
+        (1920.0, 1600.0),
+    ] {
         let ctx = egui::Context::default();
         let mut app = NamsdecApp {
             source: DEFAULT_SOURCE.to_owned(),
@@ -22822,8 +23005,7 @@ fn the_cpu_state_never_scrolls_at_any_window_size() {
                 let egui::epaint::Shape::Text(t) = &clipped.shape else {
                     continue;
                 };
-                let Some((nom, _)) = REGISTERS.iter().find(|(n, _)| *n == t.galley.text())
-                else {
+                let Some((nom, _)) = REGISTERS.iter().find(|(n, _)| *n == t.galley.text()) else {
                     continue;
                 };
                 let posé = egui::Rect::from_min_size(t.pos, t.galley.size());
@@ -22833,7 +23015,11 @@ fn the_cpu_state_never_scrolls_at_any_window_size() {
                 if vu.height() >= posé.height() - 0.5 {
                     entiers.insert(nom);
                 } else if vu.height() > 0.0 {
-                    rognés.push(format!("{nom} ({:.0} px sur {:.0})", vu.height(), posé.height()));
+                    rognés.push(format!(
+                        "{nom} ({:.0} px sur {:.0})",
+                        vu.height(),
+                        posé.height()
+                    ));
                 }
             }
             sortie.textures_delta.clear();
@@ -23031,8 +23217,6 @@ fn no_sentence_is_said_three_times_on_one_screen() {
     }
 }
 
-
-
 /// Le bandeau latéral ne coupe aucune ligne en deux.
 ///
 /// Une zone qui défile se coupe, et c'est son métier — mais dans une
@@ -23064,71 +23248,66 @@ fn the_sidebar_banner_never_cuts_a_line_in_half() {
         // une instruction de binaire porte deux lignes de plus, et
         // aucun partage n'y changeait rien. Il tient depuis que
         // « Prochaine instruction » se replie sur un binaire.
-    for &(largeur, hauteur) in &[(1280.0_f32, 820.0_f32), (1440.0, 900.0), (1920.0, 1080.0)] {
-        let ctx = egui::Context::default();
-        let mut app = NamsdecApp {
-            source: DEFAULT_SOURCE.to_owned(),
-            show_sidebar: true,
-            show_console: true,
-            ..Default::default()
-        };
-        app.apply_theme(&ctx);
-        if depuis_binaire {
-            assert!(app.load_elf(binaire.as_ref().unwrap(), "crackme-01"));
-        } else {
-            app.do_assemble();
-            assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
-        }
-        let entrée = egui::RawInput {
-            screen_rect: Some(egui::Rect::from_min_size(
-                egui::Pos2::ZERO,
-                egui::vec2(largeur, hauteur),
-            )),
-            ..Default::default()
-        };
-        let mut coupés: Vec<String> = Vec::new();
-        for _ in 0..6 {
-            coupés.clear();
-            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
-            // Le haut de l'onglet : ce qui est en dessous est une liste.
-            let onglet = egui::containers::panel::PanelState::load(
-                &ctx,
-                egui::Id::new("sidebar_tab"),
-            )
-            .map(|é| é.outer_rect.top())
-            .unwrap_or(f32::INFINITY);
-            for clipped in &sortie.shapes {
-                if let egui::epaint::Shape::Text(t) = &clipped.shape {
-                    let posé = egui::Rect::from_min_size(t.pos, t.galley.size());
-                    if posé.bottom() > onglet {
-                        continue;
-                    }
-                    let vu = posé.intersect(clipped.clip_rect);
-                    // Coupée « en deux » : une part visible, mais pas
-                    // toute. Rognée à néant, c'est du défilement.
-                    if vu.height() > 0.5 && vu.height() < posé.height() - 0.5 {
-                        coupés.push(format!(
-                            "« {} » {:.0} px sur {:.0}",
-                            t.galley.text().chars().take(24).collect::<String>(),
-                            vu.height(),
-                            posé.height()
-                        ));
+        for &(largeur, hauteur) in &[(1280.0_f32, 820.0_f32), (1440.0, 900.0), (1920.0, 1080.0)] {
+            let ctx = egui::Context::default();
+            let mut app = NamsdecApp {
+                source: DEFAULT_SOURCE.to_owned(),
+                show_sidebar: true,
+                show_console: true,
+                ..Default::default()
+            };
+            app.apply_theme(&ctx);
+            if depuis_binaire {
+                assert!(app.load_elf(binaire.as_ref().unwrap(), "crackme-01"));
+            } else {
+                app.do_assemble();
+                assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+            }
+            let entrée = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(largeur, hauteur),
+                )),
+                ..Default::default()
+            };
+            let mut coupés: Vec<String> = Vec::new();
+            for _ in 0..6 {
+                coupés.clear();
+                let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+                // Le haut de l'onglet : ce qui est en dessous est une liste.
+                let onglet =
+                    egui::containers::panel::PanelState::load(&ctx, egui::Id::new("sidebar_tab"))
+                        .map(|é| é.outer_rect.top())
+                        .unwrap_or(f32::INFINITY);
+                for clipped in &sortie.shapes {
+                    if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                        let posé = egui::Rect::from_min_size(t.pos, t.galley.size());
+                        if posé.bottom() > onglet {
+                            continue;
+                        }
+                        let vu = posé.intersect(clipped.clip_rect);
+                        // Coupée « en deux » : une part visible, mais pas
+                        // toute. Rognée à néant, c'est du défilement.
+                        if vu.height() > 0.5 && vu.height() < posé.height() - 0.5 {
+                            coupés.push(format!(
+                                "« {} » {:.0} px sur {:.0}",
+                                t.galley.text().chars().take(24).collect::<String>(),
+                                vu.height(),
+                                posé.height()
+                            ));
+                        }
                     }
                 }
+                sortie.textures_delta.clear();
             }
-            sortie.textures_delta.clear();
-        }
-        assert!(
-            coupés.is_empty(),
-            "séance « {séance} », à {largeur}×{hauteur}, le bandeau coupe des \
+            assert!(
+                coupés.is_empty(),
+                "séance « {séance} », à {largeur}×{hauteur}, le bandeau coupe des \
              lignes en deux : {coupés:?}"
-        );
-    }
+            );
+        }
     }
 }
-
-
-
 
 /// « Prochaine instruction » se replie sur un binaire, et pas sur un
 /// source.
@@ -23180,8 +23359,6 @@ fn the_next_instruction_folds_for_a_binary_and_not_for_a_source() {
         "dessiner ne referme pas ce que l'on a ouvert"
     );
 }
-
-
 
 /// Les fenêtres qu'on avait laissées ouvertes sont là au retour.
 ///
@@ -23578,7 +23755,10 @@ fn a_column_of_settings_keeps_one_rhythm() {
     };
     // Les sept réglages de la page Général, dans l'ordre où on les lit.
     let colonne = [
-        (s.preferences_system_titlebar, s.preferences_system_titlebar_hint),
+        (
+            s.preferences_system_titlebar,
+            s.preferences_system_titlebar_hint,
+        ),
         (s.preferences_heat_legend, s.preferences_heat_legend_hint),
         (s.preferences_tooltips, s.preferences_tooltips_hint),
         (s.preferences_completion, s.preferences_completion_hint),
@@ -23663,7 +23843,9 @@ fn two_buttons_side_by_side_share_a_height() {
                 if (a.center().y - b.center().y).abs() > 6.0 {
                     continue;
                 }
-                let trou = (b.left() - a.right()).abs().min((a.left() - b.right()).abs());
+                let trou = (b.left() - a.right())
+                    .abs()
+                    .min((a.left() - b.right()).abs());
                 if trou >= 40.0 {
                     continue;
                 }
@@ -23678,7 +23860,6 @@ fn two_buttons_side_by_side_share_a_height() {
         }
     }
 }
-
 
 /// Les titres du bandeau partent tous du même bord.
 ///
@@ -23715,10 +23896,7 @@ fn the_banner_titles_all_start_at_one_edge() {
     let à_chevron = [s.next_instruction, s.cpu_state];
     let bords: Vec<(&str, f32)> = à_chevron.iter().map(|t| (*t, gauche(t))).collect();
     for (quoi, x) in &bords {
-        assert!(
-            x.is_finite(),
-            "« {quoi} » est peint dans le bandeau"
-        );
+        assert!(x.is_finite(), "« {quoi} » est peint dans le bandeau");
     }
     let premier = bords[0].1;
     let hors: Vec<String> = bords
@@ -24020,9 +24198,7 @@ fn an_empty_panel_always_says_it_the_same_way() {
                 let dessous = lignes
                     .iter()
                     .filter(|(t, r)| {
-                        t != constat
-                            && r.top() > place.bottom()
-                            && r.top() - place.bottom() < 40.0
+                        t != constat && r.top() > place.bottom() && r.top() - place.bottom() < 40.0
                     })
                     .min_by(|a, b| a.1.top().total_cmp(&b.1.top()));
                 let Some((_, détail)) = dessous else {
@@ -24077,7 +24253,10 @@ fn plus_grand_vide(ctx: &egui::Context, app: &mut NamsdecApp, id: &str) -> (f32,
             {
                 continue;
             }
-            let vu = clipped.shape.visual_bounding_rect().intersect(clipped.clip_rect);
+            let vu = clipped
+                .shape
+                .visual_bounding_rect()
+                .intersect(clipped.clip_rect);
             if !vu.is_positive() {
                 continue;
             }
@@ -24182,9 +24361,7 @@ fn the_listing_keeps_its_columns_from_line_to_line() {
     for (texte, place) in &lignes {
         let net = texte.trim_end();
         if net.len() >= 4
-            && net
-                .chars()
-                .all(|c| c.is_ascii_hexdigit() || c == ' ')
+            && net.chars().all(|c| c.is_ascii_hexdigit() || c == ' ')
             && net.contains(' ')
         {
             bords.push((net.to_owned(), place.left()));
@@ -24546,7 +24723,11 @@ fn every_action_has_a_path_you_can_see() {
     };
     let (m0, m1) = borne("menu_bar_ui");
     let (t0, t1) = borne("toolbar_ui");
-    let visible = format!("{}\n{}", lignes[m0..m1].join("\n"), lignes[t0..t1].join("\n"));
+    let visible = format!(
+        "{}\n{}",
+        lignes[m0..m1].join("\n"),
+        lignes[t0..t1].join("\n")
+    );
 
     let sans: Vec<String> = Action::ALL
         .into_iter()
@@ -24773,8 +24954,14 @@ fn a_handle_says_that_it_can_be_pulled() {
     }
 
     for (nom, place) in [
-        ("le partage du panneau", egui::pos2(1400.0, haut_de("sidebar_tab"))),
-        ("le haut de la console", egui::pos2(600.0, haut_de("console"))),
+        (
+            "le partage du panneau",
+            egui::pos2(1400.0, haut_de("sidebar_tab")),
+        ),
+        (
+            "le haut de la console",
+            egui::pos2(600.0, haut_de("console")),
+        ),
     ] {
         assert_eq!(
             pointeur(&ctx, &mut app, &entrée, place),
@@ -24880,7 +25067,11 @@ fn the_bytes_of_an_instruction_can_be_rewritten_where_they_are_read() {
         None,
         "un nombre impair de chiffres ne dit pas ce qu'on voulait"
     );
-    assert_eq!(crate::lire_octets("48 zz"), None, "et « zz » n'est pas un octet");
+    assert_eq!(
+        crate::lire_octets("48 zz"),
+        None,
+        "et « zz » n'est pas un octet"
+    );
 
     if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
         return;

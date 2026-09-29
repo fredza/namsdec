@@ -132,12 +132,7 @@ pub fn window_buttons_ui(ui: &mut egui::Ui, s: &Strings, maximized: bool) -> Opt
 /// Sortie de la barre de titre parce que les fenêtres internes de
 /// namsdec portent la même : une seule façon de dessiner un bouton de
 /// fenêtre dans toute l'application, et un seul endroit à corriger.
-fn paint_pastille(
-    ui: &egui::Ui,
-    centre: egui::Pos2,
-    bouton: WindowButton,
-    survolée: bool,
-) {
+fn paint_pastille(ui: &egui::Ui, centre: egui::Pos2, bouton: WindowButton, survolée: bool) {
     let couleur = bouton.colour();
     // Éteinte tant que la souris n'est pas dessus : des pastilles vives
     // en permanence tirent l'œil hors du code, qui est ce qu'on est venu
@@ -213,16 +208,17 @@ const HEAD_HEIGHT: f32 = 24.0;
 /// cette barre-ci n'a pas à s'en charger.
 pub fn window_head(ui: &mut egui::Ui, theme: &'static Theme, s: &Strings, titre: &str) -> bool {
     let largeur = ui.available_width();
-    let (bande, _) = ui.allocate_exact_size(
-        egui::vec2(largeur, HEAD_HEIGHT),
-        egui::Sense::hover(),
-    );
+    let (bande, _) = ui.allocate_exact_size(egui::vec2(largeur, HEAD_HEIGHT), egui::Sense::hover());
     let centre = egui::pos2(bande.left() + EDGE_MARGIN + BUTTON_RADIUS, bande.center().y);
     let cible = egui::Rect::from_center_size(
         centre,
         egui::vec2(BUTTON_RADIUS * 2.0 + BUTTON_SPACING, bande.height()),
     );
-    let réponse = ui.interact(cible, ui.id().with("window_head_close"), egui::Sense::click());
+    let réponse = ui.interact(
+        cible,
+        ui.id().with("window_head_close"),
+        egui::Sense::click(),
+    );
     paint_pastille(ui, centre, WindowButton::Close, réponse.hovered());
 
     // Le titre au centre de la bande entière, non de ce qui reste à
@@ -562,7 +558,10 @@ pub fn icon_analysis(painter: &egui::Painter, rect: egui::Rect, color: egui::Col
     for dent in 0..6 {
         let angle = std::f32::consts::TAU * dent as f32 / 6.0;
         let direction = egui::vec2(angle.cos(), angle.sin());
-        painter.line_segment([moyeu + direction * r, moyeu + direction * (r * 1.7)], trait_);
+        painter.line_segment(
+            [moyeu + direction * r, moyeu + direction * (r * 1.7)],
+            trait_,
+        );
     }
 
     // La clé, en bas à droite — mais sur l'AUTRE diagonale. Alignée
@@ -628,8 +627,7 @@ pub fn icon_calculator(painter: &egui::Painter, rect: egui::Rect, color: egui::C
     for colonne in 0..3 {
         let x = clavier.left() + rayon + (clavier.width() - rayon * 2.0) * colonne as f32 / 2.0;
         for rangée in 0..2 {
-            let y =
-                clavier.top() + rayon + (clavier.height() - rayon * 2.0) * rangée as f32;
+            let y = clavier.top() + rayon + (clavier.height() - rayon * 2.0) * rangée as f32;
             painter.circle_filled(egui::pos2(x, y), rayon, color);
         }
     }

@@ -413,7 +413,8 @@ mod search_tests {
         let trouvées = search("pop", "fr");
         assert!(!trouvées.is_empty(), "« pop » doit trouver quelque chose");
         assert_eq!(
-            trouvées[0].name, "pop",
+            trouvées[0].name,
+            "pop",
             "et la première doit porter le nom cherché : {:?}",
             trouvées.iter().map(|t| t.name).collect::<Vec<_>>()
         );

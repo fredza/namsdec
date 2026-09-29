@@ -65,7 +65,10 @@ pub fn short(lang: Lang, value: u64) -> String {
     let s = strings(lang);
     let signed = value as i64;
     if signed < 0 {
-        format!("{} {value}   {} {signed}", s.reading_unsigned, s.reading_signed)
+        format!(
+            "{} {value}   {} {signed}",
+            s.reading_unsigned, s.reading_signed
+        )
     } else {
         format!("{} {value}", s.reading_unsigned)
     }
@@ -203,9 +206,7 @@ mod tests {
         // Le signé est toujours là, même quand il répète le non signé :
         // c'est ce qu'on vient vérifier devant un `cmp`.
         assert!(
-            all_bases(Lang::Fr, u64::MAX)
-                .iter()
-                .any(|(_, v)| v == "-1"),
+            all_bases(Lang::Fr, u64::MAX).iter().any(|(_, v)| v == "-1"),
             "0xffffffffffffffff, c'est -1"
         );
     }

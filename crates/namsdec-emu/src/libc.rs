@@ -320,8 +320,12 @@ pub(crate) fn call(emu: &mut Emulator, name: &str) -> Result<Flow, EmuError> {
         }
         // Les fonctions du démarrage qui n'ont rien à faire sans
         // bibliothèque : les dire réussies est la vérité.
-        "__cxa_atexit" | "atexit" | "__cxa_finalize" | "__gmon_start__"
-        | "_ITM_registerTMCloneTable" | "_ITM_deregisterTMCloneTable" => set(emu, 0),
+        "__cxa_atexit"
+        | "atexit"
+        | "__cxa_finalize"
+        | "__gmon_start__"
+        | "_ITM_registerTMCloneTable"
+        | "_ITM_deregisterTMCloneTable" => set(emu, 0),
 
         // --- Écrire ----------------------------------------------------
         "puts" => {
@@ -612,8 +616,16 @@ pub(crate) fn call(emu: &mut Emulator, name: &str) -> Result<Flow, EmuError> {
         }
         "memcmp" | "bcmp" => {
             let n = emu.cpu.regs.get64(Reg64::Rdx) as usize;
-            let a = emu.cpu.mem.bytes_at(emu.cpu.regs.get64(Reg64::Rdi), n)?.to_vec();
-            let b = emu.cpu.mem.bytes_at(emu.cpu.regs.get64(Reg64::Rsi), n)?.to_vec();
+            let a = emu
+                .cpu
+                .mem
+                .bytes_at(emu.cpu.regs.get64(Reg64::Rdi), n)?
+                .to_vec();
+            let b = emu
+                .cpu
+                .mem
+                .bytes_at(emu.cpu.regs.get64(Reg64::Rsi), n)?
+                .to_vec();
             set(emu, compare(&a, &b));
         }
         "memchr" => {
@@ -742,9 +754,15 @@ pub(crate) fn call(emu: &mut Emulator, name: &str) -> Result<Flow, EmuError> {
             let moi = emu.cpu.regs.fs_base;
             set(emu, moi);
         }
-        "pthread_attr_init" | "pthread_attr_destroy" | "pthread_mutex_lock"
-        | "pthread_mutex_unlock" | "pthread_mutex_init" | "pthread_mutex_destroy"
-        | "pthread_once" | "pthread_key_create" | "pthread_setspecific" => set(emu, 0),
+        "pthread_attr_init"
+        | "pthread_attr_destroy"
+        | "pthread_mutex_lock"
+        | "pthread_mutex_unlock"
+        | "pthread_mutex_init"
+        | "pthread_mutex_destroy"
+        | "pthread_once"
+        | "pthread_key_create"
+        | "pthread_setspecific" => set(emu, 0),
         "pthread_getspecific" => set(emu, 0),
         // « Où est ma pile ? » — la bibliothèque standard de Rust le
         // demande pour poser une garde contre le débordement. Répondre
@@ -918,7 +936,9 @@ fn parse_int(texte: &[u8], base: u32) -> (i64, usize) {
         let Some(chiffre) = (*c as char).to_digit(base) else {
             break;
         };
-        valeur = valeur.saturating_mul(base as i64).saturating_add(chiffre as i64);
+        valeur = valeur
+            .saturating_mul(base as i64)
+            .saturating_add(chiffre as i64);
         at += 1;
     }
     if at == chiffres {

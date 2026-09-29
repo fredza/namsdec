@@ -40,12 +40,7 @@ const REMONTÉE: usize = 64;
 /// Mieux vaut s'arrêter là en le disant que de conduire ailleurs avec
 /// assurance.
 pub fn reads_memory(instr: &namsdec_disasm::Decoded) -> bool {
-    (0..instr.op_count()).any(|index| {
-        matches!(
-            instr.op_kind(index),
-            OpKind::Memory
-        )
-    })
+    (0..instr.op_count()).any(|index| matches!(instr.op_kind(index), OpKind::Memory))
 }
 
 /// Les registres que cette instruction lit, et celui qu'elle écrit.

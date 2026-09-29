@@ -115,7 +115,9 @@ fn distance(a: &str, b: &str) -> usize {
     for i in 1..=a.len() {
         for j in 1..=b.len() {
             let coût = usize::from(a[i - 1] != b[j - 1]);
-            let mut meilleur = (d[i - 1][j] + 1).min(d[i][j - 1] + 1).min(d[i - 1][j - 1] + coût);
+            let mut meilleur = (d[i - 1][j] + 1)
+                .min(d[i][j - 1] + 1)
+                .min(d[i - 1][j - 1] + coût);
             if i > 1 && j > 1 && a[i - 1] == b[j - 2] && a[i - 2] == b[j - 1] {
                 meilleur = meilleur.min(d[i - 2][j - 2] + 1);
             }
@@ -213,7 +215,10 @@ impl<'a> Vue<'a> {
         // `boucle: add rax, 1` a bien une instruction.
         if let Some(deux_points) = code[i..].find(':') {
             let nom = &code[i..i + deux_points];
-            if !nom.is_empty() && nom.chars().all(|c| c.is_alphanumeric() || "_$#@~.?".contains(c))
+            if !nom.is_empty()
+                && nom
+                    .chars()
+                    .all(|c| c.is_alphanumeric() || "_$#@~.?".contains(c))
             {
                 i += deux_points + 1;
                 i += code[i..].len() - code[i..].trim_start().len();
@@ -623,8 +628,14 @@ _start:
     /// La coquille de mnémonique, à une ou deux lettres près.
     #[test]
     fn a_misspelled_mnemonic_is_proposed_the_right_one() {
-        assert_eq!(corrige("    mvo rax, 1\n", 0).as_deref(), Some("    mov rax, 1"));
-        assert_eq!(corrige("    puhs rbp\n", 0).as_deref(), Some("    push rbp"));
+        assert_eq!(
+            corrige("    mvo rax, 1\n", 0).as_deref(),
+            Some("    mov rax, 1")
+        );
+        assert_eq!(
+            corrige("    puhs rbp\n", 0).as_deref(),
+            Some("    push rbp")
+        );
 
         // L'indentation et l'alignement survivent : on remplace un mot,
         // pas une ligne.
@@ -634,7 +645,10 @@ _start:
         );
 
         // La casse suit celle qu'on employait.
-        assert_eq!(corrige("    MVO RAX, 1\n", 0).as_deref(), Some("    MOV RAX, 1"));
+        assert_eq!(
+            corrige("    MVO RAX, 1\n", 0).as_deref(),
+            Some("    MOV RAX, 1")
+        );
 
         // Une étiquette en tête ne prend pas la place du mnémonique.
         assert_eq!(
@@ -654,7 +668,11 @@ _start:
     #[test]
     fn a_macro_of_the_file_is_not_a_typo() {
         let src = "%macro sortir 1\n    mov rax, 60\n%endmacro\n    sortir 0\n";
-        assert_eq!(corrige(src, 3), None, "« sortir » est défini juste au-dessus");
+        assert_eq!(
+            corrige(src, 3),
+            None,
+            "« sortir » est défini juste au-dessus"
+        );
     }
 
     /// `int 0x80` dans du code 64 bits.
@@ -697,9 +715,18 @@ _start:
     /// Deux registres de tailles différentes.
     #[test]
     fn two_registers_of_different_widths() {
-        assert_eq!(corrige("    mov rax, ebx\n", 0).as_deref(), Some("    mov rax, rbx"));
-        assert_eq!(corrige("    add eax, bl\n", 0).as_deref(), Some("    add eax, ebx"));
-        assert_eq!(corrige("    cmp r8, r9d\n", 0).as_deref(), Some("    cmp r8, r9"));
+        assert_eq!(
+            corrige("    mov rax, ebx\n", 0).as_deref(),
+            Some("    mov rax, rbx")
+        );
+        assert_eq!(
+            corrige("    add eax, bl\n", 0).as_deref(),
+            Some("    add eax, ebx")
+        );
+        assert_eq!(
+            corrige("    cmp r8, r9d\n", 0).as_deref(),
+            Some("    cmp r8, r9")
+        );
 
         // `movzx` et `movsx` existent pour cela : on ne les corrige pas.
         assert_eq!(corrige("    movzx rax, bl\n", 0), None);
@@ -744,7 +771,11 @@ _start:
     #[test]
     fn the_edit_distance_counts_what_we_think() {
         assert_eq!(distance("mov", "mov"), 0);
-        assert_eq!(distance("mvo", "mov"), 1, "deux lettres échangées comptent pour une");
+        assert_eq!(
+            distance("mvo", "mov"),
+            1,
+            "deux lettres échangées comptent pour une"
+        );
         assert_eq!(distance("mav", "mov"), 1, "une lettre pour une autre");
         assert_eq!(distance("mo", "mov"), 1);
         assert_eq!(distance("", "mov"), 3);
@@ -757,7 +788,10 @@ _start:
     /// tirer au sort.
     #[test]
     fn a_short_word_tolerates_only_one_mistake() {
-        assert_eq!(plus_proche("mo", ["mov", "mul"].into_iter(), false), Some("mov"));
+        assert_eq!(
+            plus_proche("mo", ["mov", "mul"].into_iter(), false),
+            Some("mov")
+        );
         assert_eq!(plus_proche("xyz", ["mov", "mul"].into_iter(), false), None);
         // Plus long, deux fautes restent une coquille.
         assert_eq!(

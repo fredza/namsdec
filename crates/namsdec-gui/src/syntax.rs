@@ -186,9 +186,7 @@ impl Macros {
                 continue;
             }
             let nom = suite.trim_start();
-            let fin = nom
-                .find(|c: char| !is_word_char(c))
-                .unwrap_or(nom.len());
+            let fin = nom.find(|c: char| !is_word_char(c)).unwrap_or(nom.len());
             if fin > 0 {
                 noms.insert(nom[..fin].to_ascii_lowercase());
             }
@@ -378,12 +376,7 @@ fn next_word_defines_data(line: &str, from: usize) -> bool {
 }
 
 /// À quelle famille appartient un mot, à sa place dans la ligne.
-fn classify(
-    word: &str,
-    first_word: bool,
-    followed_by_colon: bool,
-    macros: &Macros,
-) -> Token {
+fn classify(word: &str, first_word: bool, followed_by_colon: bool, macros: &Macros) -> Token {
     let lower = word.to_ascii_lowercase();
     // Les registres passent avant la règle des deux-points : le `fs` de
     // `[fs:0x28]` est un registre de segment, pas une étiquette.
@@ -794,8 +787,8 @@ mod corpus_tests {
     fn every_shipped_exercise_colours_clean() {
         // Le fichier du dépôt, et non celui qui est installé : le test
         // doit juger ce que namsdec livre, pas ce qu'une machine a.
-        let dossier = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../namsdec-exercises/packs");
+        let dossier =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../namsdec-exercises/packs");
         let pack = namsdec_exercises::builtin_pack_in(&dossier).expect("la série livrée se lit");
         let mut vus = 0usize;
         let mut fautifs: Vec<String> = Vec::new();

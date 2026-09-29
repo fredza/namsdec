@@ -342,10 +342,8 @@ impl NamsdecApp {
                 // Un point plein pour ce qui tient, un cercle vide pour
                 // ce qui manque : dessinés, parce qu'aucune coche ni
                 // aucune croix n'existe dans la police de l'interface.
-                let (cadre, _) = ui.allocate_exact_size(
-                    egui::vec2(10.0, 10.0),
-                    egui::Sense::hover(),
-                );
+                let (cadre, _) =
+                    ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
                 let couleur = if ligne.tenue { theme.good } else { theme.warn };
                 if ligne.tenue {
                     ui.painter().circle_filled(cadre.center(), 4.0, couleur);
@@ -844,8 +842,8 @@ impl NamsdecApp {
                     egui::RichText::new(entry.title.get(self.lang.code())).color(theme.dim),
                 ),
             )
-                .on_hover_text(s.help_open_sheet)
-                .clicked()
+            .on_hover_text(s.help_open_sheet)
+            .clicked()
             {
                 fiche = Some(mnemonic.to_owned());
             }
@@ -930,7 +928,9 @@ impl NamsdecApp {
                 for line in lines {
                     ui.colored_label(theme.dim, egui::RichText::new(line.text).monospace());
                     ui.label(egui::RichText::new(line.value).monospace());
-                    let named = line.addr.and_then(|addr| named_at(&self.notes, symbols, addr));
+                    let named = line
+                        .addr
+                        .and_then(|addr| named_at(&self.notes, symbols, addr));
                     ui.colored_label(
                         theme.accent,
                         egui::RichText::new(named.unwrap_or_default()).monospace(),
@@ -1308,8 +1308,7 @@ impl NamsdecApp {
                     } else {
                         étiquette
                     };
-                    let response =
-                        crate::cliquable(ui, egui::Label::new(étiquette.color(color)));
+                    let response = crate::cliquable(ui, egui::Label::new(étiquette.color(color)));
                     // Le rôle du registre, d'abord : le processeur ne le
                     // connaît pas — RBX et R12 lui sont identiques —, et
                     // rien dans le code ne le rappelle. Puis ce que le
@@ -1322,9 +1321,7 @@ impl NamsdecApp {
                         // fait, et l'hexadécimal seul oblige à convertir
                         // de tête pour voir qu'un compteur vaut 10 ou
                         // qu'un retour vaut -1.
-                        ui.label(
-                            egui::RichText::new(format!("{value:#018x}")).monospace(),
-                        );
+                        ui.label(egui::RichText::new(format!("{value:#018x}")).monospace());
                         ui.colored_label(theme.accent, readings::short(lang, value));
                         ui.add_space(4.0);
                         ui.label(roles::of(lang, name));
@@ -1405,8 +1402,8 @@ impl NamsdecApp {
                         }
                         _ => {
                             let job = hex_job(ui, theme, value, color);
-                            let valeur = crate::cliquable(ui, egui::Label::new(job))
-                                .on_hover_ui(|ui| {
+                            let valeur =
+                                crate::cliquable(ui, egui::Label::new(job)).on_hover_ui(|ui| {
                                     ui.label(readings::of(lang, value));
                                     ui.add_space(4.0);
                                     ui.weak(s.register_edit_hint);
@@ -1553,7 +1550,13 @@ impl NamsdecApp {
         let Some(emulator) = &self.emulator else {
             // Ce que l'onglet montrera : un panneau vide qui ne dit
             // pas à quoi il sert n'apprend rien à qui le découvre.
-            empty_state(ui, self.theme, s.no_binary_assembled, Some(s.empty_stack), None);
+            empty_state(
+                ui,
+                self.theme,
+                s.no_binary_assembled,
+                Some(s.empty_stack),
+                None,
+            );
             return;
         };
         // Tout l'onglet dans une zone qui défile : la chaîne des appels,
@@ -1787,7 +1790,13 @@ impl NamsdecApp {
         let Some(emulator) = &self.emulator else {
             // Ce que l'onglet montrera : un panneau vide qui ne dit
             // pas à quoi il sert n'apprend rien à qui le découvre.
-            empty_state(ui, self.theme, s.no_binary_assembled, Some(s.empty_heap), None);
+            empty_state(
+                ui,
+                self.theme,
+                s.no_binary_assembled,
+                Some(s.empty_heap),
+                None,
+            );
             return;
         };
         let heap = emulator.heap();
@@ -1992,7 +2001,13 @@ impl NamsdecApp {
         let Some(state) = &self.assemble_state else {
             // Ce que l'onglet montrera : un panneau vide qui ne dit
             // pas à quoi il sert n'apprend rien à qui le découvre.
-            empty_state(ui, self.theme, s.no_binary_assembled, Some(s.empty_bytes), None);
+            empty_state(
+                ui,
+                self.theme,
+                s.no_binary_assembled,
+                Some(s.empty_bytes),
+                None,
+            );
             return;
         };
         let rip = self.emulator.as_ref().map(|e| e.cpu().regs.rip);
@@ -2103,14 +2118,11 @@ impl NamsdecApp {
                         let champ = ui.add(
                             egui::TextEdit::singleline(&mut self.bytes_edit_input)
                                 .font(egui::TextStyle::Monospace)
-                                .desired_width(
-                                    (instruction.bytes.len() * 3) as f32 * 9.0 + 16.0,
-                                ),
+                                .desired_width((instruction.bytes.len() * 3) as f32 * 9.0 + 16.0),
                         );
                         champ.request_focus();
                         if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                            valider =
-                                Some((instruction.address, self.bytes_edit_input.clone()));
+                            valider = Some((instruction.address, self.bytes_edit_input.clone()));
                         }
                         if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                             annuler = true;
@@ -2247,7 +2259,13 @@ impl NamsdecApp {
         let Some(emulator) = &self.emulator else {
             // Ce que l'onglet montrera : un panneau vide qui ne dit
             // pas à quoi il sert n'apprend rien à qui le découvre.
-            empty_state(ui, self.theme, s.no_binary_assembled, Some(s.empty_memory), None);
+            empty_state(
+                ui,
+                self.theme,
+                s.no_binary_assembled,
+                Some(s.empty_memory),
+                None,
+            );
             return;
         };
         // Le champ est posé *avant* la zone de défilement, et non dedans :
@@ -2373,8 +2391,11 @@ impl NamsdecApp {
                 ui.horizontal_wrapped(|ui| {
                     ui.colored_label(
                         theme.dim,
-                        s.memory_find_count
-                            .replacen("{}", &self.mem_find_hits.len().to_string(), 1),
+                        s.memory_find_count.replacen(
+                            "{}",
+                            &self.mem_find_hits.len().to_string(),
+                            1,
+                        ),
                     );
                     if self.mem_find_hits.len() == MEM_FIND_MAX {
                         // Dire qu'on s'est arrêté : une liste tronquée
@@ -2740,7 +2761,13 @@ impl NamsdecApp {
         let (Some(emulator), Some(state)) = (&self.emulator, &self.assemble_state) else {
             // Ce que l'onglet montrera : un panneau vide qui ne dit
             // pas à quoi il sert n'apprend rien à qui le découvre.
-            empty_state(ui, self.theme, s.no_binary_assembled, Some(s.empty_re), None);
+            empty_state(
+                ui,
+                self.theme,
+                s.no_binary_assembled,
+                Some(s.empty_re),
+                None,
+            );
             return;
         };
         let ctx = ReContext {
