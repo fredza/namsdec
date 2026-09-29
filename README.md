@@ -241,9 +241,28 @@ cd namsdec
 
 `install.sh` compile, pose le binaire dans `~/.local/bin`, l'icône et le
 lanceur là où le bureau va les chercher. Rien n'est écrit hors de `$HOME`
-et rien ne demande les droits d'administrateur. `./uninstall.sh` défait
-exactement cela (`--purge` retire aussi vos réglages et vos séries
-d'exercices).
+et rien ne demande les droits d'administrateur.
+
+`./install.sh --help` donne les options. Les plus utiles :
+
+| option | ce qu'elle fait |
+|---|---|
+| `--dry-run`, `-n` | dire ce qui serait fait, sans rien écrire |
+| `--debug` | installer la version non optimisée, prête en quelques secondes |
+| `--prefix DIR` | où vont icônes, lanceur et exercices |
+| `--bin-dir DIR` | où va le binaire |
+| `--no-desktop` | pas de lanceur ni d'icônes |
+| `--no-dock` | ne pas épingler au dock (GNOME) |
+| `--no-path` | ne pas toucher au fichier de configuration du shell |
+| `--no-exercises` | ne pas installer la série livrée |
+| `--no-strip` | garder les symboles de débogage (deux mégaoctets de plus) |
+| `--quiet`, `-q` | ne dire que l'essentiel |
+| `--no-color` | pas de couleurs — `NO_COLOR` est respecté aussi |
+
+`./uninstall.sh` défait exactement cela, et prend `--dry-run`, `--quiet`
+et `--no-color` de la même façon. `--purge` retire en plus vos réglages
+et vos séries d'exercices — sans lui, ils sont gardés, parce qu'on
+désinstalle souvent pour réinstaller.
 
 Pour lancer sans installer : `cargo run -p namsdec-gui`.
 

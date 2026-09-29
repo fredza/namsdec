@@ -206,6 +206,32 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "<font face='Courier'>~/.local/share/namsdec/exercises</font>. Rien n'est écrit "
          "hors de votre dossier personnel : aucun droit d'administrateur n'est demandé. "
          "<font face='Courier'>./uninstall.sh</font> défait exactement cela."),
+        ("p",
+         "<font face='Courier'>./install.sh --help</font> donne les options. Les deux qui "
+         "servent le plus : <b>--dry-run</b> dit ce qui serait fait sans rien écrire — de "
+         "quoi lire ce qu'un script va toucher avant de le laisser faire —, et "
+         "<b>--debug</b> installe la version non optimisée, prête en quelques secondes au "
+         "lieu de quelques minutes."),
+        ("table", [
+            ["Option", "Ce qu'elle fait"],
+            ["--dry-run, -n", "dire ce qui serait fait, sans rien écrire"],
+            ["--debug", "la version non optimisée, prête en quelques secondes"],
+            ["--prefix DIR", "où vont icônes, lanceur et exercices"],
+            ["--bin-dir DIR", "où va le binaire"],
+            ["--no-desktop", "pas de lanceur ni d'icônes"],
+            ["--no-dock", "ne pas épingler au dock (GNOME)"],
+            ["--no-path", "ne pas toucher au fichier de configuration du shell"],
+            ["--no-exercises", "ne pas installer la série livrée"],
+            ["--no-strip", "garder les symboles de débogage"],
+            ["--quiet, -q", "ne dire que l'essentiel"],
+            ["--no-color", "pas de couleurs (NO_COLOR est respecté aussi)"],
+        ]),
+        ("p",
+         "<font face='Courier'>./uninstall.sh</font> prend <b>--dry-run</b>, <b>--quiet</b> "
+         "et <b>--no-color</b> de la même façon. <b>--purge</b> retire en plus vos réglages "
+         "et vos séries d'exercices ; sans lui, ils sont gardés — on désinstalle souvent "
+         "pour réinstaller, et perdre ses raccourcis au passage serait une mauvaise "
+         "surprise."),
 
         ("p",
          "En ligne de commande : <font face='Courier'>namsdec fichier.asm</font> ouvre "

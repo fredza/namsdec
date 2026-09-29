@@ -26007,3 +26007,109 @@ fn what_turns_the_cursor_into_a_hand_really_answers_a_click() {
         muettes.join("\n  ")
     );
 }
+
+/// Les scripts d'installation disent toutes les options qu'ils
+/// acceptent.
+///
+/// Une option qui marche mais que `--help` ne nomme pas n'existe pas :
+/// personne ne la devinera. Le contrôle lit le `case` qui traite les
+/// arguments et vérifie que chaque motif se retrouve dans l'aide.
+#[test]
+fn the_install_scripts_describe_every_option_they_accept() {
+    let racine = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    for nom in ["install.sh", "uninstall.sh"] {
+        let source = std::fs::read_to_string(racine.join(nom)).expect(nom);
+        // Le bloc d'aide : entre `cat <<AIDE` et son terminateur.
+        let aide = source
+            .split_once("cat <<AIDE")
+            .and_then(|(_, reste)| reste.split_once("\nAIDE\n"))
+            .map(|(bloc, _)| bloc.to_owned())
+            .unwrap_or_else(|| panic!("{nom} doit porter un bloc d'aide"));
+
+        // Les motifs du `case` : `--purge)`, `-n|--dry-run)`, …
+        let mut options: Vec<String> = Vec::new();
+        for ligne in source.lines() {
+            let taillée = ligne.trim();
+            let Some((motifs, _)) = taillée.split_once(')') else {
+                continue;
+            };
+            if !motifs.starts_with('-') {
+                continue;
+            }
+            for motif in motifs.split('|') {
+                // `--prefix=*` et `--prefix` sont la même option.
+                let motif = motif.trim().trim_end_matches("=*");
+                if motif.starts_with('-') {
+                    options.push(motif.to_owned());
+                }
+            }
+        }
+        assert!(
+            options.len() >= 5,
+            "{nom} : le relevé ne trouve presque aucune option ({}) — il \
+             regarde au mauvais endroit",
+            options.len()
+        );
+        let muettes: Vec<&String> = options.iter().filter(|o| !aide.contains(*o)).collect();
+        assert!(
+            muettes.is_empty(),
+            "{nom} accepte {} option(s) que son aide ne nomme pas — \
+             une option qu'on ne peut pas deviner n'existe pas : {muettes:?}",
+            muettes.len()
+        );
+    }
+}
+
+/// Un essai à blanc n'écrit RIEN.
+///
+/// `--dry-run` est une promesse plus forte qu'une commodité : on
+/// l'emploie précisément quand on n'ose pas lancer la vraie commande.
+/// Un seul geste qui y échappe la rend pire qu'absente.
+///
+/// Le défaut a été commis en écrivant ces options : le dock et la ligne
+/// de PATH étaient modifiés pour de bon en essai à blanc, parce qu'ils
+/// ne passaient pas par la fonction qui sait se taire.
+///
+/// Le contrôle lit le source : toute commande qui écrit doit passer par
+/// `faire`/`retirer`, ou vivre sous une garde qui teste `$ESSAI`.
+#[test]
+fn a_dry_run_writes_nothing() {
+    let racine = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    for nom in ["install.sh", "uninstall.sh"] {
+        let source = std::fs::read_to_string(racine.join(nom)).expect(nom);
+        let lignes: Vec<&str> = source.lines().collect();
+        let mut nues = Vec::new();
+        for (n, ligne) in lignes.iter().enumerate() {
+            let taillée = ligne.trim();
+            if taillée.starts_with('#') {
+                continue;
+            }
+            // Ce qui touche au disque, au bureau ou au shell.
+            let écrit = taillée.starts_with("rm ")
+                || taillée.starts_with("rm -")
+                || taillée.starts_with("install -")
+                || taillée.starts_with("mkdir ")
+                || taillée.starts_with("gsettings set")
+                || taillée.starts_with("cargo build")
+                || taillée.contains(">> \"$rc\"");
+            if !écrit {
+                continue;
+            }
+            // Sous une garde qui teste l'essai à blanc ? On regarde les
+            // quinze lignes au-dessus : c'est la portée d'un `if` dans
+            // ces scripts.
+            let gardée = lignes[n.saturating_sub(15)..n]
+                .iter()
+                .any(|l| l.contains("$ESSAI"));
+            if !gardée {
+                nues.push(format!("{nom}:{} {taillée}", n + 1));
+            }
+        }
+        assert!(
+            nues.is_empty(),
+            "{} geste(s) qui écriraient malgré --dry-run :\n  {}",
+            nues.len(),
+            nues.join("\n  ")
+        );
+    }
+}
