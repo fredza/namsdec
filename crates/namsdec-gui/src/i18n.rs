@@ -414,8 +414,16 @@ pub struct Strings {
     /// Case : le pseudo-code structuré plutôt que le graphe.
     pub flow_pseudo: &'static str,
     pub flow_pseudo_hint: &'static str,
-    /// Ce qu'on dit quand la fonction n'a rien qui se structure.
+    /// Pourquoi le zoom est grisé quand on lit du texte.
+    pub flow_no_zoom_here: &'static str,
+    /// Bouton : le pseudo-code dans le presse-papier.
+    pub flow_copy_pseudo: &'static str,
+    pub flow_copy_pseudo_hint: &'static str,
+    pub flow_pseudo_copied: &'static str,
+    /// Ce qu'on dit quand il n'y a rien du tout à montrer.
     pub flow_pseudo_empty: &'static str,
+    /// Ce qu'on dit quand le texte n'a aucune structure : pas de saut.
+    pub flow_pseudo_flat: &'static str,
     pub flow_function_hint: &'static str,
     pub flow_copy_dot: &'static str,
     pub flow_copy_dot_hint: &'static str,
@@ -1288,7 +1296,15 @@ const FR: Strings = Strings {
     flow_pseudo: "Pseudo-code",
     flow_pseudo_hint: "Les sauts rendus à leur forme : « si », « sinon », « tant que », \
                        « répéter ». Ce qui ne se reconnaît pas garde son « aller à ».",
-    flow_pseudo_empty: "Rien à structurer ici : cette fonction n'a pas de saut.",
+    flow_pseudo_empty: "Rien à montrer : aucun code n'est chargé.",
+    flow_pseudo_flat: "Cette fonction n'a aucun saut : le pseudo-code est le listing, \
+                       dit en clair.",
+    flow_no_zoom_here: "Le pseudo-code est du texte : il n'a pas d'échelle. Décochez \
+                        « Pseudo-code » pour revenir au graphe.",
+    flow_copy_pseudo: "Copier le pseudo-code",
+    flow_copy_pseudo_hint: "Le texte tel qu'il est montré, indentation comprise — de quoi \
+                            le coller dans une note ou un compte rendu.",
+    flow_pseudo_copied: "Pseudo-code copié.",
     flow_function_hint: "Le premier bloc de la fonction montrée. Sans symboles, namsdec \
                          la délimite en suivant les sauts, sans franchir les appels.",
     flow_copy_dot: "Copier en DOT",
@@ -2072,7 +2088,15 @@ const EN: Strings = Strings {
     flow_pseudo: "Pseudo-code",
     flow_pseudo_hint: "Jumps given back their shape: \"if\", \"else\", \"while\", \
                        \"repeat\". What is not recognised keeps its \"go to\".",
-    flow_pseudo_empty: "Nothing to structure here: this function has no jump.",
+    flow_pseudo_empty: "Nothing to show: no code is loaded.",
+    flow_pseudo_flat: "This function has no jump: the pseudo-code is the listing, said \
+                       in plain words.",
+    flow_no_zoom_here: "Pseudo-code is text: it has no scale. Uncheck \"Pseudo-code\" \
+                        to go back to the graph.",
+    flow_copy_pseudo: "Copy the pseudo-code",
+    flow_copy_pseudo_hint: "The text as shown, indentation included — ready to paste into \
+                            a note or a report.",
+    flow_pseudo_copied: "Pseudo-code copied.",
     flow_function_hint: "The first block of the function being shown. Without symbols, \
                          namsdec bounds it by following jumps, never crossing calls.",
     flow_copy_dot: "Copy as DOT",

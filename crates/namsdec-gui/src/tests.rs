@@ -25632,3 +25632,228 @@ fn the_chosen_flow_view_survives_the_session() {
     let relu = NamsdecApp::from_settings(réglages);
     assert!(relu.flow_pseudo, "et il en revient");
 }
+
+/// Une commande qui n'agirait sur rien est grisée, et dit pourquoi.
+///
+/// Le pseudo-code est du TEXTE. Le zoom, lui, agit sur un dessin : les
+/// cinq commandes d'échelle de la fenêtre du déroulement — moins, plus,
+/// « Taille réelle », « Tout voir », et le pourcentage — n'y feraient
+/// rien du tout. Elles restaient pourtant actives, à l'identique, dans
+/// les deux vues : le relevé de la barre donnait exactement la même
+/// liste de part et d'autre de la case.
+///
+/// Une commande qui ne fait rien ment, et c'est le genre de mensonge
+/// qu'on ne signale pas — on croit avoir mal cliqué. Grisées plutôt
+/// qu'effacées : une commande qui disparaît laisse croire qu'elle
+/// n'existe pas, une commande grise qui dit pourquoi enseigne l'état du
+/// programme. C'est la règle déjà posée pour « Fermer le fichier ».
+///
+/// Le contrôle lit le source, parce que c'est là qu'est la règle : les
+/// commandes d'échelle vivent sous un `add_enabled_ui` qui dépend de la
+/// vue, et chacune porte sa propre explication — une seule pour tout le
+/// bloc passerait au vert avec le défaut remis.
+#[test]
+fn the_scale_commands_are_greyed_when_there_is_nothing_to_scale() {
+    let source = include_str!("flow.rs");
+    let lignes: Vec<&str> = source.lines().collect();
+    let garde = lignes
+        .iter()
+        .position(|l| l.contains("ui.add_enabled_ui(dessin,"))
+        .expect("les commandes d'échelle sont sous une garde qui suit la vue");
+    // Les cinq commandes sont dedans, et chacune dit pourquoi elle est
+    // grise. La fenêtre de vingt-cinq lignes suffit : au-delà, c'est
+    // qu'elles n'y sont plus.
+    let bloc: Vec<&str> = lignes.iter().skip(garde).take(45).copied().collect();
+    for commande in [
+        "\"−\"",
+        "\"+\"",
+        "s.flow_zoom_reset",
+        "s.flow_fit",
+        "self.flow_zoom * 100.0",
+    ] {
+        assert!(
+            bloc.iter().any(|l| l.contains(commande)),
+            "{commande} doit être sous la garde :\n{}",
+            bloc.join("\n")
+        );
+    }
+    let explications = bloc
+        .iter()
+        .filter(|l| l.contains("on_disabled_hover_text"))
+        .count();
+    assert_eq!(
+        explications,
+        5,
+        "chacune des cinq dit pourquoi elle est grise, et non une pour \
+         tout le bloc :\n{}",
+        bloc.join("\n")
+    );
+}
+
+/// Et ce qu'on regarde peut s'emporter, quelle que soit la vue.
+///
+/// Les deux boutons d'export nomment le graphe dans leur libellé : ils
+/// ne mentent pas, mais ils ne rendent pas ce qu'on a sous les yeux
+/// quand c'est le texte qu'on lit. Le troisième bouton n'apparaît donc
+/// que là où il a un sens.
+#[test]
+fn the_pseudo_code_can_be_copied_when_it_is_what_we_read() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let source = "section .text\nglobal _start\n_start:\n    mov ecx, 3\n\
+                  boucle:\n    dec ecx\n    jnz boucle\n    hlt\n";
+    let barre = |pseudo: bool| -> Vec<String> {
+        let mut app = NamsdecApp {
+            source: source.to_owned(),
+            show_flow: true,
+            flow_pseudo: pseudo,
+            ..Default::default()
+        };
+        app.do_assemble();
+        let ctx = egui::Context::default();
+        app.apply_theme(&ctx);
+        let (_, lignes) = ce_qui_est_écrit(&ctx, &mut app, Some("flow_window"), 4);
+        lignes.into_iter().map(|(t, _)| t).collect()
+    };
+    let s = strings(Lang::Fr);
+    let texte = barre(true);
+    assert!(
+        texte.iter().any(|t| t == s.flow_copy_pseudo),
+        "le bouton manque là où il sert : {texte:?}"
+    );
+    let graphe = barre(false);
+    assert!(
+        !graphe.iter().any(|t| t == s.flow_copy_pseudo),
+        "et il ne traîne pas là où il n'a rien à copier : {graphe:?}"
+    );
+    // L'aide au glisser suit la même règle : elle décrit un geste qui
+    // n'existe pas sur du texte.
+    assert!(
+        graphe.iter().any(|t| t == s.flow_pan_hint),
+        "l'aide au glisser est là pour le dessin : {graphe:?}"
+    );
+    assert!(
+        !texte.iter().any(|t| t == s.flow_pan_hint),
+        "et pas pour le texte : {texte:?}"
+    );
+}
+
+/// Un texte sans structure le dit, au lieu de laisser chercher.
+///
+/// Une fonction sans saut rend un pseudo-code qui n'a rien d'un
+/// pseudo-code : les instructions, dites en clair, et c'est tout. Sans
+/// un mot, on cherche le « si » qui n'y est pas et l'on croit la vue en
+/// panne.
+///
+/// L'état vide écrit d'abord pour ce cas ne pouvait pas s'afficher : il
+/// demandait un graphe vide, que la fenêtre écarte trente lignes plus
+/// haut. Un état vide qu'on n'atteint jamais est un message qu'on
+/// croit avoir écrit.
+#[test]
+fn a_pseudo_code_without_structure_says_so() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let s = strings(Lang::Fr);
+    let peint = |source: &str| -> Vec<String> {
+        let mut app = NamsdecApp {
+            source: source.to_owned(),
+            show_flow: true,
+            flow_pseudo: true,
+            ..Default::default()
+        };
+        app.do_assemble();
+        let ctx = egui::Context::default();
+        app.apply_theme(&ctx);
+        let (_, lignes) = ce_qui_est_écrit(&ctx, &mut app, Some("flow_window"), 4);
+        lignes.into_iter().map(|(t, _)| t).collect()
+    };
+    // Sans saut : la mention est là.
+    let plat = peint("section .text\nglobal _start\n_start:\n    nop\n    nop\n    hlt\n");
+    assert!(
+        plat.iter().any(|t| t.contains("aucun saut")),
+        "le texte sans structure le dit : {plat:?}"
+    );
+    // Avec une boucle : elle n'a plus lieu d'être.
+    let structuré = peint(
+        "section .text\nglobal _start\n_start:\n    mov ecx, 3\n\
+         boucle:\n    dec ecx\n    jnz boucle\n    hlt\n",
+    );
+    assert!(
+        structuré.iter().any(|t| t.contains("répéter")),
+        "la boucle est reconnue : {structuré:?}"
+    );
+    assert!(
+        !structuré.iter().any(|t| *t == s.flow_pseudo_flat),
+        "et la mention ne traîne pas : {structuré:?}"
+    );
+}
+
+/// L'indentation du pseudo-code se VOIT, et les lignes ne se marchent
+/// pas dessus.
+///
+/// Un texte structuré dont les crans ne se distinguent pas ne vaut pas
+/// mieux qu'un listing : c'est l'indentation qui dit ce qui dépend de
+/// quoi, et c'est elle qu'on lit avant les mots. Elle est posée en
+/// mesurant quatre espaces de la police à chasse fixe — deviner une
+/// largeur de caractère marche jusqu'au premier changement de police ou
+/// de zoom.
+#[test]
+fn the_pseudo_code_indentation_can_be_seen() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    // Trois niveaux : la boucle, le test dedans, et son corps.
+    let source = "section .text\nglobal _start\n_start:\n    mov rcx, 5\n\
+                  boucle:\n    cmp rcx, 2\n    je suivant\n    add rax, rcx\n\
+                  suivant:\n    dec rcx\n    jnz boucle\n    hlt\n";
+    let mut app = NamsdecApp {
+        source: source.to_owned(),
+        show_flow: true,
+        flow_pseudo: true,
+        ..Default::default()
+    };
+    app.do_assemble();
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let (_, lignes) = ce_qui_est_écrit(&ctx, &mut app, Some("flow_window"), 4);
+
+    let où = |quoi: &str| -> egui::Rect {
+        lignes
+            .iter()
+            .find(|(t, _)| t.contains(quoi))
+            .map(|(_, r)| *r)
+            .unwrap_or_else(|| {
+                panic!(
+                    "« {quoi} » est peint : {:?}",
+                    lignes.iter().map(|(t, _)| t).collect::<Vec<_>>()
+                )
+            })
+    };
+    let boucle = où("répéter");
+    let test = où("si ");
+    let corps = où("RAX = RAX +");
+    // Chaque niveau rentre par rapport au précédent, et d'un cran qui
+    // se voit : sous dix pixels, on ne le distingue pas.
+    assert!(
+        test.left() > boucle.left() + 10.0,
+        "le test est en retrait de la boucle : {} vs {}",
+        test.left(),
+        boucle.left()
+    );
+    assert!(
+        corps.left() > test.left() + 10.0,
+        "et son corps l'est encore : {} vs {}",
+        corps.left(),
+        test.left()
+    );
+    // Les crans sont RÉGULIERS : un retrait qui varie se lit comme une
+    // erreur de mise en page, non comme une structure.
+    let premier = test.left() - boucle.left();
+    let second = corps.left() - test.left();
+    assert!(
+        (premier - second).abs() < 1.0,
+        "les deux crans doivent être égaux : {premier} puis {second}"
+    );
+}

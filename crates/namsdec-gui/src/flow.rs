@@ -51,6 +51,7 @@ impl NamsdecApp {
         // emprunté à `self`.
         let mut bascule = false;
         let mut enregistrer_dot = false;
+        let mut copier_pseudo = false;
         let mut fenêtre = egui::Window::new(s.flow_title)
             .id(egui::Id::new("flow_window"))
             .open(&mut open)
@@ -218,26 +219,46 @@ impl NamsdecApp {
             // Et les mêmes commandes à portée de clic : la molette
             // avec Ctrl ne s'invente pas, et rien ne l'annonçait.
             ui.horizontal_wrapped(|ui| {
-                if framed_button(ui, theme, "−")
-                    .on_hover_text(s.flow_zoom_out)
-                    .clicked()
-                {
-                    self.flow_zoom = (self.flow_zoom / 1.25).clamp(FLOW_ZOOM_MIN, FLOW_ZOOM_MAX);
-                }
-                ui.colored_label(theme.dim, format!("{:.0} %", self.flow_zoom * 100.0));
-                if framed_button(ui, theme, "+")
-                    .on_hover_text(s.flow_zoom_in)
-                    .clicked()
-                {
-                    self.flow_zoom = (self.flow_zoom * 1.25).clamp(FLOW_ZOOM_MIN, FLOW_ZOOM_MAX);
-                }
-                if framed_button(ui, theme, s.flow_zoom_reset).clicked() {
-                    self.flow_zoom = 1.0;
-                    self.flow_offset = egui::Vec2::ZERO;
-                }
-                if framed_button(ui, theme, s.flow_fit).clicked() {
-                    self.flow_fit = true;
-                }
+                // Le zoom agit sur un DESSIN. Le pseudo-code est du
+                // texte : ces cinq commandes n'y feraient rien, et une
+                // commande qui ne fait rien ment. Grisées plutôt
+                // qu'effacées — une commande qui disparaît laisse croire
+                // qu'elle n'existe pas, une commande grise qui dit
+                // pourquoi enseigne l'état du programme.
+                let dessin = !self.flow_pseudo;
+                ui.add_enabled_ui(dessin, |ui| {
+                    if framed_button(ui, theme, "−")
+                        .on_hover_text(s.flow_zoom_out)
+                        .on_disabled_hover_text(s.flow_no_zoom_here)
+                        .clicked()
+                    {
+                        self.flow_zoom =
+                            (self.flow_zoom / 1.25).clamp(FLOW_ZOOM_MIN, FLOW_ZOOM_MAX);
+                    }
+                    ui.colored_label(theme.dim, format!("{:.0} %", self.flow_zoom * 100.0))
+                        .on_disabled_hover_text(s.flow_no_zoom_here);
+                    if framed_button(ui, theme, "+")
+                        .on_hover_text(s.flow_zoom_in)
+                        .on_disabled_hover_text(s.flow_no_zoom_here)
+                        .clicked()
+                    {
+                        self.flow_zoom =
+                            (self.flow_zoom * 1.25).clamp(FLOW_ZOOM_MIN, FLOW_ZOOM_MAX);
+                    }
+                    if framed_button(ui, theme, s.flow_zoom_reset)
+                        .on_disabled_hover_text(s.flow_no_zoom_here)
+                        .clicked()
+                    {
+                        self.flow_zoom = 1.0;
+                        self.flow_offset = egui::Vec2::ZERO;
+                    }
+                    if framed_button(ui, theme, s.flow_fit)
+                        .on_disabled_hover_text(s.flow_no_zoom_here)
+                        .clicked()
+                    {
+                        self.flow_fit = true;
+                    }
+                });
                 // Le graphe s'emporte : dans une note, un rapport,
                 // un cours. DOT plutôt qu'une image — il se lit à
                 // l'œil, et `dot -Tsvg` en fait une image quand on en
@@ -258,6 +279,15 @@ impl NamsdecApp {
                     .clicked()
                 {
                     enregistrer_dot = true;
+                }
+                // Et le texte s'emporte aussi, quand c'est lui qu'on
+                // regarde. Les deux boutons d'à côté nomment le graphe
+                // dans leur libellé : ils ne mentent pas, mais ils ne
+                // rendent pas ce qu'on a sous les yeux.
+                if self.flow_pseudo {
+                    copier_pseudo = framed_button(ui, theme, s.flow_copy_pseudo)
+                        .on_hover_text(s.flow_copy_pseudo_hint)
+                        .clicked();
                 }
                 ui.separator();
                 ui.checkbox(&mut self.flow_current_only, s.flow_current_only);
@@ -298,8 +328,10 @@ impl NamsdecApp {
                         format!("{} {}", cfg.blocks.len(), s.flow_blocks)
                     },
                 );
-                ui.separator();
-                ui.weak(s.flow_pan_hint);
+                if dessin {
+                    ui.separator();
+                    ui.weak(s.flow_pan_hint);
+                }
             });
             ui.add_space(4.0);
 
@@ -403,6 +435,22 @@ impl NamsdecApp {
         if bascule {
             self.toggle_maximized(Self::FLOW_WINDOW);
         }
+        if copier_pseudo && let Some(state) = &self.assemble_state {
+            let entier = namsdec_re::cfg::build(&state.disasm);
+            let ancre = self
+                .emulator
+                .as_ref()
+                .and_then(|e| entier.block_at(e.cpu().regs.rip))
+                .unwrap_or(0);
+            let cfg = if self.flow_current_only && entier.blocks.len() > 1 {
+                entier.subgraph(&entier.function_around(ancre))
+            } else {
+                entier
+            };
+            let lignes = namsdec_re::structure::pseudo_code(&cfg, &state.disasm, self.lang.code());
+            ctx.copy_text(namsdec_re::structure::en_texte(&lignes));
+            self.status = Status::Note(|s| s.flow_pseudo_copied);
+        }
         if enregistrer_dot {
             self.spawn_file_dialog(FileDialogKind::ExportDot);
         }
@@ -444,6 +492,21 @@ pub(crate) fn flow_pseudo_ui(
     if lignes.is_empty() {
         empty_state(ui, theme, s.flow_pseudo_empty, None, None);
         return;
+    }
+    // Une fonction sans saut rend un texte qui n'a aucune structure :
+    // rien que les instructions, dites en clair. Le dire évite de
+    // chercher un « si » qui n'existe pas et de croire que la vue est
+    // en panne.
+    //
+    // L'état vide ci-dessus, lui, ne se déclenche que sur un graphe
+    // vide — que la fenêtre a déjà écarté plus haut. Il est donc mort,
+    // et c'est cette ligne-ci qui dit ce qu'il croyait dire.
+    if lignes
+        .iter()
+        .all(|l| l.adresse.is_some() || l.est_étiquette)
+    {
+        ui.colored_label(theme.dim, s.flow_pseudo_flat);
+        ui.add_space(4.0);
     }
     egui::ScrollArea::both()
         .auto_shrink([false, false])

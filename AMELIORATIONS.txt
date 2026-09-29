@@ -1582,3 +1582,39 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
   « h3 » — qui n'existe pas dans ce générateur — a disparu du PDF, lequel s'est
   produit comme si de rien n'était. Il refuse désormais de construire plutôt
   que de perdre du texte en silence.
+
+  --- la vue neuve passée au banc, et ce qu'il a trouvé ---
+  Un relevé de la barre d'outils, vue par vue, a donné DEUX FOIS LA MÊME
+  LISTE : les cinq commandes d'échelle (moins, le pourcentage, plus, « Taille
+  réelle », « Tout voir ») et l'aide au glisser restaient actives sur du
+  texte, où elles ne font rien. Une commande qui ne fait rien ment, et c'est
+  un mensonge qu'on ne signale pas : on croit avoir mal cliqué.
+
+  Grisées plutôt qu'effacées, chacune avec sa raison au survol — c'est la
+  règle déjà posée pour « Fermer le fichier » : une commande qui disparaît
+  laisse croire qu'elle n'existe pas, une commande grise qui dit pourquoi
+  enseigne l'état du programme. L'aide au glisser, elle, n'est pas une
+  commande : elle décrit un geste qui n'existe pas sur du texte, et disparaît.
+
+  Et un bouton de plus là où il sert : « Copier le pseudo-code ». Les deux
+  boutons d'export nomment le graphe dans leur libellé — ils ne mentent pas,
+  mais ils ne rendent pas ce qu'on a sous les yeux.
+
+  UN ÉTAT VIDE QUI NE POUVAIT PAS S'AFFICHER. Le message « cette fonction n'a
+  pas de saut » attendait un graphe vide — que la fenêtre écarte trente lignes
+  plus haut. Il n'a jamais pu paraître. C'est un message qu'on croit avoir
+  écrit, et la deuxième fois de la semaine qu'un contrôle sans objet passe au
+  vert en ne regardant rien. La mention se déclenche maintenant sur la bonne
+  condition : aucune ligne de structure dans le texte rendu.
+
+  --- et le script de capture ne démarrait plus ---
+  `trouvée=""` : bash n'accepte pas d'accent dans un nom de variable, et lit
+  cela comme une commande nommée « trouvée= ». Le script s'arrêtait sur
+  « commande introuvable », ce qui ne ressemble à rien de ce qu'on cherchait.
+  Corrigé, avec la raison écrite en tête pour que personne ne les remette.
+
+  RAPPEL DE LA LIMITE : les clics et les frappes simulés n'atteignent toujours
+  pas l'application. `ctrl+shift+b` passe, `Espace g` non, un clic de menu non
+  plus. La capture sert donc à REGARDER un état qu'on a semé dans
+  `settings.json`, jamais à en atteindre un autre. Ce qui se mesure se mesure
+  au banc.

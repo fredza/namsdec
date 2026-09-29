@@ -685,6 +685,15 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "ne viennent d'aucune d'elles — ils viennent du graphe. La ligne où le "
          "processeur se trouve est surlignée, comme dans l'éditeur."),
         ("p",
+         "Les commandes d'échelle — moins, plus, <b>Taille réelle</b>, <b>Tout voir</b> — "
+         "sont <b>grisées</b> dans cette vue : un texte n'a pas d'échelle. Elles disent "
+         "pourquoi au survol plutôt que de disparaître, et le bouton <b>Copier le "
+         "pseudo-code</b> prend leur relais — le texte s'emporte comme le graphe, "
+         "indentation comprise."),
+        ("p",
+         "Une fonction <b>sans aucun saut</b> le dit en une ligne : son pseudo-code est le "
+         "listing, traduit en clair, et il n'y a pas de « si » à y chercher."),
+        ("p",
          "Le graphe s’emporte : <b>Copier en DOT</b> le met dans le presse-papier, "
          "<b>Enregistrer le graphe…</b> l’écrit dans un fichier. "
          "<font face='Courier'>dot -Tsvg graphe.dot</font> en fait une image. C’est le "

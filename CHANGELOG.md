@@ -28,6 +28,12 @@ précédaient.
   remplace : on relit un `goto`, on ne relit pas ce qu'on croit avoir
   compris.
 - Le choix de la vue se garde dans `settings.json`.
+- Les commandes d'échelle sont **grisées** dans cette vue — un texte n'a
+  pas d'échelle — et disent pourquoi au survol plutôt que de disparaître.
+  **Copier le pseudo-code** prend leur relais : le texte s'emporte comme
+  le graphe, indentation comprise.
+- Une fonction sans aucun saut le dit en une ligne, au lieu de laisser
+  chercher un « si » qui n'y est pas.
 
 **Un outil extérieur reçoit du code, non un fichier**
 - Deux marqueurs de plus dans la fiche d'un désassembleur : `{text}` reçoit
