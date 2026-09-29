@@ -8,6 +8,9 @@
 //! Sortis de `main.rs`, qui portait autant de tests que de code.
 
 use super::*;
+// Le graphe vit dans son propre module depuis le 29 septembre 2026 ;
+// deux de ses fonctions libres se mesurent ici.
+use crate::flow::{flow_box_width, flow_ellipsis};
 // Le panneau latéral a ses propres fonctions : les tests les
 // nomment sans préfixe, comme avant leur déménagement.
 use crate::sidebar::*;
