@@ -370,6 +370,36 @@ impl NamsdecApp {
             });
         }
 
+        // CE QUE LE PROGRAMME A FAIT À LA PLACE, quand le but manque.
+        //
+        // C'est la moitié de l'explication qui ne se mesurait pas : la
+        // condition dit ce que RAX vaut, elle ne dit pas pourquoi. « La
+        // boucle a tourné quatre fois » le dit, et c'est le moment
+        // précis où quelqu'un qui apprend abandonne ou comprend.
+        //
+        // Rien n'est déduit : ce sont des compteurs. Un saut dont la
+        // suite a d'autres entrées ne dit rien du tout — voir
+        // `ce_qui_a_tourné`, qui refuse de conclure là où plusieurs
+        // chemins se rejoignent.
+        if !atteint {
+            let dit = self.ce_que_le_programme_a_fait();
+            if !dit.is_empty() {
+                // Une entrée en matière, parce que ces phrases parlent
+                // d'autre chose que les conditions du dessus : celles-ci
+                // disent ce qu'on voulait, celles-là ce qui s'est passé.
+                ui.horizontal_wrapped(|ui| {
+                    ui.add_space(16.0);
+                    ui.colored_label(theme.dim, s.goal_what_ran);
+                });
+            }
+            for phrase in dit {
+                ui.horizontal_wrapped(|ui| {
+                    ui.add_space(24.0);
+                    ui.colored_label(theme.text, phrase);
+                });
+            }
+        }
+
         // Le coût, à côté du verdict : un programme juste peut être deux
         // fois plus court, et c'est en cherchant comment qu'on apprend
         // `lea`, les décalages, ou qu'une boucle de cinq tours se

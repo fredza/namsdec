@@ -3305,6 +3305,52 @@ impl NamsdecApp {
         self.program_writes = écrit;
     }
 
+    /// Ce que le programme a fait, en phrases — seulement ce qui se
+    /// compte.
+    ///
+    /// La moitié de l'explication d'un échec qui ne se mesurait pas :
+    /// quelle branche il a prise, où la boucle s'est arrêtée. Les faits
+    /// viennent de `namsdec_re::explain`, qui refuse de conclure là où
+    /// plusieurs chemins se rejoignent ; ici on ne fait que les dire
+    /// avec le numéro de ligne, qui est ce que la personne regarde.
+    ///
+    /// Deux au plus : une liste de quinze lignes sous un but manqué
+    /// n'explique plus rien, elle noie.
+    fn ce_que_le_programme_a_fait(&self) -> Vec<String> {
+        let s = strings(self.lang);
+        let (Some(emulator), Some(state)) = (&self.emulator, &self.assemble_state) else {
+            return Vec::new();
+        };
+        let passages: BTreeMap<u64, u64> =
+            emulator.visits().iter().map(|(a, c)| (*a, *c)).collect();
+        let cfg = namsdec_re::cfg::build(&state.disasm);
+        let ligne_de = |adresse: u64| -> Option<u32> {
+            state.addr_to_line.get(&adresse).copied()
+        };
+        namsdec_re::explain::ce_qui_a_tourné(&cfg, &passages)
+            .into_iter()
+            .filter_map(|fait| match fait {
+                namsdec_re::explain::Fait::Boucle { adresse, tours } => {
+                    let ligne = ligne_de(adresse)?;
+                    Some(
+                        s.goal_loop_ran
+                            .replace("{ligne}", &ligne.to_string())
+                            .replace("{tours}", &tours.to_string()),
+                    )
+                }
+                namsdec_re::explain::Fait::SautToujoursPris { adresse } => Some(
+                    s.goal_jump_always
+                        .replace("{ligne}", &ligne_de(adresse)?.to_string()),
+                ),
+                namsdec_re::explain::Fait::SautJamaisPris { adresse } => Some(
+                    s.goal_jump_never
+                        .replace("{ligne}", &ligne_de(adresse)?.to_string()),
+                ),
+            })
+            .take(2)
+            .collect()
+    }
+
     fn line_visits(&self) -> BTreeMap<u32, u64> {
         let (Some(emulator), Some(state)) = (&self.emulator, &self.assemble_state) else {
             return BTreeMap::new();

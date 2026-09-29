@@ -801,6 +801,13 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "valeur \u2014 il le dit ; comment y arriver, il se tait, parce que c\u2019est le "
          "geste qu\u2019on est venu apprendre."),
         ("p",
+         "Il dit aussi <b>ce que le programme a fait</b> : « la boucle de la ligne 6 a "
+         "tourné 4 fois », « le saut de la ligne 9 n'a jamais été pris ». La condition "
+         "dit ce que RAX vaut, elle ne dit pas pourquoi ; ces phrases-là si, et ce sont "
+         "des <b>compteurs</b>, non des déductions. Un saut dont la suite a d'autres "
+         "entrées ne dit rien du tout : son compteur mélangerait les passages venus "
+         "d'ailleurs, et la phrase serait fausse exactement dans les cas intéressants."),
+        ("p",
          "La plupart portent aussi un <b>budget</b> : le nombre d'instructions exécutées "
          "qu'il faut tenir. Il est <i>mesuré</i>, jamais estimé — un test exécute les %d "
          "exercices et vérifie que chacun atteint son but dans son budget. Un programme "

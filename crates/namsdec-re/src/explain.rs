@@ -221,6 +221,102 @@ fn préparation(bloc: &Bloc, fr: bool) -> Option<String> {
     })
 }
 
+
+/// Un fait d'exécution : quelque chose que le programme A FAIT, compté
+/// et non déduit.
+///
+/// « Ce que le programme a fait à la place » est la moitié qui manquait
+/// aux échecs d'exercice. Elle demande le profil, et elle demande
+/// surtout de ne rien dire qu'on n'ait compté : « la boucle s'est
+/// arrêtée trop tôt » est une interprétation, « la boucle a tourné
+/// quatre fois » est une mesure.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Fait {
+    /// Une boucle, et combien de tours elle a faits.
+    Boucle { adresse: u64, tours: u64 },
+    /// Un saut conditionnel dont une seule des deux suites a été
+    /// atteinte — et l'on sait laquelle, parce qu'elle n'a pas d'autre
+    /// entrée que celle-là.
+    SautToujoursPris { adresse: u64 },
+    SautJamaisPris { adresse: u64 },
+}
+
+/// Ce que l'exécution a fait de ce graphe.
+///
+/// Rien n'est rendu tant que rien n'a tourné : un programme qui n'a pas
+/// commencé n'a pas de branche à raconter.
+///
+/// LA PRÉCAUTION QUI COMPTE : on ne conclut sur une branche que si le
+/// bloc visé n'a **pas d'autre entrée**. Sinon son compteur mélange les
+/// passages venus d'ailleurs, et dire « ce saut a toujours été pris »
+/// serait faux exactement dans les cas intéressants — ceux où plusieurs
+/// chemins se rejoignent.
+pub fn ce_qui_a_tourné(
+    cfg: &crate::cfg::Cfg,
+    passages: &std::collections::BTreeMap<u64, u64>,
+) -> Vec<Fait> {
+    use crate::cfg::Kind;
+    let mut faits = Vec::new();
+    if passages.is_empty() {
+        return faits;
+    }
+    let tours = |index: usize| -> u64 {
+        passages
+            .get(&cfg.blocks[index].start)
+            .copied()
+            .unwrap_or(0)
+    };
+    let entrées = |index: usize| -> usize {
+        cfg.edges.iter().filter(|a| a.to == index).count()
+    };
+    for (index, bloc) in cfg.blocks.iter().enumerate() {
+        // Une boucle : une arête d'ici vers soi-même ou vers plus haut.
+        if cfg
+            .edges
+            .iter()
+            .any(|a| a.from == index && cfg.blocks[a.to].start <= bloc.start)
+            && tours(index) > 1
+        {
+            faits.push(Fait::Boucle {
+                adresse: bloc.start,
+                tours: tours(index),
+            });
+            continue;
+        }
+        if bloc.exit != crate::cfg::Exit::Branch {
+            continue;
+        }
+        let pris = cfg
+            .edges
+            .iter()
+            .find(|a| a.from == index && a.kind == Kind::Taken)
+            .map(|a| a.to);
+        let pas_pris = cfg
+            .edges
+            .iter()
+            .find(|a| a.from == index && a.kind == Kind::NotTaken)
+            .map(|a| a.to);
+        let (Some(pris), Some(pas_pris)) = (pris, pas_pris) else {
+            continue;
+        };
+        // Le bloc lui-même doit avoir tourné : sans cela on parlerait
+        // d'un saut que le programme n'a jamais rencontré.
+        if tours(index) == 0 || entrées(pris) != 1 || entrées(pas_pris) != 1 {
+            continue;
+        }
+        match (tours(pris), tours(pas_pris)) {
+            (p, 0) if p > 0 => faits.push(Fait::SautToujoursPris {
+                adresse: bloc.last,
+            }),
+            (0, np) if np > 0 => faits.push(Fait::SautJamaisPris {
+                adresse: bloc.last,
+            }),
+            _ => {}
+        }
+    }
+    faits
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -357,5 +453,95 @@ mod tests {
             None
         );
         assert_eq!(dit(&[], Exit::Fallthrough, false, None), None);
+    }
+
+    use crate::cfg::{Block, Cfg, Edge, Kind};
+    use std::collections::BTreeMap;
+
+    fn b(start: u64, last: u64, exit: Exit) -> Block {
+        Block {
+            start,
+            last,
+            instructions: vec!["nop".to_owned()],
+            exit,
+        }
+    }
+
+    /// Un test simple : un bloc qui se reboucle, et un qui branche vers
+    /// deux suites dont chacune n'a que lui pour entrée.
+    fn graphe() -> Cfg {
+        Cfg {
+            blocks: vec![
+                b(0x10, 0x14, Exit::Branch),
+                b(0x20, 0x24, Exit::Branch),
+                b(0x30, 0x34, Exit::Return),
+                b(0x40, 0x44, Exit::Return),
+            ],
+            edges: vec![
+                // Le bloc 0 se reboucle sur lui-même, et tombe dans 1.
+                Edge { from: 0, to: 0, kind: Kind::Taken },
+                Edge { from: 0, to: 1, kind: Kind::NotTaken },
+                // Le bloc 1 branche vers 2 ou 3, qui n'ont que lui.
+                Edge { from: 1, to: 2, kind: Kind::Taken },
+                Edge { from: 1, to: 3, kind: Kind::NotTaken },
+            ],
+        }
+    }
+
+    #[test]
+    fn rien_na_tourné_ne_raconte_rien() {
+        assert!(ce_qui_a_tourné(&graphe(), &BTreeMap::new()).is_empty());
+    }
+
+    #[test]
+    fn une_boucle_dit_ses_tours_et_une_branche_dit_son_côté() {
+        let passages: BTreeMap<u64, u64> =
+            [(0x10, 5), (0x20, 1), (0x30, 1)].into_iter().collect();
+        let faits = ce_qui_a_tourné(&graphe(), &passages);
+        assert!(faits.contains(&Fait::Boucle {
+            adresse: 0x10,
+            tours: 5
+        }));
+        assert!(faits.contains(&Fait::SautToujoursPris { adresse: 0x24 }));
+    }
+
+    #[test]
+    fn un_bloc_à_plusieurs_entrées_ne_dit_rien_de_sa_branche() {
+        // LA PRÉCAUTION QUI COMPTE : le compteur d'un bloc où plusieurs
+        // chemins se rejoignent mélange les passages venus d'ailleurs.
+        // Dire « ce saut a toujours été pris » serait faux exactement
+        // dans les cas intéressants.
+        let mut cfg = graphe();
+        cfg.edges.push(Edge {
+            from: 0,
+            to: 2,
+            kind: Kind::Next,
+        });
+        let passages: BTreeMap<u64, u64> =
+            [(0x10, 5), (0x20, 1), (0x30, 1)].into_iter().collect();
+        let faits = ce_qui_a_tourné(&cfg, &passages);
+        assert!(
+            !faits
+                .iter()
+                .any(|f| matches!(f, Fait::SautToujoursPris { .. })),
+            "{faits:?}"
+        );
+        // La boucle, elle, se compte toujours : son propre compteur ne
+        // dépend de personne.
+        assert!(faits.iter().any(|f| matches!(f, Fait::Boucle { .. })));
+    }
+
+    #[test]
+    fn un_saut_jamais_rencontré_ne_dit_rien() {
+        // Le bloc du saut n'a pas tourné : parler de sa branche serait
+        // parler d'un saut que le programme n'a jamais vu.
+        let passages: BTreeMap<u64, u64> = [(0x10, 5)].into_iter().collect();
+        let faits = ce_qui_a_tourné(&graphe(), &passages);
+        assert!(
+            faits
+                .iter()
+                .all(|f| matches!(f, Fait::Boucle { .. })),
+            "{faits:?}"
+        );
     }
 }

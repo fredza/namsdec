@@ -6,8 +6,8 @@ retiré — reste dans `AMELIORATIONS.txt`, qui ne bouge pas de rôle : une
 seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
-Tenue à jour au fil des séances. Dernière mise à jour : **25 septembre
-2026**, version 0.2.5-beta.3, 578 tests au vert.
+Tenue à jour au fil des séances. Dernière mise à jour : **29 septembre
+2026**, version 0.2.5-beta.3, 579 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -252,9 +252,12 @@ Détail chiffré dans `AMELIORATIONS.txt` 7.11, section « REVUE DU
 
 ## 5. Vocation pédagogique
 
-- [~] **Les échecs des exercices, expliqués** (A 7.10) — la moitié est
-      faite : chaque condition manquée dit laquelle et avec quelle
-      valeur. La seconde moitié demande 7.9.
+- [x] **Les échecs des exercices, expliqués** (A 7.10) — la seconde
+      moitié est faite : sous un but manqué, namsdec dit ce que le
+      programme a FAIT — « la boucle de la ligne 6 a tourné 4 fois »,
+      « le saut de la ligne 9 n'a jamais été pris ». Des compteurs, non
+      des déductions ; un saut dont la suite a d'autres entrées ne dit
+      rien du tout.
 - [~] **Un mode « explique-moi cette fonction »** (A 7.9) — commencé :
       chaque boîte du graphe porte une phrase quand namsdec sait la
       dire. Cinq reconnaisseurs, chacun certain ou muet : appel système

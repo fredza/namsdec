@@ -105,6 +105,13 @@ pub struct Strings {
     pub goal_not_yet: &'static str,
     /// Entre une expression et ce qu'elle vaut : « rax vaut 0xc ».
     pub goal_is: &'static str,
+    /// Ce que le programme a fait À LA PLACE, quand un but manque.
+    /// La moitié qui ne se mesurait pas : quelle branche il a prise, où
+    /// la boucle s'est arrêtée.
+    pub goal_what_ran: &'static str,
+    pub goal_loop_ran: &'static str,
+    pub goal_jump_always: &'static str,
+    pub goal_jump_never: &'static str,
     pub goal_hint: &'static str,
     pub par_label: &'static str,
     pub par_best: &'static str,
@@ -1023,6 +1030,10 @@ const FR: Strings = Strings {
     exercises_search_hint: "un titre, ou ce qu'on y faisait",
     goal_not_yet: "pas encore",
     goal_is: "vaut",
+    goal_what_ran: "Ce que le programme a fait :",
+    goal_loop_ran: "la boucle de la ligne {ligne} a tourné {tours} fois",
+    goal_jump_always: "le saut de la ligne {ligne} a toujours été pris",
+    goal_jump_never: "le saut de la ligne {ligne} n'a jamais été pris",
     goal_hint: "Le but de l'exercice en cours, vérifié sur les registres. Tout est hexadécimal, comme partout ailleurs.",
     par_label: "Instructions :",
     par_best: "meilleur",
@@ -1799,6 +1810,10 @@ const EN: Strings = Strings {
     exercises_search_hint: "a title, or what it was about",
     goal_not_yet: "not yet",
     goal_is: "is",
+    goal_what_ran: "What the program did:",
+    goal_loop_ran: "the loop on line {ligne} ran {tours} times",
+    goal_jump_always: "the jump on line {ligne} was always taken",
+    goal_jump_never: "the jump on line {ligne} was never taken",
     goal_hint: "The current exercise's goal, checked against the registers. Everything is hexadecimal, as everywhere else.",
     par_label: "Instructions:",
     par_best: "best",

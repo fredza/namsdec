@@ -24999,3 +24999,67 @@ fn the_flow_says_what_a_block_does_when_it_knows() {
         "un bloc dont on ne sait rien dire n'a pas de phrase, même s'il a tourné"
     );
 }
+
+/// Un but manqué dit aussi ce que le programme A FAIT.
+///
+/// La condition dit ce que RAX vaut ; elle ne dit pas pourquoi. « La
+/// boucle de la ligne 6 a tourné 4 fois » le dit, et c'est le moment
+/// précis où quelqu'un qui apprend abandonne ou comprend.
+///
+/// Rien n'est déduit : ce sont des compteurs. Le module refuse de
+/// conclure sur une branche dont la suite a d'autres entrées — son
+/// compteur mélangerait les passages venus d'ailleurs, et la phrase
+/// serait fausse exactement dans les cas intéressants.
+#[test]
+fn a_missed_goal_also_says_what_the_program_did() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = app_with_exercises();
+    app.load_exercise("namsdec/boucle");
+    // Une boucle qui tourne quatre fois au lieu de cinq : le cas
+    // d'école, et celui qu'on ne sait pas lire tout seul.
+    app.source = "\
+bits 64
+global _start
+section .text
+_start:
+    xor rax, rax
+    mov rcx, 4
+boucle:
+    add rax, rcx
+    dec rcx
+    jnz boucle
+    hlt
+"
+    .to_owned();
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+    app.do_run();
+    for _ in 0..200 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&egui::Context::default());
+    }
+
+    let dit = app.ce_que_le_programme_a_fait();
+    assert!(
+        dit.iter().any(|p| p.contains("a tourné 4 fois")),
+        "la boucle dit combien de tours elle a faits — {dit:?}"
+    );
+    assert!(
+        dit.len() <= 2,
+        "deux phrases au plus : une liste de quinze n'explique plus rien — {dit:?}"
+    );
+
+    // Et cela ne paraît que sous un but MANQUÉ : un but atteint n'a
+    // rien à expliquer.
+    let (_, atteint) = app.exercise_goal().expect("un but à vérifier");
+    assert!(!atteint, "la somme de 1 à 4 n'est pas celle de 1 à 5");
+    let peint = paint(&mut app);
+    assert!(
+        peint.contains("a tourné 4 fois"),
+        "et cela s'écrit sous le but :\n{peint}"
+    );
+}
