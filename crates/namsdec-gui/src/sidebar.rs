@@ -2663,8 +2663,7 @@ impl NamsdecApp {
                             );
                             let octets = self.mem_search_kind.needle(&self.mem_poke);
                             ui.add_enabled_ui(octets.is_some(), |ui| {
-                                if ui
-                                    .button(s.poke_write)
+                                if framed_button(ui, theme, s.poke_write)
                                     .on_hover_text(s.poke_write_hint)
                                     .clicked()
                                     && let Some(octets) = octets

@@ -14,9 +14,80 @@ use crate::flow::{flow_box_width, flow_ellipsis};
 // L'éditeur aussi a son module ; le banc mesure trois de ses
 // fonctions libres.
 use crate::editor::{editor_width, layout_code, word_at};
+// Les menus aussi ; le banc appelle la liste des commandes.
+use crate::menus::palette_commands;
 // Le panneau latéral a ses propres fonctions : les tests les
 // nomment sans préfixe, comme avant leur déménagement.
 use crate::sidebar::*;
+
+/// TOUT ce qui dessine l'interface, fichier par fichier.
+///
+/// Quelques contrôles lisent le code au lieu de le peindre — un bouton
+/// posé sans cadre, deux styles de texte qui s'écrasent — parce que la
+/// règle est dans le code et non dans les pixels. Ils lisaient
+/// `main.rs`, ce qui était vrai tant que tout y vivait.
+///
+/// Le découpage de septembre 2026 a changé cela en silence : une
+/// fonction sortie de `main.rs` sortait aussi de leur regard. Rien n'a
+/// rougi — et c'est la pire façon dont un contrôle peut mentir, celle
+/// qui ne se voit pas, puisqu'il passe *mieux* qu'avant.
+///
+/// La liste est donc écrite une fois, ici, et
+/// [`la_liste_des_sources_ne_rate_aucun_module`] vérifie qu'elle suit
+/// les `mod` de `main.rs`.
+const SOURCES_DE_L_INTERFACE: &[(&str, &str)] = &[
+    ("main.rs", include_str!("main.rs")),
+    ("calc.rs", include_str!("calc.rs")),
+    ("chrome.rs", include_str!("chrome.rs")),
+    ("completion.rs", include_str!("completion.rs")),
+    ("condition.rs", include_str!("condition.rs")),
+    ("editor.rs", include_str!("editor.rs")),
+    ("errors.rs", include_str!("errors.rs")),
+    ("fixes.rs", include_str!("fixes.rs")),
+    ("flow.rs", include_str!("flow.rs")),
+    ("i18n.rs", include_str!("i18n.rs")),
+    ("keybindings.rs", include_str!("keybindings.rs")),
+    ("loader.rs", include_str!("loader.rs")),
+    ("memfind.rs", include_str!("memfind.rs")),
+    ("menus.rs", include_str!("menus.rs")),
+    ("nasm_errors.rs", include_str!("nasm_errors.rs")),
+    ("notes.rs", include_str!("notes.rs")),
+    ("occurrences.rs", include_str!("occurrences.rs")),
+    ("readings.rs", include_str!("readings.rs")),
+    ("roles.rs", include_str!("roles.rs")),
+    ("settings.rs", include_str!("settings.rs")),
+    ("sidebar.rs", include_str!("sidebar.rs")),
+    ("syntax.rs", include_str!("syntax.rs")),
+    ("timeline.rs", include_str!("timeline.rs")),
+    ("tools.rs", include_str!("tools.rs")),
+    ("windows.rs", include_str!("windows.rs")),
+];
+
+/// La liste ci-dessus n'oublie aucun module.
+///
+/// Sans ce contrôle, la liste serait exacte le jour où elle est écrite
+/// et fausse au module suivant — et sa fausseté ferait passer les
+/// autres contrôles, non échouer.
+#[test]
+fn la_liste_des_sources_ne_rate_aucun_module() {
+    let déclarés: Vec<String> = include_str!("main.rs")
+        .lines()
+        .filter_map(|l| l.strip_prefix("mod ").and_then(|r| r.strip_suffix(';')))
+        .filter(|m| *m != "tests")
+        .map(|m| format!("{m}.rs"))
+        .collect();
+    let oubliés: Vec<&String> = déclarés
+        .iter()
+        .filter(|m| !SOURCES_DE_L_INTERFACE.iter().any(|(nom, _)| nom == m))
+        .collect();
+    assert!(
+        oubliés.is_empty(),
+        "SOURCES_DE_L_INTERFACE ignore {} module(s) — les contrôles qui \
+         lisent le code ne les verraient pas :\n  {:?}",
+        oubliés.len(),
+        oubliés
+    );
+}
 
 /// La série livrée, lue dans le dépôt.
 ///
@@ -22837,73 +22908,78 @@ fn what_the_tools_answer_is_asked_once_and_kept() {
 /// exception qui tient à un défaut n'est pas une exception.
 #[test]
 fn outside_the_menus_a_button_shows_itself_without_being_hovered() {
-    let source = include_str!("main.rs");
-    let mut fonction = "";
-    let mut plats: Vec<(usize, &str, String)> = Vec::new();
-    for (n, ligne) in source.lines().enumerate() {
-        // Le nom de la fonction englobante : les `fn` de premier niveau
-        // dans un `impl` sont indentés de quatre espaces.
-        // Les fonctions de premier niveau AUSSI : `tab_plus_menu` vit au
-        // niveau du module, et le contrôle ne voyait que les méthodes.
-        // Une exception qui ne peut pas être nommée n'en est pas une.
-        if let Some(nom) = ligne
-            .strip_prefix("fn ")
-            .or_else(|| ligne.strip_prefix("pub fn "))
-            .or_else(|| ligne.strip_prefix("pub(crate) fn "))
-        {
-            fonction = nom.split('(').next().unwrap_or("").trim();
-        }
-        if let Some(reste) = ligne.strip_prefix("    ")
-            && let Some(nom) = reste
-                .trim_start_matches("pub(crate) ")
-                .trim_start_matches("pub ")
+    let mut plats: Vec<(String, &str, String)> = Vec::new();
+    for (fichier, source) in SOURCES_DE_L_INTERFACE {
+        let mut fonction = "";
+        for (n, ligne) in source.lines().enumerate() {
+            // Le nom de la fonction englobante : les `fn` de premier niveau
+            // dans un `impl` sont indentés de quatre espaces.
+            // Les fonctions de premier niveau AUSSI : `tab_plus_menu` vit au
+            // niveau du module, et le contrôle ne voyait que les méthodes.
+            // Une exception qui ne peut pas être nommée n'en est pas une.
+            if let Some(nom) = ligne
                 .strip_prefix("fn ")
-        {
-            fonction = nom.split('(').next().unwrap_or("").trim();
-        }
-        // Deux écritures, et la seconde avait été oubliée : `ui.button(…)`
-        // sur une ligne, mais aussi la chaîne coupée en plusieurs lignes,
-        // que rustfmt produit dès qu'on ajoute `.on_hover_text(…)` —
-        //
-        //     if ui
-        //         .button(s.analysis_save)
-        //         .on_hover_text(s.analysis_save_hint)
-        //
-        // Le contrôle ne voyait que la première, et sept boutons sont
-        // passés au travers pendant des semaines : « Enregistrer… » et
-        // « Enregistrer le vidage » dans l'analyse, « Vers l'entrée du
-        // programme » dans le motif cyclique, « Fin d'entrée » deux fois,
-        // « Retour » dans l'aide, « Rechercher une mise à jour ». Trois
-        // d'entre eux ont été retrouvés sur une CAPTURE, posés à côté
-        // d'un bouton encadré — c'est dire ce que le contrôle laissait
-        // passer.
-        // TROISIÈME écriture, et elle a coûté soixante boutons :
-        // `egui::Button::new(…)` posé à la main, ce que fait
-        // `add_enabled` quand il faut griser le bouton. Les deux boutons
-        // de chaque rangée de Préférences › Raccourcis — « Touche
-        // simple… » et « Séquence… », trente rangées — étaient dans ce
-        // cas, et le contrôle ne les voyait pas.
-        //
-        // Un `Button::new` suivi d'un `.fill(` ou d'un `.stroke(` dans
-        // les dix lignes qui suivent se voit déjà : c'est le bouton
-        // plein des barres de dialogue, ou l'encadré lui-même. Dix et
-        // non six : le libellé d'un bouton plein tient sur sept lignes
-        // quand il porte une couleur, une police et une taille.
-        let nu = ligne.contains("egui::Button::new(")
-            && !source
-                .lines()
-                .skip(n)
-                .take(10)
-                .any(|d| d.contains(".fill(") || d.contains(".stroke("));
-        let plat = ligne.contains("ui.button(")
-            || nu
-            || (ligne.trim_start().starts_with(".button(")
-                && source
+                .or_else(|| ligne.strip_prefix("pub fn "))
+                .or_else(|| ligne.strip_prefix("pub(crate) fn "))
+            {
+                fonction = nom.split('(').next().unwrap_or("").trim();
+            }
+            if let Some(reste) = ligne.strip_prefix("    ")
+                && let Some(nom) = reste
+                    .trim_start_matches("pub(crate) ")
+                    .trim_start_matches("pub ")
+                    .strip_prefix("fn ")
+            {
+                fonction = nom.split('(').next().unwrap_or("").trim();
+            }
+            // Deux écritures, et la seconde avait été oubliée : `ui.button(…)`
+            // sur une ligne, mais aussi la chaîne coupée en plusieurs lignes,
+            // que rustfmt produit dès qu'on ajoute `.on_hover_text(…)` —
+            //
+            //     if ui
+            //         .button(s.analysis_save)
+            //         .on_hover_text(s.analysis_save_hint)
+            //
+            // Le contrôle ne voyait que la première, et sept boutons sont
+            // passés au travers pendant des semaines : « Enregistrer… » et
+            // « Enregistrer le vidage » dans l'analyse, « Vers l'entrée du
+            // programme » dans le motif cyclique, « Fin d'entrée » deux fois,
+            // « Retour » dans l'aide, « Rechercher une mise à jour ». Trois
+            // d'entre eux ont été retrouvés sur une CAPTURE, posés à côté
+            // d'un bouton encadré — c'est dire ce que le contrôle laissait
+            // passer.
+            // TROISIÈME écriture, et elle a coûté soixante boutons :
+            // `egui::Button::new(…)` posé à la main, ce que fait
+            // `add_enabled` quand il faut griser le bouton. Les deux boutons
+            // de chaque rangée de Préférences › Raccourcis — « Touche
+            // simple… » et « Séquence… », trente rangées — étaient dans ce
+            // cas, et le contrôle ne les voyait pas.
+            //
+            // Un `Button::new` suivi d'un `.fill(` ou d'un `.stroke(` dans
+            // les dix lignes qui suivent se voit déjà : c'est le bouton
+            // plein des barres de dialogue, ou l'encadré lui-même. Dix et
+            // non six : le libellé d'un bouton plein tient sur sept lignes
+            // quand il porte une couleur, une police et une taille.
+            let nu = ligne.contains("egui::Button::new(")
+                && !source
                     .lines()
-                    .nth(n.saturating_sub(1))
-                    .is_some_and(|d| d.trim_end().ends_with("ui")));
-        if plat && !matches!(fonction, "menu_bar_ui" | "toolbar_ui") {
-            plats.push((n + 1, fonction, ligne.trim().chars().take(70).collect()));
+                    .skip(n)
+                    .take(10)
+                    .any(|d| d.contains(".fill(") || d.contains(".stroke("));
+            let plat = ligne.contains("ui.button(")
+                || nu
+                || (ligne.trim_start().starts_with(".button(")
+                    && source
+                        .lines()
+                        .nth(n.saturating_sub(1))
+                        .is_some_and(|d| d.trim_end().ends_with("ui")));
+            if plat && !matches!(fonction, "menu_bar_ui" | "toolbar_ui") {
+                plats.push((
+                    format!("{fichier}:{}", n + 1),
+                    fonction,
+                    ligne.trim().chars().take(70).collect(),
+                ));
+            }
         }
     }
     assert!(
@@ -22912,7 +22988,7 @@ fn outside_the_menus_a_button_shows_itself_without_being_hovered() {
         plats.len(),
         plats
             .iter()
-            .map(|(n, f, l)| format!("main.rs:{n} ({f}) {l}"))
+            .map(|(où, f, l)| format!("{où} ({f}) {l}"))
             .collect::<Vec<_>>()
             .join("\n  ")
     );
@@ -23696,15 +23772,18 @@ fn two_identical_words_never_sit_side_by_side() {
 /// pose un `FontId` explicite, qui dit la famille ET la taille.
 #[test]
 fn what_calls_itself_monospace_really_is() {
-    let source = include_str!("main.rs");
-    let fautives: Vec<String> = source
-        .lines()
-        .enumerate()
-        .filter(|(_, l)| {
-            (l.contains(".monospace().small()") || l.contains(".small().monospace()"))
-                && !l.trim_start().starts_with("//")
+    let fautives: Vec<String> = SOURCES_DE_L_INTERFACE
+        .iter()
+        .flat_map(|(fichier, source)| {
+            source
+                .lines()
+                .enumerate()
+                .filter(|(_, l)| {
+                    (l.contains(".monospace().small()") || l.contains(".small().monospace()"))
+                        && !l.trim_start().starts_with("//")
+                })
+                .map(move |(n, l)| format!("{fichier}:{} {}", n + 1, l.trim()))
         })
-        .map(|(n, l)| format!("main.rs:{} {}", n + 1, l.trim()))
         .collect();
     assert!(
         fautives.is_empty(),
@@ -24668,7 +24747,12 @@ fn the_tab_bar_and_its_plus_are_there_from_the_first_screen() {
 /// l'état du programme.
 #[test]
 fn the_close_entry_never_leaves_the_file_menu() {
-    let source = include_str!("main.rs");
+    // Le menu vit dans `menus.rs` depuis le découpage. Lire `main.rs`
+    // trouvait la table des libellés d'action, où « Fermer » figure
+    // aussi — et où il n'y a évidemment aucun `add_enabled_ui`. Un
+    // contrôle qui cherche le premier trouve presque toujours autre
+    // chose.
+    let source = include_str!("menus.rs");
     // L'entrée est posée sous un `add_enabled_ui`, et non sous un `if`
     // qui la ferait disparaître.
     let posée = source
@@ -24711,18 +24795,37 @@ fn the_close_entry_never_leaves_the_file_menu() {
 /// disait.
 #[test]
 fn every_action_has_a_path_you_can_see() {
-    let source = include_str!("main.rs");
+    let source = include_str!("menus.rs");
     let lignes: Vec<&str> = source.lines().collect();
     // Les bornes des deux fonctions qui portent ce qui se voit en
     // permanence : la barre de menus et la barre d'outils.
+    //
+    // La visibilité fait partie du nom : sorties dans leur module,
+    // elles s'écrivent `pub(crate) fn`, et chercher `fn menu_bar_ui(`
+    // en tête de ligne ne trouvait plus rien.
+    let entête = |l: &str, nom: &str| {
+        let l = l.trim_start();
+        l.strip_prefix("pub(crate) ")
+            .or_else(|| l.strip_prefix("pub "))
+            .unwrap_or(l)
+            .starts_with(&format!("fn {nom}("))
+    };
     let borne = |nom: &str| -> (usize, usize) {
         let début = lignes
             .iter()
-            .position(|l| l.trim_start().starts_with(&format!("fn {nom}(")))
+            .position(|l| entête(l, nom))
             .unwrap_or_else(|| panic!("la fonction {nom} existe"));
+        let suivante = |l: &&str| {
+            let t = l.trim_start();
+            (l.starts_with("    ") || !l.starts_with(' '))
+                && t.strip_prefix("pub(crate) ")
+                    .or_else(|| t.strip_prefix("pub "))
+                    .unwrap_or(t)
+                    .starts_with("fn ")
+        };
         let fin = lignes[début + 1..]
             .iter()
-            .position(|l| l.starts_with("    fn ") || l.starts_with("fn "))
+            .position(suivante)
             .map(|d| début + 1 + d)
             .unwrap_or(lignes.len());
         (début, fin)
