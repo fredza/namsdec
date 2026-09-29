@@ -16,6 +16,9 @@ use crate::flow::{flow_box_width, flow_ellipsis};
 use crate::editor::{editor_width, layout_code, word_at};
 // Les menus aussi ; le banc appelle la liste des commandes.
 use crate::menus::palette_commands;
+// L'affichage de la calculatrice a son module, distinct de son
+// calcul ; le banc mesure son clavier.
+use crate::calc_ui::{CALC_LARGEUR, TOUCHE_H, TOUCHE_L, écriture_de_touche};
 // Le panneau latéral a ses propres fonctions : les tests les
 // nomment sans préfixe, comme avant leur déménagement.
 use crate::sidebar::*;
@@ -38,6 +41,7 @@ use crate::sidebar::*;
 const SOURCES_DE_L_INTERFACE: &[(&str, &str)] = &[
     ("main.rs", include_str!("main.rs")),
     ("calc.rs", include_str!("calc.rs")),
+    ("calc_ui.rs", include_str!("calc_ui.rs")),
     ("chrome.rs", include_str!("chrome.rs")),
     ("completion.rs", include_str!("completion.rs")),
     ("condition.rs", include_str!("condition.rs")),
