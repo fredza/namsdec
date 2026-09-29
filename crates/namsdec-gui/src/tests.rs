@@ -49,6 +49,7 @@ const SOURCES_DE_L_INTERFACE: &[(&str, &str)] = &[
     ("editor.rs", include_str!("editor.rs")),
     ("errors.rs", include_str!("errors.rs")),
     ("fixes.rs", include_str!("fixes.rs")),
+    ("files.rs", include_str!("files.rs")),
     ("flow.rs", include_str!("flow.rs")),
     ("help.rs", include_str!("help.rs")),
     ("i18n.rs", include_str!("i18n.rs")),
@@ -13572,7 +13573,15 @@ fn the_calculator_shows_its_keypad_its_bits_and_its_functions() {
 /// réintroduirait le défaut sans qu'on le voie.
 #[test]
 fn every_window_is_in_the_table_that_raises_new_ones() {
-    let source = include_str!("main.rs");
+    // TOUS les fichiers : les fenêtres ont quitté `main.rs` module par
+    // module, et ce contrôle s'est vidé en silence. Seul le garde-fou
+    // « le fichier a bien des fenêtres », en bas, a rougi — et c'est
+    // pour cela qu'il est là.
+    let tout: String = SOURCES_DE_L_INTERFACE
+        .iter()
+        .map(|(_, s)| *s)
+        .collect::<Vec<_>>()
+        .join("\n");
     let connus: std::collections::BTreeSet<&str> = NamsdecApp::default()
         .window_states()
         .into_iter()
@@ -13583,8 +13592,8 @@ fn every_window_is_in_the_table_that_raises_new_ones() {
     // le suit : il est toujours dans les lignes qui suivent
     // immédiatement, parce que c'est le premier appel de la chaîne.
     let mut vus = std::collections::BTreeSet::new();
-    for (position, _) in source.match_indices("egui::Window::new(") {
-        let suite = &source[position..(position + 600).min(source.len())];
+    for (position, _) in tout.match_indices("egui::Window::new(") {
+        let suite = &tout[position..(position + 600).min(tout.len())];
         // Certaines fenêtres nomment leur identifiant par une constante,
         // parce que plusieurs endroits s'y réfèrent ; le reste l'écrit
         // sur place. On résout la constante en relisant sa déclaration,
@@ -13601,8 +13610,8 @@ fn every_window_is_in_the_table_that_raises_new_ones() {
                     return None;
                 }
                 let déclaration = format!("const {nom}: &str = \"");
-                let j = source.find(&déclaration)? + déclaration.len();
-                let reste = &source[j..];
+                let j = tout.find(&déclaration)? + déclaration.len();
+                let reste = &tout[j..];
                 reste.find('"').map(|fin| &reste[..fin])
             })
             .unwrap_or_else(|| {
@@ -13615,11 +13624,27 @@ fn every_window_is_in_the_table_that_raises_new_ones() {
         vus.insert(id);
     }
 
-    assert!(!vus.is_empty(), "le fichier a bien des fenêtres");
+    // LES DEUX SENS, et non plus un seul.
+    //
+    // Le contrôle ne demandait que « toute fenêtre dessinée est dans la
+    // table ». Cette moitié-là passe au vert dès qu'on ne dessine plus
+    // rien — ce qui est exactement arrivé : `main.rs` a perdu sa
+    // dernière fenêtre en même temps que `unsaved_window_ui`, et seul
+    // un garde-fou « le fichier a bien des fenêtres » a rougi.
+    //
+    // L'autre sens — « toute fenêtre de la table est dessinée quelque
+    // part » — ferme le trou pour de bon : il ne peut pas être satisfait
+    // en ne regardant rien.
     let manquants: Vec<&&str> = vus.difference(&connus).collect();
     assert!(
         manquants.is_empty(),
         "ces fenêtres ne sont pas dans window_states : {manquants:?}"
+    );
+    let jamais_peintes: Vec<&&str> = connus.difference(&vus).collect();
+    assert!(
+        jamais_peintes.is_empty(),
+        "ces fenêtres sont dans window_states et ne sont peintes nulle \
+         part — ou le relevé a cessé de les voir : {jamais_peintes:?}"
     );
 }
 
