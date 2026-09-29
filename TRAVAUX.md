@@ -268,6 +268,14 @@ Détail chiffré dans `AMELIORATIONS.txt` 7.11, section « REVUE DU
 
 ## 6. Tests et robustesse
 
+- [x] **L'intégration continue passe sur le coureur GitHub** — verte
+      pour la première fois le 29 septembre 2026. Elle échouait sur un
+      contrôle qui lit les binaires de la machine : seize instructions
+      présentes sur Ubuntu et absentes ici manquaient au manuel. Ce
+      contrôle est le seul du dépôt à lire la machine sciemment, parce
+      que ce qu'il trouve n'est jamais un faux positif — un échec y est
+      une liste de fiches à écrire, non un défaut de l'application.
+
 - [~] **Des tests dépendent encore de la machine** (A 3.1) — un dossier
       `tests/binaires/` existe, le reste passe encore par nasm et ld.
       Deux fuites trouvées et bouchées le 25-26 septembre : le
