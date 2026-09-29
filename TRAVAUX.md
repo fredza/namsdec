@@ -293,16 +293,23 @@ Détail chiffré dans `AMELIORATIONS.txt` 7.11, section « REVUE DU
 ## 7. Dette technique
 
 - [~] **Le découpage de `main.rs`** (A 5.1, 7.2) — 20 641 lignes au
-      départ, 7 851 aujourd'hui. Quinze modules en sont sortis : `flow`,
-      `tools`, `windows`, `editor`, `menus`, `calc_ui`, `console`,
-      `help`, `preferences`, `statusbar`, `run`, `files`, `jobs`,
-      `marks`, `editing`, `maximize`. Ce qui reste est la structure
-      `NamsdecApp`, ses énumérations, le routeur d'actions et la boucle
-      de rendu — c'est-à-dire ce qui a le plus de raisons d'y rester.
+      départ, 6 440 aujourd'hui. Dix-neuf modules en sont sortis :
+      `flow`, `tools`, `windows`, `editor`, `menus`, `calc_ui`,
+      `console`, `help`, `preferences`, `statusbar`, `run`, `files`,
+      `jobs`, `marks`, `editing`, `maximize`, `session`, `exercises`,
+      `text`. Ce qui reste est la structure `NamsdecApp`, ses
+      énumérations, le routeur d'actions, les fonctions de dessin
+      partagées et la boucle de rendu — c'est-à-dire ce qui a le plus
+      de raisons d'y rester.
       Le patron est celui de `sidebar.rs` : `impl NamsdecApp` dans le
       module, `use super::*` en tête, le texte déplacé sans une virgule
       de différence, et `pub(crate)` seulement sur ce qu'un module frère
       appelle.
+- [x] **Aucun commentaire n'a perdu sa fonction** — vingt-cinq blocs de
+      `///` documentaient autre chose que ce qu'ils précédaient, dont
+      vingt-deux avant le découpage. Rust laisse deux blocs se suivre et
+      les concatène : rien ne le signalait. Six recollés, cinq effacés,
+      un invariant pose la règle.
 - [x] **Les contrôles qui lisent le code voient tous les modules**
       (A 7.11) — quatre d'entre eux ne regardaient que `main.rs` et se
       vidaient à chaque extraction, sans rougir. `SOURCES_DE_L_INTERFACE`

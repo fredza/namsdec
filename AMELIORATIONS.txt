@@ -1477,3 +1477,34 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
   disent. Décrire ce qu'on ne sait pas exécuter sans le dire serait une
   promesse en l'air — et c'est exactement le genre de promesse qu'un débutant
   croit.
+
+  --- un commentaire peut perdre sa fonction sans que rien ne bouge ---
+  Rust laisse deux blocs de `///` se suivre : ils se concatènent sur l'item
+  d'après. Donc quand un item disparaît — renommé, supprimé, déplacé sans son
+  commentaire —, le sien reste, se colle au suivant, et RIEN ne le signale. Ni
+  le compilateur, ni clippy, ni les cinq cent quatre-vingts contrôles.
+
+  Vingt-cinq blocs étaient dans ce cas. `module_card` était annoncé par le
+  commentaire de la barre de statut ; `flag_chip` n'en avait plus ;
+  `can_assemble` portait celui de `wait_for_input` ; le jeu Fake Vim-GDB était
+  décrit devant le jeu classique. Pour un dépôt dont la vocation est
+  d'enseigner, c'est le pire endroit où se tromper : le lecteur lit la
+  description d'autre chose que ce qu'il a sous les yeux, et il n'a aucune
+  raison de s'en méfier.
+
+  VINGT-DEUX SUR VINGT-CINQ SONT ANTÉRIEURS AU DÉCOUPAGE. Le script
+  d'extraction ne les a pas créés, il les a transportés — et c'est en les
+  voyant arriver dans un fichier neuf, où ils détonnaient, qu'on les a enfin
+  remarqués. La preuve tient à une comparaison : le `main.rs` de vingt mille
+  lignes les contenait déjà, collés de la même façon.
+
+  La méthode qui a rendu chaque bloc à sa fonction : `git log -S` sur sa
+  première ligne donne le commit qui l'a introduit, et le fichier à ce commit
+  montre ce qu'il documentait alors. Six blocs sont revenus à leur item, cinq
+  ont été effacés — d'anciennes rédactions que leur item avait déjà
+  remplacées.
+
+  L'invariant tient à la forme des blocs de ce dépôt : un résumé, une ligne
+  `///` vide, l'explication. Un bloc qui RECOMMENCE au milieu d'un autre est
+  un bloc collé. Quand il rougit, le remède n'est pas de couper le texte :
+  c'est de retrouver ce que le bloc documentait.
