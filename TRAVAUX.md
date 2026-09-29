@@ -284,8 +284,22 @@ Détail chiffré dans `AMELIORATIONS.txt` 7.11, section « REVUE DU
 
 ## 7. Dette technique
 
-- [ ] **`main.rs` dépasse 19 600 lignes** (A 5.1, 7.2) — toute
-      l'interface y est. Le découpage est le plus gros chantier restant.
+- [~] **Le découpage de `main.rs`** (A 5.1, 7.2) — 20 641 lignes au
+      départ, 7 851 aujourd'hui. Quinze modules en sont sortis : `flow`,
+      `tools`, `windows`, `editor`, `menus`, `calc_ui`, `console`,
+      `help`, `preferences`, `statusbar`, `run`, `files`, `jobs`,
+      `marks`, `editing`, `maximize`. Ce qui reste est la structure
+      `NamsdecApp`, ses énumérations, le routeur d'actions et la boucle
+      de rendu — c'est-à-dire ce qui a le plus de raisons d'y rester.
+      Le patron est celui de `sidebar.rs` : `impl NamsdecApp` dans le
+      module, `use super::*` en tête, le texte déplacé sans une virgule
+      de différence, et `pub(crate)` seulement sur ce qu'un module frère
+      appelle.
+- [x] **Les contrôles qui lisent le code voient tous les modules**
+      (A 7.11) — quatre d'entre eux ne regardaient que `main.rs` et se
+      vidaient à chaque extraction, sans rougir. `SOURCES_DE_L_INTERFACE`
+      les branche sur les vingt-neuf fichiers de l'interface, et un
+      contrôle vérifie que cette liste suit les `mod`.
 - [ ] **Le listing entier est mis en page en une fois** (A 5.3, 7.8) —
       quinze mille lignes dans un binaire ouvert ; seule la gouttière
       virtualise aujourd'hui

@@ -1377,3 +1377,78 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
     leur entrée au lieu de s'arrêter sur `ptrace`.
 
 ================================================================================
+
+================================================================================
+29 SEPTEMBRE 2026 — LE DÉCOUPAGE DE main.rs, ET CE QU'IL A RÉVÉLÉ DU BANC
+================================================================================
+
+  --- pourquoi ---
+  `main.rs` portait 20 641 lignes : toute l'interface, tout le pilotage du
+  moteur, tous les fichiers, toutes les fenêtres. Un fichier de cette taille
+  ne se lit pas, ne se cherche pas, et décourage exactement la personne à qui
+  ce dépôt est destiné — celle qui l'ouvre pour apprendre.
+
+  --- comment ---
+  Le patron était déjà là, posé par `sidebar.rs` en août : `impl NamsdecApp`
+  dans le module, `use super::*` en tête. Un module enfant voit les items
+  privés de la racine ; seul ce qu'un module FRÈRE appelle doit devenir
+  `pub(crate)`. C'est ce qui permet de déplacer sans récrire.
+
+  Le déplacement lui-même est fait par un script qui trouve chaque item par sa
+  première ligne, remonte sur ses commentaires, descend jusqu'à l'accolade qui
+  ferme, et déplace le texte VERBATIM. Pas une reformulation, pas un « tant
+  qu'on y est ». Une extraction qui change le code en même temps qu'elle le
+  déplace ne se relit pas.
+
+  Quinze modules sont sortis : flow, tools, windows, editor, menus, calc_ui,
+  console, help, preferences, statusbar, run, files, jobs, marks, editing,
+  maximize. Il reste 7 851 lignes : la structure `NamsdecApp`, ses
+  énumérations, le routeur d'actions, la boucle de rendu.
+
+  --- ce que le découpage a révélé, et qui valait le voyage ---
+
+  QUATRE CONTRÔLES DU BANC LISAIENT LE CODE, ET NE LISAIENT QUE main.rs.
+  Ils vérifient des règles qui sont dans le code et non dans les pixels : un
+  bouton posé sans cadre, deux styles de texte qui s'écrasent, une fenêtre
+  absente de la table qui les fait passer devant, l'entrée « Fermer » du menu.
+
+  À chaque module sorti, ils voyaient moins. Et un contrôle qui voit moins ne
+  rougit pas : il passe MIEUX qu'avant. C'est la cinquième façon dont un
+  contrôle peut mentir, et la seule qui ne se signale pas — les quatre autres
+  (chercher trop large, prendre le premier, lire la machine, énoncer une
+  erreur) finissent toujours par produire un échec ou un faux vert visible.
+  Celle-ci produit un vert franc et vide.
+
+  Un seul garde-fou a rougi, et par chance : « le fichier a bien des
+  fenêtres », posé en bas d'un contrôle par précaution. Le jour où
+  `unsaved_window_ui` est parti dans `files.rs`, `main.rs` n'avait plus une
+  seule `egui::Window`, et cette ligne a été tout ce qui séparait le banc du
+  silence.
+
+  Trois remèdes :
+  - `SOURCES_DE_L_INTERFACE` — la liste des vingt-neuf fichiers qui dessinent,
+    écrite une fois, avec un contrôle qui vérifie qu'elle suit les `mod` de
+    `main.rs`. Sans lui, la liste serait exacte le jour de son écriture et
+    fausse au module suivant.
+  - Le relevé des fenêtres pose maintenant sa question DANS LES DEUX SENS :
+    toute fenêtre peinte est dans la table, et toute fenêtre de la table est
+    peinte quelque part. Le second sens ne peut pas être satisfait en ne
+    regardant rien.
+  - Les deux contrôles des menus cherchaient au mauvais endroit. « Fermer le
+    fichier » se trouvait dans la table des libellés d'action — où il n'y a
+    évidemment aucun `add_enabled_ui` — au lieu du menu. Et le relevé des
+    actions visibles cherchait `fn menu_bar_ui(` en tête de ligne, alors que
+    la sortie en module y ajoute `pub(crate)`.
+
+  UN SEUL VRAI DÉFAUT s'est trouvé derrière ces contrôles rouverts : le bouton
+  « Écrire » du panneau mémoire était plat, donc indiscernable d'une étiquette
+  tant qu'on ne le survolait pas. Le manuel affirmait depuis des semaines que
+  les boutons sont « plats dans les menus et encadrés ailleurs » ; le code le
+  respecte enfin.
+
+  --- et un défaut dans l'outil lui-même ---
+  Le script comptait les accolades sans regarder si elles étaient dans un
+  littéral. `ends_with('{')` lui a fait croire qu'une fonction de dix-sept
+  lignes en faisait mille huit cents. Il a refusé de couper — et c'est le bon
+  comportement : un refus se voit, une coupe au mauvais endroit se découvre
+  trois jours plus tard.
