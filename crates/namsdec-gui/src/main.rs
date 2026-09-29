@@ -8026,14 +8026,14 @@ impl NamsdecApp {
                             for paire in lectures.chunks(2) {
                                 for (nom, texte) in paire {
                                     ui.colored_label(theme.dim, *nom);
-                                    let réponse = ui.add(
+                                    let réponse = cliquable(
+                                        ui,
                                         egui::Label::new(
                                             egui::RichText::new(texte)
                                                 .monospace()
                                                 .size(11.5)
                                                 .color(theme.text),
-                                        )
-                                        .sense(egui::Sense::click()),
+                                        ),
                                     );
                                     if réponse.on_hover_text(s.calculator_copy).clicked() {
                                         à_copier = Some(texte.clone());
@@ -9762,7 +9762,12 @@ impl NamsdecApp {
                         .fit_to_exact_size(egui::vec2(TREAT_IMAGE_SHOWN, TREAT_IMAGE_SHOWN))
                         .corner_radius(6)
                         .sense(egui::Sense::click());
-                    if ui.add(image).on_hover_text(s.about_donate).clicked() {
+                    if ui
+                        .add(image)
+                        .on_hover_cursor(egui::CursorIcon::PointingHand)
+                        .on_hover_text(s.about_donate)
+                        .clicked()
+                    {
                         ui.ctx().open_url(egui::OpenUrl::new_tab(DONATION_URL));
                     }
                 });
@@ -12190,11 +12195,7 @@ impl NamsdecApp {
                             // Cliquable : la liste est sous le curseur,
                             // et viser une ligne à la souris est parfois
                             // plus court que de compter les flèches.
-                            if ui
-                                .add(
-                                    egui::Label::new(text.color(theme.dim))
-                                        .sense(egui::Sense::click()),
-                                )
+                            if cliquable(ui, egui::Label::new(text.color(theme.dim)))
                                 .clicked()
                             {
                                 cliqué = Some(index);
@@ -14550,13 +14551,13 @@ impl NamsdecApp {
                                         egui::RichText::new(format!("{étiquette}:")).monospace(),
                                     );
                                 }
-                                let réponse = ui.add(
+                                let réponse = cliquable(
+                                    ui,
                                     egui::Label::new(
                                         egui::RichText::new(source_line(&self.source, *ligne))
                                             .monospace()
                                             .color(theme.text),
                                     )
-                                    .sense(egui::Sense::click())
                                     .truncate(),
                                 );
                                 if réponse.on_hover_text(s.profile_goto).clicked() {
@@ -14656,9 +14657,9 @@ impl NamsdecApp {
                     // Cliquable quand nasm a nommé une ligne : lire le
                     // message et retrouver l'endroit sont deux gestes, et
                     // le second n'a aucune raison d'être manuel.
-                    let response = ui.add(
-                        egui::Label::new(egui::RichText::new(text).monospace().color(color))
-                            .sense(egui::Sense::click()),
+                    let response = cliquable(
+                        ui,
+                        egui::Label::new(egui::RichText::new(text).monospace().color(color)),
                     );
                     if d.line > 0 && response.on_hover_text(s.diagnostic_goto).clicked() {
                         goto = Some(d.line);
@@ -17695,6 +17696,24 @@ fn status_dot(ui: &mut egui::Ui, color: egui::Color32) {
 /// couleurs du thème lui-même (fond, panneau, accents) plutôt qu'un nom
 /// seul — c'est le thème qui se décrit, donc rien à écrire de plus quand
 /// un nouveau s'ajoute.
+/// Le sens du clic, et le pointeur qui l'annonce.
+///
+/// Une étiquette qu'on peut cliquer ne ressemble à rien : c'est du
+/// texte. Douze d'entre elles dans namsdec — un nom de registre qu'on
+/// surveille, une valeur qu'on remplace, une ligne de pile où l'on va,
+/// une zone mémoire, un module d'analyse — et aucune ne changeait le
+/// pointeur. Les infobulles disaient ce qu'un clic ferait, mais il
+/// fallait déjà s'être arrêté dessus pour les lire ; la main, elle, se
+/// voit en passant.
+///
+/// egui ne le fait pas tout seul : il réserve la main aux liens. Ce qui
+/// se clique doit pourtant se voir avant qu'on ait lu quoi que ce soit,
+/// et c'est le seul signe qui ne coûte pas une ligne de texte.
+fn cliquable(ui: &mut egui::Ui, étiquette: egui::Label) -> egui::Response {
+    ui.add(étiquette.sense(egui::Sense::click()))
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
 /// Une liste déroulante à nous, et non celle d'egui.
 ///
 /// Celle d'egui ne se pose pas au centre de sa rangée : son cadre part
@@ -19764,14 +19783,14 @@ fn écran_calculatrice(
     match (résultat, valeur) {
         (Ok(_), Some(valeur)) => {
             let texte = base.écrire(valeur);
-            let réponse = ui.add(
+            let réponse = cliquable(
+                ui,
                 egui::Label::new(
                     egui::RichText::new(&texte)
                         .monospace()
                         .size(28.0)
                         .color(theme.accent),
-                )
-                .sense(egui::Sense::click()),
+                ),
             );
             if réponse.on_hover_text(s.calculator_copy).clicked() {
                 *à_copier = Some(texte);

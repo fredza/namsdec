@@ -10657,10 +10657,14 @@ fn the_install_button_brings_its_plan_to_the_front() {
         tools_ready: namsdec_disasm::known::all()
             .into_iter()
             .map(|k| {
-                // rizin-ghidra et non un autre : le bouton ne paraît
-                // que pour un outil dont une recette existe, et c'est
-                // lui qui en a une.
-                let état = if k.plugin.id == "rizin-ghidra" {
+                // Deux outils incomplets, et non un seul : lequel des
+                // deux boutons se trouve en premier dans la fenêtre
+                // dépend de la mise en page, laquelle bouge quand on
+                // touche à un widget voisin. Le test n'a pas à le
+                // savoir — il a à vérifier que le bouton cliqué est
+                // celui d'un outil qui a vraiment besoin d'être
+                // installé.
+                let état = if matches!(k.plugin.id.as_str(), "rizin-ghidra" | "retdec") {
                     namsdec_disasm::known::Availability::Incomplete
                 } else {
                     namsdec_disasm::known::Availability::Ready
@@ -10739,9 +10743,9 @@ fn the_install_button_brings_its_plan_to_the_front() {
         .install_plan
         .as_deref()
         .expect("le clic doit demander un plan");
-    assert_eq!(
-        plan, "rizin-ghidra",
-        "le bouton cliqué est celui du seul outil qu'on a dit incomplet"
+    assert!(
+        matches!(plan, "rizin-ghidra" | "retdec"),
+        "le bouton cliqué est celui d'un outil qu'on a dit incomplet — « {plan} »"
     );
 
     // Et la fenêtre passe devant : son calque est au premier plan, non
@@ -24659,4 +24663,49 @@ fn a_row_of_commands_reads_on_one_line() {
             s.console_send
         );
     }
+}
+
+/// Ce qui se clique change le pointeur.
+///
+/// Une étiquette qu'on peut cliquer ne ressemble à rien : c'est du
+/// texte. Douze d'entre elles dans namsdec — un nom de registre qu'on
+/// surveille, une valeur qu'on remplace, une ligne de pile où l'on va,
+/// une zone mémoire, un module d'analyse, une ligne de profil, un
+/// diagnostic de nasm — et aucune ne changeait le pointeur.
+///
+/// Les infobulles disaient déjà ce qu'un clic ferait. Mais il faut
+/// s'être arrêté dessus pour les lire, et l'on ne s'arrête que sur ce
+/// qu'on soupçonne d'être cliquable : la main, elle, se voit en
+/// passant. egui ne la pose pas tout seul — il la réserve aux liens.
+///
+/// Le contrôle lit le source, parce que la règle est là : tout ce qui
+/// prend `Sense::click()` doit annoncer sa main dans les lignes qui
+/// suivent, ou passer par `cliquable`, qui le fait pour vous.
+#[test]
+fn what_can_be_clicked_changes_the_pointer() {
+    let mut muets = Vec::new();
+    for (nom, source) in [
+        ("main.rs", include_str!("main.rs")),
+        ("sidebar.rs", include_str!("sidebar.rs")),
+    ] {
+        let lignes: Vec<&str> = source.lines().collect();
+        for (n, ligne) in lignes.iter().enumerate() {
+            if !ligne.contains("sense(egui::Sense::click())") {
+                continue;
+            }
+            // La chaîne qui suit : huit lignes suffisent pour un
+            // `.on_hover_*` et un `.clicked()`, et l'on ne déborde pas
+            // sur le widget d'à côté.
+            let suite = lignes[n..(n + 8).min(lignes.len())].join("\n");
+            if !suite.contains("on_hover_cursor") {
+                muets.push(format!("{nom}:{} {}", n + 1, lignes[n].trim()));
+            }
+        }
+    }
+    assert!(
+        muets.is_empty(),
+        "{} chose(s) qui se cliquent sans le dire — `cliquable` pose la main :\n  {}",
+        muets.len(),
+        muets.join("\n  ")
+    );
 }

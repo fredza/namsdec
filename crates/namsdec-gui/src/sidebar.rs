@@ -633,9 +633,9 @@ impl NamsdecApp {
             return;
         }
         ui.add_space(2.0);
-        let link = ui.add(
-            egui::Label::new(egui::RichText::new(s.vectors_open).color(theme.dim))
-                .sense(egui::Sense::click()),
+        let link = crate::cliquable(
+            ui,
+            egui::Label::new(egui::RichText::new(s.vectors_open).color(theme.dim)),
         );
         if link.on_hover_text(s.vectors_hint).clicked() {
             self.show_vectors = true;
@@ -762,13 +762,12 @@ impl NamsdecApp {
             // Et le titre mène à la fiche : on s'arrête sur une
             // instruction parce qu'on ne la comprend pas, et le curseur
             // de l'éditeur, lui, est resté où on l'avait laissé.
-            if ui
-                .add(
-                    egui::Label::new(
-                        egui::RichText::new(entry.title.get(self.lang.code())).color(theme.dim),
-                    )
-                    .sense(egui::Sense::click()),
-                )
+            if crate::cliquable(
+                ui,
+                egui::Label::new(
+                    egui::RichText::new(entry.title.get(self.lang.code())).color(theme.dim),
+                ),
+            )
                 .on_hover_text(s.help_open_sheet)
                 .clicked()
             {
@@ -1233,8 +1232,8 @@ impl NamsdecApp {
                     } else {
                         étiquette
                     };
-                    let response = ui
-                        .add(egui::Label::new(étiquette.color(color)).sense(egui::Sense::click()));
+                    let response =
+                        crate::cliquable(ui, egui::Label::new(étiquette.color(color)));
                     // Le rôle du registre, d'abord : le processeur ne le
                     // connaît pas — RBX et R12 lui sont identiques —, et
                     // rien dans le code ne le rappelle. Puis ce que le
@@ -1329,11 +1328,8 @@ impl NamsdecApp {
                             }
                         }
                         _ => {
-                            let valeur = ui
-                                .add(
-                                    egui::Label::new(hex_job(ui, theme, value, color))
-                                        .sense(egui::Sense::click()),
-                                )
+                            let job = hex_job(ui, theme, value, color);
+                            let valeur = crate::cliquable(ui, egui::Label::new(job))
                                 .on_hover_ui(|ui| {
                                     ui.label(readings::of(lang, value));
                                     ui.add_space(4.0);
@@ -2264,6 +2260,7 @@ impl NamsdecApp {
                                 )
                                 .sense(egui::Sense::click()),
                             )
+                            .on_hover_cursor(egui::CursorIcon::PointingHand)
                             .on_hover_text(s.memory_go_hint)
                             .clicked()
                         {
@@ -2474,6 +2471,7 @@ impl NamsdecApp {
                                     )
                                     .sense(egui::Sense::click()),
                                 )
+                                .on_hover_cursor(egui::CursorIcon::PointingHand)
                                 .on_hover_text(s.search_goto)
                                 .clicked()
                             {

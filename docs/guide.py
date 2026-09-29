@@ -267,6 +267,12 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "une phrase. Ouverte vide puis remplie, elle garde sa petite taille : elle "
          "se redimensionne, et son contenu défile."),
         ("p",
+         "<b>Ce qui se clique change le pointeur.</b> Une étiquette cliquable ne "
+         "ressemble à rien — c'est du texte —, et namsdec en a douze : un nom de "
+         "registre qu'on surveille, une valeur qu'on remplace, une ligne de pile où "
+         "l'on va, une zone mémoire, un diagnostic de nasm. La main se voit en "
+         "passant, là où une infobulle demande qu'on se soit déjà arrêté."),
+        ("p",
          "Une commande <b>grisée dit pourquoi</b> elle l'est : survolez « Exécuter » "
          "avant d'avoir assemblé et namsdec répond « Rien à exécuter : assemblez "
          "d'abord le programme ». Une commande éteinte qui se tait passe pour cassée ; "

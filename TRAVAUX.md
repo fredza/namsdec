@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **25 septembre
-2026**, version 0.2.5-beta.3, 573 tests au vert.
+2026**, version 0.2.5-beta.3, 574 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -188,10 +188,15 @@ Détail chiffré dans `AMELIORATIONS.txt` 7.11, section « REVUE DU
 - [x] **Les quatorze fenêtres ont toutes un chemin** — vérifié : chacune
       s'ouvre depuis un menu ou un bouton, aucune n'est réservée à la
       palette.
-- [ ] **Ce qui reste à regarder** : les gestes qui ne sont pas des
-      « actions » — cliquer dans la gouttière (fait), cliquer sur un
-      nom de registre pour le surveiller, sur une valeur pour la
-      changer, glisser la poignée du panneau. Rien ne les annonce.
+- [x] **Ce qui se clique change le pointeur** — douze étiquettes
+      cliquables, aucune ne le disait. Les infobulles annonçaient déjà ce
+      qu'un clic ferait, mais il faut s'être arrêté dessus pour les lire,
+      et l'on ne s'arrête que sur ce qu'on soupçonne d'être cliquable.
+      egui réserve la main aux liens ; `cliquable` la pose, et un
+      contrôle l'exige.
+- [ ] **Reste, de la même famille** : glisser la poignée entre le
+      bandeau et l'onglet, ou celle de la console. Rien n'annonce
+      qu'elles se tirent.
 
 ## 3. L'éditeur
 
