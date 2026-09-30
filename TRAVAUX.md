@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **30 septembre
-2026**, version 0.2.6-beta.1, 616 tests au vert.
+2026**, version 0.2.6-beta.1, 617 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -389,6 +389,12 @@ jamais ajouter. Il faut de la place, et d'abord savoir où elle est.
       inutilisée. L'octet de bourrage est NOMMÉ (« 0xcc (int3) ») et non
       seulement chiffré. Vérifié sur `/bin/true` et `/bin/ls` : 1 906 et
       6 280 octets libres.
+- [x] **La section qui porte chaque zone** — `.text`, `.plt.sec`, `.rodata`…
+      C'est elle qui raconte l'histoire : 50 octets libres dans `.plt.sec`
+      n'est pas 245 en fin de `.rodata`. `None` sur un binaire dépouillé ou
+      pour un trou entre deux sections. `.bss` (qui n'occupe rien) ne nomme
+      jamais un trou, bien que son adresse chevauche celle d'une vraie
+      section.
 - [ ] **La suite, non commencée** : assembler du code dans une zone libre,
       et détourner l'exécution vers lui puis la ramener. Passe par
       `patch.rs`, qui sait déjà défaire ce qu'il pose, et par

@@ -32,6 +32,12 @@ pub struct Slack {
     /// Le segment où il vit est-il exécutable ? Un trou dans `.text` peut
     /// porter du code ; un trou dans les données, non.
     pub executable: bool,
+    /// La section qui contient ce trou, quand les en-têtes la nomment —
+    /// `.text`, `.plt`, `.rodata`… C'est ce qui raconte l'histoire : un
+    /// trou en fin de `.text` n'est pas un trou entre deux entrées de la
+    /// table des sauts. `None` sur un binaire dépouillé, ou pour un trou
+    /// qui tombe entre deux sections déclarées.
+    pub section: Option<String>,
 }
 
 /// En deçà de cette longueur, un trou n'apprend rien : deux octets
@@ -64,11 +70,35 @@ pub fn find(bytes: &[u8]) -> Vec<Slack> {
         collect_in_segment(bytes, segment, &mut trouvés);
     }
 
+    // Le nom de la section qui contient chaque trou, une fois qu'on les a
+    // tous : `collect_in_segment` ne connaît que son segment, et c'est
+    // ici qu'on a la liste des sections. Un trou en fin de `.text` et un
+    // trou entre deux entrées de `.plt` ne racontent pas la même chose.
+    for trou in &mut trouvés {
+        trou.section = section_at(&scan.sections, trou.vaddr);
+    }
+
     // La plus grande d'abord : c'est la seule qui intéresse quand on
     // cherche où mettre quelque chose, et à taille égale, la plus basse,
     // pour que deux lectures du même fichier donnent le même ordre.
     trouvés.sort_by(|a, b| b.len.cmp(&a.len).then(a.vaddr.cmp(&b.vaddr)));
     trouvés
+}
+
+/// La section qui contient cette adresse, si une la contient.
+///
+/// Une section couvre `[addr, addr + size)`. Un trou qui commence dans
+/// `.text` en porte le nom ; un trou qui tombe dans l'interstice entre
+/// deux sections déclarées n'a de nom d'aucune — et c'est juste, car il
+/// n'appartient à aucune. On ignore les sections qui n'occupent rien
+/// (`.bss` et ses pareilles) : leur `addr` chevauche celle d'une vraie
+/// section, et les laisser fausserait le nom.
+fn section_at(sections: &[elf_scan::SectionInfo], vaddr: u64) -> Option<String> {
+    sections
+        .iter()
+        .filter(|s| !s.nobits && s.size > 0)
+        .find(|s| vaddr >= s.addr && vaddr < s.addr + s.size)
+        .map(|s| s.name.clone())
 }
 
 /// Les trous d'un segment. On ne parcourt que ce que le fichier contient
@@ -106,6 +136,8 @@ fn collect_in_segment(bytes: &[u8], segment: &Segment, out: &mut Vec<Slack>) {
                 len: longueur,
                 filler: octet,
                 executable: segment.execute,
+                // Rempli par `find`, qui seul a la liste des sections.
+                section: None,
             });
         }
     }
@@ -213,6 +245,43 @@ mod tests {
         assert_eq!(out[0].len, 8);
     }
 
+    /// La section est nommée quand une la contient, et rien quand le trou
+    /// tombe entre deux — ou au-delà de la dernière.
+    #[test]
+    fn a_zone_is_named_by_the_section_that_holds_it() {
+        let sections = vec![
+            elf_scan::SectionInfo {
+                name: ".text".to_owned(),
+                addr: 0x1000,
+                size: 0x200,
+                write: false,
+                execute: true,
+                offset: 0x1000,
+                nobits: false,
+            },
+            // `.bss` chevauche une vraie adresse mais n'occupe rien : on
+            // ne doit jamais nommer un trou d'après elle.
+            elf_scan::SectionInfo {
+                name: ".bss".to_owned(),
+                addr: 0x1100,
+                size: 0x40,
+                write: true,
+                execute: false,
+                offset: 0x2000,
+                nobits: true,
+            },
+        ];
+        // Dans `.text`.
+        assert_eq!(section_at(&sections, 0x1180), Some(".text".to_owned()));
+        // Juste après `.text`, dans aucune section déclarée.
+        assert_eq!(section_at(&sections, 0x1200), None);
+        // À l'adresse de `.bss`, mais `.bss` n'occupe rien : c'est `.text`
+        // qui la couvre encore, pas `.bss`.
+        assert_eq!(section_at(&sections, 0x1100), Some(".text".to_owned()));
+        // Loin au-dessus de tout.
+        assert_eq!(section_at(&sections, 0x9000), None);
+    }
+
     /// Les totaux résument sans qu'on lise la liste.
     #[test]
     fn totals_add_up() {
@@ -223,6 +292,7 @@ mod tests {
                 len: 40,
                 filler: 0x00,
                 executable: true,
+                section: None,
             },
             Slack {
                 vaddr: 0x2000,
@@ -230,6 +300,7 @@ mod tests {
                 len: 12,
                 filler: 0x90,
                 executable: false,
+                section: None,
             },
         ];
         assert_eq!(totals(&slack), (52, 40));

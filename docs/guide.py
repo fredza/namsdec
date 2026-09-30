@@ -1127,7 +1127,9 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "entre deux fonctions, entre deux sections, en fin de segment, il comble avec un "
          "octet neutre (un zéro, un <font face='Courier'>nop</font>, un "
          "<font face='Courier'>int3</font>) jusqu'au prochain multiple de seize. Le panneau "
-         "les liste, la plus grande d'abord, avec l'adresse et l'octet qui remplit. C'est de "
+         "les liste, la plus grande d'abord, avec l'adresse, l'octet qui remplit et la "
+         "<b>section</b> qui la porte — une place en fin de <font face='Courier'>.text</font> "
+         "ne raconte pas la même chose qu'une place entre deux entrées d'une table. C'est de "
          "la lecture seule, et cela répond à deux questions : pourquoi un binaire pèse plus "
          "que son code, et pourquoi « garder la longueur exacte » n'est pas la seule façon "
          "de le modifier — il y a de la place ailleurs.",

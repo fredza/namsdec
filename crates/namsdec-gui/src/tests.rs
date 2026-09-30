@@ -12424,6 +12424,16 @@ fn the_free_space_panel_shows_a_real_binarys_padding() {
         peint.contains("nop") || peint.contains("zéro") || peint.contains("int3"),
         "l'octet de bourrage est nommé :\n{peint}"
     );
+    // La section qui porte une zone se lit : c'est elle qui raconte
+    // l'histoire — une place en fin de `.text` n'est pas une place entre
+    // deux entrées de table. Au moins une zone d'un vrai binaire tombe
+    // dans une section nommée.
+    if let Some(nom) = trous.iter().find_map(|t| t.section.as_deref()) {
+        assert!(
+            peint.contains(nom),
+            "la section « {nom} » qui porte une zone doit se lire :\n{peint}"
+        );
+    }
 }
 
 /// Le rapport d'analyse porte l'empreinte du fichier.

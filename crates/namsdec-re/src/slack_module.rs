@@ -82,19 +82,29 @@ impl ReModule for SlackModule {
         ui.add_space(4.0);
 
         egui::Grid::new("slack_grid")
-            .num_columns(4)
+            .num_columns(5)
             .striped(true)
             .min_col_width(0.0)
             .show(ui, |ui| {
                 ui.strong(ctx.t("adresse", "address"));
                 ui.strong(ctx.t("octets", "bytes"));
                 ui.strong(ctx.t("rempli de", "filled with"));
+                ui.strong(ctx.t("section", "section"));
                 ui.strong("");
                 ui.end_row();
                 for trou in &self.found {
                     ui.monospace(format!("{:#x}", trou.vaddr));
                     ui.monospace(format!("{}", trou.len));
                     ui.monospace(nom_du_bourrage(trou.filler));
+                    // Le nom de section raconte l'histoire : un trou en
+                    // fin de `.text` n'est pas un trou entre deux entrées
+                    // de `.plt`. Un tiret quand aucune section déclarée ne
+                    // le couvre — l'interstice entre deux, ou un binaire
+                    // dépouillé.
+                    match &trou.section {
+                        Some(nom) => ui.monospace(nom.clone()),
+                        None => ui.weak("—"),
+                    };
                     // Un trou dans du code exécutable n'a pas le même sens
                     // qu'un trou dans les données : le dire d'un mot.
                     ui.weak(if trou.executable {
