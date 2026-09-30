@@ -32,7 +32,13 @@ jobs:
     # geste qu'on fait exprès, et dont on écrit les fiches.
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      # v5 et non v4 : la v4 tourne sur Node 20, que GitHub a déprécié le
+      # 19 septembre 2025 et force déjà sur Node 24 en l'annonçant à
+      # chaque exécution. L'avertissement d'aujourd'hui est l'échec de
+      # demain, et monter d'une version est plus simple à faire
+      # maintenant qu'un matin où la CI est rouge sans qu'une ligne du
+      # dépôt ait changé.
+      - uses: actions/checkout@v5
 
       - name: Installer nasm et binutils
         run: sudo apt-get update && sudo apt-get install -y nasm binutils
