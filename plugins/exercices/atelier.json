@@ -1,0 +1,314 @@
+{
+ "id": "atelier",
+ "name": "Atelier — intermédiaire et avancé",
+ "exercises": [
+  {
+   "id": "matrice",
+   "title": {
+    "fr": "Une matrice, ligne par ligne",
+    "en": "A matrix, row by row"
+   },
+   "description": {
+    "fr": "Un tableau à deux dimensions n'existe pas : il y a un tableau, et une multiplication. `[base + ligne*largeur + colonne]` est tout ce que le processeur connaît d'une matrice. À l'arrêt, RAX doit valoir 45 — la somme de la diagonale.",
+    "en": "A two-dimensional array does not exist: there is an array, and a multiplication. `[base + row*width + column]` is all the processor knows about a matrix. At the halt, RAX must hold 45 — the sum of the diagonal."
+   },
+   "code": "; Une matrice 3x3, et sa diagonale.\n;\n; But : à l'arrêt, RAX vaut 45 — 1 + 5 + 9, mais en octets : 5 + 15 + 25.\n;\n; Un tableau à deux dimensions n'existe pas pour le processeur. Il y a\n; des octets à la file, et une multiplication : l'élément (ligne,\n; colonne) vit à `base + ligne*largeur + colonne`.\n;\n; La diagonale est le cas où ligne == colonne, donc l'indice avance de\n; `largeur + 1` à chaque pas. C'est pourquoi on la parcourt sans deux\n; compteurs.\n\ndefault rel\nglobal _start\n\nsection .data\n    m       dq  5, 10, 15\n            dq  20, 15, 30\n            dq  35, 40, 25\n    largeur equ 3\n\nsection .text\n_start:\n    lea rsi, [m]\n    xor rax, rax            ; la somme\n    xor rcx, rcx            ; l'indice dans la diagonale : 0, 4, 8\n\ndiagonale:\n    add rax, [rsi + rcx*8]\n    add rcx, largeur + 1    ; le pas qui reste sur la diagonale\n    cmp rcx, largeur * largeur\n    jb diagonale\n\n    hlt\n",
+   "goal": [
+    "rax == 0x2d"
+   ],
+   "par": 16,
+   "level": "structures"
+  },
+  {
+   "id": "chaine_longueur",
+   "title": {
+    "fr": "La longueur d'une chaîne, quatre octets à la fois",
+    "en": "String length, four bytes at a time"
+   },
+   "description": {
+    "fr": "Lire une chaîne octet par octet coûte un tour de boucle par caractère. En lisant quatre octets d'un coup et en cherchant le zéro dedans, on divise le nombre de tours par quatre — c'est l'idée de toutes les `strlen` de bibliothèque. À l'arrêt, RAX doit valoir 12.",
+    "en": "Reading a string byte by byte costs one loop turn per character. Reading four bytes at once and looking for the zero inside divides the turns by four — that is the idea behind every library `strlen`. At the halt, RAX must hold 12."
+   },
+   "code": "; La longueur d'une chaîne, sans lire octet par octet.\n;\n; But : à l'arrêt, RAX vaut 12 — la longueur de « Bonjour tout ».\n;\n; La version naïve lit un octet, compare à zéro, recommence : un tour\n; par caractère. Celle-ci lit quatre octets d'un coup et cherche le zéro\n; dedans — quatre fois moins de tours.\n;\n; Le repérage du zéro dans un mot est le tour de force : `x - 0x01010101`\n; passe une retenue là où un octet valait zéro, et `~x` dit lesquels\n; avaient le bit haut à zéro. Le ET des deux ne garde que les octets\n; nuls. C'est l'astuce de toutes les strlen de bibliothèque.\n\ndefault rel\nglobal _start\n\nsection .data\n    texte db \"Bonjour tout\", 0\n\nsection .text\n_start:\n    lea rsi, [texte]\n    xor rax, rax\n\nboucle:\n    mov ecx, [rsi + rax]    ; quatre octets d'un coup\n    mov edx, ecx\n    sub edx, 0x01010101     ; une retenue là où un octet valait 0\n    not ecx\n    and edx, ecx\n    and edx, 0x80808080     ; le bit haut de chaque octet nul\n    jnz trouve\n    add rax, 4\n    jmp boucle\n\ntrouve:\n    ; Le premier octet nul dans ces quatre-là : son rang est celui du\n    ; premier bit allumé, divisé par huit.\n    bsf edx, edx\n    shr edx, 3\n    add rax, rdx\n\n    hlt\n",
+   "goal": [
+    "rax == 0xc"
+   ],
+   "par": 29,
+   "level": "structures"
+  },
+  {
+   "id": "tri_insertion",
+   "title": {
+    "fr": "Trier huit valeurs",
+    "en": "Sorting eight values"
+   },
+   "description": {
+    "fr": "Le tri par insertion est celui qu'on fait à la main avec un jeu de cartes : on prend la suivante et on la remet à sa place en décalant ce qui dépasse. Lent sur un million d'éléments, imbattable sur huit. À l'arrêt, RAX doit valoir la plus petite valeur et RBX la plus grande.",
+    "en": "Insertion sort is the one you do by hand with playing cards: take the next one and put it back in place, shifting what sticks out. Slow on a million elements, unbeatable on eight. At the halt, RAX must hold the smallest value and RBX the largest."
+   },
+   "code": "; Trier huit valeurs par insertion.\n;\n; But : à l'arrêt, RAX vaut 3 (la plus petite) et RBX vaut 91 (la plus\n; grande) — donc le tableau est trié.\n;\n; Le tri par insertion est celui qu'on fait avec un jeu de cartes : on\n; prend la suivante, et on la remet à sa place en décalant vers la\n; droite tout ce qui est plus grand.\n;\n; Lent quand il y a un million d'éléments — le nombre d'opérations\n; croît comme le carré — et imbattable sur huit : pas d'appel, pas de\n; mémoire supplémentaire, et la boucle intérieure tient dans le cache.\n\ndefault rel\nglobal _start\n\nsection .data\n    t       dq 42, 7, 91, 3, 58, 12, 77, 25\n    combien equ 8\n\nsection .text\n_start:\n    lea rsi, [t]\n    mov rcx, 1              ; on part du deuxième : le premier est trié\n\nsuivante:\n    mov rax, [rsi + rcx*8]  ; la carte qu'on tient\n    mov rdx, rcx            ; où l'on cherche sa place\n\nplace:\n    test rdx, rdx\n    jz posee\n    cmp [rsi + rdx*8 - 8], rax\n    jbe posee\n    ; Plus grand : il descend d'un cran.\n    mov r8, [rsi + rdx*8 - 8]\n    mov [rsi + rdx*8], r8\n    dec rdx\n    jmp place\n\nposee:\n    mov [rsi + rdx*8], rax\n    inc rcx\n    cmp rcx, combien\n    jb suivante\n\n    ; Le tableau est trié : le premier est le plus petit, le dernier le\n    ; plus grand.\n    mov rax, [rsi]\n    mov rbx, [rsi + (combien-1)*8]\n\n    hlt\n",
+   "goal": [
+    "rax == 0x3",
+    "rbx == 0x5b"
+   ],
+   "par": 175,
+   "level": "structures"
+  },
+  {
+   "id": "recursion",
+   "title": {
+    "fr": "Une fonction qui s'appelle elle-même",
+    "en": "A function that calls itself"
+   },
+   "description": {
+    "fr": "La récursion n'est pas une construction du langage : c'est un `call` vers sa propre étiquette, et une pile qui garde les retours. Chaque appel coûte huit octets de pile — et c'est pour cela qu'une récursion trop profonde finit par écraser quelque chose. À l'arrêt, RAX doit valoir 120.",
+    "en": "Recursion is not a language construct: it is a `call` to one's own label, and a stack that keeps the returns. Each call costs eight bytes of stack — which is why too deep a recursion ends up overwriting something. At the halt, RAX must hold 120."
+   },
+   "code": "; La factorielle, en s'appelant soi-même.\n;\n; But : à l'arrêt, RAX vaut 120 — 5!.\n;\n; La récursion n'est pas une construction du langage : c'est un `call`\n; vers sa propre étiquette. Ce qui la rend possible est la PILE — chaque\n; appel y pose son adresse de retour, et `ret` la reprend.\n;\n; Regardez l'onglet Pile pendant que ça descend : cinq adresses de\n; retour s'y empilent, puis se dépilent. Huit octets par appel, et c'est\n; pour cela qu'une récursion trop profonde finit par écraser ce qui est\n; en dessous.\n\nglobal _start\n\nsection .text\n_start:\n    mov rdi, 5\n    call fact\n    hlt\n\n; Rend RDI! dans RAX.\nfact:\n    cmp rdi, 1\n    ja descendre\n    mov rax, 1              ; le cas qui arrête tout\n    ret\n\ndescendre:\n    push rdi                ; on garde le n du niveau courant\n    dec rdi\n    call fact\n    pop rdi\n    imul rax, rdi           ; n * (n-1)!\n    ret\n",
+   "goal": [
+    "rax == 0x78"
+   ],
+   "par": 39,
+   "level": "structures"
+  },
+  {
+   "id": "pile_cadre",
+   "title": {
+    "fr": "Le cadre de pile, à la main",
+    "en": "The stack frame, by hand"
+   },
+   "description": {
+    "fr": "Une fonction qui a besoin de place la prend sur la pile : `push rbp`, `mov rbp, rsp`, `sub rsp, n`. RBP devient l'ancre à laquelle tout se réfère — c'est ce qu'un débogueur suit pour remonter les appels. À l'arrêt, RAX doit valoir 30.",
+    "en": "A function that needs room takes it from the stack: `push rbp`, `mov rbp, rsp`, `sub rsp, n`. RBP becomes the anchor everything refers to — it is what a debugger follows to walk the calls. At the halt, RAX must hold 30."
+   },
+   "code": "; Le cadre de pile, monté à la main.\n;\n; But : à l'arrêt, RAX vaut 30.\n;\n; Une fonction qui a besoin de place pour ses variables la prend sur la\n; pile. Le montage est toujours le même :\n;\n;     push rbp          ; on garde le cadre de l'appelant\n;     mov  rbp, rsp     ; RBP ancre le nôtre\n;     sub  rsp, n       ; n octets pour nous\n;\n; Dès lors, `[rbp-8]` est notre première variable, `[rbp+16]` le premier\n; argument passé sur la pile, et `[rbp]` le cadre d'au-dessus. C'est\n; cette chaîne que namsdec suit dans « Chaîne des appels ».\n;\n; Le démontage est `leave` — une instruction pour `mov rsp, rbp` suivi\n; de `pop rbp`.\n\nglobal _start\n\nsection .text\n_start:\n    mov rdi, 10\n    mov rsi, 20\n    call somme\n    hlt\n\nsomme:\n    push rbp\n    mov rbp, rsp\n    sub rsp, 16             ; deux variables locales\n\n    mov [rbp-8], rdi        ; on range les arguments chez nous\n    mov [rbp-16], rsi\n\n    mov rax, [rbp-8]\n    add rax, [rbp-16]\n\n    leave                   ; mov rsp, rbp ; pop rbp\n    ret\n",
+   "goal": [
+    "rax == 0x1e"
+   ],
+   "par": 13,
+   "level": "structures"
+  },
+  {
+   "id": "liste_chainee",
+   "title": {
+    "fr": "Suivre une liste chaînée",
+    "en": "Following a linked list"
+   },
+   "description": {
+    "fr": "Un maillon porte sa valeur et l'adresse du suivant ; le dernier porte zéro. Parcourir, c'est donc lire, sauter, recommencer — chaque saut est une adresse que le processeur ne peut pas prévoir, et c'est pour cela qu'une liste est plus lente qu'un tableau. À l'arrêt, RAX doit valoir 100.",
+    "en": "A node holds its value and the address of the next; the last holds zero. Walking it means read, jump, repeat — each jump is an address the processor cannot predict, which is why a list is slower than an array. At the halt, RAX must hold 100."
+   },
+   "code": "; Suivre une liste chaînée.\n;\n; But : à l'arrêt, RAX vaut 100 — la somme des quatre maillons.\n;\n; Un maillon porte deux choses : sa valeur, et l'adresse du suivant. Le\n; dernier porte zéro à la place de l'adresse, et c'est ainsi qu'on sait\n; s'arrêter.\n;\n; Le parcours est donc : lire la valeur, aller à l'adresse, recommencer.\n; Chaque saut mène quelque part que le processeur ne pouvait pas\n; prévoir — il ne peut ni précharger, ni deviner. C'est toute la\n; différence avec un tableau, où le suivant est toujours à côté.\n\ndefault rel\nglobal _start\n\nsection .data\n    ; valeur, adresse du suivant\n    a dq 10, b\n    b dq 20, c\n    c dq 30, d\n    d dq 40, 0\n\nsection .text\n_start:\n    lea rsi, [a]\n    xor rax, rax\n\nmaillon:\n    test rsi, rsi\n    jz fini\n    add rax, [rsi]          ; la valeur\n    mov rsi, [rsi + 8]      ; le suivant\n    jmp maillon\n\nfini:\n    hlt\n",
+   "goal": [
+    "rax == 0x64"
+   ],
+   "par": 25,
+   "level": "structures"
+  },
+  {
+   "id": "chercher_octet",
+   "title": {
+    "fr": "Chercher un octet dans un tampon",
+    "en": "Finding a byte in a buffer"
+   },
+   "description": {
+    "fr": "`scasb` compare AL à l'octet pointé par RDI et avance : avec `repne`, c'est une boucle entière en une instruction. RCX compte à rebours, et ce qu'il reste dit où l'on s'est arrêté. À l'arrêt, RAX doit valoir 5 — la position du caractère cherché.",
+    "en": "`scasb` compares AL to the byte at RDI and advances: with `repne`, that is a whole loop in one instruction. RCX counts down, and what remains says where it stopped. At the halt, RAX must hold 5 — the position of the character sought."
+   },
+   "code": "; Chercher un octet, avec une seule instruction de boucle.\n;\n; But : à l'arrêt, RAX vaut 5 — la position du « , » dans « Salut, toi ».\n;\n; `scasb` fait trois choses : comparer AL à l'octet en [RDI], avancer\n; RDI d'un, et poser les indicateurs. Avec le préfixe `repne`, elle\n; recommence tant que ce n'est pas égal ET que RCX n'est pas nul.\n;\n; RCX compte à rebours. Ce qu'il en reste à l'arrêt dit combien\n; d'octets n'ont pas été lus — d'où la position, par soustraction.\n;\n; C'est la forme la plus ancienne du parcours de chaîne, et elle tient\n; encore : une instruction, pas de saut, pas de prédiction à rater.\n\ndefault rel\nglobal _start\n\nsection .data\n    texte   db \"Salut, toi\", 0\n    combien equ 10\n\nsection .text\n_start:\n    lea rdi, [texte]\n    mov rcx, combien\n    mov al, ','\n    cld                     ; on avance, on ne recule pas\n\n    repne scasb\n\n    ; RDI pointe juste APRÈS l'octet trouvé : la position est donc\n    ; la distance au début, moins un.\n    lea rax, [texte]\n    sub rdi, rax\n    mov rax, rdi\n    dec rax\n\n    hlt\n",
+   "goal": [
+    "rax == 0x5"
+   ],
+   "par": 15,
+   "level": "structures"
+  },
+  {
+   "id": "table_sauts",
+   "title": {
+    "fr": "Une table de sauts, sans comparaison",
+    "en": "A jump table, without comparison"
+   },
+   "description": {
+    "fr": "Cinq cas, cinq comparaisons — ou une multiplication et un saut indirect. C'est ce que fait un compilateur d'un `switch` dense, et c'est ce qu'on voit dans un binaire sous la forme d'un `jmp [table + rax*8]` qu'aucun désassembleur ne sait suivre. À l'arrêt, RAX doit valoir 400.",
+    "en": "Five cases, five comparisons — or one multiplication and an indirect jump. That is what a compiler makes of a dense `switch`, and what one sees in a binary as a `jmp [table + rax*8]` that no disassembler can follow. At the halt, RAX must hold 400."
+   },
+   "code": "; Une table de sauts : cinq cas, aucune comparaison.\n;\n; But : à l'arrêt, RAX vaut 400 — le cas numéro 3.\n;\n; Cinq cas demandent cinq comparaisons... ou une multiplication et un\n; saut indirect. La table porte les adresses ; l'indice les atteint.\n;\n; C'est ce qu'un compilateur fait d'un `switch` dense, et c'est ce qu'on\n; retrouve dans un binaire sous la forme d'un `jmp [table + rax*8]`.\n; Aucun désassembleur ne sait où il mène — la cible se calcule, elle ne\n; s'écrit pas. namsdec le signale plutôt que d'inventer une flèche.\n;\n; La borne compte : un indice hors table sauterait vers ce qui se trouve\n; après elle, c'est-à-dire n'importe où. C'est une faille classique.\n\ndefault rel\nglobal _start\n\nsection .data\n    table dq cas0, cas1, cas2, cas3, cas4\n    combien equ 5\n\nsection .text\n_start:\n    mov rcx, 3              ; essayez 0, 1, 2, 3, 4\n    cmp rcx, combien        ; la borne : sans elle, tout est possible\n    jae hors_table\n\n    lea rdx, [table]\n    jmp [rdx + rcx*8]\n\ncas0:\n    mov rax, 100\n    jmp fin\ncas1:\n    mov rax, 200\n    jmp fin\ncas2:\n    mov rax, 300\n    jmp fin\ncas3:\n    mov rax, 400\n    jmp fin\ncas4:\n    mov rax, 500\n    jmp fin\n\nhors_table:\n    xor rax, rax\n\nfin:\n    hlt\n",
+   "goal": [
+    "rax == 0x190"
+   ],
+   "par": 8,
+   "level": "structures"
+  },
+  {
+   "id": "sse_somme",
+   "title": {
+    "fr": "Quatre additions en une instruction",
+    "en": "Four additions in one instruction"
+   },
+   "description": {
+    "fr": "Un registre XMM porte seize octets, donc quatre entiers de trente-deux bits. `paddd` les additionne tous d'un coup. C'est le calcul vectoriel dans sa forme la plus simple, et c'est ce qui rend un filtre d'image ou un produit scalaire quatre fois plus rapide. À l'arrêt, RAX doit valoir 10.",
+    "en": "An XMM register holds sixteen bytes, so four thirty-two-bit integers. `paddd` adds them all at once. That is vector computation at its simplest, and what makes an image filter or a dot product four times faster. At the halt, RAX must hold 10."
+   },
+   "code": "; Quatre additions en une instruction.\n;\n; But : à l'arrêt, RAX vaut 10 — le premier élément de la somme.\n;\n; Un registre XMM porte seize octets : quatre entiers de trente-deux\n; bits, ou deux de soixante-quatre, ou seize octets. `paddd` additionne\n; les quatre doubles mots élément par élément, d'un seul ordre.\n;\n; Les débordements NE SE PROPAGENT PAS d'un élément au suivant : chacun\n; boucle chez lui. C'est ce qui distingue une addition vectorielle d'une\n; addition de nombres larges.\n;\n; L'onglet « Registres étendus » du panneau montre les XMM pendant le\n; pas à pas.\n\ndefault rel\nglobal _start\n\nsection .data\n    align 16\n    a dd 1, 2, 3, 4\n    b dd 9, 8, 7, 6\n\nsection .text\n_start:\n    movdqa xmm0, [a]\n    movdqa xmm1, [b]\n    paddd  xmm0, xmm1       ; quatre additions, une instruction\n\n    ; Ce qui en sort : 10, 10, 10, 10.\n    movd eax, xmm0\n\n    hlt\n",
+   "goal": [
+    "rax == 0xa"
+   ],
+   "par": 5,
+   "level": "mastery"
+  },
+  {
+   "id": "sse_comparer",
+   "title": {
+    "fr": "Comparer seize octets d'un coup",
+    "en": "Comparing sixteen bytes at once"
+   },
+   "description": {
+    "fr": "`pcmpeqb` compare seize octets et rend un masque : tout à un là où c'est égal. `pmovmskb` résume ce masque en seize bits dans un registre ordinaire, où un saut conditionnel peut enfin le lire. C'est le cœur de toutes les fonctions de chaîne modernes. À l'arrêt, RAX doit valoir 4.",
+    "en": "`pcmpeqb` compares sixteen bytes and returns a mask: all ones where equal. `pmovmskb` sums that mask into sixteen bits in an ordinary register, where a conditional jump can finally read it. That is the core of every modern string function. At the halt, RAX must hold 4."
+   },
+   "code": "; Comparer seize octets d'un coup, et en tirer une réponse.\n;\n; But : à l'arrêt, RAX vaut 4 — la position du premier octet qui diffère.\n;\n; Trois instructions, et chacune fait une chose qu'on ne peut pas faire\n; autrement :\n;\n;   pcmpeqb   compare seize octets et rend un MASQUE — tout à un là où\n;             c'est égal, tout à zéro ailleurs. Aucun indicateur n'est\n;             touché : un masque n'est pas une condition.\n;   pmovmskb  résume ce masque : un bit par octet, dans un registre\n;             ordinaire. C'est le pont entre le vectoriel et les sauts.\n;   bsf       trouve le premier bit allumé.\n;\n; Le `not` entre les deux retourne la question : on cherche le premier\n; octet QUI DIFFÈRE, donc le premier zéro du masque d'égalité.\n\ndefault rel\nglobal _start\n\nsection .data\n    align 16\n    x db \"abcdefghijklmnop\"\n    y db \"abcdXfghijklmnop\"\n\nsection .text\n_start:\n    movdqu xmm0, [x]\n    movdqu xmm1, [y]\n    pcmpeqb xmm0, xmm1      ; le masque d'égalité\n    pmovmskb eax, xmm0      ; seize bits, un par octet\n\n    not eax                 ; on veut le premier qui DIFFÈRE\n    and eax, 0xffff         ; seize octets, seize bits utiles\n    bsf eax, eax            ; le premier bit allumé\n\n    hlt\n",
+   "goal": [
+    "rax == 0x4"
+   ],
+   "par": 8,
+   "level": "mastery"
+  },
+  {
+   "id": "syscall_write",
+   "title": {
+    "fr": "Écrire, vraiment",
+    "en": "Writing, for real"
+   },
+   "description": {
+    "fr": "Un programme ne sait pas écrire : il demande au noyau. RAX porte le numéro de l'appel, RDI RSI RDX les arguments, et `syscall` passe la main. C'est la seule frontière que le processeur ne franchit pas seul, et elle se voit dans tout binaire. La console montre le texte ; à l'arrêt, RAX doit valoir 14.",
+    "en": "A program cannot write: it asks the kernel. RAX holds the call number, RDI RSI RDX the arguments, and `syscall` hands over. It is the one boundary the processor does not cross alone, and it shows in every binary. The console shows the text; at the halt, RAX must hold 14."
+   },
+   "code": "; Demander au noyau d'écrire.\n;\n; But : à l'arrêt, RAX vaut 14 — le nombre d'octets que le noyau dit\n; avoir écrits. Regardez la console : le texte y est.\n;\n; Un programme ne sait pas écrire. Il ne sait que poser des valeurs dans\n; des registres et exécuter `syscall` :\n;\n;   RAX   le numéro de l'appel      1 = write\n;   RDI   le premier argument       1 = la sortie standard\n;   RSI   le second                 où sont les octets\n;   RDX   le troisième              combien\n;\n; Au retour, RAX porte la réponse : ce qui a été écrit, ou un nombre\n; négatif si le noyau a refusé.\n;\n; La convention des appels système N'EST PAS celle des fonctions : RCX\n; et R11 sont écrasés par `syscall` lui-même, et le quatrième argument\n; passe par R10 et non RCX.\n\ndefault rel\nglobal _start\n\nsection .data\n    message db \"Bonjour, noyau\", 10\n    combien equ $ - message\n\nsection .text\n_start:\n    mov rax, 1              ; write\n    mov rdi, 1              ; la sortie standard\n    lea rsi, [message]\n    mov rdx, combien\n    syscall\n\n    ; RAX porte maintenant ce que le noyau a écrit : 15 octets, le\n    ; retour à la ligne compris.\n    sub rax, 1              ; sans le retour à la ligne : 14\n\n    hlt\n",
+   "goal": [
+    "rax == 0xe"
+   ],
+   "par": null,
+   "level": "mastery"
+  },
+  {
+   "id": "debordement_signe",
+   "title": {
+    "fr": "Le débordement, et pourquoi il se voit",
+    "en": "Overflow, and why it shows"
+   },
+   "description": {
+    "fr": "Additionner deux grands positifs donne un négatif : c'est le débordement signé, et OF est le seul à le dire. CF, lui, parle du non signé. Les deux indicateurs répondent à deux questions différentes sur la même addition, et confondre les deux est l'erreur qui coûte le plus cher. À l'arrêt, RAX doit valoir 3.",
+    "en": "Adding two large positives gives a negative: that is signed overflow, and OF is the only one that says so. CF speaks of unsigned. The two flags answer two different questions about the same addition, and confusing them is the costliest mistake. At the halt, RAX must hold 3."
+   },
+   "code": "; Le débordement, et les deux indicateurs qui n'en disent pas la même\n; chose.\n;\n; But : à l'arrêt, RAX vaut 3 — les deux débordements ont été vus.\n;\n; Une même addition pose DEUX questions :\n;\n;   CF  « le résultat tient-il en non signé ? »\n;   OF  « le résultat tient-il en signé ? »\n;\n; Elles n'ont pas la même réponse, et c'est tout le sujet. 0x7fff...ff\n; plus 1 déborde en signé — le plus grand positif devient le plus petit\n; négatif — sans rien déborder en non signé. Et 0xffff...ff plus 1\n; déborde en non signé sans rien déborder en signé : -1 plus 1 fait\n; zéro, ce qui est juste.\n;\n; `seto` et `setc` posent 1 ou 0 selon l'indicateur, sans saut.\n\nglobal _start\n\nsection .text\n_start:\n    xor rax, rax\n\n    ; Débordement SIGNÉ, et lui seul.\n    mov rbx, 0x7fffffffffffffff\n    add rbx, 1\n    seto cl                 ; OF : oui\n    setc dl                 ; CF : non\n    movzx rcx, cl\n    add rax, rcx\n\n    ; Débordement NON SIGNÉ, et lui seul.\n    mov rbx, 0xffffffffffffffff\n    add rbx, 1\n    setc cl                 ; CF : oui\n    movzx rcx, cl\n    add rax, rcx\n\n    ; Deux additions, deux débordements, deux indicateurs différents.\n    add rax, 1\n\n    hlt\n",
+   "goal": [
+    "rax == 0x3"
+   ],
+   "par": 14,
+   "level": "mastery"
+  },
+  {
+   "id": "multiplication_large",
+   "title": {
+    "fr": "Multiplier plus large que le registre",
+    "en": "Multiplying wider than the register"
+   },
+   "description": {
+    "fr": "Le produit de deux nombres de soixante-quatre bits en demande cent vingt-huit. `mul` rend donc deux registres : RDX porte le haut, RAX le bas. Ignorer RDX, c'est perdre la moitié du résultat sans que rien ne le dise. À l'arrêt, RDX doit valoir 1 et RAX 0.",
+    "en": "The product of two sixty-four-bit numbers needs a hundred and twenty-eight. `mul` therefore returns two registers: RDX holds the high half, RAX the low. Ignoring RDX loses half the result with nothing to say so. At the halt, RDX must hold 1 and RAX 0."
+   },
+   "code": "; Multiplier plus large que le registre.\n;\n; But : à l'arrêt, RDX vaut 1 et RAX vaut 0.\n;\n; Le produit de deux nombres de n bits en demande 2n. `mul` le sait :\n; elle rend RDX:RAX, cent vingt-huit bits à cheval sur deux registres.\n;\n; Ici 2^32 fois 2^32 fait exactement 2^64 : rien dans RAX, un dans RDX.\n; Un programme qui ne lirait que RAX conclurait que le produit est nul,\n; et rien ne l'avertirait — c'est une des façons les plus discrètes de\n; se tromper en assembleur.\n;\n; `imul` à deux opérandes, elle, ne rend que la moitié basse : c'est la\n; forme qu'on emploie quand on SAIT que le résultat tient.\n\nglobal _start\n\nsection .text\n_start:\n    mov rax, 0x100000000    ; 2^32\n    mov rbx, 0x100000000    ; 2^32\n\n    mul rbx                 ; RDX:RAX = RAX * RBX\n\n    ; RAX vaut 0, RDX vaut 1 : le produit est 2^64, et il vit\n    ; entièrement dans la moitié haute.\n\n    hlt\n",
+   "goal": [
+    "rdx == 0x1",
+    "rax == 0x0"
+   ],
+   "par": null,
+   "level": "mastery"
+  },
+  {
+   "id": "decalage_division",
+   "title": {
+    "fr": "Diviser sans diviser",
+    "en": "Dividing without dividing"
+   },
+   "description": {
+    "fr": "`div` coûte des dizaines de cycles ; un décalage en coûte un. Pour une puissance de deux, les deux donnent le même résultat — sur les non signés. Sur les signés, le décalage arithmétique arrondit vers le bas et la division vers zéro, et les deux ne s'accordent pas sur les négatifs. À l'arrêt, RAX doit valoir 1.",
+    "en": "`div` costs dozens of cycles; a shift costs one. For a power of two, both give the same result — on unsigned. On signed, the arithmetic shift rounds down and the division towards zero, and the two disagree on negatives. At the halt, RAX must hold 1."
+   },
+   "code": "; Diviser sans diviser, et le piège du signe.\n;\n; But : à l'arrêt, RAX vaut 1 — les deux méthodes ont bien divergé.\n;\n; `div` coûte des dizaines de cycles ; `shr` en coûte un. Pour une\n; puissance de deux, les deux donnent le même résultat... sur les NON\n; SIGNÉS.\n;\n; Sur les signés, elles divergent : `sar` décale en gardant le signe,\n; donc arrondit vers le BAS — -7 sur 2 fait -4. `idiv` arrondit vers\n; ZÉRO — -7 sur 2 fait -3. Un écart de un, sur un nombre négatif, et\n; c'est pour cela qu'un compilateur ajoute une correction avant de\n; décaler un signé.\n;\n; C'est aussi pourquoi on voit, dans un binaire, `shr` suivi d'un `add`\n; mystérieux : la correction est là.\n\nglobal _start\n\nsection .text\n_start:\n    ; Par décalage : arrondi vers le bas.\n    mov rax, -7\n    sar rax, 1              ; -4\n    mov r8, rax\n\n    ; Par division : arrondi vers zéro.\n    mov rax, -7\n    cqo                     ; étend le signe dans RDX — sans quoi c'est faux\n    mov rcx, 2\n    idiv rcx                ; -3\n    mov r9, rax\n\n    ; L'écart entre les deux vaut exactement un.\n    mov rax, r9\n    sub rax, r8\n\n    hlt\n",
+   "goal": [
+    "rax == 0x1"
+   ],
+   "par": 11,
+   "level": "mastery"
+  },
+  {
+   "id": "endianness",
+   "title": {
+    "fr": "Retourner les octets",
+    "en": "Swapping the bytes"
+   },
+   "description": {
+    "fr": "Le x86 range le poids faible en premier ; les protocoles réseau font l'inverse. `bswap` retourne les octets d'un registre en une instruction — c'est ce que fait tout programme qui lit un en-tête TCP ou un fichier venu d'ailleurs. À l'arrêt, RAX doit valoir 0x78563412.",
+    "en": "x86 stores the low byte first; network protocols do the opposite. `bswap` reverses a register's bytes in one instruction — what every program reading a TCP header or a file from elsewhere does. At the halt, RAX must hold 0x78563412."
+   },
+   "code": "; Retourner les octets, et pourquoi il le faut.\n;\n; But : à l'arrêt, RAX vaut 0x78563412.\n;\n; Le x86 est « petit-boutiste » : le poids faible est rangé en premier.\n; 0x12345678 en mémoire s'écrit 78 56 34 12. Les protocoles réseau, eux,\n; sont gros-boutistes : le poids fort d'abord.\n;\n; `bswap` retourne les quatre (ou huit) octets d'un registre en une\n; instruction. C'est ce que fait tout programme qui lit un en-tête TCP,\n; un fichier PNG, ou n'importe quoi venu d'une autre machine.\n;\n; Dans un binaire, un `bswap` est donc un indice : il y a du réseau, ou\n; un format de fichier, pas loin.\n;\n; L'onglet Octets montre l'ordre réel en mémoire ; le bandeau montre la\n; valeur. Les deux ne se ressemblent pas, et c'est normal.\n\nglobal _start\n\nsection .text\n_start:\n    mov eax, 0x12345678\n    bswap eax\n\n    hlt\n",
+   "goal": [
+    "rax == 0x78563412"
+   ],
+   "par": null,
+   "level": "mastery"
+  },
+  {
+   "id": "popcount",
+   "title": {
+    "fr": "Compter les bits allumés",
+    "en": "Counting the bits that are on"
+   },
+   "description": {
+    "fr": "Compter les bits un à un demande soixante-quatre tours ; `popcnt` le fait en un cycle. La question revient partout — un masque de droits, une somme de contrôle, une distance entre deux empreintes — et c'est pour cela qu'elle a fini par avoir son instruction. À l'arrêt, RAX doit valoir 24.",
+    "en": "Counting bits one by one takes sixty-four turns; `popcnt` does it in one cycle. The question comes up everywhere — a permission mask, a checksum, a distance between two fingerprints — which is why it ended up with its own instruction. At the halt, RAX must hold 24."
+   },
+   "code": "; Compter les bits allumés, de deux façons.\n;\n; But : à l'arrêt, RAX vaut 24 — les deux méthodes s'accordent.\n;\n; La question revient partout : combien de droits dans ce masque,\n; combien de bits diffèrent entre deux empreintes, combien de cases\n; occupées dans cette carte. Elle a fini par avoir son instruction.\n;\n; La méthode de Kernighan, en dessous, mérite d'être connue : `x & (x-1)`\n; éteint le bit allumé le plus bas, et rien d'autre. On boucle donc\n; autant de fois qu'il y a de bits, non soixante-quatre fois.\n;\n; `popcnt` fait la même chose en un cycle. Quand une instruction existe,\n; elle gagne toujours — mais savoir ce qu'elle remplace aide à la\n; reconnaître dans un binaire qui ne l'emploie pas.\n\nglobal _start\n\nsection .text\n_start:\n    mov rbx, 0xdeadbeef     ; vingt-quatre bits allumés — comptez-les\n\n    ; Par l'instruction.\n    popcnt rax, rbx\n\n    ; Par la méthode de Kernighan, pour vérifier.\n    mov rdx, rbx\n    xor rcx, rcx\n\nkernighan:\n    test rdx, rdx\n    jz compte\n    mov r8, rdx\n    dec r8\n    and rdx, r8             ; éteint le bit le plus bas\n    inc rcx\n    jmp kernighan\n\ncompte:\n    ; Les deux doivent s'accorder : si ce n'est pas le cas, RAX finit\n    ; à zéro et l'exercice le dit.\n    cmp rax, rcx\n    je fin\n    xor rax, rax\n\nfin:\n    hlt\n",
+   "goal": [
+    "rax == 0x18"
+   ],
+   "par": 177,
+   "level": "mastery"
+  },
+  {
+   "id": "canari",
+   "title": {
+    "fr": "Le canari de pile, et ce qu'il protège",
+    "en": "The stack canary, and what it protects"
+   },
+   "description": {
+    "fr": "Une valeur secrète posée devant l'adresse de retour, et vérifiée avant de revenir : si elle a changé, quelque chose a débordé. C'est la protection qu'on rencontre dans presque tout binaire compilé aujourd'hui, et la première qu'on identifie en lisant un prologue. À l'arrêt, RAX doit valoir 1.",
+    "en": "A secret value placed in front of the return address and checked before returning: if it changed, something overflowed. It is the protection found in nearly every binary compiled today, and the first one identifies when reading a prologue. At the halt, RAX must hold 1."
+   },
+   "code": "; Le canari de pile, monté à la main.\n;\n; But : à l'arrêt, RAX vaut 1 — le canari est intact.\n;\n; Le principe tient en trois gestes : poser une valeur secrète juste\n; devant l'adresse de retour, faire son travail, vérifier qu'elle n'a\n; pas bougé avant de revenir. Un débordement de tampon qui écrase\n; l'adresse de retour écrase forcément le canari d'abord.\n;\n; Dans un vrai binaire, la valeur vient de `fs:[0x28]` — une case que le\n; noyau remplit, différente à chaque lancement. C'est ce `mov rax,\n; fs:[0x28]` en tête de fonction qui trahit la protection, et c'est la\n; première chose qu'on reconnaît en lisant un prologue.\n;\n; Essayez de faire déborder le tampon : changez le 8 en 24 dans le\n; `mov qword [rsp+...]`, et regardez RAX passer à zéro.\n\nglobal _start\n\nsection .text\n_start:\n    sub rsp, 32             ; un tampon de 24 octets, plus le canari\n    mov rbx, 0xdeadbeefcafe ; le secret — en vrai, il vient du noyau\n    mov [rsp+24], rbx       ; posé juste devant ce qu'il protège\n\n    ; Le travail : on écrit dans le tampon, sans déborder.\n    mov qword [rsp], 1\n    mov qword [rsp+8], 2\n    mov qword [rsp+16], 3\n\n    ; La vérification, avant de rendre la main.\n    mov rax, [rsp+24]\n    cmp rax, rbx\n    je intact\n    xor rax, rax            ; le canari a chanté : on ne revient pas\n    jmp fin\n\nintact:\n    mov rax, 1\n\nfin:\n    add rsp, 32\n    hlt\n",
+   "goal": [
+    "rax == 0x1"
+   ],
+   "par": 12,
+   "level": "mastery"
+  },
+  {
+   "id": "code_auto_modifiant",
+   "title": {
+    "fr": "Un programme qui se récrit",
+    "en": "A program that rewrites itself"
+   },
+   "description": {
+    "fr": "Rien n'empêche un programme d'écrire dans son propre code — sauf les droits de la page. C'est la technique des paquets chiffrés, et c'est pourquoi une section exécutable et inscriptible est un signal en analyse. namsdec refuse l'écriture et le dit, comme la vraie machine. À l'arrêt, RAX doit valoir 42.",
+    "en": "Nothing stops a program from writing into its own code — except the page rights. It is the technique of packed binaries, and why a section both executable and writable is a signal in analysis. namsdec refuses the write and says so, like the real machine. At the halt, RAX must hold 42."
+   },
+   "code": "; Un programme qui se récrit — et le mur qu'il rencontre.\n;\n; But : à l'arrêt, RAX vaut 42.\n;\n; Rien dans le processeur n'empêche d'écrire à une adresse qui contient\n; du code. Ce qui l'empêche, ce sont les DROITS de la page : `.text`\n; est lisible et exécutable, pas inscriptible.\n;\n; C'est pourquoi une section à la fois exécutable et inscriptible est un\n; signal en analyse : un paquet chiffré se déchiffre lui-même en\n; mémoire, et il lui faut ce droit-là. namsdec le dit dans Analyse >\n; Protections.\n;\n; Ici on fait l'inverse, et c'est la façon honnête : la valeur vit dans\n; `.data`, qui s'écrit. Décommentez la ligne marquée pour voir namsdec\n; refuser l'écriture dans `.text` — avec l'adresse et la raison, comme\n; la vraie machine.\n\ndefault rel\nglobal _start\n\nsection .data\n    valeur dq 0\n\nsection .text\n_start:\n    ; Ceci marche : .data s'écrit.\n    mov qword [valeur], 42\n    mov rax, [valeur]\n\n    ; Ceci serait refusé : .text ne s'écrit pas.\n    ; lea rdi, [_start]\n    ; mov qword [rdi], 0x90909090\n\n    hlt\n",
+   "goal": [
+    "rax == 0x2a"
+   ],
+   "par": null,
+   "level": "mastery"
+  }
+ ]
+}

@@ -789,10 +789,38 @@ mod corpus_tests {
         // doit juger ce que namsdec livre, pas ce qu'une machine a.
         let dossier =
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../namsdec-exercises/packs");
-        let pack = namsdec_exercises::builtin_pack_in(&dossier).expect("la série livrée se lit");
+        let mut séries =
+            vec![namsdec_exercises::builtin_pack_in(&dossier).expect("la série livrée se lit")];
+
+        // Et les séries installées à côté, dans `plugins/exercices/`.
+        // Sans elles, ce contrôle jugerait un corpus qui ne bouge plus
+        // pendant que les nouveaux exercices, eux, emploient des
+        // instructions que la coloration n'a peut-être jamais vues —
+        // et il passerait d'autant mieux qu'il regarde moins.
+        let ailleurs =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins/exercices");
+        let mut greffons = 0usize;
+        if let Ok(entrées) = std::fs::read_dir(&ailleurs) {
+            for entrée in entrées.flatten() {
+                let chemin = entrée.path();
+                if chemin.extension().is_some_and(|e| e == "json") {
+                    séries
+                        .push(namsdec_exercises::pack::read(&chemin).unwrap_or_else(|e| {
+                            panic!("{} ne se lit pas : {e}", chemin.display())
+                        }));
+                    greffons += 1;
+                }
+            }
+        }
+        assert!(
+            greffons > 0,
+            "aucune série dans {} : le contrôle ne verrait plus que le parcours livré",
+            ailleurs.display()
+        );
+
         let mut vus = 0usize;
         let mut fautifs: Vec<String> = Vec::new();
-        for exercice in &pack.exercises {
+        for exercice in séries.iter().flat_map(|p| &p.exercises) {
             vus += 1;
             let macros = Macros::of(&exercice.starter_code);
             for ligne in exercice.starter_code.lines() {

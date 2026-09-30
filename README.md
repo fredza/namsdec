@@ -347,6 +347,34 @@ soi-même se range exactement comme ce qui est livré, et le programme ne
 porte pas cent kilo-octets de texte. D'autres séries s'installent de la
 même façon : Outils ▸ Exercices.
 
+#### L'Atelier, seconde série
+
+Dix-huit exercices de plus, livrés à part dans
+`plugins/exercices/atelier.json` et installés par le même `./install.sh` :
+ils reprennent là où le parcours s'arrête.
+
+- **Structures** (8) — une matrice et la multiplication d'indice qui la
+  fait exister, la longueur d'une chaîne, un tri par insertion, la
+  récursion, un cadre de pile monté à la main, une liste chaînée, la
+  recherche d'un octet, une table de sauts.
+- **Maîtrise** (10) — quatre additions en une instruction (`paddd`),
+  seize octets comparés d'un coup (`pcmpeqb` puis `pmovmskb`), un appel
+  système qui écrit vraiment, le débordement signé et le non signé qui
+  ne répondent pas à la même question, un produit qui ne tient pas dans
+  un registre, diviser par décalage et le piège du signe, l'ordre des
+  octets, le compte de bits allumés, un canari de pile, un programme
+  qui voudrait se récrire.
+
+Ces derniers ne sont pas des curiosités : ce sont les formes qu'on
+rencontre en lisant un binaire réel. Un `bswap` trahit du réseau ou un
+format de fichier ; un `mov rax, fs:[0x28]` en tête de fonction trahit
+la protection de pile. Les reconnaître est la moitié du travail
+d'analyse.
+
+Les dix-huit s'assemblent et **atteignent leur but tels qu'ils sont
+livrés** — un test l'exécute à chaque fois, parce qu'un exercice dont le
+code donné manque son propre but apprend la mauvaise chose.
+
 ### Si vous venez de pwndbg
 
 namsdec n'est pas un débogueur : il simule le processeur au lieu d'en

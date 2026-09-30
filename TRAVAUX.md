@@ -6,8 +6,8 @@ retiré — reste dans `AMELIORATIONS.txt`, qui ne bouge pas de rôle : une
 seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
-Tenue à jour au fil des séances. Dernière mise à jour : **29 septembre
-2026**, version 0.2.5-beta.3, 579 tests au vert.
+Tenue à jour au fil des séances. Dernière mise à jour : **30 septembre
+2026**, version 0.2.5-beta.11, 606 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -263,6 +263,20 @@ Détail chiffré dans `AMELIORATIONS.txt` 7.11, section « REVUE DU
 
 ## 5. Vocation pédagogique
 
+- [x] **L'Atelier, seconde série d'exercices** — dix-huit exercices de
+      plus, livrés en greffon (`plugins/exercices/atelier.json`) et posés
+      par le même `./install.sh` : huit au palier Structures (matrice,
+      longueur d'une chaîne, tri par insertion, récursion, cadre de pile,
+      liste chaînée, recherche d'octet, table de sauts), dix au palier
+      Maîtrise (`paddd`, `pcmpeqb`/`pmovmskb`, appel système, débordement
+      signé contre non signé, produit sur 128 bits, division par
+      décalage, ordre des octets, compte de bits, canari de pile, code
+      auto-modifiant). Les dix-huit **atteignent leur but tels qu'ils
+      sont livrés** — un contrôle les assemble et les exécute, et il a
+      déjà attrapé deux énoncés faux de ma main. Les budgets sont
+      MESURÉS, non devinés. Le JSON se régénère depuis
+      `plugins/exercices/ecrire_atelier.py` : on corrige le Python, pas
+      le JSON.
 - [x] **Les échecs des exercices, expliqués** (A 7.10) — la seconde
       moitié est faite : sous un but manqué, namsdec dit ce que le
       programme a FAIT — « la boucle de la ligne 6 a tourné 4 fois »,

@@ -26199,6 +26199,10 @@ fn installing_really_puts_everything_in_place() {
     for attendu in [
         bin.join("namsdec"),
         prefix.join("namsdec/exercises/namsdec.json"),
+        // Les séries greffées, et non le seul parcours livré : le
+        // script les pose par une boucle sur `plugins/exercices/`, et
+        // une boucle qui ne trouve rien s'exécute sans rien dire.
+        prefix.join("namsdec/exercises/atelier.json"),
         prefix.join("icons/hicolor/scalable/apps/namsdec.svg"),
         prefix.join("applications/namsdec.desktop"),
     ] {
@@ -26251,6 +26255,28 @@ fn installing_really_puts_everything_in_place() {
     assert!(
         prefix.join("namsdec/exercises/namsdec.json").exists(),
         "les séries d'exercices sont gardées sans --purge"
+    );
+    assert!(
+        prefix.join("namsdec/exercises/atelier.json").exists(),
+        "l'atelier aussi est gardé sans --purge"
+    );
+
+    // Et l'atelier installé est bien celui du dépôt, avec ses deux
+    // paliers : un fichier posé mais vide passerait les lignes
+    // ci-dessus sans rien apprendre.
+    let atelier = namsdec_exercises::pack::read(prefix.join("namsdec/exercises/atelier.json"))
+        .expect("l'atelier installé se lit");
+    assert!(
+        atelier.exercises.len() >= 18,
+        "l'atelier installé en compte {}",
+        atelier.exercises.len()
+    );
+    assert!(
+        atelier
+            .exercises
+            .iter()
+            .any(|e| e.level == namsdec_exercises::Level::Mastery),
+        "l'atelier monte jusqu'au palier Maîtrise"
     );
 }
 
@@ -26867,5 +26893,244 @@ fn an_instruction_can_be_rewritten_in_assembly() {
     assert!(
         !diagnostics.is_empty(),
         "et nasm doit dire pourquoi : {erreur}"
+    );
+}
+
+/// CHAQUE exercice tient ce qu'il annonce : son but est atteint, et son
+/// budget est celui qu'il consomme.
+///
+/// Le contrôle d'à côté en vérifie cinq, nommés à la main. Celui-ci les
+/// prend tous, de toutes les séries du dépôt — et il vérifie deux
+/// choses de plus que le regard d'un relecteur ne peut tenir sur cent
+/// exercices :
+///
+/// - le BUT est atteint par le programme livré. Un but inatteignable
+///   fait chercher son erreur à quelqu'un qui n'en a pas fait ;
+/// - le BUDGET est celui qu'on consomme vraiment. Il est présenté comme
+///   « la solution livrée le tient, descendre en dessous est l'exercice » :
+///   un budget plus généreux que la solution rend l'exercice vide, un
+///   budget plus serré le rend impossible. Les deux découragent, et
+///   aucun ne se voit à la lecture.
+#[test]
+fn every_exercise_keeps_its_promise() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let racine = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let mut séries = vec![builtin_pack()];
+    // Les séries livrées comme plugins, quand il y en a.
+    if let Ok(entrées) = std::fs::read_dir(racine.join("plugins/exercices")) {
+        for entrée in entrées.flatten() {
+            if entrée.path().extension().is_some_and(|e| e == "json")
+                && let Ok(pack) = namsdec_exercises::pack::read(entrée.path())
+            {
+                séries.push(pack);
+            }
+        }
+    }
+
+    // Les séries sont-elles toutes là ? La livrée en compte quatre-vingt-
+    // seize, et le dépôt en porte d'autres sous forme de plugins. Sans
+    // ce garde-fou, un chemin qui change ferait passer ce contrôle au
+    // vert en ne vérifiant plus rien — et c'est la façon de mentir qui
+    // ne se signale pas.
+    let combien: usize = séries.iter().map(|p| p.exercises.len()).sum();
+    assert!(
+        combien > 100,
+        "{combien} exercices relevés dans {} série(s) — le contrôle \
+         regarde-t-il au bon endroit ?",
+        séries.len()
+    );
+    assert!(
+        séries.iter().any(|p| p.id != namsdec_exercises::BUILTIN_ID),
+        "les séries livrées en plugin doivent être vérifiées aussi : {:?}",
+        séries.iter().map(|p| &p.id).collect::<Vec<_>>()
+    );
+
+    let mut fautifs: Vec<String> = Vec::new();
+    for pack in &séries {
+        for exercice in &pack.exercises {
+            // Un exercice sans but est une démonstration à regarder : il
+            // n'y a rien à vérifier, et l'exécuter ne prouverait rien.
+            if exercice.goal.is_empty() {
+                continue;
+            }
+            let mut app = NamsdecApp {
+                source: exercice.starter_code.clone(),
+                ..Default::default()
+            };
+            app.do_assemble();
+            if !matches!(app.status, Status::AssembleOk) {
+                fautifs.push(format!(
+                    "{}/{} ne s'assemble pas : {:?}",
+                    pack.id, exercice.id, app.status
+                ));
+                continue;
+            }
+            app.do_run();
+            let ctx = egui::Context::default();
+            for _ in 0..200 {
+                if !app.running {
+                    break;
+                }
+                app.tick_run(&ctx);
+            }
+            if app.running {
+                fautifs.push(format!("{}/{} ne rend pas la main", pack.id, exercice.id));
+                continue;
+            }
+            let Some(emulator) = app.emulator.as_ref() else {
+                fautifs.push(format!("{}/{} n'a pas de machine", pack.id, exercice.id));
+                continue;
+            };
+            let regs = emulator.cpu().regs.clone();
+            // TOUS les exercices n'atteignent pas leur but : certains
+            // sont des SQUELETTES, et c'est tout l'exercice — « À faire :
+            // remettez-les à l'endroit, avec deux instructions ».
+            // Exiger le but de ceux-là reviendrait à reprocher au sujet
+            // de ne pas être sa propre correction.
+            //
+            // Ce qui vaut pour tous, en revanche : le but doit SE LIRE.
+            // Une condition mal écrite ne dira jamais « atteint », quoi
+            // qu'on fasse, et personne ne saura pourquoi.
+            let mut tout_atteint = true;
+            for condition in &exercice.goal {
+                let Some(analysée) = condition::parse(condition) else {
+                    fautifs.push(format!(
+                        "{}/{} : « {condition} » ne se lit pas",
+                        pack.id, exercice.id
+                    ));
+                    tout_atteint = false;
+                    continue;
+                };
+                if !analysée.holds(&regs, None) {
+                    tout_atteint = false;
+                }
+            }
+            // Le budget ne se vérifie que sur un exercice COMPLET : sur
+            // un squelette, le compte est celui du sujet, non celui de
+            // la solution.
+            //
+            // Et l'égalité stricte serait fausse. « Branchements » invite
+            // à essayer trois valeurs d'indice, dont deux coûtent une
+            // instruction de plus que celle qui est livrée : un budget
+            // calé sur le chemin le plus court ferait échouer deux des
+            // trois essais que l'énoncé propose.
+            //
+            // Ce qui compte, et qui se vérifie : un budget PLUS SERRÉ que
+            // la solution livrée la rend impossible, et personne ne peut
+            // le deviner ; un budget BEAUCOUP plus large rend l'exercice
+            // vide, puisqu'on l'atteint sans rien chercher. Entre les
+            // deux, l'auteur a pu tenir compte d'un autre chemin.
+            if tout_atteint && let Some(budget) = exercice.par {
+                let exécutées = emulator.executed();
+                if budget < exécutées {
+                    fautifs.push(format!(
+                        "{}/{} : budget {budget} plus serré que la solution livrée, \
+                         qui en prend {exécutées} — impossible",
+                        pack.id, exercice.id
+                    ));
+                } else if budget > exécutées + 3 {
+                    fautifs.push(format!(
+                        "{}/{} : budget {budget} pour une solution qui en prend \
+                         {exécutées} — il n'y a rien à chercher",
+                        pack.id, exercice.id
+                    ));
+                }
+            }
+        }
+    }
+    assert!(
+        fautifs.is_empty(),
+        "{} exercice(s) qui ne tiennent pas leur promesse :\n  {}",
+        fautifs.len(),
+        fautifs.join("\n  ")
+    );
+}
+
+/// La série « atelier » est faite d'exercices COMPLETS : chacun atteint
+/// son but tel qu'il est livré.
+///
+/// C'est ce qui la distingue de la série d'accueil, où plusieurs
+/// exercices sont des squelettes à finir — « À faire : remettez-les à
+/// l'endroit ». Ici le programme marche, et le travail est de le
+/// comprendre puis de faire plus court.
+///
+/// Le contrôle d'à côté ne peut pas voir un but faux : sur un squelette,
+/// un but non atteint est normal, et rien ne distingue les deux dans le
+/// format. Pour cette série-ci, on peut l'exiger — et il faut l'exiger,
+/// parce qu'un exercice qui n'atteint pas ce qu'il annonce envoie
+/// chercher une erreur là où il n'y en a pas.
+#[test]
+fn the_workshop_exercises_are_complete_and_reach_their_goal() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let chemin = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../plugins/exercices/atelier.json");
+    let pack = namsdec_exercises::pack::read(&chemin).expect("la série atelier se lit");
+    assert!(
+        pack.exercises.len() >= 8,
+        "la série doit être fournie : {} exercices",
+        pack.exercises.len()
+    );
+
+    let mut fautifs = Vec::new();
+    for exercice in &pack.exercises {
+        assert!(
+            !exercice.goal.is_empty(),
+            "{} : chaque exercice de cette série a un but vérifiable",
+            exercice.id
+        );
+        let mut app = NamsdecApp {
+            source: exercice.starter_code.clone(),
+            ..Default::default()
+        };
+        app.do_assemble();
+        if !matches!(app.status, Status::AssembleOk) {
+            fautifs.push(format!(
+                "{} ne s'assemble pas : {:?}",
+                exercice.id, app.status
+            ));
+            continue;
+        }
+        app.do_run();
+        let ctx = egui::Context::default();
+        for _ in 0..500 {
+            if !app.running {
+                break;
+            }
+            app.tick_run(&ctx);
+        }
+        let Some(emulator) = app.emulator.as_ref() else {
+            fautifs.push(format!("{} n'a pas de machine", exercice.id));
+            continue;
+        };
+        if app.running {
+            fautifs.push(format!(
+                "{} ne rend pas la main ({} instructions)",
+                exercice.id,
+                emulator.executed()
+            ));
+            continue;
+        }
+        let regs = emulator.cpu().regs.clone();
+        for condition in &exercice.goal {
+            let analysée = condition::parse(condition)
+                .unwrap_or_else(|| panic!("{} : « {condition} » ne se lit pas", exercice.id));
+            if !analysée.holds(&regs, None) {
+                let (gauche, droite) = analysée.sides(&regs, None).unwrap_or((0, 0));
+                fautifs.push(format!(
+                    "{} : « {condition} » — on trouve {gauche:#x} et non {droite:#x}",
+                    exercice.id
+                ));
+            }
+        }
+    }
+    assert!(
+        fautifs.is_empty(),
+        "{} exercice(s) de l'atelier qui ne marchent pas :\n  {}",
+        fautifs.len(),
+        fautifs.join("\n  ")
     );
 }

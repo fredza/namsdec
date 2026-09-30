@@ -58,6 +58,20 @@ def exercices():
     avec_but = sum(1 for e in pack["exercises"] if e.get("goal"))
     return len(pack["exercises"]), avec_but, paliers
 
+def atelier():
+    """La seconde série, celle qui s'installe comme un greffon.
+
+    Elle est comptée séparément parce qu'elle s'installe séparément :
+    annoncer un total qui les mélange ferait croire qu'on obtient tout
+    en une fois."""
+    pack = json.loads(
+        (RACINE / "plugins/exercices/atelier.json").read_text(encoding="utf-8")
+    )
+    paliers = {}
+    for exercice in pack["exercises"]:
+        paliers[exercice["level"]] = paliers.get(exercice["level"], 0) + 1
+    return len(pack["exercises"]), paliers
+
 def tests():
     """Combien de tests automatiques accompagnent le programme."""
     total = 0
@@ -148,7 +162,8 @@ def _touche(nom):
 
 # --- Le contenu ----------------------------------------------------------
 
-def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
+def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
+            total_atelier, atelier_paliers):
     """Le guide, section par section.
 
     Chaque élément est un couple (genre, texte) : 'h1' un chapitre, 'h2'
@@ -927,6 +942,32 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "<font face='Courier'>~/.local/share/namsdec/exercises/namsdec.json</font>. "
          "Corriger un énoncé ne demande donc pas de recompiler, et une série que vous "
          "écrivez s'installe exactement de la même façon (Outils › Exercices)."),
+
+        ("h2", "L'Atelier : la seconde série"),
+        ("p",
+         "Une <b>seconde série</b> est livrée à part, dans "
+         "<font face='Courier'>plugins/exercices/atelier.json</font> : <b>%d exercices</b> "
+         "qui reprennent là où le parcours s'arrête — %d au palier Structures, %d au palier "
+         "Maîtrise. Elle s'installe avec le reste (<font face='Courier'>./install.sh</font>) "
+         "et apparaît dans la même fenêtre, sous son propre nom." %
+         (total_atelier, atelier_paliers.get("structures", 0),
+          atelier_paliers.get("mastery", 0))),
+        ("p",
+         "Le palier <b>Structures</b> y monte ce qu'un langage cache : une matrice et sa "
+         "multiplication d'indice, un tri par insertion, une liste chaînée, un cadre de "
+         "pile monté à la main, une table de sauts. Le palier <b>Maîtrise</b> sort du "
+         "calcul entier : quatre additions en une instruction "
+         "(<font face='Courier'>paddd</font>), seize octets comparés d'un coup "
+         "(<font face='Courier'>pcmpeqb</font> puis <font face='Courier'>pmovmskb</font>), "
+         "un appel système qui écrit vraiment, le débordement signé et le non signé qui "
+         "ne répondent pas à la même question, un produit qui ne tient pas dans un "
+         "registre, un canari de pile monté à la main."),
+        ("note",
+         "Ces derniers ne sont pas des curiosités : ce sont les formes qu'on rencontre en "
+         "lisant un binaire réel. Un <font face='Courier'>bswap</font> trahit du réseau ou "
+         "un format de fichier ; un <font face='Courier'>mov rax, fs:[0x28]</font> en tête "
+         "de fonction trahit la protection de pile. Les reconnaître, c'est la moitié du "
+         "travail d'analyse."),
 
         ("h1", "Comment une instruction est faite"),
         ("p",
@@ -1726,7 +1767,9 @@ def _verifie_les_glyphes(blocs):
 def main():
     v = version()
     total, avec_but, paliers = exercices()
-    blocs = contenu(v, total, avec_but, paliers, fiches(), tests())
+    total_atelier, atelier_paliers = atelier()
+    blocs = contenu(v, total, avec_but, paliers, fiches(), tests(),
+                    total_atelier, atelier_paliers)
     # Les raccourcis, en dernier chapitre : ils viennent du code.
     table = [["Action", "Raccourci"]]
     for action, touches in raccourcis():

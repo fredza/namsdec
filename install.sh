@@ -69,7 +69,7 @@ ${GRAS}namsdec — installation${FIN}
     ${CYAN}--no-desktop${FIN}      ne pas poser le lanceur ni les icônes
     ${CYAN}--no-dock${FIN}         ne pas épingler au dock (GNOME)
     ${CYAN}--no-path${FIN}         ne pas toucher au fichier de configuration du shell
-    ${CYAN}--no-exercises${FIN}    ne pas installer la série d'exercices livrée
+    ${CYAN}--no-exercises${FIN}    ne pas installer les séries d'exercices
     ${CYAN}--no-strip${FIN}        garder les symboles de débogage dans le binaire
                       installé (deux mégaoctets de plus)
     ${CYAN}--no-build${FIN}        ne pas compiler : poser le binaire déjà construit.
@@ -220,10 +220,20 @@ fi
 # demande plus de recompiler. Ce que l'utilisateur a ajouté à côté n'est
 # pas touché : seul le fichier livré est remplacé.
 if [ "$AVEC_EXERCICES" = 1 ]; then
-    etape "Installation du parcours d'exercices"
+    etape "Installation des séries d'exercices"
     detail "$EXERCISES_DIR/$APP.json"
     faire install -Dm644 "$SOURCE_DIR/crates/namsdec-exercises/packs/namsdec.json" \
         "$EXERCISES_DIR/$APP.json"
+
+    # Les séries supplémentaires vivent dans `plugins/exercices/`. Ce
+    # sont des fichiers de même format que le parcours livré, et le
+    # dossier est le contrat : y déposer un fichier suffit à l'installer,
+    # sans toucher à ce script.
+    for serie in "$SOURCE_DIR"/plugins/exercices/*.json; do
+        [ -e "$serie" ] || break
+        detail "$EXERCISES_DIR/$(basename "$serie")"
+        faire install -Dm644 "$serie" "$EXERCISES_DIR/$(basename "$serie")"
+    done
 fi
 
 # --- Icônes ------------------------------------------------------------
