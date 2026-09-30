@@ -35,6 +35,14 @@ précédaient.
 - Une fonction sans aucun saut le dit en une ligne, au lieu de laisser
   chercher un « si » qui n'y est pas.
 
+**Un gros listing ne coûte plus rien par frame**
+- Un binaire ouvert fait quinze mille lignes. La clé du cache de mise en
+  page était un condensé des six cent mille octets, recalculé deux fois
+  par frame — 2,4 ms, un huitième du budget d'une image, dépensés à
+  apprendre que rien n'avait changé.
+- Le texte lui-même sert de clé : 11 µs au lieu de 1 224, et une égalité
+  exacte ne peut pas collisionner là où un condensé le pourrait.
+
 **La provenance traverse la mémoire**
 - « D'où vient cette valeur ? » s'arrêtait à la première lecture en
   mémoire — c'est-à-dire exactement là où la question devient

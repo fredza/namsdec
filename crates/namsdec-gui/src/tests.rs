@@ -26245,3 +26245,62 @@ fn installing_really_puts_everything_in_place() {
         "les séries d'exercices sont gardées sans --purge"
     );
 }
+
+/// Un listing déjà mis en page ne se refait pas, et ne se re-hache pas.
+///
+/// Un binaire ouvert fait quinze mille lignes. La mise en page complète
+/// coûte trois cents millisecondes ; le cache la rend une fois pour
+/// toutes, et c'est déjà le cas depuis longtemps.
+///
+/// Ce qui ne l'était pas : la CLÉ de ce cache était un condensé du texte
+/// entier, recalculé à chaque appel — deux fois par frame, une fois pour
+/// la gouttière et une fois pour le champ de texte. Mesuré : 1,2 ms le
+/// condensé, contre 11 µs la comparaison directe des mêmes octets. Cent
+/// treize fois moins cher, et plus sûr : une égalité exacte ne peut pas
+/// collisionner.
+///
+/// Le contrôle mesure le coût d'un appel servi par le cache. Le seuil
+/// est large — une machine chargée mesure mal — mais il attrape le
+/// retour au condensé, qui coûte cent fois le reste.
+#[test]
+fn an_already_laid_out_listing_costs_almost_nothing() {
+    let ctx = egui::Context::default();
+    let app = NamsdecApp::default();
+    app.apply_theme(&ctx);
+    // De la taille d'un binaire ordinaire : six cent mille octets.
+    let mut listing = String::new();
+    for i in 0..15_000 {
+        listing.push_str(&format!(
+            "{:#010x}  mov rax, {}   ; ligne {i}\n",
+            0x400000 + i * 4,
+            i % 97
+        ));
+    }
+    assert!(listing.len() > 500_000, "{} octets", listing.len());
+
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1400.0, 900.0),
+        )),
+        ..Default::default()
+    };
+    let mut servi = std::time::Duration::MAX;
+    let mut sortie = ctx.run_ui(input, |ui| {
+        // Le premier appel pose tout ; les suivants sont servis.
+        let _ = crate::editor::layout_code(ui, app.theme, &listing);
+        for _ in 0..20 {
+            let début = std::time::Instant::now();
+            let _ = crate::editor::layout_code(ui, app.theme, &listing);
+            servi = servi.min(début.elapsed());
+        }
+    });
+    sortie.textures_delta.clear();
+    // Le meilleur des vingt : c'est celui qui mesure le code, les autres
+    // mesurent aussi ce que la machine faisait à côté.
+    assert!(
+        servi < std::time::Duration::from_micros(400),
+        "un appel servi par le cache coûte {servi:?} — le condensé du \
+         texte entier est-il revenu ? Il vaut 1,2 ms à lui seul."
+    );
+}

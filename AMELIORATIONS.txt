@@ -1771,3 +1771,36 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
     - le glyphe `↳` choisi pour marquer la traversée n'est dans aucune des
       polices embarquées. Le contrôle des glyphes l'a dit à la seconde. C'est
       un point médian aujourd'hui.
+
+  --- 5.3 : la virtualisation du listing, mesurée avant d'être faite ---
+  Le point disait « quinze mille lignes mises en page en une fois ». Mesuré sur
+  un listing de six cent mille octets, la réalité est ailleurs :
+
+    mise en page, premier appel ............ 324 ms
+      dont coloration ...................... 39 ms
+      dont pose du texte par egui .......... ~280 ms
+    appels suivants (servis par le cache) .. 1,2 ms
+      dont condensé du texte ............... 1,2 ms
+
+  AUTREMENT DIT : le cache tenait déjà, et les trois cents millisecondes ne se
+  payaient qu'une fois. Ce qui se payait à CHAQUE frame — deux fois, une pour
+  la gouttière et une pour le champ de texte — était la clé de ce cache : un
+  condensé des six cent mille octets, pour apprendre que rien n'avait changé.
+  Un huitième d'un budget de seize millisecondes, dépensé à ne rien apprendre.
+
+  Le texte lui-même sert de clé maintenant. Comparer les mêmes octets coûte
+  11 µs au lieu de 1 224, soit cent treize fois moins — et répond mieux : une
+  égalité exacte ne peut pas collisionner, un condensé si. Le prix est une
+  copie du texte à côté du galley, négligeable devant lui : quinze mille lignes
+  de glyphes pèsent bien plus que les octets qui les ont produites.
+
+  CE QUI RESTE, et qui est un vrai chantier : les ~280 ms de la première pose,
+  à l'ouverture d'un binaire. Les retirer demande de ne poser que les lignes
+  visibles, donc de sortir du `TextEdit` d'egui — lequel porte le curseur, la
+  sélection, la recherche, les points d'arrêt et la complétion. Ce n'est pas un
+  réglage, et le faire à moitié casserait cinq fonctions pour gagner un tiers
+  de seconde une fois par fichier.
+
+  LEÇON : « mis en page en une fois » décrivait un symptôme, pas la cause. La
+  cause coûtait cent fois moins cher à corriger, et le disait dès qu'on
+  mesurait.

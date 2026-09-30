@@ -342,9 +342,18 @@ Détail chiffré dans `AMELIORATIONS.txt` 7.11, section « REVUE DU
       vidaient à chaque extraction, sans rougir. `SOURCES_DE_L_INTERFACE`
       les branche sur les vingt-neuf fichiers de l'interface, et un
       contrôle vérifie que cette liste suit les `mod`.
-- [ ] **Le listing entier est mis en page en une fois** (A 5.3, 7.8) —
-      quinze mille lignes dans un binaire ouvert ; seule la gouttière
-      virtualise aujourd'hui
+- [~] **Le listing entier est mis en page en une fois** (A 5.3, 7.8) —
+      MESURÉ le 30 septembre, et ce n'était pas où l'on croyait.
+      Les trois cents millisecondes de la mise en page sont payées UNE
+      fois : le cache tenait déjà. Ce qui se payait à chaque frame était
+      la CLÉ de ce cache — un condensé des six cent mille octets, 1,2 ms,
+      deux fois par frame. Le texte lui-même sert de clé maintenant :
+      11 µs, cent treize fois moins, et plus sûr.
+      Ce qui reste : les ~280 ms de la première pose, à l'ouverture d'un
+      binaire. Les retirer demande de ne poser que les lignes visibles,
+      donc de sortir du `TextEdit` d'egui — qui porte le curseur, la
+      sélection, la recherche, les points d'arrêt et la complétion.
+      C'est un vrai chantier, non un réglage.
 - [~] **Les frames lentes** (A 5.2) — mesuré, et ce n'est pas ce qu'on
       croyait ; reste à ne plus crier « frame lente » pour la première
       image après un chargement
