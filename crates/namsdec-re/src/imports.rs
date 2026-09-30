@@ -167,7 +167,7 @@ fn relocations(bytes: &[u8]) -> Option<BTreeMap<u64, String>> {
             let Some(place) = u64_at(bytes, at) else {
                 break;
             };
-            let Some(info) = u64_at(bytes, at + 8) else {
+            let Some(info) = at.checked_add(8).and_then(|i| u64_at(bytes, i)) else {
                 break;
             };
             let kind = info as u32;
@@ -182,10 +182,23 @@ fn relocations(bytes: &[u8]) -> Option<BTreeMap<u64, String>> {
             if kind == R_X86_64_IRELATIVE || sym == 0 {
                 continue;
             }
-            let Some(name_offset) = u32_at(bytes, sym_offset + sym * sym_entry) else {
+            // `sym` vient d'un champ du fichier (`info >> 32`) : sur une
+            // entrée hostile, il est quelconque, et `sym * sym_entry`
+            // déborde. Vérifié, comme les autres multiplications de ce
+            // module — un index qui déborde n'est pas un index, on passe.
+            let Some(sym_at) = sym
+                .checked_mul(sym_entry)
+                .and_then(|décalage| sym_offset.checked_add(décalage))
+            else {
                 continue;
             };
-            let Some(name) = string_at(bytes, str_offset + name_offset as usize) else {
+            let Some(name_offset) = u32_at(bytes, sym_at) else {
+                continue;
+            };
+            let Some(name_at) = str_offset.checked_add(name_offset as usize) else {
+                continue;
+            };
+            let Some(name) = string_at(bytes, name_at) else {
                 continue;
             };
             if !name.is_empty() {
@@ -338,5 +351,57 @@ mod tests {
         assert!(scan(&[]).is_empty());
         assert!(scan(&[0u8; 64]).is_empty());
         assert!(scan(b"\x7fELF not really").is_empty());
+    }
+
+    /// Un ELF hostile ne fait pas paniquer l'analyse — même en debug, où
+    /// un débordement d'entier panique au lieu de tourner.
+    ///
+    /// C'est la première exigence d'un outil qui reçoit des fichiers
+    /// malveillants : ils sont délibérément malformés, et un analyseur
+    /// qui tombe dessus n'analyse plus rien. Un débordement de
+    /// multiplication a été trouvé ici (un champ `sym` du fichier,
+    /// quelconque, multiplié par la taille d'une entrée), et ce contrôle
+    /// l'empêche de revenir.
+    #[test]
+    fn a_hostile_elf_never_panics_the_scan() {
+        // Un vrai ELF sert de squelette : ses en-têtes mènent l'analyse
+        // dans les tables, là où le hasard corrompt les index. Du bruit
+        // pur ne franchirait pas le nombre magique.
+        let Ok(base) = std::fs::read("/bin/true") else {
+            return;
+        };
+        if scan(&base).is_empty() {
+            return; // pas un ELF qu'on sait lire ici : rien à éprouver.
+        }
+
+        // Générateur reproductible : un échec se rejoue avec la même
+        // graine, sans dépendre d'un fichier temporaire.
+        let mut graine: u64 = 0xC0FFEE_1234;
+        let mut rnd = || {
+            graine ^= graine << 13;
+            graine ^= graine >> 7;
+            graine ^= graine << 17;
+            graine
+        };
+
+        for _ in 0..4000 {
+            let mut v = base.clone();
+            for _ in 0..(rnd() % 120) {
+                let i = rnd() as usize % v.len();
+                v[i] = rnd() as u8;
+            }
+            let coupe = rnd() as usize % v.len();
+            v.truncate(coupe);
+            // On garde le nombre magique : c'est ce qui mène l'analyse
+            // au-delà de la porte, là où les débordements se cachent.
+            if v.len() >= 4 {
+                v[..4].copy_from_slice(b"\x7fELF");
+            }
+            // Le simple fait de ne pas paniquer est la garantie ; la
+            // liste rendue n'a pas à être juste sur un fichier cassé.
+            let _ = scan(&v);
+            let _ = crate::slack::find(&v);
+            let _ = crate::elf_scan::scan(&v);
+        }
     }
 }

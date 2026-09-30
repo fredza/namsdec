@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **30 septembre
-2026**, version 0.2.6-beta.1, 617 tests au vert.
+2026**, version 0.2.6-beta.1, 618 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -368,6 +368,18 @@ Détail chiffré dans `AMELIORATIONS.txt` 7.11, section « REVUE DU
       ~300 sur la première image, coût d'une vue en lecture seule pour les
       listings — sélection, recherche, curseur, marques. Pas à entreprendre
       à la légère.
+
+## 4 sexies. Robustesse sur entrée hostile
+
+- [x] **Panique corrigée dans `imports::scan`** — un fuzzing (40 000 ELF
+      malformés) a trouvé deux paniques : `sym * sym_entry` débordait,
+      `sym` venant d'un champ quelconque du fichier. Corrigé par
+      arithmétique vérifiée, comme le reste du module. C'est la première
+      exigence d'un outil qui reçoit des fichiers malveillants : ils sont
+      délibérément malformés. Invariant tenu par
+      `a_hostile_elf_never_panics_the_scan`. Reconfirmé : 0/40 000.
+- [ ] **Étendre l'invariant** aux autres analyseurs et au désassembleur
+      (voir septembre26.md, C2).
 
 ## 4 quinquies. Modifier un binaire — premier morceau
 
