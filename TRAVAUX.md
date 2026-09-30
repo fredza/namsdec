@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **30 septembre
-2026**, version 0.2.5-beta.11, 606 tests au vert.
+2026**, version 0.2.6-beta.1, 611 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -260,6 +260,58 @@ Détail chiffré dans `AMELIORATIONS.txt` 7.11, section « REVUE DU
       dernière écriture). Une écriture vers une case qu'on ne sait pas
       distinguer de la nôtre coupe la piste — `[rax]` vaut peut-être
       `[rbp-8]`, et rien dans le code ne le dit.
+
+## 4 bis. Les mots de l'interface
+
+- [x] **Un mot par question, pour les outils** — trois questions se
+      mélangeaient en autant de vocabulaires (« allumer », « s'en
+      servir », « programme détecté »). Elles sont nommées séparément :
+      le programme est **installé sur la machine**, il est **activé dans
+      namsdec**, et le module d'installation est activé. Les trois sont
+      indépendantes, et c'est tout le sujet.
+- [x] **« Recommencer » retiré d'un outil qui répond** — une offre sans
+      motif : vingt minutes de compilation pour un résultat identique, et
+      l'on finissait par douter que l'installation ait abouti. À la place,
+      **« Réparer »** dans le seul cas où relancer sert : l'outil là mais
+      incomplet, c'est-à-dire rizin sans `rz-ghidra`.
+- [x] **DZF dans la liste**, bien qu'en cours d'écriture. Deux contrôles
+      le refusaient : l'un exigeait `{file}` alors que DZF reçoit
+      `{text}`, l'autre lisait le `-S` de `cmake -S .` comme celui de
+      `pacman -S` et allait demander aux dépôts s'ils connaissent un
+      paquet nommé « . ».
+- [x] **Le dialogue qui montrait une sortie sous un titre d'entrée** —
+      « Entrée du programme » gardait ce titre après la réponse. Il
+      s'intitule « Ce que le programme a écrit » dès qu'il ne recueille
+      plus rien.
+- [x] **Le profil dit combien de lignes sont classées** — le défilement
+      marchait, et c'est mesuré : douze tours de molette atteignent la
+      dernière rangée. Le grief « je ne sais pas me déplacer » était de
+      la découvrabilité, pas de la mécanique : rien ne disait qu'il y
+      avait une suite, et l'on ne cherche pas à dérouler ce qu'on croit
+      avoir vu en entier.
+- [x] **Les scripts annoncent avant d'agir** — `install.sh` et
+      `uninstall.sh` montrent en tête les réglages retenus, avec l'option
+      qui annule chacun. On découvrait après coup qu'ils avaient touché au
+      fichier du shell ou épinglé au dock. Cadre, barre d'avancement et
+      bilan, et un contrôle qui vérifie l'alignement du cadre — un titre
+      accentué le décalait, parce que `printf '%-*s'` compte les octets.
+
+## 4 ter. Les contrôles qui lisaient la machine
+
+- [x] **Quatre CI rouges pour un seul contrôle** (et non pour la mise en
+      forme : `cargo fmt --all --check` passait). Il semait l'état des
+      outils, mais ouvrir la fenêtre d'installation jette ce relevé par
+      conception — on a pu installer l'outil à la main dans un terminal
+      —, et l'image suivante le refaisait en lançant vraiment rizin :
+      installé ici, absent du coureur. Il sème maintenant **après la
+      première image**, et couvre les trois états au lieu d'un.
+- [x] **L'onglet Outils** avait le même défaut, révélé en y ajoutant
+      DZF : il lisait la machine pour savoir s'il devait vérifier quoi que
+      ce soit, et ne vérifiait donc rien sur un poste bien équipé.
+- [x] **Le guide que le README annonce** — le lien pointait vers un PDF
+      que trois montées de version avaient emporté. Un contrôle exige
+      maintenant qu'il porte la version courante, que le fichier existe,
+      et qu'aucun autre ne traîne à côté.
 
 ## 5. Vocation pédagogique
 

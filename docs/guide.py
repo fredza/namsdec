@@ -1418,7 +1418,34 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
              "sudo dnf install rizin rizin-plugin-ghidra"],
             ["RetDec", "du C compilable, lentement", "github.com/avast/retdec/releases"],
             ["objdump, ndisasm", "des instructions", "déjà là si namsdec assemble"],
+            ["DZF", "un désassembleur maison, en cours",
+             "cmake -S . -B build dans DZF/x64-disassembler"],
         ]),
+        ("h2", "Deux questions, deux mots"),
+        ("p",
+         "Chaque fiche répond à <b>deux</b> questions, et il faut les deux pour que l'outil "
+         "serve : le programme est-il <b>installé sur la machine</b>, et est-il <b>activé dans "
+         "namsdec</b> ? Les deux sont indépendantes — un outil installé mais non activé ne sera "
+         "pas lancé, et un outil activé qui a disparu de la machine échouera au lancement, ce que "
+         "la fiche dit en rouge."),
+        ("p",
+         "L'activer n'écrit qu'un fichier de quelques lignes dans "
+         "<font face='Courier'>~/.local/share/namsdec/decompilers/</font> : rien n'est téléchargé "
+         "ni lancé tant qu'on ne le demande pas. Un troisième réglage, distinct des deux "
+         "premiers, est le <b>module d'installation</b> (Préférences › Modules) : c'est lui qui "
+         "sait aller chercher les sources et les construire."),
+        ("note",
+         "Un outil qui répond ne propose que <b>Fermer</b>. « Recommencer » était là, et c'était "
+         "une offre sans motif : vingt minutes de compilation pour un résultat identique, et l'on "
+         "finissait par douter que l'installation ait abouti. Un outil <b>incomplet</b>, lui, "
+         "propose <b>Réparer</b> — c'est le seul cas où relancer la recette sert à quelque "
+         "chose."),
+        ("note",
+         "<b>DZF est dans la liste bien qu'il soit en cours d'écriture</b> : c'est le "
+         "désassembleur x86-64 maison, en C++23 et sans aucune dépendance. Il ne lit pas l'ELF, "
+         "et n'a pas à l'apprendre — namsdec lui passe les octets exécutables et leur adresse. "
+         "Tant qu'il n'est pas bâti, sa fiche dit où le prendre ; le jour où il l'est, namsdec le "
+         "voit sans qu'on ait rien à déclarer."),
         ("note",
          "<b>Rizin seul ne décompile pas</b> : la commande <font face='Courier'>pdg</font> vient "
          "du greffon <font face='Courier'>rz-ghidra</font>. Là où il n'est pas empaqueté, "

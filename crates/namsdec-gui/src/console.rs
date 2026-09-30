@@ -76,6 +76,29 @@ impl NamsdecApp {
                 theme.dim,
                 format!("{} {}", sidebar::group_digits(total), s.profile_total),
             );
+            // Combien de lignes sont classées, et non seulement combien
+            // d'instructions ont tourné. La console en montre une
+            // douzaine ; sans ce chiffre, rien ne disait que la liste
+            // continue sous le bord — ni de combien. « Je ne sais pas me
+            // déplacer dans profil » venait de là : on ne cherche pas à
+            // dérouler ce qu'on croit avoir vu en entier.
+            ui.colored_label(theme.dim, "·");
+            ui.colored_label(
+                theme.dim,
+                format!(
+                    "{} {}",
+                    sidebar::group_digits(classement.len() as u64),
+                    s.profile_lines_ranked
+                ),
+            )
+            // Et comment y aller. Le défilement marchait — mesuré : la
+            // molette déroule bien la liste —, mais rien ne disait qu'il
+            // y avait une suite, ni qu'on pouvait tirer le bord haut de
+            // la console pour en voir plus d'un coup. « Je ne sais pas me
+            // déplacer dans profil » était un grief de découvrabilité, et
+            // c'est le chiffre au-dessus qui le règle : on ne cherche pas
+            // à dérouler ce qu'on croit avoir vu en entier.
+            .on_hover_text(s.profile_scroll_hint);
             if ui.small_button(s.profile_copy).clicked() {
                 ui.ctx().copy_text(self.profile_text(&classement, total));
                 self.status = Status::Note(|s| s.profile_copied);
@@ -468,7 +491,18 @@ impl NamsdecApp {
         let mut envoyer = false;
         let mut fin = false;
         let mut fermer = false;
-        egui::Window::new(s.input_dialog_title)
+        // Le titre suit l'état, parce que la boîte change de rôle.
+        // Tant que le programme attend, on y tape : « Entrée du
+        // programme » est juste. Une fois qu'il a repris, elle ne
+        // recueille plus rien — elle montre ce qu'il a écrit, et garder
+        // le premier titre faisait lire une sortie sous l'étiquette
+        // d'une entrée.
+        let titre = if attend {
+            s.input_dialog_title
+        } else {
+            s.input_dialog_title_done
+        };
+        egui::Window::new(titre)
             .id(egui::Id::new(INPUT_DIALOG))
             .resizable(false)
             .collapsible(false)
@@ -478,7 +512,7 @@ impl NamsdecApp {
             .default_width(480.0)
             .min_width(480.0)
             .show(ctx, |ui| {
-                if chrome::window_head(ui, theme, s, s.input_dialog_title) {
+                if chrome::window_head(ui, theme, s, titre) {
                     fermer = true;
                 }
                 ui.add_space(6.0);

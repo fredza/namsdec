@@ -58,12 +58,28 @@ commandes, et rien n'est posé hors de
 
 **Un décompilateur, si vous en avez un.** Le module **Décompilation**
 (Préférences ▸ Modules, éteint par défaut) lance l'outil de votre choix.
-Cinq sont connus d'avance — `objdump`, `ndisasm`, le pseudo-code de
-`radare2`, **Rizin + rz-ghidra** et **RetDec** — avec les arguments qui
-marchent : Préférences ▸ Plugins dit lesquels sont installés sur votre
-machine, lesquels manquent et comment les obtenir, et les déclare d'un
-clic. Déclarer **écrit un fichier de quelques lignes** : namsdec ne
-télécharge rien et ne lance rien de lui-même. Le vôtre s'ajoute de la
+Six sont connus d'avance — `objdump`, `ndisasm`, le pseudo-code de
+`radare2`, **Rizin + rz-ghidra**, **RetDec** et **DZF** — avec les
+arguments qui marchent.
+
+Chaque fiche répond à **deux questions**, et il faut les deux pour que
+l'outil serve : le programme est-il **installé sur la machine**, et est-il
+**activé dans namsdec** ? Les deux sont indépendantes — un outil installé
+mais non activé ne sera pas lancé, et un outil activé qui a disparu de la
+machine échouera au lancement, ce que la fiche dit en rouge. L'activer
+**écrit un fichier de quelques lignes** : namsdec ne télécharge rien et ne
+lance rien de lui-même.
+
+Un outil qui répond ne propose que **Fermer** : relancer vingt minutes de
+compilation pour un résultat identique n'est pas une offre. Un outil
+**incomplet** propose **Réparer** — Rizin sans `rz-ghidra`, où `pdg`
+n'existe pas et où rien ne disait quoi faire.
+
+**DZF est dans la liste bien qu'il soit en cours d'écriture** : c'est le
+désassembleur x86-64 maison, en C++23 et sans aucune dépendance. Il ne lit
+pas l'ELF et n'a pas à l'apprendre — namsdec lui passe les octets
+exécutables et leur adresse. Tant qu'il n'est pas bâti, sa fiche dit où le
+prendre. Le vôtre s'ajoute de la
 même façon, par un JSON déposé dans
 `~/.local/share/namsdec/decompilers/` — avec `{out}` dans les arguments
 si l'outil écrit son résultat dans un fichier plutôt que sur la sortie
@@ -211,7 +227,7 @@ demande explicite, et écrit la commande complète avant de la lancer.
 ## Le guide
 
 Un **guide de l'utilisateur en PDF** accompagne chaque version :
-[`docs/guide-namsdec-0.2.5-beta.3.pdf`](docs/guide-namsdec-0.2.5-beta.3.pdf)
+[`docs/guide-namsdec-0.2.6-beta.1.pdf`](docs/guide-namsdec-0.2.6-beta.1.pdf)
 — installation, prise en main, chaque panneau, l'exécution pas à pas, la
 mémoire, le manuel, le déroulement, le parcours, la rétro-ingénierie, les
 raccourcis et les limites connues.

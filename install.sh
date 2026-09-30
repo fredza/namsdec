@@ -124,11 +124,66 @@ EXERCISES_DIR="$PREFIX/$APP/exercises"
 DESKTOP_DIR="$PREFIX/applications"
 
 # --- Dire ce qu'on fait -------------------------------------------------
+
+# Un cadre autour d'un titre. Les caractères de dessin sont ceux que tout
+# terminal moderne rend ; ailleurs, la ligne reste lisible même si le
+# trait tombe sur un point d'interrogation.
+# Compléter un texte à une largeur donnée, en colonnes.
+#
+# `printf '%-30s'` ne convient pas : il compte les OCTETS, si bien que
+# « alléger » en fait huit et décale la colonne d'un cran. `${#texte}`,
+# lui, compte les caractères — c'est ce qu'il faut ici.
+caler() {
+    local texte="$1"
+    local largeur="$2"
+    local reste=$((largeur - ${#texte}))
+    printf '%s' "$texte"
+    while [ "$reste" -gt 0 ]; do printf ' '; reste=$((reste - 1)); done
+}
+
+cadre() {
+    local texte="$1" largeur=${2:-62} trait=''
+    local i
+    for ((i = 0; i < largeur; i++)); do trait+='─'; done
+    printf '  %s┌%s┐%s\n' "$BLEU" "$trait" "$FIN"
+    printf '  %s│%s %s' "$BLEU" "$FIN" "$GRAS"
+    caler "$texte" "$((largeur - 2))"
+    printf '%s %s│%s\n' "$FIN" "$BLEU" "$FIN"
+    printf '  %s└%s┘%s\n' "$BLEU" "$trait" "$FIN"
+}
+
+# Une ligne de réglage : ✓ quand c'est actif, · quand ce ne l'est pas, et
+# l'option qui l'inverse écrite à côté. C'est là toute l'idée — on voit
+# d'un coup d'œil ce qui va se passer ET comment le changer, sans avoir à
+# relire --help.
+reglage() {
+    local actif="$1" nom="$2" option="$3"
+    [ "$SILENCIEUX" = 1 ] && return 0
+    if [ "$actif" = 1 ]; then
+        printf '    %s✓%s ' "$VERT" "$FIN"
+        caler "$nom" 28
+        printf ' %s%s%s\n' "$GRIS" "$option" "$FIN"
+    else
+        # Inactif : l'option qui l'annule n'a plus d'objet, et
+        # l'afficher laisserait croire qu'il reste quelque chose à
+        # couper.
+        printf '    %s·%s %s%s%s\n' "$GRIS" "$FIN" "$GRIS" "$nom" "$FIN"
+    fi
+}
+
 ETAPE=0
 etape() {
     ETAPE=$((ETAPE + 1))
     [ "$SILENCIEUX" = 1 ] && return 0
-    printf '%s[%d/%d]%s %s\n' "$BLEU" "$ETAPE" "$TOTAL" "$FIN" "$1"
+    # Une barre plutôt qu'un rapport de deux nombres : sur une
+    # compilation de plusieurs minutes, « où en est-on » se lit d'un
+    # coup d'œil et non en faisant une division.
+    local barre='' i
+    for ((i = 1; i <= TOTAL; i++)); do
+        if [ "$i" -le "$ETAPE" ]; then barre+='▰'; else barre+='▱'; fi
+    done
+    printf '\n  %s%s%s  %s%d/%d%s  %s%s%s\n' \
+        "$BLEU" "$barre" "$FIN" "$GRIS" "$ETAPE" "$TOTAL" "$FIN" "$GRAS" "$1" "$FIN"
 }
 detail()  { [ "$SILENCIEUX" = 1 ] || printf '      %s%s%s\n' "$GRIS" "$1" "$FIN"; }
 ok()      { [ "$SILENCIEUX" = 1 ] || printf '      %s✓%s %s\n' "$VERT" "$FIN" "$1"; }
@@ -156,9 +211,28 @@ TOTAL=2
 
 if [ "$SILENCIEUX" != 1 ]; then
     VERSION=$(awk -F'"' '/^version = /{print $2; exit}' "$SOURCE_DIR/Cargo.toml" 2>/dev/null || echo '?')
-    printf '\n%s  namsdec%s %s%s%s\n' "$GRAS" "$FIN" "$GRIS" "$VERSION" "$FIN"
-    printf '  %sun atelier pour apprendre l'"'"'assembleur x86-64%s\n\n' "$GRIS" "$FIN"
-    [ "$ESSAI" = 1 ] && printf '  %s— essai à blanc : rien ne sera écrit —%s\n\n' "$JAUNE" "$FIN"
+    printf '\n'
+    # Pas de tiret cadratin ni de ✓ dans un cadre : ces caractères
+    # comptent pour un et se rendent sur deux colonnes dans beaucoup de
+    # terminaux, et le bord droit tombe alors à côté.
+    cadre "Installation de namsdec $VERSION"
+    printf '  %sun atelier pour apprendre l'"'"'assembleur x86-64%s\n' "$GRIS" "$FIN"
+    [ "$ESSAI" = 1 ] && printf '\n  %s— essai à blanc : rien ne sera écrit —%s\n' "$JAUNE" "$FIN"
+
+    # Ce qui va être fait, et l'option qui l'annule. Le script le faisait
+    # sans le dire : on découvrait qu'il avait touché au fichier du shell
+    # ou épinglé au dock une fois que c'était fait. Montrer les réglages
+    # retenus AVANT d'agir, c'est laisser le choix de couper court.
+    printf '\n  %sCe qui va être fait%s   %s(-h pour toutes les options)%s\n' \
+        "$GRAS" "$FIN" "$GRIS" "$FIN"
+    reglage "$AVEC_COMPILATION" "compiler ($PROFIL)"        "--no-build, --debug"
+    reglage "$AVEC_STRIP"       "alléger le binaire"        "--no-strip"
+    reglage "$AVEC_EXERCICES"   "poser les exercices"       "--no-exercises"
+    reglage "$AVEC_LANCEUR"     "lanceur et icônes"         "--no-desktop"
+    reglage "$AVEC_PATH"        "ajouter au PATH"           "--no-path"
+    reglage "$AVEC_DOCK"        "épingler au dock"          "--no-dock"
+    printf '\n    %sbinaire%s    %s\n' "$GRIS" "$FIN" "$BIN_DIR/$APP"
+    printf '    %sdonnées%s    %s/%s\n' "$GRIS" "$FIN" "$PREFIX" "$APP"
 fi
 
 # --- Prérequis ---------------------------------------------------------
@@ -350,7 +424,9 @@ if [ "$ESSAI" = 1 ]; then
     printf '  %sRelancez sans --dry-run pour installer.%s\n\n' "$GRIS" "$FIN"
     exit 0
 fi
-printf '\n  %s✓ namsdec est installé.%s\n\n' "$VERT" "$FIN"
+printf '\n'
+cadre "namsdec $VERSION est en place"
+printf '\n'
 printf '  %sLancer%s          %s\n' "$GRAS" "$FIN" "$APP"
 [ "$AVEC_LANCEUR" = 1 ] && printf '  %sou%s              depuis le menu des applications\n' "$GRAS" "$FIN"
 printf '  %sPremiers pas%s    Aide ▸ Guide, ou la touche %sF1%s\n' "$GRAS" "$FIN" "$CYAN" "$FIN"

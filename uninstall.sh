@@ -98,7 +98,68 @@ DESKTOP_DIR="$PREFIX/applications"
 # Ce que l'utilisateur a ajouté : thèmes et séries d'exercices installés.
 DATA_DIR="$PREFIX/$APP"
 
-say()  { [ "$SILENCIEUX" = 1 ] || printf '%s==>%s %s\n' "$BLEU" "$FIN" "$1"; }
+# Les mêmes habits que l'installation : on désinstalle avec le même
+# script, et deux présentations différentes pour deux moitiés du même
+# geste donnent l'impression de deux outils sans rapport.
+caler() {
+    local texte="$1"
+    local largeur="$2"
+    local reste=$((largeur - ${#texte}))
+    printf '%s' "$texte"
+    while [ "$reste" -gt 0 ]; do printf ' '; reste=$((reste - 1)); done
+}
+
+cadre() {
+    local texte="$1" largeur=${2:-62} trait=''
+    local i
+    for ((i = 0; i < largeur; i++)); do trait+='─'; done
+    printf '  %s┌%s┐%s\n' "$BLEU" "$trait" "$FIN"
+    printf '  %s│%s %s' "$BLEU" "$FIN" "$GRAS"
+    caler "$texte" "$((largeur - 2))"
+    printf '%s %s│%s\n' "$FIN" "$BLEU" "$FIN"
+    printf '  %s└%s┘%s\n' "$BLEU" "$trait" "$FIN"
+}
+
+reglage() {
+    local actif="$1" nom="$2" option="$3"
+    [ "$SILENCIEUX" = 1 ] && return 0
+    if [ "$actif" = 1 ]; then
+        printf '    %s✓%s ' "$VERT" "$FIN"
+        caler "$nom" 28
+        printf ' %s%s%s\n' "$GRIS" "$option" "$FIN"
+    else
+        printf '    %s·%s %s%s%s\n' "$GRIS" "$FIN" "$GRIS" "$nom" "$FIN"
+    fi
+}
+
+ETAPE=0
+say() {
+    ETAPE=$((ETAPE + 1))
+    [ "$SILENCIEUX" = 1 ] && return 0
+    printf '\n  %s%2d.%s %s%s%s\n' "$BLEU" "$ETAPE" "$FIN" "$GRAS" "$1" "$FIN"
+}
+
+if [ "$SILENCIEUX" != 1 ]; then
+    VERSION=$(awk -F'"' '/^version = /{print $2; exit}' \
+        "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/Cargo.toml" 2>/dev/null || echo '?')
+    printf '\n'
+    cadre "Desinstallation de namsdec $VERSION"
+    [ "$ESSAI" = 1 ] && printf '\n  %s— essai à blanc : rien ne sera supprimé —%s\n' "$JAUNE" "$FIN"
+
+    # Ce qui part, et ce qui reste. C'est la question qu'on se pose en
+    # lançant une désinstallation, et la réponse arrivait jusqu'ici après
+    # coup — une fois les fichiers déjà retirés.
+    printf '\n  %sCe qui va partir%s   %s(-h pour toutes les options)%s\n' \
+        "$GRAS" "$FIN" "$GRIS" "$FIN"
+    reglage 1        "le binaire, le lanceur, les icônes" ""
+    reglage "$PURGE" "vos réglages"                       "--purge les retire"
+    reglage "$PURGE" "vos thèmes et vos séries"           "--purge les retire"
+    if [ "$PURGE" != 1 ]; then
+        printf '\n    %sVos réglages et vos séries sont gardés : on désinstalle%s\n' "$GRIS" "$FIN"
+        printf '    %ssouvent pour réinstaller. --purge les retire aussi.%s\n' "$GRIS" "$FIN"
+    fi
+fi
+
 retirer() {
     if [ "$ESSAI" = 1 ]; then
         printf '    %s· %s%s\n' "$GRIS" "$*" "$FIN"
@@ -193,5 +254,9 @@ fi
 if [ "$ESSAI" = 1 ]; then
     [ "$SILENCIEUX" = 1 ] || printf '\n  %s— essai à blanc terminé : rien n'"'"'a été supprimé.%s\n\n' "$JAUNE" "$FIN"
 else
-    [ "$SILENCIEUX" = 1 ] || printf '\n  %s✓ namsdec est désinstallé.%s\n\n' "$VERT" "$FIN"
+    if [ "$SILENCIEUX" != 1 ]; then
+        printf '\n'
+        cadre "namsdec est desinstalle"
+        printf '\n  %sReinstaller%s     ./install.sh\n\n' "$GRAS" "$FIN"
+    fi
 fi

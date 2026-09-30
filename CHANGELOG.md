@@ -4,6 +4,70 @@ Les dates sont celles des commits ; le format suit [Keep a
 Changelog](https://keepachangelog.com/fr/1.1.0/) d'assez loin — une
 entrée par version, et ce qui change pour qui s'en sert.
 
+## 0.2.6-beta.1 — 30 septembre 2026
+
+Une instruction se récrit en assembleur, le désassemblage se lit dans la
+syntaxe du système, dix-huit exercices de plus, et le vocabulaire des
+outils cesse de mélanger trois questions.
+
+**Modifier le code, en assembleur**
+- La fenêtre des correctifs accepte désormais **une instruction** là où
+  elle n'acceptait que des octets : `jmp 0x401050` plutôt que
+  `e9 f6 00 00 00`. C'est nasm qui assemble, à l'adresse réelle — un
+  saut est relatif, et le même texte ne donne pas les mêmes octets à deux
+  endroits. Si nasm refuse, c'est son diagnostic qui s'affiche, pas le
+  mien.
+- Le désassemblage se lit au choix en **syntaxe NASM ou dans celle du
+  système** (AT&T, celle de `objdump` et de gdb). Le même octet, deux
+  écritures : `mov rax, rbx` et `movq %rbx, %rax`. L'ordre des opérandes
+  y est inversé, et c'est la première chose qui déroute en passant d'un
+  outil à l'autre.
+
+**L'Atelier : une seconde série d'exercices**
+- Dix-huit exercices livrés en greffon, posés par le même
+  `./install.sh` : huit au palier Structures, dix au palier Maîtrise.
+- Les seconds sortent du calcul entier — quatre additions en une
+  instruction (`paddd`), seize octets comparés d'un coup (`pcmpeqb` puis
+  `pmovmskb`), un appel système qui écrit vraiment, le débordement signé
+  et le non signé qui ne répondent pas à la même question, un produit qui
+  ne tient pas dans un registre, un canari de pile monté à la main.
+- Les dix-huit **atteignent leur but tels qu'ils sont livrés**, et un
+  contrôle l'exécute à chaque fois : il a attrapé deux énoncés faux —
+  « Bonjour tout » fait douze caractères, et `0b1011011011` porte sept
+  bits allumés.
+
+**Les outils : un mot par question**
+- Trois questions se mélangeaient en autant de vocabulaires. Elles sont
+  maintenant nommées séparément : le programme est **installé sur la
+  machine** ou non, il est **activé dans namsdec** ou non, et le module
+  d'installation est activé ou non. « Allumer », « s'en servir » et
+  « programme détecté » ont disparu.
+- **« Recommencer » est retiré** d'un outil qui répond : c'était une
+  offre sans motif — vingt minutes de compilation pour un résultat
+  identique —, et elle faisait douter que l'installation ait abouti.
+- À la place, **« Réparer »** dans le seul cas où relancer sert : l'outil
+  là mais incomplet. C'est rizin sans `rz-ghidra`, où `pdg` n'existe pas
+  et où rien ne disait quoi faire.
+- **DZF figure dans la liste**, bien que ses fonctions soient encore
+  minimales : un outil qu'on développe se reconnaît d'abord à ce qu'il
+  est absent, et la fiche dit où le prendre.
+
+**Deux textes qui mentaient**
+- Le dialogue intitulé « Entrée du programme » gardait ce titre après la
+  réponse, quand il ne montre plus qu'une **sortie**. Il s'intitule
+  maintenant « Ce que le programme a écrit ».
+- L'onglet Profil dit **combien de lignes sont classées**. Le défilement
+  marchait — mesuré —, mais rien ne disait qu'il y avait une suite : on
+  ne cherche pas à dérouler ce qu'on croit avoir vu en entier.
+
+**Ce qui rendait la CI rouge**
+- Quatre poussées d'affilée ont échoué sur un seul contrôle, et pas sur
+  la mise en forme : il **lisait la machine**. Ouvrir la fenêtre
+  d'installation jette le relevé des outils par conception, et l'image
+  suivante le refait en lançant vraiment rizin — installé ici, absent du
+  coureur. Il sème maintenant l'état, après la première image, et couvre
+  les trois cas au lieu d'un.
+
 ## 0.2.5-beta.11 — 29 septembre 2026
 
 Les sauts rendus à leur forme, un `main.rs` qui a maigri des deux tiers,

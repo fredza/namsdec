@@ -166,6 +166,43 @@ pub fn all() -> Vec<Known> {
             needs_fr: None,
             needs_en: None,
         },
+        // DZF est dans la liste bien que ses fonctions soient encore
+        // minimales, et c'est voulu : un outil qu'on développe se
+        // reconnaît d'abord à ce qu'il est absent de la machine. La
+        // fiche dit alors où le prendre, et le jour où il est bâti,
+        // namsdec le voit sans qu'on ait rien à déclarer.
+        //
+        // Il ne lit pas l'ELF, et n'a pas à l'apprendre : il reçoit
+        // `{text}` — les octets exécutables seuls — et `{base}`, leur
+        // adresse. C'est namsdec qui découpe. Cette fiche-ci est la
+        // même que `plugins/fonctionnalites/dzf.json`, qui reste le
+        // moyen de l'installer à la main ou d'en changer les options.
+        Known {
+            plugin: Plugin {
+                id: "dzf".to_owned(),
+                name: "DZF — désassemblage x86-64 (maison)".to_owned(),
+                command: "x64-disassembler".to_owned(),
+                args: vec![
+                    "--base".to_owned(),
+                    "{base}".to_owned(),
+                    "{text}".to_owned(),
+                ],
+                install: Some(
+                    "cd DZF/x64-disassembler && cmake -S . -B build && cmake --build build"
+                        .to_owned(),
+                ),
+            },
+            about_fr: "Désassembleur x86-64 écrit à la main en C++23, sans aucune dépendance. \
+                       En cours de développement : il ne couvre pas encore tout le jeu \
+                       d'instructions, et il n'a pas à savoir lire un ELF — namsdec lui donne \
+                       les octets exécutables et leur adresse.",
+            about_en: "An x86-64 disassembler written by hand in C++23, with no dependencies. \
+                       Under development: it does not yet cover the whole instruction set, and \
+                       it need not know how to read an ELF — namsdec hands it the executable \
+                       bytes and their address.",
+            needs_fr: None,
+            needs_en: None,
+        },
     ]
 }
 
@@ -217,6 +254,19 @@ pub fn program_path_in(command: &str, tools: Option<&Path>) -> Option<PathBuf> {
 /// n'installait même pas Rizin — et rien ne le disait.
 pub fn packages_named(install: &str) -> Vec<&str> {
     let mots: Vec<&str> = install.split_whitespace().collect();
+    // D'abord : est-ce seulement une commande de gestionnaire ?
+    //
+    // Sans cette question, `cmake -S . -B build` était lu comme un
+    // `pacman -S` et l'on partait chercher des paquets nommés « . » et
+    // « build » dans les dépôts. Le verbe seul ne suffit pas à
+    // reconnaître une installation — c'est le gestionnaire qui la
+    // nomme, et une ligne qui n'en cite aucun n'annonce aucun paquet.
+    const GESTIONNAIRES: [&str; 8] = [
+        "dnf", "yum", "apt", "apt-get", "pacman", "zypper", "apk", "brew",
+    ];
+    if !mots.iter().any(|mot| GESTIONNAIRES.contains(mot)) {
+        return Vec::new();
+    }
     // Après `install`, `-S`, `add` : le verbe du gestionnaire.
     let Some(rang) = mots
         .iter()
@@ -356,9 +406,16 @@ mod tests {
         for outil in all() {
             let p = &outil.plugin;
             assert!(!p.id.is_empty() && !p.name.is_empty(), "{p:?}");
+            // `{file}` ou `{text}` : le contrat en offre deux, et le
+            // second est le bon pour un outil qui ne lit pas l'ELF —
+            // namsdec lui découpe les octets exécutables et lui donne
+            // leur adresse. Exiger `{file}` seul rendait la liste
+            // fermée à ces outils-là.
             assert!(
-                p.args.iter().any(|a| a.contains("{file}")),
-                "{} ne dit pas où va le binaire",
+                p.args
+                    .iter()
+                    .any(|a| a.contains("{file}") || a.contains("{text}")),
+                "{} ne dit pas où vont les octets à désassembler",
                 p.id
             );
             assert!(
@@ -500,6 +557,15 @@ mod package_tests {
         // rien à vérifier, et prétendre le contraire crierait au loup.
         assert!(packages_named("github.com/avast/retdec/releases").is_empty());
         assert!(packages_named("").is_empty());
+        // Une ligne de compilation n'annonce aucun paquet, et son `-S`
+        // n'est pas celui de pacman. Sans cette distinction, namsdec
+        // allait demander aux dépôts s'ils connaissent un paquet
+        // nommé « . ».
+        assert!(
+            packages_named("cd DZF/x64-disassembler && cmake -S . -B build && cmake --build build")
+                .is_empty(),
+            "cmake -S n'est pas pacman -S"
+        );
     }
 
     /// Chaque paquet annoncé existe vraiment dans les dépôts.

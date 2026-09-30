@@ -12514,6 +12514,171 @@ fn the_input_dialog_opens_when_the_program_waits_and_shows_what_it_asked() {
         peint.contains(s.console_input_label),
         "et l'autre chemin est toujours là :\n{peint}"
     );
+
+    // Et une fois la réponse envoyée, la boîte change de rôle : elle ne
+    // recueille plus rien, elle montre ce que le programme a écrit. Son
+    // titre doit le dire — « Entrée du programme » au-dessus d'une
+    // sortie est un contresens, et c'est celui qu'une capture a trouvé.
+    app.show_input_dialog = true;
+    app.input_dialog_text = "coucou".to_owned();
+    app.send_input(Some("coucou".to_owned()));
+    for _ in 0..4000 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&egui::Context::default());
+    }
+    assert!(
+        !matches!(app.status, Status::WaitingForInput),
+        "le programme a repris : {:?}",
+        app.status
+    );
+    let peint = paint(&mut app);
+    assert!(
+        peint.contains(s.input_dialog_title_done),
+        "le titre dit que c'est une sortie :\n{peint}"
+    );
+    // Et plus l'ancien. Comparé texte entier : l'invite de la console
+    // commence par la même phrase, et un `contains` accuserait celle-ci
+    // — un contrôle qui ne peut pas passer n'apprend rien.
+    assert!(
+        !peint
+            .split('|')
+            .any(|écrit| écrit.trim() == s.input_dialog_title),
+        "et non une entrée :\n{peint}"
+    );
+}
+
+/// Le classement du profil se parcourt, et dit combien il en reste.
+///
+/// « Je ne sais pas me déplacer dans profil (voir les lignes) », d'une
+/// capture du 30 septembre. Le classement d'un programme qui boucle
+/// porte des dizaines de rangées ; la console en montre douze, et rien
+/// ne disait qu'il y en avait d'autres — ni combien, ni comment y
+/// aller. Une liste qu'on ne sait pas parcourir vaut sa première page.
+///
+/// Le contrôle mesure les deux : le compte est écrit, et la molette
+/// change vraiment ce qui est peint.
+#[test]
+fn the_profile_ranking_can_be_walked_through() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    // Les numéros de ligne que le CLASSEMENT montre, et non ceux que
+    // l'écran porte : la gouttière de l'éditeur en écrit un par ligne du
+    // source, et un `contains` sur le tout ne distinguerait pas les deux.
+    // Le classement cale ses numéros à droite dans une colonne large,
+    // donc ses cellules portent des espaces ; la gouttière écrit le
+    // nombre nu.
+    fn rangées_du_classement(peint: &str) -> Vec<u32> {
+        peint
+            .split('|')
+            .filter(|cellule| cellule.contains(' '))
+            .filter_map(|cellule| cellule.trim().parse::<u32>().ok())
+            .collect()
+    }
+
+    // Un programme dont le classement dépasse ce qu'une console montre :
+    // quarante lignes distinctes, toutes exécutées.
+    let mut source = String::from("global _start\nsection .text\n_start:\n");
+    for i in 0..40 {
+        source.push_str(&format!("    mov rax, {i}\n"));
+    }
+    source.push_str("    hlt\n");
+    let mut app = NamsdecApp {
+        source,
+        console_tab: ConsoleTab::Profile,
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+    app.do_run();
+    let ctx_run = egui::Context::default();
+    for _ in 0..500 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&ctx_run);
+    }
+    let classées = app.line_visits().len();
+    assert!(classées >= 40, "{classées} lignes classées");
+
+    let ctx = egui::Context::default();
+    let écran = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 1400.0));
+    let peindre = |ctx: &egui::Context, app: &mut NamsdecApp, events: Vec<egui::Event>| {
+        let input = egui::RawInput {
+            screen_rect: Some(écran),
+            events,
+            ..Default::default()
+        };
+        let mut sortie = ctx.run_ui(input, |ui| app.draw(ui));
+        let mut peint = String::new();
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(texte) = &clipped.shape {
+                peint.push_str(texte.galley.text());
+                peint.push('|');
+            }
+        }
+        sortie.textures_delta.clear();
+        peint
+    };
+
+    let mut peint = String::new();
+    for _ in 0..3 {
+        peint = peindre(&ctx, &mut app, Vec::new());
+    }
+
+    // Combien il y en a : sans ce chiffre, on ne sait pas si la liste est
+    // finie ou si elle continue sous le bord.
+    let s = strings(Lang::Fr);
+    assert!(
+        peint.contains(&format!("{classées} {}", s.profile_lines_ranked)),
+        "le nombre de lignes classées est écrit :\n{peint}"
+    );
+
+    // La liste ne tient pas d'un coup — sinon il n'y a rien à parcourir,
+    // et le contrôle ne prouverait rien.
+    let visibles = rangées_du_classement(&peint);
+    assert!(
+        !visibles.is_empty() && visibles.len() < classées,
+        "{} rangées visibles sur {classées} :\n{peint}",
+        visibles.len()
+    );
+    let dernière = *app.line_visits().keys().max().expect("une ligne");
+    assert!(
+        !visibles.contains(&dernière),
+        "la fin du classement ne tient pas d'emblée : {visibles:?}"
+    );
+
+    // Et la molette l'atteint. C'est la seconde moitié du grief : savoir
+    // qu'il y a une suite ne sert à rien si l'on ne peut pas y aller.
+    let mut atteinte = false;
+    for _ in 0..12 {
+        let peint = peindre(
+            &ctx,
+            &mut app,
+            vec![
+                // Le pointeur DANS la liste, sans quoi la molette
+                // s'applique à ce qui est sous elle — l'éditeur — et le
+                // classement ne bouge pas d'un pixel.
+                egui::Event::PointerMoved(egui::pos2(351.0, 1250.0)),
+                egui::Event::MouseWheel {
+                    unit: egui::MouseWheelUnit::Point,
+                    delta: egui::vec2(0.0, -200.0),
+                    modifiers: egui::Modifiers::NONE,
+                    phase: egui::TouchPhase::Move,
+                },
+            ],
+        );
+        if rangées_du_classement(&peint).contains(&dernière) {
+            atteinte = true;
+            break;
+        }
+    }
+    assert!(
+        atteinte,
+        "douze tours de molette doivent atteindre la fin du classement"
+    );
 }
 
 /// La provenance remonte plusieurs pas, et non un seul.
@@ -18418,7 +18583,7 @@ fn every_preferences_page_keeps_its_buttons_on_screen() {
     }
 }
 
-/// L'onglet Outils montre les cinq, et non le premier.
+/// L'onglet Outils montre tous les outils, et non le premier.
 ///
 /// Ils tenaient sur quatre lignes chacun : seul objdump entrait dans la
 /// fenêtre, et Rizin et RetDec étaient là sans que personne puisse les
@@ -18438,22 +18603,39 @@ fn the_tools_tab_shows_every_tool_not_just_the_first() {
             "« {attendu} » doit se lire dans l'onglet Outils :\n{peint}"
         );
     }
-    // Et ce qu'il faut taper pour obtenir ce qui manque — quand il
-    // manque quelque chose. Sur un poste où tous les outils sont bâtis,
-    // aucune fiche n'a de ligne « Pour l'obtenir », et c'est très bien.
-    let outils_dir = data_dir().map(|dir| namsdec_disasm::install::tools_dir(&dir));
-    let un_absent = namsdec_disasm::known::all().iter().any(|outil| {
-        !matches!(
-            outil.availability_in(outils_dir.as_deref()),
-            namsdec_disasm::known::Availability::Ready
-        )
-    });
-    if un_absent {
-        assert!(
-            peint.contains(strings(Lang::Fr).tools_get_it),
-            "la façon d'obtenir un outil absent doit se lire :\n{peint}"
-        );
-    }
+    // Et ce qu'il faut taper pour obtenir ce qui manque.
+    //
+    // L'état est SEMÉ, non lu sur la machine. Il était lu, et le test
+    // disait alors deux choses différentes selon le poste : sur celui où
+    // tous les outils sont bâtis il ne vérifiait rien, et sur un poste
+    // où le premier outil absent tombait en bas de liste il échouait
+    // pour une question de place et non de contenu.
+    //
+    // Semé APRÈS une première image : ouvrir les préférences jette le
+    // relevé par conception — on a pu installer un outil à la main dans
+    // un terminal entre-temps.
+    let premier = namsdec_disasm::known::all()
+        .first()
+        .expect("au moins un outil connu")
+        .plugin
+        .id
+        .clone();
+    app.tools_ready = namsdec_disasm::known::all()
+        .into_iter()
+        .map(|outil| {
+            let dispo = if outil.plugin.id == premier {
+                namsdec_disasm::known::Availability::Missing
+            } else {
+                namsdec_disasm::known::Availability::Ready
+            };
+            (outil.plugin.id, dispo)
+        })
+        .collect();
+    let peint = paint(&mut app);
+    assert!(
+        peint.contains(strings(Lang::Fr).tools_get_it),
+        "la façon d'obtenir un outil absent doit se lire :\n{peint}"
+    );
     // Les deux états sont dits séparément : « absent » parle du
     // programme, « namsdec s'en sert » parle de namsdec. Les confondre
     // était toute la confusion de l'ancienne page.
@@ -20094,76 +20276,102 @@ fn escape_closes_the_install_plan() {
     );
 }
 
-/// Un outil déjà installé ne propose plus « Lancer l'installation ».
+/// Ce que la fenêtre d'installation propose répond à l'état de l'outil.
 ///
-/// Le bouton restait invitant après coup : on ne savait donc pas si
-/// l'installation avait abouti, et la seule façon de s'en assurer était
-/// de tout relancer — un quart d'heure de compilation pour rien.
+/// Trois états, trois offres, et pas une de plus :
+///
+/// - il répond → **Fermer**, et rien d'autre. « Recommencer » était là,
+///   et c'était une offre sans motif : vingt minutes de compilation pour
+///   un résultat identique. Un bouton qu'on n'a aucune raison de cliquer
+///   fait douter de celui d'à côté — il laissait croire que
+///   l'installation avait peut-être échoué.
+/// - il est là mais incomplet → **Réparer**. C'est le cas de rizin sans
+///   `rz-ghidra` : `pdg` n'existe pas, et rien dans la fenêtre ne disait
+///   quoi faire.
+/// - il n'est pas là → **Lancer l'installation**.
+///
+/// L'état est SEMÉ, et semé **après la première image**. L'ouverture de
+/// la fenêtre jette le relevé par conception — on a pu installer l'outil
+/// à la main dans un terminal entre-temps —, et l'image suivante le
+/// refait en lançant vraiment rizin. Semer avant ne servait donc à rien :
+/// le test lisait la machine malgré lui, passait ici parce que rizin y
+/// est installé, et échouait sur la CI qui ne l'a pas. Quatre CI rouges
+/// d'affilée, sans qu'une ligne de namsdec soit en cause.
 #[test]
-fn an_installed_tool_offers_to_close_not_to_install_again() {
-    // L'état de l'outil est SEMÉ, non lu sur la machine.
-    //
-    // Il était lu, et le test « s'adaptait » à ce qu'il trouvait. Deux
-    // ennuis : il passait ou échouait selon ce qui avait été installé la
-    // veille, et surtout la vérification LANCE rizin — sous la charge
-    // d'une suite complète, le lancement dépasse son délai et l'outil
-    // paraît incomplet entre le moment où le test le lit et celui où la
-    // fenêtre le redemande. Le contrôle échouait alors seul au milieu de
-    // six cents autres, sans rien avoir à dire sur namsdec.
-    let prêt = true;
-    let mut app = NamsdecApp {
-        show_installer_module: true,
-        install_plan: Some("rizin-ghidra".to_owned()),
-        tools_ready: [(
-            "rizin-ghidra".to_owned(),
-            namsdec_disasm::known::Availability::Ready,
-        )]
-        .into_iter()
-        .collect(),
-        ..Default::default()
-    };
-    let ctx = egui::Context::default();
-    app.apply_theme(&ctx);
-    let entrée = egui::RawInput {
-        screen_rect: Some(egui::Rect::from_min_size(
-            egui::Pos2::ZERO,
-            egui::vec2(1600.0, 1200.0),
-        )),
-        ..Default::default()
-    };
-    let mut peint = String::new();
-    for _ in 0..3 {
-        peint.clear();
-        let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
-        for clipped in &sortie.shapes {
-            if let egui::epaint::Shape::Text(texte) = &clipped.shape {
-                peint.push_str(texte.galley.text());
-                peint.push('|');
-            }
-        }
-        sortie.textures_delta.clear();
-    }
-    if app.install_plan.is_none() {
-        return;
-    }
+fn what_the_installer_window_offers_answers_the_tools_state() {
+    use namsdec_disasm::known::Availability;
 
     let s = strings(Lang::Fr);
-    // Le test s'adapte à la machine : ce qu'on vérifie est la cohérence
-    // entre l'état réel de l'outil et ce que la fenêtre propose.
-    if prêt {
-        assert!(
-            peint.contains(s.install_already_done),
-            "rizin répond ici : la fenêtre doit le dire.\n{peint}"
-        );
-        assert!(
-            !peint.contains(s.install_start),
-            "et ne plus inviter à lancer l'installation.\n{peint}"
-        );
-    } else {
-        assert!(
-            peint.contains(s.install_start),
-            "rizin n'est pas prêt : il faut pouvoir lancer.\n{peint}"
-        );
+    for (état, attendus, absents) in [
+        (
+            Availability::Ready,
+            vec![s.install_already_done, s.dialog_close],
+            vec![s.install_start, s.install_repair],
+        ),
+        (
+            Availability::Incomplete,
+            vec![s.install_incomplete, s.install_repair, s.dialog_close],
+            vec![s.install_start, s.install_already_done],
+        ),
+        (
+            Availability::Missing,
+            vec![s.install_start],
+            vec![s.install_already_done, s.install_repair],
+        ),
+    ] {
+        let mut app = NamsdecApp {
+            show_installer_module: true,
+            install_plan: Some("rizin-ghidra".to_owned()),
+            ..Default::default()
+        };
+        let ctx = egui::Context::default();
+        app.apply_theme(&ctx);
+        let entrée = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1600.0, 1200.0),
+            )),
+            ..Default::default()
+        };
+
+        // Première image : la fenêtre s'ouvre, et vide le relevé.
+        let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+        sortie.textures_delta.clear();
+        if app.install_plan.is_none() {
+            // Pas de dossier de données sur cette machine : la fenêtre se
+            // referme d'elle-même, et il n'y a rien à juger.
+            return;
+        }
+
+        // Maintenant on sème, et plus rien ne le jettera : la fenêtre
+        // n'est plus « nouvellement ouverte ».
+        app.tools_ready = [("rizin-ghidra".to_owned(), état)].into_iter().collect();
+
+        let mut peint = String::new();
+        for _ in 0..3 {
+            peint.clear();
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(texte) = &clipped.shape {
+                    peint.push_str(texte.galley.text());
+                    peint.push('|');
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+
+        for attendu in attendus {
+            assert!(
+                peint.contains(attendu),
+                "{état:?} : « {attendu} » doit être proposé.\n{peint}"
+            );
+        }
+        for absent in absents {
+            assert!(
+                !peint.contains(absent),
+                "{état:?} : « {absent} » n'a rien à faire là.\n{peint}"
+            );
+        }
     }
 }
 
@@ -26014,6 +26222,125 @@ fn what_turns_the_cursor_into_a_hand_really_answers_a_click() {
         muettes.len(),
         muettes.join("\n  ")
     );
+}
+
+/// Le guide que le README annonce existe, et c'est celui de la version.
+///
+/// Le lien pointait vers `guide-namsdec-0.2.5-beta.3.pdf`, un fichier
+/// que trois montées de version avaient emporté : un lien mort en tête
+/// du seul endroit où l'on va chercher le mode d'emploi. Personne ne le
+/// remarque en écrivant `sed -i` sur un numéro de version — d'où ce
+/// contrôle, qui le remarque.
+#[test]
+fn the_guide_the_readme_points_to_is_the_one_of_this_version() {
+    let racine = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let readme = match std::fs::read_to_string(racine.join("README.md")) {
+        Ok(texte) => texte,
+        Err(_) => return,
+    };
+    let attendu = format!("docs/guide-namsdec-{}.pdf", env!("CARGO_PKG_VERSION"));
+    assert!(
+        readme.contains(&attendu),
+        "le README doit annoncer « {attendu} » — le guide de CETTE version"
+    );
+    // Et le fichier est là : un lien vers un PDF absent ne vaut pas mieux
+    // qu'un lien vers le mauvais.
+    assert!(
+        racine.join(&attendu).is_file(),
+        "{attendu} doit exister — régénérez-le avec `python3 docs/guide.py`"
+    );
+    // Aucun autre guide ne traîne : deux PDF dans le dossier, et l'on ne
+    // sait plus lequel décrit ce qu'on a sous les yeux.
+    let autres: Vec<String> = std::fs::read_dir(racine.join("docs"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|entrée| entrée.file_name().to_string_lossy().into_owned())
+        .filter(|nom| nom.starts_with("guide-namsdec-") && nom.ends_with(".pdf"))
+        .filter(|nom| !attendu.ends_with(nom.as_str()))
+        .collect();
+    assert!(
+        autres.is_empty(),
+        "un seul guide à la fois : {autres:?} décrivent une autre version"
+    );
+}
+
+/// Les deux scripts disent ce qu'ils vont faire AVANT de le faire.
+///
+/// L'aide existait, mais il fallait la demander : on lançait
+/// `./install.sh` et l'on découvrait après coup qu'il avait touché au
+/// fichier du shell et épinglé au dock. Un relevé des réglages retenus en
+/// tête, avec l'option qui annule chacun, laisse le temps de couper
+/// court — et évite d'avoir à relire `--help` pour savoir ce qui se
+/// passe.
+///
+/// Le contrôle porte sur le comportement, non sur la mise en forme : il
+/// lance un essai à blanc et exige que chaque réglage nommé s'y lise,
+/// avec l'option qui le retire.
+#[test]
+fn the_scripts_say_what_they_will_do_before_doing_it() {
+    let racine = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    if !racine.join("install.sh").is_file() {
+        return;
+    }
+    let dossier = tempfile::tempdir().expect("un dossier temporaire");
+
+    for (nom, attendus) in [
+        (
+            "install.sh",
+            vec![
+                "Ce qui va être fait",
+                "-h pour toutes les options",
+                "--no-exercises",
+                "--no-desktop",
+                "--no-path",
+                "--no-dock",
+            ],
+        ),
+        (
+            "uninstall.sh",
+            vec!["Ce qui va partir", "-h pour toutes les options", "--purge"],
+        ),
+    ] {
+        let sortie = std::process::Command::new("bash")
+            .arg(racine.join(nom))
+            .args(["--dry-run", "--no-color", "--prefix"])
+            .arg(dossier.path().join("share"))
+            .arg("--bin-dir")
+            .arg(dossier.path().join("bin"))
+            .output();
+        let Ok(sortie) = sortie else {
+            eprintln!("bash est introuvable : test ignoré");
+            return;
+        };
+        assert!(
+            sortie.status.success(),
+            "{nom} --dry-run doit aboutir :\n{}",
+            String::from_utf8_lossy(&sortie.stderr)
+        );
+        let dit = String::from_utf8_lossy(&sortie.stdout);
+        for attendu in attendus {
+            assert!(
+                dit.contains(attendu),
+                "{nom} doit annoncer « {attendu} » :\n{dit}"
+            );
+        }
+        // Et le cadre ne doit pas être de travers : ses trois lignes font
+        // la même largeur. Un titre accentué la décalait, parce que
+        // `printf '%-*s'` compte les octets et non les caractères.
+        let bords: Vec<&str> = dit
+            .lines()
+            .filter(|ligne| ligne.contains('┌') || ligne.contains('└') || ligne.contains('│'))
+            .collect();
+        assert!(bords.len() >= 3, "{nom} doit porter un cadre :\n{dit}");
+        let largeurs: std::collections::BTreeSet<usize> =
+            bords.iter().map(|ligne| ligne.chars().count()).collect();
+        assert_eq!(
+            largeurs.len(),
+            1,
+            "{nom} : les lignes du cadre doivent faire la même largeur, vu {largeurs:?}\n{dit}"
+        );
+    }
 }
 
 /// Les scripts d'installation disent toutes les options qu'ils

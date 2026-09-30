@@ -292,8 +292,12 @@ impl NamsdecApp {
         // fait qu'un travail s'est terminé : une installation peut
         // aboutir sans que l'outil marche, et l'inverse aussi — celui du
         // système peut l'avoir précédée.
-        let déjà_prêt =
-            self.tool_availability(&outil) == namsdec_disasm::known::Availability::Ready;
+        let état = self.tool_availability(&outil);
+        let déjà_prêt = état == namsdec_disasm::known::Availability::Ready;
+        // « Il est là, mais il lui manque une pièce » — rizin sans
+        // rz-ghidra. C'est le seul cas où relancer la recette sert à
+        // quelque chose, et c'est donc le seul où on le propose.
+        let à_réparer = état == namsdec_disasm::known::Availability::Incomplete;
         let en_cours = self
             .install_job
             .as_ref()
@@ -640,18 +644,35 @@ impl NamsdecApp {
                         // Recommencer reste possible en second : c'est le
                         // geste de quelqu'un qui sait pourquoi il le fait.
                         ui.colored_label(theme.good, s.install_already_done);
-                        // « Recommencer » n'est PAS le second bouton de la
+                        // Et rien d'autre. « Recommencer » était proposé
+                        // ici, et c'était une offre sans motif : l'outil
+                        // marche, la recette a abouti, relancer vingt
+                        // minutes de compilation ne changerait rien. Un
+                        // bouton qu'on n'a aucune raison de cliquer fait
+                        // douter de celui d'à côté — il laissait croire
+                        // que l'installation avait peut-être échoué.
+                        //
+                        // Le cas où relancer sert vraiment est plus bas :
+                        // l'outil incomplet, qu'on répare.
+                        if dialog_bar(ui, theme, s.dialog_close, None).is_some() {
+                            fermer = true;
+                        }
+                    } else if à_réparer {
+                        // Le programme est là, il lui manque une pièce.
+                        // Relancer la recette a ici un sens précis, et un
+                        // nom : réparer. C'est le cas de rizin sans
+                        // rz-ghidra — `pdg` n'existe pas, et rien dans la
+                        // fenêtre ne disait quoi faire.
+                        //
+                        // « Réparer » n'est PAS le second bouton de la
                         // barre, et c'est une leçon qu'un test a rendue :
                         // Échap y répond `Cancel`, ce qui lançait une
                         // recompilation de vingt minutes au lieu de
                         // fermer. Échap veut dire « je m'en vais », jamais
                         // « fais l'autre chose ».
-                        //
-                        // La barre ne porte donc que le geste principal et
-                        // le renoncement. Une troisième action se pose à
-                        // côté, et se clique exprès.
-                        if framed_button(ui, theme, s.install_again)
-                            .on_hover_text(s.install_again_hint)
+                        ui.colored_label(theme.warn, s.install_incomplete);
+                        if framed_button(ui, theme, s.install_repair)
+                            .on_hover_text(s.install_repair_hint)
                             .clicked()
                         {
                             lancer = true;
