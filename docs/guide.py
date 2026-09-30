@@ -474,7 +474,11 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "une surveillance ; un clic sur une valeur permet de la remplacer.",
          "<b>La vue choisie</b> — Pile, Mémoire, Tas, Octets, et RE si le module est "
          "activé. Devant un <b>binaire ouvert</b>, la vue Octets se récrit : un clic sur "
-         "les octets d'une instruction ouvre un champ, Entrée valide, Échap annule. Le "
+         "les octets d'une instruction ouvre un champ, Entrée valide, Échap annule. On y "
+         "met <b>des octets</b> — « 48 31 c0 » — <b>ou l'instruction elle-même</b> — "
+         "« xor rax, rax » : namsdec l'assemble avec le même nasm que le reste, donc avec "
+         "la même syntaxe et les mêmes messages d'erreur. Ce qui peut se lire en octets se "
+         "lit en octets, et la règle est dans l'infobulle. Le "
          "nombre d'octets doit rester le même — en récrire plus ou moins déplacerait "
          "tout ce qui suit, donc toutes les adresses et tous les sauts ; pour cela, "
          "Outils > Patcher le binaire propose « Neutraliser (nop) ». Ce qui a changé "

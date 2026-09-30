@@ -26823,3 +26823,49 @@ fn the_chosen_disassembler_survives_the_session() {
     assert_eq!(réglages.disassembler, "system");
     assert_eq!(NamsdecApp::from_settings(réglages).disassembler, "system");
 }
+
+/// On récrit une instruction en assembleur, pas seulement en octets.
+///
+/// Corriger un binaire demandait de connaître l'encodage : pour
+/// neutraliser un test, il fallait savoir que `nop` s'écrit `90`. C'est
+/// une marche de plus, et elle n'apprend rien — l'assembleur est là pour
+/// éviter d'écrire des octets à la main.
+///
+/// Un seul champ accepte les deux, et la règle est dite : ce qui peut se
+/// lire en octets se lit en octets. Sans cet ordre, `fadd` — quatre
+/// lettres qui sont aussi quatre chiffres hexadécimaux — changerait de
+/// sens selon l'humeur du programme.
+#[test]
+fn an_instruction_can_be_rewritten_in_assembly() {
+    if namsdec_asm::find_nasm().is_none() {
+        return;
+    }
+    // L'assembleur rend bien les octets attendus, adresse comprise :
+    // un saut s'écrit en relatif, et ne produit pas les mêmes octets
+    // selon l'endroit d'où l'on saute.
+    assert_eq!(
+        namsdec_asm::assemble_one("mov eax, 1", 0x401000).expect("mov s'assemble"),
+        vec![0xB8, 0x01, 0x00, 0x00, 0x00]
+    );
+    assert_eq!(
+        namsdec_asm::assemble_one("nop", 0x401000).expect("nop s'assemble"),
+        vec![0x90]
+    );
+    let depuis_1000 = namsdec_asm::assemble_one("jmp 0x401010", 0x401000).expect("saut");
+    let depuis_2000 = namsdec_asm::assemble_one("jmp 0x401010", 0x402000).expect("saut");
+    assert_ne!(
+        depuis_1000, depuis_2000,
+        "un saut est relatif : les octets dépendent d'où l'on part"
+    );
+
+    // Et ce qui ne s'assemble pas le dit, avec le message de nasm.
+    let erreur = namsdec_asm::assemble_one("mvo eax, 1", 0x401000)
+        .expect_err("un mnémonique inexistant doit être refusé");
+    let namsdec_asm::AsmError::Failed { diagnostics } = &erreur else {
+        panic!("l'erreur doit porter les diagnostics de nasm : {erreur}");
+    };
+    assert!(
+        !diagnostics.is_empty(),
+        "et nasm doit dire pourquoi : {erreur}"
+    );
+}

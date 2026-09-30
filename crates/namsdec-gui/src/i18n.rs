@@ -182,6 +182,8 @@ pub struct Strings {
     /// qu'on lit ce qu'on voudrait changer.
     pub bytes_edit_hint: &'static str,
     pub bytes_edit_length: &'static str,
+    /// « au lieu de », entre les deux longueurs d'un refus.
+    pub bytes_edit_instead_of: &'static str,
     pub bytes_edit_bad: &'static str,
     pub bytes_changed: &'static str,
     /// Le tas vu de haut : début, rupture, plafond.
@@ -1135,8 +1137,11 @@ const FR: Strings = Strings {
     bytes_instructions: "instructions",
     bytes_octets: "octets",
     bytes_length_hint: "Longueur de l'instruction en octets — comparez une ligne à l'autre",
-    bytes_edit_hint: "Cliquez pour récrire ces octets : l'exécution suivra ce que vous mettez.",
+    bytes_edit_hint: "Cliquez pour récrire : des octets — « 48 31 c0 » — ou l'instruction \
+                      elle-même — « xor rax, rax ». Ce qui peut se lire en octets se lit en \
+                      octets. La longueur ne change pas.",
     bytes_edit_length: "Il faut le même nombre d'octets : récrire une instruction ne déplace pas celles qui suivent.",
+    bytes_edit_instead_of: "au lieu de",
     bytes_edit_bad: "Des paires hexadécimales, séparées par des espaces — « 48 31 c0 ».",
     bytes_changed: "Octets changés. La fenêtre Correctifs les liste et sait les défaire.",
     heap_start: "Début",
@@ -1934,8 +1939,11 @@ const EN: Strings = Strings {
     bytes_instructions: "instructions",
     bytes_octets: "bytes",
     bytes_length_hint: "The instruction's length in bytes — compare one line with another",
-    bytes_edit_hint: "Click to rewrite these bytes: execution will follow what you put there.",
+    bytes_edit_hint: "Click to rewrite: bytes — \"48 31 c0\" — or the instruction itself — \
+                      \"xor rax, rax\". Whatever reads as bytes is read as bytes. The length \
+                      does not change.",
     bytes_edit_length: "It must be the same number of bytes: rewriting an instruction does not move the ones after it.",
+    bytes_edit_instead_of: "instead of",
     bytes_edit_bad: "Hexadecimal pairs, separated by spaces — “48 31 c0”.",
     bytes_changed: "Bytes changed. The Patches window lists them and can undo them.",
     heap_start: "Start",

@@ -266,6 +266,43 @@ pub fn build_commands(source: &str, program: &str, base_addr: u64) -> [String; 2
 /// `base_addr` est imposé à `ld` comme adresse de `.text` : la fenêtre
 /// mémoire simulée est fixe, le programme doit atterrir dedans plutôt
 /// qu'à l'adresse que l'éditeur de liens aurait choisie de son côté.
+/// Assemble UNE instruction et rend ses octets.
+///
+/// Par nasm, en format brut : c'est le même assembleur que celui qui
+/// construit les programmes, donc la même syntaxe, les mêmes messages
+/// d'erreur, et rien de nouveau à apprendre. Écrire un encodeur à la
+/// main donnerait un second dialecte, proche mais pas identique — la
+/// pire des situations pour qui apprend.
+///
+/// `adresse` compte : un saut s'écrit en relatif, et `jmp 0x401030` ne
+/// produit pas les mêmes octets selon l'endroit d'où l'on saute. Sans
+/// elle, un saut assemblé ici tomberait ailleurs une fois posé.
+///
+/// Le `BITS 64` est imposé : namsdec ne simule que ce mode, et laisser
+/// nasm deviner produirait des octets valides pour une machine qui
+/// n'est pas celle-ci.
+pub fn assemble_one(texte: &str, adresse: u64) -> Result<Vec<u8>, AsmError> {
+    find_nasm().ok_or(AsmError::NasmNotFound)?;
+    let dir = tempfile::tempdir()?;
+    let asm_path = dir.path().join("une.asm");
+    let out_path = dir.path().join("une.bin");
+    fs::write(
+        &asm_path,
+        format!("[BITS 64]\n[ORG {adresse:#x}]\n{}\n", texte.trim()),
+    )?;
+
+    let output = Command::new("nasm")
+        .current_dir(dir.path())
+        .args(["-f", "bin", "-o", "une.bin", "une.asm"])
+        .output()?;
+    if !output.status.success() {
+        return Err(AsmError::Failed {
+            diagnostics: parse_diagnostics(&String::from_utf8_lossy(&output.stderr)),
+        });
+    }
+    Ok(fs::read(&out_path)?)
+}
+
 pub fn assemble(source: &str, base_addr: u64) -> Result<AssembleOutput, AsmError> {
     find_nasm().ok_or(AsmError::NasmNotFound)?;
     if !find_linker() {

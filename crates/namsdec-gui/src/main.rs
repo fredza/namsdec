@@ -3457,15 +3457,55 @@ impl NamsdecApp {
             return;
         };
         let attendu = instruction.bytes.len();
-        let Some(nouveaux) = lire_octets(saisie) else {
-            self.status = Status::Error(s.bytes_edit_bad.to_owned());
-            return;
+        let octets_d_origine = instruction.bytes.clone();
+        // DEUX façons d'écrire la même chose, et un seul champ.
+        //
+        // Des octets — `48 31 c0` — ou l'instruction elle-même —
+        // `xor rax, rax`. Un second champ, ou une bascule, ajouterait un
+        // geste et un mot à retenir pour une distinction que la saisie
+        // porte déjà.
+        //
+        // L'hexadécimal PASSE EN PREMIER, et la règle est dite dans
+        // l'infobulle : ce qui peut se lire en octets se lit en octets.
+        // Sans cet ordre, `fadd` — quatre lettres qui sont aussi quatre
+        // chiffres hexadécimaux — changerait de sens selon l'humeur du
+        // programme, ce qui est pire que les deux réponses possibles.
+        let nouveaux = match lire_octets(saisie) {
+            Some(octets) => octets,
+            None => match namsdec_asm::assemble_one(saisie, adresse) {
+                Ok(octets) => octets,
+                Err(erreur) => {
+                    // Le message de nasm, non le nôtre : c'est le même
+                    // assembleur que pour le reste du programme, et sa
+                    // façon de dire « je ne comprends pas » est déjà
+                    // celle qu'on apprend dans l'éditeur.
+                    self.status = Status::Error(match &erreur {
+                        namsdec_asm::AsmError::Failed { diagnostics } => diagnostics
+                            .first()
+                            .map(|d| d.message.clone())
+                            .unwrap_or_else(|| s.bytes_edit_bad.to_owned()),
+                        _ => s.bytes_edit_bad.to_owned(),
+                    });
+                    return;
+                }
+            },
         };
         if nouveaux.len() != attendu {
-            self.status = Status::Error(s.bytes_edit_length.to_owned());
+            // La longueur ne change pas, et c'est refusé plutôt que
+            // rattrapé : décaler ce qui suit déplacerait toutes les
+            // adresses du programme, et chaque saut deviendrait faux.
+            // Le message dit les deux longueurs — sans cela, on récrit
+            // trois fois sans comprendre ce qui cloche.
+            self.status = Status::Error(format!(
+                "{} ({} {} {})",
+                s.bytes_edit_length,
+                nouveaux.len(),
+                s.bytes_edit_instead_of,
+                attendu
+            ));
             return;
         }
-        if nouveaux == instruction.bytes {
+        if nouveaux == octets_d_origine {
             return;
         }
         let Some(offset) = namsdec_re::imports::file_offset(&state.output.file, adresse) else {
