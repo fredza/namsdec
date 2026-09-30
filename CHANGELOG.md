@@ -35,6 +35,19 @@ précédaient.
 - Une fonction sans aucun saut le dit en une ligne, au lieu de laisser
   chercher un « si » qui n'y est pas.
 
+**La provenance traverse la mémoire**
+- « D'où vient cette valeur ? » s'arrêtait à la première lecture en
+  mémoire — c'est-à-dire exactement là où la question devient
+  intéressante. Une valeur rangée sur la pile puis relue se remonte
+  maintenant jusqu'à elle : `mov [rbp-8], rdi` en haut, `mov rax,
+  [rbp-8]` trente lignes plus bas.
+- Deux pistes sont suivies : **quelle** case (les registres de
+  l'adresse — `[rsi+8]` avec RSI reçu en argument, c'est le champ +8 de
+  l'objet passé) et **quoi** dedans (la dernière écriture).
+- La piste **se coupe** devant une écriture qu'on ne sait pas distinguer
+  de la nôtre : `mov [rax], rcx` vise peut-être `[rbp-8]`. Une écriture
+  voisine dont on prouve qu'elle ne touche pas la nôtre ne coupe rien.
+
 **L'installation se laisse conduire**
 - `./install.sh --help` décrit onze options. Les deux qui servent le
   plus : `--dry-run` dit ce qui serait fait sans rien écrire, `--debug`

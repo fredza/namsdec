@@ -1349,11 +1349,24 @@ impl NamsdecApp {
                             if !chaîne.is_empty() {
                                 ui.add_space(4.0);
                                 ui.colored_label(theme.dim, s.provenance_static);
-                                for étape in chaîne.iter().take(4) {
+                                for étape in chaîne.iter().take(5) {
+                                    // La flèche marque le maillon qui
+                                    // remplit une case mémoire : sans
+                                    // elle, deux lignes se suivent sans
+                                    // qu'on voie que la valeur a
+                                    // traversé la pile entre les deux.
+                                    let franchi = étape.writes.starts_with('[');
+                                    // Le point médian, et non une
+                                    // flèche coudée : `↳` n'est dans
+                                    // aucune des polices embarquées, et
+                                    // se peindrait en carré vide. Le
+                                    // contrôle des glyphes l'a dit tout
+                                    // de suite.
+                                    let flèche = if franchi { "· " } else { "  " };
                                     ui.colored_label(
                                         theme.accent,
                                         egui::RichText::new(format!(
-                                            "{:#010x}  {}",
+                                            "{flèche}{:#010x}  {}",
                                             étape.addr, étape.text
                                         ))
                                         .monospace(),

@@ -252,8 +252,14 @@ Détail chiffré dans `AMELIORATIONS.txt` 7.11, section « REVUE DU
       patcheur, donc la fenêtre Correctifs les liste et sait les
       défaire. La longueur ne change pas, et c'est refusé plutôt que
       rattrapé.
-- [ ] **La provenance à travers la mémoire** — suivre une valeur qui
-      transite par la pile, pas seulement par les registres
+- [x] **La provenance à travers la mémoire** — une valeur rangée sur la
+      pile puis relue se remonte jusqu'à elle. C'est le chemin ordinaire
+      de tout argument dans du code compilé sans optimisation, et la
+      remontée s'y arrêtait net. Deux pistes sont suivies, non une :
+      QUELLE case (les registres de l'adresse) et QUOI dedans (la
+      dernière écriture). Une écriture vers une case qu'on ne sait pas
+      distinguer de la nôtre coupe la piste — `[rax]` vaut peut-être
+      `[rbp-8]`, et rien dans le code ne le dit.
 
 ## 5. Vocation pédagogique
 

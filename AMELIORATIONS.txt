@@ -1732,3 +1732,42 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
   LEÇON : une fonctionnalité qu'on ajoute pour l'utilisateur en débloque
   parfois une autre pour le dépôt. `--prefix` a été écrit pour qui veut
   installer ailleurs ; il rend surtout testable ce qui ne l'était pas.
+
+  --- la provenance traverse enfin la mémoire ---
+  Elle s'arrêtait à la première lecture en mémoire, en disant « la valeur vient
+  de la mémoire ». C'est vrai et cela n'apprend rien — or c'est LE chemin
+  ordinaire de tout argument dans du code compilé sans optimisation :
+  `mov [rbp-8], rdi` en haut de la fonction, `mov rax, [rbp-8]` trente lignes
+  plus bas. La question « d'où vient RAX » s'arrêtait donc exactement là où
+  elle devenait intéressante.
+
+  DEUX PISTES, ET NON UNE. Le premier jet remplaçait l'ancienne par la
+  nouvelle, et perdait une information vraie :
+    - QUELLE case ? Elle dépend des registres de l'adresse. `mov rax, [rsi+8]`
+      avec RSI reçu en argument veut dire « le champ +8 de l'objet qu'on m'a
+      passé », et c'est parfois tout ce qu'on cherche.
+    - QUOI dedans ? Ce que la dernière écriture y a mis.
+  Un test existant l'a dit tout de suite — il affirmait la première, et il
+  avait raison de le faire.
+
+  LA GARDE D'ALIASING est ce qui rend la traversée honnête. Une écriture vers
+  une case qu'on ne sait pas distinguer de la nôtre coupe la piste :
+  `mov [rax], rcx` vise peut-être `[rbp-8]` si RAX vaut RBP-8, et rien dans le
+  code ne le dit. Traverser quand même donnerait une provenance qui se lit très
+  bien et qui est fausse — le pire des cas.
+  Mais couper devant TOUTE écriture rendrait la traversée inutilisable : dans
+  un cadre de pile, on range toujours plusieurs choses. D'où `sûrement_
+  distincte` : même base, même index, même échelle, et des intervalles d'octets
+  qui ne se croisent pas. Des bases différentes ne prouvent rien.
+
+  TROIS ENSEIGNEMENTS DE L'ÉPREUVE :
+    - éprouver « la piste coupe » en retirant la garde a montré qu'une branche
+      du code était MORTE : `emplacement()` rend toujours `Some` sous
+      `écrit_en_mémoire`. Une branche que rien ne peut prendre se lit comme une
+      garde, et n'en est pas une ;
+    - deux des nouveaux tests partaient d'une adresse qui n'existait pas dans
+      le désassemblage. La chaîne était vide, et l'un d'eux passait au vert
+      pour cette raison — un faux vert de plus, trouvé en éprouvant ;
+    - le glyphe `↳` choisi pour marquer la traversée n'est dans aucune des
+      polices embarquées. Le contrôle des glyphes l'a dit à la seconde. C'est
+      un point médian aujourd'hui.

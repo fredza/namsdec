@@ -488,11 +488,27 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "l'<b>historique</b> et non sur le code — celui-ci dit ce que le programme "
          "<i>pourrait</i> avoir fait, celui-là ce qu'il a fait, et devant plusieurs chemins "
          "qui mènent au même endroit, seul l'historique sait lequel a été pris."),
+        ("p",
+         "Quand l'historique est vide — un binaire qu'on ne peut pas exécuter n'en a "
+         "pas —, namsdec <b>remonte le code à l'envers</b>, et il <b>traverse la "
+         "mémoire</b> : une valeur rangée sur la pile puis relue se suit jusqu'à elle. "
+         "C'est le chemin ordinaire de tout argument dans du code compilé sans "
+         "optimisation — <font face='Courier'>mov [rbp-8], rdi</font> puis, trente lignes "
+         "plus bas, <font face='Courier'>mov rax, [rbp-8]</font>. Le maillon qui remplit "
+         "une case est marqué d'un point."),
+        ("p",
+         "Deux questions sont suivies, et non une. <b>Quelle</b> case ? Elle dépend des "
+         "registres de l'adresse : <font face='Courier'>[rsi+8]</font> avec RSI reçu en "
+         "argument veut dire « le champ +8 de l'objet qu'on m'a passé ». <b>Quoi</b> "
+         "dedans ? Ce que la dernière écriture y a mis."),
         ("note",
-         "La chaîne s'arrête à la mémoire, et le dit. Une valeur qui vient "
-         "d'un <font face='Courier'>[rbp-8]</font> ne se remonte pas par son registre de "
-         "base : cela mènerait à la mise en place du cadre de pile, pas à la "
-         "valeur. Pour aller plus haut, on pose une surveillance sur l'adresse."),
+         "La piste <b>se coupe</b> devant une écriture vers une case qu'on ne sait pas "
+         "distinguer de la nôtre. <font face='Courier'>mov [rax], rcx</font> vise "
+         "peut-être <font face='Courier'>[rbp-8]</font> si RAX vaut RBP-8, et rien dans le "
+         "code ne le dit ; traverser quand même donnerait une provenance qui se lit bien "
+         "et qui est fausse. Une écriture voisine dont on <i>prouve</i> qu'elle ne touche "
+         "pas la nôtre — <font face='Courier'>[rbp-16]</font> quand on suit "
+         "<font face='Courier'>[rbp-8]</font> — ne coupe rien."),
         ("p",
          "La séparation entre le bandeau et la vue se règle à la poignée, et Affichage › "
          "« Panneau latéral partagé tout seul » rend le partage automatique."),
