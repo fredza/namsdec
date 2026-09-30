@@ -445,6 +445,9 @@ impl NamsdecApp {
         let mut open = self.show_about;
         let mut close = false;
         // Relevé dans la fenêtre, agi après : elle emprunte `self`.
+        // Sans l'option `reseau`, rien ne le lit ni ne l'écrit : le
+        // `cfg` évite deux avertissements plutôt que de les taire.
+        #[cfg(feature = "reseau")]
         let mut lancer_recherche = false;
         egui::Window::new(s.about_title)
             // Un identifiant explicite : sans lui, egui dérive celui de
@@ -594,6 +597,12 @@ impl NamsdecApp {
                 // La recherche est un geste, jamais un réflexe : rien
                 // n'est demandé à GitHub tant que personne n'a cliqué,
                 // et rien n'est envoyé d'autre que la requête.
+                //
+                // Un binaire bâti sans l'option `reseau` n'en montre pas
+                // le bouton : un bouton qui ne peut rien faire est pire
+                // qu'une absence, et ici l'absence se comprend — le
+                // paquet d'une distribution met à jour lui-même.
+                #[cfg(feature = "reseau")]
                 ui.horizontal_wrapped(|ui| {
                     ui.add_enabled_ui(self.update_check.is_none(), |ui| {
                         if framed_button(ui, self.theme, s.about_check_update)
@@ -607,6 +616,7 @@ impl NamsdecApp {
                         ui.colored_label(theme.dim, s.about_update_checking);
                     }
                 });
+                #[cfg(feature = "reseau")]
                 match &self.update_result {
                     Some(Ok(namsdec_update::Verdict::UpToDate)) => {
                         ui.colored_label(theme.good, s.about_update_uptodate);
@@ -644,6 +654,7 @@ impl NamsdecApp {
                 // l'effacerait.
                 close |= dialog_bar(ui, theme, s.dialog_ok, None).is_some();
             });
+        #[cfg(feature = "reseau")]
         if lancer_recherche {
             self.start_update_check();
         }

@@ -1825,3 +1825,34 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
   LEÇON, la même que pour 5.3 la veille : quand une information existe à sa
   source, l'inférer ailleurs coûte plus cher et se trompe. Le cache savait ;
   personne ne le lui demandait.
+
+  --- 5.4 : le poids du binaire, remesuré et tranché ---
+  La mesure du 18 septembre s'arrêtait à « c'est dans .text qu'il faut
+  chercher ». Voici où, relevé symbole par symbole sur le binaire lié :
+
+    egui ............................ 2,0 Mo
+    namsdec (tout notre code) ....... 1,8 Mo
+    ring + rustls + ureq + regex .... 1,8 Mo
+    winit ........................... 1,4 Mo
+    vello + skrifa .................. 0,8 Mo
+    iced-x86 ........................ 0,3 Mo
+
+  LA PILE TLS PÈSE AUTANT QUE TOUT NOTRE CODE, pour une seule fonction :
+  demander à GitHub s'il existe une version plus récente. Une fois par mois, au
+  clic, jamais au démarrage.
+
+  Elle passe donc derrière une option de compilation, `reseau`, ACTIVÉE PAR
+  DÉFAUT — l'application livrée ne change pas d'un octet. Qui bâtit avec
+  `--no-default-features` obtient 14,4 Mo au lieu de 16,0 une fois dépouillé,
+  soit dix pour cent. C'est exactement ce que veut un empaqueteur de
+  distribution : les mises à jour sont son travail.
+  Sans l'option, le menu ne montre pas l'entrée — un bouton qui ne peut rien
+  faire est pire qu'une absence, et ici l'absence se comprend.
+
+  PANIC = "ABORT" GAGNE AUTANT, ET N'EST PAS PRIS. Mesuré : 19,1 → 17,5 Mo, le
+  même mégaoctet et demi. Mais namsdec lance cinq threads de fond — installer
+  un outil, décompiler, chercher une version — et avec `abort`, une panique
+  dans l'un d'eux tue TOUT le processus au lieu du seul thread. Aujourd'hui le
+  canal se ferme et l'application dit « échec ». Un mégaoctet et demi ne vaut
+  pas le travail en cours de quelqu'un.
+  La question est tranchée, chiffrée, et n'a plus à être reposée.

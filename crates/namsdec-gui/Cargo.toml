@@ -4,6 +4,14 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+# La recherche de mise à jour. Activée par défaut — c'est l'application
+# livrée. Sans elle, le binaire perd la pile TLS, qui pèse à elle seule
+# autant que tout le code de namsdec ; le menu n'en montre alors pas
+# l'entrée, plutôt que d'offrir un bouton qui ne peut rien faire.
+default = ["reseau"]
+reseau = ["namsdec-update/reseau"]
+
 [dependencies]
 namsdec-core.workspace = true
 namsdec-asm.workspace = true

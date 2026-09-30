@@ -260,6 +260,13 @@ et rien ne demande les droits d'administrateur.
 | `--quiet`, `-q` | ne dire que l'essentiel |
 | `--no-color` | pas de couleurs — `NO_COLOR` est respecté aussi |
 
+**Un binaire plus léger** : `cargo build --release --no-default-features`
+retire la recherche de mise à jour, et avec elle la pile TLS —
+**16,0 → 14,4 Mo** une fois dépouillé, soit dix pour cent. C'est ce que
+veut un empaqueteur de distribution : les mises à jour sont son travail,
+pas celui de l'application. Le menu n'en montre alors pas l'entrée,
+plutôt que d'offrir un bouton qui ne peut rien faire.
+
 `./uninstall.sh` défait exactement cela, et prend `--prefix`,
 `--bin-dir`, `--dry-run`, `--quiet` et `--no-color` de la même façon. `--purge` retire en plus vos réglages
 et vos séries d'exercices — sans lui, ils sont gardés, parce qu'on

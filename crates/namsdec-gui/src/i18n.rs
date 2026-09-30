@@ -361,6 +361,10 @@ pub struct Strings {
     pub install_what_for: &'static str,
     pub install_log: &'static str,
     pub install_nothing_yet: &'static str,
+    /// Gardé même sans l'option `reseau` : une traduction n'a aucun
+    /// poids, et la retirer ferait diverger les deux langues, que le
+    /// banc compare champ par champ.
+    #[cfg_attr(not(feature = "reseau"), allow(dead_code))]
     pub job_checking_update: &'static str,
     pub decompiler_checkbox: &'static str,
     pub decompiler_hint: &'static str,
@@ -962,16 +966,33 @@ pub struct Strings {
     pub about_donate: &'static str,
     pub about_donate_hint: &'static str,
     pub about_donate_unset: &'static str,
+    /// Gardé même sans l'option `reseau` : une traduction n'a aucun
+    /// poids, et la retirer ferait diverger les deux langues, que le
+    /// banc compare champ par champ.
+    #[cfg_attr(not(feature = "reseau"), allow(dead_code))]
     pub about_check_update: &'static str,
+    /// Gardé même sans l'option `reseau` : une traduction n'a aucun
+    /// poids, et la retirer ferait diverger les deux langues, que le
+    /// banc compare champ par champ.
+    #[cfg_attr(not(feature = "reseau"), allow(dead_code))]
     pub about_check_update_hint: &'static str,
+    #[cfg_attr(not(feature = "reseau"), allow(dead_code))]
     pub about_update_checking: &'static str,
+    #[cfg_attr(not(feature = "reseau"), allow(dead_code))]
     pub about_update_uptodate: &'static str,
+    #[cfg_attr(not(feature = "reseau"), allow(dead_code))]
     pub about_update_newer: &'static str,
+    #[cfg_attr(not(feature = "reseau"), allow(dead_code))]
     pub about_update_ahead: &'static str,
+    #[cfg_attr(not(feature = "reseau"), allow(dead_code))]
     pub about_update_none: &'static str,
+    #[cfg_attr(not(feature = "reseau"), allow(dead_code))]
     pub about_update_failed: &'static str,
+    #[cfg_attr(not(feature = "reseau"), allow(dead_code))]
     pub about_update_private: &'static str,
+    #[cfg_attr(not(feature = "reseau"), allow(dead_code))]
     pub about_update_open: &'static str,
+    #[cfg_attr(not(feature = "reseau"), allow(dead_code))]
     pub about_update_how: &'static str,
 }
 

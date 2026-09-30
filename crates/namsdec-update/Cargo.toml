@@ -4,8 +4,20 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+# La recherche en ligne. Activée par défaut : c'est ce que namsdec fait
+# quand on clique « Rechercher une mise à jour ».
+#
+# Sans elle, le crate garde tout ce qui ne demande pas le réseau — lire
+# une réponse de GitHub, comparer deux versions, rendre un verdict — et
+# le binaire perd la pile TLS, qui pèse autant que tout le code de
+# namsdec réuni. C'est ce que veut un empaqueteur de distribution :
+# les mises à jour, c'est son travail, pas celui de l'application.
+default = ["reseau"]
+reseau = ["dep:ureq"]
+
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-ureq.workspace = true
+ureq = { workspace = true, optional = true }

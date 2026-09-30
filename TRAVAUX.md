@@ -361,8 +361,17 @@ Détail chiffré dans `AMELIORATIONS.txt` 7.11, section « REVUE DU
       un fichier venu d'un dialogue arrive parfois après le dessin, et
       c'est la frame SUIVANTE qui paie. Le cache de mise en page compte
       ses poses — il sait, lui, s'il a payé.
-- [ ] **Ce qui pèse dans le binaire** (A 5.4) — mesuré le 18 septembre,
-      rien décidé depuis
+- [x] **Ce qui pèse dans le binaire** (A 5.4) — remesuré le 30
+      septembre, et tranché. La pile TLS de la recherche de mise à jour
+      pèse 1,6 Mo sur 16, autant que tout le code de namsdec réuni, pour
+      une fonction employée une fois par mois : elle passe derrière une
+      option de compilation, activée par défaut. Un empaqueteur bâtit
+      avec `--no-default-features` et obtient 14,4 Mo.
+      `panic = "abort"` gagnerait autant et n'est PAS pris : une panique
+      dans l'un des cinq threads de fond tuerait alors tout le processus
+      au lieu du seul thread, et namsdec en lance pour installer,
+      décompiler et chercher une version. Un mégaoctet et demi ne vaut
+      pas le travail en cours de quelqu'un.
 - [x] `egui_extras` retiré des dépendances (A 5.5)
 
 ---

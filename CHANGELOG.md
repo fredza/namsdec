@@ -35,6 +35,14 @@ précédaient.
 - Une fonction sans aucun saut le dit en une ligne, au lieu de laisser
   chercher un « si » qui n'y est pas.
 
+**Un binaire qu'on peut alléger de dix pour cent**
+- La recherche de mise à jour traîne une pile TLS de 1,6 Mo — autant que
+  tout le code de namsdec — pour une fonction employée une fois par
+  mois. Elle passe derrière une option de compilation, **activée par
+  défaut** : l'application livrée ne change pas.
+- `cargo build --release --no-default-features` donne 14,4 Mo au lieu de
+  16,0. C'est ce que veut un empaqueteur de distribution.
+
 **Un gros listing ne coûte plus rien par frame**
 - Un binaire ouvert fait quinze mille lignes. La clé du cache de mise en
   page était un condensé des six cent mille octets, recalculé deux fois

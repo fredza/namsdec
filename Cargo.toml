@@ -21,7 +21,10 @@ namsdec-exercises = { path = "crates/namsdec-exercises" }
 namsdec-doc = { path = "crates/namsdec-doc" }
 namsdec-theme = { path = "crates/namsdec-theme" }
 namsdec-explorer = { path = "crates/namsdec-explorer" }
-namsdec-update = { path = "crates/namsdec-update" }
+# `default-features = false` : c'est `namsdec-gui` qui décide, par sa
+# propre option `reseau`. Sans cela, le crate activerait sa pile TLS
+# quoi qu'on demande, et l'option ne servirait à rien.
+namsdec-update = { path = "crates/namsdec-update", default-features = false }
 
 egui = "0.36"
 # `links` : sans elle, `open_url` ne fait **rien** — les liens de la

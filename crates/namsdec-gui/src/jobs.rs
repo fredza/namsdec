@@ -282,6 +282,7 @@ impl NamsdecApp {
     /// Une requête réseau dans la boucle de rendu fige la fenêtre le
     /// temps du voyage ; celle-ci arrive par un canal, relevé à chaque
     /// frame comme la réponse du sélecteur de fichiers.
+    #[cfg(feature = "reseau")]
     pub(crate) fn start_update_check(&mut self) {
         if self.update_check.is_some() {
             return;
@@ -313,6 +314,7 @@ impl NamsdecApp {
     }
 
     /// Relève la réponse de la recherche, si elle est arrivée.
+    #[cfg(feature = "reseau")]
     pub(crate) fn poll_update_check(&mut self, ctx: &egui::Context) {
         let Some(receiver) = &self.update_check else {
             return;

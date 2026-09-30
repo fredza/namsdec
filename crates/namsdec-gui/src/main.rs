@@ -1282,6 +1282,11 @@ struct NamsdecApp {
     /// La recherche de mise à jour en cours, s'il y en a une : elle se
     /// fait sur un thread, parce qu'une requête réseau dans la boucle de
     /// rendu fige la fenêtre le temps du voyage.
+    ///
+    /// Gardé même sans l'option `reseau` : le champ ne coûte rien, et le
+    /// borner ferait un `cfg` de plus dans `Default`, dans les réglages
+    /// et dans trois contrôles — beaucoup de bruit pour huit octets.
+    #[cfg_attr(not(feature = "reseau"), allow(dead_code))]
     update_check: Option<mpsc::Receiver<Result<namsdec_update::Release, String>>>,
     /// Le module d'installation d'outils : éteint par défaut, et plus
     /// franchement encore que les autres.
@@ -5210,6 +5215,7 @@ impl NamsdecApp {
         // Avant tout le reste : le fichier qu'on vient de choisir dans la
         // boîte native doit être chargé avant que la frame ne s'affiche.
         self.poll_file_dialog(&ctx);
+        #[cfg(feature = "reseau")]
         self.poll_update_check(&ctx);
         self.poll_decompile(&ctx);
         self.poll_install(&ctx);

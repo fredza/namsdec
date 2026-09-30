@@ -11,6 +11,7 @@
 //! version, ni quoi que ce soit sur la machine. Elle n'est faite que
 //! lorsqu'on clique.
 
+#[cfg(feature = "reseau")]
 use std::time::Duration;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -77,6 +78,7 @@ pub enum UpdateError {
 ///
 /// Court : la réponse n'est pas ce pour quoi on a ouvert le programme,
 /// et une attente de trente secondes ferait croire à un gel.
+#[cfg(feature = "reseau")]
 const TIMEOUT: Duration = Duration::from_secs(8);
 
 /// L'adresse de l'API pour les versions publiées.
@@ -98,6 +100,7 @@ pub fn releases_url(owner: &str, repo: &str) -> String {
 ///
 /// Bloquant : à appeler depuis un thread, jamais depuis la boucle de
 /// rendu. Rien n'est envoyé d'autre que la requête elle-même.
+#[cfg(feature = "reseau")]
 pub fn fetch_latest(
     owner: &str,
     repo: &str,

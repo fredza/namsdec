@@ -26368,3 +26368,59 @@ fn the_frame_that_lays_out_the_text_is_the_one_that_says_so() {
         "un texte nouveau se pose : {relevé:?}"
     );
 }
+
+/// La recherche de mise à jour se laisse retirer, et l'est par une seule
+/// option.
+///
+/// La pile TLS qu'elle traîne — ureq, rustls, ring — pèse 1,6 Mo sur un
+/// binaire de 16, soit dix pour cent, pour une fonction qu'on emploie
+/// une fois par mois. C'est le cas d'un empaqueteur de distribution :
+/// les mises à jour sont son travail, pas celui de l'application.
+///
+/// L'option est activée PAR DÉFAUT — l'application livrée ne change
+/// pas. Le contrôle vérifie les deux moitiés de cette promesse : que
+/// l'option existe, et qu'elle est dans les défauts. Une option
+/// d'allègement qu'on oublierait d'activer livrerait une application
+/// amputée sans que personne ne s'en aperçoive avant l'utilisateur.
+#[test]
+fn the_update_check_can_be_left_out_by_one_option() {
+    let racine = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let gui = std::fs::read_to_string(racine.join("Cargo.toml")).expect("Cargo.toml du gui");
+    assert!(
+        gui.contains("reseau = [\"namsdec-update/reseau\"]"),
+        "l'option doit passer la consigne au crate qui porte le réseau :\n{gui}"
+    );
+    assert!(
+        gui.contains("default = [\"reseau\"]"),
+        "et être activée par défaut — l'application livrée ne change pas :\n{gui}"
+    );
+
+    let update =
+        std::fs::read_to_string(racine.join("../namsdec-update/Cargo.toml")).expect("Cargo.toml");
+    assert!(
+        update.contains("ureq = { workspace = true, optional = true }"),
+        "la pile réseau doit être optionnelle là où elle est déclarée :\n{update}"
+    );
+
+    // Et le workspace n'active pas les défauts du crate à la place du
+    // gui : sans cela, l'option ne servirait à rien, puisque `ureq`
+    // entrerait quoi qu'on demande.
+    let ws = std::fs::read_to_string(racine.join("../../Cargo.toml")).expect("Cargo.toml racine");
+    assert!(
+        ws.contains(
+            "namsdec-update = { path = \"crates/namsdec-update\", default-features = false }"
+        ),
+        "le workspace doit laisser le gui décider :\n{ws}"
+    );
+
+    // Ce qui ne dépend PAS du réseau reste disponible sans l'option :
+    // comparer deux versions, lire une réponse, rendre un verdict. Le
+    // vérifier ici garde la frontière à sa place.
+    let lib = std::fs::read_to_string(racine.join("../namsdec-update/src/lib.rs")).expect("lib.rs");
+    let bornées = lib.matches("#[cfg(feature = \"reseau\")]").count();
+    assert!(
+        bornées <= 3,
+        "{bornées} éléments bornés au réseau — seule la requête doit \
+         l'être, le reste se teste et se lit sans lui"
+    );
+}
