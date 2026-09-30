@@ -109,6 +109,14 @@ impl NamsdecApp {
         ui.colored_label(theme.dim, s.profile_hint);
         ui.separator();
 
+        // Le source découpé UNE fois, et ses étiquettes relevées une
+        // fois, au lieu d'être reparcourus pour chacune des cinq cents
+        // lignes du classement. C'était dix-sept secondes par image sur
+        // un binaire d'un million d'octets — et le pire cas était le
+        // plus courant : un binaire sans symboles n'a aucune étiquette,
+        // donc la recherche remontait tout le listing à chaque ligne.
+        let lignes_du_source: Vec<&str> = self.source.lines().collect();
+        let étiquettes = source_labels(&self.source);
         let mut goto = None;
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
@@ -190,7 +198,7 @@ impl NamsdecApp {
                             // classement renvoie à un numéro qu'il faut
                             // aller chercher.
                             ui.horizontal(|ui| {
-                                if let Some(étiquette) = enclosing_label(&self.source, *ligne) {
+                                if let Some(étiquette) = enclosing_label_at(&étiquettes, *ligne) {
                                     ui.colored_label(
                                         theme.label,
                                         egui::RichText::new(format!("{étiquette}:")).monospace(),
@@ -199,9 +207,12 @@ impl NamsdecApp {
                                 let réponse = cliquable(
                                     ui,
                                     egui::Label::new(
-                                        egui::RichText::new(source_line(&self.source, *ligne))
-                                            .monospace()
-                                            .color(theme.text),
+                                        egui::RichText::new(source_line_in(
+                                            &lignes_du_source,
+                                            *ligne,
+                                        ))
+                                        .monospace()
+                                        .color(theme.text),
                                     )
                                     .truncate(),
                                 );

@@ -1921,3 +1921,45 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
   À noter tout de même : ces deux limites décrivent aussi ce qu'un LECTEUR
   D'ÉCRAN voit de namsdec. Ce qui est peint à la main lui est invisible.
   Personne ne l'avait mesuré ; c'est mesuré.
+
+================================================================================
+30 SEPTEMBRE 2026 — DOUZE SECONDES PAR IMAGE, ET LA CAUSE TENAIT EN UNE LIGNE
+================================================================================
+
+  Signalé par Fred : « LE PROGRAMME DEVIENT LENT, TRÈS LENT, NON RÉACTIF »,
+  devant un crackme ouvert, l'onglet Profil affiché.
+
+  MESURÉ, sur le binaire d'essai crackme-01 (1 028 920 octets, 62 386 lignes,
+  2 000 instructions exécutées) :
+
+    onglet Diagnostics ......    40 ms
+    onglet Console .........  1 450 ms  (la mise en page, payée une fois)
+    onglet Profil .......... 12 800 ms  À CHAQUE IMAGE
+
+  LA CAUSE. Le classement du profil compte cinq cents lignes. Pour chacune, le
+  panneau demandait « quelle est l'étiquette au-dessus ? », et la réponse
+  remontait le listing ligne par ligne depuis la ligne visée. Devant un binaire
+  SANS SYMBOLES — le cas ordinaire en rétro-ingénierie — il n'y a aucune
+  étiquette : la recherche parcourait donc les soixante mille lignes, en
+  découpant chacune, et cela cinq cents fois par image.
+  Vingt-quatre millisecondes par ligne du classement. Un gigaoctet parcouru par
+  image.
+
+  Le pire cas était le plus courant. C'est ce qui rend ce défaut méchant :
+  namsdec devenait inutilisable au moment précis où l'on avait besoin de lui,
+  et restait vif sur les petits programmes où personne ne regarde le profil.
+
+  LA CORRECTION, en deux temps :
+    - le source est découpé UNE fois, au lieu d'être reparcouru pour chaque
+      ligne (17,7 s -> 12,5 s) ;
+    - les étiquettes sont relevées UNE fois par `source_labels`, et « celle qui
+      précède » devient une recherche binaire (12,5 s -> 82 ms).
+  Cent cinquante-cinq fois plus rapide, et le pire cas — aucune étiquette —
+  est devenu le plus rapide.
+
+  ET UN TEST QUI LISAIT LA MACHINE, trouvé au passage. Le contrôle de la
+  fenêtre d'installation lisait l'état réel de rizin et « s'adaptait ». Sous la
+  charge d'une suite complète, la vérification — qui LANCE rizin — dépasse son
+  délai : l'outil paraît incomplet entre le moment où le test le lit et celui
+  où la fenêtre le redemande, et le contrôle échoue seul au milieu de six
+  cents autres sans rien avoir à dire sur namsdec. L'état est semé maintenant.

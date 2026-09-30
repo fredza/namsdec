@@ -3686,6 +3686,21 @@ fn source_line(source: &str, ligne: u32) -> String {
         .to_owned()
 }
 
+/// La même chose, sur un source DÉJÀ DÉCOUPÉ.
+///
+/// `source_line` reparcourt le texte depuis le début à chaque appel :
+/// c'est O(n), et sans conséquence tant qu'on le demande une fois. Le
+/// profil le demandait pour cinq cents lignes d'un listing d'un million
+/// d'octets, à chaque image — un gigaoctet parcouru par frame, dix-sept
+/// secondes. Découper une fois et indexer coûte O(1) par ligne.
+fn source_line_in(lignes: &[&str], ligne: u32) -> String {
+    lignes
+        .get(ligne.saturating_sub(1) as usize)
+        .unwrap_or(&"")
+        .trim()
+        .to_owned()
+}
+
 /// L'étiquette sous laquelle vit la ligne `ligne`, s'il y en a une.
 ///
 /// La plus proche au-dessus : c'est le bloc auquel la ligne appartient.
@@ -3694,17 +3709,27 @@ fn source_line(source: &str, ligne: u32) -> String {
 /// Les étiquettes locales de nasm — celles qui commencent par un point
 /// — ne comptent pas : elles ne portent pas de sens à elles seules.
 fn enclosing_label(source: &str, ligne: u32) -> Option<String> {
-    let lignes: Vec<&str> = source.lines().take(ligne as usize).collect();
-    lignes.iter().rev().find_map(|texte| {
-        let texte = texte.split(';').next().unwrap_or("");
-        // En tête de ligne, sans indentation : une étiquette
-        // indentée n'existe pas en NASM.
-        if texte.starts_with([' ', '\t']) {
-            return None;
-        }
-        let nom = texte.split_whitespace().next()?.strip_suffix(':')?;
-        (!nom.is_empty() && !nom.starts_with('.')).then(|| nom.to_owned())
-    })
+    enclosing_label_at(&source_labels(source), ligne)
+}
+
+/// La même chose, à partir des étiquettes RELEVÉES UNE FOIS.
+///
+/// La version qui prend le texte le remonte ligne par ligne depuis la
+/// ligne visée jusqu'à trouver une étiquette. Devant un binaire sans
+/// symboles, il n'y en a AUCUNE : elle parcourt donc les soixante mille
+/// lignes du listing, en découpant chacune, et cela pour chaque ligne du
+/// profil. Cinq cents fois par image, vingt-quatre millisecondes
+/// chacune — les douze secondes du profil sont là.
+///
+/// `source_labels` donne la liste des étiquettes avec leur ligne, en un
+/// seul passage. Trouver celle qui précède devient une recherche
+/// binaire, et le pire cas — aucune étiquette — devient le plus rapide.
+fn enclosing_label_at(étiquettes: &[(String, u32)], ligne: u32) -> Option<String> {
+    // La dernière étiquette dont la ligne est <= la nôtre. `partition_point`
+    // rend le nombre d'éléments qui satisfont le prédicat, donc l'index
+    // juste après celle qu'on cherche.
+    let index = étiquettes.partition_point(|(_, l)| *l <= ligne);
+    index.checked_sub(1).map(|i| étiquettes[i].0.clone())
 }
 
 /// Toutes les étiquettes du programme, avec leur ligne, dans l'ordre où

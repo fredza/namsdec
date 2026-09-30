@@ -20101,17 +20101,25 @@ fn escape_closes_the_install_plan() {
 /// de tout relancer — un quart d'heure de compilation pour rien.
 #[test]
 fn an_installed_tool_offers_to_close_not_to_install_again() {
-    let Some(data) = data_dir() else { return };
-    let outils = namsdec_disasm::install::tools_dir(&data);
-    let rizin = namsdec_disasm::known::all()
-        .into_iter()
-        .find(|k| k.plugin.id == "rizin-ghidra")
-        .expect("la fiche rizin existe");
-    let prêt = rizin.availability_in(Some(&outils)) == namsdec_disasm::known::Availability::Ready;
-
+    // L'état de l'outil est SEMÉ, non lu sur la machine.
+    //
+    // Il était lu, et le test « s'adaptait » à ce qu'il trouvait. Deux
+    // ennuis : il passait ou échouait selon ce qui avait été installé la
+    // veille, et surtout la vérification LANCE rizin — sous la charge
+    // d'une suite complète, le lancement dépasse son délai et l'outil
+    // paraît incomplet entre le moment où le test le lit et celui où la
+    // fenêtre le redemande. Le contrôle échouait alors seul au milieu de
+    // six cents autres, sans rien avoir à dire sur namsdec.
+    let prêt = true;
     let mut app = NamsdecApp {
         show_installer_module: true,
         install_plan: Some("rizin-ghidra".to_owned()),
+        tools_ready: [(
+            "rizin-ghidra".to_owned(),
+            namsdec_disasm::known::Availability::Ready,
+        )]
+        .into_iter()
+        .collect(),
         ..Default::default()
     };
     let ctx = egui::Context::default();
@@ -26564,4 +26572,75 @@ fn the_view_menu_toggles_really_toggle() {
             "et la recocher doit le ramener"
         );
     }
+}
+
+/// Le profil d'un gros binaire se dessine en quelques dizaines de
+/// millisecondes, non en douze secondes.
+///
+/// Il en prenait DOUZE. Le classement compte cinq cents lignes, et pour
+/// chacune le panneau demandait « quelle est l'étiquette au-dessus ? »
+/// en remontant le listing ligne par ligne. Devant un binaire sans
+/// symboles — le cas ordinaire en rétro-ingénierie — il n'y a aucune
+/// étiquette : la recherche parcourait donc les soixante mille lignes,
+/// cinq cents fois, à chaque image. L'application devenait inutilisable
+/// au moment précis où l'on avait besoin d'elle.
+///
+/// Les étiquettes sont relevées UNE fois, et la recherche est binaire.
+/// Le pire cas — aucune étiquette — est devenu le plus rapide.
+///
+/// Le seuil est large : une machine chargée mesure mal, et ce qu'on
+/// veut attraper est un retour au parcours complet, qui coûte cent
+/// cinquante fois plus.
+#[test]
+fn a_big_binarys_profile_draws_in_tens_of_milliseconds() {
+    let chemin =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/binaires/crackme-01");
+    let Ok(octets) = std::fs::read(&chemin) else {
+        return;
+    };
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp::default();
+    app.apply_theme(&ctx);
+    app.load_binary(octets, "crackme-01");
+    assert!(
+        app.source.lines().count() > 20_000,
+        "le binaire d'essai doit être gros : {} lignes",
+        app.source.lines().count()
+    );
+    // On le fait courir, pour que le profil ait de quoi classer.
+    for _ in 0..2000 {
+        if app.emulator.as_mut().map(|e| e.step()).is_none() {
+            break;
+        }
+    }
+    assert!(
+        app.line_visits().len() > 100,
+        "le classement doit être fourni : {} lignes",
+        app.line_visits().len()
+    );
+
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(2300.0, 1390.0),
+        )),
+        ..Default::default()
+    };
+    app.console_tab = ConsoleTab::Profile;
+    // Le meilleur de plusieurs tours : le premier paie la mise en page
+    // du listing, les suivants disent le coût en régime — celui qu'on
+    // ressent en déplaçant la souris.
+    let mut régime = std::time::Duration::MAX;
+    for _ in 0..4 {
+        let début = std::time::Instant::now();
+        let mut sortie = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        sortie.textures_delta.clear();
+        régime = régime.min(début.elapsed());
+    }
+    assert!(
+        régime < std::time::Duration::from_millis(600),
+        "une image du profil coûte {régime:?} — la recherche d'étiquette \
+         remonte-t-elle à nouveau tout le listing ? Elle valait douze \
+         secondes à elle seule."
+    );
 }
