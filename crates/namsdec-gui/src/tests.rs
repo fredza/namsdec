@@ -26113,3 +26113,135 @@ fn a_dry_run_writes_nothing() {
         );
     }
 }
+
+/// L'installation, pour de vrai, de bout en bout.
+///
+/// Les contrôles précédents lisent le script ; celui-ci le LANCE, et
+/// regarde ce qui est posé sur le disque. C'est la seule façon de savoir
+/// qu'`install.sh` marche — un script qui se relit bien peut très bien
+/// ne rien installer.
+///
+/// Il n'écrit RIEN dans le profil de l'utilisateur : `--prefix` et
+/// `--bin-dir` l'envoient dans un dossier temporaire, `--no-dock` et
+/// `--no-path` lui interdisent de toucher au bureau et au shell. C'est
+/// précisément ce que ces options ont rendu possible — sans elles, ce
+/// test ne pouvait pas exister, et il est resté ouvert des semaines pour
+/// cette raison.
+///
+/// `--no-build` évite de rappeler cargo depuis cargo : le binaire est
+/// remplacé par un fichier quelconque, puisque ce qu'on mesure ici est
+/// l'installation, non la compilation.
+#[test]
+fn installing_really_puts_everything_in_place() {
+    let racine = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    if !racine.join("install.sh").is_file() {
+        return;
+    }
+    // Un binaire de remplacement, là où le script ira le chercher. On
+    // ne touche à `target/` que s'il n'y a rien : écraser celui de la
+    // compilation en cours serait une mauvaise surprise.
+    let faux = racine.join("target/debug/namsdec-gui");
+    if faux.exists() {
+        // Le vrai est là : tant mieux, on l'installera lui.
+    } else {
+        let Some(parent) = faux.parent() else { return };
+        if std::fs::create_dir_all(parent).is_err() {
+            return;
+        }
+        if std::fs::write(&faux, b"#!/bin/sh\nexit 0\n").is_err() {
+            return;
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&faux, std::fs::Permissions::from_mode(0o755));
+        }
+    }
+
+    let dossier = tempfile::tempdir().expect("un dossier temporaire");
+    let prefix = dossier.path().join("share");
+    let bin = dossier.path().join("bin");
+
+    let sortie = std::process::Command::new("bash")
+        .arg(racine.join("install.sh"))
+        .args([
+            "--no-build",
+            "--debug",
+            "--no-dock",
+            "--no-path",
+            "--no-color",
+            "--prefix",
+        ])
+        .arg(&prefix)
+        .arg("--bin-dir")
+        .arg(&bin)
+        .output();
+    let Ok(sortie) = sortie else {
+        eprintln!("bash est introuvable : test ignoré");
+        return;
+    };
+    assert!(
+        sortie.status.success(),
+        "l'installation a échoué :\n{}\n{}",
+        String::from_utf8_lossy(&sortie.stdout),
+        String::from_utf8_lossy(&sortie.stderr)
+    );
+
+    // Ce que le script promet d'avoir posé, et rien de moins.
+    for attendu in [
+        bin.join("namsdec"),
+        prefix.join("namsdec/exercises/namsdec.json"),
+        prefix.join("icons/hicolor/scalable/apps/namsdec.svg"),
+        prefix.join("applications/namsdec.desktop"),
+    ] {
+        assert!(
+            attendu.exists(),
+            "{} manque après l'installation :\n{}",
+            attendu.display(),
+            String::from_utf8_lossy(&sortie.stdout)
+        );
+    }
+
+    // Le lanceur pointe vers le binaire qu'on vient de poser, et non
+    // vers celui d'ailleurs : un `.desktop` qui lance autre chose est
+    // pire qu'un lanceur absent.
+    let lanceur =
+        std::fs::read_to_string(prefix.join("applications/namsdec.desktop")).expect("le lanceur");
+    assert!(
+        lanceur.contains(&format!("Exec={}/namsdec", bin.display())),
+        "le lanceur doit pointer vers le binaire installé :\n{lanceur}"
+    );
+
+    // Et la série livrée est bien celle du dépôt, non un fichier vide.
+    let pack = namsdec_exercises::pack::read(prefix.join("namsdec/exercises/namsdec.json"))
+        .expect("la série installée se lit");
+    assert_eq!(pack.id, namsdec_exercises::BUILTIN_ID);
+
+    // La désinstallation défait exactement cela.
+    let sortie = std::process::Command::new("bash")
+        .arg(racine.join("uninstall.sh"))
+        .args(["--no-color", "--prefix"])
+        .arg(&prefix)
+        .arg("--bin-dir")
+        .arg(&bin)
+        .output()
+        .expect("la désinstallation tourne");
+    assert!(
+        sortie.status.success(),
+        "la désinstallation a échoué :\n{}",
+        String::from_utf8_lossy(&sortie.stderr)
+    );
+    for parti in [
+        bin.join("namsdec"),
+        prefix.join("icons/hicolor/scalable/apps/namsdec.svg"),
+        prefix.join("applications/namsdec.desktop"),
+    ] {
+        assert!(!parti.exists(), "{} devait partir", parti.display());
+    }
+    // Les exercices, eux, restent : on désinstalle souvent pour
+    // réinstaller, et une série qu'on a écrite ne se perd pas au passage.
+    assert!(
+        prefix.join("namsdec/exercises/namsdec.json").exists(),
+        "les séries d'exercices sont gardées sans --purge"
+    );
+}

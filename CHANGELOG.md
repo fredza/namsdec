@@ -35,6 +35,16 @@ précédaient.
 - Une fonction sans aucun saut le dit en une ligne, au lieu de laisser
   chercher un « si » qui n'y est pas.
 
+**L'installation se laisse conduire**
+- `./install.sh --help` décrit onze options. Les deux qui servent le
+  plus : `--dry-run` dit ce qui serait fait sans rien écrire, `--debug`
+  installe la version non optimisée, prête en quelques secondes.
+- Aussi : `--prefix`, `--bin-dir`, `--no-desktop`, `--no-dock`,
+  `--no-path`, `--no-exercises`, `--no-strip`, `--no-build`, `--quiet`,
+  `--no-color`. `./uninstall.sh` en reprend cinq.
+- Les couleurs s'éteignent hors d'un terminal et quand `NO_COLOR` est
+  posé. Une option inconnue est refusée en disant laquelle.
+
 **Le déroulement dit ce que fait la fonction entière**
 - Quand « Fonction courante » est coché, une ligne en tête résume ce que
   namsdec sait de la fonction : « Lit RDI et RSI, rend 0 ou 1. »

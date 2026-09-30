@@ -41,6 +41,7 @@ AVEC_DOCK=1
 AVEC_PATH=1
 AVEC_EXERCICES=1
 AVEC_STRIP=1
+AVEC_COMPILATION=1
 PROFIL=release
 ESSAI=0
 SILENCIEUX=0
@@ -71,6 +72,9 @@ ${GRAS}namsdec — installation${FIN}
     ${CYAN}--no-exercises${FIN}    ne pas installer la série d'exercices livrée
     ${CYAN}--no-strip${FIN}        garder les symboles de débogage dans le binaire
                       installé (deux mégaoctets de plus)
+    ${CYAN}--no-build${FIN}        ne pas compiler : poser le binaire déjà construit.
+                      Pour qui compile lui-même — un empaqueteur, ou une
+                      réinstallation après un simple ${GRIS}cargo build${FIN}
     ${CYAN}-n, --dry-run${FIN}     dire ce qui serait fait, sans rien écrire
     ${CYAN}-q, --quiet${FIN}       ne dire que l'essentiel
     ${CYAN}--no-color${FIN}        pas de couleurs (respecte aussi NO_COLOR)
@@ -100,6 +104,7 @@ while [ $# -gt 0 ]; do
         --no-path)       AVEC_PATH=0; shift ;;
         --no-exercises)  AVEC_EXERCICES=0; shift ;;
         --no-strip)      AVEC_STRIP=0; shift ;;
+        --no-build)      AVEC_COMPILATION=0; shift ;;
         -n|--dry-run)    ESSAI=1; shift ;;
         -q|--quiet)      SILENCIEUX=1; shift ;;
         --no-color)      COULEUR=non; shift ;;
@@ -142,7 +147,8 @@ faire() {
 }
 
 # Combien d'étapes : le compte est annoncé, donc il doit être juste.
-TOTAL=3
+TOTAL=2
+[ "$AVEC_COMPILATION" = 1 ] && TOTAL=$((TOTAL + 1))
 [ "$AVEC_EXERCICES" = 1 ] && TOTAL=$((TOTAL + 1))
 [ "$AVEC_LANCEUR" = 1 ] && TOTAL=$((TOTAL + 2))
 [ "$AVEC_PATH" = 1 ] && TOTAL=$((TOTAL + 1))
@@ -173,17 +179,25 @@ done
 
 # --- Compilation -------------------------------------------------------
 if [ "$PROFIL" = release ]; then
-    etape "Compilation (la première fois, comptez quelques minutes)"
-    faire cargo build --release --manifest-path "$SOURCE_DIR/Cargo.toml"
     BUILT="$SOURCE_DIR/target/release/$BIN_NAME"
 else
-    etape "Compilation de la version de débogage"
-    detail "non optimisée : namsdec y sera plus lent, mais prêt en quelques secondes"
-    faire cargo build --manifest-path "$SOURCE_DIR/Cargo.toml"
     BUILT="$SOURCE_DIR/target/debug/$BIN_NAME"
 fi
+if [ "$AVEC_COMPILATION" = 1 ]; then
+    if [ "$PROFIL" = release ]; then
+        etape "Compilation (la première fois, comptez quelques minutes)"
+        faire cargo build --release --manifest-path "$SOURCE_DIR/Cargo.toml"
+    else
+        etape "Compilation de la version de débogage"
+        detail "non optimisée : namsdec y sera plus lent, mais prêt en quelques secondes"
+        faire cargo build --manifest-path "$SOURCE_DIR/Cargo.toml"
+    fi
+fi
 if [ "$ESSAI" != 1 ]; then
-    [ -x "$BUILT" ] || mourir "binaire introuvable après compilation : $BUILT"
+    # Sans compilation, le binaire doit déjà être là — et le dire vaut
+    # mieux que d'installer l'avant-dernier sans prévenir.
+    [ -x "$BUILT" ] || mourir "binaire introuvable : $BUILT
+    (compilez d'abord, ou retirez --no-build)"
     ok "$(du -h "$BUILT" | cut -f1) — $BUILT"
 fi
 

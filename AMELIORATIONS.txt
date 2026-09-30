@@ -1710,3 +1710,25 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
   Un contrôle trop étroit accuse, un contrôle trop large absout. Le vert
   obtenu en élargissant ne prouve rien — c'est en remettant le défaut qu'on
   sait.
+
+  --- 3.3 : le test de bout en bout sur l'installation, enfin possible ---
+  Il était ouvert depuis des semaines, et pour une raison précise : le script
+  n'avait aucune option. Le lancer dans un test revenait à installer namsdec
+  pour de bon sur la machine de qui lance `cargo test` — donc à écrire dans le
+  profil de l'utilisateur, ce que la règle du projet interdit.
+
+  Les options écrites aujourd'hui le débloquent exactement :
+    --prefix, --bin-dir   envoient tout dans un dossier temporaire
+    --no-dock, --no-path  interdisent le bureau et le shell
+    --no-build            évite de rappeler cargo depuis cargo
+
+  Le test LANCE le script, regarde ce qui est posé sur le disque, vérifie que
+  le lanceur pointe vers le binaire qu'on vient d'installer — un `.desktop` qui
+  lance autre chose est pire qu'un lanceur absent —, que la série installée est
+  bien celle du dépôt et non un fichier vide, puis lance `uninstall.sh` et
+  vérifie ce qui part ET ce qui reste : les exercices sont gardés sans
+  `--purge`.
+
+  LEÇON : une fonctionnalité qu'on ajoute pour l'utilisateur en débloque
+  parfois une autre pour le dépôt. `--prefix` a été écrit pour qui veut
+  installer ailleurs ; il rend surtout testable ce qui ne l'était pas.

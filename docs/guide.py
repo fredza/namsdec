@@ -223,11 +223,13 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
             ["--no-path", "ne pas toucher au fichier de configuration du shell"],
             ["--no-exercises", "ne pas installer la série livrée"],
             ["--no-strip", "garder les symboles de débogage"],
+            ["--no-build", "poser le binaire déjà construit, sans recompiler"],
             ["--quiet, -q", "ne dire que l'essentiel"],
             ["--no-color", "pas de couleurs (NO_COLOR est respecté aussi)"],
         ]),
         ("p",
-         "<font face='Courier'>./uninstall.sh</font> prend <b>--dry-run</b>, <b>--quiet</b> "
+         "<font face='Courier'>./uninstall.sh</font> prend <b>--prefix</b>, <b>--bin-dir</b>, "
+         "<b>--dry-run</b>, <b>--quiet</b> "
          "et <b>--no-color</b> de la même façon. <b>--purge</b> retire en plus vos réglages "
          "et vos séries d'exercices ; sans lui, ils sont gardés — on désinstalle souvent "
          "pour réinstaller, et perdre ses raccourcis au passage serait une mauvaise "

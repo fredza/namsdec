@@ -13,11 +13,7 @@ set -euo pipefail
 APP=namsdec
 PREFIX="${XDG_DATA_HOME:-$HOME/.local/share}"
 BIN_DIR="$HOME/.local/bin"
-ICON_DIR="$PREFIX/icons/hicolor"
-DESKTOP_DIR="$PREFIX/applications"
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/$APP"
-# Ce que l'utilisateur a ajouté : thèmes et séries d'exercices installés.
-DATA_DIR="$PREFIX/$APP"
 MARKER="# ajouté par namsdec"
 
 # --- Couleurs ----------------------------------------------------------
@@ -54,8 +50,12 @@ ${GRAS}namsdec — désinstallation${FIN}
   passage serait une mauvaise surprise.
 
   ${GRAS}Options${FIN}
+    ${CYAN}--prefix DIR${FIN}      où l'installation a posé icônes, lanceur et
+                      exercices (défaut : ${GRIS}$PREFIX${FIN})
+    ${CYAN}--bin-dir DIR${FIN}     où elle a posé le binaire
+                      (défaut : ${GRIS}$BIN_DIR${FIN})
     ${CYAN}--purge${FIN}           retirer AUSSI les réglages (${GRIS}$CONFIG_DIR${FIN})
-                      et les données (${GRIS}$DATA_DIR${FIN})
+                      et les données installées
     ${CYAN}-n, --dry-run${FIN}     dire ce qui serait retiré, sans rien supprimer
     ${CYAN}-q, --quiet${FIN}       ne dire que l'essentiel
     ${CYAN}--no-color${FIN}        pas de couleurs (respecte aussi NO_COLOR)
@@ -70,6 +70,10 @@ AIDE
 
 while [ $# -gt 0 ]; do
     case "$1" in
+        --prefix)     PREFIX="${2:?--prefix demande un dossier}"; shift 2 ;;
+        --prefix=*)   PREFIX="${1#*=}"; shift ;;
+        --bin-dir)    BIN_DIR="${2:?--bin-dir demande un dossier}"; shift 2 ;;
+        --bin-dir=*)  BIN_DIR="${1#*=}"; shift ;;
         --purge)      PURGE=1; shift ;;
         -n|--dry-run) ESSAI=1; shift ;;
         -q|--quiet)   SILENCIEUX=1; shift ;;
@@ -87,6 +91,13 @@ while [ $# -gt 0 ]; do
 done
 
 couleurs
+# Après les options : `--prefix` les déplace toutes les trois, et les
+# calculer avant reviendrait à effacer ailleurs que là où l'on a posé.
+ICON_DIR="$PREFIX/icons/hicolor"
+DESKTOP_DIR="$PREFIX/applications"
+# Ce que l'utilisateur a ajouté : thèmes et séries d'exercices installés.
+DATA_DIR="$PREFIX/$APP"
+
 say()  { [ "$SILENCIEUX" = 1 ] || printf '%s==>%s %s\n' "$BLEU" "$FIN" "$1"; }
 retirer() {
     if [ "$ESSAI" = 1 ]; then

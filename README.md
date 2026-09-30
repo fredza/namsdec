@@ -256,11 +256,12 @@ et rien ne demande les droits d'administrateur.
 | `--no-path` | ne pas toucher au fichier de configuration du shell |
 | `--no-exercises` | ne pas installer la série livrée |
 | `--no-strip` | garder les symboles de débogage (deux mégaoctets de plus) |
+| `--no-build` | ne pas compiler : poser le binaire déjà construit |
 | `--quiet`, `-q` | ne dire que l'essentiel |
 | `--no-color` | pas de couleurs — `NO_COLOR` est respecté aussi |
 
-`./uninstall.sh` défait exactement cela, et prend `--dry-run`, `--quiet`
-et `--no-color` de la même façon. `--purge` retire en plus vos réglages
+`./uninstall.sh` défait exactement cela, et prend `--prefix`,
+`--bin-dir`, `--dry-run`, `--quiet` et `--no-color` de la même façon. `--purge` retire en plus vos réglages
 et vos séries d'exercices — sans lui, ils sont gardés, parce qu'on
 désinstalle souvent pour réinstaller.
 

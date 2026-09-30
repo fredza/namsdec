@@ -300,7 +300,14 @@ Détail chiffré dans `AMELIORATIONS.txt` 7.11, section « REVUE DU
 - [x] Le rendu hors écran est mesuré, et les captures sont outillées (A 3.2)
 - [~] **Un contrôle qui dit ce qui n'est pas testé** (A 7.6) — commencé ;
       reste à relire les tests d'affichage existants
-- [ ] **Pas de test de bout en bout sur l'installation** (A 3.3)
+- [x] **Un test de bout en bout sur l'installation** (A 3.3) — il LANCE
+      `install.sh`, regarde ce qui est posé sur le disque, puis lance
+      `uninstall.sh` et vérifie ce qui part. Il n'écrit rien dans le
+      profil : `--prefix` et `--bin-dir` l'envoient dans un dossier
+      temporaire, `--no-dock` et `--no-path` lui interdisent le bureau
+      et le shell, `--no-build` évite de rappeler cargo depuis cargo.
+      Ces options n'existaient pas — c'est pour cela que ce test est
+      resté ouvert des semaines.
 - [ ] **`egui_kittest` n'est pas utilisé** (A 3.5, 7.7) — à évaluer
       maintenant que le banc de mesure fait déjà l'essentiel
 
