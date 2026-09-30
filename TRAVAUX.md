@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **30 septembre
-2026**, version 0.2.6-beta.1, 613 tests au vert.
+2026**, version 0.2.6-beta.1, 614 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -347,6 +347,27 @@ Détail chiffré dans `AMELIORATIONS.txt` 7.11, section « REVUE DU
       que trois montées de version avaient emporté. Un contrôle exige
       maintenant qu'il porte la version courante, que le fichier existe,
       et qu'aucun autre ne traîne à côté.
+
+## 4 quater. La mise en page du listing, mesurée
+
+- [x] **Les 280 ms, chiffrées et rangées** (A 5.3) — sur 15 000 lignes :
+      coloration 40 ms, **pose des glyphes 285 ms**, total 325. La pose est
+      87 % du coût. Sur le crackme (62 386 lignes) : première image 561 ms,
+      puis 2,4 ms en régime, et **une seule pose** pour tout le chargement.
+      Le cache fait son travail ; le prix est celui d'un chargement.
+- [x] **`opening_a_binary_lays_out_its_listing_once`** — retient le « une
+      fois ». Une régression qui reposerait à chaque image ne se verrait pas
+      sur un source de vingt lignes et rendrait l'application inutilisable
+      sur un binaire : une demi-seconde par image.
+- [x] **Piste fermée : fusionner les sections de même format.** Aucun gain
+      — `egui::LayoutJob::append` le fait déjà (epaint 0.36.2). Les 120 000
+      sections mesurées sont déjà le résultat de sa fusion, huit par ligne
+      au lieu de dix. Le refaire coûtait 22 ms de plus. Retiré, et le
+      commentaire de `append` le dit pour la prochaine fois.
+- [ ] **Ce qui reste** : ne poser que les lignes visibles. Gain d'un facteur
+      ~300 sur la première image, coût d'une vue en lecture seule pour les
+      listings — sélection, recherche, curseur, marques. Pas à entreprendre
+      à la légère.
 
 ## 5. Vocation pédagogique
 

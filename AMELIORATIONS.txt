@@ -808,6 +808,38 @@ aujourd'hui ; les suivantes, ce vers quoi l'outil peut aller.
      binaire (qu'on n'édite pas) tout en le gardant pour un source (qu'on
      édite). C'est le gros chantier de performance qui reste.
 
+     MESURÉ PRÉCISÉMENT le 1er octobre 2026, avant d'y toucher :
+       - sur 15 000 lignes : coloration 40 ms, POSE DES GLYPHES 285 ms,
+         total 325 ms. La pose est 87 % du coût, et c'est elle qu'il
+         faudrait éviter — pas la coloration.
+       - sur le crackme (62 386 lignes) : première image 561 ms, deuxième
+         16,8 ms, régime 2,4 ms. UNE seule pose pour tout le chargement.
+     Donc le cache fait exactement son travail, et le prix est celui d'un
+     chargement, payé une fois. `opening_a_binary_lays_out_its_listing_once`
+     retient ce « une fois » : une régression qui reposerait à chaque image
+     ne se verrait pas sur un source de vingt lignes et rendrait
+     l'application inutilisable sur un binaire — une demi-seconde par image.
+
+     PISTE FERMÉE, et c'est utile de le savoir : fusionner les sections de
+     même format. Le découpage produit dix morceaux par ligne de listing
+     (adresse, espaces, mnémonique, espaces, registre, virgule, espace,
+     valeur, espaces, commentaire) dont plusieurs voisins partagent leur
+     couleur. Essayé : AUCUN gain, parce qu'`egui::LayoutJob::append` le
+     fait déjà lui-même (epaint 0.36.2, « Optimization: merge into the
+     previous section »). Les 120 000 sections mesurées sont DÉJÀ le
+     résultat de la fusion — huit par ligne au lieu de dix. Le refaire dans
+     `syntax::append` coûtait 22 ms de plus, un `FontId` cloné par appel
+     pour comparer des formats comparés en aval. Retiré, et le commentaire
+     de `append` le dit pour la prochaine fois.
+
+     Ce qui reste donc vraiment : ne poser que les lignes visibles. Le gain
+     serait d'un facteur ~300 sur la première image (cinquante lignes au
+     lieu de quinze mille), et le coût est une vue en lecture seule pour
+     les listings — avec tout ce qui s'y rattache : sélection, recherche,
+     position du curseur, marques. À ne pas entreprendre à la légère : ce
+     qu'on gagnerait en millisecondes se perdrait en gestes qui ne marchent
+     plus.
+
 5.4  Ce qui pèse dans le binaire, mesuré le 18 septembre 2026
      18,4 Mo installés, dont : .text 10,8 Mo (le code), .rodata 3,2 Mo, et
      2,2 Mo de table de symboles — celle-ci est maintenant retirée à

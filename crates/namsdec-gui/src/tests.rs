@@ -26557,6 +26557,66 @@ fn no_control_asks_the_machine_what_it_should_be_checking() {
     }
 }
 
+/// Ouvrir un binaire ne pose son listing qu'UNE fois.
+///
+/// Mesuré le 1er octobre 2026 sur `crackme-01`, dont le listing fait
+/// 62 386 lignes : la première image coûte 561 ms, dont 285 rien qu'à
+/// poser les glyphes, et les suivantes 2,4 ms. C'est le prix d'un
+/// chargement, et il est payé une fois — le cache de `layout_code` y veille.
+///
+/// Ce que ce contrôle retient, c'est justement le « une fois ». Une
+/// régression qui reposerait à chaque image ne se verrait pas sur un
+/// source de vingt lignes et rendrait l'application inutilisable sur un
+/// binaire : une demi-seconde par image. Et une pose de plus au
+/// chargement, c'est une demi-seconde de plus à l'ouverture, sans que
+/// rien ne l'explique.
+///
+/// Le budget des images d'après est large — 40 ms là où l'on mesure 2,4 —
+/// parce qu'une machine chargée mesure mal. Il attrape ce qui compte : le
+/// retour à une pose par image.
+#[test]
+fn opening_a_binary_lays_out_its_listing_once() {
+    let Some(octets) = binaire_dépreuve("crackme-01") else {
+        return;
+    };
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp::default();
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1400.0, 900.0),
+        )),
+        ..Default::default()
+    };
+    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    let lignes = app.source.lines().count();
+    assert!(lignes > 10_000, "un listing de {lignes} lignes");
+
+    let avant = crate::editor::poses_du_texte();
+    let mut durées = Vec::new();
+    for _ in 0..6 {
+        let départ = std::time::Instant::now();
+        let mut sortie = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        sortie.textures_delta.clear();
+        durées.push(départ.elapsed());
+    }
+    let poses = crate::editor::poses_du_texte() - avant;
+    assert_eq!(
+        poses, 1,
+        "{lignes} lignes posées {poses} fois en six images — une seule suffit"
+    );
+
+    // Et les images d'après ne paient plus : c'est là que se verrait un
+    // cache qui rate son coup sans pour autant reposer.
+    let plus_lente_après = durées[1..].iter().max().copied().unwrap_or_default();
+    assert!(
+        plus_lente_après < std::time::Duration::from_millis(40),
+        "après le chargement, la plus lente des cinq images suivantes a pris \
+         {plus_lente_après:?} pour {lignes} lignes"
+    );
+}
+
 /// Le guide que le README annonce existe, et c'est celui de la version.
 ///
 /// Le lien pointait vers `guide-namsdec-0.2.5-beta.3.pdf`, un fichier
