@@ -17,7 +17,20 @@ concurrency:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # La version est ÉPINGLÉE, et non `ubuntu-latest`.
+    #
+    # `what_this_machine_runs_can_be_explained` désassemble soixante
+    # binaires de /usr/bin et exige une fiche pour chaque mnémonique
+    # rencontré. C'est voulu — un échec y est une liste de fiches à
+    # écrire, non un défaut de l'application —, mais cela veut dire que
+    # la CI dépend des binaires du coureur.
+    #
+    # `ubuntu-latest` bascule vers Ubuntu 26 le 19 octobre 2026 :
+    # d'autres binaires, d'autres instructions, et une CI rouge un matin
+    # sans qu'une ligne du dépôt ait changé. Épingler la version rend le
+    # résultat reproductible ; monter d'une version devient alors un
+    # geste qu'on fait exprès, et dont on écrit les fiches.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 

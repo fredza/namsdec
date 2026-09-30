@@ -32,6 +32,8 @@ egui = "0.36"
 # Elle fait partie des `default` d'eframe, que nous n'activons pas.
 eframe = { version = "0.36", default-features = false, features = ["default_fonts", "glow", "links", "persistence", "wayland", "x11"] }
 egui_code_editor = "0.4"
+# À l'essai : voir le contrôle `kittest_*` de namsdec-gui.
+egui_kittest = "0.36"
 arboard = "3"
 rfd = "0.17"
 iced-x86 = { version = "1.21", default-features = false, features = ["std", "decoder", "nasm", "instr_info"] }

@@ -25,7 +25,12 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # Épinglée, et pour une raison plus forte encore que dans `ci.yml` :
+    # un binaire est lié à la glibc du coureur qui l'a bâti, et ne tourne
+    # pas sur une distribution plus ancienne qu'elle. Monter de version
+    # coupe donc silencieusement les utilisateurs restés en arrière —
+    # c'est une décision, pas un défaut de l'étiquette `latest`.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 

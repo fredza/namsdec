@@ -314,8 +314,20 @@ Détail chiffré dans `AMELIORATIONS.txt` 7.11, section « REVUE DU
       et le shell, `--no-build` évite de rappeler cargo depuis cargo.
       Ces options n'existaient pas — c'est pour cela que ce test est
       resté ouvert des semaines.
-- [ ] **`egui_kittest` n'est pas utilisé** (A 3.5, 7.7) — à évaluer
-      maintenant que le banc de mesure fait déjà l'essentiel
+- [x] **`egui_kittest` évalué, et gardé pour une seule chose** (A 3.5,
+      7.7) — le mandat était « si elle ne raccourcit pas visiblement,
+      elle sort ». Le même contrôle écrit des deux façons fait la même
+      longueur : sur ce critère, elle sortait.
+      Mais elle CLIQUE, et le banc ne sait pas le faire — les captures
+      non plus, les clics simulés n'atteignant pas l'application sous
+      Wayland. Or tous nos contrôles d'interface fabriquent l'état
+      (`flow_pseudo: true`) puis mesurent ce qui est peint : ils
+      vérifient que la vue est juste, jamais que le geste y mène.
+      Débrancher la case « Pseudo-code » ne faisait rougir aucun test ;
+      elle en fait rougir un maintenant.
+      L'emploi est borné : kittest pour les GESTES, le banc pour la mise
+      en page — il mesure des pixels, là où l'arbre d'accessibilité ne
+      connaît que des noms.
 
 ## 7. Dette technique
 

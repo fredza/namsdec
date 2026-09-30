@@ -460,6 +460,18 @@ aujourd'hui ; les suivantes, ce vers quoi l'outil peut aller.
 
      --- demandé le 19 septembre 2026, sur capture d'écran ---
 
+4.17 [À VENIR] Modifier le code du binaire ouvert, depuis l'onglet RE
+     Dit par Fred le 30 septembre 2026 : une fonctionnalité pour ajouter ou
+     retirer une fonctionnalité au binaire ouvert. DZF l'aidera — il est en
+     cours de développement en parallèle — mais elle doit MARCHER SANS LUI.
+     C'est la même règle que pour le désassemblage : un module optionnel
+     n'est jamais une dépendance du cœur.
+     De quoi partir : namsdec sait déjà patcher (inverser un saut, le forcer,
+     neutraliser par des `nop`, écrire des octets à la main), la fenêtre
+     Correctifs liste ce qui est posé et sait le défaire, et `namsdec-re/patch`
+     porte le tout. La suite est du même genre en plus grand, et passe par là
+     plutôt que par un chemin parallèle.
+
 4.16 [FAIT] DZF branché comme désassembleur
      DZF est le désassembleur x86-64 maison (dépôt ~/Projects/DZF) : C++23,
      écrit à la main, sans aucune dépendance. C'est exactement le cas d'usage
@@ -1856,3 +1868,33 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
   canal se ferme et l'application dit « échec ». Un mégaoctet et demi ne vaut
   pas le travail en cours de quelqu'un.
   La question est tranchée, chiffrée, et n'a plus à être reposée.
+
+  --- 7.7 : egui_kittest, évalué comme demandé, gardé pour autre chose ---
+  Le mandat était clair : « à évaluer sur UN test d'abord, pas sur tous : si
+  elle ne raccourcit pas visiblement, elle sort des dépendances ».
+
+  Le même contrôle — « le bouton de copie n'est là que dans la vue où il
+  sert » — écrit des deux façons fait la MÊME longueur : huit lignes de part
+  et d'autre. Sur le critère posé, elle sortait. Elle perd même quelque chose :
+  le banc restreint son relevé à une fenêtre (`Some("flow_window")`), ce qui
+  protège de la deuxième façon de mentir — chercher le premier. L'arbre
+  d'accessibilité, lui, répond pour toute l'application.
+
+  MAIS ELLE CLIQUE, et c'est ce qui décide. Le banc ne sait pas cliquer ; les
+  captures non plus, puisque les clics et les frappes simulés n'atteignent pas
+  l'application sous Wayland — vérifié deux fois cette semaine.
+
+  Or TOUS nos contrôles d'interface fabriquent l'état — `flow_pseudo: true` —
+  puis mesurent ce qui est peint. Ils vérifient que la VUE est juste, jamais
+  que le GESTE y mène. La preuve tient en une manipulation : la case
+  « Pseudo-code » débranchée, `the_flow_window_can_show_the_pseudo_code` passe
+  au vert, et seul le nouveau contrôle au clic rougit.
+
+  VERDICT : gardée, pour les gestes seulement. Le banc reste le maître de la
+  mise en page — il mesure des pixels, là où l'arbre d'accessibilité ne connaît
+  que des noms. Mélanger les deux ferait perdre au banc ce qu'il a de mieux.
+
+  Au passage, l'essai a répondu à une question qu'on n'avait pas posée : les
+  contrôles peints à la main de namsdec — le bouton encadré, la liste
+  déroulante maison — SONT exposés dans l'arbre d'accessibilité, donc lisibles
+  par un lecteur d'écran. On pouvait craindre le contraire.

@@ -26424,3 +26424,64 @@ fn the_update_check_can_be_left_out_by_one_option() {
          l'être, le reste se teste et se lit sans lui"
     );
 }
+
+/// La case « Pseudo-code » fait ce qu'elle annonce — au CLIC, et non
+/// par un état posé à la main.
+///
+/// Tous les contrôles d'interface de ce fichier fabriquent l'état —
+/// `flow_pseudo: true` — puis mesurent ce qui est peint. Ils vérifient
+/// donc que la VUE est juste, jamais que le GESTE y mène : on peut
+/// débrancher la case sans qu'un seul d'entre eux rougisse.
+///
+/// C'est ce qu'`egui_kittest` apporte, et la seule raison de le garder.
+/// Évalué le 30 septembre 2026 contre le banc maison : à longueur
+/// égale, il ne raccourcit rien — le mandat disait qu'alors il sortait.
+/// Mais il clique, et le banc ne sait pas le faire. Les captures non
+/// plus : sous Wayland, les frappes et les clics simulés n'atteignent
+/// pas l'application, ce qui a été vérifié deux fois.
+///
+/// L'emploi est donc borné : kittest pour les GESTES, le banc pour la
+/// mise en page. Mélanger les deux ferait perdre au banc ce qu'il a de
+/// mieux — il mesure des pixels, là où l'arbre d'accessibilité ne
+/// connaît que des noms.
+#[test]
+fn clicking_the_pseudo_code_box_really_switches_the_view() {
+    use egui_kittest::Harness;
+    use egui_kittest::kittest::Queryable;
+
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let s = strings(Lang::Fr);
+    let mut app = NamsdecApp {
+        source: "section .text\nglobal _start\n_start:\n    mov ecx, 3\n\
+                 boucle:\n    dec ecx\n    jnz boucle\n    hlt\n"
+            .to_owned(),
+        show_flow: true,
+        ..Default::default()
+    };
+    app.do_assemble();
+    let mut harness = Harness::builder()
+        .with_size(egui::Vec2::new(1400.0, 900.0))
+        .build_ui(move |ui| app.draw(ui));
+    harness.run();
+
+    assert!(
+        harness.query_by_label_contains("répéter").is_none(),
+        "au départ, c'est le graphe qu'on voit"
+    );
+    harness.get_by_label(s.flow_pseudo).click();
+    harness.run();
+    assert!(
+        harness.query_by_label_contains("répéter").is_some(),
+        "cocher la case montre le pseudo-code"
+    );
+    // Et le chemin du retour : une bascule qui ne rebascule pas est une
+    // porte à sens unique, ce qui ne se voit qu'en essayant.
+    harness.get_by_label(s.flow_pseudo).click();
+    harness.run();
+    assert!(
+        harness.query_by_label_contains("répéter").is_none(),
+        "décocher la rend au graphe"
+    );
+}
