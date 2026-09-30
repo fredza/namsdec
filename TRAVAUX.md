@@ -354,9 +354,13 @@ Détail chiffré dans `AMELIORATIONS.txt` 7.11, section « REVUE DU
       donc de sortir du `TextEdit` d'egui — qui porte le curseur, la
       sélection, la recherche, les points d'arrêt et la complétion.
       C'est un vrai chantier, non un réglage.
-- [~] **Les frames lentes** (A 5.2) — mesuré, et ce n'est pas ce qu'on
-      croyait ; reste à ne plus crier « frame lente » pour la première
-      image après un chargement
+- [x] **Les frames lentes** (A 5.2) — le message ne confond plus les
+      deux causes. La distinction se devinait en comparant la longueur
+      du texte d'une frame à l'autre, ce qui marche quand l'éditeur pose
+      dans la même frame et se trompe exactement quand il ne faut pas :
+      un fichier venu d'un dialogue arrive parfois après le dessin, et
+      c'est la frame SUIVANTE qui paie. Le cache de mise en page compte
+      ses poses — il sait, lui, s'il a payé.
 - [ ] **Ce qui pèse dans le binaire** (A 5.4) — mesuré le 18 septembre,
       rien décidé depuis
 - [x] `egui_extras` retiré des dépendances (A 5.5)

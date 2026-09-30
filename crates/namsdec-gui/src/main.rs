@@ -1182,12 +1182,14 @@ struct NamsdecApp {
     calc_base: CalcBase,
     /// Sur combien de bits elle montre son résultat.
     calc_width: CalcWidth,
-    /// La longueur du texte à la frame précédente.
+    /// Combien de fois le texte avait été posé au début de la frame.
     ///
     /// Sert à distinguer les deux sortes de frames lentes : celle d'une
     /// mise en page qu'on paie une fois, et celle qui reviendrait à
-    /// chaque image.
-    last_layout_len: usize,
+    /// chaque image. Le compte vient du cache de mise en page lui-même,
+    /// qui sait s'il a payé — la longueur du texte, elle, ne le devinait
+    /// qu'approximativement.
+    poses_au_début: u64,
     /// Les fenêtres qui étaient ouvertes à la frame précédente.
     ///
     /// Sert à reconnaître celles qui viennent de s'ouvrir, pour les
@@ -2125,7 +2127,7 @@ impl Default for NamsdecApp {
             was_waiting_for_input: false,
             calc_base: CalcBase::Hex,
             calc_width: CalcWidth::W64,
-            last_layout_len: 0,
+            poses_au_début: 0,
             windows_open: BTreeSet::new(),
             mem_find_input: String::new(),
             mem_find_hits: Vec::new(),
@@ -5461,14 +5463,24 @@ impl NamsdecApp {
             self.persist_settings_if_changed()
         });
 
-        // Le texte a-t-il changé pendant cette frame ? Une frappe ne
-        // rend pas une frame lente ; un listing de soixante mille lignes
-        // qui arrive, si. La conjonction des deux désigne donc la mise
-        // en page initiale, sans qu'aucun appelant ait à le signaler —
-        // et il y en a une dizaine qui remplacent le texte.
-        let texte_changé = self.source.len() != self.last_layout_len;
-        self.last_layout_len = self.source.len();
-        report_slow_frame(frame_start.elapsed(), &spans, texte_changé);
+        // Cette frame a-t-elle POSÉ le texte, ou seulement relu ce qui
+        // était déjà en page ?
+        //
+        // La question comptait, et la réponse était devinée : on
+        // comparait la longueur du texte à celle de la frame d'avant.
+        // Cela marche quand le texte change et que l'éditeur le pose
+        // dans la même frame — le cas ordinaire —, et se trompe
+        // exactement quand il ne faut pas : un fichier choisi dans un
+        // dialogue arrive parfois après le dessin de l'éditeur, et c'est
+        // la frame SUIVANTE qui paie la mise en page. La longueur y a
+        // déjà été notée, donc on criait « frame lente » pour un
+        // chargement — le seul cas où le message ne devait pas paraître.
+        //
+        // Le cache de mise en page compte ses poses : il sait, lui, s'il
+        // a payé.
+        let posé = editor::poses_du_texte() != self.poses_au_début;
+        self.poses_au_début = editor::poses_du_texte();
+        report_slow_frame(frame_start.elapsed(), &spans, posé);
     }
 }
 

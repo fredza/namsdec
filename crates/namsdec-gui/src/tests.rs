@@ -26304,3 +26304,67 @@ fn an_already_laid_out_listing_costs_almost_nothing() {
          texte entier est-il revenu ? Il vaut 1,2 ms à lui seul."
     );
 }
+
+/// La frame qui POSE le texte est celle qui le dit, et non celle d'à
+/// côté.
+///
+/// Une frame lente a deux causes, et le message ne doit pas les
+/// confondre : une mise en page qu'on paie UNE fois — trois cents
+/// millisecondes à l'ouverture d'un binaire — ou un coût qui
+/// reviendrait à chaque image. Crier « frame lente » pour la première
+/// fait chercher une fuite là où il n'y a qu'un chargement.
+///
+/// La distinction se devinait en comparant la longueur du texte d'une
+/// frame à l'autre. Cela marche quand le texte change et que l'éditeur
+/// le pose dans la même frame — le cas ordinaire —, et se trompe
+/// exactement quand il ne faut pas : un fichier choisi dans un dialogue
+/// arrive parfois après le dessin, et c'est la frame SUIVANTE qui paie.
+/// La longueur y avait déjà été notée.
+///
+/// Le cache de mise en page compte ses poses : il sait, lui, s'il a
+/// payé. Le contrôle vérifie que ce compte n'avance que lorsqu'une pose
+/// a vraiment lieu.
+#[test]
+fn the_frame_that_lays_out_the_text_is_the_one_that_says_so() {
+    let ctx = egui::Context::default();
+    let app = NamsdecApp::default();
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1400.0, 900.0),
+        )),
+        ..Default::default()
+    };
+    let texte = "mov rax, 1\nmov rdi, 2\nsyscall\n".repeat(200);
+    let autre = "nop\n".repeat(200);
+
+    let mut relevé = Vec::new();
+    let mut sortie = ctx.run_ui(input, |ui| {
+        let avant = crate::editor::poses_du_texte();
+        let _ = crate::editor::layout_code(ui, app.theme, &texte);
+        relevé.push(("première pose", crate::editor::poses_du_texte() - avant));
+
+        let avant = crate::editor::poses_du_texte();
+        let _ = crate::editor::layout_code(ui, app.theme, &texte);
+        let _ = crate::editor::layout_code(ui, app.theme, &texte);
+        relevé.push(("relectures", crate::editor::poses_du_texte() - avant));
+
+        let avant = crate::editor::poses_du_texte();
+        let _ = crate::editor::layout_code(ui, app.theme, &autre);
+        relevé.push(("texte changé", crate::editor::poses_du_texte() - avant));
+    });
+    sortie.textures_delta.clear();
+
+    assert_eq!(relevé[0], ("première pose", 1), "{relevé:?}");
+    assert_eq!(
+        relevé[1],
+        ("relectures", 0),
+        "relire du texte déjà posé ne coûte pas une pose : {relevé:?}"
+    );
+    assert_eq!(
+        relevé[2],
+        ("texte changé", 1),
+        "un texte nouveau se pose : {relevé:?}"
+    );
+}

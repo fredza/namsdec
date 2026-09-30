@@ -1804,3 +1804,24 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
   LEÇON : « mis en page en une fois » décrivait un symptôme, pas la cause. La
   cause coûtait cent fois moins cher à corriger, et le disait dès qu'on
   mesurait.
+
+  --- 5.2 : « frame lente » ne crie plus pour un chargement ---
+  Une frame lente a deux causes, et le message ne doit pas les confondre : une
+  mise en page qu'on paie UNE fois — trois cents millisecondes à l'ouverture
+  d'un binaire — ou un coût qui reviendrait à chaque image. Crier « frame
+  lente » pour la première fait chercher une fuite là où il n'y a qu'un
+  chargement, et c'est ainsi qu'on apprend à ne plus lire les avertissements.
+
+  La distinction existait déjà, et elle était DEVINÉE : on comparait la
+  longueur du texte à celle de la frame précédente. Cela marche quand le texte
+  change et que l'éditeur le pose dans la même frame — le cas ordinaire — et se
+  trompe exactement quand il ne faut pas. Un fichier choisi dans un dialogue
+  arrive parfois après le dessin de l'éditeur : c'est la frame SUIVANTE qui
+  paie la mise en page, et la longueur y a déjà été notée.
+
+  Le cache de mise en page compte maintenant ses poses. Il sait, lui, s'il a
+  payé : une comparaison de longueurs devine, un compteur constate.
+
+  LEÇON, la même que pour 5.3 la veille : quand une information existe à sa
+  source, l'inférer ailleurs coûte plus cher et se trompe. Le cache savait ;
+  personne ne le lui demandait.

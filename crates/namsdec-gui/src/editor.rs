@@ -1213,6 +1213,7 @@ pub(crate) fn layout_code(
 
     let job = syntax::highlight(ui, theme, text, f32::INFINITY);
     let galley = ui.fonts_mut(|f| f.layout_job(job));
+    POSES.with(|n| n.set(n.get() + 1));
     CACHE.with(|cache| {
         *cache.borrow_mut() = Some(Cache {
             texte: text.to_owned(),
@@ -1222,6 +1223,27 @@ pub(crate) fn layout_code(
         })
     });
     galley
+}
+
+// Combien de fois le texte a été posé pour de bon.
+//
+// La mise en page complète d'un listing coûte trois cents
+// millisecondes, une fois. La frame qui les paie n'est pas forcément
+// celle où le texte a changé : un fichier choisi dans un dialogue
+// arrive parfois après le dessin de l'éditeur, et c'est la frame
+// SUIVANTE qui pose. Compter les poses dit exactement laquelle a payé,
+// là où comparer des longueurs d'une frame à l'autre le devinait — et
+// se trompait précisément dans ce cas-là, en criant « frame lente »
+// pour un chargement.
+thread_local! {
+    // Un `//` et non un `///` : un commentaire de documentation ne peut
+    // pas se poser sur une macro.
+    static POSES: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+/// Combien de fois le texte a été posé depuis le début.
+pub(crate) fn poses_du_texte() -> u64 {
+    POSES.with(std::cell::Cell::get)
 }
 
 /// Ce que `layout_code` garde d'un appel à l'autre.
