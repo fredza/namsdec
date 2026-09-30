@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **30 septembre
-2026**, version 0.2.6-beta.1, 611 tests au vert.
+2026**, version 0.2.6-beta.1, 612 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -308,6 +308,22 @@ Détail chiffré dans `AMELIORATIONS.txt` 7.11, section « REVUE DU
 - [x] **L'onglet Outils** avait le même défaut, révélé en y ajoutant
       DZF : il lisait la machine pour savoir s'il devait vérifier quoi que
       ce soit, et ne vérifiait donc rien sur un poste bien équipé.
+- [x] **Toute la classe, et non les instances** (A 3.1) — le défaut
+      était dans **quatre** contrôles, pas un. Trois autres lisaient
+      l'état des outils pour choisir leur assertion : le plan
+      d'installation, le panneau des outils, et celui du greffon
+      manquant. Ce dernier n'éprouvait **jamais** le cas « incomplet »,
+      le seul qui l'intéressait, parce que rizin fonctionne sur cette
+      machine. Un contrôle qui s'adapte ne signale pas qu'il a cessé de
+      voir.
+- [x] **`no_control_asks_the_machine_what_it_should_be_checking`** — le
+      contrôle qui empêche la récidive. Il lit `tests.rs`, découpe par
+      `#[test]`, et refuse `availability_in`, `.availability()` et
+      `tool_availability` dans un corps de test. Deux exceptions nommées
+      avec leur raison — vérifier une relation vraie partout, vérifier la
+      mécanique du relevé —, et la liste blanche est elle-même vérifiée :
+      un nom qu'on y laisse après avoir renommé le test ferait croire à
+      une exception qui n'existe plus. Éprouvé en remettant le défaut.
 - [x] **Le guide que le README annonce** — le lien pointait vers un PDF
       que trois montées de version avaient emporté. Un contrôle exige
       maintenant qu'il porte la version courante, que le fichier existe,

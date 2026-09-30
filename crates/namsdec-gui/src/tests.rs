@@ -18640,37 +18640,34 @@ fn the_tools_tab_shows_every_tool_not_just_the_first() {
     // programme, « namsdec s'en sert » parle de namsdec. Les confondre
     // était toute la confusion de l'ancienne page.
     //
-    // Lesquels sont présents dépend de la machine qui fait tourner les
-    // tests — et depuis que namsdec retrouve ce qu'il a installé
-    // lui-même, une machine où Rizin et RetDec sont bâtis n'a plus un
-    // seul outil absent. On n'exige donc chaque état que là où il a lieu
-    // d'être, plutôt que de tenir pour acquis un poste mal équipé.
-    let outils = data_dir().map(|dir| namsdec_disasm::install::tools_dir(&dir));
-    let états: Vec<_> = namsdec_disasm::known::all()
-        .iter()
-        .map(|outil| outil.availability_in(outils.as_deref()))
-        .collect();
+    // Les deux états sont SEMÉS, un pour chaque moitié de la liste : le
+    // panneau doit écrire les deux phrases en même temps, et c'est
+    // précisément ce qu'on veut vérifier — que « absent de la machine »
+    // et « installé sur la machine » ne se confondent pas.
+    //
+    // C'était lu sur la machine, et alors la moitié des assertions ne
+    // s'exécutait pas : depuis que namsdec retrouve ce qu'il a installé
+    // lui-même, un poste bien équipé n'a plus un seul outil absent, et le
+    // test ne vérifiait plus qu'une phrase sur deux.
     let s_fr = strings(Lang::Fr);
+    let connus = namsdec_disasm::known::all();
+    app.tools_ready = connus
+        .iter()
+        .enumerate()
+        .map(|(rang, outil)| {
+            let dispo = if rang % 2 == 0 {
+                namsdec_disasm::known::Availability::Ready
+            } else {
+                namsdec_disasm::known::Availability::Missing
+            };
+            (outil.plugin.id.clone(), dispo)
+        })
+        .collect();
+    assert!(connus.len() >= 2, "il faut deux outils pour deux états");
+    let peint = paint(&mut app);
     assert!(peint.contains(s_fr.tools_unused), "{peint}");
-    if états
-        .iter()
-        .any(|état| !matches!(état, namsdec_disasm::known::Availability::Missing))
-    {
-        assert!(
-            peint.contains(s_fr.tools_state_found),
-            "« {} » :\n{peint}",
-            s_fr.tools_state_found
-        );
-    }
-    if états
-        .iter()
-        .any(|état| matches!(état, namsdec_disasm::known::Availability::Missing))
-    {
-        assert!(
-            peint.contains(s_fr.tools_state_absent),
-            "« {} » :\n{peint}",
-            s_fr.tools_state_absent
-        );
+    for attendu in [s_fr.tools_state_found, s_fr.tools_state_absent] {
+        assert!(peint.contains(attendu), "« {attendu} » :\n{peint}");
     }
     // Et les boutons de la boîte restent visibles : la page ne prend
     // plus toute la hauteur de l'écran.
@@ -19033,29 +19030,33 @@ fn fetching_a_tool_never_happens_by_itself() {
             "« {attendu} » doit se lire avant tout lancement :\n{peint}"
         );
     }
-    // Le bouton de lancement, ou le constat que c'est déjà fait : l'un
-    // ou l'autre, selon ce que la machine a. L'exiger en dur faisait
-    // échouer le test sur un poste où RetDec était déjà installé — et
-    // c'est précisément là qu'il ne faut plus inviter à recommencer.
-    let outils = data_dir().map(|dir| namsdec_disasm::install::tools_dir(&dir));
-    let prêt = namsdec_disasm::known::all()
-        .into_iter()
-        .find(|k| k.plugin.id == "retdec")
-        .map(|k| k.availability_in(outils.as_deref()) == namsdec_disasm::known::Availability::Ready)
-        .unwrap_or(false);
-    let attendu = if prêt {
-        strings(Lang::Fr).install_already_done
-    } else {
-        strings(Lang::Fr).install_start
-    };
-    assert!(
-        peint.contains(attendu),
-        "« {attendu} » doit se lire avant tout lancement :\n{peint}"
-    );
-    assert!(
-        app.install_job.is_none(),
-        "montrer le plan n'est pas l'exécuter"
-    );
+    // Le bouton de lancement, ou le constat que c'est déjà fait. L'état
+    // est SEMÉ, non lu sur la machine : le lire faisait dire au test deux
+    // choses différentes selon le poste, et il ne vérifiait donc rien de
+    // stable. Semé APRÈS une première image, parce qu'ouvrir la fenêtre
+    // jette le relevé des outils par conception — et que l'image suivante
+    // le refait en lançant vraiment l'outil.
+    for (état, attendu) in [
+        (
+            namsdec_disasm::known::Availability::Ready,
+            strings(Lang::Fr).install_already_done,
+        ),
+        (
+            namsdec_disasm::known::Availability::Missing,
+            strings(Lang::Fr).install_start,
+        ),
+    ] {
+        app.tools_ready = [("retdec".to_owned(), état)].into_iter().collect();
+        let peint = paint(&mut app);
+        assert!(
+            peint.contains(attendu),
+            "{état:?} : « {attendu} » doit se lire avant tout lancement :\n{peint}"
+        );
+        assert!(
+            app.install_job.is_none(),
+            "montrer le plan n'est pas l'exécuter"
+        );
+    }
 }
 
 /// Ce que les recettes s'interdisent, et qui compte plus que ce
@@ -20126,55 +20127,79 @@ fn a_binary_listing_does_not_duplicate_lines() {
 /// l'installation n'avait pas marché.
 #[test]
 fn a_working_tool_is_not_announced_as_missing_something() {
-    let s = strings(Lang::Fr);
-    let outils = data_dir().map(|dir| namsdec_disasm::install::tools_dir(&dir));
-
-    let rizin = namsdec_disasm::known::all()
-        .into_iter()
-        .find(|k| k.plugin.id == "rizin-ghidra")
-        .expect("la fiche rizin existe");
-    let dispo = rizin.availability_in(outils.as_deref());
-
-    let mut app = NamsdecApp {
-        show_preferences: true,
-        preferences_tab: PreferencesTab::Tools,
-        ..Default::default()
-    };
-    let ctx = egui::Context::default();
-    let entrée = egui::RawInput {
-        screen_rect: Some(egui::Rect::from_min_size(
-            egui::Pos2::ZERO,
-            egui::vec2(1600.0, 1200.0),
-        )),
-        ..Default::default()
-    };
-    let mut peint = String::new();
-    for _ in 0..3 {
-        peint.clear();
-        let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
-        for clipped in &sortie.shapes {
-            if let egui::epaint::Shape::Text(texte) = &clipped.shape {
-                peint.push_str(texte.galley.text());
-                peint.push('|');
-            }
-        }
-        sortie.textures_delta.clear();
-    }
-
-    // Le test s'adapte à la machine plutôt que de supposer : ce qu'on
-    // vérifie est la cohérence entre l'état et ce qui est écrit.
     use namsdec_disasm::known::Availability;
-    if dispo == Availability::Ready {
-        assert!(
-            !peint.contains(s.tools_needs),
-            "rizin+rz-ghidra fonctionne ici : rien ne doit dire qu'il manque \
-             quelque chose.\n{peint}"
-        );
-    } else if dispo == Availability::Incomplete {
-        assert!(
-            peint.contains(s.tools_needs),
-            "le greffon manque vraiment : il faut le dire.\n{peint}"
-        );
+
+    let s = strings(Lang::Fr);
+    // L'état est SEMÉ, et les deux cas sont éprouvés. Il était lu sur la
+    // machine, et le test ne jugeait alors qu'un seul des deux — celui
+    // que le poste lui présentait. Sur une machine où rizin fonctionne,
+    // le cas « incomplet » — le seul qui nous intéressait — n'était
+    // jamais vérifié.
+    for (état, doit_le_dire) in [
+        (Availability::Ready, false),
+        (Availability::Incomplete, true),
+    ] {
+        let mut app = NamsdecApp {
+            show_preferences: true,
+            preferences_tab: PreferencesTab::Tools,
+            ..Default::default()
+        };
+        let ctx = egui::Context::default();
+        app.apply_theme(&ctx);
+        let entrée = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1600.0, 1200.0),
+            )),
+            ..Default::default()
+        };
+
+        // Première image : ouvrir les préférences jette le relevé des
+        // outils par conception, et l'image suivante le refait en lançant
+        // vraiment rizin. Ce qu'on sème avant serait donc perdu.
+        let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+        sortie.textures_delta.clear();
+
+        // Tous les outils prêts sauf rizin, dont l'état est celui qu'on
+        // éprouve : un autre outil absent écrirait « Il lui manque » de
+        // son côté, et l'on accuserait rizin.
+        app.tools_ready = namsdec_disasm::known::all()
+            .into_iter()
+            .map(|outil| {
+                let dispo = if outil.plugin.id == "rizin-ghidra" {
+                    état
+                } else {
+                    Availability::Ready
+                };
+                (outil.plugin.id, dispo)
+            })
+            .collect();
+
+        let mut peint = String::new();
+        for _ in 0..3 {
+            peint.clear();
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(texte) = &clipped.shape {
+                    peint.push_str(texte.galley.text());
+                    peint.push('|');
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+
+        if doit_le_dire {
+            assert!(
+                peint.contains(s.tools_needs),
+                "le greffon manque vraiment : il faut le dire.\n{peint}"
+            );
+        } else {
+            assert!(
+                !peint.contains(s.tools_needs),
+                "rizin+rz-ghidra fonctionne : rien ne doit dire qu'il manque \
+                 quelque chose.\n{peint}"
+            );
+        }
     }
 }
 
@@ -26222,6 +26247,102 @@ fn what_turns_the_cursor_into_a_hand_really_answers_a_click() {
         muettes.len(),
         muettes.join("\n  ")
     );
+}
+
+/// Aucun contrôle ne demande à la machine ce qu'il doit vérifier.
+///
+/// Ce défaut a coûté quatre CI rouges d'affilée, et il était passé quatre
+/// fois sous le nez d'une relecture, parce qu'il a l'air d'une précaution :
+/// « le test s'adapte à la machine plutôt que de supposer ». Mais un
+/// contrôle qui lit l'état de la machine pour choisir son assertion dit
+/// deux choses différentes selon le poste — et le pire n'est pas qu'il
+/// échoue ailleurs. Le pire est qu'il **passe sans rien vérifier** là où
+/// tout est installé : `a_working_tool_is_not_announced_as_missing_something`
+/// n'éprouvait jamais le cas « incomplet », le seul qui l'intéressait.
+///
+/// La règle est donc : l'état se **sème**, il ne se lit pas. Un test qui
+/// veut les deux cas les sème tous les deux.
+///
+/// Deux formes restent légitimes, et sont nommées ici une par une :
+/// vérifier une **relation** qui tient sur toute machine (si le programme
+/// est introuvable, la fiche doit dire « absent »), et vérifier la
+/// **mécanique du relevé** lui-même (qu'il soit demandé une fois et
+/// gardé). Un `return` en tête parce que nasm manque n'est pas concerné :
+/// se taire n'est pas s'adapter.
+#[test]
+fn no_control_asks_the_machine_what_it_should_be_checking() {
+    let source = include_str!("tests.rs");
+
+    // Les contrôles qui ont le droit de lire l'état réel, et pourquoi.
+    // Allonger cette liste demande une raison écrite, et c'est le but :
+    // le prochain qui voudra « s'adapter à la machine » devra dire ici en
+    // quoi son cas ressemble à ces deux-là.
+    const AUTORISÉS: [(&str, &str); 2] = [
+        (
+            "the_tools_say_whether_this_machine_has_them",
+            "vérifie une RELATION vraie partout : programme introuvable ⇒ fiche « absent »",
+        ),
+        (
+            "what_the_tools_answer_is_asked_once_and_kept",
+            "vérifie la mécanique du relevé, non son contenu",
+        ),
+    ];
+
+    // Ce qui dénonce une lecture d'état : les trois façons de la demander.
+    const LECTURES: [&str; 3] = ["availability_in(", ".availability()", "tool_availability("];
+
+    // Et ce contrôle-ci, qui porte forcément les trois motifs puisqu'il
+    // les cherche. Un contrôle qui lit sa propre source se dénonce
+    // toujours lui-même ; le dire ici vaut mieux que de tordre les
+    // motifs pour qu'ils ne se ressemblent plus.
+    const MOI: &str = "no_control_asks_the_machine_what_it_should_be_checking";
+
+    let mut fautifs: Vec<String> = Vec::new();
+    // Découpé sur `#[test]` : chaque morceau porte une fonction de test et
+    // son corps. Le premier morceau est l'avant-propos du fichier.
+    for morceau in source.split("#[test]\n").skip(1) {
+        let Some(nom) = morceau
+            .split_once("fn ")
+            .and_then(|(_, reste)| reste.split_once('('))
+            .map(|(nom, _)| nom.trim())
+        else {
+            continue;
+        };
+        if nom == MOI || AUTORISÉS.iter().any(|(permis, _)| *permis == nom) {
+            continue;
+        }
+        // Le corps seul : la documentation d'un test peut très bien
+        // parler de `availability_in` sans l'appeler.
+        let corps = morceau
+            .split_once('{')
+            .map(|(_, reste)| reste)
+            .unwrap_or(morceau);
+        for lecture in LECTURES {
+            if corps.contains(lecture) {
+                fautifs.push(format!("{nom} appelle {lecture}"));
+            }
+        }
+    }
+
+    assert!(
+        fautifs.is_empty(),
+        "{} contrôle(s) qui lisent la machine au lieu de semer leur état :\n  {}\n\n\
+         Semez l'état (`app.tools_ready = …`), et semez-le APRÈS la première image : \
+         ouvrir les préférences ou la fenêtre d'installation jette le relevé par \
+         conception, et l'image suivante le refait en lançant vraiment l'outil.",
+        fautifs.len(),
+        fautifs.join("\n  ")
+    );
+
+    // Et la liste blanche ne pourrit pas : un nom qu'on y laisse après
+    // avoir renommé ou supprimé le test fait croire que la règle a une
+    // exception qu'elle n'a plus.
+    for (nom, raison) in AUTORISÉS {
+        assert!(
+            source.contains(&format!("fn {nom}(")),
+            "{nom} n'existe plus — retirez-le de la liste (« {raison} »)"
+        );
+    }
 }
 
 /// Le guide que le README annonce existe, et c'est celui de la version.
