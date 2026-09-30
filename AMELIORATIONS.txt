@@ -1898,3 +1898,26 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
   contrôles peints à la main de namsdec — le bouton encadré, la liste
   déroulante maison — SONT exposés dans l'arbre d'accessibilité, donc lisibles
   par un lecteur d'écran. On pouvait craindre le contraire.
+
+  --- ce que kittest voit, et ce qu'il ne voit pas ---
+  Le premier contrôle de geste écrit, deux limites sont apparues, et il vaut
+  mieux les connaître que les contourner :
+
+  1. L'ARBRE N'EXPOSE QUE CE QU'EGUI POSE COMME WIDGET. Un `ui.label`, un
+     bouton, une case : oui. Ce que namsdec peint lui-même par `painter()` —
+     la barre de statut, les titres du panneau latéral, le graphe — n'y figure
+     pas. Les témoins choisis là sont introuvables, et l'essai l'a montré deux
+     fois avant qu'on le comprenne.
+  2. KITTEST CHERCHE DANS TOUT L'ARBRE, sans notion de « dans le menu ouvert ».
+     « Console » nomme à la fois l'entrée du menu Affichage et l'onglet du bas,
+     et la requête refuse de choisir — ce qui est le bon comportement, mais
+     rend le contrôle impossible tel quel. Le banc, lui, restreint son relevé à
+     une fenêtre.
+
+  D'où UN seul contrôle de bascule, et non quatre : un contrôle juste sur la
+  barre d'outils vaut mieux qu'un contrôle fragile sur tout le menu. Les deux
+  outils ne couvrent pas la même moitié du problème, et c'est très bien ainsi.
+
+  À noter tout de même : ces deux limites décrivent aussi ce qu'un LECTEUR
+  D'ÉCRAN voit de namsdec. Ce qui est peint à la main lui est invisible.
+  Personne ne l'avait mesuré ; c'est mesuré.

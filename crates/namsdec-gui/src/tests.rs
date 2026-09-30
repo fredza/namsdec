@@ -26485,3 +26485,83 @@ fn clicking_the_pseudo_code_box_really_switches_the_view() {
         "décocher la rend au graphe"
     );
 }
+
+/// Les bascules du menu Affichage font ce qu'elles annoncent.
+///
+/// Quatre cases commandent ce qu'on voit : la barre d'outils, le panneau
+/// latéral, la barre de statut, la console. Aucun contrôle ne vérifiait
+/// qu'elles MARCHENT — ils posaient l'état (`show_toolbar: false`) et
+/// mesuraient ce qui était peint, ce qui passe au vert même si la case
+/// est débranchée.
+///
+/// Celui-ci ouvre le menu, clique, et regarde. C'est plus lent et c'est
+/// le seul qui réponde à la question qu'on se pose vraiment : « est-ce
+/// que ça marche ? »
+#[test]
+fn the_view_menu_toggles_really_toggle() {
+    use egui_kittest::Harness;
+    use egui_kittest::kittest::Queryable;
+
+    let s = strings(Lang::Fr);
+    let mut app = NamsdecApp::default();
+    let mut harness = Harness::builder()
+        .with_size(egui::Vec2::new(1400.0, 900.0))
+        .build_ui(move |ui| app.draw(ui));
+    harness.run();
+
+    // Chaque bascule, avec un témoin de la zone commandée — non la case
+    // elle-même : c'est la zone qui doit partir, pas la case.
+    //
+    // On COMPTE les occurrences plutôt que d'en exiger une seule : un
+    // même libellé sert souvent à deux endroits — « Assembler » est
+    // dans la barre d'outils ET dans le menu qui la commande. Exiger
+    // l'unicité ferait échouer le contrôle sur une coïncidence de
+    // vocabulaire, ce qui n'apprend rien sur la bascule.
+    let combien = |harness: &Harness<'_>, quoi: &str| -> usize {
+        harness.get_all_by_label_contains(quoi).count()
+    };
+    // UNE seule bascule, et c'est un choix.
+    //
+    // Les trois autres se heurtent à deux limites qu'il vaut mieux
+    // connaître que contourner :
+    //
+    //   - l'arbre d'accessibilité n'expose que ce qu'egui pose comme
+    //     widget. La barre de statut et le panneau latéral, peints à la
+    //     main, n'y figurent pas — leurs témoins sont introuvables ;
+    //   - kittest cherche dans TOUT l'arbre, sans notion de « dans le
+    //     menu ouvert ». « Console » nomme à la fois l'entrée du menu et
+    //     l'onglet du bas, et la requête refuse de choisir.
+    //
+    // Un contrôle juste sur une bascule vaut mieux qu'un contrôle
+    // fragile sur quatre. Le banc, lui, mesure ce qui est peint et
+    // restreint son relevé à une fenêtre : les deux outils ne couvrent
+    // pas la même moitié du problème.
+    {
+        let (bascule, témoin) = (s.view_toolbar, s.action_assemble);
+        let avant = combien(&harness, témoin);
+        assert!(avant > 0, "« {témoin} » doit être là au départ");
+
+        harness.get_by_label(s.menu_view).click();
+        harness.run();
+        harness.get_by_label(bascule).click();
+        harness.run();
+        assert!(
+            combien(&harness, témoin) < avant,
+            "décocher « {bascule} » doit faire partir « {témoin} » \
+             (toujours {} occurrence(s))",
+            combien(&harness, témoin)
+        );
+
+        // Et le retour : une bascule qui ne rebascule pas est une porte
+        // à sens unique, ce qui ne se voit qu'en essayant.
+        harness.get_by_label(s.menu_view).click();
+        harness.run();
+        harness.get_by_label(bascule).click();
+        harness.run();
+        assert_eq!(
+            combien(&harness, témoin),
+            avant,
+            "et la recocher doit le ramener"
+        );
+    }
+}
