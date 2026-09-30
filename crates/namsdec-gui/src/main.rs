@@ -2024,6 +2024,16 @@ const PSEUDO_ID: &str = "pseudo";
 /// Le désassembleur natif, en syntaxe NASM — celle qu'on écrit.
 const NASM_ID: &str = "nasm";
 
+/// Le moteur qui montre la syntaxe du SYSTÈME — celle de gdb, d'objdump
+/// et de as.
+///
+/// Livré au même titre que les deux autres, et pour la même raison
+/// qu'eux : ce n'est pas un outil extérieur, c'est une façon de lire ce
+/// qu'on a déjà. Dès qu'on sort de namsdec — un rapport d'outil, une
+/// session gdb, un tutoriel trouvé en ligne —, tout est écrit ainsi, et
+/// la traduction de tête est la marche où l'on abandonne.
+const SYSTEM_ID: &str = "system";
+
 /// Le programme que « Nouveau » pose dans l'éditeur.
 ///
 /// Pas une page blanche : devant un assembleur, elle est un mur. Il faut

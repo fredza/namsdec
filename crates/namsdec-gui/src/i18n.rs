@@ -517,6 +517,9 @@ pub struct Strings {
     pub disassembly_pseudo: &'static str,
     pub disassembly_pseudo_hint: &'static str,
     pub disassembly_nasm: &'static str,
+    /// Le moteur qui montre la syntaxe du système (gdb, objdump, as).
+    pub disassembly_system: &'static str,
+    pub disassembly_system_hint: &'static str,
     pub disassembly_nasm_hint: &'static str,
     pub disassembly_external: &'static str,
     pub disassembly_goto: &'static str,
@@ -1410,6 +1413,10 @@ const FR: Strings = Strings {
     disassembly_pseudo: "Pseudo-code",
     disassembly_pseudo_hint: "L'instruction dite en clair : « RAX = RAX + RCX » plutôt que « add rax, rcx ». Ce que namsdec ne sait pas dire autrement est rendu tel quel.",
     disassembly_nasm: "NASM",
+    disassembly_system: "Système",
+    disassembly_system_hint: "La syntaxe de gdb, d'objdump et de as : la source d'abord, les \
+                              registres préfixés d'un %, la taille collée au mnémonique. Une \
+                              vue, non une écriture : nasm ne la lit pas.",
     disassembly_nasm_hint: "La syntaxe qu'on écrit, telle que le désassembleur la rend.",
     disassembly_external: "Outil extérieur :",
     disassembly_goto: "Voir cette ligne dans l'éditeur",
@@ -2205,6 +2212,10 @@ const EN: Strings = Strings {
     disassembly_pseudo: "Pseudo-code",
     disassembly_pseudo_hint: "The instruction said plainly: \"RAX = RAX + RCX\" rather than \"add rax, rcx\". What namsdec cannot say otherwise is left as it is.",
     disassembly_nasm: "NASM",
+    disassembly_system: "System",
+    disassembly_system_hint: "The syntax of gdb, objdump and as: source first, registers \
+                              prefixed with %, size suffixed to the mnemonic. A view, not \
+                              a way to write: nasm does not read it.",
     disassembly_nasm_hint: "The syntax one writes, as the disassembler renders it.",
     disassembly_external: "External tool:",
     disassembly_goto: "Show this line in the editor",

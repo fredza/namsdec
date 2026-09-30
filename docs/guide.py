@@ -1016,6 +1016,28 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "obtenu remplit l'éditeur, une instruction par ligne — ce qui donne aussi la "
          "correspondance ligne/adresse dont dépendent la gouttière, le suivi de RIP et les "
          "points d'arrêt."),
+        ("h2", "Trois façons de lire la même instruction"),
+        ("p",
+         "La fenêtre de désassemblage (Outils › Désassemblage) offre un choix de "
+         "<b>moteur</b>, en tête, parce que c'est lui qui décide de tout ce qu'on lit en "
+         "dessous :"),
+        ("table", [
+            ["Moteur", "Ce qu'il montre", "Exemple"],
+            ["Pseudo-code", "l'instruction dite en français", "RAX = RBX"],
+            ["NASM", "la syntaxe qu'on écrit dans l'éditeur", "mov rax, rbx"],
+            ["Système", "celle de gdb, objdump et as", "mov %rbx, %rax"],
+        ]),
+        ("note",
+         "La syntaxe <b>Système</b> est une vue, non une écriture : nasm ne la lit pas, "
+         "et un listing montré ainsi ne se réassemble pas. Elle est là parce que tout ce "
+         "qu'on trouve hors de namsdec — un rapport d'outil, une session gdb, un tutoriel "
+         "en ligne — est écrit dans celle-là, et que la traduire de tête est la marche où "
+         "l'on abandonne. La source vient d'abord, les registres portent un "
+         "<font face='Courier'>%</font>, et la taille se colle au mnémonique "
+         "(<font face='Courier'>movq</font>)."),
+        ("p",
+         "D'autres moteurs s'ajoutent en posant un fichier de description : voir "
+         "« Brancher son propre outil »."),
         ("p",
          "Le module <b>RE</b> (Préférences › Modules) ajoute un onglet au panneau "
          "latéral et une fenêtre d'analyse. L'onglet ne porte qu'un bouton, celui qui "

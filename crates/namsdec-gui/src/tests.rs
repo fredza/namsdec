@@ -26758,3 +26758,68 @@ fn regex_maison(texte: &str) -> Vec<String> {
     trouvées.dedup();
     trouvées
 }
+
+/// Le désassemblage se lit aussi dans la syntaxe du système.
+///
+/// `mov rax, [rbx+8]` d'un côté, `movq 8(%rbx), %rax` de l'autre : les
+/// deux disent la même chose et ne se ressemblent pas. Ce n'est pas un
+/// détail de goût — dès qu'on sort de namsdec, un rapport d'`objdump`,
+/// une session `gdb` ou un tutoriel trouvé en ligne écrivent tout dans
+/// l'autre, et la traduction de tête est la marche où l'on abandonne.
+///
+/// C'est un moteur de plus dans la liste existante, et non un réglage
+/// ailleurs : le choix se fait là où l'on choisit déjà ce qu'on lit.
+#[test]
+fn the_disassembly_reads_in_the_systems_syntax_too() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let s = strings(Lang::Fr);
+    let peint = |moteur: &str| -> Vec<String> {
+        let mut app = NamsdecApp {
+            source: "section .text\nglobal _start\n_start:\n    mov rax, rbx\n    hlt\n".to_owned(),
+            show_disassembly: true,
+            disassembler: moteur.to_owned(),
+            ..Default::default()
+        };
+        app.do_assemble();
+        let ctx = egui::Context::default();
+        app.apply_theme(&ctx);
+        let (_, lignes) = ce_qui_est_écrit(&ctx, &mut app, Some("disassembly_window"), 4);
+        lignes.into_iter().map(|(t, _)| t).collect()
+    };
+
+    // Le choix est offert là où l'on choisit déjà le moteur.
+    let nasm = peint("nasm");
+    assert!(
+        nasm.iter().any(|t| t == s.disassembly_system),
+        "le moteur système doit figurer dans la liste : {nasm:?}"
+    );
+    assert!(
+        nasm.iter().any(|t| t.contains("rax")),
+        "NASM écrit les registres nus : {nasm:?}"
+    );
+
+    // Et il montre bien l'autre syntaxe.
+    let système = peint("system");
+    assert!(
+        système.iter().any(|t| t.contains("%rax")),
+        "le système préfixe les registres d'un % : {système:?}"
+    );
+    assert!(
+        !système.iter().any(|t| t.contains("mov rax")),
+        "et n'écrit plus la forme NASM : {système:?}"
+    );
+}
+
+/// Le choix du moteur se retrouve à la séance suivante.
+#[test]
+fn the_chosen_disassembler_survives_the_session() {
+    let app = NamsdecApp {
+        disassembler: "system".to_owned(),
+        ..Default::default()
+    };
+    let réglages = app.settings_snapshot();
+    assert_eq!(réglages.disassembler, "system");
+    assert_eq!(NamsdecApp::from_settings(réglages).disassembler, "system");
+}

@@ -2,7 +2,65 @@
 //! avec le reste de l'outil. Réutilisé tel quel en phase 2 pour le futur
 //! désassembleur ELF (seule la source des octets change).
 
-use iced_x86::{Decoder, DecoderOptions, Formatter, Instruction, NasmFormatter};
+use iced_x86::{Decoder, DecoderOptions, Formatter, GasFormatter, Instruction, NasmFormatter};
+
+/// La syntaxe dans laquelle on lit l'assembleur.
+///
+/// Les deux disent la même chose et ne se ressemblent pas : `mov rax,
+/// [rbx+8]` d'un côté, `movq 8(%rbx), %rax` de l'autre. Ce n'est pas un
+/// détail de goût — c'est la première marche devant un rapport
+/// d'`objdump`, une session `gdb` ou un tutoriel trouvé en ligne, où
+/// tout est écrit dans l'autre.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Syntax {
+    /// Celle de NASM, dite aussi Intel : la destination d'abord, les
+    /// adresses entre crochets. C'est celle qu'on écrit dans l'éditeur,
+    /// et la seule que nasm sait assembler.
+    #[default]
+    Nasm,
+    /// Celle du système : `gdb`, `objdump`, `as`. La source d'abord, les
+    /// registres préfixés d'un `%`, la taille suffixée au mnémonique.
+    ///
+    /// **Une vue, non une écriture** : namsdec assemble avec nasm, qui
+    /// ne la lit pas. Un listing montré ainsi se lit, se copie dans un
+    /// rapport, et ne se réassemble pas.
+    System,
+}
+
+impl Syntax {
+    /// L'identifiant stable, pour les réglages.
+    pub fn id(self) -> &'static str {
+        match self {
+            Syntax::Nasm => "nasm",
+            Syntax::System => "system",
+        }
+    }
+
+    /// Celle que cet identifiant désigne, si on la connaît.
+    pub fn by_id(id: &str) -> Option<Self> {
+        match id {
+            "nasm" => Some(Syntax::Nasm),
+            "system" => Some(Syntax::System),
+            _ => None,
+        }
+    }
+
+    /// Met en forme une instruction dans cette syntaxe.
+    fn format(self, instr: &Instruction, espacé: bool, out: &mut String) {
+        match self {
+            Syntax::Nasm => {
+                let mut f = NasmFormatter::new();
+                f.options_mut().set_space_after_operand_separator(espacé);
+                f.format(instr, out);
+            }
+            Syntax::System => {
+                let mut f = GasFormatter::new();
+                f.options_mut().set_space_after_operand_separator(espacé);
+                f.format(instr, out);
+            }
+        }
+    }
+}
 
 /// L'instruction décodée, telle que la rend [`decode_one`].
 ///
@@ -51,20 +109,25 @@ pub fn decode_one(bytes: &[u8], ip: u64) -> Option<Instruction> {
 /// l'utilisateur ; les vidages (onglet Octets, listing) gardent la forme
 /// compacte de [`disassemble`], alignée colonne par colonne.
 pub fn format_one(instr: &Instruction) -> String {
-    let mut formatter = NasmFormatter::new();
-    formatter
-        .options_mut()
-        .set_space_after_operand_separator(true);
+    format_one_in(instr, Syntax::Nasm)
+}
+
+/// La même chose, dans la syntaxe demandée.
+pub fn format_one_in(instr: &Instruction, syntax: Syntax) -> String {
     let mut text = String::new();
-    formatter.format(instr, &mut text);
+    syntax.format(instr, true, &mut text);
     text
 }
 
 /// Désassemble `bytes` en supposant qu'ils sont chargés à partir de
 /// `base_addr` (mode 64 bits).
 pub fn disassemble(bytes: &[u8], base_addr: u64) -> Vec<DecodedInstruction> {
+    disassemble_in(bytes, base_addr, Syntax::Nasm)
+}
+
+/// Le même désassemblage, dans la syntaxe demandée.
+pub fn disassemble_in(bytes: &[u8], base_addr: u64, syntax: Syntax) -> Vec<DecodedInstruction> {
     let mut decoder = Decoder::with_ip(64, bytes, base_addr, DecoderOptions::NONE);
-    let mut formatter = NasmFormatter::new();
     let mut instr = Instruction::default();
     let mut result = Vec::new();
     let mut text = String::new();
@@ -72,7 +135,7 @@ pub fn disassemble(bytes: &[u8], base_addr: u64) -> Vec<DecodedInstruction> {
     while decoder.can_decode() {
         decoder.decode_out(&mut instr);
         text.clear();
-        formatter.format(&instr, &mut text);
+        syntax.format(&instr, false, &mut text);
 
         let start = (instr.ip() - base_addr) as usize;
         let end = start + instr.len();
@@ -472,5 +535,77 @@ mod mnemonic_tests {
         for instruction in ["syscall", "endbr64", "vpxor", "cmovne", "pshufb", "sarx"] {
             assert!(is_mnemonic(instruction), "{instruction} devrait être connu");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests_syntaxe {
+    use super::*;
+
+    /// Les deux syntaxes disent la même chose, et ne se ressemblent pas.
+    ///
+    /// C'est tout l'intérêt du choix : devant un rapport d'`objdump` ou
+    /// une session `gdb`, tout est écrit dans l'autre, et la traduction
+    /// de tête est la première marche — celle où l'on abandonne.
+    #[test]
+    fn the_two_syntaxes_say_the_same_thing_differently() {
+        // mov rax, [rbx+8]
+        let octets: &[u8] = &[0x48, 0x8B, 0x43, 0x08];
+        let nasm = &disassemble_in(octets, 0x1000, Syntax::Nasm)[0].text;
+        let système = &disassemble_in(octets, 0x1000, Syntax::System)[0].text;
+
+        assert!(nasm.contains("rax"), "{nasm}");
+        assert!(
+            nasm.contains('['),
+            "NASM met l'adresse entre crochets : {nasm}"
+        );
+        assert!(
+            système.contains("%rax"),
+            "le système préfixe les registres : {système}"
+        );
+        assert!(
+            système.contains('('),
+            "et met l'adresse entre parenthèses : {système}"
+        );
+        assert_ne!(nasm, système, "les deux formes doivent différer");
+    }
+
+    /// L'ordre des opérandes s'inverse : c'est le piège qui coûte le plus
+    /// cher quand on passe de l'une à l'autre.
+    #[test]
+    fn the_operands_swap_sides() {
+        // mov eax, 1 — la destination est EAX dans les deux cas.
+        let octets: &[u8] = &[0xB8, 0x01, 0x00, 0x00, 0x00];
+        let nasm = &disassemble_in(octets, 0x1000, Syntax::Nasm)[0].text;
+        let système = &disassemble_in(octets, 0x1000, Syntax::System)[0].text;
+        // En NASM la destination vient en premier, dans le système en
+        // dernier : la position de « eax » dans le texte le dit.
+        let place = |t: &str| t.find("eax").unwrap_or(usize::MAX);
+        assert!(
+            place(nasm) < place(système),
+            "NASM : {nasm}\nsystème : {système}"
+        );
+    }
+
+    /// L'identifiant fait l'aller-retour : c'est ce qui part dans les
+    /// réglages.
+    #[test]
+    fn the_identifier_survives_a_round_trip() {
+        for syntaxe in [Syntax::Nasm, Syntax::System] {
+            assert_eq!(Syntax::by_id(syntaxe.id()), Some(syntaxe));
+        }
+        assert_eq!(Syntax::by_id("att"), None, "un nom inconnu ne devine pas");
+    }
+
+    /// Le défaut est NASM, et ce n'est pas un hasard : c'est la seule que
+    /// nasm sait assembler, donc la seule dans laquelle on peut écrire.
+    #[test]
+    fn the_default_is_the_one_we_can_write_in() {
+        assert_eq!(Syntax::default(), Syntax::Nasm);
+        let octets: &[u8] = &[0x48, 0x8B, 0x43, 0x08];
+        assert_eq!(
+            disassemble(octets, 0x1000)[0].text,
+            disassemble_in(octets, 0x1000, Syntax::Nasm)[0].text
+        );
     }
 }

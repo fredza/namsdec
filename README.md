@@ -371,6 +371,20 @@ et ils portent ici les mêmes noms qu'ailleurs.
 | `nearpc` | le listing lui-même, RIP dans la gouttière |
 | `stepi`, `nexti`, `reverse-stepi` | `Espace p i`, `Espace p o`, `Espace p b` |
 
+### Trois façons de lire la même instruction
+
+La fenêtre de désassemblage offre un choix de moteur :
+
+| moteur | ce qu'il montre | exemple |
+|---|---|---|
+| Pseudo-code | l'instruction dite en français | `RAX = RBX` |
+| NASM | la syntaxe qu'on écrit dans l'éditeur | `mov rax, rbx` |
+| Système | celle de `gdb`, `objdump` et `as` | `mov %rbx, %rax` |
+
+La syntaxe **Système** est une vue, non une écriture : nasm ne la lit
+pas. Elle est là parce que tout ce qu'on trouve hors de namsdec est
+écrit dans celle-là.
+
 ### Ajouter un désassembleur
 
 Le panneau de désassemblage propose deux moteurs livrés — le pseudo-code

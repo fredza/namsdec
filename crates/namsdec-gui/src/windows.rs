@@ -130,6 +130,12 @@ impl NamsdecApp {
                         NASM_ID.to_owned(),
                         s.disassembly_nasm,
                     );
+                    ui.selectable_value(
+                        &mut self.disassembler,
+                        SYSTEM_ID.to_owned(),
+                        s.disassembly_system,
+                    )
+                    .on_hover_text(s.disassembly_system_hint);
                     for plugin in &self.disassembler_plugins {
                         ui.selectable_value(
                             &mut self.disassembler,
@@ -141,6 +147,8 @@ impl NamsdecApp {
                 });
                 ui.weak(if self.disassembler == PSEUDO_ID {
                     s.disassembly_pseudo_hint
+                } else if self.disassembler == SYSTEM_ID {
+                    s.disassembly_system_hint
                 } else {
                     s.disassembly_nasm_hint
                 });
@@ -225,6 +233,11 @@ impl NamsdecApp {
                     .unwrap_or(0)
                     .min(20);
                 let pseudo = self.disassembler == PSEUDO_ID;
+                let syntaxe = if self.disassembler == SYSTEM_ID {
+                    namsdec_disasm::Syntax::System
+                } else {
+                    namsdec_disasm::Syntax::Nasm
+                };
 
                 // Ce qu'on cherche : une étiquette, un registre, une
                 // adresse. Le listing d'un binaire fait quinze mille
@@ -289,7 +302,7 @@ impl NamsdecApp {
                                 if pseudo {
                                     namsdec_disasm::pseudo::of(&decoded, lang)
                                 } else {
-                                    namsdec_disasm::format_one(&decoded)
+                                    namsdec_disasm::format_one_in(&decoded, syntaxe)
                                 }
                             })
                             .unwrap_or_else(|| instruction.text.clone()),
