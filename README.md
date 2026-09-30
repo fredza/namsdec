@@ -277,8 +277,11 @@ Pour lancer sans installer : `cargo run -p namsdec-gui`.
 ## Prendre en main
 
 1. **Ctrl+Maj+B** assemble le programme (nasm puis ld, pour de vrai).
-2. **Espace s i** avance d'une instruction, **Espace n i** passe par-dessus
-   un `call`, **Espace r** lance, **Espace b** revient en arrière d'un pas.
+2. **Espace p i** avance d'une instruction, **Espace p o** passe par-dessus
+   un `call`, **Espace p r** lance, **Espace p b** revient en arrière d'un
+   pas. Les séquences sont rangées par famille : `p` pour ce qui fait
+   tourner le **programme**, `/` pour chercher, `m` pour **marquer**, `v`
+   pour les **vues**, `u` pour courir **jusqu'à** quelque chose.
 3. **F1** sur un mot du code en donne la fiche ; le survol aussi.
 4. Un clic dans la gouttière pose un point d'arrêt ; **Ctrl+F10** exécute
    jusqu'à la ligne du curseur.
@@ -366,7 +369,7 @@ et ils portent ici les mêmes noms qu'ailleurs.
 | `checksec` | fenêtre Analyse ▸ Protections |
 | `got`, `plt` | fenêtre Analyse ▸ Fonctions importées |
 | `nearpc` | le listing lui-même, RIP dans la gouttière |
-| `stepi`, `nexti`, `reverse-stepi` | `Espace s i`, `Espace n i`, `Espace b` |
+| `stepi`, `nexti`, `reverse-stepi` | `Espace p i`, `Espace p o`, `Espace p b` |
 
 ### Ajouter un désassembleur
 

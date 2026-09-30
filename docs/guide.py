@@ -249,9 +249,9 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
         ("liste", [
          "<b>Assembler</b> (Ctrl+Maj+B) : nasm et ld font leur travail. Les erreurs "
          "apparaissent dans l'onglet Diagnostics, chacune cliquable vers sa ligne.",
-         "<b>Pas à pas</b> (Espace puis s puis i) : une instruction à la fois. Le bandeau "
+         "<b>Pas à pas</b> (Espace puis p puis i) : une instruction à la fois. Le bandeau "
          "du panneau droit montre ce qui vient, puis ce qui a changé.",
-         "<b>Exécuter</b> (Espace puis r) : jusqu'au bout, ou jusqu'au premier point "
+         "<b>Exécuter</b> (Espace puis p puis r) : jusqu'au bout, ou jusqu'au premier point "
          "d'arrêt.",
         ]),
         ("p",
@@ -681,7 +681,7 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests):
          "manuel ne sache expliquer."),
         ("h2", "Le déroulement du programme"),
         ("p",
-         "<b>Espace puis g</b> ouvre le déroulement : le graphe des blocs. Un listing se lit "
+         "<b>Espace puis v puis g</b> ouvre le déroulement : le graphe des blocs. Un listing se lit "
          "de haut en bas ; un programme, non. Chaque boîte est une suite d'instructions "
          "qu'on ne peut qu'entrer par le haut et quitter par le bas ; les flèches disent le "
          "saut pris (vert), le saut non pris (rouge) et l'appel (bleu) ; une boucle se voit "

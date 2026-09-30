@@ -1963,3 +1963,34 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
   délai : l'outil paraît incomplet entre le moment où le test le lit et celui
   où la fenêtre le redemande, et le contrôle échoue seul au milieu de six
   cents autres sans rien avoir à dire sur namsdec. L'état est semé maintenant.
+
+  --- le mode d'emploi promettait des raccourcis qui n'existaient plus ---
+  Question de Fred : « les raccourcis fakevim devraient être une séquence de
+  deux caractères, Espace + so pour step out, Espace + si pour step into —
+  mais i fait passer en mode insertion, alors que faire ? »
+
+  Deux réponses, et la seconde explique la première.
+
+  LE CONFLIT N'EXISTE PAS. Le dispatcher CONSOMME les touches d'une séquence
+  armée, et l'éditeur ignore celles-là. Le commentaire de `consumed()` le dit
+  depuis le jour où le cas s'est présenté : « sans ça, le `i` final de
+  `Espace s i` déclenchait Step Into *et* faisait basculer l'éditeur en mode
+  Insertion ». Un contrôle l'éprouve — `Espace p i` laisse l'éditeur en mode
+  commande.
+
+  MAIS LE README PROMETTAIT `Espace s i` ET `Espace n i`, et le manuel
+  `Espace puis s puis i`, `Espace puis r`, `Espace puis g`. Le jeu fait
+  `Espace p i`, `Espace p o`, `Espace p r`, `Espace v g` depuis qu'il range les
+  séquences par famille. On lit le mode d'emploi, on tape ce qu'il dit, il ne
+  se passe rien — et l'on croit avoir mal compris le PROGRAMME, non la page.
+  C'est de là que venait la question.
+
+  Une documentation qui ment coûte plus cher qu'une documentation absente :
+  l'absence fait chercher, le mensonge fait douter de soi.
+
+  Corrigé, et un contrôle relève désormais les séquences ANNONCÉES dans le
+  README et le manuel pour les comparer à celles du jeu. Il est éprouvé en
+  remettant l'ancienne promesse.
+
+  LES FAMILLES, pour mémoire : `p` fait tourner le PROGRAMME (r, i, o, b, c),
+  `/` cherche, `m` marque, `v` montre une VUE, `u` court JUSQU'À quelque chose.

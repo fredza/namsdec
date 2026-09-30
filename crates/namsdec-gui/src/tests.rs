@@ -26644,3 +26644,117 @@ fn a_big_binarys_profile_draws_in_tens_of_milliseconds() {
          secondes à elle seule."
     );
 }
+
+/// Les séquences que la documentation annonce sont celles qui marchent.
+///
+/// Le README promettait `Espace s i` pour avancer d'un pas et
+/// `Espace n i` pour enjamber un appel. Le jeu de raccourcis, lui, fait
+/// `Espace p i` et `Espace p o` depuis qu'il range les séquences par
+/// famille. Personne ne s'en était aperçu, et la seule façon de le
+/// découvrir était d'essayer : on lit le mode d'emploi, on tape ce qu'il
+/// dit, il ne se passe rien — et l'on croit avoir mal compris le
+/// programme, non la page.
+///
+/// Le contrôle lit les séquences ANNONCÉES dans le README et le manuel,
+/// et vérifie que le jeu Fake Vim-GDB les porte vraiment. Une
+/// documentation qui ment coûte plus qu'une documentation absente.
+#[test]
+fn the_sequences_the_docs_promise_are_the_ones_that_work() {
+    let racine = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let jeu = keybindings::KeyBindings::vim();
+
+    // Toutes les séquences du jeu, écrites comme la documentation les
+    // écrit : « Espace p i ».
+    let connues: std::collections::BTreeSet<String> = jeu
+        .map
+        .values()
+        .filter_map(|accord| match accord {
+            keybindings::Chord::Leader(touches) => Some(
+                touches
+                    .as_slice()
+                    .iter()
+                    .map(|k| match k {
+                        egui::Key::Space => "Espace".to_owned(),
+                        egui::Key::Slash => "/".to_owned(),
+                        autre => format!("{autre:?}").to_lowercase(),
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" "),
+            ),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        connues.len() > 10,
+        "le relevé ne trouve presque aucune séquence ({}) — il regarde \
+         au mauvais endroit",
+        connues.len()
+    );
+
+    // Ce que les pages promettent : « Espace x y », en gras ou non.
+    let motif = regex_maison;
+    let mut promises = Vec::new();
+    for page in ["README.md", "docs/guide.py"] {
+        let Ok(texte) = std::fs::read_to_string(racine.join(page)) else {
+            continue;
+        };
+        for séquence in motif(&texte) {
+            promises.push((page, séquence));
+        }
+    }
+    assert!(
+        promises.len() > 3,
+        "le relevé ne trouve presque aucune promesse ({}) — il regarde \
+         au mauvais endroit",
+        promises.len()
+    );
+    let menteuses: Vec<String> = promises
+        .iter()
+        .filter(|(_, s)| !connues.contains(s))
+        .map(|(page, s)| format!("{page} : « {s} »"))
+        .collect();
+    assert!(
+        menteuses.is_empty(),
+        "{} séquence(s) annoncée(s) qui n'existent pas dans le jeu — \
+         on lit le mode d'emploi, on tape, il ne se passe rien :\n  {}\n\
+         Celles qui existent : {connues:?}",
+        menteuses.len(),
+        menteuses.join("\n  ")
+    );
+}
+
+/// Les séquences « Espace x y » d'une page, relevées à la main.
+///
+/// À la main parce qu'une seule expression régulière servirait ici, et
+/// qu'une dépendance pour trois lignes se paierait sur chaque
+/// compilation.
+fn regex_maison(texte: &str) -> Vec<String> {
+    let mut trouvées = Vec::new();
+    let nettoyé = texte.replace("**", "").replace(" puis ", " ");
+    for (position, _) in nettoyé.match_indices("Espace ") {
+        let suite = &nettoyé[position..];
+        let mots: Vec<&str> = suite.split_whitespace().take(3).collect();
+        if mots.len() < 3 {
+            continue;
+        }
+        // Deux lettres ou signes courts après « Espace » : au-delà,
+        // c'est une phrase, non une séquence.
+        // Une lettre ASCII ou une barre oblique. Sans cette borne, le
+        // relevé prenait le « … » de la phrase qui EXPLIQUE ce qu'est une
+        // séquence, et accusait le manuel de promettre « Espace … ».
+        let bon = |m: &str| {
+            let m = m.trim_end_matches([',', '.', ':', ')', '`', '<', '»']);
+            m.chars().count() == 1 && m.chars().all(|c| c.is_ascii_alphanumeric() || c == '/')
+        };
+        if bon(mots[1]) && bon(mots[2]) {
+            let taille = |m: &str| {
+                m.trim_end_matches([',', '.', ':', ')', '`', '<', '»'])
+                    .to_owned()
+            };
+            trouvées.push(format!("Espace {} {}", taille(mots[1]), taille(mots[2])));
+        }
+    }
+    trouvées.sort();
+    trouvées.dedup();
+    trouvées
+}
