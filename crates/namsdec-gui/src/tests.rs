@@ -805,6 +805,8 @@ fn the_remove_buttons_line_up_whatever_the_names() {
     }
 
     let ctx = egui::Context::default();
+
+    app.apply_theme(&ctx);
     ctx.set_visuals(app.theme.visuals());
     let mut left_edges = Vec::new();
     let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
@@ -848,6 +850,10 @@ fn the_remove_buttons_line_up_whatever_the_names() {
 fn a_framed_button_draws_the_outline_a_flat_one_does_not() {
     let outlines = |framed: bool| {
         let ctx = egui::Context::default();
+        // Le style de l'application, et pas seulement ses couleurs : les
+        // espacements et les polices d'egui par défaut ne sont pas les
+        // siens, et l'on mesurerait une largeur qui n'existe nulle part.
+        NamsdecApp::default().apply_theme(&ctx);
         ctx.set_visuals(DEFAULT_THEME.visuals());
         let mut count = 0;
         let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
@@ -2921,6 +2927,7 @@ fn a_long_status_message_does_not_run_under_the_right_hand_side() {
         ..Default::default()
     };
     let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
@@ -3231,6 +3238,11 @@ fn an_application_that_was_not_told_where_to_write_writes_nowhere() {
 /// la première sert à egui pour mesurer, la seconde montre le résultat.
 fn paint(app: &mut NamsdecApp) -> String {
     let ctx = egui::Context::default();
+    // Le thème de l'application, et non celui d'egui. Sans lui, on
+    // mesure des espacements et des polices qui n'existent nulle part —
+    // c'est l'un des quatre défauts qui sont passés sous des tests qui
+    // paraissaient les couvrir (A 7.6).
+    app.apply_theme(&ctx);
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
@@ -10125,6 +10137,7 @@ fn the_sidebar_tabs_live_in_the_toolbar() {
     // compte est ce qu'on lit de gauche à droite.
     let abscisse = |app: &mut NamsdecApp, texte: &str| -> Option<f32> {
         let ctx = egui::Context::default();
+        app.apply_theme(&ctx);
         let input = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
@@ -10441,6 +10454,7 @@ fn normal_mode_still_shows_where_the_cursor_is() {
         ..Default::default()
     };
     let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
@@ -10816,6 +10830,8 @@ fn the_title_bar_button_really_maximizes_the_window() {
     app.do_assemble();
 
     let ctx = egui::Context::default();
+
+    app.apply_theme(&ctx);
     let base = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
@@ -10928,6 +10944,7 @@ fn the_install_button_brings_its_plan_to_the_front() {
     };
     let s = strings(app.lang);
     let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
     let entrée = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
@@ -11219,6 +11236,7 @@ fn the_input_rows_line_up_and_stay_inside_their_frame() {
 
     let s = strings(app.lang);
     let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
     let entrée = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
@@ -11620,6 +11638,7 @@ fn the_input_area_stays_on_screen_when_the_environment_unfolds() {
 
     let s = strings(app.lang);
     let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
     let écran = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1999.0, 1208.0));
     let entrée = egui::RawInput {
         screen_rect: Some(écran),
@@ -21139,6 +21158,10 @@ fn a_dialog_bar_says_nothing_until_asked() {
 fn the_two_dialog_buttons_share_a_width() {
     let theme = namsdec_theme::by_id("dark-plus");
     let ctx = egui::Context::default();
+    // Le style de l'application, et pas seulement ses couleurs : les
+    // espacements et les polices d'egui par défaut ne sont pas les
+    // siens, et l'on mesurerait une largeur qui n'existe nulle part.
+    NamsdecApp::default().apply_theme(&ctx);
     let mut largeurs: Vec<f32> = Vec::new();
     for _ in 0..2 {
         largeurs.clear();
@@ -22927,6 +22950,10 @@ fn icônes_du_banc() -> Vec<Icône> {
 #[test]
 fn an_icon_never_paints_itself_into_a_blob() {
     let ctx = egui::Context::default();
+    // Le style de l'application, et pas seulement ses couleurs : les
+    // espacements et les polices d'egui par défaut ne sont pas les
+    // siens, et l'on mesurerait une largeur qui n'existe nulle part.
+    NamsdecApp::default().apply_theme(&ctx);
     let entrée = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
@@ -26246,6 +26273,90 @@ fn what_turns_the_cursor_into_a_hand_really_answers_a_click() {
          qui ne fait rien :\n  {}",
         muettes.len(),
         muettes.join("\n  ")
+    );
+}
+
+/// Un contrôle qui mesure une géométrie pose d'abord le style.
+///
+/// C'est la règle écrite de A 7.6, et elle est enfin tenue par autre
+/// chose qu'une bonne intention. Quatre défauts d'affichage étaient
+/// passés sous des tests qui paraissaient les couvrir, et l'un d'eux
+/// tenait à cela : le test ne posait pas le thème, donc mesurait les
+/// espacements et les polices d'egui par défaut — des valeurs qui
+/// n'existent nulle part dans l'application. Une largeur juste sous ce
+/// style-là peut être fausse sous le vrai.
+///
+/// La règle ne vaut que pour les contrôles qui **mesurent** : chercher un
+/// mot dans ce qui est peint ne demande pas le bon espacement, et
+/// l'exiger de trois cents tests serait du bruit. Ce qui la déclenche,
+/// c'est de lire une position, une taille de galley, un rectangle de
+/// découpe ou une forme peinte.
+///
+/// `apply_theme` suffit, sur l'application du test ou sur une jetable
+/// (`NamsdecApp::default().apply_theme(&ctx)`) quand le test dessine un
+/// composant isolé. Le banc de mise en page, lui, le fait déjà pour
+/// toutes ses scènes.
+#[test]
+fn a_control_that_measures_geometry_sets_the_style_first() {
+    let source = include_str!("tests.rs");
+
+    // Ce qui compte comme une mesure : on lit la géométrie de ce qui a
+    // été peint, et non son texte.
+    const MESURES: [&str; 6] = [
+        ".galley.size()",
+        "clip_rect",
+        ".pos.x",
+        ".pos.y",
+        "Shape::Rect",
+        "Shape::Circle",
+    ];
+
+    // Ce contrôle-ci porte les motifs puisqu'il les cherche.
+    const MOI: &str = "a_control_that_measures_geometry_sets_the_style_first";
+
+    let mut fautifs: Vec<String> = Vec::new();
+    for morceau in source.split("#[test]\n").skip(1) {
+        let Some(nom) = morceau
+            .split_once("fn ")
+            .and_then(|(_, reste)| reste.split_once('('))
+            .map(|(nom, _)| nom.trim())
+        else {
+            continue;
+        };
+        if nom == MOI {
+            continue;
+        }
+        let corps = morceau
+            .split_once('{')
+            .map(|(_, reste)| reste)
+            .unwrap_or(morceau);
+        // Il faut qu'il peigne : un test qui parle de `clip_rect` sans
+        // jamais faire tourner une image ne mesure rien.
+        if !corps.contains("run_ui(") {
+            continue;
+        }
+        if corps.contains("apply_theme") {
+            continue;
+        }
+        // `paint` et `peindre` posent le style eux-mêmes.
+        if corps.contains("paint(&mut") || corps.contains("peindre(&mut") {
+            continue;
+        }
+        let mesure = MESURES.iter().find(|motif| corps.contains(**motif));
+        if let Some(motif) = mesure {
+            fautifs.push(format!("{nom} lit {motif} sans avoir posé le style"));
+        }
+    }
+
+    assert!(
+        fautifs.is_empty(),
+        "{} contrôle(s) qui mesurent sous un style qui n'est pas celui de \
+         l'application :\n  {}\n\n\
+         Ajoutez `app.apply_theme(&ctx);` après la création du contexte — ou \
+         `NamsdecApp::default().apply_theme(&ctx);` si le test dessine un \
+         composant isolé.",
+        fautifs.len(),
+        fautifs.join("\n  ")
     );
 }
 

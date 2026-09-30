@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **30 septembre
-2026**, version 0.2.6-beta.1, 612 tests au vert.
+2026**, version 0.2.6-beta.1, 613 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -316,6 +316,16 @@ Détail chiffré dans `AMELIORATIONS.txt` 7.11, section « REVUE DU
       le seul qui l'intéressait, parce que rizin fonctionne sur cette
       machine. Un contrôle qui s'adapte ne signale pas qu'il a cessé de
       voir.
+- [x] **La règle de A 7.6, enfin tenue** — 58 tests peignaient sans poser
+      le thème, dont 11 mesuraient une géométrie sous des espacements qui
+      n'existent nulle part. Les 11 posent le style, `paint` le pose pour
+      tous, et `a_control_that_measures_geometry_sets_the_style_first`
+      refuse qu'un test lise une position, une taille de galley ou une
+      forme peinte sans l'avoir posé. Les 47 autres ne cherchent qu'un mot
+      : l'exiger d'eux serait du bruit, et la règle le dit.
+      Relecture faite aussi des 44 lectures de `.pos` : elles combinent
+      presque toutes position et taille, donc un rectangle. Rien à
+      réécrire — c'est un résultat, pas un renoncement.
 - [x] **`no_control_asks_the_machine_what_it_should_be_checking`** — le
       contrôle qui empêche la récidive. Il lit `tests.rs`, découpe par
       `#[test]`, et refuse `availability_in`, `.availability()` et

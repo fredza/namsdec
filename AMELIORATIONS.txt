@@ -987,9 +987,26 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      pas un test. 98 textes sur 291 sont entre 3 et 4,5 — les monter
      aplatirait la hiérarchie visuelle, et c'est un choix à prendre, pas un
      défaut à corriger.
-     Reste à écrire : la relecture des tests d'affichage existants à cette
-     aune (ils comparent souvent des positions là où il faudrait des
-     rectangles).
+     Fait le 30 septembre 2026 : la relecture, et surtout la RÈGLE TENUE.
+     Relevé : 58 tests peignaient sans poser le thème, dont 11 mesuraient
+     vraiment une géométrie — donc des espacements et des polices d'egui par
+     défaut, qui n'existent nulle part dans l'application. Les 11 posent
+     maintenant le style ; `paint` le pose pour tous ceux qui passent par lui ;
+     et `a_control_that_measures_geometry_sets_the_style_first` refuse qu'un
+     test lise une position, une taille de galley, un rectangle de découpe ou
+     une forme peinte sans l'avoir posé. Les 47 autres ne cherchent qu'un mot
+     dans ce qui est peint : l'exiger d'eux serait du bruit, et la règle le dit.
+     Éprouvé en retirant le thème d'un test : il le nomme.
+     Aucun seuil n'a bougé — ils étaient assez larges pour survivre au vrai
+     style. Ce n'est pas une raison de garder l'ancienne habitude : un seuil
+     large sous un style faux reste un seuil qui ne mesure pas ce qu'il croit.
+
+     Quant aux POSITIONS contre les RECTANGLES : la relecture des 44 lectures
+     de `.pos` montre qu'elles combinent presque toutes `pos` et
+     `galley.size()`, donc un rectangle. Les rares qui ne le font pas
+     cherchent un sommet (`min(pos.y)`) ou filtrent une bande — deux usages où
+     le coin est la bonne mesure. Rien à réécrire de ce côté-là, et c'est un
+     résultat, non un renoncement : le contrôle du style est ce qui manquait.
 
      Ce qui l'a motivé :
      Cette séance, quatre défauts réels sont passés sous des tests qui
