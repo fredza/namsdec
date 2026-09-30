@@ -18615,13 +18615,114 @@ fn the_tools_tab_shows_every_tool_not_just_the_first() {
         preferences_tab: PreferencesTab::Tools,
         ..Default::default()
     };
+    // Le pire cas, et le plus courant le premier jour : RIEN n'est
+    // installé. C'est celui d'une machine neuve, et celui du coureur de
+    // la CI — qui a trouvé ce défaut là où ma machine le cachait, tous
+    // ses outils étant bâtis.
+    //
+    // Chaque fiche absente écrit alors une ligne de plus (« Pour
+    // l'obtenir : … »), et les fiches se dépliaient d'office : la page
+    // devenait plus haute que la fenêtre, et les deux derniers outils
+    // passaient sous le bord sans qu'aucune barre ne le dise.
+    let mut sortie = {
+        let ctx = egui::Context::default();
+        app.apply_theme(&ctx);
+        ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1280.0, 1400.0),
+                )),
+                ..Default::default()
+            },
+            |ui| app.draw(ui),
+        )
+    };
+    sortie.textures_delta.clear();
+    app.tools_ready = namsdec_disasm::known::all()
+        .into_iter()
+        .map(|outil| {
+            (
+                outil.plugin.id,
+                namsdec_disasm::known::Availability::Missing,
+            )
+        })
+        .collect();
+
     let peint = paint(&mut app);
-    for attendu in ["objdump", "ndisasm", "radare2", "Rizin", "RetDec"] {
-        assert!(
-            peint.contains(attendu),
-            "« {attendu} » doit se lire dans l'onglet Outils :\n{peint}"
-        );
+    let s_fr = strings(Lang::Fr);
+    // Combien il y en a : sans ce chiffre, rien ne dit que la liste
+    // continue sous le bord de la fenêtre.
+    assert!(
+        peint.contains(&format!(
+            "{} {}",
+            namsdec_disasm::known::all().len(),
+            s_fr.tools_count
+        )),
+        "le nombre d'outils connus est écrit :\n{peint}"
+    );
+    // Et la façon d'obtenir un outil absent se lit SANS RIEN DÉPLIER :
+    // c'est une panne, pas un détail. Elle était dans le repli, et le
+    // repli s'ouvrait d'office — ce qui rendait les fiches si hautes que
+    // les deux dernières passaient sous le bord.
+    assert!(
+        peint.contains(s_fr.tools_get_it),
+        "et comment les obtenir :\n{peint}"
+    );
+
+    // Les six sont atteignables. Tous peints d'un coup serait trop
+    // demander — six fiches dépassent la fenêtre —, mais aucun ne doit
+    // rester hors de portée.
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let écran = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 1400.0));
+    let mut vus: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+    let attendus = ["objdump", "ndisasm", "radare2", "Rizin", "RetDec", "DZF"];
+    for tour in 0..40 {
+        let input = egui::RawInput {
+            screen_rect: Some(écran),
+            events: if tour == 0 {
+                Vec::new()
+            } else {
+                vec![
+                    // Le pointeur au milieu de la fenêtre des préférences.
+                    egui::Event::PointerMoved(egui::pos2(640.0, 700.0)),
+                    egui::Event::MouseWheel {
+                        unit: egui::MouseWheelUnit::Point,
+                        delta: egui::vec2(0.0, -120.0),
+                        modifiers: egui::Modifiers::NONE,
+                        phase: egui::TouchPhase::Move,
+                    },
+                ]
+            },
+            ..Default::default()
+        };
+        let mut sortie = ctx.run_ui(input, |ui| app.draw(ui));
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(texte) = &clipped.shape {
+                let écrit = texte.galley.text();
+                for nom in attendus {
+                    if écrit.contains(nom) {
+                        vus.insert(nom);
+                    }
+                }
+            }
+        }
+        sortie.textures_delta.clear();
+        if vus.len() == attendus.len() {
+            break;
+        }
     }
+    let manquants: Vec<&str> = attendus
+        .iter()
+        .copied()
+        .filter(|nom| !vus.contains(nom))
+        .collect();
+    assert!(
+        manquants.is_empty(),
+        "hors de portée même en déroulant, alors qu'aucun outil n'est \
+         installé : {manquants:?}"
+    );
     // Et ce qu'il faut taper pour obtenir ce qui manque.
     //
     // L'état est SEMÉ, non lu sur la machine. Il était lu, et le test

@@ -1434,6 +1434,13 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "ni lancé tant qu'on ne le demande pas. Un troisième réglage, distinct des deux "
          "premiers, est le <b>module d'installation</b> (Préférences › Modules) : c'est lui qui "
          "sait aller chercher les sources et les construire."),
+        ("p",
+         "La fiche d'un outil absent dit <b>comment l'obtenir sans rien déplier</b> : c'est une "
+         "panne, pas un détail. Le repli « Détails » ne garde que la commande exacte qui sera "
+         "lancée — ce qu'on va chercher en se demandant « et sans namsdec, comment je fais ? ». "
+         "Les fiches s'ouvraient d'office quand l'outil manquait, et sur une machine neuve, où "
+         "aucun ne l'est, les deux derniers outils passaient sous le bord de la fenêtre. Le "
+         "nombre d'outils connus est écrit à côté du titre : la liste se déroule."),
         ("note",
          "Un outil qui répond ne propose que <b>Fermer</b>. « Recommencer » était là, et c'était "
          "une offre sans motif : vingt minutes de compilation pour un résultat identique, et l'on "

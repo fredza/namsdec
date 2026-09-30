@@ -319,6 +319,7 @@ pub struct Strings {
     pub tools_installer_off: &'static str,
     pub tools_turn_on: &'static str,
     pub tools_title: &'static str,
+    pub tools_count: &'static str,
     pub tools_legend: &'static str,
     /// Bouton : redemander à la machine où en sont les outils.
     pub tools_recheck: &'static str,
@@ -1245,6 +1246,7 @@ const FR: Strings = Strings {
     tools_installer_off: "namsdec sait aller le chercher et le construire, mais le module d'installation est désactivé.",
     tools_turn_on: "Activer le module d'installation",
     tools_title: "Désassembleurs et décompilateurs",
+    tools_count: "outils connus",
     tools_legend: "Chaque fiche dit deux choses distinctes, et il faut les deux pour que l'outil serve : le programme est INSTALLÉ sur la machine, ou non ; et il est ACTIVÉ dans namsdec, ou non. L'activer n'écrit qu'un fichier de quelques lignes — rien n'est téléchargé ni lancé tant que vous ne le demandez pas.",
     tools_recheck: "Revérifier",
     tools_recheck_hint: "Redemande à chaque outil s'il est là et complet. Le relevé est gardé entre deux demandes : la question se pose en lançant le programme.",
@@ -2051,6 +2053,7 @@ const EN: Strings = Strings {
     tools_installer_off: "namsdec knows how to fetch and build it, but the installer module is disabled.",
     tools_turn_on: "Enable the installer module",
     tools_title: "Disassemblers and decompilers",
+    tools_count: "tools known",
     tools_legend: "Each card states two distinct things, and a tool needs both to serve: the program is INSTALLED on this machine, or not; and it is ENABLED in namsdec, or not. Enabling it only writes a few-line file — nothing is downloaded or run until you ask.",
     tools_recheck: "Check again",
     tools_recheck_hint: "Asks each tool again whether it is there and complete. The answer is kept between requests: asking means running the program.",

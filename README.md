@@ -70,6 +70,12 @@ machine échouera au lancement, ce que la fiche dit en rouge. L'activer
 **écrit un fichier de quelques lignes** : namsdec ne télécharge rien et ne
 lance rien de lui-même.
 
+La fiche d'un outil absent dit **comment l'obtenir sans rien déplier** :
+c'est une panne, pas un détail. Le repli « Détails » ne garde que la
+commande exacte qui sera lancée. Les fiches s'ouvraient d'office quand
+l'outil manquait, et sur une machine neuve — où aucun ne l'est — les deux
+derniers outils passaient sous le bord de la fenêtre.
+
 Un outil qui répond ne propose que **Fermer** : relancer vingt minutes de
 compilation pour un résultat identique n'est pas une offre. Un outil
 **incomplet** propose **Réparer** — Rizin sans `rz-ghidra`, où `pdg`

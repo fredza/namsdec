@@ -48,6 +48,11 @@ outils cesse de mélanger trois questions.
 - À la place, **« Réparer »** dans le seul cas où relancer sert : l'outil
   là mais incomplet. C'est rizin sans `rz-ghidra`, où `pdg` n'existe pas
   et où rien ne disait quoi faire.
+- La fiche d'un outil absent dit **comment l'obtenir sans rien déplier**.
+  Les fiches s'ouvraient d'office quand l'outil manquait : sur une machine
+  neuve, où aucun ne l'est, les deux derniers outils passaient sous le
+  bord de la fenêtre. C'est la CI qui l'a trouvé — sa machine n'a rien
+  d'installé, la mienne a tout.
 - **DZF figure dans la liste**, bien que ses fonctions soient encore
   minimales : un outil qu'on développe se reconnaît d'abord à ce qu'il
   est absent, et la fiche dit où le prendre.

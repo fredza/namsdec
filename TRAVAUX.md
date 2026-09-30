@@ -274,6 +274,15 @@ Détail chiffré dans `AMELIORATIONS.txt` 7.11, section « REVUE DU
       l'on finissait par douter que l'installation ait abouti. À la place,
       **« Réparer »** dans le seul cas où relancer sert : l'outil là mais
       incomplet, c'est-à-dire rizin sans `rz-ghidra`.
+- [x] **Six fiches ne tiennent pas dans la fenêtre** — trouvé par la CI,
+      que ma machine cachait : elle a tout d'installé, le coureur n'a rien.
+      Une fiche absente écrit une ligne de plus, et les fiches se
+      dépliaient d'office — RetDec et DZF passaient sous le bord sans
+      qu'aucune barre ne le dise. « Pour l'obtenir » sort du repli (c'est
+      une panne, pas un détail), le repli reste fermé, et le nombre
+      d'outils connus est écrit à côté du titre. Le contrôle sème
+      désormais le pire cas — **rien** d'installé — et vérifie que les six
+      sont atteignables en déroulant.
 - [x] **DZF dans la liste**, bien qu'en cours d'écriture. Deux contrôles
       le refusaient : l'un exigeait `{file}` alors que DZF reçoit
       `{text}`, l'autre lisait le `-S` de `cmake -S .` comme celui de

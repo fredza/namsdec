@@ -26,7 +26,19 @@ impl NamsdecApp {
         let theme = self.theme;
         let fr = self.lang == Lang::Fr;
 
-        ui.label(egui::RichText::new(s.tools_title).strong().size(15.0));
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new(s.tools_title).strong().size(15.0));
+            // Combien il y en a. Six fiches ne tiennent plus dans la
+            // fenêtre quand aucun outil n'est installé — chacune écrit
+            // alors une ligne de plus —, et rien ne disait que la liste
+            // continuait sous le bord. C'est le même oubli que le
+            // classement du profil : on ne cherche pas à dérouler ce
+            // qu'on croit avoir vu en entier.
+            ui.colored_label(
+                theme.dim,
+                format!("· {} {}", namsdec_disasm::known::all().len(), s.tools_count),
+            );
+        });
         ui.add_space(2.0);
         ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
         ui.colored_label(theme.dim, s.tools_legend);
@@ -148,6 +160,42 @@ impl NamsdecApp {
                         ui.colored_label(theme.warn, format!("{} {besoin}", s.tools_needs));
                     }
 
+                    // Comment l'obtenir se lit SANS DÉPLIER, comme « il
+                    // lui manque » juste au-dessus. C'était dans le repli,
+                    // et le repli s'ouvrait d'office quand l'outil était
+                    // absent — ce qui marchait tant qu'un outil ou deux
+                    // manquaient.
+                    //
+                    // Sur une machine où RIEN n'est installé — celle d'un
+                    // débutant, ou le coureur de la CI —, les six fiches
+                    // s'ouvraient toutes : la page devenait plus haute que
+                    // la fenêtre, et les deux derniers outils passaient
+                    // sous le bord. Ils y étaient, personne ne les voyait,
+                    // et c'est exactement le défaut que cette page avait
+                    // été refaite pour corriger.
+                    if dispo != Availability::Ready
+                        && let Some(commande) = &outil.plugin.install
+                    {
+                        ui.add_space(4.0);
+                        ui.horizontal_wrapped(|ui| {
+                            ui.colored_label(
+                                theme.dim,
+                                egui::RichText::new(s.tools_get_it).small(),
+                            );
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(
+                                        namsdec_disasm::install::install_command_here(commande),
+                                    )
+                                    .monospace()
+                                    .small()
+                                    .color(theme.warn),
+                                )
+                                .selectable(true),
+                            );
+                        });
+                    }
+
                     // Le reste se déplie : la commande exacte, et comment
                     // obtenir ce qui manque. Cinq outils tout déplié, et
                     // l'on ne voyait déjà plus le troisième.
@@ -158,9 +206,11 @@ impl NamsdecApp {
                             .color(theme.dim),
                     )
                     .id_salt(format!("outil_{}", outil.plugin.id))
-                    // Déplié d'office quand l'outil manque : la façon de
-                    // l'obtenir est alors la seule chose qu'on cherche.
-                    .default_open(dispo != Availability::Ready)
+                    // Fermé, toujours. Il ne reste dedans que la commande
+                    // exacte qui sera lancée — ce qu'on va chercher quand
+                    // on se demande « et sans namsdec, comment je fais ? »,
+                    // jamais ce qu'on lit en arrivant sur la page.
+                    .default_open(false)
                     .show(ui, |ui| {
                         ui.horizontal_wrapped(|ui| {
                             ui.colored_label(
@@ -186,27 +236,6 @@ impl NamsdecApp {
                                 .selectable(true),
                             );
                         });
-                        if dispo != Availability::Ready
-                            && let Some(commande) = &outil.plugin.install
-                        {
-                            ui.horizontal_wrapped(|ui| {
-                                ui.colored_label(
-                                    theme.dim,
-                                    egui::RichText::new(s.tools_get_it).small(),
-                                );
-                                ui.add(
-                                    egui::Label::new(
-                                        egui::RichText::new(
-                                            namsdec_disasm::install::install_command_here(commande),
-                                        )
-                                        .monospace()
-                                        .small()
-                                        .color(theme.warn),
-                                    )
-                                    .selectable(true),
-                                );
-                            });
-                        }
                     });
 
                     // Aller le chercher reste une action, pas un détail :
