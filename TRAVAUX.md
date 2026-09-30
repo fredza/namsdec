@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **30 septembre
-2026**, version 0.2.6-beta.1, 614 tests au vert.
+2026**, version 0.2.6-beta.1, 616 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -368,6 +368,32 @@ Détail chiffré dans `AMELIORATIONS.txt` 7.11, section « REVUE DU
       ~300 sur la première image, coût d'une vue en lecture seule pour les
       listings — sélection, recherche, curseur, marques. Pas à entreprendre
       à la légère.
+
+## 4 quinquies. Modifier un binaire — premier morceau
+
+Fred a rappelé la vocation : l'onglet RE apprend la rétro-ingénierie,
+comme Ghidra ou un CTF. La fonctionnalité annoncée — modifier le binaire
+ouvert pour y ajouter ou retirer quelque chose — a un mur : tout ce que
+`patch.rs` sait faire garde la longueur exacte, donc on peut retirer,
+jamais ajouter. Il faut de la place, et d'abord savoir où elle est.
+
+- [x] **`slack` : la place libre d'un binaire** — lecture seule. Parcourt
+      les segments chargeables et repère les longues suites d'un même
+      octet de bourrage (0x00, 0x90 nop, 0xcc int3) que l'éditeur de liens
+      laisse pour aligner. Robuste sur un binaire dépouillé : le bourrage
+      se reconnaît à lui-même, sans en-têtes de section. Borné par
+      `filesz`, jamais `memsz` — `.bss` n'occupe rien sur le disque.
+- [x] **Le panneau `slack`** — dans la grappe pédagogique, juste après les
+      fragments ROP : là où ceux-ci montrent qu'un binaire contient déjà du
+      code réutilisable, celui-ci montre qu'il contient de la place
+      inutilisée. L'octet de bourrage est NOMMÉ (« 0xcc (int3) ») et non
+      seulement chiffré. Vérifié sur `/bin/true` et `/bin/ls` : 1 906 et
+      6 280 octets libres.
+- [ ] **La suite, non commencée** : assembler du code dans une zone libre,
+      et détourner l'exécution vers lui puis la ramener. Passe par
+      `patch.rs`, qui sait déjà défaire ce qu'il pose, et par
+      `ReRequest::PatchBytes`, qui existe déjà. À faire pas à pas, chaque
+      geste réversible et montré avant d'être posé — comme les correctifs.
 
 ## 5. Vocation pédagogique
 

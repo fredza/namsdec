@@ -69,7 +69,7 @@ use namsdec_explorer::{ExplorerAction, FileExplorer};
 use namsdec_re::{
     BinaryInfoModule, DigestModule, DumpModule, EntropyModule, FunctionsModule, GadgetsModule,
     ImportsModule, MapModule, PatternsModule, ProtectionsModule, ReContext, ReModuleRegistry,
-    StringsModule, SyscallsModule, XrefsModule,
+    SlackModule, StringsModule, SyscallsModule, XrefsModule,
 };
 use namsdec_theme::Theme;
 
@@ -2106,6 +2106,11 @@ impl Default for NamsdecApp {
         // Les fragments en dernier : ils n'ont de sens qu'après avoir lu
         // les protections, dont ils expliquent la raison d'être.
         re_registry.register(Box::new(GadgetsModule::default()));
+        // La place libre juste après : là où les fragments disent « il y a
+        // déjà du code réutilisable », celle-ci dit « il y a aussi de la
+        // place inutilisée ». Deux façons de voir qu'un binaire n'est pas
+        // le bloc figé qu'on croit.
+        re_registry.register(Box::new(SlackModule::default()));
         // Le vidage en dernier : c'est là qu'on descend quand les
         // modules d'au-dessus ont désigné un endroit, et qu'on veut
         // savoir ce que ces octets-là sont vraiment.

@@ -1123,6 +1123,14 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "adresse. Une adresse qu'un `call` vise est une fonction, même dépouillée de son "
          "nom.",
          "<b>Gadgets</b> — les fins de séquence utiles à une chaîne ROP.",
+         "<b>Place libre</b> — le bourrage que l'éditeur de liens laisse pour aligner : "
+         "entre deux fonctions, entre deux sections, en fin de segment, il comble avec un "
+         "octet neutre (un zéro, un <font face='Courier'>nop</font>, un "
+         "<font face='Courier'>int3</font>) jusqu'au prochain multiple de seize. Le panneau "
+         "les liste, la plus grande d'abord, avec l'adresse et l'octet qui remplit. C'est de "
+         "la lecture seule, et cela répond à deux questions : pourquoi un binaire pèse plus "
+         "que son code, et pourquoi « garder la longueur exacte » n'est pas la seule façon "
+         "de le modifier — il y a de la place ailleurs.",
          "<b>Vidage du fichier</b> — les octets tels qu'ils sont sur le disque — et qu'on peut changer, voir « Patcher un binaire » —, et pour "
          "la tranche qu'on choisit : sa taille, son SHA-256, son CRC-32 et son entropie. "
          "Il se copie et s'enregistre au format de <font face='Courier'>xxd</font>, celui "

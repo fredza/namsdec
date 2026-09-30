@@ -12368,6 +12368,64 @@ fn the_map_and_the_dump_say_where_and_what() {
     assert!(peint.contains("CRC-32"), "{peint}");
 }
 
+/// Le panneau de la place libre montre le bourrage d'un vrai binaire.
+///
+/// C'est une analyse en lecture seule, dans la lignée du panneau des
+/// fragments ROP : là où celui-ci montre qu'un binaire contient déjà du
+/// code réutilisable, celui-ci montre qu'il contient de la place
+/// inutilisée. Les deux apprennent qu'un exécutable n'est pas le bloc
+/// figé qu'on croit.
+///
+/// Un ELF réel en a forcément : l'éditeur de liens aligne tout sur seize
+/// octets, et laisse du bourrage partout. Le vérifier sur un binaire du
+/// système plutôt que sur un tampon fabriqué, c'est éprouver que la
+/// lecture des en-têtes tient sur un vrai fichier.
+#[test]
+fn the_free_space_panel_shows_a_real_binarys_padding() {
+    // Un binaire du système fait l'affaire : tous en portent.
+    let Ok(octets) = std::fs::read("/bin/true") else {
+        return;
+    };
+    if namsdec_re::elf_scan::scan(&octets).is_none() {
+        return; // pas un ELF 64 bits ici : rien à éprouver.
+    }
+    let trous = namsdec_re::slack::find(&octets);
+    assert!(
+        !trous.is_empty(),
+        "un vrai binaire a forcément du bourrage d'alignement"
+    );
+
+    let mut app = NamsdecApp::default();
+    assert!(app.load_elf(&octets, "true"), "l'ELF se charge");
+    app.show_analysis = true;
+
+    // Le module existe, et sous son identifiant stable.
+    let ids: Vec<&str> = app
+        .re_registry
+        .entries("fr")
+        .into_iter()
+        .map(|(id, _)| id)
+        .collect();
+    assert!(ids.contains(&"slack"), "le module existe : {ids:?}");
+
+    app.analysis_module = "slack".to_owned();
+    let peint = paint(&mut app);
+    // La plus grande zone, telle qu'elle est mesurée, doit se lire : le
+    // panneau montre bien ce que l'analyse trouve, et non une valeur de
+    // son cru.
+    let (_, plus_grande) = namsdec_re::slack::totals(&trous);
+    assert!(
+        peint.contains(&format!("{plus_grande}")),
+        "la plus grande zone ({plus_grande} octets) doit se lire :\n{peint}"
+    );
+    // Et le bourrage est nommé, pas seulement chiffré : c'est ce qui
+    // apprend quelque chose.
+    assert!(
+        peint.contains("nop") || peint.contains("zéro") || peint.contains("int3"),
+        "l'octet de bourrage est nommé :\n{peint}"
+    );
+}
+
 /// Le rapport d'analyse porte l'empreinte du fichier.
 ///
 /// C'est la première ligne d'un compte rendu : de quel octet parle-t-on ?
