@@ -409,6 +409,33 @@ pub fn gather(
         }
     }
 
+    // --- Le listing dit-il la vérité ? -----------------------------
+    //
+    // La seule ligne de ce panneau qui mette en cause ce que namsdec
+    // AFFICHE. Elle passe donc avant les indicateurs : tant qu'on ne
+    // sait pas que le listing ment, on lit de travers tout le reste.
+    let base = disasm.first().map(|i| i.address).unwrap_or(0);
+    let désalignés = crate::misalign::scan_in(disasm, &crate::misalign::code_zones(binary, base));
+    if !désalignés.is_empty() {
+        let premier = &désalignés[0];
+        out.push(Signal {
+            weight: Weight::Remarkable,
+            fr: "Le listing est trompé",
+            en: "The listing is being fooled",
+            detail: format!(
+                "{:#x} → {:#x} ({} {})",
+                premier.from,
+                premier.target,
+                désalignés.len(),
+                t(lang, "endroits", "places")
+            ),
+            why_fr: "Un saut atterrit au milieu d'une instruction du listing : le processeur lit d'autres octets que ce qui est affiché. C'est de l'anti-désassemblage, et c'est délibéré — aucun compilateur ne produit cette figure.",
+            why_en: "A jump lands in the middle of an instruction of the listing: the processor reads other bytes than what is shown. This is anti-disassembly, and it is deliberate — no compiler produces this shape.",
+            panel_fr: "Figures du code",
+            panel_en: "Code shapes",
+        });
+    }
+
     // --- Ce qu'on peut aller vérifier ailleurs ---------------------
     let chaînes = crate::strings::scan_elf(binary).unwrap_or_default();
     let indicateurs = crate::ioc::from_strings(&chaînes);
@@ -647,6 +674,26 @@ mod tests {
             rang("Parle au réseau") < rang("Touche aux fichiers"),
             "{signaux:?}"
         );
+    }
+
+    /// Un listing trompé ressort, et renvoie au panneau qui le montre.
+    ///
+    /// C'est la seule ligne du panneau qui mette en cause ce que namsdec
+    /// **affiche** : tant qu'on ne sait pas que le listing ment, on lit
+    /// de travers tout le reste.
+    #[test]
+    fn a_fooled_listing_stands_out() {
+        //   jmp $+3 / db 0xE8 (l'octet-piège) / xor eax,eax / inc rax / ret
+        let octets: &[u8] = &[0xEB, 0x01, 0xE8, 0x31, 0xC0, 0x48, 0xFF, 0xC0, 0xC3];
+        let disasm = namsdec_disasm::disassemble(octets, 0x400000);
+        let signaux = gather(&[], &disasm, "fr");
+        let ligne = signaux
+            .iter()
+            .find(|s| s.fr == "Le listing est trompé")
+            .unwrap_or_else(|| panic!("{signaux:?}"));
+        assert_eq!(ligne.weight, Weight::Remarkable);
+        assert!(ligne.detail.contains("0x400003"), "{ligne:?}");
+        assert_eq!(ligne.panel("fr"), "Figures du code");
     }
 
     /// Une petite tranche dense ne suffit pas à crier à l'empaquetage.

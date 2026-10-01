@@ -26,7 +26,7 @@
 
 mod commun;
 
-use commun::{BASE, germe};
+use commun::{BASE, germe_piégé};
 use namsdec_core::{Cpu, Memory};
 use namsdec_re::{ReContext, ReModule};
 
@@ -38,12 +38,24 @@ use namsdec_re::{ReContext, ReModule};
 /// seraient mesurés vides — et c'est précisément avec du contenu que les
 /// défauts de mise en page se révèlent.
 fn binaire() -> Vec<u8> {
-    let mut f = germe();
+    // Le germe piégé : son `.text` porte la figure de
+    // l'anti-désassemblage, ce qui donne au panneau des figures son bloc
+    // des deux lectures.
+    let mut f = germe_piégé();
     // Les indicateurs sont déjà dans le `.rodata` du germe : les ajouter
     // ici, après la table des sections, ne servirait à rien — le panneau
     // des chaînes ne lit que les sections de données, comme
     // `strings -d`, et c'est juste.
     f.extend_from_slice(b"UPX!");
+    // Le code qui demande au noyau : posé DANS le fichier, et non à
+    // côté, parce que le listing de namsdec part du premier octet du
+    // fichier et que c'est ce listing-là qu'on mesure. Un `nop` devant
+    // remet la lecture en phase après les zéros de la table des
+    // sections. Huit et non un : une instruction fait au plus quinze
+    // octets, et une entrée de travers peut en avaler quelques-uns —
+    // après une file de `nop`, la lecture est forcément en phase.
+    f.extend(std::iter::repeat_n(0x90u8, 8));
+    f.extend_from_slice(&code());
     let mut graine = 0x2545_f491_4f6c_dd1du64;
     for _ in 0..16384 {
         graine ^= graine << 13;
@@ -152,6 +164,7 @@ fn panneaux() -> Vec<(&'static str, Box<dyn ReModule>)> {
         ),
         ("chaînes", Box::new(namsdec_re::StringsModule::default())),
         ("entropie", Box::new(namsdec_re::EntropyModule::default())),
+        ("figures", Box::new(namsdec_re::PatternsModule::default())),
     ]
 }
 
@@ -163,7 +176,7 @@ fn panneaux() -> Vec<(&'static str, Box<dyn ReModule>)> {
 #[test]
 fn no_analysis_panel_overlaps_or_cuts_its_own_text() {
     let binaire = binaire();
-    let disasm = namsdec_disasm::disassemble(&code(), BASE);
+    let disasm = namsdec_disasm::disassemble(&binaire, BASE);
     let cpu = Cpu::new(Memory::new(BASE, 0x1000));
 
     for lang in ["fr", "en"] {
@@ -271,7 +284,7 @@ fn no_analysis_panel_overlaps_or_cuts_its_own_text() {
 #[test]
 fn an_analysis_panel_left_alone_stays_where_it_is() {
     let binaire = binaire();
-    let disasm = namsdec_disasm::disassemble(&code(), BASE);
+    let disasm = namsdec_disasm::disassemble(&binaire, BASE);
     let cpu = Cpu::new(Memory::new(BASE, 0x1000));
     let ctx = ReContext {
         cpu: &cpu,
@@ -331,7 +344,7 @@ fn an_analysis_panel_left_alone_stays_where_it_is() {
 #[test]
 fn what_was_added_is_really_on_screen() {
     let binaire = binaire();
-    let disasm = namsdec_disasm::disassemble(&code(), BASE);
+    let disasm = namsdec_disasm::disassemble(&binaire, BASE);
     let cpu = Cpu::new(Memory::new(BASE, 0x1000));
 
     let attendus: &[(&str, &str, &[&str])] = &[
@@ -372,6 +385,25 @@ fn what_was_added_is_really_on_screen() {
         ("chaînes", "en", &["URL", "Path", "Registry key", "copy"]),
         // Et l'empaqueteur nommé, avec sa preuve.
         ("entropie", "fr", &["UPX"]),
+        // Les deux lectures du même octet, côte à côte.
+        (
+            "figures",
+            "fr",
+            &[
+                "Le listing est trompé",
+                "le listing lit",
+                "le processeur lit",
+            ],
+        ),
+        (
+            "figures",
+            "en",
+            &[
+                "The listing is being fooled",
+                "the listing reads",
+                "the processor reads",
+            ],
+        ),
     ];
 
     for (nom, lang, mots) in attendus {

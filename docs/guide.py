@@ -1108,10 +1108,10 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "change ce qu'on y cherche : une entropie haute dans "
          "<font face='Courier'>.text</font> est normale, la même dans "
          "<font face='Courier'>.rodata</font> annonce des données chiffrées.",
-         "<b>Signaux</b> — ce que tous les autres ont trouvé, rassemblé : segment "
-         "inscriptible <i>et</i> exécutable, entropie qui monte sur une grande tranche, "
-         "empaqueteur reconnu, anti-débogage, protections absentes, code qui peut se "
-         "déballer, indicateurs dans les chaînes. Il n'analyse rien de neuf — il dit par "
+         "<b>Signaux</b> — ce que tous les autres ont trouvé, rassemblé : listing trompé, "
+         "segment inscriptible <i>et</i> exécutable, entropie qui monte sur une grande "
+         "tranche, empaqueteur reconnu, anti-débogage, protections absentes, code qui peut "
+         "se déballer, indicateurs dans les chaînes. Il n'analyse rien de neuf — il dit par "
          "où commencer. Chaque ligne donne un <b>fait</b> (une adresse, un nom, une "
          "mesure), <b>ce que ce fait change</b>, et <b>le panneau</b> qui l'explique. "
          "Rien n'est additionné en score : un score donnerait l'illusion d'un verdict, "
@@ -1247,6 +1247,43 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "commune, et c'est ce classement qui fait le travail : 1 758 tests de nullité "
          "sont la ponctuation du langage machine, quatre comparaisons par XOR sur 62 382 "
          "instructions sont une piste."),
+        ("h2", "Quand le listing ment"),
+        ("p",
+         "Une figure passe avant toutes les autres, parce qu'elle met en cause ce que "
+         "namsdec <b>affiche</b> : <b>le listing est trompé</b>. Un désassemblage lit "
+         "<i>linéairement</i> — une instruction, sa longueur, la suivante. Le processeur, "
+         "lui, va <b>où les sauts l'envoient</b>. Les deux coïncident dans un programme "
+         "ordinaire, parce qu'un compilateur fait commencer ses sauts sur des frontières "
+         "d'instruction. Elles divergent dès qu'on les fait diverger exprès :"),
+        ("code",
+         "    eb 01        jmp $+3       ; saute UN octet plus loin que la suite\n"
+         "    e8           db 0xE8       ; l'octet-piege : un opcode de `call`\n"
+         "    31 c0        xor eax,eax   ; le vrai code commence ici"),
+        ("p",
+         "La lecture ligne à ligne tombe sur <font face='Courier'>e8</font> et le prend "
+         "pour un <font face='Courier'>call</font> : cet opcode avale quatre octets "
+         "d'adresse, donc elle engloutit le vrai code, repart de travers et finit en "
+         "<font face='Courier'>(bad)</font>. Le processeur, lui, saute par-dessus le piège "
+         "et lit <font face='Courier'>xor eax,eax</font>. <b>Un seul octet</b> a suffi pour "
+         "que tout un désassemblage mente."),
+        ("p",
+         "Le panneau donne les <b>deux lectures côte à côte</b> — ce que le listing lit, "
+         "ce que le processeur lit — et l'octet qui les sépare. Il ne corrige pas le "
+         "listing : refaire le désassemblage en suivant le flot laisserait des trous "
+         "partout où l'on ne sait pas aller, et un listing troué serait pire. Nommer "
+         "l'endroit suffit à ne plus se faire avoir."),
+        ("note",
+         "Ce qu'on apprend au passage vaut plus que la figure : <b>le découpage en "
+         "instructions n'est pas une propriété des octets</b>. C'est une propriété du "
+         "point où l'on commence à lire. Les mêmes octets, lus un cran plus loin, sont un "
+         "autre programme — et c'est là-dessus que repose tout l'anti-désassemblage."),
+        ("p",
+         "Le relevé ne regarde que les sections <b>exécutables</b>, et que les sauts qui "
+         "tombent à moins de seize octets. Sans ces deux bornes, une chaîne de format "
+         "comme <font face='Courier'>%d%% - </font>, décodée comme du code, rend des "
+         "« sauts » qui tombent au hasard : mesuré sur <font face='Courier'>/bin/ls</font>, "
+         "cinq figures relevées et aucune vraie. Un panneau qui crie au loup n'est plus lu "
+         "du tout."),
         ("code",
          "cmp  rsi, 7               ; la longueur saisie doit valoir 7\n"
          "jne  incorrect\n"

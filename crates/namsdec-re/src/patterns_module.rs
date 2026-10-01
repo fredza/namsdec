@@ -13,12 +13,28 @@
 
 use std::collections::BTreeMap;
 
+use crate::misalign::{self, Misalignment};
 use crate::patterns::{Finding, Pattern, scan};
 use crate::{ReContext, ReModule};
 
 #[derive(Default)]
 pub struct PatternsModule {
     found: Vec<Finding>,
+    /// Les endroits où le flot lit d'autres octets que le listing.
+    ///
+    /// Rangés ici et non dans `patterns` : une figure de `patterns` se
+    /// résume à une ligne de détail, celle-ci demande les **deux
+    /// lectures** côte à côte, et c'est leur désaccord qui est
+    /// l'information.
+    misalignments: Vec<Misalignment>,
+}
+
+impl PatternsModule {
+    /// Les désalignements relevés, pour qui veut les lire sans
+    /// l'interface — le panneau des signaux s'en sert.
+    pub fn misalignments(&self) -> &[Misalignment] {
+        &self.misalignments
+    }
 }
 
 /// Combien d'endroits on montre par famille.
@@ -42,14 +58,29 @@ impl ReModule for PatternsModule {
 
     fn on_binary_loaded(&mut self, ctx: &ReContext) {
         self.found = scan(ctx.disasm);
+        // Borné aux sections exécutables quand on sait où elles sont :
+        // une chaîne de format décodée comme du code rend des sauts qui
+        // tombent au hasard, et le panneau crierait au loup sur le
+        // premier binaire venu.
+        let base = ctx.disasm.first().map(|i| i.address).unwrap_or(0);
+        self.misalignments = misalign::scan_in(ctx.disasm, &misalign::code_zones(ctx.binary, base));
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
+        // Le désalignement d'abord, et sans compromis : c'est la seule
+        // figure de ce panneau qui dise que **le listing lui-même ment**.
+        // Toutes les autres se lisent dans un listing juste.
+        if !self.misalignments.is_empty() {
+            désalignements(ui, ctx, &self.misalignments);
+            ui.add_space(6.0);
+        }
         if self.found.is_empty() {
-            ui.label(ctx.t(
-                "Aucune figure reconnue : ce code ne compare rien de remarquable.",
-                "No shape recognised: this code compares nothing remarkable.",
-            ));
+            if self.misalignments.is_empty() {
+                ui.label(ctx.t(
+                    "Aucune figure reconnue : ce code ne compare rien de remarquable.",
+                    "No shape recognised: this code compares nothing remarkable.",
+                ));
+            }
             return;
         }
         ui.weak(ctx.t(
@@ -102,6 +133,83 @@ impl ReModule for PatternsModule {
                 }
             });
         }
+    }
+}
+
+/// Les deux lectures, côte à côte.
+///
+/// C'est la forme qui apprend quelque chose : « voici ce que le listing
+/// affiche, voici ce que le processeur lit, et voici l'octet qui les
+/// sépare ». Une ligne qui dirait seulement « désalignement en 0x401234 »
+/// laisserait tout le travail à faire.
+fn désalignements(ui: &mut egui::Ui, ctx: &ReContext, trouvés: &[Misalignment]) {
+    let rouge = egui::Color32::from_rgb(0xf4, 0x87, 0x71);
+    ui.horizontal_wrapped(|ui| {
+        ui.strong(
+            egui::RichText::new(ctx.t("Le listing est trompé", "The listing is being fooled"))
+                .color(rouge),
+        );
+        ui.weak(format!(
+            "{} {}",
+            trouvés.len(),
+            if trouvés.len() > 1 {
+                ctx.t("endroits", "places")
+            } else {
+                ctx.t("endroit", "place")
+            }
+        ));
+    });
+    ui.weak(ctx.t(
+        "Un saut atterrit au MILIEU d'une instruction du listing. Le listing lit ligne à ligne ; le processeur, lui, va où les sauts l'envoient — et lit donc d'autres octets. C'est l'anti-désassemblage classique : un seul octet-piège suffit à faire mentir tout ce qui suit. Le découpage en instructions n'est pas une propriété des octets, c'est une propriété du point où l'on commence à lire.",
+        "A jump lands in the MIDDLE of an instruction of the listing. The listing reads line by line; the processor goes where jumps send it — and therefore reads other bytes. This is classic anti-disassembly: a single trap byte is enough to make everything that follows lie. Where instructions begin is not a property of the bytes, it is a property of where one starts reading.",
+    ));
+    ui.add_space(4.0);
+
+    for m in trouvés {
+        ui.horizontal_wrapped(|ui| {
+            ui.monospace(format!("{:#010x}", m.from));
+            ui.label(ctx.t("envoie à", "sends to"));
+            ui.monospace(format!("{:#010x}", m.target));
+            ui.weak(format!(
+                "— {} {} {} {:#x}",
+                m.offset,
+                if m.offset > 1 {
+                    ctx.t("octets", "bytes")
+                } else {
+                    ctx.t("octet", "byte")
+                },
+                ctx.t("après le début de", "past the start of"),
+                m.inside
+            ));
+        });
+        ui.indent(m.target, |ui| {
+            egui::Grid::new(format!("misalign_{:x}", m.target))
+                .num_columns(2)
+                .min_col_width(0.0)
+                .striped(true)
+                .show(ui, |ui| {
+                    ui.label(ctx.t("le listing lit", "the listing reads"));
+                    ui.monospace(&m.linear);
+                    ui.end_row();
+                    for (rang, lue) in m.flow.iter().enumerate() {
+                        ui.label(if rang == 0 {
+                            ctx.t("le processeur lit", "the processor reads")
+                        } else {
+                            ""
+                        });
+                        ui.horizontal(|ui| {
+                            ui.monospace(format!("{:#010x}", lue.addr));
+                            ui.monospace(egui::RichText::new(&lue.text).color(if rang == 0 {
+                                rouge
+                            } else {
+                                ui.visuals().text_color()
+                            }));
+                        });
+                        ui.end_row();
+                    }
+                });
+        });
+        ui.add_space(4.0);
     }
 }
 

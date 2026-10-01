@@ -151,14 +151,28 @@ trois octets se rencontrent par hasard dans n'importe quelles données. Et
 `shc` a été retiré de la table avant d'y entrer, faute d'une marque dont
 on soit sûr.
 
-### A5 — Le désassemblage suit le flot, pas seulement la linéarité
+### A5 — [FAIT le 1er octobre] Le désassemblage, le flot, et le désalignement
 
-Vérifier (le cas échéant, améliorer) que le désassemblage gère le
-**désalignement volontaire** — l'anti-désassemblage classique : un saut
-qui atterrit au milieu d'une instruction pour tromper la lecture linéaire.
-Un outil d'analyse de malware rencontre cette figure ; la montrer (« ici
-le flot lit d'autres octets que la lecture ligne à ligne ») est
-pédagogique *et* utile.
+Vérifié d'abord, et mesuré : le désassemblage est **purement linéaire**,
+et c'est le bon choix pour un listing. Sur la figure classique, il rend
+`call 0FFFF…h` puis `(bad)` là où le processeur lit `xor eax,eax ; inc
+rax ; ret` — et le graphe de flot **perdait l'arête** du saut sans rien
+dire.
+
+Fait : `misalign.rs` relève les endroits où un saut atterrit au milieu
+d'une instruction du listing, et le panneau « Figures du code » donne les
+**deux lectures côte à côte**. Le listing n'est pas corrigé : un listing
+troué serait pire que trompeur.
+
+Deux bornes, chacune venue d'une mesure sur `/bin/ls` : les sections
+exécutables seulement, et les sauts de moins de seize octets. Sans elles,
+cinq figures relevées et aucune vraie — des chaînes de format décodées
+comme du code.
+
+Et une erreur que seule la capture d'écran a trouvée : le relevé était
+juste dans les tests et ne montrait rien dans l'application, parce que
+les zones de code étaient calculées en décalage de fichier alors que
+`load_elf` pose chaque section à son **adresse virtuelle**.
 
 ---
 
@@ -212,9 +226,8 @@ rejoint B1 (une vue de listing qu'on ne délègue plus entièrement à egui).
 1. ~~**C2**~~ — fait le 1er octobre, et quatre paniques de plus trouvées.
 2. ~~**A1 + A2**~~ — fait le 1er octobre.
 3. ~~**A3**~~ — fait le 1er octobre. ~~**A4**~~ et ~~**C3**~~ aussi.
-4. **A5** — le désassemblage qui suit le flot, non la seule linéarité.
-   C'est ce qui reste de la première moitié de ce relevé, et le moins
-   cher des trois qui restent.
+4. ~~**A5**~~ — fait le 1er octobre. **Toute la première moitié de ce
+   relevé est faite.**
 5. **B1** — la virtualisation, quand le confort sur gros binaires le
    justifie. Gros, à décider.
 6. **B2** — la modification de binaire, par petits pas réversibles.

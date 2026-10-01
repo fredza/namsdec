@@ -26,6 +26,7 @@ pub mod ioc;
 pub mod libc;
 pub mod literals;
 mod map_module;
+pub mod misalign;
 pub mod packer;
 pub mod patch;
 pub mod patterns;

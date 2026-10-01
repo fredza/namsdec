@@ -2176,3 +2176,76 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
   `cargo clippy --all-targets -D warnings` échouait sur `main`. Corrigé au
   passage. Un contrôle de mise en forme qu'on ne lance pas localement finit par
   être découvert par quelqu'un d'autre.
+
+  --- A5 : quand le listing ment, et comment ne pas crier au loup ---
+  Dernière entrée de la première moitié du relevé septembre26.md. Elle
+  demandait de VÉRIFIER avant d'améliorer, et la vérification valait le
+  déplacement.
+
+  CE QUE FAIT NAMSDEC, mesuré avant d'écrire une ligne. Le désassemblage est
+  purement linéaire : `Decoder::with_ip`, décode, avance de la longueur,
+  recommence. Sur la figure classique de l'anti-désassemblage —
+
+      eb 01        jmp $+3        ; enjambe l'octet-piège
+      e8           db 0xE8        ; un opcode de `call`, qui avale quatre octets
+      31 c0        xor eax,eax    ; le vrai code
+
+  — le listing rend `call 0FFFFFFFFFF88C038h` puis `(bad)`, quand le
+  processeur lit `xor eax,eax ; inc rax ; ret`. Et le graphe de flot fait pire
+  que mentir : il PERD l'arête du saut, parce que 0x400003 n'est le début
+  d'aucun bloc, et le `jmp` apparaît sans sortie. Rien à l'écran ne dit qu'il
+  s'est passé quelque chose.
+
+  CE QU'ON NE FAIT PAS, et pourquoi. Refaire le désassemblage en suivant le
+  flot est tentant et serait un recul. Une lecture par le flot ne couvre que
+  ce qu'elle sait atteindre : tout ce qui est appelé par un saut calculé, par
+  une table, par un pointeur rangé en donnée disparaît du listing. Un listing
+  troué est pire qu'un listing trompeur — l'un cache ce qu'on cherche, l'autre
+  l'affiche de travers mais l'affiche. On garde donc la lecture linéaire et
+  l'on MONTRE le désaccord, avec les deux lectures côte à côte.
+
+  LES DEUX BORNES, et ce qu'elles ont coûté. Le premier jet relevait trois
+  figures sur /bin/ls, puis deux, puis deux encore. Aucune n'en était une.
+
+    1. LE LISTING PART DU FICHIER, PAS DU CODE. Un relevé fait sur tout le
+       fichier décode l'en-tête et les tables comme du code : deux octets nuls
+       s'appellent `add [rax],al` en x86, et les « sauts » de ces instructions
+       imaginaires tombent n'importe où. D'où `code_zones`, qui borne aux
+       sections exécutables.
+    2. UNE CHAÎNE DE FORMAT EST UN PROGRAMME VALIDE. `%d%% - ` décodé donne
+       `sub eax,25206425h`, parfaitement légal, avec un saut à la clé. Deux
+       figures de /bin/ls venaient de .rodata. Un garde-fou de secours écarte
+       les « instructions » faites entièrement de caractères imprimables —
+       il sert quand on ne sait pas où est le code, devant un tampon brut.
+    3. LA FIGURE EST COURTE PAR NÉCESSITÉ. Elle cache un ou deux octets
+       derrière un saut qui les enjambe. Les faux de /bin/ls sautaient de 71,
+       25 et 61 octets ; celui qu'on cherche saute de un. Seize octets de
+       portée, donc — et ce que ce seuil coûte est écrit à côté : un
+       désalignement posé à cent octets de son saut ne serait pas vu. C'est
+       assumé. Relever trois figures fausses sur chaque binaire du monde coûte
+       plus cher que d'en manquer une rare, parce qu'un panneau qui crie au
+       loup n'est plus lu du tout.
+
+  ET UNE ERREUR SUR LA FORME DU LISTING, que seule la capture d'écran a
+  trouvée. Le relevé était juste dans les tests et ne montrait RIEN dans
+  l'application. La cause : `code_zones` plaçait chaque section à
+  `base + son décalage dans le fichier`, parce que c'est ce que fait le
+  commentaire d'`imports_module` — « le désassemblage que montre namsdec part
+  du premier octet du fichier ». C'est vrai d'un tampon brut, et FAUX d'un ELF
+  ouvert : `load_elf` ne désassemble que les parties exécutables, chacune à
+  son ADRESSE VIRTUELLE. Les zones tombaient donc trois cents octets à côté,
+  et le filtre écartait tout.
+  Corrigé en rendant les deux intervalles, les deux conventions étant vraiment
+  employées. Un intervalle de trop ne fait que laisser passer ce que les
+  autres filtres écarteront ; un intervalle manquant aveugle le relevé.
+
+  CE QUE LA FIGURE APPREND, et qui vaut plus qu'elle. Le découpage en
+  instructions n'est pas une propriété des octets : c'est une propriété du
+  point où l'on commence à lire. Les mêmes octets, lus un cran plus loin, sont
+  un autre programme. Tout l'anti-désassemblage repose là-dessus, et c'est
+  exactement ce qu'un atelier pédagogique doit montrer plutôt que raconter.
+
+  LE RELEVÉ DES PANNEAUX A RESERVI. L'invariant « aucune phrase n'est trouée
+  d'espaces », écrit la veille après un littéral Rust mal recollé, a attrapé
+  deux fois le même défaut dans les textes de cette séance. Un contrôle qui
+  trouve un deuxième défaut du même genre a payé son écriture.

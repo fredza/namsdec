@@ -6,6 +6,7 @@
 //! machine de qui l'écrit. Celui-ci tourne partout de la même façon.
 
 /// L'adresse où namsdec pose ce qu'il charge.
+#[allow(dead_code)]
 pub const BASE: u64 = 0x400000;
 
 /// Un ELF64 complet, fabriqué pour mener l'analyse jusque dans ses
@@ -20,6 +21,7 @@ pub const BASE: u64 = 0x400000;
 ///
 /// Les décalages sont écrits en clair : c'est un fichier, pas une
 /// structure de données, et le lire se fait en regardant les nombres.
+#[allow(dead_code)]
 pub fn germe() -> Vec<u8> {
     const TEXT: usize = 0x100;
     const PLT: usize = 0x120;
@@ -188,5 +190,57 @@ admin@exemple.ru\0\
         f[at + 0x30..at + 0x38].copy_from_slice(&8u64.to_le_bytes());
         f[at + 0x38..at + 0x40].copy_from_slice(&entsize.to_le_bytes());
     }
+    f
+}
+
+/// Le même ELF, avec la figure classique de l'anti-désassemblage posée
+/// dans son `.text`.
+///
+/// `allow(dead_code)` : chaque contrôle d'intégration compile ce module
+/// pour son compte, et aucun ne se sert de tout. Sans cela, celui qui
+/// n'emploie que `germe` échouerait sur ce qu'un autre emploie.
+///
+/// ```text
+///     eb 01        jmp $+3       ← enjambe l'octet-piège
+///     e8           db 0xE8       ← un opcode de `call`, qui avale la suite
+///     31 c0        xor eax,eax   ← le vrai code
+///     48 ff c0     inc rax
+///     c3           ret
+/// ```
+///
+/// La lecture ligne à ligne prend `e8` pour un `call`, engloutit quatre
+/// octets d'adresse et repart de travers ; le processeur, lui, saute
+/// par-dessus le piège. Un seul octet, et tout un désassemblage ment.
+#[allow(dead_code)]
+pub fn germe_piégé() -> Vec<u8> {
+    const TEXT: usize = 0x100;
+    let mut f = germe();
+    let piège: &[u8] = &[
+        0xEB, 0x01, // jmp $+3
+        0xE8, // l'octet-piège
+        0x31, 0xC0, // xor eax,eax
+        0x48, 0xFF, 0xC0, // inc rax
+        0xC3, // ret
+    ];
+    // Le reste de `.text` devient des `nop` : ce qui s'y trouvait
+    // décoderait après le `ret` et brouillerait la lecture du flot.
+    for octet in f[TEXT..TEXT + 0x20].iter_mut() {
+        *octet = 0x90; // nop
+    }
+    // Et un `nop` juste AVANT `.text`, dans le bourrage.
+    //
+    // Sans lui, la figure est invisible — et pour une raison qui vaut
+    // d'être dite. Le listing part du premier octet du FICHIER : il
+    // traverse l'en-tête et les tables, décodés comme du code, et arrive
+    // dans `.text` sur une frontière quelconque. Mesuré ici : il entrait
+    // un octet trop tôt, lisait `00 eb` puis `01 e8`, et le `jmp` du
+    // piège n'existait tout simplement pas pour lui.
+    //
+    // Un `nop` d'un octet remet la lecture en phase à `.text`. Ce n'est
+    // pas un artifice de test : c'est exactement ce que fait du bourrage
+    // à `0x90` dans un vrai binaire, et c'est pourquoi un éditeur de
+    // liens en pose.
+    f[TEXT - 1] = 0x90;
+    f[TEXT..TEXT + piège.len()].copy_from_slice(piège);
     f
 }

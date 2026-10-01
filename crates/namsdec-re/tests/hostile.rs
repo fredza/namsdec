@@ -210,6 +210,9 @@ fn tout_analyser(octets: &[u8]) {
     }
     let _ = namsdec_re::syscalls::reads_input(&disasm);
     let _ = namsdec_re::gadgets::from_disasm(&disasm, 64);
+    let zones = namsdec_re::misalign::code_zones(octets, BASE);
+    let _ = namsdec_re::misalign::scan(&disasm);
+    let _ = namsdec_re::misalign::scan_in(&disasm, &zones);
     let cfg = namsdec_re::cfg::build(&disasm);
     let _ = cfg.to_dot();
     let _ = cfg.layers();

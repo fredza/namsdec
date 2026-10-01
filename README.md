@@ -44,8 +44,19 @@ qu'elle est : une adresse de retour, avec son étiquette. Ce qui est
 au-dessus de RSP est grisé — ces octets sont encore là, mais le prochain
 `push` les écrase.
 
+**Quand le listing ment.** Un désassemblage lit *linéairement* ; le
+processeur, lui, va **où les sauts l'envoient**. Un seul octet-piège
+derrière un `jmp` qui l'enjambe, et toute la lecture ligne à ligne part de
+travers — c'est l'anti-désassemblage classique, et on le rencontre dans ce
+que namsdec est fait pour lire. Le panneau **Figures du code** donne les
+**deux lectures côte à côte** et l'octet qui les sépare. Ce qu'on apprend
+au passage vaut plus que la figure : le découpage en instructions n'est
+pas une propriété des octets, c'est une propriété du point où l'on
+commence à lire.
+
 **Ce qui ressort, et pourquoi.** La fenêtre d'analyse ouvre sur
-**Signaux** : segment inscriptible *et* exécutable, entropie qui monte,
+**Signaux** : listing trompé, segment inscriptible *et* exécutable,
+entropie qui monte,
 empaqueteur reconnu par son nom, anti-débogage, protections absentes,
 indicateurs dans les chaînes. Rien de neuf n'y est calculé — c'est ce que
 les autres panneaux ont déjà trouvé, rassemblé pour dire par où
@@ -519,7 +530,7 @@ Un workspace Rust, une crate par responsabilité :
 | `namsdec-asm` | appel de nasm et de ld, lecture de l'ELF produit |
 | `namsdec-disasm` | désassemblage x86-64 (iced-x86), syntaxe NASM |
 | `namsdec-emu` | l'interpréteur : entiers, SSE/AVX, x87, appels système |
-| `namsdec-re` | rétro-ingénierie : signaux, protections, références croisées, chaînes et indicateurs, familles de comportement, appels système, empaqueteurs, fragments ROP, place libre |
+| `namsdec-re` | rétro-ingénierie : signaux, anti-désassemblage, protections, références croisées, chaînes et indicateurs, familles de comportement, appels système, empaqueteurs, fragments ROP, place libre |
 | `namsdec-doc` | les fiches d'instructions et de directives |
 | `namsdec-exercises` | les séries d'exercices et leur format |
 | `namsdec-theme` | les thèmes, y compris ceux installés depuis le disque |

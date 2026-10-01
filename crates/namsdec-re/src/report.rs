@@ -121,6 +121,56 @@ pub fn markdown(
         }
     }
 
+    // Le listing ment-il ? Avant les protections, parce que cela change
+    // la façon de lire tout ce qui suit — et parce qu'un compte rendu
+    // qui montre un désassemblage trompeur sans le dire induit en
+    // erreur celui qui le recevra.
+    let base = disasm.first().map(|i| i.address).unwrap_or(0);
+    let désalignés = crate::misalign::scan_in(disasm, &crate::misalign::code_zones(bytes, base));
+    if !désalignés.is_empty() {
+        out.push_str(&format!(
+            "\n## {}\n\n",
+            t(lang, "Le listing est trompé", "The listing is being fooled")
+        ));
+        out.push_str(&format!(
+            "{}\n",
+            t(
+                lang,
+                "Un saut atterrit au milieu d'une instruction de la lecture ligne à \
+                 ligne : le processeur lit d'autres octets que ceux qui sont affichés. \
+                 Aucun compilateur ne produit cette figure.",
+                "A jump lands in the middle of an instruction of the line-by-line \
+                 reading: the processor reads other bytes than those shown. No compiler \
+                 produces this shape.",
+            )
+        ));
+        for m in &désalignés {
+            out.push_str(&format!(
+                "\n- `{:#x}` → `{:#x}` ({} {} `{:#x}`)\n",
+                m.from,
+                m.target,
+                m.offset,
+                t(lang, "octets après le début de", "bytes past the start of"),
+                m.inside
+            ));
+            out.push_str(&format!(
+                "  - {} : `{}`\n",
+                t(lang, "le listing lit", "the listing reads"),
+                m.linear
+            ));
+            let flot = m
+                .flow
+                .iter()
+                .map(|lue| lue.text.as_str())
+                .collect::<Vec<_>>()
+                .join(" ; ");
+            out.push_str(&format!(
+                "  - {} : `{flot}`\n",
+                t(lang, "le processeur lit", "the processor reads")
+            ));
+        }
+    }
+
     out.push_str(&format!(
         "\n## {}\n\n",
         t(lang, "Protections", "Protections")

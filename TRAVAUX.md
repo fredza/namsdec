@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **1er octobre
-2026**, version 0.2.6-beta.1, 1 061 tests au vert.
+2026**, version 0.2.6-beta.1, 1 070 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -452,10 +452,25 @@ pour son compte.
       contrôle vient d'un vrai défaut : un littéral Rust coupé sur
       plusieurs lignes garde ses espaces d'indentation quand le `\` de
       continuation disparaît.
-- [ ] **A5, non fait** : vérifier que le désassemblage suit le flot et
-      non seulement la linéarité — le désalignement volontaire, un saut
-      qui atterrit au milieu d'une instruction. Identifié, chiffré nulle
-      part.
+- [x] **Le désalignement volontaire** (A5) — vérifié d'abord, mesuré :
+      le désassemblage de namsdec est **linéaire**, et c'est le bon choix
+      pour un listing. Sur la figure classique (`jmp $+3` / `db 0xE8` /
+      `xor eax,eax`), il rend `call 0FFFF…h` puis `(bad)` là où le
+      processeur lit `xor eax,eax ; inc rax ; ret` — et le graphe de flot
+      perdait l'arête sans rien dire.
+      `misalign.rs` relève les endroits où un saut atterrit **au milieu**
+      d'une instruction du listing, et le panneau « Figures du code »
+      donne les **deux lectures côte à côte**. Il ne corrige pas le
+      listing : un listing troué serait pire que trompeur, et nommer
+      l'endroit suffit à ne plus se faire avoir.
+      Deux bornes, chacune venue d'une mesure sur `/bin/ls` : seules les
+      sections **exécutables** comptent (une chaîne de format décodée
+      comme du code rend des sauts qui tombent au hasard), et le saut doit
+      tomber à moins de seize octets (la figure cache un ou deux octets,
+      pas soixante). Sans elles, cinq figures relevées sur `/bin/ls`, et
+      aucune vraie.
+      Relevé aussi dans les signaux et dans le rapport, avec les deux
+      lectures.
 
 ## 4 quinquies. Modifier un binaire — premier morceau
 

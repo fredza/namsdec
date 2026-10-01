@@ -12,9 +12,28 @@ cesse de mélanger trois questions — et la fenêtre d'analyse répond enfin
 à la première question qu'on se pose devant un échantillon inconnu : par
 où commencer.
 
+**Quand le listing ment**
+- Un désassemblage lit **linéairement** ; le processeur, lui, va **où les
+  sauts l'envoient**. Un seul octet-piège derrière un `jmp` qui l'enjambe,
+  et toute la lecture ligne à ligne part de travers : c'est
+  l'anti-désassemblage classique, et on le rencontre dans ce que namsdec
+  est fait pour lire.
+- Le panneau **Figures du code** donne désormais les **deux lectures côte
+  à côte** — ce que le listing lit, ce que le processeur lit — et l'octet
+  qui les sépare. Le listing n'est pas corrigé : refaire le désassemblage
+  en suivant le flot laisserait des trous partout où l'on ne sait pas
+  aller, et un listing troué serait pire que trompeur.
+- Ce qu'on apprend au passage vaut plus que la figure : **le découpage en
+  instructions n'est pas une propriété des octets**, c'est une propriété
+  du point où l'on commence à lire.
+- Le relevé ne regarde que les sections exécutables, et que les sauts qui
+  tombent à moins de seize octets. Sans ces deux bornes, cinq figures
+  étaient relevées sur `/bin/ls` et aucune n'en était une — des chaînes de
+  format décodées comme du code.
+
 **« Signaux » : ce qui ressort, et où le lire**
-- Un panneau de synthèse, en seconde position : empaqueteur reconnu,
-  segment inscriptible **et** exécutable, entropie qui monte, protections
+- Un panneau de synthèse, en seconde position : listing trompé,
+  empaqueteur reconnu, segment inscriptible **et** exécutable, entropie qui monte, protections
   absentes, anti-débogage, code qui peut se déballer, indicateurs dans
   les chaînes. Il **n'analyse rien de neuf** — c'est ce que les autres
   panneaux ont déjà trouvé, rassemblé.
