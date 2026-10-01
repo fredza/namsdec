@@ -576,8 +576,8 @@ jamais ajouter. Il faut de la place, et d'abord savoir où elle est.
 
 ## 4 octies. Découpage de main.rs (suite)
 
-- [x] **main.rs : 6 643 → 5 181 lignes** (−1 462, −22 %), sans rien
-      changer au comportement. Six modules neufs, chacun un thème net,
+- [x] **main.rs : 6 643 → 4 657 lignes** (−1 986, −30 %), sans rien
+      changer au comportement. Sept modules neufs, chacun un thème net,
       chacun vérifié par compilation puis par la suite complète :
       - `icons.rs` (217) — les dix icônes dessinées à la main (peintre,
         rectangle, couleur ; dessins purs, testés au pixel).
@@ -592,7 +592,9 @@ jamais ajouter. Il faut de la place, et d'abord savoir où elle est.
       - `listing.rs` (~280) — le rendu du listing désassemblé : bande de
         chaleur, ligne sous le curseur, boutons-liens, étiquettes de
         liaison, annotation d'une ligne, cible d'un saut, nom d'adresse.
-- [x] Les six ajoutés à `SOURCES_DE_L_INTERFACE` : les contrôles qui
+      - `enums.rs` (~530) — les onze énumérations d'état de l'interface
+        (onglets, modes, formats, statut) et leurs libellés.
+- [x] Les sept ajoutés à `SOURCES_DE_L_INTERFACE` : les contrôles qui
       lisent le code source les voient désormais comme les autres.
 
 ## 5. Vocation pédagogique

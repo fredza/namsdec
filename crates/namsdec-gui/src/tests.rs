@@ -48,6 +48,7 @@ const SOURCES_DE_L_INTERFACE: &[(&str, &str)] = &[
     ("condition.rs", include_str!("condition.rs")),
     ("editor.rs", include_str!("editor.rs")),
     ("editing.rs", include_str!("editing.rs")),
+    ("enums.rs", include_str!("enums.rs")),
     ("errors.rs", include_str!("errors.rs")),
     ("exercises.rs", include_str!("exercises.rs")),
     ("fixes.rs", include_str!("fixes.rs")),
