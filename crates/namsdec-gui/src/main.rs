@@ -3413,7 +3413,55 @@ impl NamsdecApp {
                 namsdec_re::ReRequest::PatchBytes { offset, bytes } => {
                     self.write_patch(offset, bytes, 0);
                 }
+                namsdec_re::ReRequest::GoTo { addr } => self.show_address(addr),
             }
+        }
+    }
+
+    /// Montre cette adresse dans le listing.
+    ///
+    /// Un panneau d'analyse désigne des endroits ; la seule chose qu'on
+    /// veuille en faire est d'aller voir. Jusqu'ici il fallait relever
+    /// l'adresse à la main et la retaper dans « aller à ».
+    ///
+    /// L'adresse exacte quand le listing la porte ; sinon **la ligne
+    /// juste avant**. C'est le cas d'une adresse qui tombe au milieu
+    /// d'une instruction — ce que fait justement un désalignement
+    /// volontaire — ou d'une zone de bourrage que le listing ne montre
+    /// pas ligne à ligne. Mieux vaut poser l'œil deux lignes trop haut
+    /// que ne rien faire : un clic qui ne fait rien passe pour un
+    /// défaut, et l'on cesse d'essayer.
+    fn show_address(&mut self, addr: u64) {
+        let s = strings(self.lang);
+        let Some(state) = &self.assemble_state else {
+            return;
+        };
+        let ligne = state
+            .addr_to_line
+            .get(&addr)
+            .copied()
+            // La plus proche en dessous : `BTreeMap` les tient triées,
+            // et c'est exactement la question qu'on lui pose.
+            .or_else(|| {
+                state
+                    .addr_to_line
+                    .range(..=addr)
+                    .next_back()
+                    .map(|(_, ligne)| *ligne)
+            });
+        match ligne {
+            Some(ligne) => {
+                self.goto_line = Some(ligne);
+                // On ne suit plus RIP : sans cela, le pas suivant
+                // ramènerait le listing là où l'exécution en est, et le
+                // clic paraîtrait n'avoir rien fait.
+                self.follow_rip = false;
+                self.status = Status::Idle;
+            }
+            // Une adresse qui n'est dans aucune partie désassemblée —
+            // une section de données, une adresse hors du fichier. Le
+            // dire, plutôt que de ne rien faire.
+            None => self.status = Status::Error(s.analysis_addr_absent.to_owned()),
         }
     }
 

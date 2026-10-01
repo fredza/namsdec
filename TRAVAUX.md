@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **1er octobre
-2026**, version 0.2.6-beta.1, 1 070 tests au vert.
+2026**, version 0.2.6-beta.1, 1 075 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -471,6 +471,33 @@ pour son compte.
       aucune vraie.
       Relevé aussi dans les signaux et dans le rapport, avec les deux
       lectures.
+
+## 4 octies. Circuler : d'un panneau d'analyse au listing
+
+- [x] **Le compte d'appels des imports, réparé** — le panneau annonçait
+      105 fonctions importées et **zéro** appel vers chacune sur un
+      binaire ouvert. Le comptage convertissait l'adresse d'une entrée de
+      liaison en position dans le fichier, parce que le commentaire
+      d'`imports_module` dit que « le désassemblage part du premier octet
+      du fichier ». C'est vrai d'un tampon brut et **faux** d'un ELF
+      ouvert : `load_elf` ne désassemble que les parties exécutables,
+      chacune à son adresse virtuelle. Les deux conventions sont essayées
+      maintenant ; mesuré sur `/bin/ls` : 719 appels au lieu de 0.
+      Un compte faux se lit comme un compte vrai : c'est pourquoi le
+      défaut a tenu. Le contrôle qui le retient charge le binaire **par
+      l'application**, et non en reconstruisant le listing à sa façon.
+- [x] **Les adresses des panneaux sont cliquables** — une entrée de
+      liaison, une zone libre, une figure, un fragment, un désalignement :
+      cliquer l'adresse amène le listing dessus, par
+      `ReRequest::GoTo`. Le suivi de RIP s'arrête au passage, sans quoi
+      le pas suivant ramènerait le listing là où l'exécution en est.
+      Une adresse entre deux lignes mène à la ligne juste avant — c'est
+      le cas d'un désalignement volontaire ; une adresse dans aucune
+      partie désassemblée le dit plutôt que de ne rien faire.
+      Le contrôle **clique pour de vrai** : il peint le panneau, cherche
+      où l'adresse a été posée, et envoie un appui puis un relâchement.
+      Vérifier que le code « poserait une demande si on cliquait » ne
+      prouverait pas qu'on peut cliquer.
 
 ## 4 quinquies. Modifier un binaire — premier morceau
 

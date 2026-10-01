@@ -7,7 +7,7 @@
 //! et pourquoi RELRO, le canari et IBT existent.
 
 use crate::gadgets::{self, Gadget};
-use crate::{ReContext, ReModule};
+use crate::{ReContext, ReModule, ReRequest, clickable_address};
 
 /// Combien on en montre. Au-delà, la liste cesse d'apprendre quoi que
 /// ce soit et devient un vidage.
@@ -15,6 +15,9 @@ const SHOWN: usize = 40;
 
 #[derive(Default)]
 pub struct GadgetsModule {
+    /// Ce que le panneau demande à l'application : aller voir une
+    /// adresse. Relevé après le dessin, jamais pendant.
+    demande: Option<ReRequest>,
     found: Vec<Gadget>,
     /// Combien il y en avait en tout, avant la coupe.
     total: usize,
@@ -24,6 +27,10 @@ pub struct GadgetsModule {
 }
 
 impl ReModule for GadgetsModule {
+    fn take_request(&mut self) -> Option<ReRequest> {
+        self.demande.take()
+    }
+
     fn id(&self) -> &'static str {
         "gadgets"
     }
@@ -100,17 +107,25 @@ impl ReModule for GadgetsModule {
         } else {
             format!("{} {}", self.total, ctx.t("fragments", "fragments"))
         });
+        // Relevé pendant le dessin, posé après : la grille emprunte
+        // `self`, et le module ne peut donc pas s'écrire dedans.
+        let mut demande: Option<ReRequest> = None;
         egui::Grid::new("gadgets_grid")
             .num_columns(2)
             .striped(true)
             .min_col_width(0.0)
             .show(ui, |ui| {
                 for gadget in &montrés {
-                    ui.monospace(format!("{:#x}", gadget.addr));
+                    if clickable_address(ui, ctx, gadget.addr) {
+                        demande = Some(ReRequest::GoTo { addr: gadget.addr });
+                    }
                     ui.monospace(gadget.text());
                     ui.end_row();
                 }
             });
+        if demande.is_some() {
+            self.demande = demande;
+        }
     }
 }
 

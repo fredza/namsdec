@@ -556,6 +556,10 @@ pub struct Strings {
     pub analysis_open: &'static str,
     pub analysis_title: &'static str,
     pub analysis_hint: &'static str,
+    /// Quand on clique une adresse d'un panneau d'analyse et que le
+    /// listing ne la porte pas : une section de données, une adresse
+    /// hors du fichier.
+    pub analysis_addr_absent: &'static str,
     /// Le verdict d'un saut conditionnel avant qu'il soit exécuté.
     /// Les lectures d'une même valeur, dans l'infobulle d'un registre.
     pub session_binary_changed: &'static str,
@@ -1461,6 +1465,7 @@ const FR: Strings = Strings {
     analysis_open: "Analyse du binaire…",
     analysis_title: "Analyse du binaire",
     analysis_hint: "Ce que le fichier dit de lui-même : ses protections, ses chaînes, ses appels système.",
+    analysis_addr_absent: "Cette adresse n'est dans aucune partie désassemblée : le listing ne montre que le code.",
     session_binary_changed: "Le binaire a changé depuis la dernière séance : points d'arrêt et zones surveillées oubliés, ils ne désigneraient plus les mêmes instructions.",
     session_file_changed: "Le fichier a changé depuis la dernière séance : points d'arrêt et zones surveillées oubliés, ils ne désigneraient plus les mêmes lignes.",
     notes_not_saved: "Les notes n'ont pas pu être écrites",
@@ -2268,6 +2273,7 @@ const EN: Strings = Strings {
     analysis_open: "Analyse the binary…",
     analysis_title: "Binary analysis",
     analysis_hint: "What the file says about itself: its protections, its strings, its system calls.",
+    analysis_addr_absent: "This address is in no disassembled part: the listing shows code only.",
     session_binary_changed: "The binary changed since last time: breakpoints and watchpoints were dropped, they would no longer point at the same instructions.",
     session_file_changed: "The file changed since last time: breakpoints and watchpoints were dropped, they would no longer point at the same lines.",
     notes_not_saved: "The notes could not be written",

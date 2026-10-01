@@ -108,6 +108,37 @@ impl ReContext<'_> {
 pub enum ReRequest {
     /// Écrire ces octets à cette position du fichier.
     PatchBytes { offset: usize, bytes: Vec<u8> },
+    /// Montrer cette adresse dans le listing.
+    ///
+    /// Un panneau d'analyse désigne des endroits — une entrée de
+    /// liaison, une zone libre, une figure, un fragment —, et la seule
+    /// chose qu'on veuille en faire est d'aller voir. Sans ce canal, il
+    /// fallait relever l'adresse à la main et la retaper dans la
+    /// commande « aller à ».
+    GoTo { addr: u64 },
+}
+
+/// Une adresse sur laquelle on peut cliquer pour l'aller voir.
+///
+/// Écrite une fois pour tous les panneaux : une adresse se montre de la
+/// même façon partout, et un clic y fait la même chose. Rend `true`
+/// quand on a cliqué ; au module de poser alors sa demande.
+///
+/// Le curseur change au survol et une infobulle le dit : sans cela,
+/// rien ne distingue une adresse qui mène quelque part d'une adresse
+/// qu'on ne fait que lire — et personne ne clique sur ce qui n'a pas
+/// l'air cliquable.
+pub fn clickable_address(ui: &mut egui::Ui, ctx: &ReContext, addr: u64) -> bool {
+    let texte = egui::RichText::new(format!("{addr:#010x}"))
+        .monospace()
+        .color(ui.visuals().hyperlink_color);
+    ui.add(egui::Label::new(texte).sense(egui::Sense::click()))
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
+        .on_hover_text(ctx.t(
+            "Aller à cette adresse dans le listing",
+            "Go to this address in the listing",
+        ))
+        .clicked()
 }
 
 pub trait ReModule {

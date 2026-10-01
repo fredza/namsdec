@@ -10,10 +10,13 @@
 use crate::behaviour::{self, Family};
 use crate::imports::{self, Import};
 use crate::libc;
-use crate::{ReContext, ReModule};
+use crate::{ReContext, ReModule, ReRequest, clickable_address};
 
 #[derive(Default)]
 pub struct ImportsModule {
+    /// Ce que le panneau demande à l'application : aller voir une
+    /// adresse. Relevé après le dessin, jamais pendant.
+    demande: Option<ReRequest>,
     imports: Vec<Import>,
     /// Combien de `call` du code visent chaque entrée.
     appels: Vec<usize>,
@@ -58,6 +61,10 @@ pub(crate) fn portrait(ui: &mut egui::Ui, ctx: &ReContext, comptes: &[(Family, u
 }
 
 impl ReModule for ImportsModule {
+    fn take_request(&mut self) -> Option<ReRequest> {
+        self.demande.take()
+    }
+
     fn id(&self) -> &'static str {
         "imports"
     }
@@ -75,11 +82,29 @@ impl ReModule for ImportsModule {
         // Un appel par entrée : c'est ce qui distingue la fonction dont
         // tout dépend de celle qui est liée sans jamais servir.
         //
-        // Les adresses ne se comparent pas telles quelles : le nom vient
-        // des sections du fichier — des adresses virtuelles — et le
-        // désassemblage part du premier octet de ce même fichier, à
-        // l'adresse où namsdec l'a posé. Les deux se rejoignent sur la
-        // *position dans le fichier*.
+        // Les adresses ne se comparent pas toujours telles quelles, et
+        // c'est là qu'était le défaut. Le nom d'un import vient des
+        // tables du fichier : c'est une **adresse virtuelle**. Le
+        // listing, lui, se place de deux façons selon ce qu'on lui
+        // donne :
+        //
+        // * un ELF **ouvert** : l'application ne désassemble que les
+        //   parties exécutables, chacune à son adresse virtuelle. Les
+        //   deux adresses sont alors les mêmes, et il n'y a rien à
+        //   convertir ;
+        // * un **tampon brut** désassemblé d'un bloc : il part de son
+        //   premier octet, et une adresse virtuelle s'y retrouve à
+        //   `base + sa position dans le fichier`.
+        //
+        // Seule la seconde était traitée. Sur un binaire ouvert —
+        // c'est-à-dire dans l'usage même du panneau — aucun compte ne
+        // tombait juste : mesuré sur `/bin/ls`, 105 imports et **zéro**
+        // appel, sans que rien ne le signale. Un compte faux se lit
+        // comme un compte vrai.
+        //
+        // Les deux façons sont donc essayées. Une entrée comptée deux
+        // fois est impossible : les deux adresses ne coïncident que si
+        // la conversion est l'identité.
         let base = ctx.disasm.first().map(|first| first.address);
         let cibles: Vec<u64> = ctx
             .disasm
@@ -94,15 +119,15 @@ impl ReModule for ImportsModule {
             .imports
             .iter()
             .map(|import| {
-                let Some(offset) = imports::file_offset(ctx.binary, import.plt) else {
-                    return 0;
-                };
+                // L'adresse de l'entrée dans un listing qui part du
+                // premier octet du fichier, quand on sait la calculer.
+                let posée = base.and_then(|base| {
+                    imports::file_offset(ctx.binary, import.plt)
+                        .and_then(|offset| base.checked_add(offset))
+                });
                 cibles
                     .iter()
-                    .filter(|cible| match base {
-                        Some(base) => cible.checked_sub(base) == Some(offset),
-                        None => **cible == import.plt,
-                    })
+                    .filter(|cible| **cible == import.plt || Some(**cible) == posée)
                     .count()
             })
             .collect();
@@ -164,7 +189,9 @@ impl ReModule for ImportsModule {
             let appels = self.appels[rang];
             let note = libc::explain(&import.name);
             ui.horizontal_wrapped(|ui| {
-                ui.monospace(format!("{:#x}", import.plt));
+                if clickable_address(ui, ctx, import.plt) {
+                    self.demande = Some(ReRequest::GoTo { addr: import.plt });
+                }
                 ui.strong(&import.name);
                 if appels > 0 {
                     ui.weak(format!(
@@ -247,6 +274,60 @@ mod tests {
         assert!(
             module.calls().iter().sum::<usize>() > 50,
             "un binaire de cette taille appelle ses imports : {:?}",
+            module.calls()
+        );
+    }
+
+    /// Et le compte tombe juste quand le listing est posé aux adresses
+    /// **virtuelles** — c'est-à-dire dans l'application.
+    ///
+    /// Le contrôle d'au-dessus désassemble le fichier d'un bloc depuis
+    /// son premier octet ; `load_elf` ne désassemble que les parties
+    /// exécutables, chacune à son adresse virtuelle. Seule la première
+    /// façon était traitée, et sur un binaire ouvert — l'usage même du
+    /// panneau — tous les comptes restaient à zéro sans que rien ne le
+    /// signale.
+    #[test]
+    fn the_count_is_right_when_the_listing_sits_at_virtual_addresses() {
+        let Ok(bytes) = std::fs::read("/bin/ls") else {
+            eprintln!("/bin/ls introuvable : test ignoré");
+            return;
+        };
+        let Some(elf) = crate::elf_scan::scan(&bytes) else {
+            return;
+        };
+        // Comme `load_elf` : chaque section exécutable à son adresse.
+        let mut disasm = Vec::new();
+        for section in &elf.sections {
+            if !section.execute || section.nobits || section.size == 0 {
+                continue;
+            }
+            let début = section.offset as usize;
+            let Some(contenu) = bytes.get(début..début + section.size as usize) else {
+                continue;
+            };
+            disasm.extend(namsdec_disasm::disassemble(contenu, section.addr));
+        }
+        disasm.sort_by_key(|instruction| instruction.address);
+        assert!(!disasm.is_empty(), "il y a du code exécutable");
+
+        let mem = Memory::new(0x400000, 0x1000);
+        let cpu = Cpu::new(mem);
+        let ctx = ReContext {
+            cpu: &cpu,
+            disasm: &disasm,
+            source: "",
+            binary: &bytes,
+            lang: "fr",
+        };
+        let mut module = ImportsModule::default();
+        module.on_binary_loaded(&ctx);
+
+        assert!(!module.imports().is_empty(), "des imports sont nommés");
+        assert!(
+            module.calls().iter().sum::<usize>() > 50,
+            "un binaire de cette taille appelle ses imports — zéro veut dire que la \
+             conversion d'adresse est fausse : {:?}",
             module.calls()
         );
     }

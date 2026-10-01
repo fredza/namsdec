@@ -208,14 +208,18 @@ rejoint B1 (une vue de listing qu'on ne délègue plus entièrement à egui).
 
 ## Améliorations — ergonomie et finition
 
-- **Naviguer depuis les panneaux d'analyse vers le listing** : cliquer une
-  zone libre, un import, une figure, un fragment devrait sauter à son
-  adresse dans le désassemblage. Demande un canal de navigation
-  (`ReRequest` ou équivalent) ; petit et très utile pour circuler dans un
-  échantillon.
-- **Exporter un rapport d'analyse** : `report.rs` existe ; un bouton « tout
-  exporter » (empreintes + signaux + IoC + imports catégorisés) donnerait
-  au chercheur le compte rendu prêt à joindre.
+- **[FAIT le 1er octobre] Naviguer depuis les panneaux vers le listing** :
+  `ReRequest::GoTo`, et les adresses cliquables dans cinq panneaux. Au
+  passage, un défaut que personne ne pouvait voir : le compte d'appels des
+  imports valait **zéro** sur tout binaire ouvert, parce qu'il convertissait
+  une adresse virtuelle en position de fichier alors que le listing d'un ELF
+  ouvert est déjà en adresses virtuelles. 719 appels au lieu de 0 sur
+  `/bin/ls`.
+- **[FAIT le 1er octobre] Exporter un rapport d'analyse** : les boutons
+  « Copier le rapport » et « Enregistrer… » existaient ; le rapport porte
+  maintenant les signaux, le portrait par familles, la famille de chaque
+  import, les indicateurs par nature et les deux lectures d'un listing
+  trompé.
 - **Les raccourcis repris par le sens** (A 7.1) : le jeu Vim force la main
   (`n` court-circuite `Espace n i`). Refonte proposée de longue date.
 

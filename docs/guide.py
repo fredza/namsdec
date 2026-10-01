@@ -1121,7 +1121,7 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "fantôme, segments W+X, symboles, bibliothèques, RPATH — avec, pour chacune, ce "
          "que son état change concrètement.",
          "<b>Fonctions empruntées</b> — chaque entrée de la table de liaison retrouve son "
-         "nom, avec le nombre d'appels qui y mènent et une phrase d'explication pour les "
+         "nom, avec le <b>nombre d'appels</b> qui y mènent et une phrase d'explication pour les "
          "plus courantes. En tête, le <b>portrait</b> : six familles de comportement — "
          "réseau, exécution, anti-débogage, mémoire, chiffrement, fichiers — chacune avec "
          "le nombre de fonctions qui la tiennent. La question n'est pas « quelles "
@@ -1174,6 +1174,15 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "<font face='Courier'>pyinstxtractor</font> sort l'archive. « Compressé, chiffré "
          "ou empaqueté » est juste et frustrant ; « c'est de l'UPX » est actionnable.",
         ]),
+        ("p",
+         "<b>Les adresses de ces panneaux sont cliquables.</b> Une entrée de liaison, une "
+         "zone libre, une figure, un fragment : cliquer l'adresse amène le listing dessus. "
+         "C'est la seule chose qu'on veuille faire d'un endroit qu'un panneau désigne, et "
+         "il fallait jusqu'ici relever l'adresse à la main pour la retaper dans « aller "
+         "à ». Le suivi de RIP s'arrête au passage — sans quoi le pas suivant ramènerait "
+         "le listing là où l'exécution en est, et le clic paraîtrait n'avoir rien fait. "
+         "Une adresse qui tombe entre deux lignes mène à la ligne juste avant ; une "
+         "adresse qui n'est dans aucune partie désassemblée le dit."),
         ("p",
          "Le <b>motif cyclique</b> (Outils › Motif cyclique) est celui de pwntools, octet "
          "pour octet : on l'envoie au programme, et le décalage relu depuis un registre dit "

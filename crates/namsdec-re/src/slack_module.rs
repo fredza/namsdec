@@ -9,7 +9,7 @@
 //! rien.
 
 use crate::slack::{self, Slack};
-use crate::{ReContext, ReModule};
+use crate::{ReContext, ReModule, ReRequest, clickable_address};
 
 /// Combien on en montre. Au-delà, la liste cesse d'apprendre et devient
 /// un vidage.
@@ -17,6 +17,9 @@ const SHOWN: usize = 30;
 
 #[derive(Default)]
 pub struct SlackModule {
+    /// Ce que le panneau demande à l'application : aller voir une
+    /// adresse. Relevé après le dessin, jamais pendant.
+    demande: Option<ReRequest>,
     found: Vec<Slack>,
     /// Combien il y en avait avant la coupe, et leur somme.
     total: usize,
@@ -25,6 +28,10 @@ pub struct SlackModule {
 }
 
 impl ReModule for SlackModule {
+    fn take_request(&mut self) -> Option<ReRequest> {
+        self.demande.take()
+    }
+
     fn id(&self) -> &'static str {
         "slack"
     }
@@ -81,6 +88,9 @@ impl ReModule for SlackModule {
         ));
         ui.add_space(4.0);
 
+        // Relevé pendant le dessin, posé après : la grille emprunte
+        // `self`, et le module ne peut donc pas s'écrire dedans.
+        let mut demande: Option<ReRequest> = None;
         egui::Grid::new("slack_grid")
             .num_columns(5)
             .striped(true)
@@ -93,7 +103,9 @@ impl ReModule for SlackModule {
                 ui.strong("");
                 ui.end_row();
                 for trou in &self.found {
-                    ui.monospace(format!("{:#x}", trou.vaddr));
+                    if clickable_address(ui, ctx, trou.vaddr) {
+                        demande = Some(ReRequest::GoTo { addr: trou.vaddr });
+                    }
                     ui.monospace(format!("{}", trou.len));
                     ui.monospace(nom_du_bourrage(trou.filler));
                     // Le nom de section raconte l'histoire : un trou en
@@ -115,6 +127,9 @@ impl ReModule for SlackModule {
                     ui.end_row();
                 }
             });
+        if demande.is_some() {
+            self.demande = demande;
+        }
 
         if self.total > self.found.len() {
             ui.add_space(4.0);

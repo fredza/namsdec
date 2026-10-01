@@ -44,6 +44,12 @@ qu'elle est : une adresse de retour, avec son étiquette. Ce qui est
 au-dessus de RSP est grisé — ces octets sont encore là, mais le prochain
 `push` les écrase.
 
+**Et l'on circule.** Les adresses des panneaux d'analyse sont
+cliquables : une entrée de liaison, une zone libre, une figure, un
+fragment — un clic amène le listing dessus. Le suivi de RIP s'arrête au
+passage, sans quoi le pas suivant ramènerait le listing là où l'exécution
+en est.
+
 **Quand le listing ment.** Un désassemblage lit *linéairement* ; le
 processeur, lui, va **où les sauts l'envoient**. Un seul octet-piège
 derrière un `jmp` qui l'enjambe, et toute la lecture ligne à ligne part de

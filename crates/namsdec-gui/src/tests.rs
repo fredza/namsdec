@@ -27922,3 +27922,105 @@ fn the_workshop_exercises_are_complete_and_reach_their_goal() {
         fautifs.join("\n  ")
     );
 }
+
+/// Le compte d'appels des imports tombe juste sur un binaire **ouvert
+/// par l'application**.
+///
+/// Le contrôle le plus proche de l'usage, et celui qui manquait. Les
+/// contrôles de `namsdec-re` reconstruisaient le listing à leur façon ;
+/// celui-ci prend celui que `load_elf` produit vraiment — des sections
+/// exécutables posées à leur adresse virtuelle, et non le fichier
+/// désassemblé d'un bloc depuis son premier octet.
+///
+/// La différence n'était pas théorique : le panneau annonçait 105
+/// fonctions importées et **zéro** appel vers chacune, sans que rien ne
+/// le signale. Un compte faux se lit comme un compte vrai.
+#[test]
+fn the_imported_calls_are_counted_on_a_binary_the_app_opened() {
+    let Ok(octets) = std::fs::read("/bin/ls") else {
+        return;
+    };
+    let mut app = NamsdecApp::default();
+    assert!(app.load_elf(&octets, "ls"), "l'ELF se charge");
+    let state = app.assemble_state.as_ref().expect("un état d'assemblage");
+
+    let mut module = namsdec_re::ImportsModule::default();
+    let cpu = app.emulator.as_ref().expect("un émulateur").cpu();
+    let ctx = namsdec_re::ReContext {
+        cpu,
+        disasm: &state.disasm,
+        source: "",
+        binary: &state.output.file,
+        lang: "fr",
+    };
+    namsdec_re::ReModule::on_binary_loaded(&mut module, &ctx);
+
+    assert!(!module.imports().is_empty(), "des imports sont nommés");
+    let total: usize = module.calls().iter().sum();
+    assert!(
+        total > 50,
+        "un binaire de cette taille appelle ses imports — zéro veut dire que la \
+         conversion d'adresse ne tombe pas juste : {} imports, {total} appels",
+        module.imports().len()
+    );
+}
+
+/// Une adresse venue d'un panneau d'analyse mène à sa ligne du listing.
+///
+/// Le bout qui manque au canal de navigation : les panneaux savent dire
+/// « va voir là », et c'est ici que le listing s'y rend. Sur une adresse
+/// que le listing porte, on va exactement dessus ; sur une adresse qui
+/// tombe entre deux lignes — une zone de bourrage, le milieu d'une
+/// instruction qu'un saut vise exprès — on va à la ligne juste avant,
+/// parce qu'un clic qui ne fait rien passe pour un défaut.
+#[test]
+fn an_address_from_an_analysis_panel_reaches_its_line() {
+    let Ok(octets) = std::fs::read("/bin/ls") else {
+        return;
+    };
+    let mut app = NamsdecApp::default();
+    assert!(app.load_elf(&octets, "ls"), "l'ELF se charge");
+
+    let (adresse, ligne) = {
+        let state = app.assemble_state.as_ref().expect("un état");
+        // Une instruction prise au milieu du listing : elle a une ligne,
+        // et ce n'est pas la première.
+        let instruction = state.disasm[state.disasm.len() / 2].address;
+        let ligne = *state
+            .addr_to_line
+            .get(&instruction)
+            .expect("une instruction du listing a une ligne");
+        (instruction, ligne)
+    };
+
+    // On suit RIP au départ : c'est le réglage ordinaire.
+    app.follow_rip = true;
+    app.show_address(adresse);
+    assert_eq!(app.goto_line, Some(ligne), "on va à la ligne de l'adresse");
+    assert!(
+        !app.follow_rip,
+        "on cesse de suivre RIP : sinon le pas suivant ramènerait le listing là où \
+         l'exécution en est, et le clic paraîtrait n'avoir rien fait"
+    );
+
+    // Une adresse qui tombe à l'intérieur d'une instruction : la ligne
+    // juste avant. C'est exactement ce que vise un désalignement.
+    app.goto_line = None;
+    app.show_address(adresse + 1);
+    assert_eq!(
+        app.goto_line,
+        Some(ligne),
+        "une adresse au milieu d'une instruction mène à sa ligne"
+    );
+
+    // Et une adresse qui n'est dans aucune partie désassemblée le dit,
+    // plutôt que de ne rien faire.
+    app.goto_line = None;
+    app.show_address(0);
+    assert_eq!(app.goto_line, None, "on ne va nulle part");
+    assert!(
+        matches!(app.status, Status::Error(_)),
+        "et on le dit : {:?}",
+        app.status
+    );
+}

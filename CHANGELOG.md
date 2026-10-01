@@ -12,6 +12,31 @@ cesse de mélanger trois questions — et la fenêtre d'analyse répond enfin
 à la première question qu'on se pose devant un échantillon inconnu : par
 où commencer.
 
+**Circuler : d'un panneau d'analyse au listing**
+- **Les adresses des panneaux sont cliquables** — une entrée de liaison,
+  une zone libre, une figure, un fragment, un désalignement : un clic
+  amène le listing dessus. C'est la seule chose qu'on veuille faire d'un
+  endroit qu'un panneau désigne, et il fallait jusqu'ici relever
+  l'adresse à la main pour la retaper dans « aller à ».
+- Le suivi de RIP s'arrête au passage — sans quoi le pas suivant
+  ramènerait le listing là où l'exécution en est, et le clic paraîtrait
+  n'avoir rien fait. Une adresse entre deux lignes mène à la ligne juste
+  avant ; une adresse dans aucune partie désassemblée le dit.
+
+**Le compte d'appels des imports valait zéro**
+- Le panneau annonçait « 105 fonctions importées » et **zéro appel** vers
+  chacune, sur tout binaire ouvert. Il convertissait l'adresse d'une
+  entrée de liaison en position dans le fichier, alors que le listing d'un
+  ELF ouvert est déjà en **adresses virtuelles** — namsdec n'y désassemble
+  que les parties exécutables, chacune à son adresse.
+- Mesuré sur `/bin/ls` : **719 appels au lieu de 0**, et le classement
+  « ce qui sert partout d'abord », qui est toute la raison d'être de ce
+  panneau, fonctionne enfin.
+- Un compte faux se lit comme un compte vrai : c'est pourquoi le défaut a
+  tenu si longtemps. Le contrôle qui le retient charge désormais le
+  binaire **par l'application**, au lieu de reconstruire le listing à sa
+  façon.
+
 **Quand le listing ment**
 - Un désassemblage lit **linéairement** ; le processeur, lui, va **où les
   sauts l'envoient**. Un seul octet-piège derrière un `jmp` qui l'enjambe,

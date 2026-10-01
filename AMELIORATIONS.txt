@@ -2249,3 +2249,68 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
   d'espaces », écrit la veille après un littéral Rust mal recollé, a attrapé
   deux fois le même défaut dans les textes de cette séance. Un contrôle qui
   trouve un deuxième défaut du même genre a payé son écriture.
+
+  --- circuler : d'un panneau au listing, et un compte qui valait zéro ---
+  Les deux points d'ergonomie du relevé septembre26.md. Le premier a découvert
+  un défaut que personne ne pouvait voir.
+
+  LE COMPTE D'APPELS DES IMPORTS VALAIT ZÉRO. Le panneau annonce « 105
+  fonctions importées », et sous chacune le nombre d'appels qui y mènent —
+  c'est ce qui distingue la fonction dont tout dépend de celle qui est liée
+  sans jamais servir. Sur un binaire ouvert dans l'application, ce nombre
+  valait zéro pour les cent cinq. Depuis toujours.
+
+  La cause tient en une phrase, et c'est une phrase écrite dans le code :
+  « le désassemblage que montre namsdec part du premier octet du fichier ».
+  Elle est vraie d'un tampon brut, et fausse d'un ELF ouvert — `load_elf` ne
+  désassemble que les PARTIES EXÉCUTABLES, chacune posée à son ADRESSE
+  VIRTUELLE. Le comptage convertissait donc l'adresse d'une entrée de liaison
+  en position dans le fichier pour la comparer à une adresse qui était déjà
+  virtuelle. Rien ne tombait juste, et rien ne le disait.
+
+  C'est la forme de défaut la plus coûteuse : un compte faux se lit exactement
+  comme un compte vrai. On regarde « 0 appel » et l'on en conclut que la
+  fonction est liée sans servir — ce qui est une information, fausse, à
+  laquelle on va faire confiance. Un panneau vide se remarque ; un panneau qui
+  ment, non.
+
+  Les deux conventions sont essayées maintenant. Mesuré sur /bin/ls : 719
+  appels au lieu de 0, et le classement « ce qui sert partout d'abord » — qui
+  est toute la raison d'être de ce panneau — fonctionne enfin : dcgettext 125,
+  strlen 59, __errno_location 56.
+
+  ET LE CONTRÔLE QUI LE RETIENT CHARGE LE BINAIRE PAR L'APPLICATION. C'est le
+  point à retenir. Le contrôle qui existait reconstruisait le listing à sa
+  façon — le fichier désassemblé d'un bloc depuis son premier octet — et
+  passait au vert sur une convention que l'application n'emploie pas. Un test
+  qui fabrique ses propres conditions ne teste que lui-même. Celui qui le
+  remplace appelle `load_elf` et prend le listing qui en sort.
+
+  LA NAVIGATION. `ReRequest::GoTo` s'ajoute au canal qui existait déjà pour
+  les patchs, et cinq panneaux rendent leurs adresses cliquables : imports,
+  place libre, fragments, figures, désalignements. Une fonction unique les
+  peint — même couleur, même curseur, même infobulle. Une adresse qui mènerait
+  quelque part dans un panneau et nulle part dans un autre coûterait plus cher
+  que si aucune ne menait nulle part : on apprend à cliquer, et le clic doit
+  tenir sa promesse partout.
+
+  Trois décisions de détail, chacune pour une raison :
+    - LE SUIVI DE RIP S'ARRÊTE. Sans cela, le pas suivant ramène le listing là
+      où l'exécution en est, et le clic paraît n'avoir rien fait.
+    - UNE ADRESSE ENTRE DEUX LIGNES mène à la ligne juste avant. C'est le cas
+      d'un désalignement volontaire, dont la cible est AU MILIEU d'une
+      instruction par construction. Mieux vaut poser l'œil deux lignes trop
+      haut que ne rien faire.
+    - UNE ADRESSE DANS AUCUNE PARTIE DÉSASSEMBLÉE le dit. Le listing ne montre
+      que le code ; une adresse de données n'y est pas, et le silence passerait
+      pour un défaut.
+
+  LE CONTRÔLE CLIQUE POUR DE VRAI. Il peint le panneau, cherche où l'adresse a
+  été posée, et envoie un appui puis un relâchement à cet endroit. Vérifier
+  que le code « poserait une demande si on cliquait » ne prouverait rien :
+  c'est justement de savoir si l'on PEUT cliquer qu'il s'agit — une étiquette
+  sans `Sense::click`, un rectangle de zéro pixel, un parent qui mange
+  l'événement, et le contrôle à la main passe au vert devant un panneau mort.
+  Un second contrôle tient l'autre moitié : dessiner seul ne demande rien.
+  Sans lui, un panneau qui poserait sa demande au dessin ferait sauter le
+  listing tout seul, à chaque image.

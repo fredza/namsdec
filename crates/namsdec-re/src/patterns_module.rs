@@ -15,10 +15,13 @@ use std::collections::BTreeMap;
 
 use crate::misalign::{self, Misalignment};
 use crate::patterns::{Finding, Pattern, scan};
-use crate::{ReContext, ReModule};
+use crate::{ReContext, ReModule, ReRequest, clickable_address};
 
 #[derive(Default)]
 pub struct PatternsModule {
+    /// Ce que le panneau demande à l'application : aller voir une
+    /// adresse. Relevé après le dessin, jamais pendant.
+    demande: Option<ReRequest>,
     found: Vec<Finding>,
     /// Les endroits où le flot lit d'autres octets que le listing.
     ///
@@ -44,6 +47,10 @@ impl PatternsModule {
 const PAR_FAMILLE: usize = 12;
 
 impl ReModule for PatternsModule {
+    fn take_request(&mut self) -> Option<ReRequest> {
+        self.demande.take()
+    }
+
     fn id(&self) -> &'static str {
         "patterns"
     }
@@ -71,7 +78,9 @@ impl ReModule for PatternsModule {
         // figure de ce panneau qui dise que **le listing lui-même ment**.
         // Toutes les autres se lisent dans un listing juste.
         if !self.misalignments.is_empty() {
-            désalignements(ui, ctx, &self.misalignments);
+            if let Some(addr) = désalignements(ui, ctx, &self.misalignments) {
+                self.demande = Some(ReRequest::GoTo { addr });
+            }
             ui.add_space(6.0);
         }
         if self.found.is_empty() {
@@ -92,6 +101,9 @@ impl ReModule for PatternsModule {
         ));
         ui.add_space(4.0);
 
+        // Relevé pendant le dessin, posé après : les grilles empruntent
+        // `self`, et le module ne peut donc pas s'écrire dedans.
+        let mut demande: Option<ReRequest> = None;
         let mut familles: BTreeMap<Pattern, Vec<&Finding>> = BTreeMap::new();
         for finding in &self.found {
             familles.entry(finding.pattern).or_default().push(finding);
@@ -119,7 +131,9 @@ impl ReModule for PatternsModule {
                     .striped(true)
                     .show(ui, |ui| {
                         for finding in occurrences.iter().take(PAR_FAMILLE) {
-                            ui.monospace(format!("{:#010x}", finding.addr));
+                            if clickable_address(ui, ctx, finding.addr) {
+                                demande = Some(ReRequest::GoTo { addr: finding.addr });
+                            }
                             ui.monospace(&finding.detail);
                             ui.end_row();
                         }
@@ -133,6 +147,9 @@ impl ReModule for PatternsModule {
                 }
             });
         }
+        if demande.is_some() {
+            self.demande = demande;
+        }
     }
 }
 
@@ -142,7 +159,8 @@ impl ReModule for PatternsModule {
 /// affiche, voici ce que le processeur lit, et voici l'octet qui les
 /// sépare ». Une ligne qui dirait seulement « désalignement en 0x401234 »
 /// laisserait tout le travail à faire.
-fn désalignements(ui: &mut egui::Ui, ctx: &ReContext, trouvés: &[Misalignment]) {
+fn désalignements(ui: &mut egui::Ui, ctx: &ReContext, trouvés: &[Misalignment]) -> Option<u64> {
+    let mut aller: Option<u64> = None;
     let rouge = egui::Color32::from_rgb(0xf4, 0x87, 0x71);
     ui.horizontal_wrapped(|ui| {
         ui.strong(
@@ -167,7 +185,9 @@ fn désalignements(ui: &mut egui::Ui, ctx: &ReContext, trouvés: &[Misalignment]
 
     for m in trouvés {
         ui.horizontal_wrapped(|ui| {
-            ui.monospace(format!("{:#010x}", m.from));
+            if clickable_address(ui, ctx, m.from) {
+                aller = Some(m.from);
+            }
             ui.label(ctx.t("envoie à", "sends to"));
             ui.monospace(format!("{:#010x}", m.target));
             ui.weak(format!(
@@ -211,6 +231,7 @@ fn désalignements(ui: &mut egui::Ui, ctx: &ReContext, trouvés: &[Misalignment]
         });
         ui.add_space(4.0);
     }
+    aller
 }
 
 #[cfg(test)]
