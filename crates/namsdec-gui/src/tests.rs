@@ -68,6 +68,7 @@ const SOURCES_DE_L_INTERFACE: &[(&str, &str)] = &[
     ("notes.rs", include_str!("notes.rs")),
     ("occurrences.rs", include_str!("occurrences.rs")),
     ("preferences.rs", include_str!("preferences.rs")),
+    ("profiling.rs", include_str!("profiling.rs")),
     ("readings.rs", include_str!("readings.rs")),
     ("resources.rs", include_str!("resources.rs")),
     ("roles.rs", include_str!("roles.rs")),
