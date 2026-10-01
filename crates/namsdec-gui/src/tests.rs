@@ -69,6 +69,7 @@ const SOURCES_DE_L_INTERFACE: &[(&str, &str)] = &[
     ("nasm_errors.rs", include_str!("nasm_errors.rs")),
     ("notes.rs", include_str!("notes.rs")),
     ("occurrences.rs", include_str!("occurrences.rs")),
+    ("patching.rs", include_str!("patching.rs")),
     ("preferences.rs", include_str!("preferences.rs")),
     ("profiling.rs", include_str!("profiling.rs")),
     ("readings.rs", include_str!("readings.rs")),

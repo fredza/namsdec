@@ -576,8 +576,8 @@ jamais ajouter. Il faut de la place, et d'abord savoir où elle est.
 
 ## 4 octies. Découpage de main.rs (suite)
 
-- [x] **main.rs : 6 643 → 4 657 lignes** (−1 986, −30 %), sans rien
-      changer au comportement. Sept modules neufs, chacun un thème net,
+- [x] **main.rs : 6 643 → 4 383 lignes** (−2 260, −34 %), sans rien
+      changer au comportement. Huit modules neufs, chacun un thème net,
       chacun vérifié par compilation puis par la suite complète :
       - `icons.rs` (217) — les dix icônes dessinées à la main (peintre,
         rectangle, couleur ; dessins purs, testés au pixel).
@@ -594,7 +594,11 @@ jamais ajouter. Il faut de la place, et d'abord savoir où elle est.
         liaison, annotation d'une ligne, cible d'un saut, nom d'adresse.
       - `enums.rs` (~530) — les onze énumérations d'état de l'interface
         (onglets, modes, formats, statut) et leurs libellés.
-- [x] Les sept ajoutés à `SOURCES_DE_L_INTERFACE` : les contrôles qui
+      - `patching.rs` (~285) — les méthodes de `NamsdecApp` qui modifient
+        le binaire : prévoir un correctif, l'écrire (octets ou instruction
+        assemblée), le défaire. Premier groupe de MÉTHODES extrait, sur le
+        patron des modules frères (`impl NamsdecApp` + `use super::*`).
+- [x] Les huit ajoutés à `SOURCES_DE_L_INTERFACE` : les contrôles qui
       lisent le code source les voient désormais comme les autres.
 
 ## 5. Vocation pédagogique
