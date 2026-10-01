@@ -97,7 +97,14 @@ fn section_at(sections: &[elf_scan::SectionInfo], vaddr: u64) -> Option<String> 
     sections
         .iter()
         .filter(|s| !s.nobits && s.size > 0)
-        .find(|s| vaddr >= s.addr && vaddr < s.addr + s.size)
+        // `addr + size` déborde sur une section hostile — ces deux
+        // nombres sont des champs du fichier. Une section qui prétend
+        // finir au-delà de l'espace d'adressage ne contient rien.
+        .find(|s| {
+            s.addr
+                .checked_add(s.size)
+                .is_some_and(|fin| vaddr >= s.addr && vaddr < fin)
+        })
         .map(|s| s.name.clone())
 }
 
@@ -128,10 +135,22 @@ fn collect_in_segment(bytes: &[u8], segment: &Segment, out: &mut Vec<Slack>) {
         let longueur = (i - départ) as u64;
         if longueur >= MIN {
             let offset_fichier = (début + départ) as u64;
+            // L'adresse virtuelle se déduit du décalage dans le
+            // segment : le même écart qu'entre `offset` et `vaddr`.
+            // Vérifiée, parce que `vaddr` et `offset` viennent tous deux
+            // du fichier : un segment hostile peut annoncer une adresse
+            // tout en haut de l'espace et un décalage énorme, et la
+            // somme déborde. Un trou dont on ne sait pas dire l'adresse
+            // ne se liste pas — le nommer de travers enverrait patcher
+            // ailleurs.
+            let Some(vaddr) = segment
+                .vaddr
+                .checked_add(offset_fichier.wrapping_sub(segment.offset))
+            else {
+                continue;
+            };
             out.push(Slack {
-                // L'adresse virtuelle se déduit du décalage dans le
-                // segment : le même écart qu'entre `offset` et `vaddr`.
-                vaddr: segment.vaddr + (offset_fichier - segment.offset),
+                vaddr,
                 offset: offset_fichier,
                 len: longueur,
                 filler: octet,

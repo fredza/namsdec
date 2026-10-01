@@ -204,16 +204,27 @@ const SHT_DYNSYM: u32 = 11;
 /// Une section qui n'occupe rien dans le fichier : `.bss`.
 const SHT_NOBITS: u32 = 8;
 
+/// Les trois lecteurs, et la seule chose qu'ils promettent : **rien ne
+/// panique**.
+///
+/// `at` vient toujours, de près ou de loin, d'un champ du fichier. Sur un
+/// ELF hostile il est quelconque, et `at + 4` déborde — ce qui, en debug,
+/// panique au lieu de rendre un index faux. Une position qui ne tient pas
+/// dans un `usize` n'est pas une position : il n'y a rien à cette
+/// adresse, et `None` est la réponse exacte.
 fn u16_at(bytes: &[u8], at: usize) -> Option<u16> {
-    Some(u16::from_le_bytes(bytes.get(at..at + 2)?.try_into().ok()?))
+    let fin = at.checked_add(2)?;
+    Some(u16::from_le_bytes(bytes.get(at..fin)?.try_into().ok()?))
 }
 
 fn u32_at(bytes: &[u8], at: usize) -> Option<u32> {
-    Some(u32::from_le_bytes(bytes.get(at..at + 4)?.try_into().ok()?))
+    let fin = at.checked_add(4)?;
+    Some(u32::from_le_bytes(bytes.get(at..fin)?.try_into().ok()?))
 }
 
 fn u64_at(bytes: &[u8], at: usize) -> Option<u64> {
-    Some(u64::from_le_bytes(bytes.get(at..at + 8)?.try_into().ok()?))
+    let fin = at.checked_add(8)?;
+    Some(u64::from_le_bytes(bytes.get(at..fin)?.try_into().ok()?))
 }
 
 /// La chaîne terminée par zéro qui commence à `at`.
@@ -286,11 +297,11 @@ pub fn scan(bytes: &[u8]) -> Option<Scan> {
         let Some(kind) = u32_at(bytes, header) else {
             break;
         };
-        let flags = u32_at(bytes, header + 0x04)?;
-        let offset = u64_at(bytes, header + 0x08)?;
-        let vaddr = u64_at(bytes, header + 0x10)?;
-        let filesz = u64_at(bytes, header + 0x20)?;
-        let memsz = u64_at(bytes, header + 0x28)?;
+        let flags = u32_at(bytes, header.saturating_add(0x04))?;
+        let offset = u64_at(bytes, header.saturating_add(0x08))?;
+        let vaddr = u64_at(bytes, header.saturating_add(0x10))?;
+        let filesz = u64_at(bytes, header.saturating_add(0x20))?;
+        let memsz = u64_at(bytes, header.saturating_add(0x28))?;
         match kind {
             PT_INTERP => {
                 interpreter = string_at(bytes, offset as usize);
@@ -379,12 +390,17 @@ fn read_dynamic(bytes: &[u8], offset: usize, size: usize, segments: &[Segment]) 
     let mut strtab = None;
     let mut wanted: Vec<(u64, u64)> = Vec::new();
     let mut at = offset;
-    while at + 16 <= offset + size {
+    // Bornes saturantes : `offset` et `size` sont des champs du fichier,
+    // et leur somme déborde sur une table hostile. Saturer les mène hors
+    // du fichier, où les lecteurs rendent `None` — ce qui est la réponse
+    // juste.
+    let fin_table = offset.saturating_add(size);
+    while at.saturating_add(16) <= fin_table {
         let Some(tag) = u64_at(bytes, at) else { break };
-        let Some(value) = u64_at(bytes, at + 8) else {
+        let Some(value) = u64_at(bytes, at.saturating_add(8)) else {
             break;
         };
-        at += 16;
+        at = at.saturating_add(16);
         if tag == DT_NULL {
             break;
         }
@@ -440,16 +456,16 @@ fn read_symbols(bytes: &[u8]) -> Option<(Vec<String>, Vec<Function>)> {
     let mut functions: Vec<Function> = Vec::new();
     for index in 0..shnum {
         let header = shoff.checked_add(index.checked_mul(shentsize)?)?;
-        let kind = u32_at(bytes, header + 0x04)?;
+        let kind = u32_at(bytes, header.saturating_add(0x04))?;
         if kind != SHT_SYMTAB && kind != SHT_DYNSYM {
             continue;
         }
-        let strtab = u32_at(bytes, header + 0x28)? as usize;
+        let strtab = u32_at(bytes, header.saturating_add(0x28))? as usize;
         let strtab_header = shoff.checked_add(strtab.checked_mul(shentsize)?)?;
-        let str_offset = u64_at(bytes, strtab_header + 0x18)? as usize;
-        let offset = u64_at(bytes, header + 0x18)? as usize;
-        let size = u64_at(bytes, header + 0x20)? as usize;
-        let entry_size = u64_at(bytes, header + 0x38)? as usize;
+        let str_offset = u64_at(bytes, strtab_header.saturating_add(0x18))? as usize;
+        let offset = u64_at(bytes, header.saturating_add(0x18))? as usize;
+        let size = u64_at(bytes, header.saturating_add(0x20))? as usize;
+        let entry_size = u64_at(bytes, header.saturating_add(0x38))? as usize;
         if entry_size == 0 {
             continue;
         }
@@ -457,7 +473,10 @@ fn read_symbols(bytes: &[u8]) -> Option<(Vec<String>, Vec<Function>)> {
             let Some(name_offset) = u32_at(bytes, at) else {
                 break;
             };
-            let Some(name) = string_at(bytes, str_offset + name_offset as usize) else {
+            let Some(name) = str_offset
+                .checked_add(name_offset as usize)
+                .and_then(|at| string_at(bytes, at))
+            else {
                 continue;
             };
             if name.is_empty() {
@@ -465,9 +484,9 @@ fn read_symbols(bytes: &[u8]) -> Option<(Vec<String>, Vec<Function>)> {
             }
             // Le type est dans les quatre bits bas de st_info ; une
             // fonction déclarée porte une adresse et souvent une taille.
-            let info = bytes.get(at + 4).copied().unwrap_or(0);
-            let value = u64_at(bytes, at + 8).unwrap_or(0);
-            let size = u64_at(bytes, at + 16).unwrap_or(0);
+            let info = bytes.get(at.saturating_add(4)).copied().unwrap_or(0);
+            let value = u64_at(bytes, at.saturating_add(8)).unwrap_or(0);
+            let size = u64_at(bytes, at.saturating_add(16)).unwrap_or(0);
             if info & 0xf == STT_FUNC && value != 0 {
                 functions.push(Function {
                     name: name.clone(),
@@ -491,17 +510,17 @@ fn read_sections(bytes: &[u8]) -> Option<Vec<SectionInfo>> {
     let shnum = u16_at(bytes, 0x3c)? as usize;
     let shstrndx = u16_at(bytes, 0x3e)? as usize;
     let shstr_header = shoff.checked_add(shstrndx.checked_mul(shentsize)?)?;
-    let names_at = u64_at(bytes, shstr_header + 0x18)? as usize;
+    let names_at = u64_at(bytes, shstr_header.saturating_add(0x18))? as usize;
 
     let mut sections = Vec::new();
     for index in 0..shnum {
         let header = shoff.checked_add(index.checked_mul(shentsize)?)?;
         let name_offset = u32_at(bytes, header)? as usize;
-        let flags = u64_at(bytes, header + 0x08)?;
-        let kind = u32_at(bytes, header + 0x04)?;
-        let addr = u64_at(bytes, header + 0x10)?;
-        let offset = u64_at(bytes, header + 0x18)?;
-        let size = u64_at(bytes, header + 0x20)?;
+        let flags = u64_at(bytes, header.saturating_add(0x08))?;
+        let kind = u32_at(bytes, header.saturating_add(0x04))?;
+        let addr = u64_at(bytes, header.saturating_add(0x10))?;
+        let offset = u64_at(bytes, header.saturating_add(0x18))?;
+        let size = u64_at(bytes, header.saturating_add(0x20))?;
         let name = string_at(bytes, names_at + name_offset)?;
         if name.is_empty() {
             continue;
@@ -539,30 +558,36 @@ fn notes(bytes: &[u8]) -> Vec<(String, u32, Vec<u8>)> {
         let Some(header) = shoff.checked_add(index * shentsize) else {
             break;
         };
-        if u32_at(bytes, header + 0x04) != Some(SHT_NOTE) {
+        if u32_at(bytes, header.saturating_add(0x04)) != Some(SHT_NOTE) {
             continue;
         }
         let (Some(offset), Some(size)) = (
-            u64_at(bytes, header + 0x18).map(|v| v as usize),
-            u64_at(bytes, header + 0x20).map(|v| v as usize),
+            u64_at(bytes, header.saturating_add(0x18)).map(|v| v as usize),
+            u64_at(bytes, header.saturating_add(0x20)).map(|v| v as usize),
         ) else {
             continue;
         };
         let mut at = offset;
-        while at + 12 <= offset + size {
+        let fin_notes = offset.saturating_add(size);
+        while at.saturating_add(12) <= fin_notes {
             let (Some(name_size), Some(desc_size), Some(kind)) = (
                 u32_at(bytes, at).map(|v| v as usize),
-                u32_at(bytes, at + 4).map(|v| v as usize),
-                u32_at(bytes, at + 8),
+                u32_at(bytes, at.saturating_add(4)).map(|v| v as usize),
+                u32_at(bytes, at.saturating_add(8)),
             ) else {
                 break;
             };
-            // Nom et contenu sont alignés sur quatre octets chacun.
-            let name_at = at + 12;
-            let desc_at = name_at + name_size.next_multiple_of(4);
-            let end = desc_at + desc_size.next_multiple_of(4);
+            // Nom et contenu sont alignés sur quatre octets chacun. Les
+            // additions saturent : les tailles viennent du fichier, et
+            // une note hostile les annonce énormes.
+            let name_at = at.saturating_add(12);
+            let desc_at = name_at.saturating_add(name_size.next_multiple_of(4));
+            let end = desc_at.saturating_add(desc_size.next_multiple_of(4));
             let name = string_at(bytes, name_at).unwrap_or_default();
-            if let Some(desc) = bytes.get(desc_at..desc_at + desc_size) {
+            if let Some(desc) = desc_at
+                .checked_add(desc_size)
+                .and_then(|fin| bytes.get(desc_at..fin))
+            {
                 found.push((name, kind, desc.to_vec()));
             }
             if end <= at {
@@ -584,19 +609,19 @@ fn read_cet(bytes: &[u8]) -> Option<Cet> {
         // Une suite de propriétés : type, longueur, valeur, le tout
         // aligné sur huit octets en 64 bits.
         let mut at = 0usize;
-        while at + 8 <= desc.len() {
+        while at.saturating_add(8) <= desc.len() {
             let Some(kind) = u32_at(&desc, at) else { break };
-            let Some(size) = u32_at(&desc, at + 4).map(|v| v as usize) else {
+            let Some(size) = u32_at(&desc, at.saturating_add(4)).map(|v| v as usize) else {
                 break;
             };
-            let value_at = at + 8;
+            let value_at = at.saturating_add(8);
             if kind == GNU_PROPERTY_X86_FEATURE_1_AND
                 && let Some(value) = u32_at(&desc, value_at)
             {
                 cet.ibt |= value & X86_FEATURE_1_IBT != 0;
                 cet.shadow_stack |= value & X86_FEATURE_1_SHSTK != 0;
             }
-            at = value_at + size.next_multiple_of(8);
+            at = value_at.saturating_add(size.next_multiple_of(8));
         }
     }
     Some(cet)
@@ -616,7 +641,7 @@ fn has_symtab(bytes: &[u8]) -> Option<bool> {
     let shnum = u16_at(bytes, 0x3c)? as usize;
     for index in 0..shnum {
         let header = shoff.checked_add(index.checked_mul(shentsize)?)?;
-        if u32_at(bytes, header + 0x04)? == SHT_SYMTAB {
+        if u32_at(bytes, header.saturating_add(0x04))? == SHT_SYMTAB {
             return Some(true);
         }
     }

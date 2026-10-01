@@ -32,16 +32,23 @@ const R_X86_64_JUMP_SLOT: u32 = 7;
 const R_X86_64_GLOB_DAT: u32 = 6;
 const R_X86_64_IRELATIVE: u32 = 37;
 
+/// Les trois lecteurs, et la seule chose qu'ils promettent : **rien ne
+/// panique**. `at` vient d'un champ du fichier, et `at + 4` déborde sur
+/// un ELF hostile — ce qui, en debug, panique. Une position qui ne tient
+/// pas dans un `usize` ne désigne rien, et `None` est la réponse juste.
 fn u16_at(bytes: &[u8], at: usize) -> Option<u16> {
-    Some(u16::from_le_bytes(bytes.get(at..at + 2)?.try_into().ok()?))
+    let fin = at.checked_add(2)?;
+    Some(u16::from_le_bytes(bytes.get(at..fin)?.try_into().ok()?))
 }
 
 fn u32_at(bytes: &[u8], at: usize) -> Option<u32> {
-    Some(u32::from_le_bytes(bytes.get(at..at + 4)?.try_into().ok()?))
+    let fin = at.checked_add(4)?;
+    Some(u32::from_le_bytes(bytes.get(at..fin)?.try_into().ok()?))
 }
 
 fn u64_at(bytes: &[u8], at: usize) -> Option<u64> {
-    Some(u64::from_le_bytes(bytes.get(at..at + 8)?.try_into().ok()?))
+    let fin = at.checked_add(8)?;
+    Some(u64::from_le_bytes(bytes.get(at..fin)?.try_into().ok()?))
 }
 
 fn string_at(bytes: &[u8], at: usize) -> Option<String> {
@@ -103,13 +110,21 @@ pub fn file_offset(bytes: &[u8], vaddr: u64) -> Option<u64> {
     let shnum = u16_at(bytes, 0x3c)? as usize;
     for index in 0..shnum {
         let header = shoff.checked_add(index.checked_mul(shentsize)?)?;
-        let addr = u64_at(bytes, header + 0x10)?;
-        let offset = u64_at(bytes, header + 0x18)?;
-        let size = u64_at(bytes, header + 0x20)?;
+        let addr = u64_at(bytes, header.saturating_add(0x10))?;
+        let offset = u64_at(bytes, header.saturating_add(0x18))?;
+        let size = u64_at(bytes, header.saturating_add(0x20))?;
         // Une section sans adresse n'est projetée nulle part : elle ne
         // peut contenir aucune adresse virtuelle.
-        if addr != 0 && vaddr >= addr && vaddr < addr + size {
-            return Some(offset + (vaddr - addr));
+        //
+        // `addr` et `size` viennent du fichier : sur une section
+        // hostile, leur somme déborde, et en debug elle panique. Une
+        // section qui prétend finir au-delà de l'espace d'adressage ne
+        // contient rien d'utile — on passe.
+        let Some(fin) = addr.checked_add(size) else {
+            continue;
+        };
+        if addr != 0 && vaddr >= addr && vaddr < fin {
+            return offset.checked_add(vaddr - addr);
         }
     }
     // À défaut de sections, les segments. Un binaire dépouillé n'a plus
@@ -126,11 +141,17 @@ pub fn file_offset(bytes: &[u8], vaddr: u64) -> Option<u64> {
         if u32_at(bytes, header)? != 1 {
             continue;
         }
-        let offset = u64_at(bytes, header + 0x08)?;
-        let vaddr_segment = u64_at(bytes, header + 0x10)?;
-        let filesz = u64_at(bytes, header + 0x20)?;
-        if vaddr >= vaddr_segment && vaddr < vaddr_segment + filesz {
-            return Some(offset + (vaddr - vaddr_segment));
+        let offset = u64_at(bytes, header.saturating_add(0x08))?;
+        let vaddr_segment = u64_at(bytes, header.saturating_add(0x10))?;
+        let filesz = u64_at(bytes, header.saturating_add(0x20))?;
+        // Vérifié pour la même raison que plus haut : ces deux nombres
+        // sont des champs du fichier, et rien n'oblige leur somme à
+        // tenir sur soixante-quatre bits.
+        let Some(fin) = vaddr_segment.checked_add(filesz) else {
+            continue;
+        };
+        if vaddr >= vaddr_segment && vaddr < fin {
+            return offset.checked_add(vaddr - vaddr_segment);
         }
     }
     None
@@ -144,22 +165,22 @@ fn relocations(bytes: &[u8]) -> Option<BTreeMap<u64, String>> {
     let mut noms = BTreeMap::new();
     for index in 0..shnum {
         let header = shoff.checked_add(index.checked_mul(shentsize)?)?;
-        if u32_at(bytes, header + 0x04)? != SHT_RELA {
+        if u32_at(bytes, header.saturating_add(0x04))? != SHT_RELA {
             continue;
         }
         // `sh_link` désigne la table de symboles que ces relocations
         // indexent, et cette table désigne à son tour ses chaînes.
-        let symtab = u32_at(bytes, header + 0x28)? as usize;
+        let symtab = u32_at(bytes, header.saturating_add(0x28))? as usize;
         let symtab_header = shoff.checked_add(symtab.checked_mul(shentsize)?)?;
-        let sym_offset = u64_at(bytes, symtab_header + 0x18)? as usize;
-        let sym_entry = u64_at(bytes, symtab_header + 0x38)? as usize;
-        let strtab = u32_at(bytes, symtab_header + 0x28)? as usize;
+        let sym_offset = u64_at(bytes, symtab_header.saturating_add(0x18))? as usize;
+        let sym_entry = u64_at(bytes, symtab_header.saturating_add(0x38))? as usize;
+        let strtab = u32_at(bytes, symtab_header.saturating_add(0x28))? as usize;
         let strtab_header = shoff.checked_add(strtab.checked_mul(shentsize)?)?;
-        let str_offset = u64_at(bytes, strtab_header + 0x18)? as usize;
+        let str_offset = u64_at(bytes, strtab_header.saturating_add(0x18))? as usize;
 
-        let offset = u64_at(bytes, header + 0x18)? as usize;
-        let size = u64_at(bytes, header + 0x20)? as usize;
-        let entry = u64_at(bytes, header + 0x38)? as usize;
+        let offset = u64_at(bytes, header.saturating_add(0x18))? as usize;
+        let size = u64_at(bytes, header.saturating_add(0x20))? as usize;
+        let entry = u64_at(bytes, header.saturating_add(0x38))? as usize;
         if entry == 0 || sym_entry == 0 {
             continue;
         }
@@ -216,19 +237,19 @@ fn plt_sections(bytes: &[u8]) -> Option<Vec<(u64, u64, Vec<u8>)>> {
     let shnum = u16_at(bytes, 0x3c)? as usize;
     let shstrndx = u16_at(bytes, 0x3e)? as usize;
     let str_header = shoff.checked_add(shstrndx.checked_mul(shentsize)?)?;
-    let str_offset = u64_at(bytes, str_header + 0x18)? as usize;
+    let str_offset = u64_at(bytes, str_header.saturating_add(0x18))? as usize;
 
     let mut sections = Vec::new();
     for index in 0..shnum {
         let header = shoff.checked_add(index.checked_mul(shentsize)?)?;
         let name_offset = u32_at(bytes, header)? as usize;
-        let name = string_at(bytes, str_offset + name_offset)?;
+        let name = string_at(bytes, str_offset.checked_add(name_offset)?)?;
         if !name.starts_with(".plt") {
             continue;
         }
-        let addr = u64_at(bytes, header + 0x10)?;
-        let offset = u64_at(bytes, header + 0x18)? as usize;
-        let size = u64_at(bytes, header + 0x20)? as usize;
+        let addr = u64_at(bytes, header.saturating_add(0x10))?;
+        let offset = u64_at(bytes, header.saturating_add(0x18))? as usize;
+        let size = u64_at(bytes, header.saturating_add(0x20))? as usize;
         let data = bytes.get(offset..offset.checked_add(size)?)?.to_vec();
         sections.push((addr, addr, data));
     }
@@ -376,7 +397,7 @@ mod tests {
 
         // Générateur reproductible : un échec se rejoue avec la même
         // graine, sans dépendre d'un fichier temporaire.
-        let mut graine: u64 = 0xC0FFEE_1234;
+        let mut graine: u64 = 0x00C0_FFEE_1234;
         let mut rnd = || {
             graine ^= graine << 13;
             graine ^= graine >> 7;

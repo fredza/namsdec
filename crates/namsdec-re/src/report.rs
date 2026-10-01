@@ -21,7 +21,19 @@ fn t(lang: &str, fr: &str, en: &str) -> String {
 /// `bytes` est le fichier lui-même : certaines sections du rapport se
 /// lisent dans des tables que le résumé ne porte pas — les fonctions
 /// empruntées, par exemple, qui vivent dans les relocations.
-pub fn markdown(scan: &Scan, bytes: &[u8], lang: &str, name: &str) -> String {
+///
+/// `disasm` est son désassemblage, parce que tout ne se lit pas dans le
+/// fichier : un programme qui parle au noyau directement n'emprunte
+/// rien, et seule la suite des instructions le dit. Vide quand on ne
+/// l'a pas — le rapport perd alors les lignes qui en dépendent, et
+/// n'invente rien à la place.
+pub fn markdown(
+    scan: &Scan,
+    bytes: &[u8],
+    disasm: &[namsdec_disasm::DecodedInstruction],
+    lang: &str,
+    name: &str,
+) -> String {
     let fr = lang.starts_with("fr");
     let mut out = String::new();
 
@@ -75,6 +87,38 @@ pub fn markdown(scan: &Scan, bytes: &[u8], lang: &str, name: &str) -> String {
             "- {} : `{build_id}`\n",
             t(lang, "Empreinte de build", "Build ID")
         ));
+    }
+
+    // Les signaux juste après l'identité : c'est ce qu'on lit en
+    // premier d'un rapport, comme on lit le panneau du même nom en
+    // premier dans l'interface. La même fonction les produit — deux
+    // synthèses qui diraient des choses différentes seraient pires
+    // qu'une.
+    let signaux = crate::signals::gather(bytes, disasm, lang);
+    if !signaux.is_empty() {
+        out.push_str(&format!("\n## {}\n\n", t(lang, "Signaux", "Signals")));
+        out.push_str(&format!(
+            "{}\n\n",
+            t(
+                lang,
+                "*Aucune de ces lignes n'est une preuve, et rien n'est additionné en \
+                 score : chacune dit un fait, ce que ce fait change, et le panneau où \
+                 le vérifier.*",
+                "*None of these lines is proof, and nothing is added up into a score: \
+                 each says a fact, what that fact changes, and the panel where to check \
+                 it.*",
+            )
+        ));
+        for signal in &signaux {
+            out.push_str(&format!(
+                "- **{}** — `{}`\n  - {}\n  - {} : {}\n",
+                signal.title(lang),
+                signal.detail,
+                signal.why(lang),
+                t(lang, "à lire dans", "read it in"),
+                signal.panel(lang),
+            ));
+        }
     }
 
     out.push_str(&format!(
@@ -269,6 +313,22 @@ pub fn markdown(scan: &Scan, bytes: &[u8], lang: &str, name: &str) -> String {
     // question qu'on se pose devant du code qu'on n'a pas écrit.
     let empruntées = imports::scan(bytes);
     if !empruntées.is_empty() {
+        // Ce qu'il sait faire avant ce qu'il emprunte : six cases se
+        // lisent, cinquante noms se parcourent.
+        let familles = crate::behaviour::families_of(empruntées.iter().map(|i| i.name.as_str()));
+        if !familles.is_empty() {
+            out.push_str(&format!(
+                "\n## {}\n\n",
+                t(lang, "Ce qu'il sait faire", "What it can do")
+            ));
+            for famille in familles {
+                out.push_str(&format!(
+                    "- **{}** — {}\n",
+                    famille.label(lang),
+                    famille.why(lang)
+                ));
+            }
+        }
         out.push_str(&format!(
             "\n## {} ({})\n\n",
             t(lang, "Fonctions importées", "Imported functions"),
@@ -278,6 +338,9 @@ pub fn markdown(scan: &Scan, bytes: &[u8], lang: &str, name: &str) -> String {
             out.push_str(&format!("- `{}` — {:#x}", import.name, import.plt));
             // Ce que fait la fonction, quand namsdec le sait : une liste
             // de noms suppose qu'on les connaisse déjà.
+            if let Some(famille) = crate::behaviour::family_of(&import.name) {
+                out.push_str(&format!(" — *{}*", famille.label(lang)));
+            }
             if let Some(note) = crate::libc::explain(&import.name) {
                 out.push_str(&format!(" — {}", note.text(lang)));
                 if note.watch {
@@ -309,6 +372,35 @@ pub fn markdown(scan: &Scan, bytes: &[u8], lang: &str, name: &str) -> String {
             // contenir des caractères qui, en Markdown, veulent dire
             // autre chose.
             out.push_str(&format!("- `{}`\n", found.text.replace('`', "'")));
+        }
+    }
+    // Les indicateurs : ce que le destinataire du rapport pourra aller
+    // vérifier de son côté, dans ses propres journaux. C'est la partie
+    // du compte rendu qui sert à quelqu'un d'autre que son auteur.
+    let indicateurs = crate::ioc::from_strings(&chaînes);
+    if !indicateurs.is_empty() {
+        out.push_str(&format!(
+            "\n## {}\n\n",
+            t(
+                lang,
+                "Indicateurs à vérifier ailleurs",
+                "Indicators to check elsewhere"
+            )
+        ));
+        for nature in crate::ioc::ALL {
+            let miens: Vec<&crate::ioc::Indicator> =
+                indicateurs.iter().filter(|i| i.kind == nature).collect();
+            if miens.is_empty() {
+                continue;
+            }
+            out.push_str(&format!("\n**{}**\n\n", nature.label(lang)));
+            for indicateur in miens {
+                out.push_str(&format!(
+                    "- `{}` — {:#x}\n",
+                    indicateur.value.replace('`', "'"),
+                    indicateur.addr
+                ));
+            }
         }
     }
     for (label, value) in [("RUNPATH", &scan.runpath), ("RPATH", &scan.rpath)] {
@@ -398,7 +490,8 @@ mod tests {
             eprintln!("/bin/ls n'est pas un ELF64 ici : test ignoré");
             return;
         };
-        let report = markdown(&scan, &bytes, "fr", "ls");
+        let disasm = namsdec_disasm::disassemble(&bytes[..bytes.len().min(0x10000)], 0x400000);
+        let report = markdown(&scan, &bytes, &disasm, "fr", "ls");
 
         assert!(report.starts_with("# Analyse du binaire — ls"));
         // De quel fichier parle-t-on ? C'est la première chose qu'un
@@ -432,12 +525,40 @@ mod tests {
             report.contains("Ce que cela change"),
             "la colonne d'explication est le cœur du rapport"
         );
+        // Ce qu'il sait faire : `ls` ouvre des dossiers, donc la famille
+        // « Fichiers » est là, avec la phrase qui dit ce qu'elle change.
+        assert!(
+            report.contains("## Ce qu'il sait faire"),
+            "le portrait par familles :\n{report}"
+        );
+        assert!(report.contains("**Fichiers**"), "{report}");
+        // Et chaque signal relevé est dans le rapport, avec son fait et
+        // le panneau où le vérifier : le rapport et le panneau disent la
+        // même chose, puisque c'est la même fonction qui les produit.
+        let signaux = crate::signals::gather(&bytes, &disasm, "fr");
+        assert!(
+            !signaux.is_empty(),
+            "un binaire de cette taille a quelque chose à relever"
+        );
+        assert!(report.contains("## Signaux"), "{report}");
+        for signal in &signaux {
+            assert!(
+                report.contains(signal.title("fr")),
+                "« {} » manque au rapport :\n{report}",
+                signal.title("fr")
+            );
+            assert!(
+                report.contains(signal.panel("fr")),
+                "le panneau de « {} » manque",
+                signal.title("fr")
+            );
+        }
         assert!(
             report.contains("namsdec (MIT)"),
             "le rapport dit d'où il vient, et sous quelle licence"
         );
         // Et la version anglaise dit autre chose que la française.
-        let english = markdown(&scan, &bytes, "en", "ls");
+        let english = markdown(&scan, &bytes, &disasm, "en", "ls");
         assert_ne!(report, english);
         assert!(english.starts_with("# Binary analysis — ls"));
     }

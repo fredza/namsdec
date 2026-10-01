@@ -44,6 +44,25 @@ qu'elle est : une adresse de retour, avec son étiquette. Ce qui est
 au-dessus de RSP est grisé — ces octets sont encore là, mais le prochain
 `push` les écrase.
 
+**Ce qui ressort, et pourquoi.** La fenêtre d'analyse ouvre sur
+**Signaux** : segment inscriptible *et* exécutable, entropie qui monte,
+empaqueteur reconnu par son nom, anti-débogage, protections absentes,
+indicateurs dans les chaînes. Rien de neuf n'y est calculé — c'est ce que
+les autres panneaux ont déjà trouvé, rassemblé pour dire par où
+commencer. Chaque ligne donne un **fait** (une adresse, un nom, une
+mesure), **ce que ce fait change**, et **le panneau** qui l'explique. Rien
+n'est additionné en score : un score donnerait l'illusion d'un verdict, et
+c'est le lecteur qui conclut.
+
+**Ce que le binaire sait faire, en six familles.** Les imports et les
+appels système sont listés partout ; ici, ils sont aussi *rangés* —
+réseau, exécution, anti-débogage, mémoire, chiffrement, fichiers. La
+question n'est pas « quelles fonctions » mais « qu'est-ce que ce binaire
+fait », et trois familles allumées sont déjà un portrait. Un `socket` est
+un `socket`, qu'il arrive par la table de liaison ou par le numéro 41
+dans RAX — et un programme qui veut passer inaperçu emploie justement le
+second.
+
 **Et namsdec peut aller le chercher.** Rizin + rz-ghidra se compile,
 RetDec se télécharge : Préférences ▸ Modules ▸ « Aller chercher les outils
 et les construire », puis **Installer…**. Ce module est éteint par défaut,
@@ -417,6 +436,7 @@ et ils portent ici les mêmes noms qu'ailleurs.
 | `nextcall`, `nextret`, `nextsyscall` | Outils ▸ Jusqu'au prochain… (`Espace u c/r/s`) |
 | `context` | Édition ▸ Copier l'état |
 | `checksec` | fenêtre Analyse ▸ Protections |
+| (ce qu'on regarde en ouvrant un échantillon) | fenêtre Analyse ▸ Signaux |
 | `got`, `plt` | fenêtre Analyse ▸ Fonctions importées |
 | `nearpc` | le listing lui-même, RIP dans la gouttière |
 | `stepi`, `nexti`, `reverse-stepi` | `Espace p i`, `Espace p o`, `Espace p b` |
@@ -499,7 +519,7 @@ Un workspace Rust, une crate par responsabilité :
 | `namsdec-asm` | appel de nasm et de ld, lecture de l'ELF produit |
 | `namsdec-disasm` | désassemblage x86-64 (iced-x86), syntaxe NASM |
 | `namsdec-emu` | l'interpréteur : entiers, SSE/AVX, x87, appels système |
-| `namsdec-re` | rétro-ingénierie : protections, références croisées, chaînes, appels système, fragments ROP, place libre |
+| `namsdec-re` | rétro-ingénierie : signaux, protections, références croisées, chaînes et indicateurs, familles de comportement, appels système, empaqueteurs, fragments ROP, place libre |
 | `namsdec-doc` | les fiches d'instructions et de directives |
 | `namsdec-exercises` | les séries d'exercices et leur format |
 | `namsdec-theme` | les thèmes, y compris ceux installés depuis le disque |

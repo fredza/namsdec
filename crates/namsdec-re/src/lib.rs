@@ -5,6 +5,7 @@
 //! phase 1 — `BinaryInfoModule` sert de preuve de concept pour valider le
 //! mécanisme avant la phase 2.
 
+pub mod behaviour;
 mod binary_info;
 pub mod cfg;
 pub mod cyclic;
@@ -20,10 +21,12 @@ mod functions_module;
 pub mod gadgets;
 mod gadgets_module;
 pub mod imports;
-mod imports_module;
+pub(crate) mod imports_module;
+pub mod ioc;
 pub mod libc;
 pub mod literals;
 mod map_module;
+pub mod packer;
 pub mod patch;
 pub mod patterns;
 mod patterns_module;
@@ -31,6 +34,7 @@ mod protections;
 pub mod provenance;
 pub mod report;
 pub mod route;
+pub mod signals;
 pub mod slack;
 mod slack_module;
 pub mod strings;
@@ -50,6 +54,7 @@ pub use imports_module::ImportsModule;
 pub use map_module::MapModule;
 pub use patterns_module::PatternsModule;
 pub use protections::ProtectionsModule;
+pub use signals::SignalsModule;
 pub use slack_module::SlackModule;
 pub use strings::StringsModule;
 pub use syscalls::SyscallsModule;

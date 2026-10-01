@@ -2043,3 +2043,136 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
 
   LES FAMILLES, pour mémoire : `p` fait tourner le PROGRAMME (r, i, o, b, c),
   `/` cherche, `m` marque, `v` montre une VUE, `u` court JUSQU'À quelque chose.
+
+  --- septembre26.md : lire un échantillon, et ce qu'on en recopie ---
+  Séance du 1er octobre, menée sur le relevé `septembre26.md`. Cinq entrées de
+  ce relevé sont faites (C2, C3, A1, A2, A3, A4) ; A5 ne l'est pas.
+
+  LE FIL CONDUCTEUR. Les dix panneaux d'analyse répondaient chacun à une
+  question, et aucun ne répondait à la première : « par où commencer ». Un
+  chercheur devant un échantillon inconnu ne demande pas « quelles fonctions
+  sont importées » mais « qu'est-ce que ce binaire FAIT ». Tout ce qui suit est
+  du CÂBLAGE : rien n'est recalculé, tout était déjà là, mal présenté.
+
+  C2 — L'INVARIANT ANTI-PANIQUE, ÉTENDU, ET QUATRE PANIQUES DE PLUS.
+  Le contrôle d'origine couvrait trois analyseurs et partait de `/bin/true` :
+  sur une machine sans lui, il passait sans rien prouver. Le nouveau FABRIQUE
+  son ELF — en-tête, deux segments, neuf sections, table de symboles
+  dynamiques, ses chaînes, deux relocations de liaison et les deux entrées de
+  `.plt` qui leur répondent, du code, et des données qui portent un indicateur
+  de chaque nature. Cent lignes, et il tourne partout de la même façon.
+  Un contrôle vérifie que le germe est bien lu (`socket`, `ptrace` nommés) :
+  sans lui, le fuzzing pourrait tourner mille fois sur un fichier que tous les
+  analyseurs rejettent à la porte.
+
+  Trouvé en une exécution, et toutes corrigées :
+    - `imports::file_offset` : `addr + size` et `vaddr + filesz`, deux sommes
+      de champs du fichier ;
+    - `slack` : `s.addr + s.size` pour nommer la section d'un trou, et
+      `segment.vaddr + (offset - segment.offset)` pour son adresse ;
+    - et SURTOUT les trois lecteurs `u16_at`, `u32_at`, `u64_at`, dans
+      `elf_scan` ET dans `imports` : `bytes.get(at..at + 4)` déborde dès que
+      `at` est grand, et `at` vient toujours d'un champ du fichier.
+
+  Ce dernier point est le vrai enseignement. Ce n'était pas un défaut mais une
+  CLASSE de défauts : quarante additions de décalage de champ (`header + 0x18`,
+  `at + 8`, `offset + size`) écrites naturellement, et chacune paniquait sur un
+  fichier hostile. Toutes sont saturantes maintenant — une position qui ne
+  tient pas dans un `usize` ne désigne rien, et `None` est la réponse juste.
+  En release, elles auraient rendu un index faux et une analyse silencieusement
+  fausse : le mode debug est le seul endroit où ce défaut se voit.
+
+  Le contrôle fait 250 tours sur le germe plus 40 sur chaque binaire du système
+  trouvé, en six secondes. Le compte est choisi pour cela : un test qu'on
+  désactive parce qu'il est long ne protège plus rien.
+
+  A1 — LES FAMILLES, ET CE QUI N'Y EST PAS.
+  Six familles, une table de noms exacts, et deux décisions qui comptent :
+    - UNE SEULE table pour les imports et les appels système. Un `socket` est
+      un `socket` qu'il vienne de la table de liaison ou du numéro 41 dans
+      RAX — et un programme qui veut passer inaperçu emploie justement le
+      second. Le panneau des signaux regarde donc les deux.
+    - Une TABLE et non des règles. « Tout ce qui commence par `exec` »
+      attraperait `execute_query` d'une bibliothèque de bases de données, et
+      nommer une famille à tort est pire que n'en nommer aucune. Les seuls
+      préfixes acceptés sont ceux dont le préfixe EST un nom de bibliothèque :
+      `EVP_`, `SSL_`, `curl_`.
+
+  Et une correction venue de la CAPTURE D'ÉCRAN, que les mesures ne pouvaient
+  pas voir : `raise`, `alarm`, `sigaltstack`, `rt_sigaction` étaient rangés en
+  anti-débogage. `/bin/ls` appelle `raise`, et le panneau des signaux allumait
+  une ligne rouge dessus. Un tableau de bord qui crie sur `ls` n'est plus lu du
+  tout. Poser un gestionnaire de signaux n'est pas se défendre d'un débogueur :
+  c'est ranger ses affaires avant de mourir. Une famille doit DISTINGUER.
+
+  A2 — LE PANNEAU « SIGNAUX », ET POURQUOI IL NE NOTE RIEN.
+  Il aurait été facile d'additionner : trois points pour un segment W+X, deux
+  pour `ptrace`, et un chiffre en haut. C'est refusé, et c'est le choix central
+  du panneau. Un score donne l'illusion d'un verdict ; or aucune de ces lignes
+  n'est une preuve, et c'est le chercheur qui conclut. Chaque ligne dit donc un
+  FAIT vérifiable (l'adresse, le nom, la mesure), CE QUE CE FAIT CHANGE, et LE
+  PANNEAU où aller voir.
+
+  Deux garde-fous, et tous deux ont servi :
+    - sur `/bin/true` et `/bin/ls`, aucune ligne « Remarquable ». C'est ce
+      contrôle qui a attrapé `raise`.
+    - l'entropie n'est relevée que sur une tranche d'au moins 4 Kio. Le panneau
+      Entropie découpe en soixante-quatre tranches pour DESSINER une forme ;
+      sur un petit binaire, chacune fait cinq cents octets — et cinq cents
+      octets variés atteignent 7,6 bits sans rien cacher, simplement parce
+      qu'il n'y a pas de quoi répéter. Mesuré sur `/bin/true` : la queue du
+      fichier, 505 octets, 7,61. Une forme dessinée peut se permettre cette
+      imprécision ; une ligne qui dit « remarquable », non.
+
+  A3 — LES INDICATEURS, ET LA RÈGLE QUI SE TAIT.
+  La moitié du travail est de ne PAS relever. « Deux mots séparés d'un point »
+  décrit `libc.so.6`, `printf.c`, `a.out` et la moitié des chaînes d'un
+  binaire ; une liste où `libc.so.6` passe pour un nom de domaine ne se lit pas,
+  et l'on cesse de l'ouvrir. D'où une liste de domaines de premier niveau
+  connus, un chemin absolu d'au moins deux segments, et rien de relatif.
+  Une ambiguïté reste et n'est pas levée : `1.2.3.4` est un numéro de version
+  pour l'un et une adresse pour l'autre. On relève, et le panneau dit
+  « indicateur », non « adresse contactée ». Se taire ferait manquer de vraies
+  adresses, qui ont exactement cette forme.
+
+  A4 — NOMMER L'EMPAQUETEUR, AVEC SA PREUVE.
+  « Compressé, chiffré ou empaqueté » est juste et frustrant ; « c'est de l'UPX,
+  et `upx -d` le rendra » est actionnable. Le nom vient toujours AVEC la preuve
+  (section ou nombre magique, et son adresse) : « c'est de l'UPX » sans dire
+  pourquoi demande de faire confiance, et un outil pédagogique n'a pas à
+  demander ça.
+  Le nombre magique d'AppImage n'est cherché qu'à sa place, au décalage 8 :
+  trois octets se rencontrent par hasard dans n'importe quelles données. Et
+  `shc` a été retiré de la table avant d'y entrer, faute d'une marque dont on
+  soit sûr — une table qui devine ne vaut rien.
+
+  LE RELEVÉ DE CE QUI EST PEINT, et un défaut qu'il a trouvé.
+  `tests/panneaux.rs` mesure les cinq panneaux touchés, à 420 et 1200 pixels,
+  dans les deux langues. Trois invariants, chacun éprouvé en remettant le
+  défaut :
+    - aucun texte ne court au-delà d'un bord ;
+    - deux textes d'une même couche ne se recouvrent jamais ;
+    - rien ne bouge quand on ne touche à rien (vingt images) ;
+    - et aucune phrase n'est trouée d'espaces.
+
+  Ce dernier vient d'un vrai défaut trouvé ici : un littéral Rust coupé sur
+  plusieurs lignes garde ses espaces d'indentation si le `\` de continuation
+  disparaît, et la phrase s'affiche « qu'on          puisse ». Invisible à la
+  relecture du code, évident à la mesure.
+
+  UN INVARIANT ÉCARTÉ, et pourquoi. « Aucune encre ne perd de HAUTEUR au
+  découpage » accusait la liste des chaînes : sa zone défilante est bornée à
+  220 pixels, et sa dernière ligne visible est coupée par le bas — c'est à cela
+  que sert un ascenseur. L'invariant ne garde donc que la LARGEUR, et le dit :
+  rien ne défile horizontalement dans ces panneaux, donc toute largeur perdue
+  est un texte qui court au-delà d'un bord.
+
+  CE QUI N'EST PAS FAIT. A5 : vérifier que le désassemblage suit le flot et non
+  seulement la linéarité — un saut qui atterrit au milieu d'une instruction,
+  l'anti-désassemblage classique. Identifié, non commencé.
+
+  ET LA CI ÉTAIT ROUGE. Le commit précédent avait laissé `0xC0FFEE_1234` dans
+  un test : clippy refuse les chiffres hexadécimaux groupés irrégulièrement, et
+  `cargo clippy --all-targets -D warnings` échouait sur `main`. Corrigé au
+  passage. Un contrôle de mise en forme qu'on ne lance pas localement finit par
+  être découvert par quelqu'un d'autre.

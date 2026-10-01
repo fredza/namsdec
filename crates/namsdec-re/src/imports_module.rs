@@ -7,6 +7,7 @@
 //! d'appelants, comme les références croisées — ce qui sert partout se
 //! lit en premier.
 
+use crate::behaviour::{self, Family};
 use crate::imports::{self, Import};
 use crate::libc;
 use crate::{ReContext, ReModule};
@@ -28,6 +29,32 @@ impl ImportsModule {
     pub fn calls(&self) -> &[usize] {
         &self.appels
     }
+
+    /// Les familles de comportement présentes, dans l'ordre où on les
+    /// regarde — le portrait du binaire en six cases.
+    pub fn families(&self) -> Vec<Family> {
+        behaviour::families_of(self.imports.iter().map(|i| i.name.as_str()))
+    }
+}
+
+/// La ligne de familles : ce que le binaire sait faire, d'un coup d'œil.
+///
+/// Dessinée avant la liste, parce que c'est la question qu'on pose
+/// d'abord. Chaque case porte le nombre de fonctions qui l'ont nommée —
+/// une famille tenue par un seul appel ne dit pas la même chose qu'une
+/// famille tenue par quinze.
+pub(crate) fn portrait(ui: &mut egui::Ui, ctx: &ReContext, comptes: &[(Family, usize)]) {
+    if comptes.is_empty() {
+        return;
+    }
+    ui.horizontal_wrapped(|ui| {
+        ui.label(ctx.t("Ce qu'il sait faire", "What it can do"));
+        for (famille, combien) in comptes {
+            let texte = format!("{} ({combien})", famille.label(ctx.lang));
+            ui.label(egui::RichText::new(texte).color(famille.color()).strong())
+                .on_hover_text(famille.why(ctx.lang));
+        }
+    });
 }
 
 impl ReModule for ImportsModule {
@@ -104,6 +131,24 @@ impl ReModule for ImportsModule {
              written the real address. That is why a call into the C library goes \
              through the program itself.",
         ));
+        // Le portrait avant la liste : « qu'est-ce que ce binaire fait »
+        // se répond en six cases, là où cinquante noms demandent de les
+        // connaître un par un.
+        let comptes: Vec<(Family, usize)> = behaviour::ALL
+            .into_iter()
+            .filter_map(|famille| {
+                let combien = self
+                    .imports
+                    .iter()
+                    .filter(|i| behaviour::family_of(&i.name) == Some(famille))
+                    .count();
+                (combien > 0).then_some((famille, combien))
+            })
+            .collect();
+        if !comptes.is_empty() {
+            ui.add_space(4.0);
+            portrait(ui, ctx, &comptes);
+        }
         ui.add_space(4.0);
 
         // Par nombre d'appels : ce qui sert partout d'abord, le reste
@@ -140,6 +185,12 @@ impl ReModule for ImportsModule {
                         egui::RichText::new(ctx.t("à regarder", "worth a look"))
                             .color(egui::Color32::from_rgb(0xd7, 0xba, 0x7d)),
                     );
+                }
+                // Et sa famille de comportement, quand elle en a une :
+                // c'est ce qui relie une ligne au portrait du dessus.
+                if let Some(famille) = behaviour::family_of(&import.name) {
+                    ui.label(egui::RichText::new(famille.label(ctx.lang)).color(famille.color()))
+                        .on_hover_text(famille.why(ctx.lang));
                 }
             });
             if let Some(note) = note {

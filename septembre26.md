@@ -25,7 +25,7 @@ Ce qui est solide, et sur quoi le reste s'appuie :
   indexation nue.
 - **Plus de mille tests**, CI verte (mise en forme, clippy sans
   indulgence, `cargo test --workspace`), coureur épinglé à `ubuntu-24.04`.
-- **Dix panneaux d'analyse** déjà en place : empreintes, carte du fichier,
+- **Onze panneaux d'analyse** en place depuis le 1er octobre : empreintes, carte du fichier,
   protections, entropie, fonctions, chaînes, figures du code, appels
   système, imports, fragments ROP, place libre, vidage.
 
@@ -48,28 +48,36 @@ dessus n'analyse plus rien. Corrigé par arithmétique vérifiée
 plus haut. L'invariant est désormais tenu par un test :
 `a_hostile_elf_never_panics_the_scan`. Reconfirmé : 0 panique sur 40 000.
 
-### C2 — Étendre l'invariant « aucune panique sur entrée hostile » à TOUS les analyseurs
+### C2 — [FAIT le 1er octobre] L'invariant étendu à TOUS les analyseurs
 
-Le test ci-dessus couvre `imports`, `slack` et `elf_scan`. Restent à y
-passer, avec le même fuzzing : `functions`, `xrefs`, `strings`,
-`patterns`, `gadgets`, `entropy`, `protections`, `syscalls`, et surtout le
-**désassembleur** (`namsdec-disasm`), qui reçoit des octets arbitraires
-par construction. Coût faible (un générateur reproductible, déjà écrit),
-valeur haute : c'est le contrat de robustesse de tout l'outil.
+Fait : `crates/namsdec-re/tests/hostile.rs` fait passer une vingtaine
+d'analyseurs, le **désassembleur** et les deux rapports sur des ELF abîmés
+de trois façons — octets changés, troncature, et valeurs extrêmes posées
+sur huit octets alignés. Le germe est **fabriqué** (en-tête, segments,
+sections, symboles, relocations, entrées de liaison) : le contrôle
+d'origine partait de `/bin/true` et passait sans rien prouver sur une
+machine qui n'en a pas.
 
-### C3 — Les seuils heuristiques, rassemblés et documentés
+**Quatre paniques trouvées** : deux sommes d'adresses dans
+`imports::file_offset`, deux dans `slack`, et surtout les trois lecteurs
+`u16_at`/`u32_at`/`u64_at` d'`elf_scan` et d'`imports` — `at + 4` déborde
+dès que `at` vient d'un champ du fichier. Ce n'était pas un défaut mais
+une **classe** de défauts : les quarante additions de décalage de champ
+sont désormais saturantes.
 
-`entropy.rs` tranche « compressé/chiffré/empaqueté » à 7,2 bits, « code
-dense » à 6,5. Ces nombres sont justes mais dispersés et implicites. Les
-réunir en constantes nommées, avec la mesure qui les justifie, évite
-qu'un chercheur les prenne pour des vérités plutôt que pour des repères —
-et permet de les régler sans relire l'algorithme.
+### C3 — [FAIT le 1er octobre] Les seuils heuristiques, rassemblés et documentés
+
+Fait : `entropy::seuils` porte les quatre bornes, chacune avec la mesure
+qui la justifie, et le panneau les lit là plutôt que de les recopier. Un
+contrôle vérifie qu'elles se suivent — un seuil « plat » posé au-dessus
+du seuil « texte » rendrait une branche du `match` inatteignable sans que
+rien ne le dise.
 
 ---
 
 ## Améliorations — analyse (la plus forte valeur pour la vocation)
 
-### A1 — Catégoriser les imports et les appels système par COMPORTEMENT
+### A1 — [FAIT le 1er octobre] Catégoriser les imports et les appels système par COMPORTEMENT
 
 Aujourd'hui les imports et les syscalls sont **listés**. Pour un
 chercheur, la question n'est pas « quelles fonctions » mais « qu'est-ce
@@ -82,12 +90,19 @@ que ce binaire *fait* » : le regrouper par famille répond d'un coup d'œil.
 - **Chiffrement / obfuscation** : familles crypto, `mprotect` vers RWX.
 - **Fichiers / persistance** : `open`, `unlink`, chemins système.
 
-Se branche sur `imports.rs` et `syscalls.rs` (une table nom → famille) et
-se rend dans les panneaux existants, en colorant ou en groupant. C'est
-l'ajout qui transforme le plus l'outil pour la détection : trois familles
-allumées — réseau, exécution, anti-débogage — est déjà un portrait.
+Fait : `behaviour.rs`, six familles, **une seule table** pour les imports
+et les appels système — un `socket` est un `socket` qu'il vienne de la
+table de liaison ou du numéro 41 dans RAX. Le portrait se dessine en tête
+des deux panneaux, avec les mêmes couleurs.
 
-### A2 — Un panneau « Signaux » : le verdict d'un coup d'œil
+Une table de noms exacts et non des règles : « tout ce qui commence par
+`exec` » attraperait `execute_query`. Et quatre noms ont été **retirés**
+de l'anti-débogage après coup — `raise`, `alarm`, `sigaltstack`,
+`rt_sigaction` : une capture d'écran a montré `/bin/ls` allumant une
+ligne rouge sur `raise`, et un tableau de bord qui crie sur `ls` n'est
+plus lu du tout.
+
+### A2 — [FAIT le 1er octobre] Un panneau « Signaux » : ce qui ressort, et où le lire
 
 Un panneau de synthèse qui agrège ce que les autres trouvent déjà, chacun
 avec sa raison, sans jamais conclure à la place du chercheur :
@@ -100,24 +115,41 @@ avec sa raison, sans jamais conclure à la place du chercheur :
 - protections **absentes** (NX, canari, RELRO, PIE) — `protections.rs` ;
 - **code auto-modifiant** possible (`mprotect`/`mmap` + saut dans la zone).
 
-Chaque ligne renvoie au panneau qui l'explique. C'est le tableau de bord
-qu'un analyste lit en premier, et il ne coûte que du câblage : toute la
-matière est déjà calculée ailleurs.
+Fait : `signals.rs`, en seconde position dans la colonne. Chaque ligne dit
+un **fait** vérifiable, **ce qu'il change**, et **le panneau** où aller
+voir. **Rien n'est additionné en score** : un score donnerait l'illusion
+d'un verdict, et c'est le chercheur qui conclut.
 
-### A3 — Extraire les indicateurs (IoC) des chaînes
+Deux garde-fous, et tous deux ont servi : sur `/bin/true` et `/bin/ls`,
+aucune ligne « Remarquable » ; et l'entropie n'est relevée que sur une
+tranche d'au moins 4 Kio — la queue de `/bin/true` fait 505 octets et
+mesure 7,61 sans rien cacher, simplement parce qu'il n'y a pas de quoi
+répéter un octet dans cinq cents.
 
-`strings.rs` liste les chaînes ; il ne les **qualifie** pas. Un module (ou
-une colonne) qui repère les URL, adresses IP, chemins de fichiers, clés de
-registre et noms de domaines donne au chercheur les indicateurs qu'il
-recopiera dans son rapport. Purement lecture, et très rentable : c'est la
-première chose qu'on cherche dans un échantillon.
+### A3 — [FAIT le 1er octobre] Extraire les indicateurs (IoC) des chaînes
 
-### A4 — Détection d'empaqueteur nommée
+Fait : `ioc.rs` — adresses web, adresses IP, noms de domaine, courriels,
+chemins absolus, clés de registre, en tête du panneau des chaînes, chaque
+rubrique copiable d'un clic. La moitié du travail est de **ne pas**
+relever : une liste où `libc.so.6` passe pour un nom de domaine ne se lit
+pas, et l'on cesse de l'ouvrir. D'où une liste de domaines de premier
+niveau connus, et des chemins absolus d'au moins deux segments.
 
-`entropy` dit « probablement empaqueté » ; aller un cran plus loin en
-reconnaissant les signatures les plus courantes (UPX et consorts : nom de
-section, en-tête) nomme l'empaqueteur au lieu de le deviner. Borné,
-lecture seule, et complète bien A2.
+Une ambiguïté reste, et n'est pas levée : `1.2.3.4` est un numéro de
+version pour l'un et une adresse pour l'autre. On relève, et le panneau
+dit « indicateur », non « adresse contactée ».
+
+### A4 — [FAIT le 1er octobre] Détection d'empaqueteur nommée
+
+Fait : `packer.rs` — UPX, PyInstaller, AppImage, par nom de section ou
+nombre magique, **avec la preuve et son adresse**, et ce qu'on en fait
+(`upx -d`, `pyinstxtractor`). Nommé dans le panneau Entropie, qui est
+celui qui posait la question, et relevé dans les signaux.
+
+Le nombre magique d'AppImage n'est cherché qu'à sa place, au décalage 8 :
+trois octets se rencontrent par hasard dans n'importe quelles données. Et
+`shc` a été retiré de la table avant d'y entrer, faute d'une marque dont
+on soit sûr.
 
 ### A5 — Le désassemblage suit le flot, pas seulement la linéarité
 
@@ -177,16 +209,21 @@ rejoint B1 (une vue de listing qu'on ne délègue plus entièrement à egui).
 
 ## Priorisation suggérée
 
-1. **C2** — finir l'invariant anti-panique sur tous les analyseurs et le
-   désassembleur. C'est le socle : un outil de malware doit encaisser
-   n'importe quel fichier. Petit, immédiat.
-2. **A1 + A2** — catégoriser par comportement, puis le panneau Signaux.
-   C'est ce qui transforme le plus l'outil pour sa vocation, et tout
-   s'appuie sur du déjà-calculé.
-3. **A3** — les IoC dans les chaînes. Rentable, borné, lecture seule.
-4. **B1** — la virtualisation, quand le confort sur gros binaires le
+1. ~~**C2**~~ — fait le 1er octobre, et quatre paniques de plus trouvées.
+2. ~~**A1 + A2**~~ — fait le 1er octobre.
+3. ~~**A3**~~ — fait le 1er octobre. ~~**A4**~~ et ~~**C3**~~ aussi.
+4. **A5** — le désassemblage qui suit le flot, non la seule linéarité.
+   C'est ce qui reste de la première moitié de ce relevé, et le moins
+   cher des trois qui restent.
+5. **B1** — la virtualisation, quand le confort sur gros binaires le
    justifie. Gros, à décider.
-5. **B2** — la modification de binaire, par petits pas réversibles.
+6. **B2** — la modification de binaire, par petits pas réversibles.
+
+Ce que la séance du 1er octobre a appris, et qui n'était pas dans ce
+relevé : **la capture d'écran voit ce que la mesure ne voit pas.** Le
+faux positif sur `raise` ne violait aucun invariant — il était juste
+faux, et il a fallu regarder l'écran sur un vrai binaire pour s'en
+apercevoir.
 
 Rien de ce qui précède ne casse l'existant : les corrections sont faites
 et testées, les améliorations se branchent sur des données déjà produites,

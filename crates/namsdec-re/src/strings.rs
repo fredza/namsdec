@@ -17,12 +17,23 @@ pub struct StringsModule {
     /// Ce qu'on cherche parmi elles. Deux cents chaînes se parcourent
     /// mal ; on sait en général ce qu'on veut y trouver.
     query: String,
+    /// Les indicateurs tirés des chaînes : ce qu'on recopiera dans un
+    /// rapport. Calculés une fois au chargement, comme le reste.
+    iocs: Vec<crate::ioc::Indicator>,
     /// N'afficher que celles que le code désigne.
     ///
     /// Une chaîne à laquelle personne ne fait référence est souvent du
     /// texte mort — un reste de bibliothèque, un nom de section. Celles
     /// qu'une instruction va chercher sont, elles, des pistes.
     pointed_only: bool,
+}
+
+impl StringsModule {
+    /// Les indicateurs trouvés, pour qui veut les lire sans l'interface
+    /// — le rapport s'en sert.
+    pub fn indicators(&self) -> &[crate::ioc::Indicator] {
+        &self.iocs
+    }
 }
 
 /// Une chaîne trouvée : où elle commence, et ce qu'elle dit.
@@ -183,10 +194,26 @@ impl ReModule for StringsModule {
             Some(elf) => crate::literals::scan(ctx.disasm, &elf.sections, ctx.binary),
             None => Vec::new(),
         };
+        // Et ce qu'il y a de vérifiable là-dedans : adresses, chemins,
+        // clés. Les chaînes découpées par le code comptent autant que
+        // les autres — en Rust et en Go, c'est là que se trouve l'URL.
+        let mut tout: Vec<Found> = self.found.clone();
+        tout.extend(self.literals.iter().map(|littérale| Found {
+            addr: littérale.addr,
+            text: littérale.text.clone(),
+        }));
+        self.iocs = crate::ioc::from_strings(&tout);
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
-        // Ce que le code découpe lui-même, d'abord : c'est la vérité du
+        // Les indicateurs tout en haut : parmi deux cents chaînes, ce
+        // sont les cinq qu'on recopiera. Ouvert d'office quand il y en
+        // a — c'est la réponse qu'on venait chercher.
+        if !self.iocs.is_empty() {
+            indicateurs(ui, ctx, &self.iocs);
+            ui.add_space(4.0);
+        }
+        // Ce que le code découpe lui-même, ensuite : c'est la vérité du
         // programme, là où le scan des octets n'est qu'une supposition.
         if !self.literals.is_empty() {
             egui::CollapsingHeader::new(format!(
@@ -332,6 +359,89 @@ impl ReModule for StringsModule {
                 }
             });
     }
+}
+
+/// Le bloc des indicateurs : par nature, et prêt à être recopié.
+///
+/// Rangés par nature et non par adresse : un rapport se tient par
+/// rubriques — « les adresses contactées », « les chemins écrits » — et
+/// c'est sous cette forme qu'on les recopie. L'adresse de la chaîne reste
+/// à côté, pour y retourner.
+fn indicateurs(ui: &mut egui::Ui, ctx: &ReContext, trouvés: &[crate::ioc::Indicator]) {
+    use crate::ioc;
+
+    // L'accord au singulier : « 1 indicateurs » se lit mal, et un seul
+    // indicateur est le cas ordinaire d'un binaire du système.
+    let seul = trouvés.len() == 1;
+    egui::CollapsingHeader::new(format!(
+        "{} {}",
+        trouvés.len(),
+        match (ctx.lang.starts_with("fr"), seul) {
+            (true, true) => "indicateur à vérifier ailleurs",
+            (true, false) => "indicateurs à vérifier ailleurs",
+            (false, true) => "indicator to check elsewhere",
+            (false, false) => "indicators to check elsewhere",
+        }
+    ))
+    .id_salt("strings_iocs")
+    .default_open(true)
+    .show(ui, |ui| {
+        ui.weak(ctx.t(
+            "Une forme reconnue, non une intention : ce sont les seules chaînes qu'on puisse aller vérifier ailleurs — dans un journal réseau, sur un autre poste. Un chemin ou une adresse peut aussi n'être qu'un exemple compilé dans un message d'aide.",
+            "A recognised shape, not an intent: these are the only strings one can go and check elsewhere — in a network log, on another machine. A path or an address may also be a mere example compiled into a help message.",
+        ));
+        ui.add_space(4.0);
+        for nature in ioc::ALL {
+            let miens: Vec<&ioc::Indicator> =
+                trouvés.iter().filter(|i| i.kind == nature).collect();
+            if miens.is_empty() {
+                continue;
+            }
+            ui.horizontal(|ui| {
+                ui.strong(nature.label(ctx.lang));
+                ui.weak(format!("({})", miens.len()));
+                // Recopier la rubrique entière d'un clic : c'est ce
+                // qu'on fait d'une liste d'indicateurs, un par ligne,
+                // dans le rapport.
+                if ui
+                    .small_button(ctx.t("copier", "copy"))
+                    .on_hover_text(ctx.t(
+                        "Toute la rubrique, une par ligne.",
+                        "The whole heading, one per line.",
+                    ))
+                    .clicked()
+                {
+                    let texte = miens
+                        .iter()
+                        .map(|i| i.value.as_str())
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    ui.ctx().copy_text(texte);
+                }
+            });
+            ui.indent(nature.label("en"), |ui| {
+                for indicateur in &miens {
+                    ui.horizontal(|ui| {
+                        ui.monospace(format!("{:08x}", indicateur.addr));
+                        let reste = ui.available_width().max(24.0);
+                        ui.allocate_ui_with_layout(
+                            egui::vec2(reste, ui.spacing().interact_size.y),
+                            egui::Layout::left_to_right(egui::Align::Center),
+                            |ui| {
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(&indicateur.value).monospace(),
+                                    )
+                                    .truncate(),
+                                )
+                                .on_hover_text(&indicateur.value);
+                            },
+                        );
+                    });
+                }
+            });
+        }
+    });
 }
 
 #[cfg(test)]

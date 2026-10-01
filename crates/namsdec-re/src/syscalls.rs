@@ -1,3 +1,4 @@
+use crate::behaviour::{self, Family};
 use crate::{ReContext, ReModule};
 use iced_x86::{Mnemonic, OpKind, Register};
 
@@ -19,6 +20,14 @@ pub struct SyscallsModule {
 pub struct Call {
     pub addr: u64,
     pub number: Option<u64>,
+}
+
+impl Call {
+    /// La famille de comportement de cet appel, quand son numéro se lit
+    /// et que namsdec sait ce qu'il fait.
+    pub fn family(&self) -> Option<Family> {
+        behaviour::family_of_syscall(self.number?)
+    }
 }
 
 /// Tous les appels système d'un désassemblage, avec leur numéro quand il
@@ -126,6 +135,26 @@ impl ReModule for SyscallsModule {
             ));
             return;
         }
+        // Le portrait d'abord, comme pour les imports : la liste répond
+        // « quels appels », le portrait répond « pour quoi faire ». Les
+        // deux panneaux emploient la même ligne et les mêmes couleurs —
+        // un `socket` est un `socket`, qu'il vienne du noyau ou de la
+        // table de liaison.
+        let comptes: Vec<(Family, usize)> = behaviour::ALL
+            .into_iter()
+            .filter_map(|famille| {
+                let combien = self
+                    .found
+                    .iter()
+                    .filter(|call| call.family() == Some(famille))
+                    .count();
+                (combien > 0).then_some((famille, combien))
+            })
+            .collect();
+        if !comptes.is_empty() {
+            crate::imports_module::portrait(ui, ctx, &comptes);
+            ui.add_space(4.0);
+        }
         for call in &self.found {
             ui.horizontal(|ui| {
                 ui.monospace(format!("{:08x}", call.addr));
@@ -141,6 +170,12 @@ impl ReModule for SyscallsModule {
                         ui.label(syscall_name(number).unwrap_or(ctx.t("inconnu", "unknown")));
                         if !is_simulated(number) {
                             ui.weak(ctx.t("(non simulé)", "(not simulated)"));
+                        }
+                        if let Some(famille) = call.family() {
+                            ui.label(
+                                egui::RichText::new(famille.label(ctx.lang)).color(famille.color()),
+                            )
+                            .on_hover_text(famille.why(ctx.lang));
                         }
                     }
                 }

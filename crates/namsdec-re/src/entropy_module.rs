@@ -1,4 +1,4 @@
-use crate::entropy::{self, Verdict, Window};
+use crate::entropy::{self, Verdict, Window, seuils};
 use crate::{ReContext, ReModule};
 
 /// Le profil d'entropie du fichier, tranche par tranche.
@@ -16,6 +16,12 @@ pub struct EntropyModule {
     windows: Vec<Window>,
     whole: f64,
     size: usize,
+    /// L'empaqueteur, quand il se nomme lui-même.
+    ///
+    /// Ici et non dans un panneau à part : c'est ce panneau qui dit
+    /// « compressé, chiffré, ou empaqueté », et le nommer est le cran
+    /// d'après — la réponse à la question que la mesure vient de poser.
+    packers: Vec<crate::packer::Found>,
 }
 
 impl ReModule for EntropyModule {
@@ -37,6 +43,7 @@ impl ReModule for EntropyModule {
         // Soixante-quatre tranches : assez pour qu'une bosse se voie,
         // assez peu pour que chacune porte de quoi mesurer.
         self.windows = entropy::profile(ctx.binary, 64);
+        self.packers = crate::packer::detect(ctx.binary);
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
@@ -65,6 +72,26 @@ impl ReModule for EntropyModule {
             histogram(ui, &self.windows);
         });
 
+        // L'empaqueteur quand il se nomme : la mesure dit « il y a
+        // quelque chose d'illisible ici », le nom dit quoi en faire.
+        // Avant la tranche la plus dense, parce que c'est la réponse et
+        // non un détail de plus.
+        for empaqueteur in &self.packers {
+            ui.add_space(6.0);
+            ui.horizontal_wrapped(|ui| {
+                ui.strong(
+                    egui::RichText::new(empaqueteur.name)
+                        .color(egui::Color32::from_rgb(0xf4, 0x87, 0x71)),
+                );
+                // La preuve avec le nom, toujours : « c'est de l'UPX »
+                // sans dire pourquoi demande de faire confiance.
+                ui.monospace(empaqueteur.clue.label(ctx.lang));
+            });
+            ui.indent(empaqueteur.name, |ui| {
+                ui.weak(empaqueteur.text(ctx.lang));
+            });
+        }
+
         ui.add_space(6.0);
         // La tranche la plus haute, nommée par son décalage : c'est
         // l'endroit où aller voir, et le donner en hexadécimal évite de
@@ -90,10 +117,21 @@ impl ReModule for EntropyModule {
         // bloc n'est pas une preuve, et laisser croire le contraire
         // ferait chercher un empaqueteur là où il n'y en a pas.
         ui.add_space(4.0);
-        ui.weak(ctx.t(
-            "Une piste, non un verdict : un bloc de code dense monte à 6,5 sans être chiffré.",
-            "A hint, not a verdict: dense code reaches 6.5 without being encrypted.",
-        ));
+        // Le chiffre vient de `entropy::seuils` : la phrase et le repère
+        // tracé plus bas parlent du même réglage, et doivent donc le
+        // lire au même endroit.
+        ui.weak(if fr {
+            format!(
+                "Une piste, non un verdict : un bloc de code dense monte à {} sans être \
+                 chiffré.",
+                format!("{:.1}", seuils::DENSE_CODE).replace('.', ",")
+            )
+        } else {
+            format!(
+                "A hint, not a verdict: dense code reaches {:.1} without being encrypted.",
+                seuils::DENSE_CODE
+            )
+        });
     }
 }
 
@@ -140,10 +178,12 @@ fn histogram(ui: &mut egui::Ui, windows: &[Window]) {
         peintre.rect_filled(barre, 0.0, couleur);
     }
 
-    // Le repère de 7,2 : la ligne au-dessus de laquelle il n'y a plus de
-    // structure à voir. Sans elle, les hauteurs ne se comparent qu'entre
-    // elles, et l'on ne sait pas si une barre est haute dans l'absolu.
-    let seuil = rect.bottom() - (7.2 / 8.0) as f32 * HAUTEUR;
+    // Le repère d'empaquetage : la ligne au-dessus de laquelle il n'y a
+    // plus de structure à voir. Sans elle, les hauteurs ne se comparent
+    // qu'entre elles, et l'on ne sait pas si une barre est haute dans
+    // l'absolu. La valeur vient de `entropy::seuils`, comme celle qui
+    // décide des couleurs juste au-dessus.
+    let seuil = rect.bottom() - (seuils::EMPAQUETÉ / 8.0) as f32 * HAUTEUR;
     peintre.line_segment(
         [
             egui::pos2(rect.left(), seuil),
@@ -215,6 +255,42 @@ mod tests {
         module.on_binary_loaded(&contexte(&[], &cpu));
         assert!(module.windows.is_empty());
         assert_eq!(module.whole, 0.0);
+    }
+
+    /// Un empaqueteur qui se nomme est nommé, avec sa preuve.
+    ///
+    /// C'est le cran d'après la mesure : « compressé, chiffré, ou
+    /// empaqueté » est juste et frustrant ; « UPX, et `upx -d` le rendra »
+    /// est actionnable.
+    #[test]
+    fn a_packer_that_names_itself_is_named() {
+        let cpu = Cpu::new(Memory::new(0x400000, 0x1000));
+        let mut binaire = vec![0u8; 512];
+        binaire.extend_from_slice(b"UPX!");
+        binaire.extend(std::iter::repeat_n(0x90u8, 1024));
+
+        let mut module = EntropyModule::default();
+        module.on_binary_loaded(&contexte(&binaire, &cpu));
+        assert_eq!(module.packers.len(), 1, "{:?}", module.packers);
+        assert_eq!(module.packers[0].name, "UPX");
+
+        // Et il est écrit dans le panneau, preuve comprise.
+        let egui_ctx = egui::Context::default();
+        let ctx = contexte(&binaire, &cpu);
+        let mut textes: Vec<String> = Vec::new();
+        for _ in 0..2 {
+            textes.clear();
+            let mut sortie = egui_ctx.run_ui(Default::default(), |ui| module.ui(ui, &ctx));
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(texte) = &clipped.shape {
+                    textes.push(texte.galley.text().to_owned());
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+        let tout = textes.join(" | ");
+        assert!(tout.contains("UPX"), "{tout}");
+        assert!(tout.contains("0x200"), "la preuve se vérifie : {tout}");
     }
 
     /// Le titre suit la langue, comme celui des autres modules.

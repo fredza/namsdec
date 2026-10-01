@@ -69,7 +69,7 @@ use namsdec_explorer::{ExplorerAction, FileExplorer};
 use namsdec_re::{
     BinaryInfoModule, DigestModule, DumpModule, EntropyModule, FunctionsModule, GadgetsModule,
     ImportsModule, MapModule, PatternsModule, ProtectionsModule, ReContext, ReModuleRegistry,
-    SlackModule, StringsModule, SyscallsModule, XrefsModule,
+    SignalsModule, SlackModule, StringsModule, SyscallsModule, XrefsModule,
 };
 use namsdec_theme::Theme;
 
@@ -2064,6 +2064,12 @@ impl Default for NamsdecApp {
         // est armé, car c'est ce qui décide de tout ce qu'on tentera
         // ensuite.
         re_registry.register(Box::new(BinaryInfoModule::default()));
+        // Puis les signaux : ce que tous les autres ont trouvé, rassemblé.
+        // Il n'analyse rien de neuf — il dit par où commencer, et renvoie
+        // chaque fois au panneau qui explique. C'est le tableau de bord
+        // qu'on lit en premier, et il est donc en second : d'abord de
+        // quoi on parle, ensuite ce qui en ressort.
+        re_registry.register(Box::new(SignalsModule::default()));
         // Puis l'identité du fichier : de quel octet parle-t-on ? C'est
         // la première ligne d'un compte rendu, et ce qui permet à deux
         // personnes de savoir qu'elles lisent le même fichier.
@@ -3251,6 +3257,7 @@ impl NamsdecApp {
         Some(namsdec_re::report::markdown(
             &scan,
             &state.output.file,
+            &state.disasm,
             self.lang.code(),
             &name,
         ))

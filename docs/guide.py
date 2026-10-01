@@ -1086,7 +1086,7 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
         ("p",
          "Le module <b>RE</b> (Préférences › Modules) ajoute un onglet au panneau "
          "latéral et une fenêtre d'analyse. L'onglet ne porte qu'un bouton, celui qui "
-         "ouvre la fenêtre : sept modules empilés dans une colonne de trois cents "
+         "ouvre la fenêtre : une douzaine de modules empilés dans une colonne de trois cents "
          "pixels se parcourent à l'ascenseur."),
         ("p",
          "La fenêtre se lit <b>en largeur</b> : une colonne à gauche nomme les "
@@ -1108,17 +1108,39 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "change ce qu'on y cherche : une entropie haute dans "
          "<font face='Courier'>.text</font> est normale, la même dans "
          "<font face='Courier'>.rodata</font> annonce des données chiffrées.",
+         "<b>Signaux</b> — ce que tous les autres ont trouvé, rassemblé : segment "
+         "inscriptible <i>et</i> exécutable, entropie qui monte sur une grande tranche, "
+         "empaqueteur reconnu, anti-débogage, protections absentes, code qui peut se "
+         "déballer, indicateurs dans les chaînes. Il n'analyse rien de neuf — il dit par "
+         "où commencer. Chaque ligne donne un <b>fait</b> (une adresse, un nom, une "
+         "mesure), <b>ce que ce fait change</b>, et <b>le panneau</b> qui l'explique. "
+         "Rien n'est additionné en score : un score donnerait l'illusion d'un verdict, "
+         "et c'est le lecteur qui conclut. Quand rien ne ressort, le panneau le dit — un "
+         "panneau blanc ressemble à un panneau cassé.",
          "<b>Protections</b> — PIE, NX, RELRO, canari de pile, FORTIFY, IBT et pile "
          "fantôme, segments W+X, symboles, bibliothèques, RPATH — avec, pour chacune, ce "
          "que son état change concrètement.",
          "<b>Fonctions empruntées</b> — chaque entrée de la table de liaison retrouve son "
          "nom, avec le nombre d'appels qui y mènent et une phrase d'explication pour les "
-         "plus courantes.",
+         "plus courantes. En tête, le <b>portrait</b> : six familles de comportement — "
+         "réseau, exécution, anti-débogage, mémoire, chiffrement, fichiers — chacune avec "
+         "le nombre de fonctions qui la tiennent. La question n'est pas « quelles "
+         "fonctions » mais « qu'est-ce que ce binaire fait », et trois familles allumées "
+         "sont déjà un portrait.",
          "<b>Appels système</b> — le numéro remonté depuis le RAX qui précède, et le nom "
-         "qui va avec.",
+         "qui va avec, avec le même portrait par familles et les mêmes couleurs : un "
+         "<font face='Courier'>socket</font> est un <font face='Courier'>socket</font>, "
+         "qu'il arrive par la table de liaison ou par le numéro 41 dans RAX — et un "
+         "programme qui veut passer inaperçu emploie justement le second.",
          "<b>Chaînes</b> — cherchées dans les sections de données, comme "
          "<font face='Courier'>strings -d</font>, avec la possibilité de ne montrer que "
-         "celles que le code désigne.",
+         "celles que le code désigne. En tête, les <b>indicateurs</b> : adresses web, "
+         "adresses IP, noms de domaine, courriels, chemins absolus, clés de registre. Ce "
+         "sont les seules chaînes qu'on puisse aller vérifier <i>ailleurs</i> — dans un "
+         "journal réseau, sur un autre poste — et chaque rubrique se copie d'un clic, une "
+         "par ligne. Une forme reconnue n'est pas une intention : un chemin peut n'être "
+         "qu'un exemple compilé dans un message d'aide, et la règle est écrite pour se "
+         "taire plutôt que de se tromper.",
          "<b>Références croisées</b> — qui appelle quoi, qui saute où, qui désigne quelle "
          "adresse. Une adresse qu'un `call` vise est une fonction, même dépouillée de son "
          "nom.",
@@ -1145,7 +1167,12 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "fichier puis par tranches. C'est ce qui répond avant tout le reste à « y a-t-il "
          "seulement quelque chose à lire ici ? » : un binaire empaqueté montre un petit "
          "déchiffreur en clair et un gros bloc illisible, et les autres modules "
-         "analyseraient le déchiffreur en croyant analyser le programme.",
+         "analyseraient le déchiffreur en croyant analyser le programme. Et quand "
+         "l'empaqueteur se <b>nomme</b> — un nom de section, un nombre magique —, le "
+         "panneau le nomme aussi, avec la preuve et ce qu'on en fait : "
+         "<font face='Courier'>upx -d</font> rend l'original, "
+         "<font face='Courier'>pyinstxtractor</font> sort l'archive. « Compressé, chiffré "
+         "ou empaqueté » est juste et frustrant ; « c'est de l'UPX » est actionnable.",
         ]),
         ("p",
          "Le <b>motif cyclique</b> (Outils › Motif cyclique) est celui de pwntools, octet "
@@ -1171,7 +1198,12 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "repère qui désigne autre chose que ce qu'on croit est pire qu'un repère absent."),
         ("p",
          "Le rapport d'analyse se copie en Markdown ou s'enregistre, pour être collé dans "
-         "un compte rendu."),
+         "un compte rendu. Il porte les <b>signaux</b>, le <b>portrait</b> par familles, "
+         "les fonctions empruntées avec leur famille et les <b>indicateurs</b> rangés par "
+         "nature : de quoi joindre à un compte rendu ce que le destinataire pourra aller "
+         "vérifier de son côté. C'est la même fonction qui produit les signaux du rapport "
+         "et ceux du panneau — deux synthèses qui diraient des choses différentes "
+         "seraient pires qu'une."),
 
         ("h1", "Quatre séances, et ce qu'elles apprennent"),
         ("p",

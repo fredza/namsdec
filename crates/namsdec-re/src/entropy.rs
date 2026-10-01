@@ -39,11 +39,55 @@ pub fn shannon(bytes: &[u8]) -> f64 {
         .sum::<f64>()
 }
 
+/// Les seuils qui séparent les verdicts, et la mesure qui les justifie.
+///
+/// Ils étaient écrits en clair dans le `match` de [`Verdict::of`], et la
+/// ligne de repère du panneau en recopiait un troisième. Trois nombres
+/// dispersés que personne ne pouvait régler sans relire l'algorithme —
+/// et qu'un lecteur pouvait prendre pour des vérités plutôt que pour des
+/// repères. Les voici réunis, chacun avec ce qu'on a mesuré pour le
+/// poser.
+///
+/// Aucun n'est une frontière de la nature : ce sont des bornes
+/// *ordinaires*, prises sur des fichiers ordinaires. Un petit bloc de
+/// code très dense franchit [`DENSE_CODE`] sans être chiffré pour
+/// autant, et c'est pourquoi le panneau dit « une piste, non un
+/// verdict ».
+pub mod seuils {
+    /// En dessous, presque rien ne varie : du remplissage, des zéros,
+    /// une table d'adresses alignées. Mesuré : une page de zéros vaut 0,
+    /// une table de pointeurs consécutifs tourne autour de 1.
+    pub const PLAT: f64 = 1.5;
+
+    /// En dessous, la distribution d'un texte lisible : l'ASCII
+    /// n'emploie qu'une cinquantaine de valeurs sur 256. Mesuré : du
+    /// français ou de l'anglais ordinaire tourne entre 4,0 et 4,5.
+    pub const TEXTE: f64 = 5.0;
+
+    /// En dessous, du code machine ordinaire. Mesuré : le
+    /// `.text` d'un binaire compilé sans optimisation agressive tourne
+    /// entre 5,5 et 6,5.
+    pub const CODE: f64 = 6.8;
+
+    /// Au-delà, il n'y a plus de structure à voir : compressé, chiffré,
+    /// ou déjà empaqueté. C'est le repère que le profil trace en
+    /// travers de l'histogramme, et celui que le panneau « Signaux »
+    /// relève. Mesuré : un bloc `gzip` ou AES tourne entre 7,9 et 8,0 ;
+    /// entre [`CODE`] et ce seuil, on ne sait pas trancher.
+    pub const EMPAQUETÉ: f64 = 7.2;
+
+    /// Le chiffre qu'on cite quand on prévient : un bloc de code dense
+    /// atteint cette valeur sans rien cacher. Il ne sert à aucune
+    /// décision — seulement à la phrase qui tempère les autres.
+    pub const DENSE_CODE: f64 = 6.5;
+}
+
 /// Ce qu'une valeur d'entropie suggère.
 ///
 /// Des seuils, donc des approximations — et il faut le dire : un petit
 /// bloc de code bien dense monte à 6,5 sans être chiffré pour autant.
-/// C'est une piste, pas un verdict, et le libellé le formule ainsi.
+/// C'est une piste, pas un verdict, et le libellé le formule ainsi. Les
+/// bornes et leur justification sont dans [`seuils`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Verdict {
     /// Presque rien ne varie : du remplissage, des zéros, une table.
@@ -61,15 +105,15 @@ pub enum Verdict {
 impl Verdict {
     /// Le verdict qui correspond à cette entropie.
     ///
-    /// Les bornes viennent de mesures ordinaires : du texte ASCII tourne
-    /// autour de 4 à 4,5 ; du code x86 entre 5,5 et 6,5 ; au-delà de 7,2
-    /// il n'y a plus de structure à voir, et à 7,9 c'est du bruit.
+    /// Les bornes, et ce qu'on a mesuré pour les poser, sont dans
+    /// [`seuils`] : les lire là plutôt qu'ici permet de les régler sans
+    /// relire ce `match`.
     pub fn of(entropy: f64) -> Self {
         match entropy {
-            e if e < 1.5 => Verdict::Flat,
-            e if e < 5.0 => Verdict::Text,
-            e if e < 6.8 => Verdict::Code,
-            e if e < 7.2 => Verdict::Mixed,
+            e if e < seuils::PLAT => Verdict::Flat,
+            e if e < seuils::TEXTE => Verdict::Text,
+            e if e < seuils::CODE => Verdict::Code,
+            e if e < seuils::EMPAQUETÉ => Verdict::Mixed,
             _ => Verdict::Random,
         }
     }
@@ -132,6 +176,52 @@ pub fn profile(bytes: &[u8], count: usize) -> Vec<Window> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Les seuils se suivent, et chacun rend le verdict qu'il annonce.
+    ///
+    /// Rassemblés dans un module, ils pouvaient se régler indépendamment
+    /// les uns des autres — et un seuil « plat » au-dessus du seuil
+    /// « texte » rendrait un `match` dont une branche ne serait jamais
+    /// prise, sans que rien ne le dise. Ce contrôle est le garde-fou de
+    /// ce réglage-là.
+    #[test]
+    fn the_thresholds_follow_one_another() {
+        use seuils::*;
+        // Nommés et rangés dans une suite : un `assert!(PLAT < TEXTE)`
+        // compare deux constantes, et le compilateur le tranche avant
+        // d'exécuter quoi que ce soit — ce n'est plus un contrôle.
+        // Lus par la boucle, ils le redeviennent.
+        let bornes = [
+            ("PLAT", PLAT),
+            ("TEXTE", TEXTE),
+            ("CODE", CODE),
+            ("EMPAQUETÉ", EMPAQUETÉ),
+        ];
+        for paire in bornes.windows(2) {
+            let ((avant, bas), (après, haut)) = (paire[0], paire[1]);
+            assert!(
+                bas < haut,
+                "{avant} ({bas}) doit rester sous {après} ({haut})"
+            );
+        }
+        let plus_haut = bornes.last().expect("la suite n'est pas vide").1;
+        assert!(plus_haut <= 8.0, "une entropie ne dépasse pas huit bits");
+        // Le chiffre qu'on cite pour tempérer est bien dans la zone du
+        // code : le citer au-delà du seuil d'empaquetage ferait dire au
+        // panneau le contraire de ce qu'il veut dire.
+        assert!(
+            DENSE_CODE < plus_haut,
+            "le repère du code dense reste sous celui de l'empaquetage"
+        );
+
+        // Et chaque seuil est bien la frontière qu'il prétend être :
+        // juste en dessous, le verdict d'avant ; au niveau, le suivant.
+        assert_eq!(Verdict::of(PLAT - 0.01), Verdict::Flat);
+        assert_eq!(Verdict::of(PLAT), Verdict::Text);
+        assert_eq!(Verdict::of(TEXTE), Verdict::Code);
+        assert_eq!(Verdict::of(CODE), Verdict::Mixed);
+        assert_eq!(Verdict::of(EMPAQUETÉ), Verdict::Random);
+    }
 
     /// Les deux extrêmes, qui bornent tout le reste.
     #[test]

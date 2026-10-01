@@ -6,8 +6,8 @@ retiré — reste dans `AMELIORATIONS.txt`, qui ne bouge pas de rôle : une
 seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
-Tenue à jour au fil des séances. Dernière mise à jour : **30 septembre
-2026**, version 0.2.6-beta.1, 618 tests au vert.
+Tenue à jour au fil des séances. Dernière mise à jour : **1er octobre
+2026**, version 0.2.6-beta.1, 1 061 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -378,8 +378,84 @@ Détail chiffré dans `AMELIORATIONS.txt` 7.11, section « REVUE DU
       exigence d'un outil qui reçoit des fichiers malveillants : ils sont
       délibérément malformés. Invariant tenu par
       `a_hostile_elf_never_panics_the_scan`. Reconfirmé : 0/40 000.
-- [ ] **Étendre l'invariant** aux autres analyseurs et au désassembleur
-      (voir septembre26.md, C2).
+- [x] **L'invariant étendu à TOUS les analyseurs** (C2) — un contrôle
+      d'intégration, `tests/hostile.rs`, fait passer une vingtaine
+      d'analyseurs, le désassembleur et les deux rapports sur des ELF
+      abîmés de trois façons : octets changés, troncature, et valeurs
+      extrêmes posées sur huit octets alignés. Le germe est **fabriqué**
+      — en-tête, segments, sections, symboles, relocations, entrées de
+      liaison — et non lu sur le disque : le contrôle d'origine partait
+      de `/bin/true` et passait sans rien prouver sur une machine qui
+      n'en a pas.
+      **Quatre paniques trouvées et corrigées** : `imports::file_offset`
+      (deux sommes d'adresses), `slack` (le nom de section et l'adresse
+      virtuelle d'un trou), et surtout les **trois lecteurs** `u16_at`,
+      `u32_at`, `u64_at` d'`elf_scan` et d'`imports` — `at + 4` déborde
+      quand `at` vient d'un champ du fichier, et toutes les additions de
+      décalage de champ sont désormais saturantes. C'était une classe de
+      défauts, non un défaut.
+
+## 4 septies. Lire un échantillon : ce qui ressort, et ce qu'on en recopie
+
+La séance du 1er octobre, menée sur le relevé `septembre26.md`. Tout
+s'appuie sur du déjà-calculé : aucun de ces panneaux ne relit le fichier
+pour son compte.
+
+- [x] **Les familles de comportement** (A1) — `behaviour.rs` range les
+      noms en six familles : réseau, exécution, anti-débogage, mémoire,
+      chiffrement, fichiers. Une seule table pour les imports **et** les
+      appels système, parce qu'un `socket` est un `socket` qu'il vienne
+      de la table de liaison ou du numéro 41 dans RAX — et qu'un
+      programme qui veut passer inaperçu emploie justement le second.
+      Une table de noms exacts et non des règles : « tout ce qui commence
+      par `exec` » attraperait `execute_query`. Le portrait se dessine en
+      tête des deux panneaux, avec les mêmes couleurs.
+      Ce qui n'y est **pas** : `raise`, `alarm`, `sigaltstack`,
+      `rt_sigaction`. La capture d'écran a montré `/bin/ls` allumant
+      « Anti-débogage » sur `raise` — un tableau de bord qui crie sur `ls`
+      n'est plus lu.
+- [x] **Le panneau « Signaux »** (A2) — la synthèse, en seconde position
+      dans la colonne. Il n'analyse rien de neuf : empaqueteur reconnu,
+      segment W+X, entropie haute sur une **grande** tranche, protections
+      absentes, familles présentes, code auto-modifiant possible,
+      indicateurs. Chaque ligne dit un fait, ce que ce fait change, et le
+      panneau qui l'explique. **Rien n'est additionné en score** : un
+      score donnerait l'illusion d'un verdict.
+      Un contrôle garde le panneau utilisable : sur `/bin/true` et
+      `/bin/ls`, aucune ligne « Remarquable ».
+      La tranche d'entropie y est mesurée sur 4 Kio au moins, et non sur
+      les soixante-quatrièmes du panneau Entropie : la queue de
+      `/bin/true` fait 505 octets et mesure 7,61 sans rien cacher.
+- [x] **Les indicateurs dans les chaînes** (A3) — `ioc.rs` : adresses
+      web, adresses IP, noms de domaine, courriels, chemins absolus, clés
+      de registre. Ce sont les seules choses d'un binaire qu'on puisse
+      aller vérifier **ailleurs**. La règle est écrite pour se taire
+      plutôt que se tromper : une liste de domaines de premier niveau
+      connus, et non « tout ce qui contient un point » — sans quoi
+      `libc.so.6` passerait pour un domaine et la liste serait
+      inutilisable. Chaque rubrique se copie d'un clic.
+- [x] **L'empaqueteur nommé** (A4) — `packer.rs` : UPX, PyInstaller,
+      AppImage, par nom de section ou nombre magique, avec **la preuve**
+      et ce qu'on en fait (`upx -d`, `pyinstxtractor`). Le nombre magique
+      d'AppImage n'est cherché qu'à sa place, au décalage 8 : trois
+      octets se rencontrent par hasard partout.
+- [x] **Les seuils d'entropie rassemblés** (C3) — `entropy::seuils`, avec
+      la mesure qui justifie chacun. Ils étaient écrits en clair dans un
+      `match` et recopiés dans le panneau.
+- [x] **Le rapport porte tout cela** — signaux, portrait, familles sur
+      chaque import, indicateurs par nature. C'est la **même** fonction
+      qui produit les signaux du rapport et ceux du panneau.
+- [x] **Le relevé de ce qui est peint** — `tests/panneaux.rs` mesure les
+      cinq panneaux touchés, à deux largeurs et dans les deux langues :
+      rien ne court au-delà d'un bord, rien ne se recouvre, rien ne bouge
+      tout seul, et aucune phrase n'est trouée d'espaces. Ce dernier
+      contrôle vient d'un vrai défaut : un littéral Rust coupé sur
+      plusieurs lignes garde ses espaces d'indentation quand le `\` de
+      continuation disparaît.
+- [ ] **A5, non fait** : vérifier que le désassemblage suit le flot et
+      non seulement la linéarité — le désalignement volontaire, un saut
+      qui atterrit au milieu d'une instruction. Identifié, chiffré nulle
+      part.
 
 ## 4 quinquies. Modifier un binaire — premier morceau
 

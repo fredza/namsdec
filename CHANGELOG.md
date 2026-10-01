@@ -7,8 +7,66 @@ entrée par version, et ce qui change pour qui s'en sert.
 ## 0.2.6-beta.1 — 30 septembre 2026
 
 Une instruction se récrit en assembleur, le désassemblage se lit dans la
-syntaxe du système, dix-huit exercices de plus, et le vocabulaire des
-outils cesse de mélanger trois questions.
+syntaxe du système, dix-huit exercices de plus, le vocabulaire des outils
+cesse de mélanger trois questions — et la fenêtre d'analyse répond enfin
+à la première question qu'on se pose devant un échantillon inconnu : par
+où commencer.
+
+**« Signaux » : ce qui ressort, et où le lire**
+- Un panneau de synthèse, en seconde position : empaqueteur reconnu,
+  segment inscriptible **et** exécutable, entropie qui monte, protections
+  absentes, anti-débogage, code qui peut se déballer, indicateurs dans
+  les chaînes. Il **n'analyse rien de neuf** — c'est ce que les autres
+  panneaux ont déjà trouvé, rassemblé.
+- Chaque ligne dit un **fait** vérifiable (une adresse, un nom, une
+  mesure), **ce que ce fait change**, et **le panneau** qui l'explique.
+- **Rien n'est additionné en score.** Un score donnerait l'illusion d'un
+  verdict ; aucune de ces lignes n'est une preuve, et c'est le lecteur
+  qui conclut.
+- Quand rien ne ressort, le panneau le dit — et dit aussi que cela ne
+  veut pas dire inoffensif, seulement que ce binaire ne porte aucune des
+  marques que namsdec sait reconnaître.
+
+**Ce que le binaire sait faire, en six familles**
+- Les fonctions importées et les appels système sont désormais **rangés**
+  autant que listés : réseau, exécution, anti-débogage, mémoire,
+  chiffrement, fichiers. Trois familles allumées sont déjà un portrait.
+- La même table sert aux deux panneaux, avec les mêmes couleurs : un
+  `socket` est un `socket` qu'il arrive par la table de liaison ou par le
+  numéro 41 dans RAX — et un programme qui veut passer inaperçu emploie
+  justement le second.
+
+**Les indicateurs, tirés des chaînes**
+- Adresses web, adresses IP, noms de domaine, courriels, chemins absolus,
+  clés de registre : les seules choses d'un binaire qu'on puisse aller
+  vérifier **ailleurs**, dans un journal réseau ou sur un autre poste.
+  Chaque rubrique se copie d'un clic, une par ligne.
+- La règle est écrite pour **se taire plutôt que se tromper** : une liste
+  de domaines de premier niveau connus, et non « tout ce qui contient un
+  point » — sans quoi `libc.so.6` passerait pour un nom de domaine.
+
+**L'empaqueteur nommé, avec sa preuve**
+- UPX, PyInstaller, AppImage se reconnaissent à un nom de section ou à un
+  nombre magique. Le panneau Entropie les nomme, **dit où est la marque**,
+  et dit quoi en faire : `upx -d` rend l'original, `pyinstxtractor` sort
+  l'archive. « Compressé, chiffré ou empaqueté » est juste et frustrant.
+
+**Le rapport porte tout cela**
+- Signaux, portrait par familles, famille de chaque import, indicateurs
+  rangés par nature. C'est la **même fonction** qui produit les signaux du
+  rapport et ceux du panneau.
+
+**Quatre paniques de plus sur ELF hostile**
+- L'invariant « aucune entrée ne fait paniquer un analyseur » couvre
+  maintenant **tous** les analyseurs et le désassembleur, sur un ELF
+  d'épreuve **fabriqué** plutôt que lu sur le disque — le contrôle tourne
+  donc partout de la même façon.
+- Il a trouvé quatre paniques : deux sommes d'adresses dans
+  `imports::file_offset`, deux dans la recherche de place libre, et
+  surtout les trois lecteurs d'entiers d'`elf_scan` et d'`imports` —
+  `at + 4` déborde dès que `at` vient d'un champ du fichier. Ce n'était
+  pas un défaut mais une classe de défauts : quarante additions de
+  décalage sont désormais saturantes.
 
 **Modifier le code, en assembleur**
 - La fenêtre des correctifs accepte désormais **une instruction** là où
