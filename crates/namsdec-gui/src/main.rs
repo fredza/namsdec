@@ -3925,7 +3925,6 @@ fn caler_à_droite(texte: &str, largeur: usize) -> String {
     out
 }
 
-
 fn window_room(ui: &egui::Ui) -> f32 {
     (ui.ctx().input(|i| i.content_rect()).height() * 0.55).max(240.0)
 }

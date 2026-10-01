@@ -79,7 +79,11 @@ pub(crate) fn heat_colour(theme: &'static Theme, count: u64, max: u64) -> egui::
 }
 
 /// La ligne qu'un point de l'écran désigne dans la gouttière.
-pub(crate) fn ligne_sous(galley: &egui::Galley, gutter_rect: egui::Rect, pos: egui::Pos2) -> Option<u32> {
+pub(crate) fn ligne_sous(
+    galley: &egui::Galley,
+    gutter_rect: egui::Rect,
+    pos: egui::Pos2,
+) -> Option<u32> {
     galley
         .rows
         .iter()

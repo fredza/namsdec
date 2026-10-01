@@ -7,7 +7,6 @@
 
 use super::*;
 
-
 /// Au-delà de ce seuil, une frame n'est plus une saccade : la fenêtre a
 /// cessé de répondre assez longtemps pour que l'utilisateur le voie, et
 /// le compositeur finit par proposer de forcer l'application à quitter.
@@ -76,7 +75,11 @@ pub(crate) fn slow_frame_note(
 }
 
 /// Écrit sur la sortie d'erreur ce que `slow_frame_note` a trouvé à dire.
-pub(crate) fn report_slow_frame(total: Duration, spans: &[(&'static str, Duration)], texte_changé: bool) {
+pub(crate) fn report_slow_frame(
+    total: Duration,
+    spans: &[(&'static str, Duration)],
+    texte_changé: bool,
+) {
     if let Some(note) = slow_frame_note(total, spans, texte_changé) {
         eprintln!("{note}");
     }
