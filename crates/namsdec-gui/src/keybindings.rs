@@ -207,12 +207,20 @@ impl Chord {
     pub fn display(&self, ctx: &egui::Context) -> String {
         match self {
             Chord::Simple(sc) => ctx.format_shortcut(sc),
+            // Séparées par une espace, et non par « , ».
+            //
+            // Le tableau des deux jeux a mis les deux formes côte à
+            // côte, trente lignes de suite : `Space , P , I` en regard
+            // de `Ctrl+Shift+B`. La virgule entre deux espaces n'ajoute
+            // rien et se lit comme un signe de plus à démêler. Le projet
+            // écrit d'ailleurs « Espace p i » partout dans sa prose, et
+            // c'est cette forme-là qu'on retrouve maintenant à l'écran.
             Chord::Leader(sequence) => sequence
                 .as_slice()
                 .iter()
                 .map(|k| k.name())
                 .collect::<Vec<_>>()
-                .join(" , "),
+                .join(" "),
         }
     }
 }

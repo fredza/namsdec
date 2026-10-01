@@ -1183,6 +1183,27 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "le listing là où l'exécution en est, et le clic paraîtrait n'avoir rien fait. "
          "Une adresse qui tombe entre deux lignes mène à la ligne juste avant ; une "
          "adresse qui n'est dans aucune partie désassemblée le dit."),
+        ("h2", "Les raccourcis, et les deux jeux côte à côte"),
+        ("p",
+         "<b>Préférences › Raccourcis</b> montre désormais les <b>deux jeux</b>, action "
+         "par action : celui qui est actif en clair, l'autre à côté pour comparer. C'est "
+         "ainsi qu'on voit ce qu'on vient y chercher — ce qui DIFFÈRE d'un jeu à l'autre, "
+         "ce qu'on a soi-même déplacé, et deux actions qui répondraient à la même frappe."),
+        ("liste", [
+         "Quand les deux jeux disent la même chose — une frappe sur trois : "
+         "<font face='Courier'>Ctrl+S</font>, <font face='Courier'>Ctrl+O</font>, "
+         "<font face='Courier'>Maj+F5</font> —, la seconde colonne écrit « la même » au "
+         "lieu de recopier. L'œil descend alors la colonne et ne s'arrête que sur les "
+         "écarts.",
+         "Un raccourci qu'on a <b>déplacé soi-même</b> est marqué, et le survol dit ce que "
+         "le jeu proposait. Sans cette marque, on croirait que le jeu livré propose ce "
+         "qu'on a posé — et l'on chercherait longtemps pourquoi la même touche ne fait pas "
+         "la même chose sur une autre machine.",
+         "Deux actions qui répondent à la <b>même frappe</b> se voient en rouge, et le "
+         "survol nomme l'autre. Les jeux livrés n'en ont aucune — un contrôle le tient — "
+         "mais un raccourci qu'on déplace peut très bien en écraser un autre, et rien ne "
+         "le disait.",
+        ]),
         ("p",
          "Le <b>motif cyclique</b> (Outils › Motif cyclique) est celui de pwntools, octet "
          "pour octet : on l'envoie au programme, et le décalage relu depuis un registre dit "

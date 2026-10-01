@@ -1955,6 +1955,48 @@ enum PreferencesTab {
     Tools,
 }
 
+impl PreferencesTab {
+    /// Les cinq pages, dans l'ordre où elles s'affichent.
+    ///
+    /// Déclarées une fois : le banc de mise en page les parcourt toutes,
+    /// et une page nouvelle s'y trouve contrôlée sans qu'on y pense.
+    /// Elles ne l'étaient pas — seule la première s'ouvrait, et les
+    /// quatre autres n'avaient jamais été mesurées.
+    pub(crate) const ALL: [PreferencesTab; 5] = [
+        PreferencesTab::General,
+        PreferencesTab::Shortcuts,
+        PreferencesTab::Modules,
+        PreferencesTab::Plugins,
+        PreferencesTab::Tools,
+    ];
+
+    /// Le nom de l'onglet, dans la langue de l'interface.
+    pub(crate) fn label(self, s: &'static Strings) -> &'static str {
+        match self {
+            PreferencesTab::General => s.preferences_tab_general,
+            PreferencesTab::Shortcuts => s.preferences_tab_shortcuts,
+            PreferencesTab::Modules => s.preferences_tab_modules,
+            PreferencesTab::Plugins => s.preferences_tab_plugins,
+            PreferencesTab::Tools => s.preferences_tab_tools,
+        }
+    }
+
+    /// Un nom court, pour nommer la scène d'un échec du banc.
+    ///
+    /// Réservé aux contrôles : à l'écran, une page se nomme par son
+    /// libellé traduit, non par cet identifiant.
+    #[cfg(test)]
+    pub(crate) fn id(self) -> &'static str {
+        match self {
+            PreferencesTab::General => "general",
+            PreferencesTab::Shortcuts => "raccourcis",
+            PreferencesTab::Modules => "modules",
+            PreferencesTab::Plugins => "plugins",
+            PreferencesTab::Tools => "outils",
+        }
+    }
+}
+
 /// Programme de départ affiché au lancement, pour ouvrir sur un exemple
 /// qui fonctionne plutôt qu'un éditeur vide.
 ///

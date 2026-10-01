@@ -220,8 +220,16 @@ rejoint B1 (une vue de listing qu'on ne délègue plus entièrement à egui).
   maintenant les signaux, le portrait par familles, la famille de chaque
   import, les indicateurs par nature et les deux lectures d'un listing
   trompé.
-- **Les raccourcis repris par le sens** (A 7.1) : le jeu Vim force la main
-  (`n` court-circuite `Espace n i`). Refonte proposée de longue date.
+- **[FAIT le 1er octobre] Les raccourcis repris par le sens** (A 7.1) : le
+  rangement par famille (`Espace p…`, `Espace v…`) était déjà en place ; ce
+  qui manquait était l'écran pour en juger. Préférences › Raccourcis montre
+  maintenant **les deux jeux côte à côte**, action par action, avec « la
+  même » là où ils ne diffèrent pas, la marque de ce qu'on a déplacé
+  soi-même, et le rouge sur deux actions qui répondraient à la même frappe.
+  Au passage, les cinq pages des préférences sont entrées au banc de mise en
+  page — seule la première y était — et deux défauts antérieurs y
+  dormaient : la fenêtre grandissait d'un pixel par image sans fin, et une
+  même phrase servait d'état vide et d'état de fiche.
 
 ---
 

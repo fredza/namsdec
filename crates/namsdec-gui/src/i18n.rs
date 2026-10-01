@@ -349,6 +349,29 @@ pub struct Strings {
     pub install_requires: &'static str,
     pub install_missing: &'static str,
     pub shortcuts_preset: &'static str,
+    /// La légende du tableau des deux jeux.
+    pub shortcuts_both: &'static str,
+    /// La colonne de l'action.
+    pub shortcuts_action_col: &'static str,
+    /// Le marqueur d'un raccourci que l'utilisateur a déplacé lui-même.
+    pub shortcuts_changed: &'static str,
+    /// Ce que dit le survol d'un raccourci déplacé : ce que le jeu, lui,
+    /// proposait.
+    pub shortcuts_preset_said: &'static str,
+    /// Deux actions répondent à la même frappe : la seconde ne se
+    /// déclenchera jamais.
+    pub shortcuts_conflict: &'static str,
+    /// Aucune frappe pour cette action dans ce jeu.
+    pub shortcuts_missing: &'static str,
+    /// Dans la colonne du jeu qu'on ne règle pas : la même frappe que
+    /// dans l'autre.
+    ///
+    /// Écrit plutôt que répété. Les deux jeux partagent une frappe sur
+    /// trois — Ctrl+S, Ctrl+O, Maj+F5 —, et la répéter mettait deux fois
+    /// la même chose côte à côte sans rien apprendre. Dit ainsi, l'œil
+    /// descend la colonne et ne s'arrête que sur ce qui DIFFÈRE, qui est
+    /// la seule raison de regarder deux jeux à la fois.
+    pub shortcuts_same: &'static str,
     pub shortcuts_file: &'static str,
     pub install_log_title: &'static str,
     pub install_leftover: &'static str,
@@ -751,6 +774,14 @@ pub struct Strings {
     // Phrases "rien à afficher pour l'instant", réutilisées à plusieurs
     // endroits
     pub no_binary_assembled: &'static str,
+    /// L'état de la fiche du désassembleur quand rien n'est chargé.
+    ///
+    /// Et non `no_binary_assembled` : cette phrase-là est un ÉTAT VIDE —
+    /// un bloc centré qui dit ce que le panneau montrera quand il y aura
+    /// quelque chose. Une fiche de module, elle, dit ce que le module
+    /// fait en ce moment. Une phrase pour deux rôles est la même maladie
+    /// que deux formes pour un rôle.
+    pub module_disasm_idle: &'static str,
     /// Ce qu'on fait quand rien n'est assemblé, dit sous le constat.
     pub empty_assemble_hint: &'static str,
     /// Ce que chaque onglet du panneau montrera, une fois le programme
@@ -1277,6 +1308,15 @@ const FR: Strings = Strings {
     install_requires: "Ce qu'il faut avoir :",
     install_missing: "Manque sur cette machine :",
     shortcuts_preset: "Jeu de raccourcis :",
+    shortcuts_both: "Les deux jeux, action par action. Celui qui est actif est en clair ; \
+l'autre est là pour comparer — c'est ainsi qu'on voit les trous et les doublons.",
+    shortcuts_action_col: "Action",
+    shortcuts_changed: "déplacé",
+    shortcuts_preset_said: "Le jeu proposait",
+    shortcuts_conflict: "Deux actions répondent à cette frappe : la seconde ne se \
+déclenchera jamais.",
+    shortcuts_missing: "aucune",
+    shortcuts_same: "la même",
     shortcuts_file: "Fichier :",
     install_log_title: "Ce que les commandes ont écrit",
     install_leftover: "— ce qui a été posé reste là, et la prochaine tentative l'efface :",
@@ -1622,6 +1662,7 @@ const FR: Strings = Strings {
     binary_not_text: "Fichier binaire chargé et désassemblé (le code affiché est reconstruit).",
 
     no_binary_assembled: "Aucun binaire assemblé.",
+    module_disasm_idle: "rien à désassembler pour l'instant",
     empty_assemble_hint: "Écrivez un programme, puis assemblez-le : tout ce qui suit décrira ce qu'il fait au processeur.",
     empty_stack: "Ici s'afficheront la pile, la chaîne des appels et ce que la convention d'appel promet.",
     empty_memory: "Ici s'afficheront les pages du programme, leurs droits, et de quoi y chercher un motif.",
@@ -2085,6 +2126,14 @@ const EN: Strings = Strings {
     install_requires: "What you need first:",
     install_missing: "Missing on this machine:",
     shortcuts_preset: "Shortcut set:",
+    shortcuts_both: "Both sets, action by action. The active one is in plain text; the \
+other is there to compare — that is how gaps and clashes become visible.",
+    shortcuts_action_col: "Action",
+    shortcuts_changed: "moved",
+    shortcuts_preset_said: "The set offered",
+    shortcuts_conflict: "Two actions answer to these keys: the second will never fire.",
+    shortcuts_missing: "none",
+    shortcuts_same: "same",
     shortcuts_file: "File:",
     install_log_title: "What the commands wrote",
     install_leftover: "— what was placed so far stays in; the next attempt clears it:",
@@ -2430,6 +2479,7 @@ const EN: Strings = Strings {
     binary_not_text: "Binary file loaded and disassembled (the code shown is reconstructed).",
 
     no_binary_assembled: "No binary assembled.",
+    module_disasm_idle: "nothing to disassemble yet",
     empty_assemble_hint: "Write a program, then assemble it: everything below will describe what it does to the processor.",
     empty_stack: "The stack, the call chain and what the calling convention promises will appear here.",
     empty_memory: "The program's pages, their permissions, and a way to search them will appear here.",

@@ -2314,3 +2314,94 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
   Un second contrôle tient l'autre moitié : dessiner seul ne demande rien.
   Sans lui, un panneau qui poserait sa demande au dessin ferait sauter le
   listing tout seul, à chaque image.
+
+  --- 7.1 : les deux jeux côte à côte, et ce que le banc ne regardait pas ---
+  Le rangement par famille — `Espace p…` pour les pas, `Espace v…` pour les
+  vues — était déjà fait. Ce qui restait de 7.1 est la dernière phrase de
+  l'entrée : « un écran qui montre les DEUX jeux côte à côte, action par
+  action ». C'est fait, et c'est l'écran qui a tranché trois autres choses.
+
+  POURQUOI CÔTE À CÔTE. On ne compare pas de mémoire deux listes de trente
+  lignes. Un jeu seul ne dit ni ce qui diffère de l'autre, ni ce qu'on a
+  déplacé soi-même, ni si deux actions répondent à la même frappe. Les trois
+  questions se lisent maintenant sans chercher.
+
+  « LA MÊME » PLUTÔT QUE LA RÉPÉTITION. Le premier jet recopiait la frappe
+  dans les deux colonnes, et l'invariant « deux mots identiques ne se touchent
+  pas » l'a attrapé aussitôt : `Ctrl+Shift+B` écrit deux fois sur la même
+  ligne, à quarante-sept pixels. L'invariant avait raison, et pour une raison
+  plus forte que l'esthétique : les deux jeux partagent une frappe sur trois,
+  et les répéter noyait les écarts, qui sont la seule raison de regarder deux
+  jeux à la fois. La colonne inactive écrit donc « la même », et l'œil
+  descend sans s'arrêter.
+
+  `Space P I` ET NON `Space , P , I`. Les deux formes mises côte à côte sur
+  trente lignes ont tranché toutes seules : la virgule entre deux espaces
+  n'ajoute rien et se lit comme un signe de plus à démêler. Le projet écrit
+  « Espace p i » partout dans sa prose ; c'est cette forme-là qu'on retrouve
+  à l'écran.
+
+  --- et deux défauts antérieurs, que le banc ne pouvait pas voir ---
+
+  Le banc de mise en page ouvrait la fenêtre des préférences sur sa PREMIÈRE
+  page — la seule qui tienne sans défiler. Les quatre autres n'avaient jamais
+  été mesurées. Les y faire entrer a coûté deux corrections, et aucune des
+  deux ne vient du travail de cette séance.
+
+  LA FENÊTRE GRANDISSAIT D'UN PIXEL PAR IMAGE, SANS FIN. La zone qui défile
+  prenait sa hauteur sur la fenêtre (`available_height - 44`) ; la fenêtre
+  prenait la sienne sur son contenu. Dès qu'une page dépassait la boîte, les
+  deux se relançaient l'une l'autre. Mesuré : vingt images, vingt hauteurs,
+  et rien ne l'arrêtait.
+
+  Trois essais, et c'est le troisième qui vaut d'être retenu :
+    1. BORNER LA ZONE sur le viewport. La boucle s'arrête — mais la zone ne
+       connaît plus la place qui lui reste, prend toute la hauteur, et « OK »
+       et « Quitter » passent sous le bord. Un contrôle le disait déjà : c'est
+       exactement le défaut qu'il avait été écrit pour empêcher. Corriger une
+       boucle en ramenant un défaut corrigé n'est pas corriger.
+    2. BORNER LA FENÊTRE PAR LE HAUT. La boucle devient finie, puisqu'elle
+       s'arrête au plafond — mais elle tourne encore : deux cent quarante
+       images à grandir d'un pixel, quatre secondes de reptation sous les
+       yeux. « Borné » n'est pas « stable ».
+    3. IMPOSER la hauteur de la fenêtre, plancher et plafond à la même valeur.
+       La hauteur disponible devient une constante, donc la boucle se referme
+       ; et la zone continue de se régler sur ce qui lui reste, donc la barre
+       du bas reste dedans. La largeur, elle, se règle encore : c'est la
+       dimension dont on a besoin ici.
+  C'est la règle du skill, mot pour mot : une boucle de mesure se coupe en
+  IMPOSANT une dimension. Les deux premiers essais l'avaient contournée.
+
+  UNE PHRASE POUR DEUX RÔLES. « Aucun binaire assemblé. » servait d'état vide
+  — un bloc centré qui dit ce que le panneau montrera — ET d'état d'une fiche
+  de module, une ligne à gauche qui dit ce que le module fait. C'est la même
+  maladie que deux formes pour un rôle, prise par l'autre bout, et c'est le
+  contrôle des états vides qui l'a trouvée dès que la page des modules est
+  entrée au banc. La fiche dit maintenant « rien à désassembler pour
+  l'instant ».
+
+  CE QU'IL FAUT EN RETENIR. Une liste de scènes ne protège que ce qu'elle
+  nomme. Quatorze fenêtres y étaient, et une seule de leurs cinq pages : deux
+  défauts y ont vécu sans être vus, dont un qui se voit à l'œil nu si l'on
+  laisse la boîte ouverte dix secondes. La liste des pages est désormais
+  déclarée une fois, lue par la rangée d'onglets ET par le banc — une page
+  nouvelle s'y trouve mesurée sans qu'on y pense.
+
+  --- et un contrôle qui lisait l'horloge ---
+  « Ouvrir un binaire ne pose son listing qu'une fois » gardait deux mesures :
+  le COMPTE de poses, déterministe, et un budget de 40 ms par image. Le second
+  a échoué deux fois pendant une suite complète en passant seul à chaque essai.
+
+  La cause est connue dans ce fichier : un contrôle qui lit l'état de la
+  machine. Six cents tests en parallèle, et une image qui prend 2,4 ms au
+  repos en prend cinquante. Le seuil ne protège alors plus rien — il signale
+  la charge de la machine.
+
+  Corrigé en comparant un RAPPORT : les cinq images d'après coûtent moins de
+  la moitié de la première. Les deux mesures subissent la même charge, donc
+  leur rapport n'en dépend pas. Et le rapport ne se juge que si la première
+  image a coûté quelque chose : en deçà de cinquante millisecondes, tout est
+  rapide et il n'y a rien à détecter.
+
+  Le compte de poses, lui, ne change pas : c'est le vrai invariant, et il ne
+  lit rien de la machine.

@@ -499,6 +499,49 @@ pour son compte.
       Vérifier que le code « poserait une demande si on cliquait » ne
       prouverait pas qu'on peut cliquer.
 
+## 4 nonies. Les raccourcis, et ce que le banc ne regardait pas (A 7.1)
+
+- [x] **Les deux jeux côte à côte** — l'onglet n'en montrait qu'un, et
+      c'est précisément ce qui empêchait de voir les trous et les
+      doublons : on ne compare pas de mémoire deux listes de trente
+      lignes. Le jeu actif en clair, l'autre à côté ; « la même » quand
+      les deux disent la même chose, parce que c'est ce qui DIFFÈRE qu'on
+      vient lire ; un raccourci déplacé soi-même est marqué et dit au
+      survol ce que le jeu proposait ; deux actions qui répondent à la
+      même frappe se voient en rouge.
+      Le rangement par famille (`Espace p…`, `Espace v…`) était déjà fait
+      ; c'est ce tableau qui manquait pour en juger.
+- [x] **Les séquences s'écrivent `Space P I`** et non `Space , P , I`.
+      Les deux formes côte à côte sur trente lignes ont tranché : la
+      virgule entre deux espaces n'ajoute rien. Le projet écrit d'ailleurs
+      « Espace p i » partout dans sa prose.
+- [x] **Les cinq pages des préférences entrent au banc** — seule la
+      première y était, la seule qui tienne sans défiler. Les quatre
+      autres n'avaient jamais été mesurées, et deux défauts y
+      dormaient.
+- [x] **La boîte de préférences grandissait d'un pixel par image, sans
+      fin** — défaut antérieur, trouvé par le banc dès que les autres
+      pages y sont entrées. La zone qui défile prenait sa hauteur sur la
+      fenêtre ; la fenêtre prenait la sienne sur son contenu. Trois
+      essais : borner la zone sur le viewport coupe la boucle mais fait
+      sortir « OK » par le bas ; borner la fenêtre par le haut laisse
+      deux cent quarante images de reptation ; **imposer** la hauteur de
+      la fenêtre répond aux deux. Un contrôle garde la cause, page par
+      page, et il échoue sur l'ancien code.
+- [x] **Un contrôle qui lisait l'horloge** — « ouvrir un binaire ne pose
+      son listing qu'une fois » gardait un budget de 40 ms par image. Il
+      a échoué deux fois sous une suite complète alors qu'il passait
+      seul : une machine chargée mesure mal. Il compare maintenant un
+      RAPPORT — les images d'après coûtent moins de la moitié de la
+      première — ce qui ne dépend plus de la charge, les deux mesures la
+      subissant ensemble. Le compte de poses, lui, était déjà
+      déterministe et ne change pas.
+- [x] **Une phrase pour deux rôles** — « Aucun binaire assemblé. » était
+      à la fois l'état vide d'un panneau (un bloc centré) et l'état d'une
+      fiche de module (une ligne à gauche). C'est la même maladie que
+      deux formes pour un rôle. La fiche dit maintenant « rien à
+      désassembler pour l'instant ».
+
 ## 4 quinquies. Modifier un binaire — premier morceau
 
 Fred a rappelé la vocation : l'onglet RE apprend la rétro-ingénierie,

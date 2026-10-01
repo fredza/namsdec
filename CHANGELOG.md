@@ -12,6 +12,36 @@ cesse de mélanger trois questions — et la fenêtre d'analyse répond enfin
 à la première question qu'on se pose devant un échantillon inconnu : par
 où commencer.
 
+**Les raccourcis : les deux jeux côte à côte**
+- Préférences › Raccourcis montrait **un** jeu, et c'est précisément ce
+  qui empêchait de voir les trous et les doublons — on ne compare pas de
+  mémoire deux listes de trente lignes. Les deux y sont désormais, action
+  par action : l'actif en clair, l'autre à côté.
+- Quand les deux disent la même chose — une frappe sur trois : `Ctrl+S`,
+  `Ctrl+O`, `Maj+F5` —, la seconde colonne écrit **« la même »** au lieu
+  de recopier. L'œil ne s'arrête alors que sur les écarts, qui sont la
+  seule raison de regarder deux jeux à la fois.
+- Un raccourci **déplacé soi-même** est marqué, et le survol dit ce que le
+  jeu proposait. Deux actions qui répondraient à la **même frappe** se
+  voient en rouge, et le survol nomme l'autre — les jeux livrés n'en ont
+  aucune, mais un raccourci qu'on déplace peut en écraser un autre, et
+  rien ne le disait.
+- Les séquences s'écrivent **`Space P I`** et non `Space , P , I`. Les
+  deux formes côte à côte sur trente lignes ont tranché.
+
+**La boîte de préférences grandissait toute seule**
+- Elle gagnait **un pixel par image, sans fin**, sur les quatre pages plus
+  hautes qu'elle : la zone qui défile prenait sa hauteur sur la fenêtre, et
+  la fenêtre prenait la sienne sur son contenu. Sa hauteur est désormais
+  imposée, ce qui coupe la boucle sans faire sortir « OK » et « Quitter »
+  par le bas.
+- Le banc de mise en page n'ouvrait que la **première** page des
+  préférences — la seule qui tienne sans défiler. Les cinq y sont, et une
+  page nouvelle s'y trouvera mesurée sans qu'on y pense.
+- « Aucun binaire assemblé. » servait à la fois d'état vide et d'état
+  d'une fiche de module : deux rôles pour une phrase. La fiche dit
+  maintenant « rien à désassembler pour l'instant ».
+
 **Circuler : d'un panneau d'analyse au listing**
 - **Les adresses des panneaux sont cliquables** — une entrée de liaison,
   une zone libre, une figure, un fragment, un désalignement : un clic

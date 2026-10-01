@@ -44,6 +44,12 @@ qu'elle est : une adresse de retour, avec son étiquette. Ce qui est
 au-dessus de RSP est grisé — ces octets sont encore là, mais le prochain
 `push` les écrase.
 
+**Les deux jeux de raccourcis, côte à côte.** Préférences ▸ Raccourcis
+montre les deux, action par action : l'actif en clair, l'autre pour
+comparer, « la même » là où ils ne diffèrent pas. C'est ainsi qu'on voit
+ce qu'on vient y chercher — les écarts, ce qu'on a déplacé soi-même, et
+deux actions qui répondraient à la même frappe.
+
 **Et l'on circule.** Les adresses des panneaux d'analyse sont
 cliquables : une entrée de liaison, une zone libre, une figure, un
 fragment — un clic amène le listing dessus. Le suivi de RIP s'arrête au

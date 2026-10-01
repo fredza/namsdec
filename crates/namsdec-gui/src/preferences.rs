@@ -7,6 +7,46 @@
 
 use super::*;
 
+/// La hauteur que la boîte de préférences ne dépasse pas.
+///
+/// C'est ELLE qui coupe la boucle de mesure, et il a fallu deux essais
+/// pour le comprendre. La zone qui défile prend sa hauteur sur la
+/// fenêtre, moins la place des boutons ; la fenêtre prend la sienne sur
+/// son contenu. Tant que rien ne borne la fenêtre, les deux se relancent
+/// l'une l'autre : mesuré, un pixel de plus par image, sans fin, sur les
+/// quatre pages plus hautes que la boîte.
+///
+/// Le premier essai bornait la ZONE sur le viewport. La boucle
+/// s'arrêtait, mais la zone ne connaissait plus la place qui lui restait
+/// vraiment : elle prenait toute la hauteur, et « OK » et « Quitter »
+/// passaient sous le bord. Un contrôle le disait déjà — c'est le
+/// défaut qu'il avait été écrit pour empêcher.
+///
+/// Le second essai bornait la fenêtre par le haut seulement. La boucle
+/// devenait finie — elle s'arrêtait au plafond — mais elle tournait
+/// encore : deux cent quarante images à grandir d'un pixel, soit quatre
+/// secondes de reptation sous les yeux.
+///
+/// La hauteur est donc IMPOSÉE : plancher et plafond à la même valeur.
+/// La fenêtre ne tire plus sa taille de son contenu, la hauteur
+/// disponible est une constante, et la zone continue de se régler sur ce
+/// qui lui reste — donc la barre du bas reste dedans. La largeur, elle,
+/// se règle encore : c'est la dimension dont on a besoin ici.
+///
+/// Prise sur le viewport, qui ne dépend pas de la fenêtre. Les
+/// quatre-vingts pixels gardés sont les marges au-dessus et au-dessous :
+/// une boîte collée aux deux bords n'a plus l'air d'une boîte.
+fn hauteur_maximale(ctx: &egui::Context) -> f32 {
+    /// La hauteur qu'on vise quand l'écran la permet : cinq pages y
+    /// tiennent sans défiler, ou presque.
+    const VOULUE: f32 = 760.0;
+    const MARGES: f32 = 80.0;
+    const PLANCHER: f32 = 320.0;
+    VOULUE
+        .min(ctx.viewport_rect().height() - MARGES)
+        .max(PLANCHER)
+}
+
 impl NamsdecApp {
     pub(crate) fn preferences_window_ui(&mut self, ctx: &egui::Context) {
         let s = strings(self.lang);
@@ -27,7 +67,15 @@ impl NamsdecApp {
             // Une taille posée, et au centre. Sans taille, egui ouvrait
             // la boîte là où il restait de la place — trois cent
             // cinquante pixels de haut, où cinq fiches ne tenaient pas.
-            .default_size([780.0, 760.0])
+            .default_width(780.0)
+            // La hauteur est IMPOSÉE — plancher et plafond à la même
+            // valeur —, et c'est elle qui coupe la boucle. Voir
+            // `hauteur_maximale` pour ce que les deux autres essais ont
+            // donné. La largeur, elle, se règle encore : c'est la
+            // dimension dont on a besoin ici, pour les longs chemins de
+            // fichiers et le tableau des deux jeux.
+            .min_height(hauteur_maximale(ctx))
+            .max_height(hauteur_maximale(ctx))
             .pivot(egui::Align2::CENTER_CENTER)
             .default_pos(ctx.viewport_rect().center())
             .title_bar(false)
@@ -35,15 +83,13 @@ impl NamsdecApp {
                 if chrome::window_head(ui, self.theme, s, s.preferences_title) {
                     close_keeping = Some(true);
                 }
+                // La liste des pages est déclarée une fois, dans
+                // `PreferencesTab::ALL` : la rangée d'onglets et le banc
+                // de mise en page la lisent au même endroit, et une page
+                // nouvelle se trouve mesurée sans qu'on y pense.
                 ui.horizontal(|ui| {
-                    for (tab, label) in [
-                        (PreferencesTab::General, s.preferences_tab_general),
-                        (PreferencesTab::Shortcuts, s.preferences_tab_shortcuts),
-                        (PreferencesTab::Modules, s.preferences_tab_modules),
-                        (PreferencesTab::Plugins, s.preferences_tab_plugins),
-                        (PreferencesTab::Tools, s.preferences_tab_tools),
-                    ] {
-                        ui.selectable_value(&mut self.preferences_tab, tab, label);
+                    for tab in PreferencesTab::ALL {
+                        ui.selectable_value(&mut self.preferences_tab, tab, tab.label(s));
                     }
                 });
                 ui.separator();
@@ -51,6 +97,12 @@ impl NamsdecApp {
                 // bas : les pages avaient chacune la leur, prenant toute
                 // la hauteur offerte, et les boutons OK / Quitter
                 // sortaient de la fenêtre par le bas.
+                //
+                // Sa hauteur se règle sur ce qui RESTE, et c'est voulu :
+                // c'est ainsi que la barre du bas reste dedans quelle
+                // que soit la page. La boucle de mesure que cela
+                // formait est coupée plus haut, en bornant la fenêtre —
+                // voir `hauteur_maximale`.
                 egui::ScrollArea::vertical()
                     .id_salt("preferences_page")
                     .auto_shrink([false, true])
@@ -217,37 +269,157 @@ impl NamsdecApp {
         ui.separator();
         ui.add_space(4.0);
 
+        // Les deux jeux côte à côte, action par action.
+        //
+        // L'onglet n'en montrait qu'un, et c'est précisément ce qui
+        // empêchait de voir les trous et les doublons : on ne compare
+        // pas de mémoire deux listes de trente lignes. Côte à côte,
+        // « cette action n'a rien dans l'autre jeu » et « ces deux-là
+        // répondent à la même frappe » se lisent sans chercher.
+        ui.weak(s.shortcuts_both);
+        ui.add_space(4.0);
+
+        let jeux: Vec<(keybindings::Preset, keybindings::KeyBindings)> = keybindings::Preset::ALL
+            .into_iter()
+            .map(|preset| (preset, keybindings::KeyBindings::preset(preset)))
+            .collect();
+
+        // Les frappes qui servent deux fois dans le jeu EFFECTIF — celui
+        // qui a cours, écarts de l'utilisateur compris. Les jeux livrés
+        // n'en ont aucune, un contrôle le tient ; un raccourci qu'on
+        // déplace soi-même, lui, peut très bien en écraser un autre, et
+        // rien ne le disait.
+        let mut par_frappe: BTreeMap<String, Vec<Action>> = BTreeMap::new();
+        for (action, chord) in &self.keybindings.map {
+            par_frappe
+                .entry(chord.display(&ctx))
+                .or_default()
+                .push(*action);
+        }
+
         egui::Grid::new("shortcuts_grid")
-            .num_columns(4)
+            .num_columns(5)
             .striped(true)
             .show(ui, |ui| {
+                ui.strong(s.shortcuts_action_col);
+                for (preset, _) in &jeux {
+                    // Le jeu actif en clair, l'autre estompé : la colonne
+                    // qu'on règle se distingue de celle qu'on compare.
+                    let actif = self.keymap_preset == *preset;
+                    let texte = egui::RichText::new(preset.label(fr));
+                    if actif {
+                        ui.strong(texte);
+                    } else {
+                        ui.colored_label(theme.dim, texte);
+                    }
+                }
+                ui.label("");
+                ui.label("");
+                ui.end_row();
+
                 for action in Action::ALL {
                     let is_rebinding = self.rebinding.as_ref().is_some_and(|r| r.action == action);
 
                     ui.label(action_label(s, action));
 
-                    if is_rebinding {
-                        // Une séquence n'a pas de longueur imposée : sans
-                        // voir ce qu'il a déjà tapé, l'utilisateur ne sait
-                        // pas s'il doit continuer ou valider.
-                        let captured: Vec<&str> = self
-                            .rebinding
-                            .as_ref()
-                            .map(|r| r.captured().iter().map(|k| k.name()).collect())
-                            .unwrap_or_default();
-                        if captured.is_empty() {
-                            ui.colored_label(theme.accent, s.rebind_waiting);
-                        } else {
-                            ui.colored_label(theme.accent, format!("{} …", captured.join(" ")));
+                    // Ce que la colonne du jeu actif écrit : la colonne
+                    // de l'autre s'y compare au lieu de le répéter.
+                    let écrit_actif = self
+                        .keybindings
+                        .map
+                        .get(&action)
+                        .map(|chord| chord.display(&ctx));
+
+                    for (preset, jeu) in &jeux {
+                        let actif = self.keymap_preset == *preset;
+                        if actif && is_rebinding {
+                            // Une séquence n'a pas de longueur imposée :
+                            // sans voir ce qu'il a déjà tapé,
+                            // l'utilisateur ne sait pas s'il doit
+                            // continuer ou valider.
+                            let captured: Vec<&str> = self
+                                .rebinding
+                                .as_ref()
+                                .map(|r| r.captured().iter().map(|k| k.name()).collect())
+                                .unwrap_or_default();
+                            if captured.is_empty() {
+                                ui.colored_label(theme.accent, s.rebind_waiting);
+                            } else {
+                                ui.colored_label(theme.accent, format!("{} …", captured.join(" ")));
+                            }
+                            continue;
                         }
-                    } else {
-                        let current = self
-                            .keybindings
-                            .map
-                            .get(&action)
-                            .map(|c| c.display(&ctx))
-                            .unwrap_or_default();
-                        ui.monospace(current);
+                        // La colonne du jeu actif montre ce qui a cours —
+                        // écart de l'utilisateur compris. L'autre montre
+                        // ce que son jeu propose : c'est ce qu'on aurait
+                        // en basculant.
+                        let effective = actif
+                            .then(|| self.keybindings.map.get(&action))
+                            .flatten()
+                            .or_else(|| jeu.map.get(&action));
+                        let Some(chord) = effective else {
+                            ui.colored_label(theme.warn, s.shortcuts_missing);
+                            continue;
+                        };
+                        let écrit = chord.display(&ctx);
+                        // La même frappe que dans le jeu actif : on le
+                        // dit, on ne la recopie pas. Les deux jeux en
+                        // partagent une sur trois, et deux fois la même
+                        // chose côte à côte n'apprend rien — c'est ce qui
+                        // DIFFÈRE qu'on vient lire.
+                        if !actif && écrit_actif.as_deref() == Some(écrit.as_str()) {
+                            ui.colored_label(
+                                theme.dim,
+                                egui::RichText::new(s.shortcuts_same).small(),
+                            )
+                            .on_hover_text(&écrit);
+                            continue;
+                        }
+                        let déplacé = actif && jeu.map.get(&action) != Some(chord);
+                        let partagée = par_frappe
+                            .get(&écrit)
+                            .is_some_and(|actions| actif && actions.len() > 1);
+
+                        let couleur = if partagée {
+                            theme.bad
+                        } else if déplacé {
+                            theme.changed
+                        } else if actif {
+                            theme.text
+                        } else {
+                            theme.dim
+                        };
+                        ui.horizontal(|ui| {
+                            let étiquette = ui.add(egui::Label::new(
+                                egui::RichText::new(&écrit).monospace().color(couleur),
+                            ));
+                            if partagée {
+                                let autres: Vec<&'static str> = par_frappe[&écrit]
+                                    .iter()
+                                    .filter(|autre| **autre != action)
+                                    .map(|autre| action_label(s, *autre))
+                                    .collect();
+                                étiquette.on_hover_text(format!(
+                                    "{} {}",
+                                    s.shortcuts_conflict,
+                                    autres.join(", ")
+                                ));
+                            } else if déplacé {
+                                let proposé = jeu
+                                    .map
+                                    .get(&action)
+                                    .map(|c| c.display(&ctx))
+                                    .unwrap_or_else(|| s.shortcuts_missing.to_owned());
+                                étiquette.on_hover_text(format!(
+                                    "{} {proposé}",
+                                    s.shortcuts_preset_said
+                                ));
+                                ui.colored_label(
+                                    theme.changed,
+                                    egui::RichText::new(s.shortcuts_changed).small(),
+                                );
+                            }
+                        });
                     }
 
                     if ui

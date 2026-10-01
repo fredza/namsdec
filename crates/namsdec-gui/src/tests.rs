@@ -9834,7 +9834,7 @@ fn opening_a_binary_shows_its_code_not_its_header() {
 #[test]
 fn both_languages_say_the_same_things() {
     /// Les champs dont les deux langues partagent le texte, et pourquoi.
-    const LES_MÊMES: [&str; 27] = [
+    const LES_MÊMES: [&str; 28] = [
         // « Pseudo-code » s'écrit pareil des deux côtés de la Manche.
         "flow_pseudo",
         // Une adresse d'exemple : elle s'écrit pareil partout.
@@ -9851,6 +9851,7 @@ fn both_languages_say_the_same_things() {
         "action_step_back",
         "action_stop",
         // Un mot identique dans les deux langues.
+        "shortcuts_action_col",
         "abi_arguments",
         "about_build_word",
         "dialog_ok",
@@ -21998,6 +21999,12 @@ type Ouverture = (&'static str, &'static str, fn(&mut NamsdecApp));
 /// elles se contrôlent séparément, avec ce qu'il leur faut.
 fn fenêtres_ouvrables() -> Vec<Ouverture> {
     vec![
+        // Les cinq pages des préférences, et non la seule première :
+        // seul l'onglet Général s'ouvrait, et les quatre autres
+        // n'avaient jamais été mesurées. Le tableau des raccourcis, qui
+        // montre les deux jeux côte à côte, est la plus large grille de
+        // l'application — exactement le genre de chose que le banc est
+        // fait pour attraper.
         ("préférences", "preferences_window", |app| {
             app.show_preferences = true;
         }),
@@ -22107,6 +22114,20 @@ fn scènes() -> Vec<Scène> {
                         démarre(app);
                     }
                     ouvre(app);
+                }),
+            ));
+        }
+        // Les pages des préférences, une par une.
+        for onglet in PreferencesTab::ALL {
+            scènes.push((
+                format!("préférences / {}{suffixe}", onglet.id()),
+                Some("preferences_window"),
+                Box::new(move |app| {
+                    if marche {
+                        démarre(app);
+                    }
+                    app.show_preferences = true;
+                    app.preferences_tab = onglet;
                 }),
             ));
         }
@@ -26639,9 +26660,15 @@ fn no_control_asks_the_machine_what_it_should_be_checking() {
 /// chargement, c'est une demi-seconde de plus à l'ouverture, sans que
 /// rien ne l'explique.
 ///
-/// Le budget des images d'après est large — 40 ms là où l'on mesure 2,4 —
-/// parce qu'une machine chargée mesure mal. Il attrape ce qui compte : le
-/// retour à une pose par image.
+/// Le second contrôle est un RAPPORT et non un budget en millisecondes.
+/// Il était de 40 ms, et il a échoué deux fois sous une suite complète
+/// alors qu'il passait seul : une mesure en temps d'horloge lit l'état de
+/// la machine, et une machine chargée mesure mal — c'est le défaut qu'on
+/// a déjà corrigé ailleurs dans ce fichier. Un rapport, lui, ne dépend
+/// pas de la charge : les deux mesures la subissent ensemble.
+///
+/// Et il ne se juge que si la première image a coûté quelque chose : en
+/// deçà, tout est rapide et il n'y a rien à détecter.
 #[test]
 fn opening_a_binary_lays_out_its_listing_once() {
     let Some(octets) = binaire_dépreuve("crackme-01") else {
@@ -26677,12 +26704,19 @@ fn opening_a_binary_lays_out_its_listing_once() {
 
     // Et les images d'après ne paient plus : c'est là que se verrait un
     // cache qui rate son coup sans pour autant reposer.
+    let première = durées[0];
     let plus_lente_après = durées[1..].iter().max().copied().unwrap_or_default();
-    assert!(
-        plus_lente_après < std::time::Duration::from_millis(40),
-        "après le chargement, la plus lente des cinq images suivantes a pris \
-         {plus_lente_après:?} pour {lignes} lignes"
-    );
+    // Sous ce seuil, la première image n'a rien coûté : la machine est au
+    // repos ou le listing est court, et le rapport ne mesurerait que du
+    // bruit.
+    if première >= std::time::Duration::from_millis(50) {
+        assert!(
+            plus_lente_après * 2 < première,
+            "après le chargement, la plus lente des cinq images suivantes a pris \
+             {plus_lente_après:?} contre {première:?} pour la première — le cache \
+             de mise en page ne rend plus rien"
+        );
+    }
 }
 
 /// Le guide que le README annonce existe, et c'est celui de la version.
@@ -28023,4 +28057,164 @@ fn an_address_from_an_analysis_panel_reaches_its_line() {
         "et on le dit : {:?}",
         app.status
     );
+}
+
+/// Préférences › Raccourcis montre les **deux** jeux, action par action.
+///
+/// L'onglet n'en montrait qu'un, et c'est précisément ce qui empêchait de
+/// voir les trous et les doublons : on ne compare pas de mémoire deux
+/// listes de trente lignes. Côte à côte, « cette action n'a rien dans
+/// l'autre jeu » et « ces deux-là répondent à la même frappe » se lisent
+/// sans chercher.
+#[test]
+fn the_shortcuts_tab_shows_both_sets_side_by_side() {
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp::default();
+    app.apply_theme(&ctx);
+    app.show_preferences = true;
+    app.preferences_tab = PreferencesTab::Shortcuts;
+
+    let (_, lignes) = ce_qui_est_écrit(&ctx, &mut app, Some("preferences_window"), 4);
+    let textes: Vec<&str> = lignes.iter().map(|(t, _)| t.as_str()).collect();
+
+    // Les deux jeux sont nommés en tête de colonne.
+    for preset in crate::keybindings::Preset::ALL {
+        assert!(
+            textes.contains(&preset.label(true)),
+            "« {} » doit nommer sa colonne : {textes:?}",
+            preset.label(true)
+        );
+    }
+
+    // Et pour une action, les frappes des DEUX jeux sont écrites. « Pas
+    // dedans » est le cas d'école : `Space P I` d'un côté, `F11` de
+    // l'autre.
+    let vim = crate::keybindings::KeyBindings::preset(crate::keybindings::Preset::Vim);
+    let classic = crate::keybindings::KeyBindings::preset(crate::keybindings::Preset::Classic);
+    for jeu in [&vim, &classic] {
+        let frappe = jeu
+            .map
+            .get(&Action::StepInto)
+            .expect("« pas dedans » a un raccourci dans les deux jeux")
+            .display(&ctx);
+        assert!(
+            textes.contains(&frappe.as_str()),
+            "la frappe « {frappe} » doit être écrite : {textes:?}"
+        );
+    }
+
+    // Quand les deux jeux disent la même chose, on l'écrit au lieu de le
+    // recopier : deux fois la même frappe côte à côte n'apprend rien, et
+    // c'est ce qui DIFFÈRE qu'on vient lire. « Enregistrer » est
+    // Ctrl+S des deux côtés.
+    let s = strings(app.lang);
+    assert_eq!(
+        vim.map.get(&Action::Save),
+        classic.map.get(&Action::Save),
+        "« enregistrer » est la même frappe dans les deux jeux"
+    );
+    assert!(
+        textes.contains(&s.shortcuts_same),
+        "« {} » doit remplacer la répétition : {textes:?}",
+        s.shortcuts_same
+    );
+    let ctrl_s = vim
+        .map
+        .get(&Action::Save)
+        .expect("« enregistrer » a un raccourci")
+        .display(&ctx);
+    assert_eq!(
+        textes.iter().filter(|t| **t == ctrl_s).count(),
+        1,
+        "et elle n'est écrite qu'une fois : {textes:?}"
+    );
+}
+
+/// Un raccourci qu'on a déplacé soi-même se voit, et dit ce qu'il a
+/// remplacé.
+///
+/// Sans marque, le tableau ferait croire que le jeu livré propose ce
+/// qu'on a soi-même posé — et l'on chercherait longtemps pourquoi la
+/// même touche ne fait pas la même chose sur une autre machine.
+#[test]
+fn a_shortcut_one_moved_oneself_is_marked_as_such() {
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp::default();
+    app.apply_theme(&ctx);
+    app.show_preferences = true;
+    app.preferences_tab = PreferencesTab::Shortcuts;
+
+    // Rien de déplacé : aucune marque.
+    let (_, avant) = ce_qui_est_écrit(&ctx, &mut app, Some("preferences_window"), 4);
+    let s = strings(app.lang);
+    assert!(
+        !avant.iter().any(|(t, _)| t == s.shortcuts_changed),
+        "un jeu intact ne porte aucune marque"
+    );
+
+    // On déplace « assembler » sur une frappe libre.
+    app.keybindings.map.insert(
+        Action::Assemble,
+        crate::keybindings::Chord::Simple(egui::KeyboardShortcut::new(
+            egui::Modifiers::ALT,
+            egui::Key::Y,
+        )),
+    );
+    let (_, après) = ce_qui_est_écrit(&ctx, &mut app, Some("preferences_window"), 4);
+    let textes: Vec<&str> = après.iter().map(|(t, _)| t.as_str()).collect();
+    assert!(
+        textes.contains(&s.shortcuts_changed),
+        "le déplacement se voit : {textes:?}"
+    );
+    // Et la nouvelle frappe est écrite, non celle du jeu.
+    assert!(
+        textes.iter().any(|t| t.contains('Y')),
+        "la frappe posée est celle qui s'affiche : {textes:?}"
+    );
+}
+
+/// La fenêtre des préférences ne grandit pas d'elle-même, page par page.
+///
+/// Le banc le dit déjà pour les quatorze fenêtres, mais il n'ouvrait que
+/// la PREMIÈRE page des préférences — la seule qui tienne sans défiler.
+/// Les quatre autres grandissaient d'un pixel par image, sans fin : la
+/// zone qui défile prenait sa hauteur sur la fenêtre, et la fenêtre
+/// prenait la sienne sur son contenu. Vingt images, vingt hauteurs.
+///
+/// Ce contrôle-ci garde la cause plutôt que le symptôme : il ouvre
+/// chaque page, et aucune ne doit bouger.
+#[test]
+fn no_preferences_page_grows_by_itself() {
+    for onglet in PreferencesTab::ALL {
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp::default();
+        app.apply_theme(&ctx);
+        app.show_preferences = true;
+        app.preferences_tab = onglet;
+        let entrée = écran_du_banc();
+
+        let mut hauteurs: Vec<f32> = Vec::new();
+        for _ in 0..20 {
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            sortie.textures_delta.clear();
+            if let Some(rect) =
+                egui::AreaState::load(&ctx, egui::Id::new("preferences_window")).map(|a| a.rect())
+            {
+                hauteurs.push(rect.height());
+            }
+        }
+        // Les huit dernières identiques : egui AMÈNE une fenêtre à sa
+        // taille au lieu de l'y poser, ce qui prend quelques images. Une
+        // mise en place qui converge n'est pas une dérive ; ce qu'on
+        // refuse, c'est ce qui ne s'arrête jamais.
+        let fin = &hauteurs[hauteurs.len().saturating_sub(8)..];
+        for paire in fin.windows(2) {
+            assert!(
+                (paire[0] - paire[1]).abs() < 0.01,
+                "la page « {} » fait grandir la fenêtre toute seule : {:?}",
+                onglet.id(),
+                hauteurs
+            );
+        }
+    }
 }

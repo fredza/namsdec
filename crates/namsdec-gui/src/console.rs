@@ -982,7 +982,7 @@ impl NamsdecApp {
                     )
                 }
             }
-            None => s.no_binary_assembled.to_string(),
+            None => s.module_disasm_idle.to_string(),
         };
         module_card(
             ui,
