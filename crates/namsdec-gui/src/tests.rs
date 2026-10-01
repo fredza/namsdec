@@ -54,7 +54,9 @@ const SOURCES_DE_L_INTERFACE: &[(&str, &str)] = &[
     ("files.rs", include_str!("files.rs")),
     ("flow.rs", include_str!("flow.rs")),
     ("help.rs", include_str!("help.rs")),
+    ("icons.rs", include_str!("icons.rs")),
     ("i18n.rs", include_str!("i18n.rs")),
+    ("labels.rs", include_str!("labels.rs")),
     ("keybindings.rs", include_str!("keybindings.rs")),
     ("jobs.rs", include_str!("jobs.rs")),
     ("loader.rs", include_str!("loader.rs")),
@@ -67,6 +69,7 @@ const SOURCES_DE_L_INTERFACE: &[(&str, &str)] = &[
     ("occurrences.rs", include_str!("occurrences.rs")),
     ("preferences.rs", include_str!("preferences.rs")),
     ("readings.rs", include_str!("readings.rs")),
+    ("resources.rs", include_str!("resources.rs")),
     ("roles.rs", include_str!("roles.rs")),
     ("run.rs", include_str!("run.rs")),
     ("settings.rs", include_str!("settings.rs")),
@@ -77,6 +80,7 @@ const SOURCES_DE_L_INTERFACE: &[(&str, &str)] = &[
     ("text.rs", include_str!("text.rs")),
     ("timeline.rs", include_str!("timeline.rs")),
     ("tools.rs", include_str!("tools.rs")),
+    ("widgets.rs", include_str!("widgets.rs")),
     ("windows.rs", include_str!("windows.rs")),
 ];
 

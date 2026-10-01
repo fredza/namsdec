@@ -574,6 +574,22 @@ jamais ajouter. Il faut de la place, et d'abord savoir où elle est.
       `ReRequest::PatchBytes`, qui existe déjà. À faire pas à pas, chaque
       geste réversible et montré avant d'être posé — comme les correctifs.
 
+## 4 septies. Découpage de main.rs (suite)
+
+- [x] **main.rs : 6 643 → 5 525 lignes** (−1 118, −17 %), sans rien
+      changer au comportement. Quatre modules neufs, chacun un thème net,
+      chacun vérifié par compilation puis par la suite complète :
+      - `icons.rs` (217) — les dix icônes dessinées à la main (peintre,
+        rectangle, couleur ; dessins purs, testés au pixel).
+      - `widgets.rs` (667) — barres de validation et de dialogue, boutons
+        (texte, action, icône), cartes de thème et de module, `Answer`.
+      - `labels.rs` (104) — les étiquettes du source (fonctions pures sur
+        du texte, sans écran).
+      - `resources.rs` (169) — dossiers de données et ressources
+        installées (greffons, thèmes), et les deux libellés de région.
+- [x] Les quatre ajoutés à `SOURCES_DE_L_INTERFACE` : les contrôles qui
+      lisent le code source les voient désormais comme les autres.
+
 ## 5. Vocation pédagogique
 
 - [x] **L'Atelier, seconde série d'exercices** — dix-huit exercices de
