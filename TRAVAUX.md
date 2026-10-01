@@ -576,8 +576,8 @@ jamais ajouter. Il faut de la place, et d'abord savoir où elle est.
 
 ## 4 octies. Découpage de main.rs (suite)
 
-- [x] **main.rs : 6 643 → 5 453 lignes** (−1 190, −18 %), sans rien
-      changer au comportement. Cinq modules neufs, chacun un thème net,
+- [x] **main.rs : 6 643 → 5 181 lignes** (−1 462, −22 %), sans rien
+      changer au comportement. Six modules neufs, chacun un thème net,
       chacun vérifié par compilation puis par la suite complète :
       - `icons.rs` (217) — les dix icônes dessinées à la main (peintre,
         rectangle, couleur ; dessins purs, testés au pixel).
@@ -589,7 +589,10 @@ jamais ajouter. Il faut de la place, et d'abord savoir où elle est.
         installées (greffons, thèmes), et les deux libellés de région.
       - `profiling.rs` (82) — le diagnostic des images lentes : mesurer
         chaque étape d'une frame, et écrire celle qui a gelé l'interface.
-- [x] Les cinq ajoutés à `SOURCES_DE_L_INTERFACE` : les contrôles qui
+      - `listing.rs` (~280) — le rendu du listing désassemblé : bande de
+        chaleur, ligne sous le curseur, boutons-liens, étiquettes de
+        liaison, annotation d'une ligne, cible d'un saut, nom d'adresse.
+- [x] Les six ajoutés à `SOURCES_DE_L_INTERFACE` : les contrôles qui
       lisent le code source les voient désormais comme les autres.
 
 ## 5. Vocation pédagogique

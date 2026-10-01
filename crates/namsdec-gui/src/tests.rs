@@ -59,6 +59,7 @@ const SOURCES_DE_L_INTERFACE: &[(&str, &str)] = &[
     ("labels.rs", include_str!("labels.rs")),
     ("keybindings.rs", include_str!("keybindings.rs")),
     ("jobs.rs", include_str!("jobs.rs")),
+    ("listing.rs", include_str!("listing.rs")),
     ("loader.rs", include_str!("loader.rs")),
     ("maximize.rs", include_str!("maximize.rs")),
     ("marks.rs", include_str!("marks.rs")),
