@@ -3464,6 +3464,67 @@ fn the_help_window_offers_its_contents_when_no_sheet_is_open() {
     );
 }
 
+/// Le sommaire des instructions montre TOUS les mnémoniques, pas une
+/// tête de famille par fiche.
+///
+/// Le sommaire n'affichait que `names[0]` de chaque fiche : `jmp` se
+/// voyait, mais `je`, `jne`, `jz`… — pourtant documentés par la même
+/// famille — restaient invisibles tant qu'on ne savait pas les chercher.
+/// Cent treize têtes de famille pour six cent soixante-quatorze
+/// mnémoniques : cinq cent soixante et un instructions nasm présentes
+/// dans la doc mais absentes de l'écran. « Toutes les instructions nasm
+/// doivent être présentes », et ce contrôle l'exige nom par nom.
+#[test]
+fn the_instruction_index_shows_every_mnemonic_not_just_the_family_head() {
+    let mut app = NamsdecApp {
+        show_help: true,
+        help_index_kind: namsdec_doc::Kind::Instruction,
+        ..Default::default()
+    };
+    app.help = None;
+    let painted = paint(&mut app);
+    let vus: std::collections::BTreeSet<&str> = painted.split('|').collect();
+
+    // La fenêtre d'aide ne montre qu'une page à la fois : on ne peut pas
+    // exiger les six cent soixante-quatorze noms d'un coup. Mais parmi les
+    // familles VISIBLES, au moins une doit montrer TOUS ses noms — avant,
+    // le sommaire n'en montrait qu'un par fiche, donc aucune famille à
+    // plusieurs noms n'aurait pu être complète.
+    let mut une_famille_complète = false;
+    let mut une_famille_multi_vue = false;
+    for entry in namsdec_doc::all() {
+        if entry.kind != namsdec_doc::Kind::Instruction || entry.names.len() < 2 {
+            continue;
+        }
+        // Visible = son premier nom est peint.
+        if !vus.contains(entry.names[0]) {
+            continue;
+        }
+        une_famille_multi_vue = true;
+        if entry.names.iter().all(|nom| vus.contains(nom)) {
+            une_famille_complète = true;
+            break;
+        }
+    }
+    assert!(
+        une_famille_multi_vue,
+        "aucune famille à plusieurs noms n'est visible : test non concluant\n{painted}"
+    );
+    assert!(
+        une_famille_complète,
+        "une famille visible ne montre pas tous ses noms — le sommaire tait \
+         encore les mnémoniques qui ne sont pas en tête de fiche\n{painted}"
+    );
+
+    // Et le compte annoncé est celui des mnémoniques, non des fiches : il
+    // dit « toutes présentes », et il est en tête, jamais masqué.
+    let combien = namsdec_doc::mnemonics().len();
+    assert!(
+        painted.contains(&format!("{combien} ")),
+        "le sommaire doit annoncer les {combien} mnémoniques :\n{painted}"
+    );
+}
+
 /// La fenêtre d'aide s'ouvre par le menu Aide comme par F1, et montre la
 /// fiche — pas seulement son titre.
 #[test]

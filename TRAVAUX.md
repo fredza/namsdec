@@ -604,6 +604,18 @@ jamais ajouter. Il faut de la place, et d'abord savoir où elle est.
 - [x] Les neuf ajoutés à `SOURCES_DE_L_INTERFACE` : les contrôles qui
       lisent le code source les voient désormais comme les autres.
 
+## 4 nonies. Toutes les instructions nasm, visibles
+
+- [x] **Le sommaire de l'aide montrait 113 têtes de famille pour 674
+      mnémoniques** — `jmp` se voyait, mais `je`/`jne`/`jz`… étaient dans
+      la doc sans être à l'écran : 561 instructions nasm qu'il fallait
+      connaître pour les chercher. Trouvé sur les captures de Fred (2-3
+      octobre). Le sommaire des instructions affiche désormais **tous les
+      noms** de chaque fiche, chacun cliquable (nom surligné à
+      l'ouverture), avec un compte en tête. Contrôle :
+      `the_instruction_index_shows_every_mnemonic_not_just_the_family_head`.
+      Manuel et PDF à jour.
+
 ## 5. Vocation pédagogique
 
 - [x] **L'Atelier, seconde série d'exercices** — dix-huit exercices de

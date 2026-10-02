@@ -695,6 +695,15 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "notions — et s'exporte en entier en Markdown (menu Aide), parce que ce qu'on "
          "apprend ici doit pouvoir se lire ailleurs." % nb_fiches),
         ("p",
+         "Sans rien sous le curseur, la fenêtre d'aide ouvre son <b>sommaire</b>, rangé en "
+         "quatre paliers (notions, instructions, directives, préprocesseur). Le sommaire "
+         "des instructions liste <b>tous les mnémoniques</b>, et non une tête de famille par "
+         "fiche : <font face='Courier'>jmp</font> s'y voyait, mais "
+         "<font face='Courier'>je</font>, <font face='Courier'>jne</font>, "
+         "<font face='Courier'>jz</font>… restaient invisibles tant qu'on ne savait pas les "
+         "chercher. Chaque nom est maintenant présent et cliquable — une famille en couvre "
+         "jusqu'à six —, et un compte en tête dit combien ils sont."),
+        ("p",
          "Une garantie que peu d'outils donnent : un test parcourt soixante binaires de "
          "votre système et vérifie qu'il n'y reste <b>pas une seule instruction</b> que le "
          "manuel ne sache expliquer."),

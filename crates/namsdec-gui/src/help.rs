@@ -1026,6 +1026,13 @@ impl NamsdecApp {
             .iter()
             .filter(|entry| entry.kind == self.help_index_kind)
             .collect();
+        // Combien de mnémoniques le palier montre, et non combien de
+        // fiches : une famille en couvre souvent plusieurs, et c'est le
+        // compte des instructions qui répond à « les ai-je toutes ? ».
+        let combien_noms: usize = fiches.iter().map(|e| e.names.len()).sum();
+        ui.colored_label(theme.dim, format!("{combien_noms} {}", s.help_index_count));
+        ui.add_space(2.0);
+
         let mut ouvrir = None;
         egui::ScrollArea::vertical()
             .id_salt("help_sommaire")
@@ -1033,21 +1040,32 @@ impl NamsdecApp {
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 for entry in fiches {
-                    let ligne = ui.horizontal_wrapped(|ui| {
-                        ui.colored_label(
-                            theme.mnemonic,
-                            egui::RichText::new(entry.names[0]).monospace(),
-                        );
+                    ui.horizontal_wrapped(|ui| {
+                        // TOUS les noms de la fiche, pas seulement le
+                        // premier : `jmp` se voyait, mais `je`, `jne`,
+                        // `jz`… restaient invisibles tant qu'on ne savait
+                        // pas les chercher. Une famille couvre jusqu'à six
+                        // mnémoniques, et aucun ne doit manquer au
+                        // sommaire. Chacun est cliquable et ouvre la fiche
+                        // avec son propre nom surligné.
+                        for name in entry.names {
+                            if ui
+                                .add(
+                                    egui::Label::new(
+                                        egui::RichText::new(*name)
+                                            .monospace()
+                                            .color(theme.mnemonic),
+                                    )
+                                    .sense(egui::Sense::click()),
+                                )
+                                .on_hover_text(s.help_open_sheet)
+                                .clicked()
+                            {
+                                ouvrir = Some(*name);
+                            }
+                        }
                         ui.colored_label(theme.dim, entry.title.get(lang));
                     });
-                    if ligne
-                        .response
-                        .interact(egui::Sense::click())
-                        .on_hover_text(s.help_open_sheet)
-                        .clicked()
-                    {
-                        ouvrir = Some(entry.names[0]);
-                    }
                 }
             });
 
