@@ -616,6 +616,23 @@ jamais ajouter. Il faut de la place, et d'abord savoir où elle est.
       `the_instruction_index_shows_every_mnemonic_not_just_the_family_head`.
       Manuel et PDF à jour.
 
+## 4 decies. Les indicateurs : tous présents, et qui clignotent
+
+- [x] **DF ajouté aux indicateurs** — le bandeau n'en montrait que six
+      (CF PF AF ZF SF OF). DF manquait, alors que `std`/`cld` le posent et
+      les instructions de chaîne (`movsb`, `stosb`…) le lisent. Ordre du
+      processeur conservé : CF PF AF ZF SF DF OF. « Tout doit s'afficher. »
+- [x] **Clignotement orange à chaque changement** — un registre ou un
+      indicateur qui bascule s'éclaire en orange, puis retombe en 0,6 s.
+      Une valeur qui change sans bouger à l'écran se ratait ; l'éclat la
+      désigne sans peser sur la lecture d'après. L'instant du changement
+      est posé en un point unique (`notify_step`), la couleur fond de
+      l'orange vers la normale (`flash_fraction`), et l'on redessine tant
+      qu'elle brille. Appliqué aux registres (généraux et XMM) et aux
+      indicateurs. Contrôles : `the_flash_fades_over_real_time`,
+      `every_flag_is_shown_including_df`, `a_changed_value_flashes_orange`.
+      Manuel et PDF à jour.
+
 ## 5. Vocation pédagogique
 
 - [x] **L'Atelier, seconde série d'exercices** — dix-huit exercices de

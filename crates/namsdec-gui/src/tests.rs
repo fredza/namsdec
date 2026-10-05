@@ -9039,6 +9039,123 @@ fini:
     );
 }
 
+/// Le battement d'orange décroît avec le temps, pas avec les frames.
+#[test]
+fn the_flash_fades_over_real_time() {
+    use std::time::{Duration, Instant};
+    // Rien ne clignote tant que rien n'a tourné.
+    assert_eq!(crate::sidebar::flash_fraction(None), 0.0);
+    // Juste après un changement : presque plein.
+    assert!(crate::sidebar::flash_fraction(Some(Instant::now())) > 0.9);
+    // Passé le battement : retombé à zéro.
+    let vieux = Instant::now() - Duration::from_secs_f32(crate::sidebar::FLASH_SECONDS + 0.1);
+    assert_eq!(crate::sidebar::flash_fraction(Some(vieux)), 0.0);
+}
+
+/// Tous les indicateurs s'affichent, DF compris.
+///
+/// DF manquait : « std »/« cld » le posent et les instructions de chaîne
+/// le lisent, mais le bandeau n'en montrait que six. « Tout doit
+/// s'afficher. »
+#[test]
+fn every_flag_is_shown_including_df() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: "global _start\nsection .text\n_start:\n    std\n    cld\n    hlt\n".to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+    app.do_step();
+    let peint = paint(&mut app);
+    for nom in ["CF", "PF", "AF", "ZF", "SF", "DF", "OF"] {
+        assert!(
+            peint.split('|').any(|mot| mot.starts_with(nom)),
+            "l'indicateur {nom} doit s'afficher :\n{peint}"
+        );
+    }
+}
+
+/// Une valeur qui vient de changer clignote en orange.
+///
+/// Un registre ou un indicateur qui bascule sans bouger à l'écran se
+/// rate ; un bref éclat orange le désigne. On le vérifie juste après le
+/// pas, quand l'éclat est au plus fort : l'indicateur changé tire vers
+/// l'orange du thème, un autre non.
+#[test]
+fn a_changed_value_flashes_orange() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: "global _start\nsection .text\n_start:\n    mov rcx, 1\n    dec rcx\n    hlt\n"
+            .to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+    app.do_step(); // mov rcx, 1
+    app.do_step(); // dec rcx -> 0, ZF passe de 0 à 1 : il doit clignoter
+
+    let theme = app.theme;
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 1400.0),
+        )),
+        ..Default::default()
+    };
+    // Couleur de chaque galley, par son texte.
+    let mut couleurs: std::collections::HashMap<String, egui::Color32> = Default::default();
+    for _ in 0..2 {
+        couleurs.clear();
+        let mut sortie = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                let c = t
+                    .galley
+                    .job
+                    .sections
+                    .first()
+                    .map(|s| s.format.color)
+                    .filter(|c| *c != egui::Color32::PLACEHOLDER)
+                    .unwrap_or(t.fallback_color);
+                couleurs.insert(t.galley.text().to_owned(), c);
+            }
+        }
+        sortie.textures_delta.clear();
+    }
+
+    let dist = |a: egui::Color32, b: egui::Color32| {
+        let d = |x: u8, y: u8| (i32::from(x) - i32::from(y)).pow(2);
+        d(a.r(), b.r()) + d(a.g(), b.g()) + d(a.b(), b.b())
+    };
+    // ZF vient de passer à 1 : sa pastille tire vers l'orange du thème,
+    // plus que vers le vert d'un indicateur levé au repos.
+    let zf = couleurs.get("ZF 1").copied().unwrap_or_else(|| {
+        panic!(
+            "la pastille « ZF 1 » doit être peinte : {:?}",
+            couleurs.keys()
+        )
+    });
+    assert!(
+        dist(zf, theme.changed) < dist(zf, theme.good),
+        "ZF vient de changer : il doit clignoter en orange, pas rester vert"
+    );
+    // CF n'a pas changé : il ne clignote pas (il reste grisé, loin de
+    // l'orange).
+    if let Some(cf) = couleurs.get("CF 0").copied() {
+        assert!(
+            dist(cf, theme.changed) > dist(cf, theme.dim),
+            "CF n'a pas changé : il ne doit pas clignoter"
+        );
+    }
+}
+
 /// L'état du processeur se copie en texte : c'est ce qu'on colle pour
 /// demander de l'aide, ou dans un compte rendu.
 ///

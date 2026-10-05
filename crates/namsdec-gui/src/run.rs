@@ -579,6 +579,12 @@ impl NamsdecApp {
     }
 
     pub(crate) fn notify_step(&mut self) {
+        // Le battement d'orange part d'ici : notify_step est le point par
+        // où passent tous les pas (un pas, un Run qui s'arrête, un retour
+        // en arrière), et c'est à cet instant que l'état nouveau devient
+        // visible. Ce qui a changé, le diff le dit déjà ; quand, c'est
+        // cet horodatage.
+        self.values_changed_at = Some(std::time::Instant::now());
         let (Some(emulator), Some(state)) = (&self.emulator, &self.assemble_state) else {
             return;
         };

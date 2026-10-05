@@ -614,6 +614,11 @@ struct NamsdecApp {
     /// après un `cmp`, et savoir qu'ils *ont changé* ne suffit pas —
     /// c'est la valeur d'avant qui explique celle d'après.
     flags_before: Option<RFlags>,
+    /// Quand le dernier pas a rendu la main : de quoi faire clignoter en
+    /// orange, le temps d'un battement, ce qu'il a changé. Une valeur qui
+    /// change sans bouger à l'écran se rate ; un bref éclat la désigne,
+    /// puis s'efface pour ne pas peser. `None` tant que rien n'a tourné.
+    values_changed_at: Option<std::time::Instant>,
     /// Le conseil qui accompagne la dernière erreur d'exécution : par où
     /// reprendre, quand l'erreur appelle un geste précis.
     ///
@@ -1669,6 +1674,7 @@ impl Default for NamsdecApp {
             emulator: None,
             regs_before: None,
             flags_before: None,
+            values_changed_at: None,
             error_advice: None,
             last_step: None,
             mem_before: None,
@@ -2679,6 +2685,7 @@ impl NamsdecApp {
         self.running = false;
         self.regs_before = None;
         self.flags_before = None;
+        self.values_changed_at = None;
         self.last_step = None;
         self.error_advice = None;
         self.follow_execution();

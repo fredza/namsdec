@@ -10,15 +10,22 @@
 
 use super::*;
 
-/// Les six indicateurs qu'on lit après une opération, dans l'ordre où le
-/// processeur les range. Partagés par les pastilles du bandeau et le
-/// récit du dernier pas : les deux doivent parler des mêmes.
-const FLAG_BITS: [(&str, RFlags); 6] = [
+/// Les indicateurs qu'on lit après une opération, dans l'ordre où le
+/// processeur les range (par numéro de bit). Partagés par les pastilles
+/// du bandeau et le récit du dernier pas : les deux doivent parler des
+/// mêmes.
+///
+/// DF y figure, avec les six d'arithmétique : il ne change pas sur un
+/// `add`, mais `std`/`cld` le posent et les instructions de chaîne
+/// (`movsb`, `stosb`…) le lisent pour savoir dans quel sens avancer. Le
+/// taire laissait croire qu'il n'existait pas — « tout doit s'afficher ».
+const FLAG_BITS: [(&str, RFlags); 7] = [
     ("CF", RFlags::CF),
     ("PF", RFlags::PF),
     ("AF", RFlags::AF),
     ("ZF", RFlags::ZF),
     ("SF", RFlags::SF),
+    ("DF", RFlags::DF),
     ("OF", RFlags::OF),
 ];
 
@@ -176,7 +183,7 @@ impl NamsdecApp {
         // moins ce que l'état du processeur occupe vraiment.
         //
         // La constante valait 280 quand l'état du processeur en demande
-        // 335 — seize registres, six indicateurs, un compteur et un
+        // 335 — seize registres, sept indicateurs, un compteur et un
         // lien. L'onglet pouvait donc prendre jusqu'à ce qu'il ne reste
         // que 280 px au bandeau, et le panneau bas de l'état du
         // processeur, qui prend la hauteur de son contenu et non celle
@@ -472,6 +479,10 @@ impl NamsdecApp {
         let theme = self.theme;
         let regs = &emulator.cpu().regs;
         let changed = changed_registers(self.regs_before.as_ref(), regs);
+        let éclat = flash_fraction(self.values_changed_at);
+        if éclat > 0.0 && !changed.is_empty() {
+            ui.ctx().request_repaint();
+        }
 
         ui.strong(s.sse_registers);
         // Autant de colonnes que la fenêtre en tient : seize registres
@@ -486,11 +497,9 @@ impl NamsdecApp {
             .show(ui, |ui| {
                 for (index, (name, reg)) in XMM_REGISTERS.into_iter().enumerate() {
                     let value = regs.get_ymm(reg);
-                    let color = if changed.contains(&name) {
-                        theme.changed
-                    } else {
-                        ui.visuals().text_color()
-                    };
+                    let base = ui.visuals().text_color();
+                    let flash = if changed.contains(&name) { éclat } else { 0.0 };
+                    let color = mélange(base, theme.changed, flash);
                     let low = value[0] as u64;
                     let shown = vector_name(name, value);
                     ui.colored_label(color, egui::RichText::new(shown).monospace());
@@ -1227,6 +1236,13 @@ impl NamsdecApp {
         let regs = emulator.cpu().regs.clone();
         let regs = &regs;
         let changed = changed_registers(self.regs_before.as_ref(), regs);
+        // Le battement d'orange : une valeur qui change s'éclaire, puis
+        // retombe. Tant qu'il brille, on redemande une frame — sans quoi
+        // il resterait figé à la teinte de la dernière.
+        let éclat = flash_fraction(self.values_changed_at);
+        if éclat > 0.0 && !changed.is_empty() {
+            ui.ctx().request_repaint();
+        }
         // Dix-huit valeurs d'affilée, c'est haut. Le panneau élargi,
         // elles tiennent sur deux colonnes ou plus, et l'état du
         // processeur se lit d'un coup d'œil au lieu de défiler.
@@ -1290,10 +1306,10 @@ impl NamsdecApp {
                     // n'apprendrait rien.
                     let color = if name == "RIP" {
                         theme.accent
-                    } else if changed.contains(&name) {
-                        theme.changed
                     } else {
-                        ui.visuals().text_color()
+                        let base = ui.visuals().text_color();
+                        let flash = if changed.contains(&name) { éclat } else { 0.0 };
+                        mélange(base, theme.changed, flash)
                     };
                     // Le nom du registre est cliquable : il pose une
                     // surveillance. « Arrête-toi quand RAX change » n'a
@@ -1517,21 +1533,22 @@ impl NamsdecApp {
         };
         let f = emulator.cpu().flags;
         let theme = self.theme;
+        // Ce que le dernier pas a changé, et depuis quand : l'indicateur
+        // qui a basculé clignote en orange, le temps d'un battement.
+        let avant = self.flags_before;
+        let éclat = flash_fraction(self.values_changed_at);
         // Un indicateur se bascule d'un clic : « et si ZF valait 1 ? »
         // est une question qu'on se pose devant chaque saut conditionnel,
         // et que le pas suivant tranche aussitôt. C'est le `setflag` de
         // pwndbg.
         let mut basculer = None;
+        let mut encore = false;
         ui.horizontal_wrapped(|ui| {
-            for (name, bit) in [
-                ("CF", RFlags::CF),
-                ("PF", RFlags::PF),
-                ("AF", RFlags::AF),
-                ("ZF", RFlags::ZF),
-                ("SF", RFlags::SF),
-                ("OF", RFlags::OF),
-            ] {
-                if flag_chip(ui, theme, name, f.contains(bit))
+            for (name, bit) in FLAG_BITS {
+                let changé = avant.is_some_and(|a| a.contains(bit) != f.contains(bit));
+                let flash = if changé { éclat } else { 0.0 };
+                encore |= flash > 0.0;
+                if flag_chip(ui, theme, name, f.contains(bit), flash)
                     .on_hover_text(s.flag_toggle_hint)
                     .clicked()
                 {
@@ -1539,6 +1556,11 @@ impl NamsdecApp {
                 }
             }
         });
+        // Tant qu'un éclat n'est pas retombé, redessiner : sinon il
+        // resterait figé à sa valeur de la dernière frame.
+        if encore {
+            ui.ctx().request_repaint();
+        }
         if let Some(bit) = basculer {
             self.toggle_flag(bit);
         }
@@ -3200,13 +3222,34 @@ pub(crate) fn xmm_tooltip(s: &Strings, value: [u128; 2]) -> String {
 /// ligne d'après la taille annoncée par l'élément. Un `Frame` ne l'annonce
 /// qu'une fois son contenu posé — les six pastilles restaient donc sur une
 /// seule ligne, qui dépassait du panneau.
+/// La durée du battement d'orange, en secondes : assez pour qu'on le
+/// voie, assez court pour qu'il ne pèse pas sur la lecture d'après.
+pub(crate) const FLASH_SECONDS: f32 = 0.6;
+
+/// Où en est le battement : 1 juste après le changement, 0 une fois
+/// retombé. Sert à fondre la couleur de l'orange vers la normale.
+///
+/// Le temps réel, et non le temps d'egui : un pas, puis la frame qui le
+/// dessine, puis les suivantes — l'éclat doit décroître à l'horloge, pas
+/// au rythme des images.
+pub(crate) fn flash_fraction(since: Option<std::time::Instant>) -> f32 {
+    match since {
+        Some(t) => (1.0 - t.elapsed().as_secs_f32() / FLASH_SECONDS).clamp(0.0, 1.0),
+        None => 0.0,
+    }
+}
+
 pub(crate) fn flag_chip(
     ui: &mut egui::Ui,
     theme: &'static Theme,
     name: &str,
     on: bool,
+    flash: f32,
 ) -> egui::Response {
-    let color = if on { theme.good } else { theme.dim };
+    // Au repos, vert si l'indicateur est levé, grisé sinon ; le temps
+    // d'un battement après un changement, l'orange par-dessus.
+    let base = if on { theme.good } else { theme.dim };
+    let color = mélange(base, theme.changed, flash);
     let galley = ui.painter().layout_no_wrap(
         format!("{name} {}", u8::from(on)),
         egui::TextStyle::Monospace.resolve(ui.style()),

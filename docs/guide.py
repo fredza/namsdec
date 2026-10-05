@@ -484,9 +484,13 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "Un clic la rouvre. Tant qu'aucun programme n'est assemblé, elle annonce ce "
          "qu'elle montrera, comme les deux zones qui la suivent — une section ouverte "
          "ne reste jamais muette.",
-         "<b>État du processeur</b> — seize registres, RIP, les six indicateurs en "
-         "pastilles, le nombre d'instructions exécutées. Un clic sur un nom de registre pose "
-         "une surveillance ; un clic sur une valeur permet de la remplacer.",
+         "<b>État du processeur</b> — seize registres, RIP, les <b>sept indicateurs</b> en "
+         "pastilles (CF, PF, AF, ZF, SF, DF, OF — DF compris, que les instructions de chaîne "
+         "lisent), le nombre d'instructions exécutées. Un clic sur un nom de registre pose "
+         "une surveillance ; un clic sur une valeur permet de la remplacer. <b>Ce qui change "
+         "à un pas clignote brièvement en orange</b> — un registre, un indicateur —, puis "
+         "retombe : une valeur qui bascule sans bouger à l'écran se raterait, l'éclat la "
+         "désigne sans encombrer la lecture d'après.",
          "<b>La vue choisie</b> — Pile, Mémoire, Tas, Octets, et RE si le module est "
          "activé. Devant un <b>binaire ouvert</b>, la vue Octets se récrit : un clic sur "
          "les octets d'une instruction ouvre un champ, Entrée valide, Échap annule. On y "
