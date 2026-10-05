@@ -1575,12 +1575,17 @@ impl NamsdecApp {
         let lang = self.lang;
         let mut basculer = None;
         let mut encore = false;
-        // `scope` et non un `horizontal` neuf : on reste dans la rangée de
-        // la barre de titre, en resserrant seulement l'espacement — sept
-        // pastilles de plus dans un bandeau déjà peuplé.
-        ui.scope(|ui| {
+        // `horizontal` se dimensionne à ses pastilles (et non à toute la
+        // largeur restante) : dans la disposition droite-à-gauche de la
+        // barre de titre, il se range donc au bout, à droite du nom. Mais
+        // egui en inverse alors le contenu — mesuré : OF sortait en tête,
+        // CF en queue. On parcourt FLAG_BITS À L'ENVERS pour que ce double
+        // renversement redonne l'ordre du processeur, CF…OF, de gauche à
+        // droite. L'espacement resserré : sept pastilles de plus dans un
+        // bandeau déjà peuplé.
+        ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 4.0;
-            for (name, bit) in FLAG_BITS {
+            for &(name, bit) in FLAG_BITS.iter().rev() {
                 let on = f.contains(bit);
                 let changé = avant.is_some_and(|a| a.contains(bit) != on);
                 let flash = if changé { éclat } else { 0.0 };

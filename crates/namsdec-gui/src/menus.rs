@@ -801,34 +801,42 @@ impl NamsdecApp {
                 }
             });
 
-            // Les indicateurs, dans la barre de titre : toujours visibles,
-            // jamais repliés, à côté du nom du fichier. C'est là que Fred
-            // les voulait — pas sous un en-tête dans le panneau, qui se
-            // fait pousser et replier.
-            ui.add_space(8.0);
-            self.flags_ui(ui);
-
             // La barre de menus *est* la barre de titre : tout ce qui
-            // reste après les menus se saisit pour déplacer la fenêtre,
-            // porte le nom du fichier, et le double-clic l'agrandit. Une
-            // barre de titre du système par-dessus celle-ci ferait deux
-            // rangées pour le même travail.
-            if !self.system_titlebar {
-                let maximisée = ui.input(|i| i.viewport().maximized.unwrap_or(false));
-                let fichier = self
-                    .current_file
-                    .as_ref()
-                    .and_then(|path| path.file_name())
-                    .map(|name| name.to_string_lossy().into_owned())
-                    .unwrap_or_else(|| s.untitled_buffer.to_owned());
-                chrome::title_drag_ui(
-                    ui,
-                    self.theme,
-                    &fichier,
-                    self.source != self.saved_source,
-                    maximisée,
-                );
-            }
+            // reste après les menus porte le nom du fichier, se saisit pour
+            // déplacer la fenêtre, et le double-clic l'agrandit. Une barre
+            // de titre du système par-dessus ferait deux rangées pour le
+            // même travail.
+            //
+            // Les indicateurs se posent à DROITE du nom du fichier, au bout
+            // de la barre : toujours visibles et jamais repliés, mais hors
+            // du chemin du titre. D'où la disposition droite-à-gauche —
+            // c'est elle qui range au bout.
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                // En droite-à-gauche, le premier ajouté va le plus à
+                // droite. Les pastilles d'abord ; `flags_ui` tient son
+                // propre ordre CF…OF par une disposition gauche-à-droite
+                // explicite.
+                self.flags_ui(ui);
+                // Puis, vers la gauche, le nom du fichier et la zone qu'on
+                // saisit — elle remplit tout ce qui reste.
+                if !self.system_titlebar {
+                    ui.add_space(8.0);
+                    let maximisée = ui.input(|i| i.viewport().maximized.unwrap_or(false));
+                    let fichier = self
+                        .current_file
+                        .as_ref()
+                        .and_then(|path| path.file_name())
+                        .map(|name| name.to_string_lossy().into_owned())
+                        .unwrap_or_else(|| s.untitled_buffer.to_owned());
+                    chrome::title_drag_ui(
+                        ui,
+                        self.theme,
+                        &fichier,
+                        self.source != self.saved_source,
+                        maximisée,
+                    );
+                }
+            });
         });
         if let Some(bouton) = bouton_fenêtre {
             self.window_button(bouton);

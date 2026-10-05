@@ -616,6 +616,16 @@ jamais ajouter. Il faut de la place, et d'abord savoir où elle est.
       `the_instruction_index_shows_every_mnemonic_not_just_the_family_head`.
       Manuel et PDF à jour.
 
+## 4 terdecies. Flags à droite du nom, et éclat plus long
+
+- [x] **Les indicateurs à droite du nom du fichier** (et non à gauche) —
+      au bout de la barre de titre, via une disposition droite-à-gauche.
+      egui inversait alors l'ordre des pastilles ; on parcourt FLAG_BITS à
+      l'envers pour que le double renversement redonne CF…OF. Mesuré :
+      nom à ~470, pastilles de ~1110 à ~1358 sur une fenêtre de 1400.
+- [x] **L'éclat orange dure 1,5 s** (au lieu de 0,6) — trop court, disait
+      Fred. `FLASH_SECONDS` porté à 1.5.
+
 ## 4 duodecies. Les flags dans la barre de titre, le changement bien visible
 
 - [x] **Les sept indicateurs déménagent dans la barre de titre** — c'est
