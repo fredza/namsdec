@@ -1543,13 +1543,29 @@ impl NamsdecApp {
         // pwndbg.
         let mut basculer = None;
         let mut encore = false;
+        let lang = self.lang;
+        // Une barre de titre devant la rangée : sans elle, « CF 0 PF 1… »
+        // flottait sous les registres sans dire ce que c'était. Le titre
+        // et les pastilles tiennent sur la même ligne tant que la place
+        // le permet, et passent à la ligne ensemble sinon.
         ui.horizontal_wrapped(|ui| {
+            // Les pastilles se serrent : sept indicateurs plus leur titre
+            // doivent tenir sur une seule rangée, même dans une sidebar
+            // étroite. L'espacement par défaut d'egui (huit pixels par
+            // trou) les faisait déborder d'une pastille — et un panneau
+            // d'état ne défile jamais.
+            ui.spacing_mut().item_spacing.x = 4.0;
+            ui.colored_label(theme.dim, s.flags_title);
             for (name, bit) in FLAG_BITS {
-                let changé = avant.is_some_and(|a| a.contains(bit) != f.contains(bit));
+                let on = f.contains(bit);
+                let changé = avant.is_some_and(|a| a.contains(bit) != on);
                 let flash = if changé { éclat } else { 0.0 };
                 encore |= flash > 0.0;
-                if flag_chip(ui, theme, name, f.contains(bit), flash)
-                    .on_hover_text(s.flag_toggle_hint)
+                // Le survol présente l'indicateur en entier : nom développé,
+                // rôle, état posé ou retombé — « tous les états », et non le
+                // seul « cliquez pour basculer ».
+                if flag_chip(ui, theme, name, on, flash)
+                    .on_hover_text(flag_description(name, on, lang))
                     .clicked()
                 {
                     basculer = Some(bit);
@@ -3239,6 +3255,96 @@ pub(crate) fn flash_fraction(since: Option<std::time::Instant>) -> f32 {
     }
 }
 
+/// Ce qu'un indicateur veut dire, nom développé et rôle, et où il en est.
+///
+/// Le survol d'une pastille ne disait que « cliquez pour basculer » : on
+/// y lisait `CF` sans savoir que c'est la retenue, ni ce qu'elle raconte.
+/// Ici chaque indicateur se présente en entier — nom, rôle, état posé ou
+/// retombé —, pour que les sept se lisent clairement, pas seulement se
+/// voient.
+pub(crate) fn flag_description(name: &str, on: bool, lang: Lang) -> String {
+    let fr = lang == Lang::Fr;
+    let (plein, rôle) = match name {
+        "CF" => (
+            if fr { "retenue" } else { "carry" },
+            if fr {
+                "une opération non signée a débordé"
+            } else {
+                "an unsigned operation overflowed"
+            },
+        ),
+        "PF" => (
+            if fr { "parité" } else { "parity" },
+            if fr {
+                "l'octet de poids faible du résultat a un nombre pair de bits à un"
+            } else {
+                "the low byte of the result has an even number of one bits"
+            },
+        ),
+        "AF" => (
+            if fr {
+                "retenue auxiliaire"
+            } else {
+                "auxiliary carry"
+            },
+            if fr {
+                "retenue entre le quartet 3 et le quartet 4 — le calcul décimal codé binaire la lit"
+            } else {
+                "carry between nibble 3 and 4 — binary-coded decimal reads it"
+            },
+        ),
+        "ZF" => (
+            if fr { "zéro" } else { "zero" },
+            if fr {
+                "le dernier résultat est nul — c'est lui qu'un `je`/`jz` lit"
+            } else {
+                "the last result was zero — a `je`/`jz` reads it"
+            },
+        ),
+        "SF" => (
+            if fr { "signe" } else { "sign" },
+            if fr {
+                "le dernier résultat est négatif (bit de poids fort à un)"
+            } else {
+                "the last result is negative (top bit set)"
+            },
+        ),
+        "DF" => (
+            "direction",
+            if fr {
+                "les instructions de chaîne avancent vers le bas ; `std` le pose, `cld` le retire"
+            } else {
+                "string instructions move downward; `std` sets it, `cld` clears it"
+            },
+        ),
+        "OF" => (
+            if fr {
+                "débordement signé"
+            } else {
+                "signed overflow"
+            },
+            if fr {
+                "une opération signée a débordé — à ne pas confondre avec la retenue"
+            } else {
+                "a signed operation overflowed — not to be confused with carry"
+            },
+        ),
+        _ => ("", ""),
+    };
+    let état = match (on, fr) {
+        (true, true) => "posé (1)",
+        (true, false) => "set (1)",
+        (false, true) => "retombé (0)",
+        (false, false) => "clear (0)",
+    };
+    let bascule = if fr {
+        "Cliquez pour le basculer : le prochain saut le lira."
+    } else {
+        "Click to flip it: the next jump will read it."
+    };
+    format!("{name} — {plein} · {état}\n{rôle}\n\n{bascule}")
+}
+
 pub(crate) fn flag_chip(
     ui: &mut egui::Ui,
     theme: &'static Theme,
@@ -3256,7 +3362,7 @@ pub(crate) fn flag_chip(
         color,
     );
     let (rect, response) =
-        ui.allocate_exact_size(galley.size() + egui::vec2(12.0, 4.0), egui::Sense::click());
+        ui.allocate_exact_size(galley.size() + egui::vec2(6.0, 2.0), egui::Sense::click());
     ui.painter().rect_stroke(
         rect,
         egui::CornerRadius::from(3),

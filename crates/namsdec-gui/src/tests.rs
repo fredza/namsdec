@@ -9078,6 +9078,48 @@ fn every_flag_is_shown_including_df() {
     }
 }
 
+/// Les indicateurs portent une barre de titre et se présentent en entier.
+///
+/// La rangée « CF 0 PF 1… » flottait sans dire ce qu'elle était, et le
+/// survol d'une pastille ne donnait que « cliquez pour basculer ». Un
+/// titre devant la rangée, et un survol qui développe le nom, le rôle et
+/// l'état : les sept indicateurs se lisent, au lieu de seulement se voir.
+#[test]
+fn the_flags_carry_a_title_and_describe_each_state() {
+    // Le descriptif, sans écran : nom développé, rôle, état posé/retombé.
+    let zf_on = crate::sidebar::flag_description("ZF", true, Lang::Fr);
+    assert!(zf_on.contains("zéro") && zf_on.contains("posé"), "{zf_on}");
+    let zf_off = crate::sidebar::flag_description("ZF", false, Lang::Fr);
+    assert!(zf_off.contains("retombé"), "{zf_off}");
+    let cf_en = crate::sidebar::flag_description("CF", true, Lang::En);
+    assert!(cf_en.contains("carry") && cf_en.contains("set"), "{cf_en}");
+    // Les sept ont un nom développé — aucun ne reste muet.
+    for nom in ["CF", "PF", "AF", "ZF", "SF", "DF", "OF"] {
+        let d = crate::sidebar::flag_description(nom, false, Lang::Fr);
+        assert!(
+            d.lines().count() >= 2 && d.starts_with(nom),
+            "{nom} doit se décrire en entier : {d}"
+        );
+    }
+
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: "global _start\nsection .text\n_start:\n    mov rax, 1\n    hlt\n".to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+    app.do_step();
+    let peint = paint(&mut app);
+    // La barre de titre des indicateurs se lit.
+    assert!(
+        peint.contains(strings(Lang::Fr).flags_title),
+        "la barre de titre des indicateurs doit s'afficher :\n{peint}"
+    );
+}
+
 /// Une valeur qui vient de changer clignote en orange.
 ///
 /// Un registre ou un indicateur qui bascule sans bouger à l'écran se

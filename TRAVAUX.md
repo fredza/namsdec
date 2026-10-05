@@ -616,6 +616,20 @@ jamais ajouter. Il faut de la place, et d'abord savoir où elle est.
       `the_instruction_index_shows_every_mnemonic_not_just_the_family_head`.
       Manuel et PDF à jour.
 
+## 4 undecies. Les indicateurs : une barre de titre, et chacun se présente
+
+- [x] **Barre de titre « Indicateurs »** devant la rangée des pastilles —
+      elle flottait sous les registres sans dire ce qu'elle était. Le titre
+      et les sept pastilles tiennent sur une seule rangée : l'espacement
+      resserré (4 px) et des pastilles compactes (padding 6×2) laissent la
+      place, sans que l'état du processeur ne défile jamais — mesuré de
+      800×520 à 1920×1230.
+- [x] **Chaque indicateur se présente en entier au survol** — nom développé
+      (CF → retenue, ZF → zéro, DF → direction…), rôle, et état posé ou
+      retombé. Le survol ne disait que « cliquez pour basculer » ; on lisait
+      `CF` sans savoir ce que c'était. `flag_toggle_hint` fondu dedans.
+      Contrôle : `the_flags_carry_a_title_and_describe_each_state`.
+
 ## 4 decies. Les indicateurs : tous présents, et qui clignotent
 
 - [x] **DF ajouté aux indicateurs** — le bandeau n'en montrait que six
