@@ -2193,23 +2193,22 @@ fn the_cpu_banner_opens_deployed() {
 
     let déployé = hauteur_de_l_onglet(true);
     let replié = hauteur_de_l_onglet(false);
-    // QUATRE-VINGT-DIX ET NON CENT, et le pourquoi mérite d'être écrit,
-    // parce qu'abaisser un seuil pour faire passer un changement est
-    // exactement la mauvaise manière.
+    // SOIXANTE-DIX, et le pourquoi mérite d'être écrit, parce qu'abaisser
+    // un seuil pour faire passer un changement est exactement la mauvaise
+    // manière — sauf quand ce qu'il mesure a vraiment rétréci.
     //
     // Le seuil valait 100 quand l'état du processeur portait l'en-tête
-    // repliable d'egui PRÉCÉDÉ d'un filet à lui. Unifier les trois
-    // en-têtes du bandeau a supprimé ce filet en double : le bandeau
-    // DÉPLOYÉ a maigri de quinze pixels, que l'onglet a gagnés — 826 au
-    // lieu de 811. Le repli rend donc 99 px au lieu de 114, non parce
-    // qu'il rend moins, mais parce qu'il y avait moins à rendre.
+    // repliable d'egui précédé d'un filet à lui ; unifier les en-têtes a
+    // supprimé ce filet, et le repli ne rendait plus que 99 px, d'où 90.
+    // Puis les indicateurs ont quitté le panneau pour la BARRE DE TITRE :
+    // le bandeau déployé a perdu leur rangée (~18 px), et le repli rend
+    // désormais ~81 px. Non parce qu'il rend moins, mais parce qu'il y a
+    // moins à rendre — les flags sont ailleurs, toujours visibles.
     //
-    // Ce que la règle protège est intact : replier doit valoir la peine.
-    // Ce qu'elle mesurait par ricochet — la taille du bandeau déployé —
-    // a bougé dans le bon sens, et c'est l'autre assertion, celle du
-    // plancher de l'onglet, qui le dit.
+    // Ce que la règle protège est intact : replier doit valoir la peine,
+    // et quatre-vingts pixels le valent.
     assert!(
-        replié > déployé + 90.0,
+        replié > déployé + 70.0,
         "replié, l'état du processeur rend sa place à l'onglet : {replié} contre {déployé}"
     );
     assert!(
@@ -9078,12 +9077,12 @@ fn every_flag_is_shown_including_df() {
     }
 }
 
-/// Les indicateurs portent une barre de titre et se présentent en entier.
+/// Les indicateurs vivent dans la barre de titre et se présentent en entier.
 ///
-/// La rangée « CF 0 PF 1… » flottait sans dire ce qu'elle était, et le
-/// survol d'une pastille ne donnait que « cliquez pour basculer ». Un
-/// titre devant la rangée, et un survol qui développe le nom, le rôle et
-/// l'état : les sept indicateurs se lisent, au lieu de seulement se voir.
+/// Ils flottaient sous les registres, et le survol d'une pastille ne
+/// donnait que « cliquez pour basculer ». Ils sont maintenant dans la
+/// barre de titre — toujours visible —, et chaque survol développe le nom,
+/// le rôle et l'état : les sept se lisent, au lieu de seulement se voir.
 #[test]
 fn the_flags_carry_a_title_and_describe_each_state() {
     // Le descriptif, sans écran : nom développé, rôle, état posé/retombé.
@@ -9113,11 +9112,13 @@ fn the_flags_carry_a_title_and_describe_each_state() {
     assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
     app.do_step();
     let peint = paint(&mut app);
-    // La barre de titre des indicateurs se lit.
-    assert!(
-        peint.contains(strings(Lang::Fr).flags_title),
-        "la barre de titre des indicateurs doit s'afficher :\n{peint}"
-    );
+    // Les sept pastilles se lisent dans la barre de titre.
+    for nom in ["CF", "PF", "AF", "ZF", "SF", "DF", "OF"] {
+        assert!(
+            peint.split('|').any(|mot| mot.starts_with(nom)),
+            "l'indicateur {nom} doit s'afficher dans la barre de titre :\n{peint}"
+        );
+    }
 }
 
 /// Une valeur qui vient de changer clignote en orange.

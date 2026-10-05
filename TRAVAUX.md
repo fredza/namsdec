@@ -616,6 +616,21 @@ jamais ajouter. Il faut de la place, et d'abord savoir où elle est.
       `the_instruction_index_shows_every_mnemonic_not_just_the_family_head`.
       Manuel et PDF à jour.
 
+## 4 duodecies. Les flags dans la barre de titre, le changement bien visible
+
+- [x] **Les sept indicateurs déménagent dans la barre de titre** — c'est
+      là que Fred les voulait (par « barre de titre »), pas sous un en-tête
+      dans le panneau. La barre de titre est toujours visible et ne se
+      replie jamais : on les a sous les yeux à chaque pas, à côté du nom du
+      fichier. Clic pour basculer, survol qui développe nom/rôle/état,
+      clignotement conservés. Retirés du panneau d'état (qui en ressort
+      plus court — le repli libère ~81 px, seuil du test ajusté).
+- [x] **Le changement d'un registre, bien plus visible** — un fond orange
+      qui s'estompe derrière la valeur, à la place de la seule teinte de
+      texte (trop discrète, dit Fred). Un bloc de couleur se voit d'un coup
+      d'œil ; le texte reste clair dessus pour rester lisible pendant
+      l'éclat. Manuel et PDF à jour.
+
 ## 4 undecies. Les indicateurs : une barre de titre, et chacun se présente
 
 - [x] **Barre de titre « Indicateurs »** devant la rangée des pastilles —

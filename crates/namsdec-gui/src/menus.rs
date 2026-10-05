@@ -801,6 +801,13 @@ impl NamsdecApp {
                 }
             });
 
+            // Les indicateurs, dans la barre de titre : toujours visibles,
+            // jamais repliés, à côté du nom du fichier. C'est là que Fred
+            // les voulait — pas sous un en-tête dans le panneau, qui se
+            // fait pousser et replier.
+            ui.add_space(8.0);
+            self.flags_ui(ui);
+
             // La barre de menus *est* la barre de titre : tout ce qui
             // reste après les menus se saisit pour déplacer la fenêtre,
             // porte le nom du fichier, et le double-clic l'agrandit. Une

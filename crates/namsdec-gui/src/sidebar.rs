@@ -303,8 +303,8 @@ impl NamsdecApp {
     /// que le programme a coûté jusqu'ici.
     fn cpu_state_ui(&mut self, ui: &mut egui::Ui) {
         self.registers_ui(ui);
-        ui.add_space(6.0);
-        self.flags_ui(ui);
+        // Les indicateurs ne sont plus ici : ils vivent dans la barre de
+        // titre, toujours visible et jamais repliée. Voir `flags_ui`.
         self.cost_ui(ui);
         self.goal_ui(ui);
     }
@@ -1430,7 +1430,22 @@ impl NamsdecApp {
                             }
                         }
                         _ => {
-                            let job = hex_job(ui, theme, value, color);
+                            let flash = if changed.contains(&name) { éclat } else { 0.0 };
+                            // Un FOND orange qui s'estompe, et non plus la
+                            // seule teinte du texte : un bloc de couleur se
+                            // voit d'un coup d'œil, là où quelques pixels
+                            // d'encre orange se rataient. Réservé AVANT le
+                            // texte pour passer derrière lui.
+                            let fond = (flash > 0.0).then(|| ui.painter().add(egui::Shape::Noop));
+                            // Sur ce fond, l'encre reste claire pour rester
+                            // lisible pendant l'éclat ; sans fond, sa teinte
+                            // habituelle.
+                            let encre = if flash > 0.0 {
+                                ui.visuals().text_color()
+                            } else {
+                                color
+                            };
+                            let job = hex_job(ui, theme, value, encre);
                             let valeur =
                                 crate::cliquable(ui, egui::Label::new(job)).on_hover_ui(|ui| {
                                     ui.label(readings::of(lang, value));
@@ -1439,6 +1454,21 @@ impl NamsdecApp {
                                 });
                             if valeur.clicked() {
                                 éditer = Some(name);
+                            }
+                            // Le fond est peint APRÈS, dans l'emplacement
+                            // réservé plus haut : il passe donc derrière le
+                            // texte, et la lecture du clic reste juste sous
+                            // la réponse.
+                            if let Some(fond) = fond {
+                                let rect = valeur.rect.expand2(egui::vec2(3.0, 1.0));
+                                ui.painter().set(
+                                    fond,
+                                    egui::Shape::rect_filled(
+                                        rect,
+                                        3.0,
+                                        theme.changed.gamma_multiply(0.5 * flash),
+                                    ),
+                                );
                             }
                         }
                     }
@@ -1526,36 +1556,30 @@ impl NamsdecApp {
         self.status = Status::Note(|s| s.register_set);
     }
 
-    fn flags_ui(&mut self, ui: &mut egui::Ui) {
-        let s = strings(self.lang);
+    /// Les sept indicateurs, en pastilles, dans la barre de titre.
+    ///
+    /// Leur place : la barre de titre est toujours visible et ne défile
+    /// jamais, là où le panneau d'état se replie et se fait pousser. Les
+    /// y mettre, c'est les avoir sous les yeux à chaque pas, à côté du nom
+    /// du fichier. Chacune se bascule d'un clic (« et si ZF valait 1 ? »),
+    /// clignote en orange quand elle change, et se présente en entier au
+    /// survol.
+    pub(crate) fn flags_ui(&mut self, ui: &mut egui::Ui) {
         let Some(emulator) = &self.emulator else {
             return;
         };
         let f = emulator.cpu().flags;
         let theme = self.theme;
-        // Ce que le dernier pas a changé, et depuis quand : l'indicateur
-        // qui a basculé clignote en orange, le temps d'un battement.
         let avant = self.flags_before;
         let éclat = flash_fraction(self.values_changed_at);
-        // Un indicateur se bascule d'un clic : « et si ZF valait 1 ? »
-        // est une question qu'on se pose devant chaque saut conditionnel,
-        // et que le pas suivant tranche aussitôt. C'est le `setflag` de
-        // pwndbg.
+        let lang = self.lang;
         let mut basculer = None;
         let mut encore = false;
-        let lang = self.lang;
-        // Une barre de titre devant la rangée : sans elle, « CF 0 PF 1… »
-        // flottait sous les registres sans dire ce que c'était. Le titre
-        // et les pastilles tiennent sur la même ligne tant que la place
-        // le permet, et passent à la ligne ensemble sinon.
-        ui.horizontal_wrapped(|ui| {
-            // Les pastilles se serrent : sept indicateurs plus leur titre
-            // doivent tenir sur une seule rangée, même dans une sidebar
-            // étroite. L'espacement par défaut d'egui (huit pixels par
-            // trou) les faisait déborder d'une pastille — et un panneau
-            // d'état ne défile jamais.
+        // `scope` et non un `horizontal` neuf : on reste dans la rangée de
+        // la barre de titre, en resserrant seulement l'espacement — sept
+        // pastilles de plus dans un bandeau déjà peuplé.
+        ui.scope(|ui| {
             ui.spacing_mut().item_spacing.x = 4.0;
-            ui.colored_label(theme.dim, s.flags_title);
             for (name, bit) in FLAG_BITS {
                 let on = f.contains(bit);
                 let changé = avant.is_some_and(|a| a.contains(bit) != on);
@@ -3240,7 +3264,7 @@ pub(crate) fn xmm_tooltip(s: &Strings, value: [u128; 2]) -> String {
 /// seule ligne, qui dépassait du panneau.
 /// La durée du battement d'orange, en secondes : assez pour qu'on le
 /// voie, assez court pour qu'il ne pèse pas sur la lecture d'après.
-pub(crate) const FLASH_SECONDS: f32 = 0.6;
+pub(crate) const FLASH_SECONDS: f32 = 1.5;
 
 /// Où en est le battement : 1 juste après le changement, 0 une fois
 /// retombé. Sert à fondre la couleur de l'orange vers la normale.

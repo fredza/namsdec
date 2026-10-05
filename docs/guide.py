@@ -284,6 +284,13 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "suite du menu Aide, et le reste de la bande déplace la fenêtre ; le "
          "double-clic l'agrandit, les bords la redimensionnent."),
         ("p",
+         "C'est là aussi que vivent les <b>sept indicateurs</b> (CF, PF, AF, ZF, SF, DF, "
+         "OF), en pastilles : la barre de titre est toujours visible et ne se replie "
+         "jamais, on les a donc sous les yeux à chaque pas, à côté du nom du fichier. "
+         "Vert quand l'indicateur est levé, grisé sinon ; un clic le bascule (le prochain "
+         "saut le lira), et le survol le présente en entier — nom développé, rôle, et "
+         "s'il est posé ou retombé. DF compris, que les instructions de chaîne lisent."),
+        ("p",
          "Les fenêtres internes portent la <b>même pastille</b> de fermeture, au "
          "même endroit. Une seule façon de fermer quelque chose, partout."),
         ("p",
@@ -484,16 +491,13 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "Un clic la rouvre. Tant qu'aucun programme n'est assemblé, elle annonce ce "
          "qu'elle montrera, comme les deux zones qui la suivent — une section ouverte "
          "ne reste jamais muette.",
-         "<b>État du processeur</b> — seize registres, RIP, et sous la barre "
-         "<b>Indicateurs</b> les <b>sept</b> en pastilles (CF, PF, AF, ZF, SF, DF, OF — DF "
-         "compris, que les instructions de chaîne lisent), puis le nombre d'instructions "
-         "exécutées. Survoler une pastille la présente en entier : son nom développé, son "
-         "rôle, et s'il est posé ou retombé — les sept se lisent, pas seulement se voient. "
-         "Un clic sur un nom de registre pose "
-         "une surveillance ; un clic sur une valeur permet de la remplacer. <b>Ce qui change "
-         "à un pas clignote brièvement en orange</b> — un registre, un indicateur —, puis "
-         "retombe : une valeur qui bascule sans bouger à l'écran se raterait, l'éclat la "
-         "désigne sans encombrer la lecture d'après.",
+         "<b>État du processeur</b> — seize registres, RIP, le nombre d'instructions "
+         "exécutées (les sept indicateurs, eux, sont dans la barre de titre). Un clic sur "
+         "un nom de registre pose une surveillance ; un clic sur une valeur permet de la "
+         "remplacer. <b>Un registre qui change à un pas s'éclaire d'un fond orange</b> qui "
+         "s'estompe — un bloc de couleur, bien plus visible qu'une teinte de texte : une "
+         "valeur qui bascule sans bouger à l'écran se raterait, et l'éclat la désigne sans "
+         "encombrer la lecture d'après.",
          "<b>La vue choisie</b> — Pile, Mémoire, Tas, Octets, et RE si le module est "
          "activé. Devant un <b>binaire ouvert</b>, la vue Octets se récrit : un clic sur "
          "les octets d'une instruction ouvre un champ, Entrée valide, Échap annule. On y "
