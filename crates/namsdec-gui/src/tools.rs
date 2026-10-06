@@ -139,26 +139,38 @@ impl NamsdecApp {
                                 if framed_button(ui, theme, s.tools_stop).clicked() {
                                     à_retirer = Some(outil.plugin.id.clone());
                                 }
-                            } else if ui
-                                .add_enabled(
-                                    dispo != Availability::Missing,
+                            } else {
+                                // Seul un outil PRÊT s'active. Un outil
+                                // incomplet, activé, déclarerait un
+                                // décompilateur qui échoue au premier essai
+                                // — rizin sans rz-ghidra : `pdg` n'existe
+                                // pas. On grise donc « Activer » tant qu'il
+                                // n'est pas complet, et c'est « Réparer », en
+                                // dessous, qui mène la marche.
+                                let bouton = ui.add_enabled(
+                                    dispo == Availability::Ready,
                                     egui::Button::new(
                                         egui::RichText::new(s.tools_use).color(theme.bg),
                                     )
                                     .fill(theme.accent)
                                     .corner_radius(egui::CornerRadius::from(6)),
-                                )
-                                .clicked()
-                            {
-                                let mut plugin = outil.resolved_plugin(outils.as_deref());
-                                // Si on a localisé le binaire à la main,
-                                // c'est lui qu'on lance : son chemin absolu
-                                // remplace le nom nu, que le PATH ne
-                                // résoudrait pas.
-                                if let Some(chemin) = self.located_tools.get(&outil.plugin.id) {
-                                    plugin.command = chemin.to_string_lossy().into_owned();
+                                );
+                                let bouton = if dispo == Availability::Incomplete {
+                                    bouton.on_disabled_hover_text(s.tools_complete_first)
+                                } else {
+                                    bouton
+                                };
+                                if bouton.clicked() {
+                                    let mut plugin = outil.resolved_plugin(outils.as_deref());
+                                    // Si on a localisé le binaire à la main,
+                                    // c'est lui qu'on lance : son chemin
+                                    // absolu remplace le nom nu, que le PATH
+                                    // ne résoudrait pas.
+                                    if let Some(chemin) = self.located_tools.get(&outil.plugin.id) {
+                                        plugin.command = chemin.to_string_lossy().into_owned();
+                                    }
+                                    à_utiliser = Some(plugin);
                                 }
-                                à_utiliser = Some(plugin);
                             }
                         });
                     });
@@ -285,7 +297,25 @@ impl NamsdecApp {
                     if dispo != Availability::Ready && recette_existe(&outil.plugin.id) {
                         ui.add_space(4.0);
                         if self.show_installer_module {
-                            if framed_button(ui, theme, s.install_button).clicked() {
+                            // Incomplet : « Réparer », en accent — c'est
+                            // l'action qui mène, puisqu'on ne peut pas
+                            // l'activer avant de l'avoir complété. Absent :
+                            // « Installer… », en retrait, une option parmi
+                            // le reste de la fiche.
+                            let cliqué = if dispo == Availability::Incomplete {
+                                ui.add(
+                                    egui::Button::new(
+                                        egui::RichText::new(s.install_repair).color(theme.bg),
+                                    )
+                                    .fill(theme.accent)
+                                    .corner_radius(egui::CornerRadius::from(6)),
+                                )
+                                .on_hover_text(s.install_repair_hint)
+                                .clicked()
+                            } else {
+                                framed_button(ui, theme, s.install_button).clicked()
+                            };
+                            if cliqué {
                                 plan = Some(outil.plugin.id.clone());
                             }
                         } else {

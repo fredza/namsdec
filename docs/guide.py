@@ -1572,6 +1572,13 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "premiers, est le <b>module d'installation</b> (Préférences › Modules) : c'est lui qui "
          "sait aller chercher les sources et les construire."),
         ("p",
+         "Un outil <b>incomplet</b> — rizin sans son greffon rz-ghidra, par exemple — ne "
+         "s'active pas : l'activer déclarerait un décompilateur qui échoue au premier essai "
+         "(la commande <font face='Courier'>pdg</font> n'existe pas sans le greffon). Son "
+         "bouton <b>Activer</b> est donc grisé, et c'est <b>Réparer</b>, en vif, qui mène la "
+         "marche — poser la pièce qui manque, puis activer. On ne peut activer qu'un outil "
+         "prêt."),
+        ("p",
          "La décompilation elle-même est une fonction optionnelle, allumée dans Modules. Tant "
          "qu'elle est éteinte, activer un outil ici ne l'emploie nulle part — l'onglet Outils "
          "le dit en tête, avec de quoi l'allumer sur place, sans aller chercher la case dans un "

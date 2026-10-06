@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **6 octobre
-2026**, version 0.2.6-beta.1, 1 086 tests au vert.
+2026**, version 0.2.6-beta.1, 1 087 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -657,9 +657,18 @@ jamais ajouter. Il faut de la place, et d'abord savoir où elle est.
       au survol (l'infobulle explique), plus de clic. `toggle_flag` et la
       note « Indicateur basculé à la main » retirés ; le test
       `a_register_is_set_by_hand` ne couvre plus que le registre.
-- [ ] **À poursuivre** : les frontières sont plus nettes (Composants/Fonctions
-      sous Modules, Thèmes/Exercices sous Plugins, programmes sous Outils).
-      Reste l'enchaînement Activer / Réparer d'un outil incomplet à revoir.
+- [x] **Enchaînement Activer / Réparer d'un outil incomplet** — activer un
+      outil incomplet (rizin sans rz-ghidra) déclarait un décompilateur qui
+      échoue au premier essai (`pdg` n'existe pas). « Activer » est désormais
+      **grisé** tant que l'outil n'est pas prêt (infobulle qui l'explique),
+      et son bouton de complétion devient **« Réparer »** en accent (et non
+      « Installer… », mot d'un outil absent). On ne peut activer qu'un outil
+      prêt. Contrôle : `an_incomplete_tool_points_to_repair_not_enable`.
+- [x] **Revue plugins/modules close** : frontières nettes (Composants/
+      Fonctions sous Modules, Thèmes/Exercices sous Plugins, programmes sous
+      Outils), fiche d'outil incomplet corrigée, décompilation éteinte
+      signalée, binaire hors PATH localisable, et l'enchaînement
+      Activer/Réparer réglé.
 
 ## 4 quaterdecies. Flags toujours affichés, éclat tenu plus longtemps
 

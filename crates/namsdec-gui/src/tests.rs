@@ -11183,8 +11183,11 @@ fn the_install_button_brings_its_plan_to_the_front() {
         cible = None;
         let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
         for clipped in &sortie.shapes {
+            // Deux outils INCOMPLETS : leur bouton de complétion dit
+            // « Réparer » (accent), et non « Installer… » — on ne peut pas
+            // les activer avant de les avoir complétés.
             if let egui::epaint::Shape::Text(texte) = &clipped.shape
-                && texte.galley.text() == s.install_button
+                && texte.galley.text() == s.install_repair
             {
                 let milieu = texte.pos + texte.galley.size() / 2.0;
                 // **Visible**, et pas seulement peint : la liste des
@@ -20621,6 +20624,79 @@ fn a_working_tool_is_not_announced_as_missing_something() {
             );
         }
     }
+}
+
+/// Un outil incomplet oriente vers « Réparer », pas vers « Activer ».
+///
+/// Activer un outil incomplet — rizin sans rz-ghidra — déclarerait un
+/// décompilateur qui échoue au premier essai : `pdg` n'existe pas. On ne
+/// peut donc pas l'activer avant de l'avoir complété, et son bouton de
+/// complétion dit « Réparer » (en accent, l'action qui mène), et non
+/// « Installer… » (qui est le mot d'un outil absent, pas incomplet).
+#[test]
+fn an_incomplete_tool_points_to_repair_not_enable() {
+    use namsdec_disasm::known::Availability;
+
+    let s = strings(Lang::Fr);
+    let mut app = NamsdecApp {
+        show_preferences: true,
+        preferences_tab: PreferencesTab::Tools,
+        show_decompiler_module: true,
+        // Sans le module d'installation, c'est une invite à l'allumer qui
+        // s'affiche, pas le bouton « Réparer » qu'on veut éprouver.
+        show_installer_module: true,
+        ..Default::default()
+    };
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let entrée = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1600.0, 1200.0),
+        )),
+        ..Default::default()
+    };
+
+    // L'état est SEMÉ, et APRÈS la première image : ouvrir les préférences
+    // jette le relevé des outils par conception, et l'image suivante le
+    // referait en lançant vraiment rizin.
+    let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+    sortie.textures_delta.clear();
+    // Rizin incomplet, tous les autres prêts : aucun n'est absent, donc le
+    // seul mot de complétion qui peut paraître est le sien.
+    app.tools_ready = namsdec_disasm::known::all()
+        .into_iter()
+        .map(|outil| {
+            let dispo = if outil.plugin.id == "rizin-ghidra" {
+                Availability::Incomplete
+            } else {
+                Availability::Ready
+            };
+            (outil.plugin.id, dispo)
+        })
+        .collect();
+
+    let mut peint = String::new();
+    for _ in 0..3 {
+        peint.clear();
+        let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(texte) = &clipped.shape {
+                peint.push_str(texte.galley.text());
+                peint.push('|');
+            }
+        }
+        sortie.textures_delta.clear();
+    }
+
+    assert!(
+        peint.contains(s.install_repair),
+        "un outil incomplet doit porter « Réparer ».\n{peint}"
+    );
+    assert!(
+        !peint.contains(s.install_button),
+        "incomplet, et non absent : pas de « Installer… ».\n{peint}"
+    );
 }
 
 /// Un binaire localisé à la main rend prêt un outil que le PATH ignore.
