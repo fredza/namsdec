@@ -6,7 +6,7 @@ retiré — reste dans `AMELIORATIONS.txt`, qui ne bouge pas de rôle : une
 seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
-Tenue à jour au fil des séances. Dernière mise à jour : **6 octobre
+Tenue à jour au fil des séances. Dernière mise à jour : **7 octobre
 2026**, version 0.2.8-beta.1, 1 087 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
@@ -904,6 +904,15 @@ jamais ajouter. Il faut de la place, et d'abord savoir où elle est.
       décompiler et chercher une version. Un mégaoctet et demi ne vaut
       pas le travail en cours de quelqu'un.
 - [x] `egui_extras` retiré des dépendances (A 5.5)
+- [x] **Dépendances à jour** (7 octobre 2026) — contrôle complet :
+      toutes les dépendances directes étaient déjà sur leur dernière
+      version majeure (egui/eframe 0.36.2, iced-x86 1.21, rfd 0.17.2,
+      arboard 3.6.1, ureq 3.4.2, egui_code_editor 0.4.1) — aucun saut
+      majeur à faire. `cargo update` a tiré les correctifs compatibles
+      (thiserror 2.0.21, libc, rustix, zerocopy, wasm-bindgen, cc…).
+      `tokio` apparaît dans le lock via `wasm-bindgen-futures` mais
+      seulement sur la cible wasm32 : il n'entre pas dans le binaire
+      natif. Compilation propre, clippy muet, 1 087 tests au vert.
 
 ---
 
