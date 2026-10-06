@@ -2131,12 +2131,6 @@ impl NamsdecApp {
         }
     }
 
-    fn current_line(&self) -> Option<u32> {
-        let emulator = self.emulator.as_ref()?;
-        let state = self.assemble_state.as_ref()?;
-        state.addr_to_line.get(&emulator.cpu().regs.rip).copied()
-    }
-
     /// Ce que fait chacune des trois pastilles.
     ///
     /// La fermeture passe par la même garde que « Quitter » : un travail
@@ -2304,56 +2298,6 @@ impl NamsdecApp {
             }
         }
         self.windows_open = ouvertes;
-    }
-
-    /// Pose le curseur au début d'une ligne, et y amène la vue.
-    ///
-    /// Appelé au rendu de l'éditeur, une fois seulement : le curseur
-    /// appartient à l'utilisateur, on ne le lui reprend pas à chaque
-    /// frame.
-    fn apply_goto_line(&mut self, ctx: &egui::Context) {
-        let Some(line) = self.goto_line.take() else {
-            return;
-        };
-        let offset: usize = self
-            .source
-            .lines()
-            .take(line.saturating_sub(1) as usize)
-            .map(|l| l.chars().count() + 1)
-            .sum();
-        if let Some(mut state) = egui::TextEdit::load_state(ctx, editor_id()) {
-            state
-                .cursor
-                .set_char_range(Some(egui::text::CCursorRange::one(
-                    egui::text::CCursor::new(offset),
-                )));
-            state.store(ctx, editor_id());
-        }
-        self.editor_mode = EditorMode::Insert;
-        ctx.memory_mut(|m| m.request_focus(editor_id()));
-    }
-
-    /// Replace le curseur là où la dernière modification l'attend.
-    fn apply_pending_cursor(&mut self, ctx: &egui::Context) {
-        if let Some(étendue) = self.pending_selection.take() {
-            let début = byte_to_char(&self.source, étendue.start.min(self.source.len()));
-            let fin = byte_to_char(&self.source, étendue.end.min(self.source.len()));
-            if let Some(mut état) = egui::TextEdit::load_state(ctx, editor_id()) {
-                état
-                    .cursor
-                    .set_char_range(Some(egui::text::CCursorRange::two(
-                        egui::text::CCursor::new(début),
-                        egui::text::CCursor::new(fin),
-                    )));
-                état.store(ctx, editor_id());
-            }
-            ctx.memory_mut(|m| m.request_focus(editor_id()));
-            return;
-        }
-        let Some(at) = self.pending_cursor.take() else {
-            return;
-        };
-        set_cursor_byte(ctx, &self.source, at.min(self.source.len()));
     }
 
     /// Ouvre la barre de recherche, ou la referme si elle est déjà là.

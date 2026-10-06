@@ -626,6 +626,12 @@ jamais ajouter. Il faut de la place, et d'abord savoir où elle est.
       (mémorise l'état des réglages pour que « Quitter » ait où revenir) et
       `close_preferences` (OK garde, Quitter restaure) rejoignent le module
       des préférences. `pub(crate)` pour menus et palette qui les appellent.
+- [x] **Le curseur de l'éditeur vers `editor.rs`** (−56, 3 971 → 3 915).
+      `current_line` (la ligne où le programme est arrêté), `apply_goto_line`
+      (poser le curseur au début d'une ligne et y amener la vue) et
+      `apply_pending_cursor` (replacer le curseur après une modification)
+      rejoignent le module de l'éditeur. `pub(crate)` pour la barre de
+      statut et l'éditeur qui les appellent.
 
 ## 4 nonies. Toutes les instructions nasm, visibles
 
