@@ -2494,3 +2494,30 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
   demande une table de noms partagée entre les panneaux — ReContext la
   portera, et vingt-neuf littéraux sont à compléter : mécanique, mais à
   faire d'un bloc.
+
+  --- Renommer les fonctions : brancher l'existant, pas en refaire ---
+  Fred a demandé de pouvoir renommer les fonctions. Premier réflexe : une
+  table addr->nom dans l'application, passée aux modules. En cherchant où la
+  vider au chargement d'un binaire, on tombe sur load_notes_for() — et sur
+  notes.rs, qui tient DÉJÀ un Notes { names: BTreeMap<u64,String> }, persisté
+  par empreinte du binaire, et que le listing, le déroulement et la barre
+  latérale emploient (named_at). Le renommage existait ; il n'était
+  simplement pas branché sur les panneaux de RE.
+
+  Donc : pas de table neuve. ReContext porte un champ names qui pointe sur
+  notes.names ; display_name(addr, défaut) lit la table. ReRequest::Rename
+  écrit par notes.set_name() puis save_notes() — persisté, et visible
+  partout d'un coup, puisque c'est la même table. Un nom donné dans l'arbre
+  d'appels se lit dans le listing et survit à la fermeture, gratuitement.
+
+  LE COÛT. Ajouter un champ à ReContext casse ses vingt-neuf littéraux
+  (modules, tests des deux crates). Mécanique, fait d'un bloc : names: None
+  partout sauf aux quatre sites de la GUI, qui passent la vraie table. Un
+  perl ciblé a traité le gros ; quatre littéraux à closing différent (« } »,
+  « }); », « lang, » en forme courte) à la main. La leçon habituelle : avant
+  d'ajouter un mécanisme, chercher s'il existe — ici, la question « où vider
+  la table ? » a mené droit à la réponse « elle existe déjà ».
+
+  Le type : notes.names est un BTreeMap, pas un HashMap. ReContext prend donc
+  un BTreeMap — l'ordre trié ne coûte rien et la crate re ne dépend pas de la
+  GUI pour autant (c'est un type std).

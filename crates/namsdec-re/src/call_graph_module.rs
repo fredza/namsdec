@@ -68,6 +68,8 @@ pub struct CallGraphModule {
     aller_à: String,
     /// Dit quand l'adresse tapée ne se lit pas, pour l'écrire sous le champ.
     aller_à_erreur: bool,
+    /// Le nom en cours de frappe pour chaque fonction, par adresse.
+    édition: HashMap<u64, String>,
 }
 
 impl CallGraphModule {
@@ -176,6 +178,9 @@ impl ReModule for CallGraphModule {
             .take(MAX_FONCTIONS)
             .filter_map(|f| self.par_adresse.get(&f.start).copied())
             .collect();
+        // Les tampons de frappe d'un autre binaire n'ont plus de sens :
+        // ses adresses ne sont pas celles-ci.
+        self.édition.clear();
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
@@ -311,10 +316,11 @@ impl CallGraphModule {
         for (i, nœud) in nœuds.iter().enumerate() {
             let f = &self.functions[nœud.fonction];
             let accent = matches!(f.origin, Origin::Entry | Origin::Main);
+            let nom = ctx.display_name(f.start, &f.name());
             let label = if nœud.renvoi {
-                format!("\u{21a9} {}  {:#x}", f.name(), f.start)
+                format!("\u{21a9} {nom}  {:#x}", f.start)
             } else {
-                format!("{}  {:#x}", f.name(), f.start)
+                format!("{nom}  {:#x}", f.start)
             };
             let largeur = label.chars().count() as f32 * glyphe + PAD_X * 2.0;
             let x = nœud.profondeur as f32 * INDENT_X;
@@ -428,17 +434,28 @@ impl CallGraphModule {
         }
     }
 
-    /// Le détail de chaque fonction montrée : code binaire et pseudo-code.
+    /// Le détail de chaque fonction montrée : son nom (qu'on peut
+    /// changer), son code binaire et son pseudo-code.
     fn dessiner_détails(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
         let mut demande: Option<ReRequest> = None;
-        // On copie les rangs : la grille emprunte `self` pour lire le
+        // On copie les rangs : le corps emprunte `self` pour lire le
         // désassemblage, et le module ne peut donc pas s'écrire dedans.
         let montrées = self.montrées.clone();
         for rang in montrées {
             let f = self.functions[rang].clone();
+            // Les instructions d'abord : la tranche est liée à `ctx`, pas
+            // à `self`, donc l'emprunt de `self` se termine ici et laisse
+            // la place au tampon d'édition juste après.
+            let instrs = self.instructions(ctx, &f);
+            let nom_courant = ctx.display_name(f.start, &f.name());
+            let défaut = f.name();
+            let tampon = self
+                .édition
+                .entry(f.start)
+                .or_insert_with(|| nom_courant.clone());
             let titre = format!(
                 "{}   {:#010x}   {} {}",
-                f.name(),
+                nom_courant,
                 f.start,
                 f.size(),
                 ctx.t("octets", "bytes"),
@@ -447,11 +464,43 @@ impl CallGraphModule {
                 .id_salt(("call_graph_detail", f.start))
                 .default_open(false)
                 .show(ui, |ui| {
+                    // Renommer : on comprend une fonction, on lui donne un
+                    // nom. « Défaut » rend son `sub_xxxx` — se dédire fait
+                    // partie de nommer.
+                    ui.horizontal(|ui| {
+                        ui.label(ctx.t("Nom :", "Name:"));
+                        let champ = ui.add(
+                            egui::TextEdit::singleline(tampon)
+                                .desired_width(200.0)
+                                .font(egui::TextStyle::Monospace),
+                        );
+                        let validé = champ.lost_focus()
+                            && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                        if ui.button(ctx.t("Renommer", "Rename")).clicked() || validé {
+                            demande = Some(ReRequest::Rename {
+                                addr: f.start,
+                                name: tampon.clone(),
+                            });
+                        }
+                        if ui
+                            .button(ctx.t("Défaut", "Default"))
+                            .on_hover_text(ctx.t(
+                                "Rendre son nom d'origine",
+                                "Restore its original name",
+                            ))
+                            .clicked()
+                        {
+                            *tampon = défaut.clone();
+                            demande = Some(ReRequest::Rename {
+                                addr: f.start,
+                                name: String::new(),
+                            });
+                        }
+                    });
                     if clickable_address(ui, ctx, f.start) {
                         demande = Some(ReRequest::GoTo { addr: f.start });
                     }
                     ui.add_space(4.0);
-                    let instrs = self.instructions(ctx, &f);
                     if instrs.is_empty() {
                         ui.weak(ctx.t(
                             "Aucune instruction désassemblée dans cette plage.",
@@ -561,6 +610,7 @@ mod tests {
             source: "",
             binary: &[],
             lang: "fr",
+            names: None,
         }
     }
 
@@ -597,6 +647,31 @@ mod tests {
             "un appel récursif devient un renvoi"
         );
         assert!(arbre.len() <= MAX_NŒUDS);
+    }
+
+    /// Un nom donné par l'utilisateur prend la place du nom par défaut,
+    /// et l'absence de table rend le nom par défaut.
+    #[test]
+    fn a_user_name_replaces_the_default() {
+        let mut noms = std::collections::BTreeMap::new();
+        noms.insert(0x401000u64, "vérifie_clé".to_owned());
+        let bytes: &[u8] = &[0x90, 0xc3];
+        let disasm = namsdec_disasm::disassemble(bytes, 0x401000);
+        let cpu = Cpu::new(Memory::new(0x401000, 0x100));
+        let avec = ReContext {
+            cpu: &cpu,
+            disasm: &disasm,
+            source: "",
+            binary: &[],
+            lang: "fr",
+            names: Some(&noms),
+        };
+        assert_eq!(avec.display_name(0x401000, "sub_401000"), "vérifie_clé");
+        // Une adresse non nommée garde son défaut, même quand la table existe.
+        assert_eq!(avec.display_name(0x402000, "sub_402000"), "sub_402000");
+        // Sans table, le défaut partout.
+        let sans = ReContext { names: None, ..avec };
+        assert_eq!(sans.display_name(0x401000, "sub_401000"), "sub_401000");
     }
 
     /// Les instructions d'une fonction sont prises dans sa plage, et pas

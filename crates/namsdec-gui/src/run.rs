@@ -395,6 +395,7 @@ impl NamsdecApp {
                 source: &self.source,
                 binary: &state.output.file,
                 lang: self.lang.code(),
+                names: Some(&self.notes.names),
             };
             self.re_registry.on_binary_loaded(&ctx);
         }
@@ -512,6 +513,7 @@ impl NamsdecApp {
             source: &self.source,
             binary: &state.output.file,
             lang: self.lang.code(),
+            names: Some(&self.notes.names),
         };
         self.re_registry.on_binary_loaded(&ctx);
 
@@ -598,6 +600,7 @@ impl NamsdecApp {
             source: &self.source,
             binary: &state.output.file,
             lang: self.lang.code(),
+            names: Some(&self.notes.names),
         };
         self.re_registry.on_step(&ctx);
     }

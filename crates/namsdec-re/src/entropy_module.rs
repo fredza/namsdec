@@ -217,6 +217,7 @@ mod tests {
             source: "",
             binary: binaire,
             lang: "fr",
+            names: None,
         }
     }
 

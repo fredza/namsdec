@@ -186,6 +186,7 @@ fn no_analysis_panel_overlaps_or_cuts_its_own_text() {
             source: "",
             binary: &binaire,
             lang,
+            names: None,
         };
         // Étroite comme la colonne d'un écran partagé, large comme un
         // écran d'aujourd'hui : un texte qui déborde ne déborde souvent
@@ -292,6 +293,7 @@ fn an_analysis_panel_left_alone_stays_where_it_is() {
         source: "",
         binary: &binaire,
         lang: "fr",
+        names: None,
     };
 
     for (nom, mut module) in panneaux() {
@@ -413,6 +415,7 @@ fn what_was_added_is_really_on_screen() {
             source: "",
             binary: &binaire,
             lang,
+            names: None,
         };
         let (_, mut module) = panneaux()
             .into_iter()

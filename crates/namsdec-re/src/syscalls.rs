@@ -208,6 +208,7 @@ mod tests {
             source: "",
             binary: &[],
             lang: "fr",
+            names: None,
         };
         let mut module = SyscallsModule::default();
         module.on_binary_loaded(&ctx);
@@ -233,6 +234,7 @@ mod tests {
             source: "",
             binary: &[],
             lang: "fr",
+            names: None,
         };
         let mut module = SyscallsModule::default();
         module.on_binary_loaded(&ctx);

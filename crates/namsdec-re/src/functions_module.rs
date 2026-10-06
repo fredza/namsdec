@@ -109,7 +109,7 @@ impl ReModule for FunctionsModule {
                 ui.weak(ctx.t("appelants", "callers"));
                 ui.end_row();
                 for fonction in by_importance(&self.found).into_iter().take(MONTRÉES) {
-                    let nom = fonction.name();
+                    let nom = ctx.display_name(fonction.start, &fonction.name());
                     let étiquette = match fonction.origin {
                         Origin::Main | Origin::Entry => egui::RichText::new(nom).strong(),
                         Origin::Called => egui::RichText::new(nom),
@@ -153,6 +153,7 @@ mod tests {
             source: "",
             binary: &[],
             lang: "fr",
+            names: None,
         };
         let mut module = FunctionsModule::default();
         module.on_binary_loaded(&ctx);

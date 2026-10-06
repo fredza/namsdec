@@ -2837,6 +2837,7 @@ impl NamsdecApp {
             source: &self.source,
             binary: &state.output.file,
             lang: self.lang.code(),
+            names: Some(&self.notes.names),
         };
         let théme = self.theme;
         for module in self.re_registry.iter_mut() {

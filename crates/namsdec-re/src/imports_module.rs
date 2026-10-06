@@ -258,6 +258,7 @@ mod tests {
             source: "",
             binary: &bytes,
             lang: "fr",
+            names: None,
         };
 
         let mut module = ImportsModule::default();
@@ -319,6 +320,7 @@ mod tests {
             source: "",
             binary: &bytes,
             lang: "fr",
+            names: None,
         };
         let mut module = ImportsModule::default();
         module.on_binary_loaded(&ctx);
@@ -347,6 +349,7 @@ mod tests {
             source: "",
             binary: bytes,
             lang: "fr",
+            names: None,
         };
         let mut module = ImportsModule::default();
         module.on_binary_loaded(&ctx);

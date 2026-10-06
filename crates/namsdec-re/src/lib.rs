@@ -89,12 +89,40 @@ pub struct ReContext<'a> {
     /// *est* son contenu : il n'y a personne au-dessus pour le traduire.
     /// L'interface dit donc la langue, et le module écrit dedans.
     pub lang: &'a str,
+    /// Les noms que l'utilisateur a donnés à des adresses — ses fonctions
+    /// rebaptisées.
+    ///
+    /// Un désassembleur appelle une fonction sans nom `sub_10450` ; dès
+    /// qu'on a compris ce qu'elle fait, on veut l'appeler « vérifie_clé ».
+    /// Ce nom vit dans l'application, qui le pose ici pour que chaque
+    /// panneau l'emploie — l'arbre d'appels comme la liste des fonctions.
+    /// `None` quand personne n'a encore renommé quoi que ce soit, ou dans
+    /// un contexte qui n'en porte pas (un test, par exemple).
+    ///
+    /// C'est la même table que celle du listing et du déroulement — les
+    /// « notes » de ce binaire, rangées par adresse et gardées d'une
+    /// séance à l'autre. Un nom donné dans l'arbre d'appels se lit donc
+    /// aussi dans le listing, et survit à la fermeture.
+    pub names: Option<&'a std::collections::BTreeMap<u64, String>>,
 }
 
 impl ReContext<'_> {
     /// Le texte de la langue courante.
     pub fn t(&self, fr: &'static str, en: &'static str) -> &'static str {
         if self.lang.starts_with("fr") { fr } else { en }
+    }
+
+    /// Le nom d'une adresse : celui que l'utilisateur a donné, sinon le
+    /// nom par défaut qu'on propose.
+    ///
+    /// Écrit une fois pour tous les panneaux : une fonction rebaptisée
+    /// porte le même nom partout, sans quoi l'arbre dirait « vérifie_clé »
+    /// et la liste des fonctions « sub_10450 » pour la même chose.
+    pub fn display_name(&self, addr: u64, défaut: &str) -> String {
+        self.names
+            .and_then(|m| m.get(&addr))
+            .cloned()
+            .unwrap_or_else(|| défaut.to_owned())
     }
 }
 
@@ -118,6 +146,12 @@ pub enum ReRequest {
     /// fallait relever l'adresse à la main et la retaper dans la
     /// commande « aller à ».
     GoTo { addr: u64 },
+    /// Donner un nom à une adresse — rebaptiser une fonction.
+    ///
+    /// Un nom vide efface le nom donné et rend son nom par défaut à
+    /// l'adresse : renommer, c'est aussi pouvoir se dédire. Le module ne
+    /// range rien lui-même ; il décrit, et l'application tient la table.
+    Rename { addr: u64, name: String },
 }
 
 /// Une adresse sur laquelle on peut cliquer pour l'aller voir.

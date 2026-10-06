@@ -259,6 +259,7 @@ mod tests {
             source: "",
             binary: &[],
             lang: "fr",
+            names: None,
         };
         let mut module = PatternsModule::default();
         module.on_binary_loaded(&ctx);

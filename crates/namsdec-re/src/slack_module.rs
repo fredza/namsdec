@@ -166,6 +166,7 @@ mod tests {
             source: "",
             binary,
             lang: "fr",
+            names: None,
         }
     }
 

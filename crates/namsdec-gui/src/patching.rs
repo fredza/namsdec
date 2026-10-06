@@ -99,6 +99,15 @@ impl NamsdecApp {
                     self.write_patch(offset, bytes, 0);
                 }
                 namsdec_re::ReRequest::GoTo { addr } => self.show_address(addr),
+                // Renommer : on écrit dans les « notes » du binaire — la
+                // même table que le listing et le déroulement —, et on la
+                // garde sur le disque. Un nom donné dans l'arbre d'appels
+                // se lit donc partout, et survit à la fermeture. Un nom
+                // vide efface : `set_name` s'en charge.
+                namsdec_re::ReRequest::Rename { addr, name } => {
+                    self.notes.set_name(addr, &name);
+                    self.save_notes();
+                }
             }
         }
     }

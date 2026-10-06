@@ -262,6 +262,7 @@ mod tests {
             source: "",
             binary: &[],
             lang: "fr",
+            names: None,
         };
 
         let mut module = BinaryInfoModule::default();
@@ -292,6 +293,7 @@ mod tests {
             source: "",
             binary: &[],
             lang: "fr",
+            names: None,
         };
         let mut module = BinaryInfoModule::default();
         module.on_binary_loaded(&ctx);

@@ -127,6 +127,7 @@ mod tests {
             source: "",
             binary: &binaire,
             lang: "fr",
+            names: None,
         };
         let mut module = DigestModule::default();
         module.on_binary_loaded(&ctx);

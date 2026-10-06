@@ -116,6 +116,7 @@ fn clicking_an_address_asks_to_go_there() {
         source: "",
         binary: &binaire,
         lang: "fr",
+        names: None,
     };
 
     let panneaux: Vec<(&str, Box<dyn ReModule>)> = vec![
@@ -194,6 +195,7 @@ fn drawing_alone_asks_for_nothing() {
         source: "",
         binary: &binaire,
         lang: "fr",
+        names: None,
     };
     let egui_ctx = egui::Context::default();
     for mut module in [

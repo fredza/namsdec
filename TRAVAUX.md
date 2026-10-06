@@ -643,11 +643,20 @@ le code binaire et le pseudo-code. Un seul module neuf les réunit.
       système —, et les **protections** qui décident de tout (PIE, NX,
       RELRO, canari), cochées ou barrées. Tout mesuré, rien déclaré.
 
+- [x] **Renommer les fonctions** (demandé par Fred) — chaque fonction,
+      dans le détail du graphe d'appels, porte un champ **Nom** : on
+      remplace `sub_10450` par « vérifie_clé », « Défaut » rend le nom
+      d'origine. Pas une table neuve : ça écrit dans les **notes** du
+      binaire (`notes.names`, `ReRequest::Rename` → `set_name` + `save`),
+      la même que le listing et le déroulement emploient déjà. Le nom se
+      lit donc partout — arbre, liste des fonctions, listing — et il est
+      **gardé d'une séance à l'autre** (persisté par empreinte du
+      binaire). `ReContext` porte la table (`names`), les 29 littéraux
+      complétés. Un test : un nom donné prend la place du défaut.
 - [ ] **Reste demandé par Fred, non commencé :** un **éditeur binaire**
       (modifier les octets à la main dans l'onglet RE — passe par
       `patch.rs` et `ReRequest::PatchBytes`, pas à pas et réversible, voir
-      « Modifier un binaire ») et le **renommage de fonctions** (un nom
-      lisible à la place de `sub_xxxx`, partagé entre les panneaux).
+      « Modifier un binaire »).
 
 ## 4 octies. Découpage de main.rs (suite)
 

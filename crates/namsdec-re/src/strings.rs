@@ -475,6 +475,7 @@ mod tests {
             // Pas d'ELF : le module lit alors la mémoire telle quelle.
             binary: &[],
             lang: "fr",
+            names: None,
         };
         let mut module = StringsModule::default();
         module.on_binary_loaded(&ctx);
@@ -629,6 +630,7 @@ mod tests {
                     source: "",
                     binary: &[],
                     lang: "fr",
+                    names: None,
                 };
                 module.ui(ui, &re);
             });

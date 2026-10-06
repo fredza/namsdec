@@ -150,6 +150,7 @@ mod tests {
             source: "",
             binary: &[],
             lang: "fr",
+            names: None,
         };
 
         let mut module = GadgetsModule::default();

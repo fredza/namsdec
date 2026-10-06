@@ -596,6 +596,7 @@ mod tests {
             source: "",
             binary: &[],
             lang: "fr",
+            names: None,
         });
         assert!(module.signals().is_empty());
         assert!(!module.loaded, "sans fichier, ce n'est pas « rien à dire »");
