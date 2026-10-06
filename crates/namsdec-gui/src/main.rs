@@ -52,8 +52,8 @@ mod widgets;
 mod windows;
 
 // Les outils extérieurs vivent dans `tools` depuis le 29 septembre
-// 2026 ; `main.rs` appelle encore ces deux-là directement.
-use tools::{decompilers_dir, load_installed_decompilers};
+// 2026 ; `main.rs` appelle encore celui-là directement.
+use tools::load_installed_decompilers;
 // L'éditeur vit dans son module depuis le 29 septembre 2026 ;
 // `main.rs` a encore besoin de ces deux-là.
 use editor::{editor_id, word_at};
@@ -1906,40 +1906,6 @@ impl Default for NamsdecApp {
 }
 
 impl NamsdecApp {
-    /// Demande à chaque outil connu s'il est là, et retient la réponse.
-    ///
-    /// Une fois, et non à chaque image : la question se pose en lançant
-    /// le programme, ce qui coûte un processus par outil.
-    fn refresh_tool_availability(&mut self) {
-        let outils = data_dir().map(|dir| namsdec_disasm::install::tools_dir(&dir));
-        self.tools_ready = namsdec_disasm::known::all()
-            .into_iter()
-            .map(|outil| {
-                // Un binaire qu'on a localisé à la main l'emporte : si le
-                // fichier choisi est toujours là, l'outil est prêt, quel
-                // que soit ce que le PATH et le dossier d'outils en disent.
-                // C'est la seule voie pour ce qu'on a bâti soi-même hors du
-                // PATH — DZF dans son dépôt, par exemple.
-                let dispo = match self.located_tools.get(&outil.plugin.id) {
-                    Some(chemin) if chemin.is_file() => namsdec_disasm::known::Availability::Ready,
-                    _ => outil.availability_in(outils.as_deref()),
-                };
-                (outil.plugin.id, dispo)
-            })
-            .collect();
-    }
-
-    /// Ce que cet outil répond, relevé si on ne le sait pas encore.
-    fn tool_availability(&mut self, id: &str) -> namsdec_disasm::known::Availability {
-        if self.tools_ready.is_empty() {
-            self.refresh_tool_availability();
-        }
-        self.tools_ready
-            .get(id)
-            .copied()
-            .unwrap_or(namsdec_disasm::known::Availability::Missing)
-    }
-
     /// Ce tampon vient-il d'un binaire ouvert ?
     ///
     /// Un listing produit par le désassemblage n'est pas un source : il
@@ -2222,68 +2188,6 @@ impl NamsdecApp {
         }
         self.rebinding = None;
         self.show_preferences = false;
-    }
-
-    /// Écrit la description d'un outil dans le dossier des
-    /// décompilateurs. Aucun programme n'est téléchargé, aucun n'est
-    /// lancé : on pose un fichier de quelques lignes.
-    fn declare_tool(&mut self, plugin: &namsdec_disasm::plugin::Plugin) {
-        let s = strings(self.lang);
-        let Some(dir) = decompilers_dir() else {
-            self.plugin_note = Some(PluginNote {
-                ok: false,
-                text: s.tools_no_dir.to_owned(),
-            });
-            return;
-        };
-        let écrire = || -> std::io::Result<()> {
-            std::fs::create_dir_all(&dir)?;
-            let json = serde_json::to_string_pretty(plugin)
-                .map_err(|e| std::io::Error::other(e.to_string()))?;
-            std::fs::write(dir.join(format!("{}.json", plugin.id)), json)
-        };
-        match écrire() {
-            Ok(()) => {
-                self.decompilers = load_installed_decompilers();
-                // Le premier déclaré devient celui qu'on lancera : sans
-                // cela, la fenêtre s'ouvre sur « choisir… » alors qu'il
-                // n'y a qu'un choix.
-                if self.decompiler.is_empty() {
-                    self.decompiler = plugin.id.clone();
-                }
-                self.plugin_note = Some(PluginNote {
-                    ok: true,
-                    text: format!("{} {}", s.tools_declared, plugin.name),
-                });
-            }
-            Err(e) => {
-                self.plugin_note = Some(PluginNote {
-                    ok: false,
-                    text: format!("{} {e}", s.tools_failed),
-                });
-            }
-        }
-    }
-
-    /// Retire la description d'un outil : le fichier s'en va, le
-    /// programme reste là où il est.
-    fn undeclare_tool(&mut self, id: &str) {
-        let s = strings(self.lang);
-        if let Some(dir) = decompilers_dir() {
-            let _ = std::fs::remove_file(dir.join(format!("{id}.json")));
-        }
-        self.decompilers = load_installed_decompilers();
-        if self.decompiler == id {
-            self.decompiler = self
-                .decompilers
-                .first()
-                .map(|p| p.id.clone())
-                .unwrap_or_default();
-        }
-        self.plugin_note = Some(PluginNote {
-            ok: true,
-            text: s.tools_undeclared.to_owned(),
-        });
     }
 
     /// Retire un thème installé : son fichier est supprimé, et le thème

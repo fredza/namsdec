@@ -21161,7 +21161,7 @@ fn the_readme_names_both_plugin_directories() {
     // Et le code lit bien ces deux-là, sous ces noms.
     let data = data_dir().expect("un dossier de données");
     assert_eq!(
-        decompilers_dir().expect("decompilers"),
+        crate::tools::decompilers_dir().expect("decompilers"),
         data.join("decompilers")
     );
     assert!(

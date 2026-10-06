@@ -603,6 +603,13 @@ jamais ajouter. Il faut de la place, et d'abord savoir où elle est.
         rapport d'analyse.
 - [x] Les neuf ajoutés à `SOURCES_DE_L_INTERFACE` : les contrôles qui
       lisent le code source les voient désormais comme les autres.
+- [x] **Reprise du 6 octobre : les méthodes des outils vers `tools.rs`**
+      (−96 lignes, 4 272 → 4 176). `refresh_tool_availability`,
+      `tool_availability`, `declare_tool`, `undeclare_tool` rejoignent le
+      module où vit déjà toute la gestion des outils extérieurs. Même
+      patron (`impl NamsdecApp` + `use super::*`), passées `pub(crate)`
+      pour les frères qui les appellent (jobs, tests). Comportement
+      inchangé, suite complète au vert.
 
 ## 4 nonies. Toutes les instructions nasm, visibles
 
