@@ -1635,6 +1635,13 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "enregistré</b> dans <font face='Courier'>~/.config/namsdec/settings.json</font>, "
          "un fichier lisible et modifiable à la main."),
         ("p",
+         "L'onglet <b>Modules</b> sépare deux choses qu'un même mot embrouillait : les "
+         "<b>Composants</b> dont namsdec est fait — sains ou non, on ne les allume pas, on "
+         "lit leur état — et les <b>Fonctions optionnelles</b> qu'on choisit d'allumer "
+         "(l'onglet RE, les exercices, la décompilation par un outil extérieur, et le module "
+         "qui va chercher et construit ces outils). Rien d'optionnel n'est obligatoire : "
+         "namsdec tourne sans."),
+        ("p",
          "Des thèmes et des désassembleurs supplémentaires s'installent comme les séries "
          "d'exercices : un fichier déposé dans "
          "<font face='Courier'>~/.local/share/namsdec/</font>. Un désassembleur externe est "

@@ -160,20 +160,18 @@ impl NamsdecApp {
                         ui.colored_label(theme.warn, format!("{} {besoin}", s.tools_needs));
                     }
 
-                    // Comment l'obtenir se lit SANS DÉPLIER, comme « il
-                    // lui manque » juste au-dessus. C'était dans le repli,
-                    // et le repli s'ouvrait d'office quand l'outil était
-                    // absent — ce qui marchait tant qu'un outil ou deux
-                    // manquaient.
+                    // Comment l'obtenir, et SEULEMENT quand il est absent :
+                    // installer la base. Pour un outil INCOMPLET, la base
+                    // est déjà là — afficher « Pour l'obtenir : sudo dnf
+                    // install rizin » à côté de « installé, mais incomplet »
+                    // se contredisait, et désignait le mauvais paquet : ce
+                    // qui manque (rz-ghidra) n'est pas un paquet dnf, c'est
+                    // pourquoi le module d'installation le construit. Pour
+                    // ce cas-là, la ligne « il lui manque… » juste au-dessus
+                    // et le bouton d'installation juste en dessous suffisent.
                     //
-                    // Sur une machine où RIEN n'est installé — celle d'un
-                    // débutant, ou le coureur de la CI —, les six fiches
-                    // s'ouvraient toutes : la page devenait plus haute que
-                    // la fenêtre, et les deux derniers outils passaient
-                    // sous le bord. Ils y étaient, personne ne les voyait,
-                    // et c'est exactement le défaut que cette page avait
-                    // été refaite pour corriger.
-                    if dispo != Availability::Ready
+                    // Se lit sans déplier : c'est une panne, pas un détail.
+                    if dispo == Availability::Missing
                         && let Some(commande) = &outil.plugin.install
                     {
                         ui.add_space(4.0);

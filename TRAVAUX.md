@@ -616,6 +616,23 @@ jamais ajouter. Il faut de la place, et d'abord savoir où elle est.
       `the_instruction_index_shows_every_mnemonic_not_just_the_family_head`.
       Manuel et PDF à jour.
 
+## 4 quindecies. Gestion plugins/modules : première passe
+
+- [x] **Onglet Modules clarifié** — le mot « module » couvrait deux choses :
+      les COMPOSANTS (crates, santé, non allumables) et les FONCTIONS
+      optionnelles (RE, exercices, décompilation, installation). Deux
+      sous-titres les séparent désormais.
+- [x] **Carte d'outil incomplet corrigée** — pour rizin « installé, mais
+      incomplet », « Pour l'obtenir : sudo dnf install rizin » se
+      contredisait (la base est là) et visait le mauvais paquet (ce qui
+      manque, rz-ghidra, n'est pas un paquet dnf). La ligne n'apparaît plus
+      que si l'outil est ABSENT ; pour l'incomplet, « il lui manque… » + le
+      module d'installation (qui construit ce qui manque) suffisent.
+      Contrôle : assertion ajoutée à `a_working_tool_is_not_announced…`.
+- [ ] **À poursuivre** : revoir les frontières Modules / Plugins / Outils
+      (thèmes et séries d'exercices sous Plugins, outils sous Outils,
+      fonctions sous Modules) et l'enchaînement Activer / Réparer.
+
 ## 4 quaterdecies. Flags toujours affichés, éclat tenu plus longtemps
 
 - [x] **Les sept flags s'affichent en permanence** dans la barre de titre,

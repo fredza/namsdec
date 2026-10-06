@@ -446,32 +446,37 @@ impl NamsdecApp {
 
     pub(crate) fn preferences_modules_ui(&mut self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
-        ui.label(s.modules_legend);
+        // Deux choses sous le même mot « module », et c'est ce qui prêtait
+        // à confusion : d'un côté les COMPOSANTS dont namsdec est fait
+        // (sains ou non — on ne les allume pas), de l'autre les FONCTIONS
+        // qu'on choisit d'allumer. Un titre pour chacune les sépare.
+        ui.strong(s.modules_components_title);
+        ui.weak(s.modules_legend);
         ui.add_space(6.0);
-        {
-            {
-                self.modules_ui(ui);
-                ui.checkbox(&mut self.show_re_tab, s.show_re_tab_checkbox);
-                ui.checkbox(&mut self.exercises, s.exercises_checkbox);
-                ui.weak(s.exercises_hint);
-                ui.add_space(6.0);
-                // Ce module-ci n'ajoute pas un affichage : il accorde la
-                // permission de lancer un programme extérieur. On le dit
-                // avant de cocher, pas après.
-                ui.checkbox(&mut self.show_decompiler_module, s.decompiler_checkbox);
-                ui.weak(s.decompiler_hint);
-                // Et celui-ci va plus loin encore : il télécharge et
-                // construit. Il ne s'allume que sous l'autre, parce
-                // qu'installer un décompilateur sans pouvoir s'en servir
-                // n'aurait aucun sens.
-                ui.add_enabled_ui(self.show_decompiler_module, |ui| {
-                    ui.checkbox(&mut self.show_installer_module, s.installer_checkbox);
-                    ui.weak(s.installer_hint);
-                });
-                if self.show_decompiler_module && self.decompilers.is_empty() {
-                    ui.colored_label(self.theme.warn, s.decompiler_none_installed);
-                }
-            }
+        self.modules_ui(ui);
+
+        ui.add_space(12.0);
+        ui.strong(s.modules_features_title);
+        ui.weak(s.modules_features_hint);
+        ui.add_space(6.0);
+        ui.checkbox(&mut self.show_re_tab, s.show_re_tab_checkbox);
+        ui.checkbox(&mut self.exercises, s.exercises_checkbox);
+        ui.weak(s.exercises_hint);
+        ui.add_space(6.0);
+        // Ce module-ci n'ajoute pas un affichage : il accorde la
+        // permission de lancer un programme extérieur. On le dit avant de
+        // cocher, pas après.
+        ui.checkbox(&mut self.show_decompiler_module, s.decompiler_checkbox);
+        ui.weak(s.decompiler_hint);
+        // Et celui-ci va plus loin encore : il télécharge et construit. Il
+        // ne s'allume que sous l'autre, parce qu'installer un décompilateur
+        // sans pouvoir s'en servir n'aurait aucun sens.
+        ui.add_enabled_ui(self.show_decompiler_module, |ui| {
+            ui.checkbox(&mut self.show_installer_module, s.installer_checkbox);
+            ui.weak(s.installer_hint);
+        });
+        if self.show_decompiler_module && self.decompilers.is_empty() {
+            ui.colored_label(self.theme.warn, s.decompiler_none_installed);
         }
     }
 

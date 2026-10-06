@@ -20612,6 +20612,14 @@ fn a_working_tool_is_not_announced_as_missing_something() {
                 peint.contains(s.tools_needs),
                 "le greffon manque vraiment : il faut le dire.\n{peint}"
             );
+            // Et SANS « Pour l'obtenir : sudo dnf install rizin » : la base
+            // est déjà là, c'est ce qui manque (rz-ghidra) qu'il faut, et le
+            // module d'installation le construit. Afficher la commande de la
+            // base contredisait « installé, mais incomplet ».
+            assert!(
+                !peint.contains(s.tools_get_it),
+                "incomplet : on ne propose pas de réinstaller la base.\n{peint}"
+            );
         } else {
             assert!(
                 !peint.contains(s.tools_needs),

@@ -927,6 +927,9 @@ pub struct Strings {
 
     // Vue d'ensemble des modules (dans Préférences)
     pub module_core_detail: &'static str,
+    pub modules_components_title: &'static str,
+    pub modules_features_title: &'static str,
+    pub modules_features_hint: &'static str,
     pub modules_legend: &'static str,
     pub show_re_tab_checkbox: &'static str,
     /// Le module des exercices : la case, l'entrée de menu, la fenêtre.
@@ -1770,7 +1773,10 @@ déclenchera jamais.",
     assemble_commands_copied: "Commandes copiées",
 
     module_core_detail: "Registres, indicateurs (RFLAGS), mémoire simulée, état CPU.",
-    modules_legend: "Vert = sain/actif · Rouge = problème · Bleu = actif, des données à afficher · Gris = inactif pour l'instant.",
+    modules_components_title: "Composants",
+    modules_features_title: "Fonctions optionnelles",
+    modules_features_hint: "Ce qu'on allume ou éteint soi-même. Rien ici n'est obligatoire : namsdec tourne sans.",
+    modules_legend: "L'état des composants dont namsdec est fait. Vert = sain/actif · Rouge = problème · Bleu = actif, des données à afficher · Gris = inactif pour l'instant.",
     show_re_tab_checkbox: "Afficher l'onglet RE dans la barre latérale",
     exercises_checkbox: "Charger le module des exercices",
     exercises_hint: "Ajoute « Exercices… » au menu Outils. Rien n'apparaît tant que la case est décochée.",
@@ -2587,7 +2593,10 @@ other is there to compare — that is how gaps and clashes become visible.",
     assemble_commands_copied: "Commands copied",
 
     module_core_detail: "Registers, flags (RFLAGS), simulated memory, CPU state.",
-    modules_legend: "Green = healthy/active · Red = problem · Blue = active, has data to show · Gray = inactive for now.",
+    modules_components_title: "Components",
+    modules_features_title: "Optional features",
+    modules_features_hint: "What you turn on or off yourself. Nothing here is required: namsdec runs without them.",
+    modules_legend: "The health of the components namsdec is made of. Green = healthy/active · Red = problem · Blue = active, has data to show · Gray = inactive for now.",
     show_re_tab_checkbox: "Show the RE tab in the sidebar",
     exercises_checkbox: "Load the exercises module",
     exercises_hint: "Adds \"Exercises…\" to the Tools menu. Nothing shows up while the box is unchecked.",
