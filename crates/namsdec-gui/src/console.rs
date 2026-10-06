@@ -11,6 +11,51 @@
 use super::*;
 
 impl NamsdecApp {
+    /// La console montre-t-elle sa ligne de saisie ?
+    ///
+    /// Dès qu'un programme est assemblé, et sans autre condition.
+    ///
+    /// Elle n'apparaissait avant que si namsdec avait *repéré* un `read`
+    /// dans le code, au nom d'une économie : « un programme sans `read`
+    /// n'attendra jamais rien, et lui tendre un champ de saisie, c'est
+    /// trois lignes qui ne servent à rien ». Le raisonnement tombe
+    /// précisément dans le cas qui compte le plus — celui de quelqu'un
+    /// qui écrit son programme, a posé ses chaînes, et veut préparer ce
+    /// qu'il lira avant d'avoir tapé le `read`. Il n'y avait alors nulle
+    /// part où taper, et rien à l'écran n'expliquait pourquoi.
+    ///
+    /// Plus généralement : un champ qui n'apparaît qu'à une condition que
+    /// l'utilisateur ne peut pas voir n'est pas une économie, c'est une
+    /// disparition. Trois lignes toujours là se comprennent ; trois
+    /// lignes qui vont et viennent se cherchent.
+    pub(crate) fn console_shows_input(&self) -> bool {
+        self.emulator.is_some()
+    }
+
+    /// Donne au programme la ligne saisie, ou ferme son entrée (`None`),
+    /// puis relance l'exécution si c'est elle qui attendait.
+    pub(crate) fn send_input(&mut self, line: Option<String>) {
+        let Some(emulator) = &mut self.emulator else {
+            return;
+        };
+        match line {
+            Some(line) => emulator.provide_input(format!("{line}\n").as_bytes()),
+            None => emulator.close_input(),
+        }
+
+        // Un `Exécuter` suspendu repart tout seul : c'est le programme qui
+        // attendait, pas l'utilisateur. Un pas à pas, lui, garde la main à
+        // l'utilisateur, qui décide quand avancer.
+        if matches!(self.status, Status::WaitingForInput) {
+            self.status = if self.resume_run_after_input {
+                self.resume_run_after_input = false;
+                self.running = true;
+                Status::Running
+            } else {
+                Status::Idle
+            };
+        }
+    }
     /// La hauteur que la console réclame pour ce qu'elle a à dire.
     ///
     /// Une console qui annonce « le programme n'a rien écrit » n'a pas

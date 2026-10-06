@@ -614,8 +614,13 @@ jamais ajouter. Il faut de la place, et d'abord savoir où elle est.
       4 176 → 4 058). `console_wanted_height` et `console_input_estimate`
       — la hauteur que le panneau du bas et sa zone de saisie réclament —
       rejoignent le module de la console. Même patron, `pub(crate)` pour
-      `draw` qui les appelle. Reste `send_input` (~440 lignes), gros
-      morceau imbriqué avec une fonction libre : pour une séance dédiée.
+      `draw` qui les appelle.
+- [x] **Et l'entrée de la console : `console_shows_input` + `send_input`**
+      (−46, 4 058 → 4 012). Donner au programme la ligne saisie (ou fermer
+      son entrée), et dire si le champ doit paraître : les deux rejoignent
+      `console.rs`. (`send_input` ne faisait que ~20 lignes, non ~440 — une
+      borne mal lue la séance d'avant, corrigée ici.) La console tient
+      désormais toute sa logique dans son module.
 
 ## 4 nonies. Toutes les instructions nasm, visibles
 
