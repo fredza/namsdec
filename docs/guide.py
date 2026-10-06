@@ -1564,6 +1564,11 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "premiers, est le <b>module d'installation</b> (Préférences › Modules) : c'est lui qui "
          "sait aller chercher les sources et les construire."),
         ("p",
+         "La décompilation elle-même est une fonction optionnelle, allumée dans Modules. Tant "
+         "qu'elle est éteinte, activer un outil ici ne l'emploie nulle part — l'onglet Outils "
+         "le dit en tête, avec de quoi l'allumer sur place, sans aller chercher la case dans un "
+         "autre onglet."),
+        ("p",
          "La fiche d'un outil absent dit <b>comment l'obtenir sans rien déplier</b> : c'est une "
          "panne, pas un détail. Le repli « Détails » ne garde que la commande exacte qui sera "
          "lancée — ce qu'on va chercher en se demandant « et sans namsdec, comment je fais ? ». "

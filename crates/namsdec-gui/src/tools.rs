@@ -25,6 +25,7 @@ impl NamsdecApp {
         let s = strings(self.lang);
         let theme = self.theme;
         let fr = self.lang == Lang::Fr;
+        let mut allumer_décompilation = false;
 
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new(s.tools_title).strong().size(15.0));
@@ -53,6 +54,21 @@ impl NamsdecApp {
         {
             self.refresh_tool_availability();
             self.status = Status::Note(|s| s.tools_rechecked);
+        }
+
+        // La décompilation éteinte, cet onglet ne mène à rien : « Activer »
+        // un outil écrit bien sa fiche, mais rien ne l'emploie. On le dit
+        // en tête, avec de quoi l'allumer sans aller chercher la case dans
+        // l'onglet Modules — c'est la friction que Fred a pointée, les deux
+        // réglages d'une même fonction sur deux onglets.
+        if !self.show_decompiler_module {
+            ui.add_space(4.0);
+            ui.horizontal_wrapped(|ui| {
+                ui.colored_label(theme.warn, s.tools_decompilation_off);
+                if framed_button(ui, theme, s.tools_enable_decompilation).clicked() {
+                    allumer_décompilation = true;
+                }
+            });
         }
         ui.add_space(10.0);
 
@@ -278,6 +294,9 @@ impl NamsdecApp {
             // modules s'allument ensemble.
             self.show_decompiler_module = true;
             self.show_installer_module = true;
+        }
+        if allumer_décompilation {
+            self.show_decompiler_module = true;
         }
     }
 

@@ -20630,6 +20630,47 @@ fn a_working_tool_is_not_announced_as_missing_something() {
     }
 }
 
+/// L'onglet Outils dit quand la décompilation est éteinte.
+///
+/// Les deux réglages d'une même fonction tombaient sur deux onglets :
+/// activer un outil ici, mais la décompilation s'allume dans Modules.
+/// Sans un mot, on activait un outil qui ne servait nulle part. L'onglet
+/// le dit maintenant en tête, avec de quoi l'allumer sur place.
+#[test]
+fn the_tools_tab_says_when_decompilation_is_off() {
+    let s = strings(Lang::Fr);
+
+    // Éteinte : la note et son bouton se lisent.
+    let mut app = NamsdecApp {
+        show_preferences: true,
+        preferences_tab: PreferencesTab::Tools,
+        show_decompiler_module: false,
+        ..Default::default()
+    };
+    let peint = paint(&mut app);
+    assert!(
+        peint.contains(s.tools_decompilation_off),
+        "la décompilation éteinte doit se dire :\n{peint}"
+    );
+    assert!(
+        peint.contains(s.tools_enable_decompilation),
+        "et de quoi l'allumer sur place :\n{peint}"
+    );
+
+    // Allumée : plus de note.
+    let mut app = NamsdecApp {
+        show_preferences: true,
+        preferences_tab: PreferencesTab::Tools,
+        show_decompiler_module: true,
+        ..Default::default()
+    };
+    let peint = paint(&mut app);
+    assert!(
+        !peint.contains(s.tools_decompilation_off),
+        "allumée, rien à signaler :\n{peint}"
+    );
+}
+
 /// La fenêtre du plan d'installation reste entièrement à l'écran.
 ///
 /// Le plan de rizin compte neuf étapes et un journal : la fenêtre

@@ -629,9 +629,14 @@ jamais ajouter. Il faut de la place, et d'abord savoir où elle est.
       que si l'outil est ABSENT ; pour l'incomplet, « il lui manque… » + le
       module d'installation (qui construit ce qui manque) suffisent.
       Contrôle : assertion ajoutée à `a_working_tool_is_not_announced…`.
-- [ ] **À poursuivre** : revoir les frontières Modules / Plugins / Outils
-      (thèmes et séries d'exercices sous Plugins, outils sous Outils,
-      fonctions sous Modules) et l'enchaînement Activer / Réparer.
+- [x] **La décompilation éteinte est signalée dans l'onglet Outils** — les
+      deux réglages d'une même fonction tombaient sur deux onglets (activer
+      un outil dans Outils, allumer la décompilation dans Modules). L'onglet
+      Outils le dit en tête quand elle est éteinte, avec un bouton pour
+      l'allumer sur place. Contrôle : `the_tools_tab_says_when_decompilation_is_off`.
+- [ ] **À poursuivre** : les frontières sont plus nettes (Composants/Fonctions
+      sous Modules, Thèmes/Exercices sous Plugins, programmes sous Outils).
+      Reste l'enchaînement Activer / Réparer d'un outil incomplet à revoir.
 
 ## 4 quaterdecies. Flags toujours affichés, éclat tenu plus longtemps
 
