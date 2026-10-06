@@ -610,6 +610,12 @@ jamais ajouter. Il faut de la place, et d'abord savoir où elle est.
       patron (`impl NamsdecApp` + `use super::*`), passées `pub(crate)`
       pour les frères qui les appellent (jobs, tests). Comportement
       inchangé, suite complète au vert.
+- [x] **Puis la géométrie de la console vers `console.rs`** (−118,
+      4 176 → 4 058). `console_wanted_height` et `console_input_estimate`
+      — la hauteur que le panneau du bas et sa zone de saisie réclament —
+      rejoignent le module de la console. Même patron, `pub(crate)` pour
+      `draw` qui les appelle. Reste `send_input` (~440 lignes), gros
+      morceau imbriqué avec une fonction libre : pour une séance dédiée.
 
 ## 4 nonies. Toutes les instructions nasm, visibles
 
