@@ -2452,3 +2452,45 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
   forme de ce que les autres savaient déjà produire — c'est ce qui le rend
   sûr. Bornes partout (40 fonctions, profondeur 8, 120 nœuds, 200
   instructions) : au-delà, une carte redevient un mur.
+
+  --- Retour de Fred sur l'onglet RE (7 octobre) : trois corrections ---
+  PAS DE GRAPHIQUE. Le module « Graphe d'appels » posait des boutons egui
+  empilés et traçait des traits par-dessus. Le test de mesure prouvait qu'il
+  peignait bien des boîtes — mais aux couleurs d'un thème sombre (fond
+  faint_bg, cadre et traits weak_text), une boîte ne se distingue pas du
+  fond et un trait d'un pixel se perd. À l'écran : une liste de noms, pas un
+  graphe. C'est le piège du skill « le défaut par défaut doit être le sûr »,
+  pris par l'autre bout : le discret par défaut était le piège ici.
+
+  Réécrit comme le déroulement CFG de flow.rs : un canevas unique
+  (allocate_painter), des boîtes à fond (extreme_bg) et cadre francs
+  (accent pour la racine et main), des connecteurs fléchés. On ne peut pas
+  prendre le thème namsdec (les modules n'ont que ReContext), mais
+  ui.visuals() porte les mêmes couleurs puisque l'app les y pose. La leçon :
+  un graphe doit se voir, donc il ne prend pas les fonds estompés réservés
+  aux fiches ; et une mesure qui dit « ça peint » ne dit pas « ça se lit ».
+
+  CLIQUER UNE RÉFÉRENCE N'ALLAIT NULLE PART. Le canal ReRequest::GoTo
+  existait, show_address savait sauter — mais le module xrefs ne l'émettait
+  pas : un clic ne faisait que déplier les appelants. Deux intentions
+  étaient confondues dans un seul geste. Séparées : le triangle déplie,
+  l'adresse (clickable_address) mène. Et « appelé depuis » / « bouclée
+  depuis » sont des adresses aussi — les lire sans pouvoir y aller, c'est
+  s'arrêter au milieu.
+
+  « EN BREF » TROP MAIGRE. Il comptait code, entrée, fonctions, chaînes,
+  nature du fichier. Fred voulait savoir, entre autres, si le programme a
+  accès à Internet. La donnée existait (behaviour::family_of, les six
+  familles, et syscalls::scan pour les appels par numéro) ; elle n'était
+  rassemblée nulle part dans le résumé. Ajouté : ce qu'il emprunte, le
+  portrait des six familles (réseau compris, par la table de liaison OU par
+  un numéro — car un programme discret appelle le noyau par son numéro), et
+  les quatre protections qui décident de tout. Rien de neuf calculé : le
+  résumé agrège ce que les panneaux de détail savaient déjà.
+
+  CE QUI RESTE. Un éditeur binaire et le renommage des fonctions, tous deux
+  demandés. Le premier est le gros morceau (il rejoint « modifier le
+  binaire » : patch.rs, PatchBytes, pas à pas et réversible). Le second
+  demande une table de noms partagée entre les panneaux — ReContext la
+  portera, et vingt-neuf littéraux sont à compléter : mécanique, mais à
+  faire d'un bloc.

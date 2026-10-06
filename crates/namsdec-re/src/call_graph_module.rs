@@ -40,9 +40,6 @@ const MAX_NŒUDS: usize = 120;
 /// Combien d'instructions une rubrique de détail montre avant de couper.
 const MAX_INSTRUCTIONS: usize = 200;
 
-/// Un pas d'indentation dans l'arbre, en pixels.
-const INDENT: f32 = 22.0;
-
 /// Un nœud de l'arbre, aplati dans l'ordre où on le dessine.
 struct Nœud {
     /// Rang de la fonction dans `self.functions`.
@@ -259,8 +256,16 @@ impl CallGraphModule {
         }
     }
 
-    /// L'arbre, dessiné avec egui : une boîte cliquable par nœud, et des
-    /// traits de liaison peints entre parent et enfant.
+    /// L'arbre, dessiné comme un vrai diagramme : une boîte peinte et
+    /// cliquable par nœud, reliée à son parent par un connecteur fléché.
+    ///
+    /// Peint sur un canevas unique (`allocate_painter`) plutôt qu'empilé
+    /// en widgets : c'est ce qui en fait un graphe et non une liste. Une
+    /// première version posait des boutons dans une colonne et traçait
+    /// des traits par-dessus ; aux couleurs discrètes du thème, cela ne
+    /// se lisait pas comme un graphe. Ici les boîtes ont un fond et un
+    /// cadre francs, et les liens portent une flèche — on voit qui appelle
+    /// qui.
     fn dessiner_arbre(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
         let nœuds = self.arbre();
         if nœuds.is_empty() {
@@ -271,37 +276,80 @@ impl CallGraphModule {
             return;
         }
 
-        let couleur_trait = ui.visuals().weak_text_color();
-        let mut demande: Option<ReRequest> = None;
-        // Le rectangle de chaque boîte, pour tracer les liens ensuite.
-        let mut rects: Vec<egui::Rect> = Vec::with_capacity(nœuds.len());
+        // Les couleurs, relevées du thème avant d'emprunter `ui` pour le
+        // canevas. Celles d'un graphe doivent se voir : on ne prend pas
+        // les fonds estompés qui servent aux fiches.
+        let v = ui.visuals();
+        let couleur_texte = v.text_color();
+        let couleur_faible = v.weak_text_color();
+        let couleur_accent = v.hyperlink_color;
+        let couleur_cadre = v.widgets.noninteractive.fg_stroke.color;
+        let fond_boîte = v.extreme_bg_color;
+        let fond_accent = v.selection.bg_fill.gamma_multiply(0.45);
+        let fond_survol = v.widgets.hovered.bg_fill;
+        let couleur_trait = couleur_texte.gamma_multiply(0.55);
 
-        ui.vertical(|ui| {
-            ui.spacing_mut().item_spacing.y = 4.0;
-            for nœud in &nœuds {
-                let f = &self.functions[nœud.fonction];
-                let réponse = ui
-                    .horizontal(|ui| {
-                        ui.add_space(nœud.profondeur as f32 * INDENT);
-                        boîte_fonction(ui, f, nœud.renvoi)
-                    })
-                    .inner;
-                if réponse.clicked() {
-                    demande = Some(ReRequest::GoTo { addr: f.start });
-                }
-                rects.push(réponse.rect);
-            }
-        });
+        let police = egui::FontId::monospace(12.0);
+        let hauteur_ligne = ui.ctx().fonts_mut(|f| f.row_height(&police));
+        let glyphe = ui.ctx().fonts_mut(|f| f.glyph_width(&police, '0')).max(1.0);
+        const PAD_X: f32 = 8.0;
+        const PAD_Y: f32 = 4.0;
+        const INDENT_X: f32 = 26.0;
+        let hauteur_boîte = hauteur_ligne + PAD_Y * 2.0;
+        let pas_vertical = hauteur_boîte + 8.0;
 
-        // Les traits, par-dessus la gouttière de gauche (jamais sur une
-        // boîte : l'enfant est indenté d'un cran de plus que son rail).
-        let peintre = ui.painter();
-        let trait_ = egui::Stroke::new(1.0, couleur_trait);
+        // Poser chaque boîte : étiquette, rectangle local, et ce qu'elle vise.
+        struct Boîte {
+            rect: egui::Rect,
+            label: String,
+            addr: u64,
+            accent: bool,
+            renvoi: bool,
+        }
+        let mut boîtes: Vec<Boîte> = Vec::with_capacity(nœuds.len());
+        let mut largeur_max = 0.0f32;
+        for (i, nœud) in nœuds.iter().enumerate() {
+            let f = &self.functions[nœud.fonction];
+            let accent = matches!(f.origin, Origin::Entry | Origin::Main);
+            let label = if nœud.renvoi {
+                format!("\u{21a9} {}  {:#x}", f.name(), f.start)
+            } else {
+                format!("{}  {:#x}", f.name(), f.start)
+            };
+            let largeur = label.chars().count() as f32 * glyphe + PAD_X * 2.0;
+            let x = nœud.profondeur as f32 * INDENT_X;
+            let y = i as f32 * pas_vertical;
+            largeur_max = largeur_max.max(x + largeur);
+            boîtes.push(Boîte {
+                rect: egui::Rect::from_min_size(
+                    egui::pos2(x, y),
+                    egui::vec2(largeur, hauteur_boîte),
+                ),
+                label,
+                addr: f.start,
+                accent,
+                renvoi: nœud.renvoi,
+            });
+        }
+        let hauteur_totale = nœuds.len() as f32 * pas_vertical;
+
+        let (réponse, peintre) = ui.allocate_painter(
+            egui::vec2(largeur_max.max(120.0), hauteur_totale.max(40.0)),
+            egui::Sense::click(),
+        );
+        let origine = réponse.rect.min.to_vec2();
+        let décalé = |r: egui::Rect| r.translate(origine);
+        let pointeur = réponse.hover_pos();
+
+        // Les connecteurs d'abord : ils passent sous les boîtes. Un rail
+        // vertical dans la gouttière de l'enfant, un coude, une flèche qui
+        // entre dans la boîte appelée.
+        let trait_ = egui::Stroke::new(1.5, couleur_trait);
         for (i, nœud) in nœuds.iter().enumerate() {
             let Some(parent) = nœud.parent else { continue };
-            let rp = rects[parent];
-            let rn = rects[i];
-            let x_rail = rp.left() + 9.0;
+            let rp = décalé(boîtes[parent].rect);
+            let rn = décalé(boîtes[i].rect);
+            let x_rail = rp.left() + 11.0;
             let y_enfant = rn.center().y;
             peintre.line_segment(
                 [egui::pos2(x_rail, rp.bottom()), egui::pos2(x_rail, y_enfant)],
@@ -311,8 +359,58 @@ impl CallGraphModule {
                 [egui::pos2(x_rail, y_enfant), egui::pos2(rn.left(), y_enfant)],
                 trait_,
             );
+            flèche(&peintre, egui::pos2(rn.left(), y_enfant), couleur_trait);
         }
 
+        // Puis les boîtes, et le clic qui mène à l'adresse.
+        let mut demande: Option<ReRequest> = None;
+        let mut sur_une_boîte = false;
+        for boîte in &boîtes {
+            let rect = décalé(boîte.rect);
+            let survol = pointeur.is_some_and(|p| rect.contains(p));
+            sur_une_boîte |= survol;
+            let fond = if survol {
+                fond_survol
+            } else if boîte.accent {
+                fond_accent
+            } else {
+                fond_boîte
+            };
+            peintre.rect_filled(rect, 4.0, fond);
+            peintre.rect_stroke(
+                rect,
+                4.0,
+                egui::Stroke::new(
+                    if boîte.accent { 2.0 } else { 1.0 },
+                    if boîte.accent {
+                        couleur_accent
+                    } else {
+                        couleur_cadre
+                    },
+                ),
+                egui::StrokeKind::Inside,
+            );
+            let couleur = if boîte.renvoi {
+                couleur_faible
+            } else {
+                couleur_texte
+            };
+            peintre.text(
+                egui::pos2(rect.left() + PAD_X, rect.center().y),
+                egui::Align2::LEFT_CENTER,
+                &boîte.label,
+                police.clone(),
+                couleur,
+            );
+            if survol && réponse.clicked() {
+                demande = Some(ReRequest::GoTo { addr: boîte.addr });
+            }
+        }
+
+        // Le curseur dit que les boîtes mènent quelque part.
+        if sur_une_boîte {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
         if demande.is_some() {
             self.demande = demande;
         }
@@ -370,33 +468,20 @@ impl CallGraphModule {
     }
 }
 
-/// Une boîte de fonction, cliquable, à la façon d'un nœud UML.
-fn boîte_fonction(ui: &mut egui::Ui, f: &Function, renvoi: bool) -> egui::Response {
-    let nom = f.name();
-    let accent = matches!(f.origin, Origin::Entry | Origin::Main);
-    let mut texte = egui::RichText::new(format!("{nom}  {:#x}", f.start)).monospace();
-    if accent {
-        texte = texte.strong();
-    }
-    if renvoi {
-        // Un renvoi : la fonction est dépliée ailleurs. La flèche le dit,
-        // et la couleur affaiblie l'éloigne du reste.
-        texte = egui::RichText::new(format!("↩ {nom}  {:#x}", f.start))
-            .monospace()
-            .color(ui.visuals().weak_text_color());
-    }
-    let bouton = egui::Button::new(texte)
-        .fill(ui.visuals().faint_bg_color)
-        .stroke(egui::Stroke::new(1.0, ui.visuals().weak_text_color()))
-        .corner_radius(egui::CornerRadius::from(4));
-    let infobulle = if renvoi {
-        "Déjà dépliée plus haut — cliquer pour aller la voir"
-    } else {
-        "Aller à cette fonction dans le listing"
-    };
-    ui.add(bouton)
-        .on_hover_cursor(egui::CursorIcon::PointingHand)
-        .on_hover_text(infobulle)
+/// Une petite flèche pleine, pointant vers la droite, à l'entrée d'une
+/// boîte appelée : c'est ce qui fait d'un trait un appel orienté.
+fn flèche(peintre: &egui::Painter, bout: egui::Pos2, couleur: egui::Color32) {
+    const T: f32 = 5.0;
+    let arrière = bout - egui::vec2(T, 0.0);
+    peintre.add(egui::Shape::convex_polygon(
+        vec![
+            bout,
+            arrière + egui::vec2(0.0, T * 0.6),
+            arrière - egui::vec2(0.0, T * 0.6),
+        ],
+        couleur,
+        egui::Stroke::NONE,
+    ));
 }
 
 /// La rubrique de code d'une fonction : par instruction, les octets puis

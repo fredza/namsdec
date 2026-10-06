@@ -619,6 +619,36 @@ le code binaire et le pseudo-code. Un seul module neuf les réunit.
       banc (non-recouvrement, découpe, contraste) couvrent le panneau via
       la scène « Analyse ».
 
+### Retour de Fred (7 octobre, après essai) — corrigé
+
+- [x] **Le graphe se voyait comme une liste, pas comme un graphe.** La
+      première version posait des boutons empilés et traçait des traits
+      par-dessus ; aux couleurs discrètes du thème (fond `faint_bg`,
+      traits `weak_text`), rien ne se lisait comme un diagramme. Réécrit
+      en vrai canevas peint (`allocate_painter`, comme le déroulement CFG
+      de `flow.rs`) : boîtes à fond et cadre francs, connecteurs fléchés
+      parent→enfant, racine/`main` en accent. Clic sur une boîte → on y
+      va. Mesuré : le panneau peint bien des boîtes, et les invariants du
+      banc le couvrent.
+- [x] **Cliquer une référence croisée ne menait nulle part.** Le module
+      `xrefs` ne faisait que déplier les appelants — il n'émettait aucun
+      `GoTo`. Désormais l'adresse est cliquable (y aller), le triangle
+      déplie (d'où c'est appelé), et les adresses « appelé depuis » et
+      « bouclée depuis » mènent aussi. `take_request` branché.
+- [x] **« En bref » manquait de détails.** Le résumé dit maintenant ce
+      que le binaire **emprunte** (fonctions + appels système), **ce
+      qu'il sait faire** — le portrait en six familles, dont le réseau :
+      la réponse à « a-t-il accès à Internet ? » se lit d'un coup d'œil,
+      qu'il passe par la table de liaison ou par un numéro d'appel
+      système —, et les **protections** qui décident de tout (PIE, NX,
+      RELRO, canari), cochées ou barrées. Tout mesuré, rien déclaré.
+
+- [ ] **Reste demandé par Fred, non commencé :** un **éditeur binaire**
+      (modifier les octets à la main dans l'onglet RE — passe par
+      `patch.rs` et `ReRequest::PatchBytes`, pas à pas et réversible, voir
+      « Modifier un binaire ») et le **renommage de fonctions** (un nom
+      lisible à la place de `sub_xxxx`, partagé entre les panneaux).
+
 ## 4 octies. Découpage de main.rs (suite)
 
 - [x] **main.rs : 6 643 → 4 231 lignes** (−2 412, −36 %), sans rien

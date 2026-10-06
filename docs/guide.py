@@ -1124,6 +1124,15 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "réglage : on le retrouve au retour."),
         ("p", "Ce qu'on y trouve :"),
         ("liste", [
+         "<b>En bref</b> — la première réponse, avant d'ouvrir les autres panneaux : taille "
+         "du code, point d'entrée, nombre de fonctions et de chaînes, ce qu'il <b>emprunte</b> "
+         "(fonctions de bibliothèque et appels système). Puis <b>ce qu'il sait faire</b> — le "
+         "portrait en six familles (réseau, exécution, anti-débogage, mémoire, chiffrement, "
+         "fichiers), chacune présente avec le nombre d'appels qui la tiennent et une phrase "
+         "d'explication : c'est là qu'on lit d'un coup d'œil <i>si le programme a accès au "
+         "réseau</i>, par la table de liaison ou par un numéro d'appel système. Enfin les "
+         "<b>protections</b> qui décident de tout — PIE, NX, RELRO, canari —, cochées ou "
+         "barrées. Tout est mesuré, jamais déclaré.",
          "<b>Empreintes</b> — la taille exacte, le SHA-256 et le CRC-32 du fichier. "
          "C'est la première ligne d'un compte rendu : de quel octet parle-t-on ? Deux "
          "personnes qui lisent « le crackme » n'ont pas forcément le même fichier "
@@ -1171,7 +1180,9 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "taire plutôt que de se tromper.",
          "<b>Références croisées</b> — qui appelle quoi, qui saute où, qui désigne quelle "
          "adresse. Une adresse qu'un `call` vise est une fonction, même dépouillée de son "
-         "nom.",
+         "nom. Chaque adresse se <b>clique pour y aller</b> dans le listing — la cible d'une "
+         "fonction comme l'endroit d'où elle est appelée ; le petit triangle, lui, déplie "
+         "d'où viennent les appels sans bouger l'œil.",
          "<b>Graphe d'appels</b> — la structure du programme, pas sa liste d'instructions : "
          "l'<b>arbre des appels</b> déplié depuis le point d'entrée, une boîte par fonction "
          "et un trait vers chacune de celles qu'elle appelle, à la façon d'un diagramme UML. "

@@ -7,13 +7,15 @@
 //! qui sert partout, puis remonter.
 
 use crate::xrefs::{self, Kind, Xrefs};
-use crate::{ReContext, ReModule};
+use crate::{ReContext, ReModule, ReRequest, clickable_address};
 
 #[derive(Default)]
 pub struct XrefsModule {
     xrefs: Xrefs,
     /// La cible dépliée, s'il y en a une.
     ouverte: Option<u64>,
+    /// Ce que le panneau demande à l'application : aller voir une adresse.
+    demande: Option<ReRequest>,
 }
 
 impl XrefsModule {
@@ -24,6 +26,10 @@ impl XrefsModule {
 }
 
 impl ReModule for XrefsModule {
+    fn take_request(&mut self) -> Option<ReRequest> {
+        self.demande.take()
+    }
+
     fn id(&self) -> &'static str {
         "xrefs"
     }
@@ -66,13 +72,29 @@ impl ReModule for XrefsModule {
                 fonctions.len()
             ));
             ui.weak(ctx.t(
-                "Une adresse qu'un `call` désigne est une fonction, même sans son nom.",
-                "An address a `call` points at is a function, even without its name.",
+                "Une adresse qu'un `call` désigne est une fonction, même sans son nom. \
+                 Cliquez l'adresse pour y aller ; le triangle déplie d'où elle est appelée.",
+                "An address a `call` points at is a function, even without its name. \
+                 Click the address to go there; the triangle unfolds where it is called from.",
             ));
+            let mut demande: Option<ReRequest> = None;
             for (addr, appels) in &fonctions {
                 let ouverte = self.ouverte == Some(*addr);
-                let ligne = ui.horizontal(|ui| {
-                    ui.monospace(format!("{addr:#x}"));
+                ui.horizontal(|ui| {
+                    // Le triangle déplie ; l'adresse mène. Deux gestes
+                    // distincts, car ce sont deux intentions : lire d'où
+                    // une fonction est appelée, ou aller la voir.
+                    let marque = if ouverte { "\u{25be}" } else { "\u{25b8}" };
+                    if ui
+                        .add(egui::Label::new(marque).sense(egui::Sense::click()))
+                        .on_hover_text(ctx.t("D'où est-ce appelé ?", "Called from where?"))
+                        .clicked()
+                    {
+                        self.ouverte = (!ouverte).then_some(*addr);
+                    }
+                    if clickable_address(ui, ctx, *addr) {
+                        demande = Some(ReRequest::GoTo { addr: *addr });
+                    }
                     ui.weak(format!(
                         "{appels} {}",
                         if *appels > 1 {
@@ -82,14 +104,6 @@ impl ReModule for XrefsModule {
                         }
                     ));
                 });
-                if ligne
-                    .response
-                    .interact(egui::Sense::click())
-                    .on_hover_text(ctx.t("Voir d'où", "Show from where"))
-                    .clicked()
-                {
-                    self.ouverte = (!ouverte).then_some(*addr);
-                }
                 if ouverte {
                     ui.indent(addr, |ui| {
                         for reference in self.xrefs.to(*addr) {
@@ -100,11 +114,19 @@ impl ReModule for XrefsModule {
                                     Kind::Data => ctx.t("lu depuis", "read from"),
                                     Kind::Address => ctx.t("adresse prise en", "address taken at"),
                                 });
-                                ui.monospace(format!("{:#x}", reference.from));
+                                // D'où vient l'appel est aussi une adresse
+                                // où l'on veut aller : la lire sans pouvoir
+                                // l'atteindre serait s'arrêter au milieu.
+                                if clickable_address(ui, ctx, reference.from) {
+                                    demande = Some(ReRequest::GoTo { addr: reference.from });
+                                }
                             });
                         }
                     });
                 }
+            }
+            if demande.is_some() {
+                self.demande = demande;
             }
         }
 
@@ -120,12 +142,20 @@ impl ReModule for XrefsModule {
                 "A jump going backwards closes a path. How many times one goes round is \
                  only known by running it: the gutter counts that.",
             ));
+            let mut demande: Option<ReRequest> = None;
             for (cible, depuis) in &boucles {
                 ui.horizontal(|ui| {
-                    ui.monospace(format!("{cible:#x}"));
+                    if clickable_address(ui, ctx, *cible) {
+                        demande = Some(ReRequest::GoTo { addr: *cible });
+                    }
                     ui.weak(ctx.t("bouclée depuis", "looped from"));
-                    ui.monospace(format!("{depuis:#x}"));
+                    if clickable_address(ui, ctx, *depuis) {
+                        demande = Some(ReRequest::GoTo { addr: *depuis });
+                    }
                 });
+            }
+            if demande.is_some() {
+                self.demande = demande;
             }
         }
 
