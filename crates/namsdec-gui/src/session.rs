@@ -56,6 +56,12 @@ impl NamsdecApp {
             hover_help: settings.hover_help,
             exercises: settings.exercises,
             disabled_packs: settings.disabled_packs.iter().cloned().collect(),
+            located_tools: settings
+                .located_tools
+                .iter()
+                .map(|(id, chemin)| (id.clone(), std::path::PathBuf::from(chemin)))
+                .collect(),
+            locating_tool: None,
             current_exercise: settings.current_exercise.clone(),
             memory_format: MemoryFormat::by_id(&settings.memory_format),
             analysis_module: settings.analysis_module.clone(),
@@ -472,6 +478,11 @@ impl NamsdecApp {
             hover_help: self.hover_help,
             exercises: self.exercises,
             disabled_packs: self.disabled_packs.iter().cloned().collect(),
+            located_tools: self
+                .located_tools
+                .iter()
+                .map(|(id, chemin)| (id.clone(), chemin.to_string_lossy().into_owned()))
+                .collect(),
             current_exercise: self.current_exercise.clone(),
             disassembler: self.disassembler.clone(),
             memory_format: self.memory_format.id().to_owned(),

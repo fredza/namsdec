@@ -1575,6 +1575,13 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "Les fiches s'ouvraient d'office quand l'outil manquait, et sur une machine neuve, où "
          "aucun ne l'est, les deux derniers outils passaient sous le bord de la fenêtre. Le "
          "nombre d'outils connus est écrit à côté du titre : la liste se déroule."),
+        ("p",
+         "namsdec cherche un outil dans le PATH et dans son propre dossier d'outils. Ce qu'on a "
+         "bâti soi-même ailleurs — un binaire compilé dans le dépôt d'un projet, sans l'avoir "
+         "installé — n'est ni l'un ni l'autre, et reste « absent » quoi qu'on fasse. La fiche d'un "
+         "outil absent propose donc <b>Localiser le binaire…</b> : on désigne le fichier une fois, "
+         "namsdec le retient et l'emploie tel quel. C'est la voie pour DZF, et pour tout outil "
+         "rangé hors des chemins habituels."),
         ("note",
          "Un outil qui répond ne propose que <b>Fermer</b>. « Recommencer » était là, et c'était "
          "une offre sans motif : vingt minutes de compilation pour un résultat identique, et l'on "
@@ -1585,8 +1592,11 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "<b>DZF est dans la liste bien qu'il soit en cours d'écriture</b> : c'est le "
          "désassembleur x86-64 maison, en C++23 et sans aucune dépendance. Il ne lit pas l'ELF, "
          "et n'a pas à l'apprendre — namsdec lui passe les octets exécutables et leur adresse. "
-         "Tant qu'il n'est pas bâti, sa fiche dit où le prendre ; le jour où il l'est, namsdec le "
-         "voit sans qu'on ait rien à déclarer."),
+         "Tant qu'il n'est pas bâti, sa fiche dit où le prendre. Une fois bâti dans son dépôt, "
+         "son binaire n'est ni dans le PATH ni dans le dossier d'outils de namsdec : la détection "
+         "le donne donc « absent ». C'est là qu'intervient <b>Localiser le binaire…</b> (voir "
+         "ci-dessus) — on montre une fois où est <font face='Courier'>x64-disassembler</font>, et "
+         "il devient prêt."),
         ("note",
          "<b>Rizin seul ne décompile pas</b> : la commande <font face='Courier'>pdg</font> vient "
          "du greffon <font face='Courier'>rz-ghidra</font>. Là où il n'est pas empaqueté, "

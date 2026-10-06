@@ -78,6 +78,7 @@ impl NamsdecApp {
         let mut à_retirer = None;
         let mut plan = None;
         let mut allumer = false;
+        let mut localiser = None;
 
         // Le dossier où namsdec pose ce qu'il installe : un outil bâti
         // par le module d'installation n'est dans le PATH de personne, et
@@ -149,7 +150,15 @@ impl NamsdecApp {
                                 )
                                 .clicked()
                             {
-                                à_utiliser = Some(outil.resolved_plugin(outils.as_deref()));
+                                let mut plugin = outil.resolved_plugin(outils.as_deref());
+                                // Si on a localisé le binaire à la main,
+                                // c'est lui qu'on lance : son chemin absolu
+                                // remplace le nom nu, que le PATH ne
+                                // résoudrait pas.
+                                if let Some(chemin) = self.located_tools.get(&outil.plugin.id) {
+                                    plugin.command = chemin.to_string_lossy().into_owned();
+                                }
+                                à_utiliser = Some(plugin);
                             }
                         });
                     });
@@ -206,6 +215,25 @@ impl NamsdecApp {
                                     .color(theme.warn),
                                 )
                                 .selectable(true),
+                            );
+                        });
+                    }
+
+                    // Localiser un binaire bâti hors du PATH. namsdec
+                    // cherche dans le PATH et dans son propre dossier
+                    // d'outils ; ce qu'on a compilé soi-même — DZF dans son
+                    // dépôt — n'est ni l'un ni l'autre, et reste « absent »
+                    // sans que rien n'y puisse. Montrer où est le binaire
+                    // est la seule voie, et la bonne.
+                    if dispo == Availability::Missing {
+                        ui.add_space(4.0);
+                        ui.horizontal_wrapped(|ui| {
+                            if framed_button(ui, theme, s.tools_locate).clicked() {
+                                localiser = Some(outil.plugin.id.clone());
+                            }
+                            ui.colored_label(
+                                theme.dim,
+                                egui::RichText::new(s.tools_locate_hint).small(),
                             );
                         });
                     }
@@ -297,6 +325,10 @@ impl NamsdecApp {
         }
         if allumer_décompilation {
             self.show_decompiler_module = true;
+        }
+        if let Some(id) = localiser {
+            self.locating_tool = Some(id);
+            self.spawn_file_dialog(FileDialogKind::LocateTool);
         }
     }
 

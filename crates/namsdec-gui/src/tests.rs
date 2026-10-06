@@ -20630,6 +20630,35 @@ fn a_working_tool_is_not_announced_as_missing_something() {
     }
 }
 
+/// Un binaire localisé à la main rend prêt un outil que le PATH ignore.
+///
+/// namsdec cherche un outil dans le PATH et dans son propre dossier
+/// d'outils. Ce qu'on a bâti soi-même hors du PATH — DZF dans son dépôt —
+/// n'est ni l'un ni l'autre, et reste « absent » sans que rien n'y puisse.
+/// Montrer où est le binaire doit suffire à le rendre prêt. On se garde de
+/// lire l'état de la machine : un fichier réel qui existe toujours — le
+/// binaire de test lui-même — prouve l'override, quel que soit le PATH.
+///
+/// Ce contrôle appelle bien `refresh_tool_availability`, car c'est son
+/// override qu'il vérifie — pas l'état des autres outils, sur lequel il
+/// n'affirme rien. Il figure à ce titre dans la liste des contrôles de
+/// mécanisme du gardien `no_control_asks_the_machine…`.
+#[test]
+fn a_located_binary_makes_a_tool_ready() {
+    let binaire = std::env::current_exe().expect("le binaire de test existe");
+    let mut app = NamsdecApp {
+        system_titlebar: false,
+        ..Default::default()
+    };
+    app.located_tools.insert("dzf".to_owned(), binaire);
+    app.refresh_tool_availability();
+    assert_eq!(
+        app.tools_ready.get("dzf").copied(),
+        Some(namsdec_disasm::known::Availability::Ready),
+        "un binaire réel localisé doit rendre DZF prêt, PATH ou pas"
+    );
+}
+
 /// L'onglet Outils dit quand la décompilation est éteinte.
 ///
 /// Les deux réglages d'une même fonction tombaient sur deux onglets :
@@ -23120,6 +23149,7 @@ fn every_setting_that_is_written_is_read_back() {
         auto_pairs: false,
         hover_help: false,
         disabled_packs: vec!["une-serie".to_owned()],
+        located_tools: std::collections::BTreeMap::new(),
         current_exercise: Some("namsdec/boucle".to_owned()),
         recent_files: vec![source.display().to_string()],
         exercises_done: vec!["namsdec/boucle".to_owned()],
@@ -26856,8 +26886,8 @@ fn no_control_asks_the_machine_what_it_should_be_checking() {
     // Les contrôles qui ont le droit de lire l'état réel, et pourquoi.
     // Allonger cette liste demande une raison écrite, et c'est le but :
     // le prochain qui voudra « s'adapter à la machine » devra dire ici en
-    // quoi son cas ressemble à ces deux-là.
-    const AUTORISÉS: [(&str, &str); 2] = [
+    // quoi son cas ressemble à ceux-là.
+    const AUTORISÉS: [(&str, &str); 3] = [
         (
             "the_tools_say_whether_this_machine_has_them",
             "vérifie une RELATION vraie partout : programme introuvable ⇒ fiche « absent »",
@@ -26865,6 +26895,10 @@ fn no_control_asks_the_machine_what_it_should_be_checking() {
         (
             "what_the_tools_answer_is_asked_once_and_kept",
             "vérifie la mécanique du relevé, non son contenu",
+        ),
+        (
+            "a_located_binary_makes_a_tool_ready",
+            "vérifie l'override de localisation, et n'affirme rien sur la machine",
         ),
     ];
 

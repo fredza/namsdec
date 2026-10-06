@@ -1097,6 +1097,12 @@ struct NamsdecApp {
     pack_to_remove: Option<String>,
     /// Les séries écartées : installées, mais pas proposées.
     disabled_packs: BTreeSet<String>,
+    /// Les binaires d'outils localisés à la main (identifiant → chemin
+    /// absolu). Pour ce qu'on a bâti soi-même, hors du PATH.
+    located_tools: BTreeMap<String, std::path::PathBuf>,
+    /// L'outil dont on est en train de choisir le binaire, le temps que le
+    /// sélecteur de fichier rende sa réponse.
+    locating_tool: Option<String>,
     /// L'exercice chargé en dernier — « où j'en étais » d'une session à
     /// l'autre.
     current_exercise: Option<String>,
@@ -1314,6 +1320,9 @@ enum FileDialogKind {
     ExportDot,
     /// Choisir où écrire le jeu de raccourcis **entier**, à plat.
     ExportKeymap,
+    /// Choisir le binaire d'un outil bâti hors du PATH (DZF, par exemple).
+    /// L'outil visé est retenu à part, dans `locating_tool`.
+    LocateTool,
 }
 
 /// Les fiches dont un programme se sert, dans l'ordre où il les emploie.
@@ -1811,6 +1820,8 @@ impl Default for NamsdecApp {
             exercise_files: BTreeMap::new(),
             pack_to_remove: None,
             disabled_packs: BTreeSet::new(),
+            located_tools: BTreeMap::new(),
+            locating_tool: None,
             current_exercise: None,
             settings_file: None,
             dernière_échelle: None,
@@ -1889,7 +1900,15 @@ impl NamsdecApp {
         self.tools_ready = namsdec_disasm::known::all()
             .into_iter()
             .map(|outil| {
-                let dispo = outil.availability_in(outils.as_deref());
+                // Un binaire qu'on a localisé à la main l'emporte : si le
+                // fichier choisi est toujours là, l'outil est prêt, quel
+                // que soit ce que le PATH et le dossier d'outils en disent.
+                // C'est la seule voie pour ce qu'on a bâti soi-même hors du
+                // PATH — DZF dans son dépôt, par exemple.
+                let dispo = match self.located_tools.get(&outil.plugin.id) {
+                    Some(chemin) if chemin.is_file() => namsdec_disasm::known::Availability::Ready,
+                    _ => outil.availability_in(outils.as_deref()),
+                };
                 (outil.plugin.id, dispo)
             })
             .collect();

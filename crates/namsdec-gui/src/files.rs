@@ -38,7 +38,8 @@ impl NamsdecApp {
             let picked = match kind {
                 FileDialogKind::OpenFile
                 | FileDialogKind::AddTheme
-                | FileDialogKind::AddExercises => dialog.pick_file(),
+                | FileDialogKind::AddExercises
+                | FileDialogKind::LocateTool => dialog.pick_file(),
                 FileDialogKind::OpenFolder => dialog.pick_folder(),
                 FileDialogKind::SaveAs
                 | FileDialogKind::ExportManual
@@ -68,6 +69,7 @@ impl NamsdecApp {
             // tranche, pas l'extension.
             FileDialogKind::AddTheme => dialog.add_filter(s.filter_theme, &["json"]),
             FileDialogKind::AddExercises => dialog.add_filter(s.filter_exercises, &["json"]),
+            FileDialogKind::LocateTool => dialog.add_filter(s.filter_all, &["*"]),
             FileDialogKind::OpenFile => dialog
                 .add_filter(s.filter_asm, &["asm", "nasm", "s", "inc"])
                 .add_filter(
@@ -180,7 +182,19 @@ impl NamsdecApp {
             FileDialogKind::ExportDump => self.export_dump(&path),
             FileDialogKind::ExportDot => self.export_dot(&path),
             FileDialogKind::ExportKeymap => self.export_keymap(&path),
+            FileDialogKind::LocateTool => self.locate_tool(path),
         }
+    }
+
+    /// Retient le binaire choisi pour l'outil qu'on localisait, et
+    /// redemande son état : ce qui était « absent » devient trouvable.
+    pub(crate) fn locate_tool(&mut self, path: PathBuf) {
+        let Some(id) = self.locating_tool.take() else {
+            return;
+        };
+        self.located_tools.insert(id, path);
+        self.refresh_tool_availability();
+        self.status = Status::Note(|s| s.tools_located);
     }
 
     /// Écrit le graphe du programme dans un fichier DOT.

@@ -90,6 +90,12 @@ pub struct Settings {
     /// peut l'être aussi — elle ne s'enlève pas, elle se range.
     #[serde(default)]
     pub disabled_packs: Vec<String>,
+    /// Les outils qu'on a localisés à la main : leur identifiant → le
+    /// chemin absolu du binaire choisi. Pour un outil bâti hors du PATH —
+    /// DZF, en cours de développement, dans le dépôt de l'utilisateur —,
+    /// c'est la seule façon pour namsdec de le trouver.
+    #[serde(default)]
+    pub located_tools: std::collections::BTreeMap<String, String>,
     /// L'exercice chargé en dernier, sous la forme « série/exercice ».
     ///
     /// Un parcours de douze étapes se fait en plusieurs fois : au retour,
@@ -304,6 +310,7 @@ impl Default for Settings {
             auto_pairs: true,
             hover_help: true,
             disabled_packs: Vec::new(),
+            located_tools: std::collections::BTreeMap::new(),
             current_exercise: None,
             recent_files: Vec::new(),
             exercises_done: Vec::new(),

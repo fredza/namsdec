@@ -6,8 +6,8 @@ retiré — reste dans `AMELIORATIONS.txt`, qui ne bouge pas de rôle : une
 seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
-Tenue à jour au fil des séances. Dernière mise à jour : **1er octobre
-2026**, version 0.2.6-beta.1, 1 075 tests au vert.
+Tenue à jour au fil des séances. Dernière mise à jour : **6 octobre
+2026**, version 0.2.6-beta.1, 1 085 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -634,6 +634,15 @@ jamais ajouter. Il faut de la place, et d'abord savoir où elle est.
       un outil dans Outils, allumer la décompilation dans Modules). L'onglet
       Outils le dit en tête quand elle est éteinte, avec un bouton pour
       l'allumer sur place. Contrôle : `the_tools_tab_says_when_decompilation_is_off`.
+- [x] **Localiser un binaire bâti hors du PATH** — DZF compilé dans son dépôt
+      restait « absent » : namsdec ne cherche que dans le PATH et son dossier
+      d'outils, et un binaire laissé dans `DZF/x64-disassembler/build/` n'est
+      ni l'un ni l'autre. La fiche d'un outil absent propose maintenant
+      **Localiser le binaire…** : on désigne le fichier une fois, il est
+      retenu (dans `settings.json`, clé `located_tools`), employé pour la
+      détection (prêt si le fichier existe) et comme commande à la déclaration.
+      Vaut pour tout outil rangé hors des chemins habituels, pas que DZF.
+      Contrôle : `a_located_binary_makes_a_tool_ready`.
 - [ ] **À poursuivre** : les frontières sont plus nettes (Composants/Fonctions
       sous Modules, Thèmes/Exercices sous Plugins, programmes sous Outils).
       Reste l'enchaînement Activer / Réparer d'un outil incomplet à revoir.
