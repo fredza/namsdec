@@ -7,5 +7,5 @@
     "{base}",
     "{text}"
   ],
-  "install": "cd DZF/x64-disassembler && cmake -S . -B build && cmake --build build"
+  "install": "git clone https://github.com/fredza/DZF && cd DZF && cmake -S x64-disassembler -B build && cmake --build build"
 }

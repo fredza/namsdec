@@ -395,6 +395,145 @@ pub fn rizin_tags() -> (&'static str, &'static str) {
     (RIZIN_TAG, RZ_GHIDRA_TAG)
 }
 
+/// Le dépôt de DZF, et la branche qu'on en prend.
+///
+/// DZF est le désassembleur-décompilateur maison : il vit dans son propre
+/// dépôt, jamais en dépendance de namsdec. Il n'a pas encore de version
+/// publiée — c'est un outil qu'on développe —, donc on prend `main`
+/// plutôt qu'une étiquette. Le jour où il en aura une, c'est elle qu'on
+/// épinglera, comme pour Rizin, pour qu'une installation donne demain ce
+/// qu'elle a montré aujourd'hui.
+const DZF_REPO: &str = "https://github.com/fredza/DZF";
+const DZF_BRANCH: &str = "main";
+
+/// La recette de DZF : cloner le dépôt, le construire, poser les deux
+/// binaires qui servent à namsdec.
+///
+/// `cmake` n'installe que la bibliothèque de DZF, pas ses exécutables :
+/// c'est pourquoi la recette ne finit pas par `--target install` comme
+/// celle de Rizin, mais copie elle-même `x64-disassembler` (le listing)
+/// et `dzf-plugin-engine` (la décompilation JSON) dans le dossier où
+/// namsdec cherche ce qu'il a posé — `<tools>/dzf/bin/`.
+///
+/// `-DDZF_BUILD_TESTS=OFF` : DZF porte une centaine d'exécutables de test
+/// qu'on n'a aucune raison de construire ici. On ne veut que les deux
+/// binaires de l'intégration.
+fn dzf(data: &Path) -> Recipe {
+    let racine = tools_dir(data);
+    let sources = racine.join("src");
+    let dépôt = sources.join("DZF");
+    let bin = racine.join("dzf/bin");
+    Recipe {
+        tool: "dzf",
+        requires: vec!["git", "cmake", "make", "g++"],
+        cost_fr: "Une compilation en C++23 : quelques minutes et quelques dizaines de mégaoctets. \
+                  Rien n'est installé hors du dossier de namsdec.",
+        cost_en: "A C++23 build: a few minutes and a few tens of megabytes. Nothing is installed \
+                  outside namsdec's own directory.",
+        source: "https://github.com/fredza/DZF",
+        teaches_fr: "DZF est un désassembleur x86-64 écrit à la main en C++23, sans aucune \
+                     dépendance — un outil qu'on développe, et qu'on lit pour comprendre comment \
+                     une instruction se décode. Il ne lit pas l'en-tête ELF : namsdec lui passe \
+                     les octets exécutables et leur adresse, et c'est tout ce dont il a besoin.",
+        teaches_en: "DZF is an x86-64 disassembler written by hand in C++23, with no dependencies \
+                     — a tool under development, and one you read to understand how an instruction \
+                     is decoded. It does not read the ELF header: namsdec hands it the executable \
+                     bytes and their address, and that is all it needs.",
+        produces: bin.join("x64-disassembler"),
+        steps: vec![
+            Step {
+                about_fr: "Créer le dossier des sources".into(),
+                about_en: "Create the sources directory".into(),
+                command: "mkdir".into(),
+                args: vec!["-p".into(), sources.display().to_string()],
+                cwd: None,
+            },
+            // Effacer d'abord, comme pour Rizin : `git clone` refuse un
+            // dossier non vide, et un dépôt à demi cloné d'une tentative
+            // interrompue ferait échouer l'étape suivante sans qu'on
+            // sache pourquoi.
+            Step {
+                about_fr: "Effacer les sources d'une tentative précédente".into(),
+                about_en: "Remove sources from any earlier attempt".into(),
+                command: "rm".into(),
+                args: vec!["-rf".into(), dépôt.display().to_string()],
+                cwd: None,
+            },
+            // `--depth 1` : on veut le code, pas l'histoire. Pas de
+            // `--recursive` : DZF n'a aucun sous-module, c'est l'un de
+            // ses partis pris.
+            Step {
+                about_fr: "Récupérer les sources de DZF".into(),
+                about_en: "Fetch DZF's sources".into(),
+                command: "git".into(),
+                args: vec![
+                    "clone".into(),
+                    "--depth".into(),
+                    "1".into(),
+                    "--branch".into(),
+                    DZF_BRANCH.into(),
+                    DZF_REPO.into(),
+                    dépôt.display().to_string(),
+                ],
+                cwd: None,
+            },
+            Step {
+                about_fr: "Configurer la construction de DZF".into(),
+                about_en: "Configure DZF's build".into(),
+                command: "cmake".into(),
+                args: vec![
+                    "-S".into(),
+                    "x64-disassembler".into(),
+                    "-B".into(),
+                    "build".into(),
+                    "-DCMAKE_BUILD_TYPE=Release".into(),
+                    "-DDZF_BUILD_TESTS=OFF".into(),
+                ],
+                cwd: Some(dépôt.clone()),
+            },
+            Step {
+                about_fr: "Construire DZF".into(),
+                about_en: "Build DZF".into(),
+                command: "cmake".into(),
+                args: vec!["--build".into(), "build".into(), "--parallel".into()],
+                cwd: Some(dépôt.clone()),
+            },
+            Step {
+                about_fr: "Créer le dossier du binaire".into(),
+                about_en: "Create the binary's directory".into(),
+                command: "mkdir".into(),
+                args: vec!["-p".into(), bin.display().to_string()],
+                cwd: None,
+            },
+            // Les deux binaires que namsdec emploie : le désassembleur,
+            // moteur possible du listing, et le moteur de décompilation
+            // JSON. `cmake` les laisse dans `build/` sans les installer,
+            // on les prend donc à la main.
+            Step {
+                about_fr: "Poser les binaires de DZF".into(),
+                about_en: "Place DZF's binaries".into(),
+                command: "cp".into(),
+                args: vec![
+                    dépôt.join("build/x64-disassembler").display().to_string(),
+                    dépôt.join("build/dzf-plugin-engine").display().to_string(),
+                    bin.display().to_string(),
+                ],
+                cwd: None,
+            },
+            // Les sources, devenues inutiles : les binaires sont posés
+            // ailleurs, et une reconstruction recommencerait de toute
+            // façon par les effacer.
+            Step {
+                about_fr: "Effacer les sources, devenues inutiles".into(),
+                about_en: "Remove the sources, now useless".into(),
+                command: "rm".into(),
+                args: vec!["-rf".into(), dépôt.display().to_string()],
+                cwd: None,
+            },
+        ],
+    }
+}
+
 /// Cette étiquette existe-t-elle encore dans ce dépôt ?
 ///
 /// `None` quand on ne peut pas conclure — pas de `git`, pas de réseau,
@@ -528,6 +667,10 @@ pub fn recipe_for(tool: &str, data_dir: &Path) -> Option<Recipe> {
     match tool {
         "retdec" => Some(retdec(data_dir)),
         "rizin-ghidra" => Some(rizin(data_dir)),
+        // DZF vit dans son propre dépôt : namsdec sait le cloner et le
+        // construire, chez l'utilisateur, sans rien installer à l'échelle
+        // du système.
+        "dzf" => Some(dzf(data_dir)),
         // Les autres viennent des paquets du système : les installer
         // demanderait `sudo`, que namsdec ne prendra pas.
         _ => None,
@@ -553,7 +696,7 @@ mod tests {
     #[test]
     fn a_recipe_says_where_it_goes_and_what_it_costs() {
         let data = Path::new("/tmp/namsdec-test");
-        for outil in ["retdec", "rizin-ghidra"] {
+        for outil in ["retdec", "rizin-ghidra", "dzf"] {
             let recette = recipe_for(outil, data).expect("une recette");
             assert!(!recette.steps.is_empty());
             assert!(recette.source.starts_with("https://"), "{}", recette.source);
@@ -577,7 +720,7 @@ mod tests {
     #[test]
     fn nothing_asks_for_root_and_nothing_goes_through_a_shell() {
         let data = Path::new("/tmp/namsdec-test");
-        for outil in ["retdec", "rizin-ghidra"] {
+        for outil in ["retdec", "rizin-ghidra", "dzf"] {
             let recette = recipe_for(outil, data).expect("une recette");
             for étape in &recette.steps {
                 assert_ne!(étape.command, "sudo", "{}", étape.line());
@@ -635,6 +778,57 @@ mod tests {
     fn an_unknown_tool_has_no_recipe() {
         assert!(recipe_for("objdump", Path::new("/tmp/x")).is_none());
         assert!(recipe_for("ce-qui-nexiste-pas", Path::new("/tmp/x")).is_none());
+    }
+
+    /// DZF se clone depuis son dépôt, se construit, et les deux binaires
+    /// de l'intégration se posent là où namsdec les cherchera.
+    #[test]
+    fn dzf_is_cloned_built_and_its_binaries_are_placed() {
+        let data = Path::new("/tmp/namsdec-test");
+        let recette = recipe_for("dzf", data).expect("une recette pour DZF");
+
+        // Le binaire déclaré est le désassembleur, sous le dossier d'outils.
+        assert!(recette.produces.ends_with("dzf/bin/x64-disassembler"), "{}", recette.produces.display());
+        assert!(recette.produces.starts_with(tools_dir(data)));
+
+        // On va bien chercher le dépôt de DZF, en HTTPS.
+        let clone = recette
+            .steps
+            .iter()
+            .find(|é| é.command == "git" && é.args.iter().any(|a| a == "clone"))
+            .expect("une étape de clonage");
+        assert!(
+            clone.args.iter().any(|a| a == DZF_REPO),
+            "le dépôt cloné est celui de DZF : {}",
+            clone.line()
+        );
+        assert!(DZF_REPO.starts_with("https://"), "{DZF_REPO}");
+
+        // On construit avec cmake, sans construire les tests de DZF.
+        let config = recette
+            .steps
+            .iter()
+            .find(|é| é.command == "cmake" && é.args.iter().any(|a| a == "-S"))
+            .expect("une étape de configuration");
+        assert!(
+            config.args.iter().any(|a| a == "-DDZF_BUILD_TESTS=OFF"),
+            "on ne construit pas les tests de DZF : {}",
+            config.line()
+        );
+
+        // Les DEUX binaires de l'intégration sont copiés : le listing et
+        // le moteur de décompilation.
+        let copie = recette
+            .steps
+            .iter()
+            .find(|é| é.command == "cp")
+            .expect("une étape de copie");
+        assert!(
+            copie.args.iter().any(|a| a.ends_with("x64-disassembler"))
+                && copie.args.iter().any(|a| a.ends_with("dzf-plugin-engine")),
+            "les deux binaires sont posés : {}",
+            copie.line()
+        );
     }
 }
 

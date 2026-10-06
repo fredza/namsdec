@@ -191,10 +191,27 @@ message** — namsdec ne sait pas qu'elle existe.
 
 ## Brancher son propre outil : l'exemple de DZF
 
-[DZF](https://github.com/…) est un désassembleur x86-64 écrit à la main
-en C++23, sans aucune dépendance. C'est exactement le genre d'outil pour
-lequel ce format existe : namsdec n'a rien à savoir de lui, sinon la
-commande à lancer.
+[DZF](https://github.com/fredza/DZF) est un désassembleur x86-64 écrit à
+la main en C++23, sans aucune dépendance. C'est exactement le genre
+d'outil pour lequel ce format existe : namsdec n'a rien à savoir de lui,
+sinon la commande à lancer.
+
+> **Depuis la 0.2.8-beta.1, namsdec sait l'installer lui-même.** Comme
+> pour Rizin et RetDec, allumez Préférences ▸ Modules ▸ « Aller chercher
+> les outils et les construire », puis **Installer…** à côté de DZF dans
+> Préférences ▸ Outils. namsdec clone le dépôt, le construit en C++23
+> avec `cmake`, et pose `x64-disassembler` et `dzf-plugin-engine` dans
+> `~/.local/share/namsdec/tools/dzf/bin/`. Rien hors de ce dossier, aucun
+> `sudo` : il faut seulement `git`, `cmake`, `make` et un compilateur
+> C++23 (`g++` 13 ou plus récent). Chaque commande est montrée avant
+> d'être lancée. À la main, cela reste&nbsp;:
+>
+> ```sh
+> git clone https://github.com/fredza/DZF
+> cd DZF
+> cmake -S x64-disassembler -B build -DDZF_BUILD_TESTS=OFF
+> cmake --build build --parallel
+> ```
 
 Ce qu'il a fallu pour le brancher — et rien de plus :
 

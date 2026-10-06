@@ -1556,7 +1556,7 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
             ["RetDec", "du C compilable, lentement", "github.com/avast/retdec/releases"],
             ["objdump, ndisasm", "des instructions", "déjà là si namsdec assemble"],
             ["DZF", "un désassembleur maison, en cours",
-             "cmake -S . -B build dans DZF/x64-disassembler"],
+             "bouton Installer…, ou git clone github.com/fredza/DZF"],
         ]),
         ("h2", "Deux questions, deux mots"),
         ("p",
@@ -1607,11 +1607,16 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "<b>DZF est dans la liste bien qu'il soit en cours d'écriture</b> : c'est le "
          "désassembleur x86-64 maison, en C++23 et sans aucune dépendance. Il ne lit pas l'ELF, "
          "et n'a pas à l'apprendre — namsdec lui passe les octets exécutables et leur adresse. "
-         "Tant qu'il n'est pas bâti, sa fiche dit où le prendre. Une fois bâti dans son dépôt, "
-         "son binaire n'est ni dans le PATH ni dans le dossier d'outils de namsdec : la détection "
-         "le donne donc « absent ». C'est là qu'intervient <b>Localiser le binaire…</b> (voir "
-         "ci-dessus) — on montre une fois où est <font face='Courier'>x64-disassembler</font>, et "
-         "il devient prêt."),
+         "Depuis la 0.2.8-beta.1, <b>namsdec sait l'installer lui-même</b> : comme pour Rizin et "
+         "RetDec, allumez le module d'installation, puis <b>Installer…</b> sur sa fiche. namsdec "
+         "clone <font face='Courier'>github.com/fredza/DZF</font>, le construit avec "
+         "<font face='Courier'>cmake</font>, et pose <font face='Courier'>x64-disassembler</font> "
+         "et <font face='Courier'>dzf-plugin-engine</font> dans son dossier d'outils — rien hors "
+         "de là, aucun <font face='Courier'>sudo</font>. Il faut seulement "
+         "<font face='Courier'>git</font>, <font face='Courier'>cmake</font>, "
+         "<font face='Courier'>make</font> et un compilateur C++23. Si vous l'avez bâti vous-même "
+         "ailleurs, <b>Localiser le binaire…</b> (voir ci-dessus) reste la voie : on montre une "
+         "fois où est <font face='Courier'>x64-disassembler</font>, et il devient prêt."),
         ("note",
          "<b>Rizin seul ne décompile pas</b> : la commande <font face='Courier'>pdg</font> vient "
          "du greffon <font face='Courier'>rz-ghidra</font>. Là où il n'est pas empaqueté, "

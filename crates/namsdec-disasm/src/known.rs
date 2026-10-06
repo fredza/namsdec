@@ -188,7 +188,8 @@ pub fn all() -> Vec<Known> {
                     "{text}".to_owned(),
                 ],
                 install: Some(
-                    "cd DZF/x64-disassembler && cmake -S . -B build && cmake --build build"
+                    "git clone https://github.com/fredza/DZF && cd DZF && \
+                     cmake -S x64-disassembler -B build && cmake --build build"
                         .to_owned(),
                 ),
             },
