@@ -619,6 +619,20 @@ struct NamsdecApp {
     /// change sans bouger à l'écran se rate ; un bref éclat la désigne,
     /// puis s'efface pour ne pas peser. `None` tant que rien n'a tourné.
     values_changed_at: Option<std::time::Instant>,
+    /// Un pas vient d'avancer : pendant les quelques rendus que ce compteur
+    /// décompte, l'éditeur tient son défilement horizontal à zéro.
+    ///
+    /// Sans quoi, si l'on avait laissé le curseur en fin d'une longue
+    /// ligne — la zone de défilement s'était alors portée à droite pour le
+    /// montrer —, avancer d'un pas gardait cette vue : la ligne courante
+    /// restait visible en hauteur, mais le code et la gouttière étaient
+    /// sortis à gauche, et l'on ne voyait plus que les commentaires.
+    ///
+    /// Tenu quelques images, et non une seule, pour absorber l'élan d'un
+    /// défilement cinétique (molette lancée) qui, sinon, reprendrait la
+    /// vue vers la droite juste après. Bref, pour ne pas empêcher de
+    /// défiler à la main ensuite.
+    editor_follow: u8,
     /// Le conseil qui accompagne la dernière erreur d'exécution : par où
     /// reprendre, quand l'erreur appelle un geste précis.
     ///
@@ -1684,6 +1698,7 @@ impl Default for NamsdecApp {
             regs_before: None,
             flags_before: None,
             values_changed_at: None,
+            editor_follow: 0,
             error_advice: None,
             last_step: None,
             mem_before: None,

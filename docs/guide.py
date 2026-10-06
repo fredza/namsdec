@@ -377,6 +377,13 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "<b>bande pâle</b> sur toute la largeur, en plus de la flèche dans la gouttière. "
          "La flèche est au bord de l'écran ; la bande est là où l'œil lit le code."),
         ("p",
+         "Avancer d'un pas <b>ramène le code sous les yeux</b>. Si l'on avait fait défiler "
+         "l'éditeur vers la droite — pour lire le bout d'une longue ligne de commentaire —, "
+         "la vue y restait, et le pas suivant laissait la ligne courante visible en hauteur "
+         "mais les instructions et la gouttière sorties à gauche : on ne voyait plus que les "
+         "commentaires. Chaque pas remet maintenant le défilement horizontal à zéro, le temps "
+         "de quelques images, puis vous laisse défiler à la main."),
+        ("p",
          "Survolez la gouttière et un <b>point pâle</b> paraît là où le point d'arrêt se "
          "posera ; le pointeur devient une main, et une infobulle dit ce que le clic fera. "
          "Rien de tout cela ne s'apprend dans un manuel qu'on n'a pas encore ouvert — la "

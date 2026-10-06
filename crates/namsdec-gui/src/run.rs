@@ -585,6 +585,10 @@ impl NamsdecApp {
         // visible. Ce qui a changé, le diff le dit déjà ; quand, c'est
         // cet horodatage.
         self.values_changed_at = Some(std::time::Instant::now());
+        // L'éditeur suit l'exécution : au prochain rendu, il ramène son
+        // défilement horizontal à zéro, pour que les instructions et la
+        // ligne courante ne restent pas sorties à gauche.
+        self.editor_follow = 8;
         let (Some(emulator), Some(state)) = (&self.emulator, &self.assemble_state) else {
             return;
         };

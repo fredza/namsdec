@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **6 octobre
-2026**, version 0.2.6-beta.1, 1 085 tests au vert.
+2026**, version 0.2.6-beta.1, 1 086 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -643,6 +643,13 @@ jamais ajouter. Il faut de la place, et d'abord savoir où elle est.
       détection (prêt si le fichier existe) et comme commande à la déclaration.
       Vaut pour tout outil rangé hors des chemins habituels, pas que DZF.
       Contrôle : `a_located_binary_makes_a_tool_ready`.
+- [x] **L'éditeur suit l'exécution** — si l'on avait défilé vers la droite
+      (pour lire le bout d'une longue ligne de commentaire), un pas gardait
+      cette vue : ligne courante visible en hauteur, mais instructions et
+      gouttière sorties à gauche, on ne voyait plus que les commentaires.
+      Chaque pas remet le défilement horizontal à zéro, tenu quelques images
+      pour absorber l'élan d'une molette lancée. Vu en vidéo (exj4.asm).
+      Contrôle : `stepping_brings_the_code_back_into_view`.
 - [ ] **À poursuivre** : les frontières sont plus nettes (Composants/Fonctions
       sous Modules, Thèmes/Exercices sous Plugins, programmes sous Outils).
       Reste l'enchaînement Activer / Réparer d'un outil incomplet à revoir.

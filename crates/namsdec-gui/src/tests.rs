@@ -20659,6 +20659,103 @@ fn a_located_binary_makes_a_tool_ready() {
     );
 }
 
+/// Avancer d'un pas ramène le code sous les yeux.
+///
+/// Si l'on avait défilé l'éditeur vers la droite — en lisant le bout d'une
+/// longue ligne de commentaire —, la zone de défilement y restait, et
+/// avancer d'un pas laissait la ligne courante visible en hauteur mais le
+/// code et la gouttière sortis à gauche : on ne voyait plus que les
+/// commentaires. Un pas doit rendre les instructions visibles.
+///
+/// On reproduit le défilement vers la droite par la molette (le défaut
+/// n'apparaît qu'avec une vraie interaction — en moteur nu, l'éditeur ne
+/// défile pas tout seul), on vérifie qu'il cache bien le code, puis qu'un
+/// pas le ramène.
+#[test]
+fn stepping_brings_the_code_back_into_view() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let src = "global _start\n\
+               section .text\n\
+               _start:\n\
+               \x20   mov rax, 10          ; rax = 10, commentaire assez long pour deborder la vue\n\
+               \x20   mov rcx, 10          ; rcx = 10, un long commentaire qui pousse loin a droite\n\
+               \x20   dec rcx              ; rcx = 9, commentaire long apres le decrement aussi\n\
+               \x20   mov rax, 60          ; syscall sys_exit, un commentaire vraiment tres long la\n\
+               \x20   syscall              ; fin du programme, commentaire de fin bien long encore\n";
+    let mut app = NamsdecApp {
+        source: src.to_owned(),
+        system_titlebar: false,
+        ..Default::default()
+    };
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let scr = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(700.0, 800.0));
+    app.do_assemble();
+    app.do_step();
+
+    // Le x le plus à gauche parmi les mnémoniques peintes dans l'éditeur
+    // (sous la barre d'outils, d'où le filtre en Y). Négatif = sorties du
+    // cadre par la gauche.
+    let minx = |app: &mut NamsdecApp, ctx: &egui::Context, events: Vec<egui::Event>| {
+        let input = egui::RawInput {
+            screen_rect: Some(scr),
+            events,
+            ..Default::default()
+        };
+        let mut out = ctx.run_ui(input, |ui| app.draw(ui));
+        let mut m = f32::MAX;
+        for clipped in &out.shapes {
+            if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                let txt = t.galley.text();
+                if (txt.contains("mov") || txt.contains("dec") || txt.contains("syscall"))
+                    && t.pos.y > 90.0
+                    && t.pos.x < m
+                {
+                    m = t.pos.x;
+                }
+            }
+        }
+        out.textures_delta.clear();
+        m
+    };
+
+    let _ = minx(&mut app, &ctx, Vec::new());
+    // Molette vers la droite, pointeur sur l'éditeur.
+    let pos = egui::pos2(300.0, 400.0);
+    for _ in 0..8 {
+        let _ = minx(
+            &mut app,
+            &ctx,
+            vec![
+                egui::Event::PointerMoved(pos),
+                egui::Event::MouseWheel {
+                    unit: egui::MouseWheelUnit::Point,
+                    delta: egui::vec2(-600.0, 0.0),
+                    phase: egui::TouchPhase::Move,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+    }
+    let caché = minx(&mut app, &ctx, Vec::new());
+    assert!(
+        caché < 0.0,
+        "la molette aurait dû sortir le code à gauche (minx = {caché})"
+    );
+
+    app.do_step_over();
+    // Quelques images dans la fenêtre où l'éditeur tient le défilement à
+    // zéro : le code est revenu, près de la gouttière.
+    let _ = minx(&mut app, &ctx, Vec::new());
+    let revenu = minx(&mut app, &ctx, Vec::new());
+    assert!(
+        (0.0..=120.0).contains(&revenu),
+        "un pas aurait dû ramener le code près de la gauche (minx = {revenu})"
+    );
+}
+
 /// L'onglet Outils dit quand la décompilation est éteinte.
 ///
 /// Les deux réglages d'une même fonction tombaient sur deux onglets :
