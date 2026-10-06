@@ -1565,11 +1565,16 @@ impl NamsdecApp {
     /// clignote en orange quand elle change, et se présente en entier au
     /// survol.
     pub(crate) fn flags_ui(&mut self, ui: &mut egui::Ui) {
-        let Some(emulator) = &self.emulator else {
-            return;
-        };
-        let f = emulator.cpu().flags;
         let theme = self.theme;
+        // Les sept s'affichent TOUJOURS, même avant d'assembler : au repos
+        // ils valent tous zéro, grisés. Les cacher laissait une barre de
+        // titre muette tant qu'aucun programme ne tournait — et « tout doit
+        // s'afficher ». Sans émulateur, ils ne se basculent pas (le clic ne
+        // fait rien) : c'est un affichage, pas encore un réglage.
+        let (f, vivant) = match &self.emulator {
+            Some(emulator) => (emulator.cpu().flags, true),
+            None => (RFlags::empty(), false),
+        };
         let avant = self.flags_before;
         let éclat = flash_fraction(self.values_changed_at);
         let lang = self.lang;
@@ -1587,16 +1592,15 @@ impl NamsdecApp {
             ui.spacing_mut().item_spacing.x = 4.0;
             for &(name, bit) in FLAG_BITS.iter().rev() {
                 let on = f.contains(bit);
-                let changé = avant.is_some_and(|a| a.contains(bit) != on);
+                let changé = vivant && avant.is_some_and(|a| a.contains(bit) != on);
                 let flash = if changé { éclat } else { 0.0 };
                 encore |= flash > 0.0;
                 // Le survol présente l'indicateur en entier : nom développé,
                 // rôle, état posé ou retombé — « tous les états », et non le
                 // seul « cliquez pour basculer ».
-                if flag_chip(ui, theme, name, on, flash)
-                    .on_hover_text(flag_description(name, on, lang))
-                    .clicked()
-                {
+                let réponse = flag_chip(ui, theme, name, on, flash)
+                    .on_hover_text(flag_description(name, on, lang));
+                if vivant && réponse.clicked() {
                     basculer = Some(bit);
                 }
             }
@@ -3267,9 +3271,15 @@ pub(crate) fn xmm_tooltip(s: &Strings, value: [u128; 2]) -> String {
 /// ligne d'après la taille annoncée par l'élément. Un `Frame` ne l'annonce
 /// qu'une fois son contenu posé — les six pastilles restaient donc sur une
 /// seule ligne, qui dépassait du panneau.
-/// La durée du battement d'orange, en secondes : assez pour qu'on le
-/// voie, assez court pour qu'il ne pèse pas sur la lecture d'après.
-pub(crate) const FLASH_SECONDS: f32 = 1.5;
+/// La durée du battement d'orange, en secondes : assez long pour qu'on le
+/// voie sans avoir à guetter — l'éclat reste plein un moment, puis fond.
+pub(crate) const FLASH_SECONDS: f32 = 3.0;
+
+/// La part de la durée où l'éclat reste à PLEIN avant de fondre. Clignoter
+/// longuement, c'est d'abord tenir la couleur, puis la laisser partir :
+/// une décroissance qui commence au premier instant se voit moins qu'un
+/// maintien franc suivi d'un estompage.
+const FLASH_HOLD: f32 = 0.45;
 
 /// Où en est le battement : 1 juste après le changement, 0 une fois
 /// retombé. Sert à fondre la couleur de l'orange vers la normale.
@@ -3278,9 +3288,18 @@ pub(crate) const FLASH_SECONDS: f32 = 1.5;
 /// dessine, puis les suivantes — l'éclat doit décroître à l'horloge, pas
 /// au rythme des images.
 pub(crate) fn flash_fraction(since: Option<std::time::Instant>) -> f32 {
-    match since {
-        Some(t) => (1.0 - t.elapsed().as_secs_f32() / FLASH_SECONDS).clamp(0.0, 1.0),
-        None => 0.0,
+    let Some(t) = since else { return 0.0 };
+    let écoulé = t.elapsed().as_secs_f32();
+    if écoulé >= FLASH_SECONDS {
+        return 0.0;
+    }
+    let maintien = FLASH_SECONDS * FLASH_HOLD;
+    if écoulé <= maintien {
+        // Pleine couleur : on tient l'orange, le temps de le voir.
+        1.0
+    } else {
+        // Puis l'estompage, sur le reste de la durée.
+        (1.0 - (écoulé - maintien) / (FLASH_SECONDS - maintien)).clamp(0.0, 1.0)
     }
 }
 

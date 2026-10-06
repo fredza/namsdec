@@ -616,6 +616,17 @@ jamais ajouter. Il faut de la place, et d'abord savoir où elle est.
       `the_instruction_index_shows_every_mnemonic_not_just_the_family_head`.
       Manuel et PDF à jour.
 
+## 4 quaterdecies. Flags toujours affichés, éclat tenu plus longtemps
+
+- [x] **Les sept flags s'affichent en permanence** dans la barre de titre,
+      même avant d'assembler (tous à zéro, grisés, non cliquables tant
+      qu'il n'y a pas d'émulateur). La barre restait muette au repos ;
+      « tout doit s'afficher ».
+- [x] **L'éclat orange dure ~3 s avec un maintien** — il reste à pleine
+      couleur ~45 % du temps puis fond, au lieu d'une décroissance dès le
+      premier instant. « Clignoter longuement. » `FLASH_SECONDS` 1,5 → 3,0,
+      `FLASH_HOLD` = 0.45.
+
 ## 4 terdecies. Flags à droite du nom, et éclat plus long
 
 - [x] **Les indicateurs à droite du nom du fichier** (et non à gauche) —

@@ -286,7 +286,7 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
         ("p",
          "C'est là aussi que vivent les <b>sept indicateurs</b> (CF, PF, AF, ZF, SF, DF, "
          "OF), en pastilles : la barre de titre est toujours visible et ne se replie "
-         "jamais, on les a donc sous les yeux à chaque pas, à DROITE du nom du fichier. "
+         "jamais, on les a donc sous les yeux à chaque pas, à droite du nom du fichier — toujours affichés, tous à zéro tant qu'aucun programme n'a tourné. "
          "Vert quand l'indicateur est levé, grisé sinon ; un clic le bascule (le prochain "
          "saut le lira), et le survol le présente en entier — nom développé, rôle, et "
          "s'il est posé ou retombé. DF compris, que les instructions de chaîne lisent."),
@@ -494,7 +494,7 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "<b>État du processeur</b> — seize registres, RIP, le nombre d'instructions "
          "exécutées (les sept indicateurs, eux, sont dans la barre de titre). Un clic sur "
          "un nom de registre pose une surveillance ; un clic sur une valeur permet de la "
-         "remplacer. <b>Un registre qui change à un pas s'éclaire d'un fond orange</b> une seconde et demie, qui "
+         "remplacer. <b>Un registre qui change à un pas s'éclaire d'un fond orange</b> quelques secondes, qui "
          "s'estompe — un bloc de couleur, bien plus visible qu'une teinte de texte : une "
          "valeur qui bascule sans bouger à l'écran se raterait, et l'éclat la désigne sans "
          "encombrer la lecture d'après.",
