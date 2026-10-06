@@ -621,6 +621,11 @@ jamais ajouter. Il faut de la place, et d'abord savoir où elle est.
       `console.rs`. (`send_input` ne faisait que ~20 lignes, non ~440 — une
       borne mal lue la séance d'avant, corrigée ici.) La console tient
       désormais toute sa logique dans son module.
+- [x] **Le cycle des préférences vers `preferences.rs`** (−41,
+      4 012 → 3 971, main.rs passe sous 4 000). `open_preferences`
+      (mémorise l'état des réglages pour que « Quitter » ait où revenir) et
+      `close_preferences` (OK garde, Quitter restaure) rejoignent le module
+      des préférences. `pub(crate)` pour menus et palette qui les appellent.
 
 ## 4 nonies. Toutes les instructions nasm, visibles
 

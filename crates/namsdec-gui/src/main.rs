@@ -2149,47 +2149,6 @@ impl NamsdecApp {
         }
     }
 
-    /// Ouvre la boîte Préférences en mémorisant l'état des réglages, pour
-    /// que "Quitter" ait quelque chose à quoi revenir. Rouvrir une boîte
-    /// déjà ouverte ne réécrit pas l'instantané.
-    fn open_preferences(&mut self) {
-        if !self.show_preferences {
-            self.prefs_snapshot = Some(PreferencesSnapshot {
-                theme: self.theme,
-                lang: self.lang,
-                show_re_tab: self.show_re_tab,
-                exercises: self.exercises,
-                decompiler_module: self.show_decompiler_module,
-                installer_module: self.show_installer_module,
-                show_tooltips: self.show_tooltips,
-                keybindings: self.keybindings.clone(),
-            });
-        }
-        self.show_preferences = true;
-    }
-
-    /// Ferme la boîte Préférences. `keep` distingue les deux boutons :
-    /// OK garde ce qui vient d'être réglé, Quitter restaure l'état
-    /// d'avant l'ouverture — les réglages s'appliquent en direct (le
-    /// thème surtout), il faut donc pouvoir revenir en arrière.
-    fn close_preferences(&mut self, ctx: &egui::Context, keep: bool) {
-        if let Some(snapshot) = self.prefs_snapshot.take()
-            && !keep
-        {
-            self.theme = snapshot.theme;
-            self.lang = snapshot.lang;
-            self.show_re_tab = snapshot.show_re_tab;
-            self.exercises = snapshot.exercises;
-            self.show_decompiler_module = snapshot.decompiler_module;
-            self.show_installer_module = snapshot.installer_module;
-            self.show_tooltips = snapshot.show_tooltips;
-            self.keybindings = snapshot.keybindings;
-            self.apply_theme(ctx);
-        }
-        self.rebinding = None;
-        self.show_preferences = false;
-    }
-
     /// Retire un thème installé : son fichier est supprimé, et le thème
     /// quitte la liste.
     ///
