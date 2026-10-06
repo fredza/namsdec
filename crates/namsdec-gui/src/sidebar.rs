@@ -1569,8 +1569,8 @@ impl NamsdecApp {
         // Les sept s'affichent TOUJOURS, même avant d'assembler : au repos
         // ils valent tous zéro, grisés. Les cacher laissait une barre de
         // titre muette tant qu'aucun programme ne tournait — et « tout doit
-        // s'afficher ». Sans émulateur, ils ne se basculent pas (le clic ne
-        // fait rien) : c'est un affichage, pas encore un réglage.
+        // s'afficher ». Ce sont de simples indicateurs : on les lit, on ne
+        // les règle pas.
         let (f, vivant) = match &self.emulator {
             Some(emulator) => (emulator.cpu().flags, true),
             None => (RFlags::empty(), false),
@@ -1578,7 +1578,6 @@ impl NamsdecApp {
         let avant = self.flags_before;
         let éclat = flash_fraction(self.values_changed_at);
         let lang = self.lang;
-        let mut basculer = None;
         let mut encore = false;
         // `horizontal` se dimensionne à ses pastilles (et non à toute la
         // largeur restante) : dans la disposition droite-à-gauche de la
@@ -1596,13 +1595,9 @@ impl NamsdecApp {
                 let flash = if changé { éclat } else { 0.0 };
                 encore |= flash > 0.0;
                 // Le survol présente l'indicateur en entier : nom développé,
-                // rôle, état posé ou retombé — « tous les états », et non le
-                // seul « cliquez pour basculer ».
-                let réponse = flag_chip(ui, theme, name, on, flash)
+                // rôle, état posé ou retombé — « tous les états ».
+                flag_chip(ui, theme, name, on, flash)
                     .on_hover_text(flag_description(name, on, lang));
-                if vivant && réponse.clicked() {
-                    basculer = Some(bit);
-                }
             }
         });
         // Tant qu'un éclat n'est pas retombé, redessiner : sinon il
@@ -1610,23 +1605,6 @@ impl NamsdecApp {
         if encore {
             ui.ctx().request_repaint();
         }
-        if let Some(bit) = basculer {
-            self.toggle_flag(bit);
-        }
-    }
-
-    /// Bascule un indicateur à la main.
-    ///
-    /// Le saut qui suit le lira : c'est la façon la plus courte de voir
-    /// ce que `jz` fait de `ZF`, et elle se défait comme le reste en
-    /// revenant d'un pas en arrière.
-    pub(crate) fn toggle_flag(&mut self, bit: RFlags) {
-        let Some(emulator) = &mut self.emulator else {
-            return;
-        };
-        let flags = &mut emulator.cpu_mut().flags;
-        flags.toggle(bit);
-        self.status = Status::Note(|s| s.flag_set);
     }
 
     fn stack_ui(&self, ui: &mut egui::Ui) {
@@ -3385,12 +3363,7 @@ pub(crate) fn flag_description(name: &str, on: bool, lang: Lang) -> String {
         (false, true) => "retombé (0)",
         (false, false) => "clear (0)",
     };
-    let bascule = if fr {
-        "Cliquez pour le basculer : le prochain saut le lira."
-    } else {
-        "Click to flip it: the next jump will read it."
-    };
-    format!("{name} — {plein} · {état}\n{rôle}\n\n{bascule}")
+    format!("{name} — {plein} · {état}\n{rôle}")
 }
 
 pub(crate) fn flag_chip(
@@ -3409,8 +3382,11 @@ pub(crate) fn flag_chip(
         egui::TextStyle::Monospace.resolve(ui.style()),
         color,
     );
+    // De simples indicateurs : ils se survolent (l'infobulle les explique)
+    // mais ne se cliquent pas. Les basculer à la main brouillait ce qu'on
+    // vient de lire — l'état posé par la dernière instruction.
     let (rect, response) =
-        ui.allocate_exact_size(galley.size() + egui::vec2(6.0, 2.0), egui::Sense::click());
+        ui.allocate_exact_size(galley.size() + egui::vec2(6.0, 2.0), egui::Sense::hover());
     ui.painter().rect_stroke(
         rect,
         egui::CornerRadius::from(3),

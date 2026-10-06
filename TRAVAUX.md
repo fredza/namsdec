@@ -650,6 +650,13 @@ jamais ajouter. Il faut de la place, et d'abord savoir où elle est.
       Chaque pas remet le défilement horizontal à zéro, tenu quelques images
       pour absorber l'élan d'une molette lancée. Vu en vidéo (exj4.asm).
       Contrôle : `stepping_brings_the_code_back_into_view`.
+- [x] **Les flags redeviennent de simples indicateurs** — ils étaient
+      cliquables (un clic basculait l'indicateur quand un programme
+      tournait), ce qui brouillait leur lecture et n'était possible que par
+      intermittence. Désormais on les lit, on ne les règle plus : `Sense`
+      au survol (l'infobulle explique), plus de clic. `toggle_flag` et la
+      note « Indicateur basculé à la main » retirés ; le test
+      `a_register_is_set_by_hand` ne couvre plus que le registre.
 - [ ] **À poursuivre** : les frontières sont plus nettes (Composants/Fonctions
       sous Modules, Thèmes/Exercices sous Plugins, programmes sous Outils).
       Reste l'enchaînement Activer / Réparer d'un outil incomplet à revoir.

@@ -287,9 +287,10 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "C'est là aussi que vivent les <b>sept indicateurs</b> (CF, PF, AF, ZF, SF, DF, "
          "OF), en pastilles : la barre de titre est toujours visible et ne se replie "
          "jamais, on les a donc sous les yeux à chaque pas, à droite du nom du fichier — toujours affichés, tous à zéro tant qu'aucun programme n'a tourné. "
-         "Vert quand l'indicateur est levé, grisé sinon ; un clic le bascule (le prochain "
-         "saut le lira), et le survol le présente en entier — nom développé, rôle, et "
-         "s'il est posé ou retombé. DF compris, que les instructions de chaîne lisent."),
+         "Vert quand l'indicateur est levé, grisé sinon. Ce sont de simples <b>témoins</b> : "
+         "on les lit, on ne les règle pas — ils disent ce que la dernière instruction a "
+         "produit. Le survol les présente en entier — nom développé, rôle, et s'ils sont "
+         "posés ou retombés. DF compris, que les instructions de chaîne lisent."),
         ("p",
          "Les fenêtres internes portent la <b>même pastille</b> de fermeture, au "
          "même endroit. Une seule façon de fermer quelque chose, partout."),

@@ -8937,15 +8937,16 @@ quelquepart:
     assert!(app.breakpoint_lines.is_empty(), "et rien n'a été posé");
 }
 
-/// Un registre se pose à la main, et un indicateur se bascule : « et si
-/// RCX valait 1 ? » se répond en une seconde au lieu de se réécrire.
+/// Un registre se pose à la main : « et si RCX valait 1 ? » se répond en
+/// une seconde au lieu de se réécrire.
 ///
-/// C'est le `set $rax = …` de gdb et le `setflag` de pwndbg. Le pas
-/// suivant part de là, et la valeur posée entre dans l'histoire du
-/// programme : revenir en arrière restaure ce qui était vrai avant
-/// chaque pas, la main comprise.
+/// C'est le `set $rax = …` de gdb. Le pas suivant part de là, et la valeur
+/// posée entre dans l'histoire du programme : revenir en arrière restaure
+/// ce qui était vrai avant chaque pas, la main comprise. Les indicateurs,
+/// eux, ne se posent pas à la main — ce sont de simples témoins de ce que
+/// la dernière instruction a produit.
 #[test]
-fn a_register_is_set_and_a_flag_is_flipped_by_hand() {
+fn a_register_is_set_by_hand() {
     // Ce qu'on tape : de l'hexadécimal, comme ce qu'on lit à l'écran.
     assert_eq!(parse_register_value("1f"), Some(0x1f));
     assert_eq!(parse_register_value("0x1F"), Some(0x1f));
@@ -8996,17 +8997,9 @@ fini:
         "le dec a bien vu 1"
     );
 
-    // L'indicateur se bascule aussi : le saut lira ce qu'on a posé.
-    app.toggle_flag(namsdec_core::RFlags::ZF);
-    assert!(
-        !app.emulator
-            .as_ref()
-            .unwrap()
-            .cpu()
-            .flags
-            .contains(namsdec_core::RFlags::ZF)
-    );
-    app.do_step(); // jz : ZF est retombé, le saut n'est pas pris
+    // Le `jz` lit ce que le `dec` a posé : RCX a atteint 0, ZF est levé,
+    // le saut est pris. On arrive sur `fini:`.
+    app.do_step(); // jz : ZF posé, le saut est pris
     let rip = app.emulator.as_ref().unwrap().cpu().regs.rip;
     let texte = app
         .assemble_state
@@ -9018,8 +9011,8 @@ fini:
         .map(|i| i.text.clone())
         .unwrap_or_default();
     assert!(
-        texte.starts_with("mov"),
-        "le saut ne devait pas être pris : « {texte} »"
+        texte.starts_with("hlt"),
+        "le saut devait être pris, on attend `hlt` : « {texte} »"
     );
 
     // Et revenir en arrière restaure ce qui était vrai *avant chaque
