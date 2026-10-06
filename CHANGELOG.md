@@ -4,6 +4,37 @@ Les dates sont celles des commits ; le format suit [Keep a
 Changelog](https://keepachangelog.com/fr/1.1.0/) d'assez loin — une
 entrée par version, et ce qui change pour qui s'en sert.
 
+## 0.2.8-beta.1 — 6 octobre 2026
+
+La gestion des outils se resserre, l'éditeur suit enfin l'exécution, et
+les indicateurs redeviennent ce qu'ils sont — des témoins qu'on lit.
+
+**Les outils d'analyse**
+- Un outil **bâti soi-même hors du PATH** — DZF compilé dans son dépôt —
+  restait « absent » sans recours : namsdec ne cherche que dans le PATH et
+  son dossier d'outils. La fiche d'un outil absent propose maintenant
+  **Localiser le binaire…** : on le désigne une fois, il est retenu et
+  employé tel quel.
+- Un outil **incomplet** — rizin sans son greffon rz-ghidra — ne s'active
+  plus : l'activer déclarait un décompilateur qui échoue au premier essai.
+  « Activer » est grisé (l'infobulle dit pourquoi), et **Réparer**, en
+  vif, mène la marche. On n'active qu'un outil prêt.
+- L'onglet Outils **signale quand la décompilation est éteinte**, avec de
+  quoi l'allumer sur place — les deux réglages d'une même fonction ne sont
+  plus éparpillés sur deux onglets. Et l'onglet Modules sépare les
+  composants (les crates, leur santé) des fonctions optionnelles.
+
+**L'éditeur et les indicateurs**
+- **Avancer d'un pas ramène le code sous les yeux.** Si l'on avait fait
+  défiler vers la droite pour lire un long commentaire, le pas suivant
+  gardait cette vue : la ligne courante restait visible en hauteur, mais
+  les instructions étaient sorties à gauche. L'éditeur suit désormais
+  l'exécution.
+- Les **sept indicateurs** (CF, PF, AF, ZF, SF, DF, OF) de la barre de
+  titre sont de **simples témoins** : on les lit, on ne les règle plus.
+  Les cliquer brouillait ce qu'ils disent — l'état que la dernière
+  instruction a produit.
+
 ## 0.2.6-beta.1 — 30 septembre 2026
 
 Une instruction se récrit en assembleur, le désassemblage se lit dans la
