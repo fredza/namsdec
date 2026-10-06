@@ -574,6 +574,51 @@ jamais ajouter. Il faut de la place, et d'abord savoir où elle est.
       `ReRequest::PatchBytes`, qui existe déjà. À faire pas à pas, chaque
       geste réversible et montré avant d'être posé — comme les correctifs.
 
+## 4 sexdecies. DZF : namsdec sait l'installer lui-même
+
+- [x] **Recette d'installation de DZF** (7 octobre 2026) — DZF vit dans
+      son propre dépôt (`github.com/fredza/DZF`), jamais en dépendance.
+      `recipe_for("dzf")` le clone, le configure et le construit en
+      C++23 avec `cmake` (`DZF_BUILD_TESTS=OFF`), puis copie
+      `x64-disassembler` et `dzf-plugin-engine` dans `<tools>/dzf/bin/` —
+      `cmake` n'installe que la bibliothèque, pas les exécutables. Rien
+      hors du dossier de namsdec, aucun `sudo`, chaque commande montrée
+      avant d'être lancée. Même patron que Rizin et RetDec.
+- [x] **Le bouton Installer… apparaît pour DZF** — dès qu'une recette
+      existe (`recette_existe`), la fiche de DZF porte le bouton, comme
+      les autres. La chaîne d'installation manuelle est corrigée (vrai
+      dépôt, bon chemin de build), `dzf.json` régénéré, manuel et README
+      des fonctionnalités à jour.
+
+## 4 septdecies. L'onglet RE : graphe d'appels, aller-à, code et pseudo-code
+
+Fred a demandé trois choses pour l'onglet RE : aller à une adresse, voir
+les appels de fonctions en graphe (style UML), et des rubriques montrant
+le code binaire et le pseudo-code. Un seul module neuf les réunit.
+
+- [x] **Module « Graphe d'appels »** (`call_graph_module.rs`) — greffé
+      juste après « Fonctions », dont il prolonge le travail :
+      `functions::discover` donne déjà `calls`, c'est-à-dire les arêtes du
+      graphe. Rien de neuf à calculer.
+- [x] **L'arbre des appels, à la façon UML** — déplié depuis le point
+      d'entrée (ou `main`), une boîte cliquable par fonction, un trait de
+      liaison peint entre parent et enfant. Une fonction déjà dépliée
+      devient un renvoi (`↩`) : l'arbre reste fini même sur du code
+      récursif. Borné (40 fonctions, profondeur 8, 120 nœuds) — au-delà,
+      un graphe n'est plus une carte.
+- [x] **Aller à une adresse** — un champ qui lit l'hexadécimal (`0x…`) ou
+      le décimal, et émet `ReRequest::GoTo` ; chaque boîte de l'arbre est
+      aussi un raccourci. S'appuie sur le canal `GoTo` qui existait déjà.
+- [x] **Rubriques code binaire + pseudo-code** — sous l'arbre, chaque
+      fonction se déplie sur ses octets bruts (le code binaire) et leur
+      traduction en clair (le pseudo-code, moteur `pseudo::of`), côte à
+      côte. Instructions prises dans la plage de la fonction par recherche
+      dichotomique, bornées à 200.
+- [x] **Vérifié** — trois tests du module (lecture d'adresse, arbre fini
+      sur récursion, instructions bornées à la plage) ; les invariants du
+      banc (non-recouvrement, découpe, contraste) couvrent le panneau via
+      la scène « Analyse ».
+
 ## 4 octies. Découpage de main.rs (suite)
 
 - [x] **main.rs : 6 643 → 4 231 lignes** (−2 412, −36 %), sans rien

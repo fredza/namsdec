@@ -1172,6 +1172,16 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "<b>Références croisées</b> — qui appelle quoi, qui saute où, qui désigne quelle "
          "adresse. Une adresse qu'un `call` vise est une fonction, même dépouillée de son "
          "nom.",
+         "<b>Graphe d'appels</b> — la structure du programme, pas sa liste d'instructions : "
+         "l'<b>arbre des appels</b> déplié depuis le point d'entrée, une boîte par fonction "
+         "et un trait vers chacune de celles qu'elle appelle, à la façon d'un diagramme UML. "
+         "Une fonction déjà dépliée ailleurs devient un renvoi, marqué d'une flèche de "
+         "retour, pour que l'arbre reste fini même quand le code boucle. On clique une boîte pour "
+         "<b>aller la voir</b> dans le listing, et un champ <b>Aller à</b> mène à n'importe "
+         "quelle adresse tapée. Sous l'arbre, chaque fonction se déplie sur son <b>code "
+         "binaire</b> — les octets bruts — et son <b>pseudo-code</b> — ce que chaque "
+         "instruction fait, en clair, côte à côte. C'est la carte qu'on lit avant de "
+         "descendre dans une fonction.",
          "<b>Gadgets</b> — les fins de séquence utiles à une chaîne ROP.",
          "<b>Place libre</b> — le bourrage que l'éditeur de liens laisse pour aligner : "
          "entre deux fonctions, entre deux sections, en fin de segment, il comble avec un "

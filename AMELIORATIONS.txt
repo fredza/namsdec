@@ -2405,3 +2405,50 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
 
   Le compte de poses, lui, ne change pas : c'est le vrai invariant, et il ne
   lit rien de la machine.
+
+  --- DZF : de « voici la commande » à « je l'installe » ---
+  La fiche de DZF ne disait jusqu'ici que la commande à taper, et le bouton
+  Installer… n'apparaissait pas : il est conditionné à l'existence d'une
+  RECETTE (recipe_for), et DZF n'en avait pas. Rizin et RetDec en avaient
+  une ; DZF, l'outil maison, était le seul des trois qu'on ne savait pas
+  construire tout seul. Fred a demandé de combler cela.
+
+  La recette suit le patron de Rizin : cloner dans <tools>/src, configurer
+  et construire avec cmake, puis poser le binaire sous <tools>/dzf/bin/ —
+  là où namsdec cherche ce qu'il a installé. Une différence, et elle a sa
+  raison : le install() de DZF ne pose que la bibliothèque, pas les
+  exécutables. On ne peut donc pas finir par `cmake --target install` comme
+  Rizin ; on copie x64-disassembler et dzf-plugin-engine à la main. Les
+  deux, car le premier sert de moteur de listing et le second de moteur de
+  décompilation JSON.
+
+  Ce qu'on NE met PAS au banc réseau : le dépôt de DZF n'est pas ajouté au
+  contrôle what_a_recipe_clones_really_exists. C'est le dépôt personnel de
+  l'utilisateur, peut-être privé ; un ls-remote y échouerait sur une CI sans
+  identifiants, et ce serait un test qui lit l'état de la machine — la faute
+  nommée ailleurs dans ce fichier. Les invariants de la recette (HTTPS,
+  rien hors du dossier, pas de sudo, les deux binaires copiés) se vérifient
+  sans réseau.
+
+  --- L'onglet RE : un graphe d'appels, et ce qu'il réunit ---
+  Fred a demandé trois choses d'un coup : aller à une adresse, voir les
+  appels de fonctions en graphe (style UML), des rubriques de code binaire
+  et de pseudo-code. Un seul module neuf les réunit plutôt que trois, parce
+  qu'elles répondent à une même question — « par où j'entre, et qu'y a-t-il
+  dedans ? » — et qu'un lecteur ne veut pas trois panneaux pour une pensée.
+
+  Pourquoi un ARBRE et non un graphe libre : un graphe d'appels général se
+  dessine mal (croisements, placement) et se lit encore plus mal. L'arbre
+  déplié depuis le point d'entrée, avec renvoi (↩) sur une fonction déjà
+  vue, dit la même chose — qui appelle qui — sans spaghetti, et reste fini
+  sur du code récursif. Dessiné avec egui (une boîte = un bouton cliquable)
+  plutôt qu'au peintre : egui gère alors le clic, la mise en page et le
+  défilement, et il ne reste à peindre que les traits de liaison, dans la
+  gouttière de gauche où aucune boîte ne vit.
+
+  Rien de neuf n'est calculé : functions::discover donnait déjà `calls`,
+  c'est-à-dire les arêtes ; pseudo::of donnait déjà le pseudo-code ; le
+  canal ReRequest::GoTo existait déjà. Le module est surtout une mise en
+  forme de ce que les autres savaient déjà produire — c'est ce qui le rend
+  sûr. Bornes partout (40 fonctions, profondeur 8, 120 nœuds, 200
+  instructions) : au-delà, une carte redevient un mur.

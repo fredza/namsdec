@@ -76,9 +76,9 @@ use namsdec_disasm::DecodedInstruction;
 use namsdec_emu::{Backend, Emulator, RunStop, StepOverResult, StepResult};
 use namsdec_explorer::{ExplorerAction, FileExplorer};
 use namsdec_re::{
-    BinaryInfoModule, DigestModule, DumpModule, EntropyModule, FunctionsModule, GadgetsModule,
-    ImportsModule, MapModule, PatternsModule, ProtectionsModule, ReContext, ReModuleRegistry,
-    SignalsModule, SlackModule, StringsModule, SyscallsModule, XrefsModule,
+    BinaryInfoModule, CallGraphModule, DigestModule, DumpModule, EntropyModule, FunctionsModule,
+    GadgetsModule, ImportsModule, MapModule, PatternsModule, ProtectionsModule, ReContext,
+    ReModuleRegistry, SignalsModule, SlackModule, StringsModule, SyscallsModule, XrefsModule,
 };
 use namsdec_theme::Theme;
 
@@ -1652,6 +1652,13 @@ impl Default for NamsdecApp {
         // question précède toutes les autres. Le module retrouve le
         // `main` et découpe le code en fonctions.
         re_registry.register(Box::new(FunctionsModule::default()));
+        // Juste après : comment ces fonctions s'appellent. Le module
+        // « Fonctions » les dénombre ; celui-ci montre leur structure —
+        // l'arbre des appels depuis le point d'entrée, à la façon d'un
+        // diagramme UML —, laisse aller à une adresse, et déplie le code
+        // binaire et le pseudo-code de chacune. C'est la carte qu'on lit
+        // avant de descendre dans une fonction.
+        re_registry.register(Box::new(CallGraphModule::default()));
         // Puis dans l'ordre où l'on regarde un binaire inconnu : ce qu'il
         // dit (ses chaînes), ce qu'il demande au système, puis comment il
         // est découpé.

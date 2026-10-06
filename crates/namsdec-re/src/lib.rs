@@ -7,6 +7,7 @@
 
 pub mod behaviour;
 mod binary_info;
+mod call_graph_module;
 pub mod cfg;
 pub mod cyclic;
 pub mod digest;
@@ -46,6 +47,7 @@ pub mod xrefs;
 mod xrefs_module;
 
 pub use binary_info::BinaryInfoModule;
+pub use call_graph_module::CallGraphModule;
 pub use digest_module::DigestModule;
 pub use dump_module::DumpModule;
 pub use entropy_module::EntropyModule;
