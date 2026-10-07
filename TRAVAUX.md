@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **7 octobre
-2026**, version 0.2.8-beta.1, 1 108 tests au vert.
+2026**, version 0.2.8-beta.1, 1 109 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -92,6 +92,16 @@ flèches, bascule gros-boutien.
       entropie, YARA, « En bref ») restent celles d'AVANT le patch jusqu'au
       prochain assemblage. À corriger : rafraîchir l'analyse après une
       écriture.
+
+- [x] **Vérifié (8 octobre) : les numéros de ligne ↔ les instructions** —
+      demande de Fred. Alignés par construction : `layout_code` pose le
+      texte à largeur de repli INFINIE, donc aucune ligne ne se replie,
+      `galley.rows.len()` = nombre de lignes source, et le numéro `i+1`
+      est la vraie ligne source ; la surbrillance d'exécution vient
+      d'`addr_to_line[rip]`, la même ligne. Verrouillé par
+      `les_numeros_de_la_gouttiere_suivent_les_lignes_source` (une ligne
+      de 400 caractères en tête, numéros peints consécutifs à pas
+      constant — un repli régressif les ferait sauter).
 
 ### Passe de vérification (7 octobre)
 

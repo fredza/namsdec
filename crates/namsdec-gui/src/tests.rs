@@ -27359,6 +27359,77 @@ fn tout_reglage_bascule_par_l_interface_est_garde() {
     );
 }
 
+/// Les numéros de la gouttière suivent les lignes source, une pour une.
+///
+/// Le numéro `i` est celui de la i-ème ligne POSÉE (`galley.rows`), et non
+/// de la i-ème ligne du texte. Les deux coïncident tant qu'aucune ligne ne
+/// se replie — c'est pourquoi le code pose le texte avec une largeur de
+/// repli infinie. Qu'on la rende finie, et une ligne trop longue
+/// deviendrait deux rangées pour un seul numéro : tous les numéros
+/// d'après glisseraient d'un cran sous leur ligne, et la ligne courante
+/// s'éclairerait à côté de l'instruction qu'elle désigne.
+///
+/// On met donc une ligne volontairement très longue en tête, et l'on
+/// vérifie que les numéros peints restent consécutifs, à pas constant.
+#[test]
+fn les_numeros_de_la_gouttiere_suivent_les_lignes_source() {
+    let ctx = egui::Context::default();
+    // Une ligne de commentaire longue à déborder : à largeur de repli
+    // finie, elle couvrirait plusieurs rangées.
+    let longue = format!("    ; {}", "x".repeat(400));
+    let source = format!(
+        "global _start\nsection .text\n_start:\n{longue}\n    mov rax, 60\n    xor edi, edi\n    syscall\n"
+    );
+    let lignes_source = source.lines().count();
+    let mut app = NamsdecApp {
+        source,
+        ..Default::default()
+    };
+    app.apply_theme(&ctx);
+
+    let (_, peint) = ce_qui_est_écrit(&ctx, &mut app, None, 3);
+    // Les numéros de la gouttière : des entiers peints tout à gauche.
+    let mut numéros: Vec<(u32, f32)> = peint
+        .iter()
+        .filter(|(_, r)| r.left() < 80.0)
+        .filter_map(|(txt, r)| txt.trim().parse::<u32>().ok().map(|n| (n, r.center().y)))
+        .collect();
+    numéros.sort_by(|a, b| a.1.total_cmp(&b.1));
+    numéros.dedup();
+
+    assert!(
+        numéros.len() >= 5,
+        "la gouttière devrait numéroter au moins cinq lignes : {numéros:?}"
+    );
+    // Rangés par hauteur, les numéros se suivent de 1 en 1 : aucune rangée
+    // sans numéro (une ligne repliée) ne s'est glissée entre deux.
+    for paire in numéros.windows(2) {
+        assert_eq!(
+            paire[1].0,
+            paire[0].0 + 1,
+            "les numéros sautent — un repli a décalé la numérotation : {numéros:?}"
+        );
+    }
+    // Le premier numéro visible est 1 : on voit le haut du fichier.
+    assert_eq!(numéros.first().unwrap().0, 1, "{numéros:?}");
+    // Et le dernier numéro ne dépasse pas le nombre de lignes source : pas
+    // de rangée fantôme en trop.
+    assert!(
+        numéros.last().unwrap().0 as usize <= lignes_source + 1,
+        "un numéro dépasse le nombre de lignes source ({lignes_source}) : {numéros:?}"
+    );
+    // Le pas en hauteur est constant : chaque numéro est une rangée sous
+    // le précédent, jamais deux (ce que ferait une ligne repliée).
+    let pas: Vec<f32> = numéros.windows(2).map(|p| p[1].1 - p[0].1).collect();
+    let pas0 = pas[0];
+    for p in &pas {
+        assert!(
+            (p - pas0).abs() < 1.0,
+            "le pas entre numéros varie — une ligne s'est repliée : {pas:?}"
+        );
+    }
+}
+
 /// L'éditeur binaire dispose le fichier en grille hexadécimale.
 ///
 /// Un vrai ELF, la fenêtre d'analyse ouverte sur l'éditeur : on doit y
