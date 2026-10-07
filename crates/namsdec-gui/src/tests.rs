@@ -23312,6 +23312,7 @@ fn every_setting_that_is_written_is_read_back() {
         show_sidebar: false,
         show_statusbar: false,
         show_console: false,
+        show_explorer: true,
         show_tooltips: false,
         flow_pseudo: true,
         completion: false,
@@ -23331,6 +23332,9 @@ fn every_setting_that_is_written_is_read_back() {
         calc_base: "dec".to_owned(),
         calc_width: "32".to_owned(),
         heat_legend: false,
+        flow_current_only: false,
+        timeline_notable_only: true,
+        console_env_open: true,
         system_titlebar: true,
         console_height: Some(321),
         sidebar_tab_height: Some(222),
@@ -27202,6 +27206,100 @@ fn opening_a_binary_lays_out_its_listing_once() {
              de mise en page ne rend plus rien"
         );
     }
+}
+
+/// Tout réglage que l'interface bascule se retrouve dans `settings.json`.
+///
+/// La règle est posée : un paramètre réglé par l'utilisateur est gardé
+/// d'une séance à l'autre. Quatre y échappaient — l'explorateur de
+/// fichiers (alors que la console, la barre latérale et la barre d'état,
+/// ses frères, se souvenaient), le filtre du graphe de flot, celui du
+/// déroulement, et le repli des variables d'environnement. On les
+/// réglait, on relançait, ils étaient revenus comme avant.
+///
+/// Le contrôle lit le code qui bascule — `checkbox(&mut self.x)`,
+/// `self.x = !self.x` — et exige que `x` soit un champ de `Settings`. Un
+/// réglage nouveau entre donc sous la règle sans qu'on y pense.
+#[test]
+fn tout_reglage_bascule_par_l_interface_est_garde() {
+    let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+
+    // Les bascules qui ne SONT pas des réglages : à inscrire ici avec la
+    // raison, plutôt que d'élargir les motifs jusqu'à ne plus rien voir.
+    const EPHEMERES: [(&str, &str); 0] = [];
+
+    let mut bascules: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    let Ok(entrees) = std::fs::read_dir(&src) else {
+        return;
+    };
+    for entree in entrees.flatten() {
+        let chemin = entree.path();
+        if chemin.extension().is_none_or(|e| e != "rs")
+            || chemin.file_name().is_some_and(|n| n == "tests.rs")
+        {
+            continue;
+        }
+        let Ok(texte) = std::fs::read_to_string(&chemin) else {
+            continue;
+        };
+        for (motif, apres) in [
+            ("checkbox(&mut self.", ','),
+            ("toggle_value(&mut self.", ','),
+        ] {
+            let mut reste = texte.as_str();
+            while let Some(i) = reste.find(motif) {
+                reste = &reste[i + motif.len()..];
+                if let Some(fin) = reste.find([apres, ')']) {
+                    let nom = reste[..fin].trim();
+                    if !nom.is_empty() && nom.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                        bascules.insert(nom.to_owned());
+                    }
+                }
+            }
+        }
+        // `self.x = !self.x` : la bascule écrite à la main.
+        let mut reste = texte.as_str();
+        while let Some(i) = reste.find("= !self.") {
+            let avant = &reste[..i];
+            reste = &reste[i + "= !self.".len()..];
+            let Some(gauche) = avant.rsplit("self.").next() else {
+                continue;
+            };
+            let nom = gauche.trim();
+            if nom.chars().all(|c| c.is_alphanumeric() || c == '_') && !nom.is_empty() {
+                bascules.insert(nom.to_owned());
+            }
+        }
+    }
+    assert!(
+        bascules.len() >= 15,
+        "le relevé n'a trouvé que {} bascules : les motifs ne mordent plus",
+        bascules.len()
+    );
+
+    // On interroge la table de correspondance, et non les noms de champs :
+    // `show_re_tab` est gardé sous le nom `re_tab`, et chercher
+    // « pub show_re_tab » l'aurait déclaré oublié à tort. Ce qui prouve
+    // qu'un réglage est gardé, c'est qu'il est LU des réglages et ÉCRIT
+    // dans l'instantané — les deux sens, dans session.rs.
+    let session = std::fs::read_to_string(src.join("session.rs")).expect("session.rs");
+    let oublies: Vec<&String> = bascules
+        .iter()
+        .filter(|nom| !EPHEMERES.iter().any(|(e, _)| *e == nom.as_str()))
+        .filter(|nom| {
+            let lu = session.contains(&format!("{nom}: settings."));
+            let ecrit = session.contains(&format!(": self.{nom},"));
+            !(lu && ecrit)
+        })
+        .collect();
+    assert!(
+        oublies.is_empty(),
+        "{} réglage(s) que l'interface bascule mais que settings.json ne garde pas : {oublies:?}\n\n\
+         Ajoutez le champ à `Settings` (avec son défaut serde si le défaut n'est pas `false`) \
+         et sa lecture/écriture dans session.rs, dans les DEUX sens — ou inscrivez-le dans \
+         EPHEMERES en disant pourquoi ce n'en est pas un.",
+        oublies.len()
+    );
 }
 
 /// Le manuel nomme chaque panneau d'analyse comme l'écran le nomme.

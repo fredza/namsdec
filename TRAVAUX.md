@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **7 octobre
-2026**, version 0.2.8-beta.1, 1 099 tests au vert.
+2026**, version 0.2.8-beta.1, 1 100 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -80,6 +80,14 @@ exécutées par un contrôle. Ce qui ne tenait pas :
       lecture, « En bref », le sommaire des 674 mnémoniques, DZF
       installable, la panique sur ELF hostile. Entrée complétée.
 - [x] **L'en-tête de ce fichier annonçait 1 087 tests** pour 1 099.
+- [x] **Quatre réglages que l'interface bascule n'étaient pas gardés** —
+      l'explorateur de fichiers (alors que la console, la barre latérale
+      et la barre d'état, ses frères, se souvenaient), le filtre du graphe
+      de flot, celui du déroulement, et le repli des variables
+      d'environnement. Le manuel promettait pourtant « tout réglage est
+      enregistré » : c'est le code qui a été mis à la promesse. Garde-fou
+      qui lit le code qui bascule et exige la correspondance dans les deux
+      sens : `tout_reglage_bascule_par_l_interface_est_garde`.
 
 ---
 

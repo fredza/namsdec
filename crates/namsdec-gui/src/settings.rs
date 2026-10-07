@@ -56,6 +56,13 @@ pub struct Settings {
     pub show_statusbar: bool,
     /// Panneau bas — la console du programme et les diagnostics de nasm.
     pub show_console: bool,
+    /// L'explorateur de fichiers, à gauche.
+    ///
+    /// Persisté comme ses frères : le fermer puis rouvrir namsdec le
+    /// ramenait, alors que la console, la barre latérale et la barre
+    /// d'état, elles, se souvenaient.
+    #[serde(default)]
+    pub show_explorer: bool,
     /// Les infobulles au survol. Certains les veulent, d'autres les
     /// trouvent envahissantes — d'où un réglage plutôt qu'un choix imposé.
     pub show_tooltips: bool,
@@ -146,6 +153,19 @@ pub struct Settings {
     /// La légende des couleurs de la gouttière, sous l'éditeur.
     #[serde(default = "vrai")]
     pub heat_legend: bool,
+    /// Le graphe de flot : n'afficher que le chemin courant.
+    ///
+    /// Vrai par défaut — d'où le défaut explicite : sans lui, un fichier
+    /// de réglages écrit avant ce champ rendrait `false` et changerait la
+    /// vue sans qu'on l'ait demandé.
+    #[serde(default = "vrai")]
+    pub flow_current_only: bool,
+    /// Le déroulement : ne montrer que les pas remarquables.
+    #[serde(default)]
+    pub timeline_notable_only: bool,
+    /// La console : le repli des variables d'environnement, déplié ou non.
+    #[serde(default)]
+    pub console_env_open: bool,
     /// Rendre la barre de titre au système au lieu de celle que namsdec
     /// dessine. Faux par défaut : les menus *sont* la barre de titre, ce
     /// qui économise une rangée. Vrai pour qui préfère la décoration de
@@ -300,6 +320,7 @@ impl Default for Settings {
             show_sidebar: true,
             show_statusbar: true,
             show_console: true,
+            show_explorer: false,
             show_tooltips: true,
             // Le graphe d'abord : c'est la vue qui montre la FORME, et
             // c'est elle qui manque quand on découvre un binaire.
@@ -321,6 +342,9 @@ impl Default for Settings {
             calc_base: base_par_défaut(),
             calc_width: largeur_par_défaut(),
             heat_legend: true,
+            flow_current_only: true,
+            timeline_notable_only: false,
+            console_env_open: false,
             system_titlebar: false,
             console_height: None,
             sidebar_tab_height: None,

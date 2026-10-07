@@ -1716,7 +1716,11 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "Les préférences couvrent le thème, la langue (français ou anglais), les modules, "
          "l'affichage et les raccourcis — chacun réattribuable. <b>Tout réglage est "
          "enregistré</b> dans <font face='Courier'>~/.config/namsdec/settings.json</font>, "
-         "un fichier lisible et modifiable à la main."),
+         "un fichier lisible et modifiable à la main. <i>Tout</i> : les panneaux ouverts "
+         "ou fermés — l'explorateur de fichiers compris —, et jusqu'aux filtres des vues, "
+         "comme « seulement le chemin courant » du graphe de flot ou « seulement les pas "
+         "remarquables » du déroulement. Un contrôle le vérifie en lisant le code qui "
+         "bascule : un réglage neuf tombe sous la règle sans qu'on y pense."),
         ("p",
          "L'onglet <b>Modules</b> sépare deux choses qu'un même mot embrouillait : les "
          "<b>Composants</b> dont namsdec est fait — sains ou non, on ne les allume pas, on "
