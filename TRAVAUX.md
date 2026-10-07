@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **7 octobre
-2026**, version 0.2.8-beta.1, 1 087 tests au vert.
+2026**, version 0.2.8-beta.1, 1 099 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -55,6 +55,31 @@ Cinq demandes de Fred, sur captures.
       règle YARA du binaire (chaînes distinctives sans le bruit de
       bibliothèque, nombre magique, empreinte en méta, seuil prudent), à
       coller dans un `.yar`. Contrôles : `the_rule_is_well_formed` & co.
+
+### Passe de vérification (7 octobre)
+
+Relecture à la recherche d'erreurs. Ce qui tenait : les analyseurs ne
+paniquent sur aucun en-tête ELF incohérent (relevé jeté sur quinze points
+d'entrée), le parcours du graphe d'appels reste fini, la détection d'un
+outil installé balaie bien tous les sous-dossiers, les 791 chaînes des
+deux langues sont traduites, et les deux séries d'exercices sont
+exécutées par un contrôle. Ce qui ne tenait pas :
+
+- [x] **Le manuel nommait six panneaux autrement que l'écran** —
+      « Gadgets » pour *Fragments réutilisables (ROP)*, « Fonctions
+      empruntées » pour *Fonctions importées*, « Chaînes » pour *Chaînes
+      lisibles*, et trois noms tronqués (*Figures du code*, *Protections
+      du binaire*, *Place libre (bourrage)*). On cherchait dans
+      l'interface un nom qui n'y était pas. Neuf mentions corrigées, et
+      un garde-fou qui lit les titres **dans le registre** :
+      `le_manuel_nomme_les_panneaux_comme_l_interface`.
+- [x] **Le journal des versions oubliait la moitié de 0.2.8** — l'entrée
+      ne couvrait que les cinq dernières demandes et taisait tout ce qui
+      était entré depuis 0.2.6 : le graphe d'appels, le renommage, les
+      adresses cliquables, les signaux, la place libre, le désaccord de
+      lecture, « En bref », le sommaire des 674 mnémoniques, DZF
+      installable, la panique sur ELF hostile. Entrée complétée.
+- [x] **L'en-tête de ce fichier annonçait 1 087 tests** pour 1 099.
 
 ---
 

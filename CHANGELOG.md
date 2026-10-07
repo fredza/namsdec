@@ -4,12 +4,60 @@ Les dates sont celles des commits ; le format suit [Keep a
 Changelog](https://keepachangelog.com/fr/1.1.0/) d'assez loin — une
 entrée par version, et ce qui change pour qui s'en sert.
 
-## 0.2.8-beta.1 — 6 octobre 2026
+## 0.2.8-beta.1 — 7 octobre 2026
 
-La gestion des outils se resserre, l'éditeur suit enfin l'exécution, et
-les indicateurs redeviennent ce qu'ils sont — des témoins qu'on lit.
+L'onglet RE prend sa forme : on y circule, on y nomme ce qu'on comprend,
+et on en ressort une règle. La gestion des outils se resserre, l'éditeur
+suit enfin l'exécution, et les indicateurs redeviennent ce qu'ils sont —
+des témoins qu'on lit.
+
+**L'onglet RE : circuler, nommer, ressortir quelque chose**
+- Un **graphe d'appels** : l'arbre depuis le point d'entrée, et sous lui
+  chaque fonction qui se déplie sur son **code binaire** et son
+  **pseudo-code**, la même ligne lue deux fois — telle que la machine la
+  reçoit, puis telle qu'on la comprend. Une fonction déjà dépliée devient
+  un renvoi : l'arbre reste fini même sur du code récursif.
+- **Renommer une fonction** : <code>sub_10450</code> devient
+  « vérifie_clé », et « Défaut » lui rend son nom d'origine. Le nom donné
+  **suit l'adresse partout** où elle paraît — liste des fonctions,
+  références croisées, listing — avec un léger fond qui distingue ce
+  qu'on a déjà nommé. Il est gardé d'une séance à l'autre.
+- **Les adresses se cliquent** : d'un panneau au listing, sans relever
+  l'adresse à la main pour la retaper dans « aller à ».
+- **Signaux** — par où commencer devant un échantillon inconnu : ce que
+  le binaire sait faire, rangé par familles, et les indicateurs qu'on
+  peut aller vérifier ailleurs.
+- **Place libre (bourrage)** — le remplissage que l'éditeur de liens
+  laisse entre deux fonctions, nommé par sa section. En lecture seule.
+- **Quand le listing ment** — les deux lectures du même octet : un
+  désassemblage qui démarre à contretemps produit des instructions qui
+  n'existent pas, et le panneau le signale.
+- **« En bref » enrichi** : taille du code, point d'entrée, fonctions,
+  chaînes, et ce que le fichier dit de lui-même.
+- **Règles YARA** — une règle prête à coller dans un
+  <code>.yar</code> pour retrouver les frères de l'échantillon.
+- **Entropie en dégradé continu** — vert, jaune, orange, rouge, violet
+  pour l'extrême : la nature d'un bloc se lit à sa couleur.
+
+**L'aide**
+- Le sommaire des instructions montre les **674 mnémoniques**, et non
+  plus les 113 têtes de famille : <code>je</code>, <code>jne</code>,
+  <code>jz</code> étaient dans la documentation sans être à l'écran.
+
+**Les exercices**
+- Le **but et la progression** quittent le bandeau du processeur, où ils
+  restaient affichés même après le chargement d'un binaire sans rapport,
+  pour la fenêtre dédiée aux exercices.
+
+**Solidité**
+- Une **panique sur ELF hostile** corrigée, trouvée par un relevé qui
+  jette des en-têtes incohérents aux analyseurs.
+- Dépendances à jour (correctifs compatibles).
 
 **Les outils d'analyse**
+- **DZF s'installe depuis namsdec** : la recette clone le dépôt, le
+  construit en C++23 et pose ses binaires dans le dossier de namsdec —
+  rien hors de chez lui.
 - Un outil **bâti soi-même hors du PATH** — DZF compilé dans son dépôt —
   restait « absent » sans recours : namsdec ne cherche que dans le PATH et
   son dossier d'outils. La fiche d'un outil absent propose maintenant

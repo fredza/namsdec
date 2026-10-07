@@ -27204,6 +27204,42 @@ fn opening_a_binary_lays_out_its_listing_once() {
     }
 }
 
+/// Le manuel nomme chaque panneau d'analyse comme l'écran le nomme.
+///
+/// Le lecteur cherche dans l'interface le nom qu'il vient de lire. Le
+/// manuel écrivait « Gadgets », « Fonctions empruntées », « Chaînes »,
+/// « Figures », « Protections », « Place libre » — l'écran affiche
+/// « Fragments réutilisables (ROP) », « Fonctions importées », « Chaînes
+/// lisibles », « Figures du code », « Protections du binaire », « Place
+/// libre (bourrage) ». Six panneaux introuvables sous le nom annoncé.
+///
+/// Le contrôle lit les titres dans le registre lui-même : un module
+/// nouveau, ou renommé, y entre sans qu'on pense à mettre ce test à jour.
+#[test]
+fn le_manuel_nomme_les_panneaux_comme_l_interface() {
+    let racine = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let Ok(guide) = std::fs::read_to_string(racine.join("docs/guide.py")) else {
+        return;
+    };
+    let mut app = NamsdecApp::default();
+    let mut manquants: Vec<&'static str> = Vec::new();
+    for module in app.re_registry.iter_mut() {
+        let titre = module.title("fr");
+        if !guide.contains(titre) {
+            manquants.push(titre);
+        }
+    }
+    assert!(
+        manquants.is_empty(),
+        "{} panneau(x) que le manuel nomme autrement que l'écran : {manquants:?}\n\n\
+         Le lecteur cherche dans l'interface le nom qu'il vient de lire. Le manuel \
+         disait « Gadgets », « Fonctions empruntées », « Chaînes » — l'écran affiche \
+         « Fragments réutilisables (ROP) », « Fonctions importées », « Chaînes lisibles ». \
+         Employez le titre exact du module dans docs/guide.py.",
+        manquants.len()
+    );
+}
+
 /// Le guide que le README annonce existe, et c'est celui de la version.
 ///
 /// Le lien pointait vers `guide-namsdec-0.2.5-beta.3.pdf`, un fichier

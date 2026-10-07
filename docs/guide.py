@@ -666,7 +666,7 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
         ("p",
          "C'est le premier réflexe devant un programme qui compare quelque chose. On "
          "vient de taper un mot de passe et l'on veut savoir dans quel tampon il a "
-         "atterri ; on a lu une chaîne dans le module <b>Chaînes</b> et l'on cherche "
+         "atterri ; on a lu une chaîne dans le module <b>Chaînes lisibles</b> et l'on cherche "
          "l'endroit où elle est écrite ; on a vu passer quatre octets dans un registre "
          "et l'on veut savoir s'ils sont aussi ailleurs."),
         ("p",
@@ -1161,10 +1161,10 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "Rien n'est additionné en score : un score donnerait l'illusion d'un verdict, "
          "et c'est le lecteur qui conclut. Quand rien ne ressort, le panneau le dit — un "
          "panneau blanc ressemble à un panneau cassé.",
-         "<b>Protections</b> — PIE, NX, RELRO, canari de pile, FORTIFY, IBT et pile "
+         "<b>Protections du binaire</b> — PIE, NX, RELRO, canari de pile, FORTIFY, IBT et pile "
          "fantôme, segments W+X, symboles, bibliothèques, RPATH — avec, pour chacune, ce "
          "que son état change concrètement.",
-         "<b>Fonctions empruntées</b> — chaque entrée de la table de liaison retrouve son "
+         "<b>Fonctions importées</b> — chaque entrée de la table de liaison retrouve son "
          "nom, avec le <b>nombre d'appels</b> qui y mènent et une phrase d'explication pour les "
          "plus courantes. En tête, le <b>portrait</b> : six familles de comportement — "
          "réseau, exécution, anti-débogage, mémoire, chiffrement, fichiers — chacune avec "
@@ -1176,7 +1176,7 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "<font face='Courier'>socket</font> est un <font face='Courier'>socket</font>, "
          "qu'il arrive par la table de liaison ou par le numéro 41 dans RAX — et un "
          "programme qui veut passer inaperçu emploie justement le second.",
-         "<b>Chaînes</b> — cherchées dans les sections de données, comme "
+         "<b>Chaînes lisibles</b> — cherchées dans les sections de données, comme "
          "<font face='Courier'>strings -d</font>, avec la possibilité de ne montrer que "
          "celles que le code désigne. En tête, les <b>indicateurs</b> : adresses web, "
          "adresses IP, noms de domaine, courriels, chemins absolus, clés de registre. Ce "
@@ -1216,8 +1216,8 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "une liste qui peut compter des centaines de fonctions. Le nom est <b>gardé d'une "
          "séance à l'autre</b>, car c'est la même table de « notes » que le reste de "
          "namsdec. C'est la carte qu'on lit avant de descendre dans une fonction.",
-         "<b>Gadgets</b> — les fins de séquence utiles à une chaîne ROP.",
-         "<b>Place libre</b> — le bourrage que l'éditeur de liens laisse pour aligner : "
+         "<b>Fragments réutilisables (ROP)</b> — les fins de séquence utiles à une chaîne ROP.",
+         "<b>Place libre (bourrage)</b> — le bourrage que l'éditeur de liens laisse pour aligner : "
          "entre deux fonctions, entre deux sections, en fin de segment, il comble avec un "
          "octet neutre (un zéro, un <font face='Courier'>nop</font>, un "
          "<font face='Courier'>int3</font>) jusqu'au prochain multiple de seize. Le panneau "
@@ -1332,7 +1332,7 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "<font face='Courier'>main</font> est à retrouver ; 315 Ko pour un crackme, donc "
          "ce n'est pas de l'assembleur écrit à la main."),
         ("p",
-         "Le module <b>Chaînes</b> répond au troisième point : quarante et une occurrences "
+         "Le module <b>Chaînes lisibles</b> répond au troisième point : quarante et une occurrences "
          "de <font face='Courier'>rustc</font>. C'est du Rust, et cela décide de la "
          "méthode — en Rust, une chaîne n'a pas de zéro final, c'est un couple (adresse, "
          "longueur). Un <font face='Courier'>strings</font> ordinaire y lit donc des pâtés "
@@ -1349,7 +1349,7 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "<font face='Courier'>lea rdi, [rip + …]</font> qui précède cet appel donne donc "
          "son adresse, dans un binaire qui n'a plus un seul nom."),
         ("p",
-         "Le module <b>Figures</b> range ce qu'il reconnaît de la plus rare à la plus "
+         "Le module <b>Figures du code</b> range ce qu'il reconnaît de la plus rare à la plus "
          "commune, et c'est ce classement qui fait le travail : 1 758 tests de nullité "
          "sont la ponctuation du langage machine, quatre comparaisons par XOR sur 62 382 "
          "instructions sont une piste."),
@@ -1470,7 +1470,7 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "valeur, et celle-ci est dite dans le journal."),
         ("liste", [
          "Une garde anti-débogage se lit dans la liste des fonctions empruntées avant de "
-         "se rencontrer à l'exécution. Le module <b>Fonctions empruntées</b> la montre en "
+         "se rencontrer à l'exécution. Le module <b>Fonctions importées</b> la montre en "
          "premier.",
          "<font face='Courier'>ptrace</font> n'est que la plus connue. "
          "<font face='Courier'>prctl</font>, un "
