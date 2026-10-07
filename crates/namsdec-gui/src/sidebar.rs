@@ -306,7 +306,10 @@ impl NamsdecApp {
         // Les indicateurs ne sont plus ici : ils vivent dans la barre de
         // titre, toujours visible et jamais repliée. Voir `flags_ui`.
         self.cost_ui(ui);
-        self.goal_ui(ui);
+        // Le but de l'exercice n'est plus ici non plus : il vivait dans ce
+        // bandeau toujours visible, et restait donc affiché quand on
+        // chargeait un binaire sans rapport. Il est maintenant dans la
+        // fenêtre dédiée aux exercices (Aide › Exercices). Voir `goal_ui`.
     }
 
     /// Où en est le but de l'exercice, quand il y en a un.
@@ -314,7 +317,7 @@ impl NamsdecApp {
     /// Un énoncé qui dit « RAX doit valoir 15 » laisse l'élève vérifier
     /// à l'œil, et se tromper de registre. La machine sait comparer :
     /// autant qu'elle le dise, là où l'on regarde déjà les valeurs.
-    fn goal_ui(&mut self, ui: &mut egui::Ui) {
+    pub(crate) fn goal_ui(&mut self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
         let theme = self.theme;
         let Some((conditions, atteint)) = self.exercise_goal() else {

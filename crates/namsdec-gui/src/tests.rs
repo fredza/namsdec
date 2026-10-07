@@ -9640,6 +9640,9 @@ fn an_exercise_says_whether_its_goal_is_reached() {
         "RAX = {:#x}",
         app.emulator.as_ref().unwrap().cpu().regs.get64(Reg64::Rax)
     );
+    // Le but vit dans la fenêtre dédiée aux exercices, plus dans le
+    // bandeau : on l'ouvre pour le lire.
+    app.show_exercises = true;
     let painted = paint(&mut app);
     assert!(
         painted.contains(strings(app.lang).goal_reached),
@@ -15433,6 +15436,7 @@ fn the_cost_is_shown_next_to_the_goal() {
         }
         app.tick_run(&egui::Context::default());
     }
+    app.show_exercises = true;
     let painted = paint(&mut app);
     let s = strings(app.lang);
     assert!(painted.contains(s.par_label), "{painted}");
@@ -23138,7 +23142,8 @@ _start:
         "le constat nomme l'expression et donne sa valeur"
     );
 
-    // Et cela s'écrit à l'écran, là où l'on regarde déjà les registres.
+    // Et cela s'écrit dans la fenêtre dédiée aux exercices.
+    app.show_exercises = true;
     let peint = paint(&mut app);
     let s = strings(app.lang);
     assert!(
@@ -26464,10 +26469,11 @@ boucle:
     // rien à expliquer.
     let (_, atteint) = app.exercise_goal().expect("un but à vérifier");
     assert!(!atteint, "la somme de 1 à 4 n'est pas celle de 1 à 5");
+    app.show_exercises = true;
     let peint = paint(&mut app);
     assert!(
         peint.contains("a tourné 4 fois"),
-        "et cela s'écrit sous le but :\n{peint}"
+        "et cela s'écrit sous le but, dans la fenêtre des exercices :\n{peint}"
     );
 }
 

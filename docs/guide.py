@@ -939,6 +939,13 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "encore », au lieu de laisser vérifier à l'œil. Ce qui a été réussi une fois le "
          "reste, d'une session à l'autre." % (avec_but, total_exos)),
         ("p",
+         "Le but et la progression se lisent dans la <b>fenêtre des exercices</b> "
+         "(Aide › Exercices), sous le titre de l'étape en cours — et non plus dans le "
+         "bandeau du processeur. Ce bandeau est toujours visible : le but y restait "
+         "affiché quand on chargeait un binaire sans rapport, comme si l'exercice portait "
+         "sur lui. Les exercices ont désormais leur fenêtre, ouverte quand on en fait un, "
+         "fermée sinon."),
+        ("p",
          "Un but manqu\u00e9 dit <b>laquelle</b> de ses conditions manque, et ce que "
          "l\u2019expression vaut \u00e0 la place \u2014 <font face='Courier'>rax == 0xf</font> "
          "suivi de <font face='Courier'>rax vaut 0xc</font>. Un point plein marque ce qui "

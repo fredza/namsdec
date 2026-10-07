@@ -166,6 +166,13 @@ impl NamsdecApp {
                             load = Some(suivant_id.clone());
                         }
                     });
+                    // Le but et la progression de l'exercice en cours,
+                    // juste sous son titre. Ils vivaient dans le bandeau
+                    // du processeur, toujours visible — et restaient donc
+                    // affichés quand on chargeait un binaire sans rapport.
+                    // Leur place est ici, dans la fenêtre qu'on ouvre quand
+                    // on fait un exercice, et nulle part ailleurs.
+                    self.goal_ui(ui);
                 }
                 ui.add_space(6.0);
                 // De quoi retrouver une étape : trente-six titres se
