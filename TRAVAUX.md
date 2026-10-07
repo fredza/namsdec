@@ -32,6 +32,32 @@ processeur est ancré.
 
 ---
 
+## 5. Analyse et exercices — passe du 7 octobre (0.2.8-beta.1)
+
+Cinq demandes de Fred, sur captures.
+
+- [x] **Entropie en dégradé continu** — l'histogramme passait par quatre
+      paliers de verdict ; il suit un dégradé vert → jaune → orange →
+      rouge → violet sur l'échelle 0..8, couleurs fixes hors thème.
+      Contrôle : `the_gradient_climbs_from_green_to_purple`.
+- [x] **Flags plus espacés** dans la barre de titre (4 → 8 px) : collés,
+      ils se lisaient comme un bloc.
+- [x] **Un nom donné suit l'adresse partout** — `clickable_address`
+      montre le nom à la main quand il y en a un (propagation à tous les
+      panneaux), avec un léger fond en évidence, repris dans l'en-tête de
+      l'arbre d'appels et la liste des fonctions. Pivot :
+      `ReContext::user_name`.
+- [x] **Le but et la progression d'un exercice** quittent le bandeau du
+      processeur (toujours visible, d'où l'exercice resté affiché après
+      chargement d'un binaire) pour la **fenêtre dédiée** (Aide ›
+      Exercices). `goal_ui` passe `pub(crate)`.
+- [x] **Rubrique YARA dans l'onglet RE** — nouveau `YaraModule` : tire une
+      règle YARA du binaire (chaînes distinctives sans le bruit de
+      bibliothèque, nombre magique, empreinte en méta, seuil prudent), à
+      coller dans un `.yar`. Contrôles : `the_rule_is_well_formed` & co.
+
+---
+
 ## 1. Interface — corrigé
 
 - [x] Les fenêtres reviennent ouvertes d'une séance à l'autre, en
