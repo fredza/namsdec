@@ -124,6 +124,16 @@ impl ReContext<'_> {
             .cloned()
             .unwrap_or_else(|| défaut.to_owned())
     }
+
+    /// Le nom donné à la main à cette adresse, s'il y en a un.
+    ///
+    /// Sert à deux choses : montrer ce nom partout où l'adresse paraît
+    /// (une fonction rebaptisée l'est dans tous les panneaux, pas
+    /// seulement là où on l'a renommée), et le mettre légèrement en
+    /// évidence pour qu'on repère d'un coup d'œil ce qu'on a déjà nommé.
+    pub fn user_name(&self, addr: u64) -> Option<&str> {
+        self.names.and_then(|m| m.get(&addr)).map(String::as_str)
+    }
 }
 
 /// Ce qu'un module demande à l'application, faute de pouvoir le faire
@@ -165,9 +175,18 @@ pub enum ReRequest {
 /// qu'on ne fait que lire — et personne ne clique sur ce qui n'a pas
 /// l'air cliquable.
 pub fn clickable_address(ui: &mut egui::Ui, ctx: &ReContext, addr: u64) -> bool {
-    let texte = egui::RichText::new(format!("{addr:#010x}"))
-        .monospace()
-        .color(ui.visuals().hyperlink_color);
+    // Un nom donné à la main suit l'adresse PARTOUT où elle paraît, et se
+    // mange un léger fond en évidence : on repère ce qu'on a déjà nommé
+    // sans avoir à rouvrir la liste des fonctions.
+    let texte = match ctx.user_name(addr) {
+        Some(nom) => egui::RichText::new(format!("{nom}  {addr:#010x}"))
+            .monospace()
+            .color(ui.visuals().hyperlink_color)
+            .background_color(ui.visuals().selection.bg_fill.gamma_multiply(0.25)),
+        None => egui::RichText::new(format!("{addr:#010x}"))
+            .monospace()
+            .color(ui.visuals().hyperlink_color),
+    };
     ui.add(egui::Label::new(texte).sense(egui::Sense::click()))
         .on_hover_cursor(egui::CursorIcon::PointingHand)
         .on_hover_text(ctx.t(

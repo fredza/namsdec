@@ -110,10 +110,16 @@ impl ReModule for FunctionsModule {
                 ui.end_row();
                 for fonction in by_importance(&self.found).into_iter().take(MONTRÉES) {
                     let nom = ctx.display_name(fonction.start, &fonction.name());
-                    let étiquette = match fonction.origin {
+                    let mut étiquette = match fonction.origin {
                         Origin::Main | Origin::Entry => egui::RichText::new(nom).strong(),
                         Origin::Called => egui::RichText::new(nom),
                     };
+                    // Rebaptisée à la main : un léger fond, comme ailleurs,
+                    // pour repérer ce qu'on a déjà nommé.
+                    if ctx.user_name(fonction.start).is_some() {
+                        étiquette = étiquette
+                            .background_color(ui.visuals().selection.bg_fill.gamma_multiply(0.25));
+                    }
                     ui.label(étiquette.monospace());
                     ui.monospace(format!("{:#010x}", fonction.start));
                     ui.monospace(format!("{}", fonction.size()));

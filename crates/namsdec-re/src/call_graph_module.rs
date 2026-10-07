@@ -466,7 +466,14 @@ impl CallGraphModule {
                 f.size(),
                 ctx.t("octets", "bytes"),
             );
-            egui::CollapsingHeader::new(egui::RichText::new(titre).monospace())
+            // Rebaptisée à la main : un léger fond la distingue des
+            // fonctions encore anonymes, dans une liste qui peut en
+            // compter des centaines.
+            let mut riche = egui::RichText::new(titre).monospace();
+            if ctx.user_name(f.start).is_some() {
+                riche = riche.background_color(ui.visuals().selection.bg_fill.gamma_multiply(0.25));
+            }
+            egui::CollapsingHeader::new(riche)
                 .id_salt(("call_graph_detail", f.start))
                 .default_open(false)
                 .show(ui, |ui| {
@@ -679,12 +686,18 @@ mod tests {
         assert_eq!(avec.display_name(0x401000, "sub_401000"), "vérifie_clé");
         // Une adresse non nommée garde son défaut, même quand la table existe.
         assert_eq!(avec.display_name(0x402000, "sub_402000"), "sub_402000");
+        // `user_name` dit s'il y a un nom donné — c'est ce qui sert à le
+        // montrer partout (via `clickable_address`) et à le mettre en
+        // évidence. Nommé : Some ; anonyme ou sans table : None.
+        assert_eq!(avec.user_name(0x401000), Some("vérifie_clé"));
+        assert_eq!(avec.user_name(0x402000), None);
         // Sans table, le défaut partout.
         let sans = ReContext {
             names: None,
             ..avec
         };
         assert_eq!(sans.display_name(0x401000, "sub_401000"), "sub_401000");
+        assert_eq!(sans.user_name(0x401000), None);
     }
 
     /// Les instructions d'une fonction sont prises dans sa plage, et pas
