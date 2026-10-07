@@ -1585,10 +1585,11 @@ impl NamsdecApp {
         // egui en inverse alors le contenu — mesuré : OF sortait en tête,
         // CF en queue. On parcourt FLAG_BITS À L'ENVERS pour que ce double
         // renversement redonne l'ordre du processeur, CF…OF, de gauche à
-        // droite. L'espacement resserré : sept pastilles de plus dans un
-        // bandeau déjà peuplé.
+        // droite. L'espacement est aéré : les sept pastilles collées se
+        // lisaient comme un bloc, on cherchait où finissait l'une et où
+        // commençait l'autre.
         ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 4.0;
+            ui.spacing_mut().item_spacing.x = 8.0;
             for &(name, bit) in FLAG_BITS.iter().rev() {
                 let on = f.contains(bit);
                 let changé = vivant && avant.is_some_and(|a| a.contains(bit) != on);

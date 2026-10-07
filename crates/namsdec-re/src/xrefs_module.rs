@@ -118,7 +118,9 @@ impl ReModule for XrefsModule {
                                 // où l'on veut aller : la lire sans pouvoir
                                 // l'atteindre serait s'arrêter au milieu.
                                 if clickable_address(ui, ctx, reference.from) {
-                                    demande = Some(ReRequest::GoTo { addr: reference.from });
+                                    demande = Some(ReRequest::GoTo {
+                                        addr: reference.from,
+                                    });
                                 }
                             });
                         }

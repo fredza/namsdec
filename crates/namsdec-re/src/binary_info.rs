@@ -69,7 +69,10 @@ impl ReModule for BinaryInfoModule {
                     .iter()
                     .filter(|i| behaviour::family_of(&i.name) == Some(famille))
                     .count()
-                    + appels.iter().filter(|c| c.family() == Some(famille)).count();
+                    + appels
+                        .iter()
+                        .filter(|c| c.family() == Some(famille))
+                        .count();
                 (famille, n)
             })
             .collect();
@@ -159,7 +162,10 @@ impl ReModule for BinaryInfoModule {
             ui.add_space(2.0);
             for (famille, combien) in &présentes {
                 ui.horizontal_wrapped(|ui| {
-                    ui.colored_label(famille.color(), format!("{} ({combien})", famille.label(ctx.lang)));
+                    ui.colored_label(
+                        famille.color(),
+                        format!("{} ({combien})", famille.label(ctx.lang)),
+                    );
                     ui.weak(famille.why(ctx.lang));
                 });
             }
@@ -305,6 +311,10 @@ mod tests {
             .find(|(f, _)| *f == Family::Network)
             .map(|(_, n)| *n)
             .unwrap_or(0);
-        assert_eq!(réseau, 1, "le socket compte comme du réseau : {:?}", module.comportement);
+        assert_eq!(
+            réseau, 1,
+            "le socket compte comme du réseau : {:?}",
+            module.comportement
+        );
     }
 }

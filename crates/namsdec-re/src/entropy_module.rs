@@ -137,6 +137,41 @@ impl ReModule for EntropyModule {
 
 /// La courbe, dessinée à la main.
 ///
+/// La couleur d'une tranche selon son entropie, en dégradé continu.
+///
+/// Du vert (régulier, inoffensif) au violet (maximal — chiffré ou
+/// compressé), en passant par le jaune, l'orange et le rouge. Les arrêts
+/// sont posés sur l'échelle 0..8 des bits par octet, là où le sens
+/// bascule : le texte vers 4-5, le code dense vers 6, le soupçon
+/// d'empaquetage vers 7, l'aléa pur à 8.
+///
+/// Couleurs fixes, et non tirées du thème : c'est une échelle de mesure,
+/// elle doit dire la même chose d'un thème à l'autre.
+fn entropy_color(entropy: f64) -> egui::Color32 {
+    const ARRÊTS: [(f32, egui::Color32); 5] = [
+        (0.0, egui::Color32::from_rgb(0x3f, 0xb9, 0x50)), // vert
+        (4.0, egui::Color32::from_rgb(0xd2, 0xa8, 0x06)), // jaune
+        (6.0, egui::Color32::from_rgb(0xe0, 0x7b, 0x1f)), // orange
+        (7.0, egui::Color32::from_rgb(0xf8, 0x51, 0x49)), // rouge
+        (8.0, egui::Color32::from_rgb(0xa3, 0x71, 0xf7)), // violet
+    ];
+    let e = entropy as f32;
+    for paire in ARRÊTS.windows(2) {
+        let (v0, c0) = paire[0];
+        let (v1, c1) = paire[1];
+        if e <= v1 {
+            let t = ((e - v0) / (v1 - v0)).clamp(0.0, 1.0);
+            let m = |x: u8, y: u8| (x as f32 + (y as f32 - x as f32) * t).round() as u8;
+            return egui::Color32::from_rgb(
+                m(c0.r(), c1.r()),
+                m(c0.g(), c1.g()),
+                m(c0.b(), c1.b()),
+            );
+        }
+    }
+    ARRÊTS[ARRÊTS.len() - 1].1
+}
+
 /// Une barre par tranche, du bas vers le haut, l'échelle allant de 0 à 8
 /// — **toujours**, et non de la plus basse à la plus haute valeur vue :
 /// une échelle qui s'ajuste ferait paraître spectaculaire l'écart entre
@@ -167,15 +202,10 @@ fn histogram(ui: &mut egui::Ui, windows: &[Window]) {
             egui::pos2(rect.left() + i as f32 * pas, haut),
             egui::pos2(rect.left() + (i as f32 + 1.0) * pas, rect.bottom()),
         );
-        // La couleur suit le verdict : on lit la nature du bloc sans
-        // avoir à comparer des hauteurs entre elles.
-        let couleur = match Verdict::of(fenêtre.entropy) {
-            Verdict::Flat => visuels.weak_text_color(),
-            Verdict::Text | Verdict::Code => visuels.selection.bg_fill,
-            Verdict::Mixed => visuels.warn_fg_color,
-            Verdict::Random => visuels.error_fg_color,
-        };
-        peintre.rect_filled(barre, 0.0, couleur);
+        // La couleur suit l'entropie en dégradé continu : on lit la montée
+        // sans avoir à comparer des hauteurs entre elles, et l'extrême —
+        // le chiffré, le compressé — se détache en violet.
+        peintre.rect_filled(barre, 0.0, entropy_color(fenêtre.entropy));
     }
 
     // Le repère d'empaquetage : la ligne au-dessus de laquelle il n'y a
@@ -218,6 +248,48 @@ mod tests {
             binary: binaire,
             lang: "fr",
             names: None,
+        }
+    }
+
+    /// Le dégradé va du vert au violet, en montant avec l'entropie.
+    ///
+    /// Les deux bouts sont les couleurs posées ; entre eux, la teinte
+    /// change de façon monotone — le rouge monte sans discontinuité. C'est
+    /// ce qui permet de lire la nature d'un bloc à sa couleur seule.
+    #[test]
+    fn the_gradient_climbs_from_green_to_purple() {
+        // Les extrêmes sont exactement les arrêts annoncés.
+        assert_eq!(
+            entropy_color(0.0),
+            egui::Color32::from_rgb(0x3f, 0xb9, 0x50)
+        );
+        assert_eq!(
+            entropy_color(8.0),
+            egui::Color32::from_rgb(0xa3, 0x71, 0xf7)
+        );
+        // Au-delà de l'échelle, on reste au violet, jamais rien de plus.
+        assert_eq!(
+            entropy_color(9.0),
+            egui::Color32::from_rgb(0xa3, 0x71, 0xf7)
+        );
+        // Le bas est vert (vert dominant), le haut vire au violet (bleu
+        // revenu). Entre les deux, le rouge croît sans jamais redescendre.
+        let bas = entropy_color(1.0);
+        assert!(
+            bas.g() > bas.r() && bas.g() > bas.b(),
+            "le bas doit être vert : {bas:?}"
+        );
+        let mut rouge_avant = 0u8;
+        for pas in 0..=80 {
+            let r = entropy_color(pas as f64 / 10.0).r();
+            // De 0 à 7 (rouge au sommet), le rouge ne décroît pas.
+            if pas <= 70 {
+                assert!(
+                    r >= rouge_avant,
+                    "le rouge ne doit pas redescendre avant 7 (pas {pas})"
+                );
+                rouge_avant = r;
+            }
         }
     }
 

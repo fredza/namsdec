@@ -788,7 +788,11 @@ mod tests {
         let recette = recipe_for("dzf", data).expect("une recette pour DZF");
 
         // Le binaire déclaré est le désassembleur, sous le dossier d'outils.
-        assert!(recette.produces.ends_with("dzf/bin/x64-disassembler"), "{}", recette.produces.display());
+        assert!(
+            recette.produces.ends_with("dzf/bin/x64-disassembler"),
+            "{}",
+            recette.produces.display()
+        );
         assert!(recette.produces.starts_with(tools_dir(data)));
 
         // On va bien chercher le dépôt de DZF, en HTTPS.

@@ -358,11 +358,17 @@ impl CallGraphModule {
             let x_rail = rp.left() + 11.0;
             let y_enfant = rn.center().y;
             peintre.line_segment(
-                [egui::pos2(x_rail, rp.bottom()), egui::pos2(x_rail, y_enfant)],
+                [
+                    egui::pos2(x_rail, rp.bottom()),
+                    egui::pos2(x_rail, y_enfant),
+                ],
                 trait_,
             );
             peintre.line_segment(
-                [egui::pos2(x_rail, y_enfant), egui::pos2(rn.left(), y_enfant)],
+                [
+                    egui::pos2(x_rail, y_enfant),
+                    egui::pos2(rn.left(), y_enfant),
+                ],
                 trait_,
             );
             flèche(&peintre, egui::pos2(rn.left(), y_enfant), couleur_trait);
@@ -474,8 +480,8 @@ impl CallGraphModule {
                                 .desired_width(200.0)
                                 .font(egui::TextStyle::Monospace),
                         );
-                        let validé = champ.lost_focus()
-                            && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                        let validé =
+                            champ.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
                         if ui.button(ctx.t("Renommer", "Rename")).clicked() || validé {
                             demande = Some(ReRequest::Rename {
                                 addr: f.start,
@@ -484,10 +490,9 @@ impl CallGraphModule {
                         }
                         if ui
                             .button(ctx.t("Défaut", "Default"))
-                            .on_hover_text(ctx.t(
-                                "Rendre son nom d'origine",
-                                "Restore its original name",
-                            ))
+                            .on_hover_text(
+                                ctx.t("Rendre son nom d'origine", "Restore its original name"),
+                            )
                             .clicked()
                         {
                             *tampon = défaut.clone();
@@ -594,7 +599,9 @@ fn lire_adresse(texte: &str) -> Option<u64> {
         // Un nombre nu : décimal d'abord, car c'est ce qu'on tape quand on
         // en écrit un ; hexadécimal en repli, car une adresse l'est
         // souvent même sans le `0x`.
-        t.parse::<u64>().ok().or_else(|| u64::from_str_radix(t, 16).ok())
+        t.parse::<u64>()
+            .ok()
+            .or_else(|| u64::from_str_radix(t, 16).ok())
     }
 }
 
@@ -603,7 +610,10 @@ mod tests {
     use super::*;
     use namsdec_core::{Cpu, Memory};
 
-    fn contexte<'a>(disasm: &'a [namsdec_disasm::DecodedInstruction], cpu: &'a Cpu) -> ReContext<'a> {
+    fn contexte<'a>(
+        disasm: &'a [namsdec_disasm::DecodedInstruction],
+        cpu: &'a Cpu,
+    ) -> ReContext<'a> {
         ReContext {
             cpu,
             disasm,
@@ -670,7 +680,10 @@ mod tests {
         // Une adresse non nommée garde son défaut, même quand la table existe.
         assert_eq!(avec.display_name(0x402000, "sub_402000"), "sub_402000");
         // Sans table, le défaut partout.
-        let sans = ReContext { names: None, ..avec };
+        let sans = ReContext {
+            names: None,
+            ..avec
+        };
         assert_eq!(sans.display_name(0x401000, "sub_401000"), "sub_401000");
     }
 

@@ -1225,7 +1225,11 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "panneau le nomme aussi, avec la preuve et ce qu'on en fait : "
          "<font face='Courier'>upx -d</font> rend l'original, "
          "<font face='Courier'>pyinstxtractor</font> sort l'archive. « Compressé, chiffré "
-         "ou empaqueté » est juste et frustrant ; « c'est de l'UPX » est actionnable.",
+         "ou empaqueté » est juste et frustrant ; « c'est de l'UPX » est actionnable. "
+         "L'histogramme, tranche par tranche, est peint en <b>dégradé continu</b> — vert "
+         "pour le régulier, puis jaune, orange, rouge à mesure que ça monte, et violet pour "
+         "l'extrême (chiffré ou compressé) : la nature d'un bloc se lit à sa couleur, sans "
+         "comparer des hauteurs entre elles.",
         ]),
         ("p",
          "<b>Les adresses de ces panneaux sont cliquables.</b> Une entrée de liaison, une "
