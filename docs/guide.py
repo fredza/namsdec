@@ -1257,10 +1257,10 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "La recherche fait le tour quand il n\'y a plus rien devant, et la trouvaille est "
          "surlignée — on saute d\'une occurrence à la suivante comme dans un éditeur.",
          "Et le <b>clavier</b>, une fois un octet choisi : les flèches déplacent le curseur "
-         "(←→ d\'un octet, ↑↓ d\'une ligne, Page préc./suiv. d\'une page), et les chiffres "
-         "hexadécimaux l\'écrivent <b>en place</b>, quartet par quartet — taper « 7 » puis "
-         "« 4 » pose <font face=\'Courier\'>74</font> et avance tout seul, comme dans 010 "
-         "Editor. Échap annule un quartet commencé.",
+         "(gauche/droite d\'un octet, haut/bas d\'une ligne, Page préc./suiv. d\'une page), "
+         "et les chiffres hexadécimaux l\'écrivent <b>en place</b>, quartet par quartet — "
+         "taper « 7 » puis « 4 » pose <font face=\'Courier\'>74</font> et avance tout seul, "
+         "comme dans 010 Editor. Échap annule un quartet commencé.",
          "<b>Entropie</b> — combien de bits d'information porte un octet, sur tout le "
          "fichier puis par tranches. C'est ce qui répond avant tout le reste à « y a-t-il "
          "seulement quelque chose à lire ici ? » : un binaire empaqueté montre un petit "
