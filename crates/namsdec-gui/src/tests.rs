@@ -22622,6 +22622,31 @@ fn scènes() -> Vec<Scène> {
                 }),
             ));
         }
+        // La fenêtre d'analyse, UN MODULE À LA FOIS. Ouverte par
+        // `fenêtres_ouvrables`, elle ne montrait que son module par défaut :
+        // l'éditeur binaire, YARA, le graphe d'appels et les autres
+        // passaient au travers des invariants de scène. On les éprouve
+        // tous, et un module neuf y entre sans qu'on y pense. Seulement « en
+        // marche » : sans binaire, un module d'analyse n'écrit presque rien.
+        if marche {
+            let ids: Vec<String> = NamsdecApp::default()
+                .re_registry
+                .entries("fr")
+                .iter()
+                .map(|(id, _)| (*id).to_owned())
+                .collect();
+            for id in ids {
+                scènes.push((
+                    format!("analyse / {id}{suffixe}"),
+                    Some("analysis_window"),
+                    Box::new(move |app| {
+                        démarre(app);
+                        app.show_analysis = true;
+                        app.analysis_module = id.clone();
+                    }),
+                ));
+            }
+        }
     }
     scènes
 }

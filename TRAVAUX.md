@@ -110,6 +110,26 @@ flèches, bascule gros-boutien.
       de 400 caractères en tête, numéros peints consécutifs à pas
       constant — un repli régressif les ferait sauter).
 
+### Revue d'interface — l'éditeur binaire et les modules (8 octobre)
+
+Audit egui (skill audit-ui-egui), concentré sur la surface neuve :
+l'éditeur binaire (grille, inspecteur, recherche, clavier) et YARA.
+
+- **Mesuré, propre.** Contraste du texte des octets sur les trois fonds de
+  surlignage : 5,7–6,3 (le bleu de sélection #264F78 est assez sombre).
+  Recouvrement : 0 sur 330 textes de l'éditeur. Découpage : 0. Les faux
+  positifs écartés : le bloc « octet choisi » non capturé était SOUS le
+  pli (joignable au défilement de la fenêtre d'analyse), pas découpé.
+- [x] **Vrai manque trouvé et comblé : les scènes n'éprouvaient que le
+  module d'analyse PAR DÉFAUT.** `fenêtres_ouvrables` ouvrait la fenêtre
+  d'analyse sans choisir de module ; l'éditeur binaire, YARA, le graphe
+  d'appels et la plupart des autres passaient au travers des SEPT
+  invariants de scène (recouvrement, dérive, balisage, doublons, hauteur
+  des boutons, panneau vide, taille d'ouverture). `scènes()` ajoute
+  désormais une scène PAR MODULE (en marche) — tous éprouvés, un module
+  neuf couvert sans qu'on y pense. Les sept passent sur les dix-sept
+  modules.
+
 ### Passe de vérification (7 octobre)
 
 Relecture à la recherche d'erreurs. Ce qui tenait : les analyseurs ne
