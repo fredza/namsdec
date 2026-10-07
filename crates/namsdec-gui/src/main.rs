@@ -77,9 +77,9 @@ use namsdec_emu::{Backend, Emulator, RunStop, StepOverResult, StepResult};
 use namsdec_explorer::{ExplorerAction, FileExplorer};
 use namsdec_re::{
     BinaryInfoModule, CallGraphModule, DigestModule, DumpModule, EntropyModule, FunctionsModule,
-    GadgetsModule, ImportsModule, MapModule, PatternsModule, ProtectionsModule, ReContext,
-    ReModuleRegistry, SignalsModule, SlackModule, StringsModule, SyscallsModule, XrefsModule,
-    YaraModule,
+    GadgetsModule, HexEditorModule, ImportsModule, MapModule, PatternsModule, ProtectionsModule,
+    ReContext, ReModuleRegistry, SignalsModule, SlackModule, StringsModule, SyscallsModule,
+    XrefsModule, YaraModule,
 };
 use namsdec_theme::Theme;
 
@@ -1695,6 +1695,11 @@ impl Default for NamsdecApp {
         // modules d'au-dessus ont désigné un endroit, et qu'on veut
         // savoir ce que ces octets-là sont vraiment.
         re_registry.register(Box::new(DumpModule::default()));
+        // Et l'éditeur binaire : on a compris quel octet décide, on le
+        // change pour voir. Dernier panneau, car c'est le seul qui AGIT
+        // sur le fichier — les autres le lisent. Réversible (Correctifs),
+        // et rien n'atteint le disque sans un enregistrement explicite.
+        re_registry.register(Box::new(HexEditorModule::default()));
 
         Self {
             source: DEFAULT_SOURCE.to_string(),

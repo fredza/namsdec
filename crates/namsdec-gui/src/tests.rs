@@ -27359,6 +27359,64 @@ fn tout_reglage_bascule_par_l_interface_est_garde() {
     );
 }
 
+/// L'éditeur binaire dispose le fichier en grille hexadécimale.
+///
+/// Un vrai ELF, la fenêtre d'analyse ouverte sur l'éditeur : on doit y
+/// lire les décalages, les octets — la magie `7f` en tête —, et la
+/// colonne de texte où « ELF » se lit en clair. C'est la forme de tout
+/// éditeur hexadécimal ; sans elle, il n'y a rien à éditer.
+#[test]
+fn l_editeur_binaire_dispose_le_fichier_en_grille() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: "global _start\nsection .text\n_start:\n    mov rax, 60\n    xor edi, edi\n    syscall\n"
+            .to_owned(),
+        show_analysis: true,
+        analysis_module: "hex_editor".to_owned(),
+        system_titlebar: false,
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let scr = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1400.0, 1100.0));
+    let mut peint = String::new();
+    for _ in 0..3 {
+        peint.clear();
+        let mut out = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(scr),
+                ..Default::default()
+            },
+            |ui| app.draw(ui),
+        );
+        for c in &out.shapes {
+            if let egui::epaint::Shape::Text(texte) = &c.shape {
+                peint.push_str(texte.galley.text());
+                peint.push('|');
+            }
+        }
+        out.textures_delta.clear();
+    }
+    assert!(
+        peint.contains("Éditeur binaire"),
+        "le titre du panneau :\n{peint}"
+    );
+    assert!(
+        peint.contains("00000000"),
+        "le décalage de la première ligne :\n{peint}"
+    );
+    assert!(peint.contains("7f"), "la magie ELF en tête :\n{peint}");
+    assert!(
+        peint.contains("ELF"),
+        "la colonne de texte lit « ELF » :\n{peint}"
+    );
+}
+
 /// Le manuel nomme chaque panneau d'analyse comme l'écran le nomme.
 ///
 /// Le lecteur cherche dans l'interface le nom qu'il vient de lire. Le

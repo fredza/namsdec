@@ -1235,6 +1235,16 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "C'est la réponse à « ces octets-là, qu'est-ce que c'est ? » — un "
          "bloc à 7,9 bits par octet est chiffré ou compressé, un bloc à "
          "4,5 est du code. Cliquer un octet pose le début de la tranche.",
+         "<b>Éditeur binaire</b> — le fichier en grille hexadécimale, octet par octet, avec "
+         "sa colonne de texte. On clique un octet, on en pose un autre : remplacer "
+         "<font face=\'Courier\'>75</font> (jne) par <font face=\'Courier\'>74</font> (je) "
+         "fait lire ce que le programme ferait de l\'autre côté du saut. Ce qu\'on a touché "
+         "porte un fond, pour le retrouver. Chaque écriture <b>se défait</b> depuis "
+         "Outils › Correctifs, avec l\'octet d\'avant, et <b>rien n\'atteint le disque</b> "
+         "tant qu\'on n\'enregistre pas soi-même, vers un fichier qu\'on choisit — jamais "
+         "par-dessus l\'original. C\'est un début : éditer plusieurs octets d\'un coup et "
+         "insérer viendront ensuite, l\'insertion avec sa prudence propre, car elle décale "
+         "tout ce qui suit et chaque adresse du fichier deviendrait fausse.",
          "<b>Entropie</b> — combien de bits d'information porte un octet, sur tout le "
          "fichier puis par tranches. C'est ce qui répond avant tout le reste à « y a-t-il "
          "seulement quelque chose à lire ici ? » : un binaire empaqueté montre un petit "

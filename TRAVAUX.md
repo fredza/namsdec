@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **7 octobre
-2026**, version 0.2.8-beta.1, 1 101 tests au vert.
+2026**, version 0.2.8-beta.1, 1 105 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -55,6 +55,26 @@ Cinq demandes de Fred, sur captures.
       règle YARA du binaire (chaînes distinctives sans le bruit de
       bibliothèque, nombre magique, empreinte en méta, seuil prudent), à
       coller dans un `.yar`. Contrôles : `the_rule_is_well_formed` & co.
+
+### Éditeur binaire (7 octobre)
+
+- [x] **Début de l'éditeur binaire dans l'onglet RE** — nouveau module
+      `HexEditorModule` (« Éditeur binaire »). Le fichier en grille
+      hexadécimale (décalage · 16 octets · colonne de texte), navigable
+      par page et par « Aller à ». On clique un octet, on en pose un
+      autre : `75` (jne) → `74` (je) pour lire l'autre côté du saut. Ce
+      qu'on a touché porte un fond. Chaque écriture passe par le journal
+      des correctifs (réversible, Outils › Correctifs), et rien n'atteint
+      le disque sans enregistrement explicite, vers un fichier choisi —
+      jamais par-dessus l'original. Première version : l'édition multiple
+      et l'insertion (qui décale les adresses) viendront ensuite.
+      Contrôles : les trois de `hex_editor_module` +
+      `l_editeur_binaire_dispose_le_fichier_en_grille`.
+- [ ] **À noter** : après un patch, `load_elf` ne rappelle pas
+      `on_binary_loaded`, donc les analyses mises en cache (empreintes,
+      entropie, YARA, « En bref ») restent celles d'AVANT le patch jusqu'au
+      prochain assemblage. À corriger : rafraîchir l'analyse après une
+      écriture.
 
 ### Passe de vérification (7 octobre)
 
