@@ -30,6 +30,11 @@ pub struct HexEditorModule {
     /// Les octets qu'on a modifiés depuis l'ouverture de ce binaire, pour
     /// les montrer autrement. Remis à zéro au chargement d'un fichier.
     touchés: std::collections::BTreeSet<usize>,
+    /// Ce qu'on cherche, et comment : en octets hexadécimaux, ou en texte.
+    recherche: String,
+    recherche_hex: bool,
+    /// La dernière trouvaille, surlignée dans la grille.
+    trouvé: Option<std::ops::Range<usize>>,
     demande: Option<ReRequest>,
 }
 
@@ -81,6 +86,7 @@ impl ReModule for HexEditorModule {
         self.touchés.clear();
         self.choisi = None;
         self.page = 0;
+        self.trouvé = None;
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
@@ -145,10 +151,79 @@ impl ReModule for HexEditorModule {
             ui.weak(format!("{} {}", octets.len(), ctx.t("octets", "bytes")));
         });
 
+        // La recherche : un motif en octets ou en texte, trouvé en avant
+        // ou en arrière, et la trouvaille surlignée.
+        ui.add_space(4.0);
+        let mut cherche: Option<bool> = None; // Some(précédent)
+        ui.horizontal_wrapped(|ui| {
+            ui.weak(ctx.t("Chercher", "Find"));
+            let champ = ui.add(
+                egui::TextEdit::singleline(&mut self.recherche)
+                    .hint_text(if self.recherche_hex {
+                        "7f 45 4c 46"
+                    } else {
+                        "ELF"
+                    })
+                    .font(egui::TextStyle::Monospace)
+                    .desired_width(160.0),
+            );
+            let entrée = champ.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+            ui.selectable_value(&mut self.recherche_hex, false, ctx.t("texte", "text"));
+            ui.selectable_value(&mut self.recherche_hex, true, "hex");
+            if ui
+                .button("▶")
+                .on_hover_text(ctx.t("Suivant", "Next"))
+                .clicked()
+                || entrée
+            {
+                cherche = Some(false);
+            }
+            if ui
+                .button("◀")
+                .on_hover_text(ctx.t("Précédent", "Previous"))
+                .clicked()
+            {
+                cherche = Some(true);
+            }
+        });
+        if let Some(précédent) = cherche {
+            match motif(&self.recherche, self.recherche_hex) {
+                None => {
+                    self.trouvé = None;
+                    ui.weak(ctx.t(
+                        "Rien à chercher : un texte, ou des octets hexadécimaux par paires.",
+                        "Nothing to search: a text, or hexadecimal bytes in pairs.",
+                    ));
+                }
+                Some(m) => {
+                    // D'où l'on repart : après l'octet choisi pour « suivant »,
+                    // depuis lui pour « précédent ».
+                    let depuis = match self.choisi {
+                        Some(c) if !précédent => c + 1,
+                        Some(c) => c,
+                        None => 0,
+                    };
+                    match trouver(octets, &m, depuis, précédent) {
+                        Some(pos) => {
+                            self.trouvé = Some(pos..pos + m.len());
+                            self.choisi = Some(pos);
+                            self.valeur = format!("{:02x}", octets[pos]);
+                            self.page = pos / PAR_PAGE * PAR_PAGE;
+                        }
+                        None => {
+                            self.trouvé = None;
+                            ui.weak(ctx.t("Introuvable.", "Not found."));
+                        }
+                    }
+                }
+            }
+        }
+
         ui.add_space(6.0);
         let visuals = ui.visuals().clone();
         let fond_choisi = visuals.selection.bg_fill;
         let fond_touché = visuals.warn_fg_color.gamma_multiply(0.30);
+        let fond_trouvé = visuals.hyperlink_color.gamma_multiply(0.35);
         let mut nouveau_choix: Option<usize> = None;
         let glyphe = egui::TextStyle::Monospace.resolve(ui.style());
 
@@ -179,6 +254,8 @@ impl ReModule for HexEditorModule {
                                     egui::RichText::new(format!("{:02x}", octets[off])).monospace();
                                 if Some(off) == self.choisi {
                                     texte = texte.background_color(fond_choisi);
+                                } else if self.trouvé.as_ref().is_some_and(|r| r.contains(&off)) {
+                                    texte = texte.background_color(fond_trouvé);
                                 } else if self.touchés.contains(&off) {
                                     texte = texte.background_color(fond_touché);
                                 }
@@ -309,6 +386,53 @@ impl ReModule for HexEditorModule {
     }
 }
 
+/// Lit ce qu'on cherche : une suite d'octets hexadécimaux (« 7f 45 4c »
+/// ou « 7f454c »), ou un texte pris tel quel. Rien pour une saisie vide
+/// ou un hexadécimal impair — on ne devine pas un demi-octet.
+fn motif(query: &str, hex: bool) -> Option<Vec<u8>> {
+    let q = query.trim();
+    if q.is_empty() {
+        return None;
+    }
+    if !hex {
+        return Some(q.as_bytes().to_vec());
+    }
+    let nettoyé: String = q.chars().filter(|c| !c.is_whitespace()).collect();
+    if nettoyé.is_empty() || !nettoyé.len().is_multiple_of(2) {
+        return None;
+    }
+    let octets = nettoyé.as_bytes();
+    let mut out = Vec::with_capacity(octets.len() / 2);
+    let mut i = 0;
+    while i < octets.len() {
+        let paire = std::str::from_utf8(&octets[i..i + 2]).ok()?;
+        out.push(u8::from_str_radix(paire, 16).ok()?);
+        i += 2;
+    }
+    Some(out)
+}
+
+/// Cherche le motif dans les octets, à partir de `depuis`, dans un sens ou
+/// l'autre. Revient au début (ou à la fin) quand il n'y a plus rien devant
+/// — chercher à nouveau fait le tour, comme dans un éditeur.
+fn trouver(octets: &[u8], motif: &[u8], depuis: usize, précédent: bool) -> Option<usize> {
+    if motif.is_empty() || motif.len() > octets.len() {
+        return None;
+    }
+    let dernier = octets.len() - motif.len();
+    let occupe = |i: usize| &octets[i..i + motif.len()] == motif;
+    if précédent {
+        (0..=dernier)
+            .rev()
+            .find(|&i| i < depuis && occupe(i))
+            .or_else(|| (0..=dernier).rev().find(|&i| occupe(i)))
+    } else {
+        (depuis..=dernier)
+            .find(|&i| occupe(i))
+            .or_else(|| (0..=dernier).find(|&i| occupe(i)))
+    }
+}
+
 /// L'inspecteur de données : comment lire les octets à partir du curseur,
 /// dans les formats qu'un désassembleur rencontre. C'est l'outil phare de
 /// 010 Editor, et le plus pédagogique — « ces quatre octets, c'est ce
@@ -378,6 +502,42 @@ mod tests {
     /// n'hérite pas des marques de l'ancien.
     /// L'inspecteur lit les octets dans chaque format, en petit-boutien,
     /// et ne propose que les largeurs qui tiennent dans ce qui reste.
+    #[test]
+    fn un_motif_se_lit_en_hex_ou_en_texte() {
+        assert_eq!(motif("ELF", false), Some(b"ELF".to_vec()));
+        assert_eq!(
+            motif("7f 45 4c 46", true),
+            Some(vec![0x7f, 0x45, 0x4c, 0x46])
+        );
+        assert_eq!(motif("7f454c46", true), Some(vec![0x7f, 0x45, 0x4c, 0x46]));
+        // Un demi-octet ne se devine pas.
+        assert_eq!(motif("7f4", true), None);
+        assert_eq!(motif("zz", true), None);
+        assert_eq!(motif("   ", false), None);
+    }
+
+    /// La recherche va en avant, en arrière, et fait le tour quand il n'y
+    /// a plus rien devant — comme dans un éditeur.
+    #[test]
+    fn la_recherche_trouve_et_fait_le_tour() {
+        let octets = b"ab_ab_ab"; // 'ab' en 0, 3, 6
+        let m = b"ab";
+        // En avant depuis 0 : la première.
+        assert_eq!(trouver(octets, m, 0, false), Some(0));
+        // En avant depuis 1 : la suivante.
+        assert_eq!(trouver(octets, m, 1, false), Some(3));
+        // En avant après la dernière : on fait le tour, retour à 0.
+        assert_eq!(trouver(octets, m, 7, false), Some(0));
+        // En arrière depuis 6 : la précédente.
+        assert_eq!(trouver(octets, m, 6, true), Some(3));
+        // En arrière depuis 0 : le tour, la dernière.
+        assert_eq!(trouver(octets, m, 0, true), Some(6));
+        // Un motif plus long que le fichier : rien.
+        assert_eq!(trouver(b"x", m, 0, false), None);
+        // Absent.
+        assert_eq!(trouver(octets, b"zz", 0, false), None);
+    }
+
     #[test]
     fn l_inspecteur_lit_chaque_format() {
         let trouve = |lectures: &[(&str, String)], nom: &str| {

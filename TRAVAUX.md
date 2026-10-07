@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **7 octobre
-2026**, version 0.2.8-beta.1, 1 106 tests au vert.
+2026**, version 0.2.8-beta.1, 1 108 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -76,7 +76,13 @@ Cinq demandes de Fred, sur captures.
       Chaque lecture se copie d'un clic. Contrôle :
       `l_inspecteur_lit_chaque_format`. Reste vers 010 Editor : frappe en
       place dans la grille, édition de la colonne de texte, curseur aux
-      flèches, bascule gros-boutien.
+flèches, bascule gros-boutien.
+- [x] **Éditeur binaire — la recherche** — un motif en texte (« ELF ») ou
+      en octets hexadécimaux (`7f 45 4c 46`), en avant ou en arrière, qui
+      fait le tour, trouvaille surlignée. Fonctions pures `motif` et
+      `trouver`. Contrôles : `un_motif_se_lit_en_hex_ou_en_texte`,
+      `la_recherche_trouve_et_fait_le_tour`. (Étudié d'après 010 Editor
+      16.0.4, dont on s'inspire des fonctions — jamais du code.)
 - [x] **Commentaire périmé de `flags_ui` corrigé** — il disait encore
       « chacune se bascule d'un clic » depuis que les flags sont en
       lecture seule. (L'édition de registres, elle, est gardée — choix de

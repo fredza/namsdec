@@ -1252,6 +1252,10 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "faible d\'abord, ce qui déroute tant qu\'on ne l\'a pas vu une fois : "
          "<font face=\'Courier\'>00 01</font> se lit 256, pas 1. Chaque lecture se copie "
          "d\'un clic.",
+         "On y <b>cherche</b> aussi : un texte (« ELF »), ou une suite d\'octets en "
+         "hexadécimal (<font face=\'Courier\'>7f 45 4c 46</font>), en avant ou en arrière. "
+         "La recherche fait le tour quand il n\'y a plus rien devant, et la trouvaille est "
+         "surlignée — on saute d\'une occurrence à la suivante comme dans un éditeur.",
          "<b>Entropie</b> — combien de bits d'information porte un octet, sur tout le "
          "fichier puis par tranches. C'est ce qui répond avant tout le reste à « y a-t-il "
          "seulement quelque chose à lire ici ? » : un binaire empaqueté montre un petit "
