@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **7 octobre
-2026**, version 0.2.8-beta.1, 1 109 tests au vert.
+2026**, version 0.2.8-beta.1, 1 110 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -83,6 +83,13 @@ flèches, bascule gros-boutien.
       `trouver`. Contrôles : `un_motif_se_lit_en_hex_ou_en_texte`,
       `la_recherche_trouve_et_fait_le_tour`. (Étudié d'après 010 Editor
       16.0.4, dont on s'inspire des fonctions — jamais du code.)
+- [x] **Éditeur binaire — clavier (façon 010 Editor)** — un octet choisi,
+      les flèches déplacent le curseur (←→, ↑↓ d'une ligne, Page), et les
+      chiffres hexa l'écrivent en place, quartet par quartet (7 puis 4 →
+      74, avance tout seul). Échap annule un quartet. N'agit que si aucun
+      champ de texte n'a le focus. Logique pure `frapper`, testée. Reste
+      vers 010 Editor : édition de la colonne de texte, bascule
+      gros-boutien.
 - [x] **Commentaire périmé de `flags_ui` corrigé** — il disait encore
       « chacune se bascule d'un clic » depuis que les flags sont en
       lecture seule. (L'édition de registres, elle, est gardée — choix de

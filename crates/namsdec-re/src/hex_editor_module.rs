@@ -33,6 +33,9 @@ pub struct HexEditorModule {
     /// Ce qu'on cherche, et comment : en octets hexadécimaux, ou en texte.
     recherche: String,
     recherche_hex: bool,
+    /// La frappe en place : le demi-octet de poids fort déjà tapé, en
+    /// attente du second. `None` quand on n'a rien commencé.
+    nibble: Option<u8>,
     /// La dernière trouvaille, surlignée dans la grille.
     trouvé: Option<std::ops::Range<usize>>,
     demande: Option<ReRequest>,
@@ -299,6 +302,97 @@ impl ReModule for HexEditorModule {
         if let Some(off) = nouveau_choix {
             self.choisi = Some(off);
             self.valeur = format!("{:02x}", octets[off]);
+            self.nibble = None;
+        }
+
+        // Le clavier, quand un octet est choisi et qu'aucun champ de texte
+        // n'a le focus (sinon la frappe irait à « Chercher » ou « Aller
+        // à »). Les flèches déplacent le curseur ; les chiffres hexa le
+        // changent en place, par quartets, comme dans un éditeur hexa.
+        if let Some(off) = self.choisi
+            && ui.memory(|m| m.focused()).is_none()
+        {
+            let dernier = octets.len().saturating_sub(1);
+            let mut bascule: Option<usize> = None;
+            let mut chiffre: Option<u8> = None;
+            let mut annule = false;
+            ui.input_mut(|i| {
+                use egui::Key;
+                let rien = egui::Modifiers::NONE;
+                if i.consume_key(rien, Key::ArrowRight) {
+                    bascule = Some((off + 1).min(dernier));
+                } else if i.consume_key(rien, Key::ArrowLeft) {
+                    bascule = Some(off.saturating_sub(1));
+                } else if i.consume_key(rien, Key::ArrowDown) {
+                    bascule = Some((off + PAR_LIGNE).min(dernier));
+                } else if i.consume_key(rien, Key::ArrowUp) {
+                    bascule = Some(off.saturating_sub(PAR_LIGNE));
+                } else if i.consume_key(rien, Key::PageDown) {
+                    bascule = Some((off + PAR_PAGE).min(dernier));
+                } else if i.consume_key(rien, Key::PageUp) {
+                    bascule = Some(off.saturating_sub(PAR_PAGE));
+                } else if i.consume_key(rien, Key::Escape) {
+                    annule = true;
+                } else {
+                    // Un chiffre hexadécimal ?
+                    for (k, v) in [
+                        (Key::Num0, 0u8),
+                        (Key::Num1, 1),
+                        (Key::Num2, 2),
+                        (Key::Num3, 3),
+                        (Key::Num4, 4),
+                        (Key::Num5, 5),
+                        (Key::Num6, 6),
+                        (Key::Num7, 7),
+                        (Key::Num8, 8),
+                        (Key::Num9, 9),
+                        (Key::A, 10),
+                        (Key::B, 11),
+                        (Key::C, 12),
+                        (Key::D, 13),
+                        (Key::E, 14),
+                        (Key::F, 15),
+                    ] {
+                        if i.consume_key(rien, k) {
+                            chiffre = Some(v);
+                            break;
+                        }
+                    }
+                }
+            });
+            if annule {
+                self.nibble = None;
+            }
+            if let Some(cible) = bascule {
+                self.choisi = Some(cible);
+                self.valeur = format!("{:02x}", octets[cible]);
+                self.nibble = None;
+                // Suivre le curseur : s'il sort de la page, on tourne.
+                if cible < self.page || cible >= self.page + PAR_PAGE {
+                    self.page = cible / PAR_PAGE * PAR_PAGE;
+                }
+            }
+            if let Some(d) = chiffre {
+                let (attente, complet) = frapper(self.nibble, d);
+                self.nibble = attente;
+                // L'octet est complet : on l'écrit et l'on avance — la
+                // frappe continue toute seule, quartet après quartet.
+                if let Some(valeur) = complet {
+                    if octets.get(off).copied() != Some(valeur) {
+                        self.demande = Some(ReRequest::PatchBytes {
+                            offset: off,
+                            bytes: vec![valeur],
+                        });
+                        self.touchés.insert(off);
+                    }
+                    let suivant = (off + 1).min(dernier);
+                    self.choisi = Some(suivant);
+                    self.valeur = format!("{:02x}", octets.get(suivant).copied().unwrap_or(0));
+                    if suivant >= self.page + PAR_PAGE {
+                        self.page = suivant / PAR_PAGE * PAR_PAGE;
+                    }
+                }
+            }
         }
 
         // L'octet choisi, et de quoi le remplacer.
@@ -341,6 +435,19 @@ impl ReModule for HexEditorModule {
                 ui.weak(ctx.t(
                     "Un octet en hexadécimal : de « 0 » à « ff ».",
                     "One byte in hexadecimal: from \"0\" to \"ff\".",
+                ));
+            }
+            // La frappe en place : le quartet déjà tapé, en attente du
+            // second, et l'indice pour qui ne connaît pas le geste.
+            if let Some(haut) = self.nibble {
+                ui.weak(
+                    egui::RichText::new(format!("{}{haut:x}_", ctx.t("frappe : ", "typing: ")))
+                        .monospace(),
+                );
+            } else {
+                ui.weak(ctx.t(
+                    "Flèches pour se déplacer, chiffres hexa pour écrire en place.",
+                    "Arrows to move, hex digits to type in place.",
                 ));
             }
 
@@ -475,6 +582,18 @@ fn inspecter(octets: &[u8]) -> Vec<(&'static str, String)> {
     out
 }
 
+/// Applique un chiffre hexadécimal à la frappe en place.
+///
+/// Rend le nouvel état d'attente et, quand l'octet est complet, la valeur
+/// à écrire. Premier quartet : on le garde (poids fort), rien à écrire.
+/// Second : l'octet est `haut<<4 | bas`, et l'attente retombe.
+fn frapper(nibble: Option<u8>, chiffre: u8) -> (Option<u8>, Option<u8>) {
+    match nibble {
+        None => (Some(chiffre), None),
+        Some(haut) => (None, Some((haut << 4) | chiffre)),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -502,6 +621,21 @@ mod tests {
     /// n'hérite pas des marques de l'ancien.
     /// L'inspecteur lit les octets dans chaque format, en petit-boutien,
     /// et ne propose que les largeurs qui tiennent dans ce qui reste.
+    /// La frappe en place assemble l'octet quartet par quartet.
+    #[test]
+    fn la_frappe_assemble_l_octet_par_quartets() {
+        // Rien tapé : le premier chiffre devient le quartet de poids fort,
+        // rien n'est encore écrit.
+        assert_eq!(frapper(None, 0x9), (Some(0x9), None));
+        // Un quartet en attente : le second complète l'octet, l'attente
+        // retombe. 0x9 puis 0x0 -> 0x90.
+        assert_eq!(frapper(Some(0x9), 0x0), (None, Some(0x90)));
+        // 0x7 puis 0x4 -> 0x74 (je).
+        assert_eq!(frapper(Some(0x7), 0x4), (None, Some(0x74)));
+        // 0x0 puis 0xf -> 0x0f.
+        assert_eq!(frapper(Some(0x0), 0xf), (None, Some(0x0f)));
+    }
+
     #[test]
     fn un_motif_se_lit_en_hex_ou_en_texte() {
         assert_eq!(motif("ELF", false), Some(b"ELF".to_vec()));
