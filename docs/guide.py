@@ -1245,6 +1245,13 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "par-dessus l\'original. C\'est un début : éditer plusieurs octets d\'un coup et "
          "insérer viendront ensuite, l\'insertion avec sa prudence propre, car elle décale "
          "tout ce qui suit et chaque adresse du fichier deviendrait fausse.",
+         "Sous l\'octet choisi, un <b>inspecteur</b> — comme celui de 010 Editor — lit les "
+         "octets à partir de là dans chaque format : <font face=\'Courier\'>int8</font> à "
+         "<font face=\'Courier\'>int64</font>, signés et non signés, flottants, caractère, "
+         "et les huit bits de l\'octet. En petit-boutien, celui du x86 — l\'octet de poids "
+         "faible d\'abord, ce qui déroute tant qu\'on ne l\'a pas vu une fois : "
+         "<font face=\'Courier\'>00 01</font> se lit 256, pas 1. Chaque lecture se copie "
+         "d\'un clic.",
          "<b>Entropie</b> — combien de bits d'information porte un octet, sur tout le "
          "fichier puis par tranches. C'est ce qui répond avant tout le reste à « y a-t-il "
          "seulement quelque chose à lire ici ? » : un binaire empaqueté montre un petit "

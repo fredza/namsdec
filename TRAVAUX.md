@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **7 octobre
-2026**, version 0.2.8-beta.1, 1 105 tests au vert.
+2026**, version 0.2.8-beta.1, 1 106 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -70,6 +70,17 @@ Cinq demandes de Fred, sur captures.
       et l'insertion (qui décale les adresses) viendront ensuite.
       Contrôles : les trois de `hex_editor_module` +
       `l_editeur_binaire_dispose_le_fichier_en_grille`.
+- [x] **Éditeur binaire — l'inspecteur de données (façon 010 Editor)** —
+      sous l'octet choisi, les octets lus dans chaque format : int8…int64
+      signés/non signés, flottants, caractère, bits, en petit-boutien.
+      Chaque lecture se copie d'un clic. Contrôle :
+      `l_inspecteur_lit_chaque_format`. Reste vers 010 Editor : frappe en
+      place dans la grille, édition de la colonne de texte, curseur aux
+      flèches, bascule gros-boutien.
+- [x] **Commentaire périmé de `flags_ui` corrigé** — il disait encore
+      « chacune se bascule d'un clic » depuis que les flags sont en
+      lecture seule. (L'édition de registres, elle, est gardée — choix de
+      Fred : c'est le `set \$reg` de gdb, réversible par Step Back.)
 - [ ] **À noter** : après un patch, `load_elf` ne rappelle pas
       `on_binary_loaded`, donc les analyses mises en cache (empreintes,
       entropie, YARA, « En bref ») restent celles d'AVANT le patch jusqu'au

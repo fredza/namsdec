@@ -1564,9 +1564,11 @@ impl NamsdecApp {
     /// Leur place : la barre de titre est toujours visible et ne défile
     /// jamais, là où le panneau d'état se replie et se fait pousser. Les
     /// y mettre, c'est les avoir sous les yeux à chaque pas, à côté du nom
-    /// du fichier. Chacune se bascule d'un clic (« et si ZF valait 1 ? »),
-    /// clignote en orange quand elle change, et se présente en entier au
-    /// survol.
+    /// du fichier. Ce sont de simples témoins — on les lit, on ne les
+    /// règle pas : ils disent ce que la dernière instruction a produit.
+    /// Chacun clignote en orange quand il change, et se présente en entier
+    /// au survol. (Les registres, eux, s'éditent à la main : voir
+    /// `set_register`.)
     pub(crate) fn flags_ui(&mut self, ui: &mut egui::Ui) {
         let theme = self.theme;
         // Les sept s'affichent TOUJOURS, même avant d'assembler : au repos

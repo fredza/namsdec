@@ -266,6 +266,39 @@ impl ReModule for HexEditorModule {
                     "One byte in hexadecimal: from \"0\" to \"ff\".",
                 ));
             }
+
+            // L'inspecteur : les octets à partir d'ici, lus dans chaque
+            // format. Petit-boutien, celui du x86.
+            let reste = &octets[off..];
+            let lectures = inspecter(reste);
+            if !lectures.is_empty() {
+                ui.add_space(6.0);
+                ui.weak(ctx.t(
+                    "Lu à partir d'ici (petit-boutien) :",
+                    "Read from here (little-endian):",
+                ));
+                egui::Grid::new("hex_inspecteur")
+                    .num_columns(2)
+                    .min_col_width(0.0)
+                    .spacing([16.0, 2.0])
+                    .striped(true)
+                    .show(ui, |ui| {
+                        for (nom, valeur) in lectures {
+                            ui.weak(nom);
+                            if ui
+                                .add(
+                                    egui::Label::new(egui::RichText::new(&valeur).monospace())
+                                        .sense(egui::Sense::click()),
+                                )
+                                .on_hover_text(ctx.t("Cliquer pour copier", "Click to copy"))
+                                .clicked()
+                            {
+                                ui.ctx().copy_text(valeur);
+                            }
+                            ui.end_row();
+                        }
+                    });
+            }
         } else {
             ui.add_space(4.0);
             ui.weak(ctx.t(
@@ -274,6 +307,48 @@ impl ReModule for HexEditorModule {
             ));
         }
     }
+}
+
+/// L'inspecteur de données : comment lire les octets à partir du curseur,
+/// dans les formats qu'un désassembleur rencontre. C'est l'outil phare de
+/// 010 Editor, et le plus pédagogique — « ces quatre octets, c'est ce
+/// nombre-là ». En petit-boutien (`LE`), celui du x86 : l'octet de poids
+/// faible d'abord, ce qui déroute tant qu'on ne l'a pas vu une fois.
+///
+/// Fonction libre, pour l'éprouver sans interface.
+fn inspecter(octets: &[u8]) -> Vec<(&'static str, String)> {
+    let mut out = Vec::new();
+    let Some(&b) = octets.first() else {
+        return out;
+    };
+    out.push(("int8", (b as i8).to_string()));
+    out.push(("uint8", b.to_string()));
+    out.push(("binaire", format!("{b:08b}")));
+    out.push((
+        "caractère",
+        if (0x20..0x7f).contains(&b) {
+            (b as char).to_string()
+        } else {
+            "·".to_owned()
+        },
+    ));
+    if let Ok(deux) = <[u8; 2]>::try_from(&octets[..2.min(octets.len())]) {
+        out.push(("int16 LE", i16::from_le_bytes(deux).to_string()));
+        out.push(("uint16 LE", u16::from_le_bytes(deux).to_string()));
+    }
+    if octets.len() >= 4 {
+        let quatre = <[u8; 4]>::try_from(&octets[..4]).unwrap();
+        out.push(("int32 LE", i32::from_le_bytes(quatre).to_string()));
+        out.push(("uint32 LE", u32::from_le_bytes(quatre).to_string()));
+        out.push(("float32 LE", format!("{}", f32::from_le_bytes(quatre))));
+    }
+    if octets.len() >= 8 {
+        let huit = <[u8; 8]>::try_from(&octets[..8]).unwrap();
+        out.push(("int64 LE", i64::from_le_bytes(huit).to_string()));
+        out.push(("uint64 LE", u64::from_le_bytes(huit).to_string()));
+        out.push(("float64 LE", format!("{}", f64::from_le_bytes(huit))));
+    }
+    out
 }
 
 #[cfg(test)]
@@ -301,6 +376,41 @@ mod tests {
 
     /// Changer d'octet oublie ce qu'on avait touché : un nouveau fichier
     /// n'hérite pas des marques de l'ancien.
+    /// L'inspecteur lit les octets dans chaque format, en petit-boutien,
+    /// et ne propose que les largeurs qui tiennent dans ce qui reste.
+    #[test]
+    fn l_inspecteur_lit_chaque_format() {
+        let trouve = |lectures: &[(&str, String)], nom: &str| {
+            lectures
+                .iter()
+                .find(|(n, _)| *n == nom)
+                .map(|(_, v)| v.clone())
+        };
+
+        // 0x01 suivi de zéros : 1 dans toutes les largeurs non signées.
+        let l = inspecter(&[0x01, 0, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(trouve(&l, "uint8").as_deref(), Some("1"));
+        assert_eq!(trouve(&l, "uint16 LE").as_deref(), Some("1"));
+        assert_eq!(trouve(&l, "uint32 LE").as_deref(), Some("1"));
+        assert_eq!(trouve(&l, "uint64 LE").as_deref(), Some("1"));
+
+        // 0xff seul : -1 signé, 255 non signé, et les bits.
+        let l = inspecter(&[0xff]);
+        assert_eq!(trouve(&l, "int8").as_deref(), Some("-1"));
+        assert_eq!(trouve(&l, "uint8").as_deref(), Some("255"));
+        assert_eq!(trouve(&l, "binaire").as_deref(), Some("11111111"));
+        // Un seul octet : pas de largeur de 16 bits ou plus.
+        assert!(trouve(&l, "int16 LE").is_none());
+        assert!(trouve(&l, "uint32 LE").is_none());
+
+        // Petit-boutien : 0x00 0x01 = 256, et non 1.
+        let l = inspecter(&[0x00, 0x01]);
+        assert_eq!(trouve(&l, "uint16 LE").as_deref(), Some("256"));
+
+        // Rien à lire sur rien.
+        assert!(inspecter(&[]).is_empty());
+    }
+
     #[test]
     fn un_nouveau_binaire_efface_les_marques() {
         use namsdec_core::{Cpu, Memory};
