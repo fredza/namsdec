@@ -79,6 +79,7 @@ use namsdec_re::{
     BinaryInfoModule, CallGraphModule, DigestModule, DumpModule, EntropyModule, FunctionsModule,
     GadgetsModule, ImportsModule, MapModule, PatternsModule, ProtectionsModule, ReContext,
     ReModuleRegistry, SignalsModule, SlackModule, StringsModule, SyscallsModule, XrefsModule,
+    YaraModule,
 };
 use namsdec_theme::Theme;
 
@@ -1663,6 +1664,10 @@ impl Default for NamsdecApp {
         // dit (ses chaînes), ce qu'il demande au système, puis comment il
         // est découpé.
         re_registry.register(Box::new(StringsModule::default()));
+        // Le geste qui suit l'analyse : une règle YARA pour retrouver les
+        // frères de cet échantillon. Juste après les chaînes, car c'est
+        // d'elles qu'elle tire ses motifs.
+        re_registry.register(Box::new(YaraModule::default()));
         // Ce que le code *fait* de remarquable : les figures, rangées de
         // la plus rare à la plus commune. C'est ce classement qui fait
         // sortir une comparaison déguisée d'un binaire de soixante mille

@@ -1185,6 +1185,15 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "par ligne. Une forme reconnue n'est pas une intention : un chemin peut n'être "
          "qu'un exemple compilé dans un message d'aide, et la règle est écrite pour se "
          "taire plutôt que de se tromper.",
+         "<b>Règles YARA</b> — le geste qui suit l'analyse : une règle prête à coller dans "
+         "un fichier <font face='Courier'>.yar</font> pour retrouver les frères de cet "
+         "échantillon dans un tas. YARA est le langage que lisent les antivirus et les "
+         "plateformes d'échantillons. namsdec prend les chaînes les plus distinctives — en "
+         "écartant le bruit de bibliothèque, qui répondrait « oui » sur tout ELF compilé "
+         "par GCC —, y ajoute le nombre magique du format et l'empreinte en méta, et pose "
+         "un seuil prudent (un sous-ensemble des chaînes, non toutes, pour tenir une "
+         "famille sans la perdre au premier changement). C'est un <b>point de départ</b>, "
+         "pas un verdict : on la resserre ou on l'élargit, et un clic la copie.",
          "<b>Références croisées</b> — qui appelle quoi, qui saute où, qui désigne quelle "
          "adresse. Une adresse qu'un `call` vise est une fonction, même dépouillée de son "
          "nom. Chaque adresse se <b>clique pour y aller</b> dans le listing — la cible d'une "

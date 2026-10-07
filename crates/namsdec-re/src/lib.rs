@@ -45,6 +45,7 @@ pub mod syscalls;
 pub mod table;
 pub mod xrefs;
 mod xrefs_module;
+mod yara_module;
 
 pub use binary_info::BinaryInfoModule;
 pub use call_graph_module::CallGraphModule;
@@ -62,6 +63,7 @@ pub use slack_module::SlackModule;
 pub use strings::StringsModule;
 pub use syscalls::SyscallsModule;
 pub use xrefs_module::XrefsModule;
+pub use yara_module::YaraModule;
 
 use namsdec_core::Cpu;
 use namsdec_disasm::DecodedInstruction;
