@@ -1721,6 +1721,14 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "comme « seulement le chemin courant » du graphe de flot ou « seulement les pas "
          "remarquables » du déroulement. Un contrôle le vérifie en lisant le code qui "
          "bascule : un réglage neuf tombe sous la règle sans qu'on y pense."),
+        ("note",
+         "Tout ce que namsdec réécrit tout seul — les réglages, les raccourcis, les noms "
+         "que vous donnez aux fonctions d'un binaire — est remplacé <b>d'un bloc</b> : le "
+         "nouveau contenu est écrit à côté, poussé sur le disque, puis renommé par-dessus "
+         "l'ancien. À tout instant le fichier est l'ancien ou le nouveau, jamais un mélange. "
+         "Sans cela, une coupure de courant au mauvais moment laissait un fichier tronqué "
+         "— que la lecture suivante ne savait pas analyser, et remplaçait par les défauts "
+         "sans un mot. L'enregistrement de votre source suit la même règle."),
         ("p",
          "L'onglet <b>Modules</b> sépare deux choses qu'un même mot embrouillait : les "
          "<b>Composants</b> dont namsdec est fait — sains ou non, on ne les allume pas, on "

@@ -130,10 +130,12 @@ pub fn save(dir: &Path, fingerprint: &str, notes: &Notes) -> std::io::Result<()>
         }
         return Ok(());
     }
-    std::fs::create_dir_all(dir)?;
     let json =
         serde_json::to_string_pretty(notes).map_err(|e| std::io::Error::other(e.to_string()))?;
-    std::fs::write(chemin, json)
+    // Atomique : ce sont les noms que l'analyste a donnés aux fonctions,
+    // parfois des heures de lecture. Les reperdre sur une écriture coupée
+    // serait le pire des trois.
+    crate::write_atomically(&chemin, json.as_bytes())
 }
 
 #[cfg(test)]

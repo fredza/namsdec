@@ -27208,6 +27208,63 @@ fn opening_a_binary_lays_out_its_listing_once() {
     }
 }
 
+/// Un fichier que namsdec réécrit n'est jamais laissé à moitié remplacé.
+///
+/// `fs::write` tronque puis écrit : une coupure entre les deux laissait
+/// un `settings.json` vide — donc illisible, donc remplacé par les
+/// défauts au lancement suivant, en silence. Le même piège guettait les
+/// raccourcis, les noms donnés aux fonctions d'un binaire, et le source
+/// de l'utilisateur.
+///
+/// On ne peut pas couper le courant dans un contrôle ; on vérifie donc ce
+/// qui en découle : le remplacement a bien eu lieu, et rien de provisoire
+/// ne traîne à côté — un `.tmp` oublié dans le dossier de configuration
+/// serait la trace d'un renommage qui n'a pas eu lieu.
+#[test]
+fn un_fichier_reecrit_est_remplace_d_un_bloc() {
+    let dossier = tempfile::tempdir().expect("un dossier temporaire");
+    let cible = dossier.path().join("creux").join("reglages.json");
+
+    // Le dossier manquant est créé au passage.
+    crate::write_atomically(&cible, b"premier").expect("premiere ecriture");
+    assert_eq!(std::fs::read_to_string(&cible).unwrap(), "premier");
+
+    // Remplacement par un contenu PLUS COURT : c'est le cas qui révélait
+    // une troncature mal faite, l'ancien texte dépassant du nouveau.
+    crate::write_atomically(&cible, b"court").expect("remplacement");
+    assert_eq!(std::fs::read_to_string(&cible).unwrap(), "court");
+
+    // Et plus long, pour l'autre sens.
+    crate::write_atomically(&cible, b"un contenu nettement plus long").expect("remplacement");
+    assert_eq!(
+        std::fs::read_to_string(&cible).unwrap(),
+        "un contenu nettement plus long"
+    );
+
+    // Rien de provisoire n'est resté dans le dossier.
+    let restes: Vec<String> = std::fs::read_dir(cible.parent().unwrap())
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|nom| nom != "reglages.json")
+        .collect();
+    assert!(
+        restes.is_empty(),
+        "un fichier provisoire a survécu au renommage : {restes:?}"
+    );
+
+    // Une écriture qui échoue laisse l'ancien contenu intact : on vise un
+    // chemin dont le parent est un FICHIER, ce qu'aucun dossier ne peut
+    // être — l'ancien fichier, lui, ne doit pas en souffrir.
+    let impossible = cible.join("sous-le-fichier.json");
+    assert!(crate::write_atomically(&impossible, b"perdu").is_err());
+    assert_eq!(
+        std::fs::read_to_string(&cible).unwrap(),
+        "un contenu nettement plus long",
+        "une écriture impossible ne doit toucher à rien"
+    );
+}
+
 /// Tout réglage que l'interface bascule se retrouve dans `settings.json`.
 ///
 /// La règle est posée : un paramètre réglé par l'utilisateur est gardé

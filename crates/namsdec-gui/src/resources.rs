@@ -167,3 +167,56 @@ pub(crate) fn load_installed_themes() -> (BTreeMap<String, PathBuf>, Vec<String>
     }
     (files, failures)
 }
+
+/// Écrit un fichier sans jamais laisser l'ancien à moitié remplacé.
+///
+/// `fs::write` tronque d'abord et écrit ensuite : une coupure de courant,
+/// un disque plein ou un processus tué entre les deux laissent un fichier
+/// vide ou coupé en son milieu. Pour ce que namsdec réécrit tout seul —
+/// les réglages, les raccourcis, les noms donnés aux fonctions d'un
+/// binaire —, cela veut dire **tout perdre sans un mot** : la lecture
+/// suivante ne sait pas analyser ce qui reste et retombe sur les défauts,
+/// qu'on réenregistre aussitôt par-dessus.
+///
+/// On écrit donc à côté, dans le **même dossier** — un renommage n'est
+/// atomique qu'à l'intérieur d'un système de fichiers —, on force les
+/// octets sur le disque, puis on renomme par-dessus. À tout instant, le
+/// fichier est l'ancien ou le nouveau, jamais un mélange des deux.
+pub(crate) fn write_atomically(chemin: &Path, contenu: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+
+    if let Some(dossier) = chemin.parent()
+        && !dossier.as_os_str().is_empty()
+    {
+        std::fs::create_dir_all(dossier)?;
+    }
+    // Sans nom de fichier, il n'y a rien à remplacer proprement : on
+    // laisse l'écriture ordinaire répondre ce qu'elle répondra.
+    let Some(nom) = chemin.file_name() else {
+        return std::fs::write(chemin, contenu);
+    };
+    // Le numéro du processus distingue deux namsdec qui enregistreraient
+    // en même temps, et le point initial range le fichier hors de vue le
+    // temps qu'il existe.
+    let mut provisoire = std::ffi::OsString::from(".");
+    provisoire.push(nom);
+    provisoire.push(format!(".{}.tmp", std::process::id()));
+    let provisoire = chemin.with_file_name(provisoire);
+
+    let écrire = || -> std::io::Result<()> {
+        let mut fichier = std::fs::File::create(&provisoire)?;
+        fichier.write_all(contenu)?;
+        // Avant le renommage : sans cela, le nom pointerait sur un
+        // contenu que le disque n'a pas encore reçu.
+        fichier.sync_all()
+    };
+    if let Err(e) = écrire() {
+        let _ = std::fs::remove_file(&provisoire);
+        return Err(e);
+    }
+    if let Err(e) = std::fs::rename(&provisoire, chemin) {
+        let _ = std::fs::remove_file(&provisoire);
+        return Err(e);
+    }
+    Ok(())
+}

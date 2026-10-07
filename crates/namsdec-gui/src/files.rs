@@ -1210,7 +1210,9 @@ impl NamsdecApp {
     }
 
     pub(crate) fn write_to(&mut self, path: &Path) {
-        match std::fs::write(path, &self.source) {
+        // Atomique : c'est le fichier de l'utilisateur. Un éditeur qui
+        // tronque un source sur une coupure n'est pas un éditeur.
+        match crate::write_atomically(path, self.source.as_bytes()) {
             Ok(()) => {
                 self.current_file = Some(path.to_path_buf());
                 self.saved_source = self.source.clone();

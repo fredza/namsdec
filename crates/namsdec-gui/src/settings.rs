@@ -466,10 +466,10 @@ impl Settings {
     }
 
     pub fn save_to(&self, path: &std::path::Path) -> std::io::Result<()> {
-        if let Some(dir) = path.parent() {
-            std::fs::create_dir_all(dir)?;
-        }
-        std::fs::write(path, serde_json::to_string_pretty(self)?)
+        // Atomique : ce fichier porte TOUT ce que l'utilisateur a réglé,
+        // et une écriture coupée en deux le rendrait illisible — donc
+        // remplacé par les défauts au lancement suivant.
+        crate::write_atomically(path, serde_json::to_string_pretty(self)?.as_bytes())
     }
 }
 
@@ -669,12 +669,11 @@ pub fn save_keymap(keymap: &Keymap) -> std::io::Result<()> {
     let Some(chemin) = keymap_path() else {
         return Ok(());
     };
-    if let Some(dossier) = chemin.parent() {
-        std::fs::create_dir_all(dossier)?;
-    }
     let texte = serde_json::to_string_pretty(keymap)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-    std::fs::write(chemin, texte + "\n")
+    // Atomique, pour la même raison que les réglages : un jeu de
+    // raccourcis se façonne touche par touche, et se reperdrait d'un coup.
+    crate::write_atomically(&chemin, (texte + "\n").as_bytes())
 }
 
 pub fn shortcuts_to_strings(bindings: &KeyBindings) -> BTreeMap<String, String> {

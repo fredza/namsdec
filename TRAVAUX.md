@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **7 octobre
-2026**, version 0.2.8-beta.1, 1 100 tests au vert.
+2026**, version 0.2.8-beta.1, 1 101 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -88,6 +88,14 @@ exécutées par un contrôle. Ce qui ne tenait pas :
       enregistré » : c'est le code qui a été mis à la promesse. Garde-fou
       qui lit le code qui bascule et exige la correspondance dans les deux
       sens : `tout_reglage_bascule_par_l_interface_est_garde`.
+- [x] **Les fichiers que namsdec réécrit n'étaient pas remplacés d'un
+      bloc** — `fs::write` tronque puis écrit. Une coupure entre les deux
+      laissait un `settings.json` vide, que la lecture suivante remplaçait
+      par les défauts, en silence. Même piège pour les raccourcis, les
+      **notes par binaire** (les noms donnés aux fonctions, parfois des
+      heures de lecture) et le source de l'utilisateur. Écriture à côté,
+      `sync`, puis renommage atomique : `write_atomically` dans
+      `resources.rs`. Contrôle : `un_fichier_reecrit_est_remplace_d_un_bloc`.
 
 ---
 
