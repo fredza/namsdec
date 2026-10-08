@@ -13,6 +13,7 @@ pub mod cyclic;
 pub mod digest;
 mod digest_module;
 pub mod dump_module;
+pub mod dzf;
 pub mod elf_scan;
 pub mod entropy;
 mod entropy_module;

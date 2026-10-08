@@ -9,3 +9,5 @@ namsdec-core.workspace = true
 namsdec-disasm.workspace = true
 iced-x86.workspace = true
 egui.workspace = true
+serde.workspace = true
+serde_json.workspace = true

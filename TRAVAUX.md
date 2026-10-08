@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **7 octobre
-2026**, version 0.2.8-beta.1, 1 111 tests au vert.
+2026**, version 0.2.8-beta.1, 1 116 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -121,6 +121,23 @@ flèches, bascule gros-boutien.
   relit dans l'autre sens, étiquettes LE/BE à l'appui. `inspecter(octets,
   be)` et l'enum `Colonne`. Contrôle `l_inspecteur_lit_chaque_format`
   étendu au gros-boutien.
+
+### Pont DZF — le contrat JSON (8 octobre)
+
+- [x] **Le contrat de décompilation DZF ↔ namsdec, figé.** DZF reçoit les
+  octets et l'adresse, rend une décompilation en JSON ; namsdec la lit.
+  Côté namsdec : `crates/namsdec-re/src/dzf.rs` — types serde tolérants
+  (`DzfOutput`, `DzfFunction`) + `parse`, la source de vérité. Pour Astra :
+  `docs/contrat-dzf.md`, la spec en français (appel du plugin, forme du
+  JSON champ par champ, règles de tolérance). Principes : adresses
+  virtuelles u64, `address` seule exigence dure, champs inconnus ignorés
+  (DZF grandit sans casser namsdec), `version` pour les changements de
+  sémantique, vide valide. Cinq contrôles (`un_exemple_complet_se_lit`,
+  `le_minimum_suffit`, `un_champ_inconnu_est_ignore`,
+  `une_fonction_sans_adresse_est_refusee`, `le_vide_se_lit`).
+- [ ] **À suivre** : le panneau décompilateur (ReModule) qui rend ce JSON,
+  branché sur les noms partagés (`display_name`) et le graphe d'appels,
+  une fois que DZF émet du conforme.
 
 ### Revue d'interface — l'éditeur binaire et les modules (8 octobre)
 

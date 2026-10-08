@@ -1593,6 +1593,8 @@ dependencies = [
  "iced-x86",
  "namsdec-core",
  "namsdec-disasm",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
