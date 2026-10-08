@@ -149,21 +149,44 @@ pub fn discover(disasm: &[DecodedInstruction], entry: u64) -> Vec<Function> {
     // première approche.
     let bornes: Vec<u64> = débuts.keys().copied().collect();
     let dernière = disasm.last().map(|i| i.address).unwrap_or(entry);
+
+    // Les appels de chaque fonction, relevés EN UN SEUL PASSAGE.
+    //
+    // La version d'avant rebalayait les quatre cent mille instructions
+    // POUR CHAQUE fonction (`filter(addr >= start && addr < fin)`) : avec
+    // des milliers de fonctions, c'est le produit des deux — quadratique.
+    // Mesuré trois secondes sur un binaire de trois mégaoctets, pendant
+    // lesquelles le chargement figeait l'interface au point que le système
+    // proposait de « forcer à quitter ».
+    //
+    // Chaque instruction tombe dans une et une seule fonction : celle dont
+    // le début est le plus grand qui ne la dépasse pas. Une recherche
+    // dichotomique dans `bornes` (trié) le dit en O(log f), sans supposer
+    // que `décodées` soit rangé. On ne regarde que les instructions qui
+    // appellent, c'est-à-dire presque aucune.
+    let mut appels_par_fn: Vec<BTreeSet<u64>> = vec![BTreeSet::new(); bornes.len()];
+    for (addr, decoded) in &décodées {
+        let Some(cible) = decoded.as_ref().and_then(call_target) else {
+            continue;
+        };
+        let rang = match bornes.binary_search(addr) {
+            Ok(rang) => rang,
+            Err(0) => continue, // avant la première fonction
+            Err(suivant) => suivant - 1,
+        };
+        appels_par_fn[rang].insert(cible);
+    }
+
     let mut out = Vec::new();
     for (rang, start) in bornes.iter().enumerate() {
         let fin = bornes.get(rang + 1).copied().unwrap_or(dernière + 1);
-        let calls: Vec<u64> = décodées
-            .iter()
-            .filter(|(addr, _)| *addr >= *start && *addr < fin)
-            .filter_map(|(_, decoded)| decoded.as_ref().and_then(call_target))
-            .collect::<BTreeSet<u64>>()
-            .into_iter()
-            .collect();
         out.push(Function {
             start: *start,
             last: fin.saturating_sub(1),
             callers: appels.get(start).map_or(0, BTreeSet::len),
-            calls,
+            calls: std::mem::take(&mut appels_par_fn[rang])
+                .into_iter()
+                .collect(),
             origin: débuts[start],
         });
     }
@@ -249,6 +272,41 @@ mod tests {
             .expect("le point d'entrée");
         assert_eq!(entrée.origin, Origin::Entry);
         assert_eq!(entrée.calls, vec![0x100a]);
+    }
+
+    /// Découvrir les fonctions reste linéaire, même sur un gros binaire.
+    ///
+    /// La version d'avant rebalayait toutes les instructions pour CHAQUE
+    /// fonction : quadratique, trois secondes sur trois mégaoctets, le
+    /// chargement figeait l'interface. Ce contrôle fabrique vingt mille
+    /// appels — donc autant de fonctions — et exige que `discover` finisse
+    /// vite. En quadratique, ce serait quatre cents millions de passages,
+    /// hors de portée de la borne ; en linéaire, quelques dizaines de
+    /// millisecondes. La borne est large pour ne pas clignoter sur une CI
+    /// lente, mais une régression quadratique la dépasse de loin.
+    #[test]
+    fn discovering_functions_stays_linear_on_a_big_binary() {
+        const N: u32 = 20_000;
+        // `e8` + rel32 : un `call` de cinq octets, une cible différente à
+        // chaque fois, donc une fonction de plus à chaque fois.
+        let mut bytes = Vec::with_capacity(N as usize * 5);
+        for i in 0..N {
+            bytes.push(0xE8);
+            bytes.extend_from_slice(&(i as i32).to_le_bytes());
+        }
+        let disasm = namsdec_disasm::disassemble(&bytes, 0x1000);
+        let début = std::time::Instant::now();
+        let fonctions = discover(&disasm, 0x1000);
+        let durée = début.elapsed();
+        assert!(
+            !fonctions.is_empty(),
+            "des fonctions sont découvertes : {}",
+            fonctions.len()
+        );
+        assert!(
+            durée < std::time::Duration::from_secs(2),
+            "discover a mis {durée:?} sur {N} appels — une régression quadratique ?"
+        );
     }
 
     /// L'ordre de lecture n'est pas celui des adresses : `main` d'abord,

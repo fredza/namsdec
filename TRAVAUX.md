@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **8 octobre
-2026**, version 0.2.8-beta.1, 1 124 tests au vert.
+2026**, version 0.2.8-beta.1, 1 125 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -133,6 +133,19 @@ flèches, bascule gros-boutien.
       titre ». Son nom voyage pourtant dans `from_binary` : c'est lui qui
       s'écrit maintenant, sur l'onglet actif comme sur ceux rangés.
       Contrôle : `l_onglet_d_un_binaire_porte_son_nom`.
+- [x] **Le chargement d'un gros binaire ne fige plus l'interface
+      (8 octobre)** — ouvrir un binaire de 3 Mo bloquait le fil
+      d'interface **quatre secondes** (bien plus en build debug), au point
+      que le système proposait de « forcer à quitter ». Mesuré : tout le
+      temps était dans `on_binary_loaded`, et dedans dans
+      `functions::discover`, qui rebalayait les 400 000 instructions **pour
+      chaque** fonction découverte — quadratique (le module « Fonctions »
+      et le graphe d'appels l'appellent tous deux). Remplacé par une
+      attribution dichotomique en un passage : `load_elf` passe de **4,0 s
+      à 0,63 s** sur le même binaire. Même gain au Reset, qui refait la
+      découverte. Garde-fou : `discovering_functions_stays_linear_on_a_big_binary`.
+      Reste : la 1re image après chargement coûte ~1,4 s (rendu du listing
+      de 400 000 lignes) — moins grave, autre sous-système.
 - [x] **Commentaire périmé de `flags_ui` corrigé** — il disait encore
       « chacune se bascule d'un clic » depuis que les flags sont en
       lecture seule. (L'édition de registres, elle, est gardée — choix de
