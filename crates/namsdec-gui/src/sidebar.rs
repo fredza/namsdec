@@ -2502,9 +2502,17 @@ impl NamsdecApp {
             self.mem_addr_input = format!("{addr:#x}");
         }
 
-        // Ce qu'on suit et comment on lit : deux réglages du même geste,
-        // sur une seule ligne. Empilés sur trois rangées, ils prenaient
-        // le tiers du panneau avant le premier octet.
+        // Ce qu'on suit et comment on lit : deux réglages du même geste.
+        // Une seule rangée enroulée les tenait, pour ne pas prendre trois
+        // lignes. Mais sur un panneau étroit elle débordait, et
+        // `horizontal_wrapped` traitait mal l'élément qui passait à la
+        // ligne : « Lire en : » se retrouvait avec une galère de 257 px
+        // (pour neuf caractères) peinte à l'abscisse de départ, PAR-DESSUS
+        // « Suivre : » et les boutons de suivi. Mesuré sur un binaire
+        // chargé, barre latérale à ~480 px : cinq textes l'un sur l'autre.
+        // Deux rangées franches — « Suivre » puis « Lire en » — et chacune
+        // s'enroule proprement dans son coin. Deux lignes au lieu d'une,
+        // mais jamais trois, et plus rien ne se chevauche.
         ui.horizontal_wrapped(|ui| {
             ui.colored_label(theme.dim, s.memory_follow);
             for kind in MemFollow::ALL {
@@ -2515,7 +2523,8 @@ impl NamsdecApp {
                     self.memory_follow = kind;
                 }
             }
-            ui.separator();
+        });
+        ui.horizontal_wrapped(|ui| {
             // Le même endroit dit quatre choses différentes selon ce
             // qu'on y cherche — un tampon, une pile, une chaîne, une
             // suite de pointeurs. Dans une liste déroulante et non en

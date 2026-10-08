@@ -103,20 +103,27 @@ flèches, bascule gros-boutien.
       galère de texte (nom en chasse fixe atténué + valeur, via
       `LayoutJob`), qui ne lit aucune largeur. Contrôle :
       `choisir_un_octet_ne_fait_pas_enfler_la_fenetre`.
-- [ ] **Onglet Mémoire — chevauchement signalé (capture de Fred,
-      8 octobre), PAS encore reproduit** — sur sa capture, le contenu de
-      l'onglet Mémoire (« Mémoire », « Chercher », « Carte de la mémoire »)
-      se peint par-dessus la moitié basse des registres : l'onglet est
-      poussé plus haut que l'état du processeur. Essayé sans le voir :
-      binaire chargé (crackme-01, /bin/true), hauteurs 600→1200, largeurs
-      1400→2000 (barre latérale ~480 px comme la sienne), séparateur
-      d'onglet tiré jusqu'à 950 px. Dans tous ces cas le partage se cale
-      proprement (état du processeur au-dessus, onglet dessous, zéro
-      recouvrement). Le déclencheur tient à quelque chose de sa session
-      que le banc ne rejoue pas (facteur d'échelle de l'écran ? un binaire
-      précis ? un transitoire pendant le pas à pas ?). À élucider avec une
-      capture ou les conditions exactes — pas de correctif à l'aveugle sur
-      une mise en page aussi réglée.
+- [x] **Onglet Mémoire — « Lire en : » se peignait sur « Suivre : »
+      (8 octobre)** — « Suivre : … » et « Lire en : … » tenaient sur une
+      seule rangée `horizontal_wrapped`. Sur un panneau étroit elle
+      débordait, et `horizontal_wrapped` donnait à l'élément reporté une
+      galère démesurée (257 px pour les neuf caractères de « Lire en : »)
+      peinte à l'abscisse de départ, par-dessus « Suivre : » et les
+      boutons de suivi — cinq textes l'un sur l'autre, mesuré sur binaire
+      chargé, barre latérale ~480 px, à tout facteur d'échelle. Deux
+      rangées franches règlent l'affaire. Contrôle :
+      `lire_en_ne_se_peint_pas_sur_suivre`. C'est vraisemblablement ce que
+      Fred a vu ; à confirmer.
+- [ ] **Onglet Mémoire — débordement registres↔onglet de la capture, PAS
+      reproduit** — si la capture montrait plutôt le contenu de l'onglet
+      par-dessus la *moitié basse des registres* (et non la seule rangée
+      ci-dessus), ce cas-là n'est pas reproduit : binaire chargé, hauteurs
+      600→1200, largeurs 1400→2000, séparateur d'onglet tiré jusqu'à
+      950 px, facteurs d'échelle 1.0→2.0 — partout le partage se cale
+      proprement (processeur au-dessus, onglet dessous, zéro
+      recouvrement). Si ça persiste après le correctif ci-dessus, il
+      faudra les conditions exactes (binaire, taille, échelle) — pas de
+      correctif à l'aveugle sur une mise en page aussi réglée.
 - [x] **Commentaire périmé de `flags_ui` corrigé** — il disait encore
       « chacune se bascule d'un clic » depuis que les flags sont en
       lecture seule. (L'édition de registres, elle, est gardée — choix de

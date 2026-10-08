@@ -12633,6 +12633,71 @@ fn choisir_un_octet_ne_fait_pas_enfler_la_fenetre() {
     );
 }
 
+/// Dans l'onglet Mémoire, « Lire en : » ne se peint pas sur « Suivre : ».
+///
+/// Les deux réglages tenaient sur une seule rangée enroulée. Sur un
+/// panneau étroit elle débordait, et `horizontal_wrapped` donnait à
+/// l'élément reporté — « Lire en : » — une galère démesurée (257 px pour
+/// neuf caractères) peinte à l'abscisse de départ, par-dessus « Suivre : »
+/// et les boutons de suivi. Deux rangées franches règlent l'affaire ; ce
+/// test vérifie qu'elles ne partagent plus la même ligne.
+#[test]
+fn lire_en_ne_se_peint_pas_sur_suivre() {
+    let Some(octets) = binaire_dépreuve("crackme-01") else {
+        return;
+    };
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp {
+        show_sidebar: true,
+        active_tab: SidebarTab::Memory,
+        ..Default::default()
+    };
+    app.apply_theme(&ctx);
+    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    for _ in 0..4 {
+        app.do_step();
+    }
+    let scr = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(2000.0, 1200.0));
+    let mut posés: Vec<(String, egui::Rect)> = Vec::new();
+    // Le partage de la barre latérale se cale en une quinzaine d'images ;
+    // on lit la dernière, posée.
+    for _ in 0..18 {
+        posés.clear();
+        let mut sortie = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(scr),
+                ..Default::default()
+            },
+            |ui| app.draw(ui),
+        );
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                posés.push((
+                    t.galley.text().to_owned(),
+                    egui::Rect::from_min_size(t.pos, t.galley.size()),
+                ));
+            }
+        }
+        sortie.textures_delta.clear();
+    }
+    let s = strings(Lang::Fr);
+    let rect = |quoi: &str| -> egui::Rect {
+        posés
+            .iter()
+            .find(|(t, _)| t == quoi)
+            .map(|(_, r)| *r)
+            .unwrap_or_else(|| panic!("« {quoi} » est peint"))
+    };
+    let suivre = rect(s.memory_follow);
+    let lire = rect(s.memory_format_label);
+    assert!(
+        !suivre.shrink(2.0).intersects(lire.shrink(2.0)),
+        "« {} » et « {} » se recouvrent : {suivre:?} contre {lire:?}",
+        s.memory_follow,
+        s.memory_format_label
+    );
+}
+
 /// La carte du fichier dit où est quoi, et le vidage ce que ces
 /// octets-là sont.
 ///
