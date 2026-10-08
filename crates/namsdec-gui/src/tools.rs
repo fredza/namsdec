@@ -1303,6 +1303,38 @@ impl NamsdecApp {
         }
     }
 
+    /// Tente de lire la sortie du décompilateur comme du JSON DZF, et la
+    /// livre au panneau « Décompilation DZF ».
+    ///
+    /// Les décompilateurs de texte (rizin, retdec) rendent du C-isme, pas
+    /// du JSON : `parse` échoue, et l'on ne livre rien — le panneau reste
+    /// en l'état. Seule une sortie conforme (celle de DZF) le remplit. Si
+    /// l'on a explicitement demandé DZF (`dzf_wanted`) et que ce n'est pas
+    /// du JSON, on le dit, pour ne pas laisser un clic sans réponse.
+    pub(crate) fn ingest_dzf_json(&mut self, texte: &str) {
+        let voulu = std::mem::take(&mut self.dzf_wanted);
+        match namsdec_re::dzf::parse(texte) {
+            Ok(sortie) if !sortie.functions.is_empty() || voulu => {
+                self.re_registry
+                    .deliver(&namsdec_re::ReResult::Decompilation(sortie));
+            }
+            Ok(_) => {}
+            Err(_) => {
+                if voulu {
+                    let message = if self.lang == Lang::Fr {
+                        "Le décompilateur actif n'a pas rendu de JSON DZF. Activez DZF comme décompilateur."
+                    } else {
+                        "The active decompiler did not return DZF JSON. Set DZF as the decompiler."
+                    };
+                    self.re_registry
+                        .deliver(&namsdec_re::ReResult::DecompilationError(
+                            message.to_owned(),
+                        ));
+                }
+            }
+        }
+    }
+
     /// Relève ce que l'outil a rendu, s'il a fini.
     pub(crate) fn poll_decompile(&mut self, ctx: &egui::Context) {
         let Some(receiver) = &self.decompile_job else {
@@ -1314,6 +1346,15 @@ impl NamsdecApp {
                 self.job = None;
                 if let Ok(texte) = &réponse {
                     self.index_decompilation(texte);
+                    // La même sortie, vue par le panneau DZF : si c'est du
+                    // JSON conforme, il l'affiche en pseudo-C.
+                    self.ingest_dzf_json(texte);
+                } else if std::mem::take(&mut self.dzf_wanted)
+                    && let Err(message) = &réponse
+                {
+                    // Demandée depuis le panneau DZF, mais l'outil a échoué.
+                    self.re_registry
+                        .deliver(&namsdec_re::ReResult::DecompilationError(message.clone()));
                 }
                 self.decompile_result = Some(réponse);
             }

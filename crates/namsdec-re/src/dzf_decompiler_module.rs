@@ -1,4 +1,4 @@
-use crate::{ReContext, ReModule, ReRequest, clickable_address, dzf};
+use crate::{ReContext, ReModule, ReRequest, ReResult, clickable_address, dzf};
 
 /// Le panneau de décompilation DZF : les fonctions que DZF a rendues, en
 /// pseudo-C, dans l'onglet RE.
@@ -18,6 +18,10 @@ pub struct DzfDecompilerModule {
     /// L'adresse qu'on veut aller voir dans le listing, relevée par
     /// l'application au prochain tour comme pour les autres panneaux.
     aller: Option<u64>,
+    /// On a demandé une décompilation ; l'application la lancera.
+    demande_decompile: bool,
+    /// Le dernier échec de décompilation, s'il y en a eu un.
+    erreur: Option<String>,
 }
 
 impl DzfDecompilerModule {
@@ -33,7 +37,22 @@ impl ReModule for DzfDecompilerModule {
     }
 
     fn take_request(&mut self) -> Option<ReRequest> {
+        if std::mem::take(&mut self.demande_decompile) {
+            return Some(ReRequest::Decompile);
+        }
         self.aller.take().map(|addr| ReRequest::GoTo { addr })
+    }
+
+    fn deliver(&mut self, result: &ReResult) {
+        match result {
+            ReResult::Decompilation(sortie) => {
+                self.decompilation = Some(sortie.clone());
+                self.erreur = None;
+            }
+            ReResult::DecompilationError(message) => {
+                self.erreur = Some(message.clone());
+            }
+        }
     }
 
     fn title(&self, lang: &str) -> &'static str {
@@ -47,6 +66,7 @@ impl ReModule for DzfDecompilerModule {
     fn on_binary_loaded(&mut self, _ctx: &ReContext) {
         // Un autre binaire : la décompilation d'avant ne le concerne plus.
         self.decompilation = None;
+        self.erreur = None;
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
@@ -67,6 +87,21 @@ impl ReModule for DzfDecompilerModule {
                 "DZF is the home-grown disassembler-decompiler, under development. Enable \
                  it in Tools, and it will show here as soon as it has produced output.",
             ));
+            ui.add_space(8.0);
+            if ui
+                .button(ctx.t("Décompiler", "Decompile"))
+                .on_hover_text(ctx.t(
+                    "Lancer le décompilateur actif et lire sa sortie ici.",
+                    "Run the active decompiler and read its output here.",
+                ))
+                .clicked()
+            {
+                self.demande_decompile = true;
+            }
+            if let Some(message) = &self.erreur {
+                ui.add_space(4.0);
+                ui.colored_label(ui.visuals().error_fg_color, message);
+            }
             return;
         };
 

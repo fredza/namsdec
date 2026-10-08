@@ -27455,6 +27455,66 @@ fn les_numeros_de_la_gouttiere_suivent_les_lignes_source() {
     }
 }
 
+/// Le JSON de DZF, livré au panneau, s'y affiche en pseudo-C.
+///
+/// C'est le câblage de bout en bout : l'application reçoit la sortie du
+/// décompilateur (ici fournie à la main, en attendant que DZF la produise
+/// vraiment), `ingest_dzf_json` la lit et la livre au module, qui la rend.
+#[test]
+fn le_json_de_dzf_livre_au_panneau_s_y_affiche() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: DEFAULT_SOURCE.to_owned(),
+        show_analysis: true,
+        analysis_module: "dzf_decompiler".to_owned(),
+        ..Default::default()
+    };
+    // Un binaire chargé d'abord (la fenêtre d'analyse en a besoin), PUIS la
+    // livraison — sans quoi `on_binary_loaded` l'effacerait.
+    app.do_assemble();
+    let json =
+        r#"{"functions":[{"address":4096,"name":"demo","pseudocode":"int demo() { return 1; }"}]}"#;
+    app.dzf_wanted = true;
+    app.ingest_dzf_json(json);
+
+    let peint = paint(&mut app);
+    assert!(
+        peint.contains("demo"),
+        "le nom de la fonction décompilée :\n{peint}"
+    );
+    assert!(
+        peint.contains("int demo") || peint.contains("return 1"),
+        "le pseudo-code :\n{peint}"
+    );
+}
+
+/// Demandée depuis le panneau DZF, une sortie qui n'est pas du JSON le dit
+/// — un clic ne reste pas sans réponse.
+#[test]
+fn une_sortie_non_dzf_demandee_le_dit() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: DEFAULT_SOURCE.to_owned(),
+        show_analysis: true,
+        analysis_module: "dzf_decompiler".to_owned(),
+        lang: Lang::Fr,
+        ..Default::default()
+    };
+    app.do_assemble();
+    app.dzf_wanted = true;
+    // Du pseudo-code de rizin, pas du JSON.
+    app.ingest_dzf_json("int main() {\n  return 0;\n}");
+    let peint = paint(&mut app);
+    assert!(
+        peint.contains("pas rendu de JSON DZF"),
+        "l'échec doit se dire :\n{peint}"
+    );
+}
+
 /// L'éditeur binaire dispose le fichier en grille hexadécimale.
 ///
 /// Un vrai ELF, la fenêtre d'analyse ouverte sur l'éditeur : on doit y

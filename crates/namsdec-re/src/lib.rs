@@ -169,6 +169,23 @@ pub enum ReRequest {
     /// l'adresse : renommer, c'est aussi pouvoir se dédire. Le module ne
     /// range rien lui-même ; il décrit, et l'application tient la table.
     Rename { addr: u64, name: String },
+    /// Lancer la décompilation (DZF, le décompilateur actif) et en
+    /// ramener le résultat. Le module décrit l'intention ; l'application
+    /// lance l'outil et lui livre la réponse par un `ReResult`.
+    Decompile,
+}
+
+/// Ce que l'application rend à un module, en retour de ce qu'il a demandé.
+///
+/// Symétrique de [`ReRequest`] : là, le module demandait ; ici,
+/// l'application répond. Livré à tous les modules — chacun prend ce qui le
+/// concerne, le reste l'ignore.
+#[derive(Debug, Clone)]
+pub enum ReResult {
+    /// La décompilation que DZF a rendue, lue et prête à montrer.
+    Decompilation(crate::dzf::DzfOutput),
+    /// La décompilation a échoué : l'outil absent, le JSON illisible.
+    DecompilationError(String),
 }
 
 /// Une adresse sur laquelle on peut cliquer pour l'aller voir.
@@ -226,6 +243,10 @@ pub trait ReModule {
     /// Appelé après chaque `step()`/`run()` de l'émulateur.
     fn on_step(&mut self, _ctx: &ReContext) {}
 
+    /// Reçoit une réponse de l'application à ce qu'on a demandé. Sans
+    /// objet pour la plupart des modules — d'où la version vide.
+    fn deliver(&mut self, _result: &ReResult) {}
+
     /// Rendu du panneau du module.
     fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext);
 }
@@ -238,6 +259,14 @@ pub struct ReModuleRegistry {
 impl ReModuleRegistry {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Porte une réponse de l'application à tous les modules : chacun y
+    /// prend ce qui le concerne.
+    pub fn deliver(&mut self, result: &ReResult) {
+        for module in &mut self.modules {
+            module.deliver(result);
+        }
     }
 
     pub fn register(&mut self, module: Box<dyn ReModule>) {

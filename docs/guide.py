@@ -1221,8 +1221,10 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "appels au corps en clair. Une fonction y porte le <b>nom que vous lui avez donné</b> "
          "dans namsdec, pas celui de DZF — rebaptisée dans l\'arbre, elle l\'est ici aussi. "
          "DZF est en cours d\'écriture (bâti à part, en C++23) ; tant qu\'il n\'a rien rendu, "
-         "le panneau dit ce qu\'il montrera. namsdec et DZF échangent par un contrat JSON "
-         "figé, pour grandir chacun sans casser l\'autre.",
+         "le panneau dit ce qu\'il montrera, avec un bouton <b>Décompiler</b> qui lance le "
+         "décompilateur actif et lit sa sortie ici — si c\'est DZF, elle s\'y affiche. "
+         "namsdec et DZF échangent par un contrat JSON figé, pour grandir chacun sans "
+         "casser l\'autre.",
          "<b>Fragments réutilisables (ROP)</b> — les fins de séquence utiles à une chaîne ROP.",
          "<b>Place libre (bourrage)</b> — le bourrage que l'éditeur de liens laisse pour aligner : "
          "entre deux fonctions, entre deux sections, en fin de segment, il comble avec un "

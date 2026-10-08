@@ -841,6 +841,9 @@ struct NamsdecApp {
     /// fenêtres pour rien.
     window_title: Option<String>,
     decompile_result: Option<Result<String, String>>,
+    /// La dernière décompilation a-t-elle été demandée depuis le panneau
+    /// DZF ? Si oui, on lui livre la réponse (ou l'échec), JSON ou pas.
+    dzf_wanted: bool,
     /// Le texte rendu, découpé une fois pour toutes.
     ///
     /// RetDec rend deux millions de caractères pour un petit crackme.
@@ -1776,6 +1779,7 @@ impl Default for NamsdecApp {
             job: None,
             window_title: None,
             decompile_result: None,
+            dzf_wanted: false,
             decompile_lines: Vec::new(),
             decompile_functions: Vec::new(),
             decompile_filter: String::new(),

@@ -108,6 +108,13 @@ impl NamsdecApp {
                     self.notes.set_name(addr, &name);
                     self.save_notes();
                 }
+                // Décompiler : on lance le décompilateur actif. Sa sortie,
+                // si c'est du JSON DZF, remontera au panneau par
+                // `ingest_dzf_json` quand le fil aura fini.
+                namsdec_re::ReRequest::Decompile => {
+                    self.dzf_wanted = true;
+                    self.start_decompile();
+                }
             }
         }
     }

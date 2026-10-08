@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **7 octobre
-2026**, version 0.2.8-beta.1, 1 119 tests au vert.
+2026**, version 0.2.8-beta.1, 1 121 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -143,10 +143,18 @@ flèches, bascule gros-boutien.
   `le_nom_de_namsdec_l_emporte_sur_celui_de_dzf`). État vide clair tant que
   DZF n'a rien rendu. `set_decompilation` reçoit la sortie ;
   `take_request` relaie l'aller-à. Enregistré après le graphe d'appels.
-- [ ] **À suivre** : câbler le GUI pour LANCER DZF (plugin décompilateur) →
-  `dzf::parse` → `set_decompilation`. À faire quand DZF émet du JSON
-  conforme, pour l'éprouver de bout en bout. Puis : rendre cliquables les
-  adresses DANS le pseudo-code.
+- [x] **Câblage de bout en bout (8 octobre)** : le bouton « Décompiler »
+  du panneau émet `ReRequest::Decompile` ; le GUI lance le décompilateur
+  actif (`start_decompile`, en tâche de fond), et `poll_decompile` tente de
+  lire sa sortie comme du JSON DZF (`ingest_dzf_json`) pour la livrer au
+  panneau via le nouveau canal retour `ReResult` (`deliver`). Une sortie de
+  texte (rizin/retdec) n'est pas livrée ; une demande DZF restée sans JSON
+  se dit. Symétrie posée : `ReRequest` (module→app), `ReResult` (app→
+  module). Éprouvé avec un « faux DZF » (JSON fourni à la main) :
+  `le_json_de_dzf_livre_au_panneau_s_y_affiche`,
+  `une_sortie_non_dzf_demandee_le_dit`.
+- [ ] **À suivre** : rendre cliquables les adresses DANS le pseudo-code, et
+  éprouver avec le vrai DZF quand Astra l'aura fait émettre du conforme.
 
 ### Revue d'interface — l'éditeur binaire et les modules (8 octobre)
 
