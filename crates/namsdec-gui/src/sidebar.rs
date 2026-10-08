@@ -2630,33 +2630,55 @@ impl NamsdecApp {
                     egui::CollapsingHeader::new(format!("{} ({})", s.memory_map, zones.len()))
                         .id_salt("memory_map")
                         .show(ui, |ui| {
-                            egui::Grid::new("memory_map_grid")
-                                .num_columns(3)
-                                .min_col_width(0.0)
-                                .striped(true)
+                            // La carte défile dans sa propre fenêtre, bornée
+                            // en hauteur. Sans ça, un binaire aux régions
+                            // nombreuses — les sections d'un programme lié
+                            // dynamiquement, .init, .text, .fini… — dépliait
+                            // une carte si haute que le contenu de l'onglet
+                            // dépassait la place que le panneau latéral lui
+                            // réserve. Le partage à trois (bandeau, état du
+                            // processeur, onglet) divergeait alors : l'onglet
+                            // remontait par-dessus les registres — la carte se
+                            // peignait sur RAX…RIP — ou filait sous le bas de
+                            // la fenêtre. Mesuré sur les deux faces du défaut.
+                            // Bornée, la carte ne peut plus pousser le reste.
+                            egui::ScrollArea::vertical()
+                                .id_salt("memory_map_scroll")
+                                .max_height(180.0)
                                 .show(ui, |ui| {
-                                    for zone in &zones {
-                                        let dedans = zone.range.contains(&self.mem_addr);
-                                        let ligne = ui
-                                            .colored_label(
-                                                if dedans { theme.accent } else { theme.text },
-                                                egui::RichText::new(format!(
-                                                    "{:#x}-{:#x}",
-                                                    zone.range.start, zone.range.end
-                                                ))
-                                                .monospace(),
-                                            )
-                                            .on_hover_text(s.memory_map_hint);
-                                        ui.colored_label(
-                                            theme.register,
-                                            egui::RichText::new(perms_text(zone.perms)).monospace(),
-                                        );
-                                        ui.colored_label(theme.dim, zone.name);
-                                        if ligne.interact(egui::Sense::click()).clicked() {
-                                            aller = Some(zone.range.start);
-                                        }
-                                        ui.end_row();
-                                    }
+                                    egui::Grid::new("memory_map_grid")
+                                        .num_columns(3)
+                                        .min_col_width(0.0)
+                                        .striped(true)
+                                        .show(ui, |ui| {
+                                            for zone in &zones {
+                                                let dedans = zone.range.contains(&self.mem_addr);
+                                                let ligne = ui
+                                                    .colored_label(
+                                                        if dedans {
+                                                            theme.accent
+                                                        } else {
+                                                            theme.text
+                                                        },
+                                                        egui::RichText::new(format!(
+                                                            "{:#x}-{:#x}",
+                                                            zone.range.start, zone.range.end
+                                                        ))
+                                                        .monospace(),
+                                                    )
+                                                    .on_hover_text(s.memory_map_hint);
+                                                ui.colored_label(
+                                                    theme.register,
+                                                    egui::RichText::new(perms_text(zone.perms))
+                                                        .monospace(),
+                                                );
+                                                ui.colored_label(theme.dim, zone.name);
+                                                if ligne.interact(egui::Sense::click()).clicked() {
+                                                    aller = Some(zone.range.start);
+                                                }
+                                                ui.end_row();
+                                            }
+                                        });
                                 });
                         });
                 }

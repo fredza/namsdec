@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **8 octobre
-2026**, version 0.2.8-beta.1, 1 122 tests au vert.
+2026**, version 0.2.8-beta.1, 1 123 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -112,18 +112,21 @@ flèches, bascule gros-boutien.
       boutons de suivi — cinq textes l'un sur l'autre, mesuré sur binaire
       chargé, barre latérale ~480 px, à tout facteur d'échelle. Deux
       rangées franches règlent l'affaire. Contrôle :
-      `lire_en_ne_se_peint_pas_sur_suivre`. C'est vraisemblablement ce que
-      Fred a vu ; à confirmer.
-- [ ] **Onglet Mémoire — débordement registres↔onglet de la capture, PAS
-      reproduit** — si la capture montrait plutôt le contenu de l'onglet
-      par-dessus la *moitié basse des registres* (et non la seule rangée
-      ci-dessus), ce cas-là n'est pas reproduit : binaire chargé, hauteurs
-      600→1200, largeurs 1400→2000, séparateur d'onglet tiré jusqu'à
-      950 px, facteurs d'échelle 1.0→2.0 — partout le partage se cale
-      proprement (processeur au-dessus, onglet dessous, zéro
-      recouvrement). Si ça persiste après le correctif ci-dessus, il
-      faudra les conditions exactes (binaire, taille, échelle) — pas de
-      correctif à l'aveugle sur une mise en page aussi réglée.
+      `lire_en_ne_se_peint_pas_sur_suivre`.
+- [x] **Onglet Mémoire — la carte dépliée se peignait sur les registres
+      (8 octobre, le défaut de la capture de Fred)** — un binaire aux
+      régions nombreuses (crackme-01 en a **34** ; les sections d'un
+      programme lié dynamiquement) dépliait une carte si haute que le
+      contenu de l'onglet dépassait la place que le panneau latéral lui
+      réserve. Le partage à trois (bandeau, état du processeur, onglet)
+      **divergeait** alors — même classe que le #8 : selon le chemin,
+      l'onglet remontait par-dessus les registres (RAX…RIP recouverts par
+      la carte, ce que Fred voyait) ou filait sous le bas de la fenêtre
+      (mesuré : bas à 1646 px pour une fenêtre de 1183). La carte défile
+      désormais dans sa propre fenêtre **bornée** (`max_height`) : trop
+      haute, elle ne peut plus pousser le reste. Reproduit via les
+      34 régions de crackme ; contrôle :
+      `la_carte_depliee_ne_couvre_pas_les_registres`.
 - [x] **Commentaire périmé de `flags_ui` corrigé** — il disait encore
       « chacune se bascule d'un clic » depuis que les flags sont en
       lecture seule. (L'édition de registres, elle, est gardée — choix de

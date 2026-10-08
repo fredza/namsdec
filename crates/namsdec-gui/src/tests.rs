@@ -12698,6 +12698,157 @@ fn lire_en_ne_se_peint_pas_sur_suivre() {
     );
 }
 
+/// La carte mémoire dépliée ne se peint pas sur l'état du processeur.
+///
+/// Un binaire aux régions nombreuses — les sections d'un programme lié
+/// dynamiquement — dépliait une carte si haute que le contenu de l'onglet
+/// Mémoire dépassait la place que le panneau latéral lui réserve. Le
+/// partage à trois (bandeau, état du processeur, onglet) divergeait
+/// alors : l'onglet remontait par-dessus les registres — la carte se
+/// peignait sur RAX…RIP — ou filait sous le bas de la fenêtre. La carte
+/// défile désormais dans sa propre fenêtre bornée. Ce test déplie la
+/// carte et vérifie que les panneaux restent à leur place, sans
+/// recouvrement.
+#[test]
+fn la_carte_depliee_ne_couvre_pas_les_registres() {
+    let Some(octets) = binaire_dépreuve("crackme-01") else {
+        return;
+    };
+    let s = strings(Lang::Fr);
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp {
+        show_sidebar: true,
+        active_tab: SidebarTab::Memory,
+        next_instruction_open: false,
+        ..Default::default()
+    };
+    app.apply_theme(&ctx);
+    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    for _ in 0..4 {
+        app.do_step();
+    }
+    let scr = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(2000.0, 1183.0));
+    let rend = |app: &mut NamsdecApp, ev: Vec<egui::Event>| -> Vec<(String, egui::Rect)> {
+        let mut txts = Vec::new();
+        let mut sortie = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(scr),
+                events: ev,
+                ..Default::default()
+            },
+            |ui| app.draw(ui),
+        );
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                txts.push((
+                    t.galley.text().to_owned(),
+                    egui::Rect::from_min_size(t.pos, t.galley.size()),
+                ));
+            }
+        }
+        sortie.textures_delta.clear();
+        txts
+    };
+    let clic = |app: &mut NamsdecApp, t: &[(String, egui::Rect)], début: &str| -> bool {
+        let Some(r) = t
+            .iter()
+            .find(|(x, _)| x.starts_with(début))
+            .map(|(_, r)| *r)
+        else {
+            return false;
+        };
+        let pos = r.center();
+        rend(
+            app,
+            vec![
+                egui::Event::PointerButton {
+                    pos,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+                egui::Event::PointerButton {
+                    pos,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        true
+    };
+    // Poser la barre, puis déplier « Outils mémoire » et « Carte de la
+    // mémoire », en laissant chaque fois le partage se recaler.
+    let mut t = rend(&mut app, vec![]);
+    for _ in 0..5 {
+        t = rend(&mut app, vec![]);
+    }
+    assert!(
+        clic(&mut app, &t, s.memory_tools),
+        "« Outils mémoire » est là"
+    );
+    for _ in 0..6 {
+        t = rend(&mut app, vec![]);
+    }
+    assert!(
+        clic(&mut app, &t, "Carte de la"),
+        "« Carte de la mémoire » est là"
+    );
+    for _ in 0..8 {
+        t = rend(&mut app, vec![]);
+    }
+
+    // La carte est bien dépliée : des lignes de région (« 0x…-0x… »)
+    // sont peintes.
+    let lignes_carte: Vec<egui::Rect> = t
+        .iter()
+        .filter(|(x, _)| x.starts_with("0x") && x.contains("-0x"))
+        .map(|(_, r)| *r)
+        .collect();
+    assert!(
+        !lignes_carte.is_empty(),
+        "la carte devrait montrer des régions une fois dépliée"
+    );
+
+    // Aucun registre de l'état du processeur ne partage sa place avec une
+    // ligne de la carte.
+    let registres: Vec<(String, egui::Rect)> = t
+        .iter()
+        .filter(|(x, r)| {
+            ["RAX", "RBX", "RSP", "RBP", "R8", "R12", "R15", "RIP"].contains(&x.trim())
+                && r.left() < 1700.0
+        })
+        .cloned()
+        .collect();
+    for (nom, reg) in &registres {
+        for ligne in &lignes_carte {
+            assert!(
+                !reg.shrink(2.0).intersects(ligne.shrink(2.0)),
+                "la carte se peint sur le registre {nom} : {reg:?} ∩ {ligne:?}"
+            );
+        }
+    }
+    // Et les deux panneaux ne se chevauchent pas.
+    use egui::containers::panel::PanelState;
+    let cpu = PanelState::load(&ctx, egui::Id::new("sidebar_cpu_state"))
+        .map(|z| z.outer_rect)
+        .expect("l'état du processeur est un panneau");
+    let tab = PanelState::load(&ctx, egui::Id::new("sidebar_tab"))
+        .map(|z| z.outer_rect)
+        .expect("l'onglet est un panneau");
+    assert!(
+        cpu.bottom() <= tab.top() + 2.0,
+        "l'état du processeur déborde sur l'onglet : cpu={cpu:?} tab={tab:?}"
+    );
+    // Et l'onglet tient dans la fenêtre : sans la carte bornée, le
+    // partage divergeait dans l'autre sens — l'onglet filait sous le bas
+    // de l'écran (mesuré : bas à 1650 px pour une fenêtre de 1183).
+    assert!(
+        tab.bottom() <= 1183.0 + 2.0,
+        "l'onglet déborde sous la fenêtre : tab={tab:?}"
+    );
+}
+
 /// La carte du fichier dit où est quoi, et le vidage ce que ces
 /// octets-là sont.
 ///
