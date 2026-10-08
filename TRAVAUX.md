@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **8 octobre
-2026**, version 0.2.8-beta.1, 1 125 tests au vert.
+2026**, version 0.2.8-beta.1, 1 128 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -209,8 +209,18 @@ flèches, bascule gros-boutien.
   module). Éprouvé avec un « faux DZF » (JSON fourni à la main) :
   `le_json_de_dzf_livre_au_panneau_s_y_affiche`,
   `une_sortie_non_dzf_demandee_le_dit`.
-- [ ] **À suivre** : rendre cliquables les adresses DANS le pseudo-code, et
-  éprouver avec le vrai DZF quand Astra l'aura fait émettre du conforme.
+- [x] **Adresses cliquables dans le pseudo-code (8 octobre)** —
+  `0x401030`, `sub_401030`, `loc_401030` mènent au listing, à l'endroit
+  exact visé. Tout le pseudo-code est peint en **une seule galère**
+  (aucun `ui.horizontal` imbriqué, qui ferait gonfler la fenêtre
+  d'analyse — cf. le #8) : les adresses sont colorées en lien, et la
+  position du clic est testée contre les plages de caractères pour sauter
+  à la bonne. Fonction pure `adresses_cliquables`, trois contrôles.
+  Compromis : le pseudo-code n'est plus sélectionnable d'un bloc (un
+  libellé cliquable n'est pas un libellé sélectionnable) — à revoir si le
+  copier-coller manque.
+- [ ] **À suivre** : éprouver avec le vrai DZF quand Astra l'aura fait
+  émettre du conforme.
 
 ### Revue d'interface — l'éditeur binaire et les modules (8 octobre)
 

@@ -150,12 +150,10 @@ impl ReModule for DzfDecompilerModule {
                             "DZF n'a donné que la signature de cette fonction.",
                             "DZF gave only this function's signature.",
                         ));
-                    } else {
-                        // Le pseudo-code, sélectionnable pour être copié.
-                        ui.add(
-                            egui::Label::new(egui::RichText::new(&f.pseudocode).monospace())
-                                .selectable(true),
-                        );
+                    } else if let Some(addr) = pseudocode_cliquable(ui, &f.pseudocode) {
+                        // Une adresse du pseudo-code a été cliquée : on
+                        // demande le saut au listing.
+                        aller = Some(addr);
                     }
                 });
         }
@@ -163,6 +161,131 @@ impl ReModule for DzfDecompilerModule {
             self.aller = Some(addr);
         }
     }
+}
+
+/// Une frontière de mot à gauche de `i` : début de ligne, ou un
+/// caractère qui n'est ni lettre, ni chiffre, ni `_`. Sans ça,
+/// `var0x10` ferait prendre `0x10` pour une adresse.
+fn frontière(chars: &[char], i: usize) -> bool {
+    i == 0 || (!chars[i - 1].is_ascii_alphanumeric() && chars[i - 1] != '_')
+}
+
+fn commence_par(chars: &[char], i: usize, motif: &str) -> bool {
+    let motif: Vec<char> = motif.chars().collect();
+    i + motif.len() <= chars.len() && chars[i..i + motif.len()] == motif[..]
+}
+
+/// Les adresses qu'on peut cliquer dans du pseudo-code, chacune avec sa
+/// plage **en caractères** et sa valeur : `0x401030`, `sub_401030`,
+/// `loc_401030`. L'indice en caractères est celui que la galère d'egui
+/// rend au clic, ce qui permet de sauter à l'adresse exacte visée et non
+/// à la première de la ligne.
+pub(crate) fn adresses_cliquables(texte: &str) -> Vec<(std::ops::Range<usize>, u64)> {
+    let chars: Vec<char> = texte.chars().collect();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < chars.len() {
+        // Le début de la partie hexadécimale, selon le préfixe reconnu.
+        let hex_start = if frontière(&chars, i)
+            && chars[i] == '0'
+            && i + 1 < chars.len()
+            && (chars[i + 1] == 'x' || chars[i + 1] == 'X')
+        {
+            Some(i + 2)
+        } else if frontière(&chars, i)
+            && (commence_par(&chars, i, "sub_") || commence_par(&chars, i, "loc_"))
+        {
+            Some(i + 4)
+        } else {
+            None
+        };
+        if let Some(hex_start) = hex_start {
+            let mut j = hex_start;
+            while j < chars.len() && chars[j].is_ascii_hexdigit() {
+                j += 1;
+            }
+            if j > hex_start {
+                let hex: String = chars[hex_start..j].iter().collect();
+                if let Ok(valeur) = u64::from_str_radix(&hex, 16) {
+                    out.push((i..j, valeur));
+                }
+                i = j;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    out
+}
+
+/// Peint le pseudo-code en une seule galère — aucun `ui.horizontal`
+/// imbriqué, qui ferait gonfler la fenêtre d'analyse (voir l'inspecteur
+/// de l'éditeur binaire) — avec les adresses en couleur de lien. Rend
+/// l'adresse cliquée, s'il y en a une sous le pointeur.
+///
+/// Un seul widget, dont on teste la position du clic contre les plages
+/// de caractères : on saute donc à l'adresse exacte visée.
+fn pseudocode_cliquable(ui: &mut egui::Ui, texte: &str) -> Option<u64> {
+    let adresses = adresses_cliquables(texte);
+    let police = egui::TextStyle::Monospace.resolve(ui.style());
+    let normal = ui.visuals().text_color();
+    let lien = ui.visuals().hyperlink_color;
+    let format = |couleur: egui::Color32| egui::TextFormat {
+        font_id: police.clone(),
+        color: couleur,
+        ..Default::default()
+    };
+
+    let chars: Vec<char> = texte.chars().collect();
+    let mut job = egui::text::LayoutJob::default();
+    job.wrap.max_width = f32::INFINITY;
+    let mut pos = 0usize;
+    for (plage, _) in &adresses {
+        if plage.start > pos {
+            job.append(
+                &chars[pos..plage.start].iter().collect::<String>(),
+                0.0,
+                format(normal),
+            );
+        }
+        job.append(
+            &chars[plage.clone()].iter().collect::<String>(),
+            0.0,
+            format(lien),
+        );
+        pos = plage.end;
+    }
+    if pos < chars.len() {
+        job.append(
+            &chars[pos..].iter().collect::<String>(),
+            0.0,
+            format(normal),
+        );
+    }
+
+    let galley = ui.painter().layout_job(job);
+    let (rect, réponse) = ui.allocate_exact_size(galley.size(), egui::Sense::click());
+    // L'adresse sous une position locale, s'il y en a une là.
+    let adresse_à = |locale: egui::Vec2| -> Option<u64> {
+        let indice = galley.cursor_from_pos(locale).index.0;
+        adresses
+            .iter()
+            .find(|(plage, _)| plage.contains(&indice))
+            .map(|(_, valeur)| *valeur)
+    };
+    // Le doigt change au survol d'une adresse : c'est ce qui dit qu'on
+    // peut cliquer.
+    if let Some(p) = réponse.hover_pos()
+        && adresse_à(p - rect.min).is_some()
+    {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    ui.painter().galley(rect.min, galley.clone(), normal);
+    réponse
+        .clicked()
+        .then(|| réponse.interact_pointer_pos())
+        .flatten()
+        .and_then(|p| adresse_à(p - rect.min))
 }
 
 #[cfg(test)]
@@ -203,6 +326,40 @@ mod tests {
             size: None,
             calls: Vec::new(),
         }
+    }
+
+    /// Les trois écritures d'adresse se repèrent, avec leur valeur.
+    #[test]
+    fn les_adresses_du_pseudo_code_se_reperent() {
+        let cas = [
+            ("x = 0x401030;", vec![(4usize..12usize, 0x401030u64)]),
+            ("goto loc_401016;", vec![(5..15, 0x401016)]),
+            ("call sub_401020();", vec![(5..15, 0x401020)]),
+            (
+                "f = sub_1000 + 0x2000;",
+                vec![(4..12, 0x1000), (15..21, 0x2000)],
+            ),
+        ];
+        for (texte, attendu) in cas {
+            assert_eq!(adresses_cliquables(texte), attendu, "pour « {texte} »");
+        }
+    }
+
+    /// Un hexa collé à un identifiant n'est pas une adresse : `var0x10`
+    /// reste un nom, et `0xtexte` n'a pas de chiffres à lire.
+    #[test]
+    fn un_hexa_colle_a_un_nom_n_est_pas_une_adresse() {
+        assert!(adresses_cliquables("var0x10 = 1;").is_empty());
+        assert!(adresses_cliquables("sub_total = 3;").is_empty());
+    }
+
+    /// Les plages sont en caractères sur TOUT le texte, sauts de ligne
+    /// compris : c'est l'indice que la galère rend au clic.
+    #[test]
+    fn les_plages_portent_sur_tout_le_texte() {
+        let texte = "a;\ngoto 0x10;";
+        // « 0x10 » commence après « a;\ngoto » = 3 + 5 = 8 caractères.
+        assert_eq!(adresses_cliquables(texte), vec![(8..12, 0x10)]);
     }
 
     /// Le nom qu'on a donné dans namsdec l'emporte sur celui de DZF : une
