@@ -17,6 +17,17 @@ use crate::{ReContext, ReModule, ReRequest};
 /// plusieurs octets d'un coup et l'insertion viendront ensuite — insérer
 /// décale tout ce qui suit, et chaque adresse du fichier deviendrait
 /// fausse, donc elle demande sa propre prudence.
+/// La colonne où l'on édite : les octets en hexadécimal, ou leur texte.
+/// Comme dans 010 Editor, le curseur vit dans l'une ou l'autre, et la
+/// frappe s'interprète selon celle qui est active — des chiffres hexa à
+/// gauche, un caractère à droite.
+#[derive(Default, Clone, Copy, PartialEq, Eq)]
+enum Colonne {
+    #[default]
+    Hex,
+    Texte,
+}
+
 #[derive(Default)]
 pub struct HexEditorModule {
     /// L'octet du début de la page affichée.
@@ -36,6 +47,13 @@ pub struct HexEditorModule {
     /// La frappe en place : le demi-octet de poids fort déjà tapé, en
     /// attente du second. `None` quand on n'a rien commencé.
     nibble: Option<u8>,
+    /// La colonne active : où le curseur se trouve, et comment la frappe
+    /// s'interprète.
+    colonne: Colonne,
+    /// L'inspecteur lit-il en gros-boutien ? Petit-boutien (x86) par
+    /// défaut ; la bascule sert aux formats réseau et aux fichiers
+    /// gros-boutiens.
+    inspecteur_be: bool,
     /// La dernière trouvaille, surlignée dans la grille.
     trouvé: Option<std::ops::Range<usize>>,
     demande: Option<ReRequest>,
@@ -228,6 +246,7 @@ impl ReModule for HexEditorModule {
         let fond_touché = visuals.warn_fg_color.gamma_multiply(0.30);
         let fond_trouvé = visuals.hyperlink_color.gamma_multiply(0.35);
         let mut nouveau_choix: Option<usize> = None;
+        let mut nouvelle_colonne: Colonne = self.colonne;
         let glyphe = egui::TextStyle::Monospace.resolve(ui.style());
 
         egui::ScrollArea::vertical()
@@ -268,6 +287,7 @@ impl ReModule for HexEditorModule {
                                     .clicked()
                                 {
                                     nouveau_choix = Some(off);
+                                    nouvelle_colonne = Colonne::Hex;
                                 }
                             }
                             // Un demi-espace entre les octets, un cran de
@@ -277,22 +297,44 @@ impl ReModule for HexEditorModule {
                             }
                         }
                         ui.add_space(10.0);
-                        // La colonne de texte : ce qui est imprimable, le
-                        // reste en point médian.
-                        let mut ascii = String::with_capacity(PAR_LIGNE);
-                        for col in 0..PAR_LIGNE {
-                            let off = ligne + col;
-                            if off >= fin {
-                                break;
+                        // La colonne de texte, caractère par caractère et
+                        // cliquable : c'est l'autre fenêtre sur les mêmes
+                        // octets, et l'autre endroit où l'on édite. Les
+                        // caractères se touchent (espacement nul) pour se
+                        // lire comme un mot.
+                        ui.scope(|ui| {
+                            ui.spacing_mut().item_spacing.x = 0.0;
+                            for col in 0..PAR_LIGNE {
+                                let off = ligne + col;
+                                if off >= fin {
+                                    break;
+                                }
+                                let b = octets[off];
+                                let c = if (0x20..0x7f).contains(&b) {
+                                    b as char
+                                } else {
+                                    '·'
+                                };
+                                let mut texte = egui::RichText::new(c.to_string())
+                                    .monospace()
+                                    .color(visuals.weak_text_color());
+                                if Some(off) == self.choisi {
+                                    texte = texte.background_color(fond_choisi);
+                                } else if self.trouvé.as_ref().is_some_and(|r| r.contains(&off)) {
+                                    texte = texte.background_color(fond_trouvé);
+                                } else if self.touchés.contains(&off) {
+                                    texte = texte.background_color(fond_touché);
+                                }
+                                if ui
+                                    .add(egui::Label::new(texte).sense(egui::Sense::click()))
+                                    .on_hover_cursor(egui::CursorIcon::PointingHand)
+                                    .clicked()
+                                {
+                                    nouveau_choix = Some(off);
+                                    nouvelle_colonne = Colonne::Texte;
+                                }
                             }
-                            let b = octets[off];
-                            ascii.push(if (0x20..0x7f).contains(&b) {
-                                b as char
-                            } else {
-                                '·'
-                            });
-                        }
-                        ui.monospace(egui::RichText::new(ascii).color(visuals.weak_text_color()));
+                        });
                     });
                     ligne += PAR_LIGNE;
                 }
@@ -303,19 +345,24 @@ impl ReModule for HexEditorModule {
             self.choisi = Some(off);
             self.valeur = format!("{:02x}", octets[off]);
             self.nibble = None;
+            self.colonne = nouvelle_colonne;
         }
 
         // Le clavier, quand un octet est choisi et qu'aucun champ de texte
         // n'a le focus (sinon la frappe irait à « Chercher » ou « Aller
-        // à »). Les flèches déplacent le curseur ; les chiffres hexa le
-        // changent en place, par quartets, comme dans un éditeur hexa.
+        // à »). Les flèches déplacent le curseur dans les deux colonnes ;
+        // Tab passe de l'une à l'autre ; et la frappe s'interprète selon
+        // la colonne active — chiffres hexa à gauche, caractère à droite.
         if let Some(off) = self.choisi
             && ui.memory(|m| m.focused()).is_none()
         {
             let dernier = octets.len().saturating_sub(1);
             let mut bascule: Option<usize> = None;
             let mut chiffre: Option<u8> = None;
+            let mut caractère: Option<u8> = None;
             let mut annule = false;
+            let mut change_colonne = false;
+            let en_texte = self.colonne == Colonne::Texte;
             ui.input_mut(|i| {
                 use egui::Key;
                 let rien = egui::Modifiers::NONE;
@@ -333,8 +380,24 @@ impl ReModule for HexEditorModule {
                     bascule = Some(off.saturating_sub(PAR_PAGE));
                 } else if i.consume_key(rien, Key::Escape) {
                     annule = true;
+                } else if i.consume_key(rien, Key::Tab) {
+                    change_colonne = true;
+                } else if en_texte {
+                    // Le premier caractère imprimable tapé devient l'octet.
+                    for ev in &i.events {
+                        if let egui::Event::Text(s) = ev
+                            && let Some(c) = s.chars().next()
+                            && c.is_ascii()
+                            && !c.is_ascii_control()
+                        {
+                            caractère = Some(c as u8);
+                            break;
+                        }
+                    }
+                    // Consommés, pour ne pas les laisser filer ailleurs.
+                    i.events.retain(|ev| !matches!(ev, egui::Event::Text(_)));
                 } else {
-                    // Un chiffre hexadécimal ?
+                    // Mode hexadécimal : un chiffre ?
                     for (k, v) in [
                         (Key::Num0, 0u8),
                         (Key::Num1, 1),
@@ -360,6 +423,14 @@ impl ReModule for HexEditorModule {
                     }
                 }
             });
+            if change_colonne {
+                self.colonne = if en_texte {
+                    Colonne::Hex
+                } else {
+                    Colonne::Texte
+                };
+                self.nibble = None;
+            }
             if annule {
                 self.nibble = None;
             }
@@ -372,25 +443,31 @@ impl ReModule for HexEditorModule {
                     self.page = cible / PAR_PAGE * PAR_PAGE;
                 }
             }
-            if let Some(d) = chiffre {
+            // Ce qu'on écrit, d'où qu'il vienne : un octet complet tapé en
+            // hexa, ou un caractère tapé dans la colonne de texte.
+            let à_écrire = if let Some(d) = chiffre {
                 let (attente, complet) = frapper(self.nibble, d);
                 self.nibble = attente;
-                // L'octet est complet : on l'écrit et l'on avance — la
-                // frappe continue toute seule, quartet après quartet.
-                if let Some(valeur) = complet {
-                    if octets.get(off).copied() != Some(valeur) {
-                        self.demande = Some(ReRequest::PatchBytes {
-                            offset: off,
-                            bytes: vec![valeur],
-                        });
-                        self.touchés.insert(off);
-                    }
-                    let suivant = (off + 1).min(dernier);
-                    self.choisi = Some(suivant);
-                    self.valeur = format!("{:02x}", octets.get(suivant).copied().unwrap_or(0));
-                    if suivant >= self.page + PAR_PAGE {
-                        self.page = suivant / PAR_PAGE * PAR_PAGE;
-                    }
+                complet
+            } else {
+                caractère
+            };
+            if let Some(valeur) = à_écrire {
+                if octets.get(off).copied() != Some(valeur) {
+                    self.demande = Some(ReRequest::PatchBytes {
+                        offset: off,
+                        bytes: vec![valeur],
+                    });
+                    self.touchés.insert(off);
+                }
+                // On avance — la frappe continue toute seule, octet après
+                // octet, dans l'une ou l'autre colonne.
+                let suivant = (off + 1).min(dernier);
+                self.choisi = Some(suivant);
+                self.valeur = format!("{:02x}", octets.get(suivant).copied().unwrap_or(0));
+                self.nibble = None;
+                if suivant >= self.page + PAR_PAGE {
+                    self.page = suivant / PAR_PAGE * PAR_PAGE;
                 }
             }
         }
@@ -445,22 +522,43 @@ impl ReModule for HexEditorModule {
                         .monospace(),
                 );
             } else {
-                ui.weak(ctx.t(
-                    "Flèches pour se déplacer, chiffres hexa pour écrire en place.",
-                    "Arrows to move, hex digits to type in place.",
+                let colonne = match self.colonne {
+                    Colonne::Hex => ctx.t("colonne hexa", "hex column"),
+                    Colonne::Texte => ctx.t("colonne texte", "text column"),
+                };
+                let geste = match self.colonne {
+                    Colonne::Hex => ctx.t("chiffres hexa pour écrire", "hex digits to type"),
+                    Colonne::Texte => ctx.t("un caractère pour écrire", "a character to type"),
+                };
+                ui.weak(format!(
+                    "{colonne} — {} ; {geste}, Tab {}",
+                    ctx.t("flèches pour se déplacer", "arrows to move"),
+                    ctx.t("pour changer de colonne", "to switch column"),
                 ));
             }
 
             // L'inspecteur : les octets à partir d'ici, lus dans chaque
             // format. Petit-boutien, celui du x86.
             let reste = &octets[off..];
-            let lectures = inspecter(reste);
+            let lectures = inspecter(reste, self.inspecteur_be);
             if !lectures.is_empty() {
                 ui.add_space(6.0);
-                ui.weak(ctx.t(
-                    "Lu à partir d'ici (petit-boutien) :",
-                    "Read from here (little-endian):",
-                ));
+                // La bascule d'ordre des octets : petit-boutien (x86) par
+                // défaut, gros-boutien pour les formats réseau et les
+                // fichiers qui l'emploient.
+                ui.horizontal(|ui| {
+                    ui.weak(ctx.t("Lu à partir d'ici :", "Read from here:"));
+                    ui.selectable_value(
+                        &mut self.inspecteur_be,
+                        false,
+                        ctx.t("petit-boutien", "little-endian"),
+                    );
+                    ui.selectable_value(
+                        &mut self.inspecteur_be,
+                        true,
+                        ctx.t("gros-boutien", "big-endian"),
+                    );
+                });
                 egui::Grid::new("hex_inspecteur")
                     .num_columns(2)
                     .min_col_width(0.0)
@@ -547,11 +645,12 @@ fn trouver(octets: &[u8], motif: &[u8], depuis: usize, précédent: bool) -> Opt
 /// faible d'abord, ce qui déroute tant qu'on ne l'a pas vu une fois.
 ///
 /// Fonction libre, pour l'éprouver sans interface.
-fn inspecter(octets: &[u8]) -> Vec<(&'static str, String)> {
+fn inspecter(octets: &[u8], be: bool) -> Vec<(&'static str, String)> {
     let mut out = Vec::new();
     let Some(&b) = octets.first() else {
         return out;
     };
+    // Un octet seul ne dépend pas de l'ordre des octets.
     out.push(("int8", (b as i8).to_string()));
     out.push(("uint8", b.to_string()));
     out.push(("binaire", format!("{b:08b}")));
@@ -563,21 +662,59 @@ fn inspecter(octets: &[u8]) -> Vec<(&'static str, String)> {
             "·".to_owned()
         },
     ));
-    if let Ok(deux) = <[u8; 2]>::try_from(&octets[..2.min(octets.len())]) {
-        out.push(("int16 LE", i16::from_le_bytes(deux).to_string()));
-        out.push(("uint16 LE", u16::from_le_bytes(deux).to_string()));
+    if octets.len() >= 2 {
+        let a = <[u8; 2]>::try_from(&octets[..2]).unwrap();
+        let (i, u) = if be {
+            (
+                i16::from_be_bytes(a).to_string(),
+                u16::from_be_bytes(a).to_string(),
+            )
+        } else {
+            (
+                i16::from_le_bytes(a).to_string(),
+                u16::from_le_bytes(a).to_string(),
+            )
+        };
+        out.push((if be { "int16 BE" } else { "int16 LE" }, i));
+        out.push((if be { "uint16 BE" } else { "uint16 LE" }, u));
     }
     if octets.len() >= 4 {
-        let quatre = <[u8; 4]>::try_from(&octets[..4]).unwrap();
-        out.push(("int32 LE", i32::from_le_bytes(quatre).to_string()));
-        out.push(("uint32 LE", u32::from_le_bytes(quatre).to_string()));
-        out.push(("float32 LE", format!("{}", f32::from_le_bytes(quatre))));
+        let a = <[u8; 4]>::try_from(&octets[..4]).unwrap();
+        let (i, u, f) = if be {
+            (
+                i32::from_be_bytes(a).to_string(),
+                u32::from_be_bytes(a).to_string(),
+                f32::from_be_bytes(a).to_string(),
+            )
+        } else {
+            (
+                i32::from_le_bytes(a).to_string(),
+                u32::from_le_bytes(a).to_string(),
+                f32::from_le_bytes(a).to_string(),
+            )
+        };
+        out.push((if be { "int32 BE" } else { "int32 LE" }, i));
+        out.push((if be { "uint32 BE" } else { "uint32 LE" }, u));
+        out.push((if be { "float32 BE" } else { "float32 LE" }, f));
     }
     if octets.len() >= 8 {
-        let huit = <[u8; 8]>::try_from(&octets[..8]).unwrap();
-        out.push(("int64 LE", i64::from_le_bytes(huit).to_string()));
-        out.push(("uint64 LE", u64::from_le_bytes(huit).to_string()));
-        out.push(("float64 LE", format!("{}", f64::from_le_bytes(huit))));
+        let a = <[u8; 8]>::try_from(&octets[..8]).unwrap();
+        let (i, u, f) = if be {
+            (
+                i64::from_be_bytes(a).to_string(),
+                u64::from_be_bytes(a).to_string(),
+                f64::from_be_bytes(a).to_string(),
+            )
+        } else {
+            (
+                i64::from_le_bytes(a).to_string(),
+                u64::from_le_bytes(a).to_string(),
+                f64::from_le_bytes(a).to_string(),
+            )
+        };
+        out.push((if be { "int64 BE" } else { "int64 LE" }, i));
+        out.push((if be { "uint64 BE" } else { "uint64 LE" }, u));
+        out.push((if be { "float64 BE" } else { "float64 LE" }, f));
     }
     out
 }
@@ -682,14 +819,14 @@ mod tests {
         };
 
         // 0x01 suivi de zéros : 1 dans toutes les largeurs non signées.
-        let l = inspecter(&[0x01, 0, 0, 0, 0, 0, 0, 0]);
+        let l = inspecter(&[0x01, 0, 0, 0, 0, 0, 0, 0], false);
         assert_eq!(trouve(&l, "uint8").as_deref(), Some("1"));
         assert_eq!(trouve(&l, "uint16 LE").as_deref(), Some("1"));
         assert_eq!(trouve(&l, "uint32 LE").as_deref(), Some("1"));
         assert_eq!(trouve(&l, "uint64 LE").as_deref(), Some("1"));
 
         // 0xff seul : -1 signé, 255 non signé, et les bits.
-        let l = inspecter(&[0xff]);
+        let l = inspecter(&[0xff], false);
         assert_eq!(trouve(&l, "int8").as_deref(), Some("-1"));
         assert_eq!(trouve(&l, "uint8").as_deref(), Some("255"));
         assert_eq!(trouve(&l, "binaire").as_deref(), Some("11111111"));
@@ -698,11 +835,20 @@ mod tests {
         assert!(trouve(&l, "uint32 LE").is_none());
 
         // Petit-boutien : 0x00 0x01 = 256, et non 1.
-        let l = inspecter(&[0x00, 0x01]);
+        let l = inspecter(&[0x00, 0x01], false);
         assert_eq!(trouve(&l, "uint16 LE").as_deref(), Some("256"));
 
         // Rien à lire sur rien.
-        assert!(inspecter(&[]).is_empty());
+        assert!(inspecter(&[], false).is_empty());
+
+        // Gros-boutien : 0x00 0x01 se lit 1, et non 256 — l'inverse du
+        // petit-boutien, et les étiquettes le disent.
+        let be = inspecter(&[0x00, 0x01], true);
+        assert_eq!(trouve(&be, "uint16 BE").as_deref(), Some("1"));
+        assert!(
+            trouve(&be, "uint16 LE").is_none(),
+            "en gros-boutien, pas d'étiquette LE"
+        );
     }
 
     #[test]

@@ -113,6 +113,15 @@ flèches, bascule gros-boutien.
       de 400 caractères en tête, numéros peints consécutifs à pas
       constant — un repli régressif les ferait sauter).
 
+- [x] **Éditeur binaire — parité 010 Editor atteinte (8 octobre)** : deux
+  dernières pièces. Édition dans la **colonne de texte** — Tab bascule de
+  la colonne hexa à la colonne texte, où une frappe pose le caractère
+  (via `Event::Text`), curseur partagé, même chemin d'écriture réversible.
+  Et la **bascule gros-boutien** de l'inspecteur : le même quadruplet se
+  relit dans l'autre sens, étiquettes LE/BE à l'appui. `inspecter(octets,
+  be)` et l'enum `Colonne`. Contrôle `l_inspecteur_lit_chaque_format`
+  étendu au gros-boutien.
+
 ### Revue d'interface — l'éditeur binaire et les modules (8 octobre)
 
 Audit egui (skill audit-ui-egui), concentré sur la surface neuve :

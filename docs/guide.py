@@ -1260,7 +1260,12 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "(gauche/droite d\'un octet, haut/bas d\'une ligne, Page préc./suiv. d\'une page), "
          "et les chiffres hexadécimaux l\'écrivent <b>en place</b>, quartet par quartet — "
          "taper « 7 » puis « 4 » pose <font face=\'Courier\'>74</font> et avance tout seul, "
-         "comme dans 010 Editor. Échap annule un quartet commencé.",
+         "comme dans 010 Editor. Échap annule un quartet commencé. <b>Tab</b> passe à la "
+         "<b>colonne de texte</b>, où l\'on tape alors un caractère pour poser son octet — "
+         "l\'autre fenêtre sur les mêmes octets, et l\'autre façon d\'éditer. "
+         "Sous l\'octet choisi, l\'inspecteur bascule entre <b>petit-boutien</b> (x86, par "
+         "défaut) et <b>gros-boutien</b> (formats réseau) : le même quadruplet d\'octets se "
+         "lit alors dans l\'autre sens.",
          "<b>Entropie</b> — combien de bits d'information porte un octet, sur tout le "
          "fichier puis par tranches. C'est ce qui répond avant tout le reste à « y a-t-il "
          "seulement quelque chose à lire ici ? » : un binaire empaqueté montre un petit "
