@@ -1216,6 +1216,13 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "une liste qui peut compter des centaines de fonctions. Le nom est <b>gardé d'une "
          "séance à l'autre</b>, car c'est la même table de « notes » que le reste de "
          "namsdec. C'est la carte qu'on lit avant de descendre dans une fonction.",
+         "<b>Décompilation DZF</b> — les fonctions en <b>pseudo-C</b>, quand le moteur "
+         "maison DZF les a rendues. C\'est la suite du graphe d\'appels : du squelette des "
+         "appels au corps en clair. Une fonction y porte le <b>nom que vous lui avez donné</b> "
+         "dans namsdec, pas celui de DZF — rebaptisée dans l\'arbre, elle l\'est ici aussi. "
+         "DZF est en cours d\'écriture (bâti à part, en C++23) ; tant qu\'il n\'a rien rendu, "
+         "le panneau dit ce qu\'il montrera. namsdec et DZF échangent par un contrat JSON "
+         "figé, pour grandir chacun sans casser l\'autre.",
          "<b>Fragments réutilisables (ROP)</b> — les fins de séquence utiles à une chaîne ROP.",
          "<b>Place libre (bourrage)</b> — le bourrage que l'éditeur de liens laisse pour aligner : "
          "entre deux fonctions, entre deux sections, en fin de segment, il comble avec un "

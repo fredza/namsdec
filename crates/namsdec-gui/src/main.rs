@@ -76,10 +76,10 @@ use namsdec_disasm::DecodedInstruction;
 use namsdec_emu::{Backend, Emulator, RunStop, StepOverResult, StepResult};
 use namsdec_explorer::{ExplorerAction, FileExplorer};
 use namsdec_re::{
-    BinaryInfoModule, CallGraphModule, DigestModule, DumpModule, EntropyModule, FunctionsModule,
-    GadgetsModule, HexEditorModule, ImportsModule, MapModule, PatternsModule, ProtectionsModule,
-    ReContext, ReModuleRegistry, SignalsModule, SlackModule, StringsModule, SyscallsModule,
-    XrefsModule, YaraModule,
+    BinaryInfoModule, CallGraphModule, DigestModule, DumpModule, DzfDecompilerModule,
+    EntropyModule, FunctionsModule, GadgetsModule, HexEditorModule, ImportsModule, MapModule,
+    PatternsModule, ProtectionsModule, ReContext, ReModuleRegistry, SignalsModule, SlackModule,
+    StringsModule, SyscallsModule, XrefsModule, YaraModule,
 };
 use namsdec_theme::Theme;
 
@@ -1660,6 +1660,10 @@ impl Default for NamsdecApp {
         // binaire et le pseudo-code de chacune. C'est la carte qu'on lit
         // avant de descendre dans une fonction.
         re_registry.register(Box::new(CallGraphModule::default()));
+        // La décompilation DZF : les fonctions en pseudo-C, quand le
+        // moteur maison les a rendues. Après le graphe d'appels, dont elle
+        // prolonge la lecture — du squelette des appels au corps en clair.
+        re_registry.register(Box::new(DzfDecompilerModule::default()));
         // Puis dans l'ordre où l'on regarde un binaire inconnu : ce qu'il
         // dit (ses chaînes), ce qu'il demande au système, puis comment il
         // est découpé.

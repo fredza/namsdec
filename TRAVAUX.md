@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **7 octobre
-2026**, version 0.2.8-beta.1, 1 116 tests au vert.
+2026**, version 0.2.8-beta.1, 1 119 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -135,9 +135,18 @@ flèches, bascule gros-boutien.
   sémantique, vide valide. Cinq contrôles (`un_exemple_complet_se_lit`,
   `le_minimum_suffit`, `un_champ_inconnu_est_ignore`,
   `une_fonction_sans_adresse_est_refusee`, `le_vide_se_lit`).
-- [ ] **À suivre** : le panneau décompilateur (ReModule) qui rend ce JSON,
-  branché sur les noms partagés (`display_name`) et le graphe d'appels,
-  une fois que DZF émet du conforme.
+- [x] **Le panneau décompilateur DZF** (`DzfDecompilerModule`,
+  « Décompilation DZF ») — rend le JSON du contrat : chaque fonction en
+  pseudo-C dans un repli, sa signature, son adresse cliquable. Branché sur
+  les **noms partagés** : une fonction rebaptisée dans l'arbre d'appels
+  porte son nom namsdec ici aussi (prouvé :
+  `le_nom_de_namsdec_l_emporte_sur_celui_de_dzf`). État vide clair tant que
+  DZF n'a rien rendu. `set_decompilation` reçoit la sortie ;
+  `take_request` relaie l'aller-à. Enregistré après le graphe d'appels.
+- [ ] **À suivre** : câbler le GUI pour LANCER DZF (plugin décompilateur) →
+  `dzf::parse` → `set_decompilation`. À faire quand DZF émet du JSON
+  conforme, pour l'éprouver de bout en bout. Puis : rendre cliquables les
+  adresses DANS le pseudo-code.
 
 ### Revue d'interface — l'éditeur binaire et les modules (8 octobre)
 
