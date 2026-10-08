@@ -12543,6 +12543,96 @@ fn the_analysis_window_has_margins_and_a_left_aligned_column() {
     );
 }
 
+/// Choisir un octet dans l'éditeur ne fait pas enfler la fenêtre.
+///
+/// L'inspecteur qui s'ouvre sous l'octet choisi était une `egui::Grid`,
+/// et toute rangée imbriquée — grille ou `ui.horizontal` — réserve la
+/// largeur disponible. Dans une fenêtre qui s'ajuste à son contenu,
+/// c'est une boucle : la fenêtre grandit pour contenir la rangée, ce
+/// qui agrandit la disponible, et l'on repart. On mesurait 1100 px,
+/// puis 2878, puis deux de plus à chaque image — la fenêtre, centrée,
+/// finissait par déborder de l'écran et le contenu se coupait à gauche.
+/// Ce test choisit un octet et vérifie que la fenêtre ne bouge plus.
+#[test]
+fn choisir_un_octet_ne_fait_pas_enfler_la_fenetre() {
+    let Some(octets) = binaire_dépreuve("crackme-01") else {
+        return;
+    };
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp::default();
+    app.apply_theme(&ctx);
+    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    app.show_analysis = true;
+    app.analysis_module = "hex_editor".to_owned();
+
+    let scr = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1600.0, 1100.0));
+    let rendre = |app: &mut NamsdecApp, ev: Vec<egui::Event>| -> Option<egui::Rect> {
+        let mut r7f = None;
+        let mut sortie = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(scr),
+                events: ev,
+                ..Default::default()
+            },
+            |ui| app.draw(ui),
+        );
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(texte) = &clipped.shape
+                && texte.galley.text() == "7f"
+                && r7f.is_none()
+            {
+                r7f = Some(egui::Rect::from_min_size(texte.pos, texte.galley.size()));
+            }
+        }
+        sortie.textures_delta.clear();
+        r7f
+    };
+    let largeur = |ctx: &egui::Context| {
+        egui::AreaState::load(ctx, egui::Id::new("analysis_window"))
+            .map(|a| a.rect().width())
+            .expect("la fenêtre est affichée")
+    };
+
+    // On laisse la fenêtre se poser, et l'on note où est le premier octet
+    // (0x7f, le début du nombre magique de l'ELF) pour le viser.
+    let mut cible = None;
+    for _ in 0..4 {
+        if let Some(r) = rendre(&mut app, vec![]) {
+            cible = Some(r);
+        }
+    }
+    let avant = largeur(&ctx);
+    let pos = cible.expect("un octet 0x7f est affiché").center();
+
+    for ev in [
+        egui::Event::PointerMoved(pos),
+        egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers: egui::Modifiers::NONE,
+        },
+        egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers: egui::Modifiers::NONE,
+        },
+    ] {
+        rendre(&mut app, vec![ev]);
+    }
+    // Plusieurs images après le clic : si la boucle existait, la fenêtre
+    // aurait déjà bondi d'un bon millier de pixels.
+    for _ in 0..6 {
+        rendre(&mut app, vec![]);
+    }
+    let après = largeur(&ctx);
+    assert!(
+        après <= avant + 2.0,
+        "la fenêtre a enflé en choisissant un octet : {avant} px puis {après} px"
+    );
+}
+
 /// La carte du fichier dit où est quoi, et le vidage ce que ces
 /// octets-là sont.
 ///

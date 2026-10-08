@@ -559,27 +559,54 @@ impl ReModule for HexEditorModule {
                         ctx.t("gros-boutien", "big-endian"),
                     );
                 });
-                egui::Grid::new("hex_inspecteur")
-                    .num_columns(2)
-                    .min_col_width(0.0)
-                    .spacing([16.0, 2.0])
-                    .striped(true)
-                    .show(ui, |ui| {
-                        for (nom, valeur) in lectures {
-                            ui.weak(nom);
-                            if ui
-                                .add(
-                                    egui::Label::new(egui::RichText::new(&valeur).monospace())
-                                        .sense(egui::Sense::click()),
-                                )
-                                .on_hover_text(ctx.t("Cliquer pour copier", "Click to copy"))
-                                .clicked()
-                            {
-                                ui.ctx().copy_text(valeur);
-                            }
-                            ui.end_row();
-                        }
-                    });
+                // Une ligne = un seul libellé, et surtout AUCUNE
+                // disposition imbriquée. L'inspecteur était un
+                // `egui::Grid` ; une rangée d'`ui.horizontal` par lecture
+                // aurait fait pareil. Dans la fenêtre d'analyse, qui
+                // s'ajuste à son contenu, toute rangée imbriquée réserve
+                // la largeur disponible, la fenêtre grandit pour la
+                // contenir, ce qui agrandit la disponible… et l'on
+                // repart. Au moindre octet choisi la fenêtre gonflait —
+                // 1100 px, puis 2878, puis deux de plus à chaque image —
+                // jusqu'à déborder de l'écran : centrée, sa moitié gauche
+                // passait hors champ et le contenu se coupait à gauche.
+                // Mesuré, bissecté jusqu'à la rangée. Un libellé unique,
+                // c'est une seule galère de texte : elle ne lit aucune
+                // largeur, et rien ne peut plus se reboucler. Le nom est
+                // en chasse fixe, rembourré à onze caractères, pour que
+                // les valeurs s'alignent d'elles-mêmes ; atténué, pour
+                // que la valeur ressorte. Un clic copie la valeur.
+                ui.spacing_mut().item_spacing.y = 2.0;
+                let police = egui::TextStyle::Monospace.resolve(ui.style());
+                for (nom, valeur) in lectures {
+                    let mut job = egui::text::LayoutJob::default();
+                    job.wrap.max_width = f32::INFINITY;
+                    job.append(
+                        &format!("{nom:<11} "),
+                        0.0,
+                        egui::TextFormat {
+                            font_id: police.clone(),
+                            color: visuals.weak_text_color(),
+                            ..Default::default()
+                        },
+                    );
+                    job.append(
+                        &valeur,
+                        0.0,
+                        egui::TextFormat {
+                            font_id: police.clone(),
+                            color: visuals.text_color(),
+                            ..Default::default()
+                        },
+                    );
+                    if ui
+                        .add(egui::Label::new(job).sense(egui::Sense::click()))
+                        .on_hover_text(ctx.t("Cliquer pour copier", "Click to copy"))
+                        .clicked()
+                    {
+                        ui.ctx().copy_text(valeur);
+                    }
+                }
             }
         } else {
             ui.add_space(4.0);

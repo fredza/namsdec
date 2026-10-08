@@ -6,8 +6,8 @@ retiré — reste dans `AMELIORATIONS.txt`, qui ne bouge pas de rôle : une
 seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
-Tenue à jour au fil des séances. Dernière mise à jour : **7 octobre
-2026**, version 0.2.8-beta.1, 1 121 tests au vert.
+Tenue à jour au fil des séances. Dernière mise à jour : **8 octobre
+2026**, version 0.2.8-beta.1, 1 122 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -90,6 +90,33 @@ flèches, bascule gros-boutien.
       champ de texte n'a le focus. Logique pure `frapper`, testée. Reste
       vers 010 Editor : édition de la colonne de texte, bascule
       gros-boutien.
+- [x] **Éditeur binaire — la fenêtre n'enfle plus au clic d'un octet
+      (8 octobre)** — l'inspecteur qui s'ouvre sous l'octet choisi était
+      une `egui::Grid`. Dans la fenêtre d'analyse, qui s'ajuste à son
+      contenu, toute rangée imbriquée (grille ou `ui.horizontal`) réserve
+      la largeur disponible : la fenêtre grandit pour la contenir, ce qui
+      agrandit la disponible, et l'on repart. Mesuré : 1100 px → 2878,
+      puis deux de plus à chaque image, jusqu'à déborder de l'écran —
+      centrée, sa moitié gauche passait hors champ et le contenu se
+      coupait à gauche (capture de Fred). Bissecté jusqu'à la rangée.
+      L'inspecteur est maintenant **un libellé par ligne**, une seule
+      galère de texte (nom en chasse fixe atténué + valeur, via
+      `LayoutJob`), qui ne lit aucune largeur. Contrôle :
+      `choisir_un_octet_ne_fait_pas_enfler_la_fenetre`.
+- [ ] **Onglet Mémoire — chevauchement signalé (capture de Fred,
+      8 octobre), PAS encore reproduit** — sur sa capture, le contenu de
+      l'onglet Mémoire (« Mémoire », « Chercher », « Carte de la mémoire »)
+      se peint par-dessus la moitié basse des registres : l'onglet est
+      poussé plus haut que l'état du processeur. Essayé sans le voir :
+      binaire chargé (crackme-01, /bin/true), hauteurs 600→1200, largeurs
+      1400→2000 (barre latérale ~480 px comme la sienne), séparateur
+      d'onglet tiré jusqu'à 950 px. Dans tous ces cas le partage se cale
+      proprement (état du processeur au-dessus, onglet dessous, zéro
+      recouvrement). Le déclencheur tient à quelque chose de sa session
+      que le banc ne rejoue pas (facteur d'échelle de l'écran ? un binaire
+      précis ? un transitoire pendant le pas à pas ?). À élucider avec une
+      capture ou les conditions exactes — pas de correctif à l'aveugle sur
+      une mise en page aussi réglée.
 - [x] **Commentaire périmé de `flags_ui` corrigé** — il disait encore
       « chacune se bascule d'un clic » depuis que les flags sont en
       lecture seule. (L'édition de registres, elle, est gardée — choix de
