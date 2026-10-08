@@ -18137,6 +18137,26 @@ fn each_exercise_gets_its_own_named_tab() {
     assert_eq!(app.tabs.len(), 1, "et l'on n'a pas ouvert un troisième");
 }
 
+/// L'onglet d'un binaire ouvert porte son nom, pas « sans titre ».
+///
+/// Un binaire chargé n'a pas de `path` — on ne le rouvre pas en
+/// l'enregistrant par-dessus l'original — et l'onglet restait donc « sans
+/// titre ». Son nom, celui du fichier d'où il vient, est pourtant connu :
+/// il voyage dans `from_binary`. C'est lui qui s'écrit maintenant.
+#[test]
+fn l_onglet_d_un_binaire_porte_son_nom() {
+    let Some(octets) = binaire_dépreuve("crackme-01") else {
+        return;
+    };
+    let mut app = NamsdecApp::default();
+    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    let noms: Vec<String> = app.tab_labels().into_iter().map(|(nom, _)| nom).collect();
+    assert!(
+        noms.iter().any(|n| n == "crackme-01"),
+        "l'onglet devrait porter le nom du binaire : {noms:?}"
+    );
+}
+
 /// Un fichier changé sous nos pieds ne passe pas inaperçu.
 ///
 /// `git checkout`, un autre éditeur, un `sed` : le fichier bouge pendant

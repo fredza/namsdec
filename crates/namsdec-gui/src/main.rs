@@ -473,6 +473,10 @@ impl OpenTab {
         tab_label(
             self.path.as_deref(),
             self.current_exercise.as_deref(),
+            self.assemble_state
+                .as_ref()
+                .and_then(|state| state.from_binary.as_ref())
+                .map(|binaire| binaire.name.as_str()),
             s,
             packs,
             lang,
@@ -2552,6 +2556,7 @@ fn encadré(ui: &mut egui::Ui, couleur: egui::Color32, contenu: impl FnOnce(&mut
 fn tab_label(
     path: Option<&Path>,
     exercise: Option<&str>,
+    binary_name: Option<&str>,
     s: &Strings,
     packs: &[namsdec_exercises::Pack],
     lang: Lang,
@@ -2562,6 +2567,13 @@ fn tab_label(
     }
     if let Some(exercice) = exercise.and_then(|id| namsdec_exercises::find(packs, id)) {
         return exercice.title.get(lang.code()).to_owned();
+    }
+    // Un binaire ouvert n'a pas de `path` — on ne le rouvre pas en
+    // l'enregistrant par-dessus — mais il a un nom, celui du fichier d'où
+    // il vient. Sans ça, l'onglet d'un binaire chargé restait « sans
+    // titre », et l'on ne savait plus lequel on regardait.
+    if let Some(nom) = binary_name.filter(|nom| !nom.is_empty()) {
+        return nom.to_owned();
     }
     // NUMÉROTÉ, comme partout ailleurs. Trois programmes neufs
     // s'appelaient tous « sans titre » : on ouvrait le troisième et

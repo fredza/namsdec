@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **8 octobre
-2026**, version 0.2.8-beta.1, 1 123 tests au vert.
+2026**, version 0.2.8-beta.1, 1 124 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -127,6 +127,12 @@ flèches, bascule gros-boutien.
       haute, elle ne peut plus pousser le reste. Reproduit via les
       34 régions de crackme ; contrôle :
       `la_carte_depliee_ne_couvre_pas_les_registres`.
+- [x] **Le nom du binaire s'affiche sur l'onglet (8 octobre)** — un
+      binaire ouvert n'a pas de `path` (on ne le rouvre pas en
+      l'enregistrant par-dessus l'original), et l'onglet restait « sans
+      titre ». Son nom voyage pourtant dans `from_binary` : c'est lui qui
+      s'écrit maintenant, sur l'onglet actif comme sur ceux rangés.
+      Contrôle : `l_onglet_d_un_binaire_porte_son_nom`.
 - [x] **Commentaire périmé de `flags_ui` corrigé** — il disait encore
       « chacune se bascule d'un clic » depuis que les flags sont en
       lecture seule. (L'édition de registres, elle, est gardée — choix de

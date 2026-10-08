@@ -503,6 +503,10 @@ impl NamsdecApp {
             tab_label(
                 self.current_file.as_deref(),
                 self.current_exercise.as_deref(),
+                self.assemble_state
+                    .as_ref()
+                    .and_then(|state| state.from_binary.as_ref())
+                    .map(|binaire| binaire.name.as_str()),
                 s,
                 &self.exercise_packs,
                 self.lang,
