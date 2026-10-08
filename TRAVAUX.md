@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **7 octobre
-2026**, version 0.2.8-beta.1, 1 110 tests au vert.
+2026**, version 0.2.8-beta.1, 1 111 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -94,11 +94,14 @@ flèches, bascule gros-boutien.
       « chacune se bascule d'un clic » depuis que les flags sont en
       lecture seule. (L'édition de registres, elle, est gardée — choix de
       Fred : c'est le `set \$reg` de gdb, réversible par Step Back.)
-- [ ] **À noter** : après un patch, `load_elf` ne rappelle pas
-      `on_binary_loaded`, donc les analyses mises en cache (empreintes,
-      entropie, YARA, « En bref ») restent celles d'AVANT le patch jusqu'au
-      prochain assemblage. À corriger : rafraîchir l'analyse après une
-      écriture.
+- [x] **Fausse alerte élucidée (8 octobre)** : je craignais que l'analyse
+      reste périmée après un patch, parce que `load_elf` n'appelle pas
+      `on_binary_loaded`. Vérifié empiriquement : elle se rafraîchit bien.
+      `load_elf` appelle `rebuild_emulator`, qui dispatche vers
+      `load_process` ou `rebuild_from_assembly` — et ces deux-là notifient
+      les modules. Le SHA-256 change après une écriture. Verrouillé par
+      `une_ecriture_rafraichit_l_analyse`, qui tombe si l'on casse la
+      chaîne. Leçon : tracer jusqu'au bout avant d'inscrire un défaut.
 
 - [x] **Vérifié (8 octobre) : les numéros de ligne ↔ les instructions** —
       demande de Fred. Alignés par construction : `layout_code` pose le

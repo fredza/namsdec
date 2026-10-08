@@ -27513,6 +27513,90 @@ fn l_editeur_binaire_dispose_le_fichier_en_grille() {
     );
 }
 
+/// Une écriture dans l'éditeur binaire rafraîchit l'analyse.
+///
+/// On avait cru à un défaut : `load_elf`, le chemin du patch, n'appelle
+/// pas `on_binary_loaded`. Mais il appelle `rebuild_emulator`, qui
+/// dispatche vers `load_process` ou `rebuild_from_assembly` — et ces
+/// deux-là, eux, notifient les modules. L'analyse se refait donc bien
+/// après chaque patch. Ce contrôle le prouve, et tombe si l'on casse un
+/// jour cette chaîne : il écrit un octet et vérifie que l'empreinte
+/// SHA-256, calculée au chargement, a changé.
+#[test]
+fn une_ecriture_rafraichit_l_analyse() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source:
+            "global _start\nsection .text\n_start:\n    mov rax, 60\n    mov rdi, 7\n    syscall\n"
+                .to_owned(),
+        show_analysis: true,
+        analysis_module: "digest".to_owned(),
+        ..Default::default()
+    };
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    app.do_assemble();
+
+    // L'empreinte peinte par le module « Empreintes » : soixante-quatre
+    // caractères hexadécimaux.
+    let sha = |app: &mut NamsdecApp| -> Option<String> {
+        let mut trouvée = None;
+        for _ in 0..3 {
+            let mut out = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(1500.0, 1200.0),
+                    )),
+                    ..Default::default()
+                },
+                |ui| app.draw(ui),
+            );
+            for clipped in &out.shapes {
+                if let egui::epaint::Shape::Text(texte) = &clipped.shape {
+                    let t = texte.galley.text();
+                    if t.len() == 64 && t.chars().all(|c| c.is_ascii_hexdigit()) {
+                        trouvée = Some(t.to_owned());
+                    }
+                }
+            }
+            out.textures_delta.clear();
+        }
+        trouvée
+    };
+
+    let avant = sha(&mut app).expect("une empreinte avant le patch");
+
+    // On écrit sur un octet du code — l'immédiat 7 de « mov rdi, 7 » — en
+    // le passant à 8. Changer un octet de code garde un ELF valide.
+    let off = app.assemble_state.as_ref().and_then(|st| {
+        st.output
+            .file
+            .iter()
+            .enumerate()
+            .skip(0x400)
+            .find(|&(_, &b)| b == 0x07)
+            .map(|(i, _)| i)
+    });
+    let Some(off) = off else {
+        return; // pas d'octet repère ici : rien à prouver sans risque
+    };
+    app.write_patch(off, vec![0x08], 0);
+    assert!(
+        matches!(app.status, Status::Note(_)),
+        "le patch doit s'appliquer : {:?}",
+        app.status
+    );
+
+    let après = sha(&mut app).expect("une empreinte après le patch");
+    assert_ne!(
+        avant, après,
+        "l'empreinte doit changer après une écriture — l'analyse était restée périmée"
+    );
+}
+
 /// Le manuel nomme chaque panneau d'analyse comme l'écran le nomme.
 ///
 /// Le lecteur cherche dans l'interface le nom qu'il vient de lire. Le
