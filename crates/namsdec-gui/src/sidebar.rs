@@ -1263,8 +1263,15 @@ impl NamsdecApp {
         // suivis de trois lettres se lisent comme un seul mot
         // (« …003c RBX »). La cellule vide vaut deux espacements, et la
         // grille en pose un de chaque côté.
-        let min_gap = spacing * 2.0;
-        let pairs = register_columns(available, pair, min_gap + 2.0 * spacing);
+        let ligne = ui.text_style_height(&egui::TextStyle::Monospace) + ui.spacing().item_spacing.y;
+        let (pairs, min_gap) = register_layout(
+            available,
+            pair,
+            spacing,
+            ui.available_height(),
+            ligne,
+            REGISTERS.len(),
+        );
         // Le reste de la largeur part dans les blancs entre colonnes :
         // la grille s'appuie alors sur les deux bords du panneau au lieu
         // de se tasser à gauche.
@@ -2953,6 +2960,54 @@ impl NamsdecApp {
                 }
             }
         }
+    }
+}
+
+/// Comment ranger les registres : combien de colonnes, et quel blanc
+/// entre elles.
+///
+/// DEUX BLANCS POSSIBLES, et c'est la hauteur qui choisit.
+///
+/// Au large, on respire : deux espacements entre deux paires, plus les
+/// deux que la grille pose elle-même, sans quoi seize chiffres suivis
+/// de trois lettres se lisent comme un seul mot (« …003c RBX »). Mais
+/// sur un panneau court, ces blancs-là coûtent parfois une COLONNE
+/// entière — et une colonne de plus, ce sont deux rangées de moins,
+/// c'est-à-dire la différence entre lire les registres d'un coup d'œil
+/// et les faire défiler.
+///
+/// On ne serre donc **que lorsque le compte ne tombe pas** : tant que
+/// les registres tiennent en hauteur, rien ne change. Et serrer ne sert
+/// que si cela gagne vraiment une colonne — sinon l'on aurait rétréci
+/// les blancs pour rien.
+///
+/// Pas de boucle de mesure possible : la question posée — « deux
+/// colonnes tiendraient-elles dans la hauteur disponible ? » — ne
+/// dépend pas du nombre de colonnes choisi, mais de la place laissée,
+/// qui est la même dans les deux cas.
+pub(crate) fn register_layout(
+    width: f32,
+    pair: f32,
+    spacing: f32,
+    height: f32,
+    line: f32,
+    registers: usize,
+) -> (usize, f32) {
+    let confortable_gap = spacing * 4.0;
+    let serré_gap = spacing / 2.0;
+    let confortable = register_columns(width, pair, confortable_gap);
+    let serré = register_columns(width, pair, serré_gap);
+    // Une rangée par paire, plus celle de RIP, plus le compte
+    // d'instructions et le lien des vectoriels : trois lignes qui
+    // suivent la grille et comptent dans ce qui doit tenir.
+    let tient = |colonnes: usize| {
+        let rangées = registers.div_ceil(colonnes.max(1)) + 3;
+        rangées as f32 * line <= height
+    };
+    if tient(confortable) || serré <= confortable {
+        (confortable, spacing * 2.0)
+    } else {
+        (serré, serré_gap)
     }
 }
 

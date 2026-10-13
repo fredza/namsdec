@@ -128,6 +128,12 @@ des témoins qu'on lit.
   place. Le bandeau ne garde par ailleurs que la hauteur qu'il demande,
   au lieu des 280 px qu'il réservait du temps où il la partageait avec
   les registres.
+- **Les registres prennent une colonne de plus quand le panneau est
+  court** (demandé). Ce qui bloquait une colonne n'était pas la largeur
+  des valeurs — seize chiffres, c'est irréductible — mais le blanc
+  entre les colonnes : sur un panneau court il coûtait une colonne,
+  c'est-à-dire deux rangées. On le rend là où cela gagne vraiment une
+  colonne, et nulle part ailleurs.
 - **L'onglet Octets suivait l'exécution de travers.** Sa liste annonce
   à egui des rangées d'une hauteur, et en pose d'une autre — l'espace
   entre deux lignes était compté deux fois. Le calcul qui centre

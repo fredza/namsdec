@@ -2764,6 +2764,35 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      masquant l'écart. Changer la disposition l'a démasqué — c'est le genre de
      dividende qu'on ne peut pas prévoir.
 
+  --- Trois colonnes quand le panneau est court (demandé) ---
+
+  Première idée, fausse : compter les colonnes sur la HAUTEUR disponible.
+  Mesuré avant d'écrire une ligne — et c'est ce qui a évité de la perdre : à
+  la largeur par défaut du panneau (environ 370 px), trois colonnes de « RAX
+  0000000000000000 » demandent 554 px. Le mur est arithmétique ; aucune règle
+  sur la hauteur n'y change rien.
+
+  Ce qui bloque n'est donc pas la largeur des valeurs — seize chiffres, c'est
+  irréductible, et les tronquer rendrait une valeur fausse que rien ne
+  signalerait — mais le BLANC entre les colonnes : deux espacements de
+  confort, plus les deux que la grille pose, soit trente-deux pixels. Sur un
+  panneau élargi à la main, c'est exactement ce qui sépare deux colonnes de
+  trois. Et trois colonnes, ce sont six rangées au lieu de huit.
+
+  LA RÈGLE, en une phrase : on serre le blanc seulement quand les registres ne
+  tiennent pas en hauteur, et seulement si serrer gagne vraiment une colonne.
+  Serrer pour rien serait aussi un défaut — c'est le troisième cas du
+  contrôle.
+
+  Pas de boucle de mesure, et c'est voulu : la question posée — « deux
+  colonnes tiendraient-elles dans la hauteur disponible ? » — porte sur la
+  PLACE LAISSÉE, qui ne dépend pas du nombre de colonnes choisi. Le compte ne
+  peut donc pas osciller d'une image à l'autre.
+
+  LA LIMITE, mesurée et assumée : sur une fenêtre minimale (800×520), le
+  panneau fait 400 px et n'autorise que deux colonnes, blanc serré compris.
+  La vue défile alors, comme la pile ou la mémoire.
+
   CE QUI RESTE. La liste était « non exhaustive » : il y aura une suite. Deux
   choses repérées en chemin et laissées : la sortie d'un outil extérieur est
   peinte d'une seule galère par ligne, ce qui la rend cliquable mais la

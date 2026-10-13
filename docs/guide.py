@@ -501,6 +501,15 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "Un clic la rouvre. Tant qu'aucun programme n'est assemblé, elle annonce ce "
          "qu'elle montrera, comme les deux zones qui la suivent — une section ouverte "
          "ne reste jamais muette.",
+         "Les registres se rangent sur <b>autant de colonnes que la largeur en "
+         "permet</b>, et sur <b>une de plus quand le panneau est court</b> : ce qui "
+         "bloque une colonne n'est pas la largeur des valeurs — seize chiffres, c'est "
+         "irréductible — mais le blanc qui sépare deux colonnes, posé pour que "
+         "« …003c RBX » ne se lise pas comme un seul mot. Sur un panneau court, ce "
+         "confort coûte une colonne, c'est-à-dire deux rangées : on le rend, et les "
+         "registres tiennent sans défiler. On ne resserre que là où cela gagne "
+         "vraiment une colonne. Sur une fenêtre minimale, la largeur n'en permet que "
+         "deux quoi qu'on fasse, et la vue défile alors comme les autres.",
          "<b>Processeur</b> (la première vue, et celle qu'on trouve en ouvrant) — "
          "seize registres, RIP, le nombre d'instructions "
          "exécutées (les sept indicateurs, eux, sont dans la barre de titre). Un clic sur "

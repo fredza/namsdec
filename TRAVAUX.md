@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **13 octobre
-2026**, version 0.2.8-beta.1, 1 151 tests au vert.
+2026**, version 0.2.8-beta.1, 1 153 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -127,6 +127,19 @@ autres, et c'est eux qui expliquaient la moitié de la liste.
       vues qui dimensionnent leur liste sur `available_height()`
       cessent de défiler elles-mêmes. Contrôle :
       `l_etat_du_processeur_est_un_onglet_et_la_vue_choisie_a_tout_le_panneau`.
+- [x] **Les registres sur une colonne de plus quand le panneau est
+      court** (demandé) — le blocage n'était pas la largeur des valeurs
+      mais le BLANC entre colonnes (quatre espacements). Nouvelle
+      fonction pure `register_layout` : elle rend le nombre de colonnes
+      et le blanc, serre seulement si les registres ne tiennent pas en
+      hauteur, et seulement si serrer gagne vraiment une colonne. Pas
+      de boucle de mesure — la question posée ne dépend pas du nombre
+      de colonnes choisi. Contrôles : les trois cas de
+      `les_registres_gagnent_une_colonne_quand_le_panneau_est_court`,
+      et `a_l_ecran_les_registres_se_rangent_sur_une_colonne_de_plus`
+      qui compte les abscisses peintes. Limite mesurée et assumée : sur
+      une fenêtre minimale (800×520), la largeur n'autorise que deux
+      colonnes quoi qu'on fasse.
 - [x] **L'onglet Octets suivait l'exécution de travers** — trouvé en
       corrigeant le reste : `show_rows` veut la hauteur d'une ligne
       SANS l'espace qui la sépare de la suivante, il l'ajoute lui-même.

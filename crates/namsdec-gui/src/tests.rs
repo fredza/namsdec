@@ -30072,3 +30072,114 @@ fn le_panneau_lateral_ne_se_recouvre_jamais_meme_a_l_etroit() {
         }
     }
 }
+
+/// Les registres passent sur une colonne de plus quand le panneau est
+/// court — et seulement quand cela sert.
+///
+/// Demandé par Fred, après avoir vu l'état du processeur manger les
+/// trois cinquièmes du panneau : « les registres sur trois colonnes
+/// quand le panneau est court ».
+///
+/// Ce qui bloque une colonne de plus n'est pas la largeur des valeurs —
+/// elles font seize chiffres, c'est irréductible — mais le BLANC entre
+/// les colonnes : quatre espacements pour que « …003c RBX » ne se lise
+/// pas comme un seul mot. Sur un panneau court, ce confort coûte une
+/// colonne, c'est-à-dire deux rangées. On le rend donc, mais seulement
+/// là où il le faut.
+///
+/// Les trois cas, et le troisième est le plus important : serrer pour
+/// rien serait aussi un défaut.
+#[test]
+fn les_registres_gagnent_une_colonne_quand_le_panneau_est_court() {
+    use crate::sidebar::register_layout;
+
+    // Une paire mesure 157 px, l'espacement 8 : mesuré dans le thème du
+    // banc, et les nombres de ce contrôle en dépendent.
+    let (pair, spacing, ligne) = (157.0, 8.0, 21.0);
+    // 491 px de large : deux colonnes au blanc confortable (il en
+    // faudrait 535), trois au blanc serré (il en faut 487).
+    let large = 491.0;
+
+    // Haut : on respire, deux colonnes, blanc confortable.
+    let (colonnes, gap) = register_layout(large, pair, spacing, 1000.0, ligne, 16);
+    assert_eq!(colonnes, 2, "au large, le confort passe avant");
+    assert_eq!(gap, spacing * 2.0);
+
+    // Court : trois colonnes, blanc serré. Onze rangées à vingt et un
+    // pixels ne tiennent pas dans deux cents.
+    let (colonnes, gap) = register_layout(large, pair, spacing, 200.0, ligne, 16);
+    assert_eq!(
+        colonnes, 3,
+        "sur un panneau court, une colonne de plus vaut mieux qu'un blanc"
+    );
+    assert!(gap < spacing * 2.0, "et le blanc se resserre : {gap}");
+    // Et le compte y est : six rangées plus trois lignes tiennent dans
+    // deux cents pixels, là où onze n'y tenaient pas.
+    assert!((16usize.div_ceil(colonnes) + 3) as f32 * ligne <= 200.0);
+
+    // Court mais étroit : serrer ne gagnerait rien, donc on ne serre
+    // pas. Un blanc rétréci sans colonne gagnée est une perte sèche.
+    let étroit = 360.0;
+    let (colonnes, gap) = register_layout(étroit, pair, spacing, 200.0, ligne, 16);
+    assert_eq!(colonnes, 2, "la largeur ne permet pas davantage");
+    assert_eq!(gap, spacing * 2.0, "donc le blanc reste celui du confort");
+}
+
+/// Et à l'écran, les registres se rangent vraiment sur une colonne de
+/// plus quand le panneau raccourcit.
+///
+/// Le contrôle d'à côté éprouve la règle ; celui-ci éprouve qu'elle est
+/// branchée. On compte les abscisses distinctes des noms de registres :
+/// c'est le nombre de colonnes, mesuré sur ce qui est peint.
+#[test]
+fn a_l_ecran_les_registres_se_rangent_sur_une_colonne_de_plus() {
+    let colonnes_à = |hauteur: f32| -> usize {
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp {
+            source: DEFAULT_SOURCE.to_owned(),
+            show_sidebar: true,
+            active_tab: SidebarTab::Cpu,
+            ..Default::default()
+        };
+        app.apply_theme(&ctx);
+        app.do_assemble();
+        // Un panneau élargi à la main : à la largeur par défaut, deux
+        // colonnes sont tout ce que la place permet, serré ou non.
+        let état = egui::containers::panel::PanelState {
+            outer_rect: egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(545.0, hauteur)),
+        };
+        ctx.data_mut(|d| d.insert_persisted(egui::Id::new("sidebar"), état));
+        let entrée = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(2304.0, hauteur),
+            )),
+            ..Default::default()
+        };
+        let mut abscisses: std::collections::BTreeSet<i32> = Default::default();
+        // Le partage se cale en quelques images, et la largeur du
+        // panneau avec : on lit la dernière.
+        for _ in 0..12 {
+            abscisses.clear();
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(t) = &clipped.shape
+                    && REGISTERS.iter().any(|(n, _)| *n == t.galley.text())
+                {
+                    abscisses.insert(t.pos.x.round() as i32);
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+        abscisses.len()
+    };
+
+    let au_large = colonnes_à(1392.0);
+    let à_l_étroit = colonnes_à(560.0);
+    assert!(
+        à_l_étroit > au_large,
+        "le panneau court doit gagner une colonne : {au_large} au large, \
+         {à_l_étroit} à l'étroit"
+    );
+    assert_eq!(à_l_étroit, 3, "et trois est ce que la largeur permet");
+}
