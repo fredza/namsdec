@@ -119,6 +119,12 @@ des témoins qu'on lit.
   règle d'adresses court dessous, l'échelle de couleurs est graduée de 0
   à 8 avec neuf arrêts, et les **plages** donnent enfin les adresses —
   cliquables.
+- **La fenêtre d'analyse ne grandit plus avec son contenu.** Sur la
+  rubrique « Chaînes lisibles », les chemins de cent caractères la
+  poussaient à la largeur de l'écran — la colonne de navigation sortait
+  par la gauche — et elle y restait : revenue sur « En bref », elle
+  gardait sa taille d'écran. Ce qui dépasse se fait maintenant défiler,
+  et la fenêtre est bornée à ce qu'elle peut montrer.
 - **Le processeur est devenu un onglet** (demandé). Les registres
   occupaient une zone ancrée au milieu du panneau latéral ; le panneau
   se partageait donc en trois, et au zoom de travail les registres

@@ -888,6 +888,23 @@ impl NamsdecApp {
             // grand.
             .default_size(analysis_window_size(ctx))
             .min_size([560.0, 420.0])
+            // Bornée en largeur à ce qu'elle peut MONTRER : la colonne
+            // de navigation ne dépasse pas trois cent quarante pixels
+            // et le contenu est borné à une largeur de lecture
+            // (`ANALYSIS_CONTENT_MAX`). Au-delà, on n'agrandit que du
+            // vide — c'est exactement ce qu'on voyait sur la capture
+            // du 13 octobre, une fenêtre large de tout l'écran dont la
+            // moitié droite était blanche.
+            //
+            // La borne vaut aussi réparation : egui garde la taille
+            // d'une fenêtre d'une session à l'autre, donc une taille
+            // aberrante — héritée d'un contenu qui l'avait poussée —
+            // revenait au lancement suivant et y restait. Bornée, elle
+            // est ramenée dans le raisonnable dès la première image.
+            .max_size([
+                ANALYSIS_CONTENT_MAX + 420.0,
+                (ctx.viewport_rect().height() * 0.95).max(420.0),
+            ])
             .pivot(egui::Align2::CENTER_CENTER)
             .default_pos(default_window_pos(ctx, "analysis"));
         // Pas de bouton d'agrandissement ici, et c'est délibéré : cette
@@ -1077,17 +1094,40 @@ impl NamsdecApp {
                     bottom: 4,
                 })
                 .show(ui, |ui| {
-                    egui::ScrollArea::vertical()
+                    // La largeur de lecture, RELEVÉE AVANT la zone
+                    // défilante : dedans, une zone qui défile aussi en
+                    // largeur laisse à son contenu une place sans
+                    // borne, et les panneaux qui se dimensionnent sur
+                    // `available_width()` — le profil d'entropie, les
+                    // tables — s'étireraient à l'infini.
+                    //
+                    // Une largeur de lecture, et non toute la place :
+                    // sur un écran large, une table à deux colonnes
+                    // posait la seconde à mille pixels de la première,
+                    // et l'on suivait la ligne du doigt. Ce que fait
+                    // tout volet de détail.
+                    let lecture = ui.available_width().min(ANALYSIS_CONTENT_MAX);
+                    // DÉFILANTE DANS LES DEUX SENS, et c'est ce qui
+                    // empêche la fenêtre d'enfler.
+                    //
+                    // Les chemins que montre « Chaînes lisibles » font
+                    // parfois cent caractères — un chemin de source
+                    // Rust avec son empreinte de version. Peints dans
+                    // une zone qui ne défile qu'en hauteur, ils
+                    // poussaient la fenêtre : mesuré, 1 100 px de
+                    // large sur « En bref », 1 831 sur « Chaînes »,
+                    // c'est-à-dire tout l'écran — et la colonne de
+                    // navigation sortie par la gauche. Pire, la
+                    // fenêtre y RESTAIT : revenue sur « En bref », elle
+                    // gardait sa taille d'écran.
+                    //
+                    // Bornée, elle ne pousse plus rien : ce qui dépasse
+                    // se fait défiler, comme dans n'importe quel volet.
+                    egui::ScrollArea::both()
                         .id_salt("analysis_content")
                         .auto_shrink([false, false])
                         .show(ui, |ui| {
-                            // Une largeur de lecture, et non toute
-                            // la place : sur un écran large, une
-                            // table à deux colonnes posait la
-                            // seconde à mille pixels de la première,
-                            // et l'on suivait la ligne du doigt. Ce
-                            // que fait tout volet de détail.
-                            ui.set_max_width(ui.available_width().min(ANALYSIS_CONTENT_MAX));
+                            ui.set_max_width(lecture);
                             let choisi = self.analysis_module.clone();
                             let seul = (!choisi.is_empty()).then_some(choisi.as_str());
                             self.re_modules_ui(ui, seul);

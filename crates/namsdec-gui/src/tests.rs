@@ -30183,3 +30183,90 @@ fn a_l_ecran_les_registres_se_rangent_sur_une_colonne_de_plus() {
     );
     assert_eq!(à_l_étroit, 3, "et trois est ce que la largeur permet");
 }
+
+/// La fenêtre d'analyse ne grandit pas avec son contenu, quelle que
+/// soit la rubrique.
+///
+/// Vu sur capture de Fred, rubrique « Chaînes lisibles » : la fenêtre
+/// prenait tout l'écran et la colonne de navigation sortait par la
+/// gauche. Les chemins que cette rubrique montre font parfois cent
+/// caractères — un chemin de source Rust avec son empreinte de
+/// version — et, peints dans une zone qui ne défilait qu'en hauteur,
+/// ils poussaient la fenêtre. Mesuré : 1 100 px de large sur « En
+/// bref », 1 831 sur « Chaînes ».
+///
+/// Pire que la taille : elle y RESTAIT. egui garde la taille d'une
+/// fenêtre, et revenir sur « En bref » ne la rendait pas.
+///
+/// Le contrôle passe TOUTES les rubriques à la file, et vérifie après
+/// chacune que la fenêtre a gardé la taille qu'elle avait au départ.
+/// Une rubrique nouvelle y entre sans qu'on y pense.
+#[test]
+fn la_fenetre_d_analyse_ne_grandit_pas_avec_son_contenu() {
+    let Some(octets) = binaire_dépreuve("crackme-01").or_else(|| std::fs::read("/bin/ls").ok())
+    else {
+        return;
+    };
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp::default();
+    app.apply_theme(&ctx);
+    if !app.load_elf(&octets, "crackme-01") {
+        return;
+    }
+    app.show_analysis = true;
+    let écran = egui::vec2(1920.0, 1200.0);
+    let entrée = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, écran)),
+        ..Default::default()
+    };
+    let dessine = |app: &mut NamsdecApp| -> egui::Rect {
+        // Six images : egui amène une fenêtre à sa taille au lieu de
+        // l'y poser, et c'est la taille posée qu'on mesure.
+        for _ in 0..6 {
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            sortie.textures_delta.clear();
+        }
+        egui::AreaState::load(&ctx, egui::Id::new("analysis_window"))
+            .map(|a| a.rect())
+            .expect("la fenêtre d'analyse est affichée")
+    };
+
+    let départ = dessine(&mut app);
+    assert!(
+        départ.width() < écran.x - 100.0,
+        "au départ, la fenêtre laisse voir ce qu'il y a derrière : {départ:?}"
+    );
+
+    let rubriques: Vec<String> = app
+        .re_registry
+        .entries("fr")
+        .iter()
+        .map(|(id, _)| (*id).to_owned())
+        .collect();
+    let mut fautives: Vec<String> = Vec::new();
+    for id in rubriques {
+        app.analysis_module = id.clone();
+        let cadre = dessine(&mut app);
+        if cadre.width() > départ.width() + 2.0 || cadre.height() > départ.height() + 2.0 {
+            fautives.push(format!(
+                "« {id} » la pousse à {:.0}x{:.0}",
+                cadre.width(),
+                cadre.height()
+            ));
+        }
+    }
+    assert!(
+        fautives.is_empty(),
+        "la fenêtre doit garder sa taille, et ce qui dépasse doit défiler : {}",
+        fautives.join(", ")
+    );
+
+    // Et elle est rendue telle qu'on l'avait laissée : une fenêtre qui
+    // grandit sans revenir est pire qu'une fenêtre trop grande.
+    app.analysis_module.clear();
+    let fin = dessine(&mut app);
+    assert!(
+        (fin.width() - départ.width()).abs() < 2.0,
+        "revenue sur « Tout », la fenêtre a la taille du départ : {départ:?} puis {fin:?}"
+    );
+}

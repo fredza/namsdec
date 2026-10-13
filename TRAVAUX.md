@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **13 octobre
-2026**, version 0.2.8-beta.1, 1 153 tests au vert.
+2026**, version 0.2.8-beta.1, 1 154 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -115,6 +115,19 @@ autres, et c'est eux qui expliquaient la moitié de la liste.
       les noms y sont courts (« RetDec » et non « Décompilation par
       RetDec », qui passait sur deux lignes), les entrées serrées, et la
       fenêtre s'ouvre cent pixels plus haut. Nouveau `ReModule::nav_title`.
+- [x] **La fenêtre d'analyse ne grandit plus avec son contenu**
+      (capture de Fred, rubrique « Chaînes lisibles ») — les chemins de
+      source Rust, cent caractères avec leur empreinte de version,
+      poussaient la fenêtre à 1 831 px de large contre 1 100 au départ,
+      colonne de navigation sortie par la gauche. Et elle y restait :
+      egui garde la taille d'une fenêtre. Deux bornes : le contenu
+      défile désormais dans les DEUX sens (avec la largeur de lecture
+      imposée avant la zone, sans quoi les panneaux qui se
+      dimensionnent sur `available_width()` s'étireraient), et la
+      fenêtre est bornée à ce qu'elle peut montrer — colonne plus
+      largeur de lecture. Contrôle sur TOUTES les rubriques :
+      `la_fenetre_d_analyse_ne_grandit_pas_avec_son_contenu`, éprouvé
+      en remettant le défaut.
 - [x] **Le processeur est un onglet** (demandé, option 1 sur trois
       proposées) — `SidebarTab::Cpu` en tête, vue par défaut, titre
       « État du processeur » dans le panneau et « Processeur » dans la

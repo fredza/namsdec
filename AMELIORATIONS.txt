@@ -2764,6 +2764,39 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      masquant l'écart. Changer la disposition l'a démasqué — c'est le genre de
      dividende qu'on ne peut pas prévoir.
 
+  --- La fenêtre d'analyse qui prend tout l'écran ---
+
+  Capture de Fred, rubrique « Chaînes lisibles » : la fenêtre occupe l'écran
+  entier et la colonne de navigation est sortie par la gauche. Revenu sur
+  « En bref », elle garde cette taille.
+
+  La cause est à deux étages, et le second est le plus intéressant.
+
+  D'abord, le contenu POUSSE la fenêtre : les chemins que montre cette
+  rubrique font cent caractères — un chemin de source Rust avec l'empreinte
+  de version du compilateur —, et ils étaient peints dans une zone qui ne
+  défilait qu'en hauteur. Un texte plus large que la fenêtre fait grandir la
+  fenêtre, qui en offre davantage, et ainsi de suite jusqu'au bord de
+  l'écran. Mesuré : 1 100 px sur « En bref », 1 831 sur « Chaînes ».
+
+  Ensuite, egui GARDE la taille d'une fenêtre. Le débordement d'une rubrique
+  devenait donc l'état permanent de la fenêtre, y compris pour les quinze
+  autres. C'est ce qui rend ce genre de défaut si désagréable : il ne se
+  répare pas tout seul, et rien ne dit d'où il vient.
+
+  Deux bornes, donc. Le contenu défile maintenant dans les deux sens — avec
+  la largeur de lecture relevée AVANT la zone et imposée dedans, sans quoi
+  les panneaux qui se dimensionnent sur `available_width()` (le profil
+  d'entropie, les tables) s'étireraient à l'infini dans une zone qui défile
+  en largeur. Et la fenêtre est bornée à ce qu'elle peut MONTRER : la colonne
+  de navigation plus la largeur de lecture. Au-delà, on n'agrandissait que du
+  vide — la moitié droite de la capture est blanche.
+
+  Le contrôle passe toutes les rubriques à la file et vérifie après chacune
+  que la fenêtre a gardé sa taille : une rubrique nouvelle y entre sans qu'on
+  y pense, et la dernière assertion vérifie qu'on la retrouve comme on l'a
+  laissée.
+
   --- Trois colonnes quand le panneau est court (demandé) ---
 
   Première idée, fausse : compter les colonnes sur la HAUTEUR disponible.
