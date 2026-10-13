@@ -579,7 +579,145 @@ static TABLE: &[(&str, Note)] = &[
             "The table saying, for each byte, whether it is a letter, a digit, a space.",
         ),
     ),
+    // Le support d'exécution, qu'on trouve dans presque tout binaire
+    // C++ ou Rust — et que la liste ne nommait pas, si bien que les
+    // deux seules entrées d'un crackme en Rust restaient muettes.
+    (
+        "__libc_start_main",
+        args(
+            note(
+                "Le vrai démarrage : la glibc prépare l'environnement, puis appelle `main` \
+                 et passe sa valeur de retour à `exit`. C'est d'elle qu'on remonte pour \
+                 retrouver `main` dans un binaire dépouillé.",
+                "The real start-up: the C library prepares the environment, then calls \
+                 `main` and hands its return value to `exit`. It is the one you follow \
+                 back to find `main` in a stripped binary.",
+            ),
+            &["main", "argc", "argv", "init", "fini", "rtld_fini"],
+        ),
+    ),
+    (
+        "__cxa_finalize",
+        args(
+            note(
+                "Exécute ce qui restait à faire en sortant : les destructeurs globaux et \
+                 les fonctions enregistrées par `atexit`. Appelée au déchargement d'une \
+                 bibliothèque comme à la fin du programme.",
+                "Runs what was left to do on the way out: global destructors and the \
+                 functions registered with `atexit`. Called when unloading a library as \
+                 well as at the end of the program.",
+            ),
+            &["d"],
+        ),
+    ),
+    (
+        "__cxa_atexit",
+        args(
+            note(
+                "Enregistre une fonction à rappeler à la fin du programme — c'est ainsi \
+                 qu'un objet global fait exécuter son destructeur.",
+                "Registers a function to call back at the end of the program — this is how \
+                 a global object gets its destructor run.",
+            ),
+            &["func", "arg", "dso_handle"],
+        ),
+    ),
+    (
+        "_Unwind_Resume",
+        note(
+            "Reprend le déroulement de la pile après un bloc de nettoyage : c'est la \
+             mécanique des exceptions C++ et des paniques Rust. Sa présence dit que le \
+             programme sait remonter les appels en défaisant ce qu'il a fait.",
+            "Resumes stack unwinding after a cleanup block: this is the machinery behind \
+             C++ exceptions and Rust panics. Its presence says the program knows how to \
+             walk back up the calls undoing what it did.",
+        ),
+    ),
 ];
+
+/// Les registres qui portent les six premiers arguments, dans l'ordre où
+/// la convention System V les passe.
+///
+/// Ici plutôt qu'ailleurs parce que c'est ici que vivent les NOMS des
+/// paramètres : « dest » ne veut rien dire tant qu'on ne sait pas qu'il
+/// arrive par RDI, et les deux listes se lisent ensemble.
+pub const ARGUMENT_REGISTERS: [&str; 6] = ["RDI", "RSI", "RDX", "RCX", "R8", "R9"];
+
+/// Ce que le NOM d'une fonction dit de sa famille, quand on ne connaît
+/// pas la fonction elle-même.
+///
+/// La table ci-dessus est volontairement courte, et le module l'assume :
+/// ce qui n'y figure pas n'est pas expliqué plutôt que d'être deviné.
+/// Mais il y a un entre-deux honnête — le PRÉFIXE d'un nom appartient à
+/// une convention, et dire « ceci fait partie du support d'exécution
+/// C++ » n'est pas une supposition sur ce que fait la fonction : c'est
+/// une lecture de son nom.
+///
+/// Rendue à part de [`explain`], qui garde son contrat : une phrase sur
+/// CETTE fonction, ou rien.
+///
+/// ```
+/// let (famille, _) = namsdec_re::libc::family_hint("__cxa_guard_acquire").unwrap();
+/// assert!(famille.contains("C++"));
+/// assert!(namsdec_re::libc::family_hint("malloc").is_none());
+/// ```
+pub fn family_hint(name: &str) -> Option<(&'static str, &'static str)> {
+    let name = name.split('@').next().unwrap_or(name);
+    // Du plus précis au plus large : `__cxa_` avant `__`.
+    const FAMILLES: &[(&str, &str, &str)] = &[
+        (
+            "__cxa_",
+            "Support d'exécution C++ (ABI Itanium) : destructeurs globaux, exceptions, \
+             initialisation des variables statiques.",
+            "C++ runtime support (Itanium ABI): global destructors, exceptions, static \
+             variable initialisation.",
+        ),
+        (
+            "_Unwind_",
+            "Le dérouleur de pile : il remonte les appels en défaisant ce qu'ils ont fait. \
+             C'est la mécanique des exceptions C++ et des paniques Rust.",
+            "The stack unwinder: it walks back up the calls undoing what they did. This is \
+             the machinery behind C++ exceptions and Rust panics.",
+        ),
+        (
+            "_ZN",
+            "Un nom C++ ou Rust encodé (« mangled ») : le compilateur y a mis le chemin du \
+             module et la signature pour que deux fonctions de même nom puissent coexister.",
+            "A mangled C++ or Rust name: the compiler put the module path and the signature \
+             in it so that two functions of the same name can coexist.",
+        ),
+        (
+            "__gmon_",
+            "Le support de profilage de gprof, posé par `-pg`.",
+            "gprof's profiling support, put there by `-pg`.",
+        ),
+        (
+            "_ITM_",
+            "Un appel vers la mémoire transactionnelle de GCC. La glibc en fournit des \
+             souches vides : presque toujours sans effet.",
+            "A call into GCC's transactional memory. The C library provides empty stubs for \
+             these: almost always without effect.",
+        ),
+        (
+            "__libc_",
+            "Les entrailles de la bibliothèque C, appelées par le code de démarrage plutôt \
+             que par le programme lui-même.",
+            "The C library's internals, called by the start-up code rather than by the \
+             program itself.",
+        ),
+        (
+            "pthread_",
+            "La bibliothèque de fils d'exécution : ce programme en crée, en attend ou se \
+             synchronise.",
+            "The threading library: this program creates threads, waits for them, or \
+             synchronises.",
+        ),
+    ];
+    FAMILLES
+        .iter()
+        .find(|(préfixe, _, _)| name.starts_with(préfixe))
+        .map(|(_, fr, en)| (*fr, *en))
+}
 
 #[cfg(test)]
 mod tests {

@@ -2764,6 +2764,44 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      masquant l'écart. Changer la disposition l'a démasqué — c'est le genre de
      dividende qu'on ne peut pas prévoir.
 
+  --- Les fonctions empruntées, en liens (demandé) ---
+
+  « Les appels pourraient être des hyperliens montrant la description de
+  chaque appel. » La capture disait tout : deux entrées, `_Unwind_Resume` et
+  `__cxa_finalize`, et rien d'autre — pas une phrase. La table de `libc.rs`
+  est volontairement courte et l'assume (« ce qui n'y figure pas n'est pas
+  expliqué plutôt que d'être deviné »), mais elle ne portait aucune des
+  fonctions du support d'exécution, c'est-à-dire exactement ce qu'emprunte un
+  binaire Rust ou C++ ordinaire. Le panneau se taisait là où il avait le plus
+  à dire.
+
+  TROIS CHOSES, et la troisième est celle qui coûte le plus à écrire
+  honnêtement :
+
+  1. Le nom devient un lien : survol pour la phrase, clic pour la fiche.
+  2. La fiche porte la SIGNATURE et le registre qui porte chaque argument.
+     C'est ce qui transforme « RDI vaut 0x402000 » en « dest vaut 0x402000 »,
+     et c'est la moitié du travail quand on lit un appel. Les noms de
+     paramètres existaient déjà dans la table (`Note::params`) — ils ne
+     servaient qu'au panneau « Prochaine instruction », devant un appel en
+     cours. Ici, ils servent avant d'exécuter quoi que ce soit.
+  3. Ce que namsdec NE SAIT PAS se dit. Un panneau muet laisse croire qu'il
+     n'y a rien à dire. `family_hint` lit le PRÉFIXE — `__cxa_`, `_Unwind_`,
+     `_ZN`, `__libc_`, `pthread_` — et rend ce que la convention dit de la
+     famille, en précisant que cela se lit dans le nom et non dans le code.
+     Rendu à part d'`explain`, qui garde son contrat : une phrase sur CETTE
+     fonction, ou rien.
+
+  Quatre entrées vraies sont entrées dans la table au passage
+  (`__libc_start_main`, `__cxa_finalize`, `__cxa_atexit`, `_Unwind_Resume`) :
+  ce sont des fonctions documentées, pas des devinettes.
+
+  UNE LEÇON DE MESURE, trouvée en écrivant le contrôle : egui ne peint pas ce
+  qui tombe hors de l'écran. Le contrôle dépliait la fiche de `getenv`, en
+  soixantième position sur les cent cinq imports de `/bin/ls`, et concluait
+  qu'elle manquait. Il déplie désormais la première entrée AFFICHÉE. Un
+  contrôle qui mesure ce qui est peint doit savoir ce qu'egui ne peint pas.
+
   --- La fenêtre d'analyse qui prend tout l'écran ---
 
   Capture de Fred, rubrique « Chaînes lisibles » : la fenêtre occupe l'écran

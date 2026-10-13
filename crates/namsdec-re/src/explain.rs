@@ -587,14 +587,39 @@ pub struct Portrait {
     pub vide: bool,
 }
 
-/// Les registres d'argument de la convention System V, dans l'ordre.
+/// Les registres d'argument de la convention System V, dans l'ordre,
+/// avec les formes sous lesquelles on peut les lire.
+///
+/// Les NOMS viennent de `libc::ARGUMENT_REGISTERS` : c'est la même
+/// convention, lue d'un autre côté — là-bas pour nommer les paramètres
+/// d'une fonction connue, ici pour deviner ceux d'une fonction qui ne
+/// l'est pas. Deux listes séparées finiraient par ne plus dire la même
+/// chose.
 const ARGUMENTS: [(&str, &[&str]); 6] = [
-    ("RDI", &["rdi", "edi", "di", "dil"]),
-    ("RSI", &["rsi", "esi", "si", "sil"]),
-    ("RDX", &["rdx", "edx", "dx", "dl"]),
-    ("RCX", &["rcx", "ecx", "cx", "cl"]),
-    ("R8", &["r8", "r8d", "r8w", "r8b"]),
-    ("R9", &["r9", "r9d", "r9w", "r9b"]),
+    (
+        crate::libc::ARGUMENT_REGISTERS[0],
+        &["rdi", "edi", "di", "dil"],
+    ),
+    (
+        crate::libc::ARGUMENT_REGISTERS[1],
+        &["rsi", "esi", "si", "sil"],
+    ),
+    (
+        crate::libc::ARGUMENT_REGISTERS[2],
+        &["rdx", "edx", "dx", "dl"],
+    ),
+    (
+        crate::libc::ARGUMENT_REGISTERS[3],
+        &["rcx", "ecx", "cx", "cl"],
+    ),
+    (
+        crate::libc::ARGUMENT_REGISTERS[4],
+        &["r8", "r8d", "r8w", "r8b"],
+    ),
+    (
+        crate::libc::ARGUMENT_REGISTERS[5],
+        &["r9", "r9d", "r9w", "r9b"],
+    ),
 ];
 
 /// Le portrait d'une fonction, lu dans son graphe.

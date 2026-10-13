@@ -20,6 +20,12 @@ pub struct ImportsModule {
     imports: Vec<Import>,
     /// Combien de `call` du code visent chaque entrée.
     appels: Vec<usize>,
+    /// La fonction dont la fiche est dépliée, s'il y en a une.
+    ///
+    /// Une seule à la fois : une liste de cent entrées toutes dépliées
+    /// n'est plus une liste, et ce qu'on cherche — la fonction qu'on ne
+    /// connaît pas — se perd dedans.
+    ouverte: Option<String>,
 }
 
 impl ImportsModule {
@@ -83,6 +89,9 @@ impl ReModule for ImportsModule {
 
     fn on_binary_loaded(&mut self, ctx: &ReContext) {
         self.imports = imports::scan(ctx.binary);
+        // Un autre binaire : la fiche ouverte parlait d'une fonction
+        // qui n'est peut-être plus là.
+        self.ouverte = None;
         // Un appel par entrée : c'est ce qui distingue la fonction dont
         // tout dépend de celle qui est liée sans jamais servir.
         //
@@ -188,15 +197,61 @@ impl ReModule for ImportsModule {
                 .cmp(&self.appels[a])
                 .then_with(|| self.imports[a].name.cmp(&self.imports[b].name))
         });
+        // Relevé pendant le dessin, posé après : la liste emprunte
+        // `self`, et le module ne peut donc pas s'écrire dedans.
+        let mut demande: Option<ReRequest> = None;
+        let mut bascule: Option<String> = None;
         for rang in rangs {
             let import = &self.imports[rang];
             let appels = self.appels[rang];
             let note = libc::explain(&import.name);
+            let ouverte = self.ouverte.as_deref() == Some(import.name.as_str());
             ui.horizontal_wrapped(|ui| {
                 if clickable_address(ui, ctx, import.plt) {
-                    self.demande = Some(ReRequest::GoTo { addr: import.plt });
+                    demande = Some(ReRequest::GoTo { addr: import.plt });
                 }
-                ui.strong(&import.name);
+                // LE NOM EST UN LIEN : on le clique, sa fiche se
+                // déplie.
+                //
+                // Une liste de noms suppose qu'on les connaisse — c'est
+                // vrai de `malloc`, beaucoup moins de `__cxa_finalize`
+                // ou de `_Unwind_Resume`, qui sont pourtant les deux
+                // seules entrées d'un binaire Rust ordinaire. La phrase
+                // existait déjà pour les plus courantes, posée sous la
+                // ligne ; elle manquait partout ailleurs, et rien ne
+                // disait qu'il y avait quelque chose à lire.
+                //
+                // Le survol donne la phrase, le clic donne la fiche :
+                // la signature, le registre qui porte chaque argument,
+                // et ce qu'il faut surveiller.
+                let couleur = ui.visuals().hyperlink_color;
+                let réponse = ui
+                    .add(
+                        egui::Label::new(egui::RichText::new(&import.name).strong().color(couleur))
+                            .sense(egui::Sense::click()),
+                    )
+                    .on_hover_cursor(egui::CursorIcon::PointingHand)
+                    .on_hover_text(match note {
+                        Some(note) => note.text(ctx.lang).to_owned(),
+                        None => match libc::family_hint(&import.name) {
+                            Some((fr, en)) => {
+                                if ctx.lang.starts_with("fr") {
+                                    fr.to_owned()
+                                } else {
+                                    en.to_owned()
+                                }
+                            }
+                            None => ctx
+                                .t(
+                                    "Cliquer pour ce que namsdec en sait",
+                                    "Click for what namsdec knows about it",
+                                )
+                                .to_owned(),
+                        },
+                    });
+                if réponse.clicked() {
+                    bascule = Some(import.name.clone());
+                }
                 if appels > 0 {
                     ui.weak(format!(
                         "{appels} {}",
@@ -224,9 +279,119 @@ impl ReModule for ImportsModule {
                         .on_hover_text(famille.why(ctx.lang));
                 }
             });
+            // La phrase reste sous la ligne, dépliée ou non : c'est
+            // elle qu'on lit en parcourant, et la cacher derrière un
+            // clic serait reprendre d'une main ce qu'on donne de
+            // l'autre.
             if let Some(note) = note {
                 ui.indent(&import.name, |ui| ui.weak(note.text(ctx.lang)));
             }
+            if ouverte {
+                ui.indent(("fiche", &import.name), |ui| {
+                    fiche(ui, ctx, &import.name, note);
+                });
+            }
+        }
+        if demande.is_some() {
+            self.demande = demande;
+        }
+        if let Some(nom) = bascule {
+            // Un second clic referme : c'est la même touche qui ouvre
+            // et qui ferme, comme partout ailleurs.
+            self.ouverte = (self.ouverte.as_deref() != Some(nom.as_str())).then_some(nom);
+        }
+    }
+}
+
+/// La fiche d'une fonction empruntée : ce que namsdec en sait, et ce
+/// qu'il ne sait pas.
+///
+/// Trois choses, et la troisième compte autant que les deux autres :
+///
+/// * **la signature**, avec le registre qui porte chaque argument —
+///   c'est ce qui transforme « RDI vaut 0x402000 » en « dest vaut
+///   0x402000 », et c'est la moitié du travail quand on lit un appel ;
+/// * **ce qu'il faut surveiller**, quand la fonction écrit sans
+///   connaître la taille de sa destination ;
+/// * **l'aveu**, quand la fonction n'est pas dans la table. Un panneau
+///   qui se tait laisse croire qu'il n'y a rien à dire ; ici il dit ce
+///   que le NOM apprend — un préfixe appartient à une convention — et
+///   s'arrête là plutôt que de deviner.
+fn fiche(ui: &mut egui::Ui, ctx: &ReContext, nom: &str, note: Option<libc::Note>) {
+    let fr = ctx.lang.starts_with("fr");
+    if let Some(note) = note {
+        if !note.params.is_empty() {
+            ui.horizontal_wrapped(|ui| {
+                ui.monospace(format!("{nom}({})", note.params.join(", ")));
+            });
+            ui.add_space(2.0);
+            egui::Grid::new(("fiche_params", nom))
+                .num_columns(2)
+                .min_col_width(0.0)
+                .striped(true)
+                .show(ui, |ui| {
+                    for (rang, param) in note.params.iter().enumerate() {
+                        // Au-delà du sixième, la convention passe par la
+                        // pile : on ne nomme pas un registre qui ne
+                        // porte rien.
+                        let Some(registre) = libc::ARGUMENT_REGISTERS.get(rang) else {
+                            break;
+                        };
+                        if *param == "..." {
+                            ui.weak(ctx.t("… et la suite, variable", "… and the rest, variable"));
+                            ui.weak(ctx.t(
+                                "le nombre d'arguments dépend du format",
+                                "how many arguments depends on the format",
+                            ));
+                            ui.end_row();
+                            continue;
+                        }
+                        ui.monospace(*param);
+                        ui.monospace(
+                            egui::RichText::new(*registre).color(ui.visuals().hyperlink_color),
+                        );
+                        ui.end_row();
+                    }
+                });
+            ui.add_space(2.0);
+        }
+        if note.watch {
+            ui.colored_label(
+                egui::Color32::from_rgb(0xd7, 0xba, 0x7d),
+                ctx.t(
+                    "À regarder : elle écrit sans connaître la taille de la destination, ou \
+                     exécute ce qu'on lui donne. Ce n'est pas un verdict sur le programme — \
+                     c'est l'endroit qu'on regarde en premier.",
+                    "Worth a look: it writes without knowing the size of the destination, or \
+                     runs what it is given. That is not a verdict on the program — it is \
+                     where one looks first.",
+                ),
+            );
+        }
+        return;
+    }
+    // Pas de fiche : on dit ce que le nom apprend, et rien de plus.
+    match libc::family_hint(nom) {
+        Some((texte_fr, texte_en)) => {
+            ui.weak(if fr { texte_fr } else { texte_en });
+            ui.add_space(2.0);
+            ui.weak(ctx.t(
+                "namsdec n'a pas de fiche pour cette fonction-là : ce qui précède se lit \
+                 dans son nom, pas dans son code.",
+                "namsdec has no entry for this particular function: what precedes is read \
+                 from its name, not from its code.",
+            ));
+        }
+        None => {
+            ui.weak(ctx.t(
+                "namsdec n'a pas de fiche pour celle-ci. La table ne porte que les \
+                 fonctions qu'on rencontre partout et celles dont l'usage demande de \
+                 l'attention : ce qui n'y figure pas n'est pas deviné. `man` et la page \
+                 de la bibliothèque le diront mieux.",
+                "namsdec has no entry for this one. The table only holds the functions one \
+                 meets everywhere and those whose use calls for care: what is not in it is \
+                 not guessed. `man` and the library's own page will say it better.",
+            ));
         }
     }
 }
@@ -235,6 +400,148 @@ impl ReModule for ImportsModule {
 mod tests {
     use super::*;
     use namsdec_core::{Cpu, Memory};
+
+    /// Ce que le panneau peint, une galère par ligne.
+    fn textes(module: &mut ImportsModule, ctx: &ReContext) -> Vec<String> {
+        let egui_ctx = egui::Context::default();
+        let mut vus = Vec::new();
+        for _ in 0..2 {
+            vus.clear();
+            let mut sortie = egui_ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(900.0, 1400.0),
+                    )),
+                    ..Default::default()
+                },
+                |ui| module.ui(ui, ctx),
+            );
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(texte) = &clipped.shape {
+                    vus.push(texte.galley.text().to_owned());
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+        vus
+    }
+
+    /// Le nom d'une fonction empruntée se déplie sur sa fiche.
+    ///
+    /// Demandé par Fred : « les appels pourraient être des hyperliens
+    /// montrant la description de chaque appel ». Une liste de noms
+    /// suppose qu'on les connaisse — c'est vrai de `malloc`, beaucoup
+    /// moins de `__cxa_finalize`, qui est pourtant l'une des deux
+    /// seules entrées d'un binaire Rust ordinaire.
+    ///
+    /// La fiche porte ce qu'une page de manuel donne en premier : la
+    /// signature, et le registre par lequel arrive chaque argument.
+    #[test]
+    fn le_nom_d_une_fonction_se_deplie_sur_sa_fiche() {
+        let Ok(octets) = std::fs::read("/bin/ls") else {
+            return;
+        };
+        let cpu = Cpu::new(Memory::new(0x400000, 0x1000));
+        let ctx = ReContext {
+            cpu: &cpu,
+            disasm: &[],
+            source: "",
+            binary: &octets,
+            lang: "fr",
+            names: None,
+        };
+        let mut module = ImportsModule::default();
+        module.on_binary_loaded(&ctx);
+        // La PREMIÈRE dans l'ordre d'affichage, et c'est nécessaire :
+        // egui ne peint pas ce qui tombe hors de l'écran, et /bin/ls
+        // emprunte cent cinq fonctions. Une fiche dépliée au
+        // soixantième rang ne serait pas peinte, et le contrôle
+        // conclurait à tort qu'elle manque.
+        //
+        // Sans désassemblage, tous les comptes d'appels valent zéro :
+        // l'ordre d'affichage est alors alphabétique.
+        let mut noms: Vec<String> = module.imports.iter().map(|i| i.name.clone()).collect();
+        noms.sort();
+        let Some(connue) = noms
+            .into_iter()
+            .find(|nom| libc::explain(nom).is_some_and(|note| !note.params.is_empty()))
+        else {
+            return; // aucun import connu ici : rien à prouver
+        };
+
+        eprintln!("SONDE connue = {connue}");
+        // Repliée, la fiche n'est pas là.
+        let avant = textes(&mut module, &ctx).join(" | ");
+        assert!(avant.contains(&connue), "le nom est peint : {avant}");
+        assert!(
+            !avant.contains("RDI"),
+            "tant qu'on n'a rien ouvert, aucune fiche : {avant}"
+        );
+
+        // Dépliée, elle donne la signature et les registres.
+        module.ouverte = Some(connue.clone());
+        let après = textes(&mut module, &ctx).join(" | ");
+        let note = libc::explain(&connue).expect("une fiche");
+        assert!(
+            après.contains(&format!("{connue}({})", note.params.join(", "))),
+            "la signature est écrite : {après}"
+        );
+        assert!(
+            après.contains("RDI"),
+            "et le registre qui porte le premier argument : {après}"
+        );
+        for param in note.params.iter().filter(|p| **p != "...") {
+            assert!(après.contains(*param), "le paramètre {param} est nommé");
+        }
+    }
+
+    /// Une fonction que la table ne connaît pas dit ce que son NOM
+    /// apprend — et dit aussi qu'elle ne la connaît pas.
+    ///
+    /// C'est le cas des deux seules entrées du crackme de Fred :
+    /// `_Unwind_Resume` et `__cxa_finalize`. La première a maintenant
+    /// sa fiche ; pour ce que la table ignore, le préfixe appartient à
+    /// une convention et le dire n'est pas deviner.
+    #[test]
+    fn une_fonction_inconnue_dit_ce_que_son_nom_apprend() {
+        let cpu = Cpu::new(Memory::new(0x400000, 0x1000));
+        let ctx = ReContext {
+            cpu: &cpu,
+            disasm: &[],
+            source: "",
+            binary: &[],
+            lang: "fr",
+            names: None,
+        };
+        let egui_ctx = egui::Context::default();
+        let mut vus: Vec<String> = Vec::new();
+        for _ in 0..2 {
+            vus.clear();
+            let mut sortie = egui_ctx.run_ui(Default::default(), |ui| {
+                fiche(ui, &ctx, "__cxa_guard_acquire", None)
+            });
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(texte) = &clipped.shape {
+                    vus.push(texte.galley.text().to_owned());
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+        let tout = vus.join(" | ");
+        assert!(
+            tout.contains("C++"),
+            "la famille se lit dans le nom : {tout}"
+        );
+        assert!(
+            tout.contains("pas de fiche"),
+            "et l'aveu est dit, pas tu : {tout}"
+        );
+
+        // Les deux du crackme : l'une a sa fiche, l'autre son préfixe.
+        assert!(libc::explain("_Unwind_Resume").is_some());
+        assert!(libc::explain("__cxa_finalize").is_some());
+    }
 
     /// Sur un vrai binaire, le module nomme ce qui est emprunté *et*
     /// compte les appels qui y mènent.

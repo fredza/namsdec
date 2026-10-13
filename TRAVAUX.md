@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **13 octobre
-2026**, version 0.2.8-beta.1, 1 154 tests au vert.
+2026**, version 0.2.8-beta.1, 1 157 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -115,6 +115,20 @@ autres, et c'est eux qui expliquaient la moitié de la liste.
       les noms y sont courts (« RetDec » et non « Décompilation par
       RetDec », qui passait sur deux lignes), les entrées serrées, et la
       fenêtre s'ouvre cent pixels plus haut. Nouveau `ReModule::nav_title`.
+- [x] **Les fonctions empruntées sont des liens** (demandé) — survol :
+      la phrase ; clic : la fiche, avec la signature et le registre qui
+      porte chaque argument (`libc::ARGUMENT_REGISTERS`, désormais la
+      seule source des noms de registres d'argument dans la crate —
+      `explain.rs` en tirait une seconde liste). Quatre entrées
+      nouvelles dans la table (`__libc_start_main`, `__cxa_finalize`,
+      `__cxa_atexit`, `_Unwind_Resume`) : c'étaient les deux seules
+      lignes du crackme de Fred, et elles étaient muettes. Et
+      `libc::family_hint` dit ce que le PRÉFIXE d'un nom apprend sans
+      rien deviner sur la fonction — `explain` garde son contrat.
+      Contrôles : `le_nom_d_une_fonction_se_deplie_sur_sa_fiche` (qui a
+      appris en chemin qu'egui ne peint pas ce qui sort de l'écran :
+      la fiche se déplie sur la PREMIÈRE entrée affichée) et
+      `une_fonction_inconnue_dit_ce_que_son_nom_apprend`.
 - [x] **La fenêtre d'analyse ne grandit plus avec son contenu**
       (capture de Fred, rubrique « Chaînes lisibles ») — les chemins de
       source Rust, cent caractères avec leur empreinte de version,

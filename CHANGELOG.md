@@ -119,6 +119,15 @@ des témoins qu'on lit.
   règle d'adresses court dessous, l'échelle de couleurs est graduée de 0
   à 8 avec neuf arrêts, et les **plages** donnent enfin les adresses —
   cliquables.
+- **Les fonctions empruntées sont des liens** (demandé). Le survol
+  donne la phrase, le clic déplie la fiche : la signature comme une
+  page de manuel l'écrit, et le registre qui porte chaque argument.
+  Quatre fonctions du support d'exécution entrent dans la table —
+  `__libc_start_main`, `__cxa_finalize`, `__cxa_atexit`,
+  `_Unwind_Resume` —, celles que tout binaire C++ ou Rust emprunte et
+  que la liste laissait muettes. Et ce que namsdec ne connaît pas le
+  dit, en donnant ce que le nom apprend : `__cxa_` est le support C++,
+  `_Unwind_` le dérouleur de pile, `_ZN` un nom encodé.
 - **La fenêtre d'analyse ne grandit plus avec son contenu.** Sur la
   rubrique « Chaînes lisibles », les chemins de cent caractères la
   poussaient à la largeur de l'écran — la colonne de navigation sortait
