@@ -115,6 +115,26 @@ autres, et c'est eux qui expliquaient la moitié de la liste.
       les noms y sont courts (« RetDec » et non « Décompilation par
       RetDec », qui passait sur deux lignes), les entrées serrées, et la
       fenêtre s'ouvre cent pixels plus haut. Nouveau `ReModule::nav_title`.
+- [x] **Le processeur est un onglet** (demandé, option 1 sur trois
+      proposées) — `SidebarTab::Cpu` en tête, vue par défaut, titre
+      « État du processeur » dans le panneau et « Processeur » dans la
+      rangée. Le panneau passe de trois zones à deux, et tout le
+      calcul de partage lié à la hauteur des registres disparaît
+      (`sidebar_cpu_height`, `cpu_state_open`, plancher de 280 px
+      ramené à ce que le bandeau demande vraiment). La vue est bornée
+      à la place du panneau — elle y défile plutôt que de déborder — et
+      sa hauteur lui est imposée DANS la zone défilante, sans quoi les
+      vues qui dimensionnent leur liste sur `available_height()`
+      cessent de défiler elles-mêmes. Contrôle :
+      `l_etat_du_processeur_est_un_onglet_et_la_vue_choisie_a_tout_le_panneau`.
+- [x] **L'onglet Octets suivait l'exécution de travers** — trouvé en
+      corrigeant le reste : `show_rows` veut la hauteur d'une ligne
+      SANS l'espace qui la sépare de la suivante, il l'ajoute lui-même.
+      On lui donnait les deux : il croyait à des rangées de 21 px là où
+      il en posait 27, et le décalage calculé pour centrer
+      l'instruction courante tombait soixante-dix lignes trop haut sur
+      un programme de quatre cents instructions. La fenêtre de
+      décompilation portait déjà la remarque, pour la même raison.
 - [x] **Le panneau latéral ne se recouvre plus, même à l'étroit**
       (capture de Fred, onglet Mémoire) — l'état du processeur
       s'écrivait sur le haut de la vue. Cause mesurée, et elle est dans

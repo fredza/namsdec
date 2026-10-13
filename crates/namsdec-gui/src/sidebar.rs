@@ -35,82 +35,39 @@ impl NamsdecApp {
         // s'il vient d'être caché pendant qu'il était actif, on retombe
         // sur la pile plutôt que de laisser un panneau vide.
         if self.active_tab == SidebarTab::Re && !self.show_re_tab {
-            self.active_tab = SidebarTab::Stack;
+            self.active_tab = SidebarTab::Cpu;
         }
 
-        // La part du bas revient au contenu de l'onglet, et elle est
-        // posée **avant** le bandeau : sans cela, le bandeau prend ce
-        // qu'il veut et l'onglet hérite de ce qui reste — deux lignes,
-        // quand il en faut vingt pour lire une analyse.
+        // DEUX ZONES, ET NON TROIS. Le bandeau — ce qui vient, ce qui
+        // vient de se passer — puis la vue choisie, qui prend tout le
+        // reste.
         //
-        // La hauteur voulue est celle que le bandeau laisse, mesurée à
-        // l'image précédente : un bandeau replié rend sa place à
-        // l'onglet, et l'on ne se retrouve pas avec un trou au milieu du
-        // panneau. Sous le plancher, c'est le bandeau qui cède et
-        // défile — il se replie d'un clic, l'analyse non.
+        // L'état du processeur occupait jusqu'ici une troisième zone,
+        // ancrée entre les deux et hors de toute zone défilante, au nom
+        // d'un principe juste : ce qu'on surveille entre deux pas ne
+        // doit pas se chercher. Le prix en était un partage à trois qui
+        // ne tombait jamais juste — trois correctifs successifs pour la
+        // même famille de recouvrements, et au zoom de travail de Fred
+        // les registres prenaient près de soixante pour cent du panneau
+        // en écrasant la vue d'à côté. Ils ont maintenant leur onglet,
+        // le premier, et chaque vue a toute la place.
+        //
+        // La part du bas est posée **avant** le bandeau : sans cela, le
+        // bandeau prend ce qu'il veut et la vue hérite de ce qui reste —
+        // deux lignes, quand il en faut vingt pour lire une analyse.
         self.sidebar_tab_panel_ui(ui);
-
-        // L'état du processeur, ancré au bas du bandeau, **hors de toute
-        // zone qui défile**.
-        //
-        // C'est ce qu'on regarde entre deux pas : devoir le faire
-        // défiler pour voir R15 ou ZF coupe la lecture. Il partageait sa
-        // zone avec la prochaine instruction, laquelle est au-dessus —
-        // et une zone qui défile coupe par le bas : c'étaient donc les
-        // registres qui passaient dessous.
-        //
-        // Ancré, et non simplement posé à la suite. Posé à la suite,
-        // avec la zone du dessus bornée, il remonterait quand celle-ci
-        // se replie et le trou disparaîtrait — mais il DÉBORDERAIT sur
-        // la vue du dessous dès que le compte ne tombe pas juste, ce
-        // qu'un panneau, lui, ne fait jamais. Essayé, mesuré, et rendu :
-        // c'est l'invariant « le bandeau ne peint pas sur l'onglet » qui
-        // l'a dit, en nommant CF et ZF.
-        //
-        // Un panneau bas prend la hauteur de son contenu, mesurée à
-        // l'image précédente : l'état du processeur a toujours la
-        // sienne, et ce qui manque est pris à ce qui peut se replier.
 
         // Ce qui vient avant : la prochaine instruction, le dernier pas,
         // les conseils. Repliables, et c'est à eux de céder quand la
-        // fenêtre est courte — d'un clic on les range, l'état du
-        // processeur, non.
-        // `auto_shrink` FAUX dans les deux sens : la zone prend
-        // exactement la place qui lui reste et fait défiler ce qui n'y
-        // tient pas. Réglée sur « vrai » en hauteur, elle épousait son
-        // contenu — et quand celui-ci dépassait, elle débordait sur le
-        // panneau de l'état du processeur au lieu de défiler. C'est là
-        // que « État du processeur » se peignait sur « Dernier pas ».
-        //
-        // Défiler ici est permis, et c'est même la règle du panneau :
-        // ce qui ne doit jamais défiler — l'état du processeur — est
-        // sorti de cette zone, et n'y reviendra pas.
-        // La zone du bandeau est BORNÉE à ce qui reste une fois l'état
-        // du processeur réservé, et celui-ci est posé À LA SUITE au lieu
-        // d'être ancré au bas de la région.
-        //
-        // Ancré, il laissait tout le blanc entre le contenu du bandeau
-        // et lui : quatre cent cinquante-six pixels sur l'écran
-        // d'accueil, où le bandeau n'a qu'une phrase à dire. Trois
-        // tentatives de rééquilibrage avaient échoué, dont une pour
-        // cette raison précise — posé à la suite, il DÉBORDAIT sur la
-        // vue du dessous dès que le compte ne tombait pas juste.
-        //
-        // Le compte tombe juste maintenant : le plancher du bandeau vaut
-        // au moins la hauteur de l'état du processeur plus de quoi
-        // replier un titre, si bien que la place réservée ne peut plus
-        // manquer. C'est cette garantie-là qui manquait, et non l'idée.
-        egui::Panel::bottom(egui::Id::new("sidebar_cpu_state"))
-            .frame(egui::Frame::NONE)
-            .show(ui, |ui| self.cpu_state_section_ui(ui));
+        // fenêtre est courte.
         let bandeau = egui::ScrollArea::vertical()
             .id_salt("sidebar_banner")
             // `false` AUSSI EN HAUTEUR : réglée sur « vrai », la zone
             // épouse son contenu, et sur un panneau très court elle
             // dépassait de quelques pixels la place qui lui restait —
-            // la dernière ligne du bandeau se peignait alors sur le
-            // titre « État du processeur ». Mesuré : « Dernier pas »
-            // de 88 à 106 pour une place qui s'arrêtait à 92.
+            // la dernière ligne du bandeau se peignait alors par-dessus
+            // ce qui suit. Mesuré : « Dernier pas » de 88 à 106 pour
+            // une place qui s'arrêtait à 92.
             //
             // Bornée, elle prend exactement ce qui reste et fait
             // défiler le reste. Le partage, lui, ne s'en trouve pas
@@ -122,14 +79,13 @@ impl NamsdecApp {
             // height`). Sur un panneau très court, elle prenait donc
             // ces soixante-quatre pixels même quand il n'en restait que
             // quarante-trois — et les vingt et un autres se peignaient
-            // sur l'état du processeur. Ici, ce qui reste est ce qu'on
-            // prend ; le reste défile.
+            // sur la vue du dessous.
             .min_scrolled_height(0.0)
             .show(ui, |ui| self.sidebar_banner_ui(ui));
         // Ce que le bandeau mesurerait s'il avait toute la place : c'est
         // cette hauteur qui décide, à l'image suivante, de la part de
-        // l'onglet — et le partage se stabilise dès que tout tient.
-        self.sidebar_banner_height = bandeau.content_size.y + self.sidebar_cpu_height;
+        // la vue — et le partage se stabilise dès que tout tient.
+        self.sidebar_banner_height = bandeau.content_size.y;
     }
 
     /// Le haut du bandeau : la prochaine instruction et le dernier pas.
@@ -150,40 +106,33 @@ impl NamsdecApp {
         self.advice_ui(ui);
     }
 
-    /// L'état du processeur, et le lien vers les vectoriels.
+    /// La vue « Processeur » : les registres, le coût, et le lien vers
+    /// les vectoriels.
     ///
-    /// Séparé du reste du bandeau parce qu'il ne défile pas : voir
-    /// `sidebar_ui`.
-    fn cpu_state_section_ui(&mut self, ui: &mut egui::Ui) {
-        let s = strings(self.lang);
-        let départ = ui.cursor().top();
-        // Le MÊME en-tête que « Prochaine instruction » et « Détail ».
-        //
-        // Cette section employait l'en-tête repliable d'egui, ses deux
-        // voisines `section_toggle`, et la troisième `section_header` :
-        // trois dessins pour trois sections du même panneau. Le chevron
-        // n'était pas le même — « ▾ » dessiné par egui d'un côté, un
-        // « v » écrit de l'autre — et les titres partaient de trois
-        // abscisses différentes, 1229, 1243,2 et 1247. Presque rien, et
-        // c'est justement ce qui se voit sans qu'on sache le nommer.
-        //
-        // `section_toggle` pose son propre filet, d'où la disparition du
-        // `rule` qui ouvrait cette fonction : deux traits à vingt pixels
-        // l'un de l'autre feraient un bandeau rayé.
-        if section_toggle(ui, self.theme, s.cpu_state, &mut self.cpu_state_open) {
-            self.cpu_state_ui(ui);
+    /// Un onglet depuis le 13 octobre 2026, et non plus un bandeau
+    /// ancré : voir `SidebarTab` pour le pourquoi. Ce qu'elle montre
+    /// n'a pas changé d'un pixel — seule sa place a changé, et avec
+    /// elle la certitude qu'elle ne mange plus la vue d'à côté.
+    fn cpu_tab_ui(&mut self, ui: &mut egui::Ui) {
+        // `registers_ui` porte déjà l'état vide, et c'est le seul des
+        // six à proposer le bouton « Assembler » : cette vue-ci est
+        // celle qu'on a sous les yeux au premier lancement.
+        self.registers_ui(ui);
+        if self.emulator.is_none() {
+            return;
         }
-
-        // Les vectoriels ne sont plus ici : seize registres SSE et huit
-        // emplacements x87, c'est vingt-quatre lignes de plus dans un
-        // panneau qui en a déjà dix-huit. Dépliés, ils poussaient la
-        // rangée d'onglets hors du panneau ; bornés, ils défilaient au
-        // milieu de l'état du processeur. Ils ont maintenant une fenêtre
-        // à eux, où ils tiennent en entier.
+        // Les indicateurs ne sont pas ici : ils vivent dans la barre de
+        // titre, toujours visible. Voir `flags_ui`.
+        self.cost_ui(ui);
+        // Les vectoriels non plus : seize registres SSE et huit
+        // emplacements x87, c'est vingt-quatre lignes de plus dans une
+        // vue qui en a déjà dix-huit. Ils ont une fenêtre à eux, où ils
+        // tiennent en entier.
         self.vectors_link_ui(ui);
-        // Sa hauteur, pour que le partage avec l'onglet en tienne compte
-        // à l'image suivante.
-        self.sidebar_cpu_height = (ui.cursor().top() - départ).max(0.0);
+        // Le but de l'exercice n'est plus ici non plus : il vivait dans
+        // le bandeau toujours visible, et restait donc affiché quand on
+        // chargeait un binaire sans rapport. Il est dans la fenêtre des
+        // exercices (Aide › Exercices). Voir `goal_ui`.
     }
 
     /// La part du panneau réservée au contenu de l'onglet.
@@ -195,31 +144,27 @@ impl NamsdecApp {
     fn sidebar_tab_panel_ui(&mut self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
         let total = ui.available_height();
-        // Ce que l'onglet peut prendre au plus : il reste toujours au
-        // bandeau de quoi montrer ce qui vient et les premiers
-        // registres. Le reste est à l'onglet, et il n'en manque plus.
-        // Le plancher du bandeau n'est PAS une constante : il vaut au
-        // moins ce que l'état du processeur occupe vraiment.
+        // Ce que la vue peut prendre au plus : il reste toujours au
+        // bandeau de quoi montrer ce qui vient, et de quoi le replier —
+        // un titre et son filet, sans quoi le repli n'aurait plus où se
+        // poser.
         //
-        // La constante valait 280 quand l'état du processeur en demande
-        // 335 — seize registres, sept indicateurs, un compteur et un
-        // lien. L'onglet pouvait donc prendre jusqu'à ce qu'il ne reste
-        // que 280 px au bandeau, et le panneau bas de l'état du
-        // processeur, qui prend la hauteur de son contenu et non celle
-        // qu'on lui laisse, se peignait PAR-DESSUS « Prochaine
-        // instruction ». Vu sur une capture à 1280x800, onglet Mémoire :
-        // « État du processeur » écrit sur « Prochaine instruction »,
-        // « RAX » sur une adresse, sept chevauchements en tout.
-        //
-        // La hauteur de l'état du processeur est relevée à l'image
-        // précédente, comme celle du bandeau — et elle ne dépend de rien
-        // qui dépende d'elle : son contenu est fixe, et sa largeur est
-        // celle du panneau. Rien ne peut donc se reboucler.
-        //
-        // Plus de quoi replier « Prochaine instruction » : un titre et
-        // son filet, sans quoi le repli n'aurait plus où se poser.
+        // Le plancher était naguère calculé sur la hauteur de l'état du
+        // processeur, qui occupait une troisième zone entre les deux.
+        // Elle n'existe plus : les registres sont une vue comme les
+        // autres, et le partage n'a plus que deux parts à faire.
         const TITRE_REPLIÉ: f32 = 44.0;
-        let plancher = SIDEBAR_BANNER_MIN.max(self.sidebar_cpu_height + TITRE_REPLIÉ);
+        // Ce qu'on garde au bandeau est ce qu'il DEMANDE, et non une
+        // constante : replié, il tient en un titre et son filet, et
+        // retenir cent vingt pixels pour lui en laissait soixante-dix
+        // de vide au-dessus de la vue — visible sur capture, un trou
+        // entre « Prochaine instruction » replié et le titre de la vue.
+        // La constante ne sert plus que de plafond : au-delà, c'est au
+        // bandeau de défiler.
+        let plancher = self
+            .sidebar_banner_height
+            .clamp(TITRE_REPLIÉ, SIDEBAR_BANNER_MIN)
+            .min(total * 0.5);
         let plafond = (total - plancher).max(0.0);
         // Ce que le bandeau laisse, mesuré à l'image précédente. Au
         // tout premier passage on ne sait rien : la moitié du panneau
@@ -267,7 +212,7 @@ impl NamsdecApp {
                 // retrouvait à montrer des adresses sans dire de quoi :
                 // une colonne de nombres n'annonce pas qu'elle est une
                 // pile.
-                section_header(ui, self.theme, self.active_tab.label(s));
+                section_header(ui, self.theme, self.active_tab.title(s));
                 // LE CONTENU EST BORNÉ À LA PLACE DU PANNEAU, et ce
                 // n'est pas un confort : c'est ce qui empêche l'état du
                 // processeur de se peindre par-dessus.
@@ -298,15 +243,40 @@ impl NamsdecApp {
                 // là où une commande — le champ Adresse — reste bornée
                 // par le panneau. Une zone horizontale commune les
                 // étirerait toutes les deux à la largeur du vidage.
+                // LA VUE EST BORNÉE À LA PLACE DU PANNEAU, et elle y
+                // défile. C'est ce qui empêche la zone d'à côté d'être
+                // recouverte.
+                //
+                // Laisser la vue grandir à sa guise : quand son contenu
+                // dépasse la place laissée, egui ramène la TAILLE du
+                // rectangle du panneau au maximum demandé en gardant le
+                // bord du CONTENU et non celui de la place. Le
+                // rectangle glisse vers le bas et le panneau ne rend au
+                // parent que ce qui reste visible — relevé : peint de
+                // 361 à 539, rendu de 403 à 539, et le voisin s'écrit
+                // dans les quarante-deux pixels d'écart.
+                //
+                // La hauteur est imposée DANS la zone défilante : sans
+                // cela, le contenu d'une zone qui défile se croit une
+                // hauteur sans borne, et les vues qui dimensionnent
+                // leur propre liste dessus cessent de défiler elles-
+                // mêmes. Imposée, chacune retrouve la hauteur vraie, et
+                // la zone du dessus ne sert que lorsque tout ne tient
+                // pas — un très petit écran, un zoom généreux.
+                let hauteur = ui.available_height();
                 egui::ScrollArea::vertical()
                     .id_salt("sidebar_tab_scroll")
                     .auto_shrink([false, false])
-                    .show(ui, |ui| match self.active_tab {
-                        SidebarTab::Stack => self.stack_ui(ui),
-                        SidebarTab::Memory => self.memory_ui(ui),
-                        SidebarTab::Heap => self.heap_ui(ui),
-                        SidebarTab::Bytes => self.bytes_ui(ui),
-                        SidebarTab::Re => self.re_ui(ui),
+                    .show(ui, |ui| {
+                        ui.set_max_height(hauteur);
+                        match self.active_tab {
+                            SidebarTab::Cpu => self.cpu_tab_ui(ui),
+                            SidebarTab::Stack => self.stack_ui(ui),
+                            SidebarTab::Memory => self.memory_ui(ui),
+                            SidebarTab::Heap => self.heap_ui(ui),
+                            SidebarTab::Bytes => self.bytes_ui(ui),
+                            SidebarTab::Re => self.re_ui(ui),
+                        }
                     });
             });
         // Ce que le panneau fait vraiment : s'il n'est pas à la hauteur
@@ -342,19 +312,6 @@ impl NamsdecApp {
                 _ => {}
             }
         }
-    }
-
-    /// Le bandeau fixe : les registres, les flags en pastilles, et ce
-    /// que le programme a coûté jusqu'ici.
-    fn cpu_state_ui(&mut self, ui: &mut egui::Ui) {
-        self.registers_ui(ui);
-        // Les indicateurs ne sont plus ici : ils vivent dans la barre de
-        // titre, toujours visible et jamais repliée. Voir `flags_ui`.
-        self.cost_ui(ui);
-        // Le but de l'exercice n'est plus ici non plus : il vivait dans ce
-        // bandeau toujours visible, et restait donc affiché quand on
-        // chargeait un binaire sans rapport. Il est maintenant dans la
-        // fenêtre dédiée aux exercices (Aide › Exercices). Voir `goal_ui`.
     }
 
     /// Où en est le but de l'exercice, quand il y en a un.
@@ -1252,10 +1209,11 @@ impl NamsdecApp {
 
     fn registers_ui(&mut self, ui: &mut egui::Ui) {
         if self.emulator.is_none() {
-            // Le seul des six panneaux vides à porter le bouton : il
-            // est toujours visible, et c'est lui qui répond à « et
-            // maintenant ? ». Le répéter dans chaque onglet ferait
-            // deux boutons identiques à l'écran en même temps.
+            // Le seul des six panneaux vides à porter le bouton : la
+            // vue du processeur est celle qu'on trouve en ouvrant, et
+            // c'est elle qui répond à « et maintenant ? ». Le répéter
+            // dans chaque onglet ferait deux boutons identiques à
+            // l'écran dès qu'on en change.
             let s = strings(self.lang);
             let theme = self.theme;
             let peut = self.can_assemble();
@@ -2148,8 +2106,21 @@ impl NamsdecApp {
         // cent millisecondes. Toutes les rangées ayant la même hauteur,
         // egui sait lesquelles sont à l'écran et ne demande que
         // celles-là.
-        let row_height =
-            ui.text_style_height(&egui::TextStyle::Monospace) + ui.spacing().item_spacing.y;
+        // DEUX HAUTEURS, et les confondre décalait le suivi.
+        //
+        // `show_rows` veut la hauteur d'une ligne SANS l'espace qui la
+        // sépare de la suivante : il l'ajoute lui-même. En lui donnant
+        // les deux, on lui faisait croire à des rangées de vingt et un
+        // pixels là où il en posait vingt-sept — la vue réservait donc
+        // un quart de hauteur de trop, et le décalage calculé pour
+        // centrer l'instruction courante tombait quelque chose comme
+        // soixante-dix lignes trop haut. La fenêtre de décompilation
+        // porte la même remarque, pour la même raison.
+        //
+        // Le pas complet, lui, sert à placer : c'est de ligne à ligne
+        // qu'on compte pour centrer.
+        let ligne_seule = ui.text_style_height(&egui::TextStyle::Monospace);
+        let row_height = ligne_seule + ui.spacing().item_spacing.y;
         // La ligne à suivre, calculée avant : `show_rows` ne dessine pas
         // les autres, et `scroll_to_me` ne peut donc pas les atteindre.
         let suivie = (self.follow_rip)
@@ -2165,11 +2136,14 @@ impl NamsdecApp {
         let mut zone = egui::ScrollArea::vertical()
             .id_salt("bytes_tab")
             .auto_shrink([false, false]);
-        if let Some(index) = suivie {
+        let voulu = suivie.map(|index| {
             // Centrée : on veut voir ce qui précède et ce qui suit
             // l'instruction courante, pas seulement elle.
             let milieu = (index as f32 + 0.5) * row_height;
-            zone = zone.vertical_scroll_offset((milieu - ui.available_height() / 2.0).max(0.0));
+            (milieu - ui.available_height() / 2.0).max(0.0)
+        });
+        if let Some(voulu) = voulu {
+            zone = zone.vertical_scroll_offset(voulu);
         }
         // Ce qu'on peut récrire : les octets d'un BINAIRE ouvert. Un
         // listing venu d'un source se réassemble — le récrire à la main
@@ -2181,7 +2155,7 @@ impl NamsdecApp {
         let mut ouvrir = None;
         let mut valider = None;
         let mut annuler = false;
-        zone.show_rows(ui, row_height, state.disasm.len(), |ui, rows| {
+        let rendu_zone = zone.show_rows(ui, ligne_seule, state.disasm.len(), |ui, rows| {
             // Un panneau egui adopte la largeur de son contenu, et dix
             // octets en hexadécimal suivis d'un texte d'instruction en
             // font beaucoup : sans cette borne, l'onglet poussait le
@@ -2284,7 +2258,23 @@ impl NamsdecApp {
             self.bytes_edit = None;
             self.write_bytes_at(adresse, &saisie);
         }
-        self.follow_rip = false;
+        // ON CESSE DE SUIVRE QUAND ON Y EST, et non dès la première
+        // image : egui applique un décalage demandé à l'image
+        // SUIVANTE. Lâcher le suivi tout de suite laissait la vue une
+        // page trop haut dès que la hauteur de la vue changeait entre
+        // deux images — ce qui arrive à chaque fois que le partage du
+        // panneau se cale, c'est-à-dire juste après l'assemblage.
+        //
+        // La comparaison porte sur le décalage BORNÉ : au bas d'un
+        // listing, le décalage voulu dépasse ce qu'egui peut donner, et
+        // l'on suivrait alors pour toujours.
+        let borné = voulu.map(|voulu| {
+            let maximum = (rendu_zone.content_size.y - rendu_zone.inner_rect.height()).max(0.0);
+            voulu.min(maximum)
+        });
+        if borné.is_none_or(|voulu| (rendu_zone.state.offset.y - voulu).abs() <= 1.0) {
+            self.follow_rip = false;
+        }
     }
 
     /// Les zones surveillées, avec leur valeur courante et de quoi les

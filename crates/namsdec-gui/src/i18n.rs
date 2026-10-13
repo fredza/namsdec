@@ -88,6 +88,10 @@ pub struct Strings {
     pub dialog_quit: &'static str,
 
     // Onglets du panneau latéral / menu Affichage
+    /// Le libellé COURT de l'onglet du processeur : il tient dans une
+    /// rangée avec cinq autres. « État du processeur » (`cpu_state`)
+    /// reste le titre de la vue elle-même.
+    pub tab_cpu: &'static str,
     pub tab_stack: &'static str,
     pub call_chain: &'static str,
     pub call_chain_line: &'static str,
@@ -1105,6 +1109,7 @@ const FR: Strings = Strings {
     unsaved_cancel: "Annuler",
     dialog_quit: "Quitter",
 
+    tab_cpu: "Processeur",
     tab_stack: "Pile",
     call_chain: "Chaîne des appels",
     call_chain_line: "ligne",
@@ -1931,6 +1936,7 @@ const EN: Strings = Strings {
     unsaved_cancel: "Cancel",
     dialog_quit: "Quit",
 
+    tab_cpu: "Processor",
     tab_stack: "Stack",
     call_chain: "Call chain",
     call_chain_line: "line",

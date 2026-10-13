@@ -484,7 +484,9 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "<font face='Courier'>boucle</font> —, parce qu'elle compte pour nasm."),
 
         ("h2", "Le panneau de droite"),
-        ("p", "Il se lit de haut en bas, et se partage en trois zones fixes :"),
+        ("p",
+         "Il se lit de haut en bas, et se partage en <b>deux zones</b> : le bandeau, "
+         "qui dit ce qui vient, et la <b>vue choisie</b>, qui prend tout le reste."),
         ("liste", [
          "<b>Prochaine instruction</b> — l’adresse et le pseudo-code "
          "(<font face='Courier'>RAX = RAX + RCX</font> plutôt que "
@@ -499,14 +501,15 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "Un clic la rouvre. Tant qu'aucun programme n'est assemblé, elle annonce ce "
          "qu'elle montrera, comme les deux zones qui la suivent — une section ouverte "
          "ne reste jamais muette.",
-         "<b>État du processeur</b> — seize registres, RIP, le nombre d'instructions "
+         "<b>Processeur</b> (la première vue, et celle qu'on trouve en ouvrant) — "
+         "seize registres, RIP, le nombre d'instructions "
          "exécutées (les sept indicateurs, eux, sont dans la barre de titre). Un clic sur "
          "un nom de registre pose une surveillance ; un clic sur une valeur permet de la "
          "remplacer. <b>Un registre qui change à un pas s'éclaire d'un fond orange</b> quelques secondes, qui "
          "s'estompe — un bloc de couleur, bien plus visible qu'une teinte de texte : une "
          "valeur qui bascule sans bouger à l'écran se raterait, et l'éclat la désigne sans "
          "encombrer la lecture d'après.",
-         "<b>La vue choisie</b> — Pile, Mémoire, Tas, Octets, et RE si le module est "
+         "<b>Les autres vues</b> — Pile, Mémoire, Tas, Octets, et RE si le module est "
          "activé. Devant un <b>binaire ouvert</b>, la vue Octets se récrit : un clic sur "
          "les octets d'une instruction ouvre un champ, Entrée valide, Échap annule. On y "
          "met <b>des octets</b> — « 48 31 c0 » — <b>ou l'instruction elle-même</b> — "
@@ -518,12 +521,20 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "Outils > Patcher le binaire propose « Neutraliser (nop) ». Ce qui a changé "
          "porte la couleur des changements, et la fenêtre Correctifs sait le défaire. "
          "Les onglets sont en haut à droite, dans la barre d'outils.",
-         "Les trois zones se partagent la hauteur du panneau, et <b>l'état du "
-         "processeur passe avant</b> : c'est ce qu'on regarde entre deux pas, et il ne "
-         "défile jamais. Quand la place manque — une console ouverte, une fenêtre "
-         "courte, un zoom généreux —, c'est la vue choisie qui défile, et la poignée "
-         "entre les deux se tire pour lui en rendre. Rien ne se peint par-dessus rien : "
-         "un contrôle le vérifie sur les cinq vues, panneau à l'étroit.",
+         "<b>Le processeur est une vue, et non plus un bandeau fixe</b> — depuis le "
+         "13 octobre 2026, et c'est un retour en arrière assumé. Les registres "
+         "occupaient une zone ancrée au milieu du panneau, au nom d'un principe "
+         "juste : ce qu'on surveille entre deux pas ne doit pas se chercher. Le prix "
+         "en était un panneau partagé en trois zones qui se disputaient la hauteur — "
+         "sur un écran au zoom généreux, les registres prenaient près des trois "
+         "cinquièmes du panneau et écrasaient la vue d'à côté. Une zone à la fois, et "
+         "chacune a toute la place ; le passage de l'une à l'autre tient dans la "
+         "rangée d'onglets, en haut à droite.",
+         "La poignée entre le bandeau et la vue se tire pour donner plus de place à "
+         "l'un ou à l'autre, et le bandeau ne garde que ce qu'il demande. Quand tout "
+         "ne tient pas — une console ouverte, une fenêtre courte, un zoom généreux —, "
+         "c'est la vue qui défile. Rien ne se peint par-dessus rien : un contrôle le "
+         "vérifie sur les six vues, panneau à l'étroit.",
         ]),
         ("p",
          "<b>Survoler un registre</b> répond à « d'où vient ce qu'il contient ? », et pas "

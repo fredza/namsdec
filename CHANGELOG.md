@@ -119,6 +119,20 @@ des témoins qu'on lit.
   règle d'adresses court dessous, l'échelle de couleurs est graduée de 0
   à 8 avec neuf arrêts, et les **plages** donnent enfin les adresses —
   cliquables.
+- **Le processeur est devenu un onglet** (demandé). Les registres
+  occupaient une zone ancrée au milieu du panneau latéral ; le panneau
+  se partageait donc en trois, et au zoom de travail les registres
+  prenaient près des trois cinquièmes de la place en écrasant la vue
+  d'à côté. « Processeur » est maintenant la première vue, et celle
+  qu'on trouve en ouvrant — une zone à la fois, chacune avec toute la
+  place. Le bandeau ne garde par ailleurs que la hauteur qu'il demande,
+  au lieu des 280 px qu'il réservait du temps où il la partageait avec
+  les registres.
+- **L'onglet Octets suivait l'exécution de travers.** Sa liste annonce
+  à egui des rangées d'une hauteur, et en pose d'une autre — l'espace
+  entre deux lignes était compté deux fois. Le calcul qui centre
+  l'instruction courante tombait donc d'autant plus loin que le
+  programme est long.
 - **Le panneau latéral ne se recouvre plus.** Dans l'onglet Mémoire,
   l'état du processeur s'écrivait par-dessus le haut de la vue —
   « Adresse », « Chercher », « Suivre » et « Lire en » sous les

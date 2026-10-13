@@ -369,8 +369,14 @@ fn sidebar_min_width(ui: &egui::Ui) -> f32 {
 const SIDEBAR_TAB_MIN: f32 = 180.0;
 
 /// Et ce qui reste au bandeau, quoi qu'il arrive : de quoi lire ce qui
-/// vient et les premières lignes de l'état du processeur.
-const SIDEBAR_BANNER_MIN: f32 = 280.0;
+/// vient, et de quoi le replier.
+///
+/// Cent vingt et non deux cent quatre-vingts : l'ancienne valeur
+/// réservait la place du bandeau ET de l'état du processeur, qui
+/// partageaient la même part. Les registres ont leur onglet depuis le
+/// 13 octobre 2026 ; garder 280 px pour un bandeau qui en demande 44
+/// replié revenait à retenir un quart du panneau pour du vide.
+const SIDEBAR_BANNER_MIN: f32 = 120.0;
 /// Et au-delà de cette part de la fenêtre, il mangerait l'éditeur. La
 /// borne vaut aussi réparation : egui garde la largeur du panneau d'une
 /// session à l'autre, donc une largeur aberrante — héritée d'un bug de
@@ -1085,9 +1091,6 @@ struct NamsdecApp {
     /// qu'on doit poser la part de l'onglet *avant* de dessiner le
     /// bandeau, et qu'elle change avec ce qui est replié.
     sidebar_banner_height: f32,
-    /// La hauteur de l'état du processeur seul : elle lui est garantie,
-    /// et le partage avec l'onglet s'en sert.
-    sidebar_cpu_height: f32,
     /// La hauteur qu'a réellement prise la part de l'onglet à la
     /// dernière image : celle qu'on fige quand on cesse de la calculer.
     sidebar_tab_last: f32,
@@ -1157,14 +1160,6 @@ struct NamsdecApp {
     /// « sans titre 2 » ne fait pas du suivant un second « sans titre 2 »
     /// pendant qu'on regarde encore le premier.
     next_untitled: usize,
-    /// Le bandeau d'état est-il déployé ? Vrai à chaque lancement, et
-    /// **hors de `settings.json`** : egui garde
-    /// normalement l'état des en-têtes repliables d'une session à
-    /// l'autre, si bien qu'un repli fait une fois — pour lire un vidage
-    /// mémoire, par exemple — rouvrait l'application sur des registres
-    /// cachés, sans qu'on sache pourquoi. Il se replie toujours à la
-    /// main, le temps de la session.
-    cpu_state_open: bool,
     /// Le bloc de la prochaine instruction est-il déployé ? Même règle
     /// que ci-dessus : l'état d'une session, jamais celui du disque.
     next_instruction_open: bool,
@@ -1793,7 +1788,11 @@ impl Default for NamsdecApp {
             re_registry,
             status: Status::Idle,
             diagnostics: Vec::new(),
-            active_tab: SidebarTab::Stack,
+            // Le processeur en premier : c'est ce qu'on regarde entre
+            // deux pas, et c'était jusqu'ici un bandeau toujours
+            // visible. Devenu onglet, il doit être celui qu'on trouve
+            // en ouvrant.
+            active_tab: SidebarTab::Cpu,
             console_tab: ConsoleTab::Output,
             mem_addr_input: format!("{BASE_ADDR:#x}"),
             analysis_module: String::new(),
@@ -1908,7 +1907,6 @@ impl Default for NamsdecApp {
             console_height: None,
             sidebar_tab_height: None,
             sidebar_banner_height: 0.0,
-            sidebar_cpu_height: 0.0,
             sidebar_tab_last: SIDEBAR_TAB_MIN,
             mem_poke: String::new(),
             show_disassembly: false,
@@ -1934,7 +1932,6 @@ impl Default for NamsdecApp {
             bytes_edit_input: String::new(),
             untitled_no: 1,
             next_untitled: 2,
-            cpu_state_open: true,
             next_instruction_open: true,
             next_detail_open: false,
             next_detail_addr: None,

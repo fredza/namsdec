@@ -2137,83 +2137,84 @@ hlt
     assert_eq!(changed(&app), ["RAX", "RBX"]);
 }
 
-/// Le bandeau d'état s'ouvre déployé à chaque lancement, et replié il
-/// rend sa place au contenu de l'onglet.
+/// L'état du processeur est un ONGLET, et la vue choisie a tout le
+/// panneau.
 ///
-/// egui retient l'état des en-têtes repliables d'une session à
-/// l'autre : replié une fois, il revenait replié, registres cachés,
-/// sans que rien ne dise pourquoi. La mesure porte sur ce que l'état
-/// coûte : l'onglet, ancré sous lui, gagne toute la hauteur des
-/// registres dès qu'on les replie.
+/// Les registres avaient un bandeau ancré entre le haut du panneau et
+/// la vue, au nom d'un principe juste — ce qu'on surveille entre deux
+/// pas ne doit pas se chercher. Le prix était un partage à trois qui ne
+/// tombait jamais juste : trois correctifs successifs pour la même
+/// famille de recouvrements, et au zoom de travail de Fred, près de
+/// soixante pour cent du panneau pris aux autres vues.
+///
+/// Ce contrôle tient les deux bouts du changement : le processeur est
+/// la vue par défaut et montre bien ses registres ; et dès qu'on en
+/// choisit une autre, ils ne sont plus peints — c'est ce qui rend toute
+/// la place à celle qu'on regarde.
 #[test]
-fn the_cpu_banner_opens_deployed() {
-    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+fn l_etat_du_processeur_est_un_onglet_et_la_vue_choisie_a_tout_le_panneau() {
+    let Some(octets) = binaire_dépreuve("crackme-01").or_else(|| std::fs::read("/bin/ls").ok())
+    else {
         return;
-    }
-    assert!(
-        NamsdecApp::default().cpu_state_open,
-        "déployé par défaut, sans rien avoir à régler"
+    };
+    assert_eq!(
+        NamsdecApp::default().active_tab,
+        SidebarTab::Cpu,
+        "le processeur est la vue qu'on trouve en ouvrant"
     );
 
-    let hauteur_de_l_onglet = |open: bool| {
-        let mut app = NamsdecApp {
-            active_tab: SidebarTab::Memory,
-            cpu_state_open: open,
-            ..Default::default()
-        };
-        app.do_assemble();
+    let peint = |onglet: SidebarTab| -> (Vec<String>, f32) {
         let ctx = egui::Context::default();
-        let input = egui::RawInput {
-            screen_rect: Some(egui::Rect::from_min_size(
-                egui::Pos2::ZERO,
-                egui::vec2(1280.0, 1400.0),
-            )),
-            ..Default::default()
-        };
-        // Trois images : la première ne sait pas encore ce que le
-        // bandeau mesure, la deuxième le partage, la troisième s'y
-        // tient.
-        for _ in 0..3 {
-            let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
-            output.textures_delta.clear();
+        let mut app = NamsdecApp::default();
+        app.apply_theme(&ctx);
+        assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+        app.show_sidebar = true;
+        app.active_tab = onglet;
+        let entrée = écran_du_banc();
+        let mut textes: Vec<String> = Vec::new();
+        // Quelques images : le partage entre le bandeau et la vue se
+        // cale en deux ou trois.
+        for _ in 0..5 {
+            textes.clear();
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                    textes.push(t.galley.text().to_owned());
+                }
+            }
+            sortie.textures_delta.clear();
         }
-        // Le champ Adresse doit rester visible : c'est la commande de
-        // l'onglet, et un onglet dont on ne voit plus la commande ne
-        // sert à rien.
-        assert!(
-            ctx.read_response(memory_address_id()).is_some(),
-            "le champ Adresse est affiché, bandeau {}",
-            if open { "déployé" } else { "replié" }
-        );
-        egui::containers::panel::PanelState::load(&ctx, egui::Id::new("sidebar_tab"))
-            .expect("l'onglet a sa part du panneau")
+        let part = egui::containers::panel::PanelState::load(&ctx, egui::Id::new("sidebar_tab"))
+            .expect("la vue a sa part du panneau")
             .outer_rect
-            .height()
+            .height();
+        (textes, part)
     };
 
-    let déployé = hauteur_de_l_onglet(true);
-    let replié = hauteur_de_l_onglet(false);
-    // SOIXANTE-DIX, et le pourquoi mérite d'être écrit, parce qu'abaisser
-    // un seuil pour faire passer un changement est exactement la mauvaise
-    // manière — sauf quand ce qu'il mesure a vraiment rétréci.
-    //
-    // Le seuil valait 100 quand l'état du processeur portait l'en-tête
-    // repliable d'egui précédé d'un filet à lui ; unifier les en-têtes a
-    // supprimé ce filet, et le repli ne rendait plus que 99 px, d'où 90.
-    // Puis les indicateurs ont quitté le panneau pour la BARRE DE TITRE :
-    // le bandeau déployé a perdu leur rangée (~18 px), et le repli rend
-    // désormais ~81 px. Non parce qu'il rend moins, mais parce qu'il y a
-    // moins à rendre — les flags sont ailleurs, toujours visibles.
-    //
-    // Ce que la règle protège est intact : replier doit valoir la peine,
-    // et quatre-vingts pixels le valent.
+    let (processeur, part_cpu) = peint(SidebarTab::Cpu);
+    for registre in ["RAX", "R15", "RIP"] {
+        assert!(
+            processeur.iter().any(|t| t == registre),
+            "la vue du processeur montre {registre} : {processeur:?}"
+        );
+    }
+
+    let (mémoire, part_mémoire) = peint(SidebarTab::Memory);
+    for registre in ["RAX", "R15"] {
+        assert!(
+            !mémoire.iter().any(|t| t == registre),
+            "la vue Mémoire ne porte plus les registres — c'est ce qui lui rend la place"
+        );
+    }
+    // Et la place rendue est réelle : la vue Mémoire en reçoit au moins
+    // autant que la vue du processeur, là où elle en recevait le reste.
     assert!(
-        replié > déployé + 70.0,
-        "replié, l'état du processeur rend sa place à l'onglet : {replié} contre {déployé}"
+        part_mémoire >= part_cpu - 1.0,
+        "la vue Mémoire a au moins la part du processeur : {part_mémoire} contre {part_cpu}"
     );
     assert!(
-        déployé >= SIDEBAR_TAB_MIN,
-        "et déployé, l'onglet garde de quoi montrer quelque chose : {déployé}"
+        part_mémoire >= SIDEBAR_TAB_MIN,
+        "et de quoi montrer quelque chose : {part_mémoire}"
     );
 }
 
@@ -2257,7 +2258,7 @@ fn the_re_tab_is_absent_until_asked_for_then_remembered() {
         .filter(|tab| app.show_re_tab || **tab != SidebarTab::Re)
         .map(|tab| tab.label(strings(Lang::Fr)))
         .collect();
-    assert_eq!(shown, ["Pile", "Mémoire", "Tas", "Octets"]);
+    assert_eq!(shown, ["Processeur", "Pile", "Mémoire", "Tas", "Octets"]);
 
     // Mais ce qu'on coche dans Préférences, lui, part sur le disque et
     // revient.
@@ -3735,9 +3736,9 @@ fn every_documented_example_assembles_and_runs() {
 #[test]
 fn nothing_unfolded_can_push_the_tabs_out_of_the_panel() {
     let mut app = NamsdecApp {
-        // Tout ouvert, et un programme chargé pour que chaque section ait
-        // quelque chose à montrer.
-        cpu_state_open: true,
+        // La vue du processeur, et un programme chargé pour que chaque
+        // section ait quelque chose à montrer.
+        active_tab: SidebarTab::Cpu,
         source: DEFAULT_SOURCE.to_owned(),
         ..Default::default()
     };
@@ -3787,7 +3788,7 @@ fn a_scroll_bar_shows_up_when_there_is_something_to_scroll_and_not_before() {
     let barres_de = |source: String, ouvert: bool| -> Vec<(f32, f32)> {
         let mut app = NamsdecApp {
             source,
-            cpu_state_open: ouvert,
+            active_tab: SidebarTab::Cpu,
             ..Default::default()
         };
         if ouvert && namsdec_asm::find_nasm().is_some() && namsdec_asm::find_linker() {
@@ -3851,7 +3852,7 @@ fn a_scroll_bar_shows_up_when_there_is_something_to_scroll_and_not_before() {
 fn the_sidebar_never_scrolls_its_state() {
     let mut app = NamsdecApp {
         source: DEFAULT_SOURCE.to_owned(),
-        cpu_state_open: true,
+        active_tab: SidebarTab::Cpu,
         ..Default::default()
     };
     app.do_assemble();
@@ -5592,6 +5593,9 @@ hlt
 #[test]
 fn the_stack_shows_rsp_rbp_and_the_return_address() {
     let mut app = NamsdecApp {
+        // La vue de la pile, demandée : depuis que l'état du processeur
+        // est un onglet, c'est lui qu'on trouve en ouvrant.
+        active_tab: SidebarTab::Stack,
         source: "\
 global _start
 section .text
@@ -6686,7 +6690,9 @@ fn the_bytes_tab_follows_execution_in_a_long_program() {
         ..Default::default()
     };
     let mut painted = String::new();
-    for _ in 0..3 {
+    // Quelques images : le partage du panneau se cale en deux ou
+    // trois, et la vue ne cesse de suivre que lorsqu'elle est arrivée.
+    for _ in 0..4 {
         painted.clear();
         let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
         for clipped in &output.shapes {
@@ -12707,19 +12713,23 @@ fn lire_en_ne_se_peint_pas_sur_suivre() {
     );
 }
 
-/// La carte mémoire dépliée ne se peint pas sur l'état du processeur.
+/// La carte mémoire dépliée ne se peint pas sur le bandeau.
 ///
 /// Un binaire aux régions nombreuses — les sections d'un programme lié
-/// dynamiquement — dépliait une carte si haute que le contenu de l'onglet
+/// dynamiquement — dépliait une carte si haute que le contenu de la vue
 /// Mémoire dépassait la place que le panneau latéral lui réserve. Le
-/// partage à trois (bandeau, état du processeur, onglet) divergeait
-/// alors : l'onglet remontait par-dessus les registres — la carte se
-/// peignait sur RAX…RIP — ou filait sous le bas de la fenêtre. La carte
-/// défile désormais dans sa propre fenêtre bornée. Ce test déplie la
-/// carte et vérifie que les panneaux restent à leur place, sans
-/// recouvrement.
+/// partage divergeait alors : la vue remontait par-dessus ce qui la
+/// précède, ou filait sous le bas de la fenêtre. La carte défile
+/// désormais dans sa propre zone bornée, et la vue est dessinée dans un
+/// enfant de taille fixe.
+///
+/// Le contrôle visait les registres, qui étaient alors ancrés entre le
+/// bandeau et la vue ; ils ont leur propre onglet depuis le 13 octobre
+/// 2026 — ce qui éteint cette famille de défauts à la racine. Il vise
+/// maintenant ce qui partage encore le panneau avec la vue : le
+/// bandeau.
 #[test]
-fn la_carte_depliee_ne_couvre_pas_les_registres() {
+fn la_carte_depliee_ne_couvre_pas_le_bandeau() {
     let Some(octets) = binaire_dépreuve("crackme-01") else {
         return;
     };
@@ -12819,36 +12829,34 @@ fn la_carte_depliee_ne_couvre_pas_les_registres() {
         "la carte devrait montrer des régions une fois dépliée"
     );
 
-    // Aucun registre de l'état du processeur ne partage sa place avec une
+    // Rien de ce que le bandeau écrit ne partage sa place avec une
     // ligne de la carte.
-    let registres: Vec<(String, egui::Rect)> = t
+    //
+    // Les registres ne sont plus au-dessus : ils ont leur propre
+    // onglet depuis le 13 octobre 2026, et c'est justement ce qui
+    // éteint cette famille de défauts. Reste le bandeau — ce qui vient,
+    // le dernier pas —, qui partage encore le panneau avec la vue.
+    let bandeau: Vec<(String, egui::Rect)> = t
         .iter()
-        .filter(|(x, r)| {
-            ["RAX", "RBX", "RSP", "RBP", "R8", "R12", "R15", "RIP"].contains(&x.trim())
-                && r.left() < 1700.0
-        })
+        .filter(|(x, r)| [s.next_instruction, s.last_step].contains(&x.trim()) && r.left() < 1700.0)
         .cloned()
         .collect();
-    for (nom, reg) in &registres {
+    assert!(
+        !bandeau.is_empty(),
+        "le bandeau écrit quelque chose au-dessus de la vue"
+    );
+    for (nom, zone) in &bandeau {
         for ligne in &lignes_carte {
             assert!(
-                !reg.shrink(2.0).intersects(ligne.shrink(2.0)),
-                "la carte se peint sur le registre {nom} : {reg:?} ∩ {ligne:?}"
+                !zone.shrink(2.0).intersects(ligne.shrink(2.0)),
+                "la carte se peint sur « {nom} » : {zone:?} ∩ {ligne:?}"
             );
         }
     }
-    // Et les deux panneaux ne se chevauchent pas.
     use egui::containers::panel::PanelState;
-    let cpu = PanelState::load(&ctx, egui::Id::new("sidebar_cpu_state"))
-        .map(|z| z.outer_rect)
-        .expect("l'état du processeur est un panneau");
     let tab = PanelState::load(&ctx, egui::Id::new("sidebar_tab"))
         .map(|z| z.outer_rect)
         .expect("l'onglet est un panneau");
-    assert!(
-        cpu.bottom() <= tab.top() + 2.0,
-        "l'état du processeur déborde sur l'onglet : cpu={cpu:?} tab={tab:?}"
-    );
     // Et l'onglet tient dans la fenêtre : sans la carte bornée, le
     // partage divergeait dans l'autre sens — l'onglet filait sous le bas
     // de l'écran (mesuré : bas à 1650 px pour une fenêtre de 1183).
@@ -17481,7 +17489,7 @@ fn the_tab_share_can_be_frozen_and_given_back() {
     // qu'on décoche : la part garde sa hauteur, même quand le bandeau se
     // replie et libère de la place.
     app.sidebar_tab_height = Some(partagée);
-    app.cpu_state_open = false;
+    app.next_instruction_open = false;
     let figée = rendre(&mut app, &ctx);
     assert!(
         (figée - partagée).abs() < 2.0,
@@ -24534,14 +24542,17 @@ fn the_cpu_state_never_scrolls_at_any_window_size() {
     if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
         return;
     }
-    // De la fenêtre minimale à un grand écran, en passant par la taille
-    // par défaut — celle où le défaut se voyait.
-    for (largeur, hauteur) in [
-        (800.0_f32, 520.0_f32),
-        (1280.0, 820.0),
-        (1600.0, 1000.0),
-        (1920.0, 1230.0),
-    ] {
+    // De la taille par défaut — celle où le défaut se voyait — à un
+    // grand écran.
+    //
+    // La fenêtre minimale (800×520) n'y est plus, et c'est un choix
+    // qu'il faut dire : l'état du processeur est une VUE depuis le
+    // 13 octobre 2026, et non plus une bande ancrée qui prenait sa
+    // hauteur aux autres. Sur un panneau de trois cents pixels, seize
+    // registres ne tiennent pas, et la vue défile — comme la pile, la
+    // mémoire et les octets. Ce qu'on refuse n'a pas changé : qu'elle
+    // soit coupée là où elle a la place de tenir.
+    for (largeur, hauteur) in [(1280.0_f32, 820.0_f32), (1600.0, 1000.0), (1920.0, 1230.0)] {
         let ctx = egui::Context::default();
         let mut app = NamsdecApp {
             source: DEFAULT_SOURCE.to_owned(),
@@ -25518,18 +25529,27 @@ fn the_banner_titles_all_start_at_one_edge() {
         ..Default::default()
     };
     app.apply_theme(&ctx);
-    let (_, lignes) = ce_qui_est_écrit(&ctx, &mut app, None, 4);
-    let gauche = |quoi: &str| -> f32 {
+    let gauche = |lignes: &[(String, egui::Rect)], quoi: &str| -> f32 {
         lignes
             .iter()
             .filter(|(t, _)| t == quoi)
             .map(|(_, r)| r.left())
             .fold(f32::INFINITY, f32::min)
     };
-    let à_chevron = [s.next_instruction, s.cpu_state];
-    let bords: Vec<(&str, f32)> = à_chevron.iter().map(|t| (*t, gauche(t))).collect();
-    for (quoi, x) in &bords {
-        assert!(x.is_finite(), "« {quoi} » est peint dans le bandeau");
+
+    // Les titres de vue, qui ne portent pas de chevron : les six
+    // partent du bord du panneau, et du même.
+    let mut bords: Vec<(&str, f32)> = Vec::new();
+    for onglet in SidebarTab::ALL {
+        if onglet == SidebarTab::Re {
+            continue; // absent tant qu'on ne l'a pas demandé
+        }
+        app.active_tab = onglet;
+        let (_, lignes) = ce_qui_est_écrit(&ctx, &mut app, None, 4);
+        let titre = onglet.title(s);
+        let x = gauche(&lignes, titre);
+        assert!(x.is_finite(), "« {titre} » est peint en tête de sa vue");
+        bords.push((titre, x));
     }
     let premier = bords[0].1;
     let hors: Vec<String> = bords
@@ -25539,9 +25559,21 @@ fn the_banner_titles_all_start_at_one_edge() {
         .collect();
     assert!(
         hors.is_empty(),
-        "les titres du bandeau ne partent pas du même bord : {premier:.1} px, \
-         sauf {}",
+        "les titres de vue ne partent pas du même bord : {premier:.1} px, sauf {}",
         hors.join(", ")
+    );
+
+    // Et le titre À CHEVRON du bandeau s'écarte de ce bord, mais de peu :
+    // la largeur du chevron, pas davantage.
+    app.active_tab = SidebarTab::Cpu;
+    let (_, lignes) = ce_qui_est_écrit(&ctx, &mut app, None, 4);
+    let bandeau = gauche(&lignes, s.next_instruction);
+    assert!(bandeau.is_finite(), "le bandeau écrit son titre");
+    let écart = bandeau - premier;
+    assert!(
+        (0.0..=24.0).contains(&écart),
+        "le titre à chevron s'écarte du bord de la largeur d'un chevron, \
+         et non de {écart:.1} px"
     );
 }
 
@@ -25593,7 +25625,10 @@ fn a_zone_title_is_underlined_and_not_boxed() {
     // faisait mesurer la barre d'outils : le contrôle passait alors même
     // avec le défaut remis, ce qui est la pire sorte de contrôle.
     let mut plancher = 0.0f32;
-    for titre in [s.next_instruction, s.cpu_state, SidebarTab::Stack.label(s)] {
+    // Deux zones depuis que l'état du processeur est une vue comme les
+    // autres : le bandeau, puis le titre de la vue choisie — ici celle
+    // du processeur, qui est la vue par défaut.
+    for titre in [s.next_instruction, SidebarTab::Cpu.title(s)] {
         let haut = lignes
             .iter()
             .filter(|(t, r)| t == titre && r.top() > plancher)

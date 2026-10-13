@@ -9,13 +9,23 @@ use super::*;
 
 /// Les vues du panneau latéral qui s'échangent.
 ///
-/// Registres et flags n'en font plus partie : ce sont eux qu'on surveille
-/// en avançant instruction par instruction, ils ont donc un bandeau fixe
-/// en haut du panneau plutôt qu'un onglet où il faut revenir. Et la
-/// console a quitté le panneau pour le bas de la fenêtre, où elle a la
-/// largeur d'un terminal.
+/// **Le processeur en fait partie depuis le 13 octobre 2026**, et c'est
+/// un retour en arrière assumé. Les registres avaient un bandeau fixe,
+/// au nom d'un principe juste — ce qu'on surveille entre deux pas ne
+/// doit pas se chercher. Le prix était un panneau partagé en trois
+/// zones qui se disputaient la hauteur : trois correctifs successifs
+/// pour la même famille de recouvrements, et au zoom de travail de
+/// Fred, l'état du processeur prenait près de soixante pour cent du
+/// panneau et écrasait la vue d'à côté. Une zone à la fois, et chacune
+/// a toute la place.
+///
+/// La console, elle, a quitté le panneau pour le bas de la fenêtre, où
+/// elle a la largeur d'un terminal.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum SidebarTab {
+    /// Les registres, RIP, le compte d'instructions : ce qu'on regarde
+    /// entre deux pas. En tête, et vue par défaut.
+    Cpu,
     Stack,
     Memory,
     Heap,
@@ -25,7 +35,8 @@ pub(crate) enum SidebarTab {
 }
 
 impl SidebarTab {
-    pub(crate) const ALL: [SidebarTab; 5] = [
+    pub(crate) const ALL: [SidebarTab; 6] = [
+        SidebarTab::Cpu,
         SidebarTab::Stack,
         SidebarTab::Memory,
         SidebarTab::Heap,
@@ -40,6 +51,7 @@ impl SidebarTab {
     /// parce qu'on a basculé en anglais.
     pub(crate) fn id(self) -> &'static str {
         match self {
+            SidebarTab::Cpu => "cpu",
             SidebarTab::Stack => "stack",
             SidebarTab::Memory => "memory",
             SidebarTab::Heap => "heap",
@@ -53,8 +65,23 @@ impl SidebarTab {
         SidebarTab::ALL.into_iter().find(|tab| tab.id() == id)
     }
 
+    /// Le titre de la vue, en tête du panneau.
+    ///
+    /// Distinct du libellé de l'onglet, et pour une seule raison : la
+    /// place. La rangée porte six onglets et veut des noms d'un mot ;
+    /// le panneau, lui, a toute la largeur pour dire « État du
+    /// processeur ». Les cinq autres vues portent le même nom aux deux
+    /// endroits, leur libellé étant déjà leur titre.
+    pub(crate) fn title(self, s: &Strings) -> &'static str {
+        match self {
+            SidebarTab::Cpu => s.cpu_state,
+            _ => self.label(s),
+        }
+    }
+
     pub(crate) fn label(self, s: &Strings) -> &'static str {
         match self {
+            SidebarTab::Cpu => s.tab_cpu,
             SidebarTab::Stack => s.tab_stack,
             SidebarTab::Memory => s.tab_memory,
             SidebarTab::Heap => s.tab_heap,

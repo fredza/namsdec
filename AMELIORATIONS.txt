@@ -2726,6 +2726,44 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
   fallait les trois à la fois, et c'est le relevé des RECTANGLES, non des
   textes, qui a nommé le coupable.
 
+  --- Le processeur devient un onglet (option retenue par Fred) ---
+
+  Trois voies avaient été proposées : en faire un onglet, le replier tout seul
+  quand la place manque, ou rendre les familles de la fenêtre d'analyse
+  repliables. Fred a choisi la première, et c'est la seule qui éteigne la
+  cause plutôt qu'un symptôme : il n'y a plus de partage à trois, donc plus de
+  zones qui se disputent la hauteur.
+
+  CE QUE ÇA COÛTE, et il faut le dire franchement : les registres ne sont plus
+  sous les yeux pendant qu'on lit la mémoire. C'était l'argument du bandeau
+  fixe, et il était juste. Ce qui l'a emporté : au zoom de travail de Fred, ce
+  bandeau prenait près des trois cinquièmes du panneau, si bien que la vue
+  d'à côté — celle qu'on était venu consulter — n'avait plus la place de rien
+  montrer. Un principe qui mange la moitié de l'écran n'est plus un principe,
+  c'est un réglage par défaut mal choisi.
+
+  CE QUE ÇA RAPPORTE, au-delà du recouvrement : tout le calcul de partage lié
+  à la hauteur des registres disparaît (`sidebar_cpu_height`,
+  `cpu_state_open`, le panneau ancré, le plancher de 280 px). Le bandeau ne
+  garde plus que ce qu'il demande — replié, il tient en un titre, là où il
+  retenait cent vingt pixels dont soixante-dix de vide.
+
+  DEUX PIÈGES RENCONTRÉS EN CHEMIN, tous deux mesurés :
+
+  1. Borner la vue dans une zone défilante résout le débordement, mais à
+     l'intérieur d'une zone qui défile la hauteur disponible devient sans
+     borne : les vues qui dimensionnent leur propre liste dessus cessent de
+     défiler. Il faut IMPOSER la hauteur dans la zone (`set_max_height`), et
+     alors chacune retrouve la hauteur vraie.
+  2. L'onglet Octets ne suivait plus l'exécution — et ce n'était pas dû au
+     changement : `show_rows` veut la hauteur d'une ligne SANS l'espace qui la
+     sépare de la suivante, et on lui donnait les deux. Il croyait à des
+     rangées de 21 px là où il en posait 27 ; le décalage calculé pour centrer
+     l'instruction courante tombait soixante-dix lignes trop haut. Le défaut
+     était là depuis toujours et ne s'était jamais vu, la hauteur du panneau
+     masquant l'écart. Changer la disposition l'a démasqué — c'est le genre de
+     dividende qu'on ne peut pas prévoir.
+
   CE QUI RESTE. La liste était « non exhaustive » : il y aura une suite. Deux
   choses repérées en chemin et laissées : la sortie d'un outil extérieur est
   peinte d'une seule galère par ligne, ce qui la rend cliquable mais la
