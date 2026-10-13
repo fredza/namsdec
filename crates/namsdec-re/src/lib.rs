@@ -245,6 +245,62 @@ pub fn clickable_address(ui: &mut egui::Ui, ctx: &ReContext, addr: u64) -> bool 
         .clicked()
 }
 
+/// La famille à laquelle un panneau appartient.
+///
+/// Vingt-quatre rubriques à plat dans une colonne ne se cherchent pas :
+/// on les parcourt une à une, et l'on finit par ne plus voir celles du
+/// bas. Rangées par famille, on sait où regarder avant d'avoir lu — et
+/// une rubrique qu'on n'a jamais ouverte se trouve tout de même, parce
+/// qu'on sait de quelle question elle relève.
+///
+/// L'ordre des variantes est celui de la colonne, et c'est aussi celui
+/// dans lequel on lit un binaire inconnu : ce que le fichier dit de
+/// lui-même, puis son code, puis ce qu'on peut en rendre lisible, puis
+/// ce qu'il dit et ce qu'il demande, puis les octets eux-mêmes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ReSection {
+    /// Ce que le fichier dit de lui-même : son identité, sa carte, ses
+    /// protections, sa densité.
+    File,
+    /// Le code : où il est, comment il s'enchaîne, ce qu'il fait de
+    /// remarquable.
+    Code,
+    /// Le rendre lisible : le pseudo-code, et les outils des autres.
+    Decompile,
+    /// Ce qu'il dit : ses chaînes, et la règle qu'on en tire.
+    Says,
+    /// Ce qu'il demande au dehors : appels système et fonctions
+    /// empruntées.
+    Borrows,
+    /// Les octets eux-mêmes — les lire, les retrouver, les changer.
+    Bytes,
+}
+
+impl ReSection {
+    /// Le nom de la section, dans la langue demandée.
+    ///
+    /// Court : c'est un intertitre dans une colonne de deux cents
+    /// pixels, et un intertitre qui passe sur deux lignes coûte la
+    /// place d'une rubrique.
+    pub fn label(self, lang: &str) -> &'static str {
+        let fr = lang.starts_with("fr");
+        match (self, fr) {
+            (ReSection::File, true) => "Le fichier",
+            (ReSection::File, false) => "The file",
+            (ReSection::Code, true) => "Le code",
+            (ReSection::Code, false) => "The code",
+            (ReSection::Decompile, true) => "Décompiler",
+            (ReSection::Decompile, false) => "Decompile",
+            (ReSection::Says, true) => "Ce qu'il dit",
+            (ReSection::Says, false) => "What it says",
+            (ReSection::Borrows, true) => "Ce qu'il emprunte",
+            (ReSection::Borrows, false) => "What it borrows",
+            (ReSection::Bytes, true) => "Les octets",
+            (ReSection::Bytes, false) => "The bytes",
+        }
+    }
+}
+
 pub trait ReModule {
     /// Identifiant stable (pour retrouver/désactiver un module).
     fn id(&self) -> &'static str;
@@ -261,6 +317,14 @@ pub trait ReModule {
     /// Titre affiché en tête du panneau du module, dans la langue
     /// demandée.
     fn title(&self, lang: &str) -> &'static str;
+
+    /// La famille de ce panneau : c'est elle qui le range dans la
+    /// colonne.
+    ///
+    /// Déclarée par le module et non par l'interface : c'est le panneau
+    /// qui sait de quelle question il relève, et un panneau nouveau
+    /// doit choisir sa place plutôt que d'échouer en bas d'une liste.
+    fn section(&self) -> ReSection;
 
     /// Le nom de la rubrique dans la colonne de navigation, quand il
     /// doit être plus court que le titre.
@@ -343,15 +407,16 @@ impl ReModuleRegistry {
             .collect()
     }
 
-    /// Identifiant et nom de colonne de chaque module, dans l'ordre.
+    /// Identifiant, nom de colonne et famille de chaque module, dans
+    /// l'ordre.
     ///
     /// Comme [`Self::entries`], mais avec le nom court là où le titre
-    /// entier ne tient pas dans la colonne — voir
-    /// [`ReModule::nav_title`].
-    pub fn nav_entries(&self, lang: &str) -> Vec<(&'static str, &'static str)> {
+    /// entier ne tient pas dans la colonne — voir [`ReModule::nav_title`]
+    /// — et la section qui le range, voir [`ReSection`].
+    pub fn nav_entries(&self, lang: &str) -> Vec<(&'static str, &'static str, ReSection)> {
         self.modules
             .iter()
-            .map(|m| (m.id(), m.nav_title(lang)))
+            .map(|m| (m.id(), m.nav_title(lang), m.section()))
             .collect()
     }
 

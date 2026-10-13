@@ -20,7 +20,7 @@
 //!   **pseudo-code** (ce que chaque instruction fait, en clair).
 
 use crate::functions::{Function, Origin, by_importance, discover};
-use crate::{ReContext, ReModule, ReRequest, clickable_address};
+use crate::{ReContext, ReModule, ReRequest, ReSection, clickable_address};
 use std::collections::HashMap;
 
 /// Combien de fonctions l'arbre et le détail montrent, au plus.
@@ -143,6 +143,10 @@ impl CallGraphModule {
 impl ReModule for CallGraphModule {
     fn take_request(&mut self) -> Option<ReRequest> {
         self.demande.take()
+    }
+
+    fn section(&self) -> ReSection {
+        ReSection::Code
     }
 
     fn id(&self) -> &'static str {

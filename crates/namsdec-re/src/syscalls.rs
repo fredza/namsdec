@@ -1,5 +1,5 @@
 use crate::behaviour::{self, Family};
-use crate::{ReContext, ReModule};
+use crate::{ReContext, ReModule, ReSection};
 use iced_x86::{Mnemonic, OpKind, Register};
 
 /// Les appels système que le programme contient, avec leur numéro et leur
@@ -111,6 +111,10 @@ fn number_before(disasm: &[namsdec_disasm::DecodedInstruction], index: usize) ->
 }
 
 impl ReModule for SyscallsModule {
+    fn section(&self) -> ReSection {
+        ReSection::Borrows
+    }
+
     fn id(&self) -> &'static str {
         "syscalls"
     }

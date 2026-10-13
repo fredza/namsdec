@@ -6,7 +6,7 @@
 //! n'apprend rien à qui découvre.
 
 use crate::elf_scan::{self, Kind, Relro, Scan};
-use crate::{ReContext, ReModule};
+use crate::{ReContext, ReModule, ReSection};
 
 #[derive(Default)]
 pub struct ProtectionsModule {
@@ -54,6 +54,10 @@ fn verdict(ui: &mut egui::Ui, good: bool, label: &str, state: &str, why: &str) {
 }
 
 impl ReModule for ProtectionsModule {
+    fn section(&self) -> ReSection {
+        ReSection::File
+    }
+
     fn id(&self) -> &'static str {
         "protections"
     }

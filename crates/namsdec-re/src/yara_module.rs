@@ -1,4 +1,4 @@
-use crate::{ReContext, ReModule, digest, strings};
+use crate::{ReContext, ReModule, ReSection, digest, strings};
 
 /// Une règle YARA tirée du fichier chargé : de quoi reconnaître d'autres
 /// échantillons de la même famille.
@@ -20,6 +20,10 @@ pub struct YaraModule {
 }
 
 impl ReModule for YaraModule {
+    fn section(&self) -> ReSection {
+        ReSection::Says
+    }
+
     fn id(&self) -> &'static str {
         "yara"
     }

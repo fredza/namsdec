@@ -9,7 +9,7 @@
 //! rien.
 
 use crate::slack::{self, Slack};
-use crate::{ReContext, ReModule, ReRequest, clickable_address};
+use crate::{ReContext, ReModule, ReRequest, ReSection, clickable_address};
 
 /// Combien on en montre. Au-delà, la liste cesse d'apprendre et devient
 /// un vidage.
@@ -30,6 +30,10 @@ pub struct SlackModule {
 impl ReModule for SlackModule {
     fn take_request(&mut self) -> Option<ReRequest> {
         self.demande.take()
+    }
+
+    fn section(&self) -> ReSection {
+        ReSection::Bytes
     }
 
     fn id(&self) -> &'static str {

@@ -12520,7 +12520,7 @@ fn the_analysis_window_has_margins_and_a_left_aligned_column() {
         .re_registry
         .nav_entries("fr")
         .into_iter()
-        .map(|(_, titre)| titre)
+        .map(|(_, titre, _)| titre)
         .collect();
     let gauches: Vec<f32> = titres.iter().map(|t| où(t).0).collect();
     let mini = gauches.iter().cloned().fold(f32::MAX, f32::min);
@@ -13063,7 +13063,7 @@ fn the_analysis_window_reads_across_and_not_only_down() {
         .re_registry
         .nav_entries("fr")
         .into_iter()
-        .map(|(_, titre)| titre)
+        .map(|(_, titre, _)| titre)
         .collect();
     assert!(titres.len() >= 5, "il y a bien des modules : {titres:?}");
     let peint = peindre(&mut app);
@@ -29518,6 +29518,52 @@ fn a_tool_panel_really_runs_its_tool_and_shows_the_output() {
     assert!(
         harness.query_by_label_contains("Chercher").is_some(),
         "la barre de recherche paraît avec la sortie"
+    );
+}
+
+/// Les rubriques d'une même famille se suivent, et les familles sont
+/// dans l'ordre où l'on lit un binaire.
+///
+/// La colonne pose un intertitre quand la famille change. Un module
+/// rangé hors de son groupe ferait donc écrire deux fois le même
+/// intertitre — « Le code », puis trois autres familles, puis « Le
+/// code » encore —, ce qui est pire qu'une liste à plat : on croirait
+/// à deux choses différentes.
+///
+/// Le contrôle tient aussi l'ordre des familles, qui n'est pas une
+/// préférence de rangement : c'est celui dans lequel on lit un binaire
+/// inconnu — ce que le fichier dit de lui-même, son code, ce qu'on peut
+/// en rendre lisible, ce qu'il dit, ce qu'il demande, puis ses octets.
+#[test]
+fn les_rubriques_d_une_meme_famille_se_suivent() {
+    use namsdec_re::ReSection;
+
+    let app = NamsdecApp::default();
+    let entrées = app.re_registry.nav_entries("fr");
+    assert!(entrées.len() > 15, "le registre est peuplé : {entrées:?}");
+
+    let mut familles: Vec<ReSection> = Vec::new();
+    for (id, _, section) in &entrées {
+        if familles.last() == Some(section) {
+            continue;
+        }
+        assert!(
+            !familles.contains(section),
+            "« {id} » est rangé hors de sa famille « {} » : la colonne écrirait \
+             deux fois cet intertitre",
+            section.label("fr")
+        );
+        familles.push(*section);
+    }
+    let mut dans_l_ordre = familles.clone();
+    dans_l_ordre.sort();
+    assert_eq!(
+        familles, dans_l_ordre,
+        "les familles ne se suivent pas dans l'ordre déclaré par ReSection"
+    );
+    assert!(
+        familles.len() >= 5,
+        "la colonne compte bien des familles : {familles:?}"
     );
 }
 

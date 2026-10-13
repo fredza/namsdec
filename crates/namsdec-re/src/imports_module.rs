@@ -10,7 +10,7 @@
 use crate::behaviour::{self, Family};
 use crate::imports::{self, Import};
 use crate::libc;
-use crate::{ReContext, ReModule, ReRequest, clickable_address};
+use crate::{ReContext, ReModule, ReRequest, ReSection, clickable_address};
 
 #[derive(Default)]
 pub struct ImportsModule {
@@ -63,6 +63,10 @@ pub(crate) fn portrait(ui: &mut egui::Ui, ctx: &ReContext, comptes: &[(Family, u
 impl ReModule for ImportsModule {
     fn take_request(&mut self) -> Option<ReRequest> {
         self.demande.take()
+    }
+
+    fn section(&self) -> ReSection {
+        ReSection::Borrows
     }
 
     fn id(&self) -> &'static str {

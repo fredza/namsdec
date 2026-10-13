@@ -1,5 +1,5 @@
 use crate::entropy::{self, Range, Verdict, Window, seuils};
-use crate::{ReContext, ReModule, ReRequest, clickable_address};
+use crate::{ReContext, ReModule, ReRequest, ReSection, clickable_address};
 
 /// Le profil d'entropie du fichier, tranche par tranche.
 ///
@@ -42,6 +42,10 @@ const PLAGES_MONTRÉES: usize = 40;
 impl ReModule for EntropyModule {
     fn take_request(&mut self) -> Option<ReRequest> {
         self.demande.take()
+    }
+
+    fn section(&self) -> ReSection {
+        ReSection::File
     }
 
     fn id(&self) -> &'static str {

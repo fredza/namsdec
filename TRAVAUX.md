@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **13 octobre
-2026**, version 0.2.8-beta.1, 1 149 tests au vert.
+2026**, version 0.2.8-beta.1, 1 150 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -111,10 +111,21 @@ autres, et c'est eux qui expliquaient la moitié de la liste.
       qui est PEINT, sur toutes les scènes :
       `tout_caractere_peint_existe_dans_la_police` (interface) et
       `tout_caractere_ecrit_existe_dans_la_police` (panneaux).
-- [x] **La colonne de navigation tient ses vingt-cinq rubriques** — les
-      noms y sont courts (« RetDec » et non « Décompilation par
+- [x] **La colonne de navigation tient ses vingt-quatre rubriques** —
+      les noms y sont courts (« RetDec » et non « Décompilation par
       RetDec », qui passait sur deux lignes), les entrées serrées, et la
       fenêtre s'ouvre cent pixels plus haut. Nouveau `ReModule::nav_title`.
+- [x] **Et elles sont rangées par familles** (demandé) — Le fichier, Le
+      code, Décompiler, Ce qu'il dit, Ce qu'il emprunte, Les octets, dans
+      l'ordre où l'on lit un binaire inconnu. Le module déclare la
+      sienne (`ReModule::section`, `ReSection`), l'ordre
+      d'enregistrement les tient groupées, et la colonne pose un
+      intertitre quand la famille change. Deux rubriques ont déménagé
+      pour rejoindre la leur : « Figures du code » et « Références
+      croisées » étaient au milieu de ce que le binaire emprunte.
+      Contrôle : `les_rubriques_d_une_meme_famille_se_suivent` — éprouvé
+      en remettant le défaut, il nomme la rubrique fautive et sa
+      famille.
 
 ## 5. Analyse et exercices — passe du 7 octobre (0.2.8-beta.1)
 

@@ -1,5 +1,5 @@
 use crate::behaviour::{self, Family};
-use crate::{ReContext, ReModule, elf_scan, imports, strings, syscalls, xrefs};
+use crate::{ReContext, ReModule, ReSection, elf_scan, imports, strings, syscalls, xrefs};
 
 /// Le résumé : de quoi on parle, avant d'ouvrir les autres panneaux.
 ///
@@ -28,6 +28,10 @@ pub struct BinaryInfoModule {
 }
 
 impl ReModule for BinaryInfoModule {
+    fn section(&self) -> ReSection {
+        ReSection::File
+    }
+
     fn id(&self) -> &'static str {
         "binary_info"
     }

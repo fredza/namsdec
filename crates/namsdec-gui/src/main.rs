@@ -1674,6 +1674,15 @@ impl Default for NamsdecApp {
         // binaire et le pseudo-code de chacune. C'est la carte qu'on lit
         // avant de descendre dans une fonction.
         re_registry.register(Box::new(CallGraphModule::default()));
+        // Ce que le code *fait* de remarquable : les figures, rangées de
+        // la plus rare à la plus commune. C'est ce classement qui fait
+        // sortir une comparaison déguisée d'un binaire de soixante mille
+        // instructions.
+        re_registry.register(Box::new(PatternsModule::default()));
+        // Et par où entrer dedans : qui appelle quoi, qui saute où. Les
+        // références croisées ferment la famille du code — elles se
+        // lisent une fois qu'on sait ce que le binaire contient.
+        re_registry.register(Box::new(XrefsModule::default()));
         // La décompilation DZF : les fonctions en pseudo-C, quand le
         // moteur maison les a rendues. Après le graphe d'appels, dont elle
         // prolonge la lecture — du squelette des appels au corps en clair.
@@ -1729,31 +1738,24 @@ impl Default for NamsdecApp {
                 re_registry.register(Box::new(module));
             }
         }
-        // Puis dans l'ordre où l'on regarde un binaire inconnu : ce qu'il
-        // dit (ses chaînes), ce qu'il demande au système, puis comment il
-        // est découpé.
+        // Ce qu'il DIT : ses chaînes, et la règle qu'on en tire. Deux
+        // rubriques qui vont ensemble — la seconde se nourrit de la
+        // première.
         re_registry.register(Box::new(StringsModule::default()));
         // Le geste qui suit l'analyse : une règle YARA pour retrouver les
         // frères de cet échantillon. Juste après les chaînes, car c'est
         // d'elles qu'elle tire ses motifs.
         re_registry.register(Box::new(YaraModule::default()));
-        // Ce que le code *fait* de remarquable : les figures, rangées de
-        // la plus rare à la plus commune. C'est ce classement qui fait
-        // sortir une comparaison déguisée d'un binaire de soixante mille
-        // instructions.
-        re_registry.register(Box::new(PatternsModule::default()));
+        // Puis ce qu'il DEMANDE au dehors. Les appels système d'abord —
+        // ce qu'il demande au noyau, sans intermédiaire.
         re_registry.register(Box::new(SyscallsModule::default()));
-        // Ce qu'il emprunte : les fonctions d'autrui qu'il appelle. On
-        // les lit juste après les appels système, parce que c'est la
-        // même question posée un cran plus haut — que demande-t-il à ce
-        // qui n'est pas lui ?
+        // Puis les fonctions d'autrui qu'il appelle : la même question
+        // posée un cran plus haut — que demande-t-il à ce qui n'est pas
+        // lui ?
         re_registry.register(Box::new(ImportsModule::default()));
-        // Les références croisées en dernier : elles se lisent une fois
-        // qu'on sait ce que le binaire contient, pour décider par où
-        // entrer dedans.
-        re_registry.register(Box::new(XrefsModule::default()));
-        // Les fragments en dernier : ils n'ont de sens qu'après avoir lu
-        // les protections, dont ils expliquent la raison d'être.
+        // Restent les OCTETS eux-mêmes. Les fragments d'abord : ils
+        // n'ont de sens qu'après avoir lu les protections, dont ils
+        // expliquent la raison d'être.
         re_registry.register(Box::new(GadgetsModule::default()));
         // La place libre juste après : là où les fragments disent « il y a
         // déjà du code réutilisable », celle-ci dit « il y a aussi de la

@@ -2653,10 +2653,37 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
   code ordinaire tenait dans une teinte. Elle est graduée de 0 à 8 sous le
   profil, avec les cinq verdicts écrits sous leur zone.
 
-  CE QUI RESTE. La liste était « non exhaustive » : il y aura une suite. Deux
-  choses repérées en chemin et laissées : la colonne de navigation de la
-  fenêtre d'analyse porte vingt-cinq rubriques et défile encore de quatre sur
-  un écran de 1230 points (noms courts, entrées serrées, fenêtre cent pixels
-  plus haute — il faudrait des groupes pour aller plus loin) ; et la sortie
-  d'un outil extérieur est peinte d'une seule galère par ligne, ce qui la
-  rend cliquable mais la laisse hors de l'arbre d'accessibilité.
+  --- La colonne, rangée par familles (demandé dans la foulée) ---
+
+  Vingt-quatre rubriques à plat ne se cherchent pas : on les parcourt une à
+  une, et l'on finit par ne plus voir celles du bas. Six familles, dans
+  l'ordre où l'on lit un binaire inconnu : Le fichier (ce qu'il dit de
+  lui-même), Le code, Décompiler, Ce qu'il dit, Ce qu'il emprunte, Les
+  octets.
+
+  Où mettre cette information ? Dans l'interface, c'eût été une liste
+  d'identifiants recopiée à côté du registre — deux sources pour une même
+  chose, et un module nouveau rangé nulle part. C'est donc le module qui
+  déclare sa famille (`ReModule::section`), méthode REQUISE et non
+  optionnelle : un défaut par défaut ferait échouer un panneau neuf en bas de
+  liste sans que personne le voie. Vingt modules à compléter, mécanique, fait
+  d'un bloc.
+
+  La colonne pose un intertitre quand la famille change — ce qui suppose que
+  les modules d'une même famille se suivent dans le registre. Deux ont
+  déménagé pour cela : « Figures du code » et « Références croisées »
+  étaient enregistrés au milieu de ce que le binaire emprunte. L'invariant
+  qui tient cela (`les_rubriques_d_une_meme_famille_se_suivent`) vérifie
+  aussi que les familles paraissent dans l'ordre de l'énumération, qui est
+  l'ordre de lecture : il a été éprouvé en remettant le défaut, et il nomme
+  la rubrique fautive.
+
+  LE COÛT, mesuré : six intertitres prennent la place de cinq rubriques, et
+  la colonne montre donc moins d'entrées d'un coup. C'est accepté — ranger
+  sert à savoir où regarder, pas à tout voir ; et quatre familles sur six
+  restent sous les yeux, l'ascenseur faisant le reste.
+
+  CE QUI RESTE. La liste était « non exhaustive » : il y aura une suite. Une
+  chose repérée en chemin et laissée : la sortie d'un outil extérieur est
+  peinte d'une seule galère par ligne, ce qui la rend cliquable mais la
+  laisse hors de l'arbre d'accessibilité.

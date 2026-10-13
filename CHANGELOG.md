@@ -119,6 +119,11 @@ des témoins qu'on lit.
   règle d'adresses court dessous, l'échelle de couleurs est graduée de 0
   à 8 avec neuf arrêts, et les **plages** donnent enfin les adresses —
   cliquables.
+- **La colonne de la fenêtre d'analyse est rangée par familles** — Le
+  fichier, Le code, Décompiler, Ce qu'il dit, Ce qu'il emprunte, Les
+  octets —, dans l'ordre où l'on lit un binaire inconnu. Vingt-quatre
+  rubriques à plat se parcouraient une à une ; on sait maintenant où
+  regarder avant d'avoir lu.
 - **Des carrés vides à la place de caractères.** La coche, la croix, les
   triangles, les flèches : ces caractères n'existent pas dans les
   polices qu'egui embarque, et se peignaient en carré. Remplacés partout

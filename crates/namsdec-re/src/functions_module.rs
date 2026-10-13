@@ -15,7 +15,7 @@
 use std::collections::BTreeMap;
 
 use crate::functions::{Function, Origin, by_importance, discover};
-use crate::{ReContext, ReModule, ReRequest, clickable_address};
+use crate::{ReContext, ReModule, ReRequest, ReSection, clickable_address};
 
 #[derive(Default)]
 pub struct FunctionsModule {
@@ -52,6 +52,10 @@ const MONTRÉES: usize = 40;
 impl ReModule for FunctionsModule {
     fn take_request(&mut self) -> Option<ReRequest> {
         self.demande.take()
+    }
+
+    fn section(&self) -> ReSection {
+        ReSection::Code
     }
 
     fn id(&self) -> &'static str {

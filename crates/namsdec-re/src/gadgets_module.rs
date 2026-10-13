@@ -7,7 +7,7 @@
 //! et pourquoi RELRO, le canari et IBT existent.
 
 use crate::gadgets::{self, Gadget};
-use crate::{ReContext, ReModule, ReRequest, clickable_address};
+use crate::{ReContext, ReModule, ReRequest, ReSection, clickable_address};
 
 /// Combien on en montre par page.
 ///
@@ -49,6 +49,10 @@ pub struct GadgetsModule {
 impl ReModule for GadgetsModule {
     fn take_request(&mut self) -> Option<ReRequest> {
         self.demande.take()
+    }
+
+    fn section(&self) -> ReSection {
+        ReSection::Bytes
     }
 
     fn id(&self) -> &'static str {

@@ -1,4 +1,4 @@
-use crate::{ReContext, ReModule, elf_scan, entropy};
+use crate::{ReContext, ReModule, ReSection, elf_scan, entropy};
 
 /// La carte du fichier : ses segments et ses sections.
 ///
@@ -49,6 +49,10 @@ struct Section {
 }
 
 impl ReModule for MapModule {
+    fn section(&self) -> ReSection {
+        ReSection::File
+    }
+
     fn id(&self) -> &'static str {
         "map"
     }

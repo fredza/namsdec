@@ -1,4 +1,4 @@
-use crate::{ReContext, ReModule, digest};
+use crate::{ReContext, ReModule, ReSection, digest};
 
 /// L'identité du fichier : sa taille et ses empreintes.
 ///
@@ -19,6 +19,10 @@ pub struct DigestModule {
 }
 
 impl ReModule for DigestModule {
+    fn section(&self) -> ReSection {
+        ReSection::File
+    }
+
     fn id(&self) -> &'static str {
         "digest"
     }

@@ -1024,8 +1024,36 @@ impl NamsdecApp {
                                     }
                                     ui.add_space(4.0);
                                     ui.separator();
-                                    ui.add_space(4.0);
-                                    for (id, titre) in &titres {
+                                    // LES RUBRIQUES PAR FAMILLES. Vingt-
+                                    // quatre entrées à plat ne se
+                                    // cherchent pas : on les parcourt
+                                    // une à une, et l'on finit par ne
+                                    // plus voir celles du bas. Rangées
+                                    // sous cinq ou six intertitres, on
+                                    // sait où regarder avant d'avoir
+                                    // lu — et une rubrique qu'on n'a
+                                    // jamais ouverte se trouve tout de
+                                    // même, parce qu'on sait de quelle
+                                    // question elle relève.
+                                    //
+                                    // L'intertitre est posé quand la
+                                    // famille change : c'est le module
+                                    // qui déclare la sienne, et l'ordre
+                                    // d'enregistrement les tient
+                                    // groupées — un contrôle le
+                                    // vérifie.
+                                    let mut famille = None;
+                                    for (id, titre, section) in &titres {
+                                        if famille != Some(*section) {
+                                            famille = Some(*section);
+                                            ui.add_space(6.0);
+                                            ui.label(
+                                                egui::RichText::new(section.label(lang))
+                                                    .small()
+                                                    .color(theme.dim),
+                                            );
+                                            ui.add_space(1.0);
+                                        }
                                         let choisi = self.analysis_module == *id;
                                         if ui
                                             .add(egui::Button::selectable(choisi, *titre))

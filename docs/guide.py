@@ -1129,6 +1129,18 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "file, qui est la forme d'un compte rendu — c'est cette vue-là que "
          "« Copier » et « Enregistrer » exportent en Markdown. Le module choisi est un "
          "réglage : on le retrouve au retour."),
+        ("p",
+         "La colonne est rangée <b>par familles</b>, dans l'ordre où l'on lit un "
+         "binaire inconnu : <b>Le fichier</b> (ce qu'il dit de lui-même — son "
+         "identité, sa carte, ses protections, sa densité), <b>Le code</b> (où il "
+         "est, comment il s'enchaîne, ce qu'il fait de remarquable), "
+         "<b>Décompiler</b> (le pseudo-code, et les outils des autres), <b>Ce qu'il "
+         "dit</b> (ses chaînes, et la règle qu'on en tire), <b>Ce qu'il emprunte</b> "
+         "(appels système et fonctions d'autrui), <b>Les octets</b> (les lire, les "
+         "retrouver, les changer). Vingt-quatre rubriques à plat se parcouraient une "
+         "à une ; rangées ainsi, on sait où regarder avant d'avoir lu — et l'on "
+         "trouve une rubrique qu'on n'a jamais ouverte, parce qu'on sait de quelle "
+         "question elle relève."),
         ("p", "Ce qu'on y trouve :"),
         ("liste", [
          "<b>En bref</b> — la première réponse, avant d'ouvrir les autres panneaux : taille "

@@ -7,7 +7,7 @@
 //! qui sert partout, puis remonter.
 
 use crate::xrefs::{self, Kind, Xrefs};
-use crate::{ReContext, ReModule, ReRequest, clickable_address};
+use crate::{ReContext, ReModule, ReRequest, ReSection, clickable_address};
 
 #[derive(Default)]
 pub struct XrefsModule {
@@ -28,6 +28,10 @@ impl XrefsModule {
 impl ReModule for XrefsModule {
     fn take_request(&mut self) -> Option<ReRequest> {
         self.demande.take()
+    }
+
+    fn section(&self) -> ReSection {
+        ReSection::Code
     }
 
     fn id(&self) -> &'static str {

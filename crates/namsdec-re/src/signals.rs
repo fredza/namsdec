@@ -24,7 +24,7 @@
 
 use crate::behaviour::{self, Family};
 use crate::entropy::{self, seuils};
-use crate::{ReContext, ReModule};
+use crate::{ReContext, ReModule, ReSection};
 
 /// Combien un signal mérite qu'on s'y arrête d'abord.
 ///
@@ -489,6 +489,10 @@ impl SignalsModule {
 }
 
 impl ReModule for SignalsModule {
+    fn section(&self) -> ReSection {
+        ReSection::File
+    }
+
     fn id(&self) -> &'static str {
         "signals"
     }

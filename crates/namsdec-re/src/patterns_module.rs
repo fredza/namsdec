@@ -15,7 +15,7 @@ use std::collections::BTreeMap;
 
 use crate::misalign::{self, Misalignment};
 use crate::patterns::{Finding, Pattern, scan};
-use crate::{ReContext, ReModule, ReRequest, clickable_address};
+use crate::{ReContext, ReModule, ReRequest, ReSection, clickable_address};
 
 #[derive(Default)]
 pub struct PatternsModule {
@@ -49,6 +49,10 @@ const PAR_FAMILLE: usize = 12;
 impl ReModule for PatternsModule {
     fn take_request(&mut self) -> Option<ReRequest> {
         self.demande.take()
+    }
+
+    fn section(&self) -> ReSection {
+        ReSection::Code
     }
 
     fn id(&self) -> &'static str {

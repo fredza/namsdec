@@ -1,4 +1,4 @@
-use crate::{ReContext, ReModule, ReRequest};
+use crate::{ReContext, ReModule, ReRequest, ReSection};
 
 /// Un éditeur binaire : le fichier chargé en grille hexadécimale, un octet
 /// qu'on choisit, une valeur qu'on pose à la place.
@@ -86,6 +86,10 @@ fn octet(texte: &str) -> Option<u8> {
 }
 
 impl ReModule for HexEditorModule {
+    fn section(&self) -> ReSection {
+        ReSection::Bytes
+    }
+
     fn id(&self) -> &'static str {
         "hex_editor"
     }

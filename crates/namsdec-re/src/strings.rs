@@ -1,4 +1,4 @@
-use crate::{ReContext, ReModule};
+use crate::{ReContext, ReModule, ReSection};
 
 /// Les chaînes lisibles trouvées dans la mémoire du programme.
 ///
@@ -136,6 +136,10 @@ pub fn scan(bytes: &[u8], base: u64) -> Vec<Found> {
 }
 
 impl ReModule for StringsModule {
+    fn section(&self) -> ReSection {
+        ReSection::Says
+    }
+
     fn id(&self) -> &'static str {
         "strings"
     }

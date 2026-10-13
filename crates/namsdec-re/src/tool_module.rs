@@ -26,7 +26,7 @@
 use namsdec_disasm::known::{Availability, Known};
 
 use crate::dzf_decompiler_module::pseudocode_cliquable;
-use crate::{ReContext, ReModule, ReRequest, ReResult};
+use crate::{ReContext, ReModule, ReRequest, ReResult, ReSection};
 
 /// Combien de lignes une page de sortie porte.
 ///
@@ -130,6 +130,10 @@ impl ToolModule {
 }
 
 impl ReModule for ToolModule {
+    fn section(&self) -> ReSection {
+        ReSection::Decompile
+    }
+
     fn id(&self) -> &'static str {
         // Un identifiant stable et statique, comme les autres panneaux.
         // Celui de l'outil est une `String` venue de sa fiche : on la

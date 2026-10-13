@@ -1,4 +1,4 @@
-use crate::{ReContext, ReModule, ReRequest, digest, entropy};
+use crate::{ReContext, ReModule, ReRequest, ReSection, digest, entropy};
 
 /// Le vidage hexadécimal du fichier, et l'empreinte de ce qu'on y
 /// sélectionne.
@@ -115,6 +115,10 @@ pub fn tranche(taille_du_fichier: usize, début: usize, longueur: usize) -> Opti
 }
 
 impl ReModule for DumpModule {
+    fn section(&self) -> ReSection {
+        ReSection::Bytes
+    }
+
     fn id(&self) -> &'static str {
         "dump"
     }

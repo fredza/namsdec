@@ -1,4 +1,4 @@
-use crate::{ReContext, ReModule, ReRequest, ReResult, clickable_address, dzf};
+use crate::{ReContext, ReModule, ReRequest, ReResult, ReSection, clickable_address, dzf};
 
 /// Le panneau de décompilation DZF : les fonctions que DZF a rendues, en
 /// pseudo-C, dans l'onglet RE.
@@ -32,6 +32,10 @@ impl DzfDecompilerModule {
 }
 
 impl ReModule for DzfDecompilerModule {
+    fn section(&self) -> ReSection {
+        ReSection::Decompile
+    }
+
     fn id(&self) -> &'static str {
         "dzf_decompiler"
     }
