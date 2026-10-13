@@ -118,6 +118,26 @@ impl Verdict {
         }
     }
 
+    /// Le verdict en un mot, pour une colonne de tableau.
+    ///
+    /// La phrase entière — « uniforme — remplissage, zéros, une table »
+    /// — explique, et c'est ce qu'il faut sous la légende ; dans une
+    /// table à cinq colonnes, elle court au-delà du bord du panneau.
+    pub fn short(self, fr: bool) -> &'static str {
+        match (self, fr) {
+            (Verdict::Flat, true) => "uniforme",
+            (Verdict::Flat, false) => "flat",
+            (Verdict::Text, true) => "texte",
+            (Verdict::Text, false) => "text",
+            (Verdict::Code, true) => "code",
+            (Verdict::Code, false) => "code",
+            (Verdict::Mixed, true) => "mêlé",
+            (Verdict::Mixed, false) => "mixed",
+            (Verdict::Random, true) => "aléa",
+            (Verdict::Random, false) => "random",
+        }
+    }
+
     pub fn label(self, fr: bool) -> &'static str {
         match (self, fr) {
             (Verdict::Flat, true) => "uniforme — remplissage, zéros, une table",
@@ -154,10 +174,6 @@ pub struct Window {
 /// l'entropie de trente-deux octets rendrait un nombre sans valeur,
 /// puisqu'il n'y a pas de quoi voir une habitude.
 pub fn profile(bytes: &[u8], count: usize) -> Vec<Window> {
-    /// En deçà, la mesure ne veut rien dire : 256 octets, c'est déjà peu
-    /// pour juger d'une distribution sur 256 valeurs possibles.
-    const MIN_WINDOW: usize = 256;
-
     if bytes.is_empty() || count == 0 {
         return Vec::new();
     }
@@ -173,9 +189,287 @@ pub fn profile(bytes: &[u8], count: usize) -> Vec<Window> {
         .collect()
 }
 
+/// La taille de tranche qui convient à un fichier de cette taille.
+///
+/// **Compartimenter selon la taille du binaire**, et non découper en
+/// soixante-quatre quoi qu'il arrive : sur un fichier d'un méga-octet,
+/// soixante-quatre tranches font seize kilo-octets chacune, et un
+/// déchiffreur de deux cents octets se noie dans la moyenne de sa
+/// tranche. Le profil disait alors « rien à signaler » là où il y avait
+/// tout à voir.
+///
+/// La règle : viser [`TRANCHES_VISÉES`] tranches, arrondir la taille à
+/// la puissance de deux au-dessus — un découpage en 4 096 octets se lit
+/// et se retrouve dans un vidage, un découpage en 3 277 non —, et ne
+/// jamais descendre sous [`MIN_WINDOW`], en deçà de quoi la mesure ne
+/// veut rien dire.
+pub fn window_size(len: usize) -> usize {
+    if len == 0 {
+        return MIN_WINDOW;
+    }
+    let visée = len.div_ceil(TRANCHES_VISÉES).max(MIN_WINDOW);
+    // La puissance de deux au-dessus, bornée : au-delà, les tranches
+    // redeviennent des moyennes aveugles.
+    visée.next_power_of_two().min(MAX_WINDOW)
+}
+
+/// Combien de tranches on vise, quelle que soit la taille du fichier.
+///
+/// Assez pour qu'un bloc de quelques centaines d'octets ressorte dans
+/// un binaire ordinaire, assez peu pour que le dessin reste une forme
+/// et non un peigne.
+pub const TRANCHES_VISÉES: usize = 512;
+
+/// En deçà, la mesure ne veut rien dire : 256 octets, c'est déjà peu
+/// pour juger d'une distribution sur 256 valeurs possibles.
+pub const MIN_WINDOW: usize = 256;
+
+/// Au-delà, une tranche n'est plus une tranche mais une moyenne.
+pub const MAX_WINDOW: usize = 64 * 1024;
+
+/// Découpe `bytes` en tranches de `window` octets et mesure chacune.
+///
+/// La forme que le panneau emploie : c'est la TAILLE de la tranche
+/// qu'on choisit — elle se dit en octets, se lit dans un vidage et se
+/// retrouve dans le fichier —, et non leur nombre.
+pub fn profile_by(bytes: &[u8], window: usize) -> Vec<Window> {
+    let taille = window.max(1);
+    if bytes.is_empty() {
+        return Vec::new();
+    }
+    bytes
+        .chunks(taille)
+        .enumerate()
+        .map(|(i, tranche)| Window {
+            offset: i * taille,
+            len: tranche.len(),
+            entropy: shannon(tranche),
+        })
+        .collect()
+}
+
+/// Les tranches voisines qui disent la même chose, réunies en plages.
+///
+/// C'est la forme qu'on lit : « de 0x0 à 0x2000, du code ; de 0x2000 à
+/// 0x2c00, de l'aléa ». Trois cents tranches ne se lisent pas une à
+/// une, et c'est pourtant là que sont les adresses qu'on veut.
+///
+/// Deux temps, et le second est indispensable depuis que les tranches
+/// sont fines : réunir ce qui porte le même verdict, puis **absorber
+/// les miettes**. Un gros bloc chiffré oscille autour du seuil
+/// d'empaquetage — 7,13 puis 7,25 puis 7,16 —, et le premier temps,
+/// seul, le découpait en quatorze plages d'une tranche là où il n'y a
+/// qu'une chose à voir. Une plage sous [`MIN_TRANCHES`] tranches
+/// rejoint donc sa voisine la plus proche en entropie, et le verdict
+/// de la plage ainsi formée se relit sur sa moyenne.
+pub fn ranges(windows: &[Window]) -> Vec<Range> {
+    let mut plages: Vec<Range> = Vec::new();
+    for fenêtre in windows {
+        let verdict = Verdict::of(fenêtre.entropy);
+        match plages.last_mut() {
+            Some(plage) if plage.verdict == verdict => {
+                plage.len += fenêtre.len;
+                plage.somme += fenêtre.entropy * fenêtre.len as f64;
+                plage.haute = plage.haute.max(fenêtre.entropy);
+            }
+            _ => plages.push(Range {
+                offset: fenêtre.offset,
+                len: fenêtre.len,
+                verdict,
+                somme: fenêtre.entropy * fenêtre.len as f64,
+                haute: fenêtre.entropy,
+            }),
+        }
+    }
+
+    // Les miettes rejoignent leur voisine, et ce que l'absorption rend
+    // identique se réunit à son tour : une miette avalée change la
+    // moyenne de sa voisine, donc parfois son verdict, et deux plages
+    // qui disent désormais la même chose n'ont plus de raison d'être
+    // deux.
+    let tranche = windows.first().map_or(1, |f| f.len.max(1));
+    let minimum = tranche * MIN_TRANCHES;
+    loop {
+        let avant = plages.len();
+        réunir_les_pareilles(&mut plages);
+        absorber_la_plus_petite(&mut plages, minimum);
+        if plages.len() == avant {
+            break;
+        }
+    }
+    plages
+}
+
+/// Réunit les plages voisines qui portent le même verdict.
+fn réunir_les_pareilles(plages: &mut Vec<Range>) {
+    let mut rang = 1;
+    while rang < plages.len() {
+        if plages[rang].verdict == plages[rang - 1].verdict {
+            let suivante = plages.remove(rang);
+            let plage = &mut plages[rang - 1];
+            plage.len += suivante.len;
+            plage.somme += suivante.somme;
+            plage.haute = plage.haute.max(suivante.haute);
+            plage.verdict = Verdict::of(plage.entropy());
+        } else {
+            rang += 1;
+        }
+    }
+}
+
+/// Fait rejoindre à la plus petite plage trop courte sa voisine la plus
+/// proche en entropie. Une seule à la fois : chaque fusion change le
+/// voisinage, et la suivante doit se décider sur le nouveau.
+fn absorber_la_plus_petite(plages: &mut Vec<Range>, minimum: usize) {
+    if plages.len() < 2 {
+        return;
+    }
+    // La plus petite d'abord : absorber dans l'ordre du fichier ferait
+    // grossir la première par la gauche, quel que soit son voisinage.
+    let Some(rang) = plages
+        .iter()
+        .enumerate()
+        .filter(|(_, plage)| plage.len < minimum)
+        .min_by_key(|(_, plage)| plage.len)
+        .map(|(rang, _)| rang)
+    else {
+        return;
+    };
+    // Celle des deux voisines dont la moyenne est la plus proche : une
+    // miette de 7,25 appartient au bloc d'aléa d'à côté, non à la zone
+    // plate d'en face.
+    let avant = rang.checked_sub(1);
+    let après = (rang + 1 < plages.len()).then_some(rang + 1);
+    let écart = |voisine: Option<usize>| -> Option<f64> {
+        voisine.map(|v| (plages[v].entropy() - plages[rang].entropy()).abs())
+    };
+    let cible = match (écart(avant), écart(après)) {
+        (Some(a), Some(b)) if a <= b => avant,
+        (Some(_), Some(_)) => après,
+        (Some(_), None) => avant,
+        (None, Some(_)) => après,
+        (None, None) => None,
+    };
+    let Some(cible) = cible else {
+        return;
+    };
+    let miette = plages.remove(rang);
+    let cible = if cible > rang { cible - 1 } else { cible };
+    let voisine = &mut plages[cible];
+    voisine.offset = voisine.offset.min(miette.offset);
+    voisine.len += miette.len;
+    voisine.somme += miette.somme;
+    voisine.haute = voisine.haute.max(miette.haute);
+    voisine.verdict = Verdict::of(voisine.entropy());
+}
+
+/// Combien de tranches il faut pour qu'une plage en soit une.
+///
+/// En deçà, c'est une oscillation autour d'un seuil, non un morceau de
+/// fichier : la nommer à part n'apprend rien et noie les vraies.
+pub const MIN_TRANCHES: usize = 4;
+
+/// Une suite de tranches qui disent la même chose.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Range {
+    pub offset: usize,
+    pub len: usize,
+    pub verdict: Verdict,
+    /// La somme des entropies pondérées par la longueur : sert à rendre
+    /// la moyenne sans la recalculer.
+    somme: f64,
+    /// La tranche la plus dense de la plage.
+    pub haute: f64,
+}
+
+impl Range {
+    /// L'entropie moyenne de la plage.
+    pub fn entropy(&self) -> f64 {
+        if self.len == 0 {
+            return 0.0;
+        }
+        self.somme / self.len as f64
+    }
+
+    pub fn end(&self) -> usize {
+        self.offset + self.len
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// La tranche grandit avec le fichier, et jamais n'importe comment.
+    ///
+    /// C'est tout l'objet du découpage adaptatif : soixante-quatre
+    /// tranches sur un méga-octet noient un déchiffreur de deux cents
+    /// octets dans une moyenne de seize kilo-octets.
+    #[test]
+    fn the_window_grows_with_the_file_and_stays_round() {
+        // Un petit fichier garde la tranche la plus fine qui ait un
+        // sens.
+        assert_eq!(window_size(0), MIN_WINDOW);
+        assert_eq!(window_size(1024), MIN_WINDOW);
+        assert_eq!(window_size(100 * 1024), MIN_WINDOW);
+        // Au-delà, elle double à mesure — et reste une puissance de
+        // deux, qui se retrouve dans un vidage.
+        for taille in [1 << 20, 4 << 20, 64 << 20, 512 << 20] {
+            let fenêtre = window_size(taille);
+            assert!(fenêtre.is_power_of_two(), "{taille} → {fenêtre}");
+            assert!((MIN_WINDOW..=MAX_WINDOW).contains(&fenêtre), "{fenêtre}");
+            let tranches = taille.div_ceil(fenêtre);
+            assert!(
+                tranches >= 64,
+                "{taille} octets ne doivent pas tenir en {tranches} tranches"
+            );
+        }
+        // Et jamais au-delà de la borne, même sur un fichier énorme.
+        assert_eq!(window_size(usize::MAX / 2), MAX_WINDOW);
+    }
+
+    /// Les plages réunissent ce qui dit la même chose, sans trou.
+    #[test]
+    fn the_ranges_join_what_says_the_same_thing() {
+        let mut octets = vec![0u8; 4096];
+        let mut graine = 0x9e3779b97f4a7c15u64;
+        for _ in 0..4096 {
+            graine ^= graine << 13;
+            graine ^= graine >> 7;
+            graine ^= graine << 17;
+            octets.push((graine >> 24) as u8);
+        }
+        let tranches = profile_by(&octets, 512);
+        let plages = ranges(&tranches);
+        assert!(plages.len() >= 2, "{plages:?}");
+        // Elles se suivent et couvrent tout.
+        assert_eq!(plages[0].offset, 0);
+        for paire in plages.windows(2) {
+            assert_eq!(paire[0].end(), paire[1].offset);
+            // Et deux voisines ne disent jamais la même chose : sinon
+            // c'est qu'il fallait les réunir.
+            assert_ne!(paire[0].verdict, paire[1].verdict, "{plages:?}");
+            // Aucune miette : une plage d'une tranche est une
+            // oscillation autour d'un seuil, non un morceau de fichier.
+            assert!(
+                paire[0].len >= 512 * MIN_TRANCHES,
+                "une plage trop courte : {:?}",
+                paire[0]
+            );
+        }
+        assert_eq!(plages.last().expect("une plage").end(), octets.len());
+        // La première est plate, la dernière est de l'aléa.
+        assert_eq!(plages[0].verdict, Verdict::Flat);
+        assert_eq!(
+            plages.last().expect("une plage").verdict,
+            Verdict::Random,
+            "{plages:?}"
+        );
+        // Et la moyenne d'une plage reste dans l'échelle.
+        for plage in &plages {
+            assert!((0.0..=8.0).contains(&plage.entropy()), "{plage:?}");
+        }
+    }
 
     /// Les seuils se suivent, et chacun rend le verdict qu'il annonce.
     ///

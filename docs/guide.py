@@ -1199,6 +1199,14 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "nom. Chaque adresse se <b>clique pour y aller</b> dans le listing — la cible d'une "
          "fonction comme l'endroit d'où elle est appelée ; le petit triangle, lui, déplie "
          "d'où viennent les appels sans bouger l'œil.",
+         "<b>Fonctions</b> — par où commencer à lire : le <font face='Courier'>main</font> "
+         "retrouvé par la convention de démarrage, puis les fonctions classées par nombre "
+         "d'appelants — celle qu'on appelle de quarante endroits est un utilitaire, celle "
+         "qui n'est appelée qu'une fois est le programme. Le <b>nom se change sur place</b> : "
+         "on clique dessus, on tape, Entrée. Il vaut alors partout — listing compris — et "
+         "survit à la fermeture ; la flèche de retour rend son "
+         "<font face='Courier'>sub_xxxx</font> à la fonction. L'adresse, elle, mène au "
+         "listing.",
          "<b>Graphe d'appels</b> — la structure du programme, pas sa liste d'instructions : "
          "l'<b>arbre des appels</b> déplié depuis le point d'entrée, une boîte par fonction "
          "et un trait vers chacune de celles qu'elle appelle, à la façon d'un diagramme UML. "
@@ -1228,7 +1236,29 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "décompilateur actif et lit sa sortie ici — si c\'est DZF, elle s\'y affiche. "
          "namsdec et DZF échangent par un contrat JSON figé, pour grandir chacun sans "
          "casser l\'autre.",
-         "<b>Fragments réutilisables (ROP)</b> — les fins de séquence utiles à une chaîne ROP.",
+         "<b>Décompilation par Ghidra</b>, <b>Décompilation par RetDec</b>, "
+         "<b>Décompilation par radare2</b>, <b>Désassemblage par objdump</b>, "
+         "<b>Désassemblage par ndisasm</b> — un panneau par outil extérieur, et "
+         "chacun garde sa sortie. C'est ce qui permet de <b>comparer</b> : Ghidra et "
+         "RetDec ne rendent pas la même chose de la même fonction, et c'est en lisant "
+         "les deux qu'on apprend ce qu'un décompilateur devine. Les trois premiers "
+         "rendent du pseudo-C, les deux derniers des instructions — d'où les deux mots, "
+         "qui ne sont pas interchangeables. "
+         "Trois règles, les mêmes que pour la fenêtre Décompilation : <b>rien ne "
+         "s'exécute tout seul</b> (l'outil ne part qu'au clic sur « Lancer »), la "
+         "<b>commande est écrite en toutes lettres</b> avant d'être lancée, et "
+         "<b>namsdec n'installe rien à votre place</b> — un outil absent dit ce qu'il "
+         "faut taper pour l'obtenir, et laisse taper. La sortie se <b>cherche</b> et se "
+         "lit par pages de trois cents lignes ; ses <b>adresses sont cliquables</b> et "
+         "mènent au listing, comme ailleurs.",
+         "<b>Fragments réutilisables (ROP)</b> — les fins de séquence utiles à une "
+         "chaîne ROP : chacune finit par <font face='Courier'>ret</font>, et les "
+         "enchaîner revient à écrire un programme avec les morceaux d'un autre. La "
+         "récolte va jusqu'à deux mille fragments et se parcourt <b>page par page</b> "
+         "— quarante à la fois, avec « 41–80 sur 1 274 » pour dire où l'on en est : la "
+         "liste s'arrêtait à quarante sans jamais dire qu'il y avait une suite. Un "
+         "champ de recherche les filtre (« pop rdi »), et toute recherche ramène en "
+         "première page.",
          "<b>Place libre (bourrage)</b> — le bourrage que l'éditeur de liens laisse pour aligner : "
          "entre deux fonctions, entre deux sections, en fin de segment, il comble avec un "
          "octet neutre (un zéro, un <font face='Courier'>nop</font>, un "
@@ -1287,11 +1317,36 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "panneau le nomme aussi, avec la preuve et ce qu'on en fait : "
          "<font face='Courier'>upx -d</font> rend l'original, "
          "<font face='Courier'>pyinstxtractor</font> sort l'archive. « Compressé, chiffré "
-         "ou empaqueté » est juste et frustrant ; « c'est de l'UPX » est actionnable. "
-         "L'histogramme, tranche par tranche, est peint en <b>dégradé continu</b> — vert "
-         "pour le régulier, puis jaune, orange, rouge à mesure que ça monte, et violet pour "
-         "l'extrême (chiffré ou compressé) : la nature d'un bloc se lit à sa couleur, sans "
-         "comparer des hauteurs entre elles.",
+         "ou empaqueté » est juste et frustrant ; « c'est de l'UPX » est actionnable.",
+         "Le <b>découpage suit la taille du binaire</b> : la tranche vaut 256 octets sur "
+         "un petit fichier et grandit par puissances de deux, de façon qu'il y ait "
+         "toujours quelques centaines de tranches. Soixante-quatre tranches quoi qu'il "
+         "arrive — ce que faisait le panneau — en donnaient seize kilo-octets chacune sur "
+         "un fichier d'un méga-octet, et un déchiffreur de deux cents octets s'y noyait. "
+         "La taille retenue est écrite en tête : une bosse sur 256 octets et une bosse "
+         "sur 64 Ko ne disent pas la même chose.",
+         "Le <b>profil</b> prend toute la largeur et monte jusqu'à deux cent quarante "
+         "pixels, <b>sans jamais dépasser la moitié de la fenêtre</b> : il faut de la "
+         "hauteur pour lire une courbe — sur trente-six pixels, l'écart entre du code "
+         "dense et un bloc chiffré en faisait trois — et il reste quatre rubriques à lire "
+         "dessous. Des <b>lignes de niveau</b> le graduent en bits par octet, un trait "
+         "rouge marque le seuil d'empaquetage (7,2), et une <b>règle d'adresses</b> court "
+         "sous le dessin : une bosse « au tiers du fichier » se retrouve enfin quelque "
+         "part. Chaque colonne porte la plus haute des tranches qu'elle recouvre — prendre "
+         "la moyenne effacerait exactement ce qu'on cherche. Le survol dit la tranche, sa "
+         "mesure et son verdict ; le clic emmène le listing à l'adresse.",
+         "L'<b>échelle de couleurs</b> est graduée de 0 à 8 sous le profil, avec ses neuf "
+         "arrêts — vert, vert-jaune, jaune, orangé, orange, rouge, magenta, violet — et "
+         "les cinq verdicts écrits sous la zone qui leur correspond. Neuf arrêts et non "
+         "cinq : avec cinq, tout l'intervalle du code ordinaire tenait dans une teinte, et "
+         "deux blocs qu'un demi-bit sépare paraissaient identiques.",
+         "Enfin les <b>plages</b> : les tranches voisines qui disent la même chose, "
+         "réunies, avec leur position dans le fichier, leur taille, leur <b>adresse en "
+         "mémoire</b> — cliquable — et leur verdict. Une plage trop courte rejoint sa "
+         "voisine la plus proche : un gros bloc chiffré oscille autour du seuil, et sans "
+         "cela il se présentait en quatorze morceaux là où il n'y a qu'une chose à voir. "
+         "Une position que rien ne projette en mémoire — l'en-tête, la table des "
+         "symboles — le dit, plutôt que de laisser une case vide.",
         ]),
         ("p",
          "<b>Les adresses de ces panneaux sont cliquables.</b> Une entrée de liaison, une "
@@ -1302,6 +1357,25 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "le listing là où l'exécution en est, et le clic paraîtrait n'avoir rien fait. "
          "Une adresse qui tombe entre deux lignes mène à la ligne juste avant ; une "
          "adresse qui n'est dans aucune partie désassemblée le dit."),
+        ("p",
+         "<b>Le listing y défile vraiment, et la fenêtre d'analyse s'efface.</b> Deux "
+         "défauts se cachaient l'un derrière l'autre. Poser le curseur sur une ligne ne "
+         "déplace pas la vue — egui ne défile vers le curseur d'un champ de texte que "
+         "lorsque la sélection change pendant que le champ a le focus, ce qui n'arrive "
+         "pas quand c'est l'application qui l'écrit : on lisait « Lig 60749 » dans la "
+         "barre d'état tandis que le listing restait sur la ligne 1. Et la fenêtre "
+         "d'analyse, large par nature, recouvrait ce qu'on venait de demander à voir. "
+         "Désormais le listing <b>défile jusqu'à la ligne et la centre</b>, la fenêtre se "
+         "ferme (« Analyse du binaire… » la rouvre à la même rubrique), et la barre "
+         "d'état dit où l'on vient d'arriver. C'est aussi ce qui rend la <b>barre de "
+         "chaleur</b> lisible dans un gros binaire : les lignes chaudes sont à soixante "
+         "mille lignes du haut, et l'on n'y arrivait pas — ni depuis l'onglet Profil, ni "
+         "depuis un panneau d'analyse."),
+        ("p",
+         "La fenêtre d'analyse n'a plus de bouton <b>agrandir/restaurer</b>, et c'est "
+         "pour la même raison : agrandie, elle recouvrait tout l'écran, et une adresse "
+         "cliquée emmenait bien le listing derrière un panneau opaque. Elle s'ouvre déjà "
+         "aux deux tiers de l'écran et se redimensionne à la main."),
         ("h2", "Les raccourcis, et les deux jeux côte à côte"),
         ("p",
          "<b>Préférences › Raccourcis</b> montre désormais les <b>deux jeux</b>, action "
@@ -1339,6 +1413,17 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "binaire : renommer <font face='Courier'>sub_1d491</font> en "
          "<font face='Courier'>vérifie_mdp</font>, c'est vouloir voir le second. Le "
          "commentaire se lit à droite de sa ligne. Vider le champ retire la note."),
+        ("p",
+         "<b>Le listing porte le nom, lui aussi.</b> Il est écrit une fois, à "
+         "l'ouverture du binaire, à partir des symboles du fichier : une fonction "
+         "rebaptisée paraissait donc partout <i>sauf</i> là où l'on passe ses journées. "
+         "Il se récrit maintenant à chaque nom posé — l'étiquette "
+         "<font face='Courier'>vérifie_mdp:</font> apparaît au-dessus de l'instruction, "
+         "et les points d'arrêt suivent leur adresse plutôt que leur numéro de ligne, "
+         "puisqu'une étiquette nouvelle décale tout ce qui la suit. Les symboles "
+         "d'origine ne sont pas touchés : c'est ce qui permet de se dédire. Un listing "
+         "qu'on a <b>édité à la main</b> n'est pas récrit — on n'efface pas ce travail "
+         "pour poser une étiquette."),
         ("note",
          "Les notes sont rangées à côté du binaire, <b>jamais dedans</b> : on n'écrit pas "
          "dans l'exécutable de quelqu'un pour y noter ce qu'on en pense. Et leur clé est "

@@ -83,6 +83,48 @@ des témoins qu'on lit.
   Les cliquer brouillait ce qu'ils disent — l'état que la dernière
   instruction a produit.
 
+**Aller voir une adresse — et la passe du 13 octobre**
+- **Cliquer une adresse emmène vraiment au listing.** Le canal marchait
+  déjà, mais rien ne se voyait : poser le curseur sur une ligne ne
+  déplace pas la vue, et la fenêtre d'analyse restait devant. Le listing
+  **défile et centre** la ligne, la fenêtre s'efface (un clic la rouvre
+  à la même rubrique), et la barre d'état dit où l'on arrive. C'est
+  aussi ce qui rend la **barre de chaleur** atteignable : dans un
+  binaire de soixante mille lignes, les lignes chaudes sont loin du
+  haut, et l'onglet Profil n'y menait pas davantage.
+- La fenêtre d'analyse n'a plus de bouton **agrandir/restaurer** :
+  agrandie, elle recouvrait l'écran, et l'adresse cliquée emmenait le
+  listing derrière un panneau opaque.
+- **Les fonctions se renomment dans leur propre liste** : on clique le
+  nom, on tape, Entrée. Et le nom donné paraît maintenant **dans le
+  listing lui-même** — l'étiquette s'y écrit, les points d'arrêt suivent
+  leur adresse plutôt que leur numéro de ligne, et les symboles
+  d'origine restent intacts pour qu'on puisse se dédire.
+- **Un panneau par outil extérieur** — Ghidra, RetDec, radare2, objdump,
+  ndisasm — dans la fenêtre d'analyse, chacun gardant sa sortie : c'est
+  ce qui permet de comparer ce que deux décompilateurs disent d'une même
+  fonction. Rien ne s'exécute tout seul, la commande est écrite avant
+  d'être lancée, et un outil absent dit comment l'obtenir.
+- **Un outil qui écrit beaucoup ne se bloque plus.** `objdump -d` rend
+  plusieurs méga-octets ; namsdec attendait sa fin avant de le lire,
+  pendant qu'il attendait d'être lu — le tube plein. Il était déclaré
+  « arrêté au bout de cent vingt secondes » alors qu'il avait fini en
+  une fraction de seconde.
+- **Fragments réutilisables (ROP)** : la liste s'arrêtait à quarante
+  sans dire qu'il y avait une suite. Deux mille fragments, parcourus
+  page par page, avec « 41–80 sur 1 274 ».
+- **Entropie** : le découpage suit la taille du binaire (des tranches de
+  256 octets à 64 Ko, quelques centaines toujours), le profil prend
+  toute la largeur sans jamais dépasser la moitié de la fenêtre, une
+  règle d'adresses court dessous, l'échelle de couleurs est graduée de 0
+  à 8 avec neuf arrêts, et les **plages** donnent enfin les adresses —
+  cliquables.
+- **Des carrés vides à la place de caractères.** La coche, la croix, les
+  triangles, les flèches : ces caractères n'existent pas dans les
+  polices qu'egui embarque, et se peignaient en carré. Remplacés partout
+  par des caractères que la police porte, et un contrôle regarde
+  désormais ce qui est peint plutôt qu'une liste écrite d'avance.
+
 ## 0.2.6-beta.1 — 30 septembre 2026
 
 Une instruction se récrit en assembleur, le désassemblage se lit dans la

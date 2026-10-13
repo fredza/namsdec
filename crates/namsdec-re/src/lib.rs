@@ -46,6 +46,7 @@ pub mod strings;
 pub mod structure;
 pub mod syscalls;
 pub mod table;
+mod tool_module;
 pub mod xrefs;
 mod xrefs_module;
 mod yara_module;
@@ -67,6 +68,7 @@ pub use signals::SignalsModule;
 pub use slack_module::SlackModule;
 pub use strings::StringsModule;
 pub use syscalls::SyscallsModule;
+pub use tool_module::ToolModule;
 pub use xrefs_module::XrefsModule;
 pub use yara_module::YaraModule;
 
@@ -173,6 +175,14 @@ pub enum ReRequest {
     /// ramener le résultat. Le module décrit l'intention ; l'application
     /// lance l'outil et lui livre la réponse par un `ReResult`.
     Decompile,
+    /// Lancer cet outil extérieur — Ghidra, RetDec, radare2, objdump,
+    /// ndisasm — sur le binaire ouvert.
+    ///
+    /// Le module nomme l'outil et rien de plus : il ne sait pas où est
+    /// le programme, ni ce que namsdec a installé lui-même, ni comment
+    /// on lance un travail en fond. L'application le sait, et c'est
+    /// elle qui décide — comme pour tout ce qui sort du bac à sable.
+    RunTool { tool: String },
 }
 
 /// Ce que l'application rend à un module, en retour de ce qu'il a demandé.
@@ -186,6 +196,21 @@ pub enum ReResult {
     Decompilation(crate::dzf::DzfOutput),
     /// La décompilation a échoué : l'outil absent, le JSON illisible.
     DecompilationError(String),
+    /// Ce qu'un outil extérieur a rendu — sa sortie, ou son refus.
+    ToolOutput {
+        tool: String,
+        text: Result<String, String>,
+    },
+    /// Ce que namsdec sait d'un outil sur cette machine.
+    ///
+    /// Le panneau ne va pas le chercher lui-même : la question se pose
+    /// en parcourant le PATH et parfois en lançant le programme, ce qui
+    /// ne se fait pas soixante fois par seconde. L'application le relève
+    /// une fois et le dit.
+    ToolState {
+        tool: String,
+        availability: namsdec_disasm::known::Availability,
+    },
 }
 
 /// Une adresse sur laquelle on peut cliquer pour l'aller voir.
@@ -236,6 +261,21 @@ pub trait ReModule {
     /// Titre affiché en tête du panneau du module, dans la langue
     /// demandée.
     fn title(&self, lang: &str) -> &'static str;
+
+    /// Le nom de la rubrique dans la colonne de navigation, quand il
+    /// doit être plus court que le titre.
+    ///
+    /// Une colonne de deux cents pixels qui porte vingt-cinq entrées
+    /// n'a pas la place d'écrire « Décompilation par RetDec » :
+    /// l'entrée passe sur deux lignes, cinq entrées de ce genre
+    /// repoussent les dernières sous le bord, et l'on cherche à
+    /// l'ascenseur une rubrique dont on ignore l'existence. La colonne
+    /// écrit donc « RetDec », et le panneau garde son titre entier.
+    ///
+    /// Le même que le titre, dans le cas général.
+    fn nav_title(&self, lang: &str) -> &'static str {
+        self.title(lang)
+    }
 
     /// Appelé après un (ré)assemblage réussi, avant la première exécution.
     fn on_binary_loaded(&mut self, _ctx: &ReContext) {}
@@ -300,6 +340,18 @@ impl ReModuleRegistry {
         self.modules
             .iter()
             .map(|m| (m.id(), m.title(lang)))
+            .collect()
+    }
+
+    /// Identifiant et nom de colonne de chaque module, dans l'ordre.
+    ///
+    /// Comme [`Self::entries`], mais avec le nom court là où le titre
+    /// entier ne tient pas dans la colonne — voir
+    /// [`ReModule::nav_title`].
+    pub fn nav_entries(&self, lang: &str) -> Vec<(&'static str, &'static str)> {
+        self.modules
+            .iter()
+            .map(|m| (m.id(), m.nav_title(lang)))
             .collect()
     }
 

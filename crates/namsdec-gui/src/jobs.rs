@@ -252,6 +252,125 @@ impl NamsdecApp {
         });
     }
 
+    /// Lance un outil extérieur pour la rubrique qui l'a demandé.
+    ///
+    /// Le panneau nomme l'outil ; c'est ici qu'on décide — où est le
+    /// programme (le PATH, ou le dossier où namsdec installe ce qu'il
+    /// bâtit), ce qu'on lui passe, combien de temps on l'attend. Le
+    /// panneau, lui, ne sort jamais du bac à sable.
+    pub(crate) fn start_tool_run(&mut self, id: &str) {
+        if self.tool_job.is_some() {
+            return;
+        }
+        let Some(state) = &self.assemble_state else {
+            return;
+        };
+        let Some(connu) = namsdec_disasm::known::all()
+            .into_iter()
+            .find(|outil| outil.plugin.id == id)
+        else {
+            return;
+        };
+        let dossier = data_dir().map(|dir| namsdec_disasm::install::tools_dir(&dir));
+        let mut plugin = connu.resolved_plugin(dossier.as_deref());
+        // Un binaire qu'on a localisé à la main l'emporte : c'est la
+        // seule voie pour ce qu'on a bâti soi-même hors du PATH.
+        if let Some(chemin) = self.located_tools.get(id)
+            && chemin.is_file()
+        {
+            plugin.command = chemin.display().to_string();
+        }
+        // Ce que namsdec sait du binaire, et que l'outil n'a pas à
+        // réapprendre : le fichier entier, ses octets exécutables, et
+        // l'adresse où ils vivent.
+        let fichier = state.output.file.clone();
+        let code: Vec<u8> = state
+            .disasm
+            .iter()
+            .flat_map(|instruction| instruction.bytes.clone())
+            .collect();
+        let base = state.disasm.first().map(|i| i.address).unwrap_or(0);
+        let (sender, receiver) = mpsc::channel();
+        std::thread::spawn(move || {
+            let cible = namsdec_disasm::plugin::Cible {
+                fichier: &fichier,
+                code: (!code.is_empty()).then_some(&code),
+                base,
+            };
+            let réponse = plugin
+                .run_on(&cible, DECOMPILER_TIMEOUT)
+                .map_err(|e| e.to_string());
+            // Personne n'attend plus si l'on a changé de binaire :
+            // l'envoi échoue, et le fil s'achève là.
+            let _ = sender.send(réponse);
+        });
+        self.tool_job = Some((id.to_owned(), receiver));
+        self.job = Some(BackgroundJob {
+            label: format!(
+                "{} — {}",
+                strings(self.lang).job_decompiling,
+                connu.plugin.name
+            ),
+            started: std::time::Instant::now(),
+            limit: Some(DECOMPILER_TIMEOUT),
+        });
+    }
+
+    /// Relève ce que l'outil d'une rubrique a rendu, s'il a fini, et le
+    /// livre au panneau qui l'attend.
+    pub(crate) fn poll_tool_run(&mut self, ctx: &egui::Context) {
+        let Some((id, receiver)) = &self.tool_job else {
+            return;
+        };
+        match receiver.try_recv() {
+            Ok(réponse) => {
+                let id = id.clone();
+                self.tool_job = None;
+                self.job = None;
+                self.re_registry.deliver(&namsdec_re::ReResult::ToolOutput {
+                    tool: id,
+                    text: réponse,
+                });
+            }
+            Err(TryRecvError::Empty) => {
+                // Le fil travaille : on redemande une image, sinon
+                // l'interface s'endort et la réponse attend.
+                ctx.request_repaint_after(std::time::Duration::from_millis(150));
+            }
+            Err(TryRecvError::Disconnected) => {
+                let id = id.clone();
+                self.tool_job = None;
+                self.job = None;
+                let perdu = strings(self.lang).decompiler_lost.to_owned();
+                self.re_registry.deliver(&namsdec_re::ReResult::ToolOutput {
+                    tool: id,
+                    text: Err(perdu),
+                });
+            }
+        }
+    }
+
+    /// Dit à chaque rubrique d'outil ce que namsdec sait de son
+    /// programme sur cette machine.
+    ///
+    /// Relevé ici et non dans le panneau : la question se pose en
+    /// parcourant le PATH, et parfois en lançant le programme — ce qui
+    /// ne se fait pas soixante fois par seconde.
+    pub(crate) fn deliver_tool_states(&mut self) {
+        if self.tools_ready.is_empty() {
+            self.refresh_tool_availability();
+        }
+        let états: Vec<(String, namsdec_disasm::known::Availability)> = self
+            .tools_ready
+            .iter()
+            .map(|(id, dispo)| (id.clone(), *dispo))
+            .collect();
+        for (tool, availability) in états {
+            self.re_registry
+                .deliver(&namsdec_re::ReResult::ToolState { tool, availability });
+        }
+    }
+
     /// Découpe le texte rendu et repère les fonctions qu'il contient.
     ///
     /// La règle est volontairement simple — une ligne sans indentation

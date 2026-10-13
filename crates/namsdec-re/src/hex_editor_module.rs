@@ -151,8 +151,12 @@ impl ReModule for HexEditorModule {
                 self.choisi = Some(cible);
             }
             ui.separator();
+            // « ‹ » et « › », et non « ◀ » et « ▶ » : ces deux-là
+            // n'existent pas dans les polices qu'egui embarque, et se
+            // peignaient en carré vide — un bouton qui ne montre rien
+            // ne se clique pas.
             if ui
-                .add_enabled(self.page > 0, egui::Button::new("◀"))
+                .add_enabled(self.page > 0, egui::Button::new("\u{2039}"))
                 .clicked()
             {
                 self.page = self.page.saturating_sub(PAR_PAGE);
@@ -163,7 +167,7 @@ impl ReModule for HexEditorModule {
                 (self.page + PAR_PAGE).min(octets.len())
             ));
             if ui
-                .add_enabled(self.page < dernière_page, egui::Button::new("▶"))
+                .add_enabled(self.page < dernière_page, egui::Button::new("\u{203a}"))
                 .clicked()
             {
                 self.page = (self.page + PAR_PAGE).min(dernière_page);
@@ -192,7 +196,7 @@ impl ReModule for HexEditorModule {
             ui.selectable_value(&mut self.recherche_hex, false, ctx.t("texte", "text"));
             ui.selectable_value(&mut self.recherche_hex, true, "hex");
             if ui
-                .button("▶")
+                .button("\u{203a}")
                 .on_hover_text(ctx.t("Suivant", "Next"))
                 .clicked()
                 || entrée
@@ -200,7 +204,7 @@ impl ReModule for HexEditorModule {
                 cherche = Some(false);
             }
             if ui
-                .button("◀")
+                .button("\u{2039}")
                 .on_hover_text(ctx.t("Précédent", "Previous"))
                 .clicked()
             {
@@ -486,7 +490,10 @@ impl ReModule for HexEditorModule {
                     .strong(),
                 );
                 ui.add_space(8.0);
-                ui.weak(ctx.t("→", "→"));
+                // « -> » et non « → » : la flèche n'existe pas dans
+                // les polices qu'egui embarque, et se peignait en
+                // carré vide.
+                ui.weak(ctx.t("->", "->"));
                 let champ = ui.add(
                     egui::TextEdit::singleline(&mut self.valeur)
                         .hint_text("90")

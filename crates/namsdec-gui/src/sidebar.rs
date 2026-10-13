@@ -2839,6 +2839,10 @@ impl NamsdecApp {
             .on_disabled_hover_text(s.no_binary_assembled);
         if bouton.clicked() {
             self.show_analysis = true;
+            // Les rubriques d'outils apprennent à cet instant lequel
+            // est là : la question coûte un parcours du PATH, parfois
+            // un lancement, et ne se pose donc qu'en ouvrant.
+            self.deliver_tool_states();
         }
         ui.add_space(10.0);
     }

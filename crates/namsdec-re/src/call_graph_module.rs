@@ -318,7 +318,10 @@ impl CallGraphModule {
             let accent = matches!(f.origin, Origin::Entry | Origin::Main);
             let nom = ctx.display_name(f.start, &f.name());
             let label = if nœud.renvoi {
-                format!("\u{21a9} {nom}  {:#x}", f.start)
+                // « ↺ » et non « ↩ » : la seconde flèche n'existe pas
+                // dans les polices qu'egui embarque, et se peignait en
+                // carré vide.
+                format!("\u{21ba} {nom}  {:#x}", f.start)
             } else {
                 format!("{nom}  {:#x}", f.start)
             };

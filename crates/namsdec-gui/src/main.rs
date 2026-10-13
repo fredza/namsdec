@@ -837,6 +837,13 @@ struct NamsdecApp {
     decompiler: String,
     /// Le travail en cours, et ce qu'il a rendu.
     decompile_job: Option<mpsc::Receiver<Result<String, String>>>,
+    /// L'outil qu'une rubrique d'analyse a demandé, et son fil.
+    ///
+    /// À part du travail de la fenêtre « Décompilation » : les deux
+    /// peuvent tourner en même temps, et surtout ils ne rendent pas au
+    /// même endroit — celui-ci revient au panneau qui l'a demandé, et à
+    /// lui seul.
+    tool_job: Option<(String, mpsc::Receiver<Result<String, String>>)>,
     /// Ce qui tourne à côté, pour la barre d'état et le titre de la
     /// fenêtre : un seul travail à la fois suffit à ce que namsdec fait.
     job: Option<BackgroundJob>,
@@ -1671,6 +1678,57 @@ impl Default for NamsdecApp {
         // moteur maison les a rendues. Après le graphe d'appels, dont elle
         // prolonge la lecture — du squelette des appels au corps en clair.
         re_registry.register(Box::new(DzfDecompilerModule::default()));
+        // Puis les outils des autres, un panneau chacun. La fenêtre
+        // « Décompilation » les propose déjà dans une liste déroulante,
+        // mais une liste déroulante oblige à relancer pour comparer, et
+        // perd la sortie précédente : ici, chacun garde la sienne, et
+        // l'on passe de Ghidra à RetDec comme on change de page.
+        //
+        // Dans l'ordre de ce qu'ils rendent : du plus haut — du C qu'on
+        // lit presque comme un source — au plus bas, les instructions
+        // brutes. Aucun ne se lance tout seul ; chacun dit, avant,
+        // la commande qu'il exécuterait.
+        for (id, fr, en, court) in [
+            (
+                "rizin-ghidra",
+                "Décompilation par Ghidra",
+                "Decompilation by Ghidra",
+                "Ghidra",
+            ),
+            (
+                "retdec",
+                "Décompilation par RetDec",
+                "Decompilation by RetDec",
+                "RetDec",
+            ),
+            (
+                "radare2",
+                "Décompilation par radare2",
+                "Decompilation by radare2",
+                "radare2",
+            ),
+            (
+                "objdump",
+                "Désassemblage par objdump",
+                "Disassembly by objdump",
+                "objdump",
+            ),
+            (
+                "ndisasm",
+                "Désassemblage par ndisasm",
+                "Disassembly by ndisasm",
+                "ndisasm",
+            ),
+        ] {
+            // « Décompilation » pour les trois premiers, « Désassemblage »
+            // pour les deux derniers, et ce n'est pas une coquetterie :
+            // objdump et ndisasm rendent des instructions, non du C.
+            // Les ranger sous le même mot ferait attendre d'eux ce
+            // qu'ils ne savent pas faire.
+            if let Some(module) = namsdec_re::ToolModule::connu(id, fr, en, court) {
+                re_registry.register(Box::new(module));
+            }
+        }
         // Puis dans l'ordre où l'on regarde un binaire inconnu : ce qu'il
         // dit (ses chaînes), ce qu'il demande au système, puis comment il
         // est découpé.
@@ -1780,6 +1838,7 @@ impl Default for NamsdecApp {
             decompilers: Vec::new(),
             decompiler: String::new(),
             decompile_job: None,
+            tool_job: None,
             job: None,
             window_title: None,
             decompile_result: None,
@@ -2243,7 +2302,8 @@ impl NamsdecApp {
     const DECOMPILER_WINDOW: &'static str = "decompiler";
     const DISASSEMBLY_WINDOW: &'static str = "disassembly";
     const TIMELINE_WINDOW: &'static str = "timeline";
-    const ANALYSIS_WINDOW: &'static str = "analysis";
+    // Pas d'« analysis » dans cette liste : la fenêtre d'analyse ne
+    // s'agrandit plus — voir `analysis_window_ui`, qui dit pourquoi.
     const EXERCISES_WINDOW: &'static str = "exercises";
     const CALCULATOR_WINDOW: &'static str = "calculator";
 
@@ -2940,6 +3000,7 @@ impl NamsdecApp {
         #[cfg(feature = "reseau")]
         self.poll_update_check(&ctx);
         self.poll_decompile(&ctx);
+        self.poll_tool_run(&ctx);
         self.poll_install(&ctx);
         self.reflect_job_in_title(&ctx);
         // Au retour dans la fenêtre : un autre programme a pu passer par
@@ -3775,7 +3836,12 @@ fn analysis_window_size(ctx: &egui::Context) -> egui::Vec2 {
     let écran = ctx.viewport_rect().size();
     egui::vec2(
         (écran.x * 0.72).clamp(560.0, 1100.0),
-        (écran.y * 0.82).clamp(420.0, 900.0),
+        // Mille et non neuf cents : la colonne porte vingt-cinq
+        // rubriques depuis que chaque outil extérieur a la sienne, et
+        // les quatre dernières passaient sous le bord. Une rubrique
+        // qu'on ne voit pas est une rubrique dont on ignore
+        // l'existence.
+        (écran.y * 0.82).clamp(420.0, 1000.0),
     )
 }
 

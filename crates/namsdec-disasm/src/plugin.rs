@@ -224,34 +224,75 @@ impl Plugin {
             .stderr(std::process::Stdio::piped())
             .spawn()?;
 
+        // ON LIT PENDANT QUE L'OUTIL ÉCRIT, et c'est indispensable.
+        //
+        // Un tube a un tampon d'une soixantaine de kilo-octets. Plein,
+        // l'écriture suivante BLOQUE l'outil — qui ne finit donc jamais,
+        // pendant que nous l'attendons sagement. On tenait là un
+        // interblocage parfait : `objdump -d /bin/ls` rend plusieurs
+        // méga-octets, et namsdec le déclarait « arrêté au bout de cent
+        // vingt secondes » alors qu'objdump avait fait son travail en
+        // une fraction de seconde et attendait qu'on le lise.
+        //
+        // Deux fils, un par tube : ils vident à mesure, et le processus
+        // peut finir. Ils s'achèvent d'eux-mêmes quand les tubes se
+        // ferment — y compris quand on tue l'outil au bout du délai.
+        let sortie_std = enfant.stdout.take().map(|mut flux| {
+            std::thread::spawn(move || {
+                let mut tampon = Vec::new();
+                let _ = std::io::Read::read_to_end(&mut flux, &mut tampon);
+                tampon
+            })
+        });
+        let sortie_err = enfant.stderr.take().map(|mut flux| {
+            std::thread::spawn(move || {
+                let mut tampon = Vec::new();
+                let _ = std::io::Read::read_to_end(&mut flux, &mut tampon);
+                tampon
+            })
+        });
+
         // On surveille à petits pas plutôt que d'attendre : c'est la
         // seule façon, sans bibliothèque supplémentaire, de reprendre la
         // main sur un outil qui ne la rend pas.
         let début = std::time::Instant::now();
+        let mut trop_long = false;
         loop {
             match enfant.try_wait()? {
                 Some(_) => break,
                 None if début.elapsed() >= délai => {
                     let _ = enfant.kill();
                     let _ = enfant.wait();
-                    return Err(PluginError::TooLong(délai.as_secs()));
+                    trop_long = true;
+                    break;
                 }
-                None => std::thread::sleep(Duration::from_millis(50)),
+                None => std::thread::sleep(Duration::from_millis(20)),
             }
         }
-        let output = enfant.wait_with_output()?;
+        // Les fils rejoints DANS TOUS LES CAS, y compris après un
+        // arrêt : les laisser derrière soi laisserait deux fils vivants
+        // par outil lancé.
+        let attendre = |fil: Option<std::thread::JoinHandle<Vec<u8>>>| {
+            fil.map(|fil| fil.join().unwrap_or_default())
+                .unwrap_or_default()
+        };
+        let std_out = attendre(sortie_std);
+        let std_err = attendre(sortie_err);
+        if trop_long {
+            return Err(PluginError::TooLong(délai.as_secs()));
+        }
         if écrit_un_fichier {
             // Ce que l'outil a écrit dans son fichier fait foi. S'il n'a
             // rien écrit — il a refusé, il s'est plaint —, la sortie
             // d'erreur dit pourquoi, et c'est elle qu'on montre.
             match std::fs::read(&sortie) {
                 Ok(contenu) if !contenu.is_empty() => {
-                    return Ok(borner(&contenu, &output.stderr));
+                    return Ok(borner(&contenu, &std_err));
                 }
-                _ => return Ok(borner(&output.stdout, &output.stderr)),
+                _ => return Ok(borner(&std_out, &std_err)),
             }
         }
-        Ok(borner(&output.stdout, &output.stderr))
+        Ok(borner(&std_out, &std_err))
     }
 }
 
@@ -280,6 +321,73 @@ mod tests {
         let path = dir.join(name);
         std::fs::write(&path, contenu).unwrap();
         path
+    }
+
+    /// Une sortie plus grosse qu'un tube revient quand même.
+    ///
+    /// Un tube a un tampon d'une soixantaine de kilo-octets : plein,
+    /// l'écriture suivante bloque l'outil. Tant qu'on attendait sa fin
+    /// avant de le lire, l'outil attendait qu'on le lise — un
+    /// interblocage parfait, que seul le délai finissait par rompre.
+    /// `objdump -d /bin/ls` rend plusieurs méga-octets : namsdec le
+    /// déclarait « arrêté au bout de cent vingt secondes » alors
+    /// qu'objdump avait fini en une fraction de seconde.
+    ///
+    /// `cat` pour éprouver cela : il est partout, et il rend
+    /// exactement ce qu'on lui donne.
+    #[test]
+    fn an_output_bigger_than_a_pipe_still_comes_back() {
+        if crate::known::program_path("cat").is_none() {
+            return;
+        }
+        let plugin = Plugin {
+            id: "cat".to_owned(),
+            name: "cat".to_owned(),
+            command: "cat".to_owned(),
+            args: vec!["{file}".to_owned()],
+            install: None,
+        };
+        // Un méga-octet : seize fois le tampon d'un tube.
+        let gros = vec![b'A'; 1024 * 1024];
+        let début = std::time::Instant::now();
+        let rendu = plugin
+            .run_within(&gros, Duration::from_secs(20))
+            .expect("cat rend ce qu'on lui donne");
+        assert_eq!(rendu.len(), gros.len(), "tout est revenu");
+        assert!(
+            début.elapsed() < Duration::from_secs(5),
+            "et sans attendre le délai : {:?}",
+            début.elapsed()
+        );
+    }
+
+    /// Un outil qui ne rend jamais la main est arrêté, et on le dit.
+    #[test]
+    fn a_tool_that_never_returns_is_stopped() {
+        if crate::known::program_path("sleep").is_none() {
+            return;
+        }
+        // Un outil qui ne fait rien pendant trente secondes : c'est
+        // exactement ce qu'un décompilateur parti en boucle ressemble
+        // à faire, et il ne faut pas l'attendre.
+        let plugin = Plugin {
+            id: "sleep".to_owned(),
+            name: "sleep".to_owned(),
+            command: "sleep".to_owned(),
+            args: vec!["30".to_owned()],
+            install: None,
+        };
+        let début = std::time::Instant::now();
+        let rendu = plugin.run_within(b"peu importe", Duration::from_secs(1));
+        assert!(
+            matches!(rendu, Err(PluginError::TooLong(1))),
+            "il faut le dire, et non attendre : {rendu:?}"
+        );
+        assert!(
+            début.elapsed() < Duration::from_secs(5),
+            "et le dire tout de suite après le délai : {:?}",
+            début.elapsed()
+        );
     }
 
     #[test]

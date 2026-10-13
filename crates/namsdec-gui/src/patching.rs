@@ -107,6 +107,10 @@ impl NamsdecApp {
                 namsdec_re::ReRequest::Rename { addr, name } => {
                     self.notes.set_name(addr, &name);
                     self.save_notes();
+                    // Et le listing porte le nom lui aussi : c'est là
+                    // qu'on lit le programme, et un nom qui ne s'y voit
+                    // pas n'a servi qu'aux panneaux.
+                    self.refresh_listing_names();
                 }
                 // Décompiler : on lance le décompilateur actif. Sa sortie,
                 // si c'est du JSON DZF, remontera au panneau par
@@ -115,6 +119,9 @@ impl NamsdecApp {
                     self.dzf_wanted = true;
                     self.start_decompile();
                 }
+                // Un outil des autres, demandé par sa rubrique. C'est
+                // ici qu'on sort du bac à sable, jamais dans le module.
+                namsdec_re::ReRequest::RunTool { tool } => self.start_tool_run(&tool),
             }
         }
     }
@@ -157,7 +164,15 @@ impl NamsdecApp {
                 // ramènerait le listing là où l'exécution en est, et le
                 // clic paraîtrait n'avoir rien fait.
                 self.follow_rip = false;
-                self.status = Status::Idle;
+                // LA FENÊTRE D'ANALYSE S'EFFACE. Elle couvre le listing
+                // — c'est tout l'objet d'une grande fenêtre —, et l'on
+                // venait de demander à voir ce qu'elle cache. Le clic
+                // marchait déjà, mais personne ne pouvait le savoir :
+                // le listing défilait derrière un panneau opaque. Le
+                // panneau choisi est retenu ; « Analyse du binaire… »
+                // le rouvre à la même page.
+                self.show_analysis = false;
+                self.status = Status::WentTo(addr);
             }
             // Une adresse qui n'est dans aucune partie désassemblée —
             // une section de données, une adresse hors du fichier. Le

@@ -213,6 +213,72 @@ impl NamsdecApp {
         }
     }
 
+    /// Récrit les étiquettes du listing après un renommage.
+    ///
+    /// **Répercuter, c'est aussi ici.** Un nom donné paraissait partout
+    /// — arbre d'appels, références croisées, « prochaine instruction »,
+    /// déroulement — sauf dans le listing lui-même, qui est pourtant ce
+    /// qu'on a sous les yeux toute la journée. La raison : le listing
+    /// est du texte, écrit une fois au chargement. On le récrit donc,
+    /// et seulement lui : les octets du binaire ne bougent pas d'un
+    /// bit.
+    ///
+    /// Trois précautions :
+    ///
+    /// * **Rien si le texte a été touché.** Devant un listing qu'on a
+    ///   édité à la main, le récrire effacerait ce travail. On ne le
+    ///   fait que tant qu'il est exactement celui qu'on a produit.
+    /// * **Les points d'arrêt suivent leur adresse**, non leur numéro :
+    ///   un nom nouveau insère une ligne d'étiquette, et tout ce qui
+    ///   suit descend d'un cran.
+    /// * **Les symboles d'origine restent intacts** : c'est ce qui
+    ///   permet de se dédire.
+    pub(crate) fn refresh_listing_names(&mut self) {
+        let Some(state) = &self.assemble_state else {
+            return;
+        };
+        if state.from_binary.is_none() || self.source != self.saved_source {
+            return;
+        }
+        let symboles = symbols_with_names(&state.output.symbols, &self.notes);
+        let (listing, line_to_addr) = annotated_listing(&state.disasm, &symboles);
+        if listing == self.source {
+            return;
+        }
+        let addr_to_line: BTreeMap<u64, u32> = line_to_addr.iter().map(|(l, a)| (*a, *l)).collect();
+        // Les adresses des points d'arrêt AVANT de changer la table.
+        let arrêts: Vec<u64> = self
+            .breakpoint_lines
+            .iter()
+            .filter_map(|ligne| state.output.line_to_addr.get(ligne).copied())
+            .collect();
+        // La ligne que l'on regarde, elle aussi, suit son adresse.
+        let ici = state
+            .output
+            .line_to_addr
+            .get(&(self.cursor_pos.0 as u32))
+            .copied();
+
+        let Some(state) = &mut self.assemble_state else {
+            return;
+        };
+        state.output.line_to_addr = line_to_addr;
+        state.addr_to_line = addr_to_line.clone();
+        self.source = listing.clone();
+        self.saved_source = listing;
+        self.breakpoint_lines = arrêts
+            .iter()
+            .filter_map(|addr| addr_to_line.get(addr).copied())
+            .collect();
+        self.sync_breakpoints();
+        // Le texte a changé sous le curseur : les surlignages d'une
+        // recherche ne désignent plus les mêmes octets.
+        self.forget_matches();
+        if let Some(ligne) = ici.and_then(|addr| addr_to_line.get(&addr).copied()) {
+            self.goto_line = Some(ligne);
+        }
+    }
+
     /// Peint les commentaires à droite de leur ligne.
     ///
     /// À droite du code, et non dans un panneau à côté : un commentaire

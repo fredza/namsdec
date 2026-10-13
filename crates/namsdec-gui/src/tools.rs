@@ -152,6 +152,10 @@ impl NamsdecApp {
             .clicked()
         {
             self.refresh_tool_availability();
+            // Et les rubriques d'analyse l'apprennent aussi : revérifier
+            // ici sans le leur dire les laissait annoncer « absent »
+            // devant un outil qu'on venait d'installer.
+            self.deliver_tool_states();
             self.status = Status::Note(|s| s.tools_rechecked);
         }
 

@@ -422,8 +422,10 @@ pub fn gather(
             weight: Weight::Remarkable,
             fr: "Le listing est trompé",
             en: "The listing is being fooled",
+            // « -> » et non « → » : la flèche n'existe pas dans les
+            // polices qu'egui embarque, et se peignait en carré vide.
             detail: format!(
-                "{:#x} → {:#x} ({} {})",
+                "{:#x} -> {:#x} ({} {})",
                 premier.from,
                 premier.target,
                 désalignés.len(),

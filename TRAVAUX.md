@@ -6,8 +6,8 @@ retiré — reste dans `AMELIORATIONS.txt`, qui ne bouge pas de rôle : une
 seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
-Tenue à jour au fil des séances. Dernière mise à jour : **8 octobre
-2026**, version 0.2.8-beta.1, 1 128 tests au vert.
+Tenue à jour au fil des séances. Dernière mise à jour : **13 octobre
+2026**, version 0.2.8-beta.1, 1 149 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -31,6 +31,90 @@ instruction », qui tient au même nœud que le vide de 56 px — l'état du
 processeur est ancré.
 
 ---
+
+## 6. Huit griefs sur captures — passe du 13 octobre (A 7.12)
+
+Une liste de Fred, deux captures. Deux défauts se cachaient derrière les
+autres, et c'est eux qui expliquaient la moitié de la liste.
+
+- [x] **Le listing défile enfin jusqu'à l'adresse cliquée.** Le grief
+      disait « dans figures de code et références croisées on ne sait
+      pas aller aux adresses, pourtant l'infobulle dit aller à cette
+      adresse ». Mesuré : le clic posait bien la demande, l'application
+      la relevait, le curseur allait sur la bonne ligne — et la vue ne
+      bougeait pas. egui ne défile vers le curseur d'un champ de texte
+      que lorsque la sélection change PENDANT que le champ a le focus ;
+      quand c'est l'application qui l'écrit, il n'a rien changé à
+      l'image suivante. L'éditeur amène donc lui-même la ligne au
+      centre. Contrôle : `going_to_a_line_really_scrolls_the_listing_to_it`.
+- [x] **La fenêtre d'analyse s'efface au clic d'une adresse**, et la
+      barre d'état dit où l'on arrive (`Status::WentTo`). Elle couvrait
+      ce qu'on venait de demander à voir. Contrôle au CLIC, par
+      kittest : `clicking_an_address_in_a_panel_really_lands_in_the_listing`
+      — et il a attrapé la suite du défaut, l'état de la fenêtre étant
+      écrit APRÈS le relevé des demandes, ce qui la rouvrait aussitôt.
+- [x] **Plus de bouton agrandir/restaurer sur la fenêtre d'analyse**
+      (demandé) : agrandie, elle recouvrait l'écran, et le listing
+      défilait derrière un panneau opaque.
+- [x] **La barre de chaleur « incomplète »** n'était pas incomplète :
+      dans un binaire de soixante mille lignes, les lignes chaudes sont
+      à soixante mille lignes du haut, et ni l'onglet Profil ni un
+      panneau d'analyse n'y menaient. Réglé par le défilement ci-dessus.
+- [x] **Les fonctions se renomment dans leur liste** — on clique le nom,
+      on tape, Entrée ; la flèche de retour rend le `sub_xxxx`.
+      L'adresse y mène au listing, comme ailleurs. Au repos le nom est
+      une étiquette tronquée (quarante champs de saisie pèsent, et un
+      nom long y serait coupé sans qu'on puisse le lire).
+- [x] **Le renommage se répercute dans le listing** — il était écrit une
+      fois à l'ouverture, à partir des symboles du fichier : le nom
+      paraissait partout sauf là où l'on passe ses journées. Le listing
+      se récrit, les points d'arrêt suivent leur adresse (une étiquette
+      nouvelle décale tout ce qui suit), les symboles d'origine restent
+      intacts, et un listing édité à la main n'est pas touché. Contrôle :
+      `renaming_a_function_shows_up_in_the_listing`.
+- [x] **Un panneau par outil extérieur** — Ghidra, RetDec, radare2,
+      objdump, ndisasm —, chacun gardant sa sortie : c'est ce qui permet
+      de comparer deux décompilateurs sur la même fonction. Générique
+      (`ToolModule`), nourri par `known::all()` ; `ReRequest::RunTool` et
+      `ReResult::{ToolOutput, ToolState}` ferment le canal. Rien ne
+      s'exécute tout seul, la commande est écrite avant d'être lancée,
+      un outil absent dit comment l'obtenir. Contrôle de bout en bout, au
+      clic : `a_tool_panel_really_runs_its_tool_and_shows_the_output`.
+- [x] **Un outil qui écrit beaucoup ne se bloque plus** — trouvé en
+      branchant le précédent : `objdump -d /bin/ls` rend plusieurs
+      méga-octets, le tube se remplit à soixante-quatre kilo-octets, et
+      l'outil bloque en écriture pendant que namsdec attend sa fin. Deux
+      fils lisent à mesure. Contrôles : `an_output_bigger_than_a_pipe_still_comes_back`,
+      `a_tool_that_never_returns_is_stopped`.
+- [x] **Fragments réutilisables (ROP) : une navigation** — deux mille
+      fragments récoltés, quarante par page, « 41–80 sur 1 274 », et la
+      recherche ramène en première page. La liste s'arrêtait à quarante
+      sans dire qu'il y avait une suite.
+- [x] **Entropie : compartimentée, graduée, et ses adresses** — la
+      tranche suit la taille du binaire (256 o à 64 Ko, quelques
+      centaines de tranches toujours) ; le profil prend toute la largeur
+      et jamais plus de la moitié de la fenêtre ; une règle d'adresses
+      court dessous ; l'échelle de couleurs est graduée de 0 à 8 avec
+      neuf arrêts (cinq ne distinguaient pas un demi-bit dans la zone du
+      code) ; et les **plages** donnent les adresses, cliquables, les
+      miettes rejoignant leur voisine. Contrôles :
+      `the_profile_never_takes_more_than_half_the_window`,
+      `the_scale_tells_apart_what_half_a_bit_separates`,
+      `the_panel_writes_its_ranges_and_where_they_are`,
+      `the_window_grows_with_the_file_and_stays_round`,
+      `the_ranges_join_what_says_the_same_thing`.
+- [x] **Des carrés vides à la place de caractères** — trouvé en
+      regardant la capture d'une nouvelle pagination : les polices
+      qu'egui embarque n'ont ni `✓` ni `✗` ni les triangles ni les
+      flèches. Six endroits les employaient, dont la liste des
+      protections. Remplacés, et deux contrôles regardent désormais ce
+      qui est PEINT, sur toutes les scènes :
+      `tout_caractere_peint_existe_dans_la_police` (interface) et
+      `tout_caractere_ecrit_existe_dans_la_police` (panneaux).
+- [x] **La colonne de navigation tient ses vingt-cinq rubriques** — les
+      noms y sont courts (« RetDec » et non « Décompilation par
+      RetDec », qui passait sur deux lignes), les entrées serrées, et la
+      fenêtre s'ouvre cent pixels plus haut. Nouveau `ReModule::nav_title`.
 
 ## 5. Analyse et exercices — passe du 7 octobre (0.2.8-beta.1)
 

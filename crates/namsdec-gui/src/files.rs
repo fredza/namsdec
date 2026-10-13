@@ -915,7 +915,12 @@ impl NamsdecApp {
         let mut symbols = elf.symbols.clone();
         symbols.extend(plt_labels(bytes, &elf.symbols, Some));
         symbols.sort_by_key(|symbol| symbol.addr);
-        let (listing, line_to_addr) = annotated_listing(&disasm, &symbols);
+        // Les noms qu'on avait donnés à ce binaire — ils viennent d'être
+        // relus — passent devant ceux du fichier : rouvrir un crackme
+        // doit le rouvrir tel qu'on l'avait compris, non tel qu'il
+        // était la première fois.
+        let (listing, line_to_addr) =
+            annotated_listing(&disasm, &symbols_with_names(&symbols, &self.notes));
         let addr_to_line = line_to_addr.iter().map(|(l, a)| (*a, *l)).collect();
         let loaded = image.len();
 

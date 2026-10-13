@@ -292,6 +292,29 @@ impl NamsdecApp {
                         .map(|d| (d.line, d.severity))
                         .collect();
                     let largeur_ligne = gutter_rect.width() + ui.available_width();
+                    // ALLER À UNE LIGNE, C'EST L'AMENER SOUS LES YEUX.
+                    //
+                    // Poser le curseur ne suffisait pas, et c'est le
+                    // défaut qui faisait croire que les adresses des
+                    // panneaux d'analyse ne menaient nulle part : egui
+                    // ne défile vers le curseur d'un champ de texte que
+                    // lorsque la sélection change PENDANT que le champ
+                    // a le focus. Quand c'est nous qui posons le
+                    // curseur dans l'état du champ, il n'a rien changé
+                    // à l'image suivante — donc aucun défilement. On
+                    // lisait la ligne 60 749 dans la barre d'état,
+                    // tandis que le listing restait à la ligne 1.
+                    //
+                    // Centrée, et non simplement rendue visible : on
+                    // vient lire ce qu'il y a AUTOUR de cette ligne.
+                    if let Some(ligne) = self.goto_line
+                        && let Some(row) = galley.rows.get(ligne.saturating_sub(1) as usize)
+                    {
+                        ui.scroll_to_rect(
+                            row.rect().translate(gutter_rect.min.to_vec2()),
+                            Some(egui::Align::Center),
+                        );
+                    }
                     // La ligne sous le pointeur, s'il est dans la
                     // gouttière. Rien à l'écran ne disait qu'on
                     // pouvait cliquer là : le manuel l'écrit, la

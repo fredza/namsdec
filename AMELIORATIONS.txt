@@ -2521,3 +2521,142 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
   Le type : notes.names est un BTreeMap, pas un HashMap. ReContext prend donc
   un BTreeMap — l'ordre trié ne coûte rien et la crate re ne dépend pas de la
   GUI pour autant (c'est un type std).
+
+
+--------------------------------------------------------------------------------
+ 7.12  HUIT GRIEFS SUR CAPTURES — ET LES DEUX DÉFAUTS QUI EN EXPLIQUAIENT LA MOITIÉ
+       (13 octobre 2026)
+--------------------------------------------------------------------------------
+
+  Fred a donné une liste, « non exhaustive », avec deux captures. Elle tenait
+  en huit points. Deux d'entre eux n'étaient pas ce qu'ils paraissaient, et
+  c'est la mesure qui l'a montré.
+
+  --- « On ne sait pas aller aux adresses » ---
+
+  Le grief : dans « Figures du code » et « Références croisées », cliquer une
+  adresse ne fait rien, alors que l'infobulle promet « aller à cette adresse
+  dans le listing ».
+
+  Premier réflexe : le canal est cassé quelque part entre le module et
+  l'application. Il ne l'était pas. Un clic simulé (kittest) montre que la
+  demande est posée, relevée, et que `show_address` trouve la bonne ligne —
+  `app.cursor_pos` passe de (1,1) à (569,1). Le curseur y va. La VUE, non :
+  mesuré sur la galère du code, son origine reste à y=96 image après image.
+
+  La cause est dans egui, et elle est instructive : un `TextEdit` ne défile
+  vers son curseur que si la sélection a CHANGÉ pendant qu'il avait le focus.
+  Quand c'est l'application qui écrit le curseur dans l'état du champ, le
+  champ ne voit aucun changement à l'image suivante — `prev_cursor_range ==
+  cursor_range` — et ne défile pas. Tous les « aller à » de namsdec étaient
+  concernés : la console, le profil, les marques, les panneaux d'analyse. On
+  lisait « Lig 60749 » dans la barre d'état pendant que le listing restait
+  sur la ligne 1.
+
+  Le remède : l'éditeur amène lui-même la ligne au centre, depuis la
+  gouttière, où il tient déjà la galère et le rectangle de chaque rangée.
+  Trois lignes, et le défilement est animé par egui (une vingtaine d'images),
+  ce que le contrôle doit savoir — il mesure sur vingt-quatre images, pas sur
+  deux.
+
+  Le second défaut était par-dessus : la fenêtre d'analyse, large par nature,
+  recouvrait le listing qu'on venait de demander à voir. Elle s'efface donc
+  au clic d'une adresse, et la barre d'état dit où l'on arrive. Le contrôle
+  au clic a attrapé la suite : `show_analysis` était écrit APRÈS le relevé
+  des demandes, si bien que la fenêtre se rouvrait dans la même image. Un
+  contrôle qui pose l'état au lieu de cliquer n'aurait rien vu.
+
+  --- « La barre de chaleur n'est pas complète (une dizaine d'instructions) » ---
+
+  Elle était complète. Dans un binaire dont le listing fait soixante mille
+  lignes, le code exécuté est à soixante mille lignes du haut : on voyait les
+  douze instructions de `_start`, et rien d'autre, parce qu'on ne pouvait pas
+  descendre là où ça chauffe. L'onglet Profil liste pourtant les lignes
+  chaudes et promet d'y emmener — mais il passe par le même « aller à » qui
+  ne défilait pas. Un seul défaut, deux griefs.
+
+  --- Ce que la capture a montré et que personne ne cherchait ---
+
+  En photographiant la nouvelle pagination des fragments, les boutons
+  s'affichaient en CARRÉS VIDES. Les polices qu'egui embarque — Ubuntu et
+  deux polices d'émojis — n'ont ni les petits triangles (U+25B8, U+25BE), ni
+  la coche U+2713, ni la croix U+2717, ni les flèches U+2192, U+25B6, U+25C0,
+  U+21A9, ni le signe d'identité U+2261. Six endroits les employaient, dont
+  la liste des protections de « En bref », où une coche et une croix se
+  peignaient en carrés depuis le début.
+
+  Ce qui existe, mesuré : ‹ › « » + − × √ • ○ … ↺. Deux contrôles le
+  vérifient désormais sur ce qui est PEINT, et non sur une liste écrite
+  d'avance : ils attraperont le prochain. Piège de mesure à retenir —
+  interrogée sur la famille à chasse fixe, `has_glyph` répond « non » pour
+  tout, jusqu'au signe plus ; on interroge la proportionnelle, dont la chaîne
+  de repli est incluse dans l'autre.
+
+  --- Les panneaux par outil, et le tube qui bloquait ---
+
+  « Il manque les rubriques Décompilation par Ghidra, RetDec, objdump,
+  ndisasm, radare2. » Tout existait déjà sauf la rubrique : namsdec sait
+  décrire ces outils (`known::all`), les trouver, les lancer et les borner.
+  Ce qui manquait est un panneau par outil — la fenêtre « Décompilation »
+  les proposait dans une liste déroulante, ce qui oblige à relancer pour
+  comparer et perd la sortie précédente. Un `ToolModule` générique, et le
+  canal s'allonge de `ReRequest::RunTool` et `ReResult::{ToolOutput,
+  ToolState}`. L'état de disponibilité vient de l'application : la question
+  coûte un parcours du PATH et parfois un lancement, elle ne se pose pas
+  soixante fois par seconde.
+
+  En l'éprouvant de bout en bout — un contrôle qui CLIQUE « Lancer » et
+  attend la réponse —, objdump n'a jamais rendu la main. Vingt secondes, puis
+  « arrêté au bout de ». La cause n'était pas dans le neuf : `run_on`
+  attendait la fin du processus AVANT de lire ses tubes. Un tube tient
+  soixante-quatre kilo-octets ; `objdump -d /bin/ls` en rend plusieurs
+  millions. L'outil bloquait en écriture, namsdec attendait sa fin :
+  interblocage parfait, que seul le délai rompait. La fenêtre
+  « Décompilation » avait le même défaut depuis toujours, sur toute sortie
+  un peu grosse. Deux fils lisent maintenant à mesure, et sont rejoints dans
+  tous les cas — y compris après un arrêt, pour ne pas laisser deux fils
+  vivants par outil lancé.
+
+  La leçon, deux fois dans la même séance : un contrôle qui pose l'état ne
+  prouve pas que le geste marche. Les deux défauts les plus coûteux de cette
+  passe — la fenêtre qui se rouvre, le tube qui bloque — n'ont été vus que
+  par des contrôles qui cliquent.
+
+  --- L'entropie : compartimenter, graduer, nommer les endroits ---
+
+  Le panneau mesurait soixante-quatre tranches quoi qu'il arrive. Sur un
+  fichier d'un méga-octet, cela fait seize kilo-octets par tranche : un
+  déchiffreur de deux cents octets s'y noie, et le profil répond « rien à
+  signaler » là où il y a tout à voir. La tranche suit donc la taille du
+  binaire — puissance de deux, de 256 octets à 64 Ko, quelques centaines de
+  tranches toujours — et sa taille est écrite en tête, car une bosse sur 256
+  octets et une bosse sur 64 Ko ne disent pas la même chose.
+
+  Le dessin faisait trente-six pixels de haut sur cinq cents de large : entre
+  5,8 et 6,6 — l'écart qui sépare du code d'un bloc suspect — il y avait
+  trois pixels. Il prend maintenant toute la largeur et jusqu'à deux cent
+  quarante pixels, borné à la moitié de la fenêtre (demandé explicitement, et
+  juste : il reste quatre rubriques à lire dessous). Une colonne par pixel
+  porte la PLUS HAUTE des tranches qu'elle recouvre : la moyenne effacerait
+  exactement ce qu'on cherche.
+
+  Les adresses « par plages » : les tranches voisines qui disent la même
+  chose, réunies, avec position dans le fichier, adresse en mémoire
+  (`imports::virtual_address`, l'inverse de `file_offset`) et verdict. Un
+  gros bloc chiffré oscille autour du seuil d'empaquetage — 7,13 puis 7,25 —
+  et se présentait en quatorze plages d'une tranche : les miettes rejoignent
+  donc leur voisine la plus proche en entropie, puis ce que l'absorption rend
+  identique se réunit à son tour. Mesuré : quatorze plages devenues quatre,
+  puis deux.
+
+  L'échelle passe de cinq à neuf arrêts : avec cinq, tout l'intervalle du
+  code ordinaire tenait dans une teinte. Elle est graduée de 0 à 8 sous le
+  profil, avec les cinq verdicts écrits sous leur zone.
+
+  CE QUI RESTE. La liste était « non exhaustive » : il y aura une suite. Deux
+  choses repérées en chemin et laissées : la colonne de navigation de la
+  fenêtre d'analyse porte vingt-cinq rubriques et défile encore de quatre sur
+  un écran de 1230 points (noms courts, entrées serrées, fenêtre cent pixels
+  plus haute — il faudrait des groupes pour aller plus loin) ; et la sortie
+  d'un outil extérieur est peinte d'une seule galère par ligne, ce qui la
+  rend cliquable mais la laisse hors de l'arbre d'accessibilité.

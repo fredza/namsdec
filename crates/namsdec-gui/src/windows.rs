@@ -890,167 +890,187 @@ impl NamsdecApp {
             .min_size([560.0, 420.0])
             .pivot(egui::Align2::CENTER_CENTER)
             .default_pos(default_window_pos(ctx, "analysis"));
-        let rendue_analysis_window = self
-            .maximizable(fenêtre_analysis_window, Self::ANALYSIS_WINDOW, ctx)
-            .title_bar(false)
-            .show(ctx, |ui| {
-                if chrome::window_head(ui, self.theme, s, s.analysis_title) {
-                    fermer_ok = true;
-                }
-                if ok_bar(ui, self.theme, strings(self.lang), "analysis") {
-                    fermer_ok = true;
-                }
-                // Ce qu'on a compris d'un binaire ne vaut que si on peut
-                // le transmettre : le rapport part en Markdown, prêt à
-                // coller dans un compte rendu ou un support de cours.
-                //
-                // La rangée est encadrée d'air : collée sous le filet du
-                // bandeau, elle passait pour une seconde barre de titre
-                // plutôt que pour deux boutons.
-                ui.add_space(6.0);
-                egui::Frame::NONE
-                    .inner_margin(egui::Margin {
-                        left: 8,
-                        right: 8,
-                        top: 0,
-                        bottom: 0,
-                    })
-                    .show(ui, |ui| {
-                        ui.horizontal_wrapped(|ui| {
-                            if framed_button(ui, self.theme, s.analysis_copy).clicked()
-                                && let Some(report) = self.analysis_report()
-                            {
-                                ui.ctx().copy_text(report);
-                                self.status = Status::Note(|s| s.analysis_copied);
-                            }
-                            // Et sur le disque : un compte rendu se
-                            // garde, se relit, s'attache à un courriel.
-                            // Le presse-papier ne survit pas à la
-                            // fenêtre suivante.
-                            if framed_button(ui, self.theme, s.analysis_save)
-                                .on_hover_text(s.analysis_save_hint)
+        // Pas de bouton d'agrandissement ici, et c'est délibéré : cette
+        // fenêtre-là sert à DÉSIGNER des endroits du listing, et le
+        // premier geste qui suit une adresse cliquée est d'aller la
+        // voir. Agrandie, elle recouvrait tout — le clic emmenait bien
+        // le listing à l'adresse, derrière un panneau opaque, et l'on
+        // concluait que « ça ne marche pas ». Elle s'ouvre déjà aux
+        // deux tiers de l'écran et se redimensionne à la main.
+        fenêtre_analysis_window.title_bar(false).show(ctx, |ui| {
+            if chrome::window_head(ui, self.theme, s, s.analysis_title) {
+                fermer_ok = true;
+            }
+            if ok_bar(ui, self.theme, strings(self.lang), "analysis") {
+                fermer_ok = true;
+            }
+            // Ce qu'on a compris d'un binaire ne vaut que si on peut
+            // le transmettre : le rapport part en Markdown, prêt à
+            // coller dans un compte rendu ou un support de cours.
+            //
+            // La rangée est encadrée d'air : collée sous le filet du
+            // bandeau, elle passait pour une seconde barre de titre
+            // plutôt que pour deux boutons.
+            ui.add_space(6.0);
+            egui::Frame::NONE
+                .inner_margin(egui::Margin {
+                    left: 8,
+                    right: 8,
+                    top: 0,
+                    bottom: 0,
+                })
+                .show(ui, |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        if framed_button(ui, self.theme, s.analysis_copy).clicked()
+                            && let Some(report) = self.analysis_report()
+                        {
+                            ui.ctx().copy_text(report);
+                            self.status = Status::Note(|s| s.analysis_copied);
+                        }
+                        // Et sur le disque : un compte rendu se
+                        // garde, se relit, s'attache à un courriel.
+                        // Le presse-papier ne survit pas à la
+                        // fenêtre suivante.
+                        if framed_button(ui, self.theme, s.analysis_save)
+                            .on_hover_text(s.analysis_save_hint)
+                            .clicked()
+                        {
+                            self.spawn_file_dialog(FileDialogKind::ExportReport);
+                        }
+                        // Le vidage a son propre enregistrement :
+                        // ce n'est pas un rapport, c'est le fichier
+                        // lui-même, et il sert à être comparé.
+                        if self.analysis_module == "dump"
+                            && framed_button(ui, self.theme, s.dump_save)
+                                .on_hover_text(s.dump_save_hint)
                                 .clicked()
-                            {
-                                self.spawn_file_dialog(FileDialogKind::ExportReport);
-                            }
-                            // Le vidage a son propre enregistrement :
-                            // ce n'est pas un rapport, c'est le fichier
-                            // lui-même, et il sert à être comparé.
-                            if self.analysis_module == "dump"
-                                && framed_button(ui, self.theme, s.dump_save)
-                                    .on_hover_text(s.dump_save_hint)
-                                    .clicked()
-                            {
-                                self.spawn_file_dialog(FileDialogKind::ExportDump);
-                            }
-                            ui.separator();
-                            ui.weak(s.analysis_hint);
-                        });
+                        {
+                            self.spawn_file_dialog(FileDialogKind::ExportDump);
+                        }
+                        ui.separator();
+                        ui.weak(s.analysis_hint);
                     });
-                ui.add_space(8.0);
+                });
+            ui.add_space(8.0);
 
-                // Une colonne de navigation à gauche, le module à
-                // droite. Les sept modules empilés les uns sous les
-                // autres n'employaient que la hauteur : on relisait une
-                // page de deux mille pixels dans une fenêtre large de
-                // mille, en cherchant un titre à l'ascenseur. Ici, on
-                // choisit, et le module a toute la largeur.
-                let lang = self.lang.code();
-                let titres = self.re_registry.entries(lang);
-                let theme = self.theme;
-                egui::Panel::left(egui::Id::new("analysis_nav"))
-                    .resizable(true)
-                    .default_size(200.0)
-                    .min_size(150.0)
-                    .max_size(340.0)
-                    // Un fond léger et une marge : les deux colonnes se
-                    // lisent alors comme deux zones, et non comme un
-                    // texte coupé par un trait. Sans la marge de droite,
-                    // les libellés touchaient la ligne de séparation.
-                    .frame(
-                        egui::Frame::NONE
-                            .fill(theme.dim.gamma_multiply(0.07))
-                            .inner_margin(egui::Margin {
-                                left: 8,
-                                right: 10,
-                                top: 8,
-                                bottom: 8,
-                            }),
-                    )
-                    .show(ui, |ui| {
-                        egui::ScrollArea::vertical()
-                            .id_salt("analysis_nav_scroll")
-                            .auto_shrink([false, false])
-                            .show(ui, |ui| {
-                                // Justifié à gauche : les entrées
-                                // prennent toute la largeur — on clique
-                                // la ligne, non le mot — et leur texte
-                                // commence au même endroit. Centrés,
-                                // treize libellés de longueurs
-                                // différentes n'ont plus de bord commun,
-                                // et l'œil doit chercher chacun.
-                                ui.with_layout(
-                                    egui::Layout::top_down_justified(egui::Align::LEFT),
-                                    |ui| {
-                                        ui.spacing_mut().item_spacing.y = 3.0;
-                                        ui.spacing_mut().button_padding = egui::vec2(8.0, 5.0);
-                                        // « Tout » en tête : c'est la
-                                        // forme d'un compte rendu, celle
-                                        // qu'on copie.
-                                        let tout = self.analysis_module.is_empty();
+            // Une colonne de navigation à gauche, le module à
+            // droite. Les sept modules empilés les uns sous les
+            // autres n'employaient que la hauteur : on relisait une
+            // page de deux mille pixels dans une fenêtre large de
+            // mille, en cherchant un titre à l'ascenseur. Ici, on
+            // choisit, et le module a toute la largeur.
+            let lang = self.lang.code();
+            // Les noms de colonne, qui ne sont pas toujours les titres :
+            // « Décompilation par RetDec » passe sur deux lignes dans deux
+            // cents pixels, et cinq entrées de ce genre repoussent les
+            // dernières sous le bord.
+            let titres = self.re_registry.nav_entries(lang);
+            let theme = self.theme;
+            egui::Panel::left(egui::Id::new("analysis_nav"))
+                .resizable(true)
+                .default_size(200.0)
+                .min_size(150.0)
+                .max_size(340.0)
+                // Un fond léger et une marge : les deux colonnes se
+                // lisent alors comme deux zones, et non comme un
+                // texte coupé par un trait. Sans la marge de droite,
+                // les libellés touchaient la ligne de séparation.
+                .frame(
+                    egui::Frame::NONE
+                        .fill(theme.dim.gamma_multiply(0.07))
+                        .inner_margin(egui::Margin {
+                            left: 8,
+                            right: 10,
+                            top: 8,
+                            bottom: 8,
+                        }),
+                )
+                .show(ui, |ui| {
+                    egui::ScrollArea::vertical()
+                        .id_salt("analysis_nav_scroll")
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            // Justifié à gauche : les entrées
+                            // prennent toute la largeur — on clique
+                            // la ligne, non le mot — et leur texte
+                            // commence au même endroit. Centrés,
+                            // treize libellés de longueurs
+                            // différentes n'ont plus de bord commun,
+                            // et l'œil doit chercher chacun.
+                            ui.with_layout(
+                                egui::Layout::top_down_justified(egui::Align::LEFT),
+                                |ui| {
+                                    // Serré, et c'est la place qui
+                                    // le demande : vingt-cinq
+                                    // rubriques — les cinq outils
+                                    // extérieurs comprises — ne
+                                    // tiennent dans la colonne que
+                                    // si chaque entrée s'en tient à
+                                    // sa ligne. Au-delà, la liste
+                                    // défile, et l'on cherche à
+                                    // l'ascenseur une rubrique dont
+                                    // on ignore l'existence.
+                                    ui.spacing_mut().item_spacing.y = 2.0;
+                                    ui.spacing_mut().button_padding = egui::vec2(8.0, 3.0);
+                                    // « Tout » en tête : c'est la
+                                    // forme d'un compte rendu, celle
+                                    // qu'on copie.
+                                    let tout = self.analysis_module.is_empty();
+                                    if ui
+                                        .add(egui::Button::selectable(tout, s.analysis_all))
+                                        .clicked()
+                                    {
+                                        self.analysis_module.clear();
+                                    }
+                                    ui.add_space(4.0);
+                                    ui.separator();
+                                    ui.add_space(4.0);
+                                    for (id, titre) in &titres {
+                                        let choisi = self.analysis_module == *id;
                                         if ui
-                                            .add(egui::Button::selectable(tout, s.analysis_all))
+                                            .add(egui::Button::selectable(choisi, *titre))
                                             .clicked()
                                         {
-                                            self.analysis_module.clear();
+                                            self.analysis_module = (*id).to_owned();
                                         }
-                                        ui.add_space(4.0);
-                                        ui.separator();
-                                        ui.add_space(4.0);
-                                        for (id, titre) in &titres {
-                                            let choisi = self.analysis_module == *id;
-                                            if ui
-                                                .add(egui::Button::selectable(choisi, *titre))
-                                                .clicked()
-                                            {
-                                                self.analysis_module = (*id).to_owned();
-                                            }
-                                        }
-                                    },
-                                );
-                            });
-                    });
+                                    }
+                                },
+                            );
+                        });
+                });
 
-                // Le contenu, avec la même marge : collé au trait, un
-                // tableau donne l'impression d'être coupé.
-                egui::Frame::NONE
-                    .inner_margin(egui::Margin {
-                        left: 14,
-                        right: 6,
-                        top: 8,
-                        bottom: 4,
-                    })
-                    .show(ui, |ui| {
-                        egui::ScrollArea::vertical()
-                            .id_salt("analysis_content")
-                            .auto_shrink([false, false])
-                            .show(ui, |ui| {
-                                // Une largeur de lecture, et non toute
-                                // la place : sur un écran large, une
-                                // table à deux colonnes posait la
-                                // seconde à mille pixels de la première,
-                                // et l'on suivait la ligne du doigt. Ce
-                                // que fait tout volet de détail.
-                                ui.set_max_width(ui.available_width().min(ANALYSIS_CONTENT_MAX));
-                                let choisi = self.analysis_module.clone();
-                                let seul = (!choisi.is_empty()).then_some(choisi.as_str());
-                                self.re_modules_ui(ui, seul);
-                            });
-                    });
-            });
-        self.place_maximize_button(ctx, Self::ANALYSIS_WINDOW, rendue_analysis_window);
-        self.apply_re_requests();
+            // Le contenu, avec la même marge : collé au trait, un
+            // tableau donne l'impression d'être coupé.
+            egui::Frame::NONE
+                .inner_margin(egui::Margin {
+                    left: 14,
+                    right: 6,
+                    top: 8,
+                    bottom: 4,
+                })
+                .show(ui, |ui| {
+                    egui::ScrollArea::vertical()
+                        .id_salt("analysis_content")
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            // Une largeur de lecture, et non toute
+                            // la place : sur un écran large, une
+                            // table à deux colonnes posait la
+                            // seconde à mille pixels de la première,
+                            // et l'on suivait la ligne du doigt. Ce
+                            // que fait tout volet de détail.
+                            ui.set_max_width(ui.available_width().min(ANALYSIS_CONTENT_MAX));
+                            let choisi = self.analysis_module.clone();
+                            let seul = (!choisi.is_empty()).then_some(choisi.as_str());
+                            self.re_modules_ui(ui, seul);
+                        });
+                });
+        });
+        // L'état de la fenêtre AVANT de relever les demandes des
+        // panneaux : l'une d'elles — aller voir une adresse — ferme
+        // cette fenêtre, et l'écrire après l'aurait rouverte aussitôt.
         self.show_analysis = open && !fermer_ok;
+        self.apply_re_requests();
     }
 
     /// Les registres étendus, dans une fenêtre à eux.

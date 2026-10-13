@@ -485,6 +485,14 @@ pub(crate) enum Status {
         truncated: bool,
     },
     Breakpoint(u64),
+    /// On vient d'emmener le listing à cette adresse, depuis un panneau
+    /// d'analyse.
+    ///
+    /// Le dire plutôt que de laisser le silence : le clic ferme la
+    /// fenêtre d'analyse et déplace le listing derrière elle. Sans
+    /// phrase, on ne sait pas si l'on est arrivé quelque part ou si la
+    /// fenêtre s'est fermée toute seule.
+    WentTo(u64),
     StepLimit,
     NasmMissing,
     /// Une confirmation ordinaire : quelque chose a été fait, et il n'y

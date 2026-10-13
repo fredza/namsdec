@@ -249,6 +249,17 @@ impl NamsdecApp {
                 theme.accent,
                 None,
             ),
+            Status::WentTo(addr) => (
+                if fr {
+                    format!(
+                        "Listing placé en {addr:#x} — « Analyse du binaire… » rouvre le panneau"
+                    )
+                } else {
+                    format!("Listing moved to {addr:#x} — \"Analyse binary…\" reopens the panel")
+                },
+                theme.accent,
+                None,
+            ),
             Status::StepLimit => (s.status_step_limit.to_owned(), theme.bad, None),
             Status::NasmMissing => (s.status_nasm_missing.to_owned(), theme.bad, None),
             Status::Note(phrase) => (phrase(s).to_owned(), theme.good, None),

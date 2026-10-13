@@ -12512,7 +12512,16 @@ fn the_analysis_window_has_margins_and_a_left_aligned_column() {
     };
 
     // Les entrées de la colonne commencent toutes au même endroit.
-    let titres = app.re_registry.titles("fr");
+    //
+    // Les noms de COLONNE, et non les titres : « Décompilation par
+    // RetDec » s'écrit « RetDec » dans deux cents pixels, et le
+    // panneau garde son titre entier.
+    let titres: Vec<&str> = app
+        .re_registry
+        .nav_entries("fr")
+        .into_iter()
+        .map(|(_, titre)| titre)
+        .collect();
     let gauches: Vec<f32> = titres.iter().map(|t| où(t).0).collect();
     let mini = gauches.iter().cloned().fold(f32::MAX, f32::min);
     let maxi = gauches.iter().cloned().fold(f32::MIN, f32::max);
@@ -13047,8 +13056,15 @@ fn the_analysis_window_reads_across_and_not_only_down() {
     assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
     app.show_analysis = true;
 
-    // La colonne porte « Tout » et le nom de chaque module.
-    let titres = app.re_registry.titles("fr");
+    // La colonne porte « Tout » et le nom de chaque module — le nom de
+    // colonne, qui est plus court que le titre pour les outils
+    // extérieurs.
+    let titres: Vec<&str> = app
+        .re_registry
+        .nav_entries("fr")
+        .into_iter()
+        .map(|(_, titre)| titre)
+        .collect();
     assert!(titres.len() >= 5, "il y a bien des modules : {titres:?}");
     let peint = peindre(&mut app);
     assert!(
@@ -25355,6 +25371,71 @@ fn a_column_of_settings_keeps_one_rhythm() {
 /// rend la même hauteur. Le contrôle, lui, ne connaît ni l'un ni
 /// l'autre : il relève les rectangles arrondis d'une taille de bouton,
 /// et n'accepte pas deux voisins de hauteurs différentes.
+/// Tout caractère que l'interface peint existe dans la police.
+///
+/// Un caractère absent ne manque pas discrètement : egui peint un
+/// **carré vide** à sa place. Les polices qu'il embarque — Ubuntu et
+/// deux polices d'émojis — n'ont ni les petits triangles, ni la coche
+/// `\u{2713}`, ni la croix `\u{2717}`, ni les flèches `\u{2192}`,
+/// `\u{25b6}`, `\u{25c0}`, `\u{21a9}`. Tous étaient employés quelque
+/// part, et se voyaient en carré.
+///
+/// Le contrôle ne lit aucune liste écrite d'avance : il regarde ce qui
+/// est **peint**, sur toutes les scènes du banc. Ce qui existe et qu'on
+/// peut employer : `\u{2039}` `\u{203a}` `\u{00ab}` `\u{00bb}` `+`
+/// `\u{2212}` `\u{00d7}` `\u{221a}` `\u{2022}` `\u{25cb}` `\u{2026}`
+/// `\u{21ba}`.
+#[test]
+fn tout_caractere_peint_existe_dans_la_police() {
+    // La police PROPORTIONNELLE, quelle que soit celle du texte, et
+    // c'est mesuré : interrogée sur la famille à chasse fixe,
+    // `has_glyph` répond « non » pour tout, jusqu'au signe plus. La
+    // question reste la bonne — la chaîne de repli de la chasse fixe
+    // contient celle de la proportionnelle —, elle est seulement un peu
+    // sévère.
+    let police = egui::FontId::proportional(13.0);
+    let mut absents: Vec<(String, char, String)> = Vec::new();
+    for (nom, _, ouvre) in scènes() {
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp::default();
+        app.apply_theme(&ctx);
+        ouvre(&mut app);
+        let entrée = écran_du_banc();
+        let mut textes: Vec<String> = Vec::new();
+        for _ in 0..3 {
+            textes.clear();
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                    textes.push(t.galley.text().to_owned());
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+        for texte in &textes {
+            for c in texte.chars() {
+                if c.is_ascii() || c.is_whitespace() {
+                    continue;
+                }
+                if !ctx.fonts_mut(|f| f.has_glyph(&police, c)) {
+                    absents.push((nom.clone(), c, texte.clone()));
+                }
+            }
+        }
+    }
+    absents.sort();
+    absents.dedup_by(|a, b| a.1 == b.1);
+    assert!(
+        absents.is_empty(),
+        "des caractères se peignent en carré vide — la police ne les a pas : {}",
+        absents
+            .iter()
+            .map(|(nom, c, texte)| format!("{nom} : U+{:04X} {c} dans « {texte} »", *c as u32))
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+}
+
 #[test]
 fn two_buttons_side_by_side_share_a_height() {
     for (nom, _, ouvre) in scènes() {
@@ -29357,6 +29438,299 @@ fn an_address_from_an_analysis_panel_reaches_its_line() {
         matches!(app.status, Status::Error(_)),
         "et on le dit : {:?}",
         app.status
+    );
+}
+
+/// La rubrique d'un outil extérieur le lance vraiment, et montre sa
+/// sortie.
+///
+/// Le chemin entier, au clic : le panneau pose une demande, l'application
+/// lance le programme dans un fil, en relève la réponse et la rend au
+/// panneau qui l'attendait. C'est le seul endroit où namsdec sort de son
+/// bac à sable, et c'est donc celui qu'il faut éprouver en entier.
+///
+/// **Ce contrôle lance objdump sur cette machine.** Il passe donc ici et
+/// ne prouve rien là où objdump n'est pas installé — il s'efface alors
+/// plutôt que d'échouer, comme ceux qui lisent `/bin/ls`.
+#[test]
+fn a_tool_panel_really_runs_its_tool_and_shows_the_output() {
+    use egui_kittest::Harness;
+    use egui_kittest::kittest::Queryable;
+
+    if namsdec_disasm::known::program_path("objdump").is_none() {
+        return;
+    }
+    let Ok(octets) = std::fs::read("/bin/ls") else {
+        return;
+    };
+    let mut app = NamsdecApp::default();
+    if !app.load_elf(&octets, "ls") {
+        return;
+    }
+    app.show_analysis = true;
+    app.analysis_module = "tool_objdump".to_owned();
+    // Ce que l'application sait des outils : sans cela, le panneau
+    // croit objdump absent et éteint son bouton.
+    app.deliver_tool_states();
+    let mut harness = Harness::builder()
+        .with_size(egui::Vec2::new(1600.0, 1000.0))
+        .build_ui_state(|ui, app: &mut NamsdecApp| app.draw(ui), app);
+    harness.run();
+    harness.get_by_label("Lancer").click();
+    // `step` et non `run` : tant que l'outil travaille, l'application
+    // redemande une image — et `run`, qui tourne jusqu'à ce que
+    // l'interface se taise, s'arrête alors sur une erreur.
+    harness.step();
+    assert!(
+        harness.state().tool_job.is_some(),
+        "le clic a lancé l'outil"
+    );
+
+    // On attend la réponse : l'outil travaille dans un fil, et
+    // l'application la relève image par image.
+    for _ in 0..600 {
+        harness.step();
+        if harness.state().tool_job.is_none() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert!(
+        harness.state().tool_job.is_none(),
+        "l'outil a rendu la main"
+    );
+    harness.step();
+    harness.step();
+    // Et sa sortie est à l'écran. On la reconnaît à ce que le panneau
+    // écrit AUTOUR d'elle — le compte de lignes et la pagination —, et
+    // non aux lignes elles-mêmes : celles-ci sont peintes d'une seule
+    // galère, pour que chaque adresse y soit cliquable à sa place
+    // exacte, et une galère peinte à la main n'entre pas dans l'arbre
+    // d'accessibilité où kittest cherche.
+    assert!(
+        harness.query_by_label_contains("lignes").is_some(),
+        "le panneau dit combien de lignes l'outil a rendues"
+    );
+    assert!(
+        harness.query_by_label_contains(" sur ").is_some(),
+        "et quelle page on regarde"
+    );
+    assert!(
+        harness.query_by_label_contains("Chercher").is_some(),
+        "la barre de recherche paraît avec la sortie"
+    );
+}
+
+/// Cliquer l'adresse d'un panneau d'analyse emmène VRAIMENT au listing.
+///
+/// Au clic, et non par un état posé à la main : c'est tout l'objet de
+/// ce contrôle. Le grief disait « dans figures de code et références
+/// croisées on ne sait pas aller aux adresses, pourtant l'infobulle du
+/// pointeur dit aller à cette adresse ». Le canal marchait pourtant —
+/// le clic posait bien la demande, et l'application la relevait —,
+/// mais deux choses manquaient au bout : le listing ne défilait pas, et
+/// la fenêtre d'analyse restait devant. On lisait donc le numéro de la
+/// ligne dans la barre d'état, derrière un panneau opaque.
+#[test]
+fn clicking_an_address_in_a_panel_really_lands_in_the_listing() {
+    use egui_kittest::Harness;
+    use egui_kittest::kittest::Queryable;
+
+    let Ok(octets) = std::fs::read("/bin/ls") else {
+        return;
+    };
+    let mut app = NamsdecApp::default();
+    if !app.load_elf(&octets, "ls") {
+        return;
+    }
+    app.show_analysis = true;
+    app.analysis_module = "xrefs".to_owned();
+    let mut harness = Harness::builder()
+        .with_size(egui::Vec2::new(1600.0, 1000.0))
+        .build_ui_state(|ui, app: &mut NamsdecApp| app.draw(ui), app);
+    harness.run();
+    {
+        let adresses: Vec<_> = harness.get_all_by_label_contains("0x00").collect();
+        assert!(
+            !adresses.is_empty(),
+            "le panneau des références croisées montre des adresses"
+        );
+        adresses[0].click();
+    }
+    harness.run();
+
+    assert!(
+        !harness.state().show_analysis,
+        "la fenêtre d'analyse s'efface : elle couvrait ce qu'on venait de demander à voir"
+    );
+    assert!(
+        matches!(harness.state().status, Status::WentTo(_)),
+        "et la barre d'état dit où l'on va : {:?}",
+        harness.state().status
+    );
+    assert!(
+        harness.state().cursor_pos.0 > 1,
+        "le curseur est posé sur la ligne de l'adresse, et non restée en tête"
+    );
+}
+
+/// Et le listing **défile** jusqu'à cette ligne.
+///
+/// Le bout qui manquait vraiment : poser le curseur ne déplace pas la
+/// vue. egui ne défile vers le curseur d'un champ de texte que lorsque
+/// la sélection change pendant que le champ a le focus — or c'est nous
+/// qui l'écrivons dans l'état du champ, et à l'image suivante il n'a
+/// rien changé. On lisait donc « Lig 60749 » dans la barre d'état
+/// pendant que le listing restait sur la ligne 1, et chaque adresse
+/// cliquée d'un panneau d'analyse passait pour un clic mort.
+///
+/// Mesuré sur la galère du code : si la vue a défilé, le texte est
+/// peint bien au-dessus du haut de l'éditeur.
+#[test]
+fn going_to_a_line_really_scrolls_the_listing_to_it() {
+    let Ok(octets) = std::fs::read("/bin/ls") else {
+        return;
+    };
+    let mut app = NamsdecApp::default();
+    if !app.load_elf(&octets, "ls") {
+        return;
+    }
+    let lignes = app.source.lines().count() as u32;
+    // Un binaire assez long pour qu'il y ait quelque part où aller :
+    // sur un /bin/ls minuscule, le contrôle n'apprendrait rien.
+    if lignes < 400 {
+        return;
+    }
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let entrée = écran_du_banc();
+
+    // Le haut de la galère du code, telle qu'elle est peinte.
+    let haut_du_code = |app: &mut NamsdecApp| -> f32 {
+        let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+        sortie.textures_delta.clear();
+        fn visite(forme: &egui::epaint::Shape, plus_haut: &mut f32) {
+            match forme {
+                egui::epaint::Shape::Text(texte) if texte.galley.rows.len() > 100 => {
+                    *plus_haut = plus_haut.min(texte.pos.y);
+                }
+                egui::epaint::Shape::Vec(formes) => {
+                    for forme in formes {
+                        visite(forme, plus_haut);
+                    }
+                }
+                _ => {}
+            }
+        }
+        let mut plus_haut = f32::INFINITY;
+        for clipped in &sortie.shapes {
+            visite(&clipped.shape, &mut plus_haut);
+        }
+        plus_haut
+    };
+
+    for _ in 0..3 {
+        haut_du_code(&mut app);
+    }
+    let avant = haut_du_code(&mut app);
+    assert!(avant.is_finite(), "le listing est peint");
+
+    let cible = lignes - 20;
+    app.goto_line = Some(cible);
+    // Une vingtaine d'images : egui amène la vue en douceur plutôt que
+    // de l'y poser d'un coup, et un défilement animé n'est pas fini à
+    // l'image suivante.
+    let mut après = avant;
+    for _ in 0..24 {
+        après = haut_du_code(&mut app);
+    }
+    assert!(
+        après < avant - 1000.0,
+        "le listing doit défiler jusqu'à la ligne {cible} : la galère était \
+         peinte en {avant}, elle l'est en {après}"
+    );
+}
+
+/// Rebaptiser une fonction se voit **dans le listing**.
+///
+/// Le nom paraissait partout ailleurs — arbre d'appels, références
+/// croisées, « prochaine instruction » — et nulle part là où l'on passe
+/// ses journées. Le listing est du texte, écrit une fois au chargement ;
+/// il se récrit donc quand un nom change, et ses points d'arrêt suivent
+/// leur adresse plutôt que leur numéro de ligne, puisqu'une étiquette
+/// nouvelle décale tout ce qui la suit.
+#[test]
+fn renaming_a_function_shows_up_in_the_listing() {
+    let Ok(octets) = std::fs::read("/bin/ls") else {
+        return;
+    };
+    let mut app = NamsdecApp::default();
+    if !app.load_elf(&octets, "ls") {
+        return;
+    }
+    // Une instruction du milieu, et la ligne où le listing la montre.
+    let (adresse, ligne) = {
+        let state = app.assemble_state.as_ref().expect("un état");
+        let adresse = state.disasm[state.disasm.len() / 2].address;
+        let ligne = *state.addr_to_line.get(&adresse).expect("une ligne");
+        (adresse, ligne)
+    };
+    // Un point d'arrêt plus bas : il doit rester sur SON instruction.
+    let (arrêt_addr, arrêt_ligne) = {
+        let state = app.assemble_state.as_ref().expect("un état");
+        let addr = state.disasm[state.disasm.len() / 2 + 20].address;
+        (addr, *state.addr_to_line.get(&addr).expect("une ligne"))
+    };
+    app.breakpoint_lines.insert(arrêt_ligne);
+    assert!(
+        !app.source.contains("vérifie_mdp"),
+        "le nom n'est pas déjà là"
+    );
+
+    app.notes.set_name(adresse, "vérifie_mdp");
+    app.refresh_listing_names();
+
+    assert!(
+        app.source.contains("vérifie_mdp:"),
+        "le listing porte l'étiquette donnée"
+    );
+    let state = app.assemble_state.as_ref().expect("un état");
+    let nouvelle = *state
+        .addr_to_line
+        .get(&adresse)
+        .expect("l'adresse a toujours une ligne");
+    assert!(
+        nouvelle > ligne,
+        "l'étiquette insérée décale la ligne : {ligne} → {nouvelle}"
+    );
+    // La ligne d'avant est bien l'étiquette, et la ligne rendue est
+    // bien l'instruction.
+    let lignes: Vec<&str> = app.source.lines().collect();
+    assert_eq!(lignes[nouvelle as usize - 2].trim(), "vérifie_mdp:");
+    // Le point d'arrêt a suivi son adresse.
+    let arrêt_nouvelle = *state
+        .addr_to_line
+        .get(&arrêt_addr)
+        .expect("le point d'arrêt a toujours une ligne");
+    assert!(
+        app.breakpoint_lines.contains(&arrêt_nouvelle),
+        "le point d'arrêt suit son instruction : {arrêt_ligne} → {arrêt_nouvelle}, \
+         il reste {:?}",
+        app.breakpoint_lines
+    );
+
+    // Et se dédire rend le listing d'avant.
+    app.notes.set_name(adresse, "");
+    app.refresh_listing_names();
+    assert!(
+        !app.source.contains("vérifie_mdp"),
+        "le nom retiré s'en va aussi du listing"
+    );
+    let state = app.assemble_state.as_ref().expect("un état");
+    assert_eq!(
+        state.addr_to_line.get(&adresse).copied(),
+        Some(ligne),
+        "et tout revient à sa place"
     );
 }
 

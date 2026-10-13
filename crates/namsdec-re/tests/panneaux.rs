@@ -153,6 +153,116 @@ fn relevé(module: &mut dyn ReModule, ctx: &ReContext, largeur: f32) -> Vec<Lign
     lignes
 }
 
+/// Tout caractère qu'un panneau peint existe dans la police.
+///
+/// Un caractère absent ne manque pas discrètement : egui peint un
+/// **carré vide** à sa place. Les polices qu'il embarque — Ubuntu et
+/// deux polices d'émojis — n'ont ni les petits triangles
+/// (`\u{25b8}`, `\u{25be}`), ni la coche `\u{2713}`, ni la croix
+/// `\u{2717}`, ni la flèche de retour `\u{21a9}`. Les quatre étaient
+/// employés : la liste des protections montrait deux carrés au lieu
+/// d'une coche et d'une croix, et le triangle qui déplie les
+/// références croisées n'existait pas à l'écran.
+///
+/// Ce contrôle les attrape tous d'un coup, et attrapera le prochain :
+/// il ne lit aucune liste de caractères écrite d'avance — il regarde ce
+/// qui est **peint**.
+///
+/// Ce qui existe et qu'on peut employer : `\u{2039}` `\u{203a}`
+/// `\u{00ab}` `\u{00bb}` `+` `\u{2212}` `\u{00d7}` `\u{221a}`
+/// `\u{2022}` `\u{25cb}` `\u{2026}` `\u{21ba}`.
+#[test]
+fn tout_caractere_ecrit_existe_dans_la_police() {
+    let binaire = binaire();
+    let disasm = namsdec_disasm::disassemble(&binaire, BASE);
+    let cpu = Cpu::new(Memory::new(BASE, 0x1000));
+    let ctx = ReContext {
+        cpu: &cpu,
+        disasm: &disasm,
+        source: "",
+        binary: &binaire,
+        lang: "fr",
+        names: None,
+    };
+    let mut absents: Vec<(String, char)> = Vec::new();
+    // TOUS les panneaux, et non les neuf du relevé de mise en page :
+    // un carré vide se voit partout, et la question ne coûte rien.
+    let mut tous = panneaux();
+    tous.extend([
+        (
+            "en bref",
+            Box::new(namsdec_re::BinaryInfoModule::default()) as Box<dyn ReModule>,
+        ),
+        ("empreintes", Box::new(namsdec_re::DigestModule::default())),
+        ("carte", Box::new(namsdec_re::MapModule::default())),
+        (
+            "protections",
+            Box::new(namsdec_re::ProtectionsModule::default()),
+        ),
+        (
+            "graphe d'appels",
+            Box::new(namsdec_re::CallGraphModule::default()),
+        ),
+        ("yara", Box::new(namsdec_re::YaraModule::default())),
+        ("place libre", Box::new(namsdec_re::SlackModule::default())),
+        ("vidage", Box::new(namsdec_re::DumpModule::default())),
+        (
+            "éditeur binaire",
+            Box::new(namsdec_re::HexEditorModule::default()),
+        ),
+    ]);
+    for (nom, mut module) in tous {
+        module.on_binary_loaded(&ctx);
+        let egui_ctx = egui::Context::default();
+        let entrée = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(900.0, 2400.0),
+            )),
+            ..Default::default()
+        };
+        let mut vus: Vec<String> = Vec::new();
+        for _ in 0..2 {
+            vus.clear();
+            let mut sortie = egui_ctx.run_ui(entrée.clone(), |ui| module.ui(ui, &ctx));
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                    vus.push(t.galley.text().to_owned());
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+        // La police PROPORTIONNELLE, quelle que soit celle du texte, et
+        // c'est mesuré : interrogée sur la famille à chasse fixe,
+        // `has_glyph` répond « non » pour tout, jusqu'au signe plus.
+        // La question reste la bonne — la chaîne de repli de la chasse
+        // fixe contient celle de la proportionnelle —, elle est
+        // seulement un peu sévère.
+        let police = egui::FontId::proportional(13.0);
+        for texte in &vus {
+            for c in texte.chars() {
+                if c.is_ascii() || c.is_whitespace() {
+                    continue;
+                }
+                if !egui_ctx.fonts_mut(|f| f.has_glyph(&police, c)) {
+                    absents.push((nom.to_owned(), c));
+                }
+            }
+        }
+    }
+    absents.sort();
+    absents.dedup();
+    assert!(
+        absents.is_empty(),
+        "des caractères se peignent en carré vide — la police ne les a pas : {}",
+        absents
+            .iter()
+            .map(|(nom, c)| format!("{nom} : U+{:04X} {c}", *c as u32))
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+}
+
 /// Les panneaux à contrôler, chacun avec le nom qu'un échec doit citer.
 fn panneaux() -> Vec<(&'static str, Box<dyn ReModule>)> {
     vec![
@@ -165,6 +275,18 @@ fn panneaux() -> Vec<(&'static str, Box<dyn ReModule>)> {
         ("chaînes", Box::new(namsdec_re::StringsModule::default())),
         ("entropie", Box::new(namsdec_re::EntropyModule::default())),
         ("figures", Box::new(namsdec_re::PatternsModule::default())),
+        (
+            "fonctions",
+            Box::new(namsdec_re::FunctionsModule::default()),
+        ),
+        ("fragments", Box::new(namsdec_re::GadgetsModule::default())),
+        (
+            "outil extérieur",
+            Box::new(
+                namsdec_re::ToolModule::connu("objdump", "objdump", "objdump", "objdump")
+                    .expect("objdump est un outil connu"),
+            ),
+        ),
     ]
 }
 

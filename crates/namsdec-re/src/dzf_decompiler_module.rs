@@ -52,6 +52,9 @@ impl ReModule for DzfDecompilerModule {
             ReResult::DecompilationError(message) => {
                 self.erreur = Some(message.clone());
             }
+            // Ce qu'un outil extérieur rend ne passe pas par ici : il a
+            // sa propre rubrique, et sa sortie n'est pas du JSON DZF.
+            ReResult::ToolOutput { .. } | ReResult::ToolState { .. } => {}
         }
     }
 
@@ -150,7 +153,9 @@ impl ReModule for DzfDecompilerModule {
                             "DZF n'a donné que la signature de cette fonction.",
                             "DZF gave only this function's signature.",
                         ));
-                    } else if let Some(addr) = pseudocode_cliquable(ui, &f.pseudocode) {
+                    } else if let Some(addr) =
+                        pseudocode_cliquable(ui, &f.pseudocode, f32::INFINITY)
+                    {
                         // Une adresse du pseudo-code a été cliquée : on
                         // demande le saut au listing.
                         aller = Some(addr);
@@ -225,7 +230,12 @@ pub(crate) fn adresses_cliquables(texte: &str) -> Vec<(std::ops::Range<usize>, u
 ///
 /// Un seul widget, dont on teste la position du clic contre les plages
 /// de caractères : on saute donc à l'adresse exacte visée.
-fn pseudocode_cliquable(ui: &mut egui::Ui, texte: &str) -> Option<u64> {
+///
+/// `largeur` borne le retour à la ligne : infinie pour du pseudo-code,
+/// qu'on lit ligne à ligne et qui reste court, bornée pour la sortie
+/// d'un outil extérieur — une ligne d'`objdump` fait parfois deux cents
+/// caractères, et peinte sans borne elle court hors du panneau.
+pub(crate) fn pseudocode_cliquable(ui: &mut egui::Ui, texte: &str, largeur: f32) -> Option<u64> {
     let adresses = adresses_cliquables(texte);
     let police = egui::TextStyle::Monospace.resolve(ui.style());
     let normal = ui.visuals().text_color();
@@ -238,7 +248,7 @@ fn pseudocode_cliquable(ui: &mut egui::Ui, texte: &str) -> Option<u64> {
 
     let chars: Vec<char> = texte.chars().collect();
     let mut job = egui::text::LayoutJob::default();
-    job.wrap.max_width = f32::INFINITY;
+    job.wrap.max_width = largeur;
     let mut pos = 0usize;
     for (plage, _) in &adresses {
         if plage.start > pos {

@@ -179,11 +179,17 @@ impl ReModule for BinaryInfoModule {
             ui.separator();
             ui.add_space(4.0);
             ui.strong(ctx.t("Protections", "Protections"));
+            // « √ » et « × », et non « ✓ » et « ✗ » : ces deux-là
+            // n'existent pas dans les polices qu'egui embarque, et se
+            // peignaient donc en carré vide — mesuré, voir
+            // `tout_caractere_ecrit_existe_dans_la_police`. Une coche
+            // absente ne dit pas « protection absente » : elle ne dit
+            // rien du tout.
             let oui_non = |bon: bool| {
                 if bon {
-                    ("\u{2713}", egui::Color32::from_rgb(0x4e, 0xc9, 0xb0))
+                    ("\u{221a}", egui::Color32::from_rgb(0x4e, 0xc9, 0xb0))
                 } else {
-                    ("\u{2717}", egui::Color32::from_rgb(0xf4, 0x87, 0x71))
+                    ("\u{00d7}", egui::Color32::from_rgb(0xf4, 0x87, 0x71))
                 }
             };
             egui::Grid::new("binary_info_prot")

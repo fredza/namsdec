@@ -258,6 +258,37 @@ pub(crate) fn named_at(
     symbol_at(symbols, addr)
 }
 
+/// Les symboles du binaire, avec par-dessus les noms qu'on a donnés.
+///
+/// Le listing est écrit **une fois**, au chargement, à partir des
+/// symboles de l'ELF : rebaptiser une fonction ne s'y voyait donc pas,
+/// alors que le nom apparaissait partout ailleurs. On ne touche pas aux
+/// symboles d'origine pour autant — ils restent ce que le fichier dit,
+/// et c'est ce qui permet de se dédire : un nom retiré rend le symbole,
+/// non le vide.
+///
+/// Un nom posé sur une adresse qui n'en portait aucune devient une
+/// étiquette à elle seule : c'est le cas ordinaire d'un binaire
+/// dépouillé, où l'on nomme `sub_1d491`.
+pub(crate) fn symbols_with_names(
+    symbols: &[namsdec_asm::elf::Symbol],
+    notes: &notes::Notes,
+) -> Vec<namsdec_asm::elf::Symbol> {
+    let mut sortie: Vec<namsdec_asm::elf::Symbol> = symbols.to_vec();
+    for (addr, nom) in &notes.names {
+        match sortie.iter_mut().find(|s| s.addr == *addr) {
+            Some(symbole) => symbole.name = nom.clone(),
+            None => sortie.push(namsdec_asm::elf::Symbol {
+                name: nom.clone(),
+                addr: *addr,
+                size: 0,
+            }),
+        }
+    }
+    sortie.sort_by_key(|symbole| symbole.addr);
+    sortie
+}
+
 /// L'étiquette qui nomme `addr`, telle qu'on l'a écrite dans le source :
 /// `tampon`, ou `tampon+2` deux octets plus loin.
 ///

@@ -157,6 +157,42 @@ pub fn file_offset(bytes: &[u8], vaddr: u64) -> Option<u64> {
     None
 }
 
+/// L'adresse virtuelle d'une position du fichier — l'inverse de
+/// [`file_offset`].
+///
+/// Les panneaux qui mesurent le FICHIER — l'entropie, le vidage,
+/// l'éditeur binaire — parlent en positions ; le listing, lui, ne
+/// connaît que des adresses. Sans cette conversion, « le bloc dense
+/// commence en 0x2a000 » ne mène nulle part : il faut retrouver à la
+/// main où cela tombe dans le programme.
+///
+/// Par les segments chargeables : ce sont eux que le noyau projette, et
+/// ils existent même dans un binaire dépouillé de sa table de sections.
+/// `None` quand cette position n'est projetée nulle part — l'en-tête,
+/// la table des symboles, le remplissage de fin.
+pub fn virtual_address(bytes: &[u8], offset: u64) -> Option<u64> {
+    let phoff = u64_at(bytes, 0x20)? as usize;
+    let phentsize = u16_at(bytes, 0x36)? as usize;
+    let phnum = u16_at(bytes, 0x38)? as usize;
+    for index in 0..phnum {
+        let header = phoff.checked_add(index.checked_mul(phentsize)?)?;
+        // Seuls les segments chargeables portent des adresses.
+        if u32_at(bytes, header)? != 1 {
+            continue;
+        }
+        let début = u64_at(bytes, header.saturating_add(0x08))?;
+        let vaddr = u64_at(bytes, header.saturating_add(0x10))?;
+        let filesz = u64_at(bytes, header.saturating_add(0x20))?;
+        let Some(fin) = début.checked_add(filesz) else {
+            continue;
+        };
+        if offset >= début && offset < fin {
+            return vaddr.checked_add(offset - début);
+        }
+    }
+    None
+}
+
 /// L'emplacement de chaque relocation et le nom qu'elle porte.
 fn relocations(bytes: &[u8]) -> Option<BTreeMap<u64, String>> {
     let shoff = u64_at(bytes, 0x28)? as usize;

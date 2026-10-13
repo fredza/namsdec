@@ -144,7 +144,11 @@ impl NamsdecApp {
                 )
             {
                 ui.horizontal_wrapped(|ui| {
-                    ui.colored_label(theme.accent, "≡");
+                    // « • » et non « ≡ » : le signe d'identité n'existe
+                    // pas dans les polices qu'egui embarque, et se
+                    // peignait en carré vide — une puce qui ressemble
+                    // à un défaut d'affichage.
+                    ui.colored_label(theme.accent, "\u{2022}");
                     // Une étiquette ordinaire, et non `cliquable` : le
                     // curseur en main annonce un clic, et ce clic ne
                     // ferait rien. Ce qui change le pointeur doit se
