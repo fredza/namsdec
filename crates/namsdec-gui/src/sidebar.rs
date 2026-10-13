@@ -105,7 +105,26 @@ impl NamsdecApp {
             .show(ui, |ui| self.cpu_state_section_ui(ui));
         let bandeau = egui::ScrollArea::vertical()
             .id_salt("sidebar_banner")
-            .auto_shrink([false, true])
+            // `false` AUSSI EN HAUTEUR : réglée sur « vrai », la zone
+            // épouse son contenu, et sur un panneau très court elle
+            // dépassait de quelques pixels la place qui lui restait —
+            // la dernière ligne du bandeau se peignait alors sur le
+            // titre « État du processeur ». Mesuré : « Dernier pas »
+            // de 88 à 106 pour une place qui s'arrêtait à 92.
+            //
+            // Bornée, elle prend exactement ce qui reste et fait
+            // défiler le reste. Le partage, lui, ne s'en trouve pas
+            // changé : il se calcule sur `content_size`, c'est-à-dire
+            // sur ce que le bandeau VOUDRAIT, et non sur ce qu'il a.
+            .auto_shrink([false, false])
+            // Et sans plancher : une zone défilante refuse par défaut
+            // de descendre sous soixante-quatre pixels (`min_scrolled_
+            // height`). Sur un panneau très court, elle prenait donc
+            // ces soixante-quatre pixels même quand il n'en restait que
+            // quarante-trois — et les vingt et un autres se peignaient
+            // sur l'état du processeur. Ici, ce qui reste est ce qu'on
+            // prend ; le reste défile.
+            .min_scrolled_height(0.0)
             .show(ui, |ui| self.sidebar_banner_ui(ui));
         // Ce que le bandeau mesurerait s'il avait toute la place : c'est
         // cette hauteur qui décide, à l'image suivante, de la part de
@@ -249,20 +268,46 @@ impl NamsdecApp {
                 // une colonne de nombres n'annonce pas qu'elle est une
                 // pile.
                 section_header(ui, self.theme, self.active_tab.label(s));
-                // Chaque vue pose sa propre zone de défilement : un
-                // vidage mémoire défile dans les deux sens (seize octets
-                // et leur transcription, c'est plus large que le
-                // panneau), mais une commande — le champ Adresse — reste
-                // bornée par le panneau. Une zone de défilement
-                // horizontale commune les étirait toutes les deux à la
-                // largeur du vidage.
-                match self.active_tab {
-                    SidebarTab::Stack => self.stack_ui(ui),
-                    SidebarTab::Memory => self.memory_ui(ui),
-                    SidebarTab::Heap => self.heap_ui(ui),
-                    SidebarTab::Bytes => self.bytes_ui(ui),
-                    SidebarTab::Re => self.re_ui(ui),
-                }
+                // LE CONTENU EST BORNÉ À LA PLACE DU PANNEAU, et ce
+                // n'est pas un confort : c'est ce qui empêche l'état du
+                // processeur de se peindre par-dessus.
+                //
+                // Mesuré, parce que la cause est contre-intuitive.
+                // Quand le contenu d'un panneau egui dépasse la place
+                // qu'on lui a laissée, egui ramène bien la TAILLE du
+                // rectangle au maximum demandé — mais en gardant le
+                // bord du CONTENU, non celui de la place disponible.
+                // Le rectangle glisse donc vers le bas, et le panneau
+                // ne rend au parent que ce qui reste visible : relevé
+                // sur un panneau de 490 px avec l'onglet Mémoire, le
+                // panneau peignait de 361 à 539 et n'en rendait que de
+                // 403 à 539. L'état du processeur, qui se place sur ce
+                // que le parent a rendu, s'écrivait alors sur les
+                // quarante-deux pixels de différence — « Instructions
+                // exécutées » par-dessus le titre « Mémoire », et au
+                // zoom de Fred tout le haut de l'onglet.
+                //
+                // Borné, le rectangle ne glisse plus : la vue défile
+                // au lieu de déborder. Défiler ici est permis — ce qui
+                // ne doit jamais défiler, c'est l'état du processeur,
+                // et il est hors de cette zone.
+                //
+                // Chaque vue garde la sienne par-dessus : un vidage
+                // mémoire défile dans les deux sens (seize octets et
+                // leur transcription, c'est plus large que le panneau),
+                // là où une commande — le champ Adresse — reste bornée
+                // par le panneau. Une zone horizontale commune les
+                // étirerait toutes les deux à la largeur du vidage.
+                egui::ScrollArea::vertical()
+                    .id_salt("sidebar_tab_scroll")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| match self.active_tab {
+                        SidebarTab::Stack => self.stack_ui(ui),
+                        SidebarTab::Memory => self.memory_ui(ui),
+                        SidebarTab::Heap => self.heap_ui(ui),
+                        SidebarTab::Bytes => self.bytes_ui(ui),
+                        SidebarTab::Re => self.re_ui(ui),
+                    });
             });
         // Ce que le panneau fait vraiment : s'il n'est pas à la hauteur
         // demandée ET qu'un bouton est enfoncé, c'est que la poignée a

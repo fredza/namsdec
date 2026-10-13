@@ -119,6 +119,15 @@ des témoins qu'on lit.
   règle d'adresses court dessous, l'échelle de couleurs est graduée de 0
   à 8 avec neuf arrêts, et les **plages** donnent enfin les adresses —
   cliquables.
+- **Le panneau latéral ne se recouvre plus.** Dans l'onglet Mémoire,
+  l'état du processeur s'écrivait par-dessus le haut de la vue —
+  « Adresse », « Chercher », « Suivre » et « Lire en » sous les
+  registres, illisible. La cause tient en une ligne d'egui : quand le
+  contenu d'un panneau dépasse la place qu'on lui a laissée, le
+  rectangle du panneau glisse vers le bas, et le panneau ne rend au
+  parent que ce qui reste visible. Le contenu de la vue est désormais
+  borné à son panneau — il défile au lieu de déborder —, et l'état du
+  processeur garde sa place : c'est ce qu'on regarde entre deux pas.
 - **La colonne de la fenêtre d'analyse est rangée par familles** — Le
   fichier, Le code, Décompiler, Ce qu'il dit, Ce qu'il emprunte, Les
   octets —, dans l'ordre où l'on lit un binaire inconnu. Vingt-quatre

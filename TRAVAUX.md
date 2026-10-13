@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **13 octobre
-2026**, version 0.2.8-beta.1, 1 150 tests au vert.
+2026**, version 0.2.8-beta.1, 1 151 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -115,6 +115,20 @@ autres, et c'est eux qui expliquaient la moitié de la liste.
       les noms y sont courts (« RetDec » et non « Décompilation par
       RetDec », qui passait sur deux lignes), les entrées serrées, et la
       fenêtre s'ouvre cent pixels plus haut. Nouveau `ReModule::nav_title`.
+- [x] **Le panneau latéral ne se recouvre plus, même à l'étroit**
+      (capture de Fred, onglet Mémoire) — l'état du processeur
+      s'écrivait sur le haut de la vue. Cause mesurée, et elle est dans
+      egui : quand le contenu d'un panneau dépasse la place laissée,
+      egui ramène la TAILLE du rectangle au maximum demandé en gardant
+      le bord du CONTENU et non celui de la place — le rectangle glisse
+      vers le bas, et le panneau ne rend au parent que ce qui reste
+      visible (relevé : peint de 361 à 539, rendu de 403 à 539). Le
+      contenu de la vue est borné à son panneau par une zone défilante,
+      et le bandeau perd son plancher de 64 px (`min_scrolled_height`),
+      qui le faisait déborder de vingt et un pixels sur un panneau
+      court. Contrôle sur les cinq vues, panneau à l'étroit et poignée
+      tirée : `le_panneau_lateral_ne_se_recouvre_jamais_meme_a_l_etroit`
+      — éprouvé en remettant le défaut.
 - [x] **Et elles sont rangées par familles** (demandé) — Le fichier, Le
       code, Décompiler, Ce qu'il dit, Ce qu'il emprunte, Les octets, dans
       l'ordre où l'on lit un binaire inconnu. Le module déclare la

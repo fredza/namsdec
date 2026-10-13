@@ -518,6 +518,12 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "Outils > Patcher le binaire propose « Neutraliser (nop) ». Ce qui a changé "
          "porte la couleur des changements, et la fenêtre Correctifs sait le défaire. "
          "Les onglets sont en haut à droite, dans la barre d'outils.",
+         "Les trois zones se partagent la hauteur du panneau, et <b>l'état du "
+         "processeur passe avant</b> : c'est ce qu'on regarde entre deux pas, et il ne "
+         "défile jamais. Quand la place manque — une console ouverte, une fenêtre "
+         "courte, un zoom généreux —, c'est la vue choisie qui défile, et la poignée "
+         "entre les deux se tire pour lui en rendre. Rien ne se peint par-dessus rien : "
+         "un contrôle le vérifie sur les cinq vues, panneau à l'étroit.",
         ]),
         ("p",
          "<b>Survoler un registre</b> répond à « d'où vient ce qu'il contient ? », et pas "

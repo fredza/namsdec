@@ -2683,7 +2683,53 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
   sert à savoir où regarder, pas à tout voir ; et quatre familles sur six
   restent sous les yeux, l'ascenseur faisant le reste.
 
-  CE QUI RESTE. La liste était « non exhaustive » : il y aura une suite. Une
-  chose repérée en chemin et laissée : la sortie d'un outil extérieur est
+  --- Le panneau latéral qui se recouvre : la troisième fois, et la cause ---
+
+  Capture de Fred, onglet Mémoire : l'état du processeur écrit par-dessus le
+  haut de la vue. Le même symptôme avait été corrigé deux fois (« la carte
+  dépliée ne se peint plus sur les registres », « Lire en ne se peint plus
+  sur Suivre »), ce qui aurait dû alerter : deux correctifs sur un même
+  symptôme veulent dire qu'on n'a pas la cause.
+
+  La voici, mesurée en instrumentant les rectangles plutôt qu'en relisant le
+  code. Quand le contenu d'un panneau egui dépasse la place qu'on lui a
+  laissée, egui ramène bien la TAILLE du rectangle au maximum demandé — mais
+  `set_rect_size` garde le bord FIXE du panneau, c'est-à-dire le bord du
+  contenu débordant, et non celui de la place disponible. Le rectangle glisse
+  donc vers le bas, et le parent ne se voit retirer que l'intersection avec
+  la place : relevé sur un panneau de 490 px, l'onglet peignait de 361 à 539
+  et n'en rendait que de 403 à 539. L'état du processeur, qui se place sur ce
+  que le parent a rendu, s'écrivait sur les quarante-deux pixels d'écart.
+
+  Trois conditions, aucune exotique : un panneau court (console ouverte), une
+  part d'onglet agrandie à la main du temps où le panneau était haut, et une
+  vue dont les commandes prennent de la place — au zoom de Fred, les cinq
+  rangées de l'onglet Mémoire font trois cents pixels.
+
+  LE REMÈDE est une borne, pas un calcul : le contenu de la vue vit dans une
+  zone défilante qui prend exactement la place du panneau. Le rectangle ne
+  peut plus glisser, puisqu'il n'y a plus de débordement. Défiler ici est
+  permis — ce qui ne doit jamais défiler, c'est l'état du processeur, et il
+  est hors de cette zone depuis longtemps.
+
+  Un second débordement est apparu une fois le premier réglé, à l'autre bout
+  du panneau : une zone défilante refuse par défaut de descendre sous
+  soixante-quatre pixels (`min_scrolled_height`). Le bandeau prenait donc ces
+  soixante-quatre pixels là où il n'en restait que quarante-trois, et les
+  vingt et un autres s'écrivaient sur les registres. Plancher retiré.
+
+  CE QU'ON A ESSAYÉ ET QUI N'ÉTAIT PAS LA CAUSE : la hauteur gardée de
+  l'onglet (543 px contre 179 disponibles) — elle est bien clampée ; la
+  hauteur de l'état du processeur relevée à l'image précédente — elle est
+  juste ; le zoom — il déplace le seuil, il ne crée pas le défaut. Le banc
+  reproduisait zéro recouvrement dans tous ces cas pris séparément : il
+  fallait les trois à la fois, et c'est le relevé des RECTANGLES, non des
+  textes, qui a nommé le coupable.
+
+  CE QUI RESTE. La liste était « non exhaustive » : il y aura une suite. Deux
+  choses repérées en chemin et laissées : la sortie d'un outil extérieur est
   peinte d'une seule galère par ligne, ce qui la rend cliquable mais la
-  laisse hors de l'arbre d'accessibilité.
+  laisse hors de l'arbre d'accessibilité ; et Fred a évoqué de faire de
+  l'état du processeur un onglet à part — ce serait la fin de ce partage à
+  trois, mais aussi la fin des registres sous les yeux pendant qu'on lit la
+  mémoire. À trancher ensemble.

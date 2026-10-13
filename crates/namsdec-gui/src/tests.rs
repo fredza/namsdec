@@ -29939,3 +29939,101 @@ fn no_preferences_page_grows_by_itself() {
         }
     }
 }
+
+/// Le panneau latéral ne se recouvre jamais, même à l'étroit.
+///
+/// Le défaut, sur capture de Fred : dans l'onglet Mémoire, l'état du
+/// processeur s'écrivait par-dessus le haut de l'onglet — « Adresse »,
+/// « Chercher », « Suivre » et « Lire en » sous les registres, illisible.
+///
+/// La cause est contre-intuitive, et c'est la mesure qui l'a donnée.
+/// Quand le contenu d'un panneau egui dépasse la place qu'on lui a
+/// laissée, egui ramène la TAILLE du rectangle au maximum demandé en
+/// gardant le bord du CONTENU, non celui de la place disponible : le
+/// rectangle glisse vers le bas, et le panneau ne rend au parent que ce
+/// qui reste visible. Relevé ici : le panneau peignait de 361 à 539 et
+/// n'en rendait que de 403 à 539 — l'état du processeur, placé sur ce
+/// que le parent avait rendu, s'écrivait sur les quarante-deux pixels
+/// de différence.
+///
+/// Les conditions comptent, et aucune n'est exotique : un panneau court
+/// (console ouverte sur une fenêtre ordinaire), une part d'onglet
+/// agrandie à la main du temps où le panneau était haut, et un onglet
+/// dont les commandes prennent de la place. Le contrôle les réunit, et
+/// passe les cinq onglets.
+#[test]
+fn le_panneau_lateral_ne_se_recouvre_jamais_meme_a_l_etroit() {
+    let Some(octets) = binaire_dépreuve("crackme-010").or_else(|| std::fs::read("/bin/ls").ok())
+    else {
+        return;
+    };
+    for onglet in SidebarTab::ALL {
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp::default();
+        app.apply_theme(&ctx);
+        if !app.load_elf(&octets, "crackme-010") {
+            return;
+        }
+        app.show_sidebar = true;
+        app.show_re_tab = true;
+        app.active_tab = onglet;
+        // La poignée a été tirée quand le panneau était haut : la part
+        // gardée pour l'onglet ne tient plus dans ce qui reste.
+        app.sidebar_tab_height = Some(543.0);
+        let état = egui::containers::panel::PanelState {
+            outer_rect: egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(380.0, 543.0)),
+        };
+        ctx.data_mut(|d| d.insert_persisted(egui::Id::new("sidebar_tab"), état));
+        // Un panneau court : une fenêtre ordinaire avec la console
+        // ouverte.
+        let entrée = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1920.0, 820.0),
+            )),
+            ..Default::default()
+        };
+        let mut lignes: Vec<(String, egui::Rect)> = Vec::new();
+        for _ in 0..4 {
+            lignes.clear();
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                    for ligne in &t.galley.rows {
+                        if ligne.glyphs.is_empty() {
+                            continue;
+                        }
+                        // Ce qui se voit, et non ce qui est peint : une
+                        // ligne sortie d'une zone défilante est bien
+                        // dans la liste des formes, mais rognée à néant.
+                        let encre = ligne
+                            .rect_without_leading_space()
+                            .translate(t.pos.to_vec2())
+                            .intersect(clipped.clip_rect);
+                        if encre.width() <= 0.0 || encre.height() <= 0.0 {
+                            continue;
+                        }
+                        lignes.push((t.galley.text().to_owned(), encre));
+                    }
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+        assert!(
+            lignes.len() > 20,
+            "onglet {} : le panneau n'écrit presque rien, le contrôle ne prouverait rien",
+            onglet.id()
+        );
+        for (i, (texte_a, a)) in lignes.iter().enumerate() {
+            for (texte_b, b) in &lignes[i + 1..] {
+                // Deux pixels de tolérance : les jambages d'une ligne
+                // frôlent les hampes de la suivante sans se gêner.
+                assert!(
+                    !a.shrink(2.0).intersects(b.shrink(2.0)),
+                    "onglet {} : « {texte_a} » et « {texte_b} » se recouvrent\n  {a:?}\n  {b:?}",
+                    onglet.id()
+                );
+            }
+        }
+    }
+}
