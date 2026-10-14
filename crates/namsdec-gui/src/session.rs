@@ -174,7 +174,7 @@ impl NamsdecApp {
         self.restoring_session = false;
         if matches!(self.status, Status::Error(_)) {
             self.current_file = None;
-            self.source = DEFAULT_SOURCE.to_owned();
+            self.set_source(DEFAULT_SOURCE.to_owned());
             self.status = Status::Idle;
         }
         // Puis les autres fichiers de la dernière séance, dans leur

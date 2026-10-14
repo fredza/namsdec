@@ -418,6 +418,12 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "<font face='Courier'>w</font> s'arrête sur le crochet puis sur "
          "<font face='Courier'>rbp</font>, au lieu de sauter la moitié de la ligne."),
         ("p",
+         "En mode NORMAL, un <b>clic dans le code y pose le curseur</b>, et la "
+         "touche F1 ou le survol expliquent le mot visé. Le listing d'un binaire "
+         "s'ouvre <b>immédiatement</b>, quelle que soit sa taille : seules les lignes "
+         "à l'écran sont mises en page. Entrer en Insertion redonne l'éditeur "
+         "complet — sélection à la souris, presse-papier, saisie."),
+        ("p",
          "Un <b>compteur</b> se tape devant, comme dans vim : "
          "<font face='Courier'>5j</font> descend de cinq lignes, "
          "<font face='Courier'>3w</font> avance de trois mots, "

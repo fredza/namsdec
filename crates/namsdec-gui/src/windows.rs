@@ -140,13 +140,11 @@ impl NamsdecApp {
             self.disassembler.clone(),
             self.lang,
             state.disasm.len(),
-            // Le nombre de poses du listing : un nom donné à une
-            // fonction récrit le listing, donc le repose, et le filtre
-            // porte aussi sur les noms. Sans cela, renommer pendant
-            // qu'un filtre est posé laissait la liste sur l'ancien nom.
-            // Le zoom repose lui aussi, et fait donc relever pour rien —
-            // une fois, au zoom, et c'est le bon côté de l'erreur.
-            crate::editor::poses_du_texte(),
+            // La révision du texte : un nom donné à une fonction récrit
+            // le listing, et le filtre porte aussi sur les noms. Sans
+            // cela, renommer pendant qu'un filtre est posé laissait la
+            // liste sur l'ancien nom.
+            self.texte_rev,
         );
         if self.disassembly_rows_clé.as_ref() == Some(&clé) {
             return;

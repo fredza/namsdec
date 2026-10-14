@@ -18,6 +18,500 @@ impl NamsdecApp {
         state.addr_to_line.get(&emulator.cpu().regs.rip).copied()
     }
 
+    /// Ce que la vue ligne à ligne sait du texte entier — relevé une
+    /// fois par texte.
+    ///
+    /// Trois questions qui demandent de lire tout le fichier : combien
+    /// de lignes, quelle est la plus longue, et ce qu'il définit
+    /// lui-même. Les reposer à chaque image reviendrait à relire le
+    /// fichier soixante fois par seconde, c'est-à-dire exactement ce que
+    /// cette vue existe pour éviter.
+    fn relever_le_texte(&mut self) {
+        let clé = (self.source.len(), self.texte_rev);
+        if self
+            .relevé_du_texte
+            .as_ref()
+            .is_some_and(|(_, vue)| *vue == clé)
+        {
+            return;
+        }
+        let relevé = vue_listing::ReleveDuTexte::de(&self.source);
+        self.relevé_du_texte = Some((relevé, clé));
+        RELEVÉS_DU_TEXTE.with(|n| n.set(n.get() + 1));
+    }
+
+    /// L'octet où tombe la colonne `colonne` de la ligne `ligne`.
+    ///
+    /// Par l'index des débuts de ligne quand il est à jour — c'est ce
+    /// qui permet de répondre à la ligne 900 000 sans relire les 899 999
+    /// premières —, et par un parcours sinon : le champ de texte sert
+    /// des sources de quelques centaines de lignes, où la question ne se
+    /// pose pas.
+    pub(crate) fn octet_de(&self, ligne: u32, colonne: usize) -> Option<usize> {
+        if let Some((relevé, clé)) = &self.relevé_du_texte
+            && *clé == (self.source.len(), self.texte_rev)
+        {
+            return relevé.octet(&self.source, ligne, colonne);
+        }
+        let début = ligne_début(&self.source, ligne.checked_sub(1)? as usize)?;
+        let texte = ligne_autour(&self.source, début);
+        let dans_la_ligne = texte
+            .char_indices()
+            .nth(colonne)
+            .map_or(texte.len(), |(at, _)| at);
+        Some(début + dans_la_ligne)
+    }
+
+    /// Le curseur du mode Normal : un bloc plein, comme vim.
+    ///
+    /// Le champ de texte n'en peint aucun quand il n'est pas interactif,
+    /// et la vue ligne à ligne n'est pas un champ du tout : dans les
+    /// deux cas, c'est à nous de le montrer. Il se prend sur la position
+    /// que l'application tient (`cursor_pos`), et non dans l'état du
+    /// champ — lequel n'existe pas tant qu'on n'est pas entré en
+    /// Insertion.
+    fn peindre_le_curseur(&self, ui: &egui::Ui, géo: &Géométrie, font_id: &egui::FontId) {
+        let (ligne, colonne) = self.cursor_pos;
+        let Some(rect) = géo.rect_de_ligne(ligne as u32) else {
+            return;
+        };
+        let Some(x) = géo.x_de_colonne(ligne as u32, colonne.saturating_sub(1)) else {
+            return;
+        };
+        // Monospace : la largeur d'une espace est celle de n'importe
+        // quel caractère, et vaut mieux que de mesurer le glyphe visé —
+        // il n'y en a aucun en fin de ligne.
+        let largeur = ui.ctx().fonts_mut(|f| f.glyph_width(font_id, ' '));
+        let bloc = egui::Rect::from_min_size(
+            egui::pos2(x, rect.top()),
+            egui::vec2(largeur, rect.height()),
+        );
+        // Translucide : le caractère sous le bloc doit rester lisible.
+        // L'inversion de vim demanderait de repeindre le glyphe.
+        ui.painter()
+            .rect_filled(bloc, 1.0, self.theme.accent.gamma_multiply(0.45));
+    }
+
+    /// Le listing en mode Normal : peint ligne à ligne, et seulement ce
+    /// qui est à l'écran.
+    ///
+    /// C'est la vue de LECTURE — celle qu'on a sous les yeux devant un
+    /// binaire. Elle ne met en page que les lignes visibles (voir
+    /// `vue_listing`), là où le champ de texte mettait en page tout le
+    /// fichier avant d'en peindre la moindre ligne.
+    ///
+    /// La zone de défilement travaille en VUE et non en contenu : on lui
+    /// déclare la hauteur totale, elle rend la fenêtre qu'on regarde, et
+    /// l'on ne pose que ce qui tombe dedans.
+    fn listing_ui(
+        &mut self,
+        ui: &mut egui::Ui,
+        zone: egui::ScrollArea,
+        current_line: Option<u32>,
+        font_id: &egui::FontId,
+    ) {
+        let theme = self.theme;
+        let pas = vue_listing::pas_de_ligne(ui, theme);
+        let largeur_caractère = ui.ctx().fonts_mut(|f| f.glyph_width(font_id, ' '));
+        // La place offerte, relevée AVANT d'entrer dans la zone : c'est
+        // elle que le contenu doit remplir, sinon les bandes de ligne
+        // s'arrêtent au bout du code et la vue a l'air coupée en deux.
+        let largeur_offerte = ui.available_width();
+        // LE CHAMP DE TEXTE N'EST PAS DESSINÉ : il ne peut pas garder le
+        // clavier. Sans cela, il le gardait de son dernier passage en
+        // Insertion, et les séquences de commandes — `Espace p i` — se
+        // croyaient tapées dans un champ de saisie et ne partaient
+        // jamais.
+        self.editor_focused = false;
+        if ui.ctx().memory(|m| m.has_focus(editor_id())) {
+            ui.ctx().memory_mut(|m| m.surrender_focus(editor_id()));
+        }
+        self.relever_le_texte();
+        let (nb_lignes, colonnes) = self
+            .relevé_du_texte
+            .as_ref()
+            .map(|(relevé, _)| (relevé.lignes(), relevé.colonnes))
+            .unwrap_or((1, 0));
+        let gouttière = gutter_width(nb_lignes, largeur_caractère);
+        // ALLER À UNE LIGNE, C'EST UNE POSITION DE DÉFILEMENT. Le champ
+        // de texte y allait par `scroll_to_rect`, qui demande que la
+        // ligne visée soit posée — or elle ne l'est justement pas quand
+        // elle est loin. Ici on la calcule : elle est à `n` pas du haut,
+        // et on la veut au milieu de la vue.
+        let mut zone = zone;
+        if let Some(ligne) = self.goto_line.or(self.reprise_ligne) {
+            let haut = ligne.saturating_sub(1) as f32 * pas;
+            let centrée = haut - (ui.available_height() - pas) / 2.0;
+            zone = zone.vertical_scroll_offset(centrée.max(0.0));
+        }
+        zone.show_viewport(ui, |ui, vue| {
+            // Ce que la zone doit croire : toute la hauteur du listing,
+            // et la largeur de sa plus longue ligne.
+            ui.set_height(pas * nb_lignes as f32);
+            ui.set_width((gouttière + colonnes as f32 * largeur_caractère).max(largeur_offerte));
+            let première = ((vue.min.y / pas).floor().max(0.0) as u32 + 1).min(nb_lignes);
+            let dernière = (((vue.max.y / pas).ceil() as u32) + 1).min(nb_lignes);
+            let haut = ui.max_rect().top() + (première - 1) as f32 * pas;
+            let gauche = ui.max_rect().left();
+            // Les lignes visibles, mises en page — et rien d'autre.
+            self.relever_le_texte();
+            let posées = {
+                let relevé = self
+                    .relevé_du_texte
+                    .as_ref()
+                    .map(|(relevé, _)| relevé)
+                    .expect("le texte vient d'être relevé");
+                vue_listing::poser_les_lignes(
+                    ui,
+                    theme,
+                    &self.source,
+                    relevé,
+                    première..dernière + 1,
+                    egui::pos2(gauche + gouttière, haut),
+                    pas,
+                )
+            };
+            let géo = Géométrie::Lignes(&posées);
+            // La gouttière n'est pas allouée : elle est posée là où elle
+            // tombe, et prend le clic sur sa bande. Allouer demanderait
+            // un rectangle à la hauteur de TOUT le listing — seize
+            // millions de pixels, que la zone de défilement ne saurait
+            // pas plus peindre que nous.
+            let gutter_rect = egui::Rect::from_min_size(
+                egui::pos2(gauche, haut),
+                egui::vec2(gouttière, posées.galleys.len() as f32 * pas),
+            );
+            let gutter_resp = ui.interact(
+                gutter_rect,
+                ui.id().with("gouttiere_listing"),
+                egui::Sense::click_and_drag(),
+            );
+            // La bande du texte : elle porte l'infobulle d'aide, elle dit
+            // que le pointeur est bien sur du code, et elle reçoit le
+            // clic.
+            let texte_resp = ui.interact(
+                egui::Rect::from_min_max(
+                    egui::pos2(gutter_rect.right(), gutter_rect.top()),
+                    egui::pos2(ui.max_rect().right(), gutter_rect.bottom()),
+                ),
+                ui.id().with("texte_listing"),
+                egui::Sense::click(),
+            );
+            let lignes =
+                self.décor_du_listing(ui, &géo, gutter_rect, &gutter_resp, current_line, font_id);
+            vue_listing::peindre(ui.painter(), &posées);
+            self.paint_matches(ui, &géo, &lignes);
+            self.paint_notes(ui, &géo, &lignes);
+            self.peindre_le_curseur(ui, &géo, font_id);
+            // CLIQUER DANS LE CODE Y POSE LE CURSEUR. Le champ de texte
+            // ne le permettait pas en mode Normal — il y est posé
+            // `interactive(false)`, et un clic n'y faisait rien : on
+            // voyait un curseur qu'aucun geste de souris n'atteignait.
+            // La vue ligne à ligne sait où tombe un point, puisque c'est
+            // ainsi qu'elle peint.
+            if texte_resp.clicked()
+                && let Some(pos) = texte_resp.interact_pointer_pos()
+                && let Some(ligne) = géo.ligne_à(pos.y)
+                && let Some(colonne) = géo.colonne_à(ligne, pos.x)
+                && let Some(octet) = self.octet_de(ligne, colonne)
+            {
+                self.cursor_byte = octet;
+                self.cursor_pos = (ligne as usize, colonne + 1);
+                set_cursor_byte(&ui.ctx().clone(), &self.source, octet);
+                // Cliquer dans le code reprend le clavier à
+                // l'explorateur, comme le faisait le champ de texte.
+                self.explorer_focused = false;
+            }
+            // La correction proposée s'applique sur Alt, qu'on lise ou
+            // qu'on écrive : elle est annoncée dans la barre d'état, et
+            // une annonce qu'on ne peut pas confirmer ne sert à rien.
+            self.apply_fix_if_confirmed();
+            self.hover_help_ui(ui, &géo, &texte_resp);
+        });
+        // La demande d'aller à une ligne est consommée ici : la vue y est
+        // allée, et l'y ramener à chaque image empêcherait de défiler.
+        //
+        // Le curseur suit, et le MODE NE CHANGE PAS. Le champ de texte,
+        // lui, passait en Insertion et prenait le clavier : c'était
+        // juste pour un « aller à la ligne » tapé dans un source, et
+        // faux pour un clic sur une adresse dans un panneau d'analyse —
+        // on venait LIRE ce qu'il y a là, et l'on se retrouvait en train
+        // d'éditer un listing de binaire.
+        if let Some(ligne) = self.goto_line.take().or(self.reprise_ligne.take())
+            && let Some(octet) = self.octet_de(ligne, 0)
+        {
+            self.cursor_byte = octet;
+            self.cursor_pos = (ligne as usize, 1);
+            set_cursor_byte(&ui.ctx().clone(), &self.source, octet);
+        }
+    }
+
+    /// La gouttière et ce qui se peint SOUS le texte : les numéros de
+    /// ligne, les points d'arrêt, la bande de chaleur, la ligne courante,
+    /// les diagnostics et les occurrences de la recherche.
+    ///
+    /// Un seul code pour les deux vues — le champ de texte et la vue
+    /// ligne à ligne —, et c'est tout l'intérêt de `Géométrie` : deux
+    /// gouttières qui dévieraient l'une de l'autre se verraient au
+    /// changement de mode, les numéros sautant d'un pixel sous les yeux.
+    ///
+    /// Rend les lignes visibles, dont l'appelant se sert pour peindre le
+    /// texte et ce qui va par-dessus.
+    fn décor_du_listing(
+        &mut self,
+        ui: &egui::Ui,
+        géo: &Géométrie,
+        gutter_rect: egui::Rect,
+        gutter_resp: &egui::Response,
+        current_line: Option<u32>,
+        font_id: &egui::FontId,
+    ) -> std::ops::RangeInclusive<u32> {
+        let theme = self.theme;
+        let mut clicked_line = None;
+        let click_y = gutter_resp.interact_pointer_pos().map(|p| p.y);
+        // Combien de fois chaque ligne a tourné. C'est le
+        // profil du programme : la boucle qu'on croyait
+        // écrire a-t-elle tourné cinq fois, ou une seule ?
+        // La branche qu'on croyait prendre a-t-elle
+        // seulement été atteinte ? Rien d'autre à l'écran
+        // ne répond à ça.
+        let passages = self.line_visits();
+        // Le plus grand nombre de passages : c'est lui qui
+        // donne l'échelle. Une ligne exécutée mille fois
+        // dans un programme qui en compte mille n'est pas
+        // chaude — elle est la normale.
+        let plus_chaude = passages.values().copied().max().unwrap_or(0);
+        // Les lignes dont nasm s'est plaint : la console
+        // les liste, mais c'est ici qu'on écrit, et une
+        // erreur qu'on ne voit pas là où l'on tape ne
+        // sert qu'à moitié.
+        let fautives: BTreeMap<u32, Severity> = self
+            .diagnostics
+            .iter()
+            .filter(|d| d.line > 0)
+            .map(|d| (d.line, d.severity))
+            .collect();
+        let largeur_ligne = gutter_rect.width() + ui.available_width();
+        // La ligne sous le pointeur, s'il est dans la
+        // gouttière. Rien à l'écran ne disait qu'on
+        // pouvait cliquer là : le manuel l'écrit, la
+        // gouttière se taisait. Un point fantôme le dit
+        // maintenant, comme le fait n'importe quel
+        // éditeur — et c'est là que ça s'apprend.
+        //
+        // La position du POINTEUR, et non
+        // `gutter_resp.hover_pos()` : la gouttière vit
+        // dans une zone de défilement, laquelle s'inscrit
+        // elle-même comme sensible au glisser pour se
+        // faire tirer. Elle passe donc devant, et la
+        // gouttière n'est jamais « survolée » au sens
+        // d'egui — c'est pour cela que l'infobulle du
+        // nombre de passages ne paraissait pas non plus.
+        // Une bande de gouttière est une géométrie : on
+        // la traite comme telle.
+        let survolée = ui
+            .ctx()
+            .pointer_latest_pos()
+            .filter(|p| gutter_rect.contains(*p) && ui.clip_rect().contains(*p))
+            .and_then(|p| géo.ligne_à(p.y));
+        // Les lignes à l'écran, trouvées par dichotomie.
+        //
+        // Peindre un numéro pour chacune des quinze mille
+        // lignes d'un binaire coûtait une frame entière,
+        // alors que trente sont à l'écran : on s'en tient
+        // depuis longtemps à ce que la zone montre. Mais on
+        // les ÉCARTAIT une par une, et c'était le vrai
+        // prix — neuf millisecondes par image sur un
+        // listing d'un million de lignes, pour en retenir
+        // soixante (mesuré le 14 octobre 2026), soit une
+        // image entière à soixante hertz dépensée à ne
+        // rien peindre.
+        //
+        // Le `intersects` plus bas reste : il ne coûte rien
+        // sur une soixantaine de rangées, et il garde la
+        // peinture juste si l'une venait à sortir de la
+        // tranche.
+        let visible_rect = ui.clip_rect();
+        let lignes = géo.lignes_dans(visible_rect);
+        let (première_visible, dernière_visible) = (*lignes.start(), *lignes.end());
+        // Les occurrences de la recherche sont relevées une
+        // fois, et non à chaque image (voir
+        // `refresh_find_hits`).
+        self.refresh_find_hits();
+        let painter = ui.painter();
+
+        // Les occurrences de la recherche, peintes sous
+        // le texte : une barre qui compte « 3/7 » sans
+        // montrer où ils sont ne sert qu'à moitié.
+        //
+        // Celles qui sont à l'écran, et elles seules : les
+        // autres se peindraient hors de la vue, et les
+        // situer coûtait deux parcours complets du texte
+        // chacune (voir `text::Place`).
+        if let Some(find) = &self.find {
+            let vues = places_entre(&self.find_hits, première_visible, dernière_visible);
+            for rang in vues {
+                let place = &self.find_hits[rang];
+                // Une occurrence à cheval sur deux lignes
+                // n'existe pas ici : une recherche ne
+                // contient pas de retour à la ligne.
+                let Some(rect) = géo.rect_de_place(place) else {
+                    continue;
+                };
+                let teinte = if rang == find.current {
+                    theme.accent.gamma_multiply(0.45)
+                } else {
+                    theme.accent.gamma_multiply(0.18)
+                };
+                painter.rect_filled(rect, 2.0, teinte);
+            }
+        }
+        for line in lignes.clone() {
+            let Some(row_rect) = géo.rect_de_ligne(line) else {
+                continue;
+            };
+            if !row_rect.intersects(visible_rect) {
+                continue;
+            }
+
+            if gutter_resp.clicked()
+                && let Some(y) = click_y
+                && row_rect.y_range().contains(y)
+            {
+                clicked_line = Some(line);
+            }
+
+            // La ligne où le processeur est arrêté, en
+            // premier : une bande pâle sur toute la
+            // largeur. La flèche de la gouttière et le
+            // numéro en couleur d'accent la disaient
+            // déjà, mais tous deux sont à GAUCHE — on
+            // suit du regard la colonne du code, et il
+            // fallait revenir en bord d'écran pour
+            // retrouver où l'on en était. Une bande se
+            // voit sans qu'on la cherche.
+            //
+            // Douze pour cent : assez pour distinguer la
+            // ligne d'un coup d'œil, assez peu pour que
+            // la coloration syntaxique se lise dessus
+            // sans rien perdre.
+            // Depuis le bord de la gouttière, et non depuis le texte :
+            // la bande couvre la ligne ENTIÈRE, numéro compris. C'est
+            // l'abscisse du texte que la géométrie donne — le reste de
+            // la rangée se prend ici.
+            let bande = egui::Rect::from_min_size(
+                egui::pos2(gutter_rect.left(), row_rect.top()),
+                egui::vec2(largeur_ligne, row_rect.height()),
+            );
+            if current_line == Some(line) {
+                painter.rect_filled(bande, 0.0, theme.accent.gamma_multiply(0.12));
+            }
+            // Le bandeau des diagnostics ensuite, sous le
+            // reste.
+            if let Some(severity) = fautives.get(&line) {
+                let teinte = if *severity == Severity::Error {
+                    theme.bad
+                } else {
+                    theme.warn
+                };
+                painter.rect_filled(
+                    bande,
+                    0.0,
+                    // Assez pour se voir, assez peu pour
+                    // laisser lire le code par-dessus.
+                    teinte.gamma_multiply(0.18),
+                );
+            }
+
+            let is_current = current_line == Some(line);
+            let point = egui::pos2(gutter_rect.left() + 8.0, row_rect.center().y);
+            if self.breakpoint_lines.contains(&line) {
+                painter.circle_filled(point, 4.0, theme.bad);
+            } else if survolée == Some(line) {
+                // Pâle, et au même endroit que le vrai :
+                // il montre ce qui va se passer, il ne
+                // prétend pas que c'est déjà fait.
+                painter.circle_filled(point, 4.0, theme.bad.gamma_multiply(0.38));
+            }
+            if is_current {
+                let arrow_rect = egui::Rect::from_center_size(
+                    egui::pos2(gutter_rect.left() + 20.0, row_rect.center().y),
+                    egui::vec2(10.0, 10.0),
+                );
+                icon_run(painter, arrow_rect, theme.accent);
+            }
+            let color = if is_current {
+                theme.accent
+            } else {
+                ui.visuals().weak_text_color()
+            };
+            painter.text(
+                egui::pos2(gutter_rect.right() - GUTTER_PAD, row_rect.center().y),
+                egui::Align2::RIGHT_CENTER,
+                line.to_string(),
+                font_id.clone(),
+                color,
+            );
+            // La chaleur de la ligne : une bande à
+            // l'extrême gauche, d'autant plus vive que la
+            // ligne a tourné souvent. Un nombre par ligne
+            // se lit une ligne à la fois ; une bande de
+            // couleur se lit d'un coup d'œil, et c'est
+            // ainsi qu'on repère la boucle qui coûte.
+            if let Some(count) = passages.get(&line) {
+                painter.rect_filled(
+                    egui::Rect::from_min_size(
+                        egui::pos2(gutter_rect.left(), row_rect.top()),
+                        egui::vec2(HEAT_WIDTH, row_rect.height()),
+                    ),
+                    0.0,
+                    heat_colour(theme, *count, plus_chaude),
+                );
+            }
+        }
+        // Combien de fois, au survol : la bande dit
+        // « souvent », le nombre dit « mille deux cent
+        // trois ». Quel que soit le mode de l'éditeur —
+        // on regarde un programme bien plus souvent
+        // qu'on ne le tape.
+        // La main sur la gouttière : le pointeur dit
+        // « ceci se clique » avant même qu'on ait lu quoi
+        // que ce soit.
+        if survolée.is_some() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
+        if self.show_tooltips
+            && let Some(ligne) = survolée
+        {
+            // Le nombre de passages s'il existe — la
+            // bande dit « souvent », le nombre dit « mille
+            // deux cent trois ». Sinon, ce que le clic
+            // ferait : c'est la question qu'on se pose la
+            // première fois, et la seule fois qui compte.
+            let phrases = strings(self.lang);
+            let texte = match passages.get(&ligne) {
+                Some(count) if self.lang == Lang::Fr => {
+                    format!("Ligne {ligne} : exécutée {count} fois")
+                }
+                Some(count) => format!("Line {ligne}: run {count} times"),
+                None if self.breakpoint_lines.contains(&ligne) => {
+                    phrases.gutter_clear_breakpoint.to_owned()
+                }
+                None => phrases.gutter_set_breakpoint.to_owned(),
+            };
+            gutter_resp.clone().show_tooltip_text(texte);
+        }
+        if let Some(line) = clicked_line {
+            if self.breakpoint_lines.contains(&line) {
+                self.breakpoint_lines.remove(&line);
+            } else {
+                self.breakpoint_lines.insert(line);
+            }
+            self.sync_breakpoints();
+        }
+        lignes
+    }
+
     /// Pose le curseur au début d'une ligne, et y amène la vue.
     ///
     /// Appelé au rendu de l'éditeur, une fois seulement : le curseur
@@ -94,6 +588,9 @@ impl NamsdecApp {
         // Avant de dessiner : la barre d'état, peinte plus tôt dans la
         // frame, lit ce qu'on calcule ici.
         self.refresh_fix();
+        // Et avant les deux vues : l'une et l'autre en ont besoin (voir
+        // `relever_alt`).
+        self.relever_alt(ui);
         let theme = self.theme;
         // Les fichiers ouverts, en tête : on passe de l'un à l'autre
         // sans rien perdre de ce qu'on faisait sur les autres.
@@ -290,6 +787,15 @@ impl NamsdecApp {
             if suivre {
                 zone = zone.horizontal_scroll_offset(0.0);
             }
+            // EN MODE NORMAL, ON LIT — et lire ne demande pas de mettre
+            // tout le fichier en page. La vue ligne à ligne ne pose que
+            // ce qui est à l'écran (voir `vue_listing`) ; le champ de
+            // texte, avec tout ce qu'il porte — saisie, sélection,
+            // presse-papier —, revient dès qu'on entre en Insertion.
+            if self.editor_mode == EditorMode::Normal {
+                self.listing_ui(ui, zone, current_line, &font_id);
+                return;
+            }
             zone.show(ui, |ui| {
                 // Calculé UNE fois ici, en dehors du `TextEdit`, pour que
                 // la gouttière connaisse la position Y *exacte* de
@@ -309,37 +815,21 @@ impl NamsdecApp {
                     // `item_spacing` : l'espacement horizontal est mis
                     // à zéro juste au-dessus pour que le `TextEdit`
                     // commence exactement où la gouttière s'arrête.
-                    const GUTTER_PAD: f32 = 16.0;
-                    const GUTTER_WIDTH: f32 = 38.0 + GUTTER_PAD;
-                    // Combien de fois chaque ligne a tourné. C'est le
-                    // profil du programme : la boucle qu'on croyait
-                    // écrire a-t-elle tourné cinq fois, ou une seule ?
-                    // La branche qu'on croyait prendre a-t-elle
-                    // seulement été atteinte ? Rien d'autre à l'écran
-                    // ne répond à ça.
-                    let passages = self.line_visits();
-                    // Le plus grand nombre de passages : c'est lui qui
-                    // donne l'échelle. Une ligne exécutée mille fois
-                    // dans un programme qui en compte mille n'est pas
-                    // chaude — elle est la normale.
-                    let plus_chaude = passages.values().copied().max().unwrap_or(0);
+                    let largeur_caractère = ui.ctx().fonts_mut(|f| f.glyph_width(&font_id, ' '));
                     let (gutter_rect, gutter_resp) = ui.allocate_exact_size(
-                        egui::vec2(GUTTER_WIDTH, galley.rect.height().max(1.0)),
+                        egui::vec2(
+                            gutter_width(galley.rows.len() as u32, largeur_caractère),
+                            galley.rect.height().max(1.0),
+                        ),
                         egui::Sense::click_and_drag(),
                     );
-                    let click_y = gutter_resp.interact_pointer_pos().map(|p| p.y);
-                    let mut clicked_line = None;
-                    // Les lignes dont nasm s'est plaint : la console
-                    // les liste, mais c'est ici qu'on écrit, et une
-                    // erreur qu'on ne voit pas là où l'on tape ne
-                    // sert qu'à moitié.
-                    let fautives: BTreeMap<u32, Severity> = self
-                        .diagnostics
-                        .iter()
-                        .filter(|d| d.line > 0)
-                        .map(|d| (d.line, d.severity))
-                        .collect();
-                    let largeur_ligne = gutter_rect.width() + ui.available_width();
+                    // La géométrie du champ : son galley porte toutes
+                    // les lignes, et il commence là où la gouttière
+                    // s'arrête (l'espacement horizontal est à zéro).
+                    let géo = Géométrie::Champ {
+                        galley: &galley,
+                        origine: egui::pos2(gutter_rect.right(), gutter_rect.top()),
+                    };
                     // ALLER À UNE LIGNE, C'EST L'AMENER SOUS LES YEUX.
                     //
                     // Poser le curseur ne suffisait pas, et c'est le
@@ -349,244 +839,23 @@ impl NamsdecApp {
                     // lorsque la sélection change PENDANT que le champ
                     // a le focus. Quand c'est nous qui posons le
                     // curseur dans l'état du champ, il n'a rien changé
-                    // à l'image suivante — donc aucun défilement. On
-                    // lisait la ligne 60 749 dans la barre d'état,
-                    // tandis que le listing restait à la ligne 1.
+                    // à l'image suivante — donc aucun défilement.
                     //
                     // Centrée, et non simplement rendue visible : on
                     // vient lire ce qu'il y a AUTOUR de cette ligne.
                     if let Some(ligne) = self.goto_line.or(self.reprise_ligne)
-                        && let Some(row) = galley.rows.get(ligne.saturating_sub(1) as usize)
+                        && let Some(rect) = géo.rect_de_ligne(ligne)
                     {
-                        ui.scroll_to_rect(
-                            row.rect().translate(gutter_rect.min.to_vec2()),
-                            Some(egui::Align::Center),
-                        );
+                        ui.scroll_to_rect(rect, Some(egui::Align::Center));
                     }
-                    // La ligne sous le pointeur, s'il est dans la
-                    // gouttière. Rien à l'écran ne disait qu'on
-                    // pouvait cliquer là : le manuel l'écrit, la
-                    // gouttière se taisait. Un point fantôme le dit
-                    // maintenant, comme le fait n'importe quel
-                    // éditeur — et c'est là que ça s'apprend.
-                    //
-                    // La position du POINTEUR, et non
-                    // `gutter_resp.hover_pos()` : la gouttière vit
-                    // dans une zone de défilement, laquelle s'inscrit
-                    // elle-même comme sensible au glisser pour se
-                    // faire tirer. Elle passe donc devant, et la
-                    // gouttière n'est jamais « survolée » au sens
-                    // d'egui — c'est pour cela que l'infobulle du
-                    // nombre de passages ne paraissait pas non plus.
-                    // Une bande de gouttière est une géométrie : on
-                    // la traite comme telle.
-                    let survolée = ui
-                        .ctx()
-                        .pointer_latest_pos()
-                        .filter(|p| gutter_rect.contains(*p) && ui.clip_rect().contains(*p))
-                        .and_then(|p| ligne_sous(&galley, gutter_rect, p));
-                    // Les lignes à l'écran, trouvées par dichotomie.
-                    //
-                    // Peindre un numéro pour chacune des quinze mille
-                    // lignes d'un binaire coûtait une frame entière,
-                    // alors que trente sont à l'écran : on s'en tient
-                    // depuis longtemps à ce que la zone montre. Mais on
-                    // les ÉCARTAIT une par une, et c'était le vrai
-                    // prix — neuf millisecondes par image sur un
-                    // listing d'un million de lignes, pour en retenir
-                    // soixante (mesuré le 14 octobre 2026), soit une
-                    // image entière à soixante hertz dépensée à ne
-                    // rien peindre.
-                    //
-                    // Le `intersects` plus bas reste : il ne coûte rien
-                    // sur une soixantaine de rangées, et il garde la
-                    // peinture juste si l'une venait à sortir de la
-                    // tranche.
-                    let visible_rect = ui.clip_rect();
-                    let tranche =
-                        rangées_visibles(&galley, gutter_rect.min.to_vec2(), visible_rect);
-                    let première_visible = tranche.start as u32 + 1;
-                    let dernière_visible = tranche.end as u32;
-                    // Les occurrences de la recherche sont relevées une
-                    // fois, et non à chaque image (voir
-                    // `refresh_find_hits`).
-                    self.refresh_find_hits();
-                    let painter = ui.painter();
-
-                    // Les occurrences de la recherche, peintes sous
-                    // le texte : une barre qui compte « 3/7 » sans
-                    // montrer où ils sont ne sert qu'à moitié.
-                    //
-                    // Celles qui sont à l'écran, et elles seules : les
-                    // autres se peindraient hors de la vue, et les
-                    // situer coûtait deux parcours complets du texte
-                    // chacune (voir `text::Place`).
-                    if let Some(find) = &self.find {
-                        let vues =
-                            places_entre(&self.find_hits, première_visible, dernière_visible);
-                        for rang in vues {
-                            let place = &self.find_hits[rang];
-                            // Une occurrence à cheval sur deux lignes
-                            // n'existe pas ici : une recherche ne
-                            // contient pas de retour à la ligne.
-                            let Some(rect) = rect_de_place(&galley, place) else {
-                                continue;
-                            };
-                            let rect = rect.translate(
-                                gutter_rect.min.to_vec2() + egui::vec2(gutter_rect.width(), 0.0),
-                            );
-                            let teinte = if rang == find.current {
-                                theme.accent.gamma_multiply(0.45)
-                            } else {
-                                theme.accent.gamma_multiply(0.18)
-                            };
-                            painter.rect_filled(rect, 2.0, teinte);
-                        }
-                    }
-                    for (rang, row) in galley.rows[tranche.clone()].iter().enumerate() {
-                        let line = (tranche.start + rang + 1) as u32;
-                        let row_rect = row.rect().translate(gutter_rect.min.to_vec2());
-                        if !row_rect.intersects(visible_rect) {
-                            continue;
-                        }
-
-                        if gutter_resp.clicked()
-                            && let Some(y) = click_y
-                            && row_rect.y_range().contains(y)
-                        {
-                            clicked_line = Some(line);
-                        }
-
-                        // La ligne où le processeur est arrêté, en
-                        // premier : une bande pâle sur toute la
-                        // largeur. La flèche de la gouttière et le
-                        // numéro en couleur d'accent la disaient
-                        // déjà, mais tous deux sont à GAUCHE — on
-                        // suit du regard la colonne du code, et il
-                        // fallait revenir en bord d'écran pour
-                        // retrouver où l'on en était. Une bande se
-                        // voit sans qu'on la cherche.
-                        //
-                        // Douze pour cent : assez pour distinguer la
-                        // ligne d'un coup d'œil, assez peu pour que
-                        // la coloration syntaxique se lise dessus
-                        // sans rien perdre.
-                        if current_line == Some(line) {
-                            painter.rect_filled(
-                                egui::Rect::from_min_size(
-                                    row_rect.min,
-                                    egui::vec2(largeur_ligne, row_rect.height()),
-                                ),
-                                0.0,
-                                theme.accent.gamma_multiply(0.12),
-                            );
-                        }
-                        // Le bandeau des diagnostics ensuite, sous le
-                        // reste.
-                        if let Some(severity) = fautives.get(&line) {
-                            let teinte = if *severity == Severity::Error {
-                                theme.bad
-                            } else {
-                                theme.warn
-                            };
-                            painter.rect_filled(
-                                egui::Rect::from_min_size(
-                                    row_rect.min,
-                                    egui::vec2(largeur_ligne, row_rect.height()),
-                                ),
-                                0.0,
-                                // Assez pour se voir, assez peu pour
-                                // laisser lire le code par-dessus.
-                                teinte.gamma_multiply(0.18),
-                            );
-                        }
-
-                        let is_current = current_line == Some(line);
-                        let point = egui::pos2(gutter_rect.left() + 8.0, row_rect.center().y);
-                        if self.breakpoint_lines.contains(&line) {
-                            painter.circle_filled(point, 4.0, theme.bad);
-                        } else if survolée == Some(line) {
-                            // Pâle, et au même endroit que le vrai :
-                            // il montre ce qui va se passer, il ne
-                            // prétend pas que c'est déjà fait.
-                            painter.circle_filled(point, 4.0, theme.bad.gamma_multiply(0.38));
-                        }
-                        if is_current {
-                            let arrow_rect = egui::Rect::from_center_size(
-                                egui::pos2(gutter_rect.left() + 20.0, row_rect.center().y),
-                                egui::vec2(10.0, 10.0),
-                            );
-                            icon_run(painter, arrow_rect, theme.accent);
-                        }
-                        let color = if is_current {
-                            theme.accent
-                        } else {
-                            ui.visuals().weak_text_color()
-                        };
-                        painter.text(
-                            egui::pos2(gutter_rect.right() - GUTTER_PAD, row_rect.center().y),
-                            egui::Align2::RIGHT_CENTER,
-                            line.to_string(),
-                            font_id.clone(),
-                            color,
-                        );
-                        // La chaleur de la ligne : une bande à
-                        // l'extrême gauche, d'autant plus vive que la
-                        // ligne a tourné souvent. Un nombre par ligne
-                        // se lit une ligne à la fois ; une bande de
-                        // couleur se lit d'un coup d'œil, et c'est
-                        // ainsi qu'on repère la boucle qui coûte.
-                        if let Some(count) = passages.get(&line) {
-                            painter.rect_filled(
-                                egui::Rect::from_min_size(
-                                    egui::pos2(gutter_rect.left(), row_rect.top()),
-                                    egui::vec2(HEAT_WIDTH, row_rect.height()),
-                                ),
-                                0.0,
-                                heat_colour(theme, *count, plus_chaude),
-                            );
-                        }
-                    }
-                    // Combien de fois, au survol : la bande dit
-                    // « souvent », le nombre dit « mille deux cent
-                    // trois ». Quel que soit le mode de l'éditeur —
-                    // on regarde un programme bien plus souvent
-                    // qu'on ne le tape.
-                    // La main sur la gouttière : le pointeur dit
-                    // « ceci se clique » avant même qu'on ait lu quoi
-                    // que ce soit.
-                    if survolée.is_some() {
-                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                    }
-                    if self.show_tooltips
-                        && let Some(ligne) = survolée
-                    {
-                        // Le nombre de passages s'il existe — la
-                        // bande dit « souvent », le nombre dit « mille
-                        // deux cent trois ». Sinon, ce que le clic
-                        // ferait : c'est la question qu'on se pose la
-                        // première fois, et la seule fois qui compte.
-                        let phrases = strings(self.lang);
-                        let texte = match passages.get(&ligne) {
-                            Some(count) if self.lang == Lang::Fr => {
-                                format!("Ligne {ligne} : exécutée {count} fois")
-                            }
-                            Some(count) => format!("Line {ligne}: run {count} times"),
-                            None if self.breakpoint_lines.contains(&ligne) => {
-                                phrases.gutter_clear_breakpoint.to_owned()
-                            }
-                            None => phrases.gutter_set_breakpoint.to_owned(),
-                        };
-                        gutter_resp.clone().show_tooltip_text(texte);
-                    }
-                    if let Some(line) = clicked_line {
-                        if self.breakpoint_lines.contains(&line) {
-                            self.breakpoint_lines.remove(&line);
-                        } else {
-                            self.breakpoint_lines.insert(line);
-                        }
-                        self.sync_breakpoints();
-                    }
+                    let lignes_vues = self.décor_du_listing(
+                        ui,
+                        &géo,
+                        gutter_rect,
+                        &gutter_resp,
+                        current_line,
+                        &font_id,
+                    );
 
                     // La largeur de repli que propose egui est
                     // délibérément ignorée : voir `layout_code`.
@@ -649,16 +918,23 @@ impl NamsdecApp {
                         .interactive(self.editor_mode == EditorMode::Insert)
                         .layouter(&mut layouter)
                         .show(ui);
+                    // Le champ écrit dans le tampon lui-même : c'est la
+                    // troisième porte par où le texte change, et la
+                    // seule qui ne passe pas par `set_source`. Elle le
+                    // dit ici (voir `texte_a_changé`).
+                    if output.response.response.changed() {
+                        self.texte_a_changé();
+                    }
                     // Les occurrences suivies, peintes *sous* le
                     // texte : par-dessus, même translucide, le fond
                     // ternirait les lettres — or c'est le mot qu'on
                     // cherche à lire, pas le rectangle.
-                    self.paint_matches(ui, &output);
+                    self.paint_matches(ui, &géo, &lignes_vues);
                     // Les commentaires qu'on a écrits, à droite de
                     // leur ligne : c'est là qu'on les lit, et non
                     // dans un panneau à côté qu'il faudrait mettre
                     // en face du code de mémoire.
-                    self.paint_notes(ui, &output);
+                    self.paint_notes(ui, &géo, &lignes_vues);
                     // En mode Normal, le `TextEdit` n'est pas
                     // interactif : egui ne peint aucun caret et ne
                     // rend plus de `cursor_range`. La position du
@@ -730,7 +1006,7 @@ impl NamsdecApp {
                             let at = self.cursor_byte;
                             match pair_edit(&self.source, at) {
                                 PairEdit::Close(fermant) => {
-                                    self.source.insert(at, fermant);
+                                    self.source_mut().insert(at, fermant);
                                     // Le curseur ne bouge pas : il
                                     // reste entre les deux, qui est
                                     // le seul endroit utile.
@@ -745,7 +1021,7 @@ impl NamsdecApp {
                                             .chars()
                                             .next_back()
                                             .map_or(0, char::len_utf8);
-                                    self.source.replace_range(début..at, "");
+                                    self.source_mut().replace_range(début..at, "");
                                     set_cursor_byte(ui.ctx(), &self.source, at);
                                 }
                                 PairEdit::None => {}
@@ -762,7 +1038,7 @@ impl NamsdecApp {
                             let at = self.cursor_byte;
                             let fin =
                                 at + self.source[at..].chars().next().map_or(0, char::len_utf8);
-                            self.source.replace_range(at..fin, "");
+                            self.source_mut().replace_range(at..fin, "");
                         }
                         if self.auto_indent
                             && output.response.response.has_focus()
@@ -778,7 +1054,7 @@ impl NamsdecApp {
                             );
                             let blancs = indent.trim_start_matches('\n');
                             if !blancs.is_empty() && at <= self.source.len() {
-                                self.source.insert_str(at, blancs);
+                                self.source_mut().insert_str(at, blancs);
                                 let cible = byte_to_char(&self.source, at + blancs.len());
                                 if let Some(mut state) =
                                     egui::TextEdit::load_state(ui.ctx(), editor_id())
@@ -795,7 +1071,7 @@ impl NamsdecApp {
                     }
                     self.completion_ui(ui, &output);
                     self.apply_fix_if_confirmed();
-                    self.hover_help_ui(ui, &output);
+                    self.hover_help_ui(ui, &géo, &output.response.response);
                     // Après le `TextEdit` : son état existe, et c'est
                     // lui qu'on déplace.
                     self.apply_goto_line(&ui.ctx().clone());
@@ -1077,11 +1353,11 @@ impl NamsdecApp {
     /// quarantaine de millisecondes par image pour une position qui, le
     /// plus souvent, n'a pas bougé d'un caractère.
     ///
-    /// La clé est le rang du caractère, la longueur du texte et le
-    /// nombre de poses du listing : le texte ne peut pas avoir changé
-    /// sans qu'il ait été reposé (voir `poses_du_texte`).
+    /// La clé est le rang du caractère, la longueur du texte et la
+    /// révision de celui-ci : elle avance dès qu'on l'écrit (voir
+    /// `texte_a_changé`).
     pub(crate) fn cursor_place(&mut self, char_index: usize) -> (usize, usize, usize) {
-        let clé = (char_index, self.source.len(), poses_du_texte());
+        let clé = (char_index, self.source.len(), self.texte_rev);
         if let Some(vu) = &self.cursor_place_vu
             && vu.clé == clé
         {
@@ -1107,10 +1383,8 @@ impl NamsdecApp {
     /// pas.
     ///
     /// La clé dit ce dont le relevé dépend : la requête, la longueur du
-    /// texte, et le nombre de fois que le listing a été POSÉ — lequel
-    /// augmente quand le texte change, puisque c'est le texte lui-même
-    /// qui sert de clé au cache de mise en page (voir
-    /// `editor::poses_du_texte`). Une comparaison de plus sur seize
+    /// texte, et sa révision — laquelle avance dès que le texte est
+    /// écrit (voir `texte_a_changé`). Une comparaison de plus sur seize
     /// mégaoctets à chaque image n'apprendrait rien de mieux.
     pub(crate) fn refresh_find_hits(&mut self) {
         let Some(find) = &self.find else {
@@ -1118,7 +1392,7 @@ impl NamsdecApp {
             self.find_hits_clé = None;
             return;
         };
-        let clé = (find.query.clone(), self.source.len(), poses_du_texte());
+        let clé = (find.query.clone(), self.source.len(), self.texte_rev);
         if self.find_hits_clé.as_ref() == Some(&clé) {
             return;
         }
@@ -1495,7 +1769,6 @@ pub(crate) fn layout_code(
             const { std::cell::RefCell::new(None) };
     }
 
-    RECONNAISSANCES.with(|n| n.set(n.get() + 1));
     // Le zoom change la taille de la police sans toucher au texte.
     let taille = egui::TextStyle::Monospace.resolve(ui.style()).size;
     let thème = theme as *const Theme as usize;
@@ -1524,22 +1797,22 @@ pub(crate) fn layout_code(
     galley
 }
 
-// Combien de fois on a demandé au cache de RECONNAÎTRE le texte.
+// Combien de fois le texte entier a été relevé pour la vue ligne à
+// ligne.
 //
-// Reconnaître, c'est le comparer en entier : une milliseconde et demie
-// sur un listing de seize mégaoctets. La gouttière le demande, puis le
-// champ de texte — deux fois par image, pour la même réponse. Le
-// compter est ce qui permet à un contrôle de retenir le prêt d'une
-// image à l'autre (voir `editor_ui`, « LA MISE EN PAGE QUE LA
-// GOUTTIÈRE VIENT DE FAIRE »).
+// Un relevé lit tout le fichier — compter les lignes, trouver la plus
+// longue, retenir les macros et les étiquettes. Une fois par texte est
+// le prix juste ; une fois par image serait exactement ce que cette vue
+// prétend éviter, et c'est le genre d'erreur qui ne se voit pas à
+// l'écran.
 thread_local! {
-    static RECONNAISSANCES: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    static RELEVÉS_DU_TEXTE: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
 
-/// Combien de fois le cache de mise en page a eu à reconnaître le texte.
+/// Combien de fois le texte entier a été relevé.
 #[cfg(test)]
-pub(crate) fn reconnaissances_du_texte() -> u64 {
-    RECONNAISSANCES.with(std::cell::Cell::get)
+pub(crate) fn relevés_du_texte() -> u64 {
+    RELEVÉS_DU_TEXTE.with(std::cell::Cell::get)
 }
 
 // Combien de fois les occurrences de la recherche ont été relevées.

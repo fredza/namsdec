@@ -85,6 +85,7 @@ const SOURCES_DE_L_INTERFACE: &[(&str, &str)] = &[
     ("text.rs", include_str!("text.rs")),
     ("timeline.rs", include_str!("timeline.rs")),
     ("tools.rs", include_str!("tools.rs")),
+    ("vue_listing.rs", include_str!("vue_listing.rs")),
     ("widgets.rs", include_str!("widgets.rs")),
     ("windows.rs", include_str!("windows.rs")),
 ];
@@ -4708,16 +4709,12 @@ fn clicking_a_diagnostic_moves_the_cursor_to_its_line() {
     }
 
     assert!(app.goto_line.is_none(), "la demande est consommée");
-    let state = egui::TextEdit::load_state(&ctx, editor_id()).expect("l'éditeur a un état");
-    let curseur = state
-        .cursor
-        .char_range()
-        .expect("un curseur")
-        .primary
-        .index
-        .0;
-    // « global _start\n » = 14 caractères, « section .text\n » = 14.
-    assert_eq!(curseur, 28, "le curseur est au début de la ligne 3");
+    // Le curseur est celui de l'APPLICATION : en mode Normal, le champ
+    // de texte n'est pas dessiné, et c'est elle qui tient la position
+    // (voir `vue_listing`).
+    // « global _start\n » = 14 octets, « section .text\n » = 14.
+    assert_eq!(app.cursor_byte, 28, "le curseur est au début de la ligne 3");
+    assert_eq!(app.cursor_pos, (3, 1), "et la barre d'état le dit");
 }
 
 /// Les octets qui viennent de changer ressortent dans le vidage, comme un
@@ -4902,17 +4899,18 @@ fn hovering_an_instruction_explains_it() {
             // sa place se lit dans le galley du code, pas dans des
             // coordonnées devinées.
             if pointer.is_none() {
-                // Le *dernier* : le code est peint deux fois, une fois
-                // pour aligner la gouttière et une fois par le champ de
-                // texte, et c'est le second qui reçoit le pointeur.
+                // Chaque ligne est peinte pour elle-même (voir
+                // `vue_listing`) : on vise celle qui porte `movzx`, et
+                // non la quatrième rangée d'une galère unique.
                 let (pos, galley) = texts
                     .iter()
-                    .rfind(|(_, g)| g.text().starts_with("global _start"))
-                    .expect("le code doit être dessiné");
-                let row = galley.rows.get(3).expect("quatre lignes de code");
+                    .rfind(|(_, g)| g.text().contains("movzx"))
+                    .expect("la ligne du movzx doit être dessinée");
+                let colonne = galley.text().find("movzx").unwrap_or(0) as f32;
+                let largeur = galley.rect.width() / galley.text().chars().count().max(1) as f32;
                 pointer = Some(egui::pos2(
-                    pos.x + row.rect().left() + 30.0,
-                    pos.y + row.rect().center().y,
+                    pos.x + (colonne + 2.0) * largeur,
+                    pos.y + galley.rect.center().y,
                 ));
             }
             output.textures_delta.clear();
@@ -10710,16 +10708,13 @@ fn normal_mode_still_shows_where_the_cursor_is() {
     };
 
     frame(&mut app);
-    // Le curseur est posé sur la deuxième ligne, comme le ferait un clic.
-    let cible = "mov rax, 60\n".chars().count() + 4;
-    if let Some(mut state) = egui::TextEdit::load_state(&ctx, editor_id()) {
-        state
-            .cursor
-            .set_char_range(Some(egui::text::CCursorRange::one(
-                egui::text::CCursor::new(cible),
-            )));
-        state.store(&ctx, editor_id());
-    }
+    // Le curseur descend d'une ligne et avance de quatre colonnes : les
+    // gestes du mode Normal, ceux de vim. C'est l'APPLICATION qui porte
+    // sa position — en mode Normal, le champ de texte n'est pas même
+    // dessiné (voir `vue_listing`), et la barre d'état restait figée sur
+    // « Lig 1, Col 1 » du temps où elle la lisait dans son état.
+    app.move_in_normal_mode_times(&ctx, Move::Down, 1);
+    app.move_in_normal_mode_times(&ctx, Move::Right, 4);
     let rects = frame(&mut app);
 
     assert_eq!(
@@ -27618,31 +27613,24 @@ fn no_control_asks_the_machine_what_it_should_be_checking() {
     }
 }
 
-/// Ouvrir un binaire ne pose son listing qu'UNE fois.
+/// Ouvrir un binaire ne met JAMAIS son listing en page d'un bloc.
 ///
-/// Mesuré le 1er octobre 2026 sur `crackme-01`, dont le listing fait
-/// 62 386 lignes : la première image coûte 561 ms, dont 285 rien qu'à
-/// poser les glyphes, et les suivantes 2,4 ms. C'est le prix d'un
-/// chargement, et il est payé une fois — le cache de `layout_code` y veille.
+/// C'était le contrôle du « une seule pose », et il a tenu tant que le
+/// listing passait par un champ de texte : 561 ms à la première image sur
+/// crackme-01 — 62 386 lignes —, puis 2,4 ms, le cache de `layout_code`
+/// y veillant. Une régression qui aurait reposé à chaque image aurait
+/// rendu l'application inutilisable.
 ///
-/// Ce que ce contrôle retient, c'est justement le « une fois ». Une
-/// régression qui reposerait à chaque image ne se verrait pas sur un
-/// source de vingt lignes et rendrait l'application inutilisable sur un
-/// binaire : une demi-seconde par image. Et une pose de plus au
-/// chargement, c'est une demi-seconde de plus à l'ouverture, sans que
-/// rien ne l'explique.
+/// La vue ligne à ligne (voir `vue_listing`) va plus loin : elle ne pose
+/// PAS le fichier, même une fois. Ce qui se vérifie maintenant est donc
+/// plus fort, et plus simple à dire — aucune galère peinte ne porte plus
+/// de deux rangées, et le compteur de poses ne bouge pas d'une image à
+/// l'autre.
 ///
-/// Le second contrôle est un RAPPORT et non un budget en millisecondes.
-/// Il était de 40 ms, et il a échoué deux fois sous une suite complète
-/// alors qu'il passait seul : une mesure en temps d'horloge lit l'état de
-/// la machine, et une machine chargée mesure mal — c'est le défaut qu'on
-/// a déjà corrigé ailleurs dans ce fichier. Un rapport, lui, ne dépend
-/// pas de la charge : les deux mesures la subissent ensemble.
-///
-/// Et il ne se juge que si la première image a coûté quelque chose : en
-/// deçà, tout est rapide et il n'y a rien à détecter.
+/// Mesuré le 14 octobre 2026, même binaire, même écran : la première
+/// image passe de 343 ms à 12,5 ms, et le régime de 410 µs à 185 µs.
 #[test]
-fn opening_a_binary_lays_out_its_listing_once() {
+fn opening_a_binary_never_lays_out_the_whole_listing() {
     let Some(octets) = binaire_dépreuve("crackme-01") else {
         return;
     };
@@ -27659,36 +27647,36 @@ fn opening_a_binary_lays_out_its_listing_once() {
     assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
     let lignes = app.source.lines().count();
     assert!(lignes > 10_000, "un listing de {lignes} lignes");
-
-    let avant = crate::editor::poses_du_texte();
-    let mut durées = Vec::new();
-    for _ in 0..6 {
-        let départ = std::time::Instant::now();
-        let mut sortie = ctx.run_ui(input.clone(), |ui| app.draw(ui));
-        sortie.textures_delta.clear();
-        durées.push(départ.elapsed());
-    }
-    let poses = crate::editor::poses_du_texte() - avant;
     assert_eq!(
-        poses, 1,
-        "{lignes} lignes posées {poses} fois en six images — une seule suffit"
+        app.editor_mode,
+        EditorMode::Normal,
+        "on ouvre un binaire pour le lire"
     );
 
-    // Et les images d'après ne paient plus : c'est là que se verrait un
-    // cache qui rate son coup sans pour autant reposer.
-    let première = durées[0];
-    let plus_lente_après = durées[1..].iter().max().copied().unwrap_or_default();
-    // Sous ce seuil, la première image n'a rien coûté : la machine est au
-    // repos ou le listing est court, et le rapport ne mesurerait que du
-    // bruit.
-    if première >= std::time::Duration::from_millis(50) {
-        assert!(
-            plus_lente_après * 2 < première,
-            "après le chargement, la plus lente des cinq images suivantes a pris \
-             {plus_lente_après:?} contre {première:?} pour la première — le cache \
-             de mise en page ne rend plus rien"
-        );
+    let mut plus_grande = 0usize;
+    let mut poses = Vec::new();
+    for _ in 0..6 {
+        let mut sortie = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(texte) = &clipped.shape {
+                plus_grande = plus_grande.max(texte.galley.rows.len());
+            }
+        }
+        poses.push(crate::editor::poses_du_texte());
+        sortie.textures_delta.clear();
     }
+    assert!(
+        plus_grande <= 2,
+        "la plus grande galère peinte porte {plus_grande} rangées : le listing          est remis en page d'un bloc quelque part"
+    );
+    // Les images se suivent sans rien reposer : le compteur ne bouge
+    // plus une fois la première passée (il compte la mesure du pas, qui
+    // pose une ligne d'un caractère).
+    assert_eq!(
+        poses.last(),
+        poses.get(1),
+        "le nombre de poses change d'une image à l'autre : {poses:?}"
+    );
 }
 
 /// Un fichier que namsdec réécrit n'est jamais laissé à moitié remplacé.
@@ -29702,49 +29690,48 @@ fn going_to_a_line_really_scrolls_the_listing_to_it() {
     app.apply_theme(&ctx);
     let entrée = écran_du_banc();
 
-    // Le haut de la galère du code, telle qu'elle est peinte.
-    let haut_du_code = |app: &mut NamsdecApp| -> f32 {
+    // Les numéros que la gouttière écrit : c'est la réponse la plus
+    // directe à « où en est la vue ». Le contrôle lisait le haut de la
+    // galère du code — il n'y en a plus qu'une par ligne visible, et
+    // c'est précisément ce qu'on vérifie ici.
+    let numéros = |app: &mut NamsdecApp| -> Vec<u32> {
         let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
-        sortie.textures_delta.clear();
-        fn visite(forme: &egui::epaint::Shape, plus_haut: &mut f32) {
-            match forme {
-                egui::epaint::Shape::Text(texte) if texte.galley.rows.len() > 100 => {
-                    *plus_haut = plus_haut.min(texte.pos.y);
-                }
-                egui::epaint::Shape::Vec(formes) => {
-                    for forme in formes {
-                        visite(forme, plus_haut);
-                    }
-                }
-                _ => {}
+        let mut vus = Vec::new();
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(texte) = &clipped.shape
+                && let Ok(n) = texte.galley.text().trim().parse::<u32>()
+            {
+                vus.push(n);
             }
         }
-        let mut plus_haut = f32::INFINITY;
-        for clipped in &sortie.shapes {
-            visite(&clipped.shape, &mut plus_haut);
-        }
-        plus_haut
+        sortie.textures_delta.clear();
+        vus
     };
 
     for _ in 0..3 {
-        haut_du_code(&mut app);
+        numéros(&mut app);
     }
-    let avant = haut_du_code(&mut app);
-    assert!(avant.is_finite(), "le listing est peint");
+    let avant = numéros(&mut app);
+    assert!(
+        avant.contains(&1),
+        "sans rien demander, le listing est à son début : {avant:?}"
+    );
 
     let cible = lignes - 20;
     app.goto_line = Some(cible);
-    // Une vingtaine d'images : egui amène la vue en douceur plutôt que
-    // de l'y poser d'un coup, et un défilement animé n'est pas fini à
-    // l'image suivante.
-    let mut après = avant;
-    for _ in 0..24 {
-        après = haut_du_code(&mut app);
+    // Quelques images : la zone de défilement se place, puis la
+    // gouttière écrit ce qui est à l'écran.
+    let mut après = Vec::new();
+    for _ in 0..4 {
+        après = numéros(&mut app);
     }
     assert!(
-        après < avant - 1000.0,
-        "le listing doit défiler jusqu'à la ligne {cible} : la galère était \
-         peinte en {avant}, elle l'est en {après}"
+        après.contains(&cible),
+        "le listing doit montrer la ligne {cible} : la gouttière écrit {après:?}"
+    );
+    assert!(
+        !après.contains(&1),
+        "et la ligne 1 n'y est plus : {après:?}"
     );
 }
 
@@ -30471,7 +30458,12 @@ fn the_search_hits_are_gathered_once_and_kept() {
         ..Default::default()
     };
     // Une image d'abord, pour que la mise en page soit payée.
-    ctx.run_ui(input.clone(), |ui| app.draw(ui)).textures_delta = Default::default();
+    // Le delta de textures se VIDE ; l'écraser par un neuf jetterait
+    // l'ancien avec ses poses dedans, et `TexturesDelta` panique quand on
+    // le laisse tomber plein.
+    ctx.run_ui(input.clone(), |ui| app.draw(ui))
+        .textures_delta
+        .clear();
     app.find = Some(Find {
         query: "mov".to_owned(),
         current: 0,
@@ -30621,16 +30613,20 @@ fn the_visible_rows_are_the_same_the_dichotomy_finds_them() {
     sortie.textures_delta.clear();
 }
 
-/// Le texte n'est reconnu qu'une fois par image.
+/// Le texte entier n'est relevé qu'une fois par texte.
 ///
-/// La gouttière demande la mise en page, puis le champ de texte la
-/// redemande : deux reconnaissances du texte entier pour la même
-/// réponse, soit trois millisecondes par image sur un listing de seize
-/// mégaoctets. En mode Normal — celui où l'on LIT un binaire — le champ
-/// n'est pas interactif, rien ne peut avoir changé entre les deux, et la
-/// mise en page lui est prêtée.
+/// La vue ligne à ligne a besoin de trois choses que les seules lignes
+/// visibles ne donnent pas : où commence chaque ligne, quelle est la plus
+/// longue, et ce que le fichier définit (voir `ReleveDuTexte`). Les
+/// relever lit tout le fichier — c'est le prix juste une fois par texte,
+/// et ce serait exactement le défaut qu'on vient de corriger si cela
+/// revenait à chaque image.
+///
+/// En Insertion, le champ de texte reprend la main : il a sa propre
+/// manière de reconnaître le texte (`layout_code`), et le relevé ne lui
+/// sert pas.
 #[test]
-fn the_listing_is_recognised_once_per_frame() {
+fn the_whole_text_is_surveyed_once_per_text() {
     let Some(octets) = binaire_dépreuve("crackme-01") else {
         return;
     };
@@ -30638,11 +30634,6 @@ fn the_listing_is_recognised_once_per_frame() {
     let mut app = NamsdecApp::default();
     app.apply_theme(&ctx);
     assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
-    assert_eq!(
-        app.editor_mode,
-        EditorMode::Normal,
-        "on ouvre un binaire pour le lire"
-    );
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
@@ -30650,18 +30641,28 @@ fn the_listing_is_recognised_once_per_frame() {
         )),
         ..Default::default()
     };
-    // Une première image paie la mise en page ; on compte les suivantes.
-    let mut sortie = ctx.run_ui(input.clone(), |ui| app.draw(ui));
-    sortie.textures_delta.clear();
-    let avant = crate::editor::reconnaissances_du_texte();
-    for _ in 0..5 {
+    let avant = crate::editor::relevés_du_texte();
+    for _ in 0..6 {
         let mut sortie = ctx.run_ui(input.clone(), |ui| app.draw(ui));
         sortie.textures_delta.clear();
     }
-    let reconnaissances = crate::editor::reconnaissances_du_texte() - avant;
+    let relevés = crate::editor::relevés_du_texte() - avant;
     assert_eq!(
-        reconnaissances, 5,
-        "cinq images, {reconnaissances} reconnaissances du texte"
+        relevés, 1,
+        "six images, {relevés} relevés du texte entier — un seul suffit"
+    );
+
+    // Le texte change : il faut relever à nouveau, et une seule fois.
+    app.set_source(format!("{}\n; une ligne de plus\n", app.source));
+    let avant = crate::editor::relevés_du_texte();
+    for _ in 0..4 {
+        let mut sortie = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        sortie.textures_delta.clear();
+    }
+    assert_eq!(
+        crate::editor::relevés_du_texte() - avant,
+        1,
+        "un texte nouveau, un relevé"
     );
 }
 
@@ -30763,5 +30764,255 @@ fn a_pending_count_is_shown() {
     assert!(
         avec.iter().any(|texte| texte == "4242"),
         "le compteur en attente est peint : {avec:?}"
+    );
+}
+
+/// Tout ce qui écrit le texte de l'éditeur le dit.
+///
+/// Plusieurs relevés coûteux sont gardés d'une image à l'autre et ne
+/// valent que pour un texte donné : la place du curseur, les occurrences
+/// d'une recherche, les instructions que la fenêtre de désassemblage
+/// retient. Leur clé porte la RÉVISION du texte (voir `texte_a_changé`),
+/// et une écriture qui ne la ferait pas avancer les laisserait peindre
+/// ce qui n'est plus là.
+///
+/// Le listing tenait ce rôle avant : il était mis en page d'un bloc, et
+/// le nombre de poses disait quand le texte avait bougé. La vue qui ne
+/// pose que les lignes visibles le lui retire — d'où ce contrôle, qui
+/// prend la relève de ce qu'egui garantissait tout seul.
+#[test]
+fn tout_ce_qui_ecrit_le_texte_le_dit() {
+    // Les trois portes, et elles seules : les deux méthodes qui
+    // incrémentent la révision, et le champ de texte d'egui, qui écrit
+    // dans le tampon lui-même et le signale par `response.changed()`.
+    const PORTES: &[&str] = &[
+        "        self.source = texte;",
+        "        &mut self.source",
+        "                    let output = egui::TextEdit::multiline(&mut self.source)",
+    ];
+    // Ce qui compte comme une écriture : l'affectation, et les méthodes
+    // de `String` qui changent son contenu.
+    let écritures = [
+        "self.source =",
+        "self.source.insert",
+        "self.source.push",
+        "self.source.replace_range",
+        "self.source.clear",
+        "self.source.truncate",
+        "self.source.retain",
+        "self.source.remove",
+        "&mut self.source",
+    ];
+    let mut fautives = Vec::new();
+    for (nom, source) in SOURCES_DE_L_INTERFACE {
+        for (rang, ligne) in source.lines().enumerate() {
+            if !écritures.iter().any(|é| ligne.contains(é)) {
+                continue;
+            }
+            if PORTES.contains(&ligne) {
+                continue;
+            }
+            fautives.push(format!("{nom}:{} — {}", rang + 1, ligne.trim()));
+        }
+    }
+    assert!(
+        fautives.is_empty(),
+        "{} écriture(s) du texte hors des portes connues : la révision \
+         n'avancera pas, et les relevés gardés peindront ce qui n'est \
+         plus là. Passer par `set_source` ou `source_mut` :\n  {}",
+        fautives.len(),
+        fautives.join("\n  ")
+    );
+}
+
+/// Les deux vues posent le texte AU MÊME ENDROIT.
+///
+/// C'est l'invariant qui rend la vue ligne à ligne acceptable : on passe
+/// de l'une à l'autre en entrant en Insertion, et un décalage d'un pixel
+/// ferait sauter tout le code sous les yeux à chaque `i`. La géométrie
+/// calculée doit donc tomber là où egui pose ses rangées — ce qui n'allait
+/// pas de soi : la hauteur de police dit 15,125 là où les rangées se
+/// suivent de 15,0, et les abscisses de glyphes sont calées au pixel
+/// (`x_offset(1)` vaut 7 quand la largeur d'un caractère vaut 7,83).
+///
+/// D'où le partage : le PAS se calcule, les ABSCISSES se lisent dans le
+/// galley de la ligne.
+#[test]
+fn both_views_lay_the_text_in_the_same_place() {
+    let source: String = (1..=12)
+        .map(|n| format!("    mov rax, {n}        ; ligne {n}\n"))
+        .collect();
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp {
+        source,
+        ..Default::default()
+    };
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 900.0),
+        )),
+        ..Default::default()
+    };
+    // Ce que chaque ligne de code occupe à l'écran, quelle que soit la
+    // vue : la vue ligne à ligne peint une galère par ligne, le champ de
+    // texte une seule pour tout.
+    let posées = |app: &mut NamsdecApp| -> Vec<(String, egui::Rect)> {
+        let mut vues = Vec::new();
+        for _ in 0..3 {
+            vues.clear();
+            let mut sortie = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+            for clipped in &sortie.shapes {
+                let egui::epaint::Shape::Text(texte) = &clipped.shape else {
+                    continue;
+                };
+                for rangée in &texte.galley.rows {
+                    let contenu = rangée.row.text().to_owned();
+                    if !contenu.contains("mov rax") {
+                        continue;
+                    }
+                    vues.push((contenu, rangée.rect().translate(texte.pos.to_vec2())));
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+        vues.sort_by(|a, b| a.1.top().total_cmp(&b.1.top()));
+        vues
+    };
+
+    app.editor_mode = EditorMode::Normal;
+    let ligne_à_ligne = posées(&mut app);
+    app.editor_mode = EditorMode::Insert;
+    let champ = posées(&mut app);
+
+    assert!(
+        ligne_à_ligne.len() >= 10,
+        "la vue ligne à ligne peint les lignes : {}",
+        ligne_à_ligne.len()
+    );
+    assert_eq!(
+        ligne_à_ligne.len(),
+        champ.len(),
+        "les deux vues peignent le même nombre de lignes"
+    );
+    for ((texte_a, a), (texte_b, b)) in ligne_à_ligne.iter().zip(&champ) {
+        assert_eq!(texte_a, texte_b, "les mêmes lignes, dans le même ordre");
+        // Un demi-pixel : egui cale ses rangées sur le pixel, et les deux
+        // vues doivent tomber sur le même.
+        assert!(
+            (a.left() - b.left()).abs() < 0.5 && (a.top() - b.top()).abs() < 0.5,
+            "« {texte_a} » est posée en {a:?} par la vue ligne à ligne et en \
+             {b:?} par le champ de texte"
+        );
+    }
+}
+
+/// Déplier les outils de la vue mémoire ne coupe aucun titre en deux.
+///
+/// Signalé sur capture le 14 octobre 2026 : « Écrire ici » s'écrivait
+/// par-dessus la première ligne d'octets du vidage. La mesure image par
+/// image a donné la cause : le FONDU d'ouverture d'egui rogne le corps du
+/// repli à sa hauteur du moment, si bien que son dernier titre est coupé
+/// en deux pendant que le vidage, lui, a déjà pris sa nouvelle place.
+/// Relevé : l'encre d'« Écrire ici » s'arrête à 601,8 là où le texte va
+/// jusqu'à 615,2, et le vidage reprend à 608. Trois images — invisibles à
+/// soixante hertz, très visibles quand une image coûte trois cents
+/// millisecondes sur un gros binaire.
+///
+/// Le contrôle regarde donc TOUTES les images qui suivent le clic, et
+/// non la dernière : c'est entre les deux que le défaut vivait. Et il
+/// mesure l'ENCRE — ce qui est peint intersecté avec ce qui le découpe —
+/// car un titre coupé est un titre dont il manque la moitié, pas un
+/// titre absent.
+#[test]
+fn unfolding_the_memory_tools_never_cuts_a_title() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp {
+        source: PROGRAMME_DU_BANC.to_owned(),
+        active_tab: SidebarTab::Memory,
+        show_sidebar: true,
+        ..Default::default()
+    };
+    app.apply_theme(&ctx);
+    app.do_assemble();
+    for _ in 0..8 {
+        app.do_step();
+    }
+    let écran = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1600.0, 1100.0));
+    // Le texte peint, et l'encre qu'il en reste une fois découpé.
+    let image =
+        |app: &mut NamsdecApp, events: Vec<egui::Event>| -> Vec<(String, egui::Rect, egui::Rect)> {
+            let entrée = egui::RawInput {
+                screen_rect: Some(écran),
+                events,
+                ..Default::default()
+            };
+            let mut sortie = ctx.run_ui(entrée, |ui| app.draw(ui));
+            let mut vus = Vec::new();
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(texte) = &clipped.shape {
+                    for rangée in &texte.galley.rows {
+                        let ligne = rangée.rect().translate(texte.pos.to_vec2());
+                        vus.push((
+                            rangée.row.text().to_owned(),
+                            ligne,
+                            ligne.intersect(clipped.clip_rect),
+                        ));
+                    }
+                }
+            }
+            sortie.textures_delta.clear();
+            vus
+        };
+    for _ in 0..3 {
+        image(&mut app, Vec::new());
+    }
+    let textes = image(&mut app, Vec::new());
+    let Some((_, entête, _)) = textes.iter().find(|(t, _, _)| t.contains("Outils mémoire"))
+    else {
+        return;
+    };
+    let cible = entête.center();
+    let clic = |pressed| egui::Event::PointerButton {
+        pos: cible,
+        button: egui::PointerButton::Primary,
+        pressed,
+        modifiers: egui::Modifiers::NONE,
+    };
+    image(&mut app, vec![egui::Event::PointerMoved(cible), clic(true)]);
+    image(&mut app, vec![clic(false)]);
+
+    // Les titres des outils, dans les images qui suivent : chacun est
+    // peint en entier, ou pas du tout. Jamais à moitié.
+    const TITRES: [&str; 3] = ["Carte de la mémoire", "Chercher en mémoire", "Écrire ici"];
+    let mut vu_déplié = false;
+    for rang in 0..10 {
+        let textes = image(&mut app, Vec::new());
+        for (titre, ligne, encre) in &textes {
+            if !TITRES.iter().any(|t| titre.contains(t)) {
+                continue;
+            }
+            if encre.height() <= 0.5 {
+                // Pas encore peint : le repli n'est pas ouvert.
+                continue;
+            }
+            vu_déplié = true;
+            assert!(
+                (encre.height() - ligne.height()).abs() < 0.5,
+                "image {rang} : « {titre} » est coupé — peint sur {:.1} px, \
+                 visible sur {:.1}",
+                ligne.height(),
+                encre.height()
+            );
+        }
+    }
+    assert!(
+        vu_déplié,
+        "les outils se sont bien dépliés — sans quoi le contrôle ne \
+         prouverait rien"
     );
 }

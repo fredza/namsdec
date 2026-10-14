@@ -93,7 +93,8 @@ impl NamsdecApp {
             self.rename = None;
             return;
         }
-        self.source = occurrences::replace_all(&self.source, &self.tracked_spans, nouveau);
+        let remplacé = occurrences::replace_all(&self.source, &self.tracked_spans, nouveau);
+        self.set_source(remplacé);
         // Le surlignage suit le nouveau nom : on vient de le poser
         // partout, et le voir confirme que rien n'a été oublié.
         if let Some(suivi) = &mut self.tracked {
@@ -119,32 +120,26 @@ impl NamsdecApp {
     pub(crate) fn paint_matches(
         &mut self,
         ui: &egui::Ui,
-        output: &egui::text_edit::TextEditOutput,
+        géo: &Géométrie,
+        lignes: &std::ops::RangeInclusive<u32>,
     ) {
         self.refresh_matches();
         if self.tracked_places.is_empty() {
             return;
         }
-        let peintre = ui.painter_at(output.response.rect);
+        let peintre = ui.painter();
         // Celles qui sont à l'écran, et elles seules. Un `rax` surligné
         // dans un listing revient vingt mille fois : les situer toutes
         // demandait deux parcours complets du texte chacune, pour en
         // peindre soixante (voir `text::Place`).
-        let origine = output.galley_pos.to_vec2();
-        let tranche = rangées_visibles(&output.galley, origine, ui.clip_rect());
-        let vues = places_entre(
-            &self.tracked_places,
-            tranche.start as u32 + 1,
-            tranche.end as u32,
-        );
+        let vues = places_entre(&self.tracked_places, *lignes.start(), *lignes.end());
         for place in &self.tracked_places[vues] {
             // Une occurrence qui ne tient pas sur une rangée n'est pas
             // peinte : un surlignage faux est pire qu'un surlignage
             // manquant.
-            let Some(rect) = rect_de_place(&output.galley, place) else {
+            let Some(rect) = géo.rect_de_place(place) else {
                 continue;
             };
-            let rect = rect.translate(origine);
             if rect.width() <= 0.0 {
                 continue;
             }
@@ -265,7 +260,7 @@ impl NamsdecApp {
         };
         state.output.line_to_addr = line_to_addr;
         state.addr_to_line = addr_to_line.clone();
-        self.source = listing.clone();
+        self.set_source(listing.clone());
         self.saved_source = listing;
         self.breakpoint_lines = arrêts
             .iter()
@@ -287,34 +282,35 @@ impl NamsdecApp {
     /// En couleur de commentaire, comme ceux qu'on écrit dans une source
     /// — ce sont les mêmes, à ceci près qu'ils ne sont pas dans le
     /// fichier.
-    pub(crate) fn paint_notes(&self, ui: &egui::Ui, output: &egui::text_edit::TextEditOutput) {
+    pub(crate) fn paint_notes(
+        &self,
+        ui: &egui::Ui,
+        géo: &Géométrie,
+        lignes: &std::ops::RangeInclusive<u32>,
+    ) {
         if self.notes.comments.is_empty() {
             return;
         }
         let Some(état) = self.assemble_state.as_ref() else {
             return;
         };
-        let peintre = ui.painter_at(output.response.rect);
+        let peintre = ui.painter();
         let police = egui::TextStyle::Monospace.resolve(ui.style());
-        // Le listing est une ligne par instruction : la rangée `n` du
-        // galley est la ligne `n + 1` de la source.
-        //
-        // Les rangées à l'écran seulement : un binaire commenté en
-        // compte un million, et chercher la note de chacune coûtait
-        // autant que de les peindre.
-        let tranche =
-            rangées_visibles(&output.galley, output.galley_pos.to_vec2(), ui.clip_rect());
-        for (rang, rangée) in output.galley.rows[tranche.clone()].iter().enumerate() {
-            let ligne = (tranche.start + rang) as u32 + 1;
+        // Les lignes à l'écran seulement : un binaire commenté en compte
+        // un million, et chercher la note de chacune coûtait autant que
+        // de les peindre.
+        for ligne in lignes.clone() {
             let Some(adresse) = état.output.line_to_addr.get(&ligne) else {
                 continue;
             };
             let Some(texte) = self.notes.comment(*adresse) else {
                 continue;
             };
+            let Some(rect) = géo.rect_de_ligne(ligne) else {
+                continue;
+            };
             // Après la fin du texte de la ligne, avec un blanc : collé,
             // on ne saurait plus où finit le code.
-            let rect = rangée.rect().translate(output.galley_pos.to_vec2());
             let à = egui::pos2(rect.right() + 24.0, rect.top());
             peintre.text(
                 à,

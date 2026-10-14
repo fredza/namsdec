@@ -23,7 +23,7 @@ impl NamsdecApp {
             return;
         }
         let (source, curseur) = duplicated_line(&self.source, self.cursor_byte);
-        self.source = source;
+        self.set_source(source);
         self.cursor_byte = curseur;
         self.pending_cursor = Some(curseur);
     }
@@ -84,7 +84,7 @@ impl NamsdecApp {
         if !self.source.is_char_boundary(début) || !self.source.is_char_boundary(fin) {
             return;
         }
-        self.source.replace_range(début..fin, texte);
+        self.source_mut().replace_range(début..fin, texte);
         let après = début + texte.len();
         self.cursor_byte = après;
         self.pending_cursor = Some(après);
@@ -111,7 +111,7 @@ impl NamsdecApp {
         if self.buffer_came_from_a_binary() {
             return;
         }
-        self.source = texte.to_owned();
+        self.set_source(texte.to_owned());
         self.cursor_byte = 0;
         self.pending_cursor = Some(0);
         self.editor_selection = None;
@@ -154,6 +154,32 @@ impl NamsdecApp {
         self.fix.as_ref()?.correction.as_ref()
     }
 
+    /// `Alt` seule vient-elle d'être enfoncée ?
+    ///
+    /// Relevé une fois par image, AVANT que l'éditeur se dessine : la
+    /// liste de propositions l'emploie pour accepter, la correction de
+    /// code pour confirmer, et les deux vues — le champ de texte et la
+    /// vue ligne à ligne — doivent le voir pareil. Il vivait dans la
+    /// liste de propositions, qui n'est dessinée qu'en Insertion : la
+    /// correction annoncée dans la barre d'état ne pouvait alors plus
+    /// être confirmée en mode Normal.
+    ///
+    /// Relevé avant tout retour anticipé : gardée enfoncée pendant
+    /// qu'aucune liste n'est affichée, `Alt` serait lue comme une
+    /// nouvelle frappe au moment où la liste revient.
+    ///
+    /// Et `Alt` *seule* : les raccourcis d'exécution sont `Ctrl+Alt+I` et
+    /// `Ctrl+Alt+O`, qui accepteraient sinon la proposition au passage,
+    /// en plus de faire leur travail.
+    pub(crate) fn relever_alt(&mut self, ui: &egui::Ui) {
+        let alt_alone = ui.input(|i| {
+            let m = i.modifiers;
+            m.alt && !m.ctrl && !m.shift && !m.command && !m.mac_cmd
+        });
+        self.alt_pressed = alt_alone && !self.alt_was_down;
+        self.alt_was_down = alt_alone;
+    }
+
     /// Alt vient d'être enfoncé et rien d'autre ne l'a pris : la
     /// correction s'applique.
     ///
@@ -181,7 +207,7 @@ impl NamsdecApp {
                 .find('\n')
                 .unwrap_or(self.source.len() - début);
         let nouvelle = correction.ligne.clone();
-        self.source.replace_range(début..fin, &nouvelle);
+        self.source_mut().replace_range(début..fin, &nouvelle);
         // Le curseur au bout de la ligne réécrite : c'est là qu'on
         // était, et c'est de là qu'on repart.
         self.pending_cursor = Some(byte_to_char(&self.source, début + nouvelle.len()));
@@ -223,21 +249,7 @@ impl NamsdecApp {
         let theme = self.theme;
         // Ni en mode Normal (on ne tape pas), ni si le réglage l'a
         // éteinte.
-        // Relevé avant tout retour anticipé : gardée enfoncée pendant
-        // qu'aucune liste n'est affichée, `Alt` serait lue comme une
-        // nouvelle frappe au moment où la liste revient.
-        //
-        // Et `Alt` *seule* : les raccourcis d'exécution sont `Ctrl+Alt+I`
-        // et `Ctrl+Alt+O`, qui accepteraient sinon la proposition au
-        // passage, en plus de faire leur travail.
-        let alt_alone = ui.input(|i| {
-            let m = i.modifiers;
-            m.alt && !m.ctrl && !m.shift && !m.command && !m.mac_cmd
-        });
-        let alt_pressed = alt_alone && !self.alt_was_down;
-        self.alt_was_down = alt_alone;
-        // Partagé avec la correction de code, qui passe après.
-        self.alt_pressed = alt_pressed;
+        let alt_pressed = self.alt_pressed;
 
         let Some(range) = output.cursor_range else {
             self.suggestions = None;
@@ -356,7 +368,7 @@ impl NamsdecApp {
         // s'écrire `Boucle`.
         let range = suggestions.range();
         let end = range.start + accepted.len();
-        self.source.replace_range(range, accepted);
+        self.source_mut().replace_range(range, accepted);
 
         // Le curseur d'egui compte en caractères, pas en octets.
         let after = byte_to_char(&self.source, end);
@@ -382,7 +394,8 @@ impl NamsdecApp {
     pub(crate) fn hover_help_ui(
         &self,
         ui: &mut egui::Ui,
-        output: &egui::text_edit::TextEditOutput,
+        géo: &Géométrie,
+        réponse: &egui::Response,
     ) {
         if !self.show_tooltips || !self.hover_help {
             return;
@@ -390,41 +403,42 @@ impl NamsdecApp {
         let Some(pointer) = ui.ctx().pointer_hover_pos() else {
             return;
         };
-        if !output.response.response.hovered() {
+        if !réponse.hovered() {
             return;
         }
-        // Le champ de texte occupe toute la hauteur de l'éditeur, bien
-        // au-delà du code, et chaque ligne est bien plus courte que sa
-        // largeur : sans cette vérification, le pointeur posé dans le
-        // vide se voyait attribuer le caractère le plus proche — le
-        // dernier du fichier — et la fiche de cette instruction-là
-        // restait affichée sans qu'on comprenne d'où elle venait.
-        let relatif = pointer - output.galley_pos;
-        let Some(ligne) = output
-            .galley
-            .rows
-            .iter()
-            .find(|ligne| ligne.rect().y_range().contains(relatif.y))
-        else {
+        // Le listing occupe toute la hauteur de l'éditeur, bien au-delà
+        // du code, et chaque ligne est bien plus courte que sa largeur :
+        // sans ces deux vérifications, le pointeur posé dans le vide se
+        // voyait attribuer le caractère le plus proche — le dernier du
+        // fichier — et la fiche de cette instruction-là restait affichée
+        // sans qu'on comprenne d'où elle venait.
+        let Some(ligne) = géo.ligne_à(pointer.y) else {
+            return;
+        };
+        let Some(rect) = géo.rect_de_ligne(ligne) else {
             return;
         };
         // Un demi-caractère de tolérance au bout de la ligne : viser une
         // lettre, pas son coin.
-        let marge = ligne.rect().height() / 2.0;
-        if relatif.x < ligne.rect().left() - marge || relatif.x > ligne.rect().right() + marge {
+        let marge = rect.height() / 2.0;
+        if pointer.x < rect.left() - marge || pointer.x > rect.right() + marge {
             return;
         }
-        let cursor = output.galley.cursor_from_pos(relatif);
+        let Some(colonne) = géo.colonne_à(ligne, pointer.x) else {
+            return;
+        };
         // La position du pointeur dans le texte, puis le mot qui s'y
         // trouve : le même que celui sur lequel F1 répondrait.
-        let byte = char_to_byte(&self.source, cursor.index.0);
+        let Some(byte) = self.octet_de(ligne, colonne) else {
+            return;
+        };
         let word = word_at(&self.source, byte);
         let Some(entry) = namsdec_doc::lookup(word) else {
             return;
         };
         let lang = self.lang.code();
         let theme = self.theme;
-        output.response.response.clone().show_tooltip_ui(|ui| {
+        réponse.clone().show_tooltip_ui(|ui| {
             ui.set_max_width(420.0);
             ui.strong(entry.title.get(lang));
             ui.label(prose(ui, theme, entry.body.get(lang)));

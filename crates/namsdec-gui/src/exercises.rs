@@ -181,7 +181,7 @@ impl NamsdecApp {
             };
             self.current_exercise = Some(id.to_owned());
             self.saved_source = exercise.starter_code.clone();
-            self.source = exercise.starter_code.clone();
+            self.set_source(exercise.starter_code.clone());
             self.current_file = None;
             self.assemble_state = None;
             self.emulator = None;
@@ -192,7 +192,7 @@ impl NamsdecApp {
         }
         self.current_exercise = Some(id.to_owned());
         self.saved_source = exercise.starter_code.clone();
-        self.source = exercise.starter_code.clone();
+        self.set_source(exercise.starter_code.clone());
         self.current_file = None;
         self.assemble_state = None;
         self.emulator = None;

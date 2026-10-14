@@ -2660,18 +2660,44 @@ impl NamsdecApp {
         // Puis les outils, sous un seul repli : la carte, la recherche
         // et l'écriture. Trois en-têtes dépliables poussaient le vidage
         // hors du panneau, et c'est lui qu'on est venu voir.
+        //
+        // ET ILS S'OUVRENT D'UN COUP, SANS FONDU. Signalé sur capture le
+        // 14 octobre 2026 : « Écrire ici » barrait la première ligne
+        // d'octets du vidage, comme s'il s'écrivait par-dessus.
+        //
+        // Mesuré image par image, c'est le fondu de l'ouverture : egui
+        // rogne le corps à sa hauteur du moment, si bien qu'un en-tête
+        // est coupé en deux pendant que le vidage, lui, a déjà pris sa
+        // nouvelle place. Les deux se croisent pendant TROIS images —
+        // l'encre d'« Écrire ici » s'arrêtant à 601,8 là où le texte va
+        // jusqu'à 615,2, le vidage reprenant à 608.
+        //
+        // Trois images ne se voient pas à soixante hertz ; elles se
+        // voyaient très bien quand une image coûtait trois cents
+        // millisecondes sur un gros binaire, et c'est de là que vient la
+        // capture. Le remède tient en deux lignes : l'animation est
+        // posée d'avance sur sa valeur d'arrivée, donc le corps est
+        // entier dès la première image où il paraît. Ce qui disparaît
+        // est un fondu de deux dixièmes de seconde dans un panneau
+        // dense, où il n'apprenait rien.
         let mut aller = None;
         let mut écrire = None;
-        egui::CollapsingHeader::new(s.memory_tools)
-            .id_salt("memory_tools")
-            .show(ui, |ui| {
+        repli(
+            ui,
+            theme,
+            ui.make_persistent_id("memory_tools"),
+            s.memory_tools,
+            |ui| {
                 // La carte, comme `vmmap` : où commence le code, où
                 // finit la pile, ce que le tas occupe. Un refus d'accès
                 // n'apprend rien à qui ne sait pas où il se trouvait.
                 if !zones.is_empty() {
-                    egui::CollapsingHeader::new(format!("{} ({})", s.memory_map, zones.len()))
-                        .id_salt("memory_map")
-                        .show(ui, |ui| {
+                    repli(
+                        ui,
+                        theme,
+                        ui.make_persistent_id("memory_map"),
+                        &format!("{} ({})", s.memory_map, zones.len()),
+                        |ui| {
                             // La carte défile dans sa propre fenêtre, bornée
                             // en hauteur. Sans ça, un binaire aux régions
                             // nombreuses — les sections d'un programme lié
@@ -2722,14 +2748,18 @@ impl NamsdecApp {
                                             }
                                         });
                                 });
-                        });
+                        },
+                    );
                 }
                 // Chercher : c'est le `search` de pwndbg. On a une chaîne, une
                 // valeur, une adresse — la question est « où ? », et la réponse
                 // ne s'obtient pas en faisant défiler un vidage.
-                egui::CollapsingHeader::new(s.search_title)
-                    .id_salt("memory_search")
-                    .show(ui, |ui| {
+                repli(
+                    ui,
+                    theme,
+                    ui.make_persistent_id("memory_search"),
+                    s.search_title,
+                    |ui| {
                         ui.horizontal_wrapped(|ui| {
                             for kind in SearchKind::ALL {
                                 if ui
@@ -2777,14 +2807,18 @@ impl NamsdecApp {
                                 aller = Some(addr);
                             }
                         }
-                    });
+                    },
+                );
                 // Écrire ici, à la main : le pendant de l'édition d'un registre.
                 // Un débogueur écrit là où le programme n'a pas le droit — c'est
                 // ce qui permet d'essayer « et si ce tampon contenait ça ? » —,
                 // et le dire vaut mieux que de le cacher.
-                egui::CollapsingHeader::new(s.poke_title)
-                    .id_salt("memory_poke")
-                    .show(ui, |ui| {
+                repli(
+                    ui,
+                    theme,
+                    ui.make_persistent_id("memory_poke"),
+                    s.poke_title,
+                    |ui| {
                         ui.horizontal_wrapped(|ui| {
                             for kind in SearchKind::ALL {
                                 if ui
@@ -2814,8 +2848,10 @@ impl NamsdecApp {
                             });
                         });
                         ui.colored_label(theme.dim, s.poke_explain);
-                    });
-            });
+                    },
+                );
+            },
+        );
         match coloré {
             Some(job) => {
                 egui::ScrollArea::both()
@@ -3213,6 +3249,57 @@ pub(crate) fn hex_job(
 /// Rend `true` quand la section est ouverte. Le triangle et le titre
 /// forment une seule cible : viser un triangle de six pixels de côté
 /// n'est pas un geste, c'est une épreuve.
+/// Un repli SANS FONDU : le titre, et ce qu'il cache.
+///
+/// egui en a un (`CollapsingHeader`), et il déplie en fondu. Le fondu
+/// rogne le corps à sa hauteur du moment, si bien qu'un en-tête est
+/// coupé en deux pendant que ce qui suit a DÉJÀ pris sa place —
+/// signalé sur capture le 14 octobre 2026, où « Écrire ici » barrait la
+/// première ligne du vidage mémoire. Mesuré : trois images, qui se
+/// voient très bien quand une image coûte trois cents millisecondes sur
+/// un gros binaire.
+///
+/// On ne peut pas désamorcer ce fondu de l'extérieur : l'animation est
+/// gardée par le contexte, et la poser d'avance sur sa valeur d'arrivée
+/// n'efface pas l'instant où elle a commencé. D'où ce repli-ci, qui
+/// n'anime rien — dans un panneau d'outils dense, un fondu de deux
+/// dixièmes de seconde n'apprend rien.
+///
+/// L'état est gardé par egui, comme celui d'un `CollapsingHeader` : il
+/// survit donc au redémarrage, et les deux triangles de la vue mémoire
+/// se retrouvent repliés comme on les avait laissés.
+pub(crate) fn repli(
+    ui: &mut egui::Ui,
+    theme: &'static Theme,
+    id: egui::Id,
+    titre: &str,
+    corps: impl FnOnce(&mut egui::Ui),
+) {
+    let mut ouvert = ui
+        .ctx()
+        .data_mut(|données| données.get_persisted::<bool>(id))
+        .unwrap_or(false);
+    let bande = ui
+        .horizontal(|ui| {
+            ui.colored_label(theme.dim, if ouvert { "v" } else { ">" });
+            ui.label(egui::RichText::new(titre).color(theme.text));
+        })
+        .response
+        .rect;
+    // Un identifiant à nous, et non celui de la rangée : celui-là est
+    // tiré du compteur de widgets, et il bouge dès qu'une ligne paraît
+    // au-dessus — le clic se perdait alors sans rien dire.
+    let réponse = ui.interact(bande, id.with("entête"), egui::Sense::click());
+    if réponse.clicked() {
+        ouvert = !ouvert;
+        ui.ctx()
+            .data_mut(|données| données.insert_persisted(id, ouvert));
+    }
+    if ouvert {
+        ui.indent(id, corps);
+    }
+}
+
 pub(crate) fn section_toggle(
     ui: &mut egui::Ui,
     theme: &'static Theme,

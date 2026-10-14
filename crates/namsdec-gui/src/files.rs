@@ -392,7 +392,10 @@ impl NamsdecApp {
         OpenTab {
             path: self.current_file.take(),
             file_mtime: self.file_mtime,
-            source: std::mem::take(&mut self.source),
+            // Par `source_mut` : le tampon part dans l'onglet et laisse
+            // la chaîne vide derrière lui — c'est un changement de texte
+            // comme un autre (voir `texte_a_changé`).
+            source: std::mem::take(self.source_mut()),
             saved_source: std::mem::take(&mut self.saved_source),
             cursor_byte: self.cursor_byte,
             cursor_pos: self.cursor_pos,
@@ -413,7 +416,7 @@ impl NamsdecApp {
         self.untitled_no = tab.untitled_no;
         self.current_file = tab.path;
         self.file_mtime = tab.file_mtime;
-        self.source = tab.source;
+        self.set_source(tab.source);
         self.saved_source = tab.saved_source;
         self.cursor_byte = tab.cursor_byte;
         self.cursor_pos = tab.cursor_pos;
@@ -469,7 +472,7 @@ impl NamsdecApp {
             self.disk_changed = true;
             return;
         };
-        self.source = texte.clone();
+        self.set_source(texte.clone());
         self.saved_source = texte;
         self.file_mtime = Some(sur_disque);
         self.disk_changed = false;
@@ -622,7 +625,7 @@ impl NamsdecApp {
             // chemin, plus de programme assemblé, plus de points
             // d'arrêt. Vide et non le programme d'accueil : on a demandé
             // à fermer, pas à ouvrir autre chose.
-            self.source.clear();
+            self.source_mut().clear();
             self.saved_source.clear();
             self.current_file = None;
             self.file_mtime = None;
@@ -745,7 +748,7 @@ impl NamsdecApp {
         self.active_tab_index = insertion + 1;
         self.untitled_no = self.next_untitled;
         self.next_untitled += 1;
-        self.source = NEW_PROGRAM.to_owned();
+        self.set_source(NEW_PROGRAM.to_owned());
         self.saved_source = NEW_PROGRAM.to_owned();
         self.current_file = None;
         self.assemble_state = None;
@@ -829,7 +832,7 @@ impl NamsdecApp {
         match String::from_utf8(bytes) {
             Ok(text) => {
                 self.saved_source = text.clone();
-                self.source = text;
+                self.set_source(text);
                 self.note_recent(&path);
                 self.file_mtime = file_mtime(&path);
                 self.disk_changed = false;
@@ -939,7 +942,7 @@ impl NamsdecApp {
         let loaded = image.len();
 
         self.saved_source = listing.clone();
-        self.source = listing;
+        self.set_source(listing);
         self.current_file = None;
         self.breakpoint_lines.clear();
         self.diagnostics.clear();
@@ -1185,7 +1188,7 @@ impl NamsdecApp {
         let addr_to_line = line_to_addr.iter().map(|(l, a)| (*a, *l)).collect();
         let loaded = bytes.len();
         self.saved_source = listing.clone();
-        self.source = listing;
+        self.set_source(listing);
         self.current_file = None;
         self.breakpoint_lines.clear();
         self.diagnostics.clear();

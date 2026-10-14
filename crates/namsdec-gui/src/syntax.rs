@@ -119,18 +119,38 @@ pub fn highlight(ui: &Ui, theme: &Theme, text: &str, wrap_width: f32) -> LayoutJ
         if i > 0 {
             append(&mut job, "\n", &font_id, theme.text, false);
         }
-        for (piece, token) in tokenize_with(line, &macros) {
-            append(
-                &mut job,
-                piece,
-                &font_id,
-                token.colour(theme),
-                token == Token::Comment,
-            );
-        }
+        append_line(&mut job, line, &font_id, theme, &macros);
     }
 
     job
+}
+
+/// La coloration d'UNE ligne, avec ce que le fichier entier a appris.
+///
+/// La vue qui ne pose que les lignes visibles en a besoin ligne par
+/// ligne (voir `vue_listing`). Les règles restent ici, et une seule
+/// fois : deux colorations qui dévieraient l'une de l'autre se verraient
+/// au changement de mode, le même code changeant de couleur sous les
+/// yeux.
+pub fn highlight_line(ui: &Ui, theme: &Theme, line: &str, macros: &Macros) -> LayoutJob {
+    let font_id = TextStyle::Monospace.resolve(ui.style());
+    let mut job = LayoutJob::default();
+    job.wrap.max_width = f32::INFINITY;
+    append_line(&mut job, line, &font_id, theme, macros);
+    job
+}
+
+/// Ajoute une ligne colorée au travail de mise en page.
+fn append_line(job: &mut LayoutJob, line: &str, font_id: &FontId, theme: &Theme, macros: &Macros) {
+    for (piece, token) in tokenize_with(line, macros) {
+        append(
+            job,
+            piece,
+            font_id,
+            token.colour(theme),
+            token == Token::Comment,
+        );
+    }
 }
 
 /// Découpe une ligne en morceaux colorables, dans l'ordre. La

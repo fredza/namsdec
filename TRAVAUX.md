@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **14 octobre
-2026**, version 0.2.8-beta.3, 1 171 tests au vert.
+2026**, version 0.2.8-beta.3, 1 174 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -31,6 +31,46 @@ instruction », qui tient au même nœud que le vide de 56 px — l'état du
 processeur est ancré.
 
 ---
+
+## 8. Le listing ne se met plus en page d'un bloc (A 7.14)
+
+Le gros chantier de performance laissé ouvert depuis le 1er octobre :
+ne poser que les lignes visibles. Fait le 14 octobre 2026, en mode
+NORMAL seulement — le champ de texte y est déjà non interactif, et rien
+de ce qu'il porte (saisie, sélection, presse-papier) n'y existe.
+
+- [x] **La vue ligne à ligne** (A 5.3, 7.8, 7.14) — `vue_listing.rs`.
+      Sur un listing d'un million de lignes : première image 2 942 ms →
+      **116 ms**, régime 11,3 ms → **1,86 ms**, et la mémoire
+      **2 032 Mo → 268 Mo** (le galley d'un tel listing pesait 1,8 Go).
+      Sur crackme-01 : 343 ms → 13,5 ms, et la recherche ouverte
+      3 735 ms → 214 µs.
+- [x] **Les deux vues posent le texte au même endroit** — retenu par
+      `both_views_lay_the_text_in_the_same_place`, à un demi-pixel près,
+      éprouvé en remettant le défaut. Le pas est PRIS sur une ligne mise
+      en page (la hauteur de police dit 15,125 là où les rangées se
+      suivent de 15,0) et les colonnes LUES dans le galley de leur ligne
+      (egui cale chaque glyphe sur le pixel).
+- [x] **Une seule gouttière, un seul surlignage** — `Géométrie` répond
+      aux mêmes questions qu'elle lise le galley du champ ou qu'elle
+      calcule. Deux peintures qui dévieraient se verraient au changement
+      de mode.
+- [x] **Le texte entier n'est relevé qu'une fois par texte** — où
+      commence chaque ligne, quelle est la plus longue, ce que le fichier
+      définit. Retenu par `the_whole_text_is_surveyed_once_per_text`.
+- [x] **La révision du texte, et qui a le droit de l'écrire** — les poses
+      du listing servaient de preuve qu'il avait changé ; la vue leur
+      retire ce rôle. `tout_ce_qui_ecrit_le_texte_le_dit` lit les
+      vingt-neuf fichiers de l'interface et a trouvé du premier coup un
+      site oublié.
+- [x] **Cliquer dans le code y pose le curseur** — impossible jusqu'ici
+      en mode Normal, le champ y étant non interactif.
+- [x] **La gouttière suit le fichier** — trouvé sur capture : la pastille
+      d'un point d'arrêt recouvrait le numéro (« ●012 » pour la ligne
+      4 012), et sept chiffres n'y tenaient pas du tout.
+- [ ] **Entrer en Insertion sur un million de lignes** paie encore les
+      trois secondes et les 1,8 Go : c'est le vrai champ qui revient. Le
+      cas est rare — on n'édite pas un désassemblage — et il est écrit.
 
 ## 7. Les gros binaires ne gèlent plus — passe du 14 octobre (A 7.13)
 
@@ -843,10 +883,11 @@ Détail chiffré dans `AMELIORATIONS.txt` 7.11, section « REVUE DU
       sections mesurées sont déjà le résultat de sa fusion, huit par ligne
       au lieu de dix. Le refaire coûtait 22 ms de plus. Retiré, et le
       commentaire de `append` le dit pour la prochaine fois.
-- [ ] **Ce qui reste** : ne poser que les lignes visibles. Gain d'un facteur
-      ~300 sur la première image, coût d'une vue en lecture seule pour les
-      listings — sélection, recherche, curseur, marques. Pas à entreprendre
-      à la légère.
+- [x] **Ce qui restait — ne poser que les lignes visibles — est fait**
+      (A 7.14, section 8) : le 14 octobre 2026, en mode Normal, où le
+      champ de texte était déjà non interactif. Ce que cette entrée
+      craignait de perdre (sélection, recherche, curseur, marques)
+      n'existait pas dans ce mode-là.
 - [x] **Et ce qui se payait à CHAQUE image, lui, est corrigé** — voir la
       section 7 : le régime sur un listing d'un million de lignes passe de
       11,3 ms à moins de 2 ms. Le relevé de 5.2 ne l'avait pas vu parce

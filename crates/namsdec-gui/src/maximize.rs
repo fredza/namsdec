@@ -110,20 +110,24 @@ impl NamsdecApp {
         mouvement: Move,
         fois: u32,
     ) {
-        let Some(mut state) = egui::TextEdit::load_state(ctx, editor_id()) else {
-            return;
-        };
-        let at = state
-            .cursor
-            .char_range()
-            .map_or(0, |range| range.primary.index.0);
+        // LE CURSEUR EST CELUI DE L'APPLICATION, et non celui du champ
+        // de texte. En mode Normal, le champ n'est pas même dessiné —
+        // c'est la vue ligne à ligne qui peint le listing (voir
+        // `vue_listing`) —, et son état n'existe pas tant qu'on n'est
+        // pas entré en Insertion : y lire le curseur revenait à ne pas
+        // bouger du tout.
+        let at = byte_to_char(&self.source, self.cursor_byte);
         let cible = move_cursor_times(&self.source, at, mouvement, fois);
-        state
-            .cursor
-            .set_char_range(Some(egui::text::CCursorRange::one(
-                egui::text::CCursor::new(cible),
-            )));
-        state.store(ctx, editor_id());
+        // Et il est écrit dans le champ s'il existe : entrer en
+        // Insertion doit reprendre là où la lecture s'est arrêtée.
+        if let Some(mut state) = egui::TextEdit::load_state(ctx, editor_id()) {
+            state
+                .cursor
+                .set_char_range(Some(egui::text::CCursorRange::one(
+                    egui::text::CCursor::new(cible),
+                )));
+            state.store(ctx, editor_id());
+        }
         // Ligne, colonne et octet en une passe, et gardés : voir
         // `cursor_place`.
         let (ligne, colonne, octet) = self.cursor_place(cible);

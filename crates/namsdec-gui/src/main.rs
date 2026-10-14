@@ -48,6 +48,7 @@ mod syntax;
 mod text;
 mod timeline;
 mod tools;
+mod vue_listing;
 mod widgets;
 mod windows;
 
@@ -89,7 +90,10 @@ use icons::*;
 use keybindings::{Action, Dispatcher, KeyBindings, Rebinding};
 use labels::*;
 use listing::*;
+// La vue qui ne pose que les lignes visibles : sa géométrie sert à la
+// gouttière, aux surlignages et au curseur, quel que soit le peintre.
 use profiling::*;
+use vue_listing::{GUTTER_PAD, Géométrie, gutter_width};
 
 use resources::*;
 use settings::Settings;
@@ -566,6 +570,24 @@ struct LoadedBinary {
 
 struct NamsdecApp {
     source: String,
+    /// Combien de fois le texte de l'éditeur a changé.
+    ///
+    /// Plusieurs relevés coûteux ne valent que pour un texte donné : où
+    /// tombe le curseur, où sont les occurrences d'une recherche,
+    /// quelles instructions la fenêtre de désassemblage retient. Les
+    /// garder d'une image à l'autre demande de savoir quand le texte a
+    /// changé, et la seule réponse à la fois exacte et gratuite est un
+    /// compteur qu'on incrémente EN L'ÉCRIVANT.
+    ///
+    /// Le listing tenait lieu de réponse jusqu'ici : il était mis en
+    /// page d'un bloc, et le nombre de poses disait quand le texte avait
+    /// bougé. La vue qui ne pose que les lignes visibles lui retire ce
+    /// rôle — elle ne voit plus le texte entier.
+    ///
+    /// `texte_a_changé` est le seul endroit qui l'incrémente, et le
+    /// contrôle `tout_ce_qui_ecrit_le_texte_le_dit` vérifie que personne
+    /// n'écrit `source` sans passer par là.
+    texte_rev: u64,
     /// Thème actif. Une référence statique plutôt qu'un enum : ajouter un
     /// thème (installé ou fourni) ne doit pas obliger à rouvrir un `match`
     /// quelque part dans l'interface.
@@ -811,6 +833,9 @@ struct NamsdecApp {
     find_hits: Vec<Place>,
     /// Où le curseur est, et pour quelle question (voir `cursor_place`).
     cursor_place_vu: Option<CurseurVu>,
+    /// Ce que la vue ligne à ligne sait du texte entier, et la clé qui
+    /// le valide : la longueur du texte et sa révision.
+    relevé_du_texte: Option<(vue_listing::ReleveDuTexte, (usize, u64))>,
     /// Ce que l'image en cours sait du tampon : modifié, ou non.
     ///
     /// La question se pose partout dans une image — la barre d'état, le
@@ -1182,8 +1207,8 @@ struct NamsdecApp {
     /// porter.
     disassembly_rows: Vec<u32>,
     /// La question à laquelle ces rangs répondent : le filtre, le point
-    /// de départ, le moteur, la langue, le nombre d'instructions, et le
-    /// nombre de poses du listing — lequel change quand une fonction est
+    /// de départ, le moteur, la langue, le nombre d'instructions, et la
+    /// révision du texte — laquelle change quand une fonction est
     /// renommée, ce que le filtre voit aussi.
     disassembly_rows_clé: Option<(String, Option<u64>, String, Lang, usize, u64)>,
     /// L'endroit où le listing commence, quand on a demandé à aller
@@ -1862,6 +1887,7 @@ impl Default for NamsdecApp {
 
         Self {
             source: DEFAULT_SOURCE.to_string(),
+            texte_rev: 0,
             theme: DEFAULT_THEME,
             lang: Lang::Fr,
             nasm_info: namsdec_asm::find_nasm(),
@@ -1914,6 +1940,7 @@ impl Default for NamsdecApp {
             find: None,
             find_hits: Vec::new(),
             cursor_place_vu: None,
+            relevé_du_texte: None,
             modifié_vu: false,
             tabs_modifiés_vus: Vec::new(),
             find_hits_clé: None,
@@ -2096,6 +2123,35 @@ impl Default for NamsdecApp {
 }
 
 impl NamsdecApp {
+    /// Le texte de l'éditeur vient d'être écrit : tout ce qui en dépend
+    /// est périmé.
+    ///
+    /// Un seul endroit incrémente la révision, et c'est celui-ci. Deux
+    /// portes y mènent — `set_source`, qui remplace le texte, et
+    /// `source_mut`, qui le prête en écriture — plus le champ de texte
+    /// d'egui, qui écrit lui-même dans le tampon et le dit par
+    /// `response.changed()`. Le contrôle
+    /// `tout_ce_qui_ecrit_le_texte_le_dit` tient la liste à jour.
+    pub(crate) fn texte_a_changé(&mut self) {
+        self.texte_rev = self.texte_rev.wrapping_add(1);
+    }
+
+    /// Remplace le texte de l'éditeur, et le dit.
+    pub(crate) fn set_source(&mut self, texte: String) {
+        self.source = texte;
+        self.texte_a_changé();
+    }
+
+    /// Le texte de l'éditeur, prêté en écriture — et la révision avance.
+    ///
+    /// Elle avance même si l'appelant ne change finalement rien : se
+    /// tromper dans ce sens-là fait recalculer un relevé pour rien, se
+    /// tromper dans l'autre fait peindre un relevé périmé.
+    pub(crate) fn source_mut(&mut self) -> &mut String {
+        self.texte_a_changé();
+        &mut self.source
+    }
+
     /// Ce tampon vient-il d'un binaire ouvert ?
     ///
     /// Un listing produit par le désassemblage n'est pas un source : il

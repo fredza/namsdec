@@ -3085,3 +3085,115 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
   `relevés_de_désassemblage`), des reconnaissances du texte
   (`reconnaissances_du_texte`), des rangées. Un nombre de relevés est le
   même partout.
+
+
+--------------------------------------------------------------------------------
+ 7.14  LE LISTING NE SE MET PLUS EN PAGE D'UN BLOC
+       (14 octobre 2026) — le chantier de 5.3, fait
+--------------------------------------------------------------------------------
+
+  C'était le gros morceau laissé ouvert depuis le 1er octobre, et il est
+  décrit en 5.3 : « ne poser que les lignes visibles. Le gain serait d'un
+  facteur ~300 sur la première image, et le coût est une vue en lecture
+  seule pour les listings — avec tout ce qui s'y rattache : sélection,
+  recherche, position du curseur, marques. À ne pas entreprendre à la
+  légère. »
+
+  CE QUE ÇA DONNE, mesuré sur la même machine et le même écran qu'avant :
+
+                               avant        après
+      crackme-01 (62 386 lignes)
+        première image         343 ms       13,5 ms
+        régime                 410 µs       204 µs
+        recherche ouverte      3 735 ms     214 µs
+      croackpocalypse (1 098 626 lignes)
+        première image         2 942 ms     116 ms
+        régime                 11,3 ms      1,86 ms
+        recherche ouverte      l'image ne venait plus   1,85 ms
+        MÉMOIRE                2 032 Mo     268 Mo
+
+  La dernière ligne n'était pas attendue, et c'est la plus parlante : le
+  galley d'un listing d'un million de lignes pèse 1,8 GIGAOCTET. Mesuré
+  dans une seule course, en passant de la vue ligne à ligne au champ de
+  texte sur le même binaire — 268 Mo, puis 2 032. Un atelier qui demande
+  deux gigaoctets pour ouvrir un exécutable de quatre mégaoctets n'était
+  pas loin de ne plus s'ouvrir du tout.
+
+  CE QUI A RENDU LA CHOSE FAISABLE, et ce n'était pas évident en octobre :
+  le mode NORMAL. Le champ de texte y est déjà posé `interactive(false)`
+  — il ne fait que peindre. Tout ce que 5.3 craignait de perdre (la
+  saisie, la sélection à la souris, le presse-papier, le caret d'egui)
+  n'existe pas dans ce mode-là. La vue ligne à ligne ne remplace donc le
+  champ QUE là, et l'on retrouve le vrai champ en entrant en Insertion.
+  Ce n'est pas un compromis : c'est la frontière que l'éditeur portait
+  déjà.
+
+  LA GÉOMÉTRIE, et le piège qu'elle cachait. Police à chasse fixe, pas de
+  repli : la ligne n est à n pas, la colonne c à c largeurs. Les deux
+  moitiés de cette phrase sont fausses si on les prend au pied de la
+  lettre, et c'est la mesure qui l'a dit :
+    - la hauteur de police vaut 15,125 et les rangées se suivent de 15,0.
+      Un huitième de pixel par ligne fait six pixels sur cinquante et cent
+      vingt sur mille : la gouttière et le texte se seraient séparés sous
+      les yeux. Le pas est donc PRIS sur une ligne mise en page, non
+      calculé.
+    - les abscisses de glyphes sont calées au pixel : `x_offset(1)` vaut
+      7,0 là où la largeur d'un caractère vaut 7,83. Les colonnes sont
+      donc LUES dans le galley de leur ligne — celui-là même qu'on vient
+      de poser pour la peindre.
+  D'où le partage, et l'invariant qui le retient :
+  `both_views_lay_the_text_in_the_same_place` compare les deux vues ligne
+  à ligne, à un demi-pixel près. Éprouvé en remettant le défaut (le pas
+  calculé depuis la hauteur de police) : il rougit dès la cinquième ligne.
+
+  UN SEUL CODE POUR DEUX VUES. La gouttière, les surlignages de
+  recherche, les occurrences suivies, les commentaires et le curseur sont
+  peints par le MÊME code dans les deux cas : `Géométrie` répond aux
+  mêmes questions, qu'elle les lise dans le galley du champ ou qu'elle
+  les calcule. Deux peintures qui dévieraient l'une de l'autre se
+  verraient au changement de mode, tout le code sautant d'un pixel à
+  chaque `i`.
+
+  L'INDEX DES DÉBUTS DE LIGNE, sans lequel rien ne tient. Atteindre la
+  ligne 900 000 par `split('\n').skip(n)` demande de relire les 899 999
+  premières — à chaque image. Le relevé du texte (`ReleveDuTexte`) garde
+  donc l'octet où commence chaque ligne : quatre octets par ligne, quatre
+  mégaoctets pour un million de lignes, contre les 1,8 Go qu'on vient de
+  rendre. Il porte aussi la plus longue ligne (la largeur de ce qui
+  défile) et ce que le fichier définit (ses macros et ses étiquettes,
+  sans quoi la coloration d'une ligne dépendrait de l'endroit d'où on la
+  regarde). Relevé une fois par texte, et un contrôle le retient.
+
+  LA RÉVISION DU TEXTE, et pourquoi elle est devenue nécessaire. Trois
+  relevés gardés d'une image à l'autre — la place du curseur, les
+  occurrences d'une recherche, les rangs de la fenêtre de désassemblage —
+  avaient pour clé le NOMBRE DE POSES du listing : tant qu'il était mis
+  en page d'un bloc, egui lui-même disait quand le texte avait changé.
+  La vue ligne à ligne lui retire ce rôle. Un compteur explicite prend la
+  relève, incrémenté par les deux seules portes qui écrivent le texte
+  (`set_source`, `source_mut`) et par le champ d'egui, qui le signale par
+  `response.changed()`. Le contrôle `tout_ce_qui_ecrit_le_texte_le_dit`
+  lit les vingt-neuf fichiers de l'interface et refuse toute autre
+  écriture — il a trouvé du premier coup un site oublié
+  (`take_tab`, qui vide le tampon pour le ranger dans un onglet).
+
+  CE QUE LA VUE REND POSSIBLE, et qui manquait : CLIQUER DANS LE CODE Y
+  POSE LE CURSEUR. Le champ de texte ne le permettait pas en mode Normal
+  — `interactive(false)` ignore le clic —, si bien qu'on voyait un
+  curseur qu'aucun geste de souris n'atteignait. La vue, elle, sait où
+  tombe un point : c'est ainsi qu'elle peint.
+
+  ET CE QU'UNE CAPTURE A MONTRÉ, que les mesures ne demandaient pas : la
+  pastille d'un point d'arrêt recouvrait le numéro de ligne — « ●012 »
+  pour la ligne 4 012. La gouttière avait une largeur fixe de trente-huit
+  pixels, soit cinq chiffres serrés ; un listing d'un million de lignes en
+  demande sept. Elle suit maintenant le fichier.
+
+  CE QUI RESTE, ET QUI EST ASSUMÉ. Entrer en Insertion sur un listing
+  d'un million de lignes paie encore les trois secondes et les 1,8 Go :
+  c'est le vrai champ de texte qui revient, avec tout ce qu'il porte. Le
+  cas est rare — on n'édite pas un désassemblage, et namsdec refuse même
+  de le réassembler — mais il n'est pas interdit, et il vaut mieux
+  l'écrire ici que de le découvrir. La sortie serait une vue de lecture
+  qui sait aussi sélectionner et copier ; ce serait un autre chantier,
+  et il n'a pas d'urgence.

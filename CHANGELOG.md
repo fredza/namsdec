@@ -6,10 +6,35 @@ entrée par version, et ce qui change pour qui s'en sert.
 
 ## 0.2.8-beta.3 — 14 octobre 2026
 
-Deux passes depuis la beta.1 : les griefs relevés sur captures le 13
-octobre, puis une passe de **mesure** sur les gros binaires — quatre
-gels, tous dus au même défaut de forme, un travail proportionnel au
-listing entier refait à chaque image pour en montrer trente lignes.
+Trois passes depuis la beta.1 : les griefs relevés sur captures le 13
+octobre, une passe de **mesure** sur les gros binaires — quatre gels,
+tous dus au même défaut de forme, un travail proportionnel au listing
+entier refait à chaque image pour en montrer trente lignes —, puis le
+gros chantier qui en découlait : **ne plus mettre le listing en page
+d'un bloc**.
+
+**Le listing ne se met plus en page d'un bloc**
+- **Ouvrir un gros binaire est devenu immédiat.** namsdec mettait tout le
+  listing en page avant d'en peindre la moindre ligne : 2,9 secondes et
+  **1,8 gigaoctet de mémoire** pour un million de lignes, alors que
+  trente sont à l'écran. En mode NORMAL — celui où l'on lit —, seules les
+  lignes visibles sont désormais posées. Première image **2 942 ms →
+  116 ms**, mémoire **2 032 Mo → 268 Mo**, et une image en régime
+  **11,3 ms → 1,9 ms**. Sur un binaire plus ordinaire (62 386 lignes) :
+  343 ms → 13,5 ms.
+- La saisie n'y perd rien : entrer en Insertion redonne le vrai champ de
+  texte, avec la sélection, le presse-papier et le reste. C'est la
+  frontière que l'éditeur portait déjà — le champ y était posé non
+  interactif.
+- **Cliquer dans le code y pose le curseur** : le champ de texte ne le
+  permettait pas en mode Normal, et l'on voyait un curseur qu'aucun geste
+  de souris n'atteignait.
+- **Aller à une adresse ne fait plus basculer en saisie.** Cliquer une
+  adresse dans un panneau d'analyse ouvrait le mode Insertion sur un
+  listing de binaire : on venait lire, on se retrouvait à éditer.
+- **La gouttière suit le fichier** : sa largeur était fixe, et la
+  pastille d'un point d'arrêt recouvrait le numéro dès quatre chiffres —
+  un listing d'un million de lignes en demande sept.
 
 **Aller voir une adresse — et la passe du 13 octobre**
 - **Cliquer une adresse emmène vraiment au listing.** Le canal marchait

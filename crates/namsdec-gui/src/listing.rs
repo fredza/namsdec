@@ -104,50 +104,6 @@ pub(crate) fn rangées_visibles(
     début..fin.max(début)
 }
 
-/// Le rectangle qu'occupe une occurrence dans le galley, sans parcourir
-/// les rangées.
-///
-/// Rendu dans le repère du galley : à l'appelant de le translater là où
-/// le galley est peint.
-///
-/// `Galley::pos_from_cursor` répondrait aussi, mais en comptant les
-/// caractères de toutes les rangées depuis la première — un parcours
-/// complet par occurrence. La ligne et la colonne étant déjà connues
-/// (voir `text::Place`), la rangée se prend par son indice et la colonne
-/// par `x_offset` : deux accès directs.
-pub(crate) fn rect_de_place(galley: &egui::Galley, place: &Place) -> Option<egui::Rect> {
-    let rangée = galley.rows.get(place.ligne.checked_sub(1)? as usize)?;
-    let gauche = rangée.row.x_offset(egui::text::CharIndex(place.colonne));
-    let droite = rangée
-        .row
-        .x_offset(egui::text::CharIndex(place.colonne + place.largeur));
-    Some(egui::Rect::from_min_max(
-        egui::pos2(rangée.pos.x + gauche, rangée.pos.y),
-        egui::pos2(rangée.pos.x + droite, rangée.pos.y + rangée.row.size.y),
-    ))
-}
-
-/// La ligne qu'un point de l'écran désigne dans la gouttière.
-pub(crate) fn ligne_sous(
-    galley: &egui::Galley,
-    gutter_rect: egui::Rect,
-    pos: egui::Pos2,
-) -> Option<u32> {
-    // Par la tranche visible, et non en parcourant le galley : un point
-    // de l'écran est dans ce qui est à l'écran, et un listing en compte
-    // un million de rangées.
-    let origine = gutter_rect.min.to_vec2();
-    let vue = egui::Rect::from_min_max(
-        egui::pos2(gutter_rect.left(), pos.y),
-        egui::pos2(gutter_rect.right(), pos.y),
-    );
-    let rangées = rangées_visibles(galley, origine, vue);
-    galley.rows[rangées.clone()]
-        .iter()
-        .position(|row| row.rect().translate(origine).y_range().contains(pos.y))
-        .map(|index| (rangées.start + index) as u32 + 1)
-}
-
 /// Un bouton de lien : une marque dessinée, puis son nom.
 ///
 /// Fait à la main plutôt qu'avec `Button::image_and_text` : ces marques
