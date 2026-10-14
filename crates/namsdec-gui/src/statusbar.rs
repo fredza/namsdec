@@ -71,6 +71,18 @@ impl NamsdecApp {
             // (version raccourcie — "NASM 3.02", pas la ligne complète de
             // `nasm -v` avec sa date de compilation, hors de propos ici).
             mode_pill_ui(ui, theme, self.editor_mode);
+            // LE COMPTEUR EN ATTENTE SE VOIT. Taper `5` puis hésiter
+            // laisse l'éditeur dans un état qui change ce que la touche
+            // suivante va faire : le cacher serait cacher la moitié du
+            // geste. vim l'écrit dans son coin de commande ; ici, à côté
+            // de la pastille de mode, qui est le même endroit — ce qui
+            // dit où l'on en est.
+            if let Some(compte) = self.count_pending {
+                ui.colored_label(
+                    theme.accent,
+                    egui::RichText::new(compte.to_string()).monospace(),
+                );
+            }
             ui.separator();
             // Quel fichier on édite, et s'il reste quelque chose à
             // enregistrer. Sans cela, rien à l'écran ne distingue un
@@ -82,7 +94,9 @@ impl NamsdecApp {
                 .and_then(|path| path.file_name())
                 .map(|name| name.to_string_lossy().into_owned())
                 .unwrap_or_else(|| s.untitled_buffer.to_owned());
-            let modified = self.source != self.saved_source;
+            // Le relevé de l'image, et non une comparaison de plus :
+            // voir `modifié_vu`.
+            let modified = self.modifié_vu;
             ui.colored_label(
                 if modified { theme.changed } else { theme.dim },
                 if modified {

@@ -22998,6 +22998,19 @@ fn scènes() -> Vec<Scène> {
             }
         }
     }
+    // Un compteur en attente : `5` tapé, le mouvement pas encore venu.
+    // C'est une forme de plus dans la rangée la plus serrée de l'écran —
+    // la barre d'état —, et les invariants de scène sont ce qui dit
+    // qu'elle ne pousse ni ne recouvre rien. Quatre chiffres, qui est le
+    // plus large qu'elle puisse porter.
+    scènes.push((
+        "application / compteur en attente".to_owned(),
+        None,
+        Box::new(|app| {
+            app.show_statusbar = true;
+            app.count_pending = Some(4242);
+        }),
+    ));
     scènes
 }
 
@@ -23724,6 +23737,9 @@ fn every_setting_that_is_written_is_read_back() {
         open_binary_len: None,
         open_binary_mtime: None,
         breakpoints: vec![3],
+        // Dans les quatre lignes du fichier écrit plus haut : une ligne
+        // qui n'existe pas serait écartée à la reprise, et c'est voulu.
+        listing_line: Some(3),
         watchpoints: vec![(0x1000, 4)],
         watched_registers: vec!["RAX".to_owned()],
         program_args: "-v --long".to_owned(),
@@ -30268,5 +30284,484 @@ fn la_fenetre_d_analyse_ne_grandit_pas_avec_son_contenu() {
     assert!(
         (fin.width() - départ.width()).abs() < 2.0,
         "revenue sur « Tout », la fenêtre a la taille du départ : {départ:?} puis {fin:?}"
+    );
+}
+
+// ============================================================================
+//  CE QU'ON NE PARCOURT PLUS : les relevés gardés, et la dichotomie
+//
+//  Quatre défauts mesurés le 14 octobre 2026 avaient la même forme : un
+//  travail proportionnel au LISTING ENTIER, refait à chaque image, pour
+//  en montrer trente lignes. Les contrôles qui suivent retiennent la
+//  correction par ce qui se compte — des relevés, des rangées — et non
+//  par des millisecondes, qui diraient autre chose sur une autre
+//  machine.
+// ============================================================================
+
+/// Les occurrences d'une recherche se situent en une passe, et juste.
+#[test]
+fn an_occurrence_knows_its_line_and_column() {
+    let texte = "mov rax, 1\nmov rbx, 2\n  mov rcx, rax\n";
+    let étendues: Vec<std::ops::Range<usize>> = find_matches(texte, "mov")
+        .into_iter()
+        .map(|at| at..at + 3)
+        .collect();
+    let places = place_spans(texte, &étendues);
+    assert_eq!(places.len(), 3, "trois fois « mov »");
+    assert_eq!((places[0].ligne, places[0].colonne), (1, 0));
+    assert_eq!((places[1].ligne, places[1].colonne), (2, 0));
+    // Deux espaces d'indentation : la colonne les compte.
+    assert_eq!((places[2].ligne, places[2].colonne), (3, 2));
+    assert!(
+        places.iter().all(|place| place.largeur == 3),
+        "trois caractères chacune"
+    );
+}
+
+/// La casse ne compte pas, et la colonne se compte en CARACTÈRES.
+#[test]
+fn an_occurrence_counts_characters_and_ignores_case() {
+    // « é » pèse deux octets : une colonne comptée en octets poserait le
+    // surlignage un caractère trop loin.
+    let texte = "; prépare\n    MOV rax, 1\n";
+    let places = find_places(texte, "mov");
+    assert_eq!(places.len(), 1, "« MOV » répond à « mov »");
+    assert_eq!(places[0].ligne, 2);
+    assert_eq!(places[0].colonne, 4);
+    let places = find_places(texte, "pare");
+    assert_eq!(places[0].colonne, 5, "après « ; pré », soit cinq signes");
+}
+
+/// Une étendue à cheval sur deux lignes n'est pas située.
+///
+/// Elle n'arrive pas d'une recherche — on n'y tape pas de retour à la
+/// ligne — mais un surlignage qui traverserait une fin de ligne serait
+/// faux, et c'est le genre de faux qu'on ne voit qu'une fois peint.
+#[test]
+fn a_span_across_two_lines_is_not_placed() {
+    let texte = "un\ndeux\n";
+    // Deux étendues au même départ : l'une tient sur sa ligne, l'autre
+    // la traverse.
+    let places = place_spans(texte, &[0..2, 0..5]);
+    assert_eq!(places.len(), 1, "une seule des deux est située");
+    assert_eq!(places[0].octets, 0..2, "celle qui tient sur sa ligne");
+}
+
+/// La tranche visible des occurrences se trouve par dichotomie, et c'est
+/// la même que celle qu'un parcours complet désignerait.
+#[test]
+fn the_visible_occurrences_are_found_without_walking_the_others() {
+    let texte: String = (1..=200).map(|n| format!("mov rax, {n}\n")).collect();
+    let places = find_places(&texte, "mov");
+    assert_eq!(places.len(), 200);
+    for (première, dernière) in [(1u32, 1u32), (1, 30), (57, 61), (190, 220), (300, 400)] {
+        let par_dichotomie = places_entre(&places, première, dernière);
+        let à_la_main: Vec<usize> = places
+            .iter()
+            .enumerate()
+            .filter(|(_, place)| place.ligne >= première && place.ligne <= dernière)
+            .map(|(rang, _)| rang)
+            .collect();
+        assert_eq!(
+            par_dichotomie.clone().collect::<Vec<_>>(),
+            à_la_main,
+            "lignes {première} à {dernière}"
+        );
+    }
+}
+
+/// La ligne du curseur se prend autour de lui, et c'est la bonne.
+#[test]
+fn the_line_around_a_byte_is_the_line_it_sits_on() {
+    let texte = "première\ndeuxième\ntroisième";
+    // Les positions sont en OCTETS, et « è » en pèse deux : le retour à
+    // la ligne de la première est au neuvième octet, non au huitième.
+    assert_eq!(ligne_autour(texte, 0), "première");
+    assert_eq!(
+        ligne_autour(texte, 9),
+        "première",
+        "sur le retour à la ligne"
+    );
+    assert_eq!(ligne_autour(texte, 10), "deuxième");
+    assert_eq!(ligne_autour(texte, texte.len()), "troisième");
+    // Et le même résultat que `lines().nth()`, qui est ce qu'elle
+    // remplace.
+    for (rang, ligne) in texte.lines().enumerate() {
+        let octet = ligne_début(texte, rang).expect("la ligne existe");
+        assert_eq!(ligne_autour(texte, octet), ligne, "ligne {rang}");
+    }
+}
+
+/// Ligne, colonne et octet en une passe disent la même chose que les
+/// trois fonctions qu'ils remplacent.
+#[test]
+fn line_column_and_byte_agree_with_what_they_replace() {
+    let texte = "mov rax, 1\n; é accentué\nhlt\n";
+    for rang in 0..=texte.chars().count() + 2 {
+        let (ligne, colonne, octet) = line_col_byte(texte, rang);
+        assert_eq!((ligne, colonne), line_col(texte, rang), "rang {rang}");
+        assert_eq!(octet, char_to_byte(texte, rang), "rang {rang}");
+    }
+}
+
+/// Le compteur de vim : `5j` descend de cinq lignes, et coûte un `j`.
+#[test]
+fn a_count_repeats_a_movement() {
+    let texte: String = (1..=20).map(|n| format!("ligne {n}\n")).collect();
+    let cinq_fois = move_cursor_times(&texte, 0, Move::Down, 5);
+    let un_par_un = (0..5).fold(0, |at, _| move_cursor(&texte, at, Move::Down));
+    assert_eq!(cinq_fois, un_par_un, "cinq fois `j`, c'est `5j`");
+    assert_eq!(line_col_byte(&texte, cinq_fois).0, 6, "de la 1 à la 6");
+    // Buté : on s'arrête là où le texte s'arrête, sans faire les neuf
+    // mille autres tours.
+    let fin = move_cursor_times(&texte, 0, Move::Down, 9999);
+    assert_eq!(
+        fin,
+        move_cursor_times(&texte, 0, Move::Down, 100),
+        "la dernière ligne est la dernière, qu'on demande cent ou dix mille"
+    );
+    assert_eq!(
+        fin,
+        texte.chars().count(),
+        "et c'est la fin du texte, le dernier retour à la ligne compris"
+    );
+    // Les mots aussi.
+    let ligne = "mov qword [rbp-0x18], rax";
+    assert_eq!(
+        move_cursor_times(ligne, 0, Move::WordForward, 3),
+        (0..3).fold(0, |at, _| move_cursor(ligne, at, Move::WordForward))
+    );
+}
+
+/// Le compteur est borné, et la borne tient.
+///
+/// Sans elle, un doigt resté sur une touche déborderait l'entier du
+/// compteur, et le mouvement partirait là où personne ne l'a demandé.
+#[test]
+fn a_count_cannot_grow_without_bound() {
+    let mut compte = None;
+    for _ in 0..12 {
+        compte = Some(crate::editor::borne_du_compte(compte, 9));
+    }
+    assert_eq!(compte, Some(9999));
+}
+
+/// Les occurrences de la recherche ne sont relevées qu'UNE fois, barre
+/// ouverte, quelles que soient les images qui passent.
+///
+/// C'est le contrôle qui retient le défaut du 14 octobre 2026 : sur
+/// crackme-01 — 62 386 lignes, 24 081 fois « mov » —, l'image prenait
+/// 3 735 ms, barre ouverte, contre 0,8 ms fermée. Chaque image relevait
+/// tout, deux fois, puis situait chaque occurrence par deux parcours
+/// complets du texte.
+#[test]
+fn the_search_hits_are_gathered_once_and_kept() {
+    let Some(octets) = binaire_dépreuve("crackme-01") else {
+        return;
+    };
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp::default();
+    app.apply_theme(&ctx);
+    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1400.0, 900.0),
+        )),
+        ..Default::default()
+    };
+    // Une image d'abord, pour que la mise en page soit payée.
+    ctx.run_ui(input.clone(), |ui| app.draw(ui)).textures_delta = Default::default();
+    app.find = Some(Find {
+        query: "mov".to_owned(),
+        current: 0,
+        just_opened: false,
+    });
+    let avant = crate::editor::relevés_de_recherche();
+    for _ in 0..6 {
+        let mut sortie = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        sortie.textures_delta.clear();
+    }
+    let relevés = crate::editor::relevés_de_recherche() - avant;
+    assert_eq!(
+        relevés, 1,
+        "six images, {relevés} relevés — la requête n'a pas changé"
+    );
+    assert!(
+        app.find_hits.len() > 10_000,
+        "et le relevé a bien trouvé : {} occurrences",
+        app.find_hits.len()
+    );
+
+    // La requête change : là, il faut relever à nouveau — et une fois.
+    if let Some(find) = &mut app.find {
+        find.query = "call".to_owned();
+    }
+    let avant = crate::editor::relevés_de_recherche();
+    for _ in 0..4 {
+        let mut sortie = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        sortie.textures_delta.clear();
+    }
+    assert_eq!(
+        crate::editor::relevés_de_recherche() - avant,
+        1,
+        "une requête nouvelle, un relevé"
+    );
+}
+
+/// La fenêtre de désassemblage ne redécode pas le binaire à chaque
+/// image.
+///
+/// Elle composait une ligne — un décodage et deux chaînes — pour CHAQUE
+/// instruction du programme, à chaque image, alors que sa zone n'en
+/// montre qu'une quarantaine. Sur un binaire d'un million
+/// d'instructions, l'ouvrir revenait à la fermer.
+#[test]
+fn the_disassembly_window_decodes_once_per_question() {
+    let Some(octets) = binaire_dépreuve("crackme-01") else {
+        return;
+    };
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp::default();
+    app.apply_theme(&ctx);
+    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    app.show_disassembly = true;
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1400.0, 900.0),
+        )),
+        ..Default::default()
+    };
+    let avant = crate::windows::relevés_de_désassemblage();
+    for _ in 0..6 {
+        let mut sortie = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        sortie.textures_delta.clear();
+    }
+    let relevés = crate::windows::relevés_de_désassemblage() - avant;
+    assert_eq!(
+        relevés, 1,
+        "six images, {relevés} relevés — rien n'a changé de la question"
+    );
+    assert!(
+        !app.disassembly_rows.is_empty(),
+        "et la fenêtre a bien de quoi montrer"
+    );
+
+    // Un filtre posé : une question nouvelle, un relevé de plus.
+    app.disassembly_query = "mov".to_owned();
+    let avant = crate::windows::relevés_de_désassemblage();
+    for _ in 0..4 {
+        let mut sortie = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        sortie.textures_delta.clear();
+    }
+    assert_eq!(
+        crate::windows::relevés_de_désassemblage() - avant,
+        1,
+        "un filtre nouveau, un relevé"
+    );
+    assert!(
+        app.disassembly_rows.len() < app.assemble_state.as_ref().unwrap().disasm.len(),
+        "et le filtre filtre"
+    );
+}
+
+/// La tranche de rangées visibles, trouvée par dichotomie, est celle
+/// qu'un parcours complet du galley désignerait.
+///
+/// C'est le contrôle de la correction du 14 octobre 2026 : écarter les
+/// rangées une par une coûtait neuf millisecondes par image sur un
+/// listing d'un million de lignes, pour en retenir soixante. La
+/// dichotomie ne vaut que si elle retient EXACTEMENT les mêmes.
+#[test]
+fn the_visible_rows_are_the_same_the_dichotomy_finds_them() {
+    let texte: String = (1..=400).map(|n| format!("    mov rax, {n}\n")).collect();
+    let ctx = egui::Context::default();
+    let app = NamsdecApp::default();
+    app.apply_theme(&ctx);
+    let theme = app.theme;
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(900.0, 600.0),
+        )),
+        ..Default::default()
+    };
+    let mut sortie = ctx.run_ui(input, |ui| {
+        let galley = layout_code(ui, theme, &texte);
+        let origine = egui::vec2(40.0, 12.0);
+        for (haut, bas) in [
+            (0.0, 100.0),
+            (12.0, 612.0),
+            (300.0, 320.0),
+            (-500.0, 0.0),
+            (5_000.0, 9_000.0),
+        ] {
+            let vue = egui::Rect::from_min_max(egui::pos2(0.0, haut), egui::pos2(900.0, bas));
+            let tranche = rangées_visibles(&galley, origine, vue);
+            let à_la_main: Vec<usize> = galley
+                .rows
+                .iter()
+                .enumerate()
+                .filter(|(_, row)| row.rect().translate(origine).intersects(vue))
+                .map(|(rang, _)| rang)
+                .collect();
+            let par_dichotomie: Vec<usize> = galley.rows[tranche.clone()]
+                .iter()
+                .enumerate()
+                .filter(|(rang, row)| {
+                    let _ = rang;
+                    row.rect().translate(origine).intersects(vue)
+                })
+                .map(|(rang, _)| tranche.start + rang)
+                .collect();
+            assert_eq!(par_dichotomie, à_la_main, "vue {haut}..{bas}");
+        }
+    });
+    sortie.textures_delta.clear();
+}
+
+/// Le texte n'est reconnu qu'une fois par image.
+///
+/// La gouttière demande la mise en page, puis le champ de texte la
+/// redemande : deux reconnaissances du texte entier pour la même
+/// réponse, soit trois millisecondes par image sur un listing de seize
+/// mégaoctets. En mode Normal — celui où l'on LIT un binaire — le champ
+/// n'est pas interactif, rien ne peut avoir changé entre les deux, et la
+/// mise en page lui est prêtée.
+#[test]
+fn the_listing_is_recognised_once_per_frame() {
+    let Some(octets) = binaire_dépreuve("crackme-01") else {
+        return;
+    };
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp::default();
+    app.apply_theme(&ctx);
+    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    assert_eq!(
+        app.editor_mode,
+        EditorMode::Normal,
+        "on ouvre un binaire pour le lire"
+    );
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1400.0, 900.0),
+        )),
+        ..Default::default()
+    };
+    // Une première image paie la mise en page ; on compte les suivantes.
+    let mut sortie = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+    sortie.textures_delta.clear();
+    let avant = crate::editor::reconnaissances_du_texte();
+    for _ in 0..5 {
+        let mut sortie = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        sortie.textures_delta.clear();
+    }
+    let reconnaissances = crate::editor::reconnaissances_du_texte() - avant;
+    assert_eq!(
+        reconnaissances, 5,
+        "cinq images, {reconnaissances} reconnaissances du texte"
+    );
+}
+
+/// La ligne qu'on lisait revient avec le binaire — et le mode ne change
+/// pas pour autant.
+#[test]
+fn the_line_we_were_reading_comes_back() {
+    let Some(octets) = binaire_dépreuve("crackme-01") else {
+        return;
+    };
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp::default();
+    app.apply_theme(&ctx);
+    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    let lignes = app.source.lines().count();
+    assert!(lignes > 1_000, "un listing de {lignes} lignes");
+    // Ce que les réglages de la séance précédente porteraient.
+    app.saved_settings.listing_line = Some(4_012);
+    app.restore_session_marks();
+    assert_eq!(
+        app.reprise_ligne,
+        Some(4_012),
+        "la ligne de lecture est reprise"
+    );
+    assert_eq!(
+        app.cursor_pos.0, 4_012,
+        "et la barre d'état le dit dès la première image, avant que \
+         l'éditeur se dessine"
+    );
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1400.0, 900.0),
+        )),
+        ..Default::default()
+    };
+    let mut sortie = ctx.run_ui(input, |ui| app.draw(ui));
+    sortie.textures_delta.clear();
+    assert_eq!(
+        app.editor_mode,
+        EditorMode::Normal,
+        "on rouvre pour LIRE : « INSERT » au premier regard serait une surprise"
+    );
+    assert!(
+        app.reprise_ligne.is_none(),
+        "la reprise est consommée, et ne reprend pas le curseur à chaque image"
+    );
+    // Et une ligne qui n'existe plus — binaire plus court — est écartée
+    // plutôt que de poser le curseur n'importe où.
+    app.saved_settings.listing_line = Some(lignes as u32 + 10);
+    app.restore_session_marks();
+    assert!(
+        app.reprise_ligne.is_none(),
+        "hors du listing, la reprise est écartée"
+    );
+}
+
+/// Le compteur en attente se voit dans la barre d'état.
+///
+/// Taper `5` puis hésiter laisse l'éditeur dans un état qui change ce
+/// que la touche suivante va faire. Un état qui agit et ne se voit pas
+/// est un piège — c'est la règle du projet pour le mode, elle vaut pour
+/// le compteur.
+#[test]
+fn a_pending_count_is_shown() {
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp::default();
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1200.0, 800.0),
+        )),
+        ..Default::default()
+    };
+    // Ce que la barre d'état peint, mot par mot.
+    let peints = |app: &mut NamsdecApp| -> Vec<String> {
+        let mut sortie = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        let textes = sortie
+            .shapes
+            .iter()
+            .filter_map(|clipped| match &clipped.shape {
+                egui::epaint::Shape::Text(text) => Some(text.galley.text().to_owned()),
+                _ => None,
+            })
+            .collect();
+        sortie.textures_delta.clear();
+        textes
+    };
+    // Un nombre qu'aucun numéro de ligne de la gouttière ne porte : « 12 »
+    // en est un, et c'est ce qui faisait passer ce contrôle pour rien.
+    let sans = peints(&mut app);
+    assert!(
+        !sans.iter().any(|texte| texte == "4242"),
+        "rien à montrer tant qu'aucun chiffre n'est tapé : {sans:?}"
+    );
+    app.count_pending = Some(4242);
+    let avec = peints(&mut app);
+    assert!(
+        avec.iter().any(|texte| texte == "4242"),
+        "le compteur en attente est peint : {avec:?}"
     );
 }

@@ -828,13 +828,7 @@ impl NamsdecApp {
                         .and_then(|path| path.file_name())
                         .map(|name| name.to_string_lossy().into_owned())
                         .unwrap_or_else(|| s.untitled_buffer.to_owned());
-                    chrome::title_drag_ui(
-                        ui,
-                        self.theme,
-                        &fichier,
-                        self.source != self.saved_source,
-                        maximisée,
-                    );
+                    chrome::title_drag_ui(ui, self.theme, &fichier, self.modifié_vu, maximisée);
                 }
             });
         });

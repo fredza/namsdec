@@ -22,15 +22,18 @@ impl NamsdecApp {
         // simple et plus sûr.
         state.from_binary.as_ref()?;
         let ligne = self.cursor_pos.0 as u32;
-        let adresse = state
-            .addr_to_line
-            .iter()
-            .find(|(_, l)| **l == ligne)
-            .map(|(addr, _)| *addr)?;
-        let instruction = state
+        // Par la carte ligne → adresse, et non en parcourant la carte
+        // inverse : l'aperçu est demandé trois fois par image, fenêtre
+        // des correctifs ouverte, et un listing d'un million de lignes
+        // porte un million d'entrées. Les deux cartes existent
+        // justement pour n'avoir jamais à parcourir l'une des deux.
+        let adresse = *state.output.line_to_addr.get(&ligne)?;
+        // Les instructions sont triées par adresse : dichotomie.
+        let rang = state
             .disasm
-            .iter()
-            .find(|instruction| instruction.address == adresse)?;
+            .binary_search_by_key(&adresse, |instruction| instruction.address)
+            .ok()?;
+        let instruction = &state.disasm[rang];
         let nouveaux = match geste {
             PatchGeste::Inverser => namsdec_re::patch::inverted_jump(&instruction.bytes)?,
             PatchGeste::Neutraliser => namsdec_re::patch::nops(instruction.bytes.len()),

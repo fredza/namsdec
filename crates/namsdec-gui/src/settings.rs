@@ -267,6 +267,17 @@ pub struct Settings {
     /// Les lignes où l'on avait posé un point d'arrêt.
     #[serde(default)]
     pub breakpoints: Vec<u32>,
+    /// La ligne qu'on lisait en quittant.
+    ///
+    /// Un listing de binaire fait des dizaines de milliers de lignes :
+    /// retrouver le fichier et ses points d'arrêt, mais rouvrir à la
+    /// ligne 1, c'est laisser le plus long du travail à refaire — se
+    /// replacer. Elle suit la même garde que les points d'arrêt : même
+    /// taille, même date, sinon elle ne désigne plus la même
+    /// instruction. Absente quand on lisait le début, pour ne pas
+    /// écrire un réglage qui ne dit rien.
+    #[serde(default)]
+    pub listing_line: Option<u32>,
     /// Les zones de mémoire surveillées : adresse et longueur.
     #[serde(default)]
     pub watchpoints: Vec<(u64, u32)>,
@@ -357,6 +368,7 @@ impl Default for Settings {
             open_binary_len: None,
             open_binary_mtime: None,
             breakpoints: Vec::new(),
+            listing_line: None,
             watchpoints: Vec::new(),
             watched_registers: Vec::new(),
             program_args: String::new(),

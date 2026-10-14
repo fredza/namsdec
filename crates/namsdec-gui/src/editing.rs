@@ -135,7 +135,10 @@ impl NamsdecApp {
         let index = self.cursor_pos.0.saturating_sub(1);
         let clé = FixKey {
             index,
-            ligne: self.source.lines().nth(index).unwrap_or("").to_owned(),
+            // La ligne prise autour du curseur, et non comptée depuis le
+            // début du fichier : la clé se construit à chaque image, et
+            // la compter coûtait tout le texte qui précède.
+            ligne: ligne_autour(&self.source, self.cursor_byte).to_owned(),
             taille: self.source.len(),
             lang: self.lang,
         };

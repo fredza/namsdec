@@ -58,6 +58,7 @@ impl NamsdecApp {
                     addr_to_line,
                     // Ce programme-ci vient d'un source : il est à nous.
                     from_binary: None,
+                    octets_du_code: Default::default(),
                 });
                 self.note_program_io();
                 // Et ce que namsdec ne saura pas faire : un appel

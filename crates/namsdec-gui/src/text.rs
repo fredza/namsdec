@@ -33,6 +33,117 @@ pub(crate) fn find_matches(text: &str, query: &str) -> Vec<usize> {
     haystack.match_indices(&needle).map(|(at, _)| at).collect()
 }
 
+/// Les occurrences de `query` dans `text`, situées ligne par ligne.
+///
+/// La largeur est celle de la REQUÊTE, en caractères : c'est elle qu'on
+/// surligne, et une occurrence trouvée sans tenir compte de la casse
+/// peut peser d'autres octets que le texte cherché.
+pub(crate) fn find_places(text: &str, query: &str) -> Vec<Place> {
+    let largeur = query.chars().count();
+    let étendues: Vec<std::ops::Range<usize>> = find_matches(text, query)
+        .into_iter()
+        .map(|at| at..(at + query.len()).min(text.len()))
+        .collect();
+    let mut places = place_spans(text, &étendues);
+    for place in &mut places {
+        place.largeur = largeur;
+    }
+    places
+}
+
+/// Où une occurrence tombe dans le texte : sa ligne, et sa colonne en
+/// CARACTÈRES.
+///
+/// Les étendues que rendent `find_matches` et `occurrences::find_all`
+/// sont en octets, parce que c'est ce qu'il faut pour remplacer du
+/// texte. Les peindre demande autre chose : un galley d'egui se repère
+/// par rangée et par colonne de caractères, et rien d'autre.
+///
+/// Traduire à la peinture coûtait cher et le coût ne se voyait pas :
+/// `byte_to_char` recompte les caractères DEPUIS LE DÉBUT du texte, et
+/// `Galley::pos_from_cursor` parcourt les rangées depuis la première.
+/// Deux parcours complets par occurrence, à chaque image — sur un
+/// listing de soixante mille lignes avec vingt mille occurrences, une
+/// minute par image. Mesuré le 14 octobre 2026.
+///
+/// La ligne et la colonne sont donc relevées UNE fois, quand les
+/// étendues changent, et par une seule passe sur le texte.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Place {
+    /// L'étendue d'origine, en octets : c'est elle qui sert à remplacer.
+    pub octets: std::ops::Range<usize>,
+    /// La ligne, comptée depuis 1 comme partout ailleurs dans namsdec.
+    pub ligne: u32,
+    /// La colonne du début, en caractères depuis le début de la ligne.
+    pub colonne: usize,
+    /// La largeur, en caractères.
+    pub largeur: usize,
+}
+
+/// Situe des étendues d'octets dans les lignes du texte, en une passe.
+///
+/// Les étendues doivent être triées par début croissant — c'est ce que
+/// rendent `find_matches` et `occurrences::find_all`, qui parcourent le
+/// texte dans l'ordre. L'ordre permet d'avancer dans le texte et dans
+/// les étendues ensemble, au lieu de repartir du début pour chacune.
+///
+/// Une étendue à cheval sur deux lignes n'est pas située : ni une
+/// recherche ni un jeton n'en contient, et un surlignage qui traverserait
+/// une fin de ligne serait faux.
+pub(crate) fn place_spans(text: &str, spans: &[std::ops::Range<usize>]) -> Vec<Place> {
+    let mut places = Vec::with_capacity(spans.len());
+    let mut début_ligne = 0usize;
+    let mut ligne = 1u32;
+    let mut reste = spans;
+    // Le texte est parcouru ligne par ligne ; les étendues qui tombent
+    // dans la ligne courante sont consommées au passage.
+    for morceau in text.split_inclusive('\n') {
+        let fin_ligne = début_ligne + morceau.trim_end_matches('\n').len();
+        while let Some(étendue) = reste.first() {
+            if étendue.start >= début_ligne + morceau.len() {
+                break;
+            }
+            let étendue = étendue.clone();
+            reste = &reste[1..];
+            if étendue.end > fin_ligne {
+                continue;
+            }
+            let colonne = text[début_ligne..étendue.start].chars().count();
+            let largeur = text[étendue.start..étendue.end].chars().count();
+            places.push(Place {
+                octets: étendue,
+                ligne,
+                colonne,
+                largeur,
+            });
+        }
+        début_ligne += morceau.len();
+        ligne += 1;
+    }
+    places
+}
+
+/// Le rang des occurrences dont la ligne tombe entre `première` et
+/// `dernière` (incluses), par recherche dichotomique.
+///
+/// Les places sont triées par ligne, puisque les étendues l'étaient par
+/// octet : on trouve donc la tranche visible sans parcourir les autres.
+/// C'est ce qui fait la différence entre peindre soixante surlignages et
+/// en examiner vingt mille.
+///
+/// Des rangs et non une tranche : l'appelant a besoin du numéro de
+/// l'occurrence — c'est lui que la barre de recherche compte, et c'est
+/// lui qui dit laquelle est la courante.
+pub(crate) fn places_entre(
+    places: &[Place],
+    première: u32,
+    dernière: u32,
+) -> std::ops::Range<usize> {
+    let début = places.partition_point(|place| place.ligne < première);
+    let fin = places.partition_point(|place| place.ligne <= dernière);
+    début..fin.max(début)
+}
+
 /// Ce qu'une liste posée dans une fenêtre flottante peut prendre en
 /// hauteur : une bonne moitié de l'écran.
 ///
@@ -164,9 +275,14 @@ pub(crate) fn backspace_clears_pair(source: &str, at: usize) -> bool {
 /// Les positions d'egui se comptent en *caractères*, celles d'une chaîne
 /// Rust en octets : la conversion est ce qui sépare un curseur juste
 /// d'un curseur qui dérive d'un cran à chaque accent.
-pub(crate) fn set_cursor_byte(ctx: &egui::Context, source: &str, at: usize) {
+///
+/// Rend `false` quand le champ n'a pas encore d'état — à la toute
+/// première image, il n'en a pas, et le curseur demandé se perdait en
+/// silence. Qui pose un curseur AVANT que l'éditeur ait été dessiné une
+/// fois doit pouvoir réessayer à l'image suivante.
+pub(crate) fn set_cursor_byte(ctx: &egui::Context, source: &str, at: usize) -> bool {
     let Some(mut state) = egui::TextEdit::load_state(ctx, editor_id()) else {
-        return;
+        return false;
     };
     let cible = byte_to_char(source, at);
     state
@@ -175,6 +291,7 @@ pub(crate) fn set_cursor_byte(ctx: &egui::Context, source: &str, at: usize) {
             egui::text::CCursor::new(cible),
         )));
     state.store(ctx, editor_id());
+    true
 }
 
 /// Un caractère qui fait partie d'un mot, pour les règles ci-dessus.
@@ -203,18 +320,60 @@ pub(crate) fn newline_indent(source: &str, cursor: usize) -> String {
 /// ici plutôt que de lire la géométrie du `Galley` rend la position
 /// indépendante de la mise en page (retour à la ligne automatique,
 /// tabulations) — c'est bien la position dans le *texte* qu'on affiche.
+/// La forme que les contrôles emploient, là où l'octet n'est pas le
+/// sujet. L'application, elle, demande les trois d'un coup — elle en a
+/// besoin des trois, et une seule passe les donne.
+#[cfg(test)]
 pub(crate) fn line_col(text: &str, char_index: usize) -> (usize, usize) {
-    let mut line = 1;
-    let mut col = 1;
-    for c in text.chars().take(char_index) {
+    let (ligne, colonne, _) = line_col_byte(text, char_index);
+    (ligne, colonne)
+}
+
+/// La ligne qui contient `octet`, prise AUTOUR de lui.
+///
+/// `lines().nth(n)` répondrait aussi, en relisant tout le texte jusque
+/// là — à chaque image, pour la ligne du curseur. Sur un listing de
+/// seize mégaoctets avec le curseur au milieu, c'est huit mégaoctets
+/// relus soixante fois par seconde. Reculer jusqu'au retour à la ligne
+/// précédent, avancer jusqu'au suivant : le coût est celui de la ligne,
+/// non celui du fichier.
+pub(crate) fn ligne_autour(text: &str, octet: usize) -> &str {
+    let octet = octet.min(text.len());
+    // Un octet qui tomberait au milieu d'un caractère ne peut pas servir
+    // à découper : on se rabat alors sur le début du texte, ce qui ne
+    // perd qu'une proposition de correction.
+    if !text.is_char_boundary(octet) {
+        return text.lines().next().unwrap_or("");
+    }
+    let début = text[..octet].rfind('\n').map_or(0, |at| at + 1);
+    let fin = text[octet..].find('\n').map_or(text.len(), |at| octet + at);
+    &text[début..fin]
+}
+
+/// La ligne, la colonne et l'octet d'un rang de caractère, en UNE passe.
+///
+/// Les trois se lisaient par trois fonctions, donc trois parcours du
+/// texte depuis le début — et ils sont demandés ensemble, à chaque
+/// image, pour peindre le curseur et l'écrire dans la barre d'état. Sur
+/// un listing de seize mégaoctets avec le curseur vers la fin, c'est
+/// trois fois seize millions de caractères comptés par image.
+pub(crate) fn line_col_byte(text: &str, char_index: usize) -> (usize, usize, usize) {
+    let mut ligne = 1;
+    let mut colonne = 1;
+    let mut octet = text.len();
+    for (rang, (position, c)) in text.char_indices().enumerate() {
+        if rang == char_index {
+            octet = position;
+            break;
+        }
         if c == '\n' {
-            line += 1;
-            col = 1;
+            ligne += 1;
+            colonne = 1;
         } else {
-            col += 1;
+            colonne += 1;
         }
     }
-    (line, col)
+    (ligne, colonne, octet)
 }
 
 /// Découpe une ligne d'arguments comme un interpréteur de commandes le
@@ -307,8 +466,39 @@ pub(crate) fn classe_de(c: Option<char>) -> Classe {
 ///
 /// Compté en caractères et non en octets : une ligne de commentaire
 /// accentuée ferait sauter le curseur au milieu d'un caractère.
+/// La forme à un seul pas, que les contrôles emploient : là, c'est la
+/// règle du mouvement qui est en cause, jamais le compteur.
+#[cfg(test)]
 pub(crate) fn move_cursor(source: &str, at: usize, mouvement: Move) -> usize {
+    move_cursor_times(source, at, mouvement, 1)
+}
+
+/// Le même mouvement `fois` fois : le compteur de vim — `5j` descend de
+/// cinq lignes, `3w` avance de trois mots.
+///
+/// Le texte n'est découpé en caractères qu'UNE fois pour toute la
+/// répétition. Rappeler `move_cursor` cinq fois le recopierait cinq
+/// fois, et un listing de seize mégaoctets pèse soixante-quatre
+/// mégaoctets une fois mis en `char`.
+///
+/// Buté — le début du fichier, la fin de la ligne —, on s'arrête :
+/// insister ne mène nulle part, et `9999j` n'a pas à faire dix mille
+/// tours pour le découvrir.
+pub(crate) fn move_cursor_times(source: &str, at: usize, mouvement: Move, fois: u32) -> usize {
     let caractères: Vec<char> = source.chars().collect();
+    let mut at = at.min(caractères.len());
+    for _ in 0..fois.max(1) {
+        let suivant = move_once(&caractères, at, mouvement);
+        if suivant == at {
+            break;
+        }
+        at = suivant;
+    }
+    at
+}
+
+/// Un pas de `mouvement`, sur le texte déjà découpé en caractères.
+fn move_once(caractères: &[char], at: usize, mouvement: Move) -> usize {
     let at = at.min(caractères.len());
     // Le début de la ligne où l'on est, et sa longueur.
     let début = caractères[..at]

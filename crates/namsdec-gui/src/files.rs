@@ -512,12 +512,26 @@ impl NamsdecApp {
                 self.lang,
                 self.untitled_no,
             ),
-            self.buffer_modified(),
+            // Le relevé de l'image : la barre d'onglets est dessinée à
+            // chaque image, et chaque onglet comparait son texte entier
+            // (voir `modifié_vu`). Le repli sur la comparaison vive sert
+            // aux appels qui ne viennent pas d'une image — un test, par
+            // exemple.
+            self.modifié_vu,
         );
         let mut out: Vec<(String, bool)> = self
             .tabs
             .iter()
-            .map(|tab| (tab.label(s, &self.exercise_packs, self.lang), tab.modifié()))
+            .enumerate()
+            .map(|(rang, tab)| {
+                (
+                    tab.label(s, &self.exercise_packs, self.lang),
+                    self.tabs_modifiés_vus
+                        .get(rang)
+                        .copied()
+                        .unwrap_or_else(|| tab.modifié()),
+                )
+            })
             .collect();
         out.insert(self.active_tab_index.min(out.len()), actif);
         out
@@ -973,6 +987,7 @@ impl NamsdecApp {
                     ..Default::default()
                 },
             }),
+            octets_du_code: Default::default(),
         });
         self.note_program_io();
         // Un objet non lié — un `.o` — n'a ni point d'entrée ni adresse
@@ -1196,6 +1211,7 @@ impl NamsdecApp {
             // Un tampon brut désassemblé : pas de bibliothèque à
             // réclamer, mais il vient bien d'un binaire.
             from_binary: Some(LoadedBinary::default()),
+            octets_du_code: Default::default(),
         });
         self.note_program_io();
         self.rebuild_emulator();

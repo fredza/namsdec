@@ -78,22 +78,74 @@ pub(crate) fn heat_colour(theme: &'static Theme, count: u64, max: u64) -> egui::
     arrêts[index].lerp_to_gamma(arrêts[index + 1], position - index as f32)
 }
 
+/// Les rangées du galley qui tombent dans `vue`, par dichotomie.
+///
+/// `origine` est le coin haut-gauche du galley à l'écran : les rangées
+/// se situent par rapport à lui.
+///
+/// Les rangées sont posées de haut en bas, donc triées par ordonnée :
+/// on trouve la tranche visible par recherche dichotomique au lieu de
+/// parcourir toutes les autres. La différence n'est pas théorique —
+/// mesurée le 14 octobre 2026 sur un listing d'un million de lignes, le
+/// seul balayage de la gouttière coûtait NEUF millisecondes par image
+/// pour trouver les soixante rangées à l'écran. Le temps d'une image
+/// entière à soixante hertz, dépensé à ne rien peindre.
+pub(crate) fn rangées_visibles(
+    galley: &egui::Galley,
+    origine: egui::Vec2,
+    vue: egui::Rect,
+) -> std::ops::Range<usize> {
+    let haut = vue.top() - origine.y;
+    let bas = vue.bottom() - origine.y;
+    let début = galley
+        .rows
+        .partition_point(|row| row.pos.y + row.row.size.y < haut);
+    let fin = galley.rows.partition_point(|row| row.pos.y <= bas);
+    début..fin.max(début)
+}
+
+/// Le rectangle qu'occupe une occurrence dans le galley, sans parcourir
+/// les rangées.
+///
+/// Rendu dans le repère du galley : à l'appelant de le translater là où
+/// le galley est peint.
+///
+/// `Galley::pos_from_cursor` répondrait aussi, mais en comptant les
+/// caractères de toutes les rangées depuis la première — un parcours
+/// complet par occurrence. La ligne et la colonne étant déjà connues
+/// (voir `text::Place`), la rangée se prend par son indice et la colonne
+/// par `x_offset` : deux accès directs.
+pub(crate) fn rect_de_place(galley: &egui::Galley, place: &Place) -> Option<egui::Rect> {
+    let rangée = galley.rows.get(place.ligne.checked_sub(1)? as usize)?;
+    let gauche = rangée.row.x_offset(egui::text::CharIndex(place.colonne));
+    let droite = rangée
+        .row
+        .x_offset(egui::text::CharIndex(place.colonne + place.largeur));
+    Some(egui::Rect::from_min_max(
+        egui::pos2(rangée.pos.x + gauche, rangée.pos.y),
+        egui::pos2(rangée.pos.x + droite, rangée.pos.y + rangée.row.size.y),
+    ))
+}
+
 /// La ligne qu'un point de l'écran désigne dans la gouttière.
 pub(crate) fn ligne_sous(
     galley: &egui::Galley,
     gutter_rect: egui::Rect,
     pos: egui::Pos2,
 ) -> Option<u32> {
-    galley
-        .rows
+    // Par la tranche visible, et non en parcourant le galley : un point
+    // de l'écran est dans ce qui est à l'écran, et un listing en compte
+    // un million de rangées.
+    let origine = gutter_rect.min.to_vec2();
+    let vue = egui::Rect::from_min_max(
+        egui::pos2(gutter_rect.left(), pos.y),
+        egui::pos2(gutter_rect.right(), pos.y),
+    );
+    let rangées = rangées_visibles(galley, origine, vue);
+    galley.rows[rangées.clone()]
         .iter()
-        .position(|row| {
-            row.rect()
-                .translate(gutter_rect.min.to_vec2())
-                .y_range()
-                .contains(pos.y)
-        })
-        .map(|index| index as u32 + 1)
+        .position(|row| row.rect().translate(origine).y_range().contains(pos.y))
+        .map(|index| (rangées.start + index) as u32 + 1)
 }
 
 /// Un bouton de lien : une marque dessinée, puis son nom.
@@ -190,13 +242,32 @@ pub(crate) fn annotated_listing(
     disasm: &[DecodedInstruction],
     symbols: &[namsdec_asm::elf::Symbol],
 ) -> (String, BTreeMap<u32, u64>) {
-    let mut listing = String::new();
+    // La place à peu près juste, demandée d'un coup : une quarantaine
+    // d'octets par instruction. Un million d'instructions, c'est sinon
+    // une vingtaine de recopies du listing entier pendant qu'il grandit.
+    let mut listing = String::with_capacity(disasm.len() * 40);
     let mut line_to_addr = BTreeMap::new();
     let mut line = 1u32;
+    // Les deux listes sont triées par adresse : on avance dans les
+    // symboles AVEC les instructions, au lieu de relire la table pour
+    // chacune. Le filtre d'avant était quadratique — dix mille symboles
+    // devant un million d'instructions font dix milliards de
+    // comparaisons, et c'était la moitié du temps d'ouverture d'un gros
+    // binaire.
+    let mut prochain = 0usize;
     for instruction in disasm {
+        while symbols
+            .get(prochain)
+            .is_some_and(|s| s.addr < instruction.address)
+        {
+            prochain += 1;
+        }
         // Une étiquette qui commence ici : elle prend sa ligne, précédée
         // d'une ligne vide — sauf tout en haut, où elle ferait un trou.
-        for symbol in symbols.iter().filter(|s| s.addr == instruction.address) {
+        while let Some(symbol) = symbols
+            .get(prochain)
+            .filter(|s| s.addr == instruction.address)
+        {
             if line > 1 {
                 listing.push('\n');
                 line += 1;
@@ -204,6 +275,7 @@ pub(crate) fn annotated_listing(
             listing.push_str(&symbol.name);
             listing.push_str(":\n");
             line += 1;
+            prochain += 1;
         }
         line_to_addr.insert(line, instruction.address);
         listing.push_str(&instruction.text);
@@ -213,7 +285,8 @@ pub(crate) fn annotated_listing(
         if let Some(target) = branch_target(&instruction.text)
             && let Some(label) = symbol_at(symbols, target)
         {
-            listing.push_str(&format!("    ; -> {label}"));
+            listing.push_str("    ; -> ");
+            listing.push_str(&label);
         }
         listing.push('\n');
         line += 1;

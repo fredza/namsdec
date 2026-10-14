@@ -6,8 +6,8 @@ retiré — reste dans `AMELIORATIONS.txt`, qui ne bouge pas de rôle : une
 seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
-Tenue à jour au fil des séances. Dernière mise à jour : **13 octobre
-2026**, version 0.2.8-beta.1, 1 157 tests au vert.
+Tenue à jour au fil des séances. Dernière mise à jour : **14 octobre
+2026**, version 0.2.8-beta.3, 1 171 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -31,6 +31,62 @@ instruction », qui tient au même nœud que le vide de 56 px — l'état du
 processeur est ancré.
 
 ---
+
+## 7. Les gros binaires ne gèlent plus — passe du 14 octobre (A 7.13)
+
+Quatre gels mesurés, quatre fois la même cause : un travail
+proportionnel au listing entier, refait à chaque image, pour en montrer
+trente lignes. Aucun ne se voit sur crackme-01 ; tous se voient sur un
+binaire de quatre mégaoctets.
+
+- [x] **La recherche ne gèle plus l'application** (A 7.13) — 3 735 ms
+      par image barre ouverte sur crackme-01 (24 081 occurrences de
+      « mov »), contre 0,8 ms fermée ; sur croackpocalypse, l'image ne
+      venait plus. Les occurrences sont relevées une fois, portent leur
+      ligne et leur colonne (`text::Place`), et seule la tranche visible
+      se peint. Retenu par
+      `the_search_hits_are_gathered_once_and_kept` : six images, un
+      relevé.
+- [x] **La fenêtre Désassemblage ne redécode plus tout** (A 7.13) — elle
+      composait une ligne par instruction du programme à chaque image, un
+      décodage et deux chaînes chacune, alors que sa zone en montre
+      quarante. Retenu par
+      `the_disassembly_window_decodes_once_per_question`.
+- [x] **La gouttière trouve ses rangées par dichotomie** (A 7.13) — 8,96
+      ms par image pour retenir 61 rangées sur 1 098 627. Retenu par
+      `the_visible_rows_are_the_same_the_dichotomy_finds_them`, qui
+      vérifie que la dichotomie désigne EXACTEMENT ce que le parcours
+      désignait.
+- [x] **Le texte n'est reconnu qu'une fois par image** (A 7.13) — le
+      cache de mise en page compare le texte entier pour le reconnaître,
+      1,5 ms sur seize mégaoctets, et c'était demandé deux fois par
+      image. En mode Normal le champ n'est pas interactif : la mise en
+      page lui est prêtée. Retenu par
+      `the_listing_is_recognised_once_per_frame`.
+- [x] **« Y a-t-il quelque chose à perdre ? » une fois par image** (A
+      7.13) — la question comparait deux textes entiers, jusqu'à six fois
+      par image. Relevée une fois pour tout ce qui AFFICHE ; ce qui
+      DÉCIDE compare toujours sur le moment, et c'est
+      `assembling_is_greyed_out_on_a_binary_listing` qui l'a imposé.
+- [x] **Le chargement ne cherche plus les étiquettes en quadratique**
+      (A 7.13) — `annotated_listing` relisait toute la table des symboles
+      par instruction ; les deux listes étant triées, on avance dans les
+      deux ensemble.
+- [x] **Les compteurs de vim** (A 1.2, 7.13) — `5j`, `3w`, `12k`. Le
+      compteur en attente se voit à côté de la pastille de mode
+      (`a_pending_count_is_shown`), il est borné à quatre chiffres, et
+      `move_cursor_times` ne découpe le texte qu'une fois pour toute la
+      répétition — il le recopiait entièrement à chaque frappe de `j`.
+- [x] **La ligne qu'on lisait revient** (A 4.11, 7.13) — sous la même
+      garde que les points d'arrêt, curseur posé avant que l'éditeur se
+      dessine, et sans changer de mode : on rouvre un binaire pour le
+      lire. Retenu par `the_line_we_were_reading_comes_back`.
+- [~] **La première image d'un gros listing** (A 5.3, 7.8, 7.13) — 2,9 s
+      sur un million de lignes, et c'est toujours le même chantier :
+      sortir le listing du `TextEdit`. Deux choses de plus à y mettre,
+      mesurées : epaint parcourt lui aussi toutes les rangées du galley à
+      chaque tesselation, et un galley d'un million de rangées pèse ce
+      que pèsent ses glyphes.
 
 ## 6. Huit griefs sur captures — passe du 13 octobre (A 7.12)
 
@@ -640,6 +696,7 @@ Détail chiffré dans `AMELIORATIONS.txt` 7.11, section « REVUE DU
 - [x] Coller insère au curseur au lieu de tout remplacer
 - [x] La gouttière montre au survol ce qu'un clic y ferait
 - [x] La ligne où le programme est arrêté porte une bande
+- [x] Les compteurs de vim — `5j`, `3w` (A 1.2, 7.13)
 - [ ] **Le multicurseur proprement dit** (A 4.14) — vérifié dans egui
       0.36 : `TextEditState` n'a qu'un seul champ `cursor`. En tenir
       plusieurs demande de remplacer le widget de texte, ou d'écrire une
@@ -790,6 +847,11 @@ Détail chiffré dans `AMELIORATIONS.txt` 7.11, section « REVUE DU
       ~300 sur la première image, coût d'une vue en lecture seule pour les
       listings — sélection, recherche, curseur, marques. Pas à entreprendre
       à la légère.
+- [x] **Et ce qui se payait à CHAQUE image, lui, est corrigé** — voir la
+      section 7 : le régime sur un listing d'un million de lignes passe de
+      11,3 ms à moins de 2 ms. Le relevé de 5.2 ne l'avait pas vu parce
+      qu'il ne mesurait que crackme-01, le plus petit binaire du dossier
+      d'épreuve.
 
 ## 4 sexies. Robustesse sur entrée hostile
 

@@ -417,6 +417,16 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "<font face='Courier'>mov qword [rbp-0x18], rax</font>, "
          "<font face='Courier'>w</font> s'arrête sur le crochet puis sur "
          "<font face='Courier'>rbp</font>, au lieu de sauter la moitié de la ligne."),
+        ("p",
+         "Un <b>compteur</b> se tape devant, comme dans vim : "
+         "<font face='Courier'>5j</font> descend de cinq lignes, "
+         "<font face='Courier'>3w</font> avance de trois mots, "
+         "<font face='Courier'>12k</font> remonte de douze. Les chiffres s'accumulent et "
+         "le mouvement les consomme ; le compteur en attente s'affiche <b>à côté de la "
+         "pastille de mode</b>, dans la barre d'état — un état qui change ce que la "
+         "touche suivante va faire doit se voir. Échap l'efface, comme tout le reste. "
+         "<font face='Courier'>0</font> seul reste le début de la ligne : il ne devient un "
+         "chiffre qu'une fois qu'un autre l'a ouvert (<font face='Courier'>10j</font>)."),
         ("liste", [
          "<b>Surligner les occurrences</b> — le mot sous le curseur, ou la sélection, est "
          "montré partout où il revient. Il cherche des jetons et non du texte : le "
@@ -1925,6 +1935,12 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "namsdec rouvre ce qu'on avait : les fichiers sources et leurs onglets, le "
          "<b>binaire</b> ouvert, ses points d'arrêt, ses zones surveillées, les arguments "
          "et variables d'environnement du programme, et l'onglet latéral qu'on regardait."),
+        ("p",
+         "Et <b>la ligne qu'on lisait</b>. Un listing de binaire fait des dizaines de "
+         "milliers de lignes : retrouver le fichier et ses points d'arrêt mais rouvrir à "
+         "la ligne 1, c'était laisser à refaire le plus long — se replacer. La vue "
+         "revient dessus, centrée, le curseur l'y suit, et le mode ne change pas : on "
+         "rouvre un binaire pour le lire."),
         ("p",
          "Les <b>fenêtres d'établi</b> reviennent aussi : la calculatrice, le graphe, la "
          "chronologie, le désassemblage, les registres étendus, les points d'arrêt, "

@@ -4,84 +4,12 @@ Les dates sont celles des commits ; le format suit [Keep a
 Changelog](https://keepachangelog.com/fr/1.1.0/) d'assez loin — une
 entrée par version, et ce qui change pour qui s'en sert.
 
-## 0.2.8-beta.1 — 7 octobre 2026
+## 0.2.8-beta.3 — 14 octobre 2026
 
-L'onglet RE prend sa forme : on y circule, on y nomme ce qu'on comprend,
-et on en ressort une règle. La gestion des outils se resserre, l'éditeur
-suit enfin l'exécution, et les indicateurs redeviennent ce qu'ils sont —
-des témoins qu'on lit.
-
-**L'onglet RE : circuler, nommer, ressortir quelque chose**
-- Un **graphe d'appels** : l'arbre depuis le point d'entrée, et sous lui
-  chaque fonction qui se déplie sur son **code binaire** et son
-  **pseudo-code**, la même ligne lue deux fois — telle que la machine la
-  reçoit, puis telle qu'on la comprend. Une fonction déjà dépliée devient
-  un renvoi : l'arbre reste fini même sur du code récursif.
-- **Renommer une fonction** : <code>sub_10450</code> devient
-  « vérifie_clé », et « Défaut » lui rend son nom d'origine. Le nom donné
-  **suit l'adresse partout** où elle paraît — liste des fonctions,
-  références croisées, listing — avec un léger fond qui distingue ce
-  qu'on a déjà nommé. Il est gardé d'une séance à l'autre.
-- **Les adresses se cliquent** : d'un panneau au listing, sans relever
-  l'adresse à la main pour la retaper dans « aller à ».
-- **Signaux** — par où commencer devant un échantillon inconnu : ce que
-  le binaire sait faire, rangé par familles, et les indicateurs qu'on
-  peut aller vérifier ailleurs.
-- **Place libre (bourrage)** — le remplissage que l'éditeur de liens
-  laisse entre deux fonctions, nommé par sa section. En lecture seule.
-- **Quand le listing ment** — les deux lectures du même octet : un
-  désassemblage qui démarre à contretemps produit des instructions qui
-  n'existent pas, et le panneau le signale.
-- **« En bref » enrichi** : taille du code, point d'entrée, fonctions,
-  chaînes, et ce que le fichier dit de lui-même.
-- **Règles YARA** — une règle prête à coller dans un
-  <code>.yar</code> pour retrouver les frères de l'échantillon.
-- **Entropie en dégradé continu** — vert, jaune, orange, rouge, violet
-  pour l'extrême : la nature d'un bloc se lit à sa couleur.
-
-**L'aide**
-- Le sommaire des instructions montre les **674 mnémoniques**, et non
-  plus les 113 têtes de famille : <code>je</code>, <code>jne</code>,
-  <code>jz</code> étaient dans la documentation sans être à l'écran.
-
-**Les exercices**
-- Le **but et la progression** quittent le bandeau du processeur, où ils
-  restaient affichés même après le chargement d'un binaire sans rapport,
-  pour la fenêtre dédiée aux exercices.
-
-**Solidité**
-- Une **panique sur ELF hostile** corrigée, trouvée par un relevé qui
-  jette des en-têtes incohérents aux analyseurs.
-- Dépendances à jour (correctifs compatibles).
-
-**Les outils d'analyse**
-- **DZF s'installe depuis namsdec** : la recette clone le dépôt, le
-  construit en C++23 et pose ses binaires dans le dossier de namsdec —
-  rien hors de chez lui.
-- Un outil **bâti soi-même hors du PATH** — DZF compilé dans son dépôt —
-  restait « absent » sans recours : namsdec ne cherche que dans le PATH et
-  son dossier d'outils. La fiche d'un outil absent propose maintenant
-  **Localiser le binaire…** : on le désigne une fois, il est retenu et
-  employé tel quel.
-- Un outil **incomplet** — rizin sans son greffon rz-ghidra — ne s'active
-  plus : l'activer déclarait un décompilateur qui échoue au premier essai.
-  « Activer » est grisé (l'infobulle dit pourquoi), et **Réparer**, en
-  vif, mène la marche. On n'active qu'un outil prêt.
-- L'onglet Outils **signale quand la décompilation est éteinte**, avec de
-  quoi l'allumer sur place — les deux réglages d'une même fonction ne sont
-  plus éparpillés sur deux onglets. Et l'onglet Modules sépare les
-  composants (les crates, leur santé) des fonctions optionnelles.
-
-**L'éditeur et les indicateurs**
-- **Avancer d'un pas ramène le code sous les yeux.** Si l'on avait fait
-  défiler vers la droite pour lire un long commentaire, le pas suivant
-  gardait cette vue : la ligne courante restait visible en hauteur, mais
-  les instructions étaient sorties à gauche. L'éditeur suit désormais
-  l'exécution.
-- Les **sept indicateurs** (CF, PF, AF, ZF, SF, DF, OF) de la barre de
-  titre sont de **simples témoins** : on les lit, on ne les règle plus.
-  Les cliquer brouillait ce qu'ils disent — l'état que la dernière
-  instruction a produit.
+Deux passes depuis la beta.1 : les griefs relevés sur captures le 13
+octobre, puis une passe de **mesure** sur les gros binaires — quatre
+gels, tous dus au même défaut de forme, un travail proportionnel au
+listing entier refait à chaque image pour en montrer trente lignes.
 
 **Aller voir une adresse — et la passe du 13 octobre**
 - **Cliquer une adresse emmène vraiment au listing.** Le canal marchait
@@ -173,6 +101,111 @@ des témoins qu'on lit.
   polices qu'egui embarque, et se peignaient en carré. Remplacés partout
   par des caractères que la police porte, et un contrôle regarde
   désormais ce qui est peint plutôt qu'une liste écrite d'avance.
+
+**Les gros binaires cessent de geler namsdec**
+- **Chercher dans un listing de binaire** ne gèle plus. Sur crackme-01
+  — 62 386 lignes, 24 081 fois « mov » —, l'image prenait **3,7
+  secondes** barre de recherche ouverte, contre 0,8 ms fermée ; sur un
+  binaire de quatre mégaoctets, l'image ne venait plus du tout. Les
+  occurrences sont désormais relevées **une fois**, portent leur ligne
+  et leur colonne, et seules celles qui sont à l'écran se peignent.
+- **La fenêtre Désassemblage** redécodait le binaire entier à chaque
+  image — un million d'instructions pour quarante rangées visibles. Elle
+  ne compose plus que les lignes qu'elle montre.
+- **La gouttière** ne peignait déjà que les lignes visibles, mais elle
+  écartait les autres une par une : 9 ms par image sur un listing d'un
+  million de lignes, pour en retenir soixante. La tranche visible se
+  trouve maintenant par dichotomie.
+- Au total, sur un listing d'un million de lignes, une image en régime
+  tombe à **5,6 ms** ; les morceaux retirés en coûtaient onze de plus,
+  mesurés dans la même course. L'ouverture d'un gros binaire, elle,
+  coûte toujours sa mise en page — c'est un autre chantier, et il est
+  écrit.
+- **Les compteurs de vim** : `5j` descend de cinq lignes, `3w` avance de
+  trois mots. Le compteur en attente s'affiche à côté de la pastille de
+  mode — un état qui change ce que la touche suivante fera doit se voir.
+- **La ligne qu'on lisait revient** avec le binaire, sous la même garde
+  que les points d'arrêt : même fichier, même date. Retrouver ses
+  repères mais rouvrir à la ligne 1 laissait à refaire le plus long.
+
+## 0.2.8-beta.1 — 7 octobre 2026
+
+L'onglet RE prend sa forme : on y circule, on y nomme ce qu'on comprend,
+et on en ressort une règle. La gestion des outils se resserre, l'éditeur
+suit enfin l'exécution, et les indicateurs redeviennent ce qu'ils sont —
+des témoins qu'on lit.
+
+**L'onglet RE : circuler, nommer, ressortir quelque chose**
+- Un **graphe d'appels** : l'arbre depuis le point d'entrée, et sous lui
+  chaque fonction qui se déplie sur son **code binaire** et son
+  **pseudo-code**, la même ligne lue deux fois — telle que la machine la
+  reçoit, puis telle qu'on la comprend. Une fonction déjà dépliée devient
+  un renvoi : l'arbre reste fini même sur du code récursif.
+- **Renommer une fonction** : <code>sub_10450</code> devient
+  « vérifie_clé », et « Défaut » lui rend son nom d'origine. Le nom donné
+  **suit l'adresse partout** où elle paraît — liste des fonctions,
+  références croisées, listing — avec un léger fond qui distingue ce
+  qu'on a déjà nommé. Il est gardé d'une séance à l'autre.
+- **Les adresses se cliquent** : d'un panneau au listing, sans relever
+  l'adresse à la main pour la retaper dans « aller à ».
+- **Signaux** — par où commencer devant un échantillon inconnu : ce que
+  le binaire sait faire, rangé par familles, et les indicateurs qu'on
+  peut aller vérifier ailleurs.
+- **Place libre (bourrage)** — le remplissage que l'éditeur de liens
+  laisse entre deux fonctions, nommé par sa section. En lecture seule.
+- **Quand le listing ment** — les deux lectures du même octet : un
+  désassemblage qui démarre à contretemps produit des instructions qui
+  n'existent pas, et le panneau le signale.
+- **« En bref » enrichi** : taille du code, point d'entrée, fonctions,
+  chaînes, et ce que le fichier dit de lui-même.
+- **Règles YARA** — une règle prête à coller dans un
+  <code>.yar</code> pour retrouver les frères de l'échantillon.
+- **Entropie en dégradé continu** — vert, jaune, orange, rouge, violet
+  pour l'extrême : la nature d'un bloc se lit à sa couleur.
+
+**L'aide**
+- Le sommaire des instructions montre les **674 mnémoniques**, et non
+  plus les 113 têtes de famille : <code>je</code>, <code>jne</code>,
+  <code>jz</code> étaient dans la documentation sans être à l'écran.
+
+**Les exercices**
+- Le **but et la progression** quittent le bandeau du processeur, où ils
+  restaient affichés même après le chargement d'un binaire sans rapport,
+  pour la fenêtre dédiée aux exercices.
+
+**Solidité**
+- Une **panique sur ELF hostile** corrigée, trouvée par un relevé qui
+  jette des en-têtes incohérents aux analyseurs.
+- Dépendances à jour (correctifs compatibles).
+
+**Les outils d'analyse**
+- **DZF s'installe depuis namsdec** : la recette clone le dépôt, le
+  construit en C++23 et pose ses binaires dans le dossier de namsdec —
+  rien hors de chez lui.
+- Un outil **bâti soi-même hors du PATH** — DZF compilé dans son dépôt —
+  restait « absent » sans recours : namsdec ne cherche que dans le PATH et
+  son dossier d'outils. La fiche d'un outil absent propose maintenant
+  **Localiser le binaire…** : on le désigne une fois, il est retenu et
+  employé tel quel.
+- Un outil **incomplet** — rizin sans son greffon rz-ghidra — ne s'active
+  plus : l'activer déclarait un décompilateur qui échoue au premier essai.
+  « Activer » est grisé (l'infobulle dit pourquoi), et **Réparer**, en
+  vif, mène la marche. On n'active qu'un outil prêt.
+- L'onglet Outils **signale quand la décompilation est éteinte**, avec de
+  quoi l'allumer sur place — les deux réglages d'une même fonction ne sont
+  plus éparpillés sur deux onglets. Et l'onglet Modules sépare les
+  composants (les crates, leur santé) des fonctions optionnelles.
+
+**L'éditeur et les indicateurs**
+- **Avancer d'un pas ramène le code sous les yeux.** Si l'on avait fait
+  défiler vers la droite pour lire un long commentaire, le pas suivant
+  gardait cette vue : la ligne courante restait visible en hauteur, mais
+  les instructions étaient sorties à gauche. L'éditeur suit désormais
+  l'exécution.
+- Les **sept indicateurs** (CF, PF, AF, ZF, SF, DF, OF) de la barre de
+  titre sont de **simples témoins** : on les lit, on ne les règle plus.
+  Les cliquer brouillait ce qu'ils disent — l'état que la dernière
+  instruction a produit.
 
 ## 0.2.6-beta.1 — 30 septembre 2026
 

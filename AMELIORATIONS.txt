@@ -2871,3 +2871,217 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
   l'état du processeur un onglet à part — ce serait la fin de ce partage à
   trois, mais aussi la fin des registres sous les yeux pendant qu'on lit la
   mémoire. À trancher ensemble.
+
+
+--------------------------------------------------------------------------------
+ 7.13  QUATRE GELS, ET LA MÊME CAUSE QUATRE FOIS
+       (14 octobre 2026)
+--------------------------------------------------------------------------------
+
+  Demandé : « augmente les performances et les fonctions ». Rien n'a été
+  touché avant d'avoir mesuré, et ce qui a été trouvé n'était pas ce que le
+  fichier annonçait depuis trois semaines.
+
+  CE QUE DISAIT LA LISTE (5.2, 5.3, 7.8) : le seul coût connu était la
+  première mise en page d'un listing — 450 ms une fois, et le cache portait
+  ensuite. « Il n'y a donc PAS de coût continu : le cache fait son travail. »
+
+  C'ÉTAIT VRAI SUR CRACKME-01, ET FAUX PLUS GRAND. Trois binaires du dossier
+  d'épreuve, en release, fenêtre 1400x900 :
+
+      crackme-01        62 386 lignes   1re image  343 ms   régime  0,41 ms
+      LeetCrackmeLin64 694 607 lignes   1re image 2 691 ms  régime 11,2 ms
+      croackpocalypse 1 098 626 lignes  1re image 2 942 ms  régime 11,3 ms
+
+  Onze millisecondes par image, en régime, sans rien faire. Le banc de 5.2 ne
+  l'avait pas vu parce qu'il ne mesurait que crackme-01 — trois cents
+  kilooctets, le plus petit des trois.
+
+  QUATRE CAUSES, MESURÉES UNE PAR UNE. Elles ont la même forme : un travail
+  proportionnel au LISTING ENTIER, refait à chaque image, pour en montrer
+  trente lignes.
+
+  1. LA GOUTTIÈRE ÉCARTAIT LES RANGÉES UNE PAR UNE. Elle ne peignait que ce
+     qui est à l'écran — c'était déjà corrigé en septembre — mais elle
+     PARCOURAIT le galley pour le savoir. Mesuré : 8,96 ms pour trouver les
+     61 rangées visibles parmi 1 098 627. Le temps d'une image à soixante
+     hertz, dépensé à ne rien peindre.
+     Les rangées sont posées de haut en bas, donc triées par ordonnée : la
+     tranche visible se trouve par dichotomie (`rangées_visibles`). Le
+     contrôle `the_visible_rows_are_the_same_the_dichotomy_finds_them`
+     vérifie qu'elle retient exactement les mêmes que le parcours, sur cinq
+     vues dont deux hors du texte.
+
+  2. LA RECHERCHE GELAIT L'APPLICATION. Le pire des quatre, et le plus
+     invisible : il ne se voit que barre ouverte.
+     Mesuré sur crackme-01, requête « mov », 24 081 occurrences :
+         barre fermée :     0,8 ms par image
+         barre OUVERTE : 3 735 ms par image
+     Sur croackpocalypse, l'image ne venait plus du tout — le banc a été
+     interrompu au bout de dix minutes.
+     Trois fautes empilées. (a) Les occurrences étaient relevées DEUX fois
+     par image — la barre pour son compte, la peinture pour ses rectangles —
+     et chaque relevé recopiait tout le texte en minuscules. (b) Chaque
+     occurrence était située par `byte_to_char`, qui recompte les caractères
+     DEPUIS LE DÉBUT du fichier. (c) Puis par `Galley::pos_from_cursor`, qui
+     parcourt les rangées depuis la première. Deux parcours complets par
+     occurrence, vingt-quatre mille occurrences.
+     Remède : un relevé gardé d'une image à l'autre, et des occurrences qui
+     portent leur LIGNE et leur COLONNE (`text::Place`), relevées en une
+     seule passe. La peinture ne prend alors que la tranche visible, par
+     dichotomie, et chaque rectangle se place par deux accès directs.
+     Après : 4,7 ms la première image (le relevé), puis le régime.
+
+  3. LA FENÊTRE DE DÉSASSEMBLAGE REDÉCODAIT LE BINAIRE À CHAQUE IMAGE. Sa
+     zone sait ne peindre que ce qu'elle montre (`show_rows`) — mais on lui
+     donnait la liste complète, et composer cette liste REDÉCODAIT chaque
+     instruction (iced-x86) et composait deux chaînes. Un million de fois
+     par image, pour quarante rangées.
+     Remède : la fenêtre garde les RANGS retenus, relevés quand la question
+     change (filtre, point de départ, moteur, langue), et compose la ligne
+     des rangées visibles seulement.
+
+  4. LES CARTES ET LES COMPARAISONS. Trois plus petits, du même genre :
+     la carte adresse -> ligne était CLONÉE à chaque image par la fenêtre de
+     désassemblage, pour une traduction qui n'arrive qu'au clic (un million
+     d'entrées recopiées soixante fois par seconde) ; l'aperçu des trois
+     correctifs parcourait cette même carte puis la liste des instructions,
+     trois fois par image ; l'onglet Octets resommait la taille du code ;
+     la ligne du curseur était prise par `lines().nth(n)`, qui relit tout le
+     texte qui précède, à chaque image.
+
+  CE QUE ÇA DONNE, MESURÉ DANS UNE SEULE COURSE. C'est la seule façon de
+  comparer honnêtement : cette machine est en « powersave », et son horloge
+  varie du simple au double d'une course à l'autre — le même chargement de
+  crackme-01 a été relevé à 62 ms puis à 139 ms sans qu'une ligne change.
+  Dans la MÊME course, sur croackpocalypse (1 098 626 lignes) :
+
+      une image en régime                        5,6 ms
+      le balayage du galley, retiré              6,7 ms  (par image)
+      une reconnaissance du texte entier         1,5 ms  (deux par image)
+      une comparaison « modifié ? »              1,5 ms  (jusqu'à quatre)
+
+  Les trois dernières lignes sont ce que l'image payait EN PLUS. C'est
+  cohérent avec les 17 à 19 ms relevées avant correction sur les mêmes
+  images.
+
+  CE QUI RESTE, ET QUI EST MESURÉ. Le régime est maintenant dominé par ces
+  mêmes comparaisons de texte entier, ce qu'il en reste :
+
+      reconnaître le texte pour le cache de mise en page : 1,5 ms par appel
+      « y a-t-il quelque chose à perdre ? » (source != saved_source) : idem
+
+  La première est demandée deux fois par image — la gouttière, puis le champ
+  de texte. En mode Normal le champ n'est pas interactif : rien ne peut avoir
+  changé entre les deux, et la mise en page lui est PRÊTÉE, sous vérification
+  de l'adresse et de la longueur du texte. Une reconnaissance par image au
+  lieu de deux, et le contrôle
+  `the_listing_is_recognised_once_per_frame` le retient.
+
+  La seconde se posait jusqu'à six fois par image : la barre d'état, le
+  titre, chaque onglet, les boutons qui se grisent. Elle est maintenant
+  relevée une fois, au début de l'image, pour tout ce qui AFFICHE. Ce qui
+  DÉCIDE — enregistrer, fermer, quitter, refuser d'assembler un listing —
+  continue de comparer sur le moment, et c'est un contrôle qui l'a imposé :
+  `assembling_is_greyed_out_on_a_binary_listing` touche le texte puis demande
+  aussitôt, et une réponse d'une image de retard disait « c'est encore un
+  binaire » à quelqu'un qui venait de l'éditer. Une image de retard ne se
+  voit pas sur un bouton ; elle se verrait sur un fichier écrasé.
+
+  Il en reste donc DEUX par image — celle du cache, et celle qui grise le
+  bouton « Assembler » —, soit trois millisecondes des 5,6. On pourrait les
+  rendre gratuites avec un drapeau « modifié » maintenu à la main, et c'est
+  précisément ce que `buffer_modified` refuse depuis le début, pour une
+  bonne raison écrite au-dessus d'elle : « taper un caractère puis l'effacer
+  ne met rien en danger ». Un drapeau se trompe dans le sens qui perd du
+  travail ; une comparaison, jamais.
+
+  ET LE CHARGEMENT. `annotated_listing` cherchait les étiquettes d'une
+  adresse en relisant toute la table des symboles, pour chaque instruction :
+  quadratique. Les deux listes étant triées par adresse, on avance dans les
+  deux ensemble. La place du listing est aussi demandée d'un coup
+  (quarante octets par instruction) au lieu d'une vingtaine de recopies
+  pendant qu'il grandit.
+
+  CE QUI N'EST PAS FAIT, ET POURQUOI. Les ~2,9 s de la première image d'un
+  listing d'un million de lignes restent, et c'est toujours le chantier de
+  5.3 : il faut sortir le listing du `TextEdit`. Deux choses de plus à y
+  mettre maintenant qu'on les a mesurées : epaint PARCOURT lui aussi toutes
+  les rangées du galley à chaque tesselation (`tessellate_text`, qui écarte
+  les invisibles une par une), et un galley d'un million de rangées pèse
+  autant que les glyphes qu'il porte. Virtualiser réglerait les trois d'un
+  coup — et la géométrie s'y prête : police à largeur fixe, pas de repli,
+  donc la rangée n est la ligne n et la colonne c est à c largeurs de
+  caractère. Ce qui coûte n'est pas le calcul, c'est tout ce qui est
+  accroché au `TextEdit` : le curseur, la sélection, la recherche, les
+  marques, les points d'arrêt, la complétion.
+
+  --- Deux fonctions, prises dans ce qui restait ouvert ---
+
+  LES COMPTEURS DE VIM (le RESTE de 1.2). `5j` descend de cinq lignes, `3w`
+  avance de trois mots, `12k` remonte de douze. Les chiffres s'accumulent
+  jusqu'au mouvement qui les consomme ; tout le reste les efface, comme pour
+  `gg`. Trois choix :
+    - `0` seul reste le début de la ligne, et ne devient un chiffre qu'une
+      fois qu'un autre l'a ouvert (`10j`). C'est la règle de vim.
+    - Le compteur est borné à quatre chiffres. Sans borne, un doigt resté sur
+      une touche déborderait l'entier et le mouvement partirait on ne sait
+      où.
+    - LE COMPTEUR EN ATTENTE SE VOIT, à côté de la pastille de mode. Taper
+      `5` puis hésiter laisse l'éditeur dans un état qui change ce que la
+      touche suivante fera : c'est la règle du projet pour le mode, elle vaut
+      pour le compteur.
+  Au passage, un défaut trouvé en lisant : `move_cursor` recopiait tout le
+  texte en `Vec<char>` à CHAQUE appel — soixante-quatre mégaoctets pour un
+  listing de seize, à chaque frappe de `j`. La répétition est donc faite
+  dans `move_cursor_times`, qui ne découpe qu'une fois, et s'arrête dès que
+  le curseur ne bouge plus : `9999j` ne fait pas dix mille tours pour
+  découvrir qu'il est au bout.
+
+  LA LIGNE QU'ON LISAIT (le RESTE de 4.11). Un listing de binaire fait des
+  dizaines de milliers de lignes : retrouver le fichier, ses points d'arrêt
+  et ses arguments mais rouvrir à la ligne 1, c'était laisser à refaire le
+  plus long — se replacer. Elle part dans settings.json (`listing_line`),
+  sous la MÊME GARDE que les points d'arrêt : même taille, même date, sinon
+  elle ne désigne plus la même instruction et elle est écartée. Deux
+  précisions qui ne se voient qu'à l'usage : le curseur y est posé tout de
+  suite, avant que l'éditeur se dessine, parce que la barre d'état est
+  peinte AVANT lui et annoncerait « Lig 1 » ; et le mode ne change pas — on
+  rouvre un binaire pour le LIRE, « INSERT » au premier regard serait une
+  surprise. C'est pourquoi la reprise ne passe pas par `goto_line`, qui est
+  un geste et prend le clavier.
+
+  --- Et ce qu'une capture a appris, deux fois ---
+
+  La reprise de la ligne lue a été vérifiée dans l'application RÉELLE, en
+  semant un profil neuf (settings.json : le binaire, sa taille, sa date,
+  `listing_line`) et en capturant l'écran. Deux leçons, et la seconde vaut
+  pour toutes les captures à venir :
+
+  1. LE BANC NE VOYAIT PAS CE QUE LA CAPTURE A MONTRÉ. Dans un contrôle
+     sans fenêtre, l'éditeur n'a pas le focus et son état de champ n'existe
+     pas toujours : le curseur posé « à la reprise » y restait sans que
+     rien ne le contredise. C'est pourquoi la pose se fait APRÈS le champ,
+     dans `apply_goto_line`, où son état existe à coup sûr.
+
+  2. UN PROFIL DÉJÀ LANCÉ N'EST PLUS UN PROFIL SEMÉ. Trois captures de
+     suite ont montré le listing à la ligne 1, et le code n'y était pour
+     rien : le settings.json semé avait été RÉÉCRIT par la première
+     capture — l'application enregistre ses réglages au démarrage —, et
+     les captures suivantes repartaient d'un fichier où `listing_line`
+     valait `null`. On a donc cherché un défaut dans le code pendant trois
+     quarts d'heure, traces à l'appui, pour un fichier qu'on avait
+     soi-même écrasé. Semer, c'est semer À NEUF à chaque fois.
+
+  --- Ce qui a servi, et ce qui a nui ---
+
+  CE QUI A SERVI : mesurer sur le PLUS GROS binaire du dossier, non sur le
+  plus pratique. Les quatre gels sont invisibles sur trois cents kilooctets.
+
+  CE QUI A NUI, et c'est à retenir : compter en millisecondes ne fait pas un
+  contrôle — la même mesure dit « lent » sur une machine chargée et « vite »
+  sur une autre. Les quatre corrections sont donc retenues par ce qui se
+  COMPTE : des relevés (`relevés_de_recherche`,
+  `relevés_de_désassemblage`), des reconnaissances du texte
+  (`reconnaissances_du_texte`), des rangées. Un nombre de relevés est le
+  même partout.

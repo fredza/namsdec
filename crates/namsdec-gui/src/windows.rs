@@ -11,6 +11,55 @@
 
 use super::*;
 
+// Combien de fois les rangs de la fenêtre de désassemblage ont été
+// relevés.
+//
+// Un relevé décode tout le binaire quand un filtre est posé. Le compter
+// permet à un contrôle de voir la différence entre « une fois par
+// question » et « une fois par image » — une différence qui, sur un
+// million d'instructions, est celle entre une fenêtre et un gel.
+thread_local! {
+    static RELEVÉS_DE_DÉSASSEMBLAGE: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+/// Combien de fois les rangs de la fenêtre de désassemblage ont été
+/// relevés.
+#[cfg(test)]
+pub(crate) fn relevés_de_désassemblage() -> u64 {
+    RELEVÉS_DE_DÉSASSEMBLAGE.with(std::cell::Cell::get)
+}
+
+/// Une ligne de la fenêtre de désassemblage : l'adresse, les octets, et
+/// ce que le moteur choisi en dit.
+///
+/// Composée à la demande, pour les rangées qu'on voit : c'est un
+/// décodage et deux chaînes, ce qui ne se multiplie pas par un million.
+fn ligne_désassemblée(
+    instruction: &DecodedInstruction,
+    pseudo: bool,
+    syntaxe: namsdec_disasm::Syntax,
+    lang: &str,
+) -> Ligne {
+    Ligne {
+        address: instruction.address,
+        octets: instruction
+            .bytes
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<Vec<_>>()
+            .join(" "),
+        texte: namsdec_disasm::decode_one(&instruction.bytes, instruction.address)
+            .map(|decoded| {
+                if pseudo {
+                    namsdec_disasm::pseudo::of(&decoded, lang)
+                } else {
+                    namsdec_disasm::format_one_in(&decoded, syntaxe)
+                }
+            })
+            .unwrap_or_else(|| instruction.text.clone()),
+    }
+}
+
 impl NamsdecApp {
     /// Lance un désassembleur extérieur sur le binaire ouvert.
     ///
@@ -67,6 +116,77 @@ impl NamsdecApp {
             .unwrap_or_else(|e| format!("{e}"))
     }
 
+    /// Relève les rangs des instructions que la fenêtre de
+    /// désassemblage montre — et seulement quand la question change.
+    ///
+    /// La question, c'est la clé : le filtre, le point de départ, le
+    /// moteur, la langue et le nombre d'instructions. Tant qu'elle ne
+    /// change pas, la réponse est la même, et la chercher à nouveau
+    /// coûtait un décodage complet du binaire par image.
+    ///
+    /// Le filtre porte sur le texte TEL QU'ON LE LIT, et c'est pour cela
+    /// qu'il faut décoder : le même octet s'écrit « RAX = RAX + 1 » en
+    /// pseudo-code et « add rax, 1 » en NASM, et chercher dans l'un des
+    /// deux quand l'autre est affiché répondrait à côté.
+    fn refresh_disassembly_rows(&mut self) {
+        let Some(state) = &self.assemble_state else {
+            self.disassembly_rows.clear();
+            self.disassembly_rows_clé = None;
+            return;
+        };
+        let clé = (
+            self.disassembly_query.clone(),
+            self.disassembly_target,
+            self.disassembler.clone(),
+            self.lang,
+            state.disasm.len(),
+            // Le nombre de poses du listing : un nom donné à une
+            // fonction récrit le listing, donc le repose, et le filtre
+            // porte aussi sur les noms. Sans cela, renommer pendant
+            // qu'un filtre est posé laissait la liste sur l'ancien nom.
+            // Le zoom repose lui aussi, et fait donc relever pour rien —
+            // une fois, au zoom, et c'est le bon côté de l'erreur.
+            crate::editor::poses_du_texte(),
+        );
+        if self.disassembly_rows_clé.as_ref() == Some(&clé) {
+            return;
+        }
+        let query = self.disassembly_query.to_lowercase();
+        let pseudo = self.disassembler == PSEUDO_ID;
+        let syntaxe = if self.disassembler == SYSTEM_ID {
+            namsdec_disasm::Syntax::System
+        } else {
+            namsdec_disasm::Syntax::Nasm
+        };
+        let lang = self.lang.code();
+        let symbols = &state.output.symbols;
+        // Demandé d'aller quelque part : la liste commence là. Les
+        // instructions sont triées par adresse, donc le point de départ
+        // se trouve par dichotomie.
+        let début = state.disasm.partition_point(|instruction| {
+            self.disassembly_target
+                .is_some_and(|addr| instruction.address < addr)
+        });
+        let rangs: Vec<u32> = (début..state.disasm.len())
+            .filter(|rang| {
+                if query.is_empty() {
+                    return true;
+                }
+                let instruction = &state.disasm[*rang];
+                let ligne = ligne_désassemblée(instruction, pseudo, syntaxe, lang);
+                ligne.texte.to_lowercase().contains(&query)
+                    || format!("{:08x}", ligne.address).contains(&query)
+                    || symbols
+                        .binary_search_by_key(&instruction.address, |symbol| symbol.addr)
+                        .is_ok_and(|rang| symbols[rang].name.to_lowercase().contains(&query))
+            })
+            .map(|rang| rang as u32)
+            .collect();
+        self.disassembly_rows = rangs;
+        self.disassembly_rows_clé = Some(clé);
+        RELEVÉS_DE_DÉSASSEMBLAGE.with(|n| n.set(n.get() + 1));
+    }
+
     /// Le panneau de désassemblage : le programme, lu par le moteur
     /// qu'on a choisi.
     ///
@@ -87,12 +207,16 @@ impl NamsdecApp {
         let mut aller: Option<u32> = None;
         let mut vise: Option<u64> = None;
         let mut revenir_au_début = false;
-        // Relevée avant la fenêtre : elle emprunte `self` en écriture.
-        let addr_to_line = self
-            .assemble_state
-            .as_ref()
-            .map(|state| state.addr_to_line.clone())
-            .unwrap_or_default();
+        // L'adresse cliquée, traduite en ligne APRÈS la fenêtre : celle-ci
+        // emprunte `self` en écriture, et la carte des adresses était donc
+        // recopiée à chaque image pour une traduction qui n'arrive qu'au
+        // clic. Un listing d'un million d'instructions, c'est un million
+        // d'entrées recopiées soixante fois par seconde pour rien.
+        let mut aller_adresse: Option<u64> = None;
+        // Ce que la fenêtre montre, relevé AVANT elle : la fenêtre
+        // emprunte `self` champ par champ, et ce relevé le prend en
+        // entier. Avant elle, et non dedans, il n'y a rien à contourner.
+        self.refresh_disassembly_rows();
 
         let fenêtre_disassembly_window = egui::Window::new(s.disassembly_title)
             .id(egui::Id::new("disassembly_window"))
@@ -274,51 +398,17 @@ impl NamsdecApp {
                     });
                 }
 
-                // Le texte de chaque ligne est calculé ici, pour que la
-                // recherche porte sur ce qu'on lit et non sur la forme
-                // d'un autre moteur.
-                let lignes: Vec<Ligne> = state
-                    .disasm
-                    .iter()
-                    // Demandé d'aller quelque part : la liste commence
-                    // là. Un défilement calculé dépend de la hauteur
-                    // exacte d'une rangée et de ce que la fenêtre laisse
-                    // voir — deux grandeurs qu'on ne connaît qu'après
-                    // avoir dessiné, et qui font tomber à côté.
-                    .skip_while(|instruction| {
-                        self.disassembly_target
-                            .is_some_and(|addr| instruction.address < addr)
-                    })
-                    .map(|instruction| Ligne {
-                        address: instruction.address,
-                        octets: instruction
-                            .bytes
-                            .iter()
-                            .map(|b| format!("{b:02x}"))
-                            .collect::<Vec<_>>()
-                            .join(" "),
-                        texte: namsdec_disasm::decode_one(&instruction.bytes, instruction.address)
-                            .map(|decoded| {
-                                if pseudo {
-                                    namsdec_disasm::pseudo::of(&decoded, lang)
-                                } else {
-                                    namsdec_disasm::format_one_in(&decoded, syntaxe)
-                                }
-                            })
-                            .unwrap_or_else(|| instruction.text.clone()),
-                    })
-                    .filter(|ligne| {
-                        query.is_empty()
-                            || ligne.texte.to_lowercase().contains(&query)
-                            || format!("{:08x}", ligne.address).contains(&query)
-                            || symbols.iter().any(|symbol| {
-                                symbol.addr == ligne.address
-                                    && symbol.name.to_lowercase().contains(&query)
-                            })
-                    })
-                    .collect();
+                // Les rangs retenus : relevés une fois, avant la
+                // fenêtre. Ils l'étaient à chaque image, et chacun
+                // demandait de REDÉCODER l'instruction et de composer
+                // deux chaînes — un million de fois par image sur un
+                // gros binaire, pour quarante rangées visibles. La zone
+                // de défilement, elle, savait déjà ne peindre que ce
+                // qu'elle montre (`show_rows`) : c'est la liste qu'on
+                // lui donnait qui coûtait tout.
+                let rangs = &self.disassembly_rows;
                 if !query.is_empty() {
-                    ui.weak(format!("{} / {}", lignes.len(), state.disasm.len()));
+                    ui.weak(format!("{} / {}", rangs.len(), state.disasm.len()));
                 }
                 if let Some(addr) = self.disassembly_target {
                     ui.horizontal(|ui| {
@@ -341,7 +431,15 @@ impl NamsdecApp {
                 let suivie =
                     (query.is_empty() && self.disassembly_target.is_none() && self.follow_rip)
                         .then(|| {
-                            rip.and_then(|rip| lignes.iter().position(|ligne| ligne.address == rip))
+                            // Les rangs sont dans l'ordre des adresses :
+                            // dichotomie.
+                            rip.and_then(|rip| {
+                                rangs
+                                    .binary_search_by_key(&rip, |rang| {
+                                        state.disasm[*rang as usize].address
+                                    })
+                                    .ok()
+                            })
                         })
                         .flatten();
                 // Bornée à la place que la fenêtre laisse : une zone qui
@@ -361,8 +459,18 @@ impl NamsdecApp {
                     zone = zone
                         .vertical_scroll_offset(index.saturating_sub(CONTEXTE) as f32 * row_height);
                 }
-                zone.show_rows(ui, row_height, lignes.len(), |ui, rows| {
-                    for ligne in &lignes[rows] {
+                zone.show_rows(ui, row_height, rangs.len(), |ui, rows| {
+                    for rang in &rangs[rows] {
+                        // La ligne est composée ici, pour celles qu'on
+                        // voit : c'est ce qui permet de ne pas en
+                        // composer un million.
+                        let ligne = ligne_désassemblée(
+                            &state.disasm[*rang as usize],
+                            pseudo,
+                            syntaxe,
+                            lang,
+                        );
+                        let ligne = &ligne;
                         let ici = rip == Some(ligne.address);
                         let rangée = ui
                             .horizontal(|ui| {
@@ -376,10 +484,13 @@ impl NamsdecApp {
                                 // elle : toutes les rangées gardent la
                                 // même hauteur, ce dont la zone a besoin
                                 // pour savoir où elle en est.
+                                // Les symboles sont triés par adresse :
+                                // dichotomie, et non un parcours de la
+                                // table par rangée peinte.
                                 let étiquette = symbols
-                                    .iter()
-                                    .find(|s| s.addr == ligne.address)
-                                    .map(|s| format!("{}:", s.name))
+                                    .binary_search_by_key(&ligne.address, |s| s.addr)
+                                    .ok()
+                                    .map(|rang| format!("{}:", symbols[rang].name))
                                     .unwrap_or_default();
                                 if colonne_étiquette > 0 {
                                     ui.colored_label(
@@ -421,12 +532,18 @@ impl NamsdecApp {
                             .on_hover_text(s.disassembly_goto)
                             .clicked()
                         {
-                            aller = addr_to_line.get(&ligne.address).copied();
+                            aller_adresse = Some(ligne.address);
                         }
                     }
                 });
             });
         self.place_maximize_button(ctx, Self::DISASSEMBLY_WINDOW, rendue_disassembly_window);
+        if let Some(adresse) = aller_adresse {
+            aller = self
+                .assemble_state
+                .as_ref()
+                .and_then(|state| state.addr_to_line.get(&adresse).copied());
+        }
         if let Some(ligne) = aller {
             self.goto_line = Some(ligne);
         }

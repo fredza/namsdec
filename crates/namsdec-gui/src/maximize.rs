@@ -97,9 +97,19 @@ impl NamsdecApp {
         }
     }
 
-    /// Déplace le curseur du mode Normal, et l'écrit dans l'état du
-    /// champ — c'est lui qui le porte, même quand il n'a pas le focus.
-    pub(crate) fn move_in_normal_mode(&mut self, ctx: &egui::Context, mouvement: Move) {
+    /// Déplace le curseur du mode Normal `fois` fois — le compteur de
+    /// vim, `5j` —, et l'écrit dans l'état du champ : c'est lui qui le
+    /// porte, même quand il n'a pas le focus.
+    ///
+    /// La répétition est faite dans `move_cursor_times`, qui ne découpe
+    /// le texte qu'une fois : c'est ce qui permet à `5j` de coûter ce
+    /// que coûte `j`.
+    pub(crate) fn move_in_normal_mode_times(
+        &mut self,
+        ctx: &egui::Context,
+        mouvement: Move,
+        fois: u32,
+    ) {
         let Some(mut state) = egui::TextEdit::load_state(ctx, editor_id()) else {
             return;
         };
@@ -107,15 +117,18 @@ impl NamsdecApp {
             .cursor
             .char_range()
             .map_or(0, |range| range.primary.index.0);
-        let cible = move_cursor(&self.source, at, mouvement);
+        let cible = move_cursor_times(&self.source, at, mouvement, fois);
         state
             .cursor
             .set_char_range(Some(egui::text::CCursorRange::one(
                 egui::text::CCursor::new(cible),
             )));
         state.store(ctx, editor_id());
-        self.cursor_pos = line_col(&self.source, cible);
-        self.cursor_byte = char_to_byte(&self.source, cible);
+        // Ligne, colonne et octet en une passe, et gardés : voir
+        // `cursor_place`.
+        let (ligne, colonne, octet) = self.cursor_place(cible);
+        self.cursor_pos = (ligne, colonne);
+        self.cursor_byte = octet;
         // Le listing suit : se déplacer hors de l'écran sans que la vue
         // bouge reviendrait à ne pas se déplacer.
         self.follow_execution();

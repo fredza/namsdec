@@ -495,6 +495,21 @@ impl OpenTab {
     }
 }
 
+/// Où le curseur est, et ce qui le rendait vrai.
+///
+/// Relever ligne, colonne et octet demande une passe sur le texte qui
+/// précède le curseur ; la question se pose deux fois par image, et la
+/// réponse ne change que si le curseur ou le texte a bougé. Voir
+/// `NamsdecApp::cursor_place`.
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct CurseurVu {
+    /// La ligne, la colonne, et l'octet.
+    place: (usize, usize, usize),
+    /// Le rang du caractère, la longueur du texte, et le nombre de poses
+    /// du listing : si les trois sont les mêmes, la place l'est aussi.
+    clé: (usize, usize, u64),
+}
+
 struct AssembleState {
     output: namsdec_asm::AssembleOutput,
     disasm: Vec<DecodedInstruction>,
@@ -509,6 +524,24 @@ struct AssembleState {
     /// dynamiquement ne peut pas s'exécuter ici, faute des fonctions
     /// qu'il emprunte.
     from_binary: Option<LoadedBinary>,
+    /// Le poids du code, en octets — calculé une fois, à la demande.
+    ///
+    /// L'onglet Octets l'affiche, et le recalculait à chaque image : sur
+    /// un million d'instructions, c'est une somme d'un million de
+    /// termes soixante fois par seconde pour un nombre qui ne change
+    /// jamais. Il ne peut pas vieillir : un listing qui change — un
+    /// correctif écrit, un autre binaire ouvert — reconstruit tout cet
+    /// état, cellule comprise.
+    octets_du_code: std::cell::OnceCell<usize>,
+}
+
+impl AssembleState {
+    /// Le poids du code, en octets.
+    fn octets_du_code(&self) -> usize {
+        *self
+            .octets_du_code
+            .get_or_init(|| self.disasm.iter().map(|i| i.bytes.len()).sum())
+    }
 }
 
 /// Ce qu'on sait d'un binaire ouvert, et qui change ce qu'on peut en
@@ -754,6 +787,15 @@ struct NamsdecApp {
     /// cliquer un diagnostic doit y mener, sans quoi lire le message et
     /// retrouver l'endroit restent deux gestes.
     goto_line: Option<u32>,
+    /// La ligne de lecture d'une séance précédente, à ramener sous les
+    /// yeux à l'ouverture.
+    ///
+    /// Distincte de `goto_line`, qui est un GESTE : celui-ci pose le
+    /// curseur, passe en Insertion et prend le clavier, ce qui est juste
+    /// quand on vient de demander « aller à la ligne » et faux au
+    /// démarrage — on rouvre un binaire pour le LIRE, et « INSERT » dans
+    /// la barre d'état au premier regard serait une surprise.
+    reprise_ligne: Option<u32>,
     /// Un curseur à replacer, en octets, à la prochaine image.
     ///
     /// Comme `goto_line`, et pour la même raison : ce qui change la
@@ -764,6 +806,31 @@ struct NamsdecApp {
     pending_cursor: Option<usize>,
     /// La recherche en cours, quand la barre est ouverte.
     find: Option<Find>,
+    /// Les occurrences de la recherche, situées une fois pour toutes —
+    /// voir `refresh_find_hits`.
+    find_hits: Vec<Place>,
+    /// Où le curseur est, et pour quelle question (voir `cursor_place`).
+    cursor_place_vu: Option<CurseurVu>,
+    /// Ce que l'image en cours sait du tampon : modifié, ou non.
+    ///
+    /// La question se pose partout dans une image — la barre d'état, le
+    /// titre, les onglets, les boutons qui se grisent — et chacun
+    /// comparait DEUX TEXTES ENTIERS. Sur un listing de seize
+    /// mégaoctets, c'est une milliseconde par question, et c'était la
+    /// moitié du temps d'une image (mesuré le 14 octobre 2026).
+    ///
+    /// La comparaison se fait donc une fois, au début de l'image, et
+    /// tout l'affichage lit la même réponse. Ce qui DÉCIDE — enregistrer,
+    /// fermer, quitter — continue de comparer sur le moment : une image
+    /// de retard ne se voit pas à l'écran, mais écraser un fichier sur
+    /// une réponse périmée se verrait.
+    modifié_vu: bool,
+    /// La même réponse pour chaque onglet laissé de côté, dans leur
+    /// ordre.
+    tabs_modifiés_vus: Vec<bool>,
+    /// Ce qui les a produites : la requête, la longueur du texte, et le
+    /// nombre de poses du listing.
+    find_hits_clé: Option<(String, usize, u64)>,
     /// Ce qu'on cherche dans le manuel, quand la fenêtre d'aide est
     /// ouverte.
     help_query: String,
@@ -1105,6 +1172,20 @@ struct NamsdecApp {
     disassembler: String,
     /// Ce qu'on cherche dans le listing.
     disassembly_query: String,
+    /// Les rangs des instructions que la fenêtre de désassemblage
+    /// montre, dans l'ordre — voir `refresh_disassembly_rows`.
+    ///
+    /// Des rangs et non des lignes toutes faites : une ligne demande de
+    /// redécoder l'instruction et de composer deux chaînes, et la zone
+    /// n'en affiche qu'une quarantaine. Un `u32` suffit — quatre
+    /// milliards d'instructions, c'est plus que ce qu'un fichier peut
+    /// porter.
+    disassembly_rows: Vec<u32>,
+    /// La question à laquelle ces rangs répondent : le filtre, le point
+    /// de départ, le moteur, la langue, le nombre d'instructions, et le
+    /// nombre de poses du listing — lequel change quand une fonction est
+    /// renommée, ce que le filtre voit aussi.
+    disassembly_rows_clé: Option<(String, Option<u64>, String, Lang, usize, u64)>,
     /// L'endroit où le listing commence, quand on a demandé à aller
     /// quelque part. `None` : tout le programme, depuis le début.
     disassembly_target: Option<u64>,
@@ -1239,6 +1320,9 @@ struct NamsdecApp {
     /// désignerait le milieu des mots.
     tracked: Option<occurrences::Tracked>,
     tracked_spans: Vec<std::ops::Range<usize>>,
+    /// Les mêmes étendues, situées en lignes et en colonnes : c'est
+    /// sous cette forme qu'elles se peignent (voir `text::Place`).
+    tracked_places: Vec<Place>,
     /// La source telle qu'elle était au dernier calcul.
     tracked_source_len: usize,
     /// Ce qui est sélectionné dans l'éditeur, en octets.
@@ -1259,6 +1343,15 @@ struct NamsdecApp {
     pending_selection: Option<std::ops::Range<usize>>,
     /// Un `g` frappé attend-il son second ? C'est `gg` de vim.
     g_pending: bool,
+    /// Le compteur tapé avant un mouvement, en mode Normal — le `5` de
+    /// `5j`.
+    ///
+    /// Gardé d'une image à l'autre, comme `g_pending` : les chiffres
+    /// s'accumulent (`12j` descend de douze lignes) et le premier
+    /// mouvement les consomme. Tout le reste les efface — un compteur
+    /// oublié qui s'appliquerait à un mouvement tapé une minute plus
+    /// tard serait pire que pas de compteur du tout.
+    count_pending: Option<u32>,
     /// La proposition mise en avant, dans la liste affichée.
     ///
     /// Zéro le plus souvent : on tape, et la première est la bonne. Les
@@ -1816,8 +1909,14 @@ impl Default for NamsdecApp {
             run_to: None,
             run_until: None,
             goto_line: None,
+            reprise_ligne: None,
             pending_cursor: None,
             find: None,
+            find_hits: Vec::new(),
+            cursor_place_vu: None,
+            modifié_vu: false,
+            tabs_modifiés_vus: Vec::new(),
+            find_hits_clé: None,
             help_query: String::new(),
             pending: None,
             quitting: false,
@@ -1912,6 +2011,8 @@ impl Default for NamsdecApp {
             show_disassembly: false,
             disassembler: PSEUDO_ID.to_owned(),
             disassembly_query: String::new(),
+            disassembly_rows: Vec::new(),
+            disassembly_rows_clé: None,
             disassembly_target: None,
             disassembler_plugins: load_disassembler_plugins(),
             plugin_output: None,
@@ -1968,6 +2069,7 @@ impl Default for NamsdecApp {
             suggestions: None,
             tracked: None,
             tracked_spans: Vec::new(),
+            tracked_places: Vec::new(),
             tracked_source_len: 0,
             editor_selection: None,
             rename: None,
@@ -1976,6 +2078,7 @@ impl Default for NamsdecApp {
             note_just_opened: false,
             pending_selection: None,
             g_pending: false,
+            count_pending: None,
             completion_index: 0,
             completion_dismissed: false,
             completion_keys: CompletionKeys::default(),
@@ -2003,6 +2106,13 @@ impl NamsdecApp {
         self.assemble_state
             .as_ref()
             .is_some_and(|state| state.from_binary.is_some())
+            // La comparaison vive, et non le relevé de l'image : cette
+            // question DÉCIDE — elle grise le bouton « Assembler », mais
+            // elle refuse aussi le geste. Le contrôle
+            // `assembling_is_greyed_out_on_a_binary_listing` touche le
+            // texte puis demande aussitôt : une réponse d'une image de
+            // retard dirait « c'est encore un binaire » à quelqu'un qui
+            // vient de l'éditer.
             && !self.buffer_modified()
     }
 
@@ -3052,6 +3162,11 @@ impl NamsdecApp {
         if self.quitting {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
+
+        // Modifié ou non : relevé une fois pour toute l'image (voir
+        // `modifié_vu`).
+        self.modifié_vu = self.buffer_modified();
+        self.tabs_modifiés_vus = self.tabs.iter().map(OpenTab::modifié).collect();
 
         let mut spans: Vec<(&'static str, Duration)> = Vec::new();
         let frame_start = Instant::now();

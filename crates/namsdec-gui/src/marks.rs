@@ -122,28 +122,29 @@ impl NamsdecApp {
         output: &egui::text_edit::TextEditOutput,
     ) {
         self.refresh_matches();
-        if self.tracked_spans.is_empty() {
+        if self.tracked_places.is_empty() {
             return;
         }
         let peintre = ui.painter_at(output.response.rect);
-        for étendue in &self.tracked_spans {
-            let début = byte_to_char(&self.source, étendue.start);
-            let fin = byte_to_char(&self.source, étendue.end);
-            let gauche = output
-                .galley
-                .pos_from_cursor(egui::text::CCursor::new(début));
-            let droite = output.galley.pos_from_cursor(egui::text::CCursor::new(fin));
-            // Sur deux rangées différentes : le texte s'est replié au
-            // milieu du mot. On ne peint alors rien plutôt qu'un
-            // rectangle qui traverserait la ligne du dessous — un
-            // surlignage faux est pire qu'un surlignage manquant.
-            if (gauche.top() - droite.top()).abs() > 0.5 {
+        // Celles qui sont à l'écran, et elles seules. Un `rax` surligné
+        // dans un listing revient vingt mille fois : les situer toutes
+        // demandait deux parcours complets du texte chacune, pour en
+        // peindre soixante (voir `text::Place`).
+        let origine = output.galley_pos.to_vec2();
+        let tranche = rangées_visibles(&output.galley, origine, ui.clip_rect());
+        let vues = places_entre(
+            &self.tracked_places,
+            tranche.start as u32 + 1,
+            tranche.end as u32,
+        );
+        for place in &self.tracked_places[vues] {
+            // Une occurrence qui ne tient pas sur une rangée n'est pas
+            // peinte : un surlignage faux est pire qu'un surlignage
+            // manquant.
+            let Some(rect) = rect_de_place(&output.galley, place) else {
                 continue;
-            }
-            let rect = egui::Rect::from_min_max(
-                output.galley_pos + gauche.left_top().to_vec2(),
-                output.galley_pos + droite.left_bottom().to_vec2(),
-            );
+            };
+            let rect = rect.translate(origine);
             if rect.width() <= 0.0 {
                 continue;
             }
@@ -297,8 +298,14 @@ impl NamsdecApp {
         let police = egui::TextStyle::Monospace.resolve(ui.style());
         // Le listing est une ligne par instruction : la rangée `n` du
         // galley est la ligne `n + 1` de la source.
-        for (rang, rangée) in output.galley.rows.iter().enumerate() {
-            let ligne = rang as u32 + 1;
+        //
+        // Les rangées à l'écran seulement : un binaire commenté en
+        // compte un million, et chercher la note de chacune coûtait
+        // autant que de les peindre.
+        let tranche =
+            rangées_visibles(&output.galley, output.galley_pos.to_vec2(), ui.clip_rect());
+        for (rang, rangée) in output.galley.rows[tranche.clone()].iter().enumerate() {
+            let ligne = (tranche.start + rang) as u32 + 1;
             let Some(adresse) = état.output.line_to_addr.get(&ligne) else {
                 continue;
             };
@@ -349,6 +356,7 @@ impl NamsdecApp {
             return;
         }
         self.tracked_spans = occurrences::find_all(&self.source, &suivi);
+        self.tracked_places = place_spans(&self.source, &self.tracked_spans);
         let combien = self.tracked_spans.len();
         self.tracked = Some(suivi);
         self.tracked_source_len = self.source.len();
@@ -377,6 +385,7 @@ impl NamsdecApp {
     pub(crate) fn forget_matches(&mut self) {
         self.tracked = None;
         self.tracked_spans.clear();
+        self.tracked_places.clear();
     }
 
     /// Remet les étendues à jour quand la source a changé.
@@ -394,18 +403,21 @@ impl NamsdecApp {
             return;
         }
         self.tracked_spans = occurrences::find_all(&self.source, &suivi);
+        self.tracked_places = place_spans(&self.source, &self.tracked_spans);
         self.tracked_source_len = self.source.len();
     }
 
     /// Va à l'occurrence `current` : la ligne sous les yeux, le curseur
     /// dessus.
     pub(crate) fn goto_match(&mut self) {
+        // La requête vient peut-être de changer — une frappe, un clic
+        // sur « > » — : le relevé se remet à jour s'il le faut, et ne
+        // coûte rien sinon.
+        self.refresh_find_hits();
         let Some(find) = &self.find else { return };
-        let matches = find_matches(&self.source, &find.query);
-        let Some(at) = matches.get(find.current) else {
+        let Some(place) = self.find_hits.get(find.current) else {
             return;
         };
-        let line = self.source[..*at].lines().count().max(1) as u32;
-        self.goto_line = Some(line);
+        self.goto_line = Some(place.ligne);
     }
 }

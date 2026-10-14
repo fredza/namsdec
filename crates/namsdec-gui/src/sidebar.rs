@@ -2090,7 +2090,7 @@ impl NamsdecApp {
         };
         let rip = self.emulator.as_ref().map(|e| e.cpu().regs.rip);
 
-        let total: usize = state.disasm.iter().map(|i| i.bytes.len()).sum();
+        let total = state.octets_du_code();
         ui.colored_label(
             theme.dim,
             format!(

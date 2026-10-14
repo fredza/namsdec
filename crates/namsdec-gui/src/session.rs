@@ -292,6 +292,23 @@ impl NamsdecApp {
     /// dans les réglages : personne ne les relisait.
     pub(crate) fn restore_session_marks(&mut self) {
         self.breakpoint_lines = self.saved_settings.breakpoints.iter().copied().collect();
+        // La ligne qu'on lisait : même garde que les points d'arrêt —
+        // c'est pour cela qu'elle est ici et nulle part ailleurs. La vue
+        // y va à la première image, le curseur l'y suit, et le mode ne
+        // change pas (voir `reprise_ligne`).
+        self.reprise_ligne = self
+            .saved_settings
+            .listing_line
+            .filter(|ligne| *ligne > 1 && (*ligne as usize) <= self.source.lines().count());
+        // Le curseur y est tout de suite, et pas seulement quand
+        // l'éditeur se dessine : la barre d'état est peinte AVANT lui, et
+        // annoncer « Lig 1 » au premier regard sur un listing qu'on
+        // rouvre à la ligne 4 012 serait faux.
+        if let Some(ligne) = self.reprise_ligne {
+            self.cursor_pos = (ligne as usize, 1);
+            self.cursor_byte =
+                ligne_début(&self.source, ligne.saturating_sub(1) as usize).unwrap_or(0);
+        }
         self.watchpoints = self
             .saved_settings
             .watchpoints
@@ -452,6 +469,9 @@ impl NamsdecApp {
                 .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                 .map(|d| d.as_secs()),
             breakpoints: self.breakpoint_lines.iter().copied().collect(),
+            // La ligne qu'on lisait — rien quand c'était la première,
+            // qui est là où l'on rouvre de toute façon.
+            listing_line: (self.cursor_pos.0 > 1).then_some(self.cursor_pos.0 as u32),
             watchpoints: self
                 .watchpoints
                 .iter()

@@ -24,6 +24,21 @@ impl NamsdecApp {
     /// appartient à l'utilisateur, on ne le lui reprend pas à chaque
     /// frame.
     pub(crate) fn apply_goto_line(&mut self, ctx: &egui::Context) {
+        // La position de lecture d'une séance précédente : la vue y est
+        // déjà allée (voir la gouttière), le curseur l'y suit, et c'est
+        // tout — pas de changement de mode, pas de clavier pris.
+        //
+        // Posé ICI et non à la reprise elle-même : l'état du champ de
+        // texte n'existe qu'une fois le champ dessiné, et c'est
+        // précisément ce que cette fonction attend pour s'exécuter —
+        // elle est appelée après lui, pour cette raison-là.
+        if let Some(ligne) = self.reprise_ligne.take() {
+            let octet = ligne_début(&self.source, ligne.saturating_sub(1) as usize).unwrap_or(0);
+            if set_cursor_byte(ctx, &self.source, octet) {
+                self.cursor_byte = octet;
+                self.cursor_pos = (ligne as usize, 1);
+            }
+        }
         let Some(line) = self.goto_line.take() else {
             return;
         };
@@ -101,13 +116,17 @@ impl NamsdecApp {
             // demander un pas, pas à ouvrir la saisie.
             let consumed = self.dispatcher.consumed().to_vec();
             let g_armé = self.g_pending;
-            let (enter_insert, exit_insert, mouvement, armer_g, désarmer_g) =
+            let compte_armé = self.count_pending;
+            let (enter_insert, exit_insert, mouvement, armer_g, désarmer_g, compte) =
                 ui.ctx().input(|inp| {
                     let mut enter = false;
                     let mut exit = false;
                     let mut mouvement = None;
                     let mut armer_g = false;
                     let mut désarmer_g = false;
+                    // Le compteur en cours de frappe : `None` tant
+                    // qu'aucun chiffre n'est venu.
+                    let mut compte = compte_armé;
                     for event in &inp.events {
                         if let egui::Event::Key {
                             key,
@@ -140,7 +159,26 @@ impl NamsdecApp {
                                 egui::Key::J if plain && !consumed.contains(key) => {
                                     mouvement = Some(Move::Down);
                                 }
+                                // LES CHIFFRES SONT UN COMPTEUR, comme
+                                // dans vim : `5j` descend de cinq
+                                // lignes. Ils s'accumulent jusqu'au
+                                // mouvement qui les consomme.
+                                //
+                                // Le `0` fait exception quand rien ne
+                                // le précède : seul, il va en début de
+                                // ligne — c'est son rôle dans vim, et il
+                                // ne devient un chiffre qu'une fois
+                                // qu'un autre l'a ouvert (`10j`).
+                                egui::Key::Num0 if plain && compte.is_some() => {
+                                    compte = Some(borne_du_compte(compte, 0));
+                                }
                                 egui::Key::Num0 if plain => mouvement = Some(Move::LineStart),
+                                _ if plain
+                                    && !consumed.contains(key)
+                                    && chiffre_de(*key).is_some() =>
+                                {
+                                    compte = chiffre_de(*key).map(|c| borne_du_compte(compte, c));
+                                }
                                 egui::Key::Home => mouvement = Some(Move::LineStart),
                                 egui::Key::End => mouvement = Some(Move::LineEnd),
                                 // `G` : la fin du fichier, comme dans vim.
@@ -177,18 +215,28 @@ impl NamsdecApp {
                             }
                         }
                     }
-                    (enter, exit, mouvement, armer_g, désarmer_g)
+                    (enter, exit, mouvement, armer_g, désarmer_g, compte)
                 });
             // `g` seul attend son second `g` ; tout le reste le désarme.
             // Sans cela, `g` puis `j` sauterait au début du fichier à la
             // prochaine frappe de `g`, une minute plus tard.
             self.g_pending = if désarmer_g { false } else { armer_g };
+            self.count_pending = compte;
             // Se déplacer avant de changer de mode : `i` entre en
             // Insertion là où le curseur est, non là où il était.
             if self.editor_mode == EditorMode::Normal
                 && let Some(mouvement) = mouvement
             {
-                self.move_in_normal_mode(ui.ctx(), mouvement);
+                // Le compteur est consommé par le mouvement, et par lui
+                // seul : `5` puis `i` entre en Insertion sans rien
+                // répéter, comme dans vim.
+                let fois = self.count_pending.take().unwrap_or(1);
+                self.move_in_normal_mode_times(ui.ctx(), mouvement, fois);
+            }
+            // Entrer en Insertion efface le compteur : ce qu'on va taper
+            // est du texte, pas une répétition.
+            if enter_insert || exit_insert {
+                self.count_pending = None;
             }
             // Échap éteint aussi le surlignage, avant de changer de
             // mode : c'est le geste qui annule ce qu'on vient de
@@ -307,7 +355,7 @@ impl NamsdecApp {
                     //
                     // Centrée, et non simplement rendue visible : on
                     // vient lire ce qu'il y a AUTOUR de cette ligne.
-                    if let Some(ligne) = self.goto_line
+                    if let Some(ligne) = self.goto_line.or(self.reprise_ligne)
                         && let Some(row) = galley.rows.get(ligne.saturating_sub(1) as usize)
                     {
                         ui.scroll_to_rect(
@@ -337,25 +385,57 @@ impl NamsdecApp {
                         .pointer_latest_pos()
                         .filter(|p| gutter_rect.contains(*p) && ui.clip_rect().contains(*p))
                         .and_then(|p| ligne_sous(&galley, gutter_rect, p));
+                    // Les lignes à l'écran, trouvées par dichotomie.
+                    //
+                    // Peindre un numéro pour chacune des quinze mille
+                    // lignes d'un binaire coûtait une frame entière,
+                    // alors que trente sont à l'écran : on s'en tient
+                    // depuis longtemps à ce que la zone montre. Mais on
+                    // les ÉCARTAIT une par une, et c'était le vrai
+                    // prix — neuf millisecondes par image sur un
+                    // listing d'un million de lignes, pour en retenir
+                    // soixante (mesuré le 14 octobre 2026), soit une
+                    // image entière à soixante hertz dépensée à ne
+                    // rien peindre.
+                    //
+                    // Le `intersects` plus bas reste : il ne coûte rien
+                    // sur une soixantaine de rangées, et il garde la
+                    // peinture juste si l'une venait à sortir de la
+                    // tranche.
+                    let visible_rect = ui.clip_rect();
+                    let tranche =
+                        rangées_visibles(&galley, gutter_rect.min.to_vec2(), visible_rect);
+                    let première_visible = tranche.start as u32 + 1;
+                    let dernière_visible = tranche.end as u32;
+                    // Les occurrences de la recherche sont relevées une
+                    // fois, et non à chaque image (voir
+                    // `refresh_find_hits`).
+                    self.refresh_find_hits();
                     let painter = ui.painter();
 
                     // Les occurrences de la recherche, peintes sous
                     // le texte : une barre qui compte « 3/7 » sans
                     // montrer où ils sont ne sert qu'à moitié.
+                    //
+                    // Celles qui sont à l'écran, et elles seules : les
+                    // autres se peindraient hors de la vue, et les
+                    // situer coûtait deux parcours complets du texte
+                    // chacune (voir `text::Place`).
                     if let Some(find) = &self.find {
-                        let matches = find_matches(&self.source, &find.query);
-                        for (index, at) in matches.iter().enumerate() {
-                            let debut = byte_to_char(&self.source, *at);
-                            let fin = debut + find.query.chars().count();
-                            let gauche = galley.pos_from_cursor(egui::text::CCursor::new(debut));
-                            let droite = galley.pos_from_cursor(egui::text::CCursor::new(fin));
-                            // Une occupation à cheval sur deux lignes
+                        let vues =
+                            places_entre(&self.find_hits, première_visible, dernière_visible);
+                        for rang in vues {
+                            let place = &self.find_hits[rang];
+                            // Une occurrence à cheval sur deux lignes
                             // n'existe pas ici : une recherche ne
                             // contient pas de retour à la ligne.
-                            let rect = egui::Rect::from_min_max(gauche.min, droite.max).translate(
+                            let Some(rect) = rect_de_place(&galley, place) else {
+                                continue;
+                            };
+                            let rect = rect.translate(
                                 gutter_rect.min.to_vec2() + egui::vec2(gutter_rect.width(), 0.0),
                             );
-                            let teinte = if index == find.current {
+                            let teinte = if rang == find.current {
                                 theme.accent.gamma_multiply(0.45)
                             } else {
                                 theme.accent.gamma_multiply(0.18)
@@ -363,13 +443,8 @@ impl NamsdecApp {
                             painter.rect_filled(rect, 2.0, teinte);
                         }
                     }
-                    // Quinze mille lignes dans un binaire ouvert :
-                    // peindre un numéro pour chacune coûte une frame
-                    // entière, alors que trente sont à l'écran. On
-                    // s'en tient à ce que la zone montre.
-                    let visible_rect = ui.clip_rect();
-                    for (i, row) in galley.rows.iter().enumerate() {
-                        let line = (i + 1) as u32;
+                    for (rang, row) in galley.rows[tranche.clone()].iter().enumerate() {
+                        let line = (tranche.start + rang + 1) as u32;
                         let row_rect = row.rect().translate(gutter_rect.min.to_vec2());
                         if !row_rect.intersects(visible_rect) {
                             continue;
@@ -515,9 +590,40 @@ impl NamsdecApp {
 
                     // La largeur de repli que propose egui est
                     // délibérément ignorée : voir `layout_code`.
+                    //
+                    // LA MISE EN PAGE QUE LA GOUTTIÈRE VIENT DE FAIRE,
+                    // PRÊTÉE AU CHAMP. Le cache de `layout_code`
+                    // répondrait aussi, mais sa clé est le texte
+                    // lui-même : sur un listing de seize mégaoctets,
+                    // reconnaître le texte coûte une milliseconde et
+                    // demie, et c'était payé DEUX fois par image —
+                    // mesuré le 14 octobre 2026, c'était la moitié du
+                    // temps d'une image.
+                    //
+                    // Le prêt n'est consenti qu'en mode Normal, où le
+                    // champ n'est pas interactif : egui ne peut alors
+                    // pas toucher au tampon, donc rien n'a pu changer
+                    // entre les deux appels. L'adresse et la longueur
+                    // du texte sont vérifiées quand même — c'est ce qui
+                    // rend le prêt faux s'il cesse d'être vrai, au lieu
+                    // de le rendre silencieusement périmé.
+                    let prêt = (self.editor_mode == EditorMode::Normal).then(|| {
+                        (
+                            self.source.as_ptr() as usize,
+                            self.source.len(),
+                            galley.clone(),
+                        )
+                    });
                     let mut layouter =
                         |ui: &egui::Ui, buf: &dyn egui::TextBuffer, _wrap_width: f32| {
-                            layout_code(ui, theme, buf.as_str())
+                            let texte = buf.as_str();
+                            if let Some((adresse, longueur, galley)) = &prêt
+                                && texte.as_ptr() as usize == *adresse
+                                && texte.len() == *longueur
+                            {
+                                return galley.clone();
+                            }
+                            layout_code(ui, theme, texte)
                         };
                     // `.show()` plutôt que `ui.add()` : c'est la seule
                     // forme qui donne accès au curseur, dont la barre
@@ -567,9 +673,21 @@ impl NamsdecApp {
                         && let Some(range) = state.cursor.char_range()
                     {
                         let primary = range.primary;
-                        self.cursor_pos = line_col(&self.source, primary.index.0);
-                        self.cursor_byte = char_to_byte(&self.source, primary.index.0);
-                        let place = output.galley.pos_from_cursor(primary);
+                        let (ligne, colonne, octet) = self.cursor_place(primary.index.0);
+                        self.cursor_pos = (ligne, colonne);
+                        self.cursor_byte = octet;
+                        // La rangée EST la ligne — le listing ne se
+                        // replie pas —, donc la position se prend
+                        // directement. `pos_from_cursor` répondrait
+                        // aussi, en comptant les caractères de toutes
+                        // les rangées depuis la première : un parcours
+                        // d'un million de rangées par image.
+                        let place = output.galley.pos_from_layout_cursor(
+                            &egui::epaint::text::cursor::LayoutCursor {
+                                row: ligne.saturating_sub(1),
+                                column: egui::text::CharIndex(colonne.saturating_sub(1)),
+                            },
+                        );
                         // Monospace : la largeur d'une espace est
                         // celle de n'importe quel caractère, et vaut
                         // mieux que de mesurer le glyphe visé — il
@@ -586,8 +704,9 @@ impl NamsdecApp {
                             .rect_filled(bloc, 1.0, self.theme.accent.gamma_multiply(0.45));
                     }
                     if let Some(range) = output.cursor_range {
-                        self.cursor_pos = line_col(&self.source, range.primary.index.0);
-                        self.cursor_byte = char_to_byte(&self.source, range.primary.index.0);
+                        let (ligne, colonne, octet) = self.cursor_place(range.primary.index.0);
+                        self.cursor_pos = (ligne, colonne);
+                        self.cursor_byte = octet;
                         // La sélection, pour « surligner les
                         // occurrences » : elle l'emporte sur le
                         // curseur quand il y en a une.
@@ -950,9 +1069,75 @@ impl NamsdecApp {
         }
     }
 
+    /// Où le curseur est : ligne, colonne et octet — relevés une fois.
+    ///
+    /// Les trois demandaient chacun un parcours du texte depuis le
+    /// début, deux fois par image (le caret peint, puis la barre
+    /// d'état). Sur un listing de seize mégaoctets, c'est une
+    /// quarantaine de millisecondes par image pour une position qui, le
+    /// plus souvent, n'a pas bougé d'un caractère.
+    ///
+    /// La clé est le rang du caractère, la longueur du texte et le
+    /// nombre de poses du listing : le texte ne peut pas avoir changé
+    /// sans qu'il ait été reposé (voir `poses_du_texte`).
+    pub(crate) fn cursor_place(&mut self, char_index: usize) -> (usize, usize, usize) {
+        let clé = (char_index, self.source.len(), poses_du_texte());
+        if let Some(vu) = &self.cursor_place_vu
+            && vu.clé == clé
+        {
+            return vu.place;
+        }
+        let place = line_col_byte(&self.source, char_index);
+        self.cursor_place_vu = Some(CurseurVu { place, clé });
+        place
+    }
+
+    /// Relève les occurrences de la recherche — et seulement quand il y
+    /// a lieu.
+    ///
+    /// Elles étaient recomptées DEUX fois par image, une fois par la
+    /// barre et une fois par la peinture, et chaque relevé recopiait
+    /// tout le texte en minuscules. Puis chaque occurrence était située
+    /// par deux parcours complets (voir `text::Place`). Mesuré le 14
+    /// octobre 2026 sur crackme-01 — 62 386 lignes, 24 081 fois « mov » :
+    /// 3 735 ms par image, barre ouverte, contre 0,8 ms fermée. Sur un
+    /// binaire de quatre mégaoctets, l'image ne venait plus du tout —
+    /// Ctrl+F dans un binaire gelait donc namsdec, et c'est exactement
+    /// le geste qu'on fait en premier dans un listing qu'on ne connaît
+    /// pas.
+    ///
+    /// La clé dit ce dont le relevé dépend : la requête, la longueur du
+    /// texte, et le nombre de fois que le listing a été POSÉ — lequel
+    /// augmente quand le texte change, puisque c'est le texte lui-même
+    /// qui sert de clé au cache de mise en page (voir
+    /// `editor::poses_du_texte`). Une comparaison de plus sur seize
+    /// mégaoctets à chaque image n'apprendrait rien de mieux.
+    pub(crate) fn refresh_find_hits(&mut self) {
+        let Some(find) = &self.find else {
+            self.find_hits.clear();
+            self.find_hits_clé = None;
+            return;
+        };
+        let clé = (find.query.clone(), self.source.len(), poses_du_texte());
+        if self.find_hits_clé.as_ref() == Some(&clé) {
+            return;
+        }
+        self.find_hits = find_places(&self.source, &find.query);
+        self.find_hits_clé = Some(clé);
+        RELEVÉS_DE_RECHERCHE.with(|n| n.set(n.get() + 1));
+    }
+
     /// La barre de recherche : ce qu'on cherche, combien de fois on le
     /// trouve, et de quoi passer d'une occurrence à l'autre.
     pub(crate) fn find_ui(&mut self, ui: &mut egui::Ui) {
+        if self.find.is_none() {
+            return;
+        }
+        // Le compte vient du relevé gardé d'une image à l'autre : le
+        // refaire ici recopiait tout le texte en minuscules à chaque
+        // image, barre ouverte (voir `refresh_find_hits`).
+        self.refresh_find_hits();
+        let combien = self.find_hits.len();
         let Some(find) = &mut self.find else {
             return;
         };
@@ -964,11 +1149,10 @@ impl NamsdecApp {
         let mut fermer = false;
         let mut aller = just_opened && !query.is_empty();
 
-        let matches = find_matches(&self.source, &query);
-        if matches.is_empty() {
+        if combien == 0 {
             current = 0;
         } else {
-            current %= matches.len();
+            current %= combien;
         }
 
         ui.horizontal(|ui| {
@@ -985,11 +1169,11 @@ impl NamsdecApp {
             // barre de recherche, sans quitter le clavier.
             if champ.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                 let arrière = ui.input(|i| i.modifiers.shift);
-                if !matches.is_empty() {
+                if combien > 0 {
                     current = if arrière {
-                        (current + matches.len() - 1) % matches.len()
+                        (current + combien - 1) % combien
                     } else {
-                        (current + 1) % matches.len()
+                        (current + 1) % combien
                     };
                 }
                 aller = true;
@@ -998,20 +1182,20 @@ impl NamsdecApp {
             if framed_button(ui, theme, "<")
                 .on_hover_text(s.find_previous)
                 .clicked()
-                && !matches.is_empty()
+                && combien > 0
             {
-                current = (current + matches.len() - 1) % matches.len();
+                current = (current + combien - 1) % combien;
                 aller = true;
             }
             if framed_button(ui, theme, ">")
                 .on_hover_text(s.find_next)
                 .clicked()
-                && !matches.is_empty()
+                && combien > 0
             {
-                current = (current + 1) % matches.len();
+                current = (current + 1) % combien;
                 aller = true;
             }
-            if matches.is_empty() {
+            if combien == 0 {
                 ui.colored_label(
                     if query.is_empty() {
                         theme.dim
@@ -1025,7 +1209,7 @@ impl NamsdecApp {
                     },
                 );
             } else {
-                ui.colored_label(theme.dim, format!("{}/{}", current + 1, matches.len()));
+                ui.colored_label(theme.dim, format!("{}/{}", current + 1, combien));
             }
             if framed_button(ui, theme, "x").clicked()
                 || ui.input(|i| i.key_pressed(egui::Key::Escape))
@@ -1244,6 +1428,38 @@ pub(crate) fn editor_width(code: f32, available: f32) -> f32 {
     code.max(available)
 }
 
+/// Le chiffre qu'une touche porte, s'il s'agit d'un chiffre.
+///
+/// Les touches du pavé numérique comptent autant que celles du haut du
+/// clavier : taper `5j` d'une main sur le pavé est exactement le même
+/// geste.
+fn chiffre_de(key: egui::Key) -> Option<u32> {
+    match key {
+        egui::Key::Num0 => Some(0),
+        egui::Key::Num1 => Some(1),
+        egui::Key::Num2 => Some(2),
+        egui::Key::Num3 => Some(3),
+        egui::Key::Num4 => Some(4),
+        egui::Key::Num5 => Some(5),
+        egui::Key::Num6 => Some(6),
+        egui::Key::Num7 => Some(7),
+        egui::Key::Num8 => Some(8),
+        egui::Key::Num9 => Some(9),
+        _ => None,
+    }
+}
+
+/// Le compteur, un chiffre de plus — borné.
+///
+/// Quatre chiffres : `9999j` traverse n'importe quel listing, et au-delà
+/// le nombre ne veut plus rien dire. La borne n'est pas qu'une prudence
+/// de calcul : sans elle, un doigt resté sur une touche accumulerait un
+/// compteur de dix chiffres qui déborderait son entier, et le mouvement
+/// partirait on ne sait où.
+pub(crate) fn borne_du_compte(compte: Option<u32>, chiffre: u32) -> u32 {
+    (compte.unwrap_or(0) * 10 + chiffre).min(9999)
+}
+
 /// La mise en page du code, telle que la gouttière **et** l'éditeur la
 /// voient — c'est le fait qu'ils partagent celle-ci qui les garde alignés.
 ///
@@ -1279,6 +1495,7 @@ pub(crate) fn layout_code(
             const { std::cell::RefCell::new(None) };
     }
 
+    RECONNAISSANCES.with(|n| n.set(n.get() + 1));
     // Le zoom change la taille de la police sans toucher au texte.
     let taille = egui::TextStyle::Monospace.resolve(ui.style()).size;
     let thème = theme as *const Theme as usize;
@@ -1305,6 +1522,41 @@ pub(crate) fn layout_code(
         })
     });
     galley
+}
+
+// Combien de fois on a demandé au cache de RECONNAÎTRE le texte.
+//
+// Reconnaître, c'est le comparer en entier : une milliseconde et demie
+// sur un listing de seize mégaoctets. La gouttière le demande, puis le
+// champ de texte — deux fois par image, pour la même réponse. Le
+// compter est ce qui permet à un contrôle de retenir le prêt d'une
+// image à l'autre (voir `editor_ui`, « LA MISE EN PAGE QUE LA
+// GOUTTIÈRE VIENT DE FAIRE »).
+thread_local! {
+    static RECONNAISSANCES: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+/// Combien de fois le cache de mise en page a eu à reconnaître le texte.
+#[cfg(test)]
+pub(crate) fn reconnaissances_du_texte() -> u64 {
+    RECONNAISSANCES.with(std::cell::Cell::get)
+}
+
+// Combien de fois les occurrences de la recherche ont été relevées.
+//
+// Un relevé parcourt tout le texte : c'est le prix juste quand la
+// requête change, et un gel quand il revient à chaque image. Le compter
+// est le seul moyen qu'un contrôle le voie — mesurer le temps d'une
+// image dirait « lent » sur une machine chargée et « vite » sur une
+// autre, alors que le nombre de relevés est le même partout.
+thread_local! {
+    static RELEVÉS_DE_RECHERCHE: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+/// Combien de fois les occurrences de la recherche ont été relevées.
+#[cfg(test)]
+pub(crate) fn relevés_de_recherche() -> u64 {
+    RELEVÉS_DE_RECHERCHE.with(std::cell::Cell::get)
 }
 
 // Combien de fois le texte a été posé pour de bon.
