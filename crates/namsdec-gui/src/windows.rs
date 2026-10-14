@@ -525,11 +525,12 @@ impl NamsdecApp {
                         // Un clic mène à la ligne source : le listing
                         // montre ce que le programme *est*, l'éditeur ce
                         // qu'on a écrit, et l'on passe de l'un à l'autre.
-                        if rangée
+                        let rangée = rangée
                             .interact(egui::Sense::click())
-                            .on_hover_text(s.disassembly_goto)
-                            .clicked()
-                        {
+                            .on_hover_cursor(egui::CursorIcon::PointingHand)
+                            .on_hover_text(s.disassembly_goto);
+                        souligne_au_survol(ui, &rangée);
+                        if rangée.clicked() {
                             aller_adresse = Some(ligne.address);
                         }
                     }
@@ -858,7 +859,9 @@ impl NamsdecApp {
                                 .response;
                             let réponse = réponse
                                 .interact(egui::Sense::click())
+                                .on_hover_cursor(egui::CursorIcon::PointingHand)
                                 .on_hover_text(s.timeline_go_back);
+                            souligne_au_survol(ui, &réponse);
                             if réponse.clicked() {
                                 revenir = Some(recul);
                             }

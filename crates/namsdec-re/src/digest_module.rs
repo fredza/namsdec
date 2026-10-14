@@ -62,13 +62,12 @@ impl ReModule for DigestModule {
                 // Cliquables, les deux : une empreinte sert à être
                 // collée quelque part, pas à être recopiée à la main.
                 ui.label("SHA-256");
-                if ui
-                    .add(
-                        egui::Label::new(egui::RichText::new(&self.sha256).monospace())
-                            .sense(egui::Sense::click()),
-                    )
-                    .on_hover_text(ctx.t("Cliquer pour copier", "Click to copy"))
-                    .clicked()
+                if crate::clickable_label(
+                    ui,
+                    egui::Label::new(egui::RichText::new(&self.sha256).monospace()),
+                )
+                .on_hover_text(ctx.t("Cliquer pour copier", "Click to copy"))
+                .clicked()
                 {
                     à_copier = Some(self.sha256.clone());
                 }
@@ -76,13 +75,12 @@ impl ReModule for DigestModule {
 
                 ui.label("CRC-32");
                 let crc = format!("{:08x}", self.crc32);
-                if ui
-                    .add(
-                        egui::Label::new(egui::RichText::new(&crc).monospace())
-                            .sense(egui::Sense::click()),
-                    )
-                    .on_hover_text(ctx.t("Cliquer pour copier", "Click to copy"))
-                    .clicked()
+                if crate::clickable_label(
+                    ui,
+                    egui::Label::new(egui::RichText::new(&crc).monospace()),
+                )
+                .on_hover_text(ctx.t("Cliquer pour copier", "Click to copy"))
+                .clicked()
                 {
                     à_copier = Some(crc);
                 }

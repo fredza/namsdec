@@ -3013,8 +3013,34 @@ fn lire_octets(saisie: &str) -> Option<Vec<u8>> {
 /// se clique doit pourtant se voir avant qu'on ait lu quoi que ce soit,
 /// et c'est le seul signe qui ne coûte pas une ligne de texte.
 fn cliquable(ui: &mut egui::Ui, étiquette: egui::Label) -> egui::Response {
-    ui.add(étiquette.sense(egui::Sense::click()))
-        .on_hover_cursor(egui::CursorIcon::PointingHand)
+    let réponse = ui
+        .add(étiquette.sense(egui::Sense::click()))
+        .on_hover_cursor(egui::CursorIcon::PointingHand);
+    souligne_au_survol(ui, &réponse);
+    réponse
+}
+
+/// Souligne un texte quand la souris est dessus.
+///
+/// LA QUESTION À LAQUELLE CECI RÉPOND est « comment sait-on qu'un texte
+/// se clique ? ». La main du pointeur le dit, mais seulement quand on
+/// est déjà dessus, et elle se confond avec le curseur de sélection sur
+/// un texte. Le soulignement est le signe que tout le monde connaît, et
+/// il ne coûte rien au repos : la page reste calme, et ce qu'on survole
+/// se déclare.
+///
+/// Peint APRÈS coup, sous le rectangle de la réponse, plutôt que posé
+/// dans le `RichText` : on ne sait qu'un texte est survolé qu'une fois
+/// qu'il est dessiné, et le relire de l'image précédente ferait clignoter
+/// le trait d'une image sur deux.
+pub(crate) fn souligne_au_survol(ui: &egui::Ui, réponse: &egui::Response) {
+    if !réponse.hovered() {
+        return;
+    }
+    let couleur = ui.visuals().widgets.hovered.fg_stroke.color;
+    let y = réponse.rect.bottom() - 1.0;
+    ui.painter()
+        .hline(réponse.rect.x_range(), y, egui::Stroke::new(1.0, couleur));
 }
 
 /// Une liste déroulante à nous, et non celle d'egui.

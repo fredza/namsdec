@@ -10,6 +10,42 @@
 
 use super::*;
 
+/// Ce qu'une boîte SANS ASCENSEUR peut montrer de la fin d'une sortie :
+/// autant de lignes qu'il en tient, et combien restent au-dessus.
+///
+/// Un ascenseur dans une boîte qui s'ouvre toute seule est un piège :
+/// on y lit quatre lignes d'un logo qui en fait sept, on croit que le
+/// programme n'a écrit que cela, et l'on cherche la suite dans une
+/// console qu'on ne regardait pas. La boîte prend donc la place qu'il
+/// faut — et quand le fichier dépasse l'écran, elle montre LA FIN,
+/// c'est-à-dire l'invite, et dit en une ligne ce qu'elle a laissé
+/// derrière.
+///
+/// `colonnes` et `lignes` sont ce que l'écran permet. Une ligne plus
+/// large que `colonnes` se replie et compte donc pour plusieurs : c'est
+/// ce qui fait qu'un logo de quatre-vingts colonnes dans une boîte qui
+/// en montre soixante occupe le double de hauteur.
+pub(crate) fn fin_qui_tient(sortie: &str, colonnes: usize, lignes: usize) -> (String, usize) {
+    let colonnes = colonnes.max(1);
+    let lignes = lignes.max(1);
+    let toutes: Vec<&str> = sortie.lines().collect();
+    let hauteur = |ligne: &str| ligne.chars().count().div_ceil(colonnes).max(1);
+    let mut prises = 0;
+    let mut hauteur_totale = 0;
+    for ligne in toutes.iter().rev() {
+        let h = hauteur(ligne);
+        // La première passe toujours, même seule et trop haute : une
+        // boîte vide devant un programme qui attend n'apprend rien.
+        if hauteur_totale + h > lignes && prises > 0 {
+            break;
+        }
+        hauteur_totale += h;
+        prises += 1;
+    }
+    let début = toutes.len() - prises;
+    (toutes[début..].join("\n"), début)
+}
+
 impl NamsdecApp {
     /// La console montre-t-elle sa ligne de saisie ?
     ///
@@ -644,11 +680,36 @@ impl NamsdecApp {
             .as_ref()
             .map(|e| String::from_utf8_lossy(e.output()).into_owned())
             .unwrap_or_default();
-        let invite = {
-            let mut lignes: Vec<&str> = sortie.lines().rev().take(4).collect();
-            lignes.reverse();
-            lignes.join("\n")
-        };
+        // CE QUE LE PROGRAMME A ÉCRIT, EN ENTIER, ET SANS ASCENSEUR.
+        //
+        // Quatre lignes et une largeur fixe de 480 pixels : un logo de
+        // sept lignes sur quatre-vingts colonnes — ce par quoi commence
+        // la moitié des crackmes — y perdait ses trois premières lignes
+        // et sa moitié droite. On lisait un fragment, et rien ne disait
+        // que c'en était un.
+        //
+        // La boîte prend donc la place qu'il faut : la largeur de la
+        // plus longue ligne, la hauteur de toutes. Bornée à l'écran,
+        // parce qu'un programme peut écrire mille lignes — et dans ce
+        // cas c'est LA FIN qu'on montre, l'invite étant toujours en
+        // bas, avec une ligne qui dit ce qui reste au-dessus.
+        let police = egui::TextStyle::Monospace.resolve(&ctx.style_of(ctx.theme()));
+        let chasse = ctx.fonts_mut(|f| f.glyph_width(&police, '0')).max(1.0);
+        let interligne = ctx.fonts_mut(|f| f.row_height(&police)).max(1.0);
+        let écran = ctx.viewport_rect();
+        // Ce que le cadre, les marges et la fenêtre prennent autour du
+        // texte : mesuré sur la boîte, et non deviné.
+        const AUTOUR_X: f32 = 60.0;
+        const AUTOUR_Y: f32 = 280.0;
+        let colonnes = (((écran.width() * 0.9 - AUTOUR_X) / chasse) as usize).max(20);
+        let lignes_tenables = (((écran.height() - AUTOUR_Y) / interligne) as usize).max(3);
+        let (invite, au_dessus) = fin_qui_tient(&sortie, colonnes, lignes_tenables);
+        // La largeur voulue : celle du texte, jamais moins que la boîte
+        // d'avant — un dialogue qui rétrécit à chaque réponse se lit
+        // comme s'il se refermait.
+        let plus_longue = invite.lines().map(|l| l.chars().count()).max().unwrap_or(0);
+        let largeur =
+            (plus_longue as f32 * chasse + AUTOUR_X).clamp(480.0, (écran.width() * 0.9).max(480.0));
 
         let mut envoyer = false;
         let mut fin = false;
@@ -671,8 +732,9 @@ impl NamsdecApp {
             .title_bar(false)
             .pivot(egui::Align2::CENTER_CENTER)
             .current_pos(ctx.viewport_rect().center())
-            .default_width(480.0)
-            .min_width(480.0)
+            .default_width(largeur)
+            .min_width(largeur)
+            .max_width(largeur)
             .show(ctx, |ui| {
                 if chrome::window_head(ui, theme, s, titre) {
                     fermer = true;
@@ -718,6 +780,19 @@ impl NamsdecApp {
                         if invite.trim().is_empty() {
                             ui.colored_label(theme.dim, s.input_dialog_nothing_asked);
                         } else {
+                            // Ce qui reste au-dessus, s'il en reste :
+                            // une boîte qui montre la fin sans le dire
+                            // laisse croire que le programme n'a écrit
+                            // que ça.
+                            if au_dessus > 0 {
+                                ui.colored_label(
+                                    theme.dim,
+                                    format!(
+                                        "{} {au_dessus} {}",
+                                        s.input_dialog_above, s.decompiler_lines
+                                    ),
+                                );
+                            }
                             ui.label(egui::RichText::new(&invite).monospace());
                         }
                     });

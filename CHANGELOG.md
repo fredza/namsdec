@@ -13,6 +13,19 @@ entier refait à chaque image pour en montrer trente lignes —, puis le
 gros chantier qui en découlait : **ne plus mettre le listing en page
 d'un bloc**.
 
+**Ce que le programme écrit, en entier — et ce qui se clique**
+- **La boîte de saisie montre toute la sortie, sans ascenseur.** Elle en
+  montrait les quatre dernières lignes dans une fenêtre large de 480
+  pixels fixes : un logo de sept lignes sur quatre-vingts colonnes y
+  perdait ses trois premières et sa moitié droite, sans que rien ne dise
+  que c'en était un fragment. Quand la sortie dépasse l'écran, c'est la
+  fin qu'on voit — l'invite est toujours en bas — et une ligne dit ce
+  qui reste au-dessus.
+- **Un texte qui se clique le dit** : le pointeur devient une main et le
+  texte se souligne dessous. Partout, du sommaire du manuel aux
+  empreintes, aux adresses, aux lignes du désassemblage. Une rangée
+  entière cliquable se souligne entière.
+
 **Aller voir une adresse : dans le code, ou dans les octets**
 - **Cliquer une adresse demande où aller.** Elle menait toujours au
   listing — la bonne réponse pour une fonction, la mauvaise pour une

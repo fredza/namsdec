@@ -817,15 +817,20 @@ impl NamsdecApp {
         // un `call` le rouvrirait à la frame suivante.
         self.next_detail_addr = Some(rip);
         let mut détail = self.next_detail_open;
-        let ouvert = ui
+        // Le chevron dit déjà que la rangée se déplie ; la main et le
+        // trait au survol le disent de la même façon que partout
+        // ailleurs, ce qui évite d'avoir à connaître cette façon-là.
+        let entête = ui
             .horizontal(|ui| {
                 ui.colored_label(theme.dim, if détail { "v" } else { ">" });
                 ui.colored_label(theme.dim, s.next_instruction_detail);
             })
             .response
             .interact(egui::Sense::click())
-            .on_hover_text(s.next_instruction_detail_hint)
-            .clicked();
+            .on_hover_cursor(egui::CursorIcon::PointingHand)
+            .on_hover_text(s.next_instruction_detail_hint);
+        souligne_au_survol(ui, &entête);
+        let ouvert = entête.clicked();
         if ouvert {
             détail = !détail;
             self.next_detail_open = détail;
@@ -2519,19 +2524,13 @@ impl NamsdecApp {
                 // l'on est venu voir des octets.
                 ui.horizontal_wrapped(|ui| {
                     for addr in &self.mem_find_hits {
-                        if ui
-                            .add(
-                                egui::Label::new(
-                                    egui::RichText::new(format!("{addr:#x}"))
-                                        .monospace()
-                                        .color(theme.accent),
-                                )
-                                .sense(egui::Sense::click()),
-                            )
-                            .on_hover_cursor(egui::CursorIcon::PointingHand)
-                            .on_hover_text(s.memory_go_hint)
-                            .clicked()
-                        {
+                        let étiquette = egui::Label::new(
+                            egui::RichText::new(format!("{addr:#x}"))
+                                .monospace()
+                                .color(theme.accent),
+                        );
+                        let lien = cliquable(ui, étiquette).on_hover_text(s.memory_go_hint);
+                        if lien.clicked() {
                             aller_à = Some(*addr);
                         }
                     }
@@ -2741,7 +2740,13 @@ impl NamsdecApp {
                                                         .monospace(),
                                                 );
                                                 ui.colored_label(theme.dim, zone.name);
-                                                if ligne.interact(egui::Sense::click()).clicked() {
+                                                let rangée = ligne
+                                                    .interact(egui::Sense::click())
+                                                    .on_hover_cursor(
+                                                        egui::CursorIcon::PointingHand,
+                                                    );
+                                                souligne_au_survol(ui, &rangée);
+                                                if rangée.clicked() {
                                                     aller = Some(zone.range.start);
                                                 }
                                                 ui.end_row();
@@ -2791,19 +2796,13 @@ impl NamsdecApp {
                         );
                         for addr in &trouvés {
                             let addr = *addr;
-                            if ui
-                                .add(
-                                    egui::Label::new(
-                                        egui::RichText::new(format!("{addr:#x}"))
-                                            .monospace()
-                                            .color(theme.accent),
-                                    )
-                                    .sense(egui::Sense::click()),
-                                )
-                                .on_hover_cursor(egui::CursorIcon::PointingHand)
-                                .on_hover_text(s.search_goto)
-                                .clicked()
-                            {
+                            let étiquette = egui::Label::new(
+                                egui::RichText::new(format!("{addr:#x}"))
+                                    .monospace()
+                                    .color(theme.accent),
+                            );
+                            let lien = cliquable(ui, étiquette).on_hover_text(s.search_goto);
+                            if lien.clicked() {
                                 aller = Some(addr);
                             }
                         }
@@ -3313,7 +3312,9 @@ pub(crate) fn section_toggle(
             ui.label(egui::RichText::new(titre).strong().color(theme.text));
         })
         .response
-        .interact(egui::Sense::click());
+        .interact(egui::Sense::click())
+        .on_hover_cursor(egui::CursorIcon::PointingHand);
+    souligne_au_survol(ui, &réponse);
     if réponse.clicked() {
         *ouvert = !*ouvert;
     }

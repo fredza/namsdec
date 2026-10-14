@@ -236,11 +236,17 @@ impl ReModule for FunctionsModule {
                                 // suivent le nom en escalier au lieu
                                 // de former une colonne.
                                 ui.set_min_width(largeur_nom);
-                                ui.add(
+                                let réponse = ui.add(
                                     egui::Label::new(riche)
                                         .truncate()
                                         .sense(egui::Sense::click()),
-                                )
+                                );
+                                // Le trait au survol, mais pas la main :
+                                // ce clic-ci ne mène nulle part, il ouvre
+                                // la saisie du nom — d'où le curseur de
+                                // texte, posé plus bas.
+                                crate::souligne_au_survol(ui, &réponse);
+                                réponse
                             },
                         )
                         .inner

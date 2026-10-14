@@ -31230,3 +31230,153 @@ fn the_analysis_window_grows_by_its_green_pastille_and_comes_back() {
         "le second clic doit la restaurer"
     );
 }
+
+/// La boîte d'entrée montre ce que le programme a écrit EN ENTIER.
+///
+/// Quatre lignes et 480 pixels de large : un logo de sept lignes sur
+/// quatre-vingts colonnes — ce par quoi commence la moitié des
+/// crackmes — y perdait ses trois premières lignes et sa moitié
+/// droite. On lisait un fragment, et rien ne disait que c'en était un.
+///
+/// Le contrôle porte sur `fin_qui_tient`, qui décide de ce que la boîte
+/// peut montrer : c'est là qu'est la règle, la fenêtre ne fait que la
+/// suivre.
+#[test]
+fn the_input_box_shows_everything_the_program_wrote() {
+    use crate::console::fin_qui_tient;
+
+    // Un logo, une invite : ce que montre un crackme au démarrage.
+    let logo = "  _____ ____   ___   ____ __  __    _    _   _\n\
+                 | ____|  _ \\ / _ \\ / ___|  \\/  |  / \\  | \\ | |\n\
+                 |  _| | |_) | | | | |  _| |\\/| | / _ \\ |  \\| |\n\
+                 |_|   |_| \\_\\\\___/ \\____|_|  |_|/_/ \\_\\|_| \\_|\n\
+                 \n\
+                 IDENTIFIER : ACCESS KEY:";
+    let lignes = logo.lines().count();
+
+    // De la place pour tout : tout y est, et rien n'est annoncé
+    // au-dessus.
+    let (montré, au_dessus) = fin_qui_tient(logo, 120, 40);
+    assert_eq!(montré, logo, "tout tient : tout est montré");
+    assert_eq!(au_dessus, 0);
+
+    // Trop étroit pour deux lignes : ce qui dépasse se REPLIE, donc
+    // compte double en hauteur. Une boîte de six lignes ne peut plus
+    // porter les six lignes du logo.
+    let (montré, au_dessus) = fin_qui_tient(logo, 24, 6);
+    assert!(
+        au_dessus > 0,
+        "une boîte étroite laisse des lignes derrière"
+    );
+    assert!(
+        montré.ends_with("IDENTIFIER : ACCESS KEY:"),
+        "et ce qu'elle garde est LA FIN — l'invite est toujours en bas :\n{montré}"
+    );
+    assert_eq!(
+        au_dessus + montré.lines().count(),
+        lignes,
+        "rien ne se perd en route : ce qui est montré plus ce qui est annoncé fait le tout"
+    );
+
+    // Une boîte d'une seule ligne montre quand même quelque chose : une
+    // boîte vide devant un programme qui attend n'apprend rien.
+    let (montré, _) = fin_qui_tient(logo, 10, 1);
+    assert!(!montré.is_empty());
+
+    // Rien du tout, et des cas limites qui ne doivent pas paniquer.
+    assert_eq!(fin_qui_tient("", 80, 10), (String::new(), 0));
+    assert_eq!(fin_qui_tient("a", 0, 0).0, "a");
+}
+
+/// Rien ne devient cliquable sans le dire.
+///
+/// « Comment savoir si un texte est cliquable ou pas ? » — la question
+/// de Fred, le 15 octobre, et elle n'a de réponse durable que si la
+/// marque est posée à UN seul endroit. Sinon chaque panneau neuf
+/// réinvente sa façon, et l'on se retrouve avec des textes qui mènent
+/// quelque part sans rien montrer, à côté d'autres qui ne mènent nulle
+/// part et qui sont bleus.
+///
+/// La règle : une étiquette ne devient cliquable que par `cliquable`
+/// (interface) ou `clickable_label` (panneaux d'analyse), qui posent la
+/// main du pointeur et le trait au survol. Une RANGÉE entière, elle,
+/// passe par `interact` et doit appeler `souligne_au_survol` dans les
+/// lignes qui suivent.
+///
+/// Le contrôle lit les sources : c'est la seule liste qui ne puisse pas
+/// se désynchroniser du code.
+#[test]
+fn nothing_becomes_clickable_without_saying_so() {
+    /// Les lignes où `Sense::click()` est posé sur autre chose qu'une
+    /// étiquette — un dessin, un bouton peint à la main, une image —, et
+    /// qui portent donc leur marque autrement : un cadre, une pastille,
+    /// une touche.
+    fn est_un_dessin(contexte: &str) -> bool {
+        contexte.contains("allocate_exact_size")
+            || contexte.contains("allocate_painter")
+            || contexte.contains("allocate_response")
+            || contexte.contains("egui::Image::new")
+            || contexte.contains("ui.interact(")
+    }
+
+    let mut fautifs = Vec::new();
+    // Les sources de l'interface ET celles des panneaux d'analyse : la
+    // règle vaut des deux côtés, et c'est tout l'intérêt de l'écrire
+    // deux fois plutôt que de laisser chaque panneau décider.
+    //
+    // Celles des panneaux sont LUES sur le disque, comme le fait déjà
+    // `everything_the_emulator_runs_has_a_sheet` : les inclure une à une
+    // reviendrait à tenir une liste que personne ne mettrait à jour, et
+    // c'est justement le panneau neuf qu'on veut attraper.
+    let racine = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../namsdec-re/src"));
+    let mut panneaux: Vec<(String, String)> = Vec::new();
+    for entrée in std::fs::read_dir(racine).expect("les sources des panneaux") {
+        let chemin = entrée.expect("une entrée").path();
+        if chemin.extension().is_none_or(|ext| ext != "rs") {
+            continue;
+        }
+        let nom = chemin
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        panneaux.push((nom, std::fs::read_to_string(&chemin).expect("lisible")));
+    }
+    assert!(
+        panneaux.len() > 20,
+        "les sources des panneaux doivent être lues : {}",
+        panneaux.len()
+    );
+    let panneaux: Vec<(&str, &str)> = panneaux
+        .iter()
+        .map(|(nom, source)| (nom.as_str(), source.as_str()))
+        .collect();
+    for (nom, source) in SOURCES_DE_L_INTERFACE.iter().chain(panneaux.iter()) {
+        let lignes: Vec<&str> = source.lines().collect();
+        for (rang, ligne) in lignes.iter().enumerate() {
+            let pose_un_clic = ligne.contains("Sense::click()");
+            if !pose_un_clic {
+                continue;
+            }
+            // Ce qui précède et ce qui suit : une pose de clic s'écrit
+            // sur plusieurs lignes, et la marque se lit juste après.
+            let avant = lignes[rang.saturating_sub(8)..=rang].join("\n");
+            let après = lignes[rang..(rang + 10).min(lignes.len())].join("\n");
+            let entouré = format!("{avant}\n{après}");
+            // Les deux helpers eux-mêmes, et les dessins.
+            if entouré.contains("souligne_au_survol")
+                || entouré.contains("cliquable(ui")
+                || entouré.contains("clickable_label(")
+                || est_un_dessin(&entouré)
+            {
+                continue;
+            }
+            fautifs.push(format!("{nom}:{} — {}", rang + 1, ligne.trim()));
+        }
+    }
+    assert!(
+        fautifs.is_empty(),
+        "ces textes se cliquent sans le dire — passez par `cliquable` / `clickable_label`, \
+         ou appelez `souligne_au_survol` si c'est une rangée :\n{}",
+        fautifs.join("\n")
+    );
+}

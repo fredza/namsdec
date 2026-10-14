@@ -828,12 +828,17 @@ impl NamsdecApp {
                                 ui.colored_label(theme.dim, small_monospace(ui, autres.join(" ")));
                             }
                         });
-                        if ligne
+                        // La RANGÉE entière se clique, et le trait au
+                        // survol est ce qui le dit : un nom en couleur
+                        // au milieu d'une ligne laisse croire que seul
+                        // le nom mène quelque part.
+                        let rangée = ligne
                             .response
                             .interact(egui::Sense::click())
-                            .on_hover_text(s.help_open_sheet)
-                            .clicked()
-                        {
+                            .on_hover_cursor(egui::CursorIcon::PointingHand)
+                            .on_hover_text(s.help_open_sheet);
+                        souligne_au_survol(ui, &rangée);
+                        if rangée.clicked() {
                             ouvrir = Some(trouvée.name);
                         }
                     }
@@ -1065,17 +1070,14 @@ impl NamsdecApp {
                         // sommaire. Chacun est cliquable et ouvre la fiche
                         // avec son propre nom surligné.
                         for name in entry.names {
-                            if ui
-                                .add(
-                                    egui::Label::new(
-                                        egui::RichText::new(*name)
-                                            .monospace()
-                                            .color(theme.mnemonic),
-                                    )
-                                    .sense(egui::Sense::click()),
-                                )
-                                .on_hover_text(s.help_open_sheet)
-                                .clicked()
+                            if cliquable(
+                                ui,
+                                egui::Label::new(
+                                    egui::RichText::new(*name).monospace().color(theme.mnemonic),
+                                ),
+                            )
+                            .on_hover_text(s.help_open_sheet)
+                            .clicked()
                             {
                                 ouvrir = Some(*name);
                             }

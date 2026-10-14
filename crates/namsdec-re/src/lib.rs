@@ -243,6 +243,51 @@ pub enum ReResult {
     ShowBytesAt { offset: usize, addr: Option<u64> },
 }
 
+/// Souligne un texte quand la souris est dessus — le signe qu'il se
+/// clique.
+///
+/// LA QUESTION À LAQUELLE CECI RÉPOND est « comment sait-on qu'un texte
+/// se clique ? ». La main du pointeur le dit, mais seulement quand on
+/// est déjà dessus, et sur un texte elle se confond avec le curseur de
+/// sélection. Le soulignement est le signe que tout le monde connaît,
+/// et il ne coûte rien au repos : le panneau reste calme, et ce qu'on
+/// survole se déclare.
+///
+/// Peint APRÈS coup, sous le rectangle de la réponse, plutôt que posé
+/// dans le `RichText` : on ne sait qu'un texte est survolé qu'une fois
+/// qu'il est dessiné, et le relire de l'image précédente ferait
+/// clignoter le trait d'une image sur deux.
+///
+/// Le même geste existe côté interface (`souligne_au_survol` dans
+/// `main.rs`) : les panneaux d'analyse ne dépendent pas de
+/// l'application, et une grammaire commune vaut mieux que deux façons
+/// de dire la même chose.
+pub fn souligne_au_survol(ui: &egui::Ui, réponse: &egui::Response) {
+    if !réponse.hovered() {
+        return;
+    }
+    let couleur = ui.visuals().widgets.hovered.fg_stroke.color;
+    ui.painter().hline(
+        réponse.rect.x_range(),
+        réponse.rect.bottom() - 1.0,
+        egui::Stroke::new(1.0, couleur),
+    );
+}
+
+/// Un texte sur lequel on peut cliquer : la main au survol, et le trait
+/// dessous.
+///
+/// Écrit une fois pour tous les panneaux. Un contrôle lit les sources
+/// et refuse qu'une étiquette devienne cliquable ailleurs qu'ici : une
+/// seule grammaire, et rien qui se clique sans le dire.
+pub fn clickable_label(ui: &mut egui::Ui, étiquette: egui::Label) -> egui::Response {
+    let réponse = ui
+        .add(étiquette.sense(egui::Sense::click()))
+        .on_hover_cursor(egui::CursorIcon::PointingHand);
+    souligne_au_survol(ui, &réponse);
+    réponse
+}
+
 /// Une adresse sur laquelle on peut cliquer pour l'aller voir.
 ///
 /// Écrite une fois pour tous les panneaux : une adresse se montre de la
@@ -273,13 +318,10 @@ pub fn clickable_address(ui: &mut egui::Ui, ctx: &ReContext, addr: u64) -> Optio
             .monospace()
             .color(ui.visuals().hyperlink_color),
     };
-    let réponse = ui
-        .add(egui::Label::new(texte).sense(egui::Sense::click()))
-        .on_hover_cursor(egui::CursorIcon::PointingHand)
-        .on_hover_text(ctx.t(
-            "Aller voir cette adresse — dans le code, ou dans les octets",
-            "Go and see this address — in the code, or in the bytes",
-        ));
+    let réponse = clickable_label(ui, egui::Label::new(texte)).on_hover_text(ctx.t(
+        "Aller voir cette adresse — dans le code, ou dans les octets",
+        "Go and see this address — in the code, or in the bytes",
+    ));
     let mut choix = None;
     egui::Popup::menu(&réponse).show(|ui| {
         if ui

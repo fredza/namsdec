@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **14 octobre
-2026**, version 0.2.8-beta.3, 1 185 tests au vert.
+2026**, version 0.2.8-beta.3, 1 188 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -29,6 +29,32 @@ Ce qui reste est de la finition mesurée : des alignements de quelques
 pixels, deux tailles de police, et le vide sous « Prochaine
 instruction », qui tient au même nœud que le vide de 56 px — l'état du
 processeur est ancré.
+
+---
+
+## 11. Une fenêtre complète, et ce qui se clique (A 7.17)
+
+Deux griefs sur capture, le 15 octobre : la boîte de saisie montrait
+quatre lignes d'un logo qui en fait sept, et rien ne disait quels textes
+se cliquent.
+
+- [x] **La boîte montre tout ce que le programme a écrit** (A 7.17) —
+      largeur de la plus longue ligne, hauteur de toutes, bornées à
+      l'écran ; au-delà c'est la fin qu'on voit, et une ligne dit ce qui
+      reste au-dessus. Le calcul est dans `fin_qui_tient`, à part pour
+      être éprouvé : une ligne trop large se replie et compte double.
+- [x] **Deux signes pour tout ce qui se clique** — la main, et le trait
+      au survol. Posés par `cliquable` (interface) et `clickable_label`
+      (panneaux) ; une rangée entière se souligne entière.
+- [x] **Un contrôle qui lit les sources des DEUX crates** — aucune
+      étiquette cliquable hors des helpers. Il a trouvé deux oublis du
+      premier coup.
+- [x] **Un contrôle de mesure** — le trait est compté sur ce qui est
+      peint, souris posée puis retirée ; éprouvé en le retirant.
+- [ ] **Les séquences ANSI de la sortie** (`□[2J□[H□[36m`) se lisent
+      telles quelles, dans la boîte comme dans la console. Les
+      interpréter est un chantier à soi : un terminal, même minimal,
+      décide de ce qu'on voit.
 
 ---
 

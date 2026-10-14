@@ -60,13 +60,12 @@ impl ReModule for YaraModule {
 
         // La règle entière, cliquable pour la copier : une règle YARA sert
         // à être collée dans un fichier `.yar`, pas recopiée à la main.
-        if ui
-            .add(
-                egui::Label::new(egui::RichText::new(&self.rule).monospace())
-                    .sense(egui::Sense::click()),
-            )
-            .on_hover_text(ctx.t("Cliquer pour copier la règle", "Click to copy the rule"))
-            .clicked()
+        if crate::clickable_label(
+            ui,
+            egui::Label::new(egui::RichText::new(&self.rule).monospace()),
+        )
+        .on_hover_text(ctx.t("Cliquer pour copier la règle", "Click to copy the rule"))
+        .clicked()
         {
             ui.ctx().copy_text(self.rule.clone());
         }

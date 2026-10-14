@@ -28,6 +28,7 @@ enum Colonne {
     Texte,
 }
 
+#[derive(Default)]
 pub struct HexEditorModule {
     /// L'octet du début de la page affichée.
     page: usize,
@@ -65,31 +66,12 @@ pub struct HexEditorModule {
     /// écrit, l'adresse où il sera lu. On patche à la première et l'on
     /// raisonne avec la seconde, et c'est pour avoir à les rapprocher
     /// de tête qu'on se trompe de ligne.
+    ///
+    /// Fausse au départ et réglée au chargement du fichier
+    /// (`adresses_utiles`) : sans fichier, il n'y a pas d'adresse à
+    /// montrer.
     adresses: bool,
     demande: Option<ReRequest>,
-}
-
-impl Default for HexEditorModule {
-    fn default() -> Self {
-        Self {
-            page: 0,
-            aller: String::new(),
-            choisi: None,
-            valeur: String::new(),
-            touchés: Default::default(),
-            recherche: String::new(),
-            recherche_hex: false,
-            nibble: None,
-            colonne: Colonne::default(),
-            inspecteur_be: false,
-            trouvé: None,
-            venu_de: None,
-            // Réglée au chargement du fichier (`adresses_utiles`) :
-            // sans fichier, il n'y a pas d'adresse à montrer.
-            adresses: false,
-            demande: None,
-        }
-    }
 }
 
 /// Seize octets par ligne, et seize lignes par page : la forme de tous les
@@ -425,8 +407,7 @@ impl ReModule for HexEditorModule {
                                 } else if self.touchés.contains(&off) {
                                     texte = texte.background_color(fond_touché);
                                 }
-                                if ui
-                                    .add(egui::Label::new(texte).sense(egui::Sense::click()))
+                                if crate::clickable_label(ui, egui::Label::new(texte))
                                     .on_hover_cursor(egui::CursorIcon::PointingHand)
                                     .clicked()
                                 {
@@ -469,8 +450,7 @@ impl ReModule for HexEditorModule {
                                 } else if self.touchés.contains(&off) {
                                     texte = texte.background_color(fond_touché);
                                 }
-                                if ui
-                                    .add(egui::Label::new(texte).sense(egui::Sense::click()))
+                                if crate::clickable_label(ui, egui::Label::new(texte))
                                     .on_hover_cursor(egui::CursorIcon::PointingHand)
                                     .clicked()
                                 {
@@ -753,8 +733,7 @@ impl ReModule for HexEditorModule {
                             ..Default::default()
                         },
                     );
-                    if ui
-                        .add(egui::Label::new(job).sense(egui::Sense::click()))
+                    if crate::clickable_label(ui, egui::Label::new(job))
                         .on_hover_text(ctx.t("Cliquer pour copier", "Click to copy"))
                         .clicked()
                     {

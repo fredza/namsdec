@@ -268,3 +268,115 @@ fn drawing_alone_asks_for_nothing() {
         }
     }
 }
+
+/// Un texte cliquable se SOULIGNE quand la souris est dessus.
+///
+/// « Comment savoir si un texte est cliquable ou pas ? » La main du
+/// pointeur le dit, mais seulement une fois qu'on est déjà dessus, et
+/// sur un texte elle se confond avec le curseur de sélection. Le trait
+/// est le signe que tout le monde connaît.
+///
+/// Mesuré sur ce qui est PEINT : le survol doit ajouter une ligne
+/// horizontale sous l'adresse, et le repos ne doit pas en porter. Une
+/// marque qu'on vérifierait dans le code ne dirait pas si elle arrive à
+/// l'écran.
+#[test]
+fn a_clickable_text_underlines_itself_under_the_pointer() {
+    let binaire = germe_piégé();
+    let disasm = namsdec_disasm::disassemble(&binaire[0x100..0x120], BASE + 0x100);
+    let cpu = Cpu::new(Memory::new(BASE, 0x1000));
+    let ctx = ReContext {
+        cpu: &cpu,
+        disasm: &disasm,
+        source: "",
+        binary: &binaire,
+        lang: "fr",
+        names: None,
+    };
+    let mut module = namsdec_re::ImportsModule::default();
+    module.on_binary_loaded(&ctx);
+
+    // Où une adresse est peinte, et les traits horizontaux comptés à
+    // cet endroit-là — les filets de séparation du panneau ne doivent
+    // pas compter pour la marque qu'on cherche.
+    let Some(cible) = où_est_une_adresse(&mut module, &ctx) else {
+        return;
+    };
+    let au_repos = traits_sous(&mut module, &ctx, cible, None);
+    let au_survol = traits_sous(&mut module, &ctx, cible, Some(cible));
+    assert!(
+        au_survol > au_repos,
+        "le survol doit souligner : {au_repos} trait(s) au repos, {au_survol} au survol"
+    );
+}
+
+/// Le premier texte qui ressemble à une adresse, et où il est peint.
+fn où_est_une_adresse(module: &mut dyn ReModule, ctx: &ReContext) -> Option<egui::Pos2> {
+    let egui_ctx = egui::Context::default();
+    let entrée = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1000.0, 2000.0),
+        )),
+        ..Default::default()
+    };
+    let mut vu = None;
+    for _ in 0..2 {
+        vu = None;
+        let mut sortie = egui_ctx.run_ui(entrée.clone(), |ui| module.ui(ui, ctx));
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(t) = &clipped.shape
+                && t.galley.text().starts_with("0x")
+                && vu.is_none()
+            {
+                let rect = egui::Rect::from_min_size(t.pos, t.galley.size());
+                let visible = rect.intersect(clipped.clip_rect);
+                if visible.is_positive() {
+                    vu = Some(visible.center());
+                }
+            }
+        }
+        sortie.textures_delta.clear();
+        let _ = module.take_request();
+    }
+    vu
+}
+
+/// Combien de traits horizontaux sont peints à la hauteur de `autour`.
+fn traits_sous(
+    module: &mut dyn ReModule,
+    ctx: &ReContext,
+    autour: egui::Pos2,
+    souris: Option<egui::Pos2>,
+) -> usize {
+    let egui_ctx = egui::Context::default();
+    let mut compte = 0;
+    for _ in 0..3 {
+        let mut entrée = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1000.0, 2000.0),
+            )),
+            ..Default::default()
+        };
+        if let Some(p) = souris {
+            entrée.events.push(egui::Event::PointerMoved(p));
+        }
+        let mut sortie = egui_ctx.run_ui(entrée, |ui| module.ui(ui, ctx));
+        compte = 0;
+        for clipped in &sortie.shapes {
+            // Un trait d'egui est un rectangle plat ou un segment : on
+            // compte les deux, à moins de dix pixels sous le texte.
+            let cadre = clipped.shape.visual_bounding_rect();
+            let plat = cadre.height() <= 2.0 && cadre.width() > 4.0;
+            let sous_le_texte =
+                (cadre.top() - autour.y).abs() < 12.0 && cadre.x_range().contains(autour.x);
+            if plat && sous_le_texte {
+                compte += 1;
+            }
+        }
+        sortie.textures_delta.clear();
+        let _ = module.take_request();
+    }
+    compte
+}

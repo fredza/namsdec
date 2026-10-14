@@ -93,8 +93,7 @@ impl ReModule for XrefsModule {
                     // et se peignaient en carré vide, si bien que rien
                     // ne disait que la ligne se dépliait.
                     let marque = if ouverte { "\u{2212}" } else { "+" };
-                    if ui
-                        .add(egui::Label::new(marque).sense(egui::Sense::click()))
+                    if crate::clickable_label(ui, egui::Label::new(marque))
                         .on_hover_text(ctx.t("D'où est-ce appelé ?", "Called from where?"))
                         .clicked()
                     {

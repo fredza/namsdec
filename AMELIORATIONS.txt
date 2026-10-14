@@ -3412,3 +3412,101 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
       permise qu'aux fenêtres nommées, verte.
     - `la_colonne_des_adresses_ne_parait_que_si_elle_apprend_quelque_chose`
       monte deux ELF minimaux, l'un chargé à zéro, l'autre à 0x400000.
+
+
+--------------------------------------------------------------------------------
+ 7.17  UNE FENÊTRE COMPLÈTE, ET CE QUI SE CLIQUE
+       (15 octobre 2026) — deux griefs sur capture
+--------------------------------------------------------------------------------
+
+  LES DEUX GRIEFS, dans les mots de Fred : « ce que le programme écrit
+  doit être une fenêtre complète, pas d'ascenseur » et « tous les textes
+  cliquables doivent être en évidence — comment savoir s'il est
+  cliquable ou pas ».
+
+  I. CE QUE LE PROGRAMME ÉCRIT
+
+  Mesuré sur la capture : la boîte montrait les QUATRE dernières lignes
+  de la sortie, dans une fenêtre large de 480 pixels fixes. FROGMAN
+  ouvre sur un logo de sept lignes et quatre-vingts colonnes — ce par
+  quoi commence la moitié des crackmes —, et l'on en voyait trois
+  lignes, coupées en deux dans la largeur. Rien ne disait que c'en était
+  un fragment.
+
+  La boîte prend maintenant la place qu'il faut : la largeur de la plus
+  longue ligne, la hauteur de toutes, bornées à l'écran. Quand la sortie
+  dépasse, c'est LA FIN qui est montrée — l'invite est toujours en bas —
+  et une ligne dit ce qui reste au-dessus, dans la console.
+
+  POURQUOI PAS D'ASCENSEUR, puisqu'il aurait été plus simple : un
+  ascenseur dans une boîte qui s'ouvre toute seule est un piège. On y
+  lit quatre lignes d'un logo qui en fait sept, on conclut que le
+  programme n'a écrit que cela, et l'on cherche la suite dans une
+  console qu'on ne regardait pas — c'est exactement le défaut qu'on
+  vient de corriger, sous une autre forme.
+
+  LE CALCUL est dans `fin_qui_tient`, et il est à part pour pouvoir être
+  éprouvé : une ligne plus large que la boîte se REPLIE et compte donc
+  pour plusieurs, ce qui fait qu'un logo de quatre-vingts colonnes dans
+  une boîte qui en montre soixante occupe le double de hauteur. Le
+  contrôle vérifie les trois cas : tout tient, rien ne se perd en route
+  (ce qui est montré plus ce qui est annoncé fait le tout), et une boîte
+  d'une seule ligne montre quand même quelque chose.
+
+  II. COMMENT SAIT-ON QU'UN TEXTE SE CLIQUE
+
+  La question est juste, et elle n'a de réponse durable que si la marque
+  est posée à UN seul endroit. Relevé des sources : quarante-quatre
+  endroits posent `Sense::click()`, dont une vingtaine sur du TEXTE. Ce
+  qu'ils faisaient variait — couleur de lien ici, couleur de syntaxe là,
+  rien du tout ailleurs, et parfois la main du pointeur seule.
+
+  DEUX SIGNES, PARTOUT : la main, et le TRAIT au survol. Le soulignement
+  est le signe que tout le monde connaît, il ne coûte rien au repos, et
+  il règle le défaut propre à la main : on ne la voit qu'une fois déjà
+  dessus, et sur un texte elle se confond avec le curseur de sélection.
+
+  Il est peint APRÈS coup, sous le rectangle de la réponse, et non posé
+  dans le `RichText` : on ne sait qu'un texte est survolé qu'une fois
+  qu'il est dessiné, et le relire de l'image précédente ferait clignoter
+  le trait d'une image sur deux.
+
+  DEUX HELPERS, un par crate, parce que les panneaux d'analyse ne
+  dépendent pas de l'application : `cliquable` (interface) et
+  `clickable_label` (panneaux). Une RANGÉE entière — une ligne de la
+  carte mémoire, un résultat de recherche du manuel, une ligne du
+  désassemblage, un pas de la chronologie — passe par `interact` et
+  appelle `souligne_au_survol` : c'est la rangée qui se souligne, et non
+  le seul mot coloré qui s'y trouve, sans quoi l'on croit que seul ce
+  mot-là mène quelque part.
+
+  CE QUI N'A PAS CHANGÉ, et pourquoi. Les dessins — les touches de la
+  calculatrice, les pastilles de fenêtre, les boîtes du graphe d'appels,
+  le profil d'entropie — portent déjà leur marque : un cadre, une
+  couleur, un relief. Les souligner n'ajouterait rien et ferait du
+  bruit. Les adresses du pseudo-code DZF restent en couleur de lien sans
+  trait : elles vivent dans un galley composite, et souligner une plage
+  de caractères à l'intérieur demande un autre travail que ce contrôle
+  mérite.
+
+  LE CONTRÔLE QUI TIENT LA RÈGLE lit les sources — celles de l'interface
+  et celles des panneaux, ces dernières LUES SUR LE DISQUE pour que le
+  panneau neuf soit vu lui aussi : aucune étiquette ne devient cliquable
+  hors des helpers, et toute rangée qui pose un clic appelle le
+  soulignement dans les lignes qui suivent. Il a trouvé deux oublis du
+  premier coup (les deux en-têtes repliables du panneau latéral, qui ne
+  se signalaient que par leur chevron).
+
+  ET UN CONTRÔLE DE MESURE, parce qu'une marque vérifiée dans le code ne
+  dit pas si elle arrive à l'écran :
+  `a_clickable_text_underlines_itself_under_the_pointer` compte les
+  traits horizontaux peints sous une adresse, souris posée dessus puis
+  retirée. Éprouvé en retirant le soulignement du helper : le contrôle
+  l'a nommé.
+
+  UN DÉFAUT DE PLUS, TROUVÉ EN PASSANT et NON corrigé : la sortie du
+  programme garde ses séquences d'échappement ANSI. On lit « □[2J□[H□[36m »
+  en tête du logo de FROGMAN, dans la boîte comme dans la console. Les
+  interpréter (couleurs, effacement d'écran, positionnement) est un
+  chantier à soi — un terminal, même minimal, décide de ce qu'on voit —
+  et il vaut mieux l'ouvrir pour lui-même que l'improviser ici.

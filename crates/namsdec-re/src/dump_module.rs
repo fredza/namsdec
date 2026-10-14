@@ -216,15 +216,14 @@ impl ReModule for DumpModule {
 
                         ui.weak("SHA-256");
                         let empreinte = digest::hex(&digest::sha256(morceau));
-                        if ui
-                            .add(
-                                egui::Label::new(
-                                    egui::RichText::new(&empreinte).monospace().size(11.0),
-                                )
-                                .sense(egui::Sense::click()),
-                            )
-                            .on_hover_text(ctx.t("Cliquer pour copier", "Click to copy"))
-                            .clicked()
+                        if crate::clickable_label(
+                            ui,
+                            egui::Label::new(
+                                egui::RichText::new(&empreinte).monospace().size(11.0),
+                            ),
+                        )
+                        .on_hover_text(ctx.t("Cliquer pour copier", "Click to copy"))
+                        .clicked()
                         {
                             ui.ctx().copy_text(empreinte);
                         }
@@ -356,10 +355,7 @@ impl ReModule for DumpModule {
                         } else {
                             texte
                         };
-                        if ui
-                            .add(egui::Label::new(texte).sense(egui::Sense::click()))
-                            .clicked()
-                        {
+                        if crate::clickable_label(ui, egui::Label::new(texte)).clicked() {
                             cliqué = Some(position);
                         }
                         // Un blanc au milieu : c'est ce qui fait qu'on

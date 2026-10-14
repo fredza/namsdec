@@ -228,30 +228,28 @@ impl ReModule for ImportsModule {
                 // la signature, le registre qui porte chaque argument,
                 // et ce qu'il faut surveiller.
                 let couleur = ui.visuals().hyperlink_color;
-                let réponse = ui
-                    .add(
-                        egui::Label::new(egui::RichText::new(&import.name).strong().color(couleur))
-                            .sense(egui::Sense::click()),
-                    )
-                    .on_hover_cursor(egui::CursorIcon::PointingHand)
-                    .on_hover_text(match note {
-                        Some(note) => note.text(ctx.lang).to_owned(),
-                        None => match libc::family_hint(&import.name) {
-                            Some((fr, en)) => {
-                                if ctx.lang.starts_with("fr") {
-                                    fr.to_owned()
-                                } else {
-                                    en.to_owned()
-                                }
+                let réponse = crate::clickable_label(
+                    ui,
+                    egui::Label::new(egui::RichText::new(&import.name).strong().color(couleur)),
+                )
+                .on_hover_text(match note {
+                    Some(note) => note.text(ctx.lang).to_owned(),
+                    None => match libc::family_hint(&import.name) {
+                        Some((fr, en)) => {
+                            if ctx.lang.starts_with("fr") {
+                                fr.to_owned()
+                            } else {
+                                en.to_owned()
                             }
-                            None => ctx
-                                .t(
-                                    "Cliquer pour ce que namsdec en sait",
-                                    "Click for what namsdec knows about it",
-                                )
-                                .to_owned(),
-                        },
-                    });
+                        }
+                        None => ctx
+                            .t(
+                                "Cliquer pour ce que namsdec en sait",
+                                "Click for what namsdec knows about it",
+                            )
+                            .to_owned(),
+                    },
+                });
                 if réponse.clicked() {
                     bascule = Some(import.name.clone());
                 }

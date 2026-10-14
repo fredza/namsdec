@@ -294,6 +294,26 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
         ("p",
          "Les fenêtres internes portent la <b>même pastille</b> de fermeture, au "
          "même endroit. Une seule façon de fermer quelque chose, partout."),
+        ("h2", "Ce qui se clique, et comment on le sait"),
+        ("p",
+         "Beaucoup de textes mènent quelque part dans namsdec : une adresse va au "
+         "listing ou aux octets, un nom de fonction se renomme, une empreinte se copie, "
+         "un mnémonique du sommaire ouvre sa fiche, une ligne du désassemblage emmène à "
+         "sa source. La question qui vient est « comment sait-on qu'un texte se clique, "
+         "et qu'un autre non ? »"),
+        ("p",
+         "<b>Deux signes, toujours les mêmes.</b> Le pointeur devient une <b>main</b>, "
+         "et le texte se <b>souligne</b> sous elle. Le soulignement est le signe que "
+         "tout le monde connaît, et il ne coûte rien au repos : la fenêtre reste calme, "
+         "et ce qu'on survole se déclare. Quand c'est une <b>rangée entière</b> qui se "
+         "clique — une ligne de la carte mémoire, un résultat de recherche du manuel —, "
+         "c'est la rangée entière qui se souligne, et non le seul mot coloré qui s'y "
+         "trouve."),
+        ("note",
+         "La règle est tenue par un contrôle qui lit le code : une étiquette ne peut "
+         "devenir cliquable que par les deux fonctions qui posent ces signes, et un "
+         "panneau neuf qui l'oublierait ferait échouer la suite de tests. C'est la seule "
+         "façon qu'une grammaire d'interface survive à ce qu'on ajoute après."),
         ("p",
          "Un panneau vide <b>dit ce qui manque et propose ce qui le corrige</b> : un "
          "panneau simplement vide se lit comme cassé. Au démarrage, le bandeau "
@@ -616,6 +636,19 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "pr\u00e9cis\u00e9ment quand la console est repli\u00e9e ou couverte par une autre "
          "fen\u00eatre : on reste sinon devant un programme qui ne r\u00e9pond plus, sans "
          "savoir qu'il attend <i>nous</i>."),
+        ("p",
+         "Elle montre ce que le programme a \u00e9crit <b>en entier</b>, et sans "
+         "ascenseur : la bo\u00eete prend la largeur de la plus longue ligne et la "
+         "hauteur de toutes. Un logo de sept lignes sur quatre-vingts colonnes \u2014 ce "
+         "par quoi commence la moiti\u00e9 des crackmes \u2014 y tient donc entier. Quand "
+         "la sortie d\u00e9passe l'\u00e9cran, c'est <b>la fin</b> qui est montr\u00e9e, "
+         "puisque l'invite est toujours en bas, et une ligne dit ce qui reste au-dessus, "
+         "dans la console."),
+        ("note",
+         "Un ascenseur dans une bo\u00eete qui s'ouvre toute seule est un pi\u00e8ge : on y "
+         "lit quatre lignes d'un logo qui en fait sept, on croit que le programme n'a "
+         "\u00e9crit que cela, et l'on cherche la suite dans une console qu'on ne "
+         "regardait pas."),
         ("p",
          "La ligne <b>Entrée</b> est l\u00e0 d\u00e8s qu'un programme est assembl\u00e9, "
          "qu'il lise ou non. On \u00e9crit son programme, on a pos\u00e9 ses cha\u00eenes, "
