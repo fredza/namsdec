@@ -1022,15 +1022,29 @@ impl NamsdecApp {
             ])
             .pivot(egui::Align2::CENTER_CENTER)
             .default_pos(default_window_pos(ctx, "analysis"));
-        // Pas de bouton d'agrandissement ici, et c'est délibéré : cette
-        // fenêtre-là sert à DÉSIGNER des endroits du listing, et le
-        // premier geste qui suit une adresse cliquée est d'aller la
-        // voir. Agrandie, elle recouvrait tout — le clic emmenait bien
-        // le listing à l'adresse, derrière un panneau opaque, et l'on
-        // concluait que « ça ne marche pas ». Elle s'ouvre déjà aux
-        // deux tiers de l'écran et se redimensionne à la main.
+        // AGRANDIR, par la pastille verte du bandeau. Elle avait été
+        // retirée le 13 octobre pour une bonne raison — agrandie, cette
+        // fenêtre recouvrait tout, et le clic sur une adresse emmenait
+        // le listing derrière un panneau opaque, si bien qu'on
+        // concluait que « ça ne marche pas ». Cette raison-là est
+        // tombée : aller voir une adresse dans le listing EFFACE la
+        // fenêtre (`show_address`), et aller la voir dans les octets
+        // reste dans la fenêtre, où l'on a justement besoin de place.
+        // Un vidage hexadécimal et un graphe d'appels se lisent mieux
+        // en grand.
+        let agrandie = self.window_maximized(Self::ANALYSIS_WINDOW);
+        // Dans la zone de travail, et non sur tout l'écran : agrandie
+        // jusqu'aux bords, elle recouvrait la barre de menus et la
+        // barre d'état — et ses propres pastilles se posaient sur
+        // celles de la fenêtre principale.
+        let fenêtre_analysis_window =
+            self.maximizable_in_work_area(fenêtre_analysis_window, Self::ANALYSIS_WINDOW, ctx);
+        let mut basculer = false;
         fenêtre_analysis_window.title_bar(false).show(ctx, |ui| {
-            if chrome::window_head(ui, self.theme, s, s.analysis_title) {
+            let (fermer, zoom) =
+                chrome::window_head_zoom(ui, self.theme, s, s.analysis_title, Some(agrandie));
+            basculer = zoom;
+            if fermer {
                 fermer_ok = true;
             }
             if ok_bar(ui, self.theme, strings(self.lang), "analysis") {
@@ -1252,6 +1266,11 @@ impl NamsdecApp {
         // L'état de la fenêtre AVANT de relever les demandes des
         // panneaux : l'une d'elles — aller voir une adresse — ferme
         // cette fenêtre, et l'écrire après l'aurait rouverte aussitôt.
+        // La bascule est appliquée APRÈS le dessin : pendant, `self`
+        // est emprunté par la fenêtre.
+        if basculer {
+            self.toggle_maximized(Self::ANALYSIS_WINDOW);
+        }
         self.show_analysis = open && !fermer_ok;
         self.apply_re_requests();
     }

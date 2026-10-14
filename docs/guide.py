@@ -1373,6 +1373,19 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "par-dessus l\'original. C\'est un début : éditer plusieurs octets d\'un coup et "
          "insérer viendront ensuite, l\'insertion avec sa prudence propre, car elle décale "
          "tout ce qui suit et chaque adresse du fichier deviendrait fausse.",
+         "Deux colonnes en tête de chaque ligne : la <b>position</b> dans le fichier et "
+         "l\'<b>adresse</b> à laquelle elle sera lue en mémoire. On patche à la première "
+         "et l\'on raisonne avec la seconde, et c\'est pour avoir à les rapprocher de "
+         "tête qu\'on se trompe de ligne. La colonne des adresses ne paraît que si elle "
+         "apprend quelque chose — dans un exécutable indépendant de la position, le "
+         "premier segment est chargé à zéro et les deux colonnes seraient identiques. "
+         "« Aller à » accepte les deux : un nombre qui dépasse le fichier mais que les "
+         "segments portent est lu comme une adresse.",
+         "C\'est aussi là qu\'on atterrit quand on clique une adresse dans un autre "
+         "panneau et qu\'on choisit « dans l\'éditeur binaire » : la page est cadrée sur "
+         "la position, l\'octet est choisi, et l\'adresse d\'où l\'on vient est écrite en "
+         "tête — on vient de cliquer dessus, et la retrouver est ce qui dit qu\'on est au "
+         "bon endroit.",
          "Sous l\'octet choisi, un <b>inspecteur</b> — comme celui de 010 Editor — lit les "
          "octets à partir de là dans chaque format : <font face=\'Courier\'>int8</font> à "
          "<font face=\'Courier\'>int64</font>, signés et non signés, flottants, caractère, "
@@ -1458,10 +1471,29 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "mille lignes du haut, et l'on n'y arrivait pas — ni depuis l'onglet Profil, ni "
          "depuis un panneau d'analyse."),
         ("p",
-         "La fenêtre d'analyse n'a plus de bouton <b>agrandir/restaurer</b>, et c'est "
-         "pour la même raison : agrandie, elle recouvrait tout l'écran, et une adresse "
-         "cliquée emmenait bien le listing derrière un panneau opaque. Elle s'ouvre déjà "
-         "aux deux tiers de l'écran et se redimensionne à la main."),
+         "<b>Le clic demande où aller.</b> Il y a deux façons de regarder le même "
+         "endroit, et elles ne répondent pas à la même question : le <b>code</b> dit ce "
+         "que la machine y fera, les <b>octets</b> disent ce qui y est écrit. Une "
+         "fonction se lit désassemblée ; une chaîne, une table, un bourrage n'ont aucun "
+         "sens dans un listing et se lisent dans l'éditeur binaire. Cliquer une adresse "
+         "ouvre donc un menu de deux entrées — « dans le code désassemblé », « dans "
+         "l'éditeur binaire ». Les deux destinations ne se comportent pas pareil, et "
+         "c'est voulu : aller au code <b>ferme</b> la fenêtre d'analyse, qui recouvrait "
+         "ce qu'on venait demander à voir ; aller aux octets la garde ouverte, puisque "
+         "la destination est dedans."),
+        ("note",
+         "Là où le contexte dit déjà de quoi il s'agit, le choix ne se pose pas : une "
+         "boîte du graphe d'appels est une fonction, une adresse lue dans du pseudo-code "
+         "ou dans la sortie d'objdump désigne une instruction. Ces clics-là vont droit "
+         "au code."),
+        ("p",
+         "La fenêtre d'analyse retrouve son bouton <b>agrandir/restaurer</b> : la "
+         "pastille verte, à côté de la rouge. Elle l'avait perdu parce qu'agrandie, elle "
+         "recouvrait tout — adresse cliquée, listing derrière un panneau opaque. Les "
+         "deux moitiés de ce défaut sont réparées : le saut au listing efface la "
+         "fenêtre, et l'agrandissement s'arrête sous la barre de menus, qui reste donc "
+         "accessible. Un vidage hexadécimal et un graphe d'appels se lisent mieux en "
+         "grand."),
         ("h2", "Les raccourcis, et les deux jeux côte à côte"),
         ("p",
          "<b>Préférences › Raccourcis</b> montre désormais les <b>deux jeux</b>, action "

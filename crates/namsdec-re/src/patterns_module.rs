@@ -82,8 +82,8 @@ impl ReModule for PatternsModule {
         // figure de ce panneau qui dise que **le listing lui-même ment**.
         // Toutes les autres se lisent dans un listing juste.
         if !self.misalignments.is_empty() {
-            if let Some(addr) = désalignements(ui, ctx, &self.misalignments) {
-                self.demande = Some(ReRequest::GoTo { addr });
+            if let Some((addr, target)) = désalignements(ui, ctx, &self.misalignments) {
+                self.demande = Some(ReRequest::GoTo { addr, target });
             }
             ui.add_space(6.0);
         }
@@ -135,8 +135,11 @@ impl ReModule for PatternsModule {
                     .striped(true)
                     .show(ui, |ui| {
                         for finding in occurrences.iter().take(PAR_FAMILLE) {
-                            if clickable_address(ui, ctx, finding.addr) {
-                                demande = Some(ReRequest::GoTo { addr: finding.addr });
+                            if let Some(cible) = clickable_address(ui, ctx, finding.addr) {
+                                demande = Some(ReRequest::GoTo {
+                                    addr: finding.addr,
+                                    target: cible,
+                                });
                             }
                             ui.monospace(&finding.detail);
                             ui.end_row();
@@ -163,8 +166,12 @@ impl ReModule for PatternsModule {
 /// affiche, voici ce que le processeur lit, et voici l'octet qui les
 /// sépare ». Une ligne qui dirait seulement « désalignement en 0x401234 »
 /// laisserait tout le travail à faire.
-fn désalignements(ui: &mut egui::Ui, ctx: &ReContext, trouvés: &[Misalignment]) -> Option<u64> {
-    let mut aller: Option<u64> = None;
+fn désalignements(
+    ui: &mut egui::Ui,
+    ctx: &ReContext,
+    trouvés: &[Misalignment],
+) -> Option<(u64, crate::GoTarget)> {
+    let mut aller: Option<(u64, crate::GoTarget)> = None;
     let rouge = egui::Color32::from_rgb(0xf4, 0x87, 0x71);
     ui.horizontal_wrapped(|ui| {
         ui.strong(
@@ -189,8 +196,8 @@ fn désalignements(ui: &mut egui::Ui, ctx: &ReContext, trouvés: &[Misalignment]
 
     for m in trouvés {
         ui.horizontal_wrapped(|ui| {
-            if clickable_address(ui, ctx, m.from) {
-                aller = Some(m.from);
+            if let Some(cible) = clickable_address(ui, ctx, m.from) {
+                aller = Some((m.from, cible));
             }
             ui.label(ctx.t("envoie à", "sends to"));
             ui.monospace(format!("{:#010x}", m.target));

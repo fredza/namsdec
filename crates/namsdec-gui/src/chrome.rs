@@ -207,6 +207,24 @@ const HEAD_HEIGHT: f32 = 24.0;
 /// « glisser partout » dès qu'on lui retire sa barre de titre), donc
 /// cette barre-ci n'a pas à s'en charger.
 pub fn window_head(ui: &mut egui::Ui, theme: &'static Theme, s: &Strings, titre: &str) -> bool {
+    window_head_zoom(ui, theme, s, titre, None).0
+}
+
+/// Le même bandeau, avec la pastille verte d'agrandissement à côté de la
+/// rouge — l'ordre de macOS, et celui de la barre de titre de namsdec.
+///
+/// `agrandie` dit si la fenêtre l'est déjà : la pastille fait l'aller et
+/// le retour, et son infobulle le dit. Rend (fermer, basculer).
+///
+/// Une fenêtre ne la reçoit que si l'agrandir a un sens : c'est
+/// l'appelant qui décide, en passant `None` pour s'en passer.
+pub fn window_head_zoom(
+    ui: &mut egui::Ui,
+    theme: &'static Theme,
+    s: &Strings,
+    titre: &str,
+    agrandie: Option<bool>,
+) -> (bool, bool) {
     let largeur = ui.available_width();
     let (bande, _) = ui.allocate_exact_size(egui::vec2(largeur, HEAD_HEIGHT), egui::Sense::hover());
     let centre = egui::pos2(bande.left() + EDGE_MARGIN + BUTTON_RADIUS, bande.center().y);
@@ -221,6 +239,37 @@ pub fn window_head(ui: &mut egui::Ui, theme: &'static Theme, s: &Strings, titre:
     );
     paint_pastille(ui, centre, WindowButton::Close, réponse.hovered());
 
+    // La seconde pastille, s'il y en a une : à droite de la première, au
+    // même écart que dans la barre de titre.
+    let mut basculer = false;
+    let mut pastilles = 1.0;
+    if let Some(agrandie) = agrandie {
+        pastilles = 2.0;
+        let centre_zoom = centre + egui::vec2(BUTTON_RADIUS * 2.0 + BUTTON_SPACING, 0.0);
+        let cible_zoom = egui::Rect::from_center_size(
+            centre_zoom,
+            egui::vec2(BUTTON_RADIUS * 2.0 + BUTTON_SPACING, bande.height()),
+        );
+        let réponse_zoom = ui.interact(
+            cible_zoom,
+            ui.id().with("window_head_zoom"),
+            egui::Sense::click(),
+        );
+        paint_pastille(
+            ui,
+            centre_zoom,
+            WindowButton::Maximize,
+            réponse_zoom.hovered(),
+        );
+        basculer = réponse_zoom
+            .on_hover_text(if agrandie {
+                s.window_restore
+            } else {
+                s.window_maximize
+            })
+            .clicked();
+    }
+
     // Le titre au centre de la bande entière, non de ce qui reste à
     // droite de la pastille : décalé de six pixels, il se lirait de
     // travers dans une fenêtre dont on connaît le milieu.
@@ -229,7 +278,12 @@ pub fn window_head(ui: &mut egui::Ui, theme: &'static Theme, s: &Strings, titre:
         egui::TextStyle::Body.resolve(ui.style()),
         theme.text,
     );
-    let place = bande.width() - (EDGE_MARGIN + BUTTON_RADIUS * 2.0 + BUTTON_SPACING) * 2.0;
+    // La place qu'il reste au titre : ce que les pastilles occupent, et
+    // autant de l'autre côté — un titre centré dans ce qui reste à
+    // droite d'elles se lirait de travers dans une fenêtre dont on
+    // connaît le milieu.
+    let place =
+        bande.width() - (EDGE_MARGIN + (BUTTON_RADIUS * 2.0 + BUTTON_SPACING) * pastilles) * 2.0;
     if galley.size().x < place {
         ui.painter().galley(
             egui::pos2(
@@ -246,7 +300,7 @@ pub fn window_head(ui: &mut egui::Ui, theme: &'static Theme, s: &Strings, titre:
     // bandes empilées. Le bandeau se distingue déjà par sa pastille et
     // par le blanc qui le suit, et c'est assez.
     ui.add_space(6.0);
-    réponse.on_hover_text(s.window_close).clicked()
+    (réponse.on_hover_text(s.window_close).clicked(), basculer)
 }
 
 /// L'écart entre le dernier menu et le nom du fichier, en largeurs

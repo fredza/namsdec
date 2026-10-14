@@ -3311,3 +3311,104 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
   fait 680 x 420 sur cette fiche-là. Vérifié aussi à l'écran, profil
   neuf : le sommaire et les quatre paliers tiennent, et « OK » est collé
   au contenu.
+
+
+--------------------------------------------------------------------------------
+ 7.16  « ALLER À CETTE ADRESSE » : OÙ, AU JUSTE ?
+       (14 octobre 2026) — le clic demande, et l'éditeur binaire répond
+--------------------------------------------------------------------------------
+
+  LE GRIEF, en une phrase de Fred : « à chaque élément disant cliquer
+  pour aller à cette adresse tu devrais demander où — le code
+  désassemblé ou l'éditeur binaire, que tu devrais améliorer ».
+
+  CE QU'IL DIT, ET QUI EST JUSTE. Il y a deux façons de regarder le
+  même endroit, et elles ne répondent pas à la même question. Le CODE
+  dit ce que la machine y fera ; les OCTETS disent ce qui y est écrit.
+  Une fonction se lit désassemblée ; une chaîne, une table de sauts, un
+  bourrage n'ont aucun sens dans un listing — on y lit des instructions
+  parce qu'un désassembleur ne sait rien faire d'autre. Or `Fragments
+  réutilisables`, `Place libre (bourrage)`, `Figures du code` et
+  `Chaînes lisibles` désignent précisément ce genre d'endroits, et leur
+  clic menait au listing sans demander.
+
+  LE GESTE. Un clic sur une adresse ouvre un menu de deux entrées. La
+  destination voyage avec la demande (`ReRequest::GoTo { addr, target
+  }`), et les deux ne se comportent pas pareil :
+    - vers le CODE : la fenêtre d'analyse s'efface (elle recouvrait ce
+      qu'on venait demander à voir) ;
+    - vers les OCTETS : elle reste ouverte, la destination étant dedans,
+      et le panneau devient l'éditeur binaire.
+
+  OÙ LE CHOIX NE SE POSE PAS, et pourquoi. Une boîte du graphe d'appels
+  EST une fonction ; une adresse lue dans du pseudo-code ou dans la
+  sortie d'objdump désigne une instruction. Poser la question là
+  reviendrait à la poser pour rien — et une question posée pour rien
+  s'apprend à expédier, ce qui la rendrait nuisible là où elle compte.
+  Le profil d'entropie, lui, la pose : une tranche de fichier est
+  exactement ce dont on ignore si c'est du code.
+
+  LE PIÈGE DU MENU SUR UN DESSIN. Le profil d'entropie n'a pas
+  d'étiquette à cliquer : c'est un histogramme, et la tranche visée se
+  lit sous le pointeur. Entre le clic et le choix, la souris a quitté
+  la tranche pour aller sur l'entrée du menu — la relire sous le
+  pointeur mènerait ailleurs qu'où l'on a cliqué. La tranche est donc
+  RETENUE au clic.
+
+  L'ÉDITEUR BINAIRE, ce qu'il lui manquait :
+    - il ne savait pas qu'on pouvait l'envoyer quelque part. Un
+      `ReResult::ShowBytesAt` cadre la page, choisit l'octet, et écrit
+      en tête l'adresse d'où l'on vient — on vient de cliquer dessus, et
+      la retrouver à l'arrivée est ce qui dit qu'on est au bon endroit.
+    - il ne montrait que la POSITION. On patche à la position et l'on
+      raisonne en adresses : les rapprocher de tête est ce qui fait
+      qu'on se trompe de ligne. Deux colonnes, donc — et la seconde ne
+      paraît que si elle apprend quelque chose, mesuré par
+      `adresses_utiles` : dans un exécutable indépendant de la position,
+      le premier segment est chargé à zéro et les deux colonnes seraient
+      identiques. Deux colonnes identiques côte à côte ne se lisent pas,
+      on les prend pour une erreur d'affichage.
+    - son « Aller à » prenait une position et rien d'autre. On lit une
+      adresse dans le listing, on la tape ici, et elle tombait à quatre
+      mégaoctets de là ou hors du fichier. Un nombre qui dépasse le
+      fichier mais que les segments portent est maintenant lu comme une
+      adresse ; on ne perd rien, puisqu'une position hors du fichier ne
+      menait nulle part.
+
+  LE BOUTON AGRANDIR, REDEMANDÉ. Il avait été retiré le 13 octobre à la
+  demande de Fred, et la raison tenait : agrandie, la fenêtre d'analyse
+  recouvrait tout, le clic sur une adresse emmenait le listing derrière
+  un panneau opaque, et l'on concluait que « ça ne marche pas ». Les
+  deux moitiés de ce défaut sont réparées depuis — le saut au listing
+  efface la fenêtre, le saut aux octets reste dedans —, et il revient
+  donc, en pastille verte à côté de la rouge, à la façon de macOS comme
+  la barre de titre de l'application.
+    Avec une correction que la mesure a imposée : agrandie à
+  `viewport_rect()`, la fenêtre recouvrait la BARRE DE MENUS, et ses
+  deux pastilles se posaient par-dessus celles de la fenêtre principale
+  — le contrôle les cherchait sous les quarante premiers pixels et ne
+  les trouvait plus. Elle s'arrête maintenant sous la barre de menus
+  (`work_area_rect`), relevée pendant le dessin : egui ne rend pas « ce
+  qui reste une fois les panneaux posés », seul le `Ui` qui les suit le
+  sait.
+
+  LES CONTRÔLES :
+    - `clicking_an_address_asks_to_go_there` (namsdec-re) clique pour de
+      vrai sur quatre panneaux, PUIS choisit dans le menu — les deux
+      entrées, sur la même adresse : le menu n'aurait aucun intérêt si
+      la seconde faisait ce que fait la première.
+    - `clicking_an_address_in_a_panel_really_lands_in_the_listing` passe
+      désormais par le menu, comme la main.
+    - `choosing_the_bytes_opens_the_binary_editor_where_the_address_is`
+      vérifie les trois choses qui distinguent l'autre chemin : la
+      fenêtre reste ouverte, le panneau devient l'éditeur binaire, et
+      l'adresse cliquée y est écrite.
+    - `the_analysis_window_grows_by_its_green_pastille_and_comes_back`
+      cherche la pastille là où elle est PEINTE plutôt qu'à une position
+      calculée — un bouton posé ailleurs qu'on ne croit est précisément
+      ce qu'on veut attraper — et vérifie le retour.
+    - `every_inner_window_closes_with_the_same_pastille` juge maintenant
+      l'ORDRE : la première pastille est la rouge, et une seconde n'est
+      permise qu'aux fenêtres nommées, verte.
+    - `la_colonne_des_adresses_ne_parait_que_si_elle_apprend_quelque_chose`
+      monte deux ELF minimaux, l'un chargé à zéro, l'autre à 0x400000.

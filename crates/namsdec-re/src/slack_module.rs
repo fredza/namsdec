@@ -107,8 +107,11 @@ impl ReModule for SlackModule {
                 ui.strong("");
                 ui.end_row();
                 for trou in &self.found {
-                    if clickable_address(ui, ctx, trou.vaddr) {
-                        demande = Some(ReRequest::GoTo { addr: trou.vaddr });
+                    if let Some(cible) = clickable_address(ui, ctx, trou.vaddr) {
+                        demande = Some(ReRequest::GoTo {
+                            addr: trou.vaddr,
+                            target: cible,
+                        });
                     }
                     ui.monospace(format!("{}", trou.len));
                     ui.monospace(nom_du_bourrage(trou.filler));

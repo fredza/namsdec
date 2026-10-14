@@ -248,7 +248,13 @@ impl CallGraphModule {
             if ui.button(ctx.t("Y aller", "Go")).clicked() || validé {
                 match lire_adresse(&self.aller_à) {
                     Some(addr) => {
-                        self.demande = Some(ReRequest::GoTo { addr });
+                        // Une adresse TAPÉE dans ce champ, et non une
+                        // adresse cliquée : on la cherche dans le code,
+                        // c'est l'objet de ce panneau.
+                        self.demande = Some(ReRequest::GoTo {
+                            addr,
+                            target: crate::GoTarget::Listing,
+                        });
                         self.aller_à_erreur = false;
                     }
                     None => self.aller_à_erreur = !self.aller_à.trim().is_empty(),
@@ -422,7 +428,15 @@ impl CallGraphModule {
                 couleur,
             );
             if survol && réponse.clicked() {
-                demande = Some(ReRequest::GoTo { addr: boîte.addr });
+                // Vers le CODE, sans demander : une boîte de ce graphe
+                // est une fonction, et une fonction se lit désassemblée.
+                // Le choix se pose pour une adresse écrite — une chaîne,
+                // une table, un bourrage peuvent être l'un ou l'autre —,
+                // pas pour celle-ci.
+                demande = Some(ReRequest::GoTo {
+                    addr: boîte.addr,
+                    target: crate::GoTarget::Listing,
+                });
             }
         }
 
@@ -516,8 +530,11 @@ impl CallGraphModule {
                             });
                         }
                     });
-                    if clickable_address(ui, ctx, f.start) {
-                        demande = Some(ReRequest::GoTo { addr: f.start });
+                    if let Some(cible) = clickable_address(ui, ctx, f.start) {
+                        demande = Some(ReRequest::GoTo {
+                            addr: f.start,
+                            target: cible,
+                        });
                     }
                     ui.add_space(4.0);
                     if instrs.is_empty() {

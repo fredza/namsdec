@@ -101,7 +101,10 @@ impl NamsdecApp {
                 namsdec_re::ReRequest::PatchBytes { offset, bytes } => {
                     self.write_patch(offset, bytes, 0);
                 }
-                namsdec_re::ReRequest::GoTo { addr } => self.show_address(addr),
+                namsdec_re::ReRequest::GoTo { addr, target } => match target {
+                    namsdec_re::GoTarget::Listing => self.show_address(addr),
+                    namsdec_re::GoTarget::Bytes => self.show_bytes_at(addr),
+                },
                 // Renommer : on écrit dans les « notes » du binaire — la
                 // même table que le listing et le déroulement —, et on la
                 // garde sur le disque. Un nom donné dans l'arbre d'appels
@@ -127,6 +130,42 @@ impl NamsdecApp {
                 namsdec_re::ReRequest::RunTool { tool } => self.start_tool_run(&tool),
             }
         }
+    }
+
+    /// Montre les OCTETS de cette adresse, dans l'éditeur binaire.
+    ///
+    /// L'autre façon de regarder le même endroit. Le listing dit ce que
+    /// la machine y fera ; les octets disent ce qui y est écrit — et
+    /// c'est la bonne vue pour une chaîne, une table, un bourrage, tout
+    /// ce qu'un désassembleur lit comme des instructions parce qu'il ne
+    /// sait rien faire d'autre.
+    ///
+    /// La conversion est faite ICI et non dans le panneau : lire les
+    /// en-têtes du fichier chargé est l'affaire de l'application, et un
+    /// module ne connaît que les octets qu'on lui donne.
+    pub(crate) fn show_bytes_at(&mut self, addr: u64) {
+        let s = strings(self.lang);
+        let Some(state) = &self.assemble_state else {
+            return;
+        };
+        let Some(offset) = namsdec_re::imports::file_offset(&state.output.file, addr) else {
+            // Une adresse qu'aucune section ni aucun segment ne porte :
+            // elle n'est nulle part dans le fichier. Le dire, plutôt
+            // que d'ouvrir l'éditeur sur une position inventée.
+            self.status = Status::Error(s.analysis_addr_absent.to_owned());
+            return;
+        };
+        // La fenêtre d'analyse RESTE OUVERTE : la destination est
+        // dedans. C'est l'inverse exact du saut au listing, qui
+        // l'efface parce que ce qu'on va voir est derrière elle.
+        self.show_analysis = true;
+        self.analysis_module = "hex_editor".to_owned();
+        self.re_registry
+            .deliver(&namsdec_re::ReResult::ShowBytesAt {
+                offset: offset as usize,
+                addr: Some(addr),
+            });
+        self.status = Status::WentTo(addr);
     }
 
     /// Montre cette adresse dans le listing.

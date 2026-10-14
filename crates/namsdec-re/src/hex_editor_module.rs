@@ -1,4 +1,4 @@
-use crate::{ReContext, ReModule, ReRequest, ReSection};
+use crate::{ReContext, ReModule, ReRequest, ReResult, ReSection};
 
 /// Un éditeur binaire : le fichier chargé en grille hexadécimale, un octet
 /// qu'on choisit, une valeur qu'on pose à la place.
@@ -28,7 +28,6 @@ enum Colonne {
     Texte,
 }
 
-#[derive(Default)]
 pub struct HexEditorModule {
     /// L'octet du début de la page affichée.
     page: usize,
@@ -56,7 +55,41 @@ pub struct HexEditorModule {
     inspecteur_be: bool,
     /// La dernière trouvaille, surlignée dans la grille.
     trouvé: Option<std::ops::Range<usize>>,
+    /// L'adresse d'où l'on arrive, quand on est venu d'un autre
+    /// panneau. Écrite en tête : on vient de cliquer dessus, et la
+    /// retrouver ici est ce qui dit qu'on est au bon endroit.
+    venu_de: Option<u64>,
+    /// Montrer l'adresse en mémoire à côté de la position du fichier.
+    ///
+    /// Les deux ne se valent pas : la position dit où l'octet est
+    /// écrit, l'adresse où il sera lu. On patche à la première et l'on
+    /// raisonne avec la seconde, et c'est pour avoir à les rapprocher
+    /// de tête qu'on se trompe de ligne.
+    adresses: bool,
     demande: Option<ReRequest>,
+}
+
+impl Default for HexEditorModule {
+    fn default() -> Self {
+        Self {
+            page: 0,
+            aller: String::new(),
+            choisi: None,
+            valeur: String::new(),
+            touchés: Default::default(),
+            recherche: String::new(),
+            recherche_hex: false,
+            nibble: None,
+            colonne: Colonne::default(),
+            inspecteur_be: false,
+            trouvé: None,
+            venu_de: None,
+            // Réglée au chargement du fichier (`adresses_utiles`) :
+            // sans fichier, il n'y a pas d'adresse à montrer.
+            adresses: false,
+            demande: None,
+        }
+    }
 }
 
 /// Seize octets par ligne, et seize lignes par page : la forme de tous les
@@ -65,6 +98,29 @@ pub struct HexEditorModule {
 const PAR_LIGNE: usize = 16;
 const LIGNES: usize = 16;
 const PAR_PAGE: usize = PAR_LIGNE * LIGNES;
+
+/// La colonne des adresses apprend-elle quelque chose sur ce fichier ?
+///
+/// Elle ne vaut d'être montrée que si une adresse diffère de sa
+/// position. Un exécutable indépendant de la position charge son
+/// premier segment à l'adresse zéro : les deux colonnes y seraient
+/// identiques, et deux colonnes identiques côte à côte ne se lisent
+/// pas — on les prend pour une erreur d'affichage.
+///
+/// Mesuré sur les débuts de segments, qui suffisent : à l'intérieur
+/// d'un segment, l'écart entre l'adresse et la position est constant.
+fn adresses_utiles(octets: &[u8]) -> bool {
+    // Un pas qui couvre le fichier sans le parcourir octet par octet :
+    // un segment fait au moins une page, et quatre mille octets
+    // retombent dans chacun.
+    let pas = 0x1000;
+    (0..octets.len())
+        .step_by(pas)
+        .filter_map(|offset| {
+            crate::imports::virtual_address(octets, offset as u64).map(|addr| (offset, addr))
+        })
+        .any(|(offset, addr)| addr != offset as u64)
+}
 
 /// Lit un nombre écrit en hexadécimal (`0x…`) ou en décimal.
 fn nombre(texte: &str) -> Option<usize> {
@@ -106,12 +162,37 @@ impl ReModule for HexEditorModule {
         self.demande.take()
     }
 
-    fn on_binary_loaded(&mut self, _ctx: &ReContext) {
+    fn on_binary_loaded(&mut self, ctx: &ReContext) {
         // Un autre fichier : ce qu'on avait touché ne le concerne plus.
         self.touchés.clear();
         self.choisi = None;
         self.page = 0;
         self.trouvé = None;
+        self.venu_de = None;
+        // Et la colonne des adresses ne paraît que si elle apprend
+        // quelque chose : dans un exécutable indépendant de la position,
+        // le premier segment est chargé à l'adresse zéro, et elle
+        // répéterait la position chiffre pour chiffre.
+        self.adresses = adresses_utiles(ctx.binary);
+    }
+
+    /// On arrive d'ailleurs : un panneau a désigné une adresse et l'on
+    /// a demandé à la voir ICI.
+    ///
+    /// La page est cadrée sur la position, l'octet choisi, et l'adresse
+    /// d'où l'on vient écrite en tête — sans quoi rien ne distinguerait
+    /// cette arrivée d'un éditeur qu'on vient d'ouvrir au hasard.
+    fn deliver(&mut self, result: &ReResult) {
+        if let ReResult::ShowBytesAt { offset, addr } = result {
+            self.page = offset / PAR_PAGE * PAR_PAGE;
+            self.choisi = Some(*offset);
+            self.venu_de = *addr;
+            self.trouvé = None;
+            self.nibble = None;
+            // Le champ « aller à » dit où l'on est : on vient d'y
+            // arriver autrement, et il montrait encore la précédente.
+            self.aller = format!("{offset:#x}");
+        }
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
@@ -132,6 +213,21 @@ impl ReModule for HexEditorModule {
              Tools › Patches, and nothing touches the disk until you save it yourself, to \
              a file you choose.",
         ));
+        // D'OÙ L'ON VIENT. Une position seule ne dit pas qu'on y a été
+        // envoyé : on a cliqué une adresse dans un autre panneau, et
+        // l'éditeur s'est ouvert là. L'écrire ferme la boucle.
+        if let Some(addr) = self.venu_de {
+            ui.horizontal_wrapped(|ui| {
+                ui.colored_label(
+                    ui.visuals().hyperlink_color,
+                    egui::RichText::new(format!("{addr:#010x}")).monospace(),
+                );
+                ui.weak(ctx.t(
+                    "— l'adresse d'où vous venez, ici dans le fichier.",
+                    "— the address you came from, here in the file.",
+                ));
+            });
+        }
         ui.add_space(6.0);
 
         // La barre de navigation : aller à un décalage, page précédente et
@@ -150,9 +246,21 @@ impl ReModule for HexEditorModule {
             if (ui.button(ctx.t("Aller", "Go")).clicked() || validé)
                 && let Some(n) = nombre(&self.aller)
             {
-                let cible = n.min(octets.len().saturating_sub(1));
+                // UNE POSITION, OU UNE ADRESSE. On lit une adresse dans
+                // un listing — `0x401228` —, on la tape ici, et elle
+                // tombait sur la position 0x401228, à quatre mégaoctets
+                // de là ou hors du fichier. Un nombre qui dépasse le
+                // fichier mais que les segments portent est donc lu
+                // comme une adresse ; on ne perd rien, puisqu'une
+                // position hors du fichier ne menait nulle part.
+                let cible = match crate::imports::file_offset(octets, n as u64) {
+                    Some(offset) if n >= octets.len() => offset as usize,
+                    _ => n,
+                }
+                .min(octets.len().saturating_sub(1));
                 self.page = cible / PAR_PAGE * PAR_PAGE;
                 self.choisi = Some(cible);
+                self.venu_de = None;
             }
             ui.separator();
             // « ‹ » et « › », et non « ◀ » et « ▶ » : ces deux-là
@@ -178,6 +286,16 @@ impl ReModule for HexEditorModule {
             }
             ui.separator();
             ui.weak(format!("{} {}", octets.len(), ctx.t("octets", "bytes")));
+            // La colonne des adresses, qu'on peut retirer : sur un
+            // fichier qu'aucun segment ne porte — un tampon brut, une
+            // archive —, elle ne montrerait que des tirets.
+            ui.checkbox(&mut self.adresses, ctx.t("adresses", "addresses"))
+                .on_hover_text(ctx.t(
+                    "L'adresse à laquelle chaque ligne sera lue en mémoire, à côté de sa \
+                     position dans le fichier.",
+                    "The address each line will be read at in memory, next to its position \
+                     in the file.",
+                ));
         });
 
         // La recherche : un motif en octets ou en texte, trouvé en avant
@@ -249,6 +367,7 @@ impl ReModule for HexEditorModule {
         }
 
         ui.add_space(6.0);
+        let adresses = self.adresses;
         let visuals = ui.visuals().clone();
         let fond_choisi = visuals.selection.bg_fill;
         let fond_touché = visuals.warn_fg_color.gamma_multiply(0.30);
@@ -266,11 +385,28 @@ impl ReModule for HexEditorModule {
                 while ligne < fin {
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 6.0;
-                        // Le décalage de la ligne, en tête.
+                        // Le décalage de la ligne, en tête — et
+                        // l'adresse à laquelle elle sera lue, quand un
+                        // segment la porte.
                         ui.monospace(
                             egui::RichText::new(format!("{ligne:08x}"))
                                 .color(visuals.weak_text_color()),
                         );
+                        if adresses {
+                            let texte = match crate::imports::virtual_address(octets, ligne as u64)
+                            {
+                                Some(addr) => format!("{addr:08x}"),
+                                // Une ligne qu'aucun segment ne porte —
+                                // l'en-tête, la table des symboles — :
+                                // des tirets, et non un blanc, pour que
+                                // la colonne reste une colonne.
+                                None => "--------".to_owned(),
+                            };
+                            ui.monospace(
+                                egui::RichText::new(texte)
+                                    .color(visuals.hyperlink_color.gamma_multiply(0.75)),
+                            );
+                        }
                         ui.add_space(2.0);
                         // Les octets, cliquables.
                         for col in 0..PAR_LIGNE {
@@ -493,6 +629,13 @@ impl ReModule for HexEditorModule {
                     ))
                     .strong(),
                 );
+                // Et son adresse : c'est elle qu'on lit dans le
+                // listing, et c'est par elle qu'on revient.
+                if let Some(addr) = crate::imports::virtual_address(octets, off as u64) {
+                    ui.monospace(
+                        egui::RichText::new(format!("{addr:#010x}")).color(visuals.hyperlink_color),
+                    );
+                }
                 ui.add_space(8.0);
                 // « -> » et non « → » : la flèche n'existe pas dans
                 // les polices qu'egui embarque, et se peignait en
@@ -809,6 +952,46 @@ mod tests {
         assert_eq!(frapper(Some(0x7), 0x4), (None, Some(0x74)));
         // 0x0 puis 0xf -> 0x0f.
         assert_eq!(frapper(Some(0x0), 0xf), (None, Some(0x0f)));
+    }
+
+    /// La colonne des adresses ne paraît que si elle apprend quelque
+    /// chose.
+    ///
+    /// Deux colonnes identiques côte à côte ne se lisent pas : on les
+    /// prend pour une erreur d'affichage. Le cas n'est pas rare — c'est
+    /// celui de tout exécutable indépendant de la position, dont le
+    /// premier segment est chargé à l'adresse zéro.
+    #[test]
+    fn la_colonne_des_adresses_ne_parait_que_si_elle_apprend_quelque_chose() {
+        // Rien du tout : pas d'adresse, pas de colonne.
+        assert!(!adresses_utiles(&[]));
+        assert!(!adresses_utiles(b"ceci n'est pas un ELF"));
+
+        // Un ELF minimal, un segment chargeable, et l'adresse qu'on lui
+        // donne. Chargé à zéro, la colonne répéterait la position ;
+        // chargé à 0x400000, elle dit autre chose.
+        let elf = |vaddr: u64| -> Vec<u8> {
+            let mut f = vec![0u8; 0x1000];
+            f[..4].copy_from_slice(b"\x7fELF");
+            // e_phoff = 0x40, e_phentsize = 56, e_phnum = 1
+            f[0x20..0x28].copy_from_slice(&64u64.to_le_bytes());
+            f[0x36..0x38].copy_from_slice(&56u16.to_le_bytes());
+            f[0x38..0x3a].copy_from_slice(&1u16.to_le_bytes());
+            // Le segment : PT_LOAD, offset 0, vaddr, filesz 0x1000.
+            f[64..68].copy_from_slice(&1u32.to_le_bytes());
+            f[72..80].copy_from_slice(&0u64.to_le_bytes());
+            f[80..88].copy_from_slice(&vaddr.to_le_bytes());
+            f[96..104].copy_from_slice(&0x1000u64.to_le_bytes());
+            f
+        };
+        assert!(
+            !adresses_utiles(&elf(0)),
+            "chargé à zéro, l'adresse EST la position"
+        );
+        assert!(
+            adresses_utiles(&elf(0x400000)),
+            "chargé ailleurs, la colonne apprend quelque chose"
+        );
     }
 
     #[test]

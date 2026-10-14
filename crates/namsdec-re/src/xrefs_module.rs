@@ -100,8 +100,11 @@ impl ReModule for XrefsModule {
                     {
                         self.ouverte = (!ouverte).then_some(*addr);
                     }
-                    if clickable_address(ui, ctx, *addr) {
-                        demande = Some(ReRequest::GoTo { addr: *addr });
+                    if let Some(cible) = clickable_address(ui, ctx, *addr) {
+                        demande = Some(ReRequest::GoTo {
+                            addr: *addr,
+                            target: cible,
+                        });
                     }
                     ui.weak(format!(
                         "{appels} {}",
@@ -125,9 +128,10 @@ impl ReModule for XrefsModule {
                                 // D'où vient l'appel est aussi une adresse
                                 // où l'on veut aller : la lire sans pouvoir
                                 // l'atteindre serait s'arrêter au milieu.
-                                if clickable_address(ui, ctx, reference.from) {
+                                if let Some(cible) = clickable_address(ui, ctx, reference.from) {
                                     demande = Some(ReRequest::GoTo {
                                         addr: reference.from,
+                                        target: cible,
                                     });
                                 }
                             });
@@ -155,12 +159,18 @@ impl ReModule for XrefsModule {
             let mut demande: Option<ReRequest> = None;
             for (cible, depuis) in &boucles {
                 ui.horizontal(|ui| {
-                    if clickable_address(ui, ctx, *cible) {
-                        demande = Some(ReRequest::GoTo { addr: *cible });
+                    if let Some(où) = clickable_address(ui, ctx, *cible) {
+                        demande = Some(ReRequest::GoTo {
+                            addr: *cible,
+                            target: où,
+                        });
                     }
                     ui.weak(ctx.t("bouclée depuis", "looped from"));
-                    if clickable_address(ui, ctx, *depuis) {
-                        demande = Some(ReRequest::GoTo { addr: *depuis });
+                    if let Some(où) = clickable_address(ui, ctx, *depuis) {
+                        demande = Some(ReRequest::GoTo {
+                            addr: *depuis,
+                            target: où,
+                        });
                     }
                 });
             }

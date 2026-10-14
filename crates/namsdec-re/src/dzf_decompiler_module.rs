@@ -17,7 +17,7 @@ pub struct DzfDecompilerModule {
     decompilation: Option<dzf::DzfOutput>,
     /// L'adresse qu'on veut aller voir dans le listing, relevée par
     /// l'application au prochain tour comme pour les autres panneaux.
-    aller: Option<u64>,
+    aller: Option<(u64, crate::GoTarget)>,
     /// On a demandé une décompilation ; l'application la lancera.
     demande_decompile: bool,
     /// Le dernier échec de décompilation, s'il y en a eu un.
@@ -44,7 +44,9 @@ impl ReModule for DzfDecompilerModule {
         if std::mem::take(&mut self.demande_decompile) {
             return Some(ReRequest::Decompile);
         }
-        self.aller.take().map(|addr| ReRequest::GoTo { addr })
+        self.aller
+            .take()
+            .map(|(addr, target)| ReRequest::GoTo { addr, target })
     }
 
     fn deliver(&mut self, result: &ReResult) {
@@ -58,7 +60,9 @@ impl ReModule for DzfDecompilerModule {
             }
             // Ce qu'un outil extérieur rend ne passe pas par ici : il a
             // sa propre rubrique, et sa sortie n'est pas du JSON DZF.
-            ReResult::ToolOutput { .. } | ReResult::ToolState { .. } => {}
+            ReResult::ToolOutput { .. }
+            | ReResult::ToolState { .. }
+            | ReResult::ShowBytesAt { .. } => {}
         }
     }
 
@@ -128,7 +132,7 @@ impl ReModule for DzfDecompilerModule {
             ui.add_space(4.0);
         }
 
-        let mut aller: Option<u64> = None;
+        let mut aller: Option<(u64, crate::GoTarget)> = None;
         for f in &sortie.functions {
             // Le nom : celui que NAMSDEC porte pour cette adresse, sinon
             // celui de DZF, sinon un sub_… par défaut.
@@ -142,8 +146,8 @@ impl ReModule for DzfDecompilerModule {
                 .id_salt(("dzf_fn", f.address))
                 .default_open(sortie.functions.len() == 1)
                 .show(ui, |ui| {
-                    if clickable_address(ui, ctx, f.address) {
-                        aller = Some(f.address);
+                    if let Some(cible) = clickable_address(ui, ctx, f.address) {
+                        aller = Some((f.address, cible));
                     }
                     if let Some(sig) = &f.signature {
                         ui.add_space(2.0);
@@ -160,9 +164,12 @@ impl ReModule for DzfDecompilerModule {
                     } else if let Some(addr) =
                         pseudocode_cliquable(ui, &f.pseudocode, f32::INFINITY)
                     {
-                        // Une adresse du pseudo-code a été cliquée : on
-                        // demande le saut au listing.
-                        aller = Some(addr);
+                        // Une adresse du pseudo-code a été cliquée :
+                        // vers le CODE, sans demander. Elle y désigne un
+                        // appel ou un saut, et le choix ne se pose que
+                        // pour une adresse dont on ignore ce qu'elle
+                        // porte.
+                        aller = Some((addr, crate::GoTarget::Listing));
                     }
                 });
         }

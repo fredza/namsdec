@@ -1255,6 +1255,14 @@ struct NamsdecApp {
     /// Le facteur d'échelle de l'écran à l'image précédente : quand il
     /// change, toute la fenêtre est à repeindre (voir `draw`).
     dernière_échelle: Option<f32>,
+    /// La zone de travail à l'image précédente : ce qui reste une fois
+    /// les barres posées.
+    ///
+    /// Relevée pendant le dessin, employée après par les fenêtres qui
+    /// s'agrandissent sans recouvrir les barres. egui ne la rend pas :
+    /// le contexte connaît l'écran entier, et ce qu'un panneau a pris
+    /// n'est su que du `Ui` qui le suit.
+    zone_de_travail: egui::Rect,
     /// L'instruction dont on récrit les octets, s'il y en a une, et ce
     /// qui est tapé. L'adresse et non le rang : la liste est reconstruite
     /// à chaque rechargement, les rangs bougent, l'adresse non.
@@ -2056,6 +2064,7 @@ impl Default for NamsdecApp {
             current_exercise: None,
             settings_file: None,
             dernière_échelle: None,
+            zone_de_travail: egui::Rect::NOTHING,
             bytes_edit: None,
             bytes_edit_input: String::new(),
             untitled_no: 1,
@@ -2467,8 +2476,10 @@ impl NamsdecApp {
     const DECOMPILER_WINDOW: &'static str = "decompiler";
     const DISASSEMBLY_WINDOW: &'static str = "disassembly";
     const TIMELINE_WINDOW: &'static str = "timeline";
-    // Pas d'« analysis » dans cette liste : la fenêtre d'analyse ne
-    // s'agrandit plus — voir `analysis_window_ui`, qui dit pourquoi.
+    // « analysis » y est revenue : la raison de l'en sortir — le
+    // listing qui défilait derrière un panneau opaque — est tombée, le
+    // clic sur une adresse effaçant la fenêtre. Voir `analysis_window_ui`.
+    const ANALYSIS_WINDOW: &'static str = "analysis";
     const EXERCISES_WINDOW: &'static str = "exercises";
     const CALCULATOR_WINDOW: &'static str = "calculator";
 
@@ -3381,6 +3392,11 @@ impl NamsdecApp {
         // L'éditeur recolore tout le tampon à chaque frame : c'est le
         // premier suspect dès que la source devient longue (un binaire
         // désassemblé, par exemple).
+        // La zone de travail, relevée ICI : les barres sont posées, le
+        // panneau latéral aussi, et ce qui reste est la place de
+        // l'éditeur. C'est elle qu'une fenêtre agrandie occupe, pour ne
+        // pas recouvrir les menus ni la barre d'état.
+        self.zone_de_travail = ui.available_rect_before_wrap();
         timed(&mut spans, "éditeur", || self.editor_ui(ui));
 
         // Fenêtres flottantes — dont l'explorateur, qui n'occupe donc plus

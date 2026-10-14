@@ -13,6 +13,20 @@ entier refait à chaque image pour en montrer trente lignes —, puis le
 gros chantier qui en découlait : **ne plus mettre le listing en page
 d'un bloc**.
 
+**Aller voir une adresse : dans le code, ou dans les octets**
+- **Cliquer une adresse demande où aller.** Elle menait toujours au
+  listing — la bonne réponse pour une fonction, la mauvaise pour une
+  chaîne, une table ou un bourrage, qu'un désassembleur lit comme des
+  instructions faute de savoir faire autrement. Deux entrées, et les
+  deux chemins ne se ressemblent pas : aller au code ferme la fenêtre
+  d'analyse, aller aux octets la garde ouverte.
+- **L'éditeur binaire montre l'adresse à côté de la position**, accepte
+  l'une ou l'autre dans « Aller à », et dit d'où l'on vient quand on y
+  arrive depuis un autre panneau.
+- **La fenêtre d'analyse retrouve son bouton agrandir** — la pastille
+  verte à côté de la rouge —, et agrandie elle ne recouvre plus la barre
+  de menus.
+
 **Le calcul vectoriel entier s'exécute**
 - **Un binaire ne s'arrête plus sur `pmaxub`.** On peut n'avoir jamais
   écrit une ligne de SSE et buter dessus au premier pas : la bibliothèque

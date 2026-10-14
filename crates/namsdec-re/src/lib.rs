@@ -145,6 +145,27 @@ impl ReContext<'_> {
     }
 }
 
+/// Où l'on va voir une adresse.
+///
+/// Il y a deux façons de regarder le même endroit, et elles ne
+/// répondent pas à la même question. Le **code** dit ce que la machine
+/// y fera : une instruction, ses opérandes, le saut qu'elle prend. Les
+/// **octets** disent ce qui y est écrit : la valeur exacte, les
+/// caractères à côté, et l'on peut la changer. Une chaîne, une table,
+/// un bourrage n'ont aucun sens dans le premier et se lisent dans le
+/// second ; une fonction, l'inverse.
+///
+/// D'où le choix laissé à qui clique, plutôt qu'une destination décidée
+/// pour lui : le panneau ne sait pas ce qu'on cherche.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GoTarget {
+    /// Le listing désassemblé, à la ligne de cette adresse.
+    Listing,
+    /// L'éditeur binaire, à la position du fichier qui porte cette
+    /// adresse.
+    Bytes,
+}
+
 /// Ce qu'un module demande à l'application, faute de pouvoir le faire
 /// lui-même.
 ///
@@ -157,14 +178,14 @@ impl ReContext<'_> {
 pub enum ReRequest {
     /// Écrire ces octets à cette position du fichier.
     PatchBytes { offset: usize, bytes: Vec<u8> },
-    /// Montrer cette adresse dans le listing.
+    /// Montrer cette adresse — dans le code, ou dans les octets.
     ///
     /// Un panneau d'analyse désigne des endroits — une entrée de
     /// liaison, une zone libre, une figure, un fragment —, et la seule
     /// chose qu'on veuille en faire est d'aller voir. Sans ce canal, il
     /// fallait relever l'adresse à la main et la retaper dans la
     /// commande « aller à ».
-    GoTo { addr: u64 },
+    GoTo { addr: u64, target: GoTarget },
     /// Donner un nom à une adresse — rebaptiser une fonction.
     ///
     /// Un nom vide efface le nom donné et rend son nom par défaut à
@@ -211,19 +232,35 @@ pub enum ReResult {
         tool: String,
         availability: namsdec_disasm::known::Availability,
     },
+    /// Montrer cette position du fichier, et dire d'où l'on vient.
+    ///
+    /// La réponse à un `GoTo { target: Bytes }` : l'application a
+    /// converti l'adresse en position — elle seule sait lire les
+    /// en-têtes du fichier chargé — et le dit à l'éditeur binaire, qui
+    /// s'y rend. L'adresse est gardée pour qu'il puisse l'écrire : on
+    /// vient de cliquer dessus, et la retrouver à l'arrivée est ce qui
+    /// dit qu'on est au bon endroit.
+    ShowBytesAt { offset: usize, addr: Option<u64> },
 }
 
 /// Une adresse sur laquelle on peut cliquer pour l'aller voir.
 ///
 /// Écrite une fois pour tous les panneaux : une adresse se montre de la
-/// même façon partout, et un clic y fait la même chose. Rend `true`
-/// quand on a cliqué ; au module de poser alors sa demande.
+/// même façon partout, et un clic y fait la même chose. Rend la
+/// destination choisie ; au module de poser alors sa demande.
+///
+/// LE CLIC DEMANDE OÙ. Il emmenait au listing sans rien demander, ce
+/// qui est la bonne réponse pour une fonction et la mauvaise pour une
+/// chaîne, une table ou un bourrage — on voulait voir les octets, on
+/// atterrissait sur un désassemblage de données. Deux entrées, et l'on
+/// choisit : c'est une question par clic, mais c'est la question qu'on
+/// se posait déjà.
 ///
 /// Le curseur change au survol et une infobulle le dit : sans cela,
 /// rien ne distingue une adresse qui mène quelque part d'une adresse
 /// qu'on ne fait que lire — et personne ne clique sur ce qui n'a pas
 /// l'air cliquable.
-pub fn clickable_address(ui: &mut egui::Ui, ctx: &ReContext, addr: u64) -> bool {
+pub fn clickable_address(ui: &mut egui::Ui, ctx: &ReContext, addr: u64) -> Option<GoTarget> {
     // Un nom donné à la main suit l'adresse PARTOUT où elle paraît, et se
     // mange un léger fond en évidence : on repère ce qu'on a déjà nommé
     // sans avoir à rouvrir la liste des fonctions.
@@ -236,13 +273,31 @@ pub fn clickable_address(ui: &mut egui::Ui, ctx: &ReContext, addr: u64) -> bool 
             .monospace()
             .color(ui.visuals().hyperlink_color),
     };
-    ui.add(egui::Label::new(texte).sense(egui::Sense::click()))
+    let réponse = ui
+        .add(egui::Label::new(texte).sense(egui::Sense::click()))
         .on_hover_cursor(egui::CursorIcon::PointingHand)
         .on_hover_text(ctx.t(
-            "Aller à cette adresse dans le listing",
-            "Go to this address in the listing",
-        ))
-        .clicked()
+            "Aller voir cette adresse — dans le code, ou dans les octets",
+            "Go and see this address — in the code, or in the bytes",
+        ));
+    let mut choix = None;
+    egui::Popup::menu(&réponse).show(|ui| {
+        if ui
+            .button(ctx.t("Dans le code désassemblé", "In the disassembly"))
+            .clicked()
+        {
+            choix = Some(GoTarget::Listing);
+            ui.close();
+        }
+        if ui
+            .button(ctx.t("Dans l'éditeur binaire", "In the binary editor"))
+            .clicked()
+        {
+            choix = Some(GoTarget::Bytes);
+            ui.close();
+        }
+    });
+    choix
 }
 
 /// La famille à laquelle un panneau appartient.

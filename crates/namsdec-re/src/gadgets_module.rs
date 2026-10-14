@@ -215,8 +215,11 @@ impl ReModule for GadgetsModule {
             .min_col_width(0.0)
             .show(ui, |ui| {
                 for gadget in &montrés[début..fin] {
-                    if clickable_address(ui, ctx, gadget.addr) {
-                        demande = Some(ReRequest::GoTo { addr: gadget.addr });
+                    if let Some(cible) = clickable_address(ui, ctx, gadget.addr) {
+                        demande = Some(ReRequest::GoTo {
+                            addr: gadget.addr,
+                            target: cible,
+                        });
                     }
                     // Tronqué plutôt que débordant : un fragment de
                     // quatre instructions fait soixante-dix caractères,

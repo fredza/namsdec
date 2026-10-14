@@ -276,9 +276,10 @@ impl ReModule for FunctionsModule {
                 // L'adresse mène au listing, comme partout ailleurs :
                 // lire « 0x1d491 » sans pouvoir y aller était
                 // s'arrêter au milieu du geste.
-                if clickable_address(ui, ctx, fonction.start) {
+                if let Some(cible) = clickable_address(ui, ctx, fonction.start) {
                     demande = Some(ReRequest::GoTo {
                         addr: fonction.start,
+                        target: cible,
                     });
                 }
                 if !étroit {

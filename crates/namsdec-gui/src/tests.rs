@@ -15130,6 +15130,11 @@ fn holding_alt_does_not_correct_twice() {
 /// pour le même geste — et celle qu'on voit le moins fermait le plus de
 /// choses. Ce test dit qu'il n'en reste qu'une, et qu'elle est bien la
 /// même.
+///
+/// Une fenêtre peut en porter une SECONDE — la verte, qui agrandit —,
+/// et elle est alors à droite de la rouge, comme sur la barre de titre.
+/// Ce qui est interdit, c'est une fermeture qui ne serait pas la
+/// première pastille, ou qui ne serait pas rouge.
 #[test]
 fn every_inner_window_closes_with_the_same_pastille() {
     /// La teinte d'une couleur peinte, rendue à son opacité pleine.
@@ -15188,7 +15193,7 @@ fn every_inner_window_closes_with_the_same_pastille() {
         // Les pastilles peintes ailleurs que dans la barre de titre de
         // la fenêtre principale, qui occupe les quarante premiers
         // pixels.
-        let sous_la_barre = |app: &mut NamsdecApp| -> Vec<[i32; 3]> {
+        let sous_la_barre = |app: &mut NamsdecApp| -> Vec<(f32, [i32; 3])> {
             let mut vues = Vec::new();
             for _ in 0..3 {
                 vues.clear();
@@ -15198,11 +15203,13 @@ fn every_inner_window_closes_with_the_same_pastille() {
                         && cercle.center.y > 40.0
                         && (cercle.radius - 6.5).abs() < 0.01
                     {
-                        vues.push(teinte(cercle.fill));
+                        vues.push((cercle.center.x, teinte(cercle.fill)));
                     }
                 }
                 output.textures_delta.clear();
             }
+            // De gauche à droite : c'est l'ordre qui porte le sens.
+            vues.sort_by(|a, b| a.0.total_cmp(&b.0));
             vues
         };
 
@@ -15213,14 +15220,23 @@ fn every_inner_window_closes_with_the_same_pastille() {
 
         ouvre(&mut app);
         let vues = sous_la_barre(&mut app);
+        assert!(
+            !vues.is_empty(),
+            "{nom} : il faut une pastille de fermeture"
+        );
+        // Une seule, sauf là où une seconde est voulue — et nommée ici,
+        // pour qu'une pastille qui apparaîtrait ailleurs sans qu'on
+        // l'ait demandée fasse échouer ce contrôle.
+        let attendues = if nom == "analyse" { 2 } else { 1 };
         assert_eq!(
             vues.len(),
-            1,
-            "{nom} : une pastille de fermeture, et une seule : {vues:?}"
+            attendues,
+            "{nom} : {attendues} pastille(s) attendue(s) : {vues:?}"
         );
         // Le fondu laisse quelques unités d'écart après division : on
         // juge la teinte, pas l'arrondi.
         let écart = vues[0]
+            .1
             .iter()
             .zip(attendue.iter())
             .map(|(a, b)| (a - b).abs())
@@ -15228,9 +15244,26 @@ fn every_inner_window_closes_with_the_same_pastille() {
             .unwrap();
         assert!(
             écart <= 8,
-            "{nom} : la pastille doit être celle de la fermeture, {:?} contre {attendue:?}",
-            vues[0]
+            "{nom} : la PREMIÈRE pastille doit être celle de la fermeture, {:?} contre \
+             {attendue:?}",
+            vues[0].1
         );
+        // La seconde, quand il y en a une, est celle qui agrandit : une
+        // fenêtre qui porterait deux rouges en serait illisible.
+        if let Some((_, teinte_zoom)) = vues.get(1) {
+            let verte = teinte(chrome::WindowButton::Maximize.colour());
+            let écart = teinte_zoom
+                .iter()
+                .zip(verte.iter())
+                .map(|(a, b)| (a - b).abs())
+                .max()
+                .unwrap();
+            assert!(
+                écart <= 8,
+                "{nom} : la seconde pastille doit être celle qui agrandit, {teinte_zoom:?} \
+                 contre {verte:?}"
+            );
+        }
     }
 }
 
@@ -29628,6 +29661,9 @@ fn les_rubriques_d_une_meme_famille_se_suivent() {
 /// mais deux choses manquaient au bout : le listing ne défilait pas, et
 /// la fenêtre d'analyse restait devant. On lisait donc le numéro de la
 /// ligne dans la barre d'état, derrière un panneau opaque.
+///
+/// Le clic DEMANDE désormais où aller : le contrôle passe donc par le
+/// menu, comme la main.
 #[test]
 fn clicking_an_address_in_a_panel_really_lands_in_the_listing() {
     use egui_kittest::Harness;
@@ -29655,6 +29691,9 @@ fn clicking_an_address_in_a_panel_really_lands_in_the_listing() {
         adresses[0].click();
     }
     harness.run();
+    // Le menu des destinations, et l'entrée qui mène au code.
+    harness.get_by_label("Dans le code désassemblé").click();
+    harness.run();
 
     assert!(
         !harness.state().show_analysis,
@@ -29668,6 +29707,68 @@ fn clicking_an_address_in_a_panel_really_lands_in_the_listing() {
     assert!(
         harness.state().cursor_pos.0 > 1,
         "le curseur est posé sur la ligne de l'adresse, et non restée en tête"
+    );
+}
+
+/// Et l'autre destination : les OCTETS de cette adresse.
+///
+/// Le clic sur une adresse emmenait au listing sans rien demander, ce
+/// qui est la bonne réponse pour une fonction et la mauvaise pour une
+/// chaîne, une table ou un bourrage — on voulait voir les octets, on
+/// atterrissait sur un désassemblage de données. Le contrôle prend le
+/// second chemin et vérifie les trois choses qui le distinguent du
+/// premier : la fenêtre d'analyse RESTE ouverte (la destination est
+/// dedans), le panneau devient l'éditeur binaire, et l'adresse cliquée
+/// y est écrite — on vient de la cliquer, la retrouver est ce qui dit
+/// qu'on est au bon endroit.
+#[test]
+fn choosing_the_bytes_opens_the_binary_editor_where_the_address_is() {
+    use egui_kittest::Harness;
+    use egui_kittest::kittest::Queryable;
+
+    let Ok(octets) = std::fs::read("/bin/ls") else {
+        return;
+    };
+    let mut app = NamsdecApp::default();
+    if !app.load_elf(&octets, "ls") {
+        return;
+    }
+    app.show_analysis = true;
+    app.analysis_module = "xrefs".to_owned();
+    let mut harness = Harness::builder()
+        .with_size(egui::Vec2::new(1600.0, 1000.0))
+        .build_ui_state(|ui, app: &mut NamsdecApp| app.draw(ui), app);
+    harness.run();
+    {
+        let adresses: Vec<_> = harness.get_all_by_label_contains("0x00").collect();
+        assert!(!adresses.is_empty(), "le panneau montre des adresses");
+        adresses[0].click();
+    }
+    harness.run();
+    harness.get_by_label("Dans l'éditeur binaire").click();
+    harness.run();
+
+    assert!(
+        harness.state().show_analysis,
+        "la fenêtre reste ouverte : ce qu'on va voir est dedans"
+    );
+    assert_eq!(
+        harness.state().analysis_module,
+        "hex_editor",
+        "et le panneau est devenu l'éditeur binaire"
+    );
+    // Quelle adresse : celle que la barre d'état nomme, et c'est elle
+    // qu'on doit retrouver écrite dans l'éditeur.
+    let Status::WentTo(addr) = harness.state().status else {
+        panic!(
+            "la barre d'état dit où l'on va : {:?}",
+            harness.state().status
+        );
+    };
+    let écrite = format!("{addr:#010x}");
+    assert!(
+        harness.get_all_by_label_contains(&écrite).next().is_some(),
+        "« {écrite} » doit se retrouver dans l'éditeur binaire"
     );
 }
 
@@ -31026,5 +31127,106 @@ fn unfolding_the_memory_tools_never_cuts_a_title() {
         vu_déplié,
         "les outils se sont bien dépliés — sans quoi le contrôle ne \
          prouverait rien"
+    );
+}
+
+/// La fenêtre d'analyse s'agrandit par sa pastille verte, et revient.
+///
+/// Elle avait perdu ce geste le 13 octobre, et pour une bonne raison :
+/// agrandie, elle recouvrait tout, et cliquer une adresse emmenait le
+/// listing derrière un panneau opaque. Cette raison-là est tombée — le
+/// saut au listing efface la fenêtre, et le saut aux octets reste
+/// dedans. Un vidage hexadécimal et un graphe d'appels se lisent mieux
+/// en grand.
+///
+/// Le contrôle clique la pastille pour de vrai, et la cherche là où
+/// elle est peinte plutôt qu'à une position calculée : un bouton posé
+/// ailleurs qu'on ne croit est précisément ce qu'on veut attraper.
+#[test]
+fn the_analysis_window_grows_by_its_green_pastille_and_comes_back() {
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp::default();
+    app.apply_theme(&ctx);
+    app.show_analysis = true;
+    let base = écran_du_banc();
+
+    let verte = chrome::WindowButton::Maximize.colour();
+    // Où la pastille verte est peinte. Trois images : egui amène la
+    // fenêtre à sa taille, et une pastille relevée sur la première
+    // bougerait encore.
+    let où_est_la_verte = |app: &mut NamsdecApp| -> Option<egui::Pos2> {
+        let mut vue = None;
+        for _ in 0..3 {
+            vue = None;
+            let mut sortie = ctx.run_ui(base.clone(), |ui| app.draw(ui));
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Circle(cercle) = &clipped.shape
+                    && cercle.center.y > 40.0
+                    && (cercle.radius - 6.5).abs() < 0.01
+                    // La teinte, non l'opacité : la fenêtre arrive en
+                    // fondu, et la pastille est alors plus sombre.
+                    && cercle.fill.g() > cercle.fill.r()
+                    && cercle.fill.g() > cercle.fill.b()
+                {
+                    let _ = verte;
+                    vue = Some(cercle.center);
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+        vue
+    };
+    let clique = |app: &mut NamsdecApp, où: egui::Pos2| {
+        let mut presse = base.clone();
+        presse.events.push(egui::Event::PointerMoved(où));
+        presse.events.push(egui::Event::PointerButton {
+            pos: où,
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers: egui::Modifiers::NONE,
+        });
+        ctx.run_ui(presse, |ui| app.draw(ui)).textures_delta.clear();
+        let mut relâche = base.clone();
+        relâche.events.push(egui::Event::PointerButton {
+            pos: où,
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers: egui::Modifiers::NONE,
+        });
+        ctx.run_ui(relâche, |ui| app.draw(ui))
+            .textures_delta
+            .clear();
+    };
+
+    let pastille = où_est_la_verte(&mut app).expect("la pastille verte est peinte");
+    let avant = ctx
+        .memory(|m| m.area_rect(egui::Id::new("analysis_window")))
+        .expect("la fenêtre est ouverte");
+
+    clique(&mut app, pastille);
+    assert!(
+        app.window_maximized(NamsdecApp::ANALYSIS_WINDOW),
+        "le clic sur la pastille verte doit agrandir la fenêtre d'analyse"
+    );
+    for _ in 0..12 {
+        ctx.run_ui(base.clone(), |ui| app.draw(ui))
+            .textures_delta
+            .clear();
+    }
+    let agrandie = ctx
+        .memory(|m| m.area_rect(egui::Id::new("analysis_window")))
+        .expect("toujours ouverte");
+    assert!(
+        agrandie.width() > avant.width() && agrandie.height() >= avant.height(),
+        "agrandie, elle doit prendre plus de place : {agrandie:?} contre {avant:?}"
+    );
+
+    // Et elle revient : une fenêtre qui s'agrandit sans savoir
+    // rapetisser est un piège, pas un geste.
+    let pastille = où_est_la_verte(&mut app).expect("la pastille est toujours là");
+    clique(&mut app, pastille);
+    assert!(
+        !app.window_maximized(NamsdecApp::ANALYSIS_WINDOW),
+        "le second clic doit la restaurer"
     );
 }

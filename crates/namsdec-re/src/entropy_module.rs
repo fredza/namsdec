@@ -112,11 +112,11 @@ impl ReModule for EntropyModule {
         });
 
         ui.add_space(6.0);
-        if let Some(offset) = profil(ui, ctx, &self.windows, self.window) {
+        if let Some((offset, target)) = profil(ui, ctx, &self.windows, self.window) {
             // Un clic dans le profil mène à l'adresse — quand cette
             // position du fichier est projetée quelque part.
             if let Some(addr) = self.adresse_de(offset) {
-                self.demande = Some(ReRequest::GoTo { addr });
+                self.demande = Some(ReRequest::GoTo { addr, target });
             }
         }
         ui.add_space(8.0);
@@ -185,8 +185,11 @@ impl ReModule for EntropyModule {
                     ui.monospace(octets(plage.len));
                     match self.addresses.get(rang).copied().flatten() {
                         Some(addr) => {
-                            if clickable_address(ui, ctx, addr) {
-                                demande = Some(ReRequest::GoTo { addr });
+                            if let Some(cible) = clickable_address(ui, ctx, addr) {
+                                demande = Some(ReRequest::GoTo {
+                                    addr,
+                                    target: cible,
+                                });
                             }
                         }
                         // Une position que rien ne projette en mémoire :
@@ -363,7 +366,7 @@ fn profil(
     ctx: &ReContext,
     windows: &[Window],
     taille_tranche: usize,
-) -> Option<usize> {
+) -> Option<(usize, crate::GoTarget)> {
     let hauteur = hauteur_du_profil(ui.ctx().viewport_rect().height());
     // Pleine largeur : c'est une carte du fichier, et une carte se lit
     // d'autant mieux qu'elle est large. La borne de 520 pixels d'avant
@@ -517,8 +520,8 @@ fn profil(
                 fenêtre.entropy,
                 Verdict::of(fenêtre.entropy).label(ctx.lang.starts_with("fr")),
                 ctx.t(
-                    "Cliquer : aller à cette adresse dans le listing",
-                    "Click: go to this address in the listing"
+                    "Cliquer : aller voir cette tranche — dans le code, ou dans les octets",
+                    "Click: go and see this slice — in the code, or in the bytes"
                 ),
             ));
             if réponse.clicked() {
@@ -526,7 +529,34 @@ fn profil(
             }
         }
     }
-    cliqué
+    // LA TRANCHE VISÉE EST RETENUE, et le menu s'ouvre à l'image
+    // suivante : entre le clic et le choix, la souris a quitté la
+    // tranche pour aller sur l'entrée du menu, et la relire sous le
+    // pointeur mènerait ailleurs qu'où l'on a cliqué.
+    let visée = ui.id().with("tranche_visée");
+    if let Some(offset) = cliqué {
+        ui.data_mut(|d| d.insert_temp(visée, offset));
+    }
+    let mut choix = None;
+    egui::Popup::menu(&réponse).show(|ui| {
+        if ui
+            .button(ctx.t("Dans le code désassemblé", "In the disassembly"))
+            .clicked()
+        {
+            choix = Some(crate::GoTarget::Listing);
+            ui.close();
+        }
+        if ui
+            .button(ctx.t("Dans l'éditeur binaire", "In the binary editor"))
+            .clicked()
+        {
+            choix = Some(crate::GoTarget::Bytes);
+            ui.close();
+        }
+    });
+    let cible = choix?;
+    let offset = ui.data(|d| d.get_temp::<usize>(visée))?;
+    Some((offset, cible))
 }
 
 /// L'échelle de couleurs, graduée.

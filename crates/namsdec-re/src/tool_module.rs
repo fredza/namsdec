@@ -410,7 +410,14 @@ impl ReModule for ToolModule {
             }
         }
         if let Some(addr) = aller {
-            self.demande = Some(ReRequest::GoTo { addr });
+            // Vers le CODE, sans demander : une adresse lue dans la
+            // sortie d'un désassembleur désigne une instruction, et le
+            // choix ne se pose que pour une adresse dont on ignore ce
+            // qu'elle porte.
+            self.demande = Some(ReRequest::GoTo {
+                addr,
+                target: crate::GoTarget::Listing,
+            });
         }
     }
 }

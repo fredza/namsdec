@@ -1,28 +1,45 @@
-//! Cliquer une adresse d'un panneau d'analyse mène au listing.
+//! Cliquer une adresse d'un panneau d'analyse mène où l'on veut.
 //!
 //! Un panneau d'analyse ne fait que **désigner des endroits** : une
 //! entrée de liaison, une zone libre, une figure, un fragment. La seule
 //! chose qu'on veuille en faire est d'aller voir — et jusqu'ici il
 //! fallait relever l'adresse à la main et la retaper dans « aller à ».
 //!
+//! Le clic DEMANDE où : dans le code désassemblé, ou dans les octets.
+//! Les deux répondent à des questions différentes, et le panneau ne
+//! sait pas laquelle on se pose.
+//!
 //! Le contrôle clique pour de vrai : il peint le panneau, cherche où
-//! l'adresse a été posée, et envoie un appui et un relâchement à cet
-//! endroit. Vérifier que le code « poserait une demande si on cliquait »
-//! ne prouverait rien — c'est justement de savoir si l'on PEUT cliquer
+//! l'adresse a été posée, envoie un appui et un relâchement à cet
+//! endroit, puis cherche l'entrée du menu et la clique à son tour.
+//! Vérifier que le code « poserait une demande si on cliquait » ne
+//! prouverait rien — c'est justement de savoir si l'on PEUT cliquer
 //! qu'il s'agit.
 
 mod commun;
 
 use commun::{BASE, germe_piégé};
 use namsdec_core::{Cpu, Memory};
-use namsdec_re::{ReContext, ReModule, ReRequest};
+use namsdec_re::{GoTarget, ReContext, ReModule, ReRequest};
 
-/// Peint le panneau, clique à `cible`, et rend ce que le module demande.
+/// Peint le panneau, clique à `cible`, choisit `entrée_du_menu`, et rend
+/// ce que le module demande.
 ///
-/// Trois images : la première pose les identifiants qu'egui garde d'une
-/// image sur l'autre, la deuxième porte l'appui, la troisième le
-/// relâchement — un clic n'existe qu'une fois le bouton relevé.
-fn clique(module: &mut dyn ReModule, ctx: &ReContext, cible: egui::Pos2) -> Option<ReRequest> {
+/// Deux clics, et c'est le geste réel : le premier ouvre le menu des
+/// destinations, le second en choisit une. Entre les deux, le contrôle
+/// cherche où l'entrée a été peinte — elle est dans une couche
+/// flottante, posée là où egui l'a mise, et une position devinée
+/// cliquerait à côté.
+///
+/// Huit images : egui pose ses identifiants à la première, le clic
+/// demande un appui puis un relâchement, et le menu ne se peint qu'une
+/// fois le premier clic reçu.
+fn clique_et_choisit(
+    module: &mut dyn ReModule,
+    ctx: &ReContext,
+    cible: egui::Pos2,
+    entrée_du_menu: &str,
+) -> Option<ReRequest> {
     let egui_ctx = egui::Context::default();
     let base = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
@@ -32,27 +49,41 @@ fn clique(module: &mut dyn ReModule, ctx: &ReContext, cible: egui::Pos2) -> Opti
         ..Default::default()
     };
     let mut demande = None;
-    for étape in 0..3 {
+    let mut dans_le_menu: Option<egui::Pos2> = None;
+    for étape in 0..8 {
         let mut entrée = base.clone();
-        match étape {
-            1 => {
-                entrée.events.push(egui::Event::PointerMoved(cible));
-                entrée.events.push(egui::Event::PointerButton {
-                    pos: cible,
-                    button: egui::PointerButton::Primary,
-                    pressed: true,
-                    modifiers: egui::Modifiers::NONE,
-                });
+        let appui = |entrée: &mut egui::RawInput, où: egui::Pos2, pressed: bool| {
+            if pressed {
+                entrée.events.push(egui::Event::PointerMoved(où));
             }
-            2 => entrée.events.push(egui::Event::PointerButton {
-                pos: cible,
+            entrée.events.push(egui::Event::PointerButton {
+                pos: où,
                 button: egui::PointerButton::Primary,
-                pressed: false,
+                pressed,
                 modifiers: egui::Modifiers::NONE,
-            }),
+            });
+        };
+        match (étape, dans_le_menu) {
+            (1, _) => appui(&mut entrée, cible, true),
+            (2, _) => appui(&mut entrée, cible, false),
+            (4, Some(où)) => appui(&mut entrée, où, true),
+            (5, Some(où)) => appui(&mut entrée, où, false),
             _ => {}
         }
         let mut sortie = egui_ctx.run_ui(entrée, |ui| module.ui(ui, ctx));
+        if dans_le_menu.is_none() {
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(t) = &clipped.shape
+                    && t.galley.text() == entrée_du_menu
+                {
+                    let rect = egui::Rect::from_min_size(t.pos, t.galley.size());
+                    let visible = rect.intersect(clipped.clip_rect);
+                    if visible.width() > 0.0 && visible.height() > 0.0 {
+                        dans_le_menu = Some(visible.center());
+                    }
+                }
+            }
+        }
         sortie.textures_delta.clear();
         if let Some(posée) = module.take_request() {
             demande = Some(posée);
@@ -166,12 +197,23 @@ fn clicking_an_address_asks_to_go_there() {
 
         let cible = où_est(module.as_mut(), &ctx, &écrite)
             .unwrap_or_else(|| panic!("{nom} : « {écrite} » est peinte quelque part"));
-        let demande = clique(module.as_mut(), &ctx, cible);
-        assert_eq!(
-            demande,
-            Some(ReRequest::GoTo { addr: attendue }),
-            "{nom} : cliquer « {écrite} » doit demander d'y aller"
-        );
+        // Les deux destinations, sur la même adresse : le menu n'aurait
+        // aucun intérêt si la seconde entrée faisait ce que fait la
+        // première.
+        for (entrée, attendu) in [
+            ("Dans le code désassemblé", GoTarget::Listing),
+            ("Dans l'éditeur binaire", GoTarget::Bytes),
+        ] {
+            let demande = clique_et_choisit(module.as_mut(), &ctx, cible, entrée);
+            assert_eq!(
+                demande,
+                Some(ReRequest::GoTo {
+                    addr: attendue,
+                    target: attendu
+                }),
+                "{nom} : cliquer « {écrite} » puis « {entrée} » doit demander d'y aller"
+            );
+        }
         éprouvés += 1;
     }
     assert!(

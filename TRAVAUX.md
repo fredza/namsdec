@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **14 octobre
-2026**, version 0.2.8-beta.3, 1 182 tests au vert.
+2026**, version 0.2.8-beta.3, 1 185 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -29,6 +29,33 @@ Ce qui reste est de la finition mesurée : des alignements de quelques
 pixels, deux tailles de police, et le vide sous « Prochaine
 instruction », qui tient au même nœud que le vide de 56 px — l'état du
 processeur est ancré.
+
+---
+
+## 10. « Aller à cette adresse » : où, au juste ? (A 7.16)
+
+Un grief de Fred sur capture : le clic sur une adresse menait toujours
+au listing, alors qu'une chaîne, une table ou un bourrage se lisent dans
+les octets. Et la fenêtre d'analyse devait retrouver son bouton
+agrandir, en pastille à la macOS.
+
+- [x] **Le clic demande où** (A 7.16) — deux entrées, « dans le code
+      désassemblé » et « dans l'éditeur binaire ». La destination
+      voyage avec la demande (`ReRequest::GoTo { addr, target }`) ;
+      aller au code **ferme** la fenêtre d'analyse, aller aux octets la
+      garde ouverte. Le choix ne se pose pas là où le contexte dit déjà
+      de quoi il s'agit — boîte du graphe d'appels, adresse dans du
+      pseudo-code.
+- [x] **L'éditeur binaire sait où on l'envoie** — `ReResult::ShowBytesAt`
+      cadre la page, choisit l'octet, et écrit l'adresse d'où l'on vient.
+- [x] **Position ET adresse**, deux colonnes — la seconde seulement si
+      elle apprend quelque chose (`adresses_utiles`), et « Aller à »
+      accepte les deux.
+- [x] **La pastille verte revient sur la fenêtre d'analyse** — et
+      l'agrandissement s'arrête sous la barre de menus, qu'il
+      recouvrait.
+- [x] **Six contrôles**, dont deux au clic réel et un qui juge l'ordre
+      des pastilles.
 
 ---
 

@@ -46,6 +46,59 @@ impl NamsdecApp {
             .fixed_size(place.size() - cadre)
     }
 
+    /// La zone de travail : tout l'écran, sauf les barres.
+    ///
+    /// Une fenêtre agrandie à `viewport_rect()` recouvre la barre de
+    /// menus et la barre d'état — on ne peut plus ouvrir un menu, et
+    /// l'on ne sait plus où l'on en est. C'est supportable pour une
+    /// toile qu'on regarde (le graphe), et ça ne l'est pas pour un
+    /// panneau d'où l'on repart sans cesse vers le listing.
+    ///
+    /// `zone_de_travail` est ce qui restait à l'image précédente, une
+    /// fois les barres posées — le contexte, lui, ne connaît que
+    /// l'écran entier. On n'en garde que le BORD HAUT, et l'on prend
+    /// tout le reste.
+    ///
+    /// Le bord haut, parce que c'est là qu'est la barre de menus : une
+    /// fenêtre qui la recouvre coupe l'accès à tout ce qu'on pourrait
+    /// vouloir faire ensuite. Le bas, non : la barre d'état et la
+    /// console sont de la lecture, pas des commandes, et agrandir doit
+    /// agrandir — une fenêtre qui s'étale moins haut qu'avant n'a pas
+    /// l'air agrandie, elle a l'air déplacée.
+    pub(crate) fn work_area_rect(&self, ctx: &egui::Context) -> egui::Rect {
+        let tout = ctx.viewport_rect();
+        if !self.zone_de_travail.is_positive() {
+            return tout;
+        }
+        egui::Rect::from_min_max(
+            egui::pos2(tout.left(), self.zone_de_travail.top()),
+            tout.max,
+        )
+    }
+
+    /// Rend cette fenêtre agrandissable DANS LA ZONE DE TRAVAIL.
+    pub(crate) fn maximizable_in_work_area<'a>(
+        &self,
+        fenêtre: egui::Window<'a>,
+        id: &'static str,
+        ctx: &egui::Context,
+    ) -> egui::Window<'a> {
+        if !self.window_maximized(id) {
+            return fenêtre;
+        }
+        let place = self.work_area_rect(ctx);
+        let marge = ctx.style_of(ctx.theme()).spacing.window_margin;
+        let cadre = egui::vec2(
+            f32::from(marge.left + marge.right),
+            f32::from(marge.top + marge.bottom),
+        );
+        fenêtre
+            .resizable(false)
+            .pivot(egui::Align2::LEFT_TOP)
+            .fixed_pos(place.min)
+            .fixed_size(place.size() - cadre)
+    }
+
     /// Le rectangle d'une fenêtre agrandie : tout ce qu'il y a.
     ///
     /// Sans marge : une fenêtre agrandie qui laisse voir douze pixels de

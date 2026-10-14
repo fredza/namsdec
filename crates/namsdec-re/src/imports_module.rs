@@ -207,8 +207,11 @@ impl ReModule for ImportsModule {
             let note = libc::explain(&import.name);
             let ouverte = self.ouverte.as_deref() == Some(import.name.as_str());
             ui.horizontal_wrapped(|ui| {
-                if clickable_address(ui, ctx, import.plt) {
-                    demande = Some(ReRequest::GoTo { addr: import.plt });
+                if let Some(cible) = clickable_address(ui, ctx, import.plt) {
+                    demande = Some(ReRequest::GoTo {
+                        addr: import.plt,
+                        target: cible,
+                    });
                 }
                 // LE NOM EST UN LIEN : on le clique, sa fiche se
                 // déplie.
