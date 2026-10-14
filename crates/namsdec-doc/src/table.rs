@@ -857,7 +857,10 @@ pub const ENTRIES: &[Entry] = &[
     },
     Entry {
         kind: Kind::Instruction,
-        names: &["pextrw", "pinsrw", "pextrb", "pinsrb"],
+        names: &[
+            "pextrw", "pinsrw", "pextrb", "pinsrb", "pextrd", "pextrq", "pinsrd", "pinsrq",
+            "vpextrw", "vpinsrw", "vpextrb", "vpinsrb", "vpextrd", "vpextrq", "vpinsrd", "vpinsrq",
+        ],
         title: Text {
             fr: "Prendre ou poser un seul élément d'un vecteur",
             en: "Take or put a single element of a vector",
@@ -867,7 +870,7 @@ pub const ENTRIES: &[Entry] = &[
             en: "A vector register holds eight words or sixteen bytes; these read or write exactly **one** of them, picked by a number written into the instruction. `pextrw` moves a word out to an ordinary register, `pinsrw` puts one in. That is how a SIMD routine hands its result back to the code calling it — after `pcmpeqb` and `pmovmskb`, for instance.",
         },
         flags: "aucun",
-        example: "; namsdec ne les simule pas : pextrw eax, xmm0, 3\n    nop",
+        example: "pextrw eax, xmm0, 3\n    pinsrw xmm1, eax, 0",
     },
     Entry {
         kind: Kind::Instruction,
@@ -1378,6 +1381,121 @@ pub const ENTRIES: &[Entry] = &[
     },
     Entry {
         kind: Kind::Instruction,
+        names: &["pcmpeqq", "pcmpgtq", "vpcmpeqq", "vpcmpgtq"],
+        title: Text {
+            fr: "Comparer deux nombres de 64 bits à la fois",
+            en: "Compare two 64-bit numbers at a time",
+        },
+        body: Text {
+            fr: "Les mêmes masques que `pcmpeqd`, sur des éléments deux fois plus larges. SSE4.1 a ajouté l'égalité, SSE4.2 la comparaison signée — le jeu s'est construit par couches, et la date d'une instruction se lit dans ce qui manque autour d'elle.",
+            en: "The same masks as `pcmpeqd`, on elements twice as wide. SSE4.1 added equality, SSE4.2 the signed comparison — the instruction set was built in layers, and an instruction's age shows in what is missing around it.",
+        },
+        flags: "",
+        example: "pcmpeqq xmm0, xmm1",
+    },
+    Entry {
+        kind: Kind::Instruction,
+        names: &[
+            "pminub", "pmaxub", "pminsb", "pmaxsb", "pminuw", "pmaxuw", "pminsw", "pmaxsw",
+            "pminud", "pmaxud", "pminsd", "pmaxsd", "vpminub", "vpmaxub", "vpminsb", "vpmaxsb",
+            "vpminuw", "vpmaxuw", "vpminsw", "vpmaxsw", "vpminud", "vpmaxud", "vpminsd", "vpmaxsd",
+        ],
+        title: Text {
+            fr: "Le plus petit, le plus grand, seize à la fois",
+            en: "The smallest, the largest, sixteen at a time",
+        },
+        body: Text {
+            fr: "Rendent élément par élément le plus petit — ou le plus grand — des deux. Le signe change tout : `0x80` vaut 128 pour `pmaxub` et −128 pour `pmaxsb`, si bien que les deux rendent des vecteurs différents sur les mêmes octets.\n\nOn les rencontre bien au-delà du calcul : `pminub` contre un vecteur nul, suivi de `pcmpeqb`, est la façon dont la bibliothèque C cherche la fin d'une chaîne seize octets d'un coup. C'est la raison pour laquelle elles apparaissent dans à peu près tout binaire compilé, même sans une seule ligne de code vectoriel écrite à la main.",
+            en: "Return, element by element, the smaller — or the larger — of two. Sign changes everything: `0x80` is 128 to `pmaxub` and −128 to `pmaxsb`, so the two return different vectors from the same bytes.\n\nThey reach well beyond arithmetic: `pminub` against a zero vector, followed by `pcmpeqb`, is how the C library finds the end of a string sixteen bytes at a time. That is why they appear in nearly every compiled binary, without a single hand-written line of vector code.",
+        },
+        flags: "",
+        example: "pminub xmm0, xmm1   ; le plus petit octet de chaque paire",
+    },
+    Entry {
+        kind: Kind::Instruction,
+        names: &["pshufb", "vpshufb"],
+        title: Text {
+            fr: "Choisir ses octets un par un",
+            en: "Pick one's bytes one by one",
+        },
+        body: Text {
+            fr: "Chaque octet du résultat est l'octet de la source que **désigne** l'octet de même rang du contrôle — et il est nul si le bit de poids fort de ce contrôle-là est mis. Seize recherches dans une table de seize entrées, en une instruction.\n\nC'est l'outil des conversions : hexadécimal, base64, UTF-8, et tout ce qui transforme un octet en un autre selon une table. Contrairement à `pshufd`, l'ordre n'est pas gravé dans un immédiat : il est dans un registre, donc il peut être calculé.",
+            en: "Each byte of the result is the byte of the source **named** by the control byte of the same rank — and it is zero if that control byte's top bit is set. Sixteen lookups in a sixteen-entry table, in one instruction.\n\nIt is the conversion tool: hexadecimal, base64, UTF-8, anything mapping a byte to another through a table. Unlike `pshufd`, the order is not frozen in an immediate: it sits in a register, so it can be computed.",
+        },
+        flags: "",
+        example: "pshufb xmm0, xmm1   ; xmm1 dit d'où vient chaque octet",
+    },
+    Entry {
+        kind: Kind::Instruction,
+        names: &["palignr", "vpalignr"],
+        title: Text {
+            fr: "Une fenêtre à cheval sur deux vecteurs",
+            en: "A window straddling two vectors",
+        },
+        body: Text {
+            fr: "Met les deux sources bout à bout — la première en haut —, décale le tout du nombre d'octets donné, et garde les seize du bas. Elle donne donc une fenêtre de seize octets qui commence où l'on veut dans trente-deux.\n\nC'est ainsi qu'un `memcpy` traite une adresse qui ne tombe pas rond : deux lectures alignées, et `palignr` recompose entre les deux, sans jamais faire de lecture non alignée.",
+            en: "Puts the two sources end to end — the first on top —, shifts the whole by the given number of bytes, and keeps the low sixteen. It yields a sixteen-byte window starting wherever one wants within thirty-two.\n\nThat is how a `memcpy` handles an address that does not fall round: two aligned loads, and `palignr` recomposes between them, never making an unaligned read.",
+        },
+        flags: "",
+        example: "palignr xmm0, xmm1, 4",
+    },
+    Entry {
+        kind: Kind::Instruction,
+        names: &[
+            "pavgb", "pavgw", "psadbw", "pabsb", "pabsw", "pabsd", "vpavgb", "vpavgw", "vpsadbw",
+            "vpabsb", "vpabsw", "vpabsd",
+        ],
+        title: Text {
+            fr: "Moyenne, écart, valeur absolue",
+            en: "Average, difference, absolute value",
+        },
+        body: Text {
+            fr: "Trois mesures que le jeu rend en une instruction parce que l'image et le son les demandent partout. `pavgb` fait la moyenne arrondie au supérieur, sans débordement possible. `psadbw` additionne les écarts absolus de huit octets et range le total dans un seul nombre — une mesure de ressemblance entre deux blocs, et aussi la façon la plus courte de compter les octets d'un masque. `pabsb` prend la valeur absolue ; la plus petite valeur négative n'a pas d'opposé qui tienne dans sa voie, et reste elle-même.",
+            en: "Three measures the instruction set gives in one step, because image and sound ask for them everywhere. `pavgb` averages, rounding up, with no overflow possible. `psadbw` sums the absolute differences of eight bytes into a single number — a likeness measure between two blocks, and also the shortest way to count the bytes of a mask. `pabsb` takes the absolute value; the most negative value has no opposite fitting its lane, and stays itself.",
+        },
+        flags: "",
+        example: "psadbw xmm0, xmm1   ; la somme des huit écarts",
+    },
+    Entry {
+        kind: Kind::Instruction,
+        names: &["ptest", "vptest"],
+        title: Text {
+            fr: "Deux questions sur tout un vecteur",
+            en: "Two questions about a whole vector",
+        },
+        body: Text {
+            fr: "La seule instruction vectorielle entière qui écrive des indicateurs. ZF dit que la seconde source n'a **aucun** bit en commun avec la première ; CF, qu'elle n'en a aucun **hors** de la première.\n\nAprès une comparaison vectorielle, c'est ainsi qu'on demande « aucune voie ne correspond » (`jz`) et « toutes correspondent » (`jc`) sans jamais ramener le vecteur dans un registre général — là où un `pmovmskb` suivi d'un `test` coûtait deux instructions et un aller-retour entre deux fichiers de registres.",
+            en: "The only packed-integer instruction that writes flags. ZF says the second source has **no** bit in common with the first; CF, that it has none **outside** the first.\n\nAfter a vector comparison, that is how one asks \"no lane matches\" (`jz`) and \"all match\" (`jc`) without ever bringing the vector back into a general register — where a `pmovmskb` plus a `test` cost two instructions and a trip between two register files.",
+        },
+        flags: "ZF CF",
+        example: "ptest xmm0, xmm0\njz nul",
+    },
+    Entry {
+        kind: Kind::Instruction,
+        names: &[
+            "movntdq",
+            "movntdqa",
+            "movntps",
+            "movntpd",
+            "movnti",
+            "vmovntdq",
+            "vmovntdqa",
+            "vmovntps",
+            "vmovntpd",
+        ],
+        title: Text {
+            fr: "Écrire sans salir le cache",
+            en: "Write without dirtying the cache",
+        },
+        body: Text {
+            fr: "« Non temporel » veut dire : je ne relirai pas ceci de sitôt. Le processeur écrit alors sans garder la donnée en cache, et sans la relire d'abord — ce qui, sur un gros tampon, évite d'évincer tout ce qui servait encore. C'est le choix que fait un `memset` dès que la zone dépasse la taille du cache.\n\nÀ l'émulation, il n'y a pas de cache : ce sont des déplacements comme les autres, et namsdec les exécute comme tels. La différence est réelle sur la machine, invisible dans les registres.",
+            en: "\"Non-temporal\" means: I will not read this again soon. The processor writes without keeping the data in cache, and without reading it first — which, on a large buffer, avoids evicting everything still in use. It is the choice a `memset` makes as soon as the area outgrows the cache.\n\nUnder emulation there is no cache: these are ordinary moves, and namsdec runs them as such. The difference is real on the machine, invisible in the registers.",
+        },
+        flags: "",
+        example: "movntdq [rdi], xmm0",
+    },
+    Entry {
+        kind: Kind::Instruction,
         names: &[
             "psllw", "pslld", "psllq", "psrlw", "psrld", "psrlq", "psraw", "psrad", "vpsllw",
             "vpslld", "vpsllq", "vpsrlw", "vpsrld", "vpsrlq", "vpsraw", "vpsrad",
@@ -1419,8 +1537,8 @@ pub const ENTRIES: &[Entry] = &[
             en: "Add without wrapping",
         },
         body: Text {
-            fr: "Additionnent ou soustraient élément par élément, mais **saturent** au lieu de boucler : 250 + 10 sur un octet non signé donne 255, pas 4. C'est la différence entre un pixel qui devient blanc et un pixel qui devient noir — et la raison pour laquelle ces instructions peuplent le traitement d'image et de son. Le `s` central dit signé, le `us` non signé. namsdec ne les simule pas : il désassemble et explique, l'exécution s'arrête là.",
-            en: "Add or subtract element by element, but **saturate** instead of wrapping: 250 + 10 on an unsigned byte gives 255, not 4. That is the difference between a pixel turning white and a pixel turning black — and why these instructions fill image and audio code. The inner `s` means signed, `us` unsigned. namsdec does not simulate them: it disassembles and explains, execution stops there.",
+            fr: "Additionnent ou soustraient élément par élément, mais **saturent** au lieu de boucler : 250 + 10 sur un octet non signé donne 255, pas 4. C'est la différence entre un pixel qui devient blanc et un pixel qui devient noir — et la raison pour laquelle ces instructions peuplent le traitement d'image et de son. Le `s` central dit signé, le `us` non signé. namsdec les exécute : comparez `paddb` et `paddusb` sur les mêmes octets, la différence se voit dans le registre.",
+            en: "Add or subtract element by element, but **saturate** instead of wrapping: 250 + 10 on an unsigned byte gives 255, not 4. That is the difference between a pixel turning white and a pixel turning black — and why these instructions fill image and audio code. The inner `s` means signed, `us` unsigned. namsdec runs them: compare `paddb` and `paddusb` on the same bytes and the difference shows in the register.",
         },
         flags: "",
         example: "paddusb xmm0, xmm1  ; 250 + 10 -> 255, jamais 4",
@@ -1448,8 +1566,8 @@ pub const ENTRIES: &[Entry] = &[
             en: "Multiply in parallel",
         },
         body: Text {
-            fr: "Le produit de deux nombres de *n* bits en tient 2*n* : il ne rentre pas dans l'élément d'où il sort. D'où la famille — `pmullw` garde la moitié basse, `pmulhw` la moitié haute, et il faut les deux pour le produit entier. `pmuludq` prend l'autre chemin : il ne multiplie qu'un élément sur deux, mais garde les 64 bits du résultat. namsdec ne les simule pas ; on les rencontre en lisant le code des autres, pas en écrivant le sien.",
-            en: "The product of two *n*-bit numbers needs 2*n*: it does not fit in the element it came from. Hence the family — `pmullw` keeps the low half, `pmulhw` the high half, and you need both for the whole product. `pmuludq` takes the other road: it multiplies only every other element, but keeps all 64 bits of the result. namsdec does not simulate them; one meets them reading other people's code, not writing one's own.",
+            fr: "Le produit de deux nombres de *n* bits en tient 2*n* : il ne rentre pas dans l'élément d'où il sort. D'où la famille — `pmullw` garde la moitié basse, `pmulhw` la moitié haute, et il faut les deux pour le produit entier. `pmuludq` prend l'autre chemin : il ne multiplie qu'un élément sur deux, mais garde les 64 bits du résultat. namsdec les exécute, et c'est le seul moyen de vérifier qu'on a bien compris laquelle des deux moitiés on garde.",
+            en: "The product of two *n*-bit numbers needs 2*n*: it does not fit in the element it came from. Hence the family — `pmullw` keeps the low half, `pmulhw` the high half, and you need both for the whole product. `pmuludq` takes the other road: it multiplies only every other element, but keeps all 64 bits of the result. namsdec runs them, which is the only way to check one has understood which half is kept.",
         },
         flags: "",
         example: "pmullw xmm0, xmm1   ; huit produits, moitié basse",
@@ -1462,8 +1580,8 @@ pub const ENTRIES: &[Entry] = &[
             en: "Multiply and add in one step",
         },
         body: Text {
-            fr: "Multiplient élément par élément, puis additionnent les résultats **deux par deux** — la brique du produit scalaire, et donc de presque tout le calcul matriciel. La largeur double au passage, ce qui laisse la place à la somme : seize octets deviennent huit mots, huit mots deviennent quatre doubles mots. namsdec ne les simule pas — reconnaître un produit scalaire dans un désassemblage vaut déjà le détour.",
-            en: "Multiply element by element, then add the results **in pairs** — the building block of the dot product, and so of nearly all matrix work. The width doubles on the way, leaving room for the sum: sixteen bytes become eight words, eight words become four doublewords. namsdec does not simulate them — recognising a dot product in a disassembly is already worth the trip.",
+            fr: "Multiplient élément par élément, puis additionnent les résultats **deux par deux** — la brique du produit scalaire, et donc de presque tout le calcul matriciel. La largeur double au passage, ce qui laisse la place à la somme : seize octets deviennent huit mots, huit mots deviennent quatre doubles mots. `pmaddubsw` porte en plus une asymétrie que son nom n'annonce pas : sa première source est non signée, la seconde signée — de quoi multiplier des pixels par des coefficients négatifs. namsdec les exécute.",
+            en: "Multiply element by element, then add the results **in pairs** — the building block of the dot product, and so of nearly all matrix work. The width doubles on the way, leaving room for the sum: sixteen bytes become eight words, eight words become four doublewords. `pmaddubsw` adds an asymmetry its name does not announce: its first source is unsigned, the second signed — enough to multiply pixels by negative coefficients. namsdec runs them.",
         },
         flags: "",
         example: "pmaddwd xmm0, xmm1  ; 8 produits -> 4 sommes",
@@ -1479,8 +1597,8 @@ pub const ENTRIES: &[Entry] = &[
             en: "Add neighbour to neighbour",
         },
         body: Text {
-            fr: "Additionnent les éléments **côte à côte dans le même registre**, au lieu d'un registre sur l'autre. C'est le geste qui manquait pour totaliser un vecteur : quatre nombres, deux `phaddd`, et la somme est en bas. Le `s` de `phaddsw` sature au lieu de boucler. namsdec ne les simule pas.",
-            en: "Add elements **side by side within one register**, rather than across two. This is the move that was missing to total a vector: four numbers, two `phaddd`, and the sum sits at the bottom. The `s` in `phaddsw` saturates instead of wrapping. namsdec does not simulate them.",
+            fr: "Additionnent les éléments **côte à côte dans le même registre**, au lieu d'un registre sur l'autre. C'est le geste qui manquait pour totaliser un vecteur : quatre nombres, deux `phaddd`, et la somme est en bas. Le `s` de `phaddsw` sature au lieu de boucler. namsdec les exécute.",
+            en: "Add elements **side by side within one register**, rather than across two. This is the move that was missing to total a vector: four numbers, two `phaddd`, and the sum sits at the bottom. The `s` in `phaddsw` saturates instead of wrapping. namsdec runs them.",
         },
         flags: "",
         example: "phaddd xmm0, xmm0
@@ -1519,8 +1637,8 @@ phaddd xmm0, xmm0   ; la somme des quatre",
             en: "Widen every element",
         },
         body: Text {
-            fr: "Ce que `movzx` et `movsx` font pour un nombre, ceux-ci le font pour tout un vecteur : huit octets deviennent huit mots, `zx` en complétant par des zéros, `sx` en recopiant le bit de signe. Seule la moitié basse de la source est lue — elle occupe deux fois plus de place à l'arrivée. namsdec ne les simule pas.",
-            en: "What `movzx` and `movsx` do for one number, these do for a whole vector: eight bytes become eight words, `zx` filling with zeroes, `sx` copying the sign bit. Only the low half of the source is read — it takes twice the room on arrival. namsdec does not simulate them.",
+            fr: "Ce que `movzx` et `movsx` font pour un nombre, ceux-ci le font pour tout un vecteur : huit octets deviennent huit mots, `zx` en complétant par des zéros, `sx` en recopiant le bit de signe. Seule la moitié basse de la source est lue — elle occupe deux fois plus de place à l'arrivée. namsdec les exécute : c'est l'inverse exact de `packuswb`, et on peut faire l'aller-retour pour s'en convaincre.",
+            en: "What `movzx` and `movsx` do for one number, these do for a whole vector: eight bytes become eight words, `zx` filling with zeroes, `sx` copying the sign bit. Only the low half of the source is read — it takes twice the room on arrival. namsdec runs them: it is the exact inverse of `packuswb`, and the round trip can be made to prove it.",
         },
         flags: "",
         example: "pmovzxbw xmm0, xmm1 ; 8 octets -> 8 mots",
@@ -1533,8 +1651,8 @@ phaddd xmm0, xmm0   ; la somme des quatre",
             en: "Load sixteen unaligned bytes",
         },
         body: Text {
-            fr: "Fait ce que fait `movdqu` — lire seize octets où qu'ils tombent —, mais en allant chercher davantage et en taillant dedans, ce qui était plus rapide sur certains processeurs d'alors. Sur les machines d'aujourd'hui il n'y a plus de différence ; on le rencontre surtout dans du code compilé il y a quinze ans. namsdec ne la simule pas ; `movdqu`, lui, s'exécute.",
-            en: "Does what `movdqu` does — read sixteen bytes wherever they fall — but by fetching more and cutting inside, which was faster on some processors of the time. On today's machines there is no difference left; it mostly turns up in code compiled fifteen years ago. namsdec does not simulate it; `movdqu`, however, runs.",
+            fr: "Fait ce que fait `movdqu` — lire seize octets où qu'ils tombent —, mais en allant chercher davantage et en taillant dedans, ce qui était plus rapide sur certains processeurs d'alors. Sur les machines d'aujourd'hui il n'y a plus de différence ; on le rencontre surtout dans du code compilé il y a quinze ans. namsdec l'exécute comme `movdqu`, ce qu'elle est devenue.",
+            en: "Does what `movdqu` does — read sixteen bytes wherever they fall — but by fetching more and cutting inside, which was faster on some processors of the time. On today's machines there is no difference left; it mostly turns up in code compiled fifteen years ago. namsdec runs it as `movdqu`, which is what it has become.",
         },
         flags: "",
         example: "lddqu xmm0, [rsi]",
@@ -1548,14 +1666,15 @@ phaddd xmm0, xmm0   ; la somme des quatre",
             "prefetchnta",
             "prefetchw",
             "prefetchwt1",
+            "prefetch",
         ],
         title: Text {
             fr: "Prévenir le cache",
             en: "Warn the cache",
         },
         body: Text {
-            fr: "Demandent d'amener une ligne de cache **avant** qu'on en ait besoin. Elles ne lisent rien, n'écrivent rien, ne peuvent pas provoquer de faute : au pire elles ne servent à rien. Le chiffre dit jusqu'à quel niveau de cache remonter, `nta` signifie « je ne relirai pas ceci » et évite d'évincer le reste. C'est l'instruction la plus fréquente de ce manuel qui ne fait, littéralement, rien d'observable. namsdec ne la simule pas, et c'est sans conséquence : il n'a pas de cache à préchauffer.",
-            en: "Ask for a cache line to be fetched **before** it is needed. They read nothing, write nothing, and cannot fault: at worst they are useless. The digit says how far up the cache to bring it, `nta` means \"I will not read this again\" and avoids evicting the rest. It is the most frequent instruction in this manual that does, literally, nothing observable. namsdec does not simulate it, and nothing is lost: it has no cache to warm.",
+            fr: "Demandent d'amener une ligne de cache **avant** qu'on en ait besoin. Elles ne lisent rien, n'écrivent rien, ne peuvent pas provoquer de faute : au pire elles ne servent à rien. Le chiffre dit jusqu'à quel niveau de cache remonter, `nta` signifie « je ne relirai pas ceci » et évite d'évincer le reste. C'est l'instruction la plus fréquente de ce manuel qui ne fait, littéralement, rien d'observable. namsdec la laisse donc passer sans rien faire — ce qui est fidèle, puisqu'il n'a pas de cache à préchauffer — plutôt que de s'arrêter sur une instruction sans effet.",
+            en: "Ask for a cache line to be fetched **before** it is needed. They read nothing, write nothing, and cannot fault: at worst they are useless. The digit says how far up the cache to bring it, `nta` means \"I will not read this again\" and avoids evicting the rest. It is the most frequent instruction in this manual that does, literally, nothing observable. namsdec therefore lets it pass doing nothing — which is faithful, having no cache to warm — rather than stopping on an instruction with no effect.",
         },
         flags: "",
         example: "prefetcht0 [rsi + 64]",
@@ -1972,14 +2091,23 @@ phaddd xmm0, xmm0   ; la somme des quatre",
     },
     Entry {
         kind: Kind::Instruction,
-        names: &["packuswb", "packsswb", "packssdw"],
+        names: &[
+            "packuswb",
+            "packsswb",
+            "packssdw",
+            "packusdw",
+            "vpackuswb",
+            "vpacksswb",
+            "vpackssdw",
+            "vpackusdw",
+        ],
         title: Text {
             fr: "Rétrécir en empaquetant",
             en: "Pack down to a smaller size",
         },
         body: Text {
-            fr: "Prennent deux registres de valeurs larges et en font un seul de valeurs deux fois plus étroites, en saturant ce qui ne tient pas — `packuswb` ramène des mots de 16 bits à des octets non signés, en bornant à 0 et 255 plutôt qu'en tronquant. C'est l'opération qui termine presque tout traitement d'image ou de son vectorisé. namsdec ne la simule pas : on la lit, on ne l'exécute pas ici.",
-            en: "Take two registers of wide values and make one of values half as wide, saturating what does not fit — `packuswb` brings 16-bit words down to unsigned bytes, clamping to 0 and 255 rather than truncating. It is the operation that ends almost every vectorised image or sound routine. namsdec does not simulate it: it is read here, not run.",
+            fr: "Prennent deux registres de valeurs larges et en font un seul de valeurs deux fois plus étroites, en saturant ce qui ne tient pas — `packuswb` ramène des mots de 16 bits à des octets non signés, en bornant à 0 et 255 plutôt qu'en tronquant. C'est l'opération qui termine presque tout traitement d'image ou de son vectorisé. namsdec l'exécute : la source est toujours lue comme signée, même quand la destination ne l'est pas, et `packuswb` ramène donc tout négatif à zéro.",
+            en: "Take two registers of wide values and make one of values half as wide, saturating what does not fit — `packuswb` brings 16-bit words down to unsigned bytes, clamping to 0 and 255 rather than truncating. It is the operation that ends almost every vectorised image or sound routine. namsdec runs it: the source is always read as signed even when the destination is not, so `packuswb` brings anything negative down to zero.",
         },
         flags: "",
         example: "packuswb xmm0, xmm1",

@@ -13,6 +13,25 @@ entier refait à chaque image pour en montrer trente lignes —, puis le
 gros chantier qui en découlait : **ne plus mettre le listing en page
 d'un bloc**.
 
+**Le calcul vectoriel entier s'exécute**
+- **Un binaire ne s'arrête plus sur `pmaxub`.** On peut n'avoir jamais
+  écrit une ligne de SSE et buter dessus au premier pas : la bibliothèque
+  C ne cherche pas la fin d'une chaîne octet par octet, elle en compare
+  seize d'un coup au vecteur nul. Soixante-dix mnémoniques de plus —
+  minimum et maximum dans les deux signes et les trois largeurs,
+  l'arithmétique qui **sature** au lieu de boucler, `pshufb`, `palignr`,
+  l'emballage et l'élargissement, les produits et leurs deux moitiés, la
+  moyenne, l'écart absolu, `ptest`, et les versions AVX de tout cela.
+- Les `prefetch*` passent désormais sans rien faire, ce qui est fidèle :
+  elles n'ont aucun effet observable sur la vraie machine non plus. On
+  s'arrêtait dessus.
+- **La fenêtre d'aide s'ajuste à ce qu'elle montre** : une fiche courte
+  laissait cent trois pixels de vide au-dessus du bouton « OK ».
+- **Sept fiches nouvelles**, et huit mises à jour : elles annonçaient
+  « namsdec ne les simule pas » de ce qui s'exécute maintenant. Le manuel
+  compte 171 fiches, et un contrôle l'empêche désormais de prendre du
+  retard sur l'interpréteur.
+
 **Le listing ne se met plus en page d'un bloc**
 - **Ouvrir un gros binaire est devenu immédiat.** namsdec mettait tout le
   listing en page avant d'en peindre la moindre ligne : 2,9 secondes et

@@ -293,6 +293,299 @@ fn signed_gt_lanes(a: u128, b: u128, bytes: usize) -> u128 {
     })
 }
 
+/// `pmin*`/`pmax*` : voie par voie, le plus petit — ou le plus grand —
+/// des deux. Le jeu en donne une forme par largeur **et** par signe,
+/// parce qu'un octet à `0x80` vaut 128 pour l'un et −128 pour l'autre :
+/// c'est tout ce qui sépare `pmaxub` de `pmaxsb`.
+///
+/// `pminub` est la pièce maîtresse du `strlen` de la glibc — seize
+/// octets comparés d'un coup au vecteur nul —, et c'est à ce titre qu'on
+/// la croise dans à peu près tout binaire compilé.
+fn minmax_lanes(a: u128, b: u128, bytes: usize, signed: bool, max: bool) -> u128 {
+    let Some(w) = width_from_bytes(bytes) else {
+        return 0;
+    };
+    int_lanes(a, b, bytes, move |x, y| {
+        let garde_x = if signed {
+            let (sx, sy) = (sign_extend(x, w) as i64, sign_extend(y, w) as i64);
+            if max { sx > sy } else { sx < sy }
+        } else if max {
+            x > y
+        } else {
+            x < y
+        };
+        if garde_x { x } else { y }
+    })
+}
+
+/// L'arithmétique **saturée** : au lieu de repartir de l'autre bout
+/// quand elle déborde, la voie s'arrête à sa borne.
+///
+/// C'est ce qu'il faut quand les éléments sont des échantillons ou des
+/// pixels : deux clairs additionnés doivent donner du blanc, pas du
+/// noir. L'arithmétique ordinaire — `paddb` — fait l'inverse, et c'est
+/// pour ça que les deux existent.
+fn saturating_lanes(a: u128, b: u128, bytes: usize, signed: bool, sub: bool) -> u128 {
+    let Some(w) = width_from_bytes(bytes) else {
+        return 0;
+    };
+    let bits = bytes * 8;
+    let mask = lane_mask(bits);
+    int_lanes(a, b, bytes, move |x, y| {
+        if signed {
+            let (sx, sy) = (sign_extend(x, w) as i64, sign_extend(y, w) as i64);
+            let brut = if sub { sx - sy } else { sx + sy };
+            let haut = (1i64 << (bits - 1)) - 1;
+            brut.clamp(-haut - 1, haut) as u64
+        } else if sub {
+            x.saturating_sub(y)
+        } else {
+            (x + y).min(mask)
+        }
+    })
+}
+
+/// `pshufb` : chaque octet du résultat est l'octet de la source que
+/// désigne l'octet de même rang du contrôle — et il est **nul** si le
+/// bit de poids fort de ce contrôle-là est mis.
+///
+/// C'est la table de correspondance du pauvre : seize recherches en une
+/// instruction. Les routines de conversion (hexadécimal, base64,
+/// UTF-8) ne font pratiquement que ça.
+fn shuffle_bytes(src: u128, control: u128) -> u128 {
+    let mut out = 0u128;
+    for lane in 0..16 {
+        let choix = (control >> (lane * 8)) as u8;
+        if choix & 0x80 != 0 {
+            continue;
+        }
+        let octet = (src >> (usize::from(choix & 0x0f) * 8)) as u8;
+        out |= u128::from(octet) << (lane * 8);
+    }
+    out
+}
+
+/// `palignr` : les deux sources bout à bout — la première en haut —, le
+/// tout décalé de `bytes` octets vers le bas, et l'on garde les seize du
+/// bas.
+///
+/// Elle donne une fenêtre de seize octets à cheval sur deux lectures
+/// alignées : c'est ainsi qu'un `memcpy` traite une adresse qui ne
+/// tombe pas rond sans jamais faire de lecture non alignée.
+fn align_right(a: u128, b: u128, bytes: u32) -> u128 {
+    match bytes {
+        0 => b,
+        1..=15 => (b >> (bytes * 8)) | (a << (128 - bytes * 8)),
+        16 => a,
+        17..=31 => a >> ((bytes - 16) * 8),
+        _ => 0,
+    }
+}
+
+/// `pack*` : deux vecteurs d'éléments larges rendus dans un seul, deux
+/// fois plus étroit — ceux de `a` en bas, ceux de `b` en haut.
+///
+/// Ce qui ne tient pas est **saturé**, et c'est la seule façon de
+/// redescendre de seize à huit bits sans que 300 devienne 44. La source
+/// est toujours lue comme signée ; `signed` ne dit que ce qu'il advient
+/// de la destination — d'où `packuswb`, qui ramène tout négatif à zéro.
+fn pack_lanes(a: u128, b: u128, bytes: usize, signed: bool) -> u128 {
+    let Some(w) = width_from_bytes(bytes) else {
+        return 0;
+    };
+    let étroit = bytes * 4;
+    let voies = 16 / bytes;
+    let mut out = 0u128;
+    for lane in 0..voies {
+        for (moitié, src) in [a, b].into_iter().enumerate() {
+            let brut = (src >> (lane * bytes * 8)) as u64 & lane_mask(bytes * 8);
+            let valeur = sign_extend(brut, w) as i64;
+            let serré = if signed {
+                let haut = (1i64 << (étroit - 1)) - 1;
+                (valeur.clamp(-haut - 1, haut) as u64) & lane_mask(étroit)
+            } else {
+                valeur.clamp(0, (1i64 << étroit) - 1) as u64
+            };
+            out |= u128::from(serré) << ((moitié * voies + lane) * étroit);
+        }
+    }
+    out
+}
+
+/// `pavgb`/`pavgw` : la moyenne arrondie au supérieur. L'addition se
+/// fait sur une voie plus large que les éléments, donc rien ne déborde.
+fn average_lanes(a: u128, b: u128, bytes: usize) -> u128 {
+    int_lanes(a, b, bytes, |x, y| (x + y + 1) >> 1)
+}
+
+/// `psadbw` : la somme des écarts absolus, par moitiés de huit octets,
+/// rangée dans le mot du bas de chaque quadruple mot.
+///
+/// Une mesure de ressemblance entre deux blocs en une instruction —
+/// elle vient de la compression vidéo, et sert aussi à compter des
+/// octets (somme d'un masque d'octets à 1).
+fn sum_abs_diff(a: u128, b: u128) -> u128 {
+    let mut out = 0u128;
+    for moitié in 0..2 {
+        let mut total = 0u64;
+        for octet in 0..8 {
+            let shift = (moitié * 8 + octet) * 8;
+            total += u64::from(((a >> shift) as u8).abs_diff((b >> shift) as u8));
+        }
+        out |= u128::from(total) << (moitié * 64);
+    }
+    out
+}
+
+/// `pabs*` : la valeur absolue, voie par voie. La plus petite valeur
+/// négative n'a pas d'opposé qui tienne dans sa voie, et reste
+/// elle-même — c'est ce que fait le processeur, pas une approximation.
+fn abs_lanes(v: u128, bytes: usize) -> u128 {
+    let Some(w) = width_from_bytes(bytes) else {
+        return 0;
+    };
+    int_lanes(v, v, bytes, move |x, _| {
+        (sign_extend(x, w) as i64).unsigned_abs()
+    })
+}
+
+/// Ce qu'une multiplication vectorielle garde du produit : un produit
+/// de deux voies de `n` bits en fait `2n`, et il faut bien en jeter la
+/// moitié.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum MulPart {
+    /// `pmullw`, `pmulld` : les bits du bas.
+    Low,
+    /// `pmulhw` : ceux du haut, les sources étant signées.
+    HighSigned,
+    /// `pmulhuw` : ceux du haut, les sources ne l'étant pas.
+    HighUnsigned,
+}
+
+/// La multiplication voie par voie. Les deux moitiés du produit se
+/// demandent en deux instructions, qui se suivent dans le code quand
+/// c'est le produit entier qu'on veut.
+fn mul_lanes(a: u128, b: u128, bytes: usize, part: MulPart) -> u128 {
+    let Some(w) = width_from_bytes(bytes) else {
+        return 0;
+    };
+    let bits = bytes * 8;
+    int_lanes(a, b, bytes, move |x, y| match part {
+        MulPart::Low => x.wrapping_mul(y),
+        MulPart::HighUnsigned => ((u128::from(x) * u128::from(y)) >> bits) as u64,
+        MulPart::HighSigned => {
+            let produit =
+                i128::from(sign_extend(x, w) as i64) * i128::from(sign_extend(y, w) as i64);
+            (produit >> bits) as u64
+        }
+    })
+}
+
+/// `pmuludq`/`pmuldq` : deux multiplications 32 × 32 → 64, sur les voies
+/// paires seulement. Le produit tient en entier — rien n'est jeté —, et
+/// c'est la brique de l'arithmétique en grands nombres, celle de la
+/// cryptographie.
+fn mul_even_dwords(a: u128, b: u128, signed: bool) -> u128 {
+    let mut out = 0u128;
+    for lane in 0..2 {
+        let shift = lane * 64;
+        let produit = if signed {
+            (i64::from((a >> shift) as u32 as i32) * i64::from((b >> shift) as u32 as i32)) as u64
+        } else {
+            u64::from((a >> shift) as u32) * u64::from((b >> shift) as u32)
+        };
+        out |= u128::from(produit) << shift;
+    }
+    out
+}
+
+/// `pmaddwd` : huit produits signés de seize bits, additionnés deux par
+/// deux en quatre résultats de trente-deux. La largeur double au
+/// passage, ce qui laisse la place à la somme : c'est la brique du
+/// produit scalaire, et donc de presque tout le calcul matriciel.
+fn madd_words(a: u128, b: u128) -> u128 {
+    let mut out = 0u128;
+    for lane in 0..4 {
+        let lire = |v: u128, i: usize| i32::from((v >> ((lane * 2 + i) * 16)) as u16 as i16);
+        let somme = lire(a, 0) * lire(b, 0) + lire(a, 1) * lire(b, 1);
+        out |= u128::from(somme as u32) << (lane * 32);
+    }
+    out
+}
+
+/// `pmaddubsw` : la même idée sur des octets, et avec une asymétrie que
+/// rien n'annonce dans le nom — la *première* source est non signée, la
+/// seconde signée. C'est ce qu'il faut pour multiplier des pixels (0 à
+/// 255) par des coefficients qui, eux, peuvent être négatifs.
+fn madd_bytes(a: u128, b: u128) -> u128 {
+    let mut out = 0u128;
+    for lane in 0..8 {
+        let sans_signe = |i: usize| i32::from((a >> ((lane * 2 + i) * 8)) as u8);
+        let avec_signe = |i: usize| i32::from((b >> ((lane * 2 + i) * 8)) as u8 as i8);
+        let somme =
+            (sans_signe(0) * avec_signe(0) + sans_signe(1) * avec_signe(1)).clamp(-32768, 32767);
+        out |= u128::from(somme as u16) << (lane * 16);
+    }
+    out
+}
+
+/// `phadd*`/`phsub*` : additionner — ou soustraire — les éléments **côte
+/// à côte dans le même registre**, au lieu d'un registre sur l'autre.
+///
+/// C'est le geste qui manquait pour totaliser un vecteur : quatre
+/// nombres, deux `phaddd`, et la somme est en bas.
+fn horizontal_lanes(a: u128, b: u128, bytes: usize, sub: bool, saturate: bool) -> u128 {
+    let Some(w) = width_from_bytes(bytes) else {
+        return 0;
+    };
+    let bits = bytes * 8;
+    let voies = 16 / bytes;
+    let mut out = 0u128;
+    for (moitié, src) in [a, b].into_iter().enumerate() {
+        for paire in 0..(voies / 2) {
+            let lire = |i: usize| {
+                sign_extend(
+                    (src >> ((paire * 2 + i) * bits)) as u64 & lane_mask(bits),
+                    w,
+                ) as i64
+            };
+            let brut = if sub {
+                lire(0) - lire(1)
+            } else {
+                lire(0) + lire(1)
+            };
+            let valeur = if saturate {
+                let haut = (1i64 << (bits - 1)) - 1;
+                brut.clamp(-haut - 1, haut) as u64
+            } else {
+                brut as u64
+            };
+            out |= u128::from(valeur & lane_mask(bits)) << ((moitié * voies / 2 + paire) * bits);
+        }
+    }
+    out
+}
+
+/// `pmovzx*`/`pmovsx*` : les éléments du bas de la source, élargis — par
+/// des zéros ou par leur bit de signe. Rien ne se perd : c'est l'inverse
+/// exact de `pack*`.
+fn extend_lanes(src: u128, from: usize, to: usize, signed: bool) -> u128 {
+    let Some(w) = width_from_bytes(from) else {
+        return 0;
+    };
+    let mut out = 0u128;
+    for lane in 0..(16 / to) {
+        let valeur = (src >> (lane * from * 8)) as u64 & lane_mask(from * 8);
+        let large = if signed {
+            sign_extend(valeur, w)
+        } else {
+            valeur
+        };
+        out |= u128::from(large & lane_mask(to * 8)) << (lane * to * 8);
+    }
+    out
+}
+
 /// Un décalage vectoriel. Au-delà de la largeur d'un élément le résultat
 /// est nul — ou tout à signe pour `psra*` —, et non « ce qui reste »
 /// comme sur un registre général.
@@ -425,7 +718,23 @@ impl Emulator {
             | M::Vmovups
             | M::Vmovupd
             | M::Vmovdqa
-            | M::Vmovdqu => {
+            | M::Vmovdqu
+            // Les déplacements « non temporels » : au processeur, ils
+            // disent de ne pas garder la donnée en cache — on écrit un
+            // tampon qu'on ne relira pas. À l'émulation, un cache n'est
+            // rien : ce sont des déplacements comme les autres. De même
+            // `lddqu`, qui n'est qu'un `movdqu` plus adroit à cheval sur
+            // deux lignes de cache.
+            | M::Movntps
+            | M::Movntpd
+            | M::Movntdq
+            | M::Movntdqa
+            | M::Lddqu
+            | M::Vmovntps
+            | M::Vmovntpd
+            | M::Vmovntdq
+            | M::Vmovntdqa
+            | M::Vlddqu => {
                 let src = self.read_vec_op(instr, instr.op_count() - 1)?;
                 let wide = self.is_wide(instr);
                 self.write_vec_op(instr, 0, [src[0], if wide { src[1] } else { 0 }])?;
@@ -657,6 +966,191 @@ impl Emulator {
             M::Pcmpgtd | M::Vpcmpgtd => {
                 self.vector_binary(instr, |a, b| signed_gt_lanes(a, b, 4))?
             }
+
+            M::Pcmpeqq | M::Vpcmpeqq => self.vector_binary(instr, |a, b| {
+                int_lanes(a, b, 8, |x, y| if x == y { !0 } else { 0 })
+            })?,
+            M::Pcmpgtq | M::Vpcmpgtq => {
+                self.vector_binary(instr, |a, b| signed_gt_lanes(a, b, 8))?
+            }
+
+            // Le minimum et le maximum, voie par voie. SSE2 n'en donnait
+            // que deux formes — l'octet non signé et le mot signé, les
+            // deux dont les chaînes et le son avaient besoin ; SSE4.1 a
+            // complété le tableau.
+            M::Pminub | M::Vpminub => {
+                self.vector_binary(instr, |a, b| minmax_lanes(a, b, 1, false, false))?
+            }
+            M::Pmaxub | M::Vpmaxub => {
+                self.vector_binary(instr, |a, b| minmax_lanes(a, b, 1, false, true))?
+            }
+            M::Pminsb | M::Vpminsb => {
+                self.vector_binary(instr, |a, b| minmax_lanes(a, b, 1, true, false))?
+            }
+            M::Pmaxsb | M::Vpmaxsb => {
+                self.vector_binary(instr, |a, b| minmax_lanes(a, b, 1, true, true))?
+            }
+            M::Pminuw | M::Vpminuw => {
+                self.vector_binary(instr, |a, b| minmax_lanes(a, b, 2, false, false))?
+            }
+            M::Pmaxuw | M::Vpmaxuw => {
+                self.vector_binary(instr, |a, b| minmax_lanes(a, b, 2, false, true))?
+            }
+            M::Pminsw | M::Vpminsw => {
+                self.vector_binary(instr, |a, b| minmax_lanes(a, b, 2, true, false))?
+            }
+            M::Pmaxsw | M::Vpmaxsw => {
+                self.vector_binary(instr, |a, b| minmax_lanes(a, b, 2, true, true))?
+            }
+            M::Pminud | M::Vpminud => {
+                self.vector_binary(instr, |a, b| minmax_lanes(a, b, 4, false, false))?
+            }
+            M::Pmaxud | M::Vpmaxud => {
+                self.vector_binary(instr, |a, b| minmax_lanes(a, b, 4, false, true))?
+            }
+            M::Pminsd | M::Vpminsd => {
+                self.vector_binary(instr, |a, b| minmax_lanes(a, b, 4, true, false))?
+            }
+            M::Pmaxsd | M::Vpmaxsd => {
+                self.vector_binary(instr, |a, b| minmax_lanes(a, b, 4, true, true))?
+            }
+
+            // L'addition et la soustraction qui s'arrêtent à la borne.
+            M::Paddusb | M::Vpaddusb => {
+                self.vector_binary(instr, |a, b| saturating_lanes(a, b, 1, false, false))?
+            }
+            M::Paddusw | M::Vpaddusw => {
+                self.vector_binary(instr, |a, b| saturating_lanes(a, b, 2, false, false))?
+            }
+            M::Paddsb | M::Vpaddsb => {
+                self.vector_binary(instr, |a, b| saturating_lanes(a, b, 1, true, false))?
+            }
+            M::Paddsw | M::Vpaddsw => {
+                self.vector_binary(instr, |a, b| saturating_lanes(a, b, 2, true, false))?
+            }
+            M::Psubusb | M::Vpsubusb => {
+                self.vector_binary(instr, |a, b| saturating_lanes(a, b, 1, false, true))?
+            }
+            M::Psubusw | M::Vpsubusw => {
+                self.vector_binary(instr, |a, b| saturating_lanes(a, b, 2, false, true))?
+            }
+            M::Psubsb | M::Vpsubsb => {
+                self.vector_binary(instr, |a, b| saturating_lanes(a, b, 1, true, true))?
+            }
+            M::Psubsw | M::Vpsubsw => {
+                self.vector_binary(instr, |a, b| saturating_lanes(a, b, 2, true, true))?
+            }
+
+            // La moyenne, l'écart absolu et la valeur absolue : trois
+            // mesures que le jeu rend en une instruction parce que le
+            // traitement d'image et le son les demandent partout.
+            M::Pavgb | M::Vpavgb => self.vector_binary(instr, |a, b| average_lanes(a, b, 1))?,
+            M::Pavgw | M::Vpavgw => self.vector_binary(instr, |a, b| average_lanes(a, b, 2))?,
+            M::Psadbw | M::Vpsadbw => self.vector_binary(instr, sum_abs_diff)?,
+            M::Pabsb | M::Vpabsb => self.vector_binary(instr, |_, b| abs_lanes(b, 1))?,
+            M::Pabsw | M::Vpabsw => self.vector_binary(instr, |_, b| abs_lanes(b, 2))?,
+            M::Pabsd | M::Vpabsd => self.vector_binary(instr, |_, b| abs_lanes(b, 4))?,
+
+            // La multiplication. Un produit de deux voies de n bits en
+            // fait 2n : il faut dire laquelle des deux moitiés on garde.
+            M::Pmullw | M::Vpmullw => {
+                self.vector_binary(instr, |a, b| mul_lanes(a, b, 2, MulPart::Low))?
+            }
+            M::Pmulhw | M::Vpmulhw => {
+                self.vector_binary(instr, |a, b| mul_lanes(a, b, 2, MulPart::HighSigned))?
+            }
+            M::Pmulhuw | M::Vpmulhuw => {
+                self.vector_binary(instr, |a, b| mul_lanes(a, b, 2, MulPart::HighUnsigned))?
+            }
+            M::Pmulld | M::Vpmulld => {
+                self.vector_binary(instr, |a, b| mul_lanes(a, b, 4, MulPart::Low))?
+            }
+            M::Pmuludq | M::Vpmuludq => {
+                self.vector_binary(instr, |a, b| mul_even_dwords(a, b, false))?
+            }
+            M::Pmuldq | M::Vpmuldq => {
+                self.vector_binary(instr, |a, b| mul_even_dwords(a, b, true))?
+            }
+
+            M::Pmaddwd | M::Vpmaddwd => self.vector_binary(instr, madd_words)?,
+            M::Pmaddubsw | M::Vpmaddubsw => self.vector_binary(instr, madd_bytes)?,
+            M::Phaddw | M::Vphaddw => {
+                self.vector_binary(instr, |a, b| horizontal_lanes(a, b, 2, false, false))?
+            }
+            M::Phaddd | M::Vphaddd => {
+                self.vector_binary(instr, |a, b| horizontal_lanes(a, b, 4, false, false))?
+            }
+            M::Phaddsw | M::Vphaddsw => {
+                self.vector_binary(instr, |a, b| horizontal_lanes(a, b, 2, false, true))?
+            }
+            M::Phsubw | M::Vphsubw => {
+                self.vector_binary(instr, |a, b| horizontal_lanes(a, b, 2, true, false))?
+            }
+            M::Phsubd | M::Vphsubd => {
+                self.vector_binary(instr, |a, b| horizontal_lanes(a, b, 4, true, false))?
+            }
+            M::Phsubsw | M::Vphsubsw => {
+                self.vector_binary(instr, |a, b| horizontal_lanes(a, b, 2, true, true))?
+            }
+
+            // Réordonner, élargir, rétrécir : le travail d'emballage,
+            // qui occupe la moitié d'une routine vectorielle réelle.
+            M::Pshufb | M::Vpshufb => self.vector_binary(instr, shuffle_bytes)?,
+            M::Palignr | M::Vpalignr => {
+                let octets = self.read_op(instr, instr.op_count() - 1)? as u32;
+                self.vector_binary_extra(instr, 1, move |a, b| align_right(a, b, octets))?;
+            }
+            M::Packsswb | M::Vpacksswb => {
+                self.vector_binary(instr, |a, b| pack_lanes(a, b, 2, true))?
+            }
+            M::Packssdw | M::Vpackssdw => {
+                self.vector_binary(instr, |a, b| pack_lanes(a, b, 4, true))?
+            }
+            M::Packuswb | M::Vpackuswb => {
+                self.vector_binary(instr, |a, b| pack_lanes(a, b, 2, false))?
+            }
+            M::Packusdw | M::Vpackusdw => {
+                self.vector_binary(instr, |a, b| pack_lanes(a, b, 4, false))?
+            }
+            M::Pmovzxbw | M::Vpmovzxbw => self.extend_packed(instr, 1, 2, false)?,
+            M::Pmovzxbd | M::Vpmovzxbd => self.extend_packed(instr, 1, 4, false)?,
+            M::Pmovzxbq | M::Vpmovzxbq => self.extend_packed(instr, 1, 8, false)?,
+            M::Pmovzxwd | M::Vpmovzxwd => self.extend_packed(instr, 2, 4, false)?,
+            M::Pmovzxwq | M::Vpmovzxwq => self.extend_packed(instr, 2, 8, false)?,
+            M::Pmovzxdq | M::Vpmovzxdq => self.extend_packed(instr, 4, 8, false)?,
+            M::Pmovsxbw | M::Vpmovsxbw => self.extend_packed(instr, 1, 2, true)?,
+            M::Pmovsxbd | M::Vpmovsxbd => self.extend_packed(instr, 1, 4, true)?,
+            M::Pmovsxbq | M::Vpmovsxbq => self.extend_packed(instr, 1, 8, true)?,
+            M::Pmovsxwd | M::Vpmovsxwd => self.extend_packed(instr, 2, 4, true)?,
+            M::Pmovsxwq | M::Vpmovsxwq => self.extend_packed(instr, 2, 8, true)?,
+            M::Pmovsxdq | M::Vpmovsxdq => self.extend_packed(instr, 4, 8, true)?,
+
+            // Une seule voie, nommée par un immédiat : le pont entre un
+            // registre vectoriel et un registre général.
+            M::Pinsrb | M::Vpinsrb => self.insert_element(instr, 1)?,
+            M::Pinsrw | M::Vpinsrw => self.insert_element(instr, 2)?,
+            M::Pinsrd | M::Vpinsrd => self.insert_element(instr, 4)?,
+            M::Pinsrq | M::Vpinsrq => self.insert_element(instr, 8)?,
+            M::Pextrb | M::Vpextrb => self.extract_element(instr, 1)?,
+            M::Pextrw | M::Vpextrw => self.extract_element(instr, 2)?,
+            M::Pextrd | M::Vpextrd => self.extract_element(instr, 4)?,
+            M::Pextrq | M::Vpextrq => self.extract_element(instr, 8)?,
+
+            M::Ptest | M::Vptest => self.packed_test(instr)?,
+
+            // Demander au cache de préparer une ligne : une *indication*,
+            // qui ne change aucun registre ni aucun octet de mémoire.
+            // Ici, où il n'y a pas de cache, elle ne fait rien — mais
+            // elle doit passer, sans quoi un binaire optimisé s'arrête
+            // sur une instruction qui, sur la vraie machine, n'a aucun
+            // effet observable.
+            M::Prefetch
+            | M::Prefetchw
+            | M::Prefetchwt1
+            | M::Prefetchnta
+            | M::Prefetcht0
+            | M::Prefetcht1
+            | M::Prefetcht2 => {}
 
             M::Psllw | M::Vpsllw => self.packed_shift(instr, 2, PackedShift::Left)?,
             M::Pslld | M::Vpslld => self.packed_shift(instr, 4, PackedShift::Left)?,
@@ -1063,6 +1557,86 @@ impl Emulator {
         } else {
             self.write_op(instr, 0, value)
         }
+    }
+
+    /// `pmovzx*`/`pmovsx*` : la source élargie, chaque élément gardant
+    /// sa valeur.
+    ///
+    /// Elle ne passe pas par `vector_binary`, qui traite les deux
+    /// moitiés séparément : ici la source fait la moitié de la
+    /// destination, et c'est précisément d'une moitié à l'autre que les
+    /// éléments traversent.
+    fn extend_packed(
+        &mut self,
+        instr: &Instruction,
+        from: usize,
+        to: usize,
+        signed: bool,
+    ) -> Result<(), EmuError> {
+        let src = self.read_vec_op(instr, instr.op_count() - 1)?[0];
+        if self.is_wide(instr) {
+            // La destination fait 256 bits : la source entière y passe,
+            // et la part qui nourrit la moitié haute est celle qui se
+            // trouve au-delà de 128 / (to / from) bits.
+            let coupe = 128 / (to / from);
+            let out = [
+                extend_lanes(src, from, to, signed),
+                extend_lanes(src >> coupe, from, to, signed),
+            ];
+            self.write_vec_op(instr, 0, out)
+        } else {
+            self.write_vec_op(instr, 0, [extend_lanes(src, from, to, signed), 0])
+        }
+    }
+
+    /// `pinsr*` : une voie écrite à l'index que donne l'immédiat, le
+    /// reste du registre intact. La valeur vient d'un registre général
+    /// ou de la mémoire — c'est par là qu'un scalaire entre dans un
+    /// vecteur.
+    fn insert_element(&mut self, instr: &Instruction, bytes: usize) -> Result<(), EmuError> {
+        let last = instr.op_count() - 1;
+        let index = self.read_op(instr, last)? as usize % (16 / bytes);
+        // AVX nomme la destination à part : `vpinsrw xmm0, xmm1, eax, 2`
+        // laisse `xmm1` intact, là où `pinsrw xmm0, eax, 2` écrit dans sa
+        // propre source.
+        let gardé = self.read_vec_op(instr, if instr.op_count() >= 4 { 1 } else { 0 })?[0];
+        let valeur = u128::from(self.read_op(instr, last - 1)? & lane_mask(bytes * 8));
+        let shift = index * bytes * 8;
+        let trou = u128::from(lane_mask(bytes * 8)) << shift;
+        self.write_vec_op(instr, 0, [(gardé & !trou) | (valeur << shift), 0])
+    }
+
+    /// `pextr*` : le chemin inverse. Vers un registre général, la voie
+    /// est étendue par des zéros, quelle que soit sa largeur d'origine.
+    fn extract_element(&mut self, instr: &Instruction, bytes: usize) -> Result<(), EmuError> {
+        let last = instr.op_count() - 1;
+        let index = self.read_op(instr, last)? as usize % (16 / bytes);
+        let src = self.read_vec_op(instr, last - 1)?[0];
+        let valeur = (src >> (index * bytes * 8)) as u64 & lane_mask(bytes * 8);
+        self.write_op(instr, 0, valeur)
+    }
+
+    /// `ptest` : deux questions posées d'un coup sur 128 ou 256 bits.
+    ///
+    /// ZF dit que la seconde source n'a aucun bit en commun avec la
+    /// première ; CF, qu'elle n'en a aucun *hors* de la première. Après
+    /// une comparaison vectorielle, c'est ainsi qu'on demande « aucune
+    /// voie ne correspond » et « toutes correspondent » sans jamais
+    /// ramener le vecteur dans un registre général.
+    fn packed_test(&mut self, instr: &Instruction) -> Result<(), EmuError> {
+        let masque = self.read_vec_op(instr, 0)?;
+        let valeur = self.read_vec_op(instr, 1)?;
+        let large = matches!(instr.op_kind(0), OpKind::Register) && instr.op_register(0).is_ymm();
+        let moitiés = if large { 2 } else { 1 };
+        let mut flags = RFlags::empty();
+        if (0..moitiés).all(|i| valeur[i] & masque[i] == 0) {
+            flags |= RFlags::ZF;
+        }
+        if (0..moitiés).all(|i| valeur[i] & !masque[i] == 0) {
+            flags |= RFlags::CF;
+        }
+        self.cpu.flags.apply_arith(flags);
+        Ok(())
     }
 
     /// `comisd` et ses variantes rangent le résultat de la comparaison

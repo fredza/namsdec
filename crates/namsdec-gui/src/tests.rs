@@ -22993,6 +22993,18 @@ fn scènes() -> Vec<Scène> {
             }
         }
     }
+    // L'aide sur une FICHE, et la plus chargée du manuel : vingt-quatre
+    // mnémoniques en tête, deux paragraphes dessous. La scène « aide »
+    // n'ouvrait que le sommaire, si bien qu'aucun invariant ne regardait
+    // jamais une fiche peinte — alors que c'est ce qu'on lit sous F1.
+    scènes.push((
+        "aide / une fiche chargée".to_owned(),
+        Some("instruction_help"),
+        Box::new(|app| {
+            app.show_help = true;
+            app.help = Some(("pminub".to_owned(), namsdec_doc::lookup("pminub")));
+        }),
+    ));
     // Un compteur en attente : `5` tapé, le mouvement pas encore venu.
     // C'est une forme de plus dans la rangée la plus serrée de l'écran —
     // la barre d'état —, et les invariants de scène sont ce qui dit

@@ -655,6 +655,27 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "<font face='Courier'>call</font> seul au milieu de deux mille instructions "
          "ordinaires reste visible — et c'est justement le rare qu'on cherche des yeux."),
 
+        ("h2", "Le calcul vectoriel, et pourquoi il vous tombe dessus"),
+        ("p",
+         "On peut n'avoir jamais écrit une ligne de SSE et s'arrêter dessus au premier pas "
+         "d'un vrai binaire. La raison tient en une instruction : "
+         "<font face='Courier'>pminub</font>. La bibliothèque C ne cherche pas la fin d'une "
+         "chaîne octet par octet — elle en compare <b>seize d'un coup</b> au vecteur nul, et "
+         "ce minimum-là ouvre pratiquement tout programme compilé."),
+        ("p",
+         "namsdec exécute donc le calcul vectoriel entier au complet : minimum et maximum "
+         "dans les deux signes et les trois largeurs, l'arithmétique qui <b>sature</b> au "
+         "lieu de boucler (<font face='Courier'>paddusb</font> : 250 + 10 font 255, pas 4), "
+         "le choix d'octets par table (<font face='Courier'>pshufb</font>), la fenêtre à "
+         "cheval sur deux registres (<font face='Courier'>palignr</font>), l'emballage et "
+         "l'élargissement, les produits et leurs deux moitiés, la moyenne, l'écart absolu, "
+         "et <font face='Courier'>ptest</font> — la seule de la famille qui écrive des "
+         "indicateurs. Les versions AVX suivent la même route : seul l'encodage change."),
+        ("note",
+         "Une fiche <b>F1</b> existe pour chacune, et un contrôle empêche le manuel de dire "
+         "qu'une instruction n'est pas simulée alors qu'elle s'exécute : la documentation "
+         "d'un outil qui apprend ne peut pas être en retard sur l'outil."),
+
         ("h2", "Les points d'arrêt"),
         ("p",
          "Un clic dans la gouttière pose un point d'arrêt. Il peut porter une "
@@ -2255,7 +2276,7 @@ def main():
         "faute de code à exécuter derrière.",
         "Les appels système qui touchent au monde — `mmap`, `open`, `fork` — sont nommés "
         "mais pas exécutés. namsdec le dit dès l'assemblage, avec la ligne.",
-        "AVX-512, FMA, `in`/`out` et `cmpxchg16b` ne sont pas implémentés.",
+        "AVX-512 — registres de 512 bits et masques `k` —, FMA, les instructions de chaîne de SSE4.2 (`pcmpistri`), `in`/`out` et `cmpxchg16b` ne sont pas implémentés. SSE, SSE2, SSSE3, SSE4.1, AVX et AVX2 le sont.",
     ]))
     blocs.append(("h1", "Mises à jour, licence et contact"))
     blocs.append(("p",

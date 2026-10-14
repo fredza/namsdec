@@ -12,3 +12,6 @@ thiserror.workspace = true
 
 [dev-dependencies]
 namsdec-asm.workspace = true
+# Le manuel, pour le contrôle qui l'empêche d'annoncer qu'une
+# instruction n'est pas simulée alors qu'elle s'exécute ici.
+namsdec-doc.workspace = true

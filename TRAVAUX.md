@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **14 octobre
-2026**, version 0.2.8-beta.3, 1 174 tests au vert.
+2026**, version 0.2.8-beta.3, 1 182 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -29,6 +29,56 @@ Ce qui reste est de la finition mesurée : des alignements de quelques
 pixels, deux tailles de police, et le vide sous « Prochaine
 instruction », qui tient au même nœud que le vide de 56 px — l'état du
 processeur est ancré.
+
+---
+
+## 9. Le calcul vectoriel entier, au complet (A 7.15)
+
+Un grief sur capture : FROGMAN s'arrête sur « l'interpréteur namsdec ne
+gère pas l'instruction Pmaxub », juste après avoir demandé sa clé. Ce
+n'est pas une curiosité : `pminub` est la pièce maîtresse du `strlen` de
+la bibliothèque C, et tout binaire qui lit une chaîne passe par là.
+
+- [x] **Soixante-dix mnémoniques de plus** (A 7.15) — min/max dans les
+      deux signes et les trois largeurs, l'arithmétique saturée,
+      `pshufb`, `palignr`, les `pack*`, les `pmovzx*`/`pmovsx*`, les
+      produits et leurs deux moitiés, `pmaddwd`, les horizontales,
+      `pavgb`, `psadbw`, `pabs*`, `pinsr*`/`pextr*`, `pcmpeqq`,
+      `pcmpgtq`, `ptest`, les déplacements non temporels, et les
+      `prefetch*` qui passent sans rien faire. Les formes AVX suivent :
+      seul l'encodage change.
+- [x] **Ce qui manquait a été MESURÉ, pas supposé** — les mnémoniques du
+      moteur confrontés à ce qu'`objdump` trouve dans les neuf binaires
+      d'épreuve, par fréquence : `palignr` 574, `pminub` 511, `movntps`
+      160, `prefetch*` 444.
+- [x] **Six contrôles de bout en bout**, assemblés par le vrai nasm :
+      `the_vector_strlen_of_a_real_libc_runs`,
+      `packed_min_and_max_know_their_sign_and_their_width` (bâti sur la
+      dualité qui fait que `pmaxub` et `pminsb` rendent le même vecteur),
+      `saturating_arithmetic_stops_at_the_edge`,
+      `packing_shuffling_and_widening_move_the_bytes_where_they_belong`,
+      `packed_multiplication_and_measures`,
+      `one_lane_at_a_time_and_what_ptest_answers`,
+      `multiply_add_and_horizontal_sums`.
+- [x] **Le manuel ne peut plus être en retard sur l'interpréteur** —
+      huit fiches disaient « namsdec ne les simule pas » de ce qui
+      s'exécute maintenant. `the_manual_does_not_claim_an_instruction_is_unsupported_when_it_runs`
+      assemble l'exemple de chaque fiche qui l'affirme et la dénonce si
+      elle passe ; il compte ce qu'il a jugé et refuse de passer à vide.
+      Éprouvé en semant une fiche menteuse.
+- [x] **Sept fiches nouvelles**, le manuel passe de 164 à 171 — exigées
+      par `everything_the_emulator_runs_has_a_sheet`, qui avait raison.
+- [x] **La fenêtre d'aide ne garde plus sa taille quoi qu'elle montre**
+      — trouvé par la checklist d'avant-commit : les scènes du banc
+      ouvraient l'aide sur son sommaire et jamais sur une fiche. Une
+      scène de plus (`pminub`, la fiche aux vingt-quatre mnémoniques), et
+      `a_window_opens_at_the_size_of_what_it_shows` a nommé 103 px de
+      vide au-dessus du bouton « OK ».
+- [ ] **`pcmpistri`** (401 occurrences) : les instructions de chaîne de
+      SSE4.2. Pas difficile, long, et mérite ses propres contrôles.
+- [ ] **AVX-512** (plus de deux mille occurrences) : registres de 512
+      bits et registres de masque `k`. Chantier de structure, pas ajout
+      de mnémoniques.
 
 ---
 

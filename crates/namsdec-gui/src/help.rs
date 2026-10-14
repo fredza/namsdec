@@ -691,12 +691,19 @@ impl NamsdecApp {
             .open(&mut open)
             .resizable(true)
             .collapsible(false)
-            // 460 × 320 était trop petit : une fiche s'y lisait par
+            // 460 de large était trop étroit : une fiche s'y lisait par
             // tranches de six lignes, et la liste des résultats tenait
             // en quatre. Une barre de défilement qui parcourt quatre
             // lignes n'est pas une barre, c'est un aveu.
-            .default_size([680.0, 560.0])
-            .min_size([460.0, 320.0])
+            //
+            // La HAUTEUR, elle, n'est pas imposée : une fiche courte
+            // laissait cent trois pixels de vide entre sa dernière ligne
+            // et le bouton « OK », ancré au bas d'un cadre de 560 px.
+            // Les zones défilantes se rétractent à leur contenu et se
+            // bornent à `window_room`, la fenêtre suit — comme ailleurs
+            // dans namsdec.
+            .default_width(680.0)
+            .min_width(460.0)
             // En bas à droite, loin du curseur : on lit la fiche en
             // continuant d'écrire, elle ne doit pas couvrir la ligne sur
             // laquelle on vient de demander de l'aide.
@@ -797,7 +804,8 @@ impl NamsdecApp {
             ui.separator();
             egui::ScrollArea::vertical()
                 .id_salt("help_index")
-                .auto_shrink([false, false])
+                .max_height(window_room(ui))
+                .auto_shrink([false, true])
                 .show(ui, |ui| {
                     for trouvée in trouvées {
                         let ligne = ui.horizontal_wrapped(|ui| {
@@ -873,7 +881,8 @@ impl NamsdecApp {
         let mut à_ouvrir: Option<String> = None;
         egui::ScrollArea::vertical()
             .id_salt("help")
-            .auto_shrink([false, false])
+            .max_height(window_room(ui))
+            .auto_shrink([false, true])
             .show(ui, |ui| {
                 ui.horizontal_wrapped(|ui| {
                     for name in entry.names {
@@ -1044,7 +1053,7 @@ impl NamsdecApp {
         egui::ScrollArea::vertical()
             .id_salt("help_sommaire")
             .max_height(window_room(ui))
-            .auto_shrink([false, false])
+            .auto_shrink([false, true])
             .show(ui, |ui| {
                 for entry in fiches {
                     ui.horizontal_wrapped(|ui| {

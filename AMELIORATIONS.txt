@@ -3197,3 +3197,117 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
   l'écrire ici que de le découvrir. La sortie serait une vue de lecture
   qui sait aussi sélectionner et copier ; ce serait un autre chantier,
   et il n'a pas d'urgence.
+
+
+--------------------------------------------------------------------------------
+ 7.15  « L'INTERPRÉTEUR NE GÈRE PAS L'INSTRUCTION PMAXUB »
+       (14 octobre 2026) — le calcul vectoriel entier, au complet
+--------------------------------------------------------------------------------
+
+  LE GRIEF tient dans une capture : FROGMAN chargé, Exécuter, et la
+  console s'arrête sur « l'interpréteur namsdec ne gère pas l'instruction
+  Pmaxub ». Le programme avait écrit sa bannière et demandait
+  « IDENTIFIER : ACCESS KEY: » — on s'arrête donc à l'endroit précis où
+  l'on venait travailler.
+
+  CE QUE ÇA DIT VRAIMENT. `pmaxub` n'est pas une curiosité de calcul
+  scientifique : c'est, avec `pminub`, la pièce maîtresse du `strlen` de
+  la bibliothèque C. On ne cherche pas la fin d'une chaîne octet par
+  octet, on compare seize octets d'un coup au vecteur nul. Autrement dit :
+  tout binaire qui lit une chaîne passe par là, et namsdec s'arrêtait
+  dessus. L'interpréteur savait déjà faire `paddb`, `pcmpeqb`, `pshufd`,
+  `punpcklbw` — il lui manquait justement la famille que les compilateurs
+  et les bibliothèques emploient le plus.
+
+  CE QUI A ÉTÉ MESURÉ, plutôt que supposé. Les mnémoniques nommés dans le
+  moteur, lus dans ses sources (c'est la liste que
+  `everything_the_emulator_runs_has_a_sheet` lit déjà), confrontés à ce
+  que `objdump -d -M intel` trouve dans les neuf binaires d'épreuve, par
+  fréquence. Le relevé a donné, dans l'ordre :
+
+      palignr      574      pminub     169 + 342 (AVX)
+      pcmpistri    401      pminud      18 + 142 (AVX)
+      movntps      160      packuswb    14
+      pmullw        12      pmaxub      12
+      pinsrw        12      pshufb      10
+
+  — plus les `prefetch*` (264 + 128 + 52), qui ne font rien d'observable
+  et sur lesquelles on s'arrêtait quand même.
+
+  CE QUI A ÉTÉ AJOUTÉ, soixante-dix mnémoniques en comptant les formes
+  AVX :
+    - min/max : les douze formes (trois largeurs × deux signes × min/max)
+      et leurs `vp*`. Le signe n'est pas un détail : `0x80` vaut 128 pour
+      `pmaxub` et −128 pour `pmaxsb`, si bien que `pmaxub` et `pminsb`
+      rendent le MÊME vecteur. Le contrôle est bâti sur cette dualité —
+      une implémentation qui confondrait les deux passerait la moitié des
+      assertions et échouerait sur l'autre.
+    - l'arithmétique saturée : `padds*`, `paddus*`, `psubs*`, `psubus*`.
+      Le contrôle calcule aussi `paddb` sur les mêmes octets, pour que la
+      différence soit dans le fichier et pas seulement dans le commentaire.
+    - l'emballage : `pshufb`, `palignr`, `packuswb`/`packsswb`/`packssdw`/
+      `packusdw`, `pmovzx*`/`pmovsx*` (douze formes chacune).
+    - le calcul : `pmullw`, `pmulhw`, `pmulhuw`, `pmulld`, `pmuludq`,
+      `pmuldq`, `pmaddwd`, `pmaddubsw`, `pavgb`, `pavgw`, `psadbw`,
+      `pabs*`, et les horizontales `phadd*`/`phsub*`.
+    - la voie seule : `pinsr*`/`pextr*` dans les quatre largeurs.
+    - `pcmpeqq`, `pcmpgtq`, et `ptest` — la seule du lot qui écrive des
+      indicateurs.
+    - les déplacements non temporels (`movntdq` et compagnie) et `lddqu`,
+      rangés avec les déplacements ordinaires : sans cache, c'est ce
+      qu'ils sont.
+    - les `prefetch*`, qui passent sans rien faire. C'est FIDÈLE, pas
+      approximatif : elles n'ont aucun effet observable sur la vraie
+      machine non plus.
+
+  LE PIÈGE DES `pmovzx*`. Elles ne peuvent pas passer par
+  `vector_binary`, qui applique l'opération à chaque moitié de 128 bits
+  séparément : ici la source fait la MOITIÉ de la destination, et c'est
+  précisément d'une moitié à l'autre que les éléments traversent. D'où
+  `extend_packed`, qui coupe la source à 128/(to/from) bits.
+
+  LA DOCUMENTATION ÉTAIT EN RETARD, ET LE RESTAIT TOUTE SEULE. Huit
+  fiches disaient « namsdec ne les simule pas » d'instructions qui
+  s'exécutent maintenant. Un contrôle existait déjà dans l'autre sens —
+  `every_documented_example_assembles_and_runs` vérifie qu'un exemple non
+  annoncé « non simulé » s'exécute vraiment —, mais il faisait `continue`
+  sur les fiches qui l'annonçaient : exactement le cas qui venait de
+  devenir faux. D'où `the_manual_does_not_claim_an_instruction_is_un-
+  supported_when_it_runs`, qui prend l'exemple de chaque fiche qui
+  l'affirme, l'assemble seul, l'exécute d'un pas, et la dénonce si elle
+  passe. Il ne regarde que dans ce sens : un exemple peut échouer pour
+  une autre raison qu'un mnémonique inconnu (une adresse hors mémoire, un
+  symbole absent), et accuser là-dessus ferait un contrôle qui crie au
+  loup. Il compte aussi ce qu'il a jugé et refuse de passer à vide —
+  éprouvé en semant une fiche menteuse, qui a bien été nommée.
+
+  SEPT FICHES NOUVELLES pour ce qui n'en avait aucune (min/max, `pshufb`,
+  `palignr`, les mesures, `ptest`, `pcmpeqq`, les non temporelles) : le
+  contrôle `everything_the_emulator_runs_has_a_sheet` l'exigeait, et il
+  avait raison. Le manuel passe de 164 à 171 fiches ; l'interface et le
+  README le disent.
+
+  CE QUI RESTE, et qui est chiffré. `pcmpistri` (401 occurrences) : les
+  instructions de chaîne de SSE4.2, qui agrègent une comparaison de
+  seize octets selon un mode donné en immédiat et rendent un index. Ce
+  n'est pas difficile, c'est long, et ça mérite sa propre séance avec ses
+  propres contrôles. L'AVX-512 (`vmovdqu64`, `vpxorq`, `vptestmb`,
+  `kmovd` — plus de deux mille occurrences ensemble) demande d'abord des
+  registres de 512 bits et des registres de masque `k` : c'est un
+  chantier de structure, pas un ajout de mnémoniques.
+
+  ET UN DÉFAUT TROUVÉ EN PASSANT, par la checklist d'avant-commit. Les
+  scènes du banc ouvraient la fenêtre d'aide sur son SOMMAIRE et jamais
+  sur une fiche — si bien qu'aucun invariant n'avait jamais regardé ce
+  qu'on lit sous F1. La scène ajoutée (« aide / une fiche chargée »,
+  `pminub`, vingt-quatre mnémoniques en tête) a fait tomber
+  `a_window_opens_at_the_size_of_what_it_shows` du premier coup : 680 x
+  560, et CENT TROIS PIXELS de vide entre la dernière ligne de la fiche
+  et le bouton « OK », ancré au bas du cadre. La hauteur était imposée
+  (`default_size`) et les zones défilantes ne se rétractaient pas
+  (`auto_shrink([false, false])`) : la fenêtre gardait sa taille quoi
+  qu'elle montrât. Elles se bornent maintenant à `window_room` et
+  suivent leur contenu, comme partout ailleurs dans namsdec ; la fenêtre
+  fait 680 x 420 sur cette fiche-là. Vérifié aussi à l'écran, profil
+  neuf : le sommaire et les quatre paliers tiennent, et « OK » est collé
+  au contenu.

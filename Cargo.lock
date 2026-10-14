@@ -1540,6 +1540,7 @@ dependencies = [
  "namsdec-asm",
  "namsdec-core",
  "namsdec-disasm",
+ "namsdec-doc",
  "thiserror 2.0.21",
 ]
 

@@ -3495,3 +3495,594 @@ hlt
          pas répondre zéro : {stop:?}"
     );
 }
+
+/// Le `strlen` vectoriel, celui que la glibc exécute à chaque appel.
+///
+/// C'est le contrôle du 14 octobre 2026 : `pmaxub` manquait, et un vrai
+/// binaire s'arrêtait dessus dès la première chaîne lue. La chaîne de
+/// trois instructions ci-dessous — minimum avec le vecteur nul,
+/// comparaison, masque ramené dans un registre général — est la façon
+/// dont on cherche un octet nul parmi seize d'un seul coup.
+#[test]
+fn the_vector_strlen_of_a_real_libc_runs() {
+    let emu = run_program(
+        "\
+section .data
+align 16
+chaine  db 'namsdec', 0, 0, 0, 0, 0, 0, 0, 0, 0
+
+section .text
+global _start
+_start:
+movdqa xmm0, [chaine]
+pxor xmm1, xmm1
+movdqa xmm2, xmm0
+pminub xmm2, xmm1       ; zéro partout : min(quoi que ce soit, 0)
+pcmpeqb xmm2, xmm0      ; vrai là où l'octet VAUT zéro
+pmovmskb eax, xmm2
+bsf ecx, eax            ; le premier zéro, c'est la longueur
+
+; et l'autre sens : le maximum avec le vecteur nul rend la chaîne
+; telle quelle, ce qui dit que `pmaxub` ne fait pas n'importe quoi.
+movdqa xmm3, xmm0
+pmaxub xmm3, xmm1
+pcmpeqb xmm3, xmm0
+pmovmskb edx, xmm3
+hlt
+",
+        &[],
+    );
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rax),
+        0xff80,
+        "les neuf octets nuls de la fin, et eux seuls"
+    );
+    assert_eq!(emu.cpu.regs.get64(Reg64::Rcx), 7, "« namsdec » fait sept");
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rdx),
+        0xffff,
+        "pmaxub avec zéro ne change rien"
+    );
+}
+
+/// Le minimum et le maximum, dans les deux signes et les trois
+/// largeurs.
+///
+/// La paire est choisie pour que le signe décide : `0x80` vaut 128 pour
+/// l'un et −128 pour l'autre, si bien que `pmaxub` et `pminsb` rendent
+/// le MÊME vecteur. Une implémentation qui confondrait les deux passerait
+/// la moitié du contrôle et échouerait sur l'autre.
+#[test]
+fn packed_min_and_max_know_their_sign_and_their_width() {
+    let emu = run_program(
+        "\
+section .data
+align 16
+ab      db 0x01, 0x80, 0xff, 0x7f
+        times 12 db 0
+bb      db 0x02, 0x7f, 0x10, 0x80
+        times 12 db 0
+align 16
+aw      dw 0x8001, 0x7fff, 0, 0, 0, 0, 0, 0
+bw      dw 0x7f02, 0x8010, 0, 0, 0, 0, 0, 0
+align 16
+ad      dd 0x80000001, 0x7fffffff, 0, 0
+bd      dd 0x7f000002, 0x80000010, 0, 0
+
+section .text
+global _start
+_start:
+movdqa xmm0, [ab]
+movdqa xmm1, [bb]
+movdqa xmm2, xmm0
+pmaxub xmm2, xmm1
+movd eax, xmm2
+movdqa xmm2, xmm0
+pminsb xmm2, xmm1
+movd ebx, xmm2
+movdqa xmm2, xmm0
+pminub xmm2, xmm1
+movd ecx, xmm2
+movdqa xmm2, xmm0
+pmaxsb xmm2, xmm1
+movd edx, xmm2
+
+movdqa xmm0, [aw]
+movdqa xmm1, [bw]
+movdqa xmm2, xmm0
+pmaxsw xmm2, xmm1
+movd esi, xmm2
+movdqa xmm2, xmm0
+pmaxuw xmm2, xmm1
+movd edi, xmm2
+
+movdqa xmm0, [ad]
+movdqa xmm1, [bd]
+movdqa xmm2, xmm0
+pmaxsd xmm2, xmm1
+movd r8d, xmm2
+movdqa xmm2, xmm0
+pminud xmm2, xmm1
+pextrd r9d, xmm2, 1     ; la seconde voie, où le signe décide
+movdqa xmm2, xmm0
+pminsd xmm2, xmm1
+pextrd r10d, xmm2, 1
+hlt
+",
+        &[],
+    );
+    assert_eq!(emu.cpu.regs.get64(Reg64::Rax), 0x80ff_8002, "pmaxub");
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rbx),
+        0x80ff_8001,
+        "pminsb : 0x80 est le plus petit quand il est signé"
+    );
+    assert_eq!(emu.cpu.regs.get64(Reg64::Rcx), 0x7f10_7f01, "pminub");
+    assert_eq!(emu.cpu.regs.get64(Reg64::Rdx), 0x7f10_7f02, "pmaxsb");
+    assert_eq!(emu.cpu.regs.get64(Reg64::Rsi), 0x7fff_7f02, "pmaxsw");
+    assert_eq!(emu.cpu.regs.get64(Reg64::Rdi), 0x8010_8001, "pmaxuw");
+    assert_eq!(emu.cpu.regs.get64(Reg64::R8), 0x7f00_0002, "pmaxsd");
+    assert_eq!(emu.cpu.regs.get64(Reg64::R9), 0x7fff_ffff, "pminud");
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::R10),
+        0x8000_0010,
+        "pminsd : la même paire, et l'autre réponse"
+    );
+}
+
+/// L'arithmétique saturée s'arrête à la borne au lieu d'en changer.
+///
+/// `0xf0 + 0x20` fait `0xff` et non `0x10` : c'est toute la différence
+/// avec `paddb`, et c'est pour ça que les deux existent côte à côte.
+#[test]
+fn saturating_arithmetic_stops_at_the_edge() {
+    let emu = run_program(
+        "\
+section .data
+align 16
+ab      db 0xf0, 0x10, 0x01, 0x80
+        times 12 db 0
+bb      db 0x20, 0x20, 0x02, 0x80
+        times 12 db 0
+align 16
+aw      dw 0x7fff, 0x8000, 0, 0, 0, 0, 0, 0
+bw      dw 0x0002, 0x8000, 0, 0, 0, 0, 0, 0
+
+section .text
+global _start
+_start:
+movdqa xmm0, [ab]
+movdqa xmm1, [bb]
+movdqa xmm2, xmm0
+paddusb xmm2, xmm1
+movd eax, xmm2
+movdqa xmm2, xmm0
+psubusb xmm2, xmm1
+movd ebx, xmm2
+movdqa xmm2, xmm0
+paddsb xmm2, xmm1
+movd ecx, xmm2
+movdqa xmm2, xmm0
+psubsb xmm2, xmm1
+movd edx, xmm2
+movdqa xmm2, xmm0
+paddb xmm2, xmm1        ; le même calcul SANS saturation, pour comparer
+movd esi, xmm2
+
+movdqa xmm0, [aw]
+movdqa xmm1, [bw]
+movdqa xmm2, xmm0
+paddsw xmm2, xmm1
+movd edi, xmm2
+movdqa xmm2, xmm0
+paddusw xmm2, xmm1
+movd r8d, xmm2
+hlt
+",
+        &[],
+    );
+    assert_eq!(emu.cpu.regs.get64(Reg64::Rax), 0xff03_30ff, "paddusb");
+    assert_eq!(emu.cpu.regs.get64(Reg64::Rbx), 0x0000_00d0, "psubusb");
+    assert_eq!(emu.cpu.regs.get64(Reg64::Rcx), 0x8003_3010, "paddsb");
+    assert_eq!(emu.cpu.regs.get64(Reg64::Rdx), 0x00ff_f0d0, "psubsb");
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rsi),
+        0x0003_3010,
+        "paddb déborde là où paddusb saturait"
+    );
+    assert_eq!(emu.cpu.regs.get64(Reg64::Rdi), 0x8000_7fff, "paddsw");
+    assert_eq!(emu.cpu.regs.get64(Reg64::R8), 0xffff_8001, "paddusw");
+}
+
+/// Le travail d'emballage : choisir les octets, prendre une fenêtre à
+/// cheval sur deux vecteurs, rétrécir, élargir.
+///
+/// C'est la moitié d'une routine vectorielle réelle — le calcul n'est
+/// souvent que l'autre moitié.
+#[test]
+fn packing_shuffling_and_widening_move_the_bytes_where_they_belong() {
+    let emu = run_program(
+        "\
+section .data
+align 16
+suite   db 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15
+haute   db 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17
+        db 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f
+ctrl    db 15, 14, 13, 12, 0x80, 0x80, 0x80, 0x80
+        db 0, 0, 0, 0, 3, 2, 1, 0
+align 16
+mots    dw 0x00ff, 0x0100, 0xffff, 0x0001, 0, 0, 0, 0
+align 16
+octets  db 0x01, 0x80, 0x02, 0x81
+        times 12 db 0
+
+section .text
+global _start
+_start:
+movdqa xmm0, [suite]
+movdqa xmm1, [ctrl]
+pshufb xmm0, xmm1
+movd eax, xmm0
+
+movdqa xmm0, [haute]
+movdqa xmm1, [suite]
+palignr xmm0, xmm1, 4   ; la fenêtre commence au cinquième octet
+movd ebx, xmm0
+pextrd ecx, xmm0, 3     ; et finit sur le début de `haute`
+
+movdqa xmm0, [mots]
+movdqa xmm1, xmm0
+packuswb xmm0, xmm1     ; 256 ne tient pas dans un octet, −1 non plus
+movd edx, xmm0
+
+movdqa xmm0, [octets]
+pmovzxbw xmm2, xmm0
+movd esi, xmm2
+pmovsxbw xmm3, xmm0
+movd edi, xmm3
+hlt
+",
+        &[],
+    );
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rax),
+        0x0c0d_0e0f,
+        "pshufb : les quatre derniers octets, à l'envers, en tête"
+    );
+    assert_eq!(emu.cpu.regs.get64(Reg64::Rbx), 0x0706_0504, "palignr");
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rcx),
+        0x1312_1110,
+        "palignr : la fin vient de l'autre vecteur"
+    );
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rdx),
+        0x0100_ffff,
+        "packuswb sature en haut ET en bas"
+    );
+    assert_eq!(emu.cpu.regs.get64(Reg64::Rsi), 0x0080_0001, "pmovzxbw");
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rdi),
+        0xff80_0001,
+        "pmovsxbw : 0x80 devient −128, pas 128"
+    );
+}
+
+/// Multiplier, moyenner, mesurer un écart, prendre une valeur absolue.
+///
+/// Un produit de deux voies de seize bits en fait trente-deux : le jeu
+/// donne une instruction par moitié du résultat, et elles se suivent
+/// dans le code quand c'est le produit entier qu'on veut.
+#[test]
+fn packed_multiplication_and_measures() {
+    let emu = run_program(
+        "\
+section .data
+align 16
+aw      dw 0x0003, 0x8000, 0, 0, 0, 0, 0, 0
+bw      dw 0x0004, 0x0002, 0, 0, 0, 0, 0, 0
+align 16
+ad      dd 0x00010000, 0, 0x00000003, 0
+bd      dd 0x00000003, 0, 0x00000005, 0
+align 16
+ab      db 0x10, 0x40, 0x80, 0xff
+        times 12 db 0
+bb      db 0x20, 0x20, 0x00, 0x01
+        times 12 db 0
+
+section .text
+global _start
+_start:
+movdqa xmm0, [aw]
+movdqa xmm1, [bw]
+movdqa xmm2, xmm0
+pmullw xmm2, xmm1
+movd eax, xmm2
+movdqa xmm2, xmm0
+pmulhw xmm2, xmm1       ; le haut, les sources étant signées
+movd ebx, xmm2
+movdqa xmm2, xmm0
+pmulhuw xmm2, xmm1      ; le haut, les sources ne l'étant pas
+movd ecx, xmm2
+
+movdqa xmm0, [ad]
+movdqa xmm1, [bd]
+pmuludq xmm0, xmm1      ; deux produits 32 × 32 → 64
+movq rdx, xmm0
+
+movdqa xmm0, [ab]
+movdqa xmm1, [bb]
+movdqa xmm2, xmm0
+pavgb xmm2, xmm1
+movd esi, xmm2
+movdqa xmm2, xmm0
+psadbw xmm2, xmm1       ; la somme des écarts, sur huit octets
+movd edi, xmm2
+pabsb xmm2, xmm0
+movd r8d, xmm2
+hlt
+",
+        &[],
+    );
+    assert_eq!(emu.cpu.regs.get64(Reg64::Rax), 0x0000_000c, "pmullw");
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rbx),
+        0xffff_0000,
+        "pmulhw : −32768 × 2 est négatif"
+    );
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rcx),
+        0x0001_0000,
+        "pmulhuw : le même produit, vu sans signe"
+    );
+    assert_eq!(emu.cpu.regs.get64(Reg64::Rdx), 0x0003_0000, "pmuludq");
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rsi),
+        0x8040_3018,
+        "pavgb arrondit au supérieur"
+    );
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rdi),
+        0x10 + 0x20 + 0x80 + 0xfe,
+        "psadbw : la somme des quatre écarts"
+    );
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::R8),
+        0x0180_4010,
+        "pabsb : |−128| ne tient pas dans un octet et reste lui-même"
+    );
+}
+
+/// Le pont entre un registre vectoriel et un registre général, et les
+/// deux questions que `ptest` pose d'un coup.
+///
+/// Après une comparaison vectorielle, `ptest` répond « aucune voie ne
+/// correspond » (ZF) et « toutes correspondent » (CF) sans jamais
+/// ramener le vecteur dans un registre général.
+#[test]
+fn one_lane_at_a_time_and_what_ptest_answers() {
+    let emu = run_program(
+        "\
+section .data
+align 16
+plein   times 16 db 0xff
+
+section .text
+global _start
+_start:
+pxor xmm0, xmm0
+mov eax, 0xbeef
+pinsrw xmm0, eax, 2
+pextrw ebx, xmm0, 2
+pextrw ecx, xmm0, 1     ; la voie d'à côté n'a pas bougé
+
+movdqa xmm1, [plein]
+pxor xmm2, xmm2
+ptest xmm1, xmm2        ; rien en commun avec le vecteur nul
+setz dl
+setc dh
+
+ptest xmm1, xmm1        ; tout en commun, et rien en dehors
+setz r8b
+setc r9b
+
+ptest xmm1, xmm0        ; quelques bits, tous dans le masque
+setz r10b
+setc r11b
+hlt
+",
+        &[],
+    );
+    assert_eq!(emu.cpu.regs.get64(Reg64::Rbx), 0xbeef, "pinsrw puis pextrw");
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rcx),
+        0,
+        "la voie 1 est restée nulle"
+    );
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rdx) & 0xff,
+        1,
+        "ptest du vide : ZF"
+    );
+    assert_eq!(
+        (emu.cpu.regs.get64(Reg64::Rdx) >> 8) & 0xff,
+        1,
+        "ptest du vide : CF, puisqu'il ne déborde de rien"
+    );
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::R8) & 0xff,
+        0,
+        "tout en commun : ZF à 0"
+    );
+    assert_eq!(emu.cpu.regs.get64(Reg64::R9) & 0xff, 1, "et rien en dehors");
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::R10) & 0xff,
+        0,
+        "0xbeef rencontre le masque"
+    );
+    assert_eq!(emu.cpu.regs.get64(Reg64::R11) & 0xff, 1, "et n'en sort pas");
+}
+
+/// Le produit scalaire et la somme d'un vecteur : deux calculs que le
+/// jeu rend en une instruction parce que les faire à la main coûterait
+/// une boucle.
+///
+/// `pmaddubsw` porte une asymétrie que son nom n'annonce pas : la
+/// première source est non signée, la seconde signée. Un contrôle qui
+/// n'emploierait que des petits nombres positifs ne la verrait pas.
+#[test]
+fn multiply_add_and_horizontal_sums() {
+    let emu = run_program(
+        "\
+section .data
+align 16
+aw      dw 2, 3, 10, 20, 0, 0, 0, 0
+bw      dw 4, 5, 1, 1, 0, 0, 0, 0
+align 16
+ab      db 200, 100, 0, 0, 0, 0, 0, 0
+        times 8 db 0
+bb      db 0x02, 0xff, 0, 0, 0, 0, 0, 0
+        times 8 db 0
+align 16
+ad      dd 1, 2, 3, 4
+
+section .text
+global _start
+_start:
+movdqa xmm0, [aw]
+movdqa xmm1, [bw]
+movdqa xmm2, xmm0
+pmaddwd xmm2, xmm1      ; 2×4 + 3×5, puis 10×1 + 20×1
+movd eax, xmm2
+pextrd ebx, xmm2, 1
+
+movdqa xmm0, [ab]
+movdqa xmm1, [bb]
+pmaddubsw xmm0, xmm1    ; 200×2 + 100×(−1)
+movd ecx, xmm0
+
+movdqa xmm0, [ad]
+phaddd xmm0, xmm0
+phaddd xmm0, xmm0       ; la somme des quatre, en bas
+movd edx, xmm0
+
+movdqa xmm0, [ad]
+phsubd xmm0, xmm0
+movd esi, xmm0          ; 1 − 2
+hlt
+",
+        &[],
+    );
+    assert_eq!(emu.cpu.regs.get64(Reg64::Rax), 23, "pmaddwd : 8 + 15");
+    assert_eq!(emu.cpu.regs.get64(Reg64::Rbx), 30, "pmaddwd : 10 + 20");
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rcx) & 0xffff,
+        300,
+        "pmaddubsw : 200 est non signé, −1 l'est"
+    );
+    assert_eq!(emu.cpu.regs.get64(Reg64::Rdx), 10, "phaddd deux fois");
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rsi) as u32 as i32,
+        -1,
+        "phsubd prend le second au premier"
+    );
+}
+
+/// Une instruction que le manuel dit non simulée, assemblée seule et
+/// exécutée d'un pas. Rend `true` si l'interpréteur l'a faite.
+///
+/// Les registres pointent tous sur une zone valide et alignée : sans
+/// ça, la moitié des exemples échoueraient sur l'adresse zéro et le
+/// contrôle ne verrait rien.
+fn une_instruction_sexecute(instruction: &str) -> bool {
+    let programme = format!("section .text\nglobal _start\n_start:\n{instruction}\nhlt\n");
+    let Ok(out) = namsdec_asm::assemble(&programme, BASE) else {
+        return false;
+    };
+    let mut mem = Memory::new(BASE, 0x10000);
+    if mem.load(out.load_addr, &out.bytes).is_err() {
+        return false;
+    }
+    let mut cpu = Cpu::new(mem);
+    cpu.regs.rip = out.entry;
+    for reg in [
+        Reg64::Rax,
+        Reg64::Rbx,
+        Reg64::Rcx,
+        Reg64::Rdx,
+        Reg64::Rsi,
+        Reg64::Rdi,
+        Reg64::Rbp,
+        Reg64::R8,
+        Reg64::R9,
+    ] {
+        cpu.regs.set64(reg, BASE + 0x4000);
+    }
+    cpu.regs.set64(Reg64::Rsp, BASE + 0x8000);
+    Emulator::new(cpu).step().is_ok()
+}
+
+/// Le manuel ne ment pas sur ce que l'interpréteur sait faire.
+///
+/// Une fiche qui dit « namsdec ne la simule pas » d'une instruction qui
+/// s'exécute très bien envoie le lecteur chercher ailleurs ce qu'il
+/// avait sous la main. Le contrôle prend l'exemple de chaque fiche qui
+/// l'affirme, l'assemble, l'exécute d'un pas — et la dénonce si elle
+/// passe.
+///
+/// Il ne regarde que dans ce sens : un exemple qui échoue peut échouer
+/// pour une autre raison qu'un mnémonique inconnu (une adresse hors
+/// mémoire, un symbole absent), et accuser là-dessus ferait un contrôle
+/// qui crie au loup.
+#[test]
+fn the_manual_does_not_claim_an_instruction_is_unsupported_when_it_runs() {
+    let mut menteuses = Vec::new();
+    let mut jugées = 0;
+    for entry in namsdec_doc::ENTRIES {
+        // La mention est tantôt dans le texte, tantôt dans l'exemple,
+        // qui garde l'instruction en commentaire pour rester assemblable.
+        let dit_non = entry.body.fr.contains("simule pas") || entry.example.contains("simule pas");
+        if entry.kind != namsdec_doc::Kind::Instruction || !dit_non {
+            continue;
+        }
+        for ligne in entry.example.lines() {
+            // Les fiches non simulées cachent leur instruction dans un
+            // commentaire, l'exemple devant rester assemblable.
+            let ligne = ligne.trim();
+            let instruction = match ligne.split_once("ne les simule pas : ") {
+                Some((_, reste)) => reste,
+                None => match ligne.split_once("ne la simule pas : ") {
+                    Some((_, reste)) => reste,
+                    None if ligne.starts_with(';') => continue,
+                    None => ligne,
+                },
+            };
+            // Un exemple pose souvent son décor avant l'instruction
+            // qu'il montre (`xor ecx, ecx` devant `xgetbv`) : seule la
+            // ligne qui porte un mnémonique DE LA FICHE est jugée.
+            let mnémonique = instruction.split_whitespace().next().unwrap_or_default();
+            if !entry.names.contains(&mnémonique) {
+                continue;
+            }
+            jugées += 1;
+            if une_instruction_sexecute(instruction) {
+                menteuses.push(format!(
+                    "« {} » : la fiche dit non simulée, « {instruction} » s'exécute",
+                    entry.names[0]
+                ));
+            }
+        }
+    }
+    assert!(
+        menteuses.is_empty(),
+        "des fiches sont en retard sur l'interpréteur :\n{}",
+        menteuses.join("\n")
+    );
+    // Un contrôle qui ne juge rien passe toujours. Celui-ci doit avoir
+    // trouvé des fiches à juger, sans quoi c'est sa lecture des exemples
+    // qui est cassée, pas le manuel qui est devenu parfait.
+    assert!(
+        jugées >= 4,
+        "seulement {jugées} instruction(s) jugée(s) : la lecture des exemples ne marche plus"
+    );
+}
