@@ -3956,3 +3956,49 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
   registres existent, les masques existent ; ce qui manque est de
   savoir écrire une voie sur deux, et c'est un travail sur chaque
   instruction vectorielle plutôt qu'un ajout.
+
+
+--------------------------------------------------------------------------------
+ 7.24  LE MASQUE S'APPLIQUE
+       (15 octobre 2026) — le dernier morceau d'AVX-512
+--------------------------------------------------------------------------------
+
+  CE QUI RESTAIT, écrit en 7.22 puis en 7.23 : « l'APPLICATION d'un
+  masque à une opération. Les registres existent, les masques
+  existent ; ce qui manque est de savoir écrire une voie sur deux, et
+  c'est un travail sur chaque instruction vectorielle plutôt qu'un
+  ajout. »
+
+  C'ÉTAIT FAUX, et c'est la bonne nouvelle de cette passe : ce n'est
+  pas un travail sur chaque instruction. TOUTES passent par
+  `write_vec_op`, et le masquage est une opération D'ÉCRITURE — la
+  valeur calculée se compose avec ce que la destination portait, voie
+  par voie. Une seule fonction, un seul endroit.
+
+  LES DEUX FORMES, et elles ne font pas la même chose des voies
+  écartées :
+    - FUSION (`{k1}`) : elles gardent ce qu'elles avaient. C'est le
+      défaut, et c'est ce qui permet d'écrire « ajoute aux éléments
+      retenus » sans toucher aux autres.
+    - MISE À ZÉRO (`{k1}{z}`) : elles tombent à zéro.
+  Le contrôle écrit les deux sur les mêmes données, pour que la
+  différence soit dans le fichier et pas seulement dans le commentaire.
+
+  CE QUI A DEMANDÉ DU SOIN : savoir ce qu'est un ÉLÉMENT. Un masque
+  s'applique élément par élément, et c'est le NOM de l'instruction qui
+  le dit — le `32` de `vmovdqu32`, le `d` de `vpaddd`, le `q` de
+  `vpxorq`. D'où `largeur_élément`, une table des familles qu'on sait
+  nommer.
+
+  ET CE QU'ELLE NE SAIT PAS NOMMER CONTINUE DE S'ARRÊTER. C'est le
+  point qui compte : se tromper d'élément décalerait les voies
+  retenues et rendrait un résultat faux SANS LE DIRE. `vpshufd
+  ymm0{k1}, …` refuse donc encore, en nommant la raison, et le contrôle
+  garde ce cas ouvert — il vérifie aussi que RIP ne bouge pas.
+
+  AVX-512 EST DONC COMPLET pour ce que namsdec rencontre : les
+  trente-deux registres de 512 bits, les huit registres de masque, les
+  instructions qui les remplissent, et maintenant l'application du
+  masque aux déplacements comme aux calculs. Ce qui reste est une liste
+  de familles à nommer dans `largeur_élément` — un ajout d'une ligne
+  chacune, le jour où un binaire les apporte.

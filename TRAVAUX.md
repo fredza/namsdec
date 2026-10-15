@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **14 octobre
-2026**, version 0.2.9-beta.1, 1 211 tests au vert.
+2026**, version 0.2.9-beta.1, 1 213 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -54,9 +54,11 @@ de l'encodage pour ses trente-deux registres, pas pour ses masques.
       bits, la règle du haut étendue (VEX efface, SSE préserve), et le
       coût de l'historique mesuré : 2 352 octets par jeu, 11 Mo pour
       cinq mille pas, borné par un contrôle.
-- [ ] **Le MASQUAGE des opérations** — `vmovdqu64 ymm0{k1}, [rsi]`
-      reste refusé. Les masques existent ; ce qui manque est leur
-      application, voie par voie, sur chaque instruction vectorielle.
+- [x] **Le masquage des opérations** (A 7.24) — fusion et mise à zéro,
+      posées dans `write_vec_op` : toutes les instructions y passent, et
+      le masquage est une opération d'écriture. Ce n'était donc pas un
+      travail sur chacune. Une famille dont on ne sait pas nommer
+      l'élément s'arrête encore, plutôt que de décaler les voies.
 
 ---
 
@@ -220,7 +222,7 @@ la bibliothèque C, et tout binaire qui lit une chaîne passe par là.
       indicateurs, et le SEIZE qui fait sortir des boucles. Trois
       contrôles de bout en bout, écrits sur les usages réels : strlen,
       strchr, strstr, strcmp, une classe de caractères.
-- [~] **AVX-512** : le premier morceau est fait (A 7.21) — les alias
+- [x] **AVX-512** : complet pour ce que namsdec rencontre (A 7.21 à 7.24) — les alias
       EVEX sur xmm/ymm des instructions déjà exécutées, soit plus de
       mille deux cents occurrences, et un refus net de toute
       instruction masquée. Restent les registres `k` (1 100

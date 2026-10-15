@@ -4374,30 +4374,33 @@ hlt
     assert_eq!(emu.cpu.regs.get64(Reg64::Rdi), 0x0807_0605_0403_0201);
 }
 
-/// Un masque AVX-512 fait S'ARRÊTER, et le dit.
+/// Un masque dont on ne sait pas dire l'ÉLÉMENT fait s'arrêter.
 ///
-/// `vmovdqu64 ymm0{k1}, [rsi]` n'écrit que les voies que le registre de
-/// masque désigne ; les autres gardent leur valeur ou tombent à zéro.
-/// L'ignorer donnerait un résultat faux SANS LE DIRE — le pire des
-/// trois comportements possibles, devant s'arrêter et devant refuser
-/// l'instruction entière.
+/// Un masque s'applique élément par élément, et namsdec l'applique —
+/// mais il lui faut savoir ce qu'est un élément, ce que le NOM de
+/// l'instruction dit : le `32` de `vmovdqu32`, le `d` de `vpaddd`.
+/// Pour les quelques formes dont on ne sait pas le dire, se tromper
+/// d'élément décalerait les voies retenues et rendrait un résultat
+/// faux SANS LE DIRE — le pire des trois comportements possibles,
+/// devant s'arrêter et devant refuser.
 ///
-/// Les registres de masque sont un chantier de structure, pas un ajout
-/// de mnémoniques. Tant qu'ils manquent, namsdec nomme ce qui manque.
+/// `vpshufd` est de celles-là : son masque porte sur des doubles mots,
+/// mais la table ne la connaît pas encore, et c'est exactement le cas
+/// que ce contrôle garde ouvert.
 #[test]
-fn an_avx512_mask_stops_rather_than_lying() {
-    // `vmovdqu64 ymm0{k1}, ymm1` — assemblé à la main : nasm l'écrit,
-    // et c'est l'octet de l'EVEX qui porte le `k1`.
+fn an_avx512_mask_stops_when_the_element_is_unknown() {
     let (mut emu, _) = load_program(
         "\
 section .text
 global _start
 _start:
-vmovdqu64 ymm0{k1}, ymm1
+vpshufd ymm0{k1}, ymm1, 0
 hlt
 ",
     );
-    let err = emu.step().expect_err("un masque ne peut pas être ignoré");
+    let err = emu
+        .step()
+        .expect_err("un élément inconnu ne peut pas être deviné");
     match err {
         EmuError::UnsupportedInstruction { mnemonic, .. } => assert!(
             mnemonic.contains("masque"),
@@ -4405,7 +4408,7 @@ hlt
         ),
         autre => panic!("obtenu {autre:?}"),
     }
-    // Et RIP n'a pas bougé : on s'arrête sur l'instruction, on ne la
+    // Et RIP n'a pas bougé : on s'arrête SUR l'instruction, on ne la
     // saute pas.
     assert_eq!(emu.cpu.regs.rip, BASE);
 }
@@ -4697,5 +4700,121 @@ fn what_the_undo_history_costs_in_memory() {
         total <= 16 * 1024 * 1024,
         "l'historique plein ferait {} Mo",
         total / (1024 * 1024)
+    );
+}
+
+/// Un masque AVX-512 s'APPLIQUE, maintenant, au lieu de faire s'arrêter.
+///
+/// C'était le dernier morceau. Les deux formes ne font pas la même
+/// chose des voies écartées : `{k1}` les laisse telles qu'elles
+/// étaient — c'est ce qui permet d'écrire « ajoute aux éléments
+/// retenus » sans toucher aux autres —, et `{k1}{z}` les met à zéro.
+///
+/// Le contrôle écrit les deux sur les mêmes données, pour que la
+/// différence soit dans le fichier et pas seulement dans le
+/// commentaire.
+#[test]
+fn an_avx512_mask_now_applies_both_ways() {
+    let emu = run_program(
+        "\
+section .data
+align 32
+source  dd 1, 2, 3, 4, 5, 6, 7, 8
+fond    dd 0x90, 0x91, 0x92, 0x93, 0x94, 0x95, 0x96, 0x97
+sortie  times 32 db 0
+
+section .text
+global _start
+_start:
+; Un masque qui ne retient que les doubles mots 0 et 2.
+mov eax, 0b0101
+kmovd k1, eax
+
+; FUSION : les voies écartées gardent ce qu'elles avaient.
+vmovdqu32 ymm0, [fond]
+vmovdqu32 ymm0{k1}, [source]
+vmovdqu64 [sortie], ymm0
+mov rax, [sortie]            ; dwords 0 et 1 : écrit, puis gardé
+mov rbx, [sortie+8]          ; dwords 2 et 3 : écrit, puis gardé
+
+; MISE À ZÉRO : les voies écartées tombent.
+vmovdqu32 ymm1, [fond]
+vmovdqu32 ymm1{k1}{z}, [source]
+vmovdqu64 [sortie], ymm1
+mov rcx, [sortie]
+mov rdx, [sortie+8]
+hlt
+",
+        &[],
+    );
+    // Fusion : dword0 = 1 (retenu), dword1 = 0x91 (gardé).
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rax),
+        0x0000_0091_0000_0001,
+        "fusion : la voie retenue est écrite, l'autre garde sa valeur"
+    );
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rbx),
+        0x0000_0093_0000_0003,
+        "et de même pour la paire suivante"
+    );
+    // Mise à zéro : dword1 et dword3 tombent.
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rcx),
+        0x0000_0000_0000_0001,
+        "mise à zéro : la voie écartée tombe, elle ne garde rien"
+    );
+    assert_eq!(emu.cpu.regs.get64(Reg64::Rdx), 0x0000_0000_0000_0003);
+}
+
+/// Le masque porte aussi sur un CALCUL, et pas seulement sur un
+/// déplacement.
+///
+/// C'est tout l'intérêt du dispositif : « ajoute un aux éléments que
+/// la comparaison a retenus », en deux instructions et sans branche.
+#[test]
+fn a_mask_applies_to_a_computation_too() {
+    let emu = run_program(
+        "\
+section .data
+align 32
+a       dd 10, 20, 30, 40, 0, 0, 0, 0
+b       dd 1, 1, 1, 1, 0, 0, 0, 0
+sortie  times 32 db 0
+
+section .text
+global _start
+_start:
+mov eax, 0b0011          ; les deux premiers doubles mots
+kmovd k1, eax
+vmovdqu32 ymm0, [a]
+vmovdqu32 ymm1, [b]
+vpaddd ymm2, ymm0, ymm1  ; d'abord sans masque, pour comparer
+vmovdqu64 [sortie], ymm2
+mov rax, [sortie]
+
+vmovdqu32 ymm3, [a]
+vpaddd ymm3{k1}, ymm0, ymm1
+vmovdqu64 [sortie], ymm3
+mov rbx, [sortie]
+mov rcx, [sortie+8]
+hlt
+",
+        &[],
+    );
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rax),
+        0x0000_0015_0000_000b,
+        "sans masque : 10+1 et 20+1"
+    );
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rbx),
+        0x0000_0015_0000_000b,
+        "avec masque : les deux premiers sont additionnés"
+    );
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rcx),
+        0x0000_0028_0000_001e,
+        "et les deux suivants gardent 30 et 40, intacts"
     );
 }

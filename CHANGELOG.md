@@ -6,6 +6,15 @@ entrée par version, et ce qui change pour qui s'en sert.
 
 ## 0.2.9-beta.1 — 15 octobre 2026
 
+**Le masque s'applique**
+- `vmovdqu32 ymm0{k1}, [rsi]` et `vpaddd ymm3{k1}, …` s'exécutent : les
+  voies retenues reçoivent le résultat, les autres gardent leur valeur
+  (fusion) ou tombent à zéro (`{z}`). AVX-512 est complet pour ce que
+  namsdec rencontre.
+- Une instruction dont namsdec ne sait pas nommer l'élément s'arrête
+  encore en le disant : se tromper d'élément décalerait les voies et
+  rendrait un résultat faux sans avertissement.
+
 **Les registres de 512 bits**
 - Le fichier de registres vectoriels passe de seize à **trente-deux**
   registres, et de 256 bits à **512**. `xmm5`, `ymm5` et `zmm5` sont

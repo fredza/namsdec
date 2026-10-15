@@ -2416,7 +2416,7 @@ def main():
         "faute de code à exécuter derrière.",
         "Les appels système qui touchent au monde — `mmap`, `open`, `fork` — sont nommés "
         "mais pas exécutés. namsdec le dit dès l'assemblage, avec la ligne.",
-        "AVX-512, presque entièrement : ses <b>trente-deux registres de 512 bits</b> (`zmm`), ses huit <b>registres de masque</b> (`k0` à `k7`) avec `kmov`, `kortest`, `vptestm` et les `vpcmp` qui les remplissent. Ce qui manque est l'<b>application</b> d'un masque à une opération : `vmovdqu64 ymm0{k1}, [rsi]` s'arrête en le disant plutôt que d'ignorer son masque, car un résultat faux sans avertissement serait pire. FMA, `in`/`out` et `cmpxchg16b` ne sont pas implémentés. SSE, SSE2, SSSE3, SSE4.1, SSE4.2, AVX et AVX2 le sont entièrement.",
+        "AVX-512 : ses <b>trente-deux registres de 512 bits</b> (`zmm`), ses huit <b>registres de masque</b> (`k0` à `k7`) et les instructions qui les remplissent, et l'<b>application</b> du masque — les voies retenues reçoivent le résultat, les autres gardent leur valeur ou tombent à zéro. Une instruction dont namsdec ne sait pas nommer l'élément s'arrête en le disant, plutôt que de décaler les voies et de rendre un résultat faux sans avertissement. FMA, `in`/`out` et `cmpxchg16b` ne sont pas implémentés ; SSE, SSE2, SSSE3, SSE4.1, SSE4.2, AVX et AVX2 le sont entièrement.",
     ]))
     blocs.append(("h1", "Mises à jour, licence et contact"))
     blocs.append(("p",

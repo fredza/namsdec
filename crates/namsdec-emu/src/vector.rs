@@ -112,6 +112,144 @@ impl FpOp {
     }
 }
 
+/// La largeur d'un ÉLÉMENT, pour les instructions qui acceptent un
+/// masque.
+///
+/// Un masque d'AVX-512 s'applique élément par élément : `vpaddd
+/// zmm0{k1}, …` n'additionne que les doubles mots dont le bit est à
+/// un. Savoir ce qu'est un élément est donc la condition pour
+/// appliquer le masque, et c'est le NOM de l'instruction qui le dit —
+/// le `d` de `vpaddd`, le `64` de `vmovdqu64`.
+///
+/// `None` pour tout ce dont on ne sait pas le dire. Le masque y est
+/// alors refusé plutôt que deviné : se tromper d'élément décalerait
+/// les voies retenues, et rendrait un résultat faux sans rien
+/// signaler. C'est la même règle que partout ici — dire, ou s'arrêter.
+fn largeur_élément(m: Mnemonic) -> Option<usize> {
+    use Mnemonic as M;
+    Some(match m {
+        // Les déplacements, dont le suffixe EVEX ne dit QUE cela.
+        M::Vmovdqu8 => 1,
+        M::Vmovdqu16 => 2,
+        M::Vmovdqu32 | M::Vmovdqa32 => 4,
+        M::Vmovdqu64 | M::Vmovdqa64 => 8,
+        // Le calcul entier, par la lettre finale.
+        M::Vpaddb
+        | M::Vpsubb
+        | M::Vpminub
+        | M::Vpmaxub
+        | M::Vpminsb
+        | M::Vpmaxsb
+        | M::Vpavgb
+        | M::Vpabsb
+        | M::Vpshufb
+        | M::Vpcmpeqb
+        | M::Vpcmpgtb => 1,
+        M::Vpaddw
+        | M::Vpsubw
+        | M::Vpminuw
+        | M::Vpmaxuw
+        | M::Vpminsw
+        | M::Vpmaxsw
+        | M::Vpavgw
+        | M::Vpabsw
+        | M::Vpmullw
+        | M::Vpcmpeqw
+        | M::Vpcmpgtw => 2,
+        M::Vpaddd
+        | M::Vpsubd
+        | M::Vpminud
+        | M::Vpmaxud
+        | M::Vpminsd
+        | M::Vpmaxsd
+        | M::Vpabsd
+        | M::Vpmulld
+        | M::Vpandd
+        | M::Vpord
+        | M::Vpxord
+        | M::Vpandnd
+        | M::Vpcmpeqd
+        | M::Vpcmpgtd => 4,
+        M::Vpaddq
+        | M::Vpsubq
+        | M::Vpandq
+        | M::Vporq
+        | M::Vpxorq
+        | M::Vpandnq
+        | M::Vpcmpeqq
+        | M::Vpcmpgtq => 8,
+        // Les flottants paquetés : simple ou double précision.
+        M::Vaddps
+        | M::Vsubps
+        | M::Vmulps
+        | M::Vdivps
+        | M::Vminps
+        | M::Vmaxps
+        | M::Vsqrtps
+        | M::Vandps
+        | M::Vorps
+        | M::Vxorps
+        | M::Vandnps => 4,
+        M::Vaddpd
+        | M::Vsubpd
+        | M::Vmulpd
+        | M::Vdivpd
+        | M::Vminpd
+        | M::Vmaxpd
+        | M::Vsqrtpd
+        | M::Vandpd
+        | M::Vorpd
+        | M::Vxorpd
+        | M::Vandnpd => 8,
+        _ => return None,
+    })
+}
+
+/// Compose le résultat d'une opération masquée.
+///
+/// Les deux formes du masquage d'AVX-512, et elles ne font pas la même
+/// chose des voies écartées :
+///   - FUSION (`{k1}`) : elles gardent ce qu'elles avaient. C'est le
+///     défaut, et c'est ce qui permet d'écrire « ajoute 1 aux éléments
+///     positifs » sans toucher aux autres.
+///   - MISE À ZÉRO (`{k1}{z}`) : elles tombent à zéro.
+///
+/// `ancien` est ce que la destination portait AVANT — d'où la lecture
+/// du registre dans `write_vec_op`, qui n'aurait aucun sens sans
+/// masque.
+fn appliquer_masque(
+    calculé: Vector,
+    ancien: Vector,
+    masque: u64,
+    bytes: usize,
+    à_zéro: bool,
+) -> Vector {
+    let bits = bytes * 8;
+    let par_tranche = 128 / bits.max(1);
+    let mut out = ancien;
+    for tranche in 0..4 {
+        for voie in 0..par_tranche {
+            let rang = tranche * par_tranche + voie;
+            let décalage = voie * bits;
+            let champ = if bits >= 128 {
+                u128::MAX
+            } else {
+                ((1u128 << bits) - 1) << décalage
+            };
+            let retenue = rang < 64 && (masque >> rang) & 1 == 1;
+            let valeur = if retenue {
+                calculé[tranche] & champ
+            } else if à_zéro {
+                0
+            } else {
+                ancien[tranche] & champ
+            };
+            out[tranche] = (out[tranche] & !champ) | valeur;
+        }
+    }
+    out
+}
+
 /// Un registre vectoriel lu ou écrit : QUATRE tranches de 128 bits.
 ///
 /// Quatre et non deux : `zmm` en fait 512. Les instructions SSE n'en
@@ -882,10 +1020,20 @@ impl Emulator {
         // Les registres de masque eux-mêmes n'existent pas encore ici,
         // et c'est un chantier de structure : tant qu'ils manquent, on
         // s'arrête en nommant ce qui manque.
-        if instr.op_mask() != iced_x86::Register::None {
+        // UN MASQUE D'OPÉRANDE s'applique élément par élément, et
+        // `write_vec_op` sait le faire — à condition de savoir ce
+        // qu'est un élément. Pour ce dont on ne sait pas le dire, on
+        // s'arrête : se tromper d'élément décalerait les voies
+        // retenues et rendrait un résultat faux sans rien signaler.
+        if instr.op_mask() != iced_x86::Register::None
+            && largeur_élément(instr.mnemonic()).is_none()
+        {
             return Err(EmuError::UnsupportedInstruction {
                 backend: Self::NAME,
-                mnemonic: format!("{:?} (avec masque AVX-512)", instr.mnemonic()),
+                mnemonic: format!(
+                    "{:?} (masque AVX-512 sur un élément inconnu)",
+                    instr.mnemonic()
+                ),
             });
         }
         match instr.mnemonic() {
@@ -1743,6 +1891,25 @@ impl Emulator {
         op_index: u32,
         value: Vector,
     ) -> Result<(), EmuError> {
+        // LE MASQUE, s'il y en a un : la valeur calculée se compose
+        // avec ce que la destination portait, voie par voie. Fait ICI
+        // et non dans chaque instruction — toutes passent par là, et
+        // une règle écrite cent fois est une règle qu'on applique
+        // quatre-vingt-dix-neuf fois.
+        let value = match map_mask(instr.op_mask()) {
+            Some(k) => {
+                let bytes = largeur_élément(instr.mnemonic()).unwrap_or(8);
+                let ancien = self.read_vec_op(instr, op_index).unwrap_or([0; 4]);
+                appliquer_masque(
+                    value,
+                    ancien,
+                    self.cpu.regs.get_mask(k),
+                    bytes,
+                    instr.zeroing_masking(),
+                )
+            }
+            None => value,
+        };
         match instr.op_kind(op_index) {
             OpKind::Register => {
                 let reg = instr.op_register(op_index);
