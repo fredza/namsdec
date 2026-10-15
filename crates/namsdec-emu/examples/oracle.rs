@@ -23,21 +23,39 @@
 //! est donc traité comme les autres, et c'est précisément ceux-là qui
 //! trouvent les défauts.
 //!
-//! Outil de développement, et qui LIT LA MACHINE : il demande `nasm`,
-//! `ld` et `gdb`, et ne vaut que sur x86-64. Il n'a donc pas sa place
-//! dans la suite qui tourne sur l'intégration continue, et n'y est pas.
+//! **Le programme d'épreuve relève son propre état.** Il n'y a pas de
+//! débogueur : après l'instruction, il range les seize registres, les
+//! indicateurs, `zmm0` et les huit masques dans un tampon, et l'écrit
+//! sur sa sortie standard. C'est plus simple qu'un `gdb` par cas — et
+//! surtout, c'est ce qui permet de le lancer SOUS UN ÉMULATEUR sans rien
+//! changer d'autre que la ligne de commande.
+//!
+//! **AVX-512.** Cette machine-ci n'en a pas (Core Ultra 7 258V, Lunar
+//! Lake : Intel l'a retiré des cœurs hybrides). QEMU ne sert à rien non
+//! plus — il ANNONCE les drapeaux `avx512f` et consorts dans `-cpu
+//! help`, mais son TCG ne les exécute pas : essayé, signal 4. Ce qui
+//! marche est **Intel SDE**, qui émule le jeu complet sur n'importe quel
+//! x86-64. `--sde` le met devant le programme d'épreuve, et tout le
+//! reste est identique : c'est l'intérêt d'avoir mis le lanceur à un
+//! seul endroit.
+//!
+//! Outil de développement, et qui LIT LA MACHINE : il demande `nasm` et
+//! `ld`, ne vaut que sur x86-64, et `--sde` demande SDE installé. Il n'a
+//! donc pas sa place dans la suite qui tourne sur l'intégration
+//! continue, et n'y est pas.
 //!
 //! ```text
 //! cargo run -p namsdec-emu --example oracle
 //! cargo run -p namsdec-emu --example oracle -- "adc rax, rbx"
 //! cargo run -p namsdec-emu --example oracle -- --graines 200
+//! cargo run -p namsdec-emu --example oracle -- --sde            # AVX-512
+//! cargo run -p namsdec-emu --example oracle -- --sde --cpu skx
 //! ```
 
-use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use namsdec_core::{Cpu, Memory, RFlags, Reg64, RegXmm};
+use namsdec_core::{Cpu, Memory, RFlags, Reg64, RegMask, RegXmm};
 use namsdec_emu::Emulator;
 
 /// Là où le programme d'épreuve est chargé, des deux côtés.
@@ -71,6 +89,9 @@ const REGS: [Reg64; 16] = [
 
 /// Les quatre registres vectoriels semés.
 const XMMS: [RegXmm; 4] = [RegXmm::Xmm0, RegXmm::Xmm1, RegXmm::Xmm2, RegXmm::Xmm3];
+
+/// Les huit registres de masque.
+const MASQUES: [RegMask; 8] = RegMask::ALL;
 
 /// Les six indicateurs que l'arithmétique recalcule.
 ///
@@ -172,16 +193,21 @@ fn indéfinis(instruction: &str) -> RFlags {
 struct État {
     gpr: [u64; 16],
     flags: RFlags,
-    /// `ymm0`, en quatre mots de 64 bits, du bas vers le haut.
+    /// `zmm0`, en huit mots de 64 bits, du bas vers le haut.
     ///
-    /// Deux cent cinquante-six bits et non cinq cent douze : ce
-    /// processeur-ci n'a pas AVX-512 (voir le commentaire de
-    /// `répertoire_vectoriel`), et relever un `zmm` qui n'existe pas
-    /// n'apprendrait rien.
+    /// Les huit même sans AVX-512 : les quatre hauts restent nuls des
+    /// deux côtés, et les comparer ne coûte rien. Sous SDE ils portent
+    /// la moitié haute, et c'est tout l'intérêt.
     ///
     /// Comparé même pour une instruction entière : si `add rax, rbx`
     /// touchait un registre vectoriel, on voudrait le savoir.
-    ymm0: [u64; 4],
+    zmm0: [u64; 8],
+    /// Les huit registres de masque d'AVX-512, `k0` à `k7`.
+    ///
+    /// Nuls partout sans AVX-512. Sous SDE, c'est là que se joue la
+    /// moitié du jeu : un masque décide quelle voie est calculée et
+    /// quelle voie garde sa valeur — ou passe à zéro, selon le suffixe.
+    k: [u64; 8],
 }
 
 impl État {
@@ -200,12 +226,17 @@ impl État {
                 ));
             }
         }
-        if self.ymm0 != autre.ymm0 {
+        if self.zmm0 != autre.zmm0 {
             écarts.push(format!(
-                "ymm0 : matériel {}, namsdec {}",
-                en_hexa(&self.ymm0),
-                en_hexa(&autre.ymm0)
+                "zmm0 : matériel {}\n              namsdec  {}",
+                en_hexa(&self.zmm0),
+                en_hexa(&autre.zmm0)
             ));
+        }
+        for (rang, (m, n)) in self.k.iter().zip(autre.k.iter()).enumerate() {
+            if m != n {
+                écarts.push(format!("k{rang} : matériel {m:#018x}, namsdec {n:#018x}"));
+            }
         }
         for (nom, bit) in INDICATEURS {
             if indéfinis.contains(bit) {
@@ -229,8 +260,11 @@ impl État {
 #[derive(Debug, Clone, Copy)]
 struct Graine {
     gpr: [u64; 16],
-    /// `ymm0` à `ymm3`, semés comme les généraux.
-    ymm: [[u64; 4]; 4],
+    /// `zmm0` à `zmm3`, semés comme les généraux : huit mots chacun.
+    zmm: [[u64; 8]; 4],
+    /// Les huit masques. Semés aussi : une instruction masquée dont le
+    /// masque vaut toujours zéro ne prouverait rien.
+    k: [u64; 8],
     /// Les indicateurs posés AVANT l'instruction. Ils comptent : `adc`
     /// et `sbb` lisent CF, et c'est justement là que les erreurs se
     /// cachent.
@@ -264,8 +298,8 @@ impl Graine {
                 _ => suivant(graine),
             };
         }
-        let mut ymm = [[0u64; 4]; 4];
-        for registre in ymm.iter_mut() {
+        let mut zmm = [[0u64; 8]; 4];
+        for registre in zmm.iter_mut() {
             for mot in registre.iter_mut() {
                 *mot = match suivant(graine) % 3 {
                     0 => REMARQUABLES[(suivant(graine) % REMARQUABLES.len() as u64) as usize],
@@ -273,9 +307,22 @@ impl Graine {
                 };
             }
         }
+        // Les masques : du tirage, mais aussi « tout » et « rien », qui
+        // sont les deux cas où une instruction masquée se simplifie — et
+        // donc les deux où une erreur se voit le mieux.
+        let mut k = [0u64; 8];
+        for case in k.iter_mut() {
+            *case = match suivant(graine) % 4 {
+                0 => 0,
+                1 => u64::MAX,
+                2 => 0xaaaa_aaaa_aaaa_aaaa,
+                _ => suivant(graine),
+            };
+        }
         Self {
             gpr,
-            ymm,
+            zmm,
+            k,
             // Seuls CF, PF, AF, ZF, SF, OF sont semés, et le bit 1 est
             // toujours à un sur x86 : `popfq` le force de toute façon,
             // et l'y mettre nous-mêmes évite un faux écart.
@@ -301,15 +348,28 @@ fn suivant(état: &mut u64) -> u64 {
 /// d'abord ; les indicateurs ensuite ; et les registres en dernier,
 /// parce qu'un `mov` ne touche aucun indicateur et ne défait donc pas
 /// ce que `popfq` vient de poser.
-fn programme(graine: &Graine, instruction: &str) -> String {
+fn programme(graine: &Graine, instruction: &str, avx512: bool) -> String {
     let mut asm = String::from("bits 64\nsection .text\nglobal _start\n_start:\n");
     asm.push_str("    mov rsp, pile_haut\n");
-    // Les vecteurs en premier : `vmovdqu` ne touche aucun indicateur,
-    // donc l'ordre est libre, mais les poser avant `popfq` évite d'avoir
-    // à le redémontrer à chaque relecture.
+
+    // Les vecteurs d'abord. Sous AVX-512 on sème les 512 bits et les
+    // masques ; sinon les 256 que la machine a, et les masques restent
+    // nuls des deux côtés.
     for registre in 0..4 {
-        asm.push_str(&format!("    vmovdqu ymm{registre}, [semis{registre}]\n"));
+        if avx512 {
+            asm.push_str(&format!("    vmovdqu64 zmm{registre}, [semis{registre}]\n"));
+        } else {
+            asm.push_str(&format!("    vmovdqu ymm{registre}, [semis{registre}]\n"));
+        }
     }
+    if avx512 {
+        for registre in 0..8 {
+            // `kmovq` lit depuis la mémoire : pas de registre général
+            // sacrifié, donc rien à remettre en place après.
+            asm.push_str(&format!("    kmovq k{registre}, [masque{registre}]\n"));
+        }
+    }
+
     asm.push_str(&format!("    mov rax, {:#x}\n", graine.flags));
     asm.push_str("    push rax\n    popfq\n");
     for (i, nom) in NOMS.iter().enumerate() {
@@ -320,27 +380,61 @@ fn programme(graine: &Graine, instruction: &str) -> String {
         }
         asm.push_str(&format!("    mov {nom}, {:#x}\n", graine.gpr[i]));
     }
-    asm.push_str(&format!("    {instruction}\n"));
-    // `ymm0` rangé en mémoire pour que le débogueur puisse le lire :
-    // relever un registre vectoriel par `info registers` dépend du
-    // format que gdb choisit, et ce format change d'une version à
-    // l'autre. Une adresse et huit octets, non.
-    asm.push_str("    vmovdqu [resultat], ymm0\n");
-    // `int3` arrête net et rend la main au débogueur, sans rien changer
-    // aux indicateurs.
-    asm.push_str("    int3\n");
 
-    asm.push_str("\nsection .data\nalign 32\n");
-    for (registre, valeurs) in graine.ymm.iter().enumerate() {
+    // ---- L'instruction, et tout de suite après, le relevé ----------
+    asm.push_str(&format!("    {instruction}\n"));
+
+    // Les seize registres d'abord : un `mov` vers la mémoire ne touche
+    // AUCUN indicateur, donc l'état qu'on vient d'obtenir survit. C'est
+    // la seule raison pour laquelle ce relevé peut se faire sans
+    // débogueur.
+    for (i, nom) in NOMS.iter().enumerate() {
+        asm.push_str(&format!("    mov [relevé + {}], {nom}\n", i * 8));
+    }
+    // Les indicateurs ensuite. `pushfq` déplace `rsp`, mais `rsp` est
+    // déjà rangé ; `pop rax` le remet où il était, et `rax` aussi est
+    // déjà rangé.
+    asm.push_str("    pushfq\n    pop rax\n");
+    asm.push_str("    mov [relevé + 128], rax\n");
+    // Le vecteur, et les masques.
+    if avx512 {
+        asm.push_str("    vmovdqu64 [relevé + 136], zmm0\n");
+        for registre in 0..8 {
+            asm.push_str(&format!(
+                "    kmovq [relevé + {}], k{registre}\n",
+                200 + registre * 8
+            ));
+        }
+    } else {
+        asm.push_str("    vmovdqu [relevé + 136], ymm0\n");
+    }
+
+    // Et l'on écrit le tampon tel quel sur la sortie standard : 264
+    // octets bruts, que l'appelant relit sans rien interpréter.
+    asm.push_str("    mov eax, 1\n    mov edi, 1\n");
+    asm.push_str("    lea rsi, [relevé]\n");
+    asm.push_str(&format!("    mov edx, {RELEVÉ}\n"));
+    asm.push_str("    syscall\n");
+    asm.push_str("    mov eax, 60\n    xor edi, edi\n    syscall\n");
+
+    asm.push_str("\nsection .data\nalign 64\n");
+    for (registre, valeurs) in graine.zmm.iter().enumerate() {
         asm.push_str(&format!("semis{registre}:\n"));
         for mot in valeurs {
             asm.push_str(&format!("    dq {mot:#x}\n"));
         }
     }
-    asm.push_str("resultat:\n    times 32 db 0\n");
+    for (registre, valeur) in graine.k.iter().enumerate() {
+        asm.push_str(&format!("masque{registre}: dq {valeur:#x}\n"));
+    }
+    asm.push_str(&format!("align 64\nrelevé: times {RELEVÉ} db 0\n"));
     asm.push_str("\nsection .bss\n    resb 4096\npile_haut:\n");
     asm
 }
+
+/// La taille du relevé : seize registres, les indicateurs, `zmm0`, et
+/// les huit masques.
+const RELEVÉ: usize = 16 * 8 + 8 + 64 + 8 * 8;
 
 /// Assemble et lie le programme d'épreuve. Rend son chemin.
 fn bâtir(dossier: &Path, asm: &str) -> Result<PathBuf, String> {
@@ -378,112 +472,78 @@ fn bâtir(dossier: &Path, asm: &str) -> Result<PathBuf, String> {
     Ok(programme)
 }
 
-/// Ce que le vrai processeur a fait, relevé par `gdb`.
+/// Ce que le processeur a fait — relevé par le programme lui-même.
 ///
-/// On le lance en lot, sans fichier d'initialisation (`-nx`) : celui de
-/// l'utilisateur pourrait changer le format des registres, et le relevé
-/// deviendrait illisible pour des raisons qui n'ont rien à voir avec
-/// l'instruction.
-fn sous_le_matériel(programme: &Path) -> Result<État, String> {
-    let sortie = Command::new("gdb")
-        .args([
-            "-batch",
-            "-nx",
-            "-ex",
-            "run",
-            "-ex",
-            "info registers",
-            // Un repère, pour que le relevé du vecteur ne se confonde
-            // pas avec celui des registres : les deux sont faits de
-            // nombres en hexadécimal, et les mélanger donnerait un état
-            // faux sans rien signaler.
-            "-ex",
-            "echo ===VECTEUR===\n",
-            "-ex",
-            "x/4gx &resultat",
-        ])
-        .arg(programme)
-        .output()
-        .map_err(|e| format!("gdb introuvable : {e}"))?;
-    let texte = String::from_utf8_lossy(&sortie.stdout);
-    let (avant, après) = match texte.split_once("===VECTEUR===") {
-        Some(deux) => deux,
-        None => (texte.as_ref(), ""),
-    };
-
-    // Les quatre mots du vecteur, dans l'ordre où `x/4gx` les donne :
-    // du bas vers le haut, comme la mémoire les porte.
-    let mut ymm0 = [0u64; 4];
-    let mut lus = 0usize;
-    for ligne in après.lines() {
-        let Some((_, droite)) = ligne.split_once(':') else {
-            continue;
-        };
-        for mot in droite.split_whitespace() {
-            let Some(hexa) = mot.strip_prefix("0x") else {
-                continue;
-            };
-            if let (Ok(valeur), true) = (u64::from_str_radix(hexa, 16), lus < 4) {
-                ymm0[lus] = valeur;
-                lus += 1;
-            }
+/// Pas de débogueur : le programme d'épreuve range son propre état et
+/// l'écrit sur sa sortie standard. C'est plus simple, c'est beaucoup
+/// plus rapide qu'un `gdb` par cas, et c'est surtout ce qui permet de
+/// glisser un ÉMULATEUR devant sans rien changer d'autre.
+///
+/// `lanceur` est ce qu'on met devant. Vide, le programme tourne sur le
+/// processeur de la machine ; `["sde64", "-spr", "--"]`, il tourne sur
+/// un Sapphire Rapids simulé, avec AVX-512 et tout le reste. C'est la
+/// SEULE fonction qui sache qu'un outil extérieur existe, et c'est pour
+/// cela qu'elle l'est.
+fn sous_le_matériel(programme: &Path, lanceur: &[String]) -> Result<État, String> {
+    let mut commande = match lanceur.split_first() {
+        Some((outil, reste)) => {
+            let mut c = Command::new(outil);
+            c.args(reste);
+            c.arg(programme);
+            c
         }
-    }
-    if lus < 4 {
+        None => Command::new(programme),
+    };
+    let sortie = commande
+        .output()
+        .map_err(|e| format!("impossible de lancer le programme d'épreuve : {e}"))?;
+
+    let brut = &sortie.stdout;
+    if brut.len() < RELEVÉ {
         return Err(format!(
-            "gdb n'a pas rendu les 32 octets du résultat :\n{}",
-            après.trim()
+            "le programme d'épreuve n'a rendu que {} octets sur {RELEVÉ} — \
+             il s'est probablement arrêté avant la fin{}",
+            brut.len(),
+            match String::from_utf8_lossy(&sortie.stderr).trim() {
+                "" => String::new(),
+                message => format!(" : {message}"),
+            }
         ));
     }
-    let texte = avant;
+    let mot = |rang: usize| -> u64 {
+        let mut huit = [0u8; 8];
+        huit.copy_from_slice(&brut[rang * 8..rang * 8 + 8]);
+        u64::from_le_bytes(huit)
+    };
 
-    let mut valeurs: BTreeMap<&str, u64> = BTreeMap::new();
-    let mut eflags: Option<u64> = None;
-    for ligne in texte.lines() {
-        let mut mots = ligne.split_whitespace();
-        let (Some(nom), Some(brut)) = (mots.next(), mots.next()) else {
-            continue;
-        };
-        let Some(hexa) = brut.strip_prefix("0x") else {
-            continue;
-        };
-        let Ok(valeur) = u64::from_str_radix(hexa, 16) else {
-            continue;
-        };
-        if nom == "eflags" {
-            eflags = Some(valeur);
-        } else if NOMS.contains(&nom) {
-            valeurs.insert(NOMS.iter().find(|n| **n == nom).unwrap(), valeur);
-        }
-    }
-
-    let eflags = eflags.ok_or_else(|| {
-        format!(
-            "gdb n'a pas rendu les indicateurs — le programme n'a peut-être pas \
-             atteint son int3 :\n{}",
-            texte.trim()
-        )
-    })?;
     let mut gpr = [0u64; 16];
-    for (i, nom) in NOMS.iter().enumerate() {
-        gpr[i] = *valeurs
-            .get(nom)
-            .ok_or_else(|| format!("gdb n'a pas rendu {nom}"))?;
+    for (i, case) in gpr.iter_mut().enumerate() {
+        *case = mot(i);
+    }
+    let mut zmm0 = [0u64; 8];
+    for (i, case) in zmm0.iter_mut().enumerate() {
+        *case = mot(17 + i);
+    }
+    let mut k = [0u64; 8];
+    for (i, case) in k.iter_mut().enumerate() {
+        *case = mot(25 + i);
     }
     Ok(État {
         gpr,
-        flags: RFlags::from_bits_truncate(eflags),
-        ymm0,
+        flags: RFlags::from_bits_truncate(mot(16)),
+        zmm0,
+        k,
     })
 }
 
-/// Quatre mots de 64 bits, écrits comme on lit un registre : du haut
-/// vers le bas.
-fn en_hexa(mots: &[u64; 4]) -> String {
-    format!(
-        "{:016x}_{:016x}_{:016x}_{:016x}",
-        mots[3], mots[2], mots[1], mots[0]
-    )
+/// Des mots de 64 bits, écrits comme on lit un registre : du haut vers
+/// le bas, séparés pour qu'un écart se repère à l'œil.
+fn en_hexa(mots: &[u64]) -> String {
+    mots.iter()
+        .rev()
+        .map(|m| format!("{m:016x}"))
+        .collect::<Vec<_>>()
+        .join("_")
 }
 
 /// Ce que namsdec fait des mêmes octets, depuis le même état.
@@ -492,7 +552,7 @@ fn en_hexa(mots: &[u64; 4]) -> String {
 /// programme d'épreuve — poser les registres, poser les indicateurs — est
 /// remplacé ici par un appel direct, pour que l'écart constaté ne puisse
 /// venir que de l'instruction visée.
-fn sous_namsdec(octets: &[u8], graine: &Graine, rsp: u64) -> Result<État, String> {
+fn sous_namsdec(octets: &[u8], graine: &Graine, rsp: u64, avx512: bool) -> Result<État, String> {
     let mut mem = Memory::new(BASE, 0x10000);
     mem.load(BASE, octets).map_err(|e| format!("{e:?}"))?;
     let mut cpu = Cpu::new(mem);
@@ -501,16 +561,27 @@ fn sous_namsdec(octets: &[u8], graine: &Graine, rsp: u64) -> Result<État, Strin
     }
     // Les quatre registres vectoriels, montés en tranches de 128 bits :
     // c'est ainsi que `namsdec-core` les range, le bas d'abord.
-    for (registre, valeurs) in graine.ymm.iter().enumerate() {
-        cpu.regs.set_zmm(
-            XMMS[registre],
-            [
-                valeurs[0] as u128 | ((valeurs[1] as u128) << 64),
-                valeurs[2] as u128 | ((valeurs[3] as u128) << 64),
-                0,
-                0,
-            ],
-        );
+    //
+    // ON NE SÈME QUE CE QUE LE PROGRAMME D'ÉPREUVE SÈME. Sans AVX-512,
+    // celui-ci ne charge que 256 bits et aucun masque : semer plus ici
+    // ferait diverger les deux côtés sur des bits que l'instruction n'a
+    // jamais touchés, et chaque cas paraîtrait fautif. Le défaut est
+    // d'autant plus traître qu'il accuse TOUTES les instructions à la
+    // fois — donc qu'il ne ressemble pas à un défaut de sémantique.
+    for (registre, valeurs) in graine.zmm.iter().enumerate() {
+        let tranche = |bas: usize| valeurs[bas] as u128 | ((valeurs[bas + 1] as u128) << 64);
+        let haut = if avx512 {
+            [tranche(4), tranche(6)]
+        } else {
+            [0, 0]
+        };
+        cpu.regs
+            .set_zmm(XMMS[registre], [tranche(0), tranche(2), haut[0], haut[1]]);
+    }
+    if avx512 {
+        for (registre, valeur) in graine.k.iter().enumerate() {
+            cpu.regs.set_mask(MASQUES[registre], *valeur);
+        }
     }
     // `rsp` vaut ce que le programme d'épreuve lui a donné : la même
     // valeur des deux côtés, sans quoi toute instruction qui le lit
@@ -526,16 +597,21 @@ fn sous_namsdec(octets: &[u8], graine: &Graine, rsp: u64) -> Result<État, Strin
     for (i, reg) in REGS.iter().enumerate() {
         gpr[i] = emu.cpu.regs.get64(*reg);
     }
-    let zmm0 = emu.cpu.regs.get_zmm(XMMS[0]);
+    let tranches = emu.cpu.regs.get_zmm(XMMS[0]);
+    let mut zmm0 = [0u64; 8];
+    for (rang, tranche) in tranches.iter().enumerate() {
+        zmm0[rang * 2] = *tranche as u64;
+        zmm0[rang * 2 + 1] = (*tranche >> 64) as u64;
+    }
+    let mut k = [0u64; 8];
+    for (rang, case) in k.iter_mut().enumerate() {
+        *case = emu.cpu.regs.get_mask(MASQUES[rang]);
+    }
     Ok(État {
         gpr,
         flags: emu.cpu.flags,
-        ymm0: [
-            zmm0[0] as u64,
-            (zmm0[0] >> 64) as u64,
-            zmm0[1] as u64,
-            (zmm0[1] >> 64) as u64,
-        ],
+        zmm0,
+        k,
     })
 }
 
@@ -697,10 +773,91 @@ fn répertoire_vectoriel() -> Vec<&'static str> {
     ]
 }
 
+/// Les instructions AVX-512, éprouvées seulement sous SDE.
+///
+/// Elles ne tournent pas sur cette machine : Lunar Lake n'a pas
+/// AVX-512. C'est tout l'objet de `--sde`, et c'est la partie la plus
+/// récente de l'émulateur — donc celle où une erreur a le plus de
+/// chances de dormir encore.
+///
+/// Choisies pour ce qui est PROPRE à AVX-512, et non pour redire ce
+/// qu'AVX2 fait déjà en plus large :
+///
+/// * le **masque** `{k1}`, qui ne calcule que les voies choisies et
+///   laisse les autres intactes ;
+/// * le **zéroing** `{k1}{z}`, qui les met à zéro au lieu de les
+///   laisser — deux comportements que tout le monde confond une fois ;
+/// * la **diffusion** `{1to16}`, qui relit le même scalaire pour
+///   chaque voie sans le recopier en mémoire ;
+/// * les **comparaisons qui écrivent un masque** au lieu d'un vecteur,
+///   ce qui est le vrai changement de modèle d'AVX-512 ;
+/// * les **opérations sur les masques eux-mêmes**.
+fn répertoire_512() -> Vec<&'static str> {
+    vec![
+        // Le socle, en 512.
+        "vpaddd zmm0, zmm1, zmm2",
+        "vpaddq zmm0, zmm1, zmm2",
+        "vpsubd zmm0, zmm1, zmm2",
+        "vpandd zmm0, zmm1, zmm2",
+        "vpord zmm0, zmm1, zmm2",
+        "vpxorq zmm0, zmm1, zmm2",
+        "vpmulld zmm0, zmm1, zmm2",
+        "vpminsd zmm0, zmm1, zmm2",
+        "vpmaxud zmm0, zmm1, zmm2",
+        "vpabsd zmm0, zmm1",
+        // Le masque : ce qui n'est pas choisi garde sa valeur…
+        "vpaddd zmm0{k1}, zmm1, zmm2",
+        "vpaddq zmm0{k2}, zmm1, zmm2",
+        "vpsubd zmm0{k3}, zmm1, zmm2",
+        // …ou passe à zéro. La différence d'un seul suffixe.
+        "vpaddd zmm0{k1}{z}, zmm1, zmm2",
+        "vpxorq zmm0{k2}{z}, zmm1, zmm2",
+        "vpmulld zmm0{k3}{z}, zmm1, zmm2",
+        // Le masque sur 256 et 128 : AVX-512VL, et les trois largeurs
+        // ne se comportent pas pareil sur la partie haute.
+        "vpaddd ymm0{k1}, ymm1, ymm2",
+        "vpaddd xmm0{k1}{z}, xmm1, xmm2",
+        // Les comparaisons qui rendent un MASQUE.
+        "vpcmpeqd k4, zmm1, zmm2",
+        "vpcmpgtd k5, zmm1, zmm2",
+        "vpcmpd k6, zmm1, zmm2, 1",
+        "vpcmpud k7, zmm1, zmm2, 5",
+        "vptestmd k4, zmm1, zmm2",
+        "vptestnmd k5, zmm1, zmm2",
+        // Les masques entre eux.
+        "kandq k0, k1, k2",
+        "korq k0, k1, k2",
+        "kxorq k0, k1, k2",
+        "knotq k0, k1",
+        "kshiftlq k0, k1, 3",
+        "kshiftrq k0, k1, 5",
+        "kortestq k1, k2",
+        "kmovq rax, k1",
+        // Les décalages et permutations propres à 512.
+        "vpslld zmm0, zmm1, 3",
+        "vpsrlq zmm0, zmm1, 7",
+        "vpsravd zmm0, zmm1, zmm2",
+        "vpermd zmm0, zmm1, zmm2",
+        "vpermq zmm0, zmm1, 0x1b",
+        "vshufi32x4 zmm0, zmm1, zmm2, 0x4e",
+        "valignd zmm0, zmm1, zmm2, 5",
+        // Le ternaire : une table de vérité à trois entrées, en une
+        // instruction. Rien n'y ressemble ailleurs.
+        "vpternlogd zmm0, zmm1, zmm2, 0xca",
+        "vpternlogq zmm0, zmm1, zmm2, 0x96",
+        // Compter, et plier.
+        "vplzcntd zmm0, zmm1",
+        "vpconflictd zmm0, zmm1",
+        "vpopcntd zmm0, zmm1",
+    ]
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut graines = 24usize;
     let mut instructions: Vec<String> = Vec::new();
+    let mut sde = false;
+    let mut cpu = "spr".to_owned();
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
@@ -708,14 +865,38 @@ fn main() {
                 i += 1;
                 graines = args.get(i).and_then(|v| v.parse().ok()).unwrap_or(24);
             }
+            "--sde" => sde = true,
+            "--cpu" => {
+                i += 1;
+                cpu = args.get(i).cloned().unwrap_or_else(|| "spr".to_owned());
+                sde = true;
+            }
             autre => instructions.push(autre.to_owned()),
         }
         i += 1;
     }
+
+    // Le lanceur, s'il y en a un. Sous SDE, le programme d'épreuve voit
+    // un processeur complet — AVX-512 compris — sans que rien d'autre
+    // change.
+    let lanceur: Vec<String> = if sde {
+        let Some(chemin) = trouver_sde() else {
+            eprintln!(
+                "SDE est introuvable. Posez-le quelque part et donnez son chemin \n\
+                 par SDE_PATH, ou mettez `sde64` dans le PATH.\n\
+                 https://www.intel.com/content/www/us/en/download/684897/"
+            );
+            std::process::exit(2);
+        };
+        vec![chemin, format!("-{cpu}"), "--".to_owned()]
+    } else {
+        Vec::new()
+    };
     if instructions.is_empty() {
         instructions = répertoire()
             .into_iter()
             .chain(répertoire_vectoriel())
+            .chain(if sde { répertoire_512() } else { Vec::new() })
             .map(str::to_owned)
             .collect();
     }
@@ -729,8 +910,13 @@ fn main() {
     };
 
     println!(
-        "== oracle : {} instruction(s) × {graines} graine(s)\n",
-        instructions.len()
+        "== oracle : {} instruction(s) × {graines} graine(s){}\n",
+        instructions.len(),
+        if sde {
+            format!(" — sous SDE, cœur {cpu}")
+        } else {
+            String::new()
+        }
     );
 
     let mut éprouvées = 0usize;
@@ -753,7 +939,7 @@ fn main() {
 
         for _ in 0..graines {
             let semis = Graine::tirée(&mut graine);
-            let asm = programme(&semis, instruction);
+            let asm = programme(&semis, instruction, sde);
             let programme_bâti = match bâtir(&dossier, &asm) {
                 Ok(p) => p,
                 Err(message) => {
@@ -761,7 +947,7 @@ fn main() {
                     break;
                 }
             };
-            let matériel = match sous_le_matériel(&programme_bâti) {
+            let matériel = match sous_le_matériel(&programme_bâti, &lanceur) {
                 Ok(é) => é,
                 Err(message) => {
                     refusée = Some(message);
@@ -770,7 +956,7 @@ fn main() {
             };
             // `rsp` tel que le matériel l'a laissé : le programme
             // d'épreuve l'a posé lui-même, et namsdec doit partir de là.
-            let nôtre = match sous_namsdec(&octets, &semis, matériel.gpr[4]) {
+            let nôtre = match sous_namsdec(&octets, &semis, matériel.gpr[4], sde) {
                 Ok(é) => é,
                 Err(message) => {
                     refusée = Some(message);
@@ -825,6 +1011,34 @@ fn main() {
         println!("\nà regarder : {}", fautives.join(", "));
         std::process::exit(1);
     }
+}
+
+/// Où est SDE, si on peut le trouver.
+///
+/// Trois endroits, du plus explicite au plus commode : la variable
+/// `SDE_PATH`, le `PATH`, puis `~/PrgInd`, où cette machine range les
+/// outils qui ne viennent pas du système.
+fn trouver_sde() -> Option<String> {
+    if let Ok(chemin) = std::env::var("SDE_PATH")
+        && Path::new(&chemin).is_file()
+    {
+        return Some(chemin);
+    }
+    if Command::new("sde64").arg("-version").output().is_ok() {
+        return Some("sde64".to_owned());
+    }
+    let maison = std::env::var("HOME").ok()?;
+    let prgind = Path::new(&maison).join("PrgInd");
+    let mut candidats: Vec<PathBuf> = std::fs::read_dir(&prgind)
+        .ok()?
+        .filter_map(|e| e.ok())
+        .map(|e| e.path().join("sde64"))
+        .filter(|p| p.is_file())
+        .collect();
+    // Le plus récent d'abord, au nom : `sde-10.13.1` passe avant
+    // `sde-10.8`.
+    candidats.sort();
+    candidats.pop().map(|p| p.to_string_lossy().into_owned())
 }
 
 /// Un dossier de travail à soi, sans dépendance.

@@ -1824,6 +1824,25 @@ le code binaire et le pseudo-code. Un seul module neuf les réunit.
       Deux fiches écrites, parce qu'un invariant l'exige : toute
       instruction qui s'exécute doit pouvoir s'expliquer. Deux autres ont
       réclamé que l'interface et le README annoncent 176 et non 174.
+- [x] **AVX-512 confronté au matériel** (A 3.10, 15 octobre 2026) — le
+      trou que 3.6 avait identifié est comblé : Intel SDE 10.13.1 émule
+      le jeu complet, et `--sde` le met devant le programme d'épreuve.
+      Empreinte vérifiée contre celle d'Intel avant extraction.
+      Refonte au passage, et elle valait mieux que le branchement : le
+      programme relève SON PROPRE état — un `mov` vers la mémoire ne
+      touche aucun indicateur, c'est toute l'astuce. `gdb` disparaît :
+      une dépendance de moins, bien plus rapide, et un émulateur se
+      glisse devant sans rien changer d'autre.
+      Cinq défauts trouvés, que personne ne pouvait voir. Quatre
+      comparaisons à masque ne lisaient que les 128 bits bas d'un `zmm`
+      (le calcul des voies s'écrivait « ymm ou pas ymm »), et `vpermq
+      zmm` laissait la moitié haute à zéro. Corrigés, vérifiés sous SDE,
+      retenus par deux contrôles éprouvés en remettant les défauts.
+      La bonne nouvelle : le cœur d'AVX-512 est juste. Masques `{k1}`,
+      zéroing `{z}`, formes VL, les huit opérations entre masques. 127
+      instructions, 762 cas, zéro écart.
+      Onze instructions manquent encore, et l'oracle les nomme —
+      `vpternlogd` en tête, qui n'a d'équivalent nulle part ailleurs.
 - [x] **QEMU ne sert pas d'oracle pour AVX-512** (A 3.9) — piste
       fermée par l'expérience, pas par la documentation. `qemu-x86_64
       -cpu help` annonce `avx512f` et les autres, mais ce sont des noms

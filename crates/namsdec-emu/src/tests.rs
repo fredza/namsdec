@@ -2005,6 +2005,103 @@ hlt
     assert_eq!(emu.cpu.regs.get64(Reg64::R14), 0x34, "bzhi");
 }
 
+/// Une comparaison qui écrit un masque lit TOUTES les voies du registre.
+///
+/// Le défaut qu'elle retient : le calcul du nombre de voies s'écrivait
+/// « ymm ou pas ymm », si bien qu'un `zmm` tombait dans le cas « pas
+/// ymm » et n'était comparé que sur ses 128 bits bas. Douze voies sur
+/// seize rendaient zéro — en silence, car un masque peu rempli n'a rien
+/// d'anormal en soi. Rien ne plantait, et aucun test ne regardait.
+///
+/// Trouvé le 15 octobre 2026 par l'oracle différentiel lancé sous Intel
+/// SDE, seule façon d'exécuter AVX-512 sur une machine qui n'en a pas
+/// (voir A 3.6 et 3.10).
+///
+/// Le motif `0x5555` est choisi pour cela : il met un bit sur deux sur
+/// les SEIZE voies. L'ancien code rendait `0x5`.
+#[test]
+fn a_mask_comparison_reads_every_lane_of_a_zmm() {
+    let emu = run_program(
+        "\
+section .text
+global _start
+_start:
+vmovdqu64 zmm1, [gauche]
+vmovdqu64 zmm2, [droite]
+vpcmpd k1, zmm1, zmm2, 0     ; égalité, voie par voie
+kmovq rax, k1
+; et la même chose en 256 bits, pour que la correction n'ait pas
+; cassé la largeur qui marchait déjà
+vmovdqu ymm3, [gauche]
+vmovdqu ymm4, [droite]
+vpcmpd k2, ymm3, ymm4, 0
+kmovq rbx, k2
+hlt
+
+section .data
+align 64
+; seize mots de 32 bits : les pairs égaux, les impairs différents
+gauche: dd 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15
+droite: dd 0,99,2,99,4,99,6,99,8,99,10,99,12,99,14,99
+",
+        &[],
+    );
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rax),
+        0x5555,
+        "les seize voies d'un zmm sont comparées, pas seulement les quatre basses"
+    );
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rbx),
+        0x55,
+        "et un ymm en donne huit, comme avant"
+    );
+}
+
+/// `vpermq` sur 512 bits permute CHAQUE moitié de 256, avec le même
+/// immédiat.
+///
+/// Huit bits ne peuvent pas nommer huit positions parmi huit : le motif
+/// se répète donc par voie de 256, comme pour toutes les permutations à
+/// immédiat d'AVX-512. C'est la même contrainte que pour `vpblendw` —
+/// l'encodage a été élargi, pas l'immédiat.
+///
+/// Le code d'avant ne connaissait que la forme 256 et laissait la
+/// moitié haute à ZÉRO : un `vpermq zmm` perdait silencieusement la
+/// moitié de sa donnée. Trouvé par l'oracle sous Intel SDE.
+#[test]
+fn vpermq_on_512_bits_permutes_each_256_bit_lane() {
+    let emu = run_program(
+        "\
+section .text
+global _start
+_start:
+vmovdqu64 zmm1, [source]
+vpermq zmm0, zmm1, 0x1b      ; 0b00_01_10_11 : à l\'envers
+vmovdqu64 [sortie], zmm0
+lea r15, [sortie]
+hlt
+
+section .data
+align 64
+source: dq 0,1,2,3,4,5,6,7
+sortie: times 8 dq 0
+",
+        &[],
+    );
+    let base = emu.cpu.regs.get64(Reg64::R15);
+    let lu: Vec<u64> = (0..8)
+        .map(|i| emu.cpu.mem.read_u64(base + i * 8).expect("en mémoire"))
+        .collect();
+    // Chaque moitié retournée pour elle-même : 3,2,1,0 puis 7,6,5,4.
+    // Et surtout : la moitié haute n\'est PAS nulle.
+    assert_eq!(
+        lu,
+        vec![3, 2, 1, 0, 7, 6, 5, 4],
+        "chaque voie de 256 bits est permutée pour elle-même"
+    );
+}
+
 /// `pext` ramasse les bits que le masque désigne ; `pdep` les éparpille.
 ///
 /// Les deux manquaient — signalées le 15 octobre 2026 par l'oracle

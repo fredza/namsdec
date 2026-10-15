@@ -1844,17 +1844,36 @@ impl Emulator {
                 let out = [pick(control & 0xf), pick((control >> 4) & 0xf), 0, 0];
                 self.write_vec_op(instr, 0, out)?;
             }
+            // `vpermq` réordonne des mots de 64 bits selon un immédiat
+            // de huit bits : quatre sélecteurs de deux bits.
+            //
+            // EN 512 BITS, LE MOTIF SE RÉPÈTE PAR VOIE DE 256. Huit bits
+            // ne peuvent pas nommer huit positions parmi huit ; chaque
+            // moitié de 256 est donc permutée pour elle-même, avec le
+            // MÊME immédiat. C'est la règle de toutes les permutations à
+            // immédiat d'AVX-512, et elle vient de la même contrainte
+            // que pour `vpblendw` : l'encodage a été élargi, pas
+            // l'immédiat.
+            //
+            // Le code d'avant ne connaissait que la forme 256 et
+            // laissait la moitié haute à ZÉRO — un `vpermq zmm` perdait
+            // donc silencieusement la moitié de sa donnée. Trouvé le
+            // 15 octobre 2026 par l'oracle sous Intel SDE.
             M::Vpermq | M::Vpermpd => {
                 let src = self.read_vec_op(instr, 1)?;
                 let control = self.read_op(instr, 2)?;
-                let quad = |index: u64| -> u128 {
-                    let half = src[(index / 2) as usize];
+                let voies = voies_de(instr, 1, 8) / 4;
+                let quad = |index: usize| -> u128 {
+                    let half = src[index / 2];
                     (half >> ((index % 2) * 64)) & u128::from(u64::MAX)
                 };
                 let mut out = [0u128; 4];
-                for lane in 0..4 {
-                    let from = (control >> (lane * 2)) & 3;
-                    out[lane / 2] |= quad(from) << ((lane % 2) * 64);
+                for voie in 0..voies.max(1) {
+                    for mot in 0..4usize {
+                        let from = ((control >> (mot * 2)) & 3) as usize + voie * 4;
+                        let vers = voie * 4 + mot;
+                        out[vers / 2] |= quad(from) << ((vers % 2) * 64);
+                    }
                 }
                 self.write_vec_op(instr, 0, out)?;
             }
@@ -2433,8 +2452,7 @@ impl Emulator {
     ) -> Result<(), EmuError> {
         let a = self.read_vec_op(instr, 1)?;
         let b = self.read_vec_op(instr, 2)?;
-        let large = matches!(instr.op_kind(1), OpKind::Register) && instr.op_register(1).is_ymm();
-        let voies = if large { 32 / bytes } else { 16 / bytes };
+        let voies = voies_de(instr, 1, bytes);
         let bits = bytes * 8;
         let mut out = 0u64;
         for voie in 0..voies {
@@ -2465,8 +2483,7 @@ impl Emulator {
         let a = self.read_vec_op(instr, 1)?;
         let b = self.read_vec_op(instr, 2)?;
         let prédicat = self.read_op(instr, 3)? & 7;
-        let large = matches!(instr.op_kind(1), OpKind::Register) && instr.op_register(1).is_ymm();
-        let voies = if large { 32 / bytes } else { 16 / bytes };
+        let voies = voies_de(instr, 1, bytes);
         let bits = bytes * 8;
         let Some(w) = width_from_bytes(bytes) else {
             return Ok(());
@@ -2592,4 +2609,37 @@ impl Emulator {
         }
         self.write_op(instr, 0, mask)
     }
+}
+
+/// Combien de voies de `bytes` octets porte l'opérande vectoriel.
+///
+/// TROIS largeurs, et non deux : `xmm` 128 bits, `ymm` 256, `zmm` 512.
+///
+/// Le défaut que ce calcul remplace est instructif. Il s'écrivait
+/// « ymm ou pas ymm », si bien qu'un `zmm` tombait dans le cas « pas
+/// ymm » et n'était traité que sur ses 128 bits bas : douze voies sur
+/// seize rendaient zéro, en silence, et le masque produit paraissait
+/// simplement « peu de bits mis ». Rien ne plantait.
+///
+/// Trouvé le 15 octobre 2026 par l'oracle différentiel lancé sous Intel
+/// SDE — la seule façon d'exécuter AVX-512 sur une machine qui n'en a
+/// pas. Le matériel rendait `0x3dad`, namsdec `0xd`.
+fn voies_de(instr: &Instruction, op: u32, bytes: usize) -> usize {
+    let octets = if matches!(instr.op_kind(op), OpKind::Register) {
+        let reg = instr.op_register(op);
+        if reg.is_zmm() {
+            64
+        } else if reg.is_ymm() {
+            32
+        } else {
+            16
+        }
+    } else {
+        // Un opérande en mémoire ne dit pas sa largeur : ces
+        // instructions-là portent toujours un registre en première
+        // source, donc on n'arrive ici que sur une forme qu'on ne
+        // connaît pas. Le plus étroit est le choix sûr.
+        16
+    };
+    octets / bytes
 }

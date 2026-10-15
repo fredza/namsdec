@@ -440,6 +440,52 @@ aujourd'hui ; les suivantes, ce vers quoi l'outil peut aller.
      branche à la place de `gdb` dans `sous_le_matériel`, seule fonction de
      l'oracle à connaître l'outil — et c'est pour cela qu'elle l'est.
 
+3.10 [FAIT] AVX-512 ENFIN CONFRONTÉ AU MATÉRIEL — CINQ DÉFAUTS
+     3.6 disait : la partie la plus récente de l'émulateur est précisément
+     celle qu'on ne peut pas vérifier ici, faute d'AVX-512 sur la machine.
+     3.9 fermait la piste QEMU. Restait Intel SDE, qui émule le jeu complet
+     sur n'importe quel x86-64. C'est fait.
+     POSÉ : SDE 10.13.1 dans ~/PrgInd/sde-10.13.1, empreinte SHA-256 vérifiée
+     contre celle qu'Intel publie avant toute extraction. `--sde` le met
+     devant le programme d'épreuve ; `--cpu skx|spr|…` choisit le cœur simulé.
+     REFONTE AU PASSAGE, et elle valait mieux que le branchement : le
+     programme d'épreuve RELÈVE SON PROPRE ÉTAT. Après l'instruction, il range
+     les seize registres (un `mov` vers la mémoire ne touche aucun
+     indicateur, c'est toute l'astuce), puis les indicateurs, `zmm0` et les
+     huit masques, et écrit le tampon sur sa sortie standard. Plus de `gdb` :
+     une dépendance de moins, beaucoup plus rapide — et surtout, c'est ce qui
+     permet de glisser un émulateur devant sans rien changer d'autre.
+     SEMER LA MÊME CHOSE DES DEUX CÔTÉS. Défaut rencontré en chemin, et
+     traître : hors AVX-512 le programme ne sème ni les masques ni la moitié
+     haute des vecteurs, alors que le côté namsdec le faisait. Résultat,
+     TOUTES les instructions paraissaient fautives à la fois — ce qui, au
+     moins, ne ressemble pas à un défaut de sémantique.
+     CE QUE SDE A TROUVÉ, et que personne ne pouvait voir :
+       · `vpcmpd`, `vpcmpud`, `vptestmd`, `vptestnmd` ne lisaient que les
+         128 bits BAS d'un `zmm`. Le calcul du nombre de voies s'écrivait
+         « ymm ou pas ymm » ; un `zmm` tombait dans « pas ymm ». Douze voies
+         sur seize rendaient zéro, en silence — un masque peu rempli n'a rien
+         d'anormal en soi. Le matériel rendait 0x3dad, namsdec 0xd.
+       · `vpermq zmm` laissait la moitié haute à ZÉRO : la moitié de la donnée
+         perdue sans rien signaler. En 512, le motif se répète par voie de
+         256 — huit bits ne peuvent pas nommer huit positions parmi huit,
+         même contrainte que `vpblendw`.
+     Corrigés par `voies_de`, qui connaît les TROIS largeurs, et par la boucle
+     par voie de `vpermq`. Vérifiés sous SDE (105 et 75 cas), puis retenus par
+     deux contrôles dans `namsdec-emu/src/tests.rs` — éprouvés en remettant
+     les défauts : 5 au lieu de 0x5555, et [3,2,1,0,0,0,0,0] au lieu de
+     [3,2,1,0,7,6,5,4].
+     CE QUI PASSE, ET C'EST LA BONNE NOUVELLE : le cœur d'AVX-512 est juste.
+     Les opérations masquées `{k1}`, le zéroing `{z}`, les formes VL sur ymm
+     et xmm, les huit opérations entre masques (`kandq`, `kshiftlq`,
+     `kortestq`…), les décalages et le socle arithmétique en 512. 127
+     instructions, 762 cas, zéro écart.
+     ONZE INSTRUCTIONS MANQUENT ENCORE, et l'oracle les nomme : `vpcmpeqd`
+     et `vpcmpgtd` à destination de masque, `vpsravd`, `vpermd`,
+     `vshufi32x4`, `valignd`, `vpternlogd`/`q`, `vplzcntd`, `vpconflictd`,
+     `vpopcntd`. `vpternlog` mérite une mention : une table de vérité à trois
+     entrées en une instruction, rien n'y ressemble ailleurs.
+
 3.2  Le rendu hors écran n'est pas testable tel quel — et une capture, si
      Pas de serveur X virtuel sur la machine, donc pas de rendu hors écran.
      En revanche, lancer namsdec en forçant X11 (WAYLAND_DISPLAY vide) et
