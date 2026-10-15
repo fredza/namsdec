@@ -1,4 +1,4 @@
-use crate::{ReContext, ReModule, ReRequest, ReSection, digest, entropy};
+use crate::{ReContext, ReModule, ReRequest, ReSection, digest, entropy, framed_button};
 
 /// Le vidage hexadécimal du fichier, et l'empreinte de ce qu'on y
 /// sélectionne.
@@ -160,14 +160,13 @@ impl ReModule for DumpModule {
                     .font(egui::TextStyle::Monospace)
                     .desired_width(90.0),
             );
-            aller |= ui
-                .button(ctx.t("Aller", "Go"))
+            aller |= framed_button(ui, ctx.t("Aller", "Go"))
                 .on_hover_text(ctx.t(
                     "Amener le vidage sur cette tranche",
                     "Bring the dump to this range",
                 ))
                 .clicked();
-            if ui.button(ctx.t("Tout", "Everything")).clicked() {
+            if framed_button(ui, ctx.t("Tout", "Everything")).clicked() {
                 self.début = "0".to_owned();
                 self.longueur = format!("{:#x}", octets.len());
             }
@@ -176,8 +175,7 @@ impl ReModule for DumpModule {
             // un compte rendu, ou on le compare à celui d'un autre
             // outil. C'est la forme de `xxd`, donc celle qu'un `diff`
             // sait lire.
-            if ui
-                .button(ctx.t("Copier le vidage", "Copy the dump"))
+            if framed_button(ui, ctx.t("Copier le vidage", "Copy the dump"))
                 .on_hover_text(ctx.t(
                     "Le fichier entier, au format de xxd",
                     "The whole file, in xxd's format",
@@ -268,8 +266,7 @@ impl ReModule for DumpModule {
                     );
                     let prêt = écrits.as_ref().is_some_and(|o| o.len() == attendus);
                     ui.add_enabled_ui(prêt, |ui| {
-                        if ui
-                            .button(ctx.t("Écrire", "Write"))
+                        if framed_button(ui, ctx.t("Écrire", "Write"))
                             .on_hover_text(ctx.t(
                                 "Le changement se défait depuis Outils > Patcher le binaire.",
                                 "The change can be undone from Tools > Patch the binary.",

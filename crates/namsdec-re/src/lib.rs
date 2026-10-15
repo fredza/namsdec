@@ -10,6 +10,7 @@ mod binary_info;
 mod call_graph_module;
 pub mod cfg;
 pub mod cyclic;
+pub mod detour_module;
 pub mod digest;
 mod digest_module;
 pub mod dump_module;
@@ -53,6 +54,7 @@ mod yara_module;
 
 pub use binary_info::BinaryInfoModule;
 pub use call_graph_module::CallGraphModule;
+pub use detour_module::DetourModule;
 pub use digest_module::DigestModule;
 pub use dump_module::DumpModule;
 pub use dzf_decompiler_module::DzfDecompilerModule;
@@ -178,6 +180,18 @@ pub enum GoTarget {
 pub enum ReRequest {
     /// Écrire ces octets à cette position du fichier.
     PatchBytes { offset: usize, bytes: Vec<u8> },
+    /// Poser un détour : les DEUX changements d'un coup.
+    ///
+    /// Pas deux `PatchBytes` à la file, et c'est la raison même de cette
+    /// variante : entre les deux, le fichier porterait un `jmp` vers un
+    /// corps pas encore écrit — donc vers du bourrage. L'application
+    /// les applique sur la même image, et les enregistre sous un même
+    /// numéro de groupe pour qu'ils se défassent ensemble.
+    ///
+    /// Encadré pour ne pas gonfler la taille de l'énumération : un
+    /// détour porte ses octets d'avant et d'après, et toutes les
+    /// demandes paieraient ce poids.
+    PatchDetour { detour: Box<crate::patch::Detour> },
     /// Montrer cette adresse — dans le code, ou dans les octets.
     ///
     /// Un panneau d'analyse désigne des endroits — une entrée de
@@ -288,6 +302,48 @@ pub fn clickable_label(ui: &mut egui::Ui, étiquette: egui::Label) -> egui::Resp
     réponse
 }
 
+/// Un bouton qui se voit **sans qu'on le survole**.
+///
+/// Le thème rend les boutons plats au repos — fond transparent, liseré
+/// absent — et c'est voulu dans la barre de menus et la barre d'outils,
+/// où la platitude EST le dessin. Partout ailleurs, un bouton plat ne se
+/// distingue d'une étiquette qu'au survol : on ne sait pas qu'il y a
+/// quelque chose à cliquer, donc on ne clique pas.
+///
+/// L'interface a son `framed_button` depuis longtemps, mais il est
+/// interne à `namsdec-gui` et les panneaux d'analyse vivent ici : leurs
+/// trente-trois boutons étaient donc plats, dans la même fenêtre où ceux
+/// de l'interface portent un liseré. Vu à l'écran le 15 octobre 2026,
+/// pendant l'audit du panneau « Détourner ».
+///
+/// Le liseré se prend dans les `visuals` et non dans le thème : un
+/// panneau n'a pas à connaître la palette de l'application, et la
+/// couleur suit ainsi le thème clair comme le sombre.
+pub fn framed(ui: &egui::Ui, label: impl Into<egui::WidgetText>) -> egui::Button<'static> {
+    egui::Button::new(label)
+        .stroke(egui::Stroke::new(1.0, ui.visuals().weak_text_color()))
+        .corner_radius(egui::CornerRadius::from(6))
+}
+
+/// Le même, posé tout de suite.
+///
+/// `framed` le rend sans le poser, pour `add_enabled` — qui grise un
+/// bouton tant qu'il n'y a rien à faire, et a donc besoin de l'ajouter
+/// lui-même.
+pub fn framed_button(ui: &mut egui::Ui, label: impl Into<egui::WidgetText>) -> egui::Response {
+    let bouton = framed(ui, label);
+    ui.add(bouton)
+}
+
+/// Le même, en petit — pour une rangée serrée.
+pub fn framed_small_button(
+    ui: &mut egui::Ui,
+    label: impl Into<egui::WidgetText>,
+) -> egui::Response {
+    let bouton = framed(ui, label).small();
+    ui.add(bouton)
+}
+
 /// Une adresse sur laquelle on peut cliquer pour l'aller voir.
 ///
 /// Écrite une fois pour tous les panneaux : une adresse se montre de la
@@ -324,17 +380,11 @@ pub fn clickable_address(ui: &mut egui::Ui, ctx: &ReContext, addr: u64) -> Optio
     ));
     let mut choix = None;
     egui::Popup::menu(&réponse).show(|ui| {
-        if ui
-            .button(ctx.t("Dans le code désassemblé", "In the disassembly"))
-            .clicked()
-        {
+        if framed_button(ui, ctx.t("Dans le code désassemblé", "In the disassembly")).clicked() {
             choix = Some(GoTarget::Listing);
             ui.close();
         }
-        if ui
-            .button(ctx.t("Dans l'éditeur binaire", "In the binary editor"))
-            .clicked()
-        {
+        if framed_button(ui, ctx.t("Dans l'éditeur binaire", "In the binary editor")).clicked() {
             choix = Some(GoTarget::Bytes);
             ui.close();
         }

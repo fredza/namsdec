@@ -20,7 +20,7 @@
 //!   **pseudo-code** (ce que chaque instruction fait, en clair).
 
 use crate::functions::{Function, Origin, by_importance, discover};
-use crate::{ReContext, ReModule, ReRequest, ReSection, clickable_address};
+use crate::{ReContext, ReModule, ReRequest, ReSection, clickable_address, framed_button};
 use std::collections::HashMap;
 
 /// Combien de fonctions l'arbre et le détail montrent, au plus.
@@ -245,7 +245,7 @@ impl CallGraphModule {
                     .font(egui::TextStyle::Monospace),
             );
             let validé = champ.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-            if ui.button(ctx.t("Y aller", "Go")).clicked() || validé {
+            if framed_button(ui, ctx.t("Y aller", "Go")).clicked() || validé {
                 match lire_adresse(&self.aller_à) {
                     Some(addr) => {
                         // Une adresse TAPÉE dans ce champ, et non une
@@ -510,14 +510,13 @@ impl CallGraphModule {
                         );
                         let validé =
                             champ.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-                        if ui.button(ctx.t("Renommer", "Rename")).clicked() || validé {
+                        if framed_button(ui, ctx.t("Renommer", "Rename")).clicked() || validé {
                             demande = Some(ReRequest::Rename {
                                 addr: f.start,
                                 name: tampon.clone(),
                             });
                         }
-                        if ui
-                            .button(ctx.t("Défaut", "Default"))
+                        if framed_button(ui, ctx.t("Défaut", "Default"))
                             .on_hover_text(
                                 ctx.t("Rendre son nom d'origine", "Restore its original name"),
                             )

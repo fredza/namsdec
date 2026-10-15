@@ -1,5 +1,5 @@
 use crate::entropy::{self, Range, Verdict, Window, seuils};
-use crate::{ReContext, ReModule, ReRequest, ReSection, clickable_address};
+use crate::{ReContext, ReModule, ReRequest, ReSection, clickable_address, framed_button};
 
 /// Le profil d'entropie du fichier, tranche par tranche.
 ///
@@ -539,17 +539,11 @@ fn profil(
     }
     let mut choix = None;
     egui::Popup::menu(&réponse).show(|ui| {
-        if ui
-            .button(ctx.t("Dans le code désassemblé", "In the disassembly"))
-            .clicked()
-        {
+        if framed_button(ui, ctx.t("Dans le code désassemblé", "In the disassembly")).clicked() {
             choix = Some(crate::GoTarget::Listing);
             ui.close();
         }
-        if ui
-            .button(ctx.t("Dans l'éditeur binaire", "In the binary editor"))
-            .clicked()
-        {
+        if framed_button(ui, ctx.t("Dans l'éditeur binaire", "In the binary editor")).clicked() {
             choix = Some(crate::GoTarget::Bytes);
             ui.close();
         }

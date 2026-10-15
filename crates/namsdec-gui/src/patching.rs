@@ -78,7 +78,61 @@ impl NamsdecApp {
                 before: avant,
                 after: après,
                 addr: adresse,
+                // Un correctif posé seul ne dépend de rien d'autre.
+                group: None,
             });
+            self.status = Status::Note(|s| s.patch_applied);
+        }
+    }
+
+    /// Pose un détour : ses deux changements, sur la même image.
+    ///
+    /// Jamais deux appels à [`Self::write_patch`] à la file. Entre les
+    /// deux, le fichier porterait un `jmp` vers un corps pas encore
+    /// écrit — c'est-à-dire vers du bourrage —, et comme chaque écriture
+    /// recharge l'ELF, cet état intermédiaire serait réellement celui
+    /// que namsdec montre et que l'émulateur exécuterait. On applique
+    /// les deux, puis on recharge une fois.
+    pub(crate) fn write_detour(&mut self, detour: &namsdec_re::patch::Detour) {
+        let s = strings(self.lang);
+        let Some(state) = &self.assemble_state else {
+            return;
+        };
+        let mut image = state.output.file.clone();
+
+        // Le corps d'abord, le saut ensuite. L'ordre ne change rien ici
+        // — les deux sont appliqués avant tout rechargement —, mais il
+        // dit l'intention : la destination existe avant qu'on y envoie
+        // quiconque.
+        let Some(avant_corps) =
+            namsdec_re::patch::apply(&mut image, detour.corps.offset, &detour.corps.after)
+        else {
+            self.status = Status::Error(s.patch_no_offset.to_owned());
+            return;
+        };
+        let Some(avant_aller) =
+            namsdec_re::patch::apply(&mut image, detour.aller.offset, &detour.aller.after)
+        else {
+            self.status = Status::Error(s.patch_no_offset.to_owned());
+            return;
+        };
+
+        let nom = state
+            .from_binary
+            .as_ref()
+            .map(|binaire| binaire.name.clone())
+            .unwrap_or_default();
+        if self.load_elf(&image, &nom) {
+            // Les octets d'avant relevés à l'application, et non ceux du
+            // plan : le plan a été calculé sur l'image d'alors, et un
+            // correctif posé entre-temps l'aurait démenti. C'est ce
+            // qu'on a vraiment recouvert qu'il faut garder pour défaire.
+            let mut corps = detour.corps.clone();
+            corps.before = avant_corps;
+            let mut aller = detour.aller.clone();
+            aller.before = avant_aller;
+            self.patches.push(corps);
+            self.patches.push(aller);
             self.status = Status::Note(|s| s.patch_applied);
         }
     }
@@ -100,6 +154,11 @@ impl NamsdecApp {
             match demande {
                 namsdec_re::ReRequest::PatchBytes { offset, bytes } => {
                     self.write_patch(offset, bytes, 0);
+                }
+                // Un détour : les deux changements ensemble, sous un même
+                // groupe. Voir `write_detour` pour la raison.
+                namsdec_re::ReRequest::PatchDetour { detour } => {
+                    self.write_detour(&detour);
                 }
                 namsdec_re::ReRequest::GoTo { addr, target } => match target {
                     namsdec_re::GoTarget::Listing => self.show_address(addr),
@@ -335,6 +394,11 @@ impl NamsdecApp {
     }
 
     /// Défait un patch : on remet les octets d'avant, et l'on recharge.
+    ///
+    /// Quand le correctif appartient à un groupe, c'est tout le groupe
+    /// qui se défait. Un détour en fait deux, et défaire le corps seul
+    /// laisserait le `jmp` sauter dans du bourrage : le programme
+    /// partirait dans des zéros. On ne propose donc pas la demi-mesure.
     pub(crate) fn undo_patch(&mut self, rang: usize) {
         let Some(patch) = self.patches.get(rang).cloned() else {
             return;
@@ -343,8 +407,28 @@ impl NamsdecApp {
             return;
         };
         let mut image = state.output.file.clone();
-        if namsdec_re::patch::apply(&mut image, patch.offset, &patch.before).is_none() {
-            return;
+
+        // Le groupe à défaire, du dernier posé au premier : remettre les
+        // octets dans l'ordre inverse de la pose est la seule façon
+        // sûre quand deux correctifs se chevauchent.
+        let rangs: Vec<usize> = match patch.group {
+            Some(groupe) => self
+                .patches
+                .iter()
+                .enumerate()
+                .filter(|(_, p)| p.group == Some(groupe))
+                .map(|(r, _)| r)
+                .rev()
+                .collect(),
+            None => vec![rang],
+        };
+        for r in &rangs {
+            let Some(p) = self.patches.get(*r) else {
+                return;
+            };
+            if namsdec_re::patch::apply(&mut image, p.offset, &p.before).is_none() {
+                return;
+            }
         }
         let nom = state
             .from_binary
@@ -352,7 +436,11 @@ impl NamsdecApp {
             .map(|binaire| binaire.name.clone())
             .unwrap_or_default();
         if self.load_elf(&image, &nom) {
-            self.patches.remove(rang);
+            // Déjà du plus grand rang au plus petit : retirer dans cet
+            // ordre ne décale pas ceux qui restent à retirer.
+            for r in &rangs {
+                self.patches.remove(*r);
+            }
             self.status = Status::Note(|s| s.patch_undone);
         }
     }

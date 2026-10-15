@@ -1720,6 +1720,98 @@ le code binaire et le pseudo-code. Un seul module neuf les réunit.
       `tokio` apparaît dans le lock via `wasm-bindgen-futures` mais
       seulement sur la cible wasm32 : il n'entre pas dans le binaire
       natif. Compilation propre, clippy muet, 1 087 tests au vert.
+- [x] **Le détour** (A 4.17, 15 octobre 2026) — la première brique de
+      « modifier le code du binaire ouvert », et la seule qui demandait
+      une idée neuve. Tout ce que `patch` faisait gardait la longueur
+      exacte, ce qui interdit d'ajouter quoi que ce soit : un octet de
+      plus décale tout le fichier. Le détour ne combat pas la règle, il
+      la contourne — `jmp` vers la place libre que `slack` connaît déjà,
+      code ajouté là-bas, instructions recouvertes réécrites à la suite,
+      `jmp` de retour. Le fichier garde sa taille au bit près.
+      `jmp_rel32`, `plan_detour`, `Detour`, `DetourRefusé` dans
+      `namsdec-re/patch`, et deux `Patch` ordinaires en sortie — donc le
+      détour se défait par la fenêtre Correctifs, sans rien de spécial.
+      Ce qui a demandé le plus de soin est le REFUS : une instruction
+      relative à `rip` déplacée lit la mauvaise donnée sans rien dire.
+      namsdec décode le site, refuse, et nomme l'instruction.
+      18 tests, et deux oracles extérieurs parce qu'aucun test unitaire
+      ne dit si le binaire TOURNE : Ghidra 12.1.4 (par REA) relit le
+      fichier corrigé et y voit la structure exacte ; Frida 17.23.3
+      confirme que le corps du détour est atteint à l'exécution, l'octet
+      visé valant encore 'A' à cet instant. Le programme affiche 'B'.
+      Deux pièges consignés dans AMELIORATIONS : Frida ne peut pas
+      instrumenter un statique sans libc, et un crochet Frida sur `main`
+      écrase le détour — il pose cinq octets là où `push rbp` n'en fait
+      qu'un.
+      Pas encore dans l'interface : l'onglet RE vient ensuite, et le
+      manuel avec lui. Rien de visible n'a changé pour l'instant.
+- [x] **Relocaliser plutôt que refuser** (A 4.17, 15 octobre 2026) — le
+      détour refusait presque tout code compilé, donc ne servait à rien :
+      `lea rsi, [rip+0x2b8a]` est la forme normale d'un accès à une
+      globale. `relocate` recalcule l'écart pour que la somme retombe
+      sur la même cible, sur les deux champs qui s'y prêtent — le
+      déplacement d'un accès relatif à `rip`, l'immédiat d'un saut ou
+      d'un appel relatif. `Decoder::get_constant_offsets` dit où ils
+      sont ; l'instruction garde sa longueur.
+      Pas d'encodeur ajouté : iced-x86 reste en `decoder` seul, et le
+      champ est réécrit sur place. Le poids du binaire est surveillé.
+      Le piège évité est silencieux : `mov dword [rip+0x10], 0x42` porte
+      un déplacement à recalculer ET un immédiat qui est une donnée.
+      On ne touche l'immédiat que s'il porte une cible — sinon on
+      changerait la valeur écrite sans que rien le montre.
+      Reste refusé, et c'est honnête : un `jmp rel8` ne porte qu'à
+      127 octets. L'élargir changerait sa longueur. Un test montre que
+      de près il passe, pour qu'on n'ait pas codé « rel8 = refus » sans
+      le savoir.
+      25 tests, formulés sur la SOMME et non sur les octets : l'adresse
+      visée, recalculée depuis la nouvelle position, doit être celle
+      d'avant. Et Ghidra, par REA, relit le site refusé une heure plus
+      tôt : `0x40049a: LEA RSI, [0x40300c]` — même cible, et le
+      programme affiche bien son message.
+- [x] **L'oracle différentiel** (A 3.6, 15 octobre 2026) — l'émulateur
+      n'avait rien pour dire s'il correspond au vrai processeur, et
+      c'était le seul endroit du projet où une erreur pouvait vivre
+      longtemps sans rien dire. `namsdec-emu/examples/oracle.rs` sème un
+      état, le fait exécuter par `gdb` sur le matériel et par
+      `namsdec-emu` sur les mêmes octets, et compare. Aucune réponse
+      n'est écrite à la main : on ne dit jamais ce que `adc` devrait
+      donner, on le demande au processeur.
+      La moitié du travail est la table des INDÉFINIS. Le manuel d'Intel
+      laisse certains indicateurs à la discrétion du processeur, et les
+      comparer reviendrait à reprocher à namsdec de n'être pas ce
+      modèle-ci. La première exécution signalait onze instructions ; dix
+      étaient de ce genre.
+      La onzième était réelle : `bzhi` ne posait pas CF et effaçait SF,
+      parce qu'il partageait sa branche avec `bextr`, qui n'a pas les
+      mêmes règles. Corrigé, et retenu par un test écrit dans
+      `namsdec-emu/src/tests.rs` — pas dans l'oracle, qui demande nasm,
+      ld, gdb et un x86-64 et ne tourne donc pas sur la CI. Le contrôle
+      a été éprouvé en remettant le défaut.
+      Bilan : 91 instructions, 910 cas, zéro écart. Toute l'arithmétique
+      entière (AF et PF compris), les décalages, les rotations, les bits,
+      et seize instructions AVX2.
+      Ce qu'il ne peut PAS dire ici : cette machine n'a pas AVX-512
+      (Lunar Lake), donc le travail le plus récent de l'émulateur est
+      précisément celui qu'on ne peut pas confronter au matériel. Il
+      faudrait Intel SDE ou QEMU — à brancher à la place de `gdb` dans
+      `sous_le_matériel`, seule fonction qui connaisse l'outil.
+      Trois manques signalés au passage : `vpblendw`, `pext`, `pdep`.
+- [x] **Les boutons des panneaux se voient** (A 3.7, 15 octobre 2026) —
+      le thème les rend plats au repos, et le contrôle qui l'interdit
+      hors des menus ne lisait que les sources de `namsdec-gui`. Les
+      panneaux vivent dans `namsdec-re` : leurs trente-trois boutons
+      étaient donc nus, dans la même fenêtre où ceux de l'interface
+      portent un liseré.
+      Vu À L'ÉCRAN pendant l'audit du panneau « Détourner », pas par une
+      mesure — le banc vérifie que rien ne déborde, ne se recouvre et
+      n'est coupé, et un bouton invisible satisfait les trois.
+      `framed`, `framed_button`, `framed_small_button` posés dans
+      `namsdec-re/src/lib.rs` ; le liseré vient des `visuals`, donc
+      aucune dépendance nouvelle et le thème clair est servi aussi.
+      L'invariant reste : `un_bouton_de_panneau_se_voit_sans_survol`,
+      avec sa liste de sources qui se tient à jour sur les `pub mod` de
+      `lib.rs`, et une seule exception nommée — `framed`, qui pose le
+      liseré.
 
 ---
 

@@ -280,6 +280,12 @@ fn panneaux() -> Vec<(&'static str, Box<dyn ReModule>)> {
             Box::new(namsdec_re::FunctionsModule::default()),
         ),
         ("fragments", Box::new(namsdec_re::GadgetsModule::default())),
+        // Le détour : trois rangées de commandes, une liste déroulante
+        // et un champ multiligne. C'est la rangée « Détourner depuis …
+        // [champ] [ici] » qui est à surveiller — trois éléments de
+        // largeurs différentes sur une même ligne, dans deux langues
+        // dont l'une est plus longue.
+        ("détour", Box::new(namsdec_re::DetourModule::default())),
         (
             "outil extérieur",
             Box::new(
@@ -500,6 +506,31 @@ fn what_was_added_is_really_on_screen() {
             "en",
             &["What it can do", "Anti-debugging"],
         ),
+        // Le détour : ses TROIS commandes, et c'est ce qui prouve que le
+        // panneau n'a pas pris son repli. Sans place libre exécutable il
+        // écrit « aucune place libre » et s'arrête — le relevé serait
+        // non vide, le contrôle de mise en page passerait, et l'on
+        // n'aurait mesuré que la phrase d'excuse.
+        (
+            "détour",
+            "fr",
+            &[
+                "Détourner depuis",
+                "vers la place libre",
+                "Code à ajouter",
+                "Calculer le plan",
+            ],
+        ),
+        (
+            "détour",
+            "en",
+            &[
+                "Detour from",
+                "towards the slack",
+                "Code to add",
+                "Compute the plan",
+            ],
+        ),
         // Les indicateurs, rangés par nature.
         (
             "chaînes",
@@ -553,4 +584,142 @@ fn what_was_added_is_really_on_screen() {
             );
         }
     }
+}
+
+/// Les sources des panneaux, pour les contrôles qui lisent le code.
+///
+/// Tenue à jour par `la_liste_des_panneaux_ne_rate_aucun_module`, qui la
+/// confronte aux `pub mod` de `lib.rs` : un panneau neuf y entre sans
+/// qu'on ait à y penser.
+const SOURCES_DES_PANNEAUX: &[(&str, &str)] = &[
+    ("lib.rs", include_str!("../src/lib.rs")),
+    ("behaviour.rs", include_str!("../src/behaviour.rs")),
+    ("cfg.rs", include_str!("../src/cfg.rs")),
+    ("cyclic.rs", include_str!("../src/cyclic.rs")),
+    ("detour_module.rs", include_str!("../src/detour_module.rs")),
+    ("digest.rs", include_str!("../src/digest.rs")),
+    ("dump_module.rs", include_str!("../src/dump_module.rs")),
+    ("dzf.rs", include_str!("../src/dzf.rs")),
+    ("elf_scan.rs", include_str!("../src/elf_scan.rs")),
+    ("entropy.rs", include_str!("../src/entropy.rs")),
+    ("explain.rs", include_str!("../src/explain.rs")),
+    ("functions.rs", include_str!("../src/functions.rs")),
+    ("gadgets.rs", include_str!("../src/gadgets.rs")),
+    ("imports.rs", include_str!("../src/imports.rs")),
+    ("ioc.rs", include_str!("../src/ioc.rs")),
+    ("libc.rs", include_str!("../src/libc.rs")),
+    ("literals.rs", include_str!("../src/literals.rs")),
+    ("misalign.rs", include_str!("../src/misalign.rs")),
+    ("packer.rs", include_str!("../src/packer.rs")),
+    ("patch.rs", include_str!("../src/patch.rs")),
+    ("patterns.rs", include_str!("../src/patterns.rs")),
+    ("provenance.rs", include_str!("../src/provenance.rs")),
+    ("report.rs", include_str!("../src/report.rs")),
+    ("route.rs", include_str!("../src/route.rs")),
+    ("signals.rs", include_str!("../src/signals.rs")),
+    ("slack.rs", include_str!("../src/slack.rs")),
+    ("strings.rs", include_str!("../src/strings.rs")),
+    ("structure.rs", include_str!("../src/structure.rs")),
+    ("syscalls.rs", include_str!("../src/syscalls.rs")),
+    ("table.rs", include_str!("../src/table.rs")),
+    ("xrefs.rs", include_str!("../src/xrefs.rs")),
+];
+
+/// Un bouton d'un panneau se voit **sans qu'on le survole**.
+///
+/// Le thème rend les boutons plats au repos — fond transparent, liseré
+/// absent —, et c'est voulu dans la barre de menus et la barre d'outils,
+/// où la platitude EST le dessin. Partout ailleurs, un bouton plat ne se
+/// distingue d'une étiquette qu'au survol : on ignore qu'il y a quelque
+/// chose à cliquer.
+///
+/// L'interface avait son contrôle depuis longtemps, mais il ne lisait
+/// que les sources de `namsdec-gui`. Les panneaux d'analyse vivent ici,
+/// et leurs trente-trois boutons étaient donc plats — dans la MÊME
+/// fenêtre où ceux de l'interface portent un liseré. Vu à l'écran le
+/// 15 octobre 2026 pendant l'audit du panneau « Détourner », et non par
+/// une mesure : les mesures ne répondent qu'aux questions qu'on leur
+/// pose.
+///
+/// `framed_button`, `framed_small_button` et `framed` posent le liseré.
+/// Ce contrôle lit le source, parce que c'est là qu'est la règle.
+#[test]
+fn un_bouton_de_panneau_se_voit_sans_survol() {
+    let mut plats: Vec<String> = Vec::new();
+    for (fichier, source) in SOURCES_DES_PANNEAUX {
+        // La fonction englobante : elle sert à nommer la SEULE exception,
+        // et une exception qu'on ne peut pas nommer n'en est pas une.
+        let mut fonction = "";
+        for (n, ligne) in source.lines().enumerate() {
+            if let Some(nom) = ligne
+                .trim_start()
+                .strip_prefix("pub fn ")
+                .or_else(|| ligne.trim_start().strip_prefix("fn "))
+            {
+                fonction = nom.split('(').next().unwrap_or("").trim();
+            }
+            // `framed` EST l'endroit où le liseré se pose : c'est la
+            // seule ligne du projet qui ait le droit d'appeler
+            // `egui::Button::new` nue.
+            if fonction == "framed" {
+                continue;
+            }
+            let nu = ligne.trim_start();
+            // Les deux écritures : sur une ligne, et coupée par rustfmt
+            // dès qu'on ajoute `.on_hover_text(…)` —
+            //
+            //     if ui
+            //         .button(…)
+            //         .on_hover_text(…)
+            //
+            // La seconde est celle qui avait échappé au contrôle de
+            // l'interface pendant des semaines ; on la cherche donc dès
+            // le premier jour.
+            let fautif = nu.contains("ui.button(")
+                || nu.contains("ui.small_button(")
+                || nu.starts_with(".button(")
+                || nu.starts_with(".small_button(")
+                // `egui::Button::new` sans liseré : c'est la forme
+                // qu'emploie `add_enabled`, et elle compte aussi.
+                || nu.contains("egui::Button::new(");
+            if fautif {
+                plats.push(format!("{fichier}:{} — {}", n + 1, nu.trim()));
+            }
+        }
+    }
+    assert!(
+        plats.is_empty(),
+        "{} bouton(s) de panneau sans liseré : on ne les distingue d'une \
+         étiquette qu'au survol, donc on ne sait pas qu'on peut cliquer. \
+         Employez `framed_button`, `framed_small_button` ou `framed` \
+         (namsdec-re/src/lib.rs) :\n  {}",
+        plats.len(),
+        plats.join("\n  ")
+    );
+}
+
+/// La liste ci-dessus n'oublie aucun panneau.
+///
+/// Sans ce contrôle, elle serait exacte le jour où elle est écrite et
+/// fausse au panneau suivant — et sa fausseté ferait PASSER le contrôle
+/// d'au-dessus, non échouer. C'est la pire sorte de test : vert pour la
+/// mauvaise raison.
+#[test]
+fn la_liste_des_panneaux_ne_rate_aucun_module() {
+    let déclarés: Vec<String> = include_str!("../src/lib.rs")
+        .lines()
+        .filter_map(|l| l.strip_prefix("pub mod ").and_then(|r| r.strip_suffix(';')))
+        .map(|m| format!("{m}.rs"))
+        .collect();
+    let oubliés: Vec<&String> = déclarés
+        .iter()
+        .filter(|m| !SOURCES_DES_PANNEAUX.iter().any(|(nom, _)| nom == m))
+        .collect();
+    assert!(
+        oubliés.is_empty(),
+        "SOURCES_DES_PANNEAUX ignore {} module(s) — les contrôles qui \
+         lisent le code ne les verraient pas :\n  {:?}",
+        oubliés.len(),
+        oubliés
+    );
 }

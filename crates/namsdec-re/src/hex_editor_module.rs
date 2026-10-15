@@ -1,4 +1,4 @@
-use crate::{ReContext, ReModule, ReRequest, ReResult, ReSection};
+use crate::{ReContext, ReModule, ReRequest, ReResult, ReSection, framed, framed_button};
 
 /// Un éditeur binaire : le fichier chargé en grille hexadécimale, un octet
 /// qu'on choisit, une valeur qu'on pose à la place.
@@ -225,7 +225,7 @@ impl ReModule for HexEditorModule {
                     .desired_width(90.0),
             );
             let validé = champ.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-            if (ui.button(ctx.t("Aller", "Go")).clicked() || validé)
+            if (framed_button(ui, ctx.t("Aller", "Go")).clicked() || validé)
                 && let Some(n) = nombre(&self.aller)
             {
                 // UNE POSITION, OU UNE ADRESSE. On lit une adresse dans
@@ -250,7 +250,7 @@ impl ReModule for HexEditorModule {
             // peignaient en carré vide — un bouton qui ne montre rien
             // ne se clique pas.
             if ui
-                .add_enabled(self.page > 0, egui::Button::new("\u{2039}"))
+                .add_enabled(self.page > 0, framed(ui, "\u{2039}"))
                 .clicked()
             {
                 self.page = self.page.saturating_sub(PAR_PAGE);
@@ -261,7 +261,7 @@ impl ReModule for HexEditorModule {
                 (self.page + PAR_PAGE).min(octets.len())
             ));
             if ui
-                .add_enabled(self.page < dernière_page, egui::Button::new("\u{203a}"))
+                .add_enabled(self.page < dernière_page, framed(ui, "\u{203a}"))
                 .clicked()
             {
                 self.page = (self.page + PAR_PAGE).min(dernière_page);
@@ -299,16 +299,14 @@ impl ReModule for HexEditorModule {
             let entrée = champ.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
             ui.selectable_value(&mut self.recherche_hex, false, ctx.t("texte", "text"));
             ui.selectable_value(&mut self.recherche_hex, true, "hex");
-            if ui
-                .button("\u{203a}")
+            if framed_button(ui, "\u{203a}")
                 .on_hover_text(ctx.t("Suivant", "Next"))
                 .clicked()
                 || entrée
             {
                 cherche = Some(false);
             }
-            if ui
-                .button("\u{2039}")
+            if framed_button(ui, "\u{2039}")
                 .on_hover_text(ctx.t("Précédent", "Previous"))
                 .clicked()
             {
@@ -631,7 +629,7 @@ impl ReModule for HexEditorModule {
                 let change = nouvel.is_some_and(|b| Some(b) != octets.get(off).copied());
                 let validé = champ.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
                 ui.add_enabled_ui(change, |ui| {
-                    if (ui.button(ctx.t("Écrire", "Write")).clicked() || (validé && change))
+                    if (framed_button(ui, ctx.t("Écrire", "Write")).clicked() || (validé && change))
                         && let Some(b) = nouvel
                     {
                         self.demande = Some(ReRequest::PatchBytes {

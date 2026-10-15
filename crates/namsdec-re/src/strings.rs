@@ -1,4 +1,4 @@
-use crate::{ReContext, ReModule, ReSection};
+use crate::{ReContext, ReModule, ReSection, framed_small_button};
 
 /// Les chaînes lisibles trouvées dans la mémoire du programme.
 ///
@@ -273,7 +273,7 @@ impl ReModule for StringsModule {
                     .hint_text(ctx.t("chercher…", "search…"))
                     .desired_width(140.0),
             );
-            if !self.query.is_empty() && ui.small_button("x").clicked() {
+            if !self.query.is_empty() && framed_small_button(ui, "x").clicked() {
                 self.query.clear();
             }
             ui.checkbox(
@@ -407,8 +407,7 @@ fn indicateurs(ui: &mut egui::Ui, ctx: &ReContext, trouvés: &[crate::ioc::Indic
                 // Recopier la rubrique entière d'un clic : c'est ce
                 // qu'on fait d'une liste d'indicateurs, un par ligne,
                 // dans le rapport.
-                if ui
-                    .small_button(ctx.t("copier", "copy"))
+                if framed_small_button(ui, ctx.t("copier", "copy"))
                     .on_hover_text(ctx.t(
                         "Toute la rubrique, une par ligne.",
                         "The whole heading, one per line.",

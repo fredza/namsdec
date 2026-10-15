@@ -26,7 +26,7 @@
 use namsdec_disasm::known::{Availability, Known};
 
 use crate::dzf_decompiler_module::pseudocode_cliquable;
-use crate::{ReContext, ReModule, ReRequest, ReResult, ReSection};
+use crate::{ReContext, ReModule, ReRequest, ReResult, ReSection, framed, framed_small_button};
 
 /// Combien de lignes une page de sortie porte.
 ///
@@ -279,11 +279,14 @@ impl ReModule for ToolModule {
             if ui
                 .add_enabled(
                     lançable,
-                    egui::Button::new(if self.lignes.is_empty() {
-                        ctx.t("Lancer", "Run")
-                    } else {
-                        ctx.t("Relancer", "Run again")
-                    }),
+                    framed(
+                        ui,
+                        if self.lignes.is_empty() {
+                            ctx.t("Lancer", "Run")
+                        } else {
+                            ctx.t("Relancer", "Run again")
+                        },
+                    ),
                 )
                 .on_hover_text(ctx.t(
                     "Lancer cet outil sur le binaire ouvert, et lire sa sortie ici.",
@@ -331,7 +334,7 @@ impl ReModule for ToolModule {
                     .desired_width(200.0)
                     .hint_text(ctx.t("un nom, une adresse…", "a name, an address…")),
             );
-            if !self.filtre.is_empty() && ui.small_button("x").clicked() {
+            if !self.filtre.is_empty() && framed_small_button(ui, "x").clicked() {
                 self.filtre.clear();
             }
         });
@@ -371,7 +374,7 @@ impl ReModule for ToolModule {
                 let première = self.page == 0;
                 let dernière = self.page + 1 >= pages;
                 if ui
-                    .add_enabled(!première, egui::Button::new("\u{2039}"))
+                    .add_enabled(!première, framed(ui, "\u{2039}"))
                     .on_hover_text(ctx.t("Page précédente", "Previous page"))
                     .clicked()
                 {
@@ -384,7 +387,7 @@ impl ReModule for ToolModule {
                     pages
                 ));
                 if ui
-                    .add_enabled(!dernière, egui::Button::new("\u{203a}"))
+                    .add_enabled(!dernière, framed(ui, "\u{203a}"))
                     .on_hover_text(ctx.t("Page suivante", "Next page"))
                     .clicked()
                 {

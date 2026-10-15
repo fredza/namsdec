@@ -15,7 +15,7 @@
 use std::collections::BTreeMap;
 
 use crate::functions::{Function, Origin, by_importance, discover};
-use crate::{ReContext, ReModule, ReRequest, ReSection, clickable_address};
+use crate::{ReContext, ReModule, ReRequest, ReSection, clickable_address, framed};
 
 #[derive(Default)]
 pub struct FunctionsModule {
@@ -269,7 +269,7 @@ impl ReModule for FunctionsModule {
                 // `sub_xxxx` à la fonction. Éteint quand il n'y a rien
                 // à défaire.
                 if ui
-                    .add_enabled(rebaptisée, egui::Button::new("\u{21ba}"))
+                    .add_enabled(rebaptisée, framed(ui, "\u{21ba}"))
                     .on_hover_text(ctx.t("Rendre son nom d'origine", "Restore its original name"))
                     .clicked()
                 {

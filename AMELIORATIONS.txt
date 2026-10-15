@@ -301,6 +301,101 @@ aujourd'hui ; les suivantes, ce vers quoi l'outil peut aller.
      s'ils manquent. Un jeu de binaires de référence dans le dépôt rendrait ces
      tests inconditionnels.
 
+3.6  [FAIT] L'ÉMULATEUR N'AVAIT AUCUN ORACLE EXTÉRIEUR
+     Treize mille sept cents lignes de sémantique écrites à la main, et rien
+     pour dire si elles correspondent au vrai processeur. Un indicateur calculé
+     de travers ne plante pas : il rend une mauvaise réponse, en silence, et le
+     programme émulé prend une branche qu'il n'aurait pas prise. C'était le
+     seul endroit du projet où une erreur pouvait vivre longtemps sans rien
+     dire.
+     LIVRÉ (15 octobre 2026) : `namsdec-emu/examples/oracle.rs`. Pour chaque
+     cas, il sème les seize registres généraux, quatre registres vectoriels et
+     les indicateurs ; bâtit un petit programme qui pose cet état, exécute
+     l'instruction et s'arrête sur `int3` ; `gdb` le lance sur le processeur de
+     la machine ; `namsdec-emu` part du même état sur les mêmes octets ; et
+     l'on compare, registre par registre, indicateur par indicateur.
+     CE QUI EN FAIT UN ORACLE : aucune réponse n'est écrite à la main. On ne
+     dit jamais ce que `adc` devrait donner — on le demande au matériel. Un cas
+     qu'on n'avait pas prévu est donc traité comme les autres, et ce sont
+     précisément ceux-là qui trouvent les défauts.
+     LA MOITIÉ DU TRAVAIL EST LA TABLE DES INDÉFINIS. Le manuel d'Intel donne
+     trois sorts à un indicateur : calculé, inchangé, ou INDÉFINI. Indéfini ne
+     veut pas dire « n'importe quoi » : il veut dire que le processeur a le
+     droit d'y mettre ce qu'il veut, que deux modèles peuvent différer, et
+     qu'un programme qui le lit a déjà tort. La première exécution a signalé
+     onze instructions ; dix étaient des indicateurs indéfinis — OF après un
+     décalage d'un nombre autre que 1, SF/ZF/AF/PF après `mul`, et ainsi de
+     suite. Un oracle qui crie au loup sur ces cas-là ne sert à personne, donc
+     il connaît maintenant la règle, instruction par instruction.
+     CE QU'IL A TROUVÉ, ET QUI ÉTAIT RÉEL : `bzhi` ne posait pas CF et
+     effaçait SF. Le manuel dit que ZF, CF et SF suivent le résultat. CF dit
+     qu'un index au-delà de la largeur ne coupe RIEN — le résultat est la
+     source entière —, et sans lui un programme ne peut pas distinguer « je
+     n'avais rien à couper » de « j'ai coupé au ras ». Comme le résultat est
+     alors la source, il est négatif une fois sur deux, d'où SF qu'effacer
+     rendait muet. La cause : `bextr` et `bzhi` étaient traités dans la même
+     branche alors qu'elles n'ont pas les mêmes règles.
+     Corrigé, et retenu par `bzhi_reports_an_index_past_the_width_and_keeps_
+     the_sign` dans `namsdec-emu/src/tests.rs` — écrit LÀ et non dans l'oracle,
+     parce que l'oracle demande nasm, ld, gdb et un x86-64 : il ne tourne pas
+     sur l'intégration continue, et ce qu'il apprend doit tenir sans lui. Le
+     contrôle a été éprouvé en remettant le défaut : il échoue, et son message
+     nomme le coupable.
+     TROIS INSTRUCTIONS MANQUANTES, signalées au passage : `vpblendw`, `pext`
+     et `pdep` sont refusées par l'émulateur. `pext`/`pdep` ne sont pas des
+     curiosités — elles servent partout où l'on manipule des masques de bits.
+     CE QUE L'ORACLE CONFIRME AUJOURD'HUI : 91 instructions, 910 cas, zéro
+     écart après correction. Toute l'arithmétique et la logique entières — AF
+     et PF compris, les deux plus délicats —, les décalages, les rotations,
+     les manipulations de bits, et seize instructions AVX2 dont `vpshufb`,
+     `vperm2i128`, `vpsadbw`, `vptest` et les saturations.
+     CE QU'IL NE PEUT PAS CONFIRMER, ET C'EST LE PLUS UTILE À SAVOIR : cette
+     machine est un Core Ultra 7 258V (Lunar Lake), qui N'A PAS AVX-512 —
+     Intel l'a retiré des cœurs hybrides grand public. La partie la plus
+     récente de l'émulateur, celle des registres de 512 bits et des masques,
+     est donc exactement celle qu'on ne peut pas confronter au matériel ici.
+     Ce n'est pas que namsdec s'y trompe : c'est qu'on n'en sait rien.
+     POUR L'ÉPROUVER QUAND MÊME, il faut un oracle qui ne soit pas ce
+     processeur : Intel SDE, qui émule AVX-512 sur n'importe quel x86, ou QEMU
+     avec un modèle de processeur qui l'annonce. L'un comme l'autre se
+     branchent à la place de `gdb` dans `sous_le_matériel` — et c'est pour
+     cela que cette fonction est seule à connaître l'outil.
+
+3.7  [FAIT] LES BOUTONS DES PANNEAUX NE SE VOYAIENT PAS
+     Le thème rend les boutons plats au repos — fond transparent, liseré
+     absent —, et c'est voulu dans la barre de menus et la barre d'outils, où
+     la platitude EST le dessin. Ailleurs, un bouton plat ne se distingue
+     d'une étiquette qu'au survol : on ignore qu'il y a quelque chose à
+     cliquer, donc on ne clique pas.
+     L'interface avait son contrôle depuis 7.6, et `framed_button` pour poser
+     le liseré. Mais le contrôle ne lisait que les sources de `namsdec-gui`,
+     et `framed_button` y est interne. Or les panneaux d'analyse vivent dans
+     `namsdec-re` : leurs TRENTE-TROIS boutons étaient plats, dans la même
+     fenêtre où ceux de l'interface portent un liseré. « Copier le rapport » et
+     « Enregistrer… » encadrés en haut, « Calculer le plan » nu en dessous.
+     VU À L'ÉCRAN, et non par une mesure. Le banc de mise en page ne pouvait
+     pas le trouver : il vérifie que rien ne déborde, ne se recouvre et n'est
+     coupé — un bouton invisible satisfait les trois. C'est l'illustration de
+     la règle du skill d'audit : les invariants ne répondent qu'aux questions
+     qu'on leur pose, et une capture montre les autres.
+     LIVRÉ : `framed`, `framed_button` et `framed_small_button` dans
+     `namsdec-re/src/lib.rs`, à côté de `clickable_address`. Le liseré se prend
+     dans les `visuals` et non dans le thème — un panneau n'a pas à connaître
+     la palette de l'application, et la couleur suit ainsi le thème clair comme
+     le sombre. Pas de dépendance nouvelle vers `namsdec-theme`.
+     Les trente-trois boutons convertis, dans dix fichiers.
+     ET L'INVARIANT QUI RESTE : `un_bouton_de_panneau_se_voit_sans_survol`
+     dans `namsdec-re/tests/panneaux.rs` lit le source des panneaux et refuse
+     `ui.button`, `ui.small_button` et `egui::Button::new` nus — y compris
+     dans la forme coupée par rustfmt (`if ui\n    .button(…)`), celle qui
+     avait échappé des semaines au contrôle de l'interface. Une seule
+     exception, et elle est NOMMÉE : `framed` elle-même, qui pose le liseré.
+     La liste des sources se tient à jour toute seule, comme celle de
+     l'interface : `la_liste_des_panneaux_ne_rate_aucun_module` la confronte
+     aux `pub mod` de `lib.rs`. Sans lui, la liste serait exacte le jour où on
+     l'écrit et ferait PASSER le contrôle au panneau suivant — vert pour la
+     mauvaise raison, la pire sorte de test.
+
 3.2  Le rendu hors écran n'est pas testable tel quel — et une capture, si
      Pas de serveur X virtuel sur la machine, donc pas de rendu hors écran.
      En revanche, lancer namsdec en forçant X11 (WAYLAND_DISPLAY vide) et
@@ -471,6 +566,115 @@ aujourd'hui ; les suivantes, ce vers quoi l'outil peut aller.
      Correctifs liste ce qui est posé et sait le défaire, et `namsdec-re/patch`
      porte le tout. La suite est du même genre en plus grand, et passe par là
      plutôt que par un chemin parallèle.
+
+     PREMIÈRE BRIQUE POSÉE LE 15 OCTOBRE 2026 : le détour.
+     Tout ce que `patch` faisait gardait la longueur exacte — règle sûre, mais
+     qui interdit d'AJOUTER quoi que ce soit. Le détour contourne l'obstacle
+     au lieu de l'affronter : un `jmp` à l'endroit visé vers la place libre
+     que `slack` a trouvée, le code ajouté là-bas, les instructions
+     recouvertes réécrites à la suite, puis un `jmp` de retour. Le fichier ne
+     change pas de taille : on remplit des trous.
+     Livré dans `namsdec-re/patch` : `jmp_rel32`, `plan_detour`, `Detour`,
+     `DetourRefusé`. Le plan se calcule SANS rien écrire, pour pouvoir le
+     montrer avant de l'appliquer ; et les deux changements sont des `Patch`
+     ordinaires, avec leur `before` — donc le détour se défait par la fenêtre
+     Correctifs, sans catégorie à part. C'était la condition pour passer
+     « par là plutôt que par un chemin parallèle ».
+     CE QUI COMPTE VRAIMENT, C'EST LE REFUS. Les instructions recouvertes sont
+     réécrites à une AUTRE adresse. Celles qui s'adressent relativement à
+     `rip` (`mov rax, [rip+0x2e4f]`, la forme normale d'un accès à une globale
+     en code compilé) ou qui sautent relativement liraient alors la mauvaise
+     donnée, sans rien signaler — et la panne se manifesterait ailleurs, ce
+     qu'un outil d'apprentissage ne doit pas faire. namsdec décode donc le
+     site, refuse, ET NOMME l'instruction fautive. Relocaliser viendra après ;
+     refuser en expliquant vient d'abord.
+     Le site est découpé en instructions ENTIÈRES : jamais un nombre d'octets
+     fixe. Couper une instruction en deux laisserait sa queue lisible, et le
+     désassemblage montrerait une instruction fantôme.
+     VÉRIFIÉ PAR UN TIERS, et c'est le seul contrôle qui pouvait conclure.
+     18 tests tiennent les refus et les deux sauts (déplacements vérifiés par
+     le calcul inverse : un détour dont un seul saut est juste s'exécute une
+     fois et part dans le vide). Mais aucun test unitaire ne dit si le binaire
+     TOURNE. Alors : un cobaye bâti à la main, un détour posé par
+     `examples/detour.rs`, et deux oracles extérieurs —
+       · Ghidra 12.1.4, par REA, relit le fichier corrigé :
+           0x400471: JMP 0x400490          ← l'aller
+           0x400490: MOV R11D, 0x40300c    ← l'ajout
+           0x400496: MOV byte ptr [R11], 0x42
+           0x40049a: MOV EAX, 0x1          ← le déplacé
+           0x40049f: JMP 0x400476          ← le retour
+         Un désassembleur qui n'a rien à voir avec namsdec lit la structure
+         exactement comme elle a été conçue.
+       · Frida 17.23.3 confirme à l'exécution que le corps du détour est
+         réellement atteint, et que l'octet visé valait encore 'A' (65) à cet
+         instant — l'ajout l'écrit ensuite, et le programme affiche 'B'.
+     Le fichier corrigé pèse exactement autant que l'original.
+     DEUX PIÈGES RENCONTRÉS, gardés ici parce qu'ils se retendront :
+       · Frida ne peut pas instrumenter un binaire statique sans libc : son
+         injecteur a besoin d'un chargeur dynamique. Le premier cobaye, en
+         syscalls purs, l'a fait planter (signal 11). Il a fallu le relier à
+         la libc en `-no-pie` pour garder des adresses fixes.
+       · Un crochet Frida sur `main` ÉCRASE le détour : il pose ses propres
+         cinq octets de saut, et `push rbp` n'en fait qu'un. Deux détours au
+         même endroit ne cohabitent pas — vrai des deux côtés, et c'est la
+         même raison qui fera refuser un second détour sur un site déjà
+         détourné.
+     SECONDE BRIQUE, LE MÊME JOUR : la relocalisation.
+     Le détour refusait presque tout code compilé, et c'était inutilisable :
+     `lea rsi, [rip+0x2b8a]` est la forme NORMALE d'un accès à une globale.
+     Une telle instruction ne dit pas « va chercher à 0x40300c », elle dit
+     « va chercher 0x2b8a octets après la fin de cette instruction-ci » —
+     déplacée, elle compte depuis ailleurs et lit autre chose.
+     `relocate` ne touche donc pas à ce qu'elle fait : il recalcule son écart
+     pour que la SOMME retombe sur la même cible. Deux champs s'y prêtent, et
+     `Decoder::get_constant_offsets` dit exactement où ils commencent et
+     combien d'octets ils font : le déplacement d'un accès relatif à `rip`,
+     et l'immédiat d'un saut ou d'un appel relatif. L'instruction garde sa
+     longueur, donc la mise en page du corps du détour ne bouge pas.
+     AUCUN ENCODEUR AJOUTÉ. iced-x86 est déjà là en `decoder` seul, et la
+     tentation était d'activer sa fonction `encoder` pour réassembler. On
+     réécrit le champ sur place à la place — le poids du binaire est surveillé
+     (A 5.4), et une dépendance qu'on n'ajoute pas est une dépendance qu'on
+     n'a pas à tenir à jour.
+     LE PIÈGE ÉVITÉ, et il est silencieux : `mov dword [rip+0x10], 0x42`
+     porte LES DEUX, un déplacement à recalculer et un immédiat `0x42` qui
+     est une donnée. Confondre les deux ferait écrire une autre valeur, sans
+     que rien le signale et sans que le listing le montre. On ne touche donc
+     l'immédiat que s'il porte une CIBLE.
+     CE QUI RESTE REFUSÉ, et c'est honnête : un saut court (`jmp rel8`, deux
+     octets) ne porte qu'à 127 octets, donc n'atteint pas la place libre.
+     L'élargir en `rel32` prendrait trois octets de plus et changerait sa
+     longueur — exactement ce que le détour ne peut pas faire dans la zone
+     qu'il recouvre. Le refus dit la taille du champ, parce que c'est elle qui
+     explique le non. Et un test montre que de PRÈS le saut court passe : sans
+     lui, on aurait codé « rel8 = refus » sans le savoir.
+     25 tests. Les contrôles de relocalisation ne vérifient pas des octets
+     mais la SOMME — l'adresse visée, recalculée depuis la nouvelle position,
+     doit être celle d'avant. C'est la seule formulation qui ne puisse pas
+     passer au vert par accident.
+     VÉRIFIÉ PAR GHIDRA sur le site qui était refusé une heure plus tôt :
+         0x40047b: JMP 0x400490
+         0x400490: MOV R11D, 0x40300c
+         0x400496: MOV byte ptr [R11], 0x42
+         0x40049a: LEA RSI, [0x40300c]     ← relocalisé, MÊME cible
+         0x4004a1: JMP 0x400482
+     L'écart du `lea` est passé de 0x2b8a à 0x2b6b, soit 31 octets de moins —
+     le déplacement subi, au bit près. Un désassembleur tiers résout l'opérande
+     vers l'adresse identique, et le programme tourne : il affiche bien son
+     message, ce qui ne serait pas le cas si `rsi` pointait ailleurs.
+     À NOTER : Ghidra voit désormais le corps de `main` en DEUX morceaux
+     (0x400470-0x40047f et 0x400482-0x4004a5) — les deux `nop` de complément
+     laissés par l'aller ne sont rattachés à rien. Sans conséquence, mais
+     c'est la trace qu'un détour laisse dans une analyse, et elle se verra sur
+     tout binaire corrigé.
+
+     RESTE À FAIRE : le brancher dans l'onglet RE (choisir le site, voir le
+     plan, voir la place libre offerte, poser et défaire) ; assembler l'ajout
+     depuis du texte plutôt que des octets, par `namsdec-asm` ; refuser un
+     site déjà détourné — `plan_detour` ne connaît pas les correctifs déjà
+     posés, et ce paramètre se décidera en branchant l'interface, qui les a.
+     Le piège est réel : un crochet posé sur un site déjà détourné écrase le
+     premier saut, c'est ce que Frida a fait sur `main`.
 
 4.16 [FAIT] DZF branché comme désassembleur
      DZF est le désassembleur x86-64 maison (dépôt ~/Projects/DZF) : C++23,

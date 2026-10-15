@@ -1,4 +1,6 @@
-use crate::{ReContext, ReModule, ReRequest, ReResult, ReSection, clickable_address, dzf};
+use crate::{
+    ReContext, ReModule, ReRequest, ReResult, ReSection, clickable_address, dzf, framed_button,
+};
 
 /// Le panneau de décompilation DZF : les fonctions que DZF a rendues, en
 /// pseudo-C, dans l'onglet RE.
@@ -99,8 +101,7 @@ impl ReModule for DzfDecompilerModule {
                  it in Tools, and it will show here as soon as it has produced output.",
             ));
             ui.add_space(8.0);
-            if ui
-                .button(ctx.t("Décompiler", "Decompile"))
+            if framed_button(ui, ctx.t("Décompiler", "Decompile"))
                 .on_hover_text(ctx.t(
                     "Lancer le décompilateur actif et lire sa sortie ici.",
                     "Run the active decompiler and read its output here.",

@@ -7,7 +7,9 @@
 //! et pourquoi RELRO, le canari et IBT existent.
 
 use crate::gadgets::{self, Gadget};
-use crate::{ReContext, ReModule, ReRequest, ReSection, clickable_address};
+use crate::{
+    ReContext, ReModule, ReRequest, ReSection, clickable_address, framed, framed_small_button,
+};
 
 /// Combien on en montre par page.
 ///
@@ -103,7 +105,7 @@ impl ReModule for GadgetsModule {
                     .hint_text(ctx.t("chercher — « pop rdi »…", "search — \"pop rdi\"…"))
                     .desired_width(160.0),
             );
-            if !self.query.is_empty() && ui.small_button("x").clicked() {
+            if !self.query.is_empty() && framed_small_button(ui, "x").clicked() {
                 self.query.clear();
             }
         });
@@ -171,14 +173,14 @@ impl ReModule for GadgetsModule {
                 let première = self.page == 0;
                 let dernière = self.page + 1 >= pages;
                 if ui
-                    .add_enabled(!première, egui::Button::new("\u{00ab}"))
+                    .add_enabled(!première, framed(ui, "\u{00ab}"))
                     .on_hover_text(ctx.t("Première page", "First page"))
                     .clicked()
                 {
                     self.page = 0;
                 }
                 if ui
-                    .add_enabled(!première, egui::Button::new("\u{2039}"))
+                    .add_enabled(!première, framed(ui, "\u{2039}"))
                     .on_hover_text(ctx.t("Page précédente", "Previous page"))
                     .clicked()
                 {
@@ -191,14 +193,14 @@ impl ReModule for GadgetsModule {
                     pages
                 ));
                 if ui
-                    .add_enabled(!dernière, egui::Button::new("\u{203a}"))
+                    .add_enabled(!dernière, framed(ui, "\u{203a}"))
                     .on_hover_text(ctx.t("Page suivante", "Next page"))
                     .clicked()
                 {
                     self.page += 1;
                 }
                 if ui
-                    .add_enabled(!dernière, egui::Button::new("\u{00bb}"))
+                    .add_enabled(!dernière, framed(ui, "\u{00bb}"))
                     .on_hover_text(ctx.t("Dernière page", "Last page"))
                     .clicked()
                 {

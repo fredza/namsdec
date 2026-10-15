@@ -78,7 +78,7 @@ use namsdec_disasm::DecodedInstruction;
 use namsdec_emu::{Backend, Emulator, RunStop, StepOverResult, StepResult};
 use namsdec_explorer::{ExplorerAction, FileExplorer};
 use namsdec_re::{
-    BinaryInfoModule, CallGraphModule, DigestModule, DumpModule, DzfDecompilerModule,
+    BinaryInfoModule, CallGraphModule, DetourModule, DigestModule, DumpModule, DzfDecompilerModule,
     EntropyModule, FunctionsModule, GadgetsModule, HexEditorModule, ImportsModule, MapModule,
     PatternsModule, ProtectionsModule, ReContext, ReModuleRegistry, SignalsModule, SlackModule,
     StringsModule, SyscallsModule, XrefsModule, YaraModule,
@@ -1897,10 +1897,15 @@ impl Default for NamsdecApp {
         // savoir ce que ces octets-là sont vraiment.
         re_registry.register(Box::new(DumpModule::default()));
         // Et l'éditeur binaire : on a compris quel octet décide, on le
-        // change pour voir. Dernier panneau, car c'est le seul qui AGIT
-        // sur le fichier — les autres le lisent. Réversible (Correctifs),
-        // et rien n'atteint le disque sans un enregistrement explicite.
+        // change pour voir. Réversible (Correctifs), et rien n'atteint le
+        // disque sans un enregistrement explicite.
         re_registry.register(Box::new(HexEditorModule::default()));
+        // Le détour en dernier, et c'est sa place : il suppose tout ce
+        // qui précède. Il faut avoir vu la place libre pour savoir où
+        // atterrir, le listing pour choisir l'endroit, et les correctifs
+        // pour comprendre qu'on peut se dédire. C'est aussi le seul
+        // panneau qui AJOUTE du code au lieu d'en retirer.
+        re_registry.register(Box::new(DetourModule::default()));
 
         Self {
             source: DEFAULT_SOURCE.to_string(),

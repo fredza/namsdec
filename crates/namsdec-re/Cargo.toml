@@ -7,6 +7,10 @@ license.workspace = true
 [dependencies]
 namsdec-core.workspace = true
 namsdec-disasm.workspace = true
+# Pour écrire l'ajout d'un détour en assembleur plutôt qu'en octets.
+# `assemble_one` pose un [ORG] à l'adresse voulue, donc le code de
+# l'utilisateur est assemblé pour la place libre où il atterrira.
+namsdec-asm.workspace = true
 iced-x86.workspace = true
 egui.workspace = true
 serde.workspace = true
