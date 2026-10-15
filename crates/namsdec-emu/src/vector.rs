@@ -566,6 +566,179 @@ fn horizontal_lanes(a: u128, b: u128, bytes: usize, sub: bool, saturate: bool) -
     out
 }
 
+/// Les instructions de CHAÎNE de SSE4.2 : `pcmpistri` et ses trois
+/// sœurs.
+///
+/// Elles font en une instruction ce qu'une boucle fait en vingt :
+/// comparer seize octets à seize autres, selon l'une de quatre
+/// questions, et dire où. La bibliothèque C s'en sert pour `strlen`,
+/// `strchr`, `strcmp` et `strstr` — d'où les quatre cent et quelques
+/// occurrences qu'on en compte dans les binaires d'épreuve, et l'arrêt
+/// qu'elles provoquaient.
+///
+/// Leur immédiat porte tout : le format des éléments, la question
+/// posée, la polarité de la réponse, et la forme de la sortie. C'est
+/// l'instruction la plus paramétrée du jeu x86, et la lire est la
+/// moitié du travail.
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct Contrôle {
+    /// Éléments de 8 bits, ou de 16.
+    octets: bool,
+    /// Lus comme signés.
+    signé: bool,
+    /// La question posée — les bits 3 et 2 de l'immédiat.
+    mode: Agrégation,
+    /// Le résultat est-il retourné ? Et l'est-il seulement là où les
+    /// éléments sont valides (« masqué ») ?
+    négatif: bool,
+    masqué: bool,
+    /// Pour un index : le bit de poids fort plutôt que le faible. Pour
+    /// un masque : un élément entier par réponse plutôt qu'un bit.
+    haut: bool,
+}
+
+/// La question que l'instruction pose à chaque paire d'éléments.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Agrégation {
+    /// « Cet élément est-il dans l'ensemble ? » — `strchr`, `strspn`.
+    EqualAny,
+    /// « Est-il dans l'un de ces intervalles ? » — les classes de
+    /// caractères, `isalpha` vectorisé.
+    Ranges,
+    /// « Les deux chaînes sont-elles égales, élément par élément ? » —
+    /// `strcmp`, et `strlen` en comparant à elle-même.
+    EqualEach,
+    /// « La première apparaît-elle ICI dans la seconde ? » — `strstr`.
+    EqualOrdered,
+}
+
+impl Contrôle {
+    fn lire(imm: u8) -> Self {
+        Self {
+            octets: imm & 0b01 == 0,
+            signé: imm & 0b10 != 0,
+            mode: match (imm >> 2) & 0b11 {
+                0 => Agrégation::EqualAny,
+                1 => Agrégation::Ranges,
+                2 => Agrégation::EqualEach,
+                _ => Agrégation::EqualOrdered,
+            },
+            négatif: (imm >> 4) & 1 == 1,
+            masqué: (imm >> 5) & 1 == 1,
+            haut: (imm >> 6) & 1 == 1,
+        }
+    }
+
+    /// Combien d'éléments tiennent dans les 128 bits : seize octets, ou
+    /// huit mots.
+    fn voies(self) -> usize {
+        if self.octets { 16 } else { 8 }
+    }
+
+    /// Un élément du vecteur, lu à sa largeur et à son signe.
+    fn élément(self, v: u128, i: usize) -> i32 {
+        if self.octets {
+            let b = (v >> (i * 8)) as u8;
+            if self.signé {
+                i32::from(b as i8)
+            } else {
+                i32::from(b)
+            }
+        } else {
+            let w = (v >> (i * 16)) as u16;
+            if self.signé {
+                i32::from(w as i16)
+            } else {
+                i32::from(w)
+            }
+        }
+    }
+}
+
+/// Combien d'éléments d'un vecteur comptent, une chaîne s'arrêtant à son
+/// premier élément NUL.
+///
+/// C'est le « i » d'`istri` : la longueur est *implicite*, lue dans les
+/// données. Les formes `estri` la reçoivent dans un registre, et c'est
+/// toute leur différence.
+fn longueur_implicite(ctrl: Contrôle, v: u128) -> usize {
+    (0..ctrl.voies())
+        .position(|i| ctrl.élément(v, i) == 0)
+        .unwrap_or(ctrl.voies())
+}
+
+/// Le résultat brut de la comparaison : un bit par position de la
+/// SECONDE source, avant la polarité.
+///
+/// `a` est l'ensemble ou le motif, `b` la chaîne où l'on cherche —
+/// l'ordre du manuel, et celui qu'on écrit : `pcmpistri xmm1, xmm2`
+/// cherche ce que porte xmm1 dans ce que porte xmm2.
+fn comparer_chaînes(ctrl: Contrôle, a: u128, la: usize, b: u128, lb: usize) -> u16 {
+    let n = ctrl.voies();
+    let mut res: u16 = 0;
+    for j in 0..n {
+        let valide_b = j < lb;
+        let vrai = match ctrl.mode {
+            // Un élément invalide ne correspond à rien.
+            Agrégation::EqualAny => {
+                (0..n).any(|i| i < la && valide_b && ctrl.élément(a, i) == ctrl.élément(b, j))
+            }
+            // Les intervalles vont par paires : bas, haut, bas, haut.
+            Agrégation::Ranges => (0..n / 2).any(|paire| {
+                let (bas, haut) = (paire * 2, paire * 2 + 1);
+                bas < la
+                    && valide_b
+                    && ctrl.élément(a, bas) <= ctrl.élément(b, j)
+                    && ctrl.élément(b, j) <= ctrl.élément(a, haut.min(n - 1))
+            }),
+            // DEUX invalides se valent : c'est ce qui fait que deux
+            // chaînes plus courtes que seize octets se disent égales
+            // au-delà de leur fin. Un seul invalide, jamais.
+            Agrégation::EqualEach => match (j < la, valide_b) {
+                (true, true) => ctrl.élément(a, j) == ctrl.élément(b, j),
+                (false, false) => true,
+                _ => false,
+            },
+            // Le motif, cherché À PARTIR de j. Un élément du motif
+            // au-delà de sa fin vaut vrai — le motif est trouvé ; un
+            // élément de la chaîne au-delà de la sienne, faux.
+            Agrégation::EqualOrdered => (0..n - j).all(|k| {
+                let i = k;
+                if i >= la {
+                    true
+                } else if j + k >= lb {
+                    false
+                } else {
+                    ctrl.élément(a, i) == ctrl.élément(b, j + k)
+                }
+            }),
+        };
+        if vrai {
+            res |= 1 << j;
+        }
+    }
+    res
+}
+
+/// La polarité : rien, tout retourné, ou retourné seulement là où la
+/// chaîne est valide.
+///
+/// La troisième est celle qui compte dans la vraie vie : `strlen`
+/// demande « où est le premier élément qui n'est PAS là », et retourner
+/// aussi le remplissage au-delà de la fin donnerait toujours seize.
+fn polarité(ctrl: Contrôle, res: u16, lb: usize) -> u16 {
+    let n = ctrl.voies();
+    let tous = if n >= 16 { u16::MAX } else { (1u16 << n) - 1 };
+    match (ctrl.négatif, ctrl.masqué) {
+        (false, _) => res,
+        (true, false) => res ^ tous,
+        (true, true) => {
+            let valides = if lb >= 16 { u16::MAX } else { (1u16 << lb) - 1 };
+            (res ^ valides) & tous
+        }
+    }
+}
+
 /// `pmovzx*`/`pmovsx*` : les éléments du bas de la source, élargis — par
 /// des zéros ou par leur bit de signe. Rien ne se perd : c'est l'inverse
 /// exact de `pack*`.
@@ -1138,6 +1311,14 @@ impl Emulator {
 
             M::Ptest | M::Vptest => self.packed_test(instr)?,
 
+            // Les instructions de chaîne de SSE4.2 : une boucle de
+            // `strlen` en une instruction, et c'est pour cela que la
+            // bibliothèque C en est pleine.
+            M::Pcmpistri | M::Vpcmpistri => self.packed_compare_strings(instr, false, true)?,
+            M::Pcmpistrm | M::Vpcmpistrm => self.packed_compare_strings(instr, false, false)?,
+            M::Pcmpestri | M::Vpcmpestri => self.packed_compare_strings(instr, true, true)?,
+            M::Pcmpestrm | M::Vpcmpestrm => self.packed_compare_strings(instr, true, false)?,
+
             // Demander au cache de préparer une ligne : une *indication*,
             // qui ne change aucun registre ni aucun octet de mémoire.
             // Ici, où il n'y a pas de cache, elle ne fait rien — mais
@@ -1614,6 +1795,97 @@ impl Emulator {
         let src = self.read_vec_op(instr, last - 1)?[0];
         let valeur = (src >> (index * bytes * 8)) as u64 & lane_mask(bytes * 8);
         self.write_op(instr, 0, valeur)
+    }
+
+    /// `pcmpistri`, `pcmpistrm`, `pcmpestri`, `pcmpestrm`.
+    ///
+    /// Une comparaison de seize octets contre seize autres, selon la
+    /// question que porte l'immédiat, et la réponse rendue soit en
+    /// INDEX (dans ECX) soit en MASQUE (dans XMM0).
+    ///
+    /// Les quatre indicateurs qu'elles posent valent d'être lus, parce
+    /// que c'est sur eux que branche la bibliothèque C :
+    ///   - CF : on a trouvé quelque chose ;
+    ///   - ZF : la chaîne cherchée dans (`b`) se termine dans ces seize
+    ///     octets — autrement dit, on tient sa fin ;
+    ///   - SF : celle qu'on cherche (`a`) s'y termine aussi ;
+    ///   - OF : le premier élément de la réponse.
+    ///
+    /// AF et PF sont remis à zéro, toujours.
+    fn packed_compare_strings(
+        &mut self,
+        instr: &Instruction,
+        explicite: bool,
+        index: bool,
+    ) -> Result<(), EmuError> {
+        let a = self.read_vec_op(instr, 0)?[0];
+        let b = self.read_vec_op(instr, 1)?[0];
+        let ctrl = Contrôle::lire(self.read_op(instr, 2)? as u8);
+        let n = ctrl.voies();
+        // Les longueurs. Explicites, elles viennent d'EAX et EDX, et
+        // c'est leur VALEUR ABSOLUE qui compte, bornée au vecteur :
+        // une longueur négative ne veut rien dire, et le processeur la
+        // lit ainsi.
+        let (la, lb) = if explicite {
+            let borne = |v: u64| ((v as i32).unsigned_abs() as usize).min(n);
+            (
+                borne(self.cpu.regs.get64(namsdec_core::Reg64::Rax)),
+                borne(self.cpu.regs.get64(namsdec_core::Reg64::Rdx)),
+            )
+        } else {
+            (longueur_implicite(ctrl, a), longueur_implicite(ctrl, b))
+        };
+
+        let brut = comparer_chaînes(ctrl, a, la, b, lb);
+        let res = polarité(ctrl, brut, lb);
+
+        if index {
+            // L'index du premier bit à 1 — ou du dernier, selon le bit
+            // 6 —, et `n` quand il n'y en a aucun. C'est ce `n` qui
+            // fait sortir des boucles de la glibc : « rien ici, passe
+            // aux seize suivants ».
+            let trouvé = if res == 0 {
+                n as u64
+            } else if ctrl.haut {
+                (15 - res.leading_zeros()) as u64
+            } else {
+                res.trailing_zeros() as u64
+            };
+            self.cpu.regs.set64(namsdec_core::Reg64::Rcx, trouvé);
+        } else {
+            // Le masque, dans XMM0 — un registre IMPLICITE, que
+            // l'instruction n'écrit nulle part et qu'elle écrase quand
+            // même. Un bit par élément, ou l'élément entier à 1.
+            let masque = if ctrl.haut {
+                let large = 128 / n;
+                (0..n).fold(0u128, |acc, i| {
+                    if res >> i & 1 == 1 {
+                        acc | (((1u128 << large) - 1) << (i * large))
+                    } else {
+                        acc
+                    }
+                })
+            } else {
+                u128::from(res)
+            };
+            self.cpu.regs.set_xmm(namsdec_core::RegXmm::Xmm0, masque);
+        }
+
+        let mut flags = RFlags::empty();
+        if res != 0 {
+            flags |= RFlags::CF;
+        }
+        if lb < n {
+            flags |= RFlags::ZF;
+        }
+        if la < n {
+            flags |= RFlags::SF;
+        }
+        if res & 1 == 1 {
+            flags |= RFlags::OF;
+        }
+        self.cpu.flags.apply_arith(flags);
+        Ok(())
     }
 
     /// `ptest` : deux questions posées d'un coup sur 128 ou 256 bits.

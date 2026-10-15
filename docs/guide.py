@@ -735,6 +735,17 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "l'élargissement, les produits et leurs deux moitiés, la moyenne, l'écart absolu, "
          "et <font face='Courier'>ptest</font> — la seule de la famille qui écrive des "
          "indicateurs. Les versions AVX suivent la même route : seul l'encodage change."),
+        ("p",
+         "Et les <b>instructions de chaîne</b> de SSE4.2 — "
+         "<font face='Courier'>pcmpistri</font> et ses trois sœurs —, qui font en une "
+         "instruction ce qu'une boucle fait en vingt : comparer seize octets à seize "
+         "autres selon l'une de quatre questions, et dire où. C'est ainsi que la "
+         "bibliothèque C écrit <font face='Courier'>strlen</font>, "
+         "<font face='Courier'>strchr</font>, <font face='Courier'>strcmp</font> et "
+         "<font face='Courier'>strstr</font>. Tout est dans leur immédiat — la question, "
+         "la polarité de la réponse, la largeur des éléments, la forme de la sortie —, "
+         "ce qui en fait l'instruction la plus paramétrée du jeu ; la fiche <b>F1</b> "
+         "déplie les quatre questions."),
         ("note",
          "Une fiche <b>F1</b> existe pour chacune, et un contrôle empêche le manuel de dire "
          "qu'une instruction n'est pas simulée alors qu'elle s'exécute : la documentation "
@@ -2405,7 +2416,7 @@ def main():
         "faute de code à exécuter derrière.",
         "Les appels système qui touchent au monde — `mmap`, `open`, `fork` — sont nommés "
         "mais pas exécutés. namsdec le dit dès l'assemblage, avec la ligne.",
-        "AVX-512 — registres de 512 bits et masques `k` —, FMA, les instructions de chaîne de SSE4.2 (`pcmpistri`), `in`/`out` et `cmpxchg16b` ne sont pas implémentés. SSE, SSE2, SSSE3, SSE4.1, AVX et AVX2 le sont.",
+        "AVX-512 — registres de 512 bits et masques `k` —, FMA, `in`/`out` et `cmpxchg16b` ne sont pas implémentés. SSE, SSE2, SSSE3, SSE4.1, SSE4.2, AVX et AVX2 le sont.",
     ]))
     blocs.append(("h1", "Mises à jour, licence et contact"))
     blocs.append(("p",

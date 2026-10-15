@@ -3675,3 +3675,82 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
       montre le SOURCE du programme, qui porte « [31m » en toutes
       lettres, et l'accuser reviendrait à accuser le programme d'être
       écrit. Éprouvé en remettant le texte brut : il l'a nommé.
+
+
+--------------------------------------------------------------------------------
+ 7.20  PCMPISTRI : UNE BOUCLE DE CHAÎNE EN UNE INSTRUCTION
+       (15 octobre 2026) — ce qui restait chiffré de 7.15
+--------------------------------------------------------------------------------
+
+  LE CHANTIER ÉTAIT ÉCRIT, et chiffré, au bas de 7.15 : « `pcmpistri`
+  (401 occurrences) : les instructions de chaîne de SSE4.2, qui
+  agrègent une comparaison de seize octets selon un mode donné en
+  immédiat et rendent un index. Ce n'est pas difficile, c'est long, et
+  ça mérite sa propre séance avec ses propres contrôles. »
+
+  POURQUOI ELLES COMPTENT. Ce sont elles qui ouvrent les boucles de
+  `strlen`, `strchr`, `strcmp` et `strstr` dans la bibliothèque C.
+  Autrement dit : le chemin suivant après `pminub`. Un binaire qui lit
+  une chaîne passait par l'une, puis par l'autre.
+
+  CE QUE PORTE LEUR IMMÉDIAT, et c'est tout le sujet — c'est
+  l'instruction la plus paramétrée du jeu x86 :
+    bits 1-0  la largeur des éléments et leur signe
+    bits 3-2  LA QUESTION : « dans l'ensemble ? » (strchr), « dans l'un
+              de ces intervalles ? » (une classe de caractères),
+              « égales élément par élément ? » (strcmp, et strlen en
+              comparant une chaîne à elle-même), « le motif est-il ICI ? »
+              (strstr)
+    bits 5-4  la polarité : rien, retournée, ou retournée SEULEMENT là
+              où la chaîne est valide — cette dernière est celle de
+              strlen, et sans elle la réponse serait toujours seize
+    bit 6     la forme de la sortie : index du bas ou du haut ; masque
+              de bits ou d'éléments entiers
+
+  LES RÈGLES DE VALIDITÉ sont la partie qui se trompe, et elles ne sont
+  pas les mêmes selon la question :
+    - « dans l'ensemble » et « intervalles » : un élément invalide ne
+      correspond à rien ;
+    - « égales élément par élément » : DEUX invalides se valent — c'est
+      ce qui fait que deux chaînes plus courtes que seize octets se
+      disent égales au-delà de leur fin — et un seul, jamais ;
+    - « le motif est-il ici » : un élément du motif au-delà de sa fin
+      vaut VRAI (le motif est trouvé), un élément de la chaîne au-delà
+      de la sienne vaut FAUX.
+
+  LES QUATRE INDICATEURS, parce que c'est sur eux que la bibliothèque C
+  branche : CF « on a trouvé », ZF « la chaîne où l'on cherche se
+  termine dans ces seize octets », SF « celle qu'on cherche aussi », OF
+  le premier élément de la réponse. AF et PF retombent à zéro.
+
+  ET SEIZE QUAND IL N'Y A RIEN : c'est la valeur que `pcmpistri` met
+  dans ECX faute de trouvaille, et c'est elle qui fait passer une
+  boucle aux seize octets suivants. Un émulateur qui rendrait zéro
+  ferait tourner la boucle sur place.
+
+  LES CONTRÔLES, trois, et tous de bout en bout :
+    - `the_sse42_string_instructions_answer_their_four_questions` écrit
+      les QUATRE usages réels en NASM — strlen, strchr, strstr, strcmp,
+      une classe de caractères — et vérifie l'index rendu, y compris le
+      seize du « rien trouvé » et le seize des « seize octets pleins ».
+    - `..._set_the_flags_the_libc_branches_on` lit CF, ZF et SF par
+      `setcc`, sur une chaîne courte puis sur seize octets pleins.
+    - `pcmpistrm_leaves_its_mask_in_xmm0` vérifie les deux formes du
+      masque — un bit par élément, et l'élément entier — sur les
+      voyelles de « namsdec ».
+
+  DEUX PIÈGES RENCONTRÉS EN ÉCRIVANT CES CONTRÔLES, et ils valent d'être
+  dits parce qu'ils sont à la charge de qui écrit l'assembleur, pas de
+  l'émulateur :
+    - l'immédiat de `strlen` est 0x38 et non 0x18 : il lui faut le bit
+      « masqué », sans quoi le remplissage au-delà de la fin se retourne
+      aussi et la réponse est toujours seize ;
+    - `pcmpistri` écrit DANS RCX, et ranger un résultat dans RCX avant
+      d'en exécuter une seconde le perd. Le contrôle garde donc ses
+      réponses ailleurs.
+
+  CE QUI RESTE, et le relevé l'a confirmé : plus une seule instruction
+  manquante dans les neuf binaires d'épreuve, hors AVX-512 (vmovdqu64,
+  kmovd, vmovdqa64 — plus de deux mille occurrences). Celui-là demande
+  des registres de 512 bits et des registres de masque `k` : un
+  chantier de structure, pas un ajout de mnémoniques.

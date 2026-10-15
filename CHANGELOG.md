@@ -6,6 +6,15 @@ entrée par version, et ce qui change pour qui s'en sert.
 
 ## 0.2.9-beta.1 — 15 octobre 2026
 
+**Les instructions de chaîne de SSE4.2 s'exécutent**
+- `pcmpistri` et ses trois sœurs font en une instruction ce qu'une
+  boucle fait en vingt, et c'est ainsi que la bibliothèque C écrit
+  `strlen`, `strchr`, `strcmp` et `strstr`. C'était le chemin suivant
+  après `pmaxub` : un binaire qui lit une chaîne passait par l'une,
+  puis butait sur l'autre.
+- Il ne reste plus une seule instruction manquante dans les neuf
+  binaires d'épreuve, hors AVX-512.
+
 **La sortie du programme se lit comme dans un terminal**
 - **Les séquences d'échappement ne s'affichent plus en toutes lettres.**
   Un crackme sur deux ouvre par un logo en couleur, et l'on lisait

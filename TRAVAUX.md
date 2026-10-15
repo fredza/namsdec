@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **14 octobre
-2026**, version 0.2.9-beta.1, 1 199 tests au vert.
+2026**, version 0.2.9-beta.1, 1 203 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -29,6 +29,23 @@ Ce qui reste est de la finition mesurée : des alignements de quelques
 pixels, deux tailles de police, et le vide sous « Prochaine
 instruction », qui tient au même nœud que le vide de 56 px — l'état du
 processeur est ancré.
+
+---
+
+## 14. Les instructions de chaîne de SSE4.2 (A 7.20)
+
+Ce qui restait chiffré de 7.15, et le chemin suivant après `pmaxub` :
+`pcmpistri` ouvre les boucles de `strlen`, `strchr`, `strcmp` et
+`strstr` dans la bibliothèque C.
+
+- [x] **Les quatre formes** — `pcmpistri`, `pcmpistrm`, `pcmpestri`,
+      `pcmpestrm`, et leurs `v*`.
+- [x] **Les quatre questions**, avec leurs règles de validité, qui ne
+      sont pas les mêmes selon la question.
+- [x] **Les quatre indicateurs** (CF, ZF, SF, OF) : c'est sur eux que
+      la bibliothèque C branche.
+- [x] **Plus une seule instruction manquante** dans les neuf binaires
+      d'épreuve, hors AVX-512.
 
 ---
 
@@ -170,8 +187,11 @@ la bibliothèque C, et tout binaire qui lit une chaîne passe par là.
       scène de plus (`pminub`, la fiche aux vingt-quatre mnémoniques), et
       `a_window_opens_at_the_size_of_what_it_shows` a nommé 103 px de
       vide au-dessus du bouton « OK ».
-- [ ] **`pcmpistri`** (401 occurrences) : les instructions de chaîne de
-      SSE4.2. Pas difficile, long, et mérite ses propres contrôles.
+- [x] **`pcmpistri` et ses trois sœurs** (A 7.20) — les quatre
+      questions de SSE4.2, leurs règles de validité, leurs quatre
+      indicateurs, et le SEIZE qui fait sortir des boucles. Trois
+      contrôles de bout en bout, écrits sur les usages réels : strlen,
+      strchr, strstr, strcmp, une classe de caractères.
 - [ ] **AVX-512** (plus de deux mille occurrences) : registres de 512
       bits et registres de masque `k`. Chantier de structure, pas ajout
       de mnémoniques.

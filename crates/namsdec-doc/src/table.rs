@@ -1458,6 +1458,29 @@ pub const ENTRIES: &[Entry] = &[
     },
     Entry {
         kind: Kind::Instruction,
+        names: &[
+            "pcmpistri",
+            "pcmpistrm",
+            "pcmpestri",
+            "pcmpestrm",
+            "vpcmpistri",
+            "vpcmpistrm",
+            "vpcmpestri",
+            "vpcmpestrm",
+        ],
+        title: Text {
+            fr: "Une boucle de chaîne en une instruction",
+            en: "A whole string loop in one instruction",
+        },
+        body: Text {
+            fr: "Comparent seize octets à seize autres selon l'une de **quatre questions**, et disent où. C'est ainsi que la bibliothèque C fait `strlen`, `strchr`, `strcmp` et `strstr` — d'où leur présence dans à peu près tout binaire, et l'intérêt de savoir les lire.\n\nTout est dans l'immédiat, et c'est l'instruction la plus paramétrée du jeu. Les bits 3 et 2 posent la QUESTION : `00` « cet élément est-il dans l'ensemble ? » (`strchr`), `01` « est-il dans l'un de ces intervalles ? » (une classe de caractères), `10` « les deux chaînes sont-elles égales, élément par élément ? » (`strcmp`, et `strlen` en comparant une chaîne à elle-même), `11` « la première apparaît-elle ici dans la seconde ? » (`strstr`). Les bits 5 et 4 donnent la polarité — `11` retourne la réponse **seulement là où la chaîne est valide**, et c'est celle qui sert à `strlen`. Les bits 1 et 0 disent la largeur et le signe des éléments ; le bit 6, la forme de la sortie.\n\n`i` veut dire *implicit* : les longueurs se lisent dans les données, une chaîne s'arrêtant à son premier élément nul. `e` veut dire *explicit* : elles arrivent dans EAX et EDX. Les formes en `i` rendent un **index** dans ECX — et **seize** quand il n'y a rien, ce qui fait sortir de la boucle ; celles en `m` rendent un **masque** dans XMM0, registre qu'elles écrasent sans le nommer.",
+            en: "Compare sixteen bytes against sixteen others under one of **four questions**, and say where. This is how the C library does `strlen`, `strchr`, `strcmp` and `strstr` — hence their presence in nearly every binary, and the value of being able to read them.\n\nEverything is in the immediate, and it is the most parameterised instruction of the set. Bits 3 and 2 set the QUESTION: `00` \"is this element in the set?\" (`strchr`), `01` \"is it within one of these ranges?\" (a character class), `10` \"are the two strings equal, element by element?\" (`strcmp`, and `strlen` by comparing a string with itself), `11` \"does the first appear here in the second?\" (`strstr`). Bits 5 and 4 give polarity — `11` flips the answer **only where the string is valid**, and that is the one `strlen` uses. Bits 1 and 0 give element width and sign; bit 6, the shape of the output.\n\n`i` means *implicit*: lengths are read from the data, a string ending at its first null element. `e` means *explicit*: they arrive in EAX and EDX. The `i` forms return an **index** in ECX — and **sixteen** when there is nothing, which is what breaks the loop; the `m` forms return a **mask** in XMM0, a register they clobber without naming it.",
+        },
+        flags: "CF ZF SF OF",
+        example: "pcmpistri xmm0, xmm0, 0x38  ; la longueur de la chaîne",
+    },
+    Entry {
+        kind: Kind::Instruction,
         names: &["ptest", "vptest"],
         title: Text {
             fr: "Deux questions sur tout un vecteur",

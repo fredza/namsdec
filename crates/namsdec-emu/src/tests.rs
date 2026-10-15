@@ -4086,3 +4086,221 @@ fn the_manual_does_not_claim_an_instruction_is_unsupported_when_it_runs() {
         "seulement {jugées} instruction(s) jugée(s) : la lecture des exemples ne marche plus"
     );
 }
+
+/// `pcmpistri` : les quatre questions de SSE4.2, une par une.
+///
+/// C'est l'instruction la plus paramétrée du jeu x86 — son immédiat
+/// porte le format des éléments, la question posée, la polarité de la
+/// réponse et la forme de la sortie —, et c'est aussi celle qui ouvre
+/// les boucles de `strlen`, `strchr`, `strcmp` et `strstr` dans la
+/// bibliothèque C. Quatre cent et quelques occurrences dans les
+/// binaires d'épreuve, et un arrêt dès qu'on exécutait l'une d'elles.
+///
+/// Les quatre programmes ci-dessous sont les quatre usages réels, et
+/// les résultats sont écrits à la main : ECX vaut l'index trouvé, ou
+/// SEIZE quand il n'y a rien — et c'est ce seize qui fait sortir des
+/// boucles.
+#[test]
+fn the_sse42_string_instructions_answer_their_four_questions() {
+    let emu = run_program(
+        "\
+section .data
+align 16
+chaine  db 'namsdec', 0, 0, 0, 0, 0, 0, 0, 0, 0
+pleine  db 'abcdefghijklmnop'          ; seize octets, aucun nul
+voyelle db 'aeiouy', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+motif   db 'dec', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+autre   db 'namsdeb', 0, 0, 0, 0, 0, 0, 0, 0, 0
+intervalle db 'az', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+chiffres   db '0123456789', 0, 0, 0, 0, 0, 0
+
+section .text
+global _start
+_start:
+; --- strlen : la chaîne comparée à ELLE-MÊME, réponse retournée et
+; masquée. Le premier « non égal » est la fin.
+movdqa xmm0, [chaine]
+pcmpistri xmm0, xmm0, 0x38        ; EqualEach, négatif masqué
+mov rax, rcx
+
+; --- strchr : chercher 'd' dans la chaîne. EqualAny, index du bas.
+movdqa xmm1, [motif]              ; 'd' est son premier octet
+movdqa xmm2, [chaine]
+pcmpistri xmm1, xmm2, 0x00        ; EqualAny
+mov rbx, rcx
+
+; --- rien à trouver : ECX vaut SEIZE, et c'est ce qui fait sortir
+; d'une boucle.
+movdqa xmm3, [chiffres]
+movdqa xmm4, [chaine]
+pcmpistri xmm3, xmm4, 0x00
+mov r8, rcx
+
+; --- strstr : le motif « dec » cherché dans « namsdec ».
+movdqa xmm5, [motif]
+movdqa xmm6, [chaine]
+pcmpistri xmm5, xmm6, 0x0c        ; EqualOrdered
+mov r9, rcx
+
+; --- strcmp : deux chaînes qui diffèrent au septième octet.
+movdqa xmm7, [chaine]
+movdqa xmm8, [autre]
+pcmpistri xmm7, xmm8, 0x38        ; EqualEach, négatif masqué
+mov r10, rcx
+
+; --- une classe de caractères : 'a'..'z'. Le premier qui N'EN est pas.
+movdqa xmm9, [intervalle]
+movdqa xmm10, [chiffres]
+pcmpistri xmm9, xmm10, 0x34       ; Ranges, négatif masqué
+mov r11, rcx
+
+; --- seize octets pleins : aucun nul, donc ni ZF ni SF.
+movdqa xmm11, [pleine]
+movdqa xmm12, [pleine]
+pcmpistri xmm11, xmm12, 0x38
+mov r12, rcx
+hlt
+",
+        &[],
+    );
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rax),
+        7,
+        "strlen : « namsdec » fait sept"
+    );
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rbx),
+        4,
+        "strchr : le 'd' de « namsdec » est le cinquième octet, index 4"
+    );
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::R8),
+        16,
+        "rien trouvé : SEIZE, et c'est ce qui fait sortir de la boucle"
+    );
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::R9),
+        4,
+        "strstr : « dec » commence au cinquième octet de « namsdec »"
+    );
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::R10),
+        6,
+        "strcmp : « namsdec » et « namsdeb » diffèrent au septième octet"
+    );
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::R11),
+        0,
+        "les chiffres ne sont pas des lettres : le premier déjà"
+    );
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::R12),
+        16,
+        "seize octets égaux et aucun nul : rien à signaler"
+    );
+}
+
+/// Et les indicateurs qu'elles posent — c'est sur eux que la
+/// bibliothèque C branche.
+///
+/// ZF dit que la chaîne où l'on cherche se termine dans ces seize
+/// octets ; SF, que celle qu'on cherche s'y termine aussi ; CF, qu'on a
+/// trouvé quelque chose. Une boucle de `strlen` lit ZF pour savoir si
+/// elle tient la fin, et CF pour savoir où.
+#[test]
+fn the_sse42_string_instructions_set_the_flags_the_libc_branches_on() {
+    let emu = run_program(
+        "\
+section .data
+align 16
+courte  db 'abc', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+pleine  db 'abcdefghijklmnop'
+
+section .text
+global _start
+_start:
+; Une chaîne qui se termine ici : ZF levé, SF levé (les deux sont la
+; même), CF levé puisqu'on trouve sa fin.
+movdqa xmm0, [courte]
+pcmpistri xmm0, xmm0, 0x38
+setc al
+setz bl
+sets cl
+movzx rax, al
+movzx rbx, bl
+; r13 et non RCX : le pcmpistri qui suit écrit DANS RCX, et il
+; écraserait la réponse qu'on vient d'y ranger.
+movzx r13, cl
+
+; Seize octets pleins : aucune fin ici, donc ni ZF ni SF, et rien à
+; trouver donc pas de CF.
+movdqa xmm1, [pleine]
+pcmpistri xmm1, xmm1, 0x38
+setc dl
+setz r8b
+sets r9b
+movzx rdx, dl
+movzx r8, r8b
+movzx r9, r9b
+hlt
+",
+        &[],
+    );
+    assert_eq!(emu.cpu.regs.get64(Reg64::Rax), 1, "CF : on a trouvé la fin");
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rbx),
+        1,
+        "ZF : elle se termine ici"
+    );
+    assert_eq!(emu.cpu.regs.get64(Reg64::R13), 1, "SF : l'autre aussi");
+    assert_eq!(emu.cpu.regs.get64(Reg64::Rdx), 0, "seize pleins : rien");
+    assert_eq!(emu.cpu.regs.get64(Reg64::R8), 0, "et aucune fin");
+    assert_eq!(emu.cpu.regs.get64(Reg64::R9), 0);
+}
+
+/// `pcmpistrm` rend un MASQUE, dans XMM0 — un registre que
+/// l'instruction n'écrit nulle part et qu'elle écrase quand même.
+///
+/// Deux formes : un bit par élément, ou l'élément entier à 1. La
+/// seconde sert à masquer directement les octets trouvés, sans passer
+/// par un décalage.
+#[test]
+fn pcmpistrm_leaves_its_mask_in_xmm0() {
+    let emu = run_program(
+        "\
+section .data
+align 16
+voyelles db 'aeiou', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+mot      db 'namsdec', 0, 0, 0, 0, 0, 0, 0, 0, 0
+sortie   times 16 db 0
+
+section .text
+global _start
+_start:
+movdqa xmm1, [voyelles]
+movdqa xmm2, [mot]
+pcmpistrm xmm1, xmm2, 0x00        ; EqualAny, masque de BITS
+movd eax, xmm0
+
+movdqa xmm3, [voyelles]
+movdqa xmm4, [mot]
+pcmpistrm xmm3, xmm4, 0x40        ; le même, en octets entiers
+movdqa [sortie], xmm0
+mov rbx, [sortie]
+hlt
+",
+        &[],
+    );
+    // « namsdec » : les voyelles sont le 'a' (index 1) et le 'e'
+    // (index 5).
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rax),
+        0b0010_0010,
+        "le masque de bits dit quelles places sont des voyelles"
+    );
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rbx),
+        0x0000_ff00_0000_ff00,
+        "le même, un octet entier par réponse"
+    );
+}

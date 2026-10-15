@@ -243,7 +243,7 @@ pour chacun, ce que son état change concrètement. Sur
 votre programme comme sur un binaire du système. Le rapport se copie en
 Markdown, ou s'enregistre, pour être collé dans un compte rendu ou un cours.
 
-Et aussi : documentation de 171 instructions, directives et notions sous **F1** ou
+Et aussi : documentation de 172 instructions, directives et notions sous **F1** ou
 au survol — avec sommaire, renvois d'une fiche à l'autre et export du
 manuel entier en Markdown (menu Aide), parce que ce qu'on apprend ici
 doit pouvoir se lire ailleurs —, autocomplétion qui ne propose que ce qui est documenté,
