@@ -608,6 +608,34 @@ L'oracle **ne tourne pas sur l'intégration continue** — il demande `nasm`,
 `ld`, un x86-64, et SDE pour AVX-512. Ce qu'il apprend doit donc être retenu
 par un test ordinaire dans `namsdec-emu/src/tests.rs`.
 
+### Mesurer ce que le détour sait faire
+
+Le détour refuse ce qu'il ne sait pas relocaliser, et l'interface le dit
+site par site. Elle ne dit pas **combien** de sites il refuse — et un outil
+qui refuserait presque partout ne servirait à rien sans que personne ne s'en
+aperçoive.
+
+```sh
+cargo run --release -p namsdec-re --example taux_detour -- tests/binaires/*
+```
+
+Le banc planifie un détour à **chaque adresse d'instruction** de chaque plage
+exécutable, et compte les réussites contre les refus, par motif et par
+mnémonique. Rien n'est écrit : `plan_detour` rend un plan sans toucher au
+fichier, ce qui est précisément ce qui permet de le mesurer en masse.
+
+Sur les onze binaires d'épreuve du projet — 3,4 millions de sites — **deux
+sur trois acceptent un détour**. L'accès relatif à `rip`, qu'on craignait
+bloquant parce qu'il est la forme normale d'un accès à une globale, ne fait
+**jamais** refuser. Le seul refus de principe est le saut court, un site sur
+dix-huit ; le reste vient de la place libre, pas des instructions.
+
+Il balaie **linéairement**, donc une table de données enchâssée dans du code
+est comptée comme du code. C'est assumé : ne mesurer que les fonctions
+nommées ne mesurerait rien sur un binaire dépouillé, qui est le cas qui
+intéresse. Et il retombe sur les **segments** quand les en-têtes de section
+manquent — sans cela, deux des onze binaires rendaient « zéro site ».
+
 ## Ce qu'il ne fait pas
 
 - Pas de mode 32 bits, pas d'`int 0x80`.

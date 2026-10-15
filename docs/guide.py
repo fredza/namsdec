@@ -1519,6 +1519,18 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "refus <b>nomme l\'instruction</b> et dit la taille du champ — parce que c\'est "
          "elle qui explique le non, et qu\'un outil qui sert à apprendre doit dire pourquoi "
          "il ne peut pas.",
+         "<b>Et combien de fois refuse-t-il ?</b> La question mérite un chiffre plutôt "
+         "qu\'une impression, parce qu\'un outil qui refuserait presque partout ne "
+         "servirait à rien sans que personne ne s\'en aperçoive. Mesuré sur les onze "
+         "binaires d\'épreuve du projet, à toutes les adresses d\'instruction de leur "
+         "code — 3,4 millions d\'endroits : <b>deux sur trois acceptent un détour</b>. "
+         "L\'accès relatif à <font face='Courier'>rip</font>, qui est la forme normale "
+         "d\'un accès à une variable globale en code compilé, ne fait <b>jamais</b> "
+         "refuser : la relocalisation le couvre en entier. Le saut court est le seul "
+         "refus de principe, et il vaut <b>un site sur dix-huit</b>. Le reste des non "
+         "ne vient pas des instructions mais de la <b>place</b> : trois de ces binaires "
+         "n\'ont aucun trou exécutable, et un quatrième n\'en a qu\'un, trop petit. "
+         "C\'est là que le détour butera, et non sur ce qu\'il faut déplacer.",
          "Deux colonnes en tête de chaque ligne : la <b>position</b> dans le fichier et "
          "l\'<b>adresse</b> à laquelle elle sera lue en mémoire. On patche à la première "
          "et l\'on raisonne avec la seconde, et c\'est pour avoir à les rapprocher de "

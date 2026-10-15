@@ -1872,11 +1872,46 @@ le code binaire et le pseudo-code. Un seul module neuf les réunit.
       sortir demande un rebase des sept commits et un force-push, à
       faire AVANT la fusion dans `main`. En attente d'un accord, parce
       que c'est irréversible.
+- [x] **Le taux de refus du détour, mesuré** (A 7.15 point 2, 15
+      octobre 2026) — la crainte à lever avant d'aller plus loin : le
+      détour refuse les instructions qu'il ne sait pas relocaliser, et
+      `mov rax, [rip+0x2e4f]` est la forme NORMALE d'un accès à une
+      globale en code compilé. L'interface dit pourquoi elle refuse UN
+      site ; rien ne disait combien elle en refuse.
+      `namsdec-re/examples/taux_detour.rs` planifie un détour à chaque
+      adresse d'instruction de chaque plage exécutable et compte, par
+      motif et par mnémonique. Le seuil était posé D'AVANCE par le plan,
+      ce qui est tout ce qui rend une mesure honnête.
+      **3 371 923 sites, 66,0 % acceptent un détour.** Et le motif
+      craint ne paraît pas une fois : `CodeDéplacéRelatif`, zéro sur
+      3,4 millions. La relocalisation de 4.17 couvre entièrement les
+      deux formes courantes — 547 997 sites recouvrent du code relatif,
+      54,5 % passent, là où tout était refusé en bloc avant.
+      Le seul refus de PRINCIPE est le saut court : 5,6 %, un site sur
+      dix-huit, dont `je`/`jmp`/`jne` en rel8 font 81 %. Les 28,1 %
+      restants ne viennent pas des instructions mais de la PLACE —
+      `croackpocalypse` n'a qu'un trou, trop petit ; `crackme`,
+      `TermBreaker` et `thisismebtw` n'en ont aucun.
+      DÉCISION : la relocalisation à longueur variable n'est pas la
+      suite ; fabriquer de la place l'est, et c'est un travail sur le
+      fichier ELF. Décidé sur un chiffre, comme partout ici.
+      Un défaut trouvé dans le banc lui-même, et c'est la part utile de
+      l'essai : il ne lisait que les SECTIONS, donc deux binaires
+      dépouillés rendaient « 0 site » — ce qui se lit « rien à mesurer »
+      au lieu de « rien de mesuré ». Avec le recours aux segments, ces
+      deux-là rendent 1 458 363 sites. Ce que le banc ne sait pas dire
+      est écrit en tête du fichier : le balayage est linéaire, une table
+      de données enchâssée est comptée comme du code.
+      Le chiffre est passé dans le manuel, à l'endroit où le détour
+      explique ses refus : un outil qui sert à apprendre doit dire
+      l'étendue de ce qu'il sait faire, et pas seulement la raison d'un
+      non.
 - [ ] **Le plan de la séance suivante** (A 7.15, arrêté le 15 octobre
       2026) — cinq points, et l'ordre est l'avis : (1) 7.9, expliquer un
       ENSEMBLE et non plus une instruction, puis la moitié manquante de
-      7.10 ; (2) mesurer le taux de refus du détour sur les onze
-      binaires d'épreuve avant de décider la relocalisation ; (3)
+      7.10 ; (2) [FAIT] mesurer le taux de refus du détour sur les
+      onze binaires d'épreuve — 66 %, et la relocalisation n'est pas la
+      condition : la place libre l'est ; (3)
       découper `tests.rs`, 31 602 lignes et 689 contrôles d'un bloc ;
       (4) [FAIT] réconcilier l'analyse d'AMELIORATIONS avec son journal —
       5.3 et 7.8 se donnaient encore pour le gros chantier restant, 3.5

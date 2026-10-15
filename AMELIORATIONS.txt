@@ -4377,7 +4377,8 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      inférence, c'est un compteur. La règle reste celle de 7.9 : ce qu'on
      ne sait pas dire, on se tait.
 
-  2. LE DÉTOUR — MESURER SON TAUX DE REFUS AVANT D'ALLER PLUS LOIN.
+  2. [TRANCHÉ LE 15 OCTOBRE — voir le journal en fin de fichier]
+     LE DÉTOUR — MESURER SON TAUX DE REFUS AVANT D'ALLER PLUS LOIN.
      Le refus sur les instructions `rip`-relatives est la bonne décision,
      mais `mov rax, [rip+0x2e4f]` est la forme NORMALE d'un accès à une
      globale en code compilé. La crainte : 4.17 refuse la plupart des
@@ -4416,3 +4417,87 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
   d'installation pointent encore quelque part — quelques secondes contre
   dix minutes de compilation) ; et `tests/binaires/` rempli ici, vide sur
   la CI, donc onze binaires d'épreuve qui ne protègent qu'une machine.
+
+
+================================================================================
+15 OCTOBRE 2026 (suite) — LE TAUX DE REFUS DU DÉTOUR, MESURÉ
+================================================================================
+
+  --- la crainte, et pourquoi il fallait un chiffre ---
+  7.15 point 2 la formulait : le refus sur les instructions relatives à
+  `rip` est la bonne décision, mais `mov rax, [rip+0x2e4f]` est la forme
+  NORMALE d'un accès à une globale en code compilé. Si le détour refusait
+  la plupart des endroits réels, personne ne le saurait — l'interface dit
+  pourquoi elle refuse UN site, jamais combien de sites elle refuse.
+  Le plan posait le seuil d'avance, et c'est ce qui rend une mesure
+  honnête : un sur dix, la relocalisation d'instructions qui changent de
+  longueur devient la condition de tout le reste ; huit sur dix, elle
+  attend.
+
+  --- l'instrument ---
+  `namsdec-re/examples/taux_detour.rs`. Il prend chaque adresse
+  d'instruction de chaque plage exécutable, y planifie un détour à ajout
+  vide, et compte les réussites contre les refus, par motif et par
+  mnémonique. Rien n'est écrit : `plan_detour` ne modifie pas le fichier,
+  et c'est précisément pour pouvoir le mesurer en masse qu'il avait été
+  écrit ainsi.
+
+  CE QU'IL A FALLU CORRIGER EN ROUTE, et c'est la part utile de l'essai :
+  la première version ne balayait que les SECTIONS exécutables, et deux
+  des onze binaires rendaient « 0 site ». Cela se lit comme « rien à
+  mesurer » alors que c'était « rien de mesuré » : `crackme_hard` et
+  `croackpocalypse` sont dépouillés de leurs en-têtes de section. Avec le
+  recours aux SEGMENTS, le premier rend 359 737 sites et le second
+  1 098 626. Un banc qui compte zéro sans le dire est plus dangereux
+  qu'un banc absent.
+  CE QUE LA MESURE NE DIT PAS, et c'est écrit en tête du fichier : le
+  balayage est linéaire, donc une table de données enchâssée dans du code
+  est décodée comme du code. L'alternative — ne mesurer que les fonctions
+  nommées — ne mesurerait rien sur un binaire dépouillé, qui est le cas
+  qui nous intéresse.
+
+  --- LE CHIFFRE ---
+  3 371 923 sites sur onze binaires. 2 225 416 acceptent un détour, soit
+  66,0 % — DEUX SUR TROIS.
+
+  Et le motif qu'on craignait ne paraît pas une seule fois :
+  `CodeDéplacéRelatif`, ZÉRO sur 3,4 millions de sites. La relocalisation
+  écrite en 4.17 couvre entièrement les deux formes courantes. La crainte
+  est donc RÉFUTÉE, par un compteur et non par un avis.
+
+  Les refus, et ce qu'ils disent :
+    PlaceTropPetite      947 922   28,1 %
+    PortéeTropCourte     189 505    5,6 %
+    SiteIndécodable        4 648    0,1 %
+    AucunePlaceLibre       4 432    0,1 %
+
+  CE QUI SE LIT LÀ-DEDANS. Le seul refus de PRINCIPE est le saut court :
+  5,6 %, un site sur dix-huit, et le classement par mnémonique ne laisse
+  aucun doute — `je`, `jmp`, `jne` en rel8 font 81 % de ces refus. C'est
+  la limite honnête de la méthode, pas un défaut : élargir un `jmp rel8`
+  en rel32 changerait sa longueur, et le détour ne peut pas se le
+  permettre dans la zone qu'il recouvre.
+  Les 28,1 % restants ne viennent PAS des instructions. Ils viennent de
+  la PLACE, et ils sont concentrés : `croackpocalypse` n'a qu'un trou
+  exécutable, trop petit pour la plupart des zones (86 % de ses sites à
+  lui seul) ; `crackme`, `TermBreaker` et `thisismebtw` n'en ont AUCUN.
+  Quatre binaires sur onze sont donc hors de portée du détour pour une
+  raison qui n'a rien à voir avec ce qu'il faut déplacer.
+
+  --- LA DÉCISION, puisque c'était l'objet ---
+  La relocalisation d'instructions à longueur variable N'EST PAS la
+  suite : elle rapporterait au mieux les 5,6 % du saut court, au prix de
+  ce qui fait la sûreté du détour. Ce qui bloque est la place libre. La
+  suite du détour, le jour où elle vient, est d'en FABRIQUER — étendre un
+  segment, ajouter une section —, et c'est un autre travail, sur le
+  fichier ELF et non sur les instructions.
+  Ce que la relocalisation a rapporté se chiffre aussi, au passage :
+  547 997 sites recouvrent du code relatif, et 298 572 passent — 54,5 %
+  de ce qui, avant 4.17, était refusé en bloc.
+
+  --- ce qui en reste dans le dépôt ---
+  Le banc, qui se rejoue ; le chiffre, dans le manuel, à l'endroit où le
+  détour explique ses refus — « deux sur trois acceptent un détour »,
+  « le saut court vaut un site sur dix-huit », et où le détour butera
+  vraiment. Un outil qui sert à apprendre doit savoir dire l'étendue de
+  ce qu'il sait faire, et pas seulement la raison d'un non.
