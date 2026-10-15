@@ -38,6 +38,19 @@ pub struct Patch {
     pub after: Vec<u8>,
     /// L'adresse virtuelle correspondante, pour le dire à l'écran.
     pub addr: u64,
+    /// Les correctifs qui ne valent QUE posés ensemble partagent ce
+    /// numéro.
+    ///
+    /// Un détour en fait deux : le saut à l'endroit visé, et le corps
+    /// dans la place libre. Défaire le corps seul laisserait un `jmp`
+    /// vers du bourrage — le programme sauterait dans des zéros. Les
+    /// deux portent donc le même numéro, et l'interface défait le
+    /// groupe entier plutôt qu'une moitié.
+    ///
+    /// `None` pour un correctif qui se tient seul, ce qui est le cas de
+    /// tous ceux d'avant le détour : inverser un saut, neutraliser,
+    /// écrire des octets à la main.
+    pub group: Option<u64>,
 }
 
 /// L'inverse d'un saut conditionnel, s'il en a un.
@@ -128,6 +141,487 @@ pub fn apply(image: &mut [u8], offset: usize, nouveaux: &[u8]) -> Option<Vec<u8>
     let avant = place.to_vec();
     place.copy_from_slice(nouveaux);
     Some(avant)
+}
+
+// ---------------------------------------------------------------------
+// Le détour : sortir du cadre de la longueur exacte, sans rien décaler.
+// ---------------------------------------------------------------------
+//
+// Tout ce qui précède garde la longueur exacte, et c'est ce qui le rend
+// sûr. Mais cette règle interdit la moitié de ce qu'on veut faire : on
+// ne peut pas AJOUTER quelque chose. Trois octets de plus et chaque
+// adresse du fichier devient fausse.
+//
+// Le détour contourne l'obstacle au lieu de l'affronter. L'idée est
+// vieille comme les correctifs binaires, et elle tient en trois temps :
+//
+//   1. à l'endroit visé, on écrit un `jmp` vers de la place libre —
+//      celle que `slack` a trouvée, le bourrage que l'éditeur de liens
+//      a laissé pour aligner ;
+//   2. dans cette place, on écrit le code qu'on voulait ajouter, puis
+//      les instructions qu'on a dû recouvrir pour poser le `jmp` ;
+//   3. on termine par un `jmp` de retour, juste après l'endroit visé.
+//
+// Le programme passe désormais par un détour, exécute ce qu'on a
+// ajouté, retrouve ce qu'il faisait, et continue. Le fichier n'a pas
+// changé de taille : on a seulement rempli des trous.
+//
+// C'est là que s'arrête la facilité, et les refus ci-dessous valent
+// autant que le geste lui-même.
+
+/// La longueur d'un `jmp rel32` : l'opcode `0xE9`, puis quatre octets de
+/// déplacement.
+///
+/// C'est le plus petit saut qui atteigne n'importe où dans un binaire
+/// ordinaire, et donc la place minimale qu'il faut recouvrir à l'endroit
+/// visé. Un `jmp rel8` ne tiendrait qu'en deux octets, mais ne porte
+/// qu'à 127 octets — jamais jusqu'à la fin d'une section.
+pub const JMP_REL32: usize = 5;
+
+/// Un `jmp rel32` de `depuis` vers `vers`, en adresses virtuelles.
+///
+/// Le déplacement se compte **depuis la fin de l'instruction**, pas
+/// depuis son début : le processeur a déjà avancé `rip` de cinq octets
+/// quand il l'applique. C'est l'erreur la plus courante à la main, et
+/// elle donne un saut qui atterrit cinq octets trop loin.
+///
+/// Rend `None` quand la distance ne tient pas dans un entier signé de
+/// 32 bits — au-delà de deux gigaoctets, ce saut n'existe pas, et il
+/// faudrait passer par un registre. Mieux vaut refuser que tronquer.
+pub fn jmp_rel32(depuis: u64, vers: u64) -> Option<Vec<u8>> {
+    let fin = depuis.checked_add(JMP_REL32 as u64)?;
+    let écart = (vers as i64).checked_sub(fin as i64)?;
+    let écart = i32::try_from(écart).ok()?;
+
+    let mut octets = Vec::with_capacity(JMP_REL32);
+    octets.push(0xE9);
+    octets.extend_from_slice(&écart.to_le_bytes());
+    Some(octets)
+}
+
+/// Pourquoi un détour n'a pas pu être posé.
+///
+/// Chaque variante est un refus, pas un avertissement : le détour n'est
+/// pas écrit. Un correctif qu'on pose « presque » laisse un binaire qui
+/// plante plus tard et ailleurs, et c'est exactement ce qu'un outil
+/// d'apprentissage ne doit pas faire — on n'apprend rien d'un plantage
+/// dont la cause est à trois sections de là.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DetourRefusé {
+    /// La place libre choisie n'est pas dans un segment exécutable.
+    ///
+    /// Un trou de mille octets en plein `.rodata` ne sert à rien : le
+    /// `jmp` y arriverait, et le processeur refuserait d'exécuter la
+    /// page. C'est le premier contrôle parce que c'est le piège le plus
+    /// tentant — `slack::find` trie par taille, et les plus grands trous
+    /// d'un binaire sont souvent dans les données.
+    PlaceNonExécutable,
+    /// La place libre ne suffit pas.
+    PlaceTropPetite { besoin: u64, offert: u64 },
+    /// L'endroit visé, ou la place libre, sort du fichier.
+    HorsFichier,
+    /// Impossible de décoder assez d'instructions entières à l'endroit
+    /// visé pour y loger les cinq octets du `jmp`.
+    SiteIndécodable { à: u64 },
+    /// La distance dépasse ce qu'un `jmp rel32` peut franchir.
+    TropLoin,
+    /// Une instruction à déplacer dépend de sa position.
+    ///
+    /// C'est le refus qui compte vraiment, et le moins visible. Les
+    /// instructions recouvertes par le `jmp` doivent être réécrites dans
+    /// la place libre — donc à une AUTRE adresse. Celles qui s'adressent
+    /// relativement à `rip` (`mov rax, [rip+0x2e4f]`, très courant en
+    /// code compilé moderne) ou qui sautent relativement (`call`, `jne`)
+    /// liraient alors la mauvaise donnée, ou sauteraient au mauvais
+    /// endroit, sans rien signaler.
+    ///
+    /// Les réécrire correctement s'appelle **relocaliser**, et c'est ce
+    /// que [`relocate`] fait désormais pour les deux formes courantes :
+    /// un déplacement de quatre octets relatif à `rip`, et un saut ou
+    /// un appel relatif de quatre octets. Ce refus ne reste donc que
+    /// pour ce qui ne se relocalise pas en gardant la longueur — voir
+    /// [`Self::PortéeTropCourte`] et [`Self::ChampIntrouvable`].
+    CodeDéplacéRelatif { à: u64, mnémonique: String },
+    /// Le champ à réécrire ne porte pas jusqu'à la cible depuis la
+    /// place libre.
+    ///
+    /// Un saut court (`jmp rel8`, deux octets) atteint 127 octets ; la
+    /// place libre est presque toujours plus loin. L'élargir en
+    /// `jmp rel32` demanderait trois octets de plus, donc changerait la
+    /// longueur — précisément ce que le détour ne peut pas faire dans
+    /// la zone qu'il recouvre. C'est la limite honnête de la méthode, et
+    /// non un défaut d'implémentation.
+    PortéeTropCourte {
+        à: u64,
+        mnémonique: String,
+        champ: usize,
+    },
+    /// L'instruction dépend de sa position, mais le décodeur ne dit pas
+    /// où se trouve le champ à réécrire.
+    ///
+    /// Ne devrait pas arriver sur du code valide. On refuse plutôt que
+    /// d'écrire au hasard dans une instruction.
+    ChampIntrouvable { à: u64, mnémonique: String },
+}
+
+impl DetourRefusé {
+    /// Ce qu'on en montre à l'écran.
+    pub fn message(&self, fr: bool) -> String {
+        match self {
+            Self::PlaceNonExécutable if fr => {
+                "cette place libre n'est pas exécutable : le programme ne \
+                 pourrait pas y courir"
+                    .to_string()
+            }
+            Self::PlaceNonExécutable => {
+                "this slack is not executable: the program could not run there".to_string()
+            }
+            Self::PlaceTropPetite { besoin, offert } if fr => {
+                format!("il faut {besoin} octets de place libre, celle-ci en offre {offert}")
+            }
+            Self::PlaceTropPetite { besoin, offert } => {
+                format!("{besoin} bytes of slack needed, this one offers {offert}")
+            }
+            Self::HorsFichier if fr => "cette adresse sort du fichier".to_string(),
+            Self::HorsFichier => "this address lies outside the file".to_string(),
+            Self::SiteIndécodable { à } if fr => format!(
+                "impossible de décoder {JMP_REL32} octets d'instructions entières en {à:#x}"
+            ),
+            Self::SiteIndécodable { à } => {
+                format!("cannot decode {JMP_REL32} bytes of whole instructions at {à:#x}")
+            }
+            Self::TropLoin if fr => {
+                "la distance dépasse les deux gigaoctets d'un jmp rel32".to_string()
+            }
+            Self::TropLoin => "the distance exceeds the 2 GB reach of a jmp rel32".to_string(),
+            Self::CodeDéplacéRelatif { à, mnémonique } if fr => format!(
+                "`{mnémonique}` en {à:#x} dépend de sa position : la déplacer \
+                 la ferait lire ou sauter ailleurs. namsdec ne relocalise pas \
+                 encore — choisis un autre endroit, un peu plus haut ou plus bas"
+            ),
+            Self::CodeDéplacéRelatif { à, mnémonique } => format!(
+                "`{mnémonique}` at {à:#x} is position-dependent in a form \
+                 namsdec cannot relocate — pick another site, slightly above \
+                 or below"
+            ),
+            Self::PortéeTropCourte {
+                à,
+                mnémonique,
+                champ,
+            } if fr => format!(
+                "`{mnémonique}` en {à:#x} vise sa cible sur {champ} octet(s) : \
+                 trop court pour atteindre la place libre. L'élargir changerait \
+                 sa longueur, ce que le détour ne peut pas faire ici — choisis \
+                 un autre endroit"
+            ),
+            Self::PortéeTropCourte {
+                à,
+                mnémonique,
+                champ,
+            } => format!(
+                "`{mnémonique}` at {à:#x} addresses its target in {champ} byte(s): \
+                 too short to reach the slack. Widening it would change its \
+                 length, which the detour cannot do here — pick another site"
+            ),
+            Self::ChampIntrouvable { à, mnémonique } if fr => format!(
+                "`{mnémonique}` en {à:#x} dépend de sa position, mais le décodeur \
+                 ne dit pas où est le champ à réécrire — on ne l'écrit pas au hasard"
+            ),
+            Self::ChampIntrouvable { à, mnémonique } => format!(
+                "`{mnémonique}` at {à:#x} is position-dependent, but the decoder \
+                 does not say where the field to rewrite is — it will not be guessed"
+            ),
+        }
+    }
+}
+
+/// Réécrit une instruction pour qu'elle fasse la même chose depuis une
+/// autre adresse.
+///
+/// C'est tout le sujet du déplacement. Une instruction comme
+/// `lea rsi, [rip+0x2b8a]` ne dit pas « va chercher à 0x40300c » : elle
+/// dit « va chercher 0x2b8a octets après la fin de cette
+/// instruction-ci ». Déplacée telle quelle, elle compte à partir d'un
+/// autre endroit, et lit autre chose. On ne touche donc pas à ce qu'elle
+/// fait — on recalcule son écart pour que la **somme** retombe sur la
+/// même cible.
+///
+/// Deux champs se relocalisent ainsi, et aucun encodeur n'est nécessaire
+/// — le décodeur dit où ils commencent et combien d'octets ils font, et
+/// l'instruction garde sa longueur :
+///
+/// - le **déplacement** d'un accès mémoire relatif à `rip` ;
+/// - l'**immédiat** d'un saut ou d'un appel relatif.
+///
+/// Un seul des deux cas peut se présenter à la fois : un accès relatif
+/// à `rip` n'est jamais un saut relatif.
+///
+/// Rend l'instruction inchangée quand elle ne dépend pas de sa
+/// position : c'est le cas courant, et il n'y a rien à faire.
+pub fn relocate(
+    octets: &[u8],
+    instr: &iced_x86::Instruction,
+    champs: &iced_x86::ConstantOffsets,
+    nouvelle_ip: u64,
+) -> Result<Vec<u8>, DetourRefusé> {
+    use iced_x86::OpKind;
+
+    let mnémonique = || format!("{:?}", instr.mnemonic()).to_lowercase();
+    let à = instr.ip();
+
+    // La fin de l'instruction, à sa nouvelle place : c'est de là que
+    // tout écart relatif se compte.
+    let fin = nouvelle_ip
+        .checked_add(instr.len() as u64)
+        .ok_or(DetourRefusé::HorsFichier)?;
+
+    // Le champ à réécrire, et la cible absolue à retrouver. L'ordre
+    // compte : on ne touche l'immédiat que s'il porte une CIBLE. Celui
+    // de `mov dword [rip+0x10], 1` est une donnée, et le réécrire
+    // changerait ce que le programme calcule.
+    let branche = (0..instr.op_count()).any(|i| {
+        matches!(
+            instr.op_kind(i),
+            OpKind::NearBranch16 | OpKind::NearBranch32 | OpKind::NearBranch64
+        )
+    });
+
+    let (début, taille, cible) = if instr.is_ip_rel_memory_operand() {
+        (
+            champs.displacement_offset(),
+            champs.displacement_size(),
+            instr.ip_rel_memory_address(),
+        )
+    } else if branche {
+        (
+            champs.immediate_offset(),
+            champs.immediate_size(),
+            instr.near_branch_target(),
+        )
+    } else {
+        // Rien de relatif : elle se déplace telle quelle.
+        return Ok(octets.to_vec());
+    };
+
+    if taille == 0 || début + taille > octets.len() {
+        return Err(DetourRefusé::ChampIntrouvable {
+            à,
+            mnémonique: mnémonique(),
+        });
+    }
+
+    let écart = (cible as i64)
+        .checked_sub(fin as i64)
+        .ok_or(DetourRefusé::HorsFichier)?;
+
+    // L'écart doit tenir dans le champ TEL QU'IL EST. L'élargir
+    // changerait la longueur de l'instruction, et le détour ne peut pas
+    // se le permettre dans la zone qu'il recouvre.
+    let trop_court = DetourRefusé::PortéeTropCourte {
+        à,
+        mnémonique: mnémonique(),
+        champ: taille,
+    };
+    let champ: Vec<u8> = match taille {
+        1 => i8::try_from(écart)
+            .map_err(|_| trop_court)?
+            .to_le_bytes()
+            .to_vec(),
+        2 => i16::try_from(écart)
+            .map_err(|_| trop_court)?
+            .to_le_bytes()
+            .to_vec(),
+        4 => i32::try_from(écart)
+            .map_err(|_| trop_court)?
+            .to_le_bytes()
+            .to_vec(),
+        // Aucun déplacement ni immédiat relatif ne fait huit octets sur
+        // x86-64 : `jmp rel64` n'existe pas, et un déplacement est au
+        // plus de quatre octets. Un champ d'une autre taille veut dire
+        // qu'on a mal lu.
+        _ => {
+            return Err(DetourRefusé::ChampIntrouvable {
+                à,
+                mnémonique: mnémonique(),
+            });
+        }
+    };
+
+    let mut réécrite = octets.to_vec();
+    réécrite[début..début + taille].copy_from_slice(&champ);
+    Ok(réécrite)
+}
+
+/// Un détour prêt à poser : deux changements, et rien d'autre.
+///
+/// Les deux sont des [`Patch`] ordinaires, avec leur `before` — donc le
+/// détour se défait comme n'importe quel correctif, par la fenêtre qui
+/// les liste. C'était la condition pour que cette fonctionnalité passe
+/// « par là plutôt que par un chemin parallèle » : un détour n'est pas
+/// une catégorie à part, c'est deux écritures d'octets.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Detour {
+    /// À l'endroit visé : le `jmp` vers la place libre, complété de
+    /// `nop` si les instructions recouvertes faisaient plus de cinq
+    /// octets.
+    pub aller: Patch,
+    /// Dans la place libre : le code ajouté, les instructions
+    /// déplacées, puis le `jmp` de retour.
+    pub corps: Patch,
+    /// Combien d'octets ont été recouverts à l'endroit visé — toujours
+    /// un nombre entier d'instructions, et au moins [`JMP_REL32`].
+    pub recouvert: usize,
+    /// Les instructions recouvertes, telles qu'elles sont réécrites dans
+    /// la place libre. Les montrer permet de vérifier d'un coup d'œil ce
+    /// que le détour a déménagé.
+    pub déplacé: Vec<u8>,
+}
+
+/// Planifie un détour, sans rien écrire.
+///
+/// Rien n'est modifié : la fonction rend les deux changements à poser,
+/// ou dit pourquoi elle refuse. C'est voulu — on veut pouvoir montrer le
+/// plan avant de l'appliquer, et un plan qu'on calcule en écrivant ne
+/// se montre pas.
+///
+/// `ajout` est le code à insérer, déjà assemblé. Il doit se terminer par
+/// un chemin qui tombe en séquence : le retour est ajouté après lui, et
+/// un `ret` au milieu de `ajout` sauterait le reste du détour — ce qui
+/// se fait exprès parfois, mais jamais par accident.
+pub fn plan_detour(
+    image: &[u8],
+    bitness: u32,
+    site_offset: usize,
+    site_vaddr: u64,
+    place: &crate::slack::Slack,
+    ajout: &[u8],
+) -> Result<Detour, DetourRefusé> {
+    use iced_x86::{Decoder, DecoderOptions};
+
+    if !place.executable {
+        return Err(DetourRefusé::PlaceNonExécutable);
+    }
+
+    // Les instructions à recouvrir : on décode à partir de l'endroit
+    // visé et on en prend des ENTIÈRES jusqu'à couvrir les cinq octets
+    // du `jmp`. Jamais un nombre d'octets fixe : couper une instruction
+    // en deux laisserait sa queue dans le fichier, et le processeur la
+    // décoderait comme autre chose au retour du détour.
+    let reste = image.get(site_offset..).ok_or(DetourRefusé::HorsFichier)?;
+    let mut décodeur = Decoder::with_ip(bitness, reste, site_vaddr, DecoderOptions::NONE);
+    let mut recouvert = 0usize;
+    let mut à_déplacer = Vec::new();
+    while recouvert < JMP_REL32 {
+        if !décodeur.can_decode() {
+            return Err(DetourRefusé::SiteIndécodable { à: site_vaddr });
+        }
+        let instr = décodeur.decode();
+        if instr.is_invalid() {
+            return Err(DetourRefusé::SiteIndécodable { à: site_vaddr });
+        }
+        // La position des champs relatifs, telle que le décodeur l'a
+        // vue. À prendre MAINTENANT : elle porte sur la dernière
+        // instruction décodée, et la prochaine l'effacera.
+        let champs = décodeur.get_constant_offsets(&instr);
+        let octets = reste
+            .get(recouvert..recouvert + instr.len())
+            .ok_or(DetourRefusé::HorsFichier)?
+            .to_vec();
+        à_déplacer.push((instr, champs, octets));
+        recouvert += instr.len();
+    }
+
+    // Les instructions, réécrites pour leur nouvelle adresse.
+    //
+    // Leur place dans le corps du détour est connue d'avance : l'ajout
+    // vient d'abord, puis elles, dans l'ordre. Et comme relocaliser ne
+    // change pas la longueur d'une instruction, cette place ne dépend
+    // pas du résultat — on peut donc calculer la nouvelle adresse de
+    // chacune avant de la réécrire.
+    let mut déplacé = Vec::with_capacity(recouvert);
+    for (instr, champs, octets) in &à_déplacer {
+        let nouvelle_ip = place
+            .vaddr
+            .checked_add((ajout.len() + déplacé.len()) as u64)
+            .ok_or(DetourRefusé::HorsFichier)?;
+        let réécrite = relocate(octets, instr, champs, nouvelle_ip)?;
+        debug_assert_eq!(
+            réécrite.len(),
+            octets.len(),
+            "relocaliser ne change pas la longueur"
+        );
+        déplacé.extend_from_slice(&réécrite);
+    }
+
+    // La place qu'il faut : le code ajouté, les instructions déplacées,
+    // et le saut de retour.
+    let besoin = (ajout.len() + déplacé.len() + JMP_REL32) as u64;
+    if place.len < besoin {
+        return Err(DetourRefusé::PlaceTropPetite {
+            besoin,
+            offert: place.len,
+        });
+    }
+
+    // L'aller : le `jmp`, puis des `nop` jusqu'à la fin de ce qu'on a
+    // recouvert. Les `nop` ne s'exécutent jamais — le `jmp` part avant
+    // — mais ils comptent : sans eux, la queue de la dernière
+    // instruction recouverte resterait lisible, et un désassemblage du
+    // fichier corrigé montrerait une instruction fantôme à cet endroit.
+    let mut aller = jmp_rel32(site_vaddr, place.vaddr).ok_or(DetourRefusé::TropLoin)?;
+    aller.extend_from_slice(&nops(recouvert - JMP_REL32));
+
+    // Le corps : l'ajout, le déplacé, le retour. Le retour part de la
+    // fin du déplacé et vise l'instruction qui suit ce qu'on a recouvert.
+    let retour_depuis = place
+        .vaddr
+        .checked_add((ajout.len() + déplacé.len()) as u64)
+        .ok_or(DetourRefusé::HorsFichier)?;
+    let retour_vers = site_vaddr
+        .checked_add(recouvert as u64)
+        .ok_or(DetourRefusé::HorsFichier)?;
+    let retour = jmp_rel32(retour_depuis, retour_vers).ok_or(DetourRefusé::TropLoin)?;
+
+    let mut corps = Vec::with_capacity(besoin as usize);
+    corps.extend_from_slice(ajout);
+    corps.extend_from_slice(&déplacé);
+    corps.extend_from_slice(&retour);
+
+    // Les `before` des deux changements, pour pouvoir les défaire.
+    let place_offset = usize::try_from(place.offset).map_err(|_| DetourRefusé::HorsFichier)?;
+    let avant_site = image
+        .get(site_offset..site_offset + aller.len())
+        .ok_or(DetourRefusé::HorsFichier)?
+        .to_vec();
+    let avant_place = image
+        .get(place_offset..place_offset + corps.len())
+        .ok_or(DetourRefusé::HorsFichier)?
+        .to_vec();
+
+    // Le numéro du groupe se déduit du site : le même plan rend le même
+    // numéro, et deux détours posés à des endroits différents ne se
+    // mélangent pas. Pas de compteur à tenir, donc rien à remettre à
+    // zéro ni à sauvegarder.
+    let groupe = Some(site_vaddr);
+
+    Ok(Detour {
+        aller: Patch {
+            offset: site_offset,
+            before: avant_site,
+            after: aller,
+            addr: site_vaddr,
+            group: groupe,
+        },
+        corps: Patch {
+            offset: place_offset,
+            before: avant_place,
+            after: corps,
+            addr: place.vaddr,
+            group: groupe,
+        },
+        recouvert,
+        déplacé,
+    })
 }
 
 #[cfg(test)]
@@ -293,5 +787,413 @@ mod tests_forced {
         assert_eq!(forced_jump(&[0x74]), None);
         // Un déplacement au maximum : ajouter 1 déborderait.
         assert_eq!(forced_jump(&[0x0f, 0x84, 0xff, 0xff, 0xff, 0x7f]), None);
+    }
+}
+
+#[cfg(test)]
+mod tests_detour {
+    use super::*;
+    use crate::slack::Slack;
+
+    /// Une place libre exécutable, posée où on veut.
+    fn place(vaddr: u64, offset: u64, len: u64) -> Slack {
+        Slack {
+            vaddr,
+            offset,
+            len,
+            filler: 0x00,
+            executable: true,
+            section: Some(".text".to_string()),
+        }
+    }
+
+    /// Le déplacement se compte depuis la FIN de l'instruction.
+    ///
+    /// Un saut de 0x1000 vers 0x1005 ne vaut pas 5 mais 0 : les cinq
+    /// octets du `jmp` sont déjà consommés quand le processeur applique
+    /// le déplacement. C'est l'erreur qui donne un atterrissage cinq
+    /// octets trop loin, et elle ne se voit pas à la relecture.
+    #[test]
+    fn a_jump_counts_from_its_own_end() {
+        assert_eq!(jmp_rel32(0x1000, 0x1005).unwrap(), vec![0xE9, 0, 0, 0, 0]);
+        // En avant de 0x10 octets après la fin.
+        assert_eq!(
+            jmp_rel32(0x1000, 0x1015).unwrap(),
+            vec![0xE9, 0x10, 0, 0, 0]
+        );
+        // En arrière : le déplacement est négatif, en complément à deux.
+        assert_eq!(
+            jmp_rel32(0x1005, 0x1000).unwrap(),
+            vec![0xE9, 0xF6, 0xFF, 0xFF, 0xFF]
+        );
+    }
+
+    /// Au-delà de deux gigaoctets, ce saut n'existe pas — on refuse au
+    /// lieu de tronquer le déplacement.
+    #[test]
+    fn a_jump_too_far_is_refused_rather_than_truncated() {
+        assert_eq!(jmp_rel32(0, 0x8000_0005), None);
+        assert_eq!(jmp_rel32(0x8000_0000, 0), None);
+        // Juste à la limite, il tient encore.
+        assert!(jmp_rel32(0, 0x7FFF_FFFF + JMP_REL32 as u64).is_some());
+    }
+
+    /// Le détour complet, posé et relu : l'aller saute dans la place, le
+    /// corps rend la main juste après ce qu'on a recouvert.
+    ///
+    /// C'est le contrôle de bout en bout. On vérifie les deux
+    /// déplacements par le calcul inverse, parce qu'un détour dont un
+    /// seul des deux sauts est juste s'exécute une fois et part dans le
+    /// vide ensuite.
+    #[test]
+    fn a_detour_leaves_and_comes_back_to_the_right_place() {
+        // `mov eax, 1` (5 octets) puis `ret`, à l'adresse 0x1000.
+        let mut image = vec![0u8; 0x200];
+        image[0x00..0x05].copy_from_slice(&[0xB8, 0x01, 0x00, 0x00, 0x00]);
+        image[0x05] = 0xC3;
+
+        let libre = place(0x1100, 0x100, 64);
+        // Le code ajouté : `nop` deux fois, de quoi se reconnaître.
+        let detour = plan_detour(&image, 64, 0x00, 0x1000, &libre, &[0x90, 0x90])
+            .expect("ce détour est posable");
+
+        // Cinq octets recouverts : `mov eax, 1` en fait exactement cinq,
+        // donc aucun `nop` de complément.
+        assert_eq!(detour.recouvert, 5);
+        assert_eq!(detour.déplacé, vec![0xB8, 0x01, 0x00, 0x00, 0x00]);
+        assert_eq!(detour.aller.after.len(), 5, "le jmp remplit la place");
+
+        // L'aller vise bien la place libre.
+        let écart = i32::from_le_bytes(detour.aller.after[1..5].try_into().unwrap());
+        assert_eq!(
+            (0x1000i64 + JMP_REL32 as i64 + écart as i64) as u64,
+            0x1100,
+            "l'aller atterrit dans la place libre"
+        );
+
+        // Le corps : ajout, déplacé, retour.
+        assert_eq!(&detour.corps.after[..2], &[0x90, 0x90], "le code ajouté");
+        assert_eq!(
+            &detour.corps.after[2..7],
+            &[0xB8, 0x01, 0x00, 0x00, 0x00],
+            "puis ce qu'on a recouvert"
+        );
+        assert_eq!(detour.corps.after[7], 0xE9, "puis le retour");
+
+        // Le retour tombe sur le `ret`, pas au milieu du `mov`.
+        let retour_depuis = 0x1100u64 + 7;
+        let écart = i32::from_le_bytes(detour.corps.after[8..12].try_into().unwrap());
+        assert_eq!(
+            (retour_depuis as i64 + JMP_REL32 as i64 + écart as i64) as u64,
+            0x1005,
+            "le retour reprend juste après ce qui a été recouvert"
+        );
+    }
+
+    /// Les deux changements se défont : c'est la condition pour que le
+    /// détour passe par les correctifs ordinaires.
+    #[test]
+    fn a_detour_can_be_undone_byte_for_byte() {
+        let mut image = vec![0u8; 0x200];
+        image[0x00..0x05].copy_from_slice(&[0xB8, 0x01, 0x00, 0x00, 0x00]);
+        let original = image.clone();
+
+        let libre = place(0x1100, 0x100, 64);
+        let detour = plan_detour(&image, 64, 0x00, 0x1000, &libre, &[0x90]).unwrap();
+
+        apply(&mut image, detour.aller.offset, &detour.aller.after).unwrap();
+        apply(&mut image, detour.corps.offset, &detour.corps.after).unwrap();
+        assert_ne!(image, original, "le détour a bien changé le fichier");
+
+        apply(&mut image, detour.corps.offset, &detour.corps.before).unwrap();
+        apply(&mut image, detour.aller.offset, &detour.aller.before).unwrap();
+        assert_eq!(image, original, "et il se défait octet pour octet");
+    }
+
+    /// Une instruction relative à `rip` est RELOCALISÉE, et retombe sur
+    /// exactement la même cible.
+    ///
+    /// C'est le contrôle qui compte le plus. Le code compilé moderne est
+    /// plein de `mov rax, [rip+0x2e4f]` — c'est la forme normale d'un
+    /// accès à une variable globale. Déplacée sans retoucher son écart,
+    /// elle lirait ailleurs SANS RIEN SIGNALER, et la panne se
+    /// manifesterait à trois sections de là.
+    ///
+    /// On ne vérifie donc pas les octets, mais la SOMME : l'adresse
+    /// visée, recalculée depuis la nouvelle position, doit être celle
+    /// d'avant. C'est la seule formulation qui ne puisse pas passer au
+    /// vert par accident.
+    #[test]
+    fn a_rip_relative_instruction_is_relocated_to_the_same_target() {
+        let mut image = vec![0u8; 0x200];
+        // mov rax, [rip+0x2e4f] — 7 octets, à l'adresse 0x1000. Elle
+        // vise donc 0x1000 + 7 + 0x2e4f = 0x3e56.
+        image[0x00..0x07].copy_from_slice(&[0x48, 0x8B, 0x05, 0x4F, 0x2E, 0x00, 0x00]);
+        let cible_avant = 0x1000u64 + 7 + 0x2e4f;
+
+        let libre = place(0x1100, 0x100, 64);
+        let detour = plan_detour(&image, 64, 0x00, 0x1000, &libre, &[0x90])
+            .expect("une instruction relative à rip se relocalise");
+
+        // Elle est réécrite : l'écart a changé.
+        assert_eq!(detour.recouvert, 7);
+        assert_ne!(
+            detour.déplacé,
+            vec![0x48, 0x8B, 0x05, 0x4F, 0x2E, 0x00, 0x00],
+            "l'écart doit avoir été recalculé"
+        );
+        // Mais l'opcode et le modrm, non : on ne change pas ce qu'elle
+        // fait, seulement d'où elle compte.
+        assert_eq!(&detour.déplacé[..3], &[0x48, 0x8B, 0x05]);
+
+        // Et la somme retombe au même endroit. L'ajout fait un octet,
+        // donc elle vit maintenant en 0x1101.
+        let nouvelle_ip = 0x1100u64 + 1;
+        let écart = i32::from_le_bytes(detour.déplacé[3..7].try_into().unwrap());
+        assert_eq!(
+            (nouvelle_ip as i64 + 7 + écart as i64) as u64,
+            cible_avant,
+            "relocalisée, elle lit exactement la même adresse"
+        );
+    }
+
+    /// Un `call` relatif est relocalisé de même, et appelle toujours la
+    /// même fonction.
+    #[test]
+    fn a_relative_call_still_calls_the_same_function() {
+        let mut image = vec![0u8; 0x200];
+        // call rel32 en 0x1000 : vise 0x1000 + 5 + 0x10 = 0x1015.
+        image[0x00..0x05].copy_from_slice(&[0xE8, 0x10, 0x00, 0x00, 0x00]);
+        let cible_avant = 0x1015u64;
+
+        let libre = place(0x1100, 0x100, 64);
+        let detour = plan_detour(&image, 64, 0x00, 0x1000, &libre, &[])
+            .expect("un call relatif se relocalise");
+
+        assert_eq!(detour.déplacé[0], 0xE8, "c'est toujours un call");
+        let écart = i32::from_le_bytes(detour.déplacé[1..5].try_into().unwrap());
+        assert_eq!(
+            (0x1100i64 + 5 + écart as i64) as u64,
+            cible_avant,
+            "relocalisé, il appelle la même fonction"
+        );
+    }
+
+    /// Un saut COURT ne se relocalise pas : son champ d'un octet ne
+    /// porte pas jusqu'à la place libre, et l'élargir changerait sa
+    /// longueur.
+    ///
+    /// C'est la limite honnête de la méthode. Le refus dit la taille du
+    /// champ, parce que c'est elle qui explique le non.
+    #[test]
+    fn a_short_jump_cannot_be_relocated_and_says_why() {
+        let mut image = vec![0u8; 0x200];
+        // jmp rel8 (2 octets) puis nop, nop, nop : le jmp rel32 du
+        // détour recouvre les cinq octets, donc le saut court part.
+        image[0x00..0x05].copy_from_slice(&[0xEB, 0x10, 0x90, 0x90, 0x90]);
+
+        // La place libre est à 0x100 octets de là : hors de portée d'un
+        // champ d'un seul octet.
+        let libre = place(0x1100, 0x100, 64);
+        let refus = plan_detour(&image, 64, 0x00, 0x1000, &libre, &[])
+            .expect_err("un saut court ne peut pas suivre");
+
+        match &refus {
+            DetourRefusé::PortéeTropCourte {
+                à,
+                mnémonique,
+                champ,
+            } => {
+                assert_eq!(*à, 0x1000);
+                assert_eq!(mnémonique, "jmp");
+                assert_eq!(*champ, 1, "un seul octet de portée");
+            }
+            autre => panic!("refus de portée attendu, obtenu {autre:?}"),
+        }
+        assert!(refus.message(true).contains("0x1000"));
+        assert!(refus.message(false).contains("0x1000"));
+    }
+
+    /// Un saut court DANS la zone déplacée tient, si la place libre est
+    /// assez proche.
+    ///
+    /// Le refus précédent n'est pas une règle sur les sauts courts, mais
+    /// sur la distance. Ce test le prouve en rapprochant la place —
+    /// sinon on aurait codé « jmp rel8 = refus » sans le savoir.
+    #[test]
+    fn a_short_jump_survives_when_the_slack_is_close_enough() {
+        let mut image = vec![0u8; 0x200];
+        image[0x00..0x05].copy_from_slice(&[0xEB, 0x10, 0x90, 0x90, 0x90]);
+        let cible_avant = 0x1000u64 + 2 + 0x10;
+
+        // Vingt octets plus loin : un champ d'un octet y suffit.
+        let libre = place(0x1014, 0x14, 64);
+        let detour = plan_detour(&image, 64, 0x00, 0x1000, &libre, &[])
+            .expect("de près, le saut court se relocalise");
+
+        assert_eq!(detour.déplacé[0], 0xEB);
+        let écart = i8::from_le_bytes([detour.déplacé[1]]);
+        assert_eq!(
+            (0x1014i64 + 2 + écart as i64) as u64,
+            cible_avant,
+            "il saute toujours au même endroit"
+        );
+    }
+
+    /// Un immédiat qui n'est PAS une cible ne doit pas être touché.
+    ///
+    /// `mov dword [rip+0x10], 0x42` porte les deux : un déplacement
+    /// relatif à `rip`, qu'il faut recalculer, et un immédiat `0x42`,
+    /// qui est une donnée. Confondre les deux ferait écrire une autre
+    /// valeur — un défaut silencieux, et invisible à la relecture du
+    /// listing.
+    #[test]
+    fn an_immediate_that_is_not_a_target_is_left_alone() {
+        let mut image = vec![0u8; 0x200];
+        // mov dword ptr [rip+0x10], 0x42 — 10 octets.
+        image[0x00..0x0A]
+            .copy_from_slice(&[0xC7, 0x05, 0x10, 0x00, 0x00, 0x00, 0x42, 0x00, 0x00, 0x00]);
+        let cible_avant = 0x1000u64 + 10 + 0x10;
+
+        let libre = place(0x1100, 0x100, 64);
+        let detour =
+            plan_detour(&image, 64, 0x00, 0x1000, &libre, &[]).expect("elle se relocalise");
+
+        // L'immédiat est intact.
+        assert_eq!(
+            &detour.déplacé[6..10],
+            &[0x42, 0x00, 0x00, 0x00],
+            "la valeur écrite ne change pas"
+        );
+        // Le déplacement, lui, a suivi.
+        let écart = i32::from_le_bytes(detour.déplacé[2..6].try_into().unwrap());
+        assert_eq!(
+            (0x1100i64 + 10 + écart as i64) as u64,
+            cible_avant,
+            "et elle écrit toujours au même endroit"
+        );
+    }
+
+    /// Ce qui ne dépend pas de sa position ressort identique.
+    #[test]
+    fn position_independent_code_is_copied_untouched() {
+        let mut image = vec![0u8; 0x200];
+        let original = [0xB8, 0x01, 0x00, 0x00, 0x00];
+        image[0x00..0x05].copy_from_slice(&original);
+
+        let libre = place(0x1100, 0x100, 64);
+        let detour = plan_detour(&image, 64, 0x00, 0x1000, &libre, &[]).unwrap();
+        assert_eq!(detour.déplacé, original.to_vec());
+    }
+
+    /// Une place libre dans les données est refusée la première, avant
+    /// même qu'on décode quoi que ce soit.
+    ///
+    /// `slack::find` trie par taille, et les plus grands trous d'un
+    /// binaire sont souvent dans `.rodata` : c'est donc le piège par
+    /// défaut, celui qu'on tend à soi-même en prenant le premier de la
+    /// liste.
+    #[test]
+    fn slack_in_a_data_segment_is_refused_first() {
+        let mut image = vec![0u8; 0x200];
+        image[0x00..0x05].copy_from_slice(&[0xB8, 0x01, 0x00, 0x00, 0x00]);
+
+        let mut données = place(0x1100, 0x100, 4096);
+        données.executable = false;
+        données.section = Some(".rodata".to_string());
+
+        assert_eq!(
+            plan_detour(&image, 64, 0x00, 0x1000, &données, &[0x90]),
+            Err(DetourRefusé::PlaceNonExécutable)
+        );
+    }
+
+    /// Une place trop petite dit combien il aurait fallu.
+    #[test]
+    fn slack_too_small_says_how_much_was_needed() {
+        let mut image = vec![0u8; 0x200];
+        image[0x00..0x05].copy_from_slice(&[0xB8, 0x01, 0x00, 0x00, 0x00]);
+
+        // Besoin : 3 (ajout) + 5 (déplacé) + 5 (retour) = 13.
+        let étroite = place(0x1100, 0x100, 12);
+        assert_eq!(
+            plan_detour(&image, 64, 0x00, 0x1000, &étroite, &[0x90, 0x90, 0x90]),
+            Err(DetourRefusé::PlaceTropPetite {
+                besoin: 13,
+                offert: 12
+            })
+        );
+        // Un octet de plus, et il passe.
+        let juste = place(0x1100, 0x100, 13);
+        assert!(plan_detour(&image, 64, 0x00, 0x1000, &juste, &[0x90, 0x90, 0x90]).is_ok());
+    }
+
+    /// Des instructions courtes sont recouvertes ENTIÈRES, et le reste
+    /// comblé de `nop`.
+    ///
+    /// Trois `nop` d'un octet puis un `push rbp` : le `jmp` en demande
+    /// cinq, donc il faut prendre les quatre instructions — six octets.
+    /// Sans ce comportement, on couperait `push rbp` en deux et son
+    /// second octet resterait, lisible comme autre chose.
+    #[test]
+    fn whole_instructions_are_covered_and_the_rest_is_padded() {
+        let mut image = vec![0u8; 0x200];
+        // nop, nop, nop, nop, nop, push rbp → le jmp couvre 5 nop pile.
+        image[0x00..0x06].copy_from_slice(&[0x90, 0x90, 0x90, 0x90, 0x55, 0xC3]);
+
+        let libre = place(0x1100, 0x100, 64);
+        let detour = plan_detour(&image, 64, 0x00, 0x1000, &libre, &[]).unwrap();
+
+        // Quatre `nop` font quatre octets, il en faut cinq : `push rbp`
+        // entre aussi, ce qui porte à cinq.
+        assert_eq!(detour.recouvert, 5);
+        assert_eq!(detour.déplacé, vec![0x90, 0x90, 0x90, 0x90, 0x55]);
+        assert_eq!(detour.aller.after.len(), 5);
+        // Pile cinq octets : pas de nop de complément à ajouter.
+        assert_eq!(detour.aller.after[0], 0xE9);
+    }
+
+    /// Une instruction longue fait dépasser, et le complément se voit.
+    #[test]
+    fn a_long_instruction_leaves_padding_behind() {
+        let mut image = vec![0u8; 0x200];
+        // mov rax, 0x1122334455667788 — 10 octets, sans rien de relatif.
+        image[0x00..0x0A]
+            .copy_from_slice(&[0x48, 0xB8, 0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11]);
+
+        let libre = place(0x1100, 0x100, 64);
+        let detour = plan_detour(&image, 64, 0x00, 0x1000, &libre, &[]).unwrap();
+
+        assert_eq!(detour.recouvert, 10, "l'instruction entière");
+        assert_eq!(detour.aller.after.len(), 10);
+        assert_eq!(
+            &detour.aller.after[5..],
+            &[0x90; 5],
+            "cinq nop comblent le reste"
+        );
+    }
+
+    /// L'endroit visé hors du fichier ne provoque pas de panique.
+    #[test]
+    fn a_site_outside_the_file_is_refused() {
+        let image = vec![0u8; 0x10];
+        let libre = place(0x1100, 0x00, 64);
+        assert_eq!(
+            plan_detour(&image, 64, 0x100, 0x1000, &libre, &[]),
+            Err(DetourRefusé::HorsFichier)
+        );
+    }
+
+    /// Une place libre annoncée hors du fichier est refusée aussi — un
+    /// binaire hostile peut décrire un segment qui déborde.
+    #[test]
+    fn slack_outside_the_file_is_refused() {
+        let mut image = vec![0u8; 0x20];
+        image[0x00..0x05].copy_from_slice(&[0xB8, 0x01, 0x00, 0x00, 0x00]);
+        let menteuse = place(0x9000, 0x1000, 4096);
+        assert_eq!(
+            plan_detour(&image, 64, 0x00, 0x1000, &menteuse, &[]),
+            Err(DetourRefusé::HorsFichier)
+        );
     }
 }
