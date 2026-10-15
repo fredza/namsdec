@@ -3,6 +3,7 @@
 //! (vérification pédagogique) et exécute pas à pas via `namsdec-emu`,
 //! en affichant les panneaux des modules `ReModule` enregistrés.
 
+mod ansi;
 mod calc;
 mod calc_ui;
 mod chrome;

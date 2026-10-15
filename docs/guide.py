@@ -638,6 +638,24 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
         ]),
 
         ("p",
+         "La console lit cette sortie <b>comme un terminal la lirait</b>. Un programme "
+         "ne lui envoie pas que des lettres : il efface l'écran, remonte le curseur, "
+         "passe en cyan, revient au normal — un crackme sur deux ouvre ainsi, par un "
+         "logo en couleur. Montrées telles quelles, ces séquences se lisaient "
+         "« <font face='Courier'>[2J[H[36m</font> » en tête du dessin, qui paraissait "
+         "abîmé. namsdec les <b>interprète</b> : les couleurs se voient, le retour "
+         "chariot recouvre sa ligne — c'est ainsi qu'une barre de progression s'anime —, "
+         "l'effacement efface, et ce qui n'est pas reconnu disparaît au lieu de "
+         "s'afficher."),
+        ("note",
+         "Les huit couleurs d'un terminal ne sont pas des valeurs, ce sont des "
+         "<b>rôles</b> : chaque terminal les peint à sa façon. namsdec les prend dans "
+         "son thème — le rouge est celui de ses erreurs, le vert celui de ses "
+         "réussites —, ce qui fait qu'un logo s'accorde au reste de la fenêtre au lieu "
+         "de jurer avec. Ce n'est pas un terminal complet et ne cherche pas à l'être : "
+         "il n'y a ni hauteur d'écran fixe, ni curseur à remonter dans ce qui est déjà "
+         "écrit."),
+        ("p",
          "Quand le programme se met \u00e0 attendre, une <b>bo\u00eete de saisie</b> s'ouvre "
          "d'elle-m\u00eame, au premier plan, le curseur d\u00e9j\u00e0 dans le champ. Elle montre "
          "<b>ce que le programme vient d'\u00e9crire</b> \u2014 neuf fois sur dix c'est "

@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **14 octobre
-2026**, version 0.2.9-beta.1, 1 190 tests au vert.
+2026**, version 0.2.9-beta.1, 1 199 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -29,6 +29,27 @@ Ce qui reste est de la finition mesurée : des alignements de quelques
 pixels, deux tailles de police, et le vide sous « Prochaine
 instruction », qui tient au même nœud que le vide de 56 px — l'état du
 processeur est ancré.
+
+---
+
+## 13. La sortie lue comme un terminal (A 7.19)
+
+Le défaut signalé en bas de 7.17 et laissé ouvert : `□[2J□[H□[36m` se
+lisait en tête du logo, dans la console comme dans la boîte.
+
+- [x] **`ansi.rs`** — couleurs (16 + palettes étendues ramenées aux
+      huit), effacement, fin de ligne, colonne du curseur, retour
+      chariot, tabulation, retour arrière. Ce qui n'est pas reconnu
+      disparaît au lieu de s'afficher.
+- [x] **Peint en un seul bloc**, par un `LayoutJob` : une étiquette par
+      morceau coûterait des milliers de widgets, et la sélection ne
+      traverserait pas de l'une à l'autre.
+- [x] **La boîte de saisie coupe sur les lignes de l'écran**, et non
+      plus sur le texte brut — deux découpes seraient deux vérités.
+- [x] **Dix contrôles**, dont un de bout en bout qui exécute un
+      programme en couleur et mesure la couleur peinte dans la console.
+- [ ] **Pas un terminal complet** : ni hauteur d'écran fixe, ni curseur
+      qui remonte dans ce qui est déjà écrit. `ESC[A` ne fait donc rien.
 
 ---
 
@@ -73,10 +94,10 @@ se cliquent.
       premier coup.
 - [x] **Un contrôle de mesure** — le trait est compté sur ce qui est
       peint, souris posée puis retirée ; éprouvé en le retirant.
-- [ ] **Les séquences ANSI de la sortie** (`□[2J□[H□[36m`) se lisent
-      telles quelles, dans la boîte comme dans la console. Les
-      interpréter est un chantier à soi : un terminal, même minimal,
-      décide de ce qu'on voit.
+- [x] **Les séquences ANSI sont interprétées** (A 7.19) — couleurs,
+      effacement, retour chariot qui recouvre sa ligne, colonne du
+      curseur ; le reste est jeté plutôt qu'affiché. Les huit couleurs
+      d'un terminal sont des rôles : namsdec les prend dans son thème.
 
 ---
 

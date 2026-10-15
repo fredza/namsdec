@@ -6,6 +6,16 @@ entrée par version, et ce qui change pour qui s'en sert.
 
 ## 0.2.9-beta.1 — 15 octobre 2026
 
+**La sortie du programme se lit comme dans un terminal**
+- **Les séquences d'échappement ne s'affichent plus en toutes lettres.**
+  Un crackme sur deux ouvre par un logo en couleur, et l'on lisait
+  « □[2J□[H□[36m » avant le dessin. namsdec les interprète : les
+  couleurs se voient, le retour chariot recouvre sa ligne — c'est ainsi
+  qu'une barre de progression s'anime —, l'effacement efface, et ce qui
+  n'est pas reconnu disparaît au lieu de s'afficher.
+- Les huit couleurs d'un terminal sont prises **dans le thème** : un
+  logo s'accorde au reste de la fenêtre au lieu de jurer avec.
+
 **La calculatrice compte en bits**
 - **Vingt-neuf fonctions de plus**, quarante-sept en tout. Ce qui
   manquait tenait en une phrase : on ne pouvait ni lire un bit, ni

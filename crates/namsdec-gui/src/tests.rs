@@ -40,6 +40,7 @@ use crate::sidebar::*;
 /// les `mod` de `main.rs`.
 const SOURCES_DE_L_INTERFACE: &[(&str, &str)] = &[
     ("main.rs", include_str!("main.rs")),
+    ("ansi.rs", include_str!("ansi.rs")),
     ("calc.rs", include_str!("calc.rs")),
     ("calc_ui.rs", include_str!("calc_ui.rs")),
     ("chrome.rs", include_str!("chrome.rs")),
@@ -31284,54 +31285,55 @@ fn the_analysis_window_grows_by_its_green_pastille_and_comes_back() {
 /// crackmes — y perdait ses trois premières lignes et sa moitié
 /// droite. On lisait un fragment, et rien ne disait que c'en était un.
 ///
-/// Le contrôle porte sur `fin_qui_tient`, qui décide de ce que la boîte
-/// peut montrer : c'est là qu'est la règle, la fenêtre ne fait que la
-/// suivre.
+/// Le contrôle porte sur `lignes_qui_tiennent`, qui décide de ce que la
+/// boîte peut montrer : c'est là qu'est la règle, la fenêtre ne fait
+/// que la suivre. Il part de la sortie BRUTE du programme, séquences
+/// comprises, parce que c'est elle qui arrive.
 #[test]
 fn the_input_box_shows_everything_the_program_wrote() {
-    use crate::console::fin_qui_tient;
+    use crate::console::lignes_qui_tiennent;
 
-    // Un logo, une invite : ce que montre un crackme au démarrage.
-    let logo = "  _____ ____   ___   ____ __  __    _    _   _\n\
-                 | ____|  _ \\ / _ \\ / ___|  \\/  |  / \\  | \\ | |\n\
-                 |  _| | |_) | | | | |  _| |\\/| | / _ \\ |  \\| |\n\
-                 |_|   |_| \\_\\\\___/ \\____|_|  |_|/_/ \\_\\|_| \\_|\n\
-                 \n\
-                 IDENTIFIER : ACCESS KEY:";
-    let lignes = logo.lines().count();
+    // Un logo en couleur, puis une invite : ce que montre un crackme au
+    // démarrage, tel que l'émulateur le rend — avec son effacement
+    // d'écran et son cyan.
+    let brut = "\u{1b}[2J\u{1b}[H\u{1b}[36m                 _____ ____   ___   ____ __  __    _    _   _\n                | ____|  _ \\ / _ \\ / ___|  \\/  |  / \\  | \\ | |\n                |  _| | |_) | | | | |  _| |\\/| | / _ \\ |  \\| |\n                |_|   |_| \\_\\\\___/ \\____|_|  |_|/_/ \\_\\|_| \\_|\n                \u{1b}[0m\n                IDENTIFIER : ACCESS KEY:";
+    let écran = crate::ansi::écran(brut.as_bytes());
+    let largeurs: Vec<usize> = écran
+        .lignes
+        .iter()
+        .map(|ligne| ligne.iter().map(|m| m.texte.chars().count()).sum())
+        .collect();
+    let total = largeurs.len();
+    assert!(total >= 5, "le logo fait plusieurs lignes : {total}");
 
-    // De la place pour tout : tout y est, et rien n'est annoncé
-    // au-dessus.
-    let (montré, au_dessus) = fin_qui_tient(logo, 120, 40);
-    assert_eq!(montré, logo, "tout tient : tout est montré");
-    assert_eq!(au_dessus, 0);
+    // De la place pour tout : tout y est, rien n'est laissé derrière.
+    assert_eq!(lignes_qui_tiennent(&largeurs, 120, 40), total);
 
-    // Trop étroit pour deux lignes : ce qui dépasse se REPLIE, donc
-    // compte double en hauteur. Une boîte de six lignes ne peut plus
-    // porter les six lignes du logo.
-    let (montré, au_dessus) = fin_qui_tient(logo, 24, 6);
+    // Trop étroit : ce qui dépasse se REPLIE, donc compte double en
+    // hauteur. Une boîte de six lignes ne peut plus porter les six du
+    // logo.
+    let prises = lignes_qui_tiennent(&largeurs, 24, 6);
     assert!(
-        au_dessus > 0,
+        prises < total,
         "une boîte étroite laisse des lignes derrière"
     );
+    // Et ce qu'elle garde est LA FIN — l'invite est toujours en bas.
+    let vue: Vec<&Vec<crate::ansi::Morceau>> = écran.lignes[total - prises..].iter().collect();
+    let dernière: String = vue
+        .last()
+        .map(|l| l.iter().map(|m| m.texte.as_str()).collect())
+        .unwrap_or_default();
     assert!(
-        montré.ends_with("IDENTIFIER : ACCESS KEY:"),
-        "et ce qu'elle garde est LA FIN — l'invite est toujours en bas :\n{montré}"
-    );
-    assert_eq!(
-        au_dessus + montré.lines().count(),
-        lignes,
-        "rien ne se perd en route : ce qui est montré plus ce qui est annoncé fait le tout"
+        dernière.ends_with("IDENTIFIER : ACCESS KEY:"),
+        "l'invite doit rester : « {dernière} »"
     );
 
-    // Une boîte d'une seule ligne montre quand même quelque chose : une
-    // boîte vide devant un programme qui attend n'apprend rien.
-    let (montré, _) = fin_qui_tient(logo, 10, 1);
-    assert!(!montré.is_empty());
-
-    // Rien du tout, et des cas limites qui ne doivent pas paniquer.
-    assert_eq!(fin_qui_tient("", 80, 10), (String::new(), 0));
-    assert_eq!(fin_qui_tient("a", 0, 0).0, "a");
+    // Une boîte d'une seule ligne en montre quand même une : une boîte
+    // vide devant un programme qui attend n'apprend rien.
+    assert_eq!(lignes_qui_tiennent(&largeurs, 10, 1), 1);
+    // Et les cas limites ne paniquent pas.
+    assert_eq!(lignes_qui_tiennent(&[], 80, 10), 0);
+    assert_eq!(lignes_qui_tiennent(&[3], 0, 0), 1);
 }
 
 /// Rien ne devient cliquable sans le dire.
@@ -31424,5 +31426,116 @@ fn nothing_becomes_clickable_without_saying_so() {
         "ces textes se cliquent sans le dire — passez par `cliquable` / `clickable_label`, \
          ou appelez `souligne_au_survol` si c'est une rangée :\n{}",
         fautifs.join("\n")
+    );
+}
+
+/// La console montre les COULEURS du programme, et plus ses séquences.
+///
+/// Le grief se voyait sur deux captures : le logo de FROGMAN ouvre par
+/// « ESC[2J ESC[H ESC[36m », et l'on lisait ces trois-là en toutes
+/// lettres — « □[2J□[H□[36m » — avant le dessin, dans la console comme
+/// dans la boîte de saisie.
+///
+/// Le contrôle assemble un programme qui écrit en couleur, l'exécute
+/// pour de vrai, et mesure CE QUI EST PEINT : le texte d'un côté, la
+/// couleur de ses galettes de l'autre. Vérifier l'analyseur seul ne
+/// dirait pas si la couleur arrive à l'écran.
+#[test]
+fn the_console_paints_the_colours_and_not_the_escapes() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: "\
+section .data
+msg db 27,\"[2J\",27,\"[H\",27,\"[31mrouge\",27,\"[0m \",27,\"[32mvert\",27,\"[0m\",10
+len equ $ - msg
+
+section .text
+global _start
+_start:
+mov rax, 1
+mov rdi, 1
+mov rsi, msg
+mov rdx, len
+syscall
+hlt
+"
+        .to_owned(),
+        show_console: true,
+        ..Default::default()
+    };
+    app.do_assemble();
+    app.do_run();
+    for _ in 0..4000 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&egui::Context::default());
+    }
+
+    // Ce qui est peint, et de quelle couleur.
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let entrée = écran_du_banc();
+    let mut galettes: Vec<(String, egui::Color32)> = Vec::new();
+    for _ in 0..3 {
+        galettes.clear();
+        let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+        // DANS LA CONSOLE SEULEMENT : l'éditeur montre le source du
+        // programme, qui porte « [31m » en toutes lettres — c'est son
+        // texte, et l'accuser serait accuser le programme d'être
+        // écrit.
+        let console = ctx
+            .memory(|m| {
+                m.data
+                    .get_temp::<egui::containers::panel::PanelState>(egui::Id::new("console"))
+            })
+            .map(|état| état.outer_rect)
+            .unwrap_or(egui::Rect::EVERYTHING);
+        for clipped in &sortie.shapes {
+            if !console.contains(clipped.clip_rect.center()) {
+                continue;
+            }
+            if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                // Les SECTIONS de la mise en page : c'est là que
+                // vivent les couleurs, une par morceau de texte.
+                for section in &t.galley.job.sections {
+                    let plage = section.byte_range.start.0..section.byte_range.end.0;
+                    let morceau = &t.galley.job.text[plage];
+                    if !morceau.trim().is_empty() {
+                        galettes.push((morceau.to_owned(), section.format.color));
+                    }
+                }
+            }
+        }
+        sortie.textures_delta.clear();
+    }
+    let tout: String = galettes.iter().map(|(t, _)| t.as_str()).collect();
+
+    // Plus une seule séquence en toutes lettres.
+    assert!(
+        !tout.contains("[31m") && !tout.contains("[2J") && !tout.contains("[0m"),
+        "les séquences ne doivent plus se lire :\n{tout}"
+    );
+    // Et les mots sont là, chacun dans SA couleur — celles du thème,
+    // parce que les huit couleurs d'un terminal sont des rôles, pas
+    // des valeurs.
+    let couleur_de = |mot: &str| -> Option<egui::Color32> {
+        galettes
+            .iter()
+            .find(|(t, _)| t.contains(mot))
+            .map(|(_, c)| *c)
+    };
+    let theme = app.theme;
+    assert_eq!(
+        couleur_de("rouge"),
+        Some(theme.bad),
+        "« rouge » doit porter le rouge du thème :\n{galettes:?}"
+    );
+    assert_eq!(
+        couleur_de("vert"),
+        Some(theme.good),
+        "« vert » doit porter le vert du thème :\n{galettes:?}"
     );
 }

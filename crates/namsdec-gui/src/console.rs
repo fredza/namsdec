@@ -25,15 +25,17 @@ use super::*;
 /// large que `colonnes` se replie et compte donc pour plusieurs : c'est
 /// ce qui fait qu'un logo de quatre-vingts colonnes dans une boîte qui
 /// en montre soixante occupe le double de hauteur.
-pub(crate) fn fin_qui_tient(sortie: &str, colonnes: usize, lignes: usize) -> (String, usize) {
+///
+/// Prises par la FIN, parce que l'invite y est toujours : un programme
+/// écrit « Enter the password: » en dernier, et c'est la seule ligne
+/// dont on ne peut pas se passer.
+pub(crate) fn lignes_qui_tiennent(largeurs: &[usize], colonnes: usize, lignes: usize) -> usize {
     let colonnes = colonnes.max(1);
     let lignes = lignes.max(1);
-    let toutes: Vec<&str> = sortie.lines().collect();
-    let hauteur = |ligne: &str| ligne.chars().count().div_ceil(colonnes).max(1);
     let mut prises = 0;
     let mut hauteur_totale = 0;
-    for ligne in toutes.iter().rev() {
-        let h = hauteur(ligne);
+    for largeur in largeurs.iter().rev() {
+        let h = largeur.div_ceil(colonnes).max(1);
         // La première passe toujours, même seule et trop haute : une
         // boîte vide devant un programme qui attend n'apprend rien.
         if hauteur_totale + h > lignes && prises > 0 {
@@ -42,8 +44,7 @@ pub(crate) fn fin_qui_tient(sortie: &str, colonnes: usize, lignes: usize) -> (St
         hauteur_totale += h;
         prises += 1;
     }
-    let début = toutes.len() - prises;
-    (toutes[début..].join("\n"), début)
+    prises
 }
 
 impl NamsdecApp {
@@ -553,14 +554,20 @@ impl NamsdecApp {
         let s = strings(self.lang);
         // La fenêtre de sortie est là dans tous les cas : sans programme
         // chargé elle le dit, plutôt que de laisser l'onglet vide.
-        let (output, exit_code, pending) = match &self.emulator {
+        // LA SORTIE, LUE COMME UN TERMINAL LA LIRAIT. Un programme
+        // n'écrit pas que des lettres : il efface l'écran, remonte le
+        // curseur, passe en cyan. Montrées telles quelles, ces
+        // séquences se lisaient « □[2J□[H□[36m » en tête du logo, et le
+        // dessin qui suivait paraissait abîmé.
+        let (écran, exit_code, pending) = match &self.emulator {
             Some(emulator) => (
-                String::from_utf8_lossy(emulator.output()).into_owned(),
+                ansi::écran(emulator.output()),
                 emulator.exit_code(),
                 emulator.pending_input(),
             ),
-            None => (String::new(), None, 0),
+            None => (ansi::Écran::default(), None, 0),
         };
+        let output = écran.texte();
 
         // Posée en bas du panneau, la saisie ne bouge plus quoi qu'écrive
         // le programme.
@@ -637,10 +644,18 @@ impl NamsdecApp {
                         } else {
                             // Sélectionnable : la sortie d'un programme se
                             // recopie ailleurs (un rapport, un test).
-                            ui.add(
-                                egui::Label::new(egui::RichText::new(output).monospace())
-                                    .selectable(true),
+                            //
+                            // En UN SEUL bloc, couleurs comprises : une
+                            // étiquette par morceau coûterait des
+                            // milliers de widgets sur une sortie un peu
+                            // longue, et la sélection ne traverserait
+                            // pas de l'un à l'autre.
+                            let job = ansi::mise_en_page(
+                                &écran,
+                                egui::TextStyle::Monospace.resolve(ui.style()),
+                                self.theme,
                             );
+                            ui.add(egui::Label::new(job).selectable(true));
                         }
                     });
             });
@@ -675,10 +690,12 @@ impl NamsdecApp {
         let s = strings(self.lang);
         let theme = self.theme;
         // Les dernières lignes écrites : l'invite, et ce qui la précède.
-        let sortie = self
+        // La sortie LUE COMME UN TERMINAL : sans cela, l'invite
+        // s'ouvrait sur « □[2J□[H□[36m » et le logo paraissait abîmé.
+        let terminal = self
             .emulator
             .as_ref()
-            .map(|e| String::from_utf8_lossy(e.output()).into_owned())
+            .map(|e| ansi::écran(e.output()))
             .unwrap_or_default();
         // CE QUE LE PROGRAMME A ÉCRIT, EN ENTIER, ET SANS ASCENSEUR.
         //
@@ -703,11 +720,24 @@ impl NamsdecApp {
         const AUTOUR_Y: f32 = 280.0;
         let colonnes = (((écran.width() * 0.9 - AUTOUR_X) / chasse) as usize).max(20);
         let lignes_tenables = (((écran.height() - AUTOUR_Y) / interligne) as usize).max(3);
-        let (invite, au_dessus) = fin_qui_tient(&sortie, colonnes, lignes_tenables);
+        // Coupé sur les LIGNES DE L'ÉCRAN, couleurs comprises : couper
+        // le texte d'un côté et peindre l'écran de l'autre ferait deux
+        // découpes à tenir d'accord.
+        let largeurs: Vec<usize> = terminal
+            .lignes
+            .iter()
+            .map(|ligne| ligne.iter().map(|m| m.texte.chars().count()).sum())
+            .collect();
+        let prises = lignes_qui_tiennent(&largeurs, colonnes, lignes_tenables);
+        let au_dessus = terminal.hauteur() - prises;
+        let vue = ansi::Écran {
+            lignes: terminal.lignes[au_dessus..].to_vec(),
+        };
+        let invite = vue.texte();
         // La largeur voulue : celle du texte, jamais moins que la boîte
         // d'avant — un dialogue qui rétrécit à chaque réponse se lit
         // comme s'il se refermait.
-        let plus_longue = invite.lines().map(|l| l.chars().count()).max().unwrap_or(0);
+        let plus_longue = largeurs[au_dessus..].iter().copied().max().unwrap_or(0);
         let largeur =
             (plus_longue as f32 * chasse + AUTOUR_X).clamp(480.0, (écran.width() * 0.9).max(480.0));
 
@@ -793,7 +823,14 @@ impl NamsdecApp {
                                     ),
                                 );
                             }
-                            ui.label(egui::RichText::new(&invite).monospace());
+                            // Les couleurs du programme, et non son
+                            // texte brut : c'est ce qu'il montre.
+                            let job = ansi::mise_en_page(
+                                &vue,
+                                egui::TextStyle::Monospace.resolve(ui.style()),
+                                theme,
+                            );
+                            ui.label(job);
                         }
                     });
 

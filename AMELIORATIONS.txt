@@ -3600,3 +3600,78 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
   compte déjà les fiches et les exercices : il disait « dix-huit noms »
   longtemps après qu'il y en avait quarante-sept, et c'est exactement ce
   qui venait d'arriver.
+
+
+--------------------------------------------------------------------------------
+ 7.19  CE QUE LE PROGRAMME ÉCRIT, LU COMME UN TERMINAL LE LIRAIT
+       (15 octobre 2026) — les séquences ANSI
+--------------------------------------------------------------------------------
+
+  LE DÉFAUT était signalé en bas de 7.17, vu sur deux captures et NON
+  corrigé alors : « la sortie du programme garde ses séquences
+  d'échappement ANSI. On lit □[2J□[H□[36m en tête du logo de FROGMAN,
+  dans la boîte comme dans la console. »
+
+  CE QU'UN PROGRAMME ENVOIE VRAIMENT à un terminal : des lettres, et
+  des ordres intercalés — efface l'écran, remonte le curseur, passe en
+  cyan, reviens au normal. Un crackme sur deux ouvre ainsi. Montrés
+  tels quels, ces ordres se lisent en toutes lettres et le dessin qui
+  suit paraît abîmé ; pire, on les prend pour une erreur de namsdec.
+
+  CE QUI EST FAIT, ET CE QUI NE L'EST PAS. `ansi.rs` n'est pas un
+  terminal, et ne cherche pas à en être un : il n'y a ni hauteur
+  d'écran fixe, ni curseur à remonter dans ce qui est déjà écrit. Il
+  lit ce qu'un programme de console écrit vraiment :
+    - les COULEURS (SGR) : les seize de base, le gras, le souligné,
+      l'inverse, et les palettes étendues `38;5;n` / `38;2;r;v;b`
+      ramenées aux huit ;
+    - l'EFFACEMENT (`2J`) et l'effacement de fin de ligne (`K`) ;
+    - la COLONNE du curseur (`H`, `G`, `C`, `D`), le retour chariot, la
+      tabulation, le retour arrière ;
+    - et il JETTE proprement le reste — un OSC qui renomme la fenêtre,
+      un choix de jeu de caractères, `?25l` qui cache un curseur qui
+      n'existe pas ici.
+
+  LE RETOUR CHARIOT MÉRITE SA LIGNE. `\r` ne saute pas : il ramène au
+  début, et ce qui suit RECOUVRE ce qui y était. C'est ainsi qu'une
+  barre de progression s'anime — sans cela on en lirait cinquante,
+  empilées. D'où une composition qui écrit À LA POSITION du curseur et
+  non à la fin, avec les morceaux recoupés autour.
+
+  LES COULEURS SONT DES RÔLES, PAS DES VALEURS. Les huit d'un terminal
+  n'ont pas de teinte propre : chaque terminal les peint à sa façon.
+  namsdec les prend donc dans son THÈME — le rouge est celui de ses
+  erreurs, le vert celui de ses réussites, le cyan celui de ses
+  registres. Un logo de crackme s'accorde alors au reste de la fenêtre
+  au lieu de jurer avec, et un thème clair reste lisible.
+
+  PEINT EN UN SEUL BLOC, par un `LayoutJob` : une étiquette par morceau
+  coûterait des milliers de widgets sur une sortie un peu longue, et la
+  sélection ne traverserait pas de l'une à l'autre — or la sortie d'un
+  programme se recopie.
+
+  LA BOÎTE DE SAISIE SUIT, et sa découpe aussi : elle coupe désormais
+  sur les LIGNES DE L'ÉCRAN et non sur le texte brut. Couper le texte
+  d'un côté et peindre l'écran de l'autre ferait deux découpes à tenir
+  d'accord, et une boîte qui montrerait six lignes en annonçant sept
+  mentirait sur ce qu'elle cache. `fin_qui_tient` a donc cédé la place
+  à `lignes_qui_tiennent`, qui ne connaît que des largeurs — le texte
+  brut et l'écran coloré s'en servent tous les deux.
+
+  LES CONTRÔLES :
+    - neuf sur l'analyseur seul : les séquences ne se lisent plus, la
+      couleur se pose sur ce qu'elle couvre (et une même couleur de
+      bout en bout ne fait qu'UN morceau), l'effacement efface ce qui
+      précède, le retour chariot recouvre, le curseur se pose en
+      colonne, la tabulation va au multiple de huit, l'invite sans saut
+      final compte quand même, des octets quelconques passent, et les
+      couleurs étendues ne débordent pas — sans la lecture de leurs
+      paramètres, le « 5 » de `38;5;196` passerait pour un clignotement.
+    - un de bout en bout : `the_console_paints_the_colours_and_not_the_
+      escapes` assemble un programme qui écrit en couleur, l'exécute,
+      et mesure CE QUI EST PEINT dans la console — le texte d'un côté,
+      la couleur des galettes de l'autre. Il regarde dans le rectangle
+      du panneau de la console et nulle part ailleurs : l'éditeur
+      montre le SOURCE du programme, qui porte « [31m » en toutes
+      lettres, et l'accuser reviendrait à accuser le programme d'être
+      écrit. Éprouvé en remettant le texte brut : il l'a nommé.
