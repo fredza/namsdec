@@ -2618,7 +2618,31 @@ impl Emulator {
                     }
                 };
                 let mut flags = logic_flags(result, w);
-                flags.remove(RFlags::SF);
+                // Les deux ne posent PAS les mêmes indicateurs, et les
+                // traiter ensemble était le défaut : trouvé le 15
+                // octobre 2026 par l'oracle différentiel
+                // (`examples/oracle.rs`), qui a vu le vrai processeur
+                // répondre autrement sur `bzhi`.
+                if instr.mnemonic() == M::Bzhi {
+                    // ZF, CF et SF suivent le résultat ; OF est effacé ;
+                    // AF et PF sont indéfinis.
+                    //
+                    // CF dit que l'index DÉBORDAIT la largeur : dans ce
+                    // cas rien n'est coupé, le résultat est la source
+                    // entière, et c'est CF qui le signale. Sans lui, un
+                    // programme ne peut pas distinguer « je n'ai rien eu
+                    // à couper » de « j'ai coupé au ras ».
+                    //
+                    // SF est gardé tel que `logic_flags` l'a calculé :
+                    // l'effacer ôtait le signe d'un résultat qui, index
+                    // débordant, est la source elle-même — négative une
+                    // fois sur deux.
+                    flags.set(RFlags::CF, (control & 0xff) as u32 >= bits);
+                } else {
+                    // `bextr` : seul ZF est défini ; le manuel efface
+                    // tout le reste, SF compris.
+                    flags.remove(RFlags::SF);
+                }
                 self.cpu.flags.apply_arith(flags);
                 self.write_op(instr, 0, result)?;
             }

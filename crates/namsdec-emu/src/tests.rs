@@ -2005,6 +2005,71 @@ hlt
     assert_eq!(emu.cpu.regs.get64(Reg64::R14), 0x34, "bzhi");
 }
 
+/// `bzhi` dit par CF que l'index débordait, et garde le signe du
+/// résultat dans SF.
+///
+/// Les deux manquaient, et aucun test ne l'avait vu parce qu'aucun ne
+/// regardait les indicateurs de `bzhi` — seulement son résultat.
+/// Trouvé le 15 octobre 2026 par l'oracle différentiel
+/// (`namsdec-emu/examples/oracle.rs`), qui a fait exécuter la même
+/// instruction au vrai processeur et comparé : sur
+/// `rbx = 0xb7cf…`, `cl = 0xa5`, le matériel rendait CF=1 et SF=1 là où
+/// namsdec rendait 0 et 0.
+///
+/// Ce que CF apprend : un index au-delà de la largeur ne coupe RIEN, le
+/// résultat est la source entière. Sans CF, un programme ne peut pas
+/// distinguer « je n'avais rien à couper » de « j'ai coupé au ras ».
+/// Et comme le résultat est alors la source, il est négatif une fois
+/// sur deux — d'où SF, qu'effacer rendait muet.
+///
+/// Le contrôle est écrit ici et non dans l'oracle : l'oracle demande
+/// `nasm`, `ld`, `gdb` et un processeur x86-64, et ne tourne donc pas
+/// sur l'intégration continue. Ce qu'il a appris doit tenir sans lui.
+#[test]
+fn bzhi_reports_an_index_past_the_width_and_keeps_the_sign() {
+    let emu = run_program(
+        "\
+section .text
+global _start
+_start:
+mov rbx, 0x8000_0000_0000_00ff
+mov rcx, 0xa5                   ; 165 : bien au-delà des 64 bits
+bzhi rax, rbx, rcx              ; rien n'est coupé : rax = rbx
+pushfq
+pop r8                          ; les indicateurs d'après
+
+mov rcx, 8                      ; huit : un index qui, lui, coupe
+bzhi rdx, rbx, rcx              ; rdx = 0xff
+pushfq
+pop r9
+hlt
+",
+        &[],
+    );
+    let cf = 1u64 << 0;
+    let sf = 1u64 << 7;
+
+    // Index débordant : la source ressort entière.
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rax),
+        0x8000_0000_0000_00ff,
+        "bzhi : un index au-delà de la largeur ne coupe rien"
+    );
+    let après = emu.cpu.regs.get64(Reg64::R8);
+    assert_ne!(après & cf, 0, "bzhi : CF dit que l'index débordait");
+    assert_ne!(
+        après & sf,
+        0,
+        "bzhi : SF suit le résultat, qui est ici négatif"
+    );
+
+    // Index dans la largeur : on coupe, et CF se tait.
+    assert_eq!(emu.cpu.regs.get64(Reg64::Rdx), 0xff, "bzhi : huit bits bas");
+    let après = emu.cpu.regs.get64(Reg64::R9);
+    assert_eq!(après & cf, 0, "bzhi : rien ne débordait, CF est à zéro");
+    assert_eq!(après & sf, 0, "bzhi : 0xff est positif");
+}
+
 /// `cpuid` ne peut annoncer aucune extension sans mentir : il se nomme
 /// et s'arrête là.
 #[test]
