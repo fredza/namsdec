@@ -564,7 +564,11 @@ aujourd'hui ; les suivantes, ce vers quoi l'outil peut aller.
      Le test attend maintenant que la porte se libère, et pour cette erreur-là
      uniquement : toute autre remonte au premier tour.
 
-3.5  egui_kittest n'est pas utilisé
+3.5  [FAIT] egui_kittest sert, et son emploi est borné
+     Depuis le 14 octobre 2026 : kittest pour les GESTES, le banc de mise en
+     page pour la géométrie. La raison de le garder est écrite dans
+     `tests.rs`, au-dessus du premier qui l'emploie. Ce qui suit est le texte
+     d'avant, gardé pour le pourquoi.
      Les tests d'interface lisent les formes peintes et cherchent des chaînes.
      C'est efficace mais fragile : un libellé qui change casse un test sans
      rapport. kittest interroge l'arbre d'accessibilité — par rôle et par nom.
@@ -1145,7 +1149,11 @@ aujourd'hui ; les suivantes, ce vers quoi l'outil peut aller.
      Reste la vraie correction, qui est 5.3 : mettre le listing en page hors du
      fil d'affichage, ou ne disposer que les lignes visibles.
 
-5.3  Le listing entier est mis en page en une fois
+5.3  [FAIT le 14 octobre 2026 — voir 7.14] Le listing entier était mis en
+     page en une fois
+     `vue_listing.rs` ne pose plus que les lignes visibles, en mode Normal ;
+     le `TextEdit` revient en Insertion. Ce qui suit est l'analyse qui l'a
+     décidé, gardée parce qu'elle dit le prix qu'on a accepté.
      Non pas à chaque frame — le cache l'évite —, mais la première fois, et
      d'un bloc : 450 ms pour 62 386 lignes. Un `TextEdit` multiligne ne
      virtualise pas ; il faudrait une vue qui ne dispose que les lignes
@@ -1403,14 +1411,14 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      qui m'a fait te dire deux fois qu'un défaut était réglé alors qu'il ne
      l'était pas.
 
-7.7  egui_kittest (voir 3.5)
+7.7  [FAIT] egui_kittest (voir 3.5)
      La dépendance est là et ne sert à rien. Elle sait simuler des frappes et
      comparer des captures, ce que je fais à la main dans chaque test
      d'affichage — d'où leur longueur, et d'où les erreurs de 7.6.
      À évaluer sur UN test d'abord, pas sur tous : si elle ne raccourcit pas
      visiblement, elle sort des dépendances.
 
-7.8  LE LISTING QUI NE VIRTUALISE PAS (voir 5.3)
+7.8  [FAIT] LE LISTING QUI NE VIRTUALISAIT PAS (voir 5.3 et 7.14)
      450 ms à la première image d'un gros binaire, et le message « frame
      lente » qui laisse croire à un problème permanent alors que le cache
      porte ensuite.
@@ -4347,3 +4355,64 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
   masque aux déplacements comme aux calculs. Ce qui reste est une liste
   de familles à nommer dans `largeur_élément` — un ajout d'une ligne
   chacune, le jour où un binaire les apporte.
+
+
+--------------------------------------------------------------------------------
+ 7.15  CE QUI VIENT ENSUITE — plan arrêté le 15 octobre 2026
+       pour la séance du 16, à la demande (« que faut-il améliorer encore »)
+--------------------------------------------------------------------------------
+
+  Cinq points, dans cet ordre, et l'ordre est l'avis.
+
+  1. REÉQUILIBRER VERS CE QUI S'APPREND — 7.9, puis la moitié
+     manquante de 7.10.
+     Les cinq dernières séances ont servi la JUSTESSE : l'oracle, AVX-512
+     sous SDE, les vingt-cinq instructions écrites, le détour. Nécessaire,
+     et invisible pour qui apprend. L'écart le plus net entre ce que
+     namsdec sait et ce qu'il DIT est là : 183 fiches pour expliquer une
+     instruction, rien pour expliquer un ENSEMBLE.
+     Ce qui a changé depuis le 23 septembre : l'émulateur porte
+     maintenant de quoi le faire honnêtement — profil d'exécution,
+     graphe, chronologie. « Cette boucle tourne 20 fois » n'est pas une
+     inférence, c'est un compteur. La règle reste celle de 7.9 : ce qu'on
+     ne sait pas dire, on se tait.
+
+  2. LE DÉTOUR — MESURER SON TAUX DE REFUS AVANT D'ALLER PLUS LOIN.
+     Le refus sur les instructions `rip`-relatives est la bonne décision,
+     mais `mov rax, [rip+0x2e4f]` est la forme NORMALE d'un accès à une
+     globale en code compilé. La crainte : 4.17 refuse la plupart des
+     sites réels et personne ne le sait.
+     Une mesure le dirait — `plan_detour` sur tous les sites des onze
+     binaires de `tests/binaires/`, réussites contre refus, par motif.
+     Un sur dix : la relocalisation n'est pas « la suite », c'est la
+     condition. Huit sur dix : elle attend. Décider sur un chiffre, comme
+     partout ailleurs ici.
+
+  3. tests.rs : 31 602 LIGNES DANS UN FICHIER.
+     689 contrôles, un quart du code du projet, quatre fois `main.rs` —
+     qui lui est suivi de près (5.1, et le découpage en cours). Chaque
+     contrôle modifié recompile les 31 kloc. À découper par thème : le
+     banc de mise en page, l'éditeur, les fenêtres, l'émulateur vu de
+     l'interface. N'était inscrit nulle part.
+
+  4. CE FICHIER DÉRIVAIT DE LA RÉALITÉ.
+     Deux entrées faisaient choisir le mauvais chantier : 5.3 et 7.8 se
+     présentaient comme « le gros chantier de performance qui reste »,
+     alors que 7.14 le donne fait cent lignes plus bas ; 3.5 et 7.7
+     disaient kittest inutilisé, alors qu'il sert depuis le même jour.
+     Corrigé en même temps que ce plan — la partie ANALYSE doit se
+     réconcilier avec la partie JOURNAL, sinon elle oriente contre elle.
+
+  5. MÉNAGE — FAIT LE 15 OCTOBRE.
+     `qemu_essai512_20261015-214008_730869.core`, 8,4 Mo, avait été
+     COMMITÉ dans c2896a0. Retiré du suivi, `*.core` posé dans
+     `.gitignore`, le fichier laissé sur le disque.
+     Le blob reste dans l'historique, et la branche est poussée. L'en
+     sortir demande un rebase des sept commits de `detour-et-oracle` et
+     un force-push, À FAIRE AVANT LA FUSION dans `main` — sinon il y
+     reste pour toujours. Irréversible, donc en attente d'un accord.
+
+  EN FOND, SANS URGENCE : 3.3 (une vérification légère que les recettes
+  d'installation pointent encore quelque part — quelques secondes contre
+  dix minutes de compilation) ; et `tests/binaires/` rempli ici, vide sur
+  la CI, donc onze binaires d'épreuve qui ne protègent qu'une machine.

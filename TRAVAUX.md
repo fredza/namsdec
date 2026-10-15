@@ -1864,6 +1864,27 @@ le code binaire et le pseudo-code. Un seul module neuf les réunit.
       -cpu help` annonce `avx512f` et les autres, mais ce sont des noms
       de drapeaux, pas des instructions exécutables : un `vpaddd zmm0,
       zmm1, zmm1` sous `-cpu max` rend un signal 4. Reste Intel SDE.
+- [x] **Un vidage mémoire était dans le dépôt** (A 7.15, 15 octobre
+      2026) — `qemu_essai512_*.core`, 8,4 Mo, commité par mégarde avec
+      c2896a0 pendant les essais QEMU. Retiré du suivi, `*.core` posé
+      dans `.gitignore`, le fichier laissé sur le disque.
+      Le blob reste dans l'historique et la branche est poussée : l'en
+      sortir demande un rebase des sept commits et un force-push, à
+      faire AVANT la fusion dans `main`. En attente d'un accord, parce
+      que c'est irréversible.
+- [ ] **Le plan de la séance suivante** (A 7.15, arrêté le 15 octobre
+      2026) — cinq points, et l'ordre est l'avis : (1) 7.9, expliquer un
+      ENSEMBLE et non plus une instruction, puis la moitié manquante de
+      7.10 ; (2) mesurer le taux de refus du détour sur les onze
+      binaires d'épreuve avant de décider la relocalisation ; (3)
+      découper `tests.rs`, 31 602 lignes et 689 contrôles d'un bloc ;
+      (4) [FAIT] réconcilier l'analyse d'AMELIORATIONS avec son journal —
+      5.3 et 7.8 se donnaient encore pour le gros chantier restant, 3.5
+      et 7.7 pour une dépendance inutile ; (5) [FAIT] le ménage
+      ci-dessus.
+      Ce qui motive l'ordre : les cinq dernières séances ont servi la
+      justesse — invisible pour qui apprend —, et l'émulateur porte
+      désormais de quoi tenir 7.9 honnêtement.
 
 ---
 
