@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **14 octobre
-2026**, version 0.2.8-beta.3, 1 188 tests au vert.
+2026**, version 0.2.9-beta.1, 1 190 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -29,6 +29,28 @@ Ce qui reste est de la finition mesurée : des alignements de quelques
 pixels, deux tailles de police, et le vide sous « Prochaine
 instruction », qui tient au même nœud que le vide de 56 px — l'état du
 processeur est ancré.
+
+---
+
+## 12. La calculatrice compte en bits (A 7.18)
+
+Demandé avec la calculatrice de GNOME en mode Programmation posée à côté
+de la nôtre : le même style, plus de fonctions de bits.
+
+- [x] **Vingt-neuf fonctions de plus**, quarante-sept en tout (A 7.18) —
+      lire et changer un bit, extraire un champ (`bits(x, h, b)`),
+      renverser l'ordre, les compléments, `parity` (celle du x86),
+      `ffs`/`log2`/`ispow2`/`nextpow2`, les rotations sur 8/16/32 bits,
+      `sar`, `smin`/`smax`, `mulhi`.
+- [x] **Six familles, une à la fois** — onglets courts, phrase entière
+      au survol. À plat, les quarante-sept poussaient le bas de la
+      fenêtre hors de l'écran : mesuré à 1103 px pour un écran de 1100.
+- [x] **La famille ouverte est un réglage** — elle revient au lancement
+      suivant ; une famille inconnue retombe sur la première.
+- [x] **Trois contrôles**, dont un qui refuse un argument de trop et un
+      qui vérifie que ce qui n'est pas ouvert n'est pas peint.
+- [x] **Le guide compte les fonctions dans le code** — il disait
+      « dix-huit » longtemps après qu'il y en avait quarante-sept.
 
 ---
 

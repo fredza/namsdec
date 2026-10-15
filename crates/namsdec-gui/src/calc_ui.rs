@@ -266,7 +266,14 @@ impl NamsdecApp {
                         if regs.is_none() {
                             ui.colored_label(theme.dim, s.calculator_no_registers);
                         }
-                        calculator_functions_ui(ui, theme, s, lang, &mut frappe.écrire);
+                        calculator_functions_ui(
+                            ui,
+                            theme,
+                            s,
+                            lang,
+                            &mut self.calc_family,
+                            &mut frappe.écrire,
+                        );
 
                         ui.add_space(6.0);
                         // Toutes les bases à la fois, en petit : c'est ce qu'on
@@ -886,44 +893,90 @@ pub(crate) fn écriture_de_touche(touche: &str, base: CalcBase, courant: &str) -
 /// Une grille qui se replie à la largeur de la fenêtre, et **une ligne
 /// sous elle** qui dit ce que fait celle qu'on survole. L'infobulle
 /// seule ne suffisait pas : elle se mérite après une demi-seconde
-/// d'immobilité, alors qu'on parcourt dix-huit noms des yeux pour
-/// trouver le bon.
+/// d'immobilité, alors qu'on parcourt les noms des yeux pour trouver
+/// le bon.
+///
+/// UNE FAMILLE À LA FOIS, choisie par une rangée d'onglets. Les
+/// quarante-sept fonctions tenaient sur douze lignes, et douze lignes
+/// de plus poussaient le bas de la fenêtre — les bases, le bouton —
+/// hors de l'écran. Mesuré : la fenêtre dépassait l'écran de trois
+/// pixels sur un banc de 1100, et débordait pour de bon à l'usage.
+///
+/// Rangées plutôt que tronquées : on ne cherche pas « une fonction »,
+/// on cherche à lire un bit, à changer l'ordre, à compter. L'onglet
+/// pose la question avant qu'on ait lu les noms.
 fn calculator_functions_ui(
     ui: &mut egui::Ui,
     theme: &'static Theme,
     s: &Strings,
     lang: Lang,
+    famille_active: &mut String,
     à_écrire: &mut Option<String>,
 ) {
     let mut survolée: Option<&'static str> = None;
+    // RANGÉES PAR FAMILLE, et non à plat : quarante-sept pastilles les
+    // unes derrière les autres se parcourent une à une, et l'on finit
+    // par ne plus voir celles du bas. Avec un intertitre par question —
+    // lire un bit, changer l'ordre, compter —, on sait où regarder
+    // avant d'avoir lu.
+    // Les onglets : courts, et dans l'ordre où l'on apprend — lire un
+    // bit avant de les compter, les compter avant de les faire tourner.
     ui.horizontal_wrapped(|ui| {
-        for (nom, arité, fr, en) in calc::FUNCTIONS {
-            let appel = if *arité == 2 {
-                format!("{nom}(x, n)")
-            } else {
-                format!("{nom}(x)")
-            };
-            let fond = mélange(theme.surface, theme.text, 0.14);
-            let réponse = ui.add(
-                egui::Button::new(
-                    egui::RichText::new(&appel)
-                        .monospace()
-                        .size(12.0)
-                        .color(encre_sur(fond, theme)),
-                )
-                .fill(fond)
-                .corner_radius(6.0),
-            );
-            if réponse.hovered() {
-                survolée = Some(if lang == Lang::Fr { *fr } else { *en });
-            }
-            if réponse.clicked() {
-                // Le nom et sa parenthèse : on cherche ce qu'une
-                // fonction fait, on la clique, on complète.
-                *à_écrire = Some(format!("{nom}("));
+        for (famille, court, long) in calc::FAMILIES {
+            let choisi = famille_active == famille;
+            if ui
+                .add(egui::Button::selectable(
+                    choisi,
+                    egui::RichText::new(*court).size(11.0),
+                ))
+                .on_hover_text(*long)
+                .clicked()
+            {
+                *famille_active = (*famille).to_owned();
             }
         }
     });
+    {
+        ui.add_space(2.0);
+        ui.horizontal_wrapped(|ui| {
+            for (nom, arité, fam, fr, en) in calc::FUNCTIONS {
+                if fam != famille_active {
+                    continue;
+                }
+                // LE NOM SEUL sur la pastille, l'appel complet dans
+                // l'infobulle : écrits dessus, les « (x, n) » doublent
+                // la largeur de chaque pastille, et les quarante-sept
+                // poussaient le bas de la fenêtre — les bases, et
+                // jusqu'au message d'erreur — hors de l'écran.
+                let appel = match *arité {
+                    3 => format!("{nom}(x, h, b)"),
+                    2 => format!("{nom}(x, n)"),
+                    _ => format!("{nom}(x)"),
+                };
+                let fond = mélange(theme.surface, theme.text, 0.14);
+                let réponse = ui
+                    .add(
+                        egui::Button::new(
+                            egui::RichText::new(*nom)
+                                .monospace()
+                                .size(12.0)
+                                .color(encre_sur(fond, theme)),
+                        )
+                        .fill(fond)
+                        .corner_radius(6.0),
+                    )
+                    .on_hover_text(&appel);
+                if réponse.hovered() {
+                    survolée = Some(if lang == Lang::Fr { *fr } else { *en });
+                }
+                if réponse.clicked() {
+                    // Le nom et sa parenthèse : on cherche ce qu'une
+                    // fonction fait, on la clique, on complète.
+                    *à_écrire = Some(format!("{nom}("));
+                }
+            }
+        });
+    }
     ui.add_space(2.0);
     // La place de la ligne est réservée même quand rien n'est survolé :
     // sinon la grille sautait d'une ligne sous le pointeur.

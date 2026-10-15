@@ -3510,3 +3510,93 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
   interpréter (couleurs, effacement d'écran, positionnement) est un
   chantier à soi — un terminal, même minimal, décide de ce qu'on voit —
   et il vaut mieux l'ouvrir pour lui-même que l'improviser ici.
+
+
+--------------------------------------------------------------------------------
+ 7.18  LA CALCULATRICE COMPTE EN BITS
+       (15 octobre 2026) — 0.2.9-beta.1
+--------------------------------------------------------------------------------
+
+  LA DEMANDE, avec une capture de la calculatrice de GNOME en mode
+  Programmation posée à côté de la nôtre : « la calculatrice je la
+  voudrais dans ce style mais avec plus de fonctions pour le calcul de
+  bits ». Le style est donc celui de namsdec — l'écran, le clavier à
+  trois teintes, les soixante-quatre bits cliquables ; ce qui manque est
+  derrière.
+
+  CE QU'ELLE SAVAIT FAIRE : dix-huit fonctions — permutation d'octets,
+  extension de signe, popcnt/clz/ctz, rotations 64 bits, align, min,
+  max. Ce qui manquait tenait en une phrase : on ne pouvait ni LIRE un
+  bit, ni EXTRAIRE un champ, ni tourner sur une autre largeur que
+  soixante-quatre.
+
+  VINGT-NEUF DE PLUS, quarante-sept en tout, et chacune vient d'un geste
+  qu'on fait à la main en lisant un désassemblage :
+
+    bit / setbit / clrbit / flipbit   lire et changer UN bit
+    bits(x, h, b)                     extraire un champ — un ModR/M se
+                                      décode ainsi : mod=bits(o,7,6),
+                                      reg=bits(o,5,3), rm=bits(o,2,0)
+    mask(n), byte(x, n)
+    bitrev, bitrev8/16/32             renverser l'ordre des bits
+    twos, ones, abs                   l'opposé, le complément, la valeur
+    parity                            celle du x86 : l'octet de BAS, et
+                                      1 quand le compte est PAIR
+    ffs, log2, ispow2, nextpow2
+    rol8/16/32, ror8/16/32            `rol8(0x80,1)` fait UN, là où
+                                      `rol(0x80,1)` fait 0x100
+    sar                               le décalage ARITHMÉTIQUE, celui
+                                      que `>>` ne fait pas ici
+    smin, smax                        la différence entre `jb` et `jl`
+    mulhi                             ce que `mul` laisse dans RDX, et
+                                      qui explique les divisions par
+                                      constante d'un compilateur
+
+  LES CAS QUI PIÈGENT, tous écrits dans le contrôle : un rang de bit
+  au-delà de 63 ne désigne rien (la valeur passe, sans panique) ; les
+  bornes d'un champ dans l'autre sens disent la même chose ; zéro n'a
+  pas de bit de poids fort, donc `log2(0)` vaut zéro plutôt qu'un nombre
+  tiré de `63 - 64` ; zéro n'est pas une puissance de deux mais
+  `nextpow2(0)` vaut un ; `sar` au-delà de 63 rend le signe répété.
+
+  LA MISE EN PAGE, et ce que la mesure a imposé. Quarante-sept pastilles
+  à plat ne se cherchent pas. Rangées par famille avec un intertitre par
+  ligne, elles tenaient DOUZE lignes — et le contrôle
+  `two_windows_opened_together_do_not_land_on_the_same_spot` a dit la
+  suite : « calculator_window doit tenir dans l'écran — hauteur 1103
+  pour un écran de 1100 ». Le bas de la fenêtre, les bases et le bouton
+  sortaient par là.
+
+  Trois coupes, dans l'ordre où elles ont été faites et mesurées :
+    - le NOM seul sur la pastille, l'appel complet dans l'infobulle —
+      « (x, n) » écrit dessus doublait la largeur de chacune ;
+    - l'intertitre EN TÊTE de la rangée, et non sur sa propre ligne ;
+    - puis, la fenêtre dépassant encore à l'usage (vérifié sur capture,
+      profil neuf), UNE FAMILLE À LA FOIS, choisie par une rangée
+      d'onglets courts — « Bits · Ordre · Signe · Compter · Tourner ·
+      Calculer », une seule ligne, la phrase entière au survol.
+
+  La famille ouverte est un réglage comme un autre : elle part dans
+  `settings.json` et revient au lancement suivant. Une famille inconnue
+  — un réglage écrit par une version plus récente — retombe sur la
+  première, plutôt que sur une liste vide qui passerait pour un panneau
+  cassé.
+
+  LES CONTRÔLES :
+    - `les_fonctions_de_bits` : chaque fonction, sur ses cas qui
+      piègent, avec des valeurs écrites à la main — un test qui refait
+      le calcul du code ne vérifie que lui-même.
+    - `toute_fonction_annoncee_se_calcule` : chaque entrée de la table
+      s'évalue sous son arité, appartient à une famille qui existe,
+      porte ses deux explications, et REFUSE un argument de trop. La
+      table sert d'aide-mémoire à l'interface : une entrée sans bras
+      dans `call_function` afficherait une pastille qui rend zéro.
+    - `the_calculator_shows_its_keypad_its_bits_and_its_functions` :
+      les six familles s'annoncent, chacune montre ses fonctions quand
+      on l'ouvre, et ce qui n'est pas ouvert n'est PAS peint — sans quoi
+      les douze lignes reviendraient sans qu'on le voie.
+
+  ET LE GUIDE COMPTE LES FONCTIONS DANS LE CODE, désormais, comme il
+  compte déjà les fiches et les exercices : il disait « dix-huit noms »
+  longtemps après qu'il y en avait quarante-sept, et c'est exactement ce
+  qui venait d'arriver.

@@ -66,6 +66,17 @@ impl NamsdecApp {
             current_exercise: settings.current_exercise.clone(),
             memory_format: MemoryFormat::by_id(&settings.memory_format),
             analysis_module: settings.analysis_module.clone(),
+            // Une famille inconnue — un réglage écrit par une version
+            // plus récente — retombe sur la première, plutôt que sur
+            // une liste vide qui passerait pour un panneau cassé.
+            calc_family: if crate::calc::FAMILIES
+                .iter()
+                .any(|(id, ..)| *id == settings.calc_family)
+            {
+                settings.calc_family.clone()
+            } else {
+                crate::calc::FAMILIES[0].0.to_owned()
+            },
             calc_base: CalcBase::by_id(&settings.calc_base),
             calc_width: CalcWidth::by_id(&settings.calc_width),
             memory_follow: MemFollow::by_id(&settings.memory_follow),
@@ -513,6 +524,7 @@ impl NamsdecApp {
             memory_format: self.memory_format.id().to_owned(),
             analysis_module: self.analysis_module.clone(),
             calc_base: self.calc_base.id().to_owned(),
+            calc_family: self.calc_family.clone(),
             calc_width: self.calc_width.id(),
             memory_follow: self.memory_follow.id().to_owned(),
             console_height: self.console_height.map(|h| h.round() as u32),

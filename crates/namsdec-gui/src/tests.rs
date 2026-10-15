@@ -14497,9 +14497,54 @@ fn the_calculator_shows_its_keypad_its_bits_and_its_functions() {
             "la touche {touche} :\n{peint}"
         );
     }
-    // Les fonctions, en toutes lettres.
-    assert!(peint.contains("popcnt(x)"), "{peint}");
-    assert!(peint.contains("rol(x, n)"), "{peint}");
+    // Les SIX FAMILLES s'annoncent toutes : c'est l'onglet qui dit où
+    // chercher, et une famille qu'on ne voit pas est une famille qui
+    // n'existe pas pour celui qui lit.
+    for (_, court, _) in calc::FAMILIES {
+        assert!(
+            peint.contains(court),
+            "la famille « {court} » doit s'annoncer :\n{peint}"
+        );
+    }
+    // Et chacune montre ses fonctions quand on l'ouvre — par leur nom,
+    // les arguments étant dans l'infobulle : écrits sur la pastille,
+    // ils doublaient sa largeur.
+    //
+    // Une par famille, choisie parmi les nouvelles : ce sont celles qui
+    // manquaient pour calculer en bits.
+    for (famille, attendue) in [
+        ("bits", "mask"),
+        ("ordre", "bitrev"),
+        ("signe", "twos"),
+        ("compter", "parity"),
+        ("tourner", "sar"),
+        ("calcul", "mulhi"),
+    ] {
+        let mut app = NamsdecApp {
+            show_calculator: true,
+            calc_family: famille.to_owned(),
+            ..Default::default()
+        };
+        let peint = paint(&mut app);
+        assert!(
+            peint.contains(&format!("{attendue}|")),
+            "« {attendue} » doit paraître sous « {famille} » :\n{peint}"
+        );
+    }
+    // Une famille à la fois : ce qui n'est pas ouvert n'est pas peint,
+    // sans quoi les quarante-sept pastilles reviendraient toutes et
+    // avec elles les douze lignes qui débordaient de l'écran.
+    let mut app = NamsdecApp {
+        show_calculator: true,
+        calc_family: "bits".to_owned(),
+        ..Default::default()
+    };
+    let peint = paint(&mut app);
+    assert!(peint.contains("setbit|"), "la famille ouverte :\n{peint}");
+    assert!(
+        !peint.contains("mulhi|"),
+        "une autre famille ne doit pas être peinte :\n{peint}"
+    );
     // Et la ligne qui invite à les survoler.
     assert!(peint.contains(s.calculator_pick_function), "{peint}");
     // Les index de la grille de bits.
@@ -23758,6 +23803,7 @@ fn every_setting_that_is_written_is_read_back() {
         memory_format: "words".to_owned(),
         analysis_module: "dump".to_owned(),
         calc_base: "dec".to_owned(),
+        calc_family: "tourner".to_owned(),
         calc_width: "32".to_owned(),
         heat_legend: false,
         flow_current_only: false,

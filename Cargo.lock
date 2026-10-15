@@ -1501,7 +1501,7 @@ dependencies = [
 
 [[package]]
 name = "namsdec-asm"
-version = "0.2.8-beta.3"
+version = "0.2.9-beta.1"
 dependencies = [
  "namsdec-disasm",
  "regex",
@@ -1511,7 +1511,7 @@ dependencies = [
 
 [[package]]
 name = "namsdec-core"
-version = "0.2.8-beta.3"
+version = "0.2.9-beta.1"
 dependencies = [
  "bitflags 2.13.2",
  "thiserror 2.0.21",
@@ -1519,7 +1519,7 @@ dependencies = [
 
 [[package]]
 name = "namsdec-disasm"
-version = "0.2.8-beta.3"
+version = "0.2.9-beta.1"
 dependencies = [
  "iced-x86",
  "serde",
@@ -1530,11 +1530,11 @@ dependencies = [
 
 [[package]]
 name = "namsdec-doc"
-version = "0.2.8-beta.3"
+version = "0.2.9-beta.1"
 
 [[package]]
 name = "namsdec-emu"
-version = "0.2.8-beta.3"
+version = "0.2.9-beta.1"
 dependencies = [
  "iced-x86",
  "namsdec-asm",
@@ -1546,7 +1546,7 @@ dependencies = [
 
 [[package]]
 name = "namsdec-exercises"
-version = "0.2.8-beta.3"
+version = "0.2.9-beta.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -1555,7 +1555,7 @@ dependencies = [
 
 [[package]]
 name = "namsdec-explorer"
-version = "0.2.8-beta.3"
+version = "0.2.9-beta.1"
 dependencies = [
  "egui",
  "namsdec-theme",
@@ -1564,7 +1564,7 @@ dependencies = [
 
 [[package]]
 name = "namsdec-gui"
-version = "0.2.8-beta.3"
+version = "0.2.9-beta.1"
 dependencies = [
  "arboard",
  "eframe",
@@ -1588,7 +1588,7 @@ dependencies = [
 
 [[package]]
 name = "namsdec-re"
-version = "0.2.8-beta.3"
+version = "0.2.9-beta.1"
 dependencies = [
  "egui",
  "iced-x86",
@@ -1600,7 +1600,7 @@ dependencies = [
 
 [[package]]
 name = "namsdec-theme"
-version = "0.2.8-beta.3"
+version = "0.2.9-beta.1"
 dependencies = [
  "egui",
  "serde",
@@ -1610,7 +1610,7 @@ dependencies = [
 
 [[package]]
 name = "namsdec-update"
-version = "0.2.8-beta.3"
+version = "0.2.9-beta.1"
 dependencies = [
  "serde",
  "serde_json",

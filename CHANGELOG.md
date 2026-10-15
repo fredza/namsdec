@@ -4,6 +4,24 @@ Les dates sont celles des commits ; le format suit [Keep a
 Changelog](https://keepachangelog.com/fr/1.1.0/) d'assez loin — une
 entrée par version, et ce qui change pour qui s'en sert.
 
+## 0.2.9-beta.1 — 15 octobre 2026
+
+**La calculatrice compte en bits**
+- **Vingt-neuf fonctions de plus**, quarante-sept en tout. Ce qui
+  manquait tenait en une phrase : on ne pouvait ni lire un bit, ni
+  extraire un champ, ni tourner sur une autre largeur que soixante-
+  quatre. S'ajoutent donc `bit`, `setbit`, `clrbit`, `flipbit`,
+  `bits(x, h, b)` — de quoi décoder un ModR/M —, `mask`, `byte`,
+  `bitrev` et ses largeurs, `twos`, `ones`, `abs`, `parity` (celle du
+  x86 : l'octet de bas, et 1 quand le compte est pair), `ffs`, `log2`,
+  `ispow2`, `nextpow2`, les rotations sur 8, 16 et 32 bits, `sar` — le
+  décalage arithmétique —, `smin`, `smax`, et `mulhi`, ce que `mul`
+  laisse dans RDX.
+- **Rangées en six familles** qu'on ouvre une à une : Bits, Ordre,
+  Signe, Compter, Tourner, Calculer. À plat, les quarante-sept
+  poussaient le bas de la fenêtre hors de l'écran. La famille ouverte
+  revient au lancement suivant.
+
 ## 0.2.8-beta.3 — 14 octobre 2026
 
 Trois passes depuis la beta.1 : les griefs relevés sur captures le 13

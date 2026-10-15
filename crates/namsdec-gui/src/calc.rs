@@ -104,80 +104,349 @@ pub trait Memory {
 /// Toutes celles qu'on écrit à la main en lisant un désassemblage, et
 /// aucune qu'on n'y écrirait jamais. La liste sert aussi d'aide-mémoire à
 /// l'interface : elle s'affiche telle quelle.
-pub const FUNCTIONS: &[(&str, usize, &str, &str)] = &[
+/// Les familles sous lesquelles l'interface range les fonctions.
+///
+/// Quarante-sept pastilles à plat ne se cherchent pas : on les parcourt
+/// une à une et l'on finit par ne plus voir celles du bas. Rangées par
+/// question — « lire un bit », « changer l'ordre », « compter » —, on
+/// sait où regarder avant d'avoir lu.
+/// Chacune porte son nom d'onglet — court, parce que six onglets longs
+/// se replient sur trois lignes — et la phrase qui dit ce qu'on y
+/// trouve, montrée au survol.
+pub const FAMILIES: &[(&str, &str, &str)] = &[
+    (
+        "bits",
+        "Bits",
+        "Les bits, un par un : lire, poser, extraire un champ",
+    ),
+    (
+        "ordre",
+        "Ordre",
+        "L'ordre des bits et des octets : permuter, renverser, tronquer",
+    ),
+    (
+        "signe",
+        "Signe",
+        "Le signe, et les compléments : étendre, opposer, retourner",
+    ),
+    (
+        "compter",
+        "Compter",
+        "Compter, situer, arrondir : combien de bits, lequel, jusqu'où",
+    ),
+    (
+        "tourner",
+        "Tourner",
+        "Tourner et décaler, sur la largeur qu'on nomme",
+    ),
+    (
+        "calcul",
+        "Calculer",
+        "Comparer, et ce que `mul` laisse de côté",
+    ),
+];
+
+/// Les fonctions que la calculatrice connaît, avec ce qu'elles font.
+///
+/// Toutes celles qu'on écrit à la main en lisant un désassemblage, et
+/// aucune qu'on n'y écrirait jamais. La liste sert aussi d'aide-mémoire
+/// à l'interface : elle s'affiche telle quelle, rangée par famille.
+///
+/// Le quatrième champ est la famille ; le second, le nombre d'arguments.
+pub const FUNCTIONS: &[(&str, usize, &str, &str, &str)] = &[
+    // --- Les bits, un par un ------------------------------------------
+    ("bit", 2, "bits", "le bit n (0 ou 1)", "bit n (0 or 1)"),
+    ("setbit", 2, "bits", "pose le bit n à 1", "sets bit n"),
+    ("clrbit", 2, "bits", "remet le bit n à 0", "clears bit n"),
+    ("flipbit", 2, "bits", "retourne le bit n", "flips bit n"),
+    (
+        "bits",
+        3,
+        "bits",
+        "le champ des bits haut..bas, ramené en bas",
+        "the haut..bas bit field, brought down",
+    ),
+    ("mask", 1, "bits", "n bits à 1", "n bits set"),
+    (
+        "byte",
+        2,
+        "bits",
+        "le n-ième octet, en partant de zéro",
+        "the nth byte, counting from zero",
+    ),
+    // --- L'ordre ------------------------------------------------------
     (
         "bswap16",
         1,
+        "ordre",
         "permute les 2 octets de bas",
         "swaps the low 2 bytes",
     ),
     (
         "bswap32",
         1,
+        "ordre",
         "permute les 4 octets de bas",
         "swaps the low 4 bytes",
     ),
-    ("bswap64", 1, "permute les 8 octets", "swaps all 8 bytes"),
     (
-        "sext8",
+        "bswap64",
         1,
-        "étend le signe d'un octet",
-        "sign-extends a byte",
+        "ordre",
+        "permute les 8 octets",
+        "swaps all 8 bytes",
     ),
     (
-        "sext16",
+        "bitrev",
         1,
-        "étend le signe de 16 bits",
-        "sign-extends 16 bits",
+        "ordre",
+        "renverse les 64 bits",
+        "reverses all 64 bits",
     ),
     (
-        "sext32",
+        "bitrev8",
         1,
-        "étend le signe de 32 bits",
-        "sign-extends 32 bits",
+        "ordre",
+        "renverse les 8 bits de bas",
+        "reverses the low 8 bits",
     ),
-    ("lo8", 1, "garde l'octet de bas", "keeps the low byte"),
+    (
+        "bitrev16",
+        1,
+        "ordre",
+        "renverse les 16 bits de bas",
+        "reverses the low 16 bits",
+    ),
+    (
+        "bitrev32",
+        1,
+        "ordre",
+        "renverse les 32 bits de bas",
+        "reverses the low 32 bits",
+    ),
+    (
+        "lo8",
+        1,
+        "ordre",
+        "garde l'octet de bas",
+        "keeps the low byte",
+    ),
     (
         "lo16",
         1,
+        "ordre",
         "garde les 16 bits de bas",
         "keeps the low 16 bits",
     ),
     (
         "lo32",
         1,
+        "ordre",
         "garde les 32 bits de bas",
         "keeps the low 32 bits",
     ),
     (
         "hi32",
         1,
+        "ordre",
         "garde les 32 bits de haut",
         "keeps the high 32 bits",
     ),
-    ("popcnt", 1, "compte les bits à 1", "counts the set bits"),
-    ("clz", 1, "zéros de tête", "leading zeros"),
-    ("ctz", 1, "zéros de queue", "trailing zeros"),
+    // --- Le signe -----------------------------------------------------
+    (
+        "sext8",
+        1,
+        "signe",
+        "étend le signe d'un octet",
+        "sign-extends a byte",
+    ),
+    (
+        "sext16",
+        1,
+        "signe",
+        "étend le signe de 16 bits",
+        "sign-extends 16 bits",
+    ),
+    (
+        "sext32",
+        1,
+        "signe",
+        "étend le signe de 32 bits",
+        "sign-extends 32 bits",
+    ),
+    (
+        "twos",
+        1,
+        "signe",
+        "complément à deux : l'opposé",
+        "two's complement: the opposite",
+    ),
+    (
+        "ones",
+        1,
+        "signe",
+        "complément à un : tous les bits retournés",
+        "one's complement: every bit flipped",
+    ),
+    (
+        "abs",
+        1,
+        "signe",
+        "valeur absolue, la valeur étant lue signée",
+        "absolute value, reading the value as signed",
+    ),
+    // --- Compter ------------------------------------------------------
+    (
+        "popcnt",
+        1,
+        "compter",
+        "compte les bits à 1",
+        "counts the set bits",
+    ),
+    ("clz", 1, "compter", "zéros de tête", "leading zeros"),
+    ("ctz", 1, "compter", "zéros de queue", "trailing zeros"),
+    (
+        "parity",
+        1,
+        "compter",
+        "1 si l'octet de bas a un nombre PAIR de bits à 1 — l'indicateur PF",
+        "1 if the low byte has an EVEN number of set bits — the PF flag",
+    ),
+    (
+        "ffs",
+        1,
+        "compter",
+        "rang du premier bit à 1, à partir de 1 ; 0 si aucun",
+        "position of the first set bit, from 1; 0 if none",
+    ),
+    (
+        "log2",
+        1,
+        "compter",
+        "rang du bit de poids fort — le log entier",
+        "position of the top bit — the integer log",
+    ),
+    (
+        "ispow2",
+        1,
+        "compter",
+        "1 si c'est une puissance de deux",
+        "1 if it is a power of two",
+    ),
+    (
+        "nextpow2",
+        1,
+        "compter",
+        "la puissance de deux égale ou supérieure",
+        "the power of two at or above",
+    ),
+    (
+        "align",
+        2,
+        "compter",
+        "arrondit au multiple supérieur",
+        "rounds up to a multiple",
+    ),
+    // --- Tourner ------------------------------------------------------
     (
         "rol",
         2,
+        "tourner",
         "rotation à gauche sur 64 bits",
         "64-bit left rotate",
     ),
     (
         "ror",
         2,
+        "tourner",
         "rotation à droite sur 64 bits",
         "64-bit right rotate",
     ),
     (
-        "align",
+        "rol8",
         2,
-        "arrondit au multiple supérieur",
-        "rounds up to a multiple",
+        "tourner",
+        "rotation à gauche sur 8 bits",
+        "8-bit left rotate",
     ),
-    ("min", 2, "le plus petit des deux", "the smaller of the two"),
-    ("max", 2, "le plus grand des deux", "the larger of the two"),
+    (
+        "ror8",
+        2,
+        "tourner",
+        "rotation à droite sur 8 bits",
+        "8-bit right rotate",
+    ),
+    (
+        "rol16",
+        2,
+        "tourner",
+        "rotation à gauche sur 16 bits",
+        "16-bit left rotate",
+    ),
+    (
+        "ror16",
+        2,
+        "tourner",
+        "rotation à droite sur 16 bits",
+        "16-bit right rotate",
+    ),
+    (
+        "rol32",
+        2,
+        "tourner",
+        "rotation à gauche sur 32 bits",
+        "32-bit left rotate",
+    ),
+    (
+        "ror32",
+        2,
+        "tourner",
+        "rotation à droite sur 32 bits",
+        "32-bit right rotate",
+    ),
+    (
+        "sar",
+        2,
+        "tourner",
+        "décalage à droite ARITHMÉTIQUE : le signe se recopie",
+        "ARITHMETIC right shift: the sign is copied",
+    ),
+    // --- Calculer -----------------------------------------------------
+    (
+        "min",
+        2,
+        "calcul",
+        "le plus petit des deux",
+        "the smaller of the two",
+    ),
+    (
+        "max",
+        2,
+        "calcul",
+        "le plus grand des deux",
+        "the larger of the two",
+    ),
+    (
+        "smin",
+        2,
+        "calcul",
+        "le plus petit des deux, lus signés",
+        "the smaller of the two, read as signed",
+    ),
+    (
+        "smax",
+        2,
+        "calcul",
+        "le plus grand des deux, lus signés",
+        "the larger of the two, read as signed",
+    ),
+    (
+        "mulhi",
+        2,
+        "calcul",
+        "les 64 bits de HAUT du produit — ce que fait `mul`",
+        "the HIGH 64 bits of the product — what `mul` leaves",
+    ),
 ];
 
 /// Évalue une expression.
@@ -546,7 +815,7 @@ impl Parser<'_> {
 
     fn call(&mut self, nom: &str) -> Result<u64, CalcError> {
         let bas = nom.to_ascii_lowercase();
-        let Some(&(nom_connu, arité, _, _)) = FUNCTIONS.iter().find(|(n, ..)| *n == bas) else {
+        let Some(&(nom_connu, arité, _, _, _)) = FUNCTIONS.iter().find(|(n, ..)| *n == bas) else {
             return Err(CalcError::Unknown(bas));
         };
         self.at += 1; // la parenthèse ouvrante
@@ -649,6 +918,128 @@ fn call_function(nom: &str, args: &[u64]) -> u64 {
         }
         "min" => a.min(b),
         "max" => a.max(b),
+
+        // --- Les bits, un par un ---------------------------------
+        // Un rang au-delà de 63 ne désigne aucun bit : on rend la
+        // valeur inchangée plutôt qu'un décalage qui panique.
+        "bit" => u64::from(b < 64 && (a >> b) & 1 == 1),
+        "setbit" => {
+            if b < 64 {
+                a | (1u64 << b)
+            } else {
+                a
+            }
+        }
+        "clrbit" => {
+            if b < 64 {
+                a & !(1u64 << b)
+            } else {
+                a
+            }
+        }
+        "flipbit" => {
+            if b < 64 {
+                a ^ (1u64 << b)
+            } else {
+                a
+            }
+        }
+        // Le champ de bits, ramené en bas : c'est le geste qu'on fait
+        // à la main pour lire un encodage — le `reg` d'un ModR/M, le
+        // niveau d'une table de pages.
+        "bits" => {
+            let c = args.get(2).copied().unwrap_or(0);
+            let (haut, bas) = (b.max(c).min(63), b.min(c));
+            let largeur = haut - bas + 1;
+            if largeur >= 64 {
+                a >> bas
+            } else {
+                (a >> bas) & ((1u64 << largeur) - 1)
+            }
+        }
+        "mask" => {
+            if a >= 64 {
+                u64::MAX
+            } else {
+                (1u64 << a) - 1
+            }
+        }
+        "byte" => {
+            if b < 8 {
+                (a >> (b * 8)) & 0xff
+            } else {
+                0
+            }
+        }
+
+        // --- L'ordre ----------------------------------------------
+        "bitrev" => a.reverse_bits(),
+        "bitrev8" => u64::from((a as u8).reverse_bits()),
+        "bitrev16" => u64::from((a as u16).reverse_bits()),
+        "bitrev32" => u64::from((a as u32).reverse_bits()),
+
+        // --- Le signe ---------------------------------------------
+        "twos" => a.wrapping_neg(),
+        "ones" => !a,
+        "abs" => (a as i64).wrapping_abs() as u64,
+
+        // --- Compter ----------------------------------------------
+        // La parité du x86 : celle de l'OCTET DE BAS, et elle vaut 1
+        // quand le compte est PAIR. Les deux surprennent, et c'est
+        // exactement pour cela qu'elle est ici.
+        "parity" => u64::from((a as u8).count_ones().is_multiple_of(2)),
+        "ffs" => {
+            if a == 0 {
+                0
+            } else {
+                u64::from(a.trailing_zeros()) + 1
+            }
+        }
+        // Zéro n'a pas de bit de poids fort : zéro, plutôt qu'un
+        // nombre tiré de `63 - 64`.
+        "log2" => {
+            if a == 0 {
+                0
+            } else {
+                63 - u64::from(a.leading_zeros())
+            }
+        }
+        "ispow2" => u64::from(a != 0 && a.count_ones() == 1),
+        // Zéro et un rendent un ; au-delà de 2^63, la puissance
+        // suivante ne tient pas, et l'on rend la valeur telle quelle
+        // plutôt que zéro.
+        "nextpow2" => match a {
+            0 | 1 => 1,
+            _ if a > 1u64 << 63 => a,
+            _ => 1u64 << (64 - (a - 1).leading_zeros()),
+        },
+
+        // --- Tourner ----------------------------------------------
+        "rol8" => u64::from((a as u8).rotate_left((b % 8) as u32)),
+        "ror8" => u64::from((a as u8).rotate_right((b % 8) as u32)),
+        "rol16" => u64::from((a as u16).rotate_left((b % 16) as u32)),
+        "ror16" => u64::from((a as u16).rotate_right((b % 16) as u32)),
+        "rol32" => u64::from((a as u32).rotate_left((b % 32) as u32)),
+        "ror32" => u64::from((a as u32).rotate_right((b % 32) as u32)),
+        // `>>` décale en logique — c'est ce qu'on attend d'une
+        // calculatrice qui montre des bits. `sar` est l'autre, celui
+        // du processeur sur un nombre signé : au-delà de 63, il reste
+        // le signe, répété.
+        "sar" => {
+            if b >= 64 {
+                ((a as i64) >> 63) as u64
+            } else {
+                ((a as i64) >> b) as u64
+            }
+        }
+
+        // --- Calculer ---------------------------------------------
+        "smin" => (a as i64).min(b as i64) as u64,
+        "smax" => (a as i64).max(b as i64) as u64,
+        // Ce que `mul` laisse dans RDX : la moitié haute du produit,
+        // celle qu'on ne voit pas et qui explique les divisions par
+        // constante qu'un compilateur écrit.
+        "mulhi" => ((u128::from(a) * u128::from(b)) >> 64) as u64,
         _ => 0,
     }
 }
@@ -1131,6 +1522,138 @@ mod tests {
                     let _ = eval(&format!("{a}{b}{c}"), None);
                 }
             }
+        }
+    }
+    /// Les fonctions de bits, une à une, et sur les cas qui piègent.
+    ///
+    /// Chacune vient d'un geste qu'on fait à la main en lisant un
+    /// désassemblage : extraire un champ d'un encodage, compter les
+    /// bits d'un masque, retrouver l'opposé d'un nombre signé, lire ce
+    /// que `mul` laisse dans RDX. Les valeurs attendues sont écrites à
+    /// la main plutôt que recalculées par la même expression — un test
+    /// qui refait le calcul du code ne vérifie que lui-même.
+    #[test]
+    fn les_fonctions_de_bits() {
+        // Lire, poser, retirer, retourner un bit.
+        assert_eq!(ok("bit(0b1010, 1)"), 1);
+        assert_eq!(ok("bit(0b1010, 2)"), 0);
+        assert_eq!(ok("setbit(0, 7)"), 0x80);
+        assert_eq!(ok("clrbit(0xff, 0)"), 0xfe);
+        assert_eq!(ok("flipbit(0b1000, 3)"), 0);
+        // Un rang hors des soixante-quatre bits ne désigne rien : la
+        // valeur passe, sans panique ni résultat inventé.
+        assert_eq!(ok("bit(0xff, 64)"), 0);
+        assert_eq!(ok("setbit(5, 64)"), 5);
+
+        // Le champ de bits : le geste du décodeur d'instruction.
+        // 0b11_010_101 est un ModR/M — mod=3, reg=2, rm=5.
+        assert_eq!(ok("bits(0b11010101, 7, 6)"), 0b11);
+        assert_eq!(ok("bits(0b11010101, 5, 3)"), 0b010);
+        assert_eq!(ok("bits(0b11010101, 2, 0)"), 0b101);
+        // Les bornes dans l'autre sens disent la même chose.
+        assert_eq!(ok("bits(0b11010101, 0, 2)"), 0b101);
+        assert_eq!(ok("bits(0xffffffffffffffff, 63, 0)"), u64::MAX);
+
+        assert_eq!(ok("mask(8)"), 0xff);
+        assert_eq!(ok("mask(0)"), 0);
+        assert_eq!(ok("mask(64)"), u64::MAX);
+        assert_eq!(ok("mask(99)"), u64::MAX);
+        assert_eq!(ok("byte(0x1122334455667788, 0)"), 0x88);
+        assert_eq!(ok("byte(0x1122334455667788, 7)"), 0x11);
+        assert_eq!(ok("byte(0x1122334455667788, 8)"), 0);
+
+        // L'ordre des bits.
+        assert_eq!(ok("bitrev8(0b00000001)"), 0b1000_0000);
+        assert_eq!(ok("bitrev16(0x0001)"), 0x8000);
+        assert_eq!(ok("bitrev32(1)"), 0x8000_0000);
+        assert_eq!(ok("bitrev(1)"), 1u64 << 63);
+
+        // Le signe. `twos` est l'opposé, et l'opposé de zéro est zéro.
+        assert_eq!(ok("twos(1)"), u64::MAX);
+        assert_eq!(ok("twos(0)"), 0);
+        assert_eq!(ok("ones(0)"), u64::MAX);
+        assert_eq!(ok("abs(twos(5))"), 5);
+        assert_eq!(ok("abs(5)"), 5);
+
+        // Compter. La parité est celle du x86 : l'octet de BAS, et 1
+        // quand le compte est PAIR — les deux surprennent.
+        assert_eq!(ok("parity(0b11)"), 1);
+        assert_eq!(ok("parity(0b111)"), 0);
+        assert_eq!(ok("parity(0xff00)"), 1, "l'octet de haut ne compte pas");
+        assert_eq!(ok("ffs(0)"), 0);
+        assert_eq!(ok("ffs(1)"), 1);
+        assert_eq!(ok("ffs(0b1000)"), 4);
+        assert_eq!(ok("log2(1)"), 0);
+        assert_eq!(ok("log2(0x100)"), 8);
+        assert_eq!(ok("log2(0)"), 0, "zéro n'a pas de bit de poids fort");
+        assert_eq!(ok("ispow2(64)"), 1);
+        assert_eq!(ok("ispow2(65)"), 0);
+        assert_eq!(ok("ispow2(0)"), 0, "zéro n'est pas une puissance de deux");
+        assert_eq!(ok("nextpow2(0)"), 1);
+        assert_eq!(ok("nextpow2(1)"), 1);
+        assert_eq!(ok("nextpow2(5)"), 8);
+        assert_eq!(
+            ok("nextpow2(4096)"),
+            4096,
+            "une puissance se rend elle-même"
+        );
+
+        // Tourner, sur la largeur qu'on nomme : `rol8(0x80, 1)` fait
+        // UN, là où `rol(0x80, 1)` fait 0x100.
+        assert_eq!(ok("rol8(0x80, 1)"), 1);
+        assert_eq!(ok("rol(0x80, 1)"), 0x100);
+        assert_eq!(ok("ror8(1, 1)"), 0x80);
+        assert_eq!(ok("rol16(0x8000, 1)"), 1);
+        assert_eq!(ok("ror16(1, 1)"), 0x8000);
+        assert_eq!(ok("rol32(0x80000000, 1)"), 1);
+        assert_eq!(ok("ror32(1, 1)"), 0x8000_0000);
+
+        // Le décalage arithmétique : le signe se recopie, là où `>>`
+        // fait entrer des zéros.
+        assert_eq!(ok("sar(twos(8), 1)"), (-4i64) as u64);
+        assert_eq!(ok("twos(8) >> 1"), (u64::MAX - 7) >> 1);
+        assert_eq!(ok("sar(twos(1), 63)"), u64::MAX, "le signe, répété");
+        assert_eq!(ok("sar(twos(1), 99)"), u64::MAX);
+        assert_eq!(ok("sar(8, 1)"), 4);
+
+        // Calculer. `smin` lit les deux comme signés — c'est toute la
+        // différence avec `min`, et c'est la différence entre `jb` et
+        // `jl` dans un listing.
+        assert_eq!(ok("min(1, twos(1))"), 1);
+        assert_eq!(ok("smin(1, twos(1))"), u64::MAX);
+        assert_eq!(ok("max(1, twos(1))"), u64::MAX);
+        assert_eq!(ok("smax(1, twos(1))"), 1);
+        // Ce que `mul` laisse dans RDX.
+        assert_eq!(ok("mulhi(0xffffffffffffffff, 2)"), 1);
+        assert_eq!(ok("mulhi(2, 3)"), 0);
+    }
+
+    /// Chaque fonction annoncée est calculable, et sous le nombre
+    /// d'arguments qu'elle annonce.
+    ///
+    /// La table sert d'aide-mémoire à l'interface : une entrée qui
+    /// n'aurait pas son bras dans `call_function` afficherait une
+    /// pastille qui rend zéro, et une arité fausse ferait une erreur
+    /// là où l'on vient d'être invité à cliquer.
+    #[test]
+    fn toute_fonction_annoncee_se_calcule() {
+        for (nom, arité, famille, fr, en) in FUNCTIONS {
+            assert!((1..=3).contains(arité), "{nom} : arité {arité}");
+            assert!(
+                FAMILIES.iter().any(|(id, ..)| id == famille),
+                "{nom} : la famille « {famille} » n'existe pas"
+            );
+            assert!(!fr.is_empty() && !en.is_empty(), "{nom} : sans explication");
+            let args: Vec<String> = (0..*arité).map(|i| (i + 1).to_string()).collect();
+            let expr = format!("{nom}({})", args.join(", "));
+            eval(&expr, None).unwrap_or_else(|e| panic!("« {expr} » : {e:?}"));
+            // Un argument de trop doit se dire, et non passer.
+            let trop: Vec<String> = (0..=*arité).map(|i| (i + 1).to_string()).collect();
+            let expr = format!("{nom}({})", trop.join(", "));
+            assert!(
+                eval(&expr, None).is_err(),
+                "« {expr} » devrait être refusée : {nom} prend {arité} argument(s)"
+            );
         }
     }
 }

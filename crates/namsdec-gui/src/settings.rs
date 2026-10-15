@@ -146,6 +146,10 @@ pub struct Settings {
     pub analysis_module: String,
     #[serde(default = "base_par_défaut")]
     pub calc_base: String,
+    /// La famille de fonctions ouverte dans la calculatrice : « bits »,
+    /// « ordre », « signe », « compter », « tourner », « calcul ».
+    #[serde(default)]
+    pub calc_family: String,
     /// Sur combien de bits elle montre son résultat : « 8 », « 16 »,
     /// « 32 » ou « 64 ».
     #[serde(default = "largeur_par_défaut")]
@@ -351,6 +355,7 @@ impl Default for Settings {
             memory_format: "bytes".to_owned(),
             analysis_module: String::new(),
             calc_base: base_par_défaut(),
+            calc_family: String::new(),
             calc_width: largeur_par_défaut(),
             heat_legend: true,
             flow_current_only: true,

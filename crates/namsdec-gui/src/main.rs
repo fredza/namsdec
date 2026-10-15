@@ -759,6 +759,14 @@ struct NamsdecApp {
     calc_base: CalcBase,
     /// Sur combien de bits elle montre son résultat.
     calc_width: CalcWidth,
+    /// La famille de fonctions ouverte dans la calculatrice.
+    ///
+    /// Quarante-sept pastilles tiennent sur douze lignes, et douze
+    /// lignes de plus poussaient le bas de la fenêtre hors de l'écran.
+    /// Une famille à la fois, donc, et celle qu'on consulte est celle
+    /// qu'on retrouve au retour : on ne travaille pas sur les bits un
+    /// jour et sur les rotations le lendemain par hasard.
+    calc_family: String,
     /// Combien de fois le texte avait été posé au début de la frame.
     ///
     /// Sert à distinguer les deux sortes de frames lentes : celle d'une
@@ -1931,6 +1939,7 @@ impl Default for NamsdecApp {
             was_waiting_for_input: false,
             calc_base: CalcBase::Hex,
             calc_width: CalcWidth::W64,
+            calc_family: calc::FAMILIES[0].0.to_owned(),
             poses_au_début: 0,
             windows_open: BTreeSet::new(),
             mem_find_input: String::new(),

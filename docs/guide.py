@@ -84,6 +84,19 @@ def fiches():
     texte = (RACINE / "crates/namsdec-doc/src/table.rs").read_text(encoding="utf-8")
     return texte.count("kind: Kind::")
 
+def fonctions_de_la_calculatrice():
+    """Combien de fonctions la calculatrice connaît, lues dans sa table.
+
+    Comptées dans le code plutôt qu'écrites ici : le guide dirait
+    « dix-huit » longtemps après qu'il y en a quarante-sept, et c'est
+    exactement ce qui vient d'arriver.
+    """
+    texte = (RACINE / "crates/namsdec-gui/src/calc.rs").read_text(encoding="utf-8")
+    debut = texte.index("pub const FUNCTIONS")
+    fin = texte.index("\n];", debut)
+    return len(re.findall(r'^\s*\(\s*\n?\s*"', texte[debut:fin], re.M))
+
+
 def raccourcis():
     """Les raccourcis par défaut, lus dans le code qui les pose."""
     texte = (RACINE / "crates/namsdec-gui/src/keybindings.rs").read_text(encoding="utf-8")
@@ -162,7 +175,7 @@ def _touche(nom):
 
 # --- Le contenu ----------------------------------------------------------
 
-def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
+def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
             total_atelier, atelier_paliers):
     """Le guide, section par section.
 
@@ -1008,14 +1021,47 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests,
          "sur une page sans droit de lecture. Regarder ne doit pas changer ce qu'on "
          "regarde."),
         ("p",
-         "S'y ajoutent les fonctions qu'on écrit à la main en lisant un désassemblage : "
-         "permutation d'octets, extension de signe, comptage de bits, rotations, "
-         "alignement. Elles sont en boutons, et <b>survoler l'une d'elles écrit ce "
-         "qu'elle fait</b> juste en dessous — l'infobulle seule ne suffisait pas, elle "
-         "se mérite après une demi-seconde d'immobilité alors qu'on parcourt "
-         "dix-huit noms des yeux. Un clic écrit l'appel dans l'expression. Le résultat "
-         "s'affiche en bas dans <b>toutes les bases en même temps</b>, chaque ligne se "
-         "copiant d'un clic."),
+         "S'y ajoutent <b>%d fonctions</b> : celles qu'on écrit à la main en lisant un "
+         "désassemblage, rangées en six familles qu'on ouvre une à une. Elles sont en "
+         "boutons, et <b>survoler l'une d'elles écrit ce qu'elle fait</b> juste en "
+         "dessous — l'infobulle seule ne suffisait pas, elle se mérite après une "
+         "demi-seconde d'immobilité alors qu'on parcourt les noms des yeux. Un clic "
+         "écrit l'appel dans l'expression. Le résultat s'affiche en bas dans "
+         "<b>toutes les bases en même temps</b>, chaque ligne se copiant d'un clic." %
+         nb_fonctions),
+        ("liste", [
+            "<b>Bits</b> — lire, poser, retirer, retourner un bit ; "
+            "<font face='Courier'>bits(x, h, b)</font> extrait un champ, ce qu'on fait à "
+            "la main pour décoder un ModR/M ; <font face='Courier'>mask(n)</font> et "
+            "<font face='Courier'>byte(x, n)</font>.",
+            "<b>Ordre</b> — permuter les octets, renverser les bits "
+            "(<font face='Courier'>bitrev8</font> et ses largeurs), tronquer en haut ou "
+            "en bas.",
+            "<b>Signe</b> — étendre le signe, le complément à deux "
+            "(<font face='Courier'>twos</font>, l'opposé), le complément à un, la valeur "
+            "absolue.",
+            "<b>Compter</b> — bits à 1, zéros de tête et de queue, "
+            "<font face='Courier'>parity</font> (celle du x86 : l'octet de BAS, et 1 "
+            "quand le compte est PAIR), le premier bit à 1, le log entier, les "
+            "puissances de deux, l'alignement.",
+            "<b>Tourner</b> — rotations sur 8, 16, 32 ou 64 bits — "
+            "<font face='Courier'>rol8(0x80, 1)</font> fait un, "
+            "<font face='Courier'>rol(0x80, 1)</font> fait 0x100 — et "
+            "<font face='Courier'>sar</font>, le décalage arithmétique, celui qui "
+            "recopie le signe là où <font face='Courier'>&gt;&gt;</font> fait entrer des "
+            "zéros.",
+            "<b>Calculer</b> — le plus petit et le plus grand, signés ou non (c'est la "
+            "différence entre <font face='Courier'>jb</font> et "
+            "<font face='Courier'>jl</font>), et "
+            "<font face='Courier'>mulhi</font> : les 64 bits de haut du produit, ce que "
+            "<font face='Courier'>mul</font> laisse dans RDX et qui explique les "
+            "divisions par constante d'un compilateur.",
+        ]),
+        ("note",
+         "Une famille à la fois, et celle qu'on consulte est celle qu'on retrouve au "
+         "retour. Les %d pastilles ensemble tenaient douze lignes, et douze lignes de "
+         "plus poussaient le bas de la fenêtre — les bases, le bouton — hors de "
+         "l'écran." % nb_fonctions),
         ("note",
          "La lecture ASCII suit l'ordre de la <b>mémoire</b>, non celui de l'écriture : "
          "<font face='Courier'>0x6c6c6568</font> donne « hell » et non « lleh ». Une valeur "
@@ -2319,7 +2365,7 @@ def main():
     total, avec_but, paliers = exercices()
     total_atelier, atelier_paliers = atelier()
     blocs = contenu(v, total, avec_but, paliers, fiches(), tests(),
-                    total_atelier, atelier_paliers)
+                    fonctions_de_la_calculatrice(), total_atelier, atelier_paliers)
     # Les raccourcis, en dernier chapitre : ils viennent du code.
     table = [["Action", "Raccourci"]]
     for action, touches in raccourcis():
