@@ -31539,3 +31539,64 @@ hlt
         "« vert » doit porter le vert du thème :\n{galettes:?}"
     );
 }
+
+/// La fenêtre des registres étendus montre les masques d'AVX-512 —
+/// mais seulement quand il y en a.
+///
+/// En binaire et non en hexadécimal : ce qu'on y lit est « quelles
+/// voies », un bit par élément, et c'est la forme même de la réponse.
+/// Le `0x0f` d'un `kmovd` ne dit pas qu'il s'agit des quatre premiers
+/// octets ; `00001111` le dit.
+///
+/// Et seulement quand il y en a : un programme qui n'emploie pas
+/// AVX-512 n'a pas à lire huit lignes de zéros.
+#[test]
+fn the_vector_window_shows_the_avx512_masks_when_there_are_any() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let s = strings(Lang::Fr);
+
+    // Sans masque posé : rien ne doit apparaître.
+    let mut app = NamsdecApp {
+        source: "global _start\nsection .text\n_start:\nmov rax, 1\nhlt\n".to_owned(),
+        show_vectors: true,
+        ..Default::default()
+    };
+    app.do_assemble();
+    let peint = paint(&mut app);
+    assert!(
+        !peint.contains(s.mask_registers),
+        "sans AVX-512, pas huit lignes de zéros :\n{peint}"
+    );
+
+    // Avec : les huit registres, et la valeur en binaire.
+    let mut app = NamsdecApp {
+        source: "\
+global _start
+section .text
+_start:
+mov eax, 0b1111
+kmovd k1, eax
+hlt
+"
+        .to_owned(),
+        show_vectors: true,
+        ..Default::default()
+    };
+    app.do_assemble();
+    app.do_run();
+    for _ in 0..200 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&egui::Context::default());
+    }
+    let peint = paint(&mut app);
+    assert!(peint.contains(s.mask_registers), "le titre :\n{peint}");
+    assert!(peint.contains("k1|"), "les huit registres :\n{peint}");
+    assert!(
+        peint.contains("00000000000000000000000000001111"),
+        "la valeur en binaire, où l'on LIT les quatre voies :\n{peint}"
+    );
+}

@@ -12,7 +12,7 @@ use std::cmp::Ordering;
 use iced_x86::{Instruction, Mnemonic, OpKind};
 use namsdec_core::RFlags;
 
-use crate::regmap::map_vector;
+use crate::regmap::{map_mask, map_vector};
 use crate::{
     EmuError, Emulator, OperandRole, round_even, sign_extend, to_integer, width_from_bytes,
 };
@@ -1372,6 +1372,93 @@ impl Emulator {
 
             M::Ptest | M::Vptest => self.packed_test(instr)?,
 
+            // --- Les registres de MASQUE d'AVX-512 -------------------
+            // Un bit par voie, là où les jeux précédents écrivaient un
+            // vecteur de zéros et de uns. C'est le seul morceau
+            // d'AVX-512 qui ne demande pas d'élargir les registres
+            // vectoriels : huit entiers de soixante-quatre bits.
+            M::Kmovb => self.move_mask(instr, 8)?,
+            M::Kmovw => self.move_mask(instr, 16)?,
+            M::Kmovd => self.move_mask(instr, 32)?,
+            M::Kmovq => self.move_mask(instr, 64)?,
+
+            M::Kandb => self.mask_binary(instr, 8, |a, b| a & b)?,
+            M::Kandw => self.mask_binary(instr, 16, |a, b| a & b)?,
+            M::Kandd => self.mask_binary(instr, 32, |a, b| a & b)?,
+            M::Kandq => self.mask_binary(instr, 64, |a, b| a & b)?,
+            M::Korb => self.mask_binary(instr, 8, |a, b| a | b)?,
+            M::Korw => self.mask_binary(instr, 16, |a, b| a | b)?,
+            M::Kord => self.mask_binary(instr, 32, |a, b| a | b)?,
+            M::Korq => self.mask_binary(instr, 64, |a, b| a | b)?,
+            M::Kxorb => self.mask_binary(instr, 8, |a, b| a ^ b)?,
+            M::Kxorw => self.mask_binary(instr, 16, |a, b| a ^ b)?,
+            M::Kxord => self.mask_binary(instr, 32, |a, b| a ^ b)?,
+            M::Kxorq => self.mask_binary(instr, 64, |a, b| a ^ b)?,
+            M::Kandnb => self.mask_binary(instr, 8, |a, b| !a & b)?,
+            M::Kandnw => self.mask_binary(instr, 16, |a, b| !a & b)?,
+            M::Kandnd => self.mask_binary(instr, 32, |a, b| !a & b)?,
+            M::Kandnq => self.mask_binary(instr, 64, |a, b| !a & b)?,
+            M::Kxnorb => self.mask_binary(instr, 8, |a, b| !(a ^ b))?,
+            M::Kxnorw => self.mask_binary(instr, 16, |a, b| !(a ^ b))?,
+            M::Kxnord => self.mask_binary(instr, 32, |a, b| !(a ^ b))?,
+            M::Kxnorq => self.mask_binary(instr, 64, |a, b| !(a ^ b))?,
+            M::Knotb => self.mask_binary(instr, 8, |a, _| !a)?,
+            M::Knotw => self.mask_binary(instr, 16, |a, _| !a)?,
+            M::Knotd => self.mask_binary(instr, 32, |a, _| !a)?,
+            M::Knotq => self.mask_binary(instr, 64, |a, _| !a)?,
+            // `kadd*` additionne deux masques comme des nombres : on
+            // s'en sert pour avancer un compteur de voies.
+            M::Kaddb => self.mask_binary(instr, 8, |a, b| a.wrapping_add(b))?,
+            M::Kaddw => self.mask_binary(instr, 16, |a, b| a.wrapping_add(b))?,
+            M::Kaddd => self.mask_binary(instr, 32, |a, b| a.wrapping_add(b))?,
+            M::Kaddq => self.mask_binary(instr, 64, |a, b| a.wrapping_add(b))?,
+
+            M::Kshiftlb => self.mask_shift(instr, 8, true)?,
+            M::Kshiftlw => self.mask_shift(instr, 16, true)?,
+            M::Kshiftld => self.mask_shift(instr, 32, true)?,
+            M::Kshiftlq => self.mask_shift(instr, 64, true)?,
+            M::Kshiftrb => self.mask_shift(instr, 8, false)?,
+            M::Kshiftrw => self.mask_shift(instr, 16, false)?,
+            M::Kshiftrd => self.mask_shift(instr, 32, false)?,
+            M::Kshiftrq => self.mask_shift(instr, 64, false)?,
+
+            M::Kortestb => self.mask_test(instr, 8, true)?,
+            M::Kortestw => self.mask_test(instr, 16, true)?,
+            M::Kortestd => self.mask_test(instr, 32, true)?,
+            M::Kortestq => self.mask_test(instr, 64, true)?,
+            M::Ktestb => self.mask_test(instr, 8, false)?,
+            M::Ktestw => self.mask_test(instr, 16, false)?,
+            M::Ktestd => self.mask_test(instr, 32, false)?,
+            M::Ktestq => self.mask_test(instr, 64, false)?,
+
+            // `kunpck` colle deux masques bout à bout : la moitié
+            // basse du résultat vient du second, la haute du premier.
+            M::Kunpckbw => self.mask_binary(instr, 16, |a, b| (a << 8) | (b & 0xff))?,
+            M::Kunpckwd => self.mask_binary(instr, 32, |a, b| (a << 16) | (b & 0xffff))?,
+            M::Kunpckdq => {
+                self.mask_binary(instr, 64, |a, b| (a << 32) | (b & 0xffff_ffff))?
+            }
+
+            // Ce qui ÉCRIT dans un masque : la comparaison voie par
+            // voie, et le test voie par voie.
+            M::Vptestmb => self.test_into_mask(instr, 1, false)?,
+            M::Vptestmw => self.test_into_mask(instr, 2, false)?,
+            M::Vptestmd => self.test_into_mask(instr, 4, false)?,
+            M::Vptestmq => self.test_into_mask(instr, 8, false)?,
+            M::Vptestnmb => self.test_into_mask(instr, 1, true)?,
+            M::Vptestnmw => self.test_into_mask(instr, 2, true)?,
+            M::Vptestnmd => self.test_into_mask(instr, 4, true)?,
+            M::Vptestnmq => self.test_into_mask(instr, 8, true)?,
+
+            M::Vpcmpb => self.compare_into_mask(instr, 1, true)?,
+            M::Vpcmpw => self.compare_into_mask(instr, 2, true)?,
+            M::Vpcmpd => self.compare_into_mask(instr, 4, true)?,
+            M::Vpcmpq => self.compare_into_mask(instr, 8, true)?,
+            M::Vpcmpub => self.compare_into_mask(instr, 1, false)?,
+            M::Vpcmpuw => self.compare_into_mask(instr, 2, false)?,
+            M::Vpcmpud => self.compare_into_mask(instr, 4, false)?,
+            M::Vpcmpuq => self.compare_into_mask(instr, 8, false)?,
+
             // Les instructions de chaîne de SSE4.2 : une boucle de
             // `strlen` en une instruction, et c'est pour cela que la
             // bibliothèque C en est pleine.
@@ -1947,6 +2034,216 @@ impl Emulator {
         }
         self.cpu.flags.apply_arith(flags);
         Ok(())
+    }
+
+    /// Lit un opérande qui est un registre de masque.
+    fn read_mask_op(&self, instr: &Instruction, op: u32) -> Result<u64, EmuError> {
+        let reg = instr.op_register(op);
+        map_mask(reg)
+            .map(|k| self.cpu.regs.get_mask(k))
+            .ok_or_else(|| EmuError::UnsupportedRegister {
+                backend: Self::NAME,
+                register: format!("{reg:?}"),
+            })
+    }
+
+    /// Écrit un registre de masque.
+    fn write_mask_op(&mut self, instr: &Instruction, op: u32, v: u64) -> Result<(), EmuError> {
+        let reg = instr.op_register(op);
+        let k = map_mask(reg).ok_or_else(|| EmuError::UnsupportedRegister {
+            backend: Self::NAME,
+            register: format!("{reg:?}"),
+        })?;
+        self.cpu.regs.set_mask(k, v);
+        Ok(())
+    }
+
+    /// `kmovb/w/d/q` : déplacer un masque — d'un registre de masque à
+    /// l'autre, vers un registre général, ou depuis la mémoire.
+    ///
+    /// C'est par elle qu'un masque sort du monde d'AVX-512 : une
+    /// comparaison écrit `k1`, `kmovd eax, k1` le ramène dans un
+    /// registre ordinaire, et le code branche dessus. On la trouve
+    /// sept cent trois fois dans les binaires d'épreuve, soit plus que
+    /// toute autre instruction AVX-512.
+    fn move_mask(&mut self, instr: &Instruction, bits: u32) -> Result<(), EmuError> {
+        let masque = if bits >= 64 {
+            u64::MAX
+        } else {
+            (1u64 << bits) - 1
+        };
+        let source = if instr.op_kind(1) == OpKind::Register && instr.op_register(1).is_k() {
+            self.read_mask_op(instr, 1)?
+        } else {
+            // Un registre général ou la mémoire : `read_op` sait lire
+            // les deux, à la largeur que l'instruction déclare.
+            self.read_op(instr, 1)?
+        } & masque;
+        if instr.op_kind(0) == OpKind::Register && instr.op_register(0).is_k() {
+            self.write_mask_op(instr, 0, source)
+        } else {
+            self.write_op(instr, 0, source)
+        }
+    }
+
+    /// Les opérations bit à bit entre deux masques : `kand`, `kor`,
+    /// `kxor`, `kandn`, `kxnor`, `knot`, et les décalages.
+    ///
+    /// Elles servent à combiner des conditions : « les octets qui sont
+    /// des lettres ET qui ne sont pas déjà pris ». C'est le même
+    /// travail que `pand` sur un vecteur de masques, en huit fois moins
+    /// de bits.
+    fn mask_binary(
+        &mut self,
+        instr: &Instruction,
+        bits: u32,
+        f: impl Fn(u64, u64) -> u64,
+    ) -> Result<(), EmuError> {
+        let masque = if bits >= 64 {
+            u64::MAX
+        } else {
+            (1u64 << bits) - 1
+        };
+        // Deux sources nommées, ou une seule pour `knot`.
+        let (a, b) = if instr.op_count() >= 3 {
+            (self.read_mask_op(instr, 1)?, self.read_mask_op(instr, 2)?)
+        } else {
+            (self.read_mask_op(instr, 1)?, 0)
+        };
+        self.write_mask_op(instr, 0, f(a, b) & masque)
+    }
+
+    /// Un décalage de masque, dont le compte est un immédiat.
+    fn mask_shift(&mut self, instr: &Instruction, bits: u32, gauche: bool) -> Result<(), EmuError> {
+        let masque = if bits >= 64 {
+            u64::MAX
+        } else {
+            (1u64 << bits) - 1
+        };
+        let a = self.read_mask_op(instr, 1)?;
+        let n = self.read_op(instr, 2)?;
+        let out = if n >= 64 {
+            0
+        } else if gauche {
+            a << n
+        } else {
+            a >> n
+        };
+        self.write_mask_op(instr, 0, out & masque)
+    }
+
+    /// `kortest` et `ktest` : poser les indicateurs sans rien écrire.
+    ///
+    /// C'est là que le masque redevient une décision. `kortestd k1, k1`
+    /// suivi d'un `jz` est la façon dont une boucle AVX-512 demande
+    /// « rien trouvé dans ces soixante-quatre octets ? ».
+    ///
+    /// `kortest` : ZF dit que le OU des deux est nul, CF qu'il est
+    /// plein. `ktest` : ZF dit que le ET est nul, CF que le ET-NON
+    /// l'est.
+    fn mask_test(&mut self, instr: &Instruction, bits: u32, ou: bool) -> Result<(), EmuError> {
+        let masque = if bits >= 64 {
+            u64::MAX
+        } else {
+            (1u64 << bits) - 1
+        };
+        let a = self.read_mask_op(instr, 0)? & masque;
+        let b = self.read_mask_op(instr, 1)? & masque;
+        let mut flags = RFlags::empty();
+        let (zéro, retenue) = if ou {
+            ((a | b) == 0, (a | b) == masque)
+        } else {
+            ((a & b) == 0, (b & !a) & masque == 0)
+        };
+        if zéro {
+            flags |= RFlags::ZF;
+        }
+        if retenue {
+            flags |= RFlags::CF;
+        }
+        self.cpu.flags.apply_arith(flags);
+        Ok(())
+    }
+
+    /// `vptestm*` et `vptestnm*` : la question de `ptest`, posée voie
+    /// par voie, et dont la réponse va dans un registre de masque.
+    ///
+    /// `vptestmb k1, ymm2, ymm3` pose un bit par octet, là où le ET des
+    /// deux n'est pas nul ; la forme `nm` fait l'inverse. C'est
+    /// l'instruction qui remplace le couple `pcmpeqb` + `pmovmskb` des
+    /// jeux précédents — et l'on en compte quatre cents dans les
+    /// binaires d'épreuve.
+    fn test_into_mask(
+        &mut self,
+        instr: &Instruction,
+        bytes: usize,
+        nul: bool,
+    ) -> Result<(), EmuError> {
+        let a = self.read_vec_op(instr, 1)?;
+        let b = self.read_vec_op(instr, 2)?;
+        let large = matches!(instr.op_kind(1), OpKind::Register) && instr.op_register(1).is_ymm();
+        let voies = if large { 32 / bytes } else { 16 / bytes };
+        let bits = bytes * 8;
+        let mut out = 0u64;
+        for voie in 0..voies {
+            let (moitié, dans) = (voie / (16 / bytes), voie % (16 / bytes));
+            let mot = (a[moitié] >> (dans * bits)) & u128::from(lane_mask(bits));
+            let autre = (b[moitié] >> (dans * bits)) & u128::from(lane_mask(bits));
+            if ((mot & autre) != 0) != nul {
+                out |= 1u64 << voie;
+            }
+        }
+        self.write_mask_op(instr, 0, out)
+    }
+
+    /// `vpcmp*` : comparer voie par voie selon un PRÉDICAT, et poser un
+    /// bit par voie dans un registre de masque.
+    ///
+    /// Les jeux précédents n'avaient que « égal » et « plus grand », et
+    /// l'on composait le reste. AVX-512 porte le prédicat dans un
+    /// immédiat : 0 égal, 1 plus petit, 2 plus petit ou égal, 4
+    /// différent, 5 pas plus petit, 6 pas plus petit ou égal. Les 3 et
+    /// 7 sont « jamais » et « toujours ».
+    fn compare_into_mask(
+        &mut self,
+        instr: &Instruction,
+        bytes: usize,
+        signé: bool,
+    ) -> Result<(), EmuError> {
+        let a = self.read_vec_op(instr, 1)?;
+        let b = self.read_vec_op(instr, 2)?;
+        let prédicat = self.read_op(instr, 3)? & 7;
+        let large = matches!(instr.op_kind(1), OpKind::Register) && instr.op_register(1).is_ymm();
+        let voies = if large { 32 / bytes } else { 16 / bytes };
+        let bits = bytes * 8;
+        let Some(w) = width_from_bytes(bytes) else {
+            return Ok(());
+        };
+        let mut out = 0u64;
+        for voie in 0..voies {
+            let (moitié, dans) = (voie / (16 / bytes), voie % (16 / bytes));
+            let x = ((a[moitié] >> (dans * bits)) as u64) & lane_mask(bits);
+            let y = ((b[moitié] >> (dans * bits)) as u64) & lane_mask(bits);
+            let ordre = if signé {
+                (sign_extend(x, w) as i64).cmp(&(sign_extend(y, w) as i64))
+            } else {
+                x.cmp(&y)
+            };
+            let vrai = match prédicat {
+                0 => ordre == Ordering::Equal,
+                1 => ordre == Ordering::Less,
+                2 => ordre != Ordering::Greater,
+                3 => false,
+                4 => ordre != Ordering::Equal,
+                5 => ordre != Ordering::Less,
+                6 => ordre == Ordering::Greater,
+                _ => true,
+            };
+            if vrai {
+                out |= 1u64 << voie;
+            }
+        }
+        self.write_mask_op(instr, 0, out)
     }
 
     /// `ptest` : deux questions posées d'un coup sur 128 ou 256 bits.

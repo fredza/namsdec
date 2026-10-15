@@ -8,4 +8,4 @@ pub mod registers;
 pub use cpu::Cpu;
 pub use flags::{RFlags, Width, add_with_flags, logic_flags, sub_with_flags};
 pub use memory::{Access, MemError, Memory, Perms};
-pub use registers::{Reg64, RegXmm, Registers, X87};
+pub use registers::{Reg64, RegMask, RegXmm, Registers, X87};

@@ -4409,3 +4409,136 @@ hlt
     // saute pas.
     assert_eq!(emu.cpu.regs.rip, BASE);
 }
+
+/// Les registres de MASQUE d'AVX-512, et ce qui les remplit.
+///
+/// Un bit par voie, là où les jeux précédents écrivaient un vecteur de
+/// zéros et de uns : une comparaison écrit `k1`, `kmovd eax, k1` le
+/// ramène dans un registre ordinaire, et le code branche dessus. C'est
+/// l'instruction la plus fréquente d'AVX-512 dans les binaires
+/// d'épreuve — sept cent trois `kmovd` à elle seule.
+#[test]
+fn the_avx512_mask_registers_and_what_fills_them() {
+    let emu = run_program(
+        "\
+section .data
+align 32
+a       db 0x01, 0x02, 0x00, 0x04
+        times 28 db 0
+b       db 0x01, 0x00, 0x03, 0x04
+        times 28 db 0
+
+section .text
+global _start
+_start:
+vmovdqu64 ymm0, [a]
+vmovdqu64 ymm1, [b]
+
+; Un bit par octet, là où le ET des deux n'est pas nul.
+vptestmb k1, ymm0, ymm1
+kmovd eax, k1
+
+; L'inverse : là où il EST nul.
+vptestnmb k2, ymm0, ymm1
+kmovd ebx, k2
+
+; Comparer voie par voie selon un prédicat : 1 = « plus petit »,
+; non signé.
+vpcmpub k3, ymm0, ymm1, 1
+kmovd ecx, k3
+
+; Les combiner, comme on combine des conditions.
+kandd k4, k1, k3
+kmovd edx, k4
+kord k5, k1, k3
+kmovd esi, k5
+kshiftld k6, k1, 1
+kmovd edi, k6
+
+; Et la décision : kortest pose les indicateurs sans rien écrire.
+kortestd k1, k1
+setz r8b
+movzx r8, r8b
+kxord k7, k1, k1        ; un masque vidé
+kortestd k7, k7
+setz r9b
+movzx r9, r9b
+hlt
+",
+        &[],
+    );
+    // a&b : 1&1 et 4&4 ne sont pas nuls ; 2&0 et 0&3 le sont.
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rax),
+        0b1001,
+        "vptestmb : les octets 0 et 3"
+    );
+    // L'inverse, sur les trente-deux octets du registre : tous les
+    // autres sont nuls des deux côtés.
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rbx),
+        0xffff_fff6,
+        "vptestnmb : tout le reste, y compris le remplissage"
+    );
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rcx),
+        0b0100,
+        "vpcmpub « plus petit » : seul 0 < 3"
+    );
+    assert_eq!(emu.cpu.regs.get64(Reg64::Rdx), 0, "kand : rien en commun");
+    assert_eq!(emu.cpu.regs.get64(Reg64::Rsi), 0b1101, "kor");
+    assert_eq!(emu.cpu.regs.get64(Reg64::Rdi), 0b10010, "kshiftl de un");
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::R8),
+        0,
+        "kortest d'un masque non vide : ZF reste à zéro"
+    );
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::R9),
+        1,
+        "kortest d'un masque vide : ZF levé, et c'est ce qui sort de la boucle"
+    );
+}
+
+/// Un masque passe par un registre général, et revient.
+///
+/// C'est le chemin par lequel un programme fait entrer une condition
+/// calculée à la main dans le monde d'AVX-512, et par lequel il en
+/// ressort pour brancher.
+#[test]
+fn a_mask_goes_through_a_general_register_and_back() {
+    let emu = run_program(
+        "\
+section .text
+global _start
+_start:
+mov eax, 0b1011
+kmovd k1, eax
+kmovd ebx, k1
+
+; Les largeurs tronquent : `kmovb` ne porte que huit bits.
+mov ecx, 0x1ff
+kmovb k2, ecx
+kmovd ecx, k2
+
+; Et les opérations se bornent à leur largeur : `knotb` ne retourne
+; que huit bits, pas soixante-quatre.
+kmovb k3, eax
+knotb k4, k3
+kmovd edx, k4
+hlt
+",
+        &[],
+    );
+    assert_eq!(emu.cpu.regs.get64(Reg64::Rbx), 0b1011, "l'aller-retour");
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rcx),
+        0xff,
+        "kmovb ne porte que huit bits"
+    );
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rdx),
+        0b1111_0100,
+        "knotb retourne huit bits, et pas un de plus"
+    );
+}

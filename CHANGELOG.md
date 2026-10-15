@@ -6,6 +6,15 @@ entrée par version, et ce qui change pour qui s'en sert.
 
 ## 0.2.9-beta.1 — 15 octobre 2026
 
+**Les registres de masque d'AVX-512**
+- `k0` à `k7` existent, et avec eux `kmov*` — l'instruction AVX-512 la
+  plus fréquente d'un vrai binaire —, les combinaisons, `kortest*`, et
+  ce qui les remplit : `vptestm*` et les `vpcmp*` avec leur prédicat.
+  C'est la grande idée du jeu : un bit par voie, rangé à part, là où
+  SSE écrivait un vecteur de zéros et de uns.
+- La fenêtre des registres étendus les montre **en binaire** — ce qu'on
+  y lit est « quelles voies » —, et seulement quand il y en a.
+
 **Un premier morceau d'AVX-512**
 - Les **alias EVEX** des instructions déjà exécutées — `vmovdqu64`,
   `vmovdqa64`, `vpxorq` et leurs semblables — s'exécutent sur xmm et

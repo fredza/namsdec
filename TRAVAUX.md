@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **14 octobre
-2026**, version 0.2.9-beta.1, 1 205 tests au vert.
+2026**, version 0.2.9-beta.1, 1 208 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -45,11 +45,16 @@ de l'encodage pour ses trente-deux registres, pas pour ses masques.
 - [x] **Une instruction masquée S'ARRÊTE et le dit** — avant même de
       regarder le mnémonique. L'ignorer donnerait un résultat faux sans
       le dire, et c'est pire que de refuser.
-- [ ] **Les registres `k0`–`k7`** (1 100 occurrences) : huit entiers de
-      64 bits, puis `kmov*`, `kortest*`, `vptestm*`, `vpcmp*`. Un jeu
-      d'instructions à soi.
+- [x] **Les registres `k0`–`k7`** (A 7.22) — huit entiers de 64 bits,
+      `kmov*`, les combinaisons, `kortest*`/`ktest*`, et ce qui les
+      remplit : `vptestm*`, `vptestnm*`, `vpcmp*` avec leur prédicat.
+      Montrés en binaire dans la fenêtre des registres étendus, et
+      seulement quand il y en a.
 - [ ] **Les registres `zmm`** (350 occurrences) : là, c'est la largeur
       de tout le fichier de registres vectoriels qui change.
+- [ ] **Le MASQUAGE des opérations** — `vmovdqu64 ymm0{k1}, [rsi]`
+      reste refusé. Les masques existent ; ce qui manque est leur
+      application, voie par voie, sur chaque instruction vectorielle.
 
 ---
 

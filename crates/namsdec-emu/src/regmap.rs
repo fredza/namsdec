@@ -33,6 +33,18 @@ pub fn map_vector(reg: Register) -> Option<RegXmm> {
     RegXmm::ALL.get(reg.number()).copied()
 }
 
+/// Le registre de masque qu'iced nomme, s'il en nomme un.
+///
+/// `k0` en est un comme les autres ici : c'est seulement employé
+/// COMME MASQUE d'une autre instruction qu'il veut dire « aucun
+/// masque », et cette lecture-là se fait ailleurs.
+pub fn map_mask(reg: Register) -> Option<namsdec_core::RegMask> {
+    if !reg.is_k() {
+        return None;
+    }
+    namsdec_core::RegMask::ALL.get(reg.number()).copied()
+}
+
 pub fn map_register(reg: Register) -> Result<(Reg64, Width), EmuError> {
     use Register::*;
     let mapped = match reg {

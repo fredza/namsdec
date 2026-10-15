@@ -53,6 +53,56 @@ pub enum RegXmm {
     Xmm15,
 }
 
+/// Les huit registres de MASQUE d'AVX-512, `k0` à `k7`.
+///
+/// Un bit par voie du vecteur : c'est ainsi qu'AVX-512 fait ce que les
+/// jeux précédents faisaient avec un vecteur de zéros et de uns. Une
+/// comparaison n'écrit plus un masque dans un registre vectoriel, elle
+/// écrit UN BIT PAR ÉLÉMENT ici — et l'instruction suivante s'en sert
+/// pour ne travailler que sur les voies retenues.
+///
+/// `k0` a une particularité : employé comme masque d'opérande, il veut
+/// dire « aucun masque, toutes les voies ». Il reste un registre
+/// ordinaire quand on l'écrit ou qu'on le lit explicitement.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[repr(usize)]
+pub enum RegMask {
+    K0,
+    K1,
+    K2,
+    K3,
+    K4,
+    K5,
+    K6,
+    K7,
+}
+
+impl RegMask {
+    pub const ALL: [RegMask; 8] = [
+        RegMask::K0,
+        RegMask::K1,
+        RegMask::K2,
+        RegMask::K3,
+        RegMask::K4,
+        RegMask::K5,
+        RegMask::K6,
+        RegMask::K7,
+    ];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            RegMask::K0 => "k0",
+            RegMask::K1 => "k1",
+            RegMask::K2 => "k2",
+            RegMask::K3 => "k3",
+            RegMask::K4 => "k4",
+            RegMask::K5 => "k5",
+            RegMask::K6 => "k6",
+            RegMask::K7 => "k7",
+        }
+    }
+}
+
 impl RegXmm {
     pub const ALL: [RegXmm; 16] = [
         RegXmm::Xmm0,
@@ -187,6 +237,9 @@ pub struct Registers {
     /// aux généraux — ni les mêmes instructions, ni les mêmes tailles,
     /// ni le même usage.
     xmm: [[u128; 2]; 16],
+    /// Les huit registres de masque d'AVX-512. Soixante-quatre bits
+    /// chacun — assez pour une voie par octet d'un registre de 512.
+    masques: [u64; 8],
     /// La pile du 8087, que les programmes d'apprentissage utilisent
     /// encore — c'est par elle que la plupart des cours font leur premier
     /// calcul à virgule.
@@ -228,6 +281,22 @@ impl Registers {
     /// transitions entre code SSE et code AVX sur un vrai processeur.
     pub fn set_xmm(&mut self, r: RegXmm, v: u128) {
         self.xmm[r as usize][0] = v;
+    }
+
+    /// Un registre de masque.
+    pub fn get_mask(&self, r: RegMask) -> u64 {
+        self.masques[r as usize]
+    }
+
+    /// Écrit un registre de masque.
+    ///
+    /// Les soixante-quatre bits, sans égard à la largeur de
+    /// l'instruction qui écrit : `kmovb` n'en pose que huit, et c'est à
+    /// elle de masquer avant d'appeler. Un registre tronqué ici ferait
+    /// perdre silencieusement ce qu'une instruction plus large y avait
+    /// mis.
+    pub fn set_mask(&mut self, r: RegMask, v: u64) {
+        self.masques[r as usize] = v;
     }
 
     /// Le registre entier, moitié basse d'abord.

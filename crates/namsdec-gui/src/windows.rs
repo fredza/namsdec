@@ -1334,6 +1334,10 @@ impl NamsdecApp {
                 // tient, et tiennent donc en entier. C'est toute la
                 // raison d'être de cette fenêtre.
                 self.xmm_ui(ui);
+                // Les masques entre les deux : ils appartiennent au
+                // monde vectoriel, et un programme AVX-512 les lit plus
+                // souvent que la pile du 8087.
+                self.mask_ui(ui);
                 ui.add_space(10.0);
                 self.x87_ui(ui);
             });

@@ -3822,3 +3822,71 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
     - les registres `zmm` : trois cent cinquante occurrences, et là
       c'est la largeur de tout le fichier de registres vectoriels qui
       change. Un chantier de structure, pour de bon.
+
+
+--------------------------------------------------------------------------------
+ 7.22  LES REGISTRES DE MASQUE D'AVX-512
+       (15 octobre 2026) — le second morceau, chiffré en 7.21
+--------------------------------------------------------------------------------
+
+  CE QUI ÉTAIT ÉCRIT en 7.21 : « les registres de masque `k0`–`k7` :
+  huit registres de 64 bits à poser dans le CPU, puis `kmovb/w/d/q`,
+  `kortest*`, `vptestm*` et les `vpcmp*` qui écrivent dedans. Mille
+  cent occurrences. Ce n'est pas une structure difficile — ce sont huit
+  entiers — mais c'est un jeu d'instructions à soi. »
+
+  LA GRANDE IDÉE D'AVX-512, et c'est elle qu'il faut comprendre avant
+  d'écrire une ligne : là où SSE et AVX rendaient un masque dans un
+  REGISTRE VECTORIEL — tout à 1 là où c'est vrai — et le combinaient
+  avec `pand`, AVX-512 le range à part, UN BIT PAR VOIE, dans huit
+  registres dédiés. Le couple `pcmpeqb` + `pmovmskb` des jeux
+  précédents devient une seule instruction, `vptestmb`.
+
+  CE QUI EST POSÉ :
+    - `RegMask` et huit entiers de soixante-quatre bits dans le CPU —
+      assez pour une voie par octet d'un registre de 512, qu'on n'a pas
+      encore ;
+    - le pont avec le monde ordinaire : `kmovb/w/d/q`, d'un masque à
+      l'autre, vers un registre général, depuis la mémoire. Sept cent
+      trois occurrences : c'est l'instruction AVX-512 la plus fréquente
+      des binaires d'épreuve, et c'est normal — un masque ne sert à
+      rien tant qu'on n'a pas branché dessus ;
+    - les combinaisons : `kand`, `kor`, `kxor`, `kandn`, `kxnor`,
+      `knot`, `kadd`, `kshiftl/r`, `kunpck` ;
+    - la décision : `kortest` et `ktest`, qui posent les indicateurs
+      sans rien écrire. `kortestd k1, k1` puis `jz` est la façon dont
+      une boucle demande « rien trouvé dans ces soixante-quatre
+      octets ? » ;
+    - ce qui les REMPLIT : `vptestm*`/`vptestnm*`, et les `vpcmp*` avec
+      leur prédicat en immédiat — 0 égal, 1 plus petit, 2 plus petit ou
+      égal, 4 différent, 5 pas plus petit, 6 plus grand. Les jeux
+      d'avant n'avaient que « égal » et « plus grand ».
+
+  LA LARGEUR BORNE, et c'est le détail qui se rate : `knotb` ne
+  retourne que huit bits, pas soixante-quatre, et `kmovb` n'en déplace
+  que huit. Un contrôle le vérifie sur les deux.
+
+  ET ON LES VOIT. La fenêtre des registres étendus les montre — en
+  BINAIRE, parce que ce qu'on y lit est « quelles voies » : le `0x0f`
+  d'un `kmovd` ne dit pas qu'il s'agit des quatre premiers octets,
+  `00001111` le dit. Seulement quand l'un d'eux porte quelque chose :
+  un programme qui n'emploie pas AVX-512 n'a pas à lire huit lignes de
+  zéros, et celui qui l'emploie les voit apparaître.
+
+  LES CONTRÔLES, quatre :
+    - `the_avx512_mask_registers_and_what_fills_them` écrit la chaîne
+      complète en NASM — `vptestmb`, `vptestnmb`, `vpcmpub`, puis les
+      combinaisons et `kortest` — et vérifie chaque masque ;
+    - `a_mask_goes_through_a_general_register_and_back` : l'aller-retour
+      par un registre ordinaire, et les deux troncatures de largeur ;
+    - `the_vector_window_shows_the_avx512_masks_when_there_are_any` :
+      rien sans masque, et la valeur en binaire quand il y en a ;
+    - plus les deux fiches, qu'`everything_the_emulator_runs_has_a_sheet`
+      exigeait.
+
+  CE QUI RESTE D'AVX-512 : les registres `zmm`, trois cent cinquante
+  occurrences, et le MASQUAGE des opérations elles-mêmes —
+  `vmovdqu64 ymm0{k1}, [rsi]` reste refusé, et le sera tant que les
+  voies ne sauront pas être écrites une à une. Les masques existent
+  maintenant ; ce qui manque est leur APPLICATION, et c'est un travail
+  sur chaque instruction vectorielle plutôt qu'un ajout.

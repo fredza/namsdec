@@ -469,6 +469,65 @@ impl NamsdecApp {
         .on_hover_text(s.executed_hint);
     }
 
+    /// Les huit registres de masque d'AVX-512, montrés en BINAIRE.
+    ///
+    /// En binaire et non en hexadécimal, parce que ce qu'on y lit est
+    /// « quelles voies » : un bit par élément du vecteur, et c'est la
+    /// forme même de la réponse. Le `0x0f` d'un `kmovd` ne dit pas
+    /// qu'il s'agit des quatre premiers octets ; `00001111` le dit.
+    ///
+    /// Montrés seulement si l'un d'eux porte quelque chose : un
+    /// programme qui n'emploie pas AVX-512 n'a pas à lire huit lignes
+    /// de zéros, et celui qui l'emploie veut les voir apparaître.
+    pub(crate) fn mask_ui(&mut self, ui: &mut egui::Ui) {
+        let s = strings(self.lang);
+        let Some(emulator) = &self.emulator else {
+            return;
+        };
+        let theme = self.theme;
+        let regs = &emulator.cpu().regs;
+        if namsdec_core::RegMask::ALL
+            .iter()
+            .all(|k| regs.get_mask(*k) == 0)
+        {
+            return;
+        }
+        ui.add_space(10.0);
+        ui.strong(s.mask_registers);
+        ui.colored_label(theme.dim, s.mask_registers_hint);
+        egui::Grid::new("mask_grid")
+            .num_columns(2)
+            .min_col_width(0.0)
+            .striped(true)
+            .show(ui, |ui| {
+                for k in namsdec_core::RegMask::ALL {
+                    let valeur = regs.get_mask(k);
+                    ui.colored_label(theme.register, egui::RichText::new(k.name()).monospace());
+                    // Trente-deux bits : la largeur d'un masque d'octets
+                    // sur un registre de 256, et celle que `kmovd`
+                    // déplace. Au-delà, on ne lirait plus.
+                    let bits: String = (0..32)
+                        .rev()
+                        .map(|i| if valeur >> i & 1 == 1 { '1' } else { '0' })
+                        .collect();
+                    ui.colored_label(
+                        ui.visuals().text_color(),
+                        egui::RichText::new(bits).monospace(),
+                    )
+                    .on_hover_text(format!(
+                        "{valeur:#x}\n{} {}",
+                        valeur.count_ones(),
+                        if self.lang == Lang::Fr {
+                            "voie(s) retenue(s)"
+                        } else {
+                            "lane(s) selected"
+                        }
+                    ));
+                    ui.end_row();
+                }
+            });
+    }
+
     /// Les seize registres SSE, repliés : un programme sur deux n'en
     /// touche aucun, et ils prennent seize lignes de plus.
     ///
