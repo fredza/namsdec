@@ -235,6 +235,20 @@ pub const ENTRIES: &[Entry] = &[
     },
     Entry {
         kind: Kind::Instruction,
+        names: &["pext", "pdep"],
+        title: Text {
+            fr: "Ramasser et éparpiller des bits",
+            en: "Gather and scatter bits",
+        },
+        body: Text {
+            fr: "Deux inverses l'une de l'autre, et un masque dit lesquels.\n\n`pext` **ramasse** : elle prend les bits que le masque désigne, dans l'ordre, et les tasse tout en bas du résultat. `pdep` **éparpille** : elle prend les bits bas de la source et les pose aux places que le masque désigne. Avec le même masque, `pdep` défait exactement ce que `pext` a fait.\n\nElles remplacent des boucles entières : extraire les champs d'un mot d'état, recomposer une adresse dont les morceaux sont éclatés, passer d'un index dense à un index creux. Aucune des deux ne touche aux indicateurs, ce qui permet de les glisser au milieu d'un calcul.\n\nLe sens se retient par le mot : **ext**ract ramasse vers le bas, **dep**osit repose en place.",
+            en: "Two inverses of each other, and a mask says which bits.\n\n`pext` **gathers**: it takes the bits the mask names, in order, and packs them at the bottom of the result. `pdep` **scatters**: it takes the low bits of the source and places them where the mask says. With the same mask, `pdep` undoes exactly what `pext` did.\n\nThey replace whole loops: pulling the fields out of a status word, rebuilding an address whose pieces are scattered, turning a dense index into a sparse one. Neither touches the flags, so they slot into the middle of a computation.\n\nThe names carry the sense: **ext**ract packs down, **dep**osit puts back.",
+        },
+        flags: "",
+        example: "mov rbx, 0x12345678\nmov rcx, 0xFF00FF00   ; on retient deux octets\npext rax, rbx, rcx    ; tassés : 0x1256\npdep rdx, rax, rcx    ; et remis : 0x12005600",
+    },
+    Entry {
+        kind: Kind::Instruction,
         names: &["mulx"],
         title: Text {
             fr: "Multiplier sans indicateurs",
@@ -1427,6 +1441,20 @@ pub const ENTRIES: &[Entry] = &[
         },
         flags: "",
         example: "pminub xmm0, xmm1   ; le plus petit octet de chaque paire",
+    },
+    Entry {
+        kind: Kind::Instruction,
+        names: &["pblendw", "vpblendw"],
+        title: Text {
+            fr: "Mélanger deux vecteurs, mot par mot",
+            en: "Blend two vectors, word by word",
+        },
+        body: Text {
+            fr: "Chaque mot de seize bits du résultat vient de la **première** source si le bit correspondant de l'immédiat est à zéro, de la **seconde** s'il est à un. Huit bits, huit mots — et c'est là qu'est le piège.\n\nSur 256 bits il y a seize mots pour huit bits de contrôle : le motif **se répète** sur chaque moitié de 128 bits. Ce n'est pas une bizarrerie gratuite, c'est l'histoire : l'instruction vient de SSE, où le registre n'avait qu'une moitié, et AVX l'a élargi sans élargir l'immédiat.\n\nÀ retenir aussi : zéro prend la première source, un prend la seconde — l'inverse de ce que l'intuition souffle.",
+            en: "Each sixteen-bit word of the result comes from the **first** source when the matching immediate bit is zero, from the **second** when it is one. Eight bits, eight words — and that is where the trap is.\n\nOver 256 bits there are sixteen words for eight control bits: the pattern **repeats** on each 128-bit half. Not an arbitrary quirk but history: the instruction comes from SSE, where the register had only one half, and AVX widened it without widening the immediate.\n\nAlso worth remembering: zero takes the first source, one takes the second — the opposite of what intuition suggests.",
+        },
+        flags: "",
+        example: "vpblendw ymm0, ymm1, ymm2, 0b10101010\n; un mot sur deux vient de ymm2, et le motif\n; repart à l'identique au neuvième",
     },
     Entry {
         kind: Kind::Instruction,

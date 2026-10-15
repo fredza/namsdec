@@ -1812,6 +1812,23 @@ le code binaire et le pseudo-code. Un seul module neuf les réunit.
       avec sa liste de sources qui se tient à jour sur les `pub mod` de
       `lib.rs`, et une seule exception nommée — `framed`, qui pose le
       liseré.
+- [x] **pext, pdep, vpblendw** (A 3.8, 15 octobre 2026) — les trois que
+      l'oracle avait signalées non pas fausses mais ABSENTES. Écrites bit
+      à bit comme le manuel les décrit : un émulateur qui sert à
+      apprendre doit pouvoir se lire, l'astuce irait dans un
+      compilateur. Vérifiées contre le matériel dans la foulée — 220 cas,
+      zéro écart —, ce qui est tout l'intérêt d'avoir l'oracle.
+      Le contrôle de pext/pdep est un aller-retour : `pdep` du résultat
+      de `pext`, même masque, remet chaque bit en place. Confondre
+      « tasser » et « éparpiller » ne passerait pas.
+      Deux fiches écrites, parce qu'un invariant l'exige : toute
+      instruction qui s'exécute doit pouvoir s'expliquer. Deux autres ont
+      réclamé que l'interface et le README annoncent 176 et non 174.
+- [x] **QEMU ne sert pas d'oracle pour AVX-512** (A 3.9) — piste
+      fermée par l'expérience, pas par la documentation. `qemu-x86_64
+      -cpu help` annonce `avx512f` et les autres, mais ce sont des noms
+      de drapeaux, pas des instructions exécutables : un `vpaddd zmm0,
+      zmm1, zmm1` sous `-cpu max` rend un signal 4. Reste Intel SDE.
 
 ---
 

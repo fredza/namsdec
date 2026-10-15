@@ -1794,6 +1794,38 @@ impl Emulator {
                 let taken = if high { src[1] } else { src[0] };
                 self.write_vec_op(instr, 0, [taken, 0, 0, 0])?;
             }
+            // `vpblendw` choisit, mot de seize bits par mot de seize
+            // bits, entre deux sources — l'immédiat dit lequel prendre.
+            //
+            // Huit bits pour seize mots sur 256 : le motif se RÉPÈTE sur
+            // chaque moitié de 128 bits. C'est la règle qu'on oublie, et
+            // elle vient de l'origine en SSE, où il n'y avait qu'une
+            // moitié ; AVX a élargi le registre sans élargir l'immédiat.
+            //
+            // Un bit à zéro prend la première source, à un la seconde —
+            // l'inverse de ce que l'intuition souffle, et le manuel est
+            // formel.
+            M::Pblendw | M::Vpblendw => {
+                let a = self.read_vec_op(instr, 1)?;
+                let b = self.read_vec_op(instr, 2)?;
+                let motif = self.read_op(instr, 3)? as u8;
+                let mut out = [0u128; 4];
+                for (moitié, case) in out.iter_mut().enumerate() {
+                    let (gauche, droite) = (a[moitié], b[moitié]);
+                    let mut assemblé = 0u128;
+                    for mot in 0..8u32 {
+                        let décalage = mot * 16;
+                        let pris = if motif & (1 << mot) != 0 {
+                            droite
+                        } else {
+                            gauche
+                        };
+                        assemblé |= ((pris >> décalage) & 0xffff) << décalage;
+                    }
+                    *case = assemblé;
+                }
+                self.write_vec_op(instr, 0, out)?;
+            }
             M::Vperm2f128 | M::Vperm2i128 => {
                 let a = self.read_vec_op(instr, 1)?;
                 let b = self.read_vec_op(instr, 2)?;

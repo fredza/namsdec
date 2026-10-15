@@ -2005,6 +2005,138 @@ hlt
     assert_eq!(emu.cpu.regs.get64(Reg64::R14), 0x34, "bzhi");
 }
 
+/// `pext` ramasse les bits que le masque désigne ; `pdep` les éparpille.
+///
+/// Les deux manquaient — signalées le 15 octobre 2026 par l'oracle
+/// différentiel, qui les a trouvées non pas fausses mais ABSENTES :
+/// l'émulateur les refusait. Elles remplacent des boucles entières
+/// (extraire les champs d'un mot d'état, recomposer une adresse
+/// éclatée), et c'est la raison d'être de BMI2.
+///
+/// L'aller-retour est le contrôle qui compte : `pdep` du résultat de
+/// `pext`, avec LE MÊME masque, remet chaque bit à sa place d'origine.
+/// Si l'une des deux comptait de travers, il ne retomberait pas sur ses
+/// pieds — et une erreur de sens entre « tasser » et « éparpiller » est
+/// exactement ce qu'on risque en les écrivant.
+///
+/// Les valeurs ont été confirmées contre le vrai processeur :
+/// `cargo run --release -p namsdec-emu --example oracle -- "pext rax, rbx, rcx"`.
+#[test]
+fn pext_gathers_and_pdep_scatters_the_masked_bits() {
+    let emu = run_program(
+        "\
+section .text
+global _start
+_start:
+mov rbx, 0x12345678
+mov rcx, 0xFF00FF00         ; deux octets retenus : le 1er et le 3e
+pext rax, rbx, rcx          ; tassés en bas : 0x1256
+pdep rdx, rax, rcx          ; et remis à leur place : 0x12005600
+
+mov rbx, 0b10110110
+mov rcx, 0b11110000         ; un masque contigu, qu'on lit d'un coup
+pext rsi, rbx, rcx          ; 0b1011
+pdep rdi, rsi, rcx          ; 0b10110000
+
+mov rbx, 0xdeadbeef
+mov rcx, -1                 ; masque plein : rien n'est tassé
+pext r8, rbx, rcx
+xor rcx, rcx                ; masque vide : rien n'est retenu
+pext r9, rbx, rcx
+hlt
+",
+        &[],
+    );
+    assert_eq!(emu.cpu.regs.get64(Reg64::Rax), 0x1256, "pext tasse en bas");
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rdx),
+        0x1200_5600,
+        "pdep remet chaque bit à sa place : l'aller-retour"
+    );
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rsi),
+        0b1011,
+        "pext, masque contigu"
+    );
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rdi),
+        0b1011_0000,
+        "pdep, masque contigu"
+    );
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::R8),
+        0xdead_beef,
+        "masque plein : la source ressort intacte"
+    );
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::R9),
+        0,
+        "masque vide : rien n'est retenu"
+    );
+}
+
+/// `vpblendw` choisit mot à mot entre deux sources, et son motif se
+/// RÉPÈTE sur chaque moitié de 256 bits.
+///
+/// C'est la règle qu'on oublie : huit bits d'immédiat pour seize mots.
+/// Elle vient de l'origine en SSE, où il n'y avait qu'une moitié — AVX a
+/// élargi le registre sans élargir l'immédiat. Un bit à zéro prend la
+/// PREMIÈRE source, à un la seconde, ce qui est l'inverse de ce que
+/// l'intuition souffle.
+///
+/// Trois motifs, et les deux extrêmes sont là exprès : `0x00` doit
+/// rendre la première source entière et `0xff` la seconde. Une polarité
+/// inversée passerait tous les motifs du milieu et échouerait sur
+/// ceux-là.
+#[test]
+fn vpblendw_picks_word_by_word_and_repeats_its_pattern() {
+    let emu = run_program(
+        "\
+section .text
+global _start
+_start:
+vmovdqu ymm1, [gauche]
+vmovdqu ymm2, [droite]
+vpblendw ymm3, ymm1, ymm2, 0x00     ; tout de la première
+vpblendw ymm4, ymm1, ymm2, 0xff     ; tout de la seconde
+vpblendw ymm5, ymm1, ymm2, 0b10101010
+vmovdqu [sortie], ymm3
+vmovdqu [sortie + 32], ymm4
+vmovdqu [sortie + 64], ymm5
+; L'adresse, laissée dans un registre : le test n'a pas à deviner où
+; l'assembleur a posé la section, ni à la réassembler pour le savoir.
+lea r15, [sortie]
+hlt
+
+section .data
+align 32
+gauche: times 16 dw 0x1111
+droite: times 16 dw 0x2222
+sortie: times 96 db 0
+",
+        &[],
+    );
+    let base = emu.cpu.regs.get64(Reg64::R15);
+    let lire = |rang: u64| -> Vec<u16> {
+        (0..16)
+            .map(|i| {
+                emu.cpu
+                    .mem
+                    .read_u16(base + rang * 32 + i * 2)
+                    .expect("en mémoire")
+            })
+            .collect()
+    };
+    assert_eq!(lire(0), vec![0x1111; 16], "0x00 : tout de la première");
+    assert_eq!(lire(1), vec![0x2222; 16], "0xff : tout de la seconde");
+    // 0b10101010 : un mot sur deux, et le motif REPART à l'identique au
+    // neuvième — c'est la répétition par moitié de 128 bits.
+    let attendu: Vec<u16> = (0..16)
+        .map(|i| if (i % 8) % 2 == 1 { 0x2222 } else { 0x1111 })
+        .collect();
+    assert_eq!(lire(2), attendu, "le motif se répète par moitié");
+}
+
 /// `bzhi` dit par CF que l'index débordait, et garde le signe du
 /// résultat dans SF.
 ///

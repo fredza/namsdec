@@ -396,6 +396,50 @@ aujourd'hui ; les suivantes, ce vers quoi l'outil peut aller.
      l'écrit et ferait PASSER le contrôle au panneau suivant — vert pour la
      mauvaise raison, la pire sorte de test.
 
+3.8  [FAIT] LES TROIS INSTRUCTIONS QUE L'ORACLE AVAIT SIGNALÉES
+     `pext`, `pdep` et `vpblendw` étaient refusées par l'émulateur. L'oracle
+     (3.6) ne les a pas trouvées fausses : il les a trouvées ABSENTES, ce qui
+     est l'autre service qu'il rend.
+     `pext` RAMASSE les bits que le masque désigne et les tasse en bas ;
+     `pdep` les ÉPARPILLE aux places que le masque désigne. Avec le même
+     masque, l'une défait l'autre. Elles remplacent des boucles entières —
+     extraire les champs d'un mot d'état, recomposer une adresse éclatée — et
+     ne touchent aucun indicateur, donc elles se glissent dans un calcul.
+     Écrites bit à bit, comme le manuel les décrit, et c'est voulu : un
+     émulateur qui sert à APPRENDRE doit pouvoir se lire. L'astuce irait dans
+     un compilateur.
+     `vpblendw` choisit mot de seize bits par mot de seize bits entre deux
+     sources. Le piège est que huit bits d'immédiat gouvernent seize mots sur
+     256 : le motif SE RÉPÈTE sur chaque moitié de 128. Ce n'est pas une
+     bizarrerie, c'est l'histoire — l'instruction vient de SSE, où le registre
+     n'avait qu'une moitié, et AVX l'a élargi sans élargir l'immédiat. Et zéro
+     prend la PREMIÈRE source, un la seconde, à rebours de l'intuition.
+     VÉRIFIÉES CONTRE LE MATÉRIEL dans la foulée, ce qui est tout l'intérêt
+     d'avoir l'oracle : 120 cas pour pext/pdep, 100 pour vpblendw (dont les
+     motifs 0x00 et 0xff, qui attrapent une polarité inversée là où tous les
+     motifs du milieu passeraient), zéro écart.
+     Contrôles de non-régression dans `namsdec-emu/src/tests.rs`, car l'oracle
+     ne tourne pas sur la CI. Celui de pext/pdep est un ALLER-RETOUR : `pdep`
+     du résultat de `pext`, même masque, doit remettre chaque bit à sa place.
+     Si l'une comptait de travers, il ne retomberait pas sur ses pieds — et
+     confondre « tasser » et « éparpiller » est exactement ce qu'on risque.
+     Deux fiches écrites (176 au lieu de 174), parce qu'un invariant du projet
+     l'exige : toute instruction qui s'exécute doit pouvoir s'expliquer. Deux
+     autres ont réclamé que l'interface et le README annoncent le bon compte.
+     L'oracle passe maintenant 94 instructions, 940 cas, zéro écart, et plus
+     aucune écartée.
+
+3.9  [FERMÉE] QEMU NE PEUT PAS SERVIR D'ORACLE POUR AVX-512
+     Piste essayée le 15 octobre 2026, et close — autant le savoir une fois
+     pour toutes. `qemu-x86_64 -cpu help` ANNONCE `avx512f`, `avx512bw`,
+     `avx512dq` et les autres : ce sont les noms de drapeaux qu'il sait lire,
+     pas des instructions qu'il exécute. Un `vpaddd zmm0, zmm1, zmm1` sous
+     `qemu-x86_64 -cpu max` rend « uncaught target signal 4 » — instruction
+     illégale. Le TCG de QEMU 10.2.2 n'implémente pas AVX-512.
+     Reste donc Intel SDE, qui l'émule sur n'importe quel x86-64. Il se
+     branche à la place de `gdb` dans `sous_le_matériel`, seule fonction de
+     l'oracle à connaître l'outil — et c'est pour cela qu'elle l'est.
+
 3.2  Le rendu hors écran n'est pas testable tel quel — et une capture, si
      Pas de serveur X virtuel sur la machine, donc pas de rendu hors écran.
      En revanche, lancer namsdec en forçant X11 (WAYLAND_DISPLAY vide) et

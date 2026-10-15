@@ -2550,6 +2550,58 @@ impl Emulator {
                 };
                 self.write_op(instr, 0, result)?;
             }
+            // `pext` RAMASSE les bits que le masque désigne et les
+            // tasse en bas ; `pdep` fait l'inverse, il les ÉPARPILLE aux
+            // places que le masque désigne. L'une défait l'autre quand
+            // le masque est le même.
+            //
+            // Elles n'ont l'air de rien et remplacent des boucles
+            // entières : extraire les champs d'un mot d'état, recomposer
+            // une adresse éclatée, convertir un index de bitmap. C'est
+            // la raison d'être de BMI2, et aucune des deux ne touche aux
+            // indicateurs — on peut donc les glisser dans un calcul.
+            //
+            // Rien de malin ici, et c'est voulu : bit à bit, comme le
+            // manuel les décrit. Un émulateur qui sert à APPRENDRE doit
+            // pouvoir se lire ; l'astuce irait dans un compilateur.
+            M::Pext => {
+                let w = self.dest_width(instr)?;
+                let source = self.read_op(instr, 1)? & w.mask();
+                let masque = self.read_op(instr, 2)? & w.mask();
+                let mut résultat = 0u64;
+                // `place` avance d'un cran à CHAQUE bit retenu, et non à
+                // chaque bit lu : c'est tout le tassement.
+                let mut place = 0u32;
+                for bit in 0..w.bits() {
+                    if masque & (1u64 << bit) != 0 {
+                        if source & (1u64 << bit) != 0 {
+                            résultat |= 1u64 << place;
+                        }
+                        place += 1;
+                    }
+                }
+                self.write_op(instr, 0, résultat)?;
+            }
+            M::Pdep => {
+                let w = self.dest_width(instr)?;
+                let source = self.read_op(instr, 1)? & w.mask();
+                let masque = self.read_op(instr, 2)? & w.mask();
+                let mut résultat = 0u64;
+                // Le symétrique : on lit la source par le bas, un bit
+                // par trou du masque. Les bits de la source au-delà du
+                // nombre de trous sont perdus — le manuel le dit, et
+                // c'est la seule façon que l'opération garde sa largeur.
+                let mut lu = 0u32;
+                for bit in 0..w.bits() {
+                    if masque & (1u64 << bit) != 0 {
+                        if source & (1u64 << lu) != 0 {
+                            résultat |= 1u64 << bit;
+                        }
+                        lu += 1;
+                    }
+                }
+                self.write_op(instr, 0, résultat)?;
+            }
             M::Rorx => {
                 let w = self.dest_width(instr)?;
                 let bits = w.bits();
