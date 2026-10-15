@@ -565,6 +565,49 @@ hors écran et lisent ce qui a été peint. Chaque programme livré avec
 l'application, et chaque exemple des fiches, doivent s'assembler, se lier
 sans avertissement, et s'exécuter jusqu'au bout.
 
+### Vérifier l'émulateur contre un vrai processeur
+
+Treize mille lignes de sémantique écrites à la main ne se vérifient pas en
+les relisant. Un indicateur calculé de travers ne plante pas : il rend une
+mauvaise réponse, en silence, et le programme émulé prend une branche qu'il
+n'aurait pas prise.
+
+```sh
+cargo run --release -p namsdec-emu --example oracle
+cargo run --release -p namsdec-emu --example oracle -- "adc rax, rbx"
+cargo run --release -p namsdec-emu --example oracle -- --sde      # AVX-512
+```
+
+Pour chaque cas, l'oracle sème les seize registres généraux, quatre registres
+vectoriels et les indicateurs ; bâtit un petit programme qui pose cet état,
+exécute l'instruction et relève son propre état ; le lance sur le processeur
+de la machine ; fait partir `namsdec-emu` du même état sur les mêmes octets ;
+et compare, registre par registre, indicateur par indicateur.
+
+**Aucune réponse n'est écrite à la main.** On ne dit jamais ce que `adc`
+devrait donner — on le demande au processeur. Un cas qu'on n'avait pas prévu
+est donc traité comme les autres, et ce sont précisément ceux-là qui trouvent
+les défauts.
+
+La moitié du travail est la table des **indéfinis**. Le manuel d'Intel laisse
+certains indicateurs à la discrétion du processeur — `OF` après un décalage
+d'un nombre autre que 1, presque tout après `bsf`. Les comparer reviendrait à
+reprocher à namsdec de n'être pas ce modèle-ci, donc l'oracle connaît la
+règle, instruction par instruction. **Toute instruction ajoutée au répertoire
+demande qu'on vérifie d'abord sa ligne dans le manuel** : sans cela l'oracle
+crie au loup, et personne ne s'en sert plus.
+
+`--sde` passe par [Intel SDE](https://www.intel.com/content/www/us/en/developer/articles/tool/software-development-emulator.html),
+qui émule AVX-512 sur n'importe quel x86-64 — utile quand la machine n'en a
+pas, ce qui est le cas de la plupart des processeurs grand public depuis que
+Intel l'a retiré de ses cœurs hybrides. L'oracle le cherche dans `SDE_PATH`,
+dans le `PATH`, puis dans `~/PrgInd`. QEMU ne convient pas : il annonce les
+drapeaux `avx512` mais son TCG ne les exécute pas.
+
+L'oracle **ne tourne pas sur l'intégration continue** — il demande `nasm`,
+`ld`, un x86-64, et SDE pour AVX-512. Ce qu'il apprend doit donc être retenu
+par un test ordinaire dans `namsdec-emu/src/tests.rs`.
+
 ## Ce qu'il ne fait pas
 
 - Pas de mode 32 bits, pas d'`int 0x80`.
