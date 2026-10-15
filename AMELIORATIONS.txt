@@ -3754,3 +3754,71 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
   kmovd, vmovdqa64 — plus de deux mille occurrences). Celui-là demande
   des registres de 512 bits et des registres de masque `k` : un
   chantier de structure, pas un ajout de mnémoniques.
+
+
+--------------------------------------------------------------------------------
+ 7.21  AVX-512 : CE QUI SE DÉCOUPE, ET CE QUI NE SE DÉCOUPE PAS
+       (15 octobre 2026) — premier pas, mesuré
+--------------------------------------------------------------------------------
+
+  LE CHANTIER paraissait d'un bloc — « registres de 512 bits et
+  registres de masque `k` : un chantier de structure, pas un ajout de
+  mnémoniques ». La mesure a montré qu'il se découpe, et que le premier
+  morceau est presque gratuit.
+
+  CE QUE LES BINAIRES D'ÉPREUVE ÉCRIVENT VRAIMENT, par mnémonique ET
+  par largeur de registre (relevé sur les quatre gros) :
+
+      vmovdqu64  ymm 857   xmm  37   zmm 242
+      vmovdqa64  ymm 371             zmm  40
+      vmovntdq   ymm 168             zmm  64
+      vpxorq     ymm 105   xmm  19
+      kmovd                          703 (registres k)
+      vptestmb   ymm 164   xmm  48
+      vpcmpltub  ymm 136   xmm  48
+      vpternlogd ymm  52
+      kortestd                        52
+
+  Autrement dit : LA GRANDE MAJORITÉ EST SUR YMM ET XMM, et ce sont des
+  alias EVEX d'instructions déjà exécutées. Un compilateur récent les
+  écrit sans qu'aucun masque soit en jeu — il se sert de l'encodage
+  EVEX pour ses trente-deux registres, pas pour ses masques.
+
+  CE QUE LE CHIFFRE FINAL VEUT DIRE, et c'est ce qui rend l'équivalence
+  possible : le `8` de `vmovdqu8` et le `64` de `vmovdqu64` ne disent
+  ni la taille du transfert ni celle du registre. Ils disent ce qu'est
+  un ÉLÉMENT pour le masque qui PEUT les accompagner. Sans masque, les
+  deux déplacent les mêmes octets, et la même chose vaut pour `vpxord`
+  et `vpxorq`.
+
+  D'OÙ CE PREMIER PAS : `vmovdqu8/16/32/64`, `vmovdqa32/64`,
+  `vpxord/q`, `vpandd/q`, `vpandnd/q`, `vpord/q` rejoignent les bras
+  qui les exécutaient déjà. Plus de mille deux cents occurrences des
+  binaires d'épreuve, pour une liste de noms.
+
+  ET UN GARDE-FOU QUI COMPTE AUTANT. L'encodage EVEX permet d'écrire
+  `vmovdqu64 ymm0{k1}{z}, [rsi]` : l'opération ne s'applique qu'aux
+  voies que le registre de masque désigne, et les autres gardent leur
+  valeur ou tombent à zéro. L'ignorer donnerait un résultat FAUX SANS
+  LE DIRE — le pire des trois comportements possibles, devant
+  s'arrêter et devant refuser l'instruction entière. `execute_vector`
+  refuse donc toute instruction qui porte un masque d'opérande, en le
+  nommant, AVANT de regarder le mnémonique : la règle vaut pour celles
+  qu'on exécute déjà comme pour celles qu'on vient d'ajouter.
+
+  Deux contrôles : `the_evex_spellings_of_what_we_already_run` écrit
+  les deux familles en NASM et vérifie les octets déplacés ;
+  `an_avx512_mask_stops_rather_than_lying` assemble
+  `vmovdqu64 ymm0{k1}, ymm1`, vérifie que l'exécution s'arrête en
+  nommant le masque, et que RIP n'a pas bougé — on s'arrête SUR
+  l'instruction, on ne la saute pas.
+
+  CE QUI RESTE, et qui est maintenant le vrai AVX-512 :
+    - les registres de masque `k0`–`k7` : huit registres de 64 bits à
+      poser dans le CPU, puis `kmovb/w/d/q`, `kortest*`, `vptestm*` et
+      les `vpcmp*` qui écrivent dedans. Mille cent occurrences. Ce
+      n'est pas une structure difficile — ce sont huit entiers — mais
+      c'est un jeu d'instructions à soi, avec ses propres contrôles.
+    - les registres `zmm` : trois cent cinquante occurrences, et là
+      c'est la largeur de tout le fichier de registres vectoriels qui
+      change. Un chantier de structure, pour de bon.

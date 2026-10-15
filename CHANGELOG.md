@@ -6,6 +6,16 @@ entrée par version, et ce qui change pour qui s'en sert.
 
 ## 0.2.9-beta.1 — 15 octobre 2026
 
+**Un premier morceau d'AVX-512**
+- Les **alias EVEX** des instructions déjà exécutées — `vmovdqu64`,
+  `vmovdqa64`, `vpxorq` et leurs semblables — s'exécutent sur xmm et
+  ymm. Le chiffre final ne dit ni la taille du transfert ni celle du
+  registre : il dit ce qu'est un élément pour le masque qui *peut* les
+  accompagner. Sans masque, ce sont les mêmes instructions, et cela
+  fait plus de 1 200 occurrences dans les binaires d'épreuve.
+- **Une instruction masquée s'arrête et le dit**, plutôt que d'ignorer
+  son masque : un résultat faux sans avertissement est pire qu'un arrêt.
+
 **Les instructions de chaîne de SSE4.2 s'exécutent**
 - `pcmpistri` et ses trois sœurs font en une instruction ce qu'une
   boucle fait en vingt, et c'est ainsi que la bibliothèque C écrit

@@ -4304,3 +4304,108 @@ hlt
         "le même, un octet entier par réponse"
     );
 }
+
+/// Les formes EVEX des déplacements et des opérations bit à bit
+/// s'exécutent — sans masque, ce sont les mêmes instructions.
+///
+/// AVX-512 donne un nom par largeur d'élément — `vmovdqu8`,
+/// `vmovdqu64`, `vpxord`, `vpxorq` — parce que son masque s'applique
+/// élément par élément et qu'il faut donc savoir ce qu'est un élément.
+/// Sans masque, sur un registre de 128 ou 256 bits, elles font
+/// exactement ce que font `vmovdqu` et `vpxor`.
+///
+/// À elles seules, ces formes-là font plus de mille deux cents des
+/// occurrences AVX-512 des neuf binaires d'épreuve — c'est un
+/// compilateur récent qui les écrit, sans qu'aucun masque soit en jeu.
+#[test]
+fn the_evex_spellings_of_what_we_already_run() {
+    let emu = run_program(
+        "\
+section .data
+align 32
+source  db 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16
+        db 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32
+sortie  times 32 db 0
+
+section .text
+global _start
+_start:
+; Les déplacements, sous leurs noms EVEX.
+vmovdqu64 ymm0, [source]
+vmovdqa64 [sortie], ymm0
+mov rax, [sortie]
+mov rbx, [sortie+24]
+
+vmovdqu8 xmm1, [source]
+movq rcx, xmm1
+
+; Les opérations bit à bit : le `d` et le `q` ne disent que la largeur
+; d'élément que le masque emploierait.
+vpxorq ymm2, ymm0, ymm0
+vmovdqu64 [sortie], ymm2
+mov rdx, [sortie]
+
+vpord xmm3, xmm1, xmm1
+movq rsi, xmm3
+
+vpandq xmm4, xmm1, xmm1
+movq rdi, xmm4
+hlt
+",
+        &[],
+    );
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rax),
+        0x0807_0605_0403_0201,
+        "vmovdqu64 puis vmovdqa64 : les huit premiers octets"
+    );
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rbx),
+        0x201f_1e1d_1c1b_1a19,
+        "et les huit derniers des trente-deux"
+    );
+    assert_eq!(emu.cpu.regs.get64(Reg64::Rcx), 0x0807_0605_0403_0201);
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rdx),
+        0,
+        "vpxorq d'un registre avec lui-même le remet à zéro"
+    );
+    assert_eq!(emu.cpu.regs.get64(Reg64::Rsi), 0x0807_0605_0403_0201);
+    assert_eq!(emu.cpu.regs.get64(Reg64::Rdi), 0x0807_0605_0403_0201);
+}
+
+/// Un masque AVX-512 fait S'ARRÊTER, et le dit.
+///
+/// `vmovdqu64 ymm0{k1}, [rsi]` n'écrit que les voies que le registre de
+/// masque désigne ; les autres gardent leur valeur ou tombent à zéro.
+/// L'ignorer donnerait un résultat faux SANS LE DIRE — le pire des
+/// trois comportements possibles, devant s'arrêter et devant refuser
+/// l'instruction entière.
+///
+/// Les registres de masque sont un chantier de structure, pas un ajout
+/// de mnémoniques. Tant qu'ils manquent, namsdec nomme ce qui manque.
+#[test]
+fn an_avx512_mask_stops_rather_than_lying() {
+    // `vmovdqu64 ymm0{k1}, ymm1` — assemblé à la main : nasm l'écrit,
+    // et c'est l'octet de l'EVEX qui porte le `k1`.
+    let (mut emu, _) = load_program(
+        "\
+section .text
+global _start
+_start:
+vmovdqu64 ymm0{k1}, ymm1
+hlt
+",
+    );
+    let err = emu.step().expect_err("un masque ne peut pas être ignoré");
+    match err {
+        EmuError::UnsupportedInstruction { mnemonic, .. } => assert!(
+            mnemonic.contains("masque"),
+            "le refus doit nommer le masque : {mnemonic}"
+        ),
+        autre => panic!("obtenu {autre:?}"),
+    }
+    // Et RIP n'a pas bougé : on s'arrête sur l'instruction, on ne la
+    // saute pas.
+    assert_eq!(emu.cpu.regs.rip, BASE);
+}

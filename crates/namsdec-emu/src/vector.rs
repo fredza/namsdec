@@ -868,6 +868,22 @@ impl Emulator {
     /// ne connaît pas non plus passent au x87.
     pub(crate) fn execute_vector(&mut self, instr: &Instruction) -> Result<(), EmuError> {
         use Mnemonic as M;
+        // UN MASQUE D'OPÉRANDE FAIT REFUSER. L'encodage EVEX permet
+        // d'écrire `vmovdqu64 ymm0{k1}{z}, [rsi]` : l'opération ne
+        // s'applique qu'aux voies que le registre de masque désigne, et
+        // les autres gardent leur valeur ou tombent à zéro. L'ignorer
+        // donnerait un résultat faux sans le dire — le pire des trois
+        // comportements possibles.
+        //
+        // Les registres de masque eux-mêmes n'existent pas encore ici,
+        // et c'est un chantier de structure : tant qu'ils manquent, on
+        // s'arrête en nommant ce qui manque.
+        if instr.op_mask() != iced_x86::Register::None {
+            return Err(EmuError::UnsupportedInstruction {
+                backend: Self::NAME,
+                mnemonic: format!("{:?} (avec masque AVX-512)", instr.mnemonic()),
+            });
+        }
         match instr.mnemonic() {
             // --- SSE et AVX : le calcul vectoriel --------------------
             // Le x86-64 moderne ne se sert plus de la pile du 8087 : les
@@ -892,6 +908,20 @@ impl Emulator {
             | M::Vmovupd
             | M::Vmovdqa
             | M::Vmovdqu
+            // LES MÊMES, ÉCRITS EN EVEX. AVX-512 donne un nom par
+            // largeur d'élément — `vmovdqu8`, `vmovdqu64` — parce que
+            // son masque s'applique élément par élément et qu'il faut
+            // donc savoir ce qu'est un élément. SANS masque, et sur un
+            // registre de 128 ou 256 bits, elles déplacent exactement
+            // ce que déplace `vmovdqu` : à elles seules, elles font
+            // plus de mille deux cents des occurrences AVX-512 des
+            // binaires d'épreuve.
+            | M::Vmovdqu8
+            | M::Vmovdqu16
+            | M::Vmovdqu32
+            | M::Vmovdqu64
+            | M::Vmovdqa32
+            | M::Vmovdqa64
             // Les déplacements « non temporels » : au processeur, ils
             // disent de ne pas garder la donnée en cache — on écrit un
             // tampon qu'on ne relira pas. À l'émulation, un cache n'est
@@ -1080,16 +1110,47 @@ impl Emulator {
             // Les opérations bit à bit. `xorps xmm0, xmm0` et
             // `pxor xmm0, xmm0` sont la façon habituelle de remettre un
             // registre à zéro.
-            M::Xorps | M::Xorpd | M::Pxor | M::Vxorps | M::Vxorpd | M::Vpxor => {
+            M::Xorps
+            | M::Xorpd
+            | M::Pxor
+            | M::Vxorps
+            | M::Vxorpd
+            | M::Vpxor
+            // Les formes EVEX : le `d` et le `q` final ne disent que la
+            // largeur d'élément que le masque emploierait, et sans
+            // masque un OU exclusif est un OU exclusif.
+            | M::Vpxord
+            | M::Vpxorq => {
                 self.vector_binary(instr, |a, b| a ^ b)?
             }
-            M::Andps | M::Andpd | M::Pand | M::Vandps | M::Vandpd | M::Vpand => {
+            M::Andps
+            | M::Andpd
+            | M::Pand
+            | M::Vandps
+            | M::Vandpd
+            | M::Vpand
+            | M::Vpandd
+            | M::Vpandq => {
                 self.vector_binary(instr, |a, b| a & b)?
             }
-            M::Orps | M::Orpd | M::Por | M::Vorps | M::Vorpd | M::Vpor => {
+            M::Orps
+            | M::Orpd
+            | M::Por
+            | M::Vorps
+            | M::Vorpd
+            | M::Vpor
+            | M::Vpord
+            | M::Vporq => {
                 self.vector_binary(instr, |a, b| a | b)?
             }
-            M::Andnps | M::Andnpd | M::Pandn | M::Vandnps | M::Vandnpd | M::Vpandn => {
+            M::Andnps
+            | M::Andnpd
+            | M::Pandn
+            | M::Vandnps
+            | M::Vandnpd
+            | M::Vpandn
+            | M::Vpandnd
+            | M::Vpandnq => {
                 self.vector_binary(instr, |a, b| !a & b)?
             }
 

@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **14 octobre
-2026**, version 0.2.9-beta.1, 1 203 tests au vert.
+2026**, version 0.2.9-beta.1, 1 205 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -29,6 +29,27 @@ Ce qui reste est de la finition mesurée : des alignements de quelques
 pixels, deux tailles de police, et le vide sous « Prochaine
 instruction », qui tient au même nœud que le vide de 56 px — l'état du
 processeur est ancré.
+
+---
+
+## 15. AVX-512 : le morceau qui se découpait (A 7.21)
+
+Le chantier paraissait d'un bloc. La mesure a montré que la grande
+majorité des occurrences sont sur **ymm et xmm** : des alias EVEX
+d'instructions déjà exécutées, écrites par un compilateur qui se sert
+de l'encodage pour ses trente-deux registres, pas pour ses masques.
+
+- [x] **`vmovdqu8/16/32/64`, `vmovdqa32/64`, `vpxord/q`, `vpandd/q`,
+      `vpandnd/q`, `vpord/q`** rejoignent les bras qui les exécutaient
+      déjà — plus de 1 200 occurrences pour une liste de noms.
+- [x] **Une instruction masquée S'ARRÊTE et le dit** — avant même de
+      regarder le mnémonique. L'ignorer donnerait un résultat faux sans
+      le dire, et c'est pire que de refuser.
+- [ ] **Les registres `k0`–`k7`** (1 100 occurrences) : huit entiers de
+      64 bits, puis `kmov*`, `kortest*`, `vptestm*`, `vpcmp*`. Un jeu
+      d'instructions à soi.
+- [ ] **Les registres `zmm`** (350 occurrences) : là, c'est la largeur
+      de tout le fichier de registres vectoriels qui change.
 
 ---
 
@@ -192,9 +213,11 @@ la bibliothèque C, et tout binaire qui lit une chaîne passe par là.
       indicateurs, et le SEIZE qui fait sortir des boucles. Trois
       contrôles de bout en bout, écrits sur les usages réels : strlen,
       strchr, strstr, strcmp, une classe de caractères.
-- [ ] **AVX-512** (plus de deux mille occurrences) : registres de 512
-      bits et registres de masque `k`. Chantier de structure, pas ajout
-      de mnémoniques.
+- [~] **AVX-512** : le premier morceau est fait (A 7.21) — les alias
+      EVEX sur xmm/ymm des instructions déjà exécutées, soit plus de
+      mille deux cents occurrences, et un refus net de toute
+      instruction masquée. Restent les registres `k` (1 100
+      occurrences) et les `zmm` (350).
 
 ---
 

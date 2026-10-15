@@ -1120,15 +1120,16 @@ pub const ENTRIES: &[Entry] = &[
         kind: Kind::Instruction,
         names: &[
             "movaps", "movapd", "movups", "movupd", "movdqa", "movdqu", "vmovaps", "vmovapd",
-            "vmovups", "vmovupd", "vmovdqa", "vmovdqu",
+            "vmovups", "vmovupd", "vmovdqa", "vmovdqu", "vmovdqu8", "vmovdqu16", "vmovdqu32",
+            "vmovdqu64", "vmovdqa32", "vmovdqa64",
         ],
         title: Text {
             fr: "Déplacer tout le registre",
             en: "Move the whole register",
         },
         body: Text {
-            fr: "Copient 128 ou 256 bits d'un coup. Les formes en `a` exigent une adresse alignée sur la taille du transfert, les formes en `u` non — sur un processeur récent la différence de vitesse a disparu, l'exception d'alignement non.",
-            en: "Copy 128 or 256 bits at once. The `a` forms require an address aligned to the transfer size, the `u` forms do not — on a recent processor the speed difference is gone, the alignment fault is not.",
+            fr: "Copient 128 ou 256 bits d'un coup. Les formes en `a` exigent une adresse alignée sur la taille du transfert, les formes en `u` non — sur un processeur récent la différence de vitesse a disparu, l'exception d'alignement non. Le chiffre final des formes AVX-512 — `vmovdqu8`, `vmovdqu64` — ne dit ni la taille du transfert ni celle du registre : il dit ce qu'est un ÉLÉMENT pour le masque qui peut les accompagner. Sans masque, elles déplacent exactement ce que déplace `vmovdqu`.",
+            en: "Copy 128 or 256 bits at once. The `a` forms require an address aligned to the transfer size, the `u` forms do not — on a recent processor the speed difference is gone, the alignment fault is not. The trailing number on the AVX-512 forms — `vmovdqu8`, `vmovdqu64` — gives neither the transfer size nor the register size: it says what an ELEMENT is for the mask that may come with them. Without a mask they move exactly what `vmovdqu` moves.",
         },
         flags: "",
         example: "movaps xmm0, [vecteur]\nvmovups ymm1, [non_aligné]",
@@ -1332,7 +1333,8 @@ pub const ENTRIES: &[Entry] = &[
         names: &[
             "xorps", "xorpd", "pxor", "andps", "andpd", "pand", "orps", "orpd", "por", "andnps",
             "andnpd", "pandn", "vxorps", "vxorpd", "vpxor", "vandps", "vandpd", "vpand", "vorps",
-            "vorpd", "vpor", "vandnps", "vandnpd", "vpandn",
+            "vorpd", "vpor", "vandnps", "vandnpd", "vpandn", "vpxord", "vpxorq", "vpandd",
+            "vpandq", "vpord", "vporq", "vpandnd", "vpandnq",
         ],
         title: Text {
             fr: "Bit à bit sur un vecteur",

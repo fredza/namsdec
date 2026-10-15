@@ -2416,7 +2416,7 @@ def main():
         "faute de code à exécuter derrière.",
         "Les appels système qui touchent au monde — `mmap`, `open`, `fork` — sont nommés "
         "mais pas exécutés. namsdec le dit dès l'assemblage, avec la ligne.",
-        "AVX-512 — registres de 512 bits et masques `k` —, FMA, `in`/`out` et `cmpxchg16b` ne sont pas implémentés. SSE, SSE2, SSSE3, SSE4.1, SSE4.2, AVX et AVX2 le sont.",
+        "AVX-512 : ses registres de 512 bits (`zmm`) et ses registres de masque (`k`) ne sont pas implémentés, et une instruction qui porte un masque s'ARRÊTE en le disant plutôt que de l'ignorer. Ses formes écrites sur `xmm` et `ymm` sans masque — `vmovdqu64`, `vpxorq` et leurs semblables, qui sont ce qu'un compilateur récent écrit le plus — s'exécutent. FMA, `in`/`out` et `cmpxchg16b` non plus. SSE, SSE2, SSSE3, SSE4.1, SSE4.2, AVX et AVX2 le sont entièrement.",
     ]))
     blocs.append(("h1", "Mises à jour, licence et contact"))
     blocs.append(("p",
