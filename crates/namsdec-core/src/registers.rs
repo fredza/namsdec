@@ -51,6 +51,25 @@ pub enum RegXmm {
     Xmm13,
     Xmm14,
     Xmm15,
+    // Les seize suivants n'existent qu'avec AVX-512 : son encodage
+    // EVEX a quatre bits pour nommer un registre là où VEX n'en avait
+    // que trois. Un binaire qui ne s'en sert pas les laisse à zéro.
+    Xmm16,
+    Xmm17,
+    Xmm18,
+    Xmm19,
+    Xmm20,
+    Xmm21,
+    Xmm22,
+    Xmm23,
+    Xmm24,
+    Xmm25,
+    Xmm26,
+    Xmm27,
+    Xmm28,
+    Xmm29,
+    Xmm30,
+    Xmm31,
 }
 
 /// Les huit registres de MASQUE d'AVX-512, `k0` à `k7`.
@@ -104,7 +123,7 @@ impl RegMask {
 }
 
 impl RegXmm {
-    pub const ALL: [RegXmm; 16] = [
+    pub const ALL: [RegXmm; 32] = [
         RegXmm::Xmm0,
         RegXmm::Xmm1,
         RegXmm::Xmm2,
@@ -121,6 +140,22 @@ impl RegXmm {
         RegXmm::Xmm13,
         RegXmm::Xmm14,
         RegXmm::Xmm15,
+        RegXmm::Xmm16,
+        RegXmm::Xmm17,
+        RegXmm::Xmm18,
+        RegXmm::Xmm19,
+        RegXmm::Xmm20,
+        RegXmm::Xmm21,
+        RegXmm::Xmm22,
+        RegXmm::Xmm23,
+        RegXmm::Xmm24,
+        RegXmm::Xmm25,
+        RegXmm::Xmm26,
+        RegXmm::Xmm27,
+        RegXmm::Xmm28,
+        RegXmm::Xmm29,
+        RegXmm::Xmm30,
+        RegXmm::Xmm31,
     ];
 
     /// Le numéro du registre, tel qu'il s'écrit : `xmm5` pour 5.
@@ -232,11 +267,17 @@ impl X87 {
 #[derive(Clone, Debug, Default)]
 pub struct Registers {
     gpr: [u64; 16],
-    /// Les registres vectoriels, en deux moitiés de 128 bits : la basse
-    /// est `xmm`, les deux ensemble sont `ymm`. Ils ne se mélangent pas
-    /// aux généraux — ni les mêmes instructions, ni les mêmes tailles,
-    /// ni le même usage.
-    xmm: [[u128; 2]; 16],
+    /// Les registres vectoriels, en quatre tranches de 128 bits.
+    ///
+    /// La première tranche est `xmm`, les deux premières `ymm`, les
+    /// quatre `zmm` : trois fenêtres sur les mêmes bits, et c'est
+    /// l'instruction qui dit combien elle en lit. Ils ne se mélangent
+    /// pas aux généraux — ni les mêmes instructions, ni les mêmes
+    /// tailles, ni le même usage. Trente-deux et non seize, parce que
+    /// l'encodage EVEX d'AVX-512 a quatre bits pour nommer un registre
+    /// là où VEX n'en avait que trois ; un binaire qui n'en emploie
+    /// pas les laisse à zéro.
+    xmm: [[u128; 4]; 32],
     /// Les huit registres de masque d'AVX-512. Soixante-quatre bits
     /// chacun — assez pour une voie par octet d'un registre de 512.
     masques: [u64; 8],
@@ -299,12 +340,29 @@ impl Registers {
         self.masques[r as usize] = v;
     }
 
-    /// Le registre entier, moitié basse d'abord.
+    /// Les 256 bits de bas, moitié basse d'abord.
     pub fn get_ymm(&self, r: RegXmm) -> [u128; 2] {
+        let z = self.xmm[r as usize];
+        [z[0], z[1]]
+    }
+
+    /// Écrit les 256 bits de bas, et REMET LE HAUT À ZÉRO.
+    ///
+    /// C'est la règle de VEX, et elle vaut ici aussi : une instruction
+    /// AVX qui écrit `ymm0` efface les bits 256 à 511 de `zmm0`. Les
+    /// garder ferait réapparaître, dans un code mêlé, des octets qu'un
+    /// vrai processeur a effacés.
+    pub fn set_ymm(&mut self, r: RegXmm, v: [u128; 2]) {
+        self.xmm[r as usize] = [v[0], v[1], 0, 0];
+    }
+
+    /// Le registre entier — les 512 bits d'AVX-512, tranche basse
+    /// d'abord.
+    pub fn get_zmm(&self, r: RegXmm) -> [u128; 4] {
         self.xmm[r as usize]
     }
 
-    pub fn set_ymm(&mut self, r: RegXmm, v: [u128; 2]) {
+    pub fn set_zmm(&mut self, r: RegXmm, v: [u128; 4]) {
         self.xmm[r as usize] = v;
     }
 

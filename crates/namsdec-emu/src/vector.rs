@@ -112,9 +112,13 @@ impl FpOp {
     }
 }
 
-/// Une valeur vectorielle : deux moitiés de 128 bits, la basse d'abord.
-/// La haute n'existe que pour AVX — une instruction SSE ne la voit pas.
-type Vector = [u128; 2];
+/// Un registre vectoriel lu ou écrit : QUATRE tranches de 128 bits.
+///
+/// Quatre et non deux : `zmm` en fait 512. Les instructions SSE n'en
+/// emploient qu'une, celles d'AVX deux, et les tranches qu'elles ne
+/// touchent pas valent zéro — ce qui n'est pas la même chose que « ce
+/// qui y était », et c'est `write_vec_op` qui tranche.
+type Vector = [u128; 4];
 
 /// L'instruction laisse-t-elle la moitié haute du registre de
 /// destination où elle est ? Oui pour SSE, non pour AVX, et c'est
@@ -939,8 +943,14 @@ impl Emulator {
             | M::Vmovntdqa
             | M::Vlddqu => {
                 let src = self.read_vec_op(instr, instr.op_count() - 1)?;
-                let wide = self.is_wide(instr);
-                self.write_vec_op(instr, 0, [src[0], if wide { src[1] } else { 0 }])?;
+                // Autant de tranches que la destination en porte : une
+                // pour `xmm`, deux pour `ymm`, QUATRE pour `zmm`. En
+                // copier deux quoi qu'il arrive perdait la moitié haute
+                // d'un registre de 512 sans rien dire.
+                let tranches = self.tranches(instr);
+                let mut out = [0u128; 4];
+                out[..tranches].copy_from_slice(&src[..tranches]);
+                self.write_vec_op(instr, 0, out)?;
             }
             // Les demi-déplacements : huit octets qui vont dans une
             // moitié du registre et laissent l'autre intacte. C'est ainsi
@@ -1060,7 +1070,7 @@ impl Emulator {
                 // Le haut vient de la première source : la destination
                 // elle-même en SSE, l'opérande du milieu en AVX.
                 let upper = self.read_vec_op(instr, if instr.op_count() >= 3 { 1 } else { 0 })?[0];
-                self.write_vec_op(instr, 0, [(upper & !mask) | low, 0])?;
+                self.write_vec_op(instr, 0, [(upper & !mask) | low, 0, 0, 0])?;
             }
             M::Cvttss2si
             | M::Cvtss2si
@@ -1097,14 +1107,14 @@ impl Emulator {
                 let src = f32::from_bits(self.read_vec_op(instr, last)?[0] as u32);
                 let upper = self.read_vec_op(instr, if instr.op_count() >= 3 { 1 } else { 0 })?[0];
                 let low = u128::from(f64::from(src).to_bits());
-                self.write_vec_op(instr, 0, [(upper & !scalar_mask(8)) | low, 0])?;
+                self.write_vec_op(instr, 0, [(upper & !scalar_mask(8)) | low, 0, 0, 0])?;
             }
             M::Cvtsd2ss | M::Vcvtsd2ss => {
                 let last = instr.op_count() - 1;
                 let src = f64::from_bits(self.read_vec_op(instr, last)?[0] as u64);
                 let upper = self.read_vec_op(instr, if instr.op_count() >= 3 { 1 } else { 0 })?[0];
                 let low = u128::from((src as f32).to_bits());
-                self.write_vec_op(instr, 0, [(upper & !scalar_mask(4)) | low, 0])?;
+                self.write_vec_op(instr, 0, [(upper & !scalar_mask(4)) | low, 0, 0, 0])?;
             }
 
             // Les opérations bit à bit. `xorps xmm0, xmm0` et
@@ -1615,7 +1625,7 @@ impl Emulator {
                     half |= element << (lane * bytes * 8);
                 }
                 let wide = self.is_wide(instr);
-                self.write_vec_op(instr, 0, [half, if wide { half } else { 0 }])?;
+                self.write_vec_op(instr, 0, [half, if wide { half } else { 0 }, 0, 0])?;
             }
             // Les deux moitiés d'un registre 256 bits ne se parlent pas
             // d'elles-mêmes : il faut les instructions qui les nomment.
@@ -1623,14 +1633,18 @@ impl Emulator {
                 let dest = self.read_vec_op(instr, 1)?;
                 let src = self.read_vec_op(instr, 2)?[0];
                 let high = self.read_op(instr, 3)? & 1 == 1;
-                let out = if high { [dest[0], src] } else { [src, dest[1]] };
+                let out = if high {
+                    [dest[0], src, 0, 0]
+                } else {
+                    [src, dest[1], 0, 0]
+                };
                 self.write_vec_op(instr, 0, out)?;
             }
             M::Vextractf128 | M::Vextracti128 => {
                 let src = self.read_vec_op(instr, 1)?;
                 let high = self.read_op(instr, 2)? & 1 == 1;
                 let taken = if high { src[1] } else { src[0] };
-                self.write_vec_op(instr, 0, [taken, 0])?;
+                self.write_vec_op(instr, 0, [taken, 0, 0, 0])?;
             }
             M::Vperm2f128 | M::Vperm2i128 => {
                 let a = self.read_vec_op(instr, 1)?;
@@ -1647,7 +1661,7 @@ impl Emulator {
                         _ => b[1],
                     }
                 };
-                let out = [pick(control & 0xf), pick((control >> 4) & 0xf)];
+                let out = [pick(control & 0xf), pick((control >> 4) & 0xf), 0, 0];
                 self.write_vec_op(instr, 0, out)?;
             }
             M::Vpermq | M::Vpermpd => {
@@ -1657,7 +1671,7 @@ impl Emulator {
                     let half = src[(index / 2) as usize];
                     (half >> ((index % 2) * 64)) & u128::from(u64::MAX)
                 };
-                let mut out = [0u128; 2];
+                let mut out = [0u128; 4];
                 for lane in 0..4 {
                     let from = (control >> (lane * 2)) & 3;
                     out[lane / 2] |= quad(from) << ((lane % 2) * 64);
@@ -1690,7 +1704,7 @@ impl Emulator {
             OpKind::Register => {
                 let reg = instr.op_register(op_index);
                 map_vector(reg)
-                    .map(|r| self.cpu.regs.get_ymm(r))
+                    .map(|r| self.cpu.regs.get_zmm(r))
                     .ok_or_else(|| EmuError::UnsupportedRegister {
                         backend: Self::NAME,
                         register: format!("{reg:?}"),
@@ -1698,16 +1712,16 @@ impl Emulator {
             }
             OpKind::Memory => {
                 let addr = self.effective_address(instr, op_index)?;
-                let bytes = instr.memory_size().size().min(32);
+                let bytes = instr.memory_size().size().min(64);
                 let raw = self.cpu.mem.bytes_at(addr, bytes)?;
-                let mut buf = [0u8; 32];
+                let mut buf = [0u8; 64];
                 buf[..bytes].copy_from_slice(raw);
                 let (chunks, _) = buf.as_chunks::<16>();
-                let mut halves = [0u128; 2];
-                for (half, chunk) in halves.iter_mut().zip(chunks) {
-                    *half = u128::from_le_bytes(*chunk);
+                let mut tranches = [0u128; 4];
+                for (tranche, chunk) in tranches.iter_mut().zip(chunks) {
+                    *tranche = u128::from_le_bytes(*chunk);
                 }
-                Ok(halves)
+                Ok(tranches)
             }
             other => Err(EmuError::UnsupportedOperand {
                 backend: Self::NAME,
@@ -1735,10 +1749,25 @@ impl Emulator {
                 match map_vector(reg) {
                     Some(r) => {
                         if keeps_upper_half(instr) {
+                            // SSE : seuls les 128 bits de bas changent,
+                            // tout le reste est laissé où il est.
                             self.cpu.regs.set_xmm(r, value[0]);
                         } else {
-                            let high = if reg.is_ymm() { value[1] } else { 0 };
-                            self.cpu.regs.set_ymm(r, [value[0], high]);
+                            // VEX et EVEX remettent à zéro ce qu'ils
+                            // n'écrivent pas : une instruction qui
+                            // nomme `ymm0` efface les bits 256 à 511,
+                            // et c'est la règle qu'on oublie en mêlant
+                            // les jeux.
+                            let mut out = [0u128; 4];
+                            let tranches = if reg.is_zmm() {
+                                4
+                            } else if reg.is_ymm() {
+                                2
+                            } else {
+                                1
+                            };
+                            out[..tranches].copy_from_slice(&value[..tranches]);
+                            self.cpu.regs.set_zmm(r, out);
                         }
                         Ok(())
                     }
@@ -1750,10 +1779,11 @@ impl Emulator {
             }
             OpKind::Memory => {
                 let addr = self.effective_address(instr, op_index)?;
-                let bytes = instr.memory_size().size().min(32);
-                let mut buf = [0u8; 32];
-                buf[..16].copy_from_slice(&value[0].to_le_bytes());
-                buf[16..].copy_from_slice(&value[1].to_le_bytes());
+                let bytes = instr.memory_size().size().min(64);
+                let mut buf = [0u8; 64];
+                for (i, tranche) in value.iter().enumerate() {
+                    buf[i * 16..(i + 1) * 16].copy_from_slice(&tranche.to_le_bytes());
+                }
                 self.record_memory(addr, bytes);
                 self.cpu.mem.write_bytes(addr, &buf[..bytes])?;
                 Ok(())
@@ -1768,10 +1798,28 @@ impl Emulator {
 
     /// L'opération travaille-t-elle sur 256 bits ? La destination le dit.
     fn is_wide(&self, instr: &Instruction) -> bool {
+        self.tranches(instr) >= 2
+    }
+
+    /// Combien de tranches de 128 bits l'instruction écrit : une pour
+    /// `xmm`, deux pour `ymm`, quatre pour `zmm`.
+    ///
+    /// Lue sur la DESTINATION, qui est ce qui décide : `vmovdqu64 ymm0,
+    /// [rsi]` écrit 256 bits quelle que soit la taille de la zone lue.
+    fn tranches(&self, instr: &Instruction) -> usize {
         match instr.op_kind(0) {
-            OpKind::Register => instr.op_register(0).is_ymm(),
-            OpKind::Memory => instr.memory_size().size() > 16,
-            _ => false,
+            OpKind::Register => {
+                let reg = instr.op_register(0);
+                if reg.is_zmm() {
+                    4
+                } else if reg.is_ymm() {
+                    2
+                } else {
+                    1
+                }
+            }
+            OpKind::Memory => instr.memory_size().size().div_ceil(16).clamp(1, 4),
+            _ => 1,
         }
     }
 
@@ -1802,8 +1850,11 @@ impl Emulator {
         let (first, second) = sources(instr, extra);
         let a = self.read_vec_op(instr, first)?;
         let b = self.read_vec_op(instr, second)?;
-        let wide = self.is_wide(instr);
-        let out = [f(a[0], b[0]), if wide { f(a[1], b[1]) } else { 0 }];
+        let tranches = self.tranches(instr);
+        let mut out = [0u128; 4];
+        for (i, place) in out.iter_mut().enumerate().take(tranches) {
+            *place = f(a[i], b[i]);
+        }
         self.write_vec_op(instr, 0, out)
     }
 
@@ -1817,14 +1868,14 @@ impl Emulator {
         let last = instr.op_count() - 1;
         if instr.op_kind(0) == OpKind::Memory {
             let src = self.read_vec_op(instr, last)?;
-            return self.write_vec_op(instr, 0, [src[0] & mask, 0]);
+            return self.write_vec_op(instr, 0, [src[0] & mask, 0, 0, 0]);
         }
         if instr.op_count() >= 3 {
             // `vmovss xmm0, xmm1, xmm2` : le haut vient de la première
             // source, l'élément du bas de la seconde.
             let upper = self.read_vec_op(instr, 1)?[0] & !mask;
             let low = self.read_vec_op(instr, 2)?[0] & mask;
-            return self.write_vec_op(instr, 0, [upper | low, 0]);
+            return self.write_vec_op(instr, 0, [upper | low, 0, 0, 0]);
         }
         let src = self.read_vec_op(instr, last)?[0] & mask;
         let upper = if instr.op_kind(last) == OpKind::Memory {
@@ -1832,7 +1883,7 @@ impl Emulator {
         } else {
             self.read_vec_op(instr, 0)?[0] & !mask
         };
-        self.write_vec_op(instr, 0, [upper | src, 0])
+        self.write_vec_op(instr, 0, [upper | src, 0, 0, 0])
     }
 
     /// `movlpd`/`movhpd` et leurs cousins : huit octets déplacés dans
@@ -1848,7 +1899,7 @@ impl Emulator {
         if instr.op_kind(0) == OpKind::Memory {
             // Vers la mémoire : la moitié choisie, et rien d'autre.
             let src = self.read_vec_op(instr, instr.op_count() - 1)?[0];
-            return self.write_vec_op(instr, 0, [(src & mask) >> moitié, 0]);
+            return self.write_vec_op(instr, 0, [(src & mask) >> moitié, 0, 0, 0]);
         }
         let last = instr.op_count() - 1;
         let src = self.read_vec_op(instr, last)?[0] & 0xffff_ffff_ffff_ffff;
@@ -1859,7 +1910,7 @@ impl Emulator {
         } else {
             self.read_vec_op(instr, 0)?[0] & !mask
         };
-        self.write_vec_op(instr, 0, [reste | (src << moitié), 0])
+        self.write_vec_op(instr, 0, [reste | (src << moitié), 0, 0, 0])
     }
 
     /// `movd`/`movq` : le passage entre les deux familles de registres.
@@ -1878,11 +1929,11 @@ impl Emulator {
             } else {
                 u128::from(self.read_op(instr, 1)?)
             };
-            return self.write_vec_op(instr, 0, [value & mask, 0]);
+            return self.write_vec_op(instr, 0, [value & mask, 0, 0, 0]);
         }
         let value = (self.read_vec_op(instr, 1)?[0] & mask) as u64;
         if instr.op_kind(0) == OpKind::Memory {
-            self.write_vec_op(instr, 0, [u128::from(value), 0])
+            self.write_vec_op(instr, 0, [u128::from(value), 0, 0, 0])
         } else {
             self.write_op(instr, 0, value)
         }
@@ -1911,10 +1962,12 @@ impl Emulator {
             let out = [
                 extend_lanes(src, from, to, signed),
                 extend_lanes(src >> coupe, from, to, signed),
+                0,
+                0,
             ];
             self.write_vec_op(instr, 0, out)
         } else {
-            self.write_vec_op(instr, 0, [extend_lanes(src, from, to, signed), 0])
+            self.write_vec_op(instr, 0, [extend_lanes(src, from, to, signed), 0, 0, 0])
         }
     }
 
@@ -1932,7 +1985,7 @@ impl Emulator {
         let valeur = u128::from(self.read_op(instr, last - 1)? & lane_mask(bytes * 8));
         let shift = index * bytes * 8;
         let trou = u128::from(lane_mask(bytes * 8)) << shift;
-        self.write_vec_op(instr, 0, [(gardé & !trou) | (valeur << shift), 0])
+        self.write_vec_op(instr, 0, [(gardé & !trou) | (valeur << shift), 0, 0, 0])
     }
 
     /// `pextr*` : le chemin inverse. Vers un registre général, la voie
@@ -2313,15 +2366,11 @@ impl Emulator {
         };
         let (_, source) = sources(instr, 1);
         let a = self.read_vec_op(instr, source)?;
-        let wide = self.is_wide(instr);
-        let out = [
-            shift_lanes(a[0], count, bytes, kind),
-            if wide {
-                shift_lanes(a[1], count, bytes, kind)
-            } else {
-                0
-            },
-        ];
+        let tranches = self.tranches(instr);
+        let mut out = [0u128; 4];
+        for (i, place) in out.iter_mut().enumerate().take(tranches) {
+            *place = shift_lanes(a[i], count, bytes, kind);
+        }
         self.write_vec_op(instr, 0, out)
     }
 

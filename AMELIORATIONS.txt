@@ -3890,3 +3890,69 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
   voies ne sauront pas être écrites une à une. Les masques existent
   maintenant ; ce qui manque est leur APPLICATION, et c'est un travail
   sur chaque instruction vectorielle plutôt qu'un ajout.
+
+
+--------------------------------------------------------------------------------
+ 7.23  LES REGISTRES DE 512 BITS
+       (15 octobre 2026) — le chantier de structure, demandé d'abord
+--------------------------------------------------------------------------------
+
+  LE SEUL MORCEAU QUI TOUCHAIT LA STRUCTURE, et Fred l'a demandé avant
+  le reste. Le fichier de registres vectoriels passe de seize à
+  TRENTE-DEUX registres, et de 256 bits à 512.
+
+  Trente-deux parce que l'encodage EVEX a quatre bits pour nommer un
+  registre là où VEX n'en avait que trois ; 512 parce que c'est la
+  largeur de `zmm`. Les trois noms désignent le MÊME registre :
+  `xmm5`, `ymm5` et `zmm5` sont trois fenêtres sur les mêmes bits, et
+  c'est l'instruction qui dit combien elle en lit.
+
+  CE QUE ÇA A DEMANDÉ, et c'est moins que prévu parce que l'API tenait :
+    - `[[u128; 2]; 16]` devient `[[u128; 4]; 32]`, et `get_ymm` /
+      `set_ymm` restent — ils lisent et écrivent les 256 bits de bas,
+      ce qu'appelait déjà tout le reste du code ;
+    - `Vector` passe à quatre tranches, et `is_wide` — une question par
+      oui ou non — cède la place à `tranches(instr)`, qui en rend une,
+      deux ou quatre ;
+    - vingt et un sites écrivaient un littéral à deux tranches ; ils en
+      portent quatre.
+
+  LA RÈGLE DU HAUT, ÉTENDUE, et c'est elle qu'il fallait ne pas rater :
+  une instruction VEX ou EVEX remet à zéro ce qu'elle n'écrit pas.
+  Écrire `ymm1` efface donc les bits 256 à 511 de `zmm1`. Une
+  instruction SSE, elle, ne touche à rien d'autre que ses 128 bits de
+  bas. Les deux règles cohabitent dans le même programme, et un
+  contrôle les éprouve côte à côte : `vmovdqu64 ymm1, …` sur un
+  registre plein laisse zéro au-dessus, `movdqa xmm2, …` laisse les
+  0xff.
+
+  UN DÉFAUT ATTRAPÉ PAR LE CONTRÔLE, et qui serait passé inaperçu : le
+  bras des déplacements copiait DEUX tranches quoi qu'il arrive. Un
+  `vmovdqu64 zmm0, [source]` perdait donc silencieusement sa moitié
+  haute — le genre de faute qui ne se voit que sur la valeur, jamais
+  sur un arrêt.
+
+  CE QUE ÇA COÛTE, mesuré et borné. Le « pas en arrière » garde une
+  copie complète des registres par pas, cinq mille pas au plus :
+  `Registers` passe à 2 352 octets, soit ONZE MÉGA-OCTETS pour un
+  historique plein. C'est de l'ordre d'un onglet de navigateur, et sans
+  commune mesure avec les deux gigaoctets qu'un listing d'un million de
+  lignes demandait avant la vue ligne à ligne. Le contrôle
+  `what_the_undo_history_costs_in_memory` fixe la borne à trois
+  kilo-octets par jeu et seize méga-octets au total : un élargissement
+  futur ne passera pas inaperçu.
+
+  ET ON LES VOIT. La fenêtre des registres étendus montre les seize
+  nouveaux — mais seulement s'ils portent quelque chose, comme les
+  registres de masque : seize lignes de zéros de plus coûteraient la
+  moitié de la fenêtre à un programme qui n'emploie pas AVX-512. Les
+  bits 256 à 511 sont dans l'infobulle, à la même condition.
+
+  SUR LES BINAIRES D'ÉPREUVE : LeetCrackmeLin64 en compte trois cent
+  cinquante-cinq, qui s'exécutent désormais.
+
+  CE QUI RESTE D'AVX-512 : l'APPLICATION d'un masque à une opération.
+  `vmovdqu64 ymm0{k1}, [rsi]` s'arrête toujours en le disant. Les
+  registres existent, les masques existent ; ce qui manque est de
+  savoir écrire une voie sur deux, et c'est un travail sur chaque
+  instruction vectorielle plutôt qu'un ajout.

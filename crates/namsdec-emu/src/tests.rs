@@ -4542,3 +4542,160 @@ hlt
         "knotb retourne huit bits, et pas un de plus"
     );
 }
+
+/// Les registres de 512 bits d'AVX-512 s'exécutent.
+///
+/// C'était le dernier morceau, et le seul qui touchait la STRUCTURE :
+/// les registres vectoriels passent de seize à trente-deux — l'encodage
+/// EVEX a quatre bits pour en nommer un, là où VEX n'en avait que
+/// trois — et de 256 bits à 512.
+///
+/// Trois fenêtres sur les mêmes bits : `xmm5`, `ymm5` et `zmm5` sont le
+/// même registre, et c'est l'instruction qui dit combien elle en lit.
+#[test]
+fn the_512_bit_registers_run() {
+    let emu = run_program(
+        "\
+section .data
+align 64
+source  db 1, 2, 3, 4, 5, 6, 7, 8
+        times 24 db 0
+        db 9, 10, 11, 12, 13, 14, 15, 16
+        times 24 db 0
+sortie  times 64 db 0
+
+section .text
+global _start
+_start:
+; Soixante-quatre octets d'un coup.
+vmovdqu64 zmm0, [source]
+vmovdqu64 [sortie], zmm0
+mov rax, [sortie]
+mov rbx, [sortie+32]          ; la seconde moitié, que ymm ne voit pas
+
+; Les registres au-delà du seizième n'existent qu'avec EVEX.
+vmovdqu64 zmm20, [source]
+vmovdqu64 [sortie+0], zmm20
+mov rcx, [sortie]
+
+; Un ou exclusif sur les 512 bits : tout doit tomber, y compris le
+; haut.
+vpxorq zmm0, zmm0, zmm0
+vmovdqu64 [sortie], zmm0
+mov rdx, [sortie+32]
+hlt
+",
+        &[],
+    );
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rax),
+        0x0807_0605_0403_0201,
+        "les huit premiers octets des soixante-quatre"
+    );
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rbx),
+        0x100f_0e0d_0c0b_0a09,
+        "et ceux du trente-deuxième : hors de portée d'un ymm"
+    );
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rcx),
+        0x0807_0605_0403_0201,
+        "zmm20 existe : EVEX nomme trente-deux registres"
+    );
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rdx),
+        0,
+        "vpxorq sur 512 bits efface tout, le haut compris"
+    );
+}
+
+/// Écrire un `ymm` EFFACE les bits 256 à 511 du `zmm` qui le porte.
+///
+/// C'est la règle de VEX, étendue : une instruction qui nomme la
+/// fenêtre étroite remet à zéro ce qu'elle ne nomme pas. La garder
+/// ferait réapparaître, dans un code mêlé, des octets qu'un vrai
+/// processeur a effacés — et c'est exactement le genre de différence
+/// qui fait qu'un binaire se comporte autrement ici que sur la machine.
+///
+/// SSE, lui, ne l'efface pas : `movdqa xmm0, …` laisse tout le haut où
+/// il est. Les deux règles cohabitent dans le même programme.
+#[test]
+fn writing_a_ymm_clears_the_top_of_its_zmm() {
+    let emu = run_program(
+        "\
+section .data
+align 64
+plein   times 64 db 0xff
+bas     times 32 db 0x11
+sortie  times 64 db 0
+
+section .text
+global _start
+_start:
+; Le registre entier plein, puis une écriture AVX de 256 bits.
+vmovdqu64 zmm1, [plein]
+vmovdqu64 ymm1, [bas]
+vmovdqu64 [sortie], zmm1
+mov rax, [sortie]             ; le bas : ce qu'on vient d'écrire
+mov rbx, [sortie+32]          ; le haut : effacé par la règle de VEX
+
+; SSE, lui, préserve : on remplit, puis on écrit 128 bits à l'ancienne.
+vmovdqu64 zmm2, [plein]
+movdqa xmm2, [bas]
+vmovdqu64 [sortie], zmm2
+mov rcx, [sortie]
+mov rdx, [sortie+32]          ; intact, parce que c'est du SSE
+hlt
+",
+        &[],
+    );
+    assert_eq!(emu.cpu.regs.get64(Reg64::Rax), 0x1111_1111_1111_1111);
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rbx),
+        0,
+        "une écriture AVX de 256 bits efface les 256 du haut"
+    );
+    assert_eq!(emu.cpu.regs.get64(Reg64::Rcx), 0x1111_1111_1111_1111);
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rdx),
+        u64::MAX,
+        "une écriture SSE ne touche à rien d'autre, et c'est la règle \
+         qu'on oublie en mêlant les jeux"
+    );
+}
+
+/// Ce que l'historique coûte en mémoire, maintenant que les registres
+/// vectoriels font 512 bits et qu'il y en a trente-deux.
+///
+/// Le « pas en arrière » garde une copie complète des registres par
+/// pas, cinq mille pas au plus. Élargir le fichier vectoriel multiplie
+/// donc cette copie : c'est le prix de la structure, et il doit être
+/// CONNU plutôt que découvert sur un gros programme.
+///
+/// Mesuré : un `Registers` fait un peu plus de deux kilo-octets, soit
+/// une douzaine de méga-octets pour un historique plein. C'est de
+/// l'ordre de ce que coûte un onglet de navigateur, et sans commune
+/// mesure avec les deux gigaoctets qu'un listing d'un million de
+/// lignes demandait avant la vue ligne à ligne. La borne est ici pour
+/// qu'un élargissement futur — des registres de 1 024 bits, trente-deux
+/// de plus — ne passe pas inaperçu.
+#[test]
+fn what_the_undo_history_costs_in_memory() {
+    let un = std::mem::size_of::<namsdec_core::Registers>();
+    eprintln!(
+        "Registers = {un} octets, historique plein = {} Mo",
+        un * 5_000 / (1024 * 1024)
+    );
+    assert!(
+        un <= 3 * 1024,
+        "un jeu de registres fait {un} octets — au-delà de trois kilo-octets, \
+         l'historique de cinq mille pas devient sensible"
+    );
+    // Et le total, qui est ce qu'on paie vraiment.
+    let total = un * 5_000;
+    assert!(
+        total <= 16 * 1024 * 1024,
+        "l'historique plein ferait {} Mo",
+        total / (1024 * 1024)
+    );
+}

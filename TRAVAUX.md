@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **14 octobre
-2026**, version 0.2.9-beta.1, 1 208 tests au vert.
+2026**, version 0.2.9-beta.1, 1 211 tests au vert.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -50,8 +50,10 @@ de l'encodage pour ses trente-deux registres, pas pour ses masques.
       remplit : `vptestm*`, `vptestnm*`, `vpcmp*` avec leur prédicat.
       Montrés en binaire dans la fenêtre des registres étendus, et
       seulement quand il y en a.
-- [ ] **Les registres `zmm`** (350 occurrences) : là, c'est la largeur
-      de tout le fichier de registres vectoriels qui change.
+- [x] **Les registres `zmm`** (A 7.23) — trente-deux registres de 512
+      bits, la règle du haut étendue (VEX efface, SSE préserve), et le
+      coût de l'historique mesuré : 2 352 octets par jeu, 11 Mo pour
+      cinq mille pas, borné par un contrôle.
 - [ ] **Le MASQUAGE des opérations** — `vmovdqu64 ymm0{k1}, [rsi]`
       reste refusé. Les masques existent ; ce qui manque est leur
       application, voie par voie, sur chaque instruction vectorielle.

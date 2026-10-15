@@ -3770,8 +3770,13 @@ fn about_window_id() -> egui::Id {
     egui::Id::new(ABOUT_WINDOW)
 }
 
-/// Les seize registres SSE, dans l'ordre de leur numéro.
-const XMM_REGISTERS: [(&str, namsdec_core::RegXmm); 16] = {
+/// Les registres vectoriels, dans l'ordre de leur numéro.
+///
+/// TRENTE-DEUX : les seize derniers n'existent qu'avec AVX-512, dont
+/// l'encodage EVEX a quatre bits pour en nommer un. L'affichage ne les
+/// montre que lorsqu'ils portent quelque chose — voir `xmm_ui` —, de la
+/// même façon que les registres de masque.
+const XMM_REGISTERS: [(&str, namsdec_core::RegXmm); 32] = {
     use namsdec_core::RegXmm::*;
     [
         ("XMM0", Xmm0),
@@ -3790,6 +3795,22 @@ const XMM_REGISTERS: [(&str, namsdec_core::RegXmm); 16] = {
         ("XMM13", Xmm13),
         ("XMM14", Xmm14),
         ("XMM15", Xmm15),
+        ("XMM16", Xmm16),
+        ("XMM17", Xmm17),
+        ("XMM18", Xmm18),
+        ("XMM19", Xmm19),
+        ("XMM20", Xmm20),
+        ("XMM21", Xmm21),
+        ("XMM22", Xmm22),
+        ("XMM23", Xmm23),
+        ("XMM24", Xmm24),
+        ("XMM25", Xmm25),
+        ("XMM26", Xmm26),
+        ("XMM27", Xmm27),
+        ("XMM28", Xmm28),
+        ("XMM29", Xmm29),
+        ("XMM30", Xmm30),
+        ("XMM31", Xmm31),
     ]
 };
 

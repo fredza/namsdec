@@ -6,6 +6,19 @@ entrée par version, et ce qui change pour qui s'en sert.
 
 ## 0.2.9-beta.1 — 15 octobre 2026
 
+**Les registres de 512 bits**
+- Le fichier de registres vectoriels passe de seize à **trente-deux**
+  registres, et de 256 bits à **512**. `xmm5`, `ymm5` et `zmm5` sont
+  trois fenêtres sur les mêmes bits ; c'est l'instruction qui dit
+  combien elle en lit. LeetCrackmeLin64 en compte trois cent
+  cinquante-cinq, qui s'exécutent désormais.
+- La règle du haut vaut jusqu'en 512 : une instruction AVX qui écrit
+  `ymm1` **efface** les bits 256 à 511, une instruction SSE n'y touche
+  pas. Les deux cohabitent dans le même programme.
+- La fenêtre des registres étendus montre les seize nouveaux, et les
+  bits hauts dans l'infobulle — seulement quand ils portent quelque
+  chose.
+
 **Les registres de masque d'AVX-512**
 - `k0` à `k7` existent, et avec eux `kmov*` — l'instruction AVX-512 la
   plus fréquente d'un vrai binaire —, les combinaisons, `kortest*`, et

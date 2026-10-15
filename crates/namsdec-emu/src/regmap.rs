@@ -27,7 +27,10 @@ pub fn is_high_byte(reg: Register) -> bool {
 /// pas de largeur au sens de `Width`, et ne sert à aucune des
 /// instructions entières.
 pub fn map_vector(reg: Register) -> Option<RegXmm> {
-    if !reg.is_xmm() && !reg.is_ymm() {
+    // Les trois largeurs désignent le MÊME registre : `xmm5`, `ymm5` et
+    // `zmm5` sont trois fenêtres sur les cinq cent douze mêmes bits, et
+    // c'est l'instruction qui dit combien elle en lit.
+    if !reg.is_xmm() && !reg.is_ymm() && !reg.is_zmm() {
         return None;
     }
     RegXmm::ALL.get(reg.number()).copied()

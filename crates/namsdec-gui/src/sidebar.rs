@@ -559,7 +559,15 @@ impl NamsdecApp {
             .min_col_width(0.0)
             .striped(true)
             .show(ui, |ui| {
-                for (index, (name, reg)) in XMM_REGISTERS.into_iter().enumerate() {
+                // Les seize derniers n'existent qu'avec AVX-512 : on
+                // ne les montre que s'ils portent quelque chose. Seize
+                // lignes de zéros de plus pour un programme qui n'en
+                // emploie aucun coûteraient la moitié de la fenêtre.
+                let hauts_employés = XMM_REGISTERS[16..]
+                    .iter()
+                    .any(|(_, reg)| regs.get_zmm(*reg) != [0; 4]);
+                let montrés = if hauts_employés { 32 } else { 16 };
+                for (index, (name, reg)) in XMM_REGISTERS.into_iter().take(montrés).enumerate() {
                     let value = regs.get_ymm(reg);
                     let base = ui.visuals().text_color();
                     let flash = if changed.contains(&name) { éclat } else { 0.0 };
@@ -571,7 +579,11 @@ impl NamsdecApp {
                         color,
                         egui::RichText::new(format!("{low:016x}")).monospace(),
                     )
-                    .on_hover_text(xmm_tooltip(s, value));
+                    .on_hover_text(zmm_tooltip(
+                        s,
+                        regs.get_zmm(reg),
+                        self.lang == Lang::Fr,
+                    ));
                     // La lecture décimale n'a de sens que si le registre
                     // contient *un* nombre : lire le bas d'un vecteur de
                     // quatre flottants simples comme un double donne un
@@ -3483,7 +3495,30 @@ pub(crate) fn vector_name(name: &str, value: [u128; 2]) -> String {
     }
 }
 
-/// Tous les bits d'un registre vectoriel, puis leur lecture en flottants.
+/// Ce qu'un registre vectoriel porte, dit en toutes lettres.
+///
+/// `haut` est la moitié supérieure des 512 bits — celle que seul
+/// AVX-512 atteint. Montrée seulement quand elle n'est pas nulle : un
+/// registre resté en 256 bits n'a pas à traîner trente-deux zéros.
+pub(crate) fn zmm_tooltip(s: &Strings, value: [u128; 4], fr: bool) -> String {
+    let bas = xmm_tooltip(s, [value[0], value[1]]);
+    if value[2] == 0 && value[3] == 0 {
+        return bas;
+    }
+    format!(
+        "{bas}\n{} {:032x} {:032x}",
+        if fr {
+            "bits 256-511 :"
+        } else {
+            "bits 256-511:"
+        },
+        value[3],
+        value[2]
+    )
+}
+
+/// Tous les bits d'un registre vectoriel, puis leur lecture en
+/// flottants.
 pub(crate) fn xmm_tooltip(s: &Strings, value: [u128; 2]) -> String {
     // La moitié haute n'est montrée que si elle sert : un registre resté
     // en 128 bits n'a pas à traîner seize zéros de plus.
