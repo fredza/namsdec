@@ -534,12 +534,19 @@ mod tests {
         assert!(advice(Lang::Fr, &documentée).unwrap().contains("F1"));
         // Et une instruction qu'on ne documente pas non plus n'invente
         // rien.
+        //
+        // L'exemple était `Vpconflictd` jusqu'au 15 octobre 2026, date
+        // à laquelle elle a été simulée ET documentée — ce qui a fait
+        // échouer ce contrôle, à juste titre. On prend donc une
+        // instruction de prélecture pour la collecte, que namsdec ne
+        // simule pas et dont la fiche n'apprendrait rien de plus que
+        // « namsdec ne la fait pas ».
         assert!(
             advice(
                 Lang::Fr,
                 &EmuError::UnsupportedInstruction {
                     backend: "namsdec",
-                    mnemonic: "Vpconflictd".to_owned(),
+                    mnemonic: "Vgatherpf0dps".to_owned(),
                 }
             )
             .is_none()

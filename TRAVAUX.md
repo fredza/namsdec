@@ -1843,6 +1843,22 @@ le code binaire et le pseudo-code. Un seul module neuf les réunit.
       instructions, 762 cas, zéro écart.
       Onze instructions manquent encore, et l'oracle les nomme —
       `vpternlogd` en tête, qui n'a d'équivalent nulle part ailleurs.
+- [x] **Les onze d'AVX-512, et quatorze de plus** (A 3.11, 15 octobre
+      2026) — `vpternlogd`, `vpermd`, `valignd`, `vshufi32x4`,
+      `vpsrav`/`vpsllv`/`vpsrlv`, `vplzcnt`, `vpopcnt`, `vpconflict`, et
+      les comparaisons EVEX à destination de masque. Chacune écrite puis
+      vérifiée sous SDE dans la minute : implémenter une instruction
+      vectorielle n'est plus un pari sur une lecture du manuel.
+      Deux trouvailles de conception en route. `vpermq` porte DEUX
+      instructions sous un nom — immédiat figé par voie de 256, ou index
+      variable sur tout le registre —, et namsdec ne connaissait que la
+      première. Et `vpcmpeqd k1, …` n'est pas `vpcmpeqd xmm0, …` : seul
+      le type de la destination les sépare.
+      L'oracle passe 138 instructions, 1 104 cas, zéro écart, zéro
+      écartée.
+      Sept fiches écrites (183 au lieu de 176). Cinq invariants ont
+      réclamé leur dû, dont un qui a cédé à raison : son exemple
+      d'instruction « ni simulée ni documentée » venait d'être les deux.
 - [x] **QEMU ne sert pas d'oracle pour AVX-512** (A 3.9) — piste
       fermée par l'expérience, pas par la documentation. `qemu-x86_64
       -cpu help` annonce `avx512f` et les autres, mais ce sont des noms

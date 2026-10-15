@@ -1444,6 +1444,108 @@ pub const ENTRIES: &[Entry] = &[
     },
     Entry {
         kind: Kind::Instruction,
+        names: &["vpternlogd", "vpternlogq"],
+        title: Text {
+            fr: "Une table de vérité, en une instruction",
+            en: "A truth table, in one instruction",
+        },
+        body: Text {
+            fr: "Rien n'y ressemble ailleurs dans le jeu. Pour chaque position de bit, elle prend le bit de la destination, celui de la première source et celui de la seconde — trois bits, donc huit combinaisons. L'immédiat de huit bits donne le résultat de chacune : son bit numéro `abc` dit ce que vaut la sortie quand les trois entrées valent `a`, `b`, `c`.\n\nAutrement dit, **l'immédiat EST la fonction booléenne**. N'importe quel opérateur à trois entrées s'écrit ainsi, et c'est pourquoi un compilateur peut remplacer trois instructions logiques par celle-ci.\n\nPour composer son immédiat, on part de trois constantes : `0xf0` ne rend que la destination, `0xcc` que la première source, `0xaa` que la seconde. On les combine ensuite avec les opérateurs qu'on veut — `0xf0 ^ 0xcc ^ 0xaa` donne `0x96`, le ou-exclusif des trois. `0xca` est un multiplexeur : si la destination, alors la première source, sinon la seconde.\n\nNoter que la destination est **lue** avant d'être écrite, ce qui est rare pour une instruction vectorielle.",
+            en: "Nothing else in the instruction set resembles it. For each bit position it takes the destination bit, the first source bit and the second — three bits, so eight combinations. The eight-bit immediate gives the result of each: its bit number `abc` says what the output is when the three inputs are `a`, `b`, `c`.\n\nIn other words, **the immediate IS the boolean function**. Any three-input operator can be written this way, which is why a compiler can replace three logical instructions with this one.\n\nTo build the immediate, start from three constants: `0xf0` returns only the destination, `0xcc` only the first source, `0xaa` only the second. Then combine them with the operators you want — `0xf0 ^ 0xcc ^ 0xaa` gives `0x96`, the exclusive-or of all three. `0xca` is a multiplexer: if the destination, then the first source, else the second.\n\nNote that the destination is **read** before being written, which is rare for a vector instruction.",
+        },
+        flags: "",
+        example: "vpternlogd zmm0, zmm1, zmm2, 0x96   ; xor des trois\nvpternlogd zmm0, zmm1, zmm2, 0xca   ; un multiplexeur",
+    },
+    Entry {
+        kind: Kind::Instruction,
+        names: &["vpermb", "vpermd", "vpermw"],
+        title: Text {
+            fr: "Permuter selon un index calculé",
+            en: "Permute by a computed index",
+        },
+        body: Text {
+            fr: "Chaque voie du résultat va chercher la voie que **désigne** l'index de même rang. Avec un registre d'index, l'ordre n'est pas figé dans l'instruction : il peut être calculé, ce qui fait de l'opération une **table de consultation** à seize entrées en un seul coup.\n\nC'est la différence avec les permutations à immédiat (`vpermq zmm, zmm, 0x1b`), figées à la compilation et répétées sur chaque voie de 256 bits — huit bits ne peuvent pas nommer huit positions parmi huit. Les deux formes portent le même nom : seul le type du troisième opérande les distingue, et les confondre donne un résultat qui a l'air plausible.\n\nAttention à l'ordre : l'index est la **première** source, la donnée la seconde — l'inverse de ce qu'on lit de gauche à droite.",
+            en: "Each lane of the result fetches the lane **named** by the index of the same rank. With an index register the order is not frozen in the instruction: it can be computed, which makes the operation a **lookup table** of sixteen entries in one go.\n\nThat is the difference from the immediate forms (`vpermq zmm, zmm, 0x1b`), frozen at compile time and repeated on each 256-bit lane — eight bits cannot name eight positions out of eight. Both forms share a name: only the third operand's type tells them apart, and confusing them yields a plausible-looking result.\n\nMind the order: the index is the **first** source, the data the second — the opposite of the reading order.",
+        },
+        flags: "",
+        example: "vpermd zmm0, zmm1, zmm2   ; zmm1 dit d'où vient chaque mot",
+    },
+    Entry {
+        kind: Kind::Instruction,
+        names: &["valignd", "valignq"],
+        title: Text {
+            fr: "Une fenêtre à cheval sur deux vecteurs",
+            en: "A window straddling two vectors",
+        },
+        body: Text {
+            fr: "On met les deux sources bout à bout — la seconde en bas, la première en haut — et l'on prend la tranche qui commence `imm` mots plus loin. C'est le `palignr` de SSE, mais par mots de 32 ou 64 bits et sur toute la largeur du registre au lieu d'une voie de 128.\n\nL'usage : faire **glisser une fenêtre** sur un flux sans relire la mémoire. Un filtre ou une convolution a besoin, à chaque pas, des mêmes données décalées d'un cran ; `valignd` les fabrique à partir des deux vecteurs déjà chargés.",
+            en: "The two sources are placed end to end — the second low, the first high — and the slice starting `imm` words further along is taken. It is SSE's `palignr`, but by 32- or 64-bit words and across the whole register instead of a 128-bit lane.\n\nThe use: **sliding a window** over a stream without rereading memory. A filter or a convolution needs, at each step, the same data shifted by one; `valignd` builds it from the two vectors already loaded.",
+        },
+        flags: "",
+        example: "valignd zmm0, zmm1, zmm2, 1   ; la fenêtre avance d'un mot",
+    },
+    Entry {
+        kind: Kind::Instruction,
+        names: &["vshufi32x4", "vshufi64x2", "vshuff32x4", "vshuff64x2"],
+        title: Text {
+            fr: "Choisir des tranches de 128 bits",
+            en: "Pick 128-bit slices",
+        },
+        body: Text {
+            fr: "AVX-512 travaille à trois échelles : le bit, la voie de 32 ou 64 bits, et la **tranche de 128**. Celle-ci est à la troisième : deux bits d'immédiat par tranche du résultat. Les deux tranches basses viennent de la première source, les deux hautes de la seconde.\n\nC'est l'outil des transpositions et des réarrangements en gros blocs, là où `vpermd` travaillerait mot par mot pour le même effet, en plus cher.",
+            en: "AVX-512 works at three scales: the bit, the 32- or 64-bit lane, and the **128-bit slice**. This one is at the third: two immediate bits per result slice. The two low slices come from the first source, the two high ones from the second.\n\nIt is the tool for transposes and coarse rearrangements, where `vpermd` would work word by word for the same effect, more expensively.",
+        },
+        flags: "",
+        example: "vshufi32x4 zmm0, zmm1, zmm2, 0x4e   ; les tranches échangées",
+    },
+    Entry {
+        kind: Kind::Instruction,
+        names: &[
+            "vpsllvd", "vpsllvq", "vpsrlvd", "vpsrlvq", "vpsravd", "vpsravq",
+        ],
+        title: Text {
+            fr: "Décaler chaque voie de son propre compte",
+            en: "Shift each lane by its own count",
+        },
+        body: Text {
+            fr: "`vpsrad` décale toutes les voies d'autant ; ici le second vecteur porte **un compte par voie**. On traite donc seize champs de largeurs différentes à la fois, ce qui est l'opération centrale du décodage de formats compactés.\n\nUn piège : un compte supérieur ou égal à la largeur donne **zéro** pour les décalages logiques, et le **signe répété** pour l'arithmétique. Ce n'est pas une troncature du compte, contrairement aux décalages scalaires qui le prennent modulo la largeur — `shl rax, 64` ne décale pas du tout, `vpsllvd` avec un compte de 64 donne zéro.",
+            en: "`vpsrad` shifts every lane by the same amount; here the second vector carries **one count per lane**. Sixteen fields of different widths are handled at once, which is the core operation of unpacking bit-packed formats.\n\nA trap: a count greater than or equal to the width gives **zero** for logical shifts, and the **repeated sign** for arithmetic ones. It is not a truncation of the count, unlike scalar shifts which take it modulo the width — `shl rax, 64` does not shift at all, while `vpsllvd` with a count of 64 gives zero.",
+        },
+        flags: "",
+        example: "vpsravd zmm0, zmm1, zmm2   ; chaque mot a son décalage",
+    },
+    Entry {
+        kind: Kind::Instruction,
+        names: &[
+            "vplzcntd", "vplzcntq", "vpopcntb", "vpopcntw", "vpopcntd", "vpopcntq",
+        ],
+        title: Text {
+            fr: "Compter les bits, voie par voie",
+            en: "Count bits, lane by lane",
+        },
+        body: Text {
+            fr: "`vplzcnt` compte les zéros **de tête** de chaque voie, `vpopcnt` les bits **à un**. Ce que `lzcnt` et `popcnt` font pour un registre, seize fois d'un coup.\n\nUne voie nulle rend la largeur entière pour `vplzcnt` — trente-deux pour un mot de 32 bits —, ce qui est la réponse juste et non un cas limite : il y a bien trente-deux zéros devant le premier un qui n'existe pas.\n\n`vplzcnt` sert à normaliser des flottants à la main et à calculer des logarithmes entiers ; `vpopcnt` à mesurer des distances de Hamming et à compter des correspondances dans un masque.",
+            en: "`vplzcnt` counts each lane's **leading** zeros, `vpopcnt` its **set** bits. What `lzcnt` and `popcnt` do for one register, sixteen times at once.\n\nA zero lane yields the full width for `vplzcnt` — thirty-two for a 32-bit word — which is the right answer and not an edge case: there really are thirty-two zeros before the first one that does not exist.\n\n`vplzcnt` serves to normalise floats by hand and to compute integer logarithms; `vpopcnt` to measure Hamming distances and count matches in a mask.",
+        },
+        flags: "",
+        example: "vpopcntd zmm0, zmm1   ; combien de bits à un, par mot",
+    },
+    Entry {
+        kind: Kind::Instruction,
+        names: &["vpconflictd", "vpconflictq"],
+        title: Text {
+            fr: "Où sont les collisions",
+            en: "Where the collisions are",
+        },
+        body: Text {
+            fr: "Instruction singulière, qui ne sert qu'à une chose — mais elle la résout entièrement.\n\nQuand on veut écrire seize valeurs à seize adresses calculées (une **dispersion**), deux adresses égales se marchent dessus : la seconde écriture écrase la première, et le résultat dépend de l'ordre. `vpconflict` dit **d'avance** où sont les doublons, et le code peut alors les traiter en plusieurs passes au lieu de renoncer à vectoriser.\n\nChaque voie reçoit un masque de bits : le bit `j` est mis si la voie `j`, **plus basse que celle-ci**, porte la même valeur. La voie 0 reçoit donc toujours zéro — rien ne la précède.",
+            en: "A singular instruction, serving only one purpose — but solving it entirely.\n\nWhen writing sixteen values to sixteen computed addresses (a **scatter**), two equal addresses collide: the second write overwrites the first, and the result depends on ordering. `vpconflict` says **in advance** where the duplicates are, so the code can handle them in several passes instead of giving up on vectorising.\n\nEach lane receives a bitmask: bit `j` is set if lane `j`, **lower than this one**, holds the same value. Lane 0 therefore always receives zero — nothing precedes it.",
+        },
+        flags: "",
+        example: "vpconflictd zmm0, zmm1   ; les doublons, avant d'écrire",
+    },
+    Entry {
+        kind: Kind::Instruction,
         names: &["pblendw", "vpblendw"],
         title: Text {
             fr: "Mélanger deux vecteurs, mot par mot",

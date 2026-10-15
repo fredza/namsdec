@@ -591,6 +591,127 @@ fn abs_lanes(v: u128, bytes: usize) -> u128 {
     })
 }
 
+/// `vpsrav*`/`vpsllv*`/`vpsrlv*` : chaque voie a SON propre décalage.
+///
+/// C'est la différence avec `vpsrad`, où toutes les voies sont décalées
+/// d'autant. Ici le second vecteur porte un compte par voie, ce qui
+/// permet de traiter seize champs de largeurs différentes à la fois —
+/// l'usage typique est le décodage de formats compactés.
+///
+/// Un compte supérieur ou égal à la largeur donne zéro pour les
+/// décalages logiques, et le SIGNE répété pour l'arithmétique : ce
+/// n'est pas une troncature du compte, contrairement aux décalages
+/// scalaires qui le prennent modulo la largeur. La différence attrape
+/// tout le monde une fois.
+fn variable_shift_lanes(a: u128, b: u128, bytes: usize, genre: PackedShift) -> u128 {
+    let Some(w) = width_from_bytes(bytes) else {
+        return 0;
+    };
+    let bits = (bytes * 8) as u64;
+    int_lanes(a, b, bytes, move |x, compte| match genre {
+        PackedShift::Left => {
+            if compte >= bits {
+                0
+            } else {
+                x << compte
+            }
+        }
+        PackedShift::Right => {
+            if compte >= bits {
+                0
+            } else {
+                x >> compte
+            }
+        }
+        PackedShift::Arithmetic => {
+            let signé = sign_extend(x, w) as i64;
+            // Le signe répété, et non zéro : un nombre négatif décalé
+            // de plus que sa largeur reste négatif.
+            signé.wrapping_shr(compte.min(bits - 1) as u32) as u64
+        }
+    })
+}
+
+/// `vplzcnt*` : compter les zéros de tête, voie par voie.
+///
+/// Une voie nulle rend la largeur entière — trente-deux pour un mot de
+/// 32 bits —, ce qui est la réponse juste et non un cas limite : il y a
+/// bien trente-deux zéros devant le premier un qui n'existe pas.
+fn leading_zeros_lanes(v: u128, bytes: usize) -> u128 {
+    let bits = (bytes * 8) as u32;
+    int_lanes(v, v, bytes, move |x, _| {
+        u64::from(x.leading_zeros() - (64 - bits))
+    })
+}
+
+/// `vpopcnt*` : compter les bits à un, voie par voie.
+fn popcount_lanes(v: u128, bytes: usize) -> u128 {
+    int_lanes(v, v, bytes, |x, _| u64::from(x.count_ones()))
+}
+
+/// La destination est-elle un registre de MASQUE ?
+///
+/// C'est à cela, et à rien d'autre, que se reconnaît la forme EVEX des
+/// vieilles comparaisons : `vpcmpeqd xmm0, …` rend un vecteur de zéros
+/// et de uns, `vpcmpeqd k1, …` rend un masque. Même nom, même nombre
+/// d'opérandes, deux instructions différentes.
+fn est_vers_masque(instr: &Instruction) -> bool {
+    instr.op_kind(0) == OpKind::Register && instr.op_register(0).is_k()
+}
+
+/// Chaque voie du résultat va chercher celle que l'index désigne.
+///
+/// L'index est pris modulo le nombre de voies : le processeur n'en
+/// garde que les bits utiles, il ne refuse pas un index trop grand.
+fn permute_lanes(index: &Vector, donnée: &Vector, bytes: usize, voies: usize) -> Vector {
+    let bits = bytes * 8;
+    let par_tranche = 16 / bytes;
+    let lire = |v: &Vector, voie: usize| -> u64 {
+        ((v[voie / par_tranche] >> ((voie % par_tranche) * bits)) as u64) & lane_mask(bits)
+    };
+    let mut out = [0u128; 4];
+    for voie in 0..voies {
+        let depuis = (lire(index, voie) as usize) % voies;
+        out[voie / par_tranche] |=
+            u128::from(lire(donnée, depuis)) << ((voie % par_tranche) * bits);
+    }
+    out
+}
+
+/// `vpconflict*` : pour chaque voie, lesquelles des voies PRÉCÉDENTES
+/// portent la même valeur.
+///
+/// Instruction singulière, et qui ne sert qu'à une chose — mais elle la
+/// résout entièrement. Quand on veut écrire seize valeurs à seize
+/// adresses calculées (une dispersion), deux adresses égales se
+/// marchent dessus : la seconde écriture écrase la première, et le
+/// résultat dépend de l'ordre. `vpconflict` dit d'avance où sont les
+/// collisions, et le code peut alors les traiter en plusieurs passes.
+///
+/// Chaque voie reçoit un masque de bits : le bit `j` est mis si la voie
+/// `j`, **plus basse que celle-ci**, porte la même valeur. La voie 0
+/// reçoit donc toujours zéro — rien ne la précède.
+fn conflict_lanes(v: &Vector, bytes: usize, voies: usize) -> Vector {
+    let bits = bytes * 8;
+    let lire = |voie: usize| -> u64 {
+        let tranche = v[voie / (16 / bytes)];
+        ((tranche >> ((voie % (16 / bytes)) * bits)) as u64) & lane_mask(bits)
+    };
+    let mut out = [0u128; 4];
+    for voie in 0..voies {
+        let mienne = lire(voie);
+        let mut masque = 0u64;
+        for avant in 0..voie {
+            if lire(avant) == mienne {
+                masque |= 1u64 << avant;
+            }
+        }
+        out[voie / (16 / bytes)] |=
+            u128::from(masque & lane_mask(bits)) << ((voie % (16 / bytes)) * bits);
+    }
+    out
+}
+
 /// Ce qu'une multiplication vectorielle garde du produit : un produit
 /// de deux voies de `n` bits en fait `2n`, et il faut bien en jeter la
 /// moitié.
@@ -1340,28 +1461,60 @@ impl Emulator {
             // Une comparaison qui ne touche aucun indicateur : elle rend
             // un masque, tout à 1 là où c'est vrai. C'est ce masque qu'on
             // combine ensuite avec `pand`.
+            // La forme EVEX écrit un MASQUE, pas un vecteur.
+            M::Pcmpeqb | M::Vpcmpeqb if est_vers_masque(instr) => {
+                self.compare_predicate_into_mask(instr, 1, false, 0)?
+            }
             M::Pcmpeqb | M::Vpcmpeqb => self.vector_binary(instr, |a, b| {
                 int_lanes(a, b, 1, |x, y| if x == y { !0 } else { 0 })
             })?,
+            // La forme EVEX écrit un MASQUE, pas un vecteur.
+            M::Pcmpeqw | M::Vpcmpeqw if est_vers_masque(instr) => {
+                self.compare_predicate_into_mask(instr, 2, false, 0)?
+            }
             M::Pcmpeqw | M::Vpcmpeqw => self.vector_binary(instr, |a, b| {
                 int_lanes(a, b, 2, |x, y| if x == y { !0 } else { 0 })
             })?,
+            // La forme EVEX écrit un MASQUE, pas un vecteur.
+            M::Pcmpeqd | M::Vpcmpeqd if est_vers_masque(instr) => {
+                self.compare_predicate_into_mask(instr, 4, false, 0)?
+            }
             M::Pcmpeqd | M::Vpcmpeqd => self.vector_binary(instr, |a, b| {
                 int_lanes(a, b, 4, |x, y| if x == y { !0 } else { 0 })
             })?,
+            // La forme EVEX écrit un MASQUE, pas un vecteur.
+            M::Pcmpgtb | M::Vpcmpgtb if est_vers_masque(instr) => {
+                self.compare_predicate_into_mask(instr, 1, true, 6)?
+            }
             M::Pcmpgtb | M::Vpcmpgtb => {
                 self.vector_binary(instr, |a, b| signed_gt_lanes(a, b, 1))?
             }
+            // La forme EVEX écrit un MASQUE, pas un vecteur.
+            M::Pcmpgtw | M::Vpcmpgtw if est_vers_masque(instr) => {
+                self.compare_predicate_into_mask(instr, 2, true, 6)?
+            }
             M::Pcmpgtw | M::Vpcmpgtw => {
                 self.vector_binary(instr, |a, b| signed_gt_lanes(a, b, 2))?
+            }
+            // La forme EVEX écrit un MASQUE, pas un vecteur.
+            M::Pcmpgtd | M::Vpcmpgtd if est_vers_masque(instr) => {
+                self.compare_predicate_into_mask(instr, 4, true, 6)?
             }
             M::Pcmpgtd | M::Vpcmpgtd => {
                 self.vector_binary(instr, |a, b| signed_gt_lanes(a, b, 4))?
             }
 
+            // La forme EVEX écrit un MASQUE, pas un vecteur.
+            M::Pcmpeqq | M::Vpcmpeqq if est_vers_masque(instr) => {
+                self.compare_predicate_into_mask(instr, 8, false, 0)?
+            }
             M::Pcmpeqq | M::Vpcmpeqq => self.vector_binary(instr, |a, b| {
                 int_lanes(a, b, 8, |x, y| if x == y { !0 } else { 0 })
             })?,
+            // La forme EVEX écrit un MASQUE, pas un vecteur.
+            M::Pcmpgtq | M::Vpcmpgtq if est_vers_masque(instr) => {
+                self.compare_predicate_into_mask(instr, 8, true, 6)?
+            }
             M::Pcmpgtq | M::Vpcmpgtq => {
                 self.vector_binary(instr, |a, b| signed_gt_lanes(a, b, 8))?
             }
@@ -1442,6 +1595,172 @@ impl Emulator {
             M::Pabsb | M::Vpabsb => self.vector_binary(instr, |_, b| abs_lanes(b, 1))?,
             M::Pabsw | M::Vpabsw => self.vector_binary(instr, |_, b| abs_lanes(b, 2))?,
             M::Pabsd | M::Vpabsd => self.vector_binary(instr, |_, b| abs_lanes(b, 4))?,
+
+            // `vpermd`/`vpermq` à index VARIABLE : chaque voie du
+            // résultat va chercher la voie que lui DÉSIGNE l'index.
+            //
+            // Rien à voir avec les permutations à immédiat, qui sont
+            // figées à la compilation et bornées à une voie de 128 ou de
+            // 256. Celle-ci traverse tout le registre et son ordre peut
+            // être CALCULÉ — c'est ce qui permet de faire une table de
+            // consultation à seize entrées en une instruction.
+            //
+            // L'index est la PREMIÈRE source, la donnée la seconde :
+            // l'inverse de ce qu'on lit de gauche à droite, et une
+            // source d'erreur classique.
+            M::Vpermd | M::Vpermw | M::Vpermb => {
+                let octets = match instr.mnemonic() {
+                    M::Vpermb => 1,
+                    M::Vpermw => 2,
+                    _ => 4,
+                };
+                let index = self.read_vec_op(instr, 1)?;
+                let donnée = self.read_vec_op(instr, 2)?;
+                let voies = voies_de(instr, 0, octets);
+                let out = permute_lanes(&index, &donnée, octets, voies);
+                self.write_vec_op(instr, 0, out)?;
+            }
+
+            // `valignd` : une fenêtre à cheval sur deux vecteurs, glissée
+            // d'un nombre de mots choisi.
+            //
+            // On met les deux sources bout à bout — la seconde en bas, la
+            // première en haut — et l'on prend la tranche qui commence
+            // `imm` mots plus loin. C'est le `palignr` de SSE, mais par
+            // mots de 32 bits et sur toute la largeur au lieu d'une voie
+            // de 128.
+            //
+            // L'usage : faire glisser une fenêtre sur un flux sans
+            // relire la mémoire, pour un filtre ou une convolution.
+            M::Valignd | M::Valignq => {
+                let octets = if instr.mnemonic() == M::Valignd { 4 } else { 8 };
+                let haut = self.read_vec_op(instr, 1)?;
+                let bas = self.read_vec_op(instr, 2)?;
+                let voies = voies_de(instr, 0, octets);
+                let départ = (self.read_op(instr, 3)? as usize) % (voies * 2);
+                let bits = octets * 8;
+                let lire = |v: &Vector, voie: usize| -> u64 {
+                    ((v[voie / (16 / octets)] >> ((voie % (16 / octets)) * bits)) as u64)
+                        & lane_mask(bits)
+                };
+                let mut out = [0u128; 4];
+                for voie in 0..voies {
+                    let source = départ + voie;
+                    let mot = if source < voies {
+                        lire(&bas, source)
+                    } else if source < voies * 2 {
+                        lire(&haut, source - voies)
+                    } else {
+                        0
+                    };
+                    out[voie / (16 / octets)] |=
+                        u128::from(mot) << ((voie % (16 / octets)) * bits);
+                }
+                self.write_vec_op(instr, 0, out)?;
+            }
+
+            // `vshufi32x4` : choisir des voies de 128 bits.
+            //
+            // AVX-512 a trois échelles — le bit, la voie de 32 ou 64, et
+            // la TRANCHE de 128. Celle-ci travaille à la troisième :
+            // deux bits d'immédiat par tranche du résultat. Les deux
+            // tranches basses viennent de la première source, les deux
+            // hautes de la seconde.
+            M::Vshufi32x4 | M::Vshufi64x2 | M::Vshuff32x4 | M::Vshuff64x2 => {
+                let a = self.read_vec_op(instr, 1)?;
+                let b = self.read_vec_op(instr, 2)?;
+                let contrôle = self.read_op(instr, 3)?;
+                let tranches = self.tranches(instr);
+                let mut out = [0u128; 4];
+                // Sur 256 bits il n'y a que deux tranches, et un seul
+                // bit sert par sélecteur.
+                let bits_par = if tranches == 4 { 2 } else { 1 };
+                for (rang, place) in out.iter_mut().enumerate().take(tranches) {
+                    let choix =
+                        ((contrôle >> (rang * bits_par)) & ((1 << bits_par) - 1)) as usize;
+                    let source = if rang < tranches / 2 { &a } else { &b };
+                    *place = source[choix];
+                }
+                self.write_vec_op(instr, 0, out)?;
+            }
+
+            // `vpternlog` : une TABLE DE VÉRITÉ à trois entrées, en une
+            // instruction. Rien n'y ressemble ailleurs dans le jeu.
+            //
+            // Pour chaque position de bit, on prend le bit de la
+            // destination, celui de la première source et celui de la
+            // seconde — trois bits, donc huit combinaisons possibles.
+            // L'immédiat de huit bits donne le résultat de chacune : son
+            // bit numéro `abc` dit ce que vaut la sortie quand
+            // (dst, src1, src2) = (a, b, c).
+            //
+            // Autrement dit : l'immédiat EST la fonction booléenne. Tout
+            // opérateur à trois entrées s'écrit ainsi, et c'est pourquoi
+            // un compilateur peut remplacer trois instructions logiques
+            // par celle-ci. `0xca` est « si dst alors src1 sinon src2 »,
+            // un multiplexeur ; `0x96` est le ou-exclusif des trois ;
+            // `0xf0` ne rend que dst, `0xcc` que src1, `0xaa` que src2 —
+            // d'où la façon habituelle de composer son immédiat : on
+            // combine ces trois-là avec les opérateurs qu'on veut.
+            //
+            // La destination est donc LUE avant d'être écrite, ce qui
+            // est rare pour une instruction vectorielle.
+            M::Vpternlogd | M::Vpternlogq => {
+                let dst = self.read_vec_op(instr, 0)?;
+                let a = self.read_vec_op(instr, 1)?;
+                let b = self.read_vec_op(instr, 2)?;
+                let table = self.read_op(instr, 3)? as u8;
+                let tranches = self.tranches(instr);
+                let mut out = [0u128; 4];
+                for (rang, place) in out.iter_mut().enumerate().take(tranches) {
+                    let (d, x, y) = (dst[rang], a[rang], b[rang]);
+                    let mut assemblé = 0u128;
+                    // Bit à bit : c'est la définition même, et la façon
+                    // la plus courte de la rendre évidente. Un
+                    // compilateur ferait les huit masques d'un coup ;
+                    // ici on veut que le code se lise comme le manuel.
+                    for bit in 0..128u32 {
+                        let index = (((d >> bit) & 1) << 2)
+                            | (((x >> bit) & 1) << 1)
+                            | ((y >> bit) & 1);
+                        if table & (1 << index) != 0 {
+                            assemblé |= 1u128 << bit;
+                        }
+                    }
+                    *place = assemblé;
+                }
+                self.write_vec_op(instr, 0, out)?;
+            }
+
+            // --- AVX-512 : compter et décaler voie par voie ---------
+            M::Vpsravd => {
+                self.vector_binary(instr, |a, b| variable_shift_lanes(a, b, 4, PackedShift::Arithmetic))?
+            }
+            M::Vpsravq => {
+                self.vector_binary(instr, |a, b| variable_shift_lanes(a, b, 8, PackedShift::Arithmetic))?
+            }
+            M::Vpsllvd | M::Vpsllvq | M::Vpsrlvd | M::Vpsrlvq => {
+                let (octets, genre) = match instr.mnemonic() {
+                    M::Vpsllvd => (4, PackedShift::Left),
+                    M::Vpsllvq => (8, PackedShift::Left),
+                    M::Vpsrlvd => (4, PackedShift::Right),
+                    _ => (8, PackedShift::Right),
+                };
+                self.vector_binary(instr, move |a, b| variable_shift_lanes(a, b, octets, genre))?
+            }
+            M::Vplzcntd => self.vector_binary(instr, |_, b| leading_zeros_lanes(b, 4))?,
+            M::Vplzcntq => self.vector_binary(instr, |_, b| leading_zeros_lanes(b, 8))?,
+            M::Vpopcntb => self.vector_binary(instr, |_, b| popcount_lanes(b, 1))?,
+            M::Vpopcntw => self.vector_binary(instr, |_, b| popcount_lanes(b, 2))?,
+            M::Vpopcntd => self.vector_binary(instr, |_, b| popcount_lanes(b, 4))?,
+            M::Vpopcntq => self.vector_binary(instr, |_, b| popcount_lanes(b, 8))?,
+            M::Vpconflictd | M::Vpconflictq => {
+                let octets = if instr.mnemonic() == M::Vpconflictd { 4 } else { 8 };
+                let src = self.read_vec_op(instr, 1)?;
+                let voies = voies_de(instr, 1, octets);
+                let out = conflict_lanes(&src, octets, voies);
+                self.write_vec_op(instr, 0, out)?;
+            }
 
             // La multiplication. Un produit de deux voies de n bits en
             // fait 2n : il faut dire laquelle des deux moitiés on garde.
@@ -1860,6 +2179,25 @@ impl Emulator {
             // donc silencieusement la moitié de sa donnée. Trouvé le
             // 15 octobre 2026 par l'oracle sous Intel SDE.
             M::Vpermq | M::Vpermpd => {
+                // DEUX INSTRUCTIONS SOUS UN SEUL NOM. Avec un immédiat,
+                // la permutation est figée et se répète par voie de 256.
+                // Avec un registre en troisième opérande, c'est un index
+                // VARIABLE qui traverse tout le vecteur — l'index est
+                // alors la première source, la donnée la seconde, comme
+                // pour `vpermd`. Seul le type de l'opérande les
+                // distingue, et les confondre donne un résultat qui a
+                // l'air plausible.
+                let à_index = !matches!(
+                    instr.op_kind(2),
+                    OpKind::Immediate8 | OpKind::Immediate8to16 | OpKind::Immediate8to32
+                );
+                if à_index {
+                    let index = self.read_vec_op(instr, 1)?;
+                    let donnée = self.read_vec_op(instr, 2)?;
+                    let voies = voies_de(instr, 0, 8);
+                    let out = permute_lanes(&index, &donnée, 8, voies);
+                    self.write_vec_op(instr, 0, out)?;
+                } else {
                 let src = self.read_vec_op(instr, 1)?;
                 let control = self.read_op(instr, 2)?;
                 let voies = voies_de(instr, 1, 8) / 4;
@@ -1876,6 +2214,7 @@ impl Emulator {
                     }
                 }
                 self.write_vec_op(instr, 0, out)?;
+                }
             }
             // Remettre les moitiés hautes à zéro avant de repasser à du
             // code SSE : sans elle, le processeur paie une pénalité à
@@ -2480,9 +2819,26 @@ impl Emulator {
         bytes: usize,
         signé: bool,
     ) -> Result<(), EmuError> {
+        let prédicat = self.read_op(instr, 3)? & 7;
+        self.compare_predicate_into_mask(instr, bytes, signé, prédicat)
+    }
+
+    /// Le cœur de la précédente, quand le prédicat est connu d'avance.
+    ///
+    /// `vpcmpeqd k1, zmm1, zmm2` et `vpcmpgtd k2, …` sont les formes
+    /// EVEX des vieilles comparaisons de SSE : même nom, mais la
+    /// destination est un MASQUE au lieu d'un vecteur de zéros et de
+    /// uns. C'est le vrai changement de modèle d'AVX-512, et il se
+    /// reconnaît au seul type de l'opérande de destination.
+    fn compare_predicate_into_mask(
+        &mut self,
+        instr: &Instruction,
+        bytes: usize,
+        signé: bool,
+        prédicat: u64,
+    ) -> Result<(), EmuError> {
         let a = self.read_vec_op(instr, 1)?;
         let b = self.read_vec_op(instr, 2)?;
-        let prédicat = self.read_op(instr, 3)? & 7;
         let voies = voies_de(instr, 1, bytes);
         let bits = bytes * 8;
         let Some(w) = width_from_bytes(bytes) else {

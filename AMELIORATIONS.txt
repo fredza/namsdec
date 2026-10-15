@@ -486,6 +486,57 @@ aujourd'hui ; les suivantes, ce vers quoi l'outil peut aller.
      `vpopcntd`. `vpternlog` mérite une mention : une table de vérité à trois
      entrées en une instruction, rien n'y ressemble ailleurs.
 
+3.11 [FAIT] LES ONZE INSTRUCTIONS AVX-512 QUE L'ORACLE NOMMAIT
+     3.10 les avait listées sans les écrire. C'est fait, et vingt-cinq en tout
+     avec les variantes voisines qu'il aurait été absurde de laisser de côté
+     une fois le moule posé.
+     Chacune a été ÉCRITE PUIS VÉRIFIÉE sous SDE dans la minute. C'est le
+     changement que l'oracle apporte : implémenter une instruction vectorielle
+     n'est plus un pari sur une lecture du manuel.
+     CE QU'ELLES APPRENNENT, et c'est pour cela qu'elles méritent des fiches :
+       · `vpternlogd`/`q` — une TABLE DE VÉRITÉ à trois entrées en une
+         instruction. L'immédiat EST la fonction booléenne : son bit `abc`
+         dit la sortie quand les trois entrées valent a, b, c. On compose son
+         immédiat à partir de 0xf0 (la destination), 0xcc (la première
+         source) et 0xaa (la seconde) — 0x96 est leur ou-exclusif, 0xca un
+         multiplexeur. La destination est LUE avant d'être écrite, ce qui est
+         rare pour une vectorielle. Rien n'y ressemble ailleurs.
+       · `vpermd`/`w`/`b` — permuter selon un index CALCULÉ, donc une table de
+         consultation à seize entrées en un coup. L'index est la PREMIÈRE
+         source, la donnée la seconde : l'inverse de la lecture.
+         Au passage : `vpermq` porte DEUX instructions sous un nom. Avec un
+         immédiat, permutation figée répétée par voie de 256 ; avec un
+         registre, index variable sur tout le registre. Seul le type du
+         troisième opérande les distingue, et les confondre donne un résultat
+         qui a l'air plausible. namsdec ne connaissait que la première.
+       · `valignd`/`q` — une fenêtre à cheval sur deux vecteurs, pour faire
+         glisser un filtre sans relire la mémoire.
+       · `vshufi32x4` et sa famille — la TROISIÈME échelle d'AVX-512, après le
+         bit et la voie : la tranche de 128.
+       · `vpsllv`/`vpsrlv`/`vpsrav` — chaque voie décalée de SON compte. Piège
+         réel : un compte ≥ largeur donne zéro (ou le signe répété), et non
+         le compte modulo la largeur comme pour les décalages scalaires.
+       · `vplzcnt`, `vpopcnt` — compter par voie. Une voie nulle rend la
+         largeur entière, ce qui est juste et non un cas limite.
+       · `vpconflictd`/`q` — où sont les collisions AVANT d'écrire. Elle ne
+         sert qu'à une chose et la résout entièrement : une dispersion dont
+         deux adresses sont égales perd une écriture, silencieusement ;
+         celle-ci permet de traiter les doublons en plusieurs passes au lieu
+         de renoncer à vectoriser.
+       · `vpcmpeqd`/`vpcmpgtd` à destination de MASQUE — la forme EVEX des
+         vieilles comparaisons de SSE. Même nom, même nombre d'opérandes,
+         deux instructions différentes : seul le type de la destination les
+         sépare. C'est le vrai changement de modèle d'AVX-512.
+     L'ORACLE PASSE MAINTENANT 138 INSTRUCTIONS, 1 104 CAS, ZÉRO ÉCART, ZÉRO
+     ÉCARTÉE.
+     Quatre invariants du projet ont réclamé leur dû : sept fiches à écrire
+     (183 au lieu de 176), aucun mnémonique décrit deux fois — `vpermq`
+     l'était déjà —, la liste triée, et le compte annoncé par l'interface et
+     le README. Un cinquième a cédé pour une bonne raison :
+     `a_protection_error_says_where_the_data_belongs` prenait `Vpconflictd`
+     comme exemple d'instruction ni simulée ni documentée. Elle l'est
+     maintenant ; l'exemple est devenu `vgatherpf0dps`.
+
 3.2  Le rendu hors écran n'est pas testable tel quel — et une capture, si
      Pas de serveur X virtuel sur la machine, donc pas de rendu hors écran.
      En revanche, lancer namsdec en forçant X11 (WAYLAND_DISPLAY vide) et
