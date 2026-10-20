@@ -32,6 +32,20 @@ processeur est ancré.
 
 ---
 
+## 17. Trois défauts vus à l'écran (A 9.1 à 9.3)
+
+- [x] **Une parenthèse en posait cent** (A 9.1) — rien ne liait la pose
+      d'une paire à une frappe : elle se refaisait à chaque image. Les
+      contrôles éprouvaient la décision, jamais le geste.
+- [x] **Le compteur comptait en Insertion** (A 9.2) — « INSERT ×8 »,
+      trouvé sur la même capture en la lisant pour autre chose.
+- [x] **Ce qu'upx refuse, dit en français** (A 9.3) — le déballage
+      fonctionnait ; c'est ce que le panneau en disait qui ne disait
+      rien. Le contrôle qui le prouve avait lui aussi menti, en
+      s'abstenant en silence.
+
+---
+
 ## 16. Les frontières, avant les panneaux (A 8.1 à 8.6)
 
 L'examen du 16 octobre disait la même chose de six façons : le périmètre

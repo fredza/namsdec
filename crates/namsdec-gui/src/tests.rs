@@ -21256,6 +21256,220 @@ fn the_exercises_window_opens_wide_enough_on_any_screen() {
     assert!(taille.x >= 420.0 && taille.y >= 320.0, "{taille:?}");
 }
 
+/// UNE PARENTHÈSE TAPÉE EN POSE UNE, PAS CENT.
+///
+/// Le contrôle d'à côté éprouve `pair_edit`, c'est-à-dire la DÉCISION :
+/// « faut-il fermer ici ? ». Il répondait juste, et l'éditeur était
+/// pourtant inutilisable — rien ne liait la pose à une frappe, si bien
+/// qu'elle se refaisait à chaque image tant que le curseur restait
+/// derrière un ouvrant. Taper `(` donnait `()`, puis `(())`, puis
+/// `((()))`, à soixante fermantes par seconde. Signalé sur capture le
+/// 21 octobre 2026, dans un fichier C.
+///
+/// Celui-ci éprouve le GESTE, sur plusieurs images : c'est la seule
+/// façon de voir un défaut qui ne se produit qu'à la deuxième. Une
+/// décision juste jouée au mauvais moment reste un défaut.
+#[test]
+fn typing_one_parenthesis_inserts_one_closing_not_a_hundred() {
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp {
+        auto_pairs: true,
+        editor_mode: EditorMode::Insert,
+        ..Default::default()
+    };
+    app.apply_theme(&ctx);
+    app.set_source(String::new());
+
+    let image = |app: &mut NamsdecApp, events: Vec<egui::Event>| {
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1280.0, 900.0),
+            )),
+            events,
+            ..Default::default()
+        };
+        let mut output = ctx.run_ui(input, |ui| app.draw(ui));
+        output.textures_delta.clear();
+    };
+
+    // Le champ doit avoir le clavier, sans quoi rien n'est tapé.
+    image(&mut app, vec![]);
+    ctx.memory_mut(|m| m.request_focus(editor_id()));
+    image(&mut app, vec![]);
+
+    // UNE frappe.
+    image(&mut app, vec![egui::Event::Text("(".to_owned())]);
+    // Puis dix images où l'on ne touche à rien — c'est là que le
+    // défaut se produisait.
+    for _ in 0..10 {
+        image(&mut app, vec![]);
+    }
+
+    let fermantes = app.source.matches(')').count();
+    assert!(
+        fermantes <= 1,
+        "une parenthèse tapée en pose au plus une : obtenu {fermantes} dans {:?}",
+        app.source
+    );
+    assert!(
+        app.source.starts_with('('),
+        "et l'ouvrante est bien là : {:?}",
+        app.source
+    );
+}
+
+/// LE COMPTEUR DE RÉPÉTITION N'EXISTE QU'EN MODE NORMAL.
+///
+/// Rien ne le disait : taper « 8 » en Insertion écrivait le chiffre ET
+/// armait le compteur, si bien que la barre d'état affichait
+/// « INSERT ×8 » pendant qu'on tapait du texte. Vu sur capture le
+/// 21 octobre 2026, à côté d'un autre défaut — c'est souvent ainsi
+/// qu'on les trouve.
+#[test]
+fn the_repeat_count_only_exists_in_normal_mode() {
+    let ctx = egui::Context::default();
+    let frappe = |app: &mut NamsdecApp, key: egui::Key| {
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1280.0, 900.0),
+            )),
+            events: vec![egui::Event::Key {
+                key,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+            ..Default::default()
+        };
+        let mut output = ctx.run_ui(input, |ui| app.draw(ui));
+        output.textures_delta.clear();
+    };
+
+    // En NORMAL, le chiffre arme le compteur : c'est le `5` de `5j`.
+    let mut app = NamsdecApp::default();
+    app.apply_theme(&ctx);
+    frappe(&mut app, egui::Key::Num5);
+    assert_eq!(
+        app.count_pending,
+        Some(5),
+        "en mode Normal, un chiffre compte"
+    );
+
+    // En INSERTION, le même chiffre est du texte, et rien d'autre.
+    let mut app = NamsdecApp {
+        editor_mode: EditorMode::Insert,
+        ..Default::default()
+    };
+    app.apply_theme(&ctx);
+    frappe(&mut app, egui::Key::Num8);
+    assert_eq!(
+        app.count_pending, None,
+        "en Insertion, « 8 » est un huit — pas une répétition"
+    );
+}
+
+/// UPX DÉBALLE VRAIMENT, et écrit le fichier qu'on lui a nommé.
+///
+/// Signalé le 21 octobre 2026 : « le déballage ne produit pas de
+/// fichier de sortie », « le programme ne dépaquette pas upx ». Le
+/// contrôle part d'un binaire qu'il empaquette lui-même, le fait passer
+/// par le chemin RÉEL de namsdec — ouverture, puis la fonction que le
+/// bouton appelle — et regarde le fichier écrit.
+///
+/// Il s'abstient sans upx sur la machine : il n'y aurait rien à
+/// éprouver, et un contrôle qui dépend d'un outil absent ne doit pas
+/// faire échouer la suite.
+#[test]
+fn upx_really_unpacks_and_writes_the_file() {
+    let Some(upx) = namsdec_disasm::known::program_path_in("upx", None) else {
+        println!("ABSTENU : upx introuvable");
+        return;
+    };
+    println!("upx : {}", upx.display());
+    let Ok(original) = std::fs::read("/bin/ls") else {
+        return;
+    };
+    let dossier = tempfile::tempdir().expect("un dossier");
+    let paquet = dossier.path().join("paquet");
+    std::fs::write(&paquet, &original).expect("la copie s'écrit");
+    // Exécutable, sans quoi upx refuse de l'empaqueter : « file not
+    // executable ». Le contrôle s'abstenait silencieusement là-dessus,
+    // et passait au vert en ne mesurant rien.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&paquet, std::fs::Permissions::from_mode(0o755))
+            .expect("les droits se posent");
+    }
+    // Empaqueter pour de vrai : c'est la seule façon d'éprouver le
+    // déballage sur autre chose qu'un refus.
+    let fait = std::process::Command::new(&upx)
+        .args(["-q", "-1"])
+        .arg(&paquet)
+        .output();
+    match &fait {
+        Ok(s) if s.status.success() => {}
+        autre => {
+            println!("ABSTENU : l'empaquetage a échoué : {autre:?}");
+            return;
+        }
+    }
+    let octets = std::fs::read(&paquet).expect("le paquet se lit");
+    assert!(
+        octets.len() < original.len(),
+        "upx a bien compressé : {} contre {}",
+        octets.len(),
+        original.len()
+    );
+
+    // LE CHEMIN RÉEL : ouvrir le binaire, puis demander le déballage.
+    let mut app = NamsdecApp::default();
+    assert!(
+        app.load_elf(&octets, "paquet"),
+        "un binaire empaqueté s'ouvre : sans cela, rien ne part à upx"
+    );
+    let porté = app
+        .assemble_state
+        .as_ref()
+        .map(|state| state.output.file.len())
+        .unwrap_or(0);
+    assert_eq!(
+        porté,
+        octets.len(),
+        "et le fichier ENTIER est porté : c'est lui qu'upx reçoit"
+    );
+
+    let vers = dossier.path().join("déballé");
+    app.unpack_upx_to(&vers);
+    // Le travail part sur un fil : on l'attend.
+    let ctx = egui::Context::default();
+    for _ in 0..600 {
+        app.poll_upx(&ctx);
+        if app.upx_job.is_none() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert!(app.upx_job.is_none(), "upx a fini");
+
+    let écrit = std::fs::metadata(&vers).map(|m| m.len()).unwrap_or(0);
+    assert!(
+        écrit > 0,
+        "le déballage doit écrire le fichier nommé : {} est vide ou absent",
+        vers.display()
+    );
+    // Et ce qu'il écrit est bien l'original : c'est tout l'objet.
+    let rendu = std::fs::read(&vers).expect("le déballé se lit");
+    assert_eq!(
+        rendu.len(),
+        original.len(),
+        "le déballé a la taille de l'original"
+    );
+}
+
 /// Les paires se ferment toutes seules — et se taisent quand il le faut.
 ///
 /// C'est la moitié difficile : un éditeur qui ferme tout, tout le temps,

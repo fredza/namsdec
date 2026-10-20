@@ -719,11 +719,26 @@ impl NamsdecApp {
                                 // ligne — c'est son rôle dans vim, et il
                                 // ne devient un chiffre qu'une fois
                                 // qu'un autre l'a ouvert (`10j`).
-                                egui::Key::Num0 if plain && compte.is_some() => {
+                                // ET SEULEMENT EN MODE NORMAL. Rien ne
+                                // le disait : taper « 8 » en Insertion
+                                // écrivait le chiffre ET armait le
+                                // compteur, si bien que la barre
+                                // affichait « INSERT ×8 » pendant qu'on
+                                // tapait du texte. Vu sur capture le
+                                // 21 octobre 2026. Les mouvements, eux,
+                                // étaient déjà gardés par le mode.
+                                egui::Key::Num0
+                                    if plain
+                                        && compte.is_some()
+                                        && mode_courant == EditorMode::Normal =>
+                                {
                                     compte = Some(borne_du_compte(compte, 0));
                                 }
-                                egui::Key::Num0 if plain => mouvement = Some(Move::LineStart),
+                                egui::Key::Num0 if plain && mode_courant == EditorMode::Normal => {
+                                    mouvement = Some(Move::LineStart)
+                                }
                                 _ if plain
+                                    && mode_courant == EditorMode::Normal
                                     && !consumed.contains(key)
                                     && chiffre_de(*key).is_some() =>
                                 {
@@ -1083,9 +1098,38 @@ impl NamsdecApp {
                         // l'indentation, parce que le `TextEdit` a
                         // déjà écrit ce qu'on vient de taper et que
                         // c'est de là qu'on raisonne.
+                        // LA PAIRE NE SE POSE QUE SUR UNE FRAPPE, et
+                        // c'est la correction du 21 octobre 2026.
+                        //
+                        // Rien ne liait cette pose à une touche : elle
+                        // se refaisait à CHAQUE IMAGE tant que le
+                        // curseur restait derrière un ouvrant. Taper
+                        // `(` donnait `()`, puis `(())`, puis `((()))`
+                        // — soixante fermantes par seconde. Signalé sur
+                        // capture, dans un fichier C.
+                        //
+                        // Les deux branches voisines — le retour
+                        // arrière, l'indentation — avaient leur
+                        // `key_pressed` depuis toujours ; celle-ci n'en
+                        // avait pas, et les contrôles n'ont rien vu
+                        // parce qu'ils éprouvaient `pair_edit`, la
+                        // DÉCISION, et jamais le geste sur plusieurs
+                        // images.
+                        let frappé = ui.input(|i| {
+                            i.events.iter().rev().find_map(|e| match e {
+                                egui::Event::Text(t) => t.chars().next_back(),
+                                _ => None,
+                            })
+                        });
                         if self.auto_pairs
                             && output.response.response.has_focus()
                             && range.is_empty()
+                            // Le caractère devant le curseur doit être
+                            // celui qu'on vient de taper : sinon on ne
+                            // répond pas à une frappe, on repasse sur
+                            // un texte qui ne bouge pas.
+                            && frappé
+                                .is_some_and(|c| self.source[..self.cursor_byte].ends_with(c))
                         {
                             let at = self.cursor_byte;
                             match pair_edit(&self.source, at) {

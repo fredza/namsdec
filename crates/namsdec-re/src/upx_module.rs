@@ -110,6 +110,60 @@ impl UpxModule {
     }
 }
 
+/// CE QU'UN REFUS D'UPX VEUT DIRE, en français.
+///
+/// upx refuse en jetant le nom d'une exception C++ :
+/// `CantUnpackException: e_phnum must be >= 2`. C'est exact, et cela
+/// n'apprend rien — on le lit comme une panne de namsdec. Signalé sur
+/// capture le 21 octobre 2026.
+///
+/// Les refus sont traduits, et la ligne d'origine reste SOUS la
+/// traduction : c'est elle, la preuve, et c'est elle qu'on recopie dans
+/// une recherche. On explique, on ne remplace pas.
+///
+/// Rend `None` sur ce qu'on ne sait pas traduire : inventer une
+/// explication serait pire que la ligne brute.
+pub fn refus_expliqué(sortie: &str, fr: bool) -> Option<&'static str> {
+    let bas = sortie.to_ascii_lowercase();
+    if !bas.contains("cantunpack") && !bas.contains("cantpack") && !bas.contains("exception") {
+        return None;
+    }
+    // L'ordre compte : les motifs les plus précis d'abord.
+    if bas.contains("not packed by upx") {
+        return Some(if fr {
+            "Ce fichier n'est pas empaqueté par UPX. Il n'y a donc rien à déballer — ce qui              est une réponse, pas une panne : l'entropie et les sections disent déjà d'où              vient le fichier."
+        } else {
+            "This file is not packed by UPX. There is nothing to unpack — which is an              answer, not a failure: entropy and sections already say where the file comes              from."
+        });
+    }
+    if bas.contains("e_phnum") || bas.contains("bad e_phoff") || bas.contains("not a valid") {
+        return Some(if fr {
+            "upx n'a pas reconnu les en-têtes de ce fichier comme ceux d'un ELF qu'il aurait              empaqueté. C'est le cas ordinaire d'un fichier qui n'est tout simplement pas              empaqueté — regardez « Ce que porte ce fichier », juste au-dessus."
+        } else {
+            "upx did not recognise this file's headers as those of an ELF it would have              packed. That is the ordinary case of a file that simply is not packed — see              “What this file carries”, just above."
+        });
+    }
+    if bas.contains("hacked") || bas.contains("modified") || bas.contains("tampered") {
+        return Some(if fr {
+            "upx voit un fichier empaqueté PUIS MODIFIÉ, et refuse de le déballer. C'est le              cas intéressant : beaucoup de protecteurs partent d'UPX puis effacent ses              marques, précisément pour que `upx -d` dise non. Le programme est bien              compressé — il se décompresse tout seul à l'exécution —, mais il faudra le              déballer autrement : en l'exécutant pas à pas jusqu'au saut vers le code              rendu, puis en vidant la mémoire."
+        } else {
+            "upx sees a file that was packed and THEN MODIFIED, and refuses to unpack it.              This is the interesting case: many protectors start from UPX then erase its              markers, precisely so that `upx -d` says no. The program is compressed — it              decompresses itself at run time — but it will have to be unpacked another              way: by stepping until the jump into the restored code, then dumping memory."
+        });
+    }
+    if bas.contains("not executable") {
+        return Some(if fr {
+            "upx refuse un fichier qui n'a pas le droit d'exécution. namsdec lui passe une              copie temporaire : si ce message paraît, c'est la copie qui a perdu ses              droits, et c'est un défaut de namsdec, non du fichier."
+        } else {
+            "upx refuses a file without the execute bit. namsdec hands it a temporary copy:              if this message appears, the copy lost its permissions, and that is a defect              of namsdec, not of the file."
+        });
+    }
+    Some(if fr {
+        "upx a refusé. La ligne ci-dessous est la sienne, telle quelle : elle nomme          l'exception qu'il a levée, et c'est elle qu'on recopie dans une recherche."
+    } else {
+        "upx refused. The line below is its own, as-is: it names the exception it raised,          and that is what one copies into a search."
+    })
+}
+
 /// Cette ligne est-elle la bannière d'UPX plutôt que sa réponse ?
 ///
 /// Reconnue sur ce qu'elle contient et non sur son rang : `-q` la
@@ -404,6 +458,19 @@ impl UpxModule {
             UpxAction::Unpack => ctx.t("Ce qu'upx a fait", "What upx did"),
         });
         ui.add_space(2.0);
+        // LE REFUS, EXPLIQUÉ AVANT D'ÊTRE MONTRÉ.
+        //
+        // upx refuse en jetant le nom d'une exception C++ —
+        // « CantUnpackException: e_phnum must be >= 2 ». C'est exact et
+        // cela n'apprend rien : on le lit comme une panne de namsdec.
+        // La traduction passe donc DEVANT, et la ligne d'origine reste
+        // dessous — c'est elle, la preuve, et c'est elle qu'on recopie
+        // dans une recherche.
+        let brut = self.sortie.join("\n");
+        if let Some(explication) = refus_expliqué(&brut, ctx.lang.starts_with("fr")) {
+            ui.colored_label(egui::Color32::from_rgb(0xd7, 0xba, 0x7d), explication);
+            ui.add_space(4.0);
+        }
         for ligne in &self.sortie {
             ui.add(
                 egui::Label::new(egui::RichText::new(ligne).monospace())
@@ -580,5 +647,62 @@ mod tests {
         assert!(module.erreur.is_some());
         assert!(module.lines().is_empty());
         assert!(module.en_cours.is_none(), "et le sablier s'arrête");
+    }
+}
+
+#[cfg(test)]
+mod tests_refus {
+    use super::*;
+
+    /// Un refus d'upx est TRADUIT, et la ligne d'origine reste.
+    ///
+    /// `CantUnpackException: e_phnum must be >= 2` est exact et
+    /// n'apprend rien : on le lit comme une panne de namsdec. Signalé
+    /// sur capture le 21 octobre 2026.
+    #[test]
+    fn upx_refusals_are_explained() {
+        let cas = [
+            (
+                "upx: /tmp/x: CantUnpackException: e_phnum must be >= 2",
+                "en-têtes",
+            ),
+            (
+                "upx: /tmp/x: CantUnpackException: not packed by UPX",
+                "n'est pas empaqueté",
+            ),
+            (
+                "upx: /tmp/x: CantUnpackException: file is modified/hacked/protected",
+                "PUIS MODIFIÉ",
+            ),
+            (
+                "upx: /tmp/x: CantPackException: file not executable; try 'chmod +x'",
+                "droit d'exécution",
+            ),
+        ];
+        for (sortie, attendu) in cas {
+            let dit = refus_expliqué(sortie, true)
+                .unwrap_or_else(|| panic!("« {sortie} » doit être expliqué"));
+            assert!(
+                dit.contains(attendu),
+                "« {sortie} » : attendu « {attendu} », obtenu « {dit} »"
+            );
+        }
+    }
+
+    /// Et ce qui n'est PAS un refus n'est pas affublé d'une
+    /// explication.
+    ///
+    /// Un déballage réussi rend un tableau de tailles : y coller « upx
+    /// a refusé » serait pire que de ne rien dire.
+    #[test]
+    fn a_success_is_not_dressed_up_as_a_refusal() {
+        let réussi = "        File size         Ratio      Format      Name\n\
+                      153400 <-     84548   55.12%   linux/amd64   sortie\n\
+                      Unpacked 1 file.";
+        assert_eq!(
+            refus_expliqué(réussi, true),
+            None,
+            "un succès n'est pas un refus"
+        );
     }
 }

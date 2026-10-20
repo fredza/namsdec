@@ -5151,3 +5151,56 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      enrichir le graphe, ce qui est la seule réponse honnête.
      Une cible qui tombe hors du code n'entre pas : une adresse résolue vers
      une donnée n'est pas une fonction.
+
+9.1  [FAIT] UNE PARENTHÈSE EN POSAIT CENT
+     Signalé le 21 octobre, capture à l'appui, dans un fichier C : taper `(`
+     donnait `()`, puis `(())`, puis `((()))` — soixante fermantes par
+     seconde tant que le curseur restait là.
+     La cause tient en une ligne ABSENTE : rien ne liait la pose de la paire
+     à une frappe. Elle s'exécutait à chaque image dès que le curseur se
+     trouvait derrière un ouvrant, et `pair_edit` — qui répond juste —
+     répondait juste soixante fois par seconde.
+     Les deux branches VOISINES avaient leur garde depuis toujours : le
+     retour arrière teste `key_pressed(Backspace)`, l'indentation teste
+     `key_pressed(Enter)`. Celle des paires n'en avait pas.
+     POURQUOI LES CONTRÔLES N'ONT RIEN VU : ils éprouvaient `pair_edit`,
+     c'est-à-dire la DÉCISION — « faut-il fermer ici ? » —, et jamais le
+     geste sur plusieurs images. Une décision juste jouée au mauvais moment
+     reste un défaut, et aucun test de décision ne peut le voir.
+     `typing_one_parenthesis_inserts_one_closing_not_a_hundred` tape une
+     parenthèse puis laisse tourner dix images. Avec le défaut remis, il
+     rend « obtenu 11 dans "()))))))))))" ».
+
+9.2  [FAIT] « INSERT ×8 » — LE COMPTEUR COMPTAIT EN INSERTION
+     Trouvé sur la MÊME capture que 9.1, en la lisant pour autre chose.
+     Les chiffres s'accumulaient dans le compteur de répétition de vim quel
+     que soit le mode : taper « 8 » en Insertion écrivait le chiffre ET
+     armait le compteur. Les mouvements, eux, étaient gardés par le mode
+     depuis toujours ; les chiffres ne l'étaient pas.
+
+9.3  [FAIT] CE QU'UPX REFUSE, DIT EN FRANÇAIS
+     Signalé : « le déballage ne produit pas de fichier de sortie », « le
+     programme ne dépaquette pas upx », « l'onglet upx n'est pas indicatif ».
+     LE DÉBALLAGE FONCTIONNE, et un contrôle neuf le prouve :
+     `upx_really_unpacks_and_writes_the_file` empaquette un binaire, le fait
+     passer par le chemin réel de namsdec, et vérifie que le fichier écrit a
+     la taille de l'original. Ce qui ne fonctionnait pas, c'est CE QUE LE
+     PANNEAU DIT quand upx refuse.
+     Sur la capture, le fichier ouvert n'était pas empaqueté du tout, et upx
+     répondait `CantUnpackException: e_phnum must be >= 2`. C'est exact et
+     cela n'apprend rien — on le lit comme une panne de namsdec.
+     Les refus sont désormais traduits, et la traduction passe DEVANT la
+     ligne d'origine, qui reste : c'est elle, la preuve, et c'est elle qu'on
+     recopie dans une recherche. Quatre refus reconnus, dont le plus
+     intéressant — « file is modified/hacked/protected » —, qui dit que le
+     fichier a été empaqueté PUIS modifié, ce que beaucoup de protecteurs
+     font exprès pour qu'`upx -d` dise non, et renvoie vers le vidage
+     mémoire. Ce qu'on ne sait pas traduire reste brut : inventer une
+     explication serait pire.
+
+     --- ET CE CONTRÔLE-LÀ A MENTI AUSSI ---
+     Écrit, il passait en 0,03 seconde : upx refusait d'empaqueter le fichier
+     temporaire, « file not executable », et le contrôle s'abstenait en
+     silence. Il ne mesurait rien. Les droits sont posés avant l'appel, et il
+     tourne maintenant en 0,58 seconde — ce qui est le temps d'un vrai
+     empaquetage suivi d'un vrai déballage.
