@@ -4051,6 +4051,178 @@ fn the_editor_keeps_no_scroll_bar_at_rest() {
     }
 }
 
+/// LE BANDEAU NE GARDE PAS DE VIDE au-dessus de l'onglet.
+///
+/// C'est le grief « encore l'onglet mémoire — ILLISIBLE », et il se
+/// mesure. Sur un panneau haut, « Prochaine instruction » replié
+/// demande une cinquantaine de pixels ; l'onglet en recevait 307, et
+/// les deux mille du milieu étaient du vide. La cause : la hauteur
+/// retenue d'un geste de poignée — enregistrée dans les réglages, donc
+/// gardée d'une séance à l'autre — servait de PLAFOND à l'onglet au
+/// lieu de servir de plancher, et le bandeau empochait le reste.
+///
+/// Le contrôle part exactement de cet état : une hauteur retenue
+/// petite, un bandeau replié, un panneau haut.
+#[test]
+fn the_banner_keeps_no_empty_space_above_the_tab() {
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp {
+        active_tab: SidebarTab::Memory,
+        next_instruction_open: false,
+        // Ce qu'une poignée tirée il y a trois semaines avait laissé.
+        sidebar_tab_height: Some(307.0),
+        ..Default::default()
+    };
+    app.apply_theme(&ctx);
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1400.0, 1800.0),
+        )),
+        ..Default::default()
+    };
+    // Plusieurs images : le partage se mesure sur ce que le bandeau a
+    // demandé à l'image d'avant, et met donc un tour à se poser.
+    let mut bandeau: Option<f32> = None;
+    let mut titres: Vec<f32> = Vec::new();
+    for _ in 0..6 {
+        bandeau = None;
+        titres.clear();
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        for clipped in &output.shapes {
+            if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                let rect = egui::Rect::from_min_size(t.pos, t.galley.size());
+                let vu = rect.intersect(clipped.clip_rect);
+                if !vu.is_positive() {
+                    continue;
+                }
+                match t.galley.text().trim() {
+                    "Prochaine instruction" => bandeau = Some(vu.bottom()),
+                    // « Mémoire » paraît DEUX fois : l'onglet de la
+                    // barre d'outils, tout en haut, et le titre de la
+                    // vue, sous le bandeau. C'est le second qu'on
+                    // mesure — le premier avait fait passer ce contrôle
+                    // pour rien, avec un « vide » négatif.
+                    "Mémoire" => titres.push(vu.top()),
+                    _ => {}
+                }
+            }
+        }
+        output.textures_delta.clear();
+    }
+    let Some(bandeau) = bandeau else {
+        panic!("le relevé n'a pas trouvé le bandeau — il ne mesure rien");
+    };
+    let Some(titre) = titres
+        .iter()
+        .copied()
+        .filter(|haut| *haut > bandeau)
+        .min_by(f32::total_cmp)
+    else {
+        panic!(
+            "le relevé n'a pas trouvé le titre de la vue sous le bandeau ({bandeau}) — \
+             il ne mesure rien ; vus : {titres:?}"
+        );
+    };
+    let vide = titre - bandeau;
+    assert!(
+        vide < 90.0,
+        "le bandeau replié garde {vide:.0} px de vide avant le titre de l'onglet : \
+         la place qu'il n'emploie pas revient à l'onglet"
+    );
+}
+
+/// Et AUCUN TEXTE de l'onglet Mémoire n'est coupé à droite.
+///
+/// Le vidage défile horizontalement, et il le doit : seize octets et
+/// leur transcription ne se replient pas à la largeur d'un panneau.
+/// Mais les PHRASES qui l'accompagnent héritaient du même réglage, et
+/// deux explications sur trois partaient hors de l'écran — « 1 octet,
+/// puis un zéro : c'est là que `write` s… ».
+///
+/// Mesuré au sens de l'invariant « rien n'est coupé » : l'encre
+/// comparée à l'encre ∩ découpage.
+#[test]
+fn no_sentence_of_the_memory_tab_is_cut_off() {
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp {
+        active_tab: SidebarTab::Memory,
+        next_instruction_open: false,
+        source: "global _start
+section .text
+_start:
+    mov rax, 60
+    xor rdi, rdi
+    syscall
+"
+        .to_owned(),
+        ..Default::default()
+    };
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    app.apply_theme(&ctx);
+    app.do_assemble();
+    app.memory_format = MemoryFormat::Text;
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1400.0, 1200.0),
+        )),
+        ..Default::default()
+    };
+    let mut coupés: Vec<String> = Vec::new();
+    for _ in 0..4 {
+        coupés.clear();
+        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+        for clipped in &output.shapes {
+            let egui::epaint::Shape::Text(t) = &clipped.shape else {
+                continue;
+            };
+            // LIGNE PAR LIGNE, et non galley par galley.
+            //
+            // C'est ce qui a d'abord fait passer ce contrôle pour rien.
+            // Tant que le vidage était peint d'un bloc, ses phrases et
+            // sa ligne d'octets ne faisaient qu'UNE galley, dont le
+            // texte commence par « 0x… » — et le filtre « les lignes de
+            // vidage ont le droit de dépasser » les écartait toutes
+            // ensemble. La phrase coupée n'était même pas regardée.
+            for ligne in t.galley.rows.iter() {
+                let texte = ligne.text();
+                // Une ligne de VIDAGE a le droit de dépasser : c'est
+                // pour elle que la zone défile horizontalement.
+                if texte.trim_start().starts_with("0x") {
+                    continue;
+                }
+                // Une phrase : plusieurs mots.
+                if texte.split_whitespace().count() < 4 {
+                    continue;
+                }
+                let encre = ligne
+                    .rect_without_leading_space()
+                    .translate(t.pos.to_vec2());
+                if !encre.is_positive() {
+                    continue;
+                }
+                let vu = encre.intersect(clipped.clip_rect);
+                if vu.width() + 1.0 < encre.width() {
+                    coupés.push(format!(
+                        "« {} » : {:.0} px peints sur {:.0}",
+                        texte.chars().take(40).collect::<String>(),
+                        vu.width(),
+                        encre.width()
+                    ));
+                }
+            }
+        }
+        output.textures_delta.clear();
+    }
+    assert!(
+        coupés.is_empty(),
+        "des phrases de l'onglet Mémoire sont coupées : {coupés:#?}"
+    );
+}
+
 /// Le panneau latéral ne défile pas : ni les registres, ni les
 /// vectoriels, ni la pile x87.
 ///
@@ -17839,12 +18011,24 @@ fn an_unsimulated_syscall_is_announced_before_it_stops_the_program() {
     );
 }
 
-/// La part de l'onglet se fige à la poignée, et se rend au partage
-/// automatique.
+/// La part de l'onglet se fige à la poignée — VERS LE HAUT —, et se
+/// rend au partage automatique.
 ///
 /// Une poignée tirée une fois qui ne se reprendrait plus, c'est un
 /// réglage perdu pour de bon : la case d'Affichage doit rendre au
 /// panneau le partage qu'il calcule lui-même, comme pour la console.
+///
+/// LA RÈGLE A CHANGÉ DE SENS le 20 octobre 2026, et ce contrôle avec
+/// elle. Il exigeait que la hauteur figée soit gardée « même quand le
+/// bandeau se replie et libère de la place ». C'était précisément le
+/// défaut : sur un panneau de 2 460 px, une poignée tirée trois
+/// semaines plus tôt — et enregistrée dans les réglages — laissait
+/// deux mille pixels de vide entre un bandeau replié et un onglet
+/// Mémoire écrasé. « Encore l'onglet mémoire — ILLISIBLE ».
+///
+/// La hauteur retenue est donc un PLANCHER : on peut agrandir l'onglet
+/// au détriment du bandeau, qui défile ; on ne peut plus le rétrécir
+/// pour laisser du vide, ce qui n'est pas un réglage.
 #[test]
 fn the_tab_share_can_be_frozen_and_given_back() {
     if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
@@ -17870,27 +18054,46 @@ fn the_tab_share_can_be_frozen_and_given_back() {
 
     let mut app = NamsdecApp {
         source: DEFAULT_SOURCE.to_owned(),
+        // Le bandeau DÉPLIÉ, sans quoi il ne demande presque rien et le
+        // partage donne déjà tout à l'onglet : il n'y aurait plus de
+        // place pour éprouver le gel vers le haut.
+        next_instruction_open: true,
         ..Default::default()
     };
     app.do_assemble();
+    app.do_step();
     let ctx = egui::Context::default();
     app.apply_theme(&ctx);
     let partagée = rendre(&mut app, &ctx);
 
-    // Figée — ce que fait la poignée, et ce que fait la case d'Affichage
-    // qu'on décoche : la part garde sa hauteur, même quand le bandeau se
-    // replie et libère de la place.
-    app.sidebar_tab_height = Some(partagée);
+    // Figée PLUS PETIT, et le bandeau se replie : la place libérée
+    // revient à l'onglet. C'est le défaut corrigé — ce qui ne doit pas
+    // tenir, c'est un vide entre les deux.
+    app.sidebar_tab_height = Some(SIDEBAR_TAB_MIN);
     app.next_instruction_open = false;
-    let figée = rendre(&mut app, &ctx);
+    let repliée = rendre(&mut app, &ctx);
     assert!(
-        (figée - partagée).abs() < 2.0,
-        "la hauteur choisie est celle qu'on garde : {figée} contre {partagée}"
+        repliée > partagée + 10.0,
+        "le bandeau replié rend sa place à l'onglet au lieu de la garder vide : \
+         {repliée} contre {partagée}"
     );
 
-    // Rendue au partage : elle suit de nouveau ce que le bandeau laisse,
-    // et le bandeau replié lui en laisse plus qu'au départ.
+    // Figée PLUS GRAND que ce que le partage donnerait, bandeau déplié :
+    // c'est le geste qu'on fait pour un vidage mémoire long, et le
+    // bandeau cède — il défile.
+    app.next_instruction_open = true;
+    let demandée = partagée + 40.0;
+    app.sidebar_tab_height = Some(demandée);
+    let figée = rendre(&mut app, &ctx);
+    assert!(
+        figée > partagée + 20.0,
+        "une part figée plus grande que le partage est tenue : {figée} contre \
+         {partagée} (demandé {demandée})"
+    );
+
+    // Rendue au partage : elle suit ce que le bandeau laisse.
     app.sidebar_tab_height = None;
+    app.next_instruction_open = false;
     let rendue = rendre(&mut app, &ctx);
     assert!(
         rendue > partagée,

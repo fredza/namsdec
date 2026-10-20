@@ -852,6 +852,24 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "<b>Pointeurs</b> — chaque mot suivi de pointeur en pointeur jusqu'au bout : "
          "c'est le `telescope` de pwndbg.",
         ]),
+        ("note",
+         "Dans ces quatre lectures, <b>les lignes d'octets s'étendent et les phrases se "
+         "replient</b>. Tout le bloc s'étendait, ce qui est juste pour seize octets et leur "
+         "transcription — qui ne doivent pas se replier à la largeur d'un panneau — et faux "
+         "pour les explications qui les accompagnent&nbsp;: en lecture « Texte », deux "
+         "phrases sur trois partaient hors de l'écran, « 1 octet, puis un zéro&nbsp;: c'est "
+         "là que <font face='Courier'>write</font> s… ». La règle est la plus simple qui "
+         "tienne&nbsp;: une ligne qui commence par une adresse EST du vidage, le reste est "
+         "de la prose."),
+        ("note",
+         "Et <b>le bandeau ne garde plus de place qu'il n'emploie pas</b>. La hauteur de "
+         "l'onglet, retenue d'un geste de poignée et enregistrée dans les réglages, servait "
+         "de <i>plafond</i>&nbsp;: sur un grand écran, « Prochaine instruction » replié "
+         "demandait une cinquantaine de pixels, l'onglet en recevait trois cents, et les "
+         "deux mille du milieu étaient du vide — l'onglet Mémoire, qui est le plus dense de "
+         "tous, s'y retrouvait illisible. La hauteur retenue est désormais un "
+         "<i>plancher</i>&nbsp;: on agrandit l'onglet au détriment du bandeau, qui défile, "
+         "mais on ne le rétrécit plus pour laisser du vide."),
         ("p",
          "L'adresse s'écrit en hexadécimal, en décimal, ou par un nom de registre : taper "
          "<font face='Courier'>rsi</font> et valider suit le pointeur. « Suivre » fixe la "

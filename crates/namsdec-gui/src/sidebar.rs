@@ -183,8 +183,35 @@ impl NamsdecApp {
         // de deux lignes ne montre rien, et ce qui cède alors est le
         // détail de la prochaine instruction, qui se replie d'un clic.
         let voulue = laissée.clamp(SIDEBAR_TAB_MIN.min(plafond), plafond);
+        // LA HAUTEUR RETENUE EST UN PLANCHER, PAS UN PLAFOND.
+        //
+        // C'était l'inverse, et cela rendait l'onglet Mémoire illisible
+        // — le grief exact, et il se mesure : sur un panneau de
+        // 2 460 px, « Prochaine instruction » replié demande une
+        // cinquantaine de pixels, et l'onglet en recevait 307. Les deux
+        // mille pixels du milieu étaient du vide. Ce que le partage
+        // avait retenu d'un geste de poignée — ou d'un faux témoignage,
+        // voir plus bas — gelait l'onglet pour toutes les séances
+        // suivantes, puisqu'il est enregistré dans les réglages.
+        //
+        // Deux planchers, et le plus grand gagne : ce que la personne a
+        // choisi à la poignée, et ce que le bandeau N'UTILISE PAS. On
+        // peut donc toujours agrandir l'onglet au détriment du bandeau
+        // (qui défile), mais plus le rétrécir pour laisser du vide — ce
+        // qui n'est pas un réglage mais le défaut lui-même.
+        let voulue = self
+            .sidebar_tab_height
+            .map_or(voulue, |gardée| gardée.max(voulue))
+            .clamp(SIDEBAR_TAB_MIN.min(plafond), plafond);
         let id = egui::Id::new("sidebar_tab");
-        if self.sidebar_tab_height.is_none() {
+        // L'état du panneau est RÉÉCRIT tant qu'aucune poignée n'est
+        // sous un doigt. Sans cela, egui garde ce qu'il avait à la
+        // première image et le partage ne suit plus le bandeau : c'est
+        // ce qui figeait l'onglet à sa hauteur d'il y a trois semaines.
+        let tirée = ui.ctx().input(|i| i.pointer.primary_down());
+        let actuelle = egui::containers::panel::PanelState::load(ui.ctx(), id)
+            .map(|état| état.outer_rect.height());
+        if !tirée && actuelle.is_none_or(|haut| (haut - voulue).abs() > 1.0) {
             let état = egui::containers::panel::PanelState {
                 outer_rect: egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
@@ -196,7 +223,7 @@ impl NamsdecApp {
         egui::Panel::bottom(id)
             .resizable(true)
             .frame(egui::Frame::new())
-            .default_size(self.sidebar_tab_height.unwrap_or(voulue))
+            .default_size(voulue)
             .min_size(SIDEBAR_TAB_MIN.min(plafond))
             .max_size(plafond)
             .show(ui, |ui| {
@@ -297,7 +324,6 @@ impl NamsdecApp {
         //
         // Une poignée ne bouge que sous un doigt. C'est la seule
         // question à poser.
-        let tirée = ui.ctx().input(|i| i.pointer.primary_down());
         if let Some(rendue) = egui::containers::panel::PanelState::load(ui.ctx(), id)
             .map(|état| état.outer_rect.height())
         {
@@ -3717,14 +3743,32 @@ pub(crate) fn hexdump_ui(ui: &mut egui::Ui, id: &str, dump: &str) {
         .id_salt(id)
         .auto_shrink([false, false])
         .show(ui, |ui| {
-            // Sans `Extend`, seize octets et leur transcription se
-            // replient à la largeur du panneau : une ligne sur deux part
-            // à la ligne et le vidage devient illisible. C'est pour ça
-            // que la zone défile aussi horizontalement.
-            ui.add(
-                egui::Label::new(egui::RichText::new(dump).monospace())
-                    .wrap_mode(egui::TextWrapMode::Extend),
-            );
+            // LES OCTETS S'ÉTENDENT, LES PHRASES SE REPLIENT.
+            //
+            // Tout le bloc était en `Extend`, ce qui est juste pour une
+            // ligne de vidage — seize octets et leur transcription ne
+            // doivent pas se replier à la largeur du panneau — et faux
+            // pour les phrases qui l'accompagnent. En lecture « Texte »,
+            // deux explications sur trois partaient hors de l'écran :
+            // « 1 octet, puis un zéro : c'est là que `write` s… ». Vu à
+            // l'écran le 20 octobre 2026, à l'origine du grief sur cet
+            // onglet.
+            //
+            // La règle est la plus simple qui tienne : une ligne qui
+            // commence par une adresse EST du vidage ; tout le reste est
+            // de la prose, et la prose se replie.
+            for ligne in dump.lines() {
+                let données = ligne.trim_start().starts_with("0x");
+                ui.add(
+                    egui::Label::new(egui::RichText::new(ligne).monospace()).wrap_mode(
+                        if données {
+                            egui::TextWrapMode::Extend
+                        } else {
+                            egui::TextWrapMode::Wrap
+                        },
+                    ),
+                );
+            }
         });
 }
 
@@ -3902,7 +3946,7 @@ pub(crate) fn text_dump(bytes: &[u8], addr: u64, lang: Lang) -> String {
         // plutôt que de laisser lire `<b8><01>` et se demander pourquoi.
         if lisibles * 2 < fin {
             out.push_str(if fr {
-                "Ces octets ne forment pas du texte — c'est du code ou des nombres.                  Lisez-les en Octets.
+                "Ces octets ne forment pas du texte — c'est du code ou des nombres. Lisez-les en Octets.
 "
             } else {
                 "These bytes are not text — they are code or numbers. Read them as Bytes.

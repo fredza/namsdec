@@ -83,6 +83,11 @@ un panneau de plus. Six points, six reproductions, six contrôles.
       illisible.
 - [x] **Le menu d'une adresse dit où il mène** (A 8.13).
 - [x] **Le numéro de ligne du Profil mène à sa ligne** (A 8.14).
+- [x] **L'onglet Mémoire est lisible** (A 8.15) — le bandeau ne garde
+      plus la place qu'il n'emploie pas (deux mille pixels de vide sur un
+      grand écran), et les phrases du vidage se replient au lieu de
+      partir hors de l'écran. Les deux contrôles passaient au vert avec
+      les défauts remis : ils ne mesuraient rien, et c'est écrit.
 - [x] **Le fuzzing couvre le chargeur** (A 8.6) — et y a trouvé cinq
       débordements d'entier. La classe est traitée à la source : les
       lecteurs de champs composent base et déplacement de façon

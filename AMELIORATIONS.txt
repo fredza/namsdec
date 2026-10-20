@@ -4748,3 +4748,53 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      Le numéro est un lien. Le contrôle le clique à l'endroit où il est
      PEINT, et non dans une case devinée : le classement est une grille, et
      la place d'une colonne s'y mesure.
+
+8.15 [FAIT] « ENCORE L'ONGLET MÉMOIRE — ILLISIBLE »
+     Le grief revenait pour la troisième fois, et les relevés du banc le
+     laissaient passer : aucun texte ne se recouvrait, rien n'était coupé
+     dans les scènes mesurées, les contrastes tenaient. Il a fallu REGARDER —
+     une capture sur un profil semé depuis les réglages réels, onglet Mémoire
+     actif, binaire ouvert.
+     Deux défauts, et le premier explique tout.
+
+     (a) LE BANDEAU GARDAIT DEUX MILLE PIXELS DE VIDE.
+     `sidebar_tab_height`, la hauteur de l'onglet retenue d'un geste de
+     poignée, est enregistrée dans les réglages — donc gardée d'une séance à
+     l'autre. Elle servait de PLAFOND. Sur un panneau de 2 460 px avec
+     « Prochaine instruction » replié (une cinquantaine de pixels), l'onglet
+     recevait les 307 px d'un geste fait trois semaines plus tôt, et les deux
+     mille du milieu étaient vides. L'onglet Mémoire est le plus dense de
+     tous — adresse, recherche, suivi, lecture, outils, vidage — et c'est lui
+     qui devenait illisible le premier.
+     La hauteur retenue est maintenant un PLANCHER : deux planchers, même, et
+     le plus grand gagne — ce que la personne a choisi, et ce que le bandeau
+     n'utilise pas. On agrandit donc toujours l'onglet au détriment du
+     bandeau, qui défile ; on ne le rétrécit plus pour laisser du vide, ce qui
+     n'est pas un réglage mais le défaut.
+     L'état du panneau egui est en outre RÉÉCRIT à chaque image tant qu'aucune
+     poignée n'est sous un doigt : sans cela, egui garde ce qu'il avait à la
+     première image et le partage cesse de suivre le bandeau.
+
+     (b) LES PHRASES DU VIDAGE PARTAIENT HORS DE L'ÉCRAN.
+     `hexdump_ui` peignait tout le bloc en `TextWrapMode::Extend`. C'est juste
+     pour une ligne de vidage — seize octets et leur transcription ne doivent
+     pas se replier — et faux pour les phrases qui l'accompagnent. En lecture
+     « Texte », deux explications sur trois étaient coupées : « 1 octet, puis
+     un zéro : c'est là que `write` s… ». La règle est la plus simple qui
+     tienne : une ligne qui commence par une adresse est du vidage, le reste
+     est de la prose, et la prose se replie.
+
+     --- CE QUE LES DEUX CONTRÔLES ONT APPRIS ---
+     Écrits, ils passaient au vert AVEC LES DÉFAUTS REMIS. Deux fois, et pour
+     deux raisons différentes, qui valent d'être écrites :
+       * le premier mesurait l'écart entre « Prochaine instruction » et
+         « Mémoire » — mais « Mémoire » paraît DEUX fois à l'écran, et il
+         prenait l'onglet de la barre d'outils, tout en haut. L'écart sortait
+         négatif, et un écart négatif est toujours plus petit que le seuil ;
+       * le second filtrait les lignes de vidage sur le texte de la GALLEY.
+         Tant que le bloc était peint d'un seul tenant, sa galley commençait
+         par « 0x… » : la phrase coupée était écartée avec elle, et n'était
+         même pas regardée. Il mesure maintenant RANGÉE PAR RANGÉE.
+     Un contrôle de géométrie qui n'a jamais échoué ne prouve rien. Les deux
+     ont été remis en défaut jusqu'à ce qu'ils accusent : 1 256 px de vide
+     pour l'un, 363 px peints sur 462 pour l'autre.
