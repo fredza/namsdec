@@ -5127,3 +5127,27 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      ; -> puts`, et `jmp rax ; -> table de sauts, 23 cas (switch)`. Relevé
      une fois à l'ouverture, non par image : c'est un parcours du
      désassemblage.
+
+8.25 [FAIT] LES CIBLES RETROUVÉES NOURRISSENT L'ANALYSE
+     Nommer une cible en commentaire est cosmétique si l'analyse l'ignore.
+     `discover_with` prend donc les appels calculés dont la destination a pu
+     être retrouvée, et les compte comme les appels directs : la fonction
+     visée est une fonction, le site d'appel est un appelant. Le panneau
+     « Fonctions » et le graphe d'appels s'en servent tous les deux.
+
+     --- LE GAIN SE MESURE, ET IL N'EST PAS OÙ L'ON CROIRAIT ---
+     994 ARÊTES D'APPEL retrouvées sur le corpus, pour UNE SEULE FONCTION de
+     plus (14 261 -> 14 262). Le premier réflexe était de mesurer le compte
+     de fonctions, et ce compte ne bouge pas : les cibles retrouvées étaient
+     déjà connues par ailleurs. Ce qui se gagne est la réponse à « QUI
+     APPELLE QUI », que le graphe montre et que le compte ne dit pas.
+     Mesurer la mauvaise chose aurait fait conclure que le travail ne sert à
+     rien.
+
+     --- CE QUI RESTE HORS DE PORTÉE, ET POURQUOI ---
+     Les appels par la table de liaison n'ont PAS de cible dans le fichier :
+     la case est remplie à l'exécution. On a le nom — « puts » — et pas
+     l'adresse, et c'est exact. Ils enrichissent donc le listing sans
+     enrichir le graphe, ce qui est la seule réponse honnête.
+     Une cible qui tombe hors du code n'entre pas : une adresse résolue vers
+     une donnée n'est pas une fonction.

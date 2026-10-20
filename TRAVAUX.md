@@ -121,6 +121,9 @@ un panneau de plus. Six points, six reproductions, six contrôles.
       était muet. Quatre chemins qui se nomment, plus les tables de
       sauts : 318 tables et 9 631 cas retrouvés sur le corpus. Ce qui
       n'entre dans aucun chemin reste inconnu, et le dit.
+- [x] **Les cibles retrouvées nourrissent l'analyse** (A 8.25) — 994
+      arêtes d'appel, pour une seule fonction de plus. Mesurer le compte
+      de fonctions aurait fait conclure que ça ne sert à rien.
 - [x] **Le fuzzing couvre le chargeur** (A 8.6) — et y a trouvé cinq
       débordements d'entier. La classe est traitée à la source : les
       lecteurs de champs composent base et déplacement de façon

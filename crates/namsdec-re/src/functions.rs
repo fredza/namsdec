@@ -115,6 +115,25 @@ pub fn main_of(disasm: &[DecodedInstruction], entry: u64) -> Option<u64> {
 
 /// Toutes les fonctions qu'on sait retrouver, par adresse croissante.
 pub fn discover(disasm: &[DecodedInstruction], entry: u64) -> Vec<Function> {
+    discover_with(disasm, entry, &[])
+}
+
+/// La même découverte, en tenant compte des appels dont la destination
+/// a dû être CALCULÉE.
+///
+/// `call qword [rip+0x2f3a]` ne porte pas sa cible : elle est dans une
+/// case mémoire. Sur les seize binaires d'épreuve, un branchement sur
+/// dix est dans ce cas — et chacun était une fonction que la découverte
+/// ne voyait pas, et une arête que le graphe d'appels perdait.
+///
+/// `résolus` est ce que [`crate::indirect::resolve`] a pu retrouver, par
+/// des chemins qui se nomment. Ce qui n'a pas pu l'être n'est pas passé
+/// ici : la découverte ne doit pas inventer plus que le reste.
+pub fn discover_with(
+    disasm: &[DecodedInstruction],
+    entry: u64,
+    résolus: &[(u64, u64)],
+) -> Vec<Function> {
     if disasm.is_empty() {
         return Vec::new();
     }
@@ -130,6 +149,20 @@ pub fn discover(disasm: &[DecodedInstruction], entry: u64) -> Vec<Function> {
             appels.entry(cible).or_default().insert(instr.address);
         }
         décodées.push((instr.address, decoded));
+    }
+
+    // Les appels calculés, retrouvés ailleurs, comptent comme les
+    // autres : la fonction visée est une fonction, et le site d'appel
+    // est un appelant.
+    let dans_le_code: std::ops::Range<u64> = disasm.first().map(|i| i.address).unwrap_or(0)
+        ..disasm
+            .last()
+            .map(|i| i.address + i.bytes.len() as u64)
+            .unwrap_or(0);
+    for (site, cible) in résolus {
+        if dans_le_code.contains(cible) {
+            appels.entry(*cible).or_default().insert(*site);
+        }
     }
 
     let mut débuts: BTreeMap<u64, Origin> = BTreeMap::new();
@@ -214,6 +247,52 @@ pub fn by_importance(functions: &[Function]) -> Vec<&Function> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// UN APPEL CALCULÉ COMPTE COMME LES AUTRES, quand on a su
+    /// retrouver sa destination.
+    ///
+    /// `call qword [rip+N]` et `call rax` ne portent pas leur cible :
+    /// la découverte ne les voyait donc pas, et le graphe d'appels
+    /// perdait l'arête. Sur le corpus d'épreuve, 994 arêtes d'appel
+    /// sont ainsi retrouvées — pour seulement une fonction de plus, ce
+    /// qui dit bien ce qui se gagne : non pas des fonctions inconnues,
+    /// mais QUI APPELLE QUI.
+    ///
+    /// Et ce qui tombe hors du code n'entre pas : une adresse résolue
+    /// vers une donnée n'est pas une fonction.
+    #[test]
+    fn a_computed_call_counts_once_its_target_is_known() {
+        // Deux fonctions, et un `call` direct vers la première.
+        // 0x1000: ret
+        // 0x1001: ret
+        // 0x1002: call 0x1000
+        let code = [0xc3, 0xc3, 0xe8, 0xf9, 0xff, 0xff, 0xff];
+        let disasm = namsdec_disasm::disassemble(&code, 0x1000);
+        let sans = discover(&disasm, 0x1000);
+        // La seconde n'est appelée par personne : elle n'est pas
+        // découverte.
+        assert!(
+            !sans.iter().any(|f| f.start == 0x1001),
+            "sans l'appel calculé, 0x1001 n'est pas une fonction"
+        );
+
+        // Le même désassemblage, en sachant qu'un appel calculé vise
+        // 0x1001.
+        let avec = discover_with(&disasm, 0x1000, &[(0x1002, 0x1001)]);
+        let trouvée = avec
+            .iter()
+            .find(|f| f.start == 0x1001)
+            .expect("l'appel calculé la fait apparaître");
+        assert_eq!(trouvée.callers, 1, "et son appelant est compté");
+
+        // Une cible HORS du code n'entre pas : une adresse résolue vers
+        // une donnée n'est pas une fonction.
+        let dehors = discover_with(&disasm, 0x1000, &[(0x1002, 0x900000)]);
+        assert!(
+            !dehors.iter().any(|f| f.start == 0x900000),
+            "hors du code, ce n'est pas une fonction"
+        );
+    }
 
     /// Le `main` d'un programme dépouillé se retrouve par la convention
     /// de démarrage — c'est la première chose qu'on cherche.

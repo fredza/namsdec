@@ -60,6 +60,13 @@ fn main() {
         // Les fonctions trouvées, et celles que les symboles nomment.
         let entrée = elf.entry;
         let fonctions = namsdec_re::functions::discover(&disasm, entrée).len();
+        let imports_f = namsdec_re::imports::scan(&octets);
+        let avec: Vec<(u64, u64)> = namsdec_re::indirect::resolve(&disasm, &octets, &imports_f)
+            .into_iter()
+            .filter(|r| r.appel)
+            .filter_map(|r| Some((r.at, r.target?)))
+            .collect();
+        let fonctions_avec = namsdec_re::functions::discover_with(&disasm, entrée, &avec).len();
         let nommées = elf.symbols.iter().filter(|s| s.addr != 0).count();
 
         // Ce que la résolution des cibles indirectes retrouve.
@@ -77,13 +84,16 @@ fn main() {
         }
         println!(
             "{nom:22} {} instr · indirects {indirects} dont {} RÉSOLUS ({part} %) {:?} · \
-             syscall {} / {} illisible · fonctions {fonctions} / {nommées} nommées",
+             syscall {} / {} illisible · fonctions {fonctions} -> {fonctions_avec} · \
+             arêtes d'appel retrouvées {}",
             disasm.len(),
             résolus.len(),
             par_chemin,
             appels.len(),
-            illisibles
+            illisibles,
+            avec.len()
         );
+        let _ = nommées;
         let tables = namsdec_re::indirect::jump_tables(&disasm, &octets);
         let cas: usize = tables.iter().map(|t| t.cases.len()).sum();
         if !tables.is_empty() {

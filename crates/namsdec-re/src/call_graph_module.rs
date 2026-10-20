@@ -19,7 +19,7 @@
 //!   déplie sur son **code binaire** (les octets, bruts) et son
 //!   **pseudo-code** (ce que chaque instruction fait, en clair).
 
-use crate::functions::{Function, Origin, by_importance, discover};
+use crate::functions::{Function, Origin, by_importance, discover_with};
 use crate::{ReContext, ReModule, ReRequest, ReSection, clickable_address, framed_button};
 use std::collections::HashMap;
 
@@ -166,7 +166,16 @@ impl ReModule for CallGraphModule {
             .map(|elf| elf.entry)
             .or_else(|| ctx.disasm.first().map(|i| i.address))
             .unwrap_or(0);
-        self.functions = discover(ctx.disasm, self.entry);
+        // Les appels dont la destination se CALCULE comptent comme les
+        // autres, quand on a su la retrouver : chacun était une fonction
+        // que la découverte ne voyait pas, et une arête perdue.
+        let imports = crate::imports::scan(ctx.binary);
+        let résolus: Vec<(u64, u64)> = crate::indirect::resolve(ctx.disasm, ctx.binary, &imports)
+            .into_iter()
+            .filter(|r| r.appel)
+            .filter_map(|r| Some((r.at, r.target?)))
+            .collect();
+        self.functions = discover_with(ctx.disasm, self.entry, &résolus);
         self.main = crate::functions::main_of(ctx.disasm, self.entry);
         self.par_adresse = self
             .functions
