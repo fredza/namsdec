@@ -51,6 +51,9 @@ pub const PROVIDED: &[&str] = &[
     "_Unwind_RaiseException",
     "_Unwind_Resume",
     "__assert_fail",
+    "__ctype_b_loc",
+    "__ctype_tolower_loc",
+    "__ctype_toupper_loc",
     "__cxa_atexit",
     "__cxa_finalize",
     "__errno_location",
@@ -65,30 +68,75 @@ pub const PROVIDED: &[&str] = &[
     "atexit",
     "atoi",
     "atol",
+    "atoll",
     "bcmp",
     "calloc",
+    "clearerr",
+    "clock",
+    "closedir",
     "dl_iterate_phdr",
     "exit",
+    "fclose",
+    "fdopen",
+    "feof",
+    "ferror",
     "fflush",
+    "fflush_unlocked",
     "fgets",
+    "fileno",
+    "fileno_unlocked",
+    "fopen",
+    "fopen64",
     "fprintf",
     "fputc",
     "fputs",
+    "fread",
+    "fread_unlocked",
     "free",
+    "freopen",
+    "fseek",
+    "fseeko",
+    "fseeko64",
+    "ftell",
+    "ftello",
+    "ftello64",
     "fwrite",
     "getauxval",
     "getchar",
+    "getegid",
     "getenv",
+    "geteuid",
+    "getgid",
+    "getpid",
+    "getppid",
     "gets",
+    "getuid",
+    "index",
+    "isalnum",
+    "isalpha",
+    "isascii",
+    "isatty",
+    "isblank",
+    "iscntrl",
+    "isdigit",
+    "isgraph",
+    "islower",
+    "isprint",
+    "ispunct",
+    "isspace",
+    "isupper",
+    "isxdigit",
     "malloc",
     "malloc_usable_size",
     "memchr",
     "memcmp",
     "memcpy",
+    "memmem",
     "memmove",
     "mempcpy",
     "memrchr",
     "memset",
+    "opendir",
     "perror",
     "posix_memalign",
     "prctl",
@@ -110,23 +158,42 @@ pub const PROVIDED: &[&str] = &[
     "ptrace",
     "putchar",
     "puts",
+    "raise",
     "rand",
     "read",
+    "readdir",
+    "readdir64",
     "realloc",
+    "rewind",
+    "rindex",
     "scanf",
+    "setbuf",
+    "setlinebuf",
+    "setvbuf",
+    "sigaction",
+    "sigaddset",
+    "sigemptyset",
+    "signal",
+    "sigprocmask",
     "sleep",
     "snprintf",
     "sprintf",
     "srand",
+    "sscanf",
+    "stpcpy",
+    "stpncpy",
     "strcasecmp",
+    "strcasestr",
     "strcat",
     "strchr",
+    "strchrnul",
     "strcmp",
     "strcpy",
     "strcspn",
     "strdup",
     "strerror",
     "strlen",
+    "strncasecmp",
     "strncat",
     "strncmp",
     "strncpy",
@@ -135,9 +202,16 @@ pub const PROVIDED: &[&str] = &[
     "strrchr",
     "strspn",
     "strstr",
+    "strtok",
+    "strtok_r",
     "strtol",
+    "strtoll",
+    "strtoul",
+    "strtoull",
     "syscall",
     "sysconf",
+    "time",
+    "tmpfile",
     "tolower",
     "toupper",
     "usleep",
@@ -196,19 +270,21 @@ fn canonical(name: &str) -> &str {
         .or_else(|| name.strip_prefix("__isoc23_"))
         .or_else(|| name.strip_prefix("__isoc11_"))
         .unwrap_or(name);
-    let name = name.strip_suffix("_chk").unwrap_or(name);
-    match name {
-        "__printf" => "printf",
-        "__fprintf" => "fprintf",
-        "__sprintf" => "sprintf",
-        "__snprintf" => "snprintf",
-        "__memcpy" => "memcpy",
-        "__memmove" => "memmove",
-        "__memset" => "memset",
-        "__strcpy" => "strcpy",
-        "__strncpy" => "strncpy",
-        "__strcat" => "strcat",
-        autre => autre,
+    // `__snprintf_chk`, `__fread_chk`, `__realpath_chk` : l'habillage de
+    // FORTIFY_SOURCE. Il ajoute un argument de taille devant les autres
+    // et fait, pour le reste, le travail de la fonction d'origine.
+    //
+    // Les deux marques se retirent ENSEMBLE, et la règle vaut mieux que
+    // la liste : il y avait ici dix correspondances écrites à la main —
+    // `__printf` vers `printf`, et neuf autres —, si bien que chaque
+    // nouvelle fonction fortifiée demandait une ligne de plus, et
+    // `__fread_chk` s'arrêtait faute de l'avoir écrite. Le préfixe `__`
+    // n'est retiré QUE si le suffixe `_chk` était là : `__errno_location`
+    // et `__ctype_b_loc` ne sont pas des habillages, ce sont des
+    // fonctions à part entière.
+    match name.strip_suffix("_chk") {
+        Some(nu) => nu.strip_prefix("__").unwrap_or(nu),
+        None => name,
     }
 }
 
@@ -456,6 +532,17 @@ pub(crate) fn call(emu: &mut Emulator, name: &str) -> Result<Flow, EmuError> {
             let lus = scan(emu, &format, &mut args)?;
             set(emu, lus);
         }
+        // `sscanf` lit dans une chaîne qu'on lui donne, et non sur
+        // l'entrée. C'est la façon dont un crackme découpe ce qu'on
+        // vient de taper — « %d-%d-%d » sur un numéro de série — et il
+        // manquait, alors que `scanf` était là depuis le début.
+        "sscanf" => {
+            let mut args = VarArgs::new(emu, 0);
+            let source = cstr(emu, args.integer(emu))?;
+            let format = cstr(emu, args.integer(emu))?;
+            let lus = scan_dans(emu, &source, &format, &mut args)?;
+            set(emu, lus);
+        }
 
         // --- Les chaînes -----------------------------------------------
         "strlen" | "strnlen" => {
@@ -560,15 +647,21 @@ pub(crate) fn call(emu: &mut Emulator, name: &str) -> Result<Flow, EmuError> {
             put(emu, bloc, &texte)?;
             set(emu, bloc);
         }
-        "atoi" | "atol" | "strtol" => {
+        // `strtoul`, `strtoll`, `strtoull` font le même travail que
+        // `strtol` : même grammaire, même second argument, et seule la
+        // largeur du résultat change — or elle tient dans RAX de la
+        // même façon. Les séparer aurait recopié trente lignes pour
+        // écrire quatre fois la même chose.
+        "atoi" | "atol" | "atoll" | "strtol" | "strtoul" | "strtoll" | "strtoull" => {
             let texte = cstr(emu, emu.cpu.regs.get64(Reg64::Rdi))?;
-            let base = if court == "strtol" {
+            let avec_base = court.starts_with("strto");
+            let base = if avec_base {
                 emu.cpu.regs.get64(Reg64::Rdx) as u32
             } else {
                 10
             };
             let (valeur, lus) = parse_int(&texte, if base == 0 { 10 } else { base });
-            if court == "strtol" {
+            if avec_base {
                 // Le second argument reçoit où l'analyse s'est arrêtée.
                 let fin = emu.cpu.regs.get64(Reg64::Rsi);
                 if fin != 0 {
@@ -579,6 +672,42 @@ pub(crate) fn call(emu: &mut Emulator, name: &str) -> Result<Flow, EmuError> {
                 }
             }
             set(emu, valeur as u64);
+        }
+        // LES CLASSES DE CARACTÈRES, au complet.
+        //
+        // Elles manquaient toutes, et c'est le genre d'absence qui
+        // arrête un programme en pleine vérification de mot de passe :
+        // « ce caractère est-il un chiffre ? » est la première question
+        // qu'une validation se pose. Le compilateur les écrit en appel
+        // quand il ne peut pas les développer en ligne.
+        //
+        // `is*` rend un entier NON NUL, pas forcément 1 : c'est ce que
+        // la norme dit, et un programme qui compare à 1 est déjà cassé
+        // sur une vraie libc.
+        "isalpha" | "isdigit" | "isalnum" | "isspace" | "isupper" | "islower" | "ispunct"
+        | "isprint" | "isxdigit" | "iscntrl" | "isgraph" | "isblank" | "isascii" => {
+            let brut = emu.cpu.regs.get64(Reg64::Rdi);
+            // L'argument est un `int` : EOF (-1) n'est aucune classe, et
+            // tout ce qui dépasse un octet non plus.
+            let c = u8::try_from(brut & 0xff).unwrap_or(0);
+            let hors_ascii = brut > 0xff;
+            let vrai = !hors_ascii
+                && match court {
+                    "isalpha" => c.is_ascii_alphabetic(),
+                    "isdigit" => c.is_ascii_digit(),
+                    "isalnum" => c.is_ascii_alphanumeric(),
+                    "isspace" => c.is_ascii_whitespace() || c == 0x0b,
+                    "isupper" => c.is_ascii_uppercase(),
+                    "islower" => c.is_ascii_lowercase(),
+                    "ispunct" => c.is_ascii_punctuation(),
+                    "isprint" => c.is_ascii_graphic() || c == b' ',
+                    "isxdigit" => c.is_ascii_hexdigit(),
+                    "iscntrl" => c.is_ascii_control(),
+                    "isgraph" => c.is_ascii_graphic(),
+                    "isblank" => c == b' ' || c == b'\t',
+                    _ => c.is_ascii(),
+                };
+            set(emu, u64::from(vrai));
         }
         "toupper" | "tolower" => {
             let c = emu.cpu.regs.get64(Reg64::Rdi) as u8;
@@ -781,6 +910,267 @@ pub(crate) fn call(emu: &mut Emulator, name: &str) -> Result<Flow, EmuError> {
             // Pas de table de messages : un texte unique, mais vrai.
             set(emu, 0);
         }
+        // --- Les chaînes, la suite ------------------------------------
+        //
+        // Ce lot vient d'un COMPTE et non d'une intuition : les imports
+        // des onze binaires d'épreuve et de la collection personnelle,
+        // moins ce que namsdec fournit déjà. Ce qui suit est ce que ce
+        // relevé a nommé, plus ses voisins immédiats — ajouter `strtok`
+        // sans `strtok_r` reviendrait à s'arrêter au milieu.
+        "strncasecmp" => {
+            let a = cstr(emu, emu.cpu.regs.get64(Reg64::Rdi))?;
+            let b = cstr(emu, emu.cpu.regs.get64(Reg64::Rsi))?;
+            let n = emu.cpu.regs.get64(Reg64::Rdx) as usize;
+            let coupe = |v: &[u8]| -> Vec<u8> {
+                v.iter().take(n).map(|o| o.to_ascii_lowercase()).collect()
+            };
+            set(emu, compare(&coupe(&a), &coupe(&b)));
+        }
+        // `stpcpy` est `strcpy` qui rend la FIN plutôt que le début :
+        // c'est ce qui permet d'enchaîner des copies sans reparcourir.
+        "stpcpy" | "stpncpy" => {
+            let dst = emu.cpu.regs.get64(Reg64::Rdi);
+            let src = cstr(emu, emu.cpu.regs.get64(Reg64::Rsi))?;
+            let mut octets = src.clone();
+            if court == "stpncpy" {
+                let n = emu.cpu.regs.get64(Reg64::Rdx) as usize;
+                octets.truncate(n);
+                octets.resize(n, 0);
+            } else {
+                octets.push(0);
+            }
+            put(emu, dst, &octets)?;
+            // La fin, c'est le zéro final — ou le bout pour `stpncpy`.
+            let fin = dst + src.len().min(octets.len()) as u64;
+            set(emu, fin);
+        }
+        "memmem" => {
+            let foin = emu.cpu.regs.get64(Reg64::Rdi);
+            let n = emu.cpu.regs.get64(Reg64::Rsi) as usize;
+            let aiguille_at = emu.cpu.regs.get64(Reg64::Rdx);
+            let m = emu.cpu.regs.get64(Reg64::Rcx) as usize;
+            let foin_octets = emu.cpu.mem.bytes_at(foin, n)?.to_vec();
+            let aiguille = emu.cpu.mem.bytes_at(aiguille_at, m)?.to_vec();
+            // Une aiguille vide se trouve au début : c'est ce que dit la
+            // page de manuel, et c'est le cas qu'on oublie.
+            let trouvé = if aiguille.is_empty() {
+                Some(0)
+            } else {
+                foin_octets
+                    .windows(aiguille.len())
+                    .position(|f| f == aiguille)
+            };
+            set(emu, trouvé.map(|p| foin + p as u64).unwrap_or(0));
+        }
+        "strcasestr" => {
+            let foin = cstr(emu, emu.cpu.regs.get64(Reg64::Rdi))?;
+            let aiguille = cstr(emu, emu.cpu.regs.get64(Reg64::Rsi))?;
+            let bas = |v: &[u8]| -> Vec<u8> { v.iter().map(|o| o.to_ascii_lowercase()).collect() };
+            let (f, a) = (bas(&foin), bas(&aiguille));
+            let trouvé = if a.is_empty() {
+                Some(0)
+            } else if a.len() > f.len() {
+                None
+            } else {
+                f.windows(a.len()).position(|w| w == a)
+            };
+            set(
+                emu,
+                trouvé
+                    .map(|p| emu.cpu.regs.get64(Reg64::Rdi) + p as u64)
+                    .unwrap_or(0),
+            );
+        }
+        // `strchrnul` rend le zéro final plutôt que NULL : glibc
+        // l'emploie partout en interne, et un binaire compilé contre
+        // elle s'y arrête.
+        "strchrnul" | "index" | "rindex" => {
+            let base = emu.cpu.regs.get64(Reg64::Rdi);
+            let texte = cstr(emu, base)?;
+            let cherché = emu.cpu.regs.get64(Reg64::Rsi) as u8;
+            let position = if court == "rindex" {
+                texte.iter().rposition(|o| *o == cherché)
+            } else {
+                texte.iter().position(|o| *o == cherché)
+            };
+            let rendu = match (position, court) {
+                (Some(p), _) => base + p as u64,
+                // Pas trouvé : `strchrnul` rend la fin, les deux autres
+                // rendent rien.
+                (None, "strchrnul") => base + texte.len() as u64,
+                (None, _) => 0,
+            };
+            set(emu, rendu);
+        }
+        // `strtok` DÉCOUPE EN PLACE et retient où il en était. Ce qu'il
+        // retient vit dans la mémoire simulée (voir `strtok_slot`) pour
+        // que « pas en arrière » le défasse comme le reste.
+        "strtok" | "strtok_r" => {
+            let case = if court == "strtok_r" {
+                emu.cpu.regs.get64(Reg64::Rdx)
+            } else {
+                emu.strtok_slot()
+            };
+            let donné = emu.cpu.regs.get64(Reg64::Rdi);
+            let départ = if donné != 0 {
+                donné
+            } else if case != 0 {
+                emu.cpu.mem.read_u64(case)?
+            } else {
+                0
+            };
+            if départ == 0 {
+                set(emu, 0);
+                return Ok(Flow::Returned);
+            }
+            let séparateurs = cstr(emu, emu.cpu.regs.get64(Reg64::Rsi))?;
+            let texte = cstr(emu, départ)?;
+            // On saute les séparateurs de tête, puis on coupe au premier
+            // suivant — que l'on remplace par un zéro, en place.
+            let début = texte
+                .iter()
+                .position(|o| !séparateurs.contains(o))
+                .unwrap_or(texte.len());
+            if début >= texte.len() {
+                if case != 0 {
+                    emu.record_memory(case, 8);
+                    emu.cpu.mem.write_bytes(case, &0u64.to_le_bytes())?;
+                }
+                set(emu, 0);
+                return Ok(Flow::Returned);
+            }
+            let fin = texte[début..]
+                .iter()
+                .position(|o| séparateurs.contains(o))
+                .map(|p| début + p);
+            let jeton = départ + début as u64;
+            let suite = match fin {
+                Some(fin) => {
+                    let at = départ + fin as u64;
+                    emu.record_memory(at, 1);
+                    emu.cpu.mem.write_bytes(at, &[0])?;
+                    at + 1
+                }
+                None => départ + texte.len() as u64,
+            };
+            if case != 0 {
+                emu.record_memory(case, 8);
+                emu.cpu.mem.write_bytes(case, &suite.to_le_bytes())?;
+            }
+            set(emu, jeton);
+        }
+        // LES TABLES DE CLASSES DE CARACTÈRES.
+        //
+        // glibc ne compile pas `isalpha(c)` en appel : elle le compile
+        // en lecture de table — `(*__ctype_b_loc())[c] & _ISalpha`. La
+        // fonction rend donc un pointeur VERS un pointeur vers une
+        // table indexée de -128 à 255, et c'est ce double niveau qui
+        // surprend. Sans elle, tout programme qui emploie les macros de
+        // `<ctype.h>` s'arrête au premier caractère examiné.
+        //
+        // La table est bâtie une fois dans la mémoire simulée, et les
+        // trois fonctions partagent le même travail.
+        "__ctype_b_loc" | "__ctype_tolower_loc" | "__ctype_toupper_loc" => {
+            let adresse = table_ctype(emu, court)?;
+            set(emu, adresse);
+        }
+        // --- Le temps, l'identité, le terminal ------------------------
+        //
+        // Tous rendent une valeur STABLE : le même programme doit donner
+        // deux fois le même résultat, sans quoi revenir en arrière ne
+        // voudrait plus rien dire. C'est la même règle que pour `rand`,
+        // dont la suite est reproductible ici.
+        "time" => {
+            // Une date fixe, et assumée : le 20 octobre 2026 à minuit
+            // UTC. Un programme qui l'affiche affichera toujours la
+            // même, et c'est ce qu'on veut d'un atelier.
+            const QUAND: u64 = 1_792_195_200;
+            let où = emu.cpu.regs.get64(Reg64::Rdi);
+            if où != 0 {
+                emu.record_memory(où, 8);
+                emu.cpu.mem.write_bytes(où, &QUAND.to_le_bytes())?;
+            }
+            set(emu, QUAND);
+        }
+        "clock" => set(emu, emu.ticks),
+        "getpid" => set(emu, 4242),
+        "getppid" => set(emu, 4241),
+        "getuid" | "geteuid" | "getgid" | "getegid" => set(emu, 1000),
+        // Pas de terminal : la sortie de namsdec est une console, mais
+        // ce n'est pas un tty, et répondre « oui » ferait prendre au
+        // programme un chemin de couleurs et de curseurs qu'il ne
+        // pourrait pas tenir.
+        "isatty" => {
+            set(emu, 0);
+            let case = emu.errno_slot();
+            if case != 0 {
+                // ENOTTY : la réponse honnête, et celle qu'un programme
+                // regarde après un `isatty` négatif.
+                emu.record_memory(case, 8);
+                emu.cpu.mem.write_bytes(case, &25u64.to_le_bytes())?;
+            }
+        }
+        // Poser un gestionnaire de signal : accepté et retenu nulle
+        // part. namsdec ne livre aucun signal — il n'y a ni noyau ni
+        // horloge pour en envoyer —, donc le gestionnaire ne servirait
+        // jamais. Rendre « l'ancien était le comportement par défaut »
+        // est exact, et laisse le programme continuer.
+        "signal" | "sigaction" | "sigemptyset" | "sigaddset" | "sigprocmask" => set(emu, 0),
+        // `raise`, en revanche, ARRIVE : le programme se l'envoie à
+        // lui-même, et il n'y a pas de gestionnaire pour l'attraper.
+        "raise" => {
+            let signal = emu.cpu.regs.get64(Reg64::Rdi);
+            emu.output.extend_from_slice(
+                format!("*** le programme s'est envoyé le signal {signal} ***\n").as_bytes(),
+            );
+            emu.exit_code = Some(128 + (signal as i64 & 0x7f));
+            emu.cpu.halted = true;
+            return Ok(Flow::Halted);
+        }
+        // --- LES FICHIERS, ET CE QU'ON EN DIT -------------------------
+        //
+        // namsdec N'A PAS DE SYSTÈME DE FICHIERS. Il n'ouvre rien sur le
+        // disque de la personne : un programme analysé est un programme
+        // dont on ne sait rien, et lui donner la main sur les fichiers
+        // serait une décision, pas une commodité.
+        //
+        // Deux réponses étaient possibles, et le choix se justifie. Ne
+        // pas fournir `fopen` du tout arrête le programme en nommant la
+        // fonction — exact, mais il s'arrête AVANT d'avoir montré ce
+        // qu'il fait quand le fichier manque, qui est souvent la moitié
+        // intéressante : « clé introuvable », un message, un chemin de
+        // repli. Répondre « introuvable » n'invente RIEN — c'est la
+        // vérité, il n'y a pas de fichier — et laisse le programme
+        // suivre sa branche d'erreur.
+        //
+        // La première fois, la console le dit en toutes lettres, pour
+        // qu'on ne prenne pas un refus de namsdec pour un refus du
+        // système.
+        "fopen" | "fopen64" | "freopen" | "fdopen" | "tmpfile" | "opendir" => {
+            sans_fichiers(emu, court);
+            let case = emu.errno_slot();
+            if case != 0 {
+                // ENOENT : « ce fichier n'existe pas ».
+                emu.record_memory(case, 8);
+                emu.cpu.mem.write_bytes(case, &2u64.to_le_bytes())?;
+            }
+            set(emu, 0);
+        }
+        // Les suites logiques : on ne peut pas être arrivé ici avec un
+        // flux ouvert par nous, puisqu'on n'en ouvre aucun. Elles
+        // répondent donc ce que la norme dit d'un flux qui ne donne
+        // rien, sans rien inventer.
+        "fread" | "__fread_chk" | "fread_unlocked" => set(emu, 0),
+        "fclose" | "closedir" | "fflush_unlocked" => set(emu, 0),
+        // Fin de fichier : vrai, puisqu'il n'y a rien à lire.
+        "feof" => set(emu, 1),
+        "ferror" => set(emu, 0),
+        "clearerr" | "rewind" | "setbuf" | "setvbuf" | "setlinebuf" => set(emu, 0),
+        // Le descripteur des trois flux standards, et rien d'autre.
+        "fileno" | "fileno_unlocked" => set(emu, 1),
+        "fseek" | "fseeko" | "fseeko64" => set(emu, u64::MAX),
+        "ftell" | "ftello" | "ftello64" => set(emu, u64::MAX),
+        "readdir" | "readdir64" => set(emu, 0),
         "memrchr" => {
             let base = emu.cpu.regs.get64(Reg64::Rdi);
             let cherché = emu.cpu.regs.get64(Reg64::Rsi) as u8;
@@ -871,6 +1261,135 @@ pub(crate) fn main_returned(emu: &mut Emulator) -> Flow {
     emu.exit_code = Some(code as i64);
     emu.cpu.halted = true;
     Flow::Halted
+}
+
+/// Bâtit, une fois, la table que `__ctype_*_loc` désigne, et rend
+/// l'adresse du POINTEUR vers elle.
+///
+/// Deux niveaux, et c'est la source de toutes les confusions : la
+/// fonction rend `unsigned short **`, un pointeur sur un pointeur. Le
+/// second pointe au MILIEU d'un tableau de 384 entrées, de sorte que
+/// l'index -128 soit valide — glibc indexe par un `int` qui peut être
+/// négatif, EOF compris.
+///
+/// Les trois tables sont bâties ensemble et gardées : les rebâtir à
+/// chaque appel ferait grandir le tas à chaque caractère examiné.
+fn table_ctype(emu: &mut Emulator, laquelle: &str) -> Result<u64, EmuError> {
+    /// Les bits de glibc, dans son ordre à elle — et il est en
+    /// GROS-BOUTISTE dans le `unsigned short`, ce qui est une
+    /// bizarrerie historique de la bibliothèque et non une erreur ici.
+    const UPPER: u16 = 1 << 8;
+    const LOWER: u16 = 1 << 9;
+    const ALPHA: u16 = 1 << 10;
+    const DIGIT: u16 = 1 << 11;
+    const XDIGIT: u16 = 1 << 12;
+    const SPACE: u16 = 1 << 13;
+    const PRINT: u16 = 1 << 14;
+    const GRAPH: u16 = 1 << 15;
+    const BLANK: u16 = 1 << 0;
+    const CNTRL: u16 = 1 << 1;
+    const PUNCT: u16 = 1 << 2;
+    const ALNUM: u16 = 1 << 3;
+
+    if emu.ctype_at == 0 {
+        // Trois tableaux de 384 entrées : classes (2 octets), minuscules
+        // et majuscules (4 octets chacun), plus trois pointeurs.
+        let total = 384 * 2 + 384 * 4 * 2 + 3 * 8;
+        // Le tas plein : on rend zéro, comme `malloc`. Un programme qui
+        // déréférence un pointeur nul s'arrêtera en le disant, ce qui
+        // est plus clair qu'une erreur venue d'ici.
+        let Some(base) = emu.libc_alloc(total) else {
+            return Ok(0);
+        };
+        let classes = base + 3 * 8;
+        let vers_bas = classes + 384 * 2;
+        let vers_haut = vers_bas + 384 * 4;
+        let mut octets = Vec::with_capacity(total as usize);
+        // Les trois pointeurs, chacun décalé de 128 entrées pour que
+        // l'index négatif tombe juste.
+        octets.extend_from_slice(&(classes + 128 * 2).to_le_bytes());
+        octets.extend_from_slice(&(vers_bas + 128 * 4).to_le_bytes());
+        octets.extend_from_slice(&(vers_haut + 128 * 4).to_le_bytes());
+        for i in 0..384i32 {
+            let c = i - 128;
+            let mut bits = 0u16;
+            if (0..=255).contains(&c) {
+                let o = c as u8;
+                if o.is_ascii_uppercase() {
+                    bits |= UPPER | ALPHA | ALNUM | GRAPH | PRINT;
+                }
+                if o.is_ascii_lowercase() {
+                    bits |= LOWER | ALPHA | ALNUM | GRAPH | PRINT;
+                }
+                if o.is_ascii_digit() {
+                    bits |= DIGIT | ALNUM | GRAPH | PRINT | XDIGIT;
+                }
+                if o.is_ascii_hexdigit() {
+                    bits |= XDIGIT;
+                }
+                if o.is_ascii_whitespace() || o == 0x0b {
+                    bits |= SPACE;
+                }
+                if o == b' ' || o == b'\t' {
+                    bits |= BLANK;
+                }
+                if o == b' ' {
+                    bits |= PRINT;
+                }
+                if o.is_ascii_punctuation() {
+                    bits |= PUNCT | GRAPH | PRINT;
+                }
+                if o.is_ascii_control() {
+                    bits |= CNTRL;
+                }
+            }
+            // Gros-boutiste, comme glibc le range.
+            octets.extend_from_slice(&bits.to_be_bytes());
+        }
+        for (vers_minuscule, _) in [(true, ()), (false, ())] {
+            for i in 0..384i32 {
+                let c = i - 128;
+                let rendu = if (0..=255).contains(&c) {
+                    let o = c as u8;
+                    i32::from(if vers_minuscule {
+                        o.to_ascii_lowercase()
+                    } else {
+                        o.to_ascii_uppercase()
+                    })
+                } else {
+                    c
+                };
+                octets.extend_from_slice(&rendu.to_le_bytes());
+            }
+        }
+        emu.record_memory(base, octets.len());
+        emu.cpu.mem.write_bytes(base, &octets)?;
+        emu.ctype_at = base;
+    }
+    let rang = match laquelle {
+        "__ctype_tolower_loc" => 1,
+        "__ctype_toupper_loc" => 2,
+        _ => 0,
+    };
+    Ok(emu.ctype_at + rang * 8)
+}
+
+/// Dit, une fois, que namsdec n'a pas de système de fichiers.
+///
+/// Une fois et pas davantage : un programme qui essaie d'ouvrir trois
+/// cents fichiers noierait sa propre sortie sous le même message.
+fn sans_fichiers(emu: &mut Emulator, quoi: &str) {
+    if emu.dit_sans_fichiers {
+        return;
+    }
+    emu.dit_sans_fichiers = true;
+    emu.output.extend_from_slice(
+        format!(
+            "*** namsdec n'a pas de système de fichiers : `{quoi}` répond « introuvable ». \
+             Le programme suit sa branche d'erreur, ce qui est souvent ce qu'on veut voir. ***\n"
+        )
+        .as_bytes(),
+    );
 }
 
 /// Pose le résultat dans RAX, là où la convention d'appel le veut.
@@ -1220,7 +1739,22 @@ fn scan(emu: &mut Emulator, format: &[u8], args: &mut VarArgs) -> Result<u64, Em
         // Fin de fichier : `scanf` rend EOF.
         return Ok(u64::MAX);
     };
-    let mut reste: &[u8] = &ligne;
+    scan_dans(emu, &ligne, format, args)
+}
+
+/// Le même travail, mais sur une chaîne qu'on a déjà — c'est `sscanf`.
+///
+/// Séparé de `scan` plutôt que recopié : la grammaire des `%` est la
+/// seule chose délicate ici, et deux copies divergeraient au premier
+/// format ajouté. Ce qui change entre les deux tient en une ligne — d'où
+/// viennent les octets.
+fn scan_dans(
+    emu: &mut Emulator,
+    source: &[u8],
+    format: &[u8],
+    args: &mut VarArgs,
+) -> Result<u64, EmuError> {
+    let mut reste: &[u8] = source;
     let mut réussies = 0u64;
     let mut at = 0;
     while at < format.len() {

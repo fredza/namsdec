@@ -20841,9 +20841,14 @@ fn a_binary_is_loaded_the_way_the_kernel_would() {
 #[test]
 fn a_call_that_leaves_the_program_says_which_function_it_was() {
     // Un programme qui appelle une fonction que namsdec ne fournit pas :
-    // ouvrir un répertoire demanderait un système de fichiers.
+    // charger une bibliothèque à l'exécution, ce qu'il ne fera jamais —
+    // il n'est pas un éditeur de liens dynamique, c'est sa définition.
+    //
+    // `opendir` servait ici jusqu'au 20 octobre et est fournie depuis.
+    // Un contrôle de LIMITE doit viser ce qui ne bougera pas, sans quoi
+    // il tombe à chaque fonction ajoutée.
     let Some((_dir, binaire)) = compile_c(
-        "#include <dirent.h>\nint main(void) { return opendir(\"/\") == 0; }\n",
+        "#include <dlfcn.h>\nint main(void) { return dlopen(\"x.so\", 1) == 0; }\n",
         &[],
     ) else {
         return;
@@ -20877,7 +20882,7 @@ fn a_call_that_leaves_the_program_says_which_function_it_was() {
         );
     };
     assert!(
-        message.contains("opendir"),
+        message.contains("dlopen"),
         "le message nomme la fonction appelée : {message}"
     );
     let conseil = app.error_advice.as_ref().expect("et il explique");
@@ -21011,7 +21016,13 @@ fn every_function_namsdec_claims_to_provide_really_answers() {
         );
     }
     // Et ce qu'elle ne contient pas n'est pas fourni en douce.
-    for absente in ["opendir", "fork", "socket", "dlopen"] {
+    //
+    // Les quatre choisies ne bougeront pas : namsdec ne lance pas de
+    // processus, n'ouvre pas de connexion et ne charge aucune
+    // bibliothèque — c'est sa définition. `opendir` figurait ici
+    // jusqu'au 20 octobre et est fournie depuis : un exemple qui
+    // déménage ne vaut rien dans un contrôle de limite.
+    for absente in ["fork", "execvp", "socket", "dlopen"] {
         assert!(
             !namsdec_emu::provides(absente),
             "« {absente} » ne doit pas être annoncée comme fournie"

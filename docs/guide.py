@@ -2674,8 +2674,18 @@ def main():
     blocs.append(("h1", "Ce que namsdec ne fait pas"))
     blocs.append(("liste", [
         "Pas de mode 32 bits, ni d'interruption `int 0x80` : seul le x86-64 est simulé.",
-        "Pas de bibliothèque C : un binaire qui appelle `printf` s'arrête sur l'appel, "
-        "faute de code à exécuter derrière.",
+        "Pas de bibliothèque C <i>chargée</i> : namsdec n'est pas un éditeur de liens "
+        "dynamique, et le code de `printf` n'est nulle part dans la mémoire simulée. "
+        "À la place il en <b>fournit cent soixante-dix</b>, écrites en Rust — afficher, "
+        "lire, découper et comparer des chaînes, classer des caractères, demander de la "
+        "mémoire. Un binaire qui emprunte autre chose s'arrête en <b>nommant</b> la "
+        "fonction ; un binaire lié statiquement (`gcc -static`) n'emprunte rien et "
+        "s'exécute entier.",
+        "Pas de système de fichiers : `fopen` répond « introuvable », ce qui est la "
+        "vérité — il n'y a pas de fichier — et laisse le programme suivre sa branche "
+        "d'erreur, souvent la moitié intéressante. La console le dit la première fois.",
+        "Pas de processus ni de bibliothèque chargée à l'exécution : `fork`, `execvp`, "
+        "`dlopen` restent refusés en se nommant, et le resteront.",
         "Les appels système qui touchent au monde — `mmap`, `open`, `fork` — sont nommés "
         "mais pas exécutés. namsdec le dit dès l'assemblage, avec la ligne.",
         "AVX-512 : ses <b>trente-deux registres de 512 bits</b> (`zmm`), ses huit <b>registres de masque</b> (`k0` à `k7`) et les instructions qui les remplissent, et l'<b>application</b> du masque — les voies retenues reçoivent le résultat, les autres gardent leur valeur ou tombent à zéro. Une instruction dont namsdec ne sait pas nommer l'élément s'arrête en le disant, plutôt que de décaler les voies et de rendre un résultat faux sans avertissement. FMA, `in`/`out` et `cmpxchg16b` ne sont pas implémentés ; SSE, SSE2, SSSE3, SSE4.1, SSE4.2, AVX et AVX2 le sont entièrement.",

@@ -3618,14 +3618,20 @@ fn a_provided_call_can_be_stepped_back() {
 /// Une fonction que namsdec ne fournit pas s'arrête en se nommant.
 ///
 /// C'est la limite, et elle doit être lisible : « namsdec ne fournit pas
-/// `opendir` » apprend quelque chose, « adresse non projetée » n'apprend
+/// `dlopen` » apprend quelque chose, « adresse non projetée » n'apprend
 /// rien.
+///
+/// `dlopen` et non `opendir`, qui servait d'exemple jusqu'au 20 octobre :
+/// celle-là est fournie depuis. Le choix d'une fonction qui ne le sera
+/// JAMAIS vaut mieux qu'un exemple qui déménage — namsdec ne charge
+/// aucune bibliothèque, c'est sa définition, et `dlopen` restera donc
+/// toujours du bon côté de la limite.
 #[test]
 fn a_function_namsdec_does_not_provide_names_itself() {
-    let mut emu = library_emulator("opendir");
+    let mut emu = library_emulator("dlopen");
     let erreur = emu.step().expect_err("il n'y a rien à appeler");
     match erreur {
-        EmuError::UnsupportedLibrary { name, .. } => assert_eq!(name, "opendir"),
+        EmuError::UnsupportedLibrary { name, .. } => assert_eq!(name, "dlopen"),
         autre => panic!("attendu une fonction absente, obtenu {autre:?}"),
     }
     assert_eq!(emu.cpu.regs.rip, 0x401000, "RIP reste sur la borne");
@@ -5111,4 +5117,195 @@ hlt
         0x0000_0028_0000_001e,
         "et les deux suivants gardent 30 et 40, intacts"
     );
+}
+
+/// `sscanf` découpe une chaîne qu'on lui donne, et non l'entrée.
+///
+/// C'est la façon dont un crackme lit ce qu'on vient de taper —
+/// « %d-%d-%d » sur un numéro de série —, et il manquait alors que
+/// `scanf` était là depuis le début. Le relevé des imports des binaires
+/// d'épreuve l'a nommé le premier.
+#[test]
+fn the_provided_sscanf_reads_from_a_string() {
+    let mut emu = library_emulator("sscanf");
+    emu.cpu.mem.poke(0x403000, b"1234-5678\0").unwrap();
+    emu.cpu.mem.poke(0x403100, b"%d-%d\0").unwrap();
+    emu.cpu.regs.set64(Reg64::Rdi, 0x403000);
+    emu.cpu.regs.set64(Reg64::Rsi, 0x403100);
+    emu.cpu.regs.set64(Reg64::Rdx, 0x404000);
+    emu.cpu.regs.set64(Reg64::Rcx, 0x404010);
+    emu.step().expect("sscanf répond");
+
+    assert_eq!(emu.cpu.regs.get64(Reg64::Rax), 2, "deux conversions lues");
+    assert_eq!(emu.cpu.mem.read_u32(0x404000).unwrap(), 1234);
+    assert_eq!(emu.cpu.mem.read_u32(0x404010).unwrap(), 5678);
+}
+
+/// Les classes de caractères répondent, et EOF n'en est aucune.
+///
+/// « ce caractère est-il un chiffre ? » est la première question qu'une
+/// vérification de mot de passe se pose. Les douze manquaient toutes.
+#[test]
+fn the_character_classes_answer() {
+    for (fonction, caractère, attendu) in [
+        ("isalpha", b'x', true),
+        ("isalpha", b'7', false),
+        ("isdigit", b'7', true),
+        ("isalnum", b'_', false),
+        ("isspace", b' ', true),
+        ("isupper", b'X', true),
+        ("islower", b'X', false),
+        ("ispunct", b'!', true),
+        ("isxdigit", b'f', true),
+        ("isxdigit", b'g', false),
+        ("isprint", b' ', true),
+        ("iscntrl", b'\n', true),
+        ("isblank", b'\t', true),
+    ] {
+        let mut emu = library_emulator(fonction);
+        emu.cpu.regs.set64(Reg64::Rdi, u64::from(caractère));
+        emu.step().unwrap_or_else(|e| panic!("{fonction} : {e}"));
+        let rendu = emu.cpu.regs.get64(Reg64::Rax) != 0;
+        assert_eq!(
+            rendu, attendu,
+            "{fonction}('{}') doit rendre {attendu}",
+            caractère as char
+        );
+    }
+    // EOF n'appartient à aucune classe : c'est le cas qu'on oublie, et
+    // celui qui fait boucler une lecture pour toujours.
+    let mut emu = library_emulator("isalpha");
+    emu.cpu.regs.set64(Reg64::Rdi, u64::MAX);
+    emu.step().expect("isalpha répond");
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rax),
+        0,
+        "EOF n'est pas une lettre"
+    );
+}
+
+/// La table de `<ctype.h>` est bâtie, et ses deux niveaux tombent juste.
+///
+/// glibc ne compile pas `isalpha(c)` en appel mais en lecture de table :
+/// `(*__ctype_b_loc())[c] & _ISalpha`. La fonction rend donc un pointeur
+/// VERS un pointeur, et le second pointe au MILIEU du tableau pour que
+/// l'index -128 soit valide. Sans cela, tout programme qui emploie les
+/// macros s'arrête au premier caractère examiné.
+#[test]
+fn the_ctype_table_has_its_two_levels_right() {
+    let mut emu = library_emulator("__ctype_b_loc");
+    emu.step().expect("__ctype_b_loc répond");
+    let pointeur_de_pointeur = emu.cpu.regs.get64(Reg64::Rax);
+    assert_ne!(pointeur_de_pointeur, 0, "la table est bâtie");
+    let table = emu
+        .cpu
+        .mem
+        .read_u64(pointeur_de_pointeur)
+        .expect("le second niveau se lit");
+
+    // Les bits sont rangés en GROS-BOUTISTE dans le `unsigned short`,
+    // bizarrerie historique de glibc. `_ISalpha` vaut 1 << 10.
+    let classe = |c: u8| -> u16 {
+        let at = table + u64::from(c) * 2;
+        let haut = emu.cpu.mem.read_u8(at).unwrap();
+        let bas = emu.cpu.mem.read_u8(at + 1).unwrap();
+        u16::from_be_bytes([haut, bas])
+    };
+    assert_ne!(classe(b'x') & (1 << 10), 0, "« x » est une lettre");
+    assert_eq!(classe(b'7') & (1 << 10), 0, "« 7 » n'en est pas une");
+    assert_ne!(classe(b'7') & (1 << 11), 0, "« 7 » est un chiffre");
+
+    // L'index NÉGATIF tombe dans le tableau : c'est à cela que sert le
+    // décalage de cent vingt-huit entrées.
+    let avant = table - 2;
+    assert!(
+        emu.cpu.mem.read_u8(avant).is_ok(),
+        "l'index -1 doit être lisible : c'est EOF"
+    );
+}
+
+/// `strtok` découpe en place, et retient où il en est.
+///
+/// Ce qu'il retient vit dans la mémoire simulée, non dans un champ de
+/// Rust : « pas en arrière » doit le défaire comme le reste.
+#[test]
+fn the_provided_strtok_cuts_in_place_and_remembers() {
+    let mut emu = library_emulator("strtok");
+    emu.cpu.mem.poke(0x403000, b"un:deux:trois\0").unwrap();
+    emu.cpu.mem.poke(0x403100, b":\0").unwrap();
+    emu.cpu.regs.set64(Reg64::Rdi, 0x403000);
+    emu.cpu.regs.set64(Reg64::Rsi, 0x403100);
+    emu.step().expect("strtok répond");
+    assert_eq!(emu.cpu.regs.get64(Reg64::Rax), 0x403000, "le premier jeton");
+    assert_eq!(
+        emu.cpu.mem.read_u8(0x403002).unwrap(),
+        0,
+        "le séparateur est remplacé par un zéro, EN PLACE"
+    );
+
+    // L'appel suivant passe NULL et reprend où l'on en était.
+    emu.cpu.regs.rip = 0x401000;
+    emu.cpu.regs.set64(Reg64::Rsp, 0x408000);
+    emu.cpu.regs.set64(Reg64::Rdi, 0);
+    emu.cpu.regs.set64(Reg64::Rsi, 0x403100);
+    emu.step().expect("strtok reprend");
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rax),
+        0x403003,
+        "le second jeton commence après le zéro posé"
+    );
+}
+
+/// `fopen` répond « introuvable », et le dit.
+///
+/// namsdec n'a pas de système de fichiers : il n'ouvre rien sur le
+/// disque de la personne. Répondre « introuvable » n'invente rien —
+/// c'est la vérité — et laisse le programme suivre sa branche d'erreur,
+/// qui est souvent la moitié intéressante. Ne pas fournir `fopen` du
+/// tout l'aurait arrêté AVANT de la montrer.
+#[test]
+fn opening_a_file_says_there_is_no_filesystem() {
+    let mut emu = library_emulator("fopen");
+    emu.cpu.mem.poke(0x403000, b"cle.txt\0").unwrap();
+    emu.cpu.mem.poke(0x403100, b"r\0").unwrap();
+    emu.cpu.regs.set64(Reg64::Rdi, 0x403000);
+    emu.cpu.regs.set64(Reg64::Rsi, 0x403100);
+    emu.step().expect("fopen répond");
+
+    assert_eq!(emu.cpu.regs.get64(Reg64::Rax), 0, "NULL : pas de fichier");
+    let dit = String::from_utf8_lossy(&emu.output).into_owned();
+    assert!(
+        dit.contains("système de fichiers"),
+        "et la console le dit, plutôt que de laisser conclure à tort : {dit}"
+    );
+}
+
+/// L'habillage de FORTIFY_SOURCE se retire par une RÈGLE, pas par une
+/// liste.
+///
+/// Il y avait dix correspondances écrites à la main — `__printf` vers
+/// `printf`, et neuf autres —, si bien que chaque nouvelle fonction
+/// fortifiée demandait une ligne de plus. `__fread_chk` s'arrêtait
+/// faute de l'avoir écrite, alors que `fread` est fourni.
+#[test]
+fn the_fortify_wrapper_is_stripped_by_a_rule() {
+    for habillée in [
+        "__fread_chk",
+        "__snprintf_chk",
+        "__memcpy_chk",
+        "__strcpy_chk",
+        "__printf_chk",
+    ] {
+        assert!(
+            crate::provides(habillée),
+            "`{habillée}` fait le travail de la fonction qu'elle habille"
+        );
+    }
+    // Mais le préfixe `__` ne se retire QUE si `_chk` était là :
+    // `__errno_location` et `__ctype_b_loc` ne sont pas des habillages.
+    assert!(crate::provides("__errno_location"));
+    assert!(crate::provides("__ctype_b_loc"));
+    // Et une fonction fortifiée dont l'originale n'est pas fournie
+    // reste refusée, en se nommant.
+    assert!(!crate::provides("__realpath_chk"));
 }

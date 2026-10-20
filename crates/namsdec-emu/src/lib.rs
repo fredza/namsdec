@@ -3,7 +3,7 @@
 //! la sémantique d'exécution (effets sur registres/flags/mémoire) est
 //! écrite ici, à la main, pour rester transparente et pédagogique.
 
-mod libc;
+pub mod libc;
 pub use libc::name_reads_input;
 mod regmap;
 mod vector;
@@ -757,6 +757,18 @@ pub struct Emulator {
     main_return: u64,
     /// La case d'`errno`, allouée au premier `__errno_location`.
     errno_at: u64,
+    /// Où `strtok` garde où il en était.
+    ///
+    /// Dans la mémoire SIMULÉE et non dans un champ de Rust, pour la
+    /// même raison que `errno` : ce que `strtok` retient entre deux
+    /// appels fait partie de l'état du programme, et « pas en arrière »
+    /// doit le défaire. Un champ ordinaire ne serait pas journalisé, et
+    /// revenir sur ses pas rendrait un découpage incohérent.
+    strtok_at: u64,
+    /// Où vivent les tables de `<ctype.h>`, bâties au premier usage.
+    pub(crate) ctype_at: u64,
+    /// A-t-on déjà dit qu'il n'y a pas de système de fichiers ?
+    pub(crate) dit_sans_fichiers: bool,
     /// Les entorses à la convention d'appel relevées jusqu'ici.
     breaches: Vec<AbiBreach>,
     /// Combien d'instructions ont été exécutées depuis le chargement.
@@ -957,6 +969,9 @@ impl Emulator {
             externals: BTreeMap::new(),
             main_return: 0,
             errno_at: 0,
+            strtok_at: 0,
+            ctype_at: 0,
+            dit_sans_fichiers: false,
             ticks: 0,
             visits: BTreeMap::new(),
             trace: VecDeque::new(),
@@ -1071,6 +1086,14 @@ impl Emulator {
             self.errno_at = self.libc_alloc(8).unwrap_or(0);
         }
         self.errno_at
+    }
+
+    /// La case où `strtok` range le reste de la chaîne à découper.
+    fn strtok_slot(&mut self) -> u64 {
+        if self.strtok_at == 0 {
+            self.strtok_at = self.libc_alloc(8).unwrap_or(0);
+        }
+        self.strtok_at
     }
 
     /// Un nombre pseudo-aléatoire, de la même suite reproductible que

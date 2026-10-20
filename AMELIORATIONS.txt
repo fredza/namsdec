@@ -4988,3 +4988,80 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      canevas : rien, dans egui, ne garantit qu'un texte tienne dans le
      rectangle qu'on a peint pour lui. C'est à la hauteur réservée de le
      garantir — donc elle se trompe, donc elle se mesure.
+
+8.23 [FAIT] SOIXANTE-QUATORZE FONCTIONS DE PLUS, CHOISIES PAR UN COMPTE
+     Demandé le 20 octobre : « il faut l'enrichir de fonctions ».
+     Lesquelles ? La question se répond par une MESURE, non par une
+     intuition. `emprunts_manquants` relève les imports de tout le corpus —
+     les onze binaires d'épreuve et la collection personnelle, dédoublonnés
+     par leur empreinte —, retire ce que namsdec fournit, et classe le reste
+     par le nombre de binaires qui le réclament.
+
+     --- LE BANC A D'ABORD MENTI, ET C'EST INSTRUCTIF ---
+     Écrit contre la liste `PROVIDED`, il annonçait onze fonctions manquantes
+     qui sont fournies : `__isoc23_scanf`, `__snprintf_chk`, `mmap`… Il
+     ignorait que `canonical` ramène les préfixes de millésime et l'habillage
+     de FORTIFY_SOURCE à la fonction d'origine, et que les enveloppes
+     d'appels système passent par une autre porte. Il interroge désormais
+     `provides`, qui est ce que l'EXÉCUTION emploie — une seule source de
+     vérité, et c'est elle qu'il faut mesurer.
+
+     --- CE QUE LA MESURE CORRIGÉE A NOMMÉ, ET CE QUI A ÉTÉ AJOUTÉ ---
+     97 fonctions -> 171. Par famille :
+       - `sscanf`, qui manquait alors que `scanf` était là depuis le début.
+         C'est la façon dont un crackme découpe ce qu'on vient de taper.
+         La grammaire des `%` est partagée avec `scanf` : seule change la
+         provenance des octets ;
+       - `strtoul`, `strtoll`, `strtoull`, `atoll` — même travail que
+         `strtol`, et les séparer aurait recopié trente lignes quatre fois ;
+       - LES DOUZE CLASSES DE CARACTÈRES, qui manquaient toutes. « Ce
+         caractère est-il un chiffre ? » est la première question qu'une
+         vérification de mot de passe se pose ;
+       - LES TABLES DE `<ctype.h>` : `__ctype_b_loc` et ses deux sœurs.
+         glibc ne compile pas `isalpha(c)` en appel mais en LECTURE DE
+         TABLE — `(*__ctype_b_loc())[c] & _ISalpha`. Deux niveaux
+         d'indirection, un tableau de 384 entrées indexé à partir de -128
+         pour qu'EOF tombe juste, et des bits rangés en gros-boutiste dans
+         un `unsigned short`. Sans elle, tout programme qui emploie les
+         macros s'arrête au premier caractère examiné ;
+       - `strtok` et `strtok_r`, qui découpent EN PLACE. Ce que `strtok`
+         retient entre deux appels vit dans la mémoire simulée et non dans
+         un champ de Rust : c'est de l'état du programme, et « pas en
+         arrière » doit le défaire ;
+       - `strncasecmp`, `stpcpy`, `memmem`, `strcasestr`, `strchrnul`,
+         `index`, `rindex` ;
+       - le temps et l'identité — `time`, `clock`, `getpid`, `getuid`,
+         `isatty` —, tous STABLES : le même programme doit donner deux fois
+         le même résultat, sinon revenir en arrière ne veut plus rien dire ;
+       - les signaux : `signal` et `sigaction` acceptent sans rien retenir
+         (namsdec n'en livre aucun), `raise` arrête le programme en nommant
+         le signal.
+
+     --- LES FICHIERS, ET POURQUOI « INTROUVABLE » N'EST PAS UNE INVENTION ---
+     namsdec n'a pas de système de fichiers, et n'en aura pas : un programme
+     analysé est un programme dont on ne sait rien.
+     Deux réponses étaient possibles. Ne pas fournir `fopen` arrête le
+     programme en nommant la fonction — exact, mais il s'arrête AVANT d'avoir
+     montré ce qu'il fait quand le fichier manque, qui est souvent la moitié
+     intéressante : « clé introuvable », un message, un chemin de repli.
+     Répondre « introuvable » n'invente RIEN : c'est la vérité. Le programme
+     suit sa branche d'erreur, et la console dit en toutes lettres, une seule
+     fois, d'où vient le refus — pour qu'on ne prenne pas celui de namsdec
+     pour celui du système.
+
+     --- UNE RÈGLE À LA PLACE D'UNE LISTE ---
+     `canonical` portait dix correspondances écrites à la main — `__printf`
+     vers `printf`, et neuf autres —, si bien que chaque fonction fortifiée
+     demandait une ligne de plus. `__fread_chk` s'arrêtait faute de l'avoir
+     écrite, alors que `fread` venait d'être ajouté. Les deux marques se
+     retirent maintenant ensemble, et le préfixe `__` n'est retiré QUE si le
+     suffixe `_chk` était là — `__errno_location` et `__ctype_b_loc` ne sont
+     pas des habillages.
+
+     --- DEUX CONTRÔLES DE LIMITE QUI VISAIENT MAL ---
+     Deux contrôles prenaient `opendir` comme exemple de fonction NON
+     fournie. Elle l'est depuis. Ils visent désormais `dlopen`, `fork`,
+     `execvp`, `socket` : namsdec ne lance pas de processus, n'ouvre pas de
+     connexion et ne charge aucune bibliothèque — c'est sa définition, et
+     ces quatre-là resteront du bon côté de la limite. Un contrôle de limite
+     qui vise une fonction susceptible d'être ajoutée tombe à chaque lot.

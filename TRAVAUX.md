@@ -112,6 +112,11 @@ un panneau de plus. Six points, six reproductions, six contrôles.
       compartiments, angles droits, et des dépendances en tirets à pointe
       ouverte, qui est ce qu'un appel est. Le renommage répercuté
       existait déjà, et ses contrôles aussi.
+- [x] **Soixante-quatorze fonctions de plus** (A 8.23) — 97 → 171,
+      choisies par un relevé des imports du corpus et non par intuition.
+      Les classes de caractères et les tables de `<ctype.h>`, `sscanf`,
+      `strtok`, le temps, les signaux, et une couche fichiers qui dit
+      honnêtement qu'il n'y a pas de système de fichiers.
 - [x] **Le fuzzing couvre le chargeur** (A 8.6) — et y a trouvé cinq
       débordements d'entier. La classe est traitée à la source : les
       lecteurs de champs composent base et déplacement de façon

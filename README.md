@@ -654,11 +654,15 @@ manquent — sans cela, deux des onze binaires rendaient « zéro site ».
   `argc`, `argv`, l'environnement et le vecteur auxiliaire — mais il ne
   charge aucune bibliothèque. Un binaire lié **statiquement** s'exécute
   donc entièrement, bibliothèque C comprise.
-- À la place, namsdec **fournit lui-même** une centaine de fonctions,
-  écrites en Rust : `printf` et ses cousines, `puts`, `fgets`, `scanf`,
-  les fonctions de chaînes et de mémoire, `malloc` et sa famille — qui
-  prend sa mémoire dans le tas, où on la voit —, et les enveloppes des
-  appels système. Un binaire **dynamique** ordinaire s'exécute donc lui
+- À la place, namsdec **fournit lui-même** cent soixante-dix fonctions,
+  écrites en Rust : `printf` et ses cousines, `puts`, `fgets`, `scanf` et
+  `sscanf`, les fonctions de chaînes et de mémoire — `strtok` compris,
+  qui découpe en place —, les **classes de caractères** et les tables de
+  `<ctype.h>` que la glibc lit au lieu d'appeler, `malloc` et sa famille
+  — qui prend sa mémoire dans le tas, où on la voit —, et les enveloppes
+  des appels système. Lesquelles ajouter n'a pas été deviné : les
+  imports de tout le corpus d'épreuve, moins ce qui était déjà fourni,
+  classés par le nombre de binaires qui les réclament. Un binaire **dynamique** ordinaire s'exécute donc lui
   aussi, du prompt jusqu'au verdict ; il s'arrête en **nommant** la
   première fonction qu'il emprunte et que namsdec ne fournit pas. Ce qui
   est fourni l'est en le disant : le compte s'affiche au chargement, et
