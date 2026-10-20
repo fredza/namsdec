@@ -387,11 +387,32 @@ impl NamsdecApp {
                                 ui.allocate_exact_size(egui::vec2(8.0, 12.0), egui::Sense::hover());
                             ui.painter().rect_filled(rect, 1.0, teinte);
 
-                            // Les trois nombres, calés à droite de leur
-                            // colonne : c'est ainsi que des chiffres se
-                            // comparent d'une ligne à l'autre.
+                            // LE NUMÉRO DE LIGNE EST CLIQUABLE, et c'est
+                            // celui qu'on vise.
+                            //
+                            // Seul le TEXTE de la ligne menait quelque
+                            // part — tout à droite de la rangée, et
+                            // tronqué. On clique « 60749 », qui est la
+                            // réponse à « où ça ? », et il ne se passait
+                            // rien : le classement passait pour mort.
+                            let numéro = cliquable(
+                                ui,
+                                egui::Label::new(
+                                    egui::RichText::new(caler_à_droite(
+                                        &format!("{ligne}"),
+                                        COL_LIGNE,
+                                    ))
+                                    .monospace()
+                                    .color(ui.visuals().hyperlink_color),
+                                ),
+                            );
+                            if numéro.on_hover_text(s.profile_goto).clicked() {
+                                goto = Some(*ligne);
+                            }
+                            // Les deux autres nombres, calés à droite de
+                            // leur colonne : c'est ainsi que des chiffres
+                            // se comparent d'une ligne à l'autre.
                             for (texte, largeur, couleur) in [
-                                (format!("{ligne}"), COL_LIGNE, theme.dim),
                                 (sidebar::group_digits(*compte), COL_PASSAGES, theme.text),
                                 (pourcentage(part, self.lang), COL_PART, theme.dim),
                             ] {

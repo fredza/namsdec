@@ -687,7 +687,10 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "<b>Diagnostics</b> — ce que nasm a eu à dire, les avertissements que namsdec "
          "ajoute, et les deux commandes réellement lancées, prêtes à copier.",
          "<b>Profil</b> — les lignes classées par temps passé dedans : passages, part du "
-         "total, et un clic qui y emmène.",
+         "total, et un clic qui y emmène. <b>Le numéro de ligne se clique</b>, comme la "
+         "ligne elle-même&nbsp;: seul le texte y menait, tout à droite de la rangée et "
+         "tronqué — on cliquait « 60&nbsp;749 », qui est pourtant la réponse à « où "
+         "ça&nbsp;? », et le classement passait pour mort.",
         ]),
 
         ("p",
@@ -1586,7 +1589,14 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "par-dessus l\'original. C\'est un début : éditer plusieurs octets d\'un coup et "
          "insérer viendront ensuite, l\'insertion avec sa prudence propre, car elle décale "
          "tout ce qui suit et chaque adresse du fichier deviendrait fausse.",
-         "<b>Détourner (ajouter du code)</b> — la réponse à ce que l\'éditeur binaire ne "
+         "<b>Détourner (ajouter du code)</b> — le champ « Détourner depuis » est "
+         "<b>prérempli</b> de la première adresse du listing&nbsp;: il montrait un exemple "
+         "en gris, et un exemple en gris dans un champ se lit comme une valeur — on "
+         "cliquait « Calculer le plan » pour recevoir « Adresse illisible, attendu de "
+         "l\'hexadécimal, par exemple 0x401136 » en regard d\'un champ qui semblait porter "
+         "exactement cela. Un champ VIDE le dit désormais en toutes lettres, au lieu de se "
+         "déclarer illisible. "
+         "C\'est la réponse à ce que l\'éditeur binaire ne "
          "peut pas faire. Tous les correctifs d\'au-dessus gardent la <b>longueur exacte</b> "
          "— inverser un saut, neutraliser par des <font face='Courier'>nop</font>, changer un "
          "octet. C\'est la règle qui les rend sûrs, et elle interdit d\'<b>ajouter</b> quoi "
@@ -2148,24 +2158,32 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
             ["DZF", "un désassembleur maison, en cours",
              "bouton Installer…, ou git clone github.com/fredza/DZF"],
         ]),
-        ("h2", "Deux questions, deux mots"),
+        ("h2", "Installé, et proposé comme moteur"),
         ("p",
-         "Chaque fiche répond à <b>deux</b> questions, et il faut les deux pour que l'outil "
-         "serve : le programme est-il <b>installé sur la machine</b>, et est-il <b>activé dans "
-         "namsdec</b> ? Les deux sont indépendantes — un outil installé mais non activé ne sera "
-         "pas lancé, et un outil activé qui a disparu de la machine échouera au lancement, ce que "
-         "la fiche dit en rouge."),
+         "Chaque fiche répond à <b>deux</b> questions, et elles ne pèsent pas le même poids. "
+         "Le programme est-il <b>installé sur la machine</b>&nbsp;? S'il l'est, "
+         "<b>il sert déjà</b>&nbsp;: l'onglet RE lui donne son propre panneau, où l'on clique "
+         "« Lancer ». Il n'y a rien à activer pour cela."),
+        ("note",
+         "La seconde pastille disait « activé dans namsdec » / « désactivé dans namsdec », et "
+         "c'était trompeur&nbsp;: on lisait « désactivé » sur six outils installés dont les "
+         "panneaux fonctionnaient parfaitement — « je ne comprends pas, tout est désactivé » "
+         "(signalé le 20 octobre 2026). Elle ne parle que de la <b>liste des moteurs</b> de la "
+         "fenêtre de désassemblage, celle où l'on choisit qui désassemble le listing. Elle dit "
+         "donc maintenant « proposé comme moteur » ou « pas dans la liste des moteurs », et le "
+         "bouton « Ajouter aux moteurs »."),
         ("p",
-         "L'activer n'écrit qu'un fichier de quelques lignes dans "
+         "L'y ajouter n'écrit qu'un fichier de quelques lignes dans "
          "<font face='Courier'>~/.local/share/namsdec/decompilers/</font> : rien n'est téléchargé "
-         "ni lancé tant qu'on ne le demande pas. Un troisième réglage, distinct des deux "
+         "ni lancé tant qu'on ne le demande pas. Un outil proposé comme moteur mais disparu de la "
+         "machine échouera au lancement, ce que la fiche dit en rouge. Un troisième réglage, distinct des deux "
          "premiers, est le <b>module d'installation</b> (Préférences › Modules) : c'est lui qui "
          "sait aller chercher les sources et les construire."),
         ("p",
          "Un outil <b>incomplet</b> — rizin sans son greffon rz-ghidra, par exemple — ne "
-         "s'active pas : l'activer déclarerait un décompilateur qui échoue au premier essai "
-         "(la commande <font face='Courier'>pdg</font> n'existe pas sans le greffon). Son "
-         "bouton <b>Activer</b> est donc grisé, et c'est <b>Réparer</b>, en vif, qui mène la "
+         "s'ajoute pas aux moteurs : l'y mettre déclarerait un décompilateur qui échoue au "
+         "premier essai (la commande <font face='Courier'>pdg</font> n'existe pas sans le "
+         "greffon). Son bouton est donc grisé, et c'est <b>Réparer</b>, en vif, qui mène la "
          "marche — poser la pièce qui manque, puis activer. On ne peut activer qu'un outil "
          "prêt."),
         ("p",

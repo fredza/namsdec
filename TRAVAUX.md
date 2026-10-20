@@ -75,6 +75,14 @@ un panneau de plus. Six points, six reproductions, six contrôles.
 - [x] **La fiche d'un appel système, et son renvoi** (A 8.10) — la
       signature avec ses registres, ce que namsdec en fait, et `man 2`
       sur man7.org. Le renvoi va au noyau, pas à Intel.
+- [x] **« Désactivé » ne voulait pas dire ce qu'on lisait** (A 8.11) —
+      les pastilles d'un outil parlent de la liste des moteurs, et le
+      disent. Un outil installé sert déjà, par son panneau RE.
+- [x] **Le détour ne confond plus l'exemple et la valeur** (A 8.12) —
+      champ prérempli, et un champ vide le dit au lieu de se déclarer
+      illisible.
+- [x] **Le menu d'une adresse dit où il mène** (A 8.13).
+- [x] **Le numéro de ligne du Profil mène à sa ligne** (A 8.14).
 - [x] **Le fuzzing couvre le chargeur** (A 8.6) — et y a trouvé cinq
       débordements d'entier. La classe est traitée à la source : les
       lecteurs de champs composent base et déplacement de façon

@@ -4697,3 +4697,54 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      (`exit_group` vers `exit(2)`, `openat` vers `open(2)`) plutôt que vers un
      lien mort : un renvoi qui tombe à côté use plus vite la confiance qu'une
      absence de renvoi.
+
+8.11 [FAIT] « TOUT EST DÉSACTIVÉ » — ET POURTANT TOUT MARCHAIT
+     Signalé le 20 octobre, capture à l'appui : Préférences › Outils montrait
+     six outils « installé sur la machine » ET « désactivé dans namsdec »,
+     suivis de captures de leurs panneaux en train de fonctionner.
+     Les deux étaient vrais, et c'est le mot qui était faux. « Activé »
+     signifiait : FIGURE DANS LA LISTE DES MOTEURS de la fenêtre de
+     désassemblage. Rien de plus. Un outil installé a déjà son panneau dans
+     l'onglet RE, où l'on clique « Lancer » — `ToolModule` ne regarde pas
+     cette liste, et n'a aucune raison de le faire.
+     Les pastilles disent donc ce qu'elles mesurent : « proposé comme moteur »
+     et « pas dans la liste des moteurs », et le bouton « Ajouter aux
+     moteurs ». La légende dit la chose en deux phrases : un outil installé
+     sert déjà, la seconde pastille ne parle que du choix de moteur.
+     Une étiquette qui déclare « désactivé » une chose qui fonctionne coûte
+     plus qu'une étiquette absente : elle fait chercher un réglage qui
+     n'existe pas.
+
+8.12 [FAIT] LE DÉTOUR : UN EXEMPLE EN GRIS SE LIT COMME UNE VALEUR
+     Capture du 16 octobre : le champ « Détourner depuis » montrait
+     « 0x401136 » en gris — un `hint_text` —, et « Calculer le plan » rendait
+     « Adresse illisible, attendu de l'hexadécimal, par exemple 0x401136 » en
+     regard de ce qui semblait être exactement cela. La personne avait
+     d'ailleurs tapé l'adresse dans la boîte du CODE, la seule qui parût vide.
+     Trois corrections, et la première suffirait presque : le champ est
+     PRÉREMPLI de la première adresse du listing. Une vraie valeur n'est pas
+     un exemple — elle se calcule telle quelle, et l'on tape par-dessus.
+     Ensuite, VIDE et ILLISIBLE sont deux refus distincts : « attendu de
+     l'hexadécimal » devant un champ vide fait chercher une faute de frappe
+     dans ce qu'on n'a pas écrit. Enfin l'exemple s'écrit « ex. 0x401136 » :
+     seule la forme disait que c'en était un, et la forme d'une adresse est
+     une adresse.
+
+8.13 [FAIT] « IL PROPOSE BINAIRE OU CODE ASSEMBLÉ, MAIS OÙ ? »
+     Le menu d'une adresse cliquée offrait « Dans le code désassemblé » et
+     « Dans l'éditeur binaire ». Cela nomme une VUE, pas un endroit — et les
+     deux destinations ne sont pas au même endroit du tout : l'une est
+     derrière la fenêtre d'analyse, qui s'efface pour la laisser voir ;
+     l'autre est une rubrique de cette fenêtre-ci, qui reste ouverte.
+     Les entrées le disent : « Dans le listing — cette fenêtre s'efface » et
+     « Dans les octets — rubrique Éditeur binaire, ici même », chacune avec
+     son infobulle qui développe.
+
+8.14 [FAIT] LE NUMÉRO DE LIGNE DU PROFIL NE MENAIT NULLE PART
+     Seul le TEXTE de la ligne était cliquable — tout à droite de la rangée,
+     et tronqué. On clique « 60 749 », qui est la réponse à « où ça ? », et il
+     ne se passait rien : le classement passait pour mort, ce qui explique
+     « j'ai l'impression que toutes ces fonctions ne sont pas câblées ».
+     Le numéro est un lien. Le contrôle le clique à l'endroit où il est
+     PEINT, et non dans une case devinée : le classement est une grille, et
+     la place d'une colonne s'y mesure.

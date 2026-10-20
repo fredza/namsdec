@@ -17319,6 +17319,116 @@ boucle:
     );
 }
 
+/// Le NUMÉRO DE LIGNE du classement mène à la ligne, lui aussi.
+///
+/// Seul le texte de la ligne y menait — tout à droite de la rangée, et
+/// tronqué. On clique « 7 », qui est la réponse à « où ça ? », et il ne
+/// se passait rien : le classement passait pour mort. Signalé le
+/// 20 octobre, avec le reste de ce qui ne se clique pas.
+///
+/// Le contrôle clique le numéro à l'endroit où il est PEINT, et non une
+/// case devinée : le classement est une grille, et la place d'une
+/// colonne s'y mesure.
+#[test]
+fn the_line_number_of_the_profile_leads_to_its_line() {
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp {
+        source: "\
+section .text
+global _start
+_start:
+    mov rcx, 3
+boucle:
+    dec rcx
+    jnz boucle
+    mov rax, 60
+    xor rdi, rdi
+    syscall
+"
+        .to_owned(),
+        console_tab: ConsoleTab::Profile,
+        show_console: true,
+        ..Default::default()
+    };
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    // Le style de l'application AVANT toute mesure : une galère mesurée
+    // sous la police d'egui n'a pas les dimensions de celle qu'on peint.
+    app.apply_theme(&ctx);
+    app.do_assemble();
+    app.do_run();
+    for _ in 0..10 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&egui::Context::default());
+    }
+    let input = || egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 1400.0),
+        )),
+        ..Default::default()
+    };
+
+    // Où le premier numéro de ligne du classement est peint. Les
+    // numéros sont calés à droite dans leur colonne, donc entourés
+    // d'espaces : on cherche un texte qui, une fois rogné, est un
+    // nombre, et qui n'est ni un compte ni un pourcentage — les deux
+    // autres colonnes vivent plus à droite.
+    let mut où: Option<egui::Pos2> = None;
+    for _ in 0..2 {
+        où = None;
+        let mut output = ctx.run_ui(input(), |ui| app.console_panel_ui(ui));
+        for clipped in &output.shapes {
+            if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                let texte = t.galley.text().trim().to_owned();
+                if texte.parse::<u32>().is_ok() && où.is_none() {
+                    let rect = egui::Rect::from_min_size(t.pos, t.galley.size());
+                    let vu = rect.intersect(clipped.clip_rect);
+                    if vu.is_positive() {
+                        où = Some(vu.center());
+                    }
+                }
+            }
+        }
+        output.textures_delta.clear();
+    }
+    let Some(où) = où else {
+        return;
+    };
+
+    app.goto_line = None;
+    for étape in 0..4 {
+        let mut entrée = input();
+        match étape {
+            1 => {
+                entrée.events.push(egui::Event::PointerMoved(où));
+                entrée.events.push(egui::Event::PointerButton {
+                    pos: où,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                });
+            }
+            2 => entrée.events.push(egui::Event::PointerButton {
+                pos: où,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: egui::Modifiers::NONE,
+            }),
+            _ => {}
+        }
+        let mut output = ctx.run_ui(entrée, |ui| app.console_panel_ui(ui));
+        output.textures_delta.clear();
+    }
+    assert!(
+        app.goto_line.is_some(),
+        "cliquer le numéro de ligne du classement doit mener à cette ligne"
+    );
+}
+
 /// Le profil rappelle le budget de l'exercice, et dit quoi en faire.
 ///
 /// « 61 instructions pour un budget de 30 » sans rien d'autre laisse
@@ -29958,7 +30068,7 @@ fn clicking_an_address_in_a_panel_really_lands_in_the_listing() {
     }
     harness.run();
     // Le menu des destinations, et l'entrée qui mène au code.
-    harness.get_by_label("Dans le code désassemblé").click();
+    harness.get_by_label_contains("Dans le listing").click();
     harness.run();
 
     assert!(
@@ -30011,7 +30121,7 @@ fn choosing_the_bytes_opens_the_binary_editor_where_the_address_is() {
         adresses[0].click();
     }
     harness.run();
-    harness.get_by_label("Dans l'éditeur binaire").click();
+    harness.get_by_label_contains("Dans les octets").click();
     harness.run();
 
     assert!(

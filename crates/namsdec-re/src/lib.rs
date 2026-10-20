@@ -441,11 +441,54 @@ pub fn clickable_address(ui: &mut egui::Ui, ctx: &ReContext, addr: u64) -> Optio
     ));
     let mut choix = None;
     egui::Popup::menu(&réponse).show(|ui| {
-        if framed_button(ui, ctx.t("Dans le code désassemblé", "In the disassembly")).clicked() {
+        // LES DEUX ENTRÉES DISENT OÙ ELLES MÈNENT.
+        //
+        // Elles disaient « dans le code désassemblé » et « dans
+        // l'éditeur binaire », ce qui nomme une VUE et pas un endroit :
+        // « mais où ? » (signalé à l'écran le 20 octobre 2026). Les deux
+        // destinations ne sont pas au même endroit du tout — l'une est
+        // derrière cette fenêtre, qui s'efface pour la laisser voir ;
+        // l'autre est une rubrique de cette fenêtre-ci, qui reste
+        // ouverte. C'est cela qu'il faut lire avant de cliquer.
+        if framed_button(
+            ui,
+            ctx.t(
+                "Dans le listing — cette fenêtre s'efface",
+                "In the listing — this window steps aside",
+            ),
+        )
+        .on_hover_text(ctx.t(
+            "Le listing défile et centre la ligne derrière cette fenêtre, qui se \
+             referme pour la laisser voir. « Analyse du binaire… » la rouvre à la \
+             même rubrique.",
+            "The listing scrolls and centres the line behind this window, which \
+             closes to let you see it. “Analyse the binary…” reopens it at the same \
+             section.",
+        ))
+        .clicked()
+        {
             choix = Some(GoTarget::Listing);
             ui.close();
         }
-        if framed_button(ui, ctx.t("Dans l'éditeur binaire", "In the binary editor")).clicked() {
+        if framed_button(
+            ui,
+            ctx.t(
+                "Dans les octets — rubrique « Éditeur binaire », ici même",
+                "In the bytes — “Binary editor” section, right here",
+            ),
+        )
+        .on_hover_text(ctx.t(
+            "Cette fenêtre reste ouverte et passe à sa rubrique « Éditeur binaire », \
+             positionnée sur cette adresse. C'est la bonne vue pour une chaîne, une \
+             table ou du bourrage — tout ce qu'un désassembleur lit comme des \
+             instructions faute de savoir faire autrement.",
+            "This window stays open and switches to its “Binary editor” section, \
+             placed at this address. That is the right view for a string, a table or \
+             padding — anything a disassembler reads as instructions for lack of \
+             anything better to do.",
+        ))
+        .clicked()
+        {
             choix = Some(GoTarget::Bytes);
             ui.close();
         }

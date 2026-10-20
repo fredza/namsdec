@@ -92,11 +92,26 @@ impl DetourModule {
         self.erreur_asm = None;
 
         let Some(site_vaddr) = adresse_lue(&self.site) else {
+            // VIDE et ILLISIBLE ne sont pas le même défaut, et les
+            // confondre coûtait cher : « attendu de l'hexadécimal »
+            // devant un champ vide fait chercher une faute de frappe
+            // dans ce qu'on n'a pas écrit.
             self.erreur_asm = Some(
-                ctx.t(
-                    "Adresse illisible — attendu de l'hexadécimal, par exemple 0x401136.",
-                    "Unreadable address — hexadecimal expected, for instance 0x401136.",
-                )
+                if self.site.trim().is_empty() {
+                    ctx.t(
+                        "Le champ « Détourner depuis » est vide : donnez l'adresse de \
+                         l'instruction à détourner, ou cliquez « ici » pour prendre \
+                         celle où l'exécution en est.",
+                        "The “Detour from” field is empty: give the address of the \
+                         instruction to detour, or click “here” to take the one \
+                         execution has reached.",
+                    )
+                } else {
+                    ctx.t(
+                        "Adresse illisible — attendu de l'hexadécimal, par exemple 0x401136.",
+                        "Unreadable address — hexadecimal expected, for instance 0x401136.",
+                    )
+                }
                 .to_owned(),
             );
             return;
@@ -172,6 +187,22 @@ impl ReModule for DetourModule {
             .filter(|t| t.executable)
             .collect();
         self.choix = 0;
+        // LE CHAMP EST PRÉREMPLI D'UNE VRAIE ADRESSE.
+        //
+        // Il montrait un EXEMPLE en gris — « 0x401136 » —, et un exemple
+        // en gris dans un champ se lit comme une valeur. On clique
+        // « Calculer le plan », et l'on reçoit « Adresse illisible —
+        // attendu de l'hexadécimal, par exemple 0x401136 » en regard
+        // d'un champ qui semble porter exactement cela. Vu à l'écran le
+        // 16 octobre 2026 : la personne avait d'ailleurs tapé l'adresse
+        // dans la boîte du CODE, la seule qui parût vide.
+        //
+        // Préremplie, la première instruction du listing n'est pas un
+        // exemple : c'est un point de départ qu'on peut calculer tel
+        // quel, et qu'on remplace en tapant par-dessus.
+        if let Some(première) = ctx.disasm.first() {
+            self.site = format!("{:#x}", première.address);
+        }
         // Un plan calculé sur l'image d'avant ne vaut plus rien : le
         // garder à l'écran laisserait poser des octets d'après un
         // fichier qui a changé.
@@ -213,7 +244,10 @@ impl ReModule for DetourModule {
             ui.add(
                 egui::TextEdit::singleline(&mut self.site)
                     .desired_width(110.0)
-                    .hint_text("0x401136")
+                    // Le gris dit « exemple » et non « valeur » : seule
+                    // la forme le disait, et la forme d'une adresse est
+                    // une adresse.
+                    .hint_text(ctx.t("ex. 0x401136", "e.g. 0x401136"))
                     .font(egui::TextStyle::Monospace),
             );
             // L'adresse où l'émulateur en est : c'est presque toujours

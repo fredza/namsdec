@@ -74,7 +74,7 @@ fn clique_et_choisit(
         if dans_le_menu.is_none() {
             for clipped in &sortie.shapes {
                 if let egui::epaint::Shape::Text(t) = &clipped.shape
-                    && t.galley.text() == entrée_du_menu
+                    && t.galley.text().starts_with(entrée_du_menu)
                 {
                     let rect = egui::Rect::from_min_size(t.pos, t.galley.size());
                     let visible = rect.intersect(clipped.clip_rect);
@@ -200,9 +200,12 @@ fn clicking_an_address_asks_to_go_there() {
         // Les deux destinations, sur la même adresse : le menu n'aurait
         // aucun intérêt si la seconde entrée faisait ce que fait la
         // première.
+        // Les entrées disent désormais OÙ elles mènent, et non plus
+        // seulement dans quelle vue : « mais où ? », signalé à l'écran
+        // le 20 octobre. Le contrôle les cherche donc par leur début.
         for (entrée, attendu) in [
-            ("Dans le code désassemblé", GoTarget::Listing),
-            ("Dans l'éditeur binaire", GoTarget::Bytes),
+            ("Dans le listing", GoTarget::Listing),
+            ("Dans les octets", GoTarget::Bytes),
         ] {
             let demande = clique_et_choisit(module.as_mut(), &ctx, cible, entrée);
             assert_eq!(
