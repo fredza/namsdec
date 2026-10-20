@@ -4637,3 +4637,63 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      lesquels `ripgrep` et `eza`, dépouillés et empaquetés, passaient pour du C.
      Mesure finale sur les quatre cents premiers fichiers de /usr/bin :
      2 indéterminés, et ce sont deux fragments de bibliothèque sans shebang.
+
+8.8  [FAIT] CE QUI SE CLIQUE LE DIT — SANS QU'ON LE SURVOLE
+     Signalé le 20 octobre : « les textes où une action est attendue
+     (hyperliens) ne l'indiquent pas ». C'était vrai, et c'était un choix :
+     le trait ne paraissait qu'au survol, au nom d'un panneau calme.
+     Le choix était faux. Un signe qui n'apparaît qu'une fois qu'on est
+     dessus ne sert qu'à celui qui savait déjà — on ne survole pas les textes
+     au hasard pour voir lesquels se cliquent. Le trait est donc là au repos,
+     à un tiers d'opacité : assez pour se voir en parcourant une colonne,
+     trop peu pour faire du bruit. Plein au survol, comme avant.
+     DISTINCTION QUI COMPTE : seuls les TEXTES changent. Les rangées entières
+     d'une liste — une ligne de désassemblage, une zone de la carte mémoire —
+     gardent le trait au survol seulement. Un trait sous chacune des trois
+     cents lignes d'un listing ne serait plus un signe, seulement du bruit ;
+     `clickable_label` et `souligne_au_survol` sont deux choses différentes,
+     et elles le disent désormais dans leur documentation.
+     Le contrôle `a_clickable_text_underlines_itself_at_rest_and_more_under_
+     the_pointer` a changé de sens : il EXIGEAIT qu'il n'y ait aucun trait au
+     repos. Il exige maintenant un trait au repos et une opacité plus forte au
+     survol — mesurée sur la couleur peinte, non sur un compte.
+
+8.9  [FAIT] LA BARRE DE DÉFILEMENT DE L'ÉDITEUR
+     Demandé le 20 octobre : « la barre de défilement dans l'éditeur n'est pas
+     nécessaire ». Elle prenait sa place deux fois — la largeur qu'elle
+     réserve en permanence, et un liseré clair le long du code, à demeure,
+     pour une information qu'on a déjà : la gouttière numérote les lignes, la
+     barre d'état dit où est le curseur.
+     `ScrollStyle::floating` sur la seule zone de l'éditeur : rien de réservé,
+     et la barre paraît au survol — la souris reste le moyen le plus direct
+     d'aller loin dans un gros listing. AILLEURS, L'INVARIANT D'ORIGINE TIENT :
+     une liste qui continue sous le bord doit le dire, et
+     `a_scroll_bar_shows_up_when_there_is_something_to_scroll_and_not_before`
+     ne bouge pas.
+     Une leçon de mesure, et elle vaut d'être écrite : le premier contrôle
+     écrit passait au vert avec le défaut remis. Il cherchait les barres « du
+     côté éditeur », et ce côté était estimé aux deux tiers de l'écran — alors
+     que la barre se peint à 894 px sur 1280, soit 70 %. Le bord est désormais
+     RELEVÉ (le découpage le plus large qui part du bord gauche et descend sur
+     toute la hauteur) et le contrôle refuse de s'exécuter s'il ne le trouve
+     pas. Un seuil choisi à la main dans un contrôle de géométrie est une
+     façon discrète de ne rien mesurer.
+
+8.10 [FAIT] LA FICHE D'UN APPEL SYSTÈME, ET SON RENVOI
+     Demandé le 20 octobre, devant le panneau « Appels système » :
+     « il serait bien d'afficher la fiche de l'appel write et une description
+     complète du site Internet de référence sur la fonction ».
+     « 00400016 1 write » est une ligne juste et muette : elle suppose qu'on
+     sache ce que `write` attend, dans quels registres, et ce qu'il rend. Le
+     nom est maintenant un lien, et sa fiche donne la signature AVEC SES
+     REGISTRES — `write(fd: RDI, buf: RSI, count: RDX)`, et RAX pour la
+     réponse, parce que savoir où mettre les arguments sans savoir où lire le
+     retour ne sert qu'à moitié —, dit si namsdec l'exécute vraiment, et porte
+     le renvoi à `man 2 write` sur man7.org.
+     LE RENVOI VA AU NOYAU, PAS À INTEL, et la distinction est le sujet : Intel
+     décrit l'instruction `syscall`, qui ne dit rien de ce que le numéro 1
+     demande. La référence d'un appel système est `man-pages`. Les quelques
+     appels sans page à leur nom renvoient à celle de leur parent
+     (`exit_group` vers `exit(2)`, `openat` vers `open(2)`) plutôt que vers un
+     lien mort : un renvoi qui tombe à côté use plus vite la confiance qu'une
+     absence de renvoi.

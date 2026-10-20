@@ -852,6 +852,19 @@ impl NamsdecApp {
         let suivre = self.editor_follow > 0;
         self.editor_follow = self.editor_follow.saturating_sub(1);
         egui::Frame::new().fill(editor_bg).show(ui, |ui| {
+            // LES BARRES DE DÉFILEMENT NE PRENNENT PLUS DE PLACE.
+            //
+            // Elles en prenaient deux fois : la largeur qu'elles
+            // réservent en permanence, et l'attention — un liseré clair
+            // le long du code, à demeure, pour une information qu'on a
+            // déjà (la gouttière numérote les lignes, la barre d'état
+            // dit où est le curseur). Dans un éditeur où l'on navigue au
+            // clavier, une barre toujours là est un meuble.
+            //
+            // `floating` ne réserve rien et ne paraît qu'au survol de la
+            // zone — on ne perd donc pas la souris, qui reste le moyen
+            // le plus direct d'aller loin dans un gros listing.
+            ui.spacing_mut().scroll = egui::style::ScrollStyle::floating();
             let mut zone = egui::ScrollArea::both()
                 .id_salt("editeur_scroll")
                 .auto_shrink([false, false]);

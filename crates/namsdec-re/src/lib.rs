@@ -294,15 +294,19 @@ pub enum ReResult {
     },
 }
 
-/// Souligne un texte quand la souris est dessus — le signe qu'il se
+/// Souligne une RANGÉE quand la souris est dessus — le signe qu'elle se
 /// clique.
+///
+/// Réservé aux rangées entières d'une liste : une ligne de
+/// désassemblage, une zone de la carte mémoire, une entrée d'index.
+/// Pour un TEXTE au milieu d'une phrase, c'est [`clickable_label`] qu'il
+/// faut, et son trait se voit au repos — un trait sous chacune des trois
+/// cents lignes d'une liste ne serait plus un signe, seulement du bruit.
 ///
 /// LA QUESTION À LAQUELLE CECI RÉPOND est « comment sait-on qu'un texte
 /// se clique ? ». La main du pointeur le dit, mais seulement quand on
 /// est déjà dessus, et sur un texte elle se confond avec le curseur de
-/// sélection. Le soulignement est le signe que tout le monde connaît,
-/// et il ne coûte rien au repos : le panneau reste calme, et ce qu'on
-/// survole se déclare.
+/// sélection. Le soulignement est le signe que tout le monde connaît.
 ///
 /// Peint APRÈS coup, sous le rectangle de la réponse, plutôt que posé
 /// dans le `RichText` : on ne sait qu'un texte est survolé qu'une fois
@@ -325,8 +329,8 @@ pub fn souligne_au_survol(ui: &egui::Ui, réponse: &egui::Response) {
     );
 }
 
-/// Un texte sur lequel on peut cliquer : la main au survol, et le trait
-/// dessous.
+/// Un texte sur lequel on peut cliquer : le trait dessous — discret au
+/// repos, franc au survol — et la main du pointeur.
 ///
 /// Écrit une fois pour tous les panneaux. Un contrôle lit les sources
 /// et refuse qu'une étiquette devienne cliquable ailleurs qu'ici : une
@@ -335,7 +339,27 @@ pub fn clickable_label(ui: &mut egui::Ui, étiquette: egui::Label) -> egui::Resp
     let réponse = ui
         .add(étiquette.sense(egui::Sense::click()))
         .on_hover_cursor(egui::CursorIcon::PointingHand);
-    souligne_au_survol(ui, &réponse);
+    // AU REPOS AUSSI, et c'est la correction du 20 octobre.
+    //
+    // Le trait ne paraissait qu'au survol, au nom d'un panneau calme.
+    // Mais un signe qui n'apparaît qu'une fois qu'on est dessus ne sert
+    // qu'à celui qui savait déjà : on ne survole pas les textes au
+    // hasard pour voir lesquels se cliquent. Signalé à l'écran — « les
+    // textes où une action est attendue ne l'indiquent pas ».
+    //
+    // Le calme est gardé autrement : au repos le trait est à un tiers
+    // d'opacité, assez pour se voir en parcourant une colonne, trop peu
+    // pour faire du bruit. Au survol il passe plein.
+    let couleur = if réponse.hovered() {
+        ui.visuals().widgets.hovered.fg_stroke.color
+    } else {
+        ui.visuals().hyperlink_color.gamma_multiply(0.35)
+    };
+    ui.painter().hline(
+        réponse.rect.x_range(),
+        réponse.rect.bottom() - 1.0,
+        egui::Stroke::new(1.0, couleur),
+    );
     réponse
 }
 

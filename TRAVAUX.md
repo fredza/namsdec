@@ -66,6 +66,15 @@ un panneau de plus. Six points, six reproductions, six contrôles.
       indices qui le portent. L'essai sur /bin et /usr/bin a corrigé
       trois défauts invisibles à la lecture ; sur les quatre cents
       premiers fichiers, deux restent indéterminés.
+- [x] **Ce qui se clique le dit au repos** (A 8.8) — le trait sous un
+      texte cliquable est estompé au repos et franc au survol. Les
+      rangées entières d'une liste, elles, gardent le survol seul.
+- [x] **L'éditeur n'a plus de barre de défilement à demeure** (A 8.9) —
+      et le contrôle qui le retient relève le bord de l'éditeur au lieu
+      de l'estimer : le premier écrit passait au vert avec le défaut.
+- [x] **La fiche d'un appel système, et son renvoi** (A 8.10) — la
+      signature avec ses registres, ce que namsdec en fait, et `man 2`
+      sur man7.org. Le renvoi va au noyau, pas à Intel.
 - [x] **Le fuzzing couvre le chargeur** (A 8.6) — et y a trouvé cinq
       débordements d'entier. La classe est traitée à la source : les
       lecteurs de champs composent base et déplacement de façon

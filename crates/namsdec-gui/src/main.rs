@@ -3071,28 +3071,53 @@ fn lire_octets(saisie: &str) -> Option<Vec<u8>> {
 /// egui ne le fait pas tout seul : il réserve la main aux liens. Ce qui
 /// se clique doit pourtant se voir avant qu'on ait lu quoi que ce soit,
 /// et c'est le seul signe qui ne coûte pas une ligne de texte.
+///
+/// Le trait, lui, se voit SANS SURVOL : voir le corps.
 fn cliquable(ui: &mut egui::Ui, étiquette: egui::Label) -> egui::Response {
     let réponse = ui
         .add(étiquette.sense(egui::Sense::click()))
         .on_hover_cursor(egui::CursorIcon::PointingHand);
-    souligne_au_survol(ui, &réponse);
+    // LE TRAIT SE VOIT AU REPOS, et c'est la correction du 20 octobre.
+    //
+    // Il ne paraissait qu'au survol, au nom d'une page calme. Mais un
+    // signe qui n'apparaît qu'une fois qu'on est dessus ne sert qu'à
+    // celui qui savait déjà : on ne survole pas les textes au hasard
+    // pour voir lesquels se cliquent. Signalé à l'écran — « les textes
+    // où une action est attendue ne l'indiquent pas ».
+    //
+    // Le calme est gardé autrement : un tiers d'opacité au repos, assez
+    // pour se voir en parcourant une colonne, trop peu pour faire du
+    // bruit. Plein au survol.
+    let couleur = if réponse.hovered() {
+        ui.visuals().widgets.hovered.fg_stroke.color
+    } else {
+        ui.visuals().hyperlink_color.gamma_multiply(0.35)
+    };
+    ui.painter().hline(
+        réponse.rect.x_range(),
+        réponse.rect.bottom() - 1.0,
+        egui::Stroke::new(1.0, couleur),
+    );
     réponse
 }
 
-/// Souligne un texte quand la souris est dessus.
+/// Souligne une RANGÉE quand la souris est dessus.
 ///
-/// LA QUESTION À LAQUELLE CECI RÉPOND est « comment sait-on qu'un texte
-/// se clique ? ». La main du pointeur le dit, mais seulement quand on
-/// est déjà dessus, et elle se confond avec le curseur de sélection sur
-/// un texte. Le soulignement est le signe que tout le monde connaît, et
-/// il ne coûte rien au repos : la page reste calme, et ce qu'on survole
-/// se déclare.
+/// Réservé aux rangées entières d'une liste — une ligne de
+/// désassemblage, une zone de la carte mémoire, une entrée d'index :
+/// un trait permanent sous chacune des trois cents lignes d'une liste
+/// ne serait plus un signe, seulement du bruit. Pour un texte au milieu
+/// d'une phrase, c'est `cliquable`, dont le trait se voit au repos.
 ///
 /// Peint APRÈS coup, sous le rectangle de la réponse, plutôt que posé
 /// dans le `RichText` : on ne sait qu'un texte est survolé qu'une fois
 /// qu'il est dessiné, et le relire de l'image précédente ferait clignoter
 /// le trait d'une image sur deux.
 pub(crate) fn souligne_au_survol(ui: &egui::Ui, réponse: &egui::Response) {
+    // Au survol seulement : il sert aux RANGÉES d'une liste, où un
+    // trait permanent sous chacune des trois cents lignes ne serait plus
+    // un signe mais du bruit. Pour un texte au milieu d'une phrase,
+    // c'est `cliquable` qu'il faut, dont le trait se voit au repos.
     if !réponse.hovered() {
         return;
     }

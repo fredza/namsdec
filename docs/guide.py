@@ -457,6 +457,15 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "« petit-boutiste » étaient vérifiés : un binaire ARM passait, et se lisait "
          "en x86-64 sur toute sa longueur."),
 
+        ("note",
+         "<b>Ce qui se clique le dit sans qu'on le survole.</b> Un texte cliquable porte "
+         "un trait sous lui, estompé au repos et franc au survol. Il ne paraissait "
+         "qu'au survol, au nom d'une page calme&nbsp;; mais un signe qui n'apparaît qu'une "
+         "fois qu'on est dessus ne sert qu'à celui qui savait déjà — on ne survole pas les "
+         "textes au hasard pour voir lesquels se cliquent. Les RANGÉES entières d'une "
+         "liste, elles, gardent le trait au survol seulement&nbsp;: un trait sous chacune "
+         "des trois cents lignes d'un listing ne serait plus un signe, seulement du bruit."),
+
         ("h2", "Ce que l'éditeur sait faire"),
         ("p",
          "En mode NORMAL, les déplacements sont ceux de vim : "
@@ -468,6 +477,14 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "<font face='Courier'>mov qword [rbp-0x18], rax</font>, "
          "<font face='Courier'>w</font> s'arrête sur le crochet puis sur "
          "<font face='Courier'>rbp</font>, au lieu de sauter la moitié de la ligne."),
+        ("p",
+         "<b>L'éditeur n'a pas de barre de défilement à demeure.</b> Elle prenait sa "
+         "place deux fois&nbsp;: la largeur qu'elle réserve en permanence, et un liseré "
+         "clair le long du code pour une information qu'on a déjà — la gouttière numérote "
+         "les lignes, la barre d'état dit où est le curseur. Elle paraît au survol de la "
+         "zone, de sorte que la souris reste le moyen le plus direct d'aller loin dans un "
+         "gros listing. Ailleurs dans le programme, les barres restent&nbsp;: une liste qui "
+         "continue sous le bord doit le dire."),
         ("p",
          "En mode NORMAL, un <b>clic dans le code y pose le curseur</b>, et la "
          "touche F1 ou le survol expliquent le mot visé. Le listing d'un binaire "
@@ -1430,7 +1447,22 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "qui va avec, avec le même portrait par familles et les mêmes couleurs : un "
          "<font face='Courier'>socket</font> est un <font face='Courier'>socket</font>, "
          "qu'il arrive par la table de liaison ou par le numéro 41 dans RAX — et un "
-         "programme qui veut passer inaperçu emploie justement le second.",
+         "programme qui veut passer inaperçu emploie justement le second. "
+         "<b>Le nom est un lien&nbsp;: on le clique, sa fiche se déplie.</b> "
+         "« 00400016 1 write » est une ligne juste et muette&nbsp;— elle suppose qu'on "
+         "sache ce que <font face='Courier'>write</font> attend, dans quels registres, et "
+         "ce qu'il rend. La fiche donne la <b>signature avec ses registres</b> "
+         "(<font face='Courier'>write(fd: RDI, buf: RSI, count: RDX)</font>, et RAX pour "
+         "la réponse&nbsp;: savoir où mettre les arguments sans savoir où lire le retour "
+         "ne sert qu'à moitié), dit si <b>namsdec l'exécute vraiment</b> ou si l'exécution "
+         "s'arrêtera là, et porte le <b>renvoi</b> à la page de manuel qui fait autorité — "
+         "<font face='Courier'>man 2 write</font> sur man7.org. "
+         "La référence d'un appel SYSTÈME est le noyau, et non le manuel du processeur&nbsp;: "
+         "Intel décrit l'instruction <font face='Courier'>syscall</font>, qui ne dit rien "
+         "de ce que le numéro 1 demande. Quelques appels n'ont pas de page à leur nom et "
+         "renvoient à celle d'un parent — <font face='Courier'>exit_group</font> vers "
+         "<font face='Courier'>exit(2)</font> — plutôt que vers un lien mort&nbsp;: un "
+         "renvoi qui tombe à côté use plus vite la confiance qu'une absence de renvoi.",
          "<b>Chaînes lisibles</b> — cherchées dans les sections de données, comme "
          "<font face='Courier'>strings -d</font>, avec la possibilité de ne montrer que "
          "celles que le code désigne. En tête, les <b>indicateurs</b> : adresses web, "

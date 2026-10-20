@@ -3969,6 +3969,88 @@ fn a_scroll_bar_shows_up_when_there_is_something_to_scroll_and_not_before() {
     // vérification complète dans `the_sidebar_never_scrolls_its_state`.
 }
 
+/// L'ÉDITEUR, lui, ne garde aucune barre à demeure.
+///
+/// C'est l'exception à l'invariant ci-dessus, et elle est demandée :
+/// « la barre de défilement dans l'éditeur n'est pas nécessaire »
+/// (20 octobre 2026). Elle prenait sa place deux fois — la largeur
+/// qu'elle réserve en permanence, et un liseré clair le long du code,
+/// à demeure, pour une information qu'on a déjà : la gouttière numérote
+/// les lignes, la barre d'état dit où est le curseur.
+///
+/// Ailleurs, l'invariant d'origine tient toujours : une liste qui
+/// continue sous le bord doit le dire. Dans un éditeur où l'on navigue
+/// au clavier, c'est un meuble.
+///
+/// Mesuré sur le CÔTÉ ÉDITEUR de l'écran seulement — le panneau
+/// latéral, lui, garde les siennes, et les compter ici ferait passer le
+/// contrôle pour rien.
+#[test]
+fn the_editor_keeps_no_scroll_bar_at_rest() {
+    let barres_côté_éditeur = |largeur_écran: f32| -> Vec<(f32, f32)> {
+        let long = format!(
+            "global _start\nsection .text\n_start:\n{}    hlt\n",
+            "    nop ; une ligne volontairement longue pour déborder à droite aussi\n".repeat(200)
+        );
+        let mut app = NamsdecApp {
+            source: long,
+            active_tab: SidebarTab::Cpu,
+            ..Default::default()
+        };
+        let ctx = egui::Context::default();
+        app.apply_theme(&ctx);
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(largeur_écran, 900.0),
+            )),
+            ..Default::default()
+        };
+        // Le bord DROIT de l'éditeur, relevé et non deviné : c'est le
+        // découpage le plus large qui parte du bord gauche de l'écran et
+        // descende sur toute la hauteur. Une fraction choisie à la main
+        // aurait laissé le contrôle passer au vert sans rien regarder —
+        // c'est ce qui est arrivé en l'écrivant.
+        let mut barres = Vec::new();
+        for _ in 0..3 {
+            barres.clear();
+            let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+            let bord = output
+                .shapes
+                .iter()
+                .filter(|c| c.clip_rect.min.x < 5.0 && c.clip_rect.height() > 200.0)
+                .map(|c| c.clip_rect.max.x)
+                .fold(0.0f32, f32::max);
+            assert!(
+                bord > largeur_écran * 0.3,
+                "le bord de l'éditeur n'a pas été trouvé ({bord}) — le relevé ne \
+                 regarde rien"
+            );
+            for clipped in &output.shapes {
+                if let egui::epaint::Shape::Rect(r) = &clipped.shape {
+                    let étroite_et_haute = r.rect.width() < 20.0 && r.rect.height() > 60.0;
+                    // Au moins deux pixels de large : le filet qui sépare
+                    // l'éditeur du panneau latéral en fait un, et ce
+                    // n'est pas une barre.
+                    if étroite_et_haute && r.rect.width() >= 2.0 && r.rect.max.x <= bord {
+                        barres.push((r.rect.min.x.round(), r.rect.width().round()));
+                    }
+                }
+            }
+            output.textures_delta.clear();
+        }
+        barres
+    };
+
+    for largeur in [1280.0, 1600.0] {
+        let barres = barres_côté_éditeur(largeur);
+        assert!(
+            barres.is_empty(),
+            "à {largeur}px, l'éditeur ne doit porter aucune barre au repos : {barres:?}"
+        );
+    }
+}
+
 /// Le panneau latéral ne défile pas : ni les registres, ni les
 /// vectoriels, ni la pile x87.
 ///

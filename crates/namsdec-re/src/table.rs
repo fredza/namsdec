@@ -184,6 +184,60 @@ pub fn syscall(number: u64) -> Option<Syscall> {
     })
 }
 
+impl Syscall {
+    /// La page de manuel qui fait autorité sur cet appel.
+    ///
+    /// man7.org, et non un site de documentation quelconque : ce sont
+    /// les pages du projet `man-pages` de Linux, celles qu'on obtient
+    /// par `man 2 write` sur sa propre machine. La référence d'un appel
+    /// SYSTÈME est le noyau, pas le manuel du processeur — Intel décrit
+    /// l'instruction `syscall`, qui ne dit rien de ce que le numéro 1
+    /// demande.
+    ///
+    /// Quelques appels n'ont pas de page à leur nom et renvoient à
+    /// celle d'un parent : `exit_group` est documenté dans `exit(2)`,
+    /// `openat` dans `open(2)`. C'est traité ici plutôt que de livrer un
+    /// lien mort — un renvoi qui tombe à côté use plus vite la
+    /// confiance qu'une absence de renvoi.
+    pub fn manual_url(&self) -> String {
+        let page = match self.name {
+            "exit_group" => "exit",
+            "openat" => "open",
+            "newfstatat" => "stat",
+            "pread64" => "pread",
+            "pwrite64" => "pwrite",
+            "rt_sigaction" => "sigaction",
+            "rt_sigprocmask" => "sigprocmask",
+            "clock_gettime" => "clock_gettime",
+            autre => autre,
+        };
+        format!("https://man7.org/linux/man-pages/man2/{page}.2.html")
+    }
+
+    /// Comment l'appel s'écrit, registres compris.
+    ///
+    /// `write(fd, buf, count)` ne suffit pas : ce qui manque en lisant un
+    /// désassemblage, c'est QUEL REGISTRE porte quoi. La signature les
+    /// nomme donc tous les deux.
+    pub fn signature(&self) -> String {
+        let arguments: Vec<String> = self
+            .args
+            .iter()
+            .enumerate()
+            .map(|(rang, nom)| match ARGUMENT_REGISTERS.get(rang) {
+                Some(registre) => format!("{nom}: {registre}"),
+                None => (*nom).to_owned(),
+            })
+            .collect();
+        format!(
+            "RAX={} {}({})",
+            self.number,
+            self.name,
+            arguments.join(", ")
+        )
+    }
+}
+
 /// Le nom seul, pour les listes qui n'ont pas la place du reste.
 pub fn syscall_name(number: u64) -> Option<&'static str> {
     syscall(number).map(|call| call.name)

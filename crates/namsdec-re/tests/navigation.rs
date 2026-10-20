@@ -269,19 +269,25 @@ fn drawing_alone_asks_for_nothing() {
     }
 }
 
-/// Un texte cliquable se SOULIGNE quand la souris est dessus.
+/// Un texte cliquable est SOULIGNÉ AU REPOS, et davantage au survol.
 ///
 /// « Comment savoir si un texte est cliquable ou pas ? » La main du
 /// pointeur le dit, mais seulement une fois qu'on est déjà dessus, et
 /// sur un texte elle se confond avec le curseur de sélection. Le trait
 /// est le signe que tout le monde connaît.
 ///
-/// Mesuré sur ce qui est PEINT : le survol doit ajouter une ligne
-/// horizontale sous l'adresse, et le repos ne doit pas en porter. Une
+/// Le contrôle a changé de sens le 20 octobre, et c'est le défaut qu'il
+/// retient : il exigeait auparavant qu'il n'y ait AUCUN trait au repos.
+/// Un signe qui n'apparaît qu'une fois qu'on est dessus ne sert qu'à
+/// celui qui savait déjà — on ne survole pas les textes au hasard pour
+/// voir lesquels se cliquent. Ce qu'on exige désormais : un trait au
+/// repos, et un trait PLUS VISIBLE au survol.
+///
+/// Mesuré sur ce qui est PEINT, et sur l'opacité réelle du trait. Une
 /// marque qu'on vérifierait dans le code ne dirait pas si elle arrive à
 /// l'écran.
 #[test]
-fn a_clickable_text_underlines_itself_under_the_pointer() {
+fn a_clickable_text_underlines_itself_at_rest_and_more_under_the_pointer() {
     let binaire = germe_piégé();
     let disasm = namsdec_disasm::disassemble(&binaire[0x100..0x120], BASE + 0x100);
     let cpu = Cpu::new(Memory::new(BASE, 0x1000));
@@ -305,8 +311,21 @@ fn a_clickable_text_underlines_itself_under_the_pointer() {
     let au_repos = traits_sous(&mut module, &ctx, cible, None);
     let au_survol = traits_sous(&mut module, &ctx, cible, Some(cible));
     assert!(
-        au_survol > au_repos,
-        "le survol doit souligner : {au_repos} trait(s) au repos, {au_survol} au survol"
+        !au_repos.is_empty(),
+        "le texte se déclare SANS qu'on le survole : aucun trait peint au repos"
+    );
+    assert!(
+        !au_survol.is_empty(),
+        "et il se déclare toujours au survol : aucun trait peint"
+    );
+    // Au repos le trait est estompé ; au survol il est plein. C'est ce
+    // qui garde un panneau calme tout en déclarant ce qui se clique.
+    let plus_fort_au_repos = au_repos.iter().map(|c| c.a()).max().unwrap_or(0);
+    let plus_fort_au_survol = au_survol.iter().map(|c| c.a()).max().unwrap_or(0);
+    assert!(
+        plus_fort_au_survol > plus_fort_au_repos,
+        "le survol renforce le trait : opacité {plus_fort_au_repos} au repos, \
+         {plus_fort_au_survol} au survol"
     );
 }
 
@@ -342,15 +361,19 @@ fn où_est_une_adresse(module: &mut dyn ReModule, ctx: &ReContext) -> Option<egu
     vu
 }
 
-/// Combien de traits horizontaux sont peints à la hauteur de `autour`.
+/// La couleur des traits horizontaux peints à la hauteur de `autour`.
+///
+/// La couleur et non le compte : depuis que le trait se voit au repos,
+/// c'est son OPACITÉ qui distingue les deux états, et un compte ne la
+/// dirait pas.
 fn traits_sous(
     module: &mut dyn ReModule,
     ctx: &ReContext,
     autour: egui::Pos2,
     souris: Option<egui::Pos2>,
-) -> usize {
+) -> Vec<egui::Color32> {
     let egui_ctx = egui::Context::default();
-    let mut compte = 0;
+    let mut compte = Vec::new();
     for _ in 0..3 {
         let mut entrée = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
@@ -363,20 +386,34 @@ fn traits_sous(
             entrée.events.push(egui::Event::PointerMoved(p));
         }
         let mut sortie = egui_ctx.run_ui(entrée, |ui| module.ui(ui, ctx));
-        compte = 0;
+        compte.clear();
         for clipped in &sortie.shapes {
             // Un trait d'egui est un rectangle plat ou un segment : on
-            // compte les deux, à moins de dix pixels sous le texte.
+            // prend les deux, à moins de dix pixels sous le texte.
             let cadre = clipped.shape.visual_bounding_rect();
             let plat = cadre.height() <= 2.0 && cadre.width() > 4.0;
             let sous_le_texte =
                 (cadre.top() - autour.y).abs() < 12.0 && cadre.x_range().contains(autour.x);
             if plat && sous_le_texte {
-                compte += 1;
+                compte.push(couleur_du_trait(&clipped.shape));
             }
         }
         sortie.textures_delta.clear();
         let _ = module.take_request();
     }
     compte
+}
+
+/// La couleur d'un trait, quelle que soit la forme qui le porte.
+fn couleur_du_trait(forme: &egui::epaint::Shape) -> egui::Color32 {
+    match forme {
+        egui::epaint::Shape::LineSegment { stroke, .. } => stroke.color,
+        egui::epaint::Shape::Path(chemin) => match chemin.stroke.color {
+            egui::epaint::ColorMode::Solid(couleur) => couleur,
+            _ => egui::Color32::TRANSPARENT,
+        },
+        egui::epaint::Shape::Rect(rect) if rect.fill != egui::Color32::TRANSPARENT => rect.fill,
+        egui::epaint::Shape::Rect(rect) => rect.stroke.color,
+        _ => egui::Color32::TRANSPARENT,
+    }
 }
