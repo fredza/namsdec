@@ -44,6 +44,11 @@ processeur est ancré.
       la vraie : namsdec ne peut que la lire.
 - [x] **Signaler une anomalie** (A 9.5) — le contexte rassemblé, montré
       en entier, et qui ne part qu'au clic. Ni le fichier ni son chemin.
+- [ ] **L'éditeur binaire : défaut non reproduit** (A 9.6) — trois
+      chemins éprouvés, tous répondent, et la capture envoyée montrait
+      « Octets changés ». Reste à savoir quel fichier et quel geste. Un
+      correctif écrit sur une hypothèse plausible s'est révélé sans
+      effet à la mesure, et a été retiré.
 - [x] **Ce qu'upx refuse, dit en français** (A 9.3) — le déballage
       fonctionnait ; c'est ce que le panneau en disait qui ne disait
       rien. Le contrôle qui le prouve avait lui aussi menti, en

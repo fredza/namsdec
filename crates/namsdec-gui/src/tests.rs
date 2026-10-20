@@ -21321,6 +21321,70 @@ fn typing_one_parenthesis_inserts_one_closing_not_a_hundred() {
     );
 }
 
+/// L'ÉDITEUR BINAIRE ÉCRIT VRAIMENT, sur un binaire ouvert.
+///
+/// Signalé le 21 octobre : « dans l'éditeur binaire on ne sait rien
+/// modifier ». Le contrôle part d'un vrai binaire, écrit un octet par
+/// le chemin que le bouton « Écrire » emprunte, et regarde trois
+/// choses : que l'octet a changé, que le correctif est retenu — donc
+/// défaisable —, et que le reste du fichier n'a pas bougé.
+#[test]
+fn the_binary_editor_really_writes_a_byte() {
+    let Ok(octets) = std::fs::read("/bin/ls") else {
+        return;
+    };
+    let mut app = NamsdecApp::default();
+    if !app.load_elf(&octets, "ls") {
+        return;
+    }
+    // Un octet du code, pas de l'en-tête : changer `e_ident` ferait
+    // refuser le rechargement, et l'on mesurerait ce refus au lieu de
+    // l'écriture.
+    let (offset, avant) = {
+        let state = app.assemble_state.as_ref().expect("un état");
+        let scan = namsdec_re::elf_scan::scan(&state.output.file).expect("un ELF");
+        let texte = scan
+            .sections
+            .iter()
+            .find(|s| s.name == ".text" && s.size > 16)
+            .expect("une section de code");
+        let at = texte.offset as usize + 8;
+        (at, state.output.file[at])
+    };
+    let neuf = avant ^ 0xff;
+
+    app.write_patch(offset, vec![neuf], 0);
+
+    let state = app.assemble_state.as_ref().expect("un état après écriture");
+    assert_eq!(
+        state.output.file[offset], neuf,
+        "l'octet doit avoir changé — c'est tout l'objet de l'éditeur"
+    );
+    assert_eq!(
+        state.output.file.len(),
+        octets.len(),
+        "et le fichier garde sa taille exacte"
+    );
+    // Le correctif est retenu : sans cela, rien ne se défait.
+    assert_eq!(app.patches.len(), 1, "le correctif est inscrit");
+    assert_eq!(app.patches[0].before, vec![avant]);
+    assert_eq!(app.patches[0].after, vec![neuf]);
+    // Et le reste du fichier n'a pas bougé d'un octet.
+    let changés = state
+        .output
+        .file
+        .iter()
+        .zip(&octets)
+        .filter(|(a, b)| a != b)
+        .count();
+    assert_eq!(changés, 1, "un seul octet change, et c'est celui-là");
+
+    // Écrire la MÊME valeur ne crée pas de correctif : une liste de
+    // choses à défaire qui n'ont rien fait n'aide personne.
+    app.write_patch(offset, vec![neuf], 0);
+    assert_eq!(app.patches.len(), 1, "rien de neuf, rien d'inscrit");
+}
+
 /// LE RAPPORT D'ANOMALIE NE PORTE NI LE FICHIER, NI SON CHEMIN.
 ///
 /// C'est la règle qui tient tout le reste. Un binaire analysé est

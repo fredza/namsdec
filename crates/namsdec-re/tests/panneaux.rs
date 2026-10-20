@@ -823,3 +823,151 @@ fn no_text_of_the_call_graph_escapes_its_box() {
         "des textes du graphe sortent de leur boîte : {dehors:#?}"
     );
 }
+
+/// CLIQUER UN OCTET PUIS TAPER ÉCRIT, même après avoir employé
+/// « Chercher ».
+///
+/// La grille n'écoute les touches que lorsque aucun champ de texte n'a
+/// le focus — sinon « Chercher » recevrait les chiffres hexadécimaux
+/// qu'on tape pour écrire un octet. Le parcours complet n'était éprouvé
+/// nulle part : on ne savait pas si, après avoir cliqué dans un champ,
+/// la grille reprenait la main.
+///
+/// Elle la reprend, et c'est egui qui s'en charge — il rend le focus
+/// dès qu'on clique un widget qui ne le prend pas. Ce contrôle existe
+/// pour que cela reste vrai : si egui changeait d'avis, ou si la grille
+/// gagnait un champ de plus, la frappe deviendrait muette sans un mot.
+///
+/// Écrit le 21 octobre 2026 en cherchant à reproduire « dans l'éditeur
+/// binaire on ne sait rien modifier ». Il n'y est pas parvenu : les
+/// trois chemins — le bouton « Écrire », la frappe dans la grille, et
+/// l'inscription du correctif — répondent tous.
+#[test]
+fn clicking_a_byte_takes_the_keyboard_back() {
+    let binaire = binaire();
+    let disasm = namsdec_disasm::disassemble(&binaire[0x100..0x140], BASE + 0x100);
+    let cpu = Cpu::new(Memory::new(BASE, 0x1000));
+    let ctx = ReContext {
+        cpu: &cpu,
+        disasm: &disasm,
+        source: "",
+        binary: &binaire,
+        lang: "fr",
+        names: None,
+    };
+    let mut module = namsdec_re::HexEditorModule::default();
+    module.on_binary_loaded(&ctx);
+
+    let egui_ctx = egui::Context::default();
+    let base = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1200.0, 1600.0),
+        )),
+        ..Default::default()
+    };
+
+    // Deux images pour poser la grille, et le relevé de ce qu'il faut
+    // cliquer : une cellule hexadécimale, et le champ « Chercher ».
+    let mut cible = None;
+    let mut champ = None;
+    for _ in 0..2 {
+        cible = None;
+        champ = None;
+        let mut sortie = egui_ctx.run_ui(base.clone(), |ui| module.ui(ui, &ctx));
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                let texte = t.galley.text();
+                let rect = egui::Rect::from_min_size(t.pos, t.galley.size());
+                let vu = rect.intersect(clipped.clip_rect);
+                if !vu.is_positive() {
+                    continue;
+                }
+                // Une cellule hexadécimale : deux chiffres, et rien
+                // d'autre.
+                if texte.len() == 2
+                    && texte.chars().all(|c| c.is_ascii_hexdigit())
+                    && cible.is_none()
+                {
+                    cible = Some(vu.center());
+                }
+                // Et le champ « Chercher », repéré par son exemple :
+                // c'est LUI qui doit voler le clavier, parce qu'il
+                // existe vraiment. Un identifiant jamais dessiné perd
+                // son focus de lui-même à la fin de l'image, et le
+                // contrôle ne reproduisait alors rien du tout.
+                // Repéré par son ÉTIQUETTE et non par son exemple : le
+                // texte d'exemple change avec la case « hexa », et le
+                // relevé ne trouvait alors rien — il refusait de
+                // mesurer, ce qui est au moins honnête.
+                if texte == "Chercher" && champ.is_none() {
+                    // Le champ est juste à droite de l'étiquette.
+                    champ = Some(vu.center() + egui::vec2(vu.width() + 40.0, 0.0));
+                }
+            }
+        }
+        sortie.textures_delta.clear();
+        let _ = module.take_request();
+    }
+    let (Some(cible), Some(champ)) = (cible, champ) else {
+        panic!("le relevé n'a pas trouvé la grille et le champ — il ne mesure rien");
+    };
+
+    // On clique « Chercher » : il prend le clavier, comme dans la vraie
+    // vie dès qu'on y a tapé une fois.
+    let clic = |où: egui::Pos2, module: &mut dyn ReModule| {
+        for pressé in [true, false] {
+            let mut entrée = base.clone();
+            if pressé {
+                entrée.events.push(egui::Event::PointerMoved(où));
+            }
+            entrée.events.push(egui::Event::PointerButton {
+                pos: où,
+                button: egui::PointerButton::Primary,
+                pressed: pressé,
+                modifiers: egui::Modifiers::NONE,
+            });
+            let mut sortie = egui_ctx.run_ui(entrée, |ui| module.ui(ui, &ctx));
+            sortie.textures_delta.clear();
+            let _ = module.take_request();
+        }
+    };
+    clic(champ, &mut module);
+    assert!(
+        egui_ctx.memory(|m| m.focused()).is_some(),
+        "le champ « Chercher » doit avoir pris le clavier — sans quoi il n'y a rien à reprendre"
+    );
+
+    // Puis le clic sur l'octet.
+    clic(cible, &mut module);
+
+    // Le focus a bien été repris : c'est la correction même.
+    assert!(
+        egui_ctx.memory(|m| m.focused()).is_none(),
+        "cliquer un octet doit reprendre le clavier au champ qui l'avait"
+    );
+
+    // Puis deux chiffres hexadécimaux : « 4 » puis « 2 » font 0x42.
+    let mut demande = None;
+    for key in [egui::Key::Num4, egui::Key::Num2] {
+        let mut entrée = base.clone();
+        entrée.events.push(egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        });
+        let mut sortie = egui_ctx.run_ui(entrée, |ui| module.ui(ui, &ctx));
+        sortie.textures_delta.clear();
+        if let Some(d) = module.take_request() {
+            demande = Some(d);
+        }
+    }
+    match demande {
+        Some(namsdec_re::ReRequest::PatchBytes { bytes, .. }) => {
+            assert_eq!(bytes, vec![0x42], "« 4 » puis « 2 » écrivent 0x42");
+        }
+        autre => panic!("taper deux chiffres doit demander une écriture : {autre:?}"),
+    }
+}

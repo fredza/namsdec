@@ -468,6 +468,13 @@ impl ReModule for HexEditorModule {
             self.valeur = format!("{:02x}", octets[off]);
             self.nibble = None;
             self.colonne = nouvelle_colonne;
+            // Rien à faire du focus ici, et c'est MESURÉ : egui le rend
+            // de lui-même dès qu'on clique un widget qui ne le prend
+            // pas, et la grille retrouve donc le clavier sans qu'on le
+            // demande. Un `surrender_focus` a été écrit ici le
+            // 21 octobre 2026, puis retiré : les deux mesures — avec et
+            // sans — donnaient « focus : None ». C'était un geste sans
+            // effet, avec une explication qui sonnait juste.
         }
 
         // Le clavier, quand un octet est choisi et qu'aucun champ de texte

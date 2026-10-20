@@ -5254,3 +5254,40 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      charge un vrai binaire, pose un chemin qui porte un nom de client, et
      vérifie que ni le chemin, ni les octets du fichier ne paraissent dans
      le rapport — puis que cocher la case fait bien entrer le chemin.
+
+9.6  L'ÉDITEUR BINAIRE : DÉFAUT NON REPRODUIT
+     Signalé le 21 octobre : « dans l'éditeur binaire on ne sait rien
+     modifier ». Trois chemins ont été éprouvés, tous répondent :
+       - le bouton « Écrire » sur un binaire ouvert —
+         `the_binary_editor_really_writes_a_byte` charge /bin/ls, écrit un
+         octet de `.text`, et vérifie que l'octet a changé, que le fichier
+         garde sa taille exacte, qu'UN SEUL octet diffère, et que le
+         correctif est inscrit (donc défaisable). Il vérifie aussi qu'écrire
+         la même valeur n'inscrit rien ;
+       - la frappe dans la grille APRÈS avoir employé « Chercher » —
+         `clicking_a_byte_takes_the_keyboard_back` clique le champ, vérifie
+         qu'il a pris le clavier, clique un octet, tape « 4 » puis « 2 », et
+         exige la demande d'écriture de 0x42 ;
+       - la capture envoyée montrait elle-même « Octets changés, binaire
+         rechargé » dans la barre d'état.
+     Le défaut reste donc à caractériser : quel fichier, quel geste.
+
+     --- UN CORRECTIF ÉCRIT PUIS RETIRÉ, ET POURQUOI C'EST ÉCRIT ICI ---
+     Une hypothèse tenait debout : la grille n'écoute les touches que si
+     aucun champ n'a le focus, et rien ne semblait le reprendre — un champ
+     cliqué une fois aurait rendu la grille sourde pour toujours. Un
+     `surrender_focus` a donc été posé au clic sur un octet, avec un
+     commentaire qui expliquait très bien un défaut qui n'existait pas.
+     MESURÉ, avec et sans : « focus : None » dans les deux cas. egui rend le
+     focus de lui-même dès qu'on clique un widget qui ne le prend pas. Le
+     correctif était un geste sans effet, et son explication sonnait juste —
+     ce qui est exactement ce qui rend ce genre de code difficile à retirer
+     plus tard.
+     Il est retiré. Le contrôle, lui, reste : il n'avait jamais existé, et il
+     retient que ce parcours marche — si egui changeait d'avis, ou si la
+     grille gagnait un champ de plus, la frappe deviendrait muette sans un
+     mot.
+     Première version de ce contrôle : elle posait le focus sur un
+     identifiant JAMAIS DESSINÉ. egui le lâche à la fin de l'image, si bien
+     qu'il n'y avait rien à reprendre et que le contrôle passait au vert dans
+     les deux cas. C'est en mesurant qu'on l'a vu.
