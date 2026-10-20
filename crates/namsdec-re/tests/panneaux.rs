@@ -730,3 +730,95 @@ fn la_liste_des_panneaux_ne_rate_aucun_module() {
         oubliés
     );
 }
+
+/// DANS LE GRAPHE D'APPELS, AUCUN TEXTE NE SORT DE SA BOÎTE.
+///
+/// Le graphe est dessiné à la main, sur un canevas : rien, dans egui,
+/// ne garantit qu'un texte tienne dans le rectangle qu'on a peint pour
+/// lui. C'est à la hauteur réservée de le garantir, et elle se calcule
+/// — donc elle se trompe.
+///
+/// Elle s'est trompée le 20 octobre, en passant les boîtes au style
+/// UML : le compte des lignes oubliait que le compartiment du bas en
+/// porte DEUX, et la seconde — « 0 appelants · 13 appels » — se
+/// peignait sous le trait du cadre, hors de la boîte. Vu sur capture.
+///
+/// Le contrôle apparie chaque texte du graphe avec le rectangle qui
+/// devrait le contenir, et n'accepte pas qu'il n'y en ait aucun.
+#[test]
+fn no_text_of_the_call_graph_escapes_its_box() {
+    let binaire = binaire();
+    let disasm = namsdec_disasm::disassemble(&binaire[0x100..0x200], BASE + 0x100);
+    let cpu = Cpu::new(Memory::new(BASE, 0x1000));
+    let ctx = ReContext {
+        cpu: &cpu,
+        disasm: &disasm,
+        source: "",
+        binary: &binaire,
+        lang: "fr",
+        names: None,
+    };
+    let mut module = namsdec_re::CallGraphModule::default();
+    module.on_binary_loaded(&ctx);
+
+    let egui_ctx = egui::Context::default();
+    let entrée = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1000.0, 2400.0),
+        )),
+        ..Default::default()
+    };
+    let mut dehors: Vec<String> = Vec::new();
+    let mut vus = 0usize;
+    for _ in 0..2 {
+        dehors.clear();
+        vus = 0;
+        let mut sortie = egui_ctx.run_ui(entrée.clone(), |ui| module.ui(ui, &ctx));
+        // Les boîtes : des rectangles peints, assez larges et assez
+        // hauts pour porter plusieurs lignes. Les filets de séparation,
+        // plats, ne passent pas ce crible.
+        let boîtes: Vec<egui::Rect> = sortie
+            .shapes
+            .iter()
+            .filter_map(|c| match &c.shape {
+                egui::epaint::Shape::Rect(r) => Some(r.rect),
+                _ => None,
+            })
+            .filter(|r| r.width() > 60.0 && r.height() > 30.0)
+            .collect();
+        for clipped in &sortie.shapes {
+            let egui::epaint::Shape::Text(t) = &clipped.shape else {
+                continue;
+            };
+            // Le corps d'une boîte, et lui seul : c'est la ligne qui
+            // débordait, et la seule dont on sache à coup sûr qu'elle
+            // appartient à une boîte.
+            let texte = t.galley.text();
+            if !texte.contains("appelants") {
+                continue;
+            }
+            vus += 1;
+            let encre = egui::Rect::from_min_size(t.pos, t.galley.size());
+            // Deux pixels de tolérance : les jambages d'une police
+            // dépassent de la hauteur de ligne nominale.
+            let dedans = boîtes.iter().any(|b| b.expand(2.0).contains_rect(encre));
+            if !dedans {
+                dehors.push(format!(
+                    "« {texte} » en {:?}, aucune boîte ne le contient",
+                    encre
+                ));
+            }
+        }
+        sortie.textures_delta.clear();
+        let _ = module.take_request();
+    }
+    assert!(
+        vus > 0,
+        "le relevé n'a trouvé aucune boîte du graphe — il ne mesure rien"
+    );
+    assert!(
+        dehors.is_empty(),
+        "des textes du graphe sortent de leur boîte : {dehors:#?}"
+    );
+}

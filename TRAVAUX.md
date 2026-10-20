@@ -108,6 +108,10 @@ un panneau de plus. Six points, six reproductions, six contrôles.
       compilation, mais 16 contrôles tombés sur 692, et le rendu de
       n'importe quel glyphe n'arrive pas par défaut — il EMPIRE. À
       reprendre avec `egui_system_font_provider`, pas sans.
+- [x] **Le graphe d'appels en style UML** (A 8.22) — stéréotype,
+      compartiments, angles droits, et des dépendances en tirets à pointe
+      ouverte, qui est ce qu'un appel est. Le renommage répercuté
+      existait déjà, et ses contrôles aussi.
 - [x] **Le fuzzing couvre le chargeur** (A 8.6) — et y a trouvé cinq
       débordements d'entier. La classe est traitée à la source : les
       lecteurs de champs composent base et déplacement de façon

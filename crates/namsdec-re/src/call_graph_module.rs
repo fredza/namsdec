@@ -309,14 +309,39 @@ impl CallGraphModule {
         let glyphe = ui.ctx().fonts_mut(|f| f.glyph_width(&police, '0')).max(1.0);
         const PAD_X: f32 = 8.0;
         const PAD_Y: f32 = 4.0;
-        const INDENT_X: f32 = 26.0;
-        let hauteur_boîte = hauteur_ligne + PAD_Y * 2.0;
-        let pas_vertical = hauteur_boîte + 8.0;
+        const INDENT_X: f32 = 30.0;
+        /// Combien de lignes le compartiment du bas porte.
+        const LIGNES_DE_CORPS: usize = 2;
+        // Le pas doit valoir la PLUS HAUTE des boîtes — celle qui porte
+        // un stéréotype —, sinon elle mord sur sa voisine du dessous.
+        let pas_vertical = (1 + LIGNES_DE_CORPS + 1) as f32 * hauteur_ligne + PAD_Y * 4.0 + 10.0;
 
-        // Poser chaque boîte : étiquette, rectangle local, et ce qu'elle vise.
+        // UNE BOÎTE À COMPARTIMENTS, COMME UNE CLASSE EN UML.
+        //
+        // C'était une suite de rectangles d'une ligne — « nom 0x401136 »
+        // —, ce qui tient de la liste indentée plus que du diagramme.
+        // Demandé le 20 octobre : « pour le graphe du programme un style
+        // UML et non une suite de boîtes ».
+        //
+        // La grammaire d'UML est reprise là où elle dit quelque chose de
+        // vrai sur un graphe d'appels, et nulle part ailleurs :
+        //
+        // - un **stéréotype** entre guillemets français pour ce que la
+        //   fonction EST — « entrée », « main », « renvoi » ;
+        // - un **compartiment de titre**, le nom, séparé par un filet ;
+        // - un **compartiment de corps**, ce qu'on mesure : l'adresse,
+        //   la taille, qui l'appelle et ce qu'elle appelle ;
+        // - une **dépendance** entre les boîtes, qui en UML se trace en
+        //   TIRETS avec une pointe OUVERTE. C'est exactement ce qu'un
+        //   appel est : « A dépend de B ». Un trait plein à pointe
+        //   pleine dirait une association, qui ne veut rien dire ici.
         struct Boîte {
             rect: egui::Rect,
-            label: String,
+            /// Le stéréotype, s'il y en a un : « entrée », « main »…
+            stéréotype: Option<String>,
+            titre: String,
+            /// Les lignes du compartiment du bas.
+            corps: Vec<String>,
             addr: u64,
             accent: bool,
             renvoi: bool,
@@ -326,25 +351,48 @@ impl CallGraphModule {
         for (i, nœud) in nœuds.iter().enumerate() {
             let f = &self.functions[nœud.fonction];
             let accent = matches!(f.origin, Origin::Entry | Origin::Main);
-            let nom = ctx.display_name(f.start, &f.name());
-            let label = if nœud.renvoi {
-                // « ↺ » et non « ↩ » : la seconde flèche n'existe pas
-                // dans les polices qu'egui embarque, et se peignait en
-                // carré vide.
-                format!("\u{21ba} {nom}  {:#x}", f.start)
-            } else {
-                format!("{nom}  {:#x}", f.start)
+            let titre = ctx.display_name(f.start, &f.name());
+            let stéréotype = match (nœud.renvoi, f.origin) {
+                // Le renvoi l'emporte : c'est ce qu'il faut savoir de
+                // cette boîte-là, déjà dépliée ailleurs.
+                (true, _) => Some(ctx.t("renvoi", "repeat").to_owned()),
+                (false, Origin::Entry) => Some(ctx.t("entrée", "entry").to_owned()),
+                (false, Origin::Main) => Some("main".to_owned()),
+                (false, Origin::Called) => None,
             };
-            let largeur = label.chars().count() as f32 * glyphe + PAD_X * 2.0;
+            let corps = vec![
+                format!("{:#x} · {} {}", f.start, f.size(), ctx.t("octets", "bytes")),
+                format!(
+                    "{} {} · {} {}",
+                    f.callers,
+                    ctx.t("appelants", "callers"),
+                    f.calls.len(),
+                    ctx.t("appels", "calls")
+                ),
+            ];
+            let plus_large = corps
+                .iter()
+                .map(|l| l.chars().count())
+                .chain(std::iter::once(titre.chars().count()))
+                .chain(stéréotype.iter().map(|s| s.chars().count() + 4))
+                .max()
+                .unwrap_or(0);
+            let largeur = plus_large as f32 * glyphe + PAD_X * 2.0;
+            // UNE LIGNE PAR LIGNE PEINTE, et c'est la correction d'un
+            // défaut vu à l'écran : le compte oubliait que le
+            // compartiment du bas en porte DEUX, et la seconde —
+            // « 0 appelants · 13 appels » — se peignait sous le trait
+            // du cadre, hors de la boîte.
+            let lignes = 1 + corps.len() + usize::from(stéréotype.is_some());
+            let hauteur = lignes as f32 * hauteur_ligne + PAD_Y * 4.0;
             let x = nœud.profondeur as f32 * INDENT_X;
             let y = i as f32 * pas_vertical;
             largeur_max = largeur_max.max(x + largeur);
             boîtes.push(Boîte {
-                rect: egui::Rect::from_min_size(
-                    egui::pos2(x, y),
-                    egui::vec2(largeur, hauteur_boîte),
-                ),
-                label,
+                rect: egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(largeur, hauteur)),
+                stéréotype,
+                titre,
+                corps,
                 addr: f.start,
                 accent,
                 renvoi: nœud.renvoi,
@@ -360,28 +408,30 @@ impl CallGraphModule {
         let décalé = |r: egui::Rect| r.translate(origine);
         let pointeur = réponse.hover_pos();
 
-        // Les connecteurs d'abord : ils passent sous les boîtes. Un rail
-        // vertical dans la gouttière de l'enfant, un coude, une flèche qui
-        // entre dans la boîte appelée.
+        // Les connecteurs d'abord : ils passent sous les boîtes.
+        //
+        // EN TIRETS, ET À POINTE OUVERTE : c'est ainsi qu'UML trace une
+        // DÉPENDANCE, et une dépendance est exactement ce qu'un appel
+        // est — « celle-ci a besoin de celle-là ». Un trait plein à
+        // pointe pleine dirait une association, c'est-à-dire un lien
+        // durable entre deux objets, ce qui ne veut rien dire ici.
         let trait_ = egui::Stroke::new(1.5, couleur_trait);
         for (i, nœud) in nœuds.iter().enumerate() {
             let Some(parent) = nœud.parent else { continue };
             let rp = décalé(boîtes[parent].rect);
             let rn = décalé(boîtes[i].rect);
-            let x_rail = rp.left() + 11.0;
+            let x_rail = rp.left() + 13.0;
             let y_enfant = rn.center().y;
-            peintre.line_segment(
-                [
-                    egui::pos2(x_rail, rp.bottom()),
-                    egui::pos2(x_rail, y_enfant),
-                ],
+            tirets(
+                &peintre,
+                egui::pos2(x_rail, rp.bottom()),
+                egui::pos2(x_rail, y_enfant),
                 trait_,
             );
-            peintre.line_segment(
-                [
-                    egui::pos2(x_rail, y_enfant),
-                    egui::pos2(rn.left(), y_enfant),
-                ],
+            tirets(
+                &peintre,
+                egui::pos2(x_rail, y_enfant),
+                egui::pos2(rn.left(), y_enfant),
                 trait_,
             );
             flèche(&peintre, egui::pos2(rn.left(), y_enfant), couleur_trait);
@@ -401,10 +451,13 @@ impl CallGraphModule {
             } else {
                 fond_boîte
             };
-            peintre.rect_filled(rect, 4.0, fond);
+            // UN RECTANGLE À ANGLES DROITS : une classe UML n'a pas de
+            // coins arrondis, et c'est le premier signe qui dit qu'on
+            // lit un diagramme et non une liste de pastilles.
+            peintre.rect_filled(rect, 0.0, fond);
             peintre.rect_stroke(
                 rect,
-                4.0,
+                0.0,
                 egui::Stroke::new(
                     if boîte.accent { 2.0 } else { 1.0 },
                     if boîte.accent {
@@ -420,13 +473,45 @@ impl CallGraphModule {
             } else {
                 couleur_texte
             };
+            let mut y = rect.top() + PAD_Y;
+            // Le stéréotype, entre guillemets français comme UML
+            // l'écrit : « entrée », « main », « renvoi ».
+            if let Some(stéréotype) = &boîte.stéréotype {
+                peintre.text(
+                    egui::pos2(rect.center().x, y),
+                    egui::Align2::CENTER_TOP,
+                    format!("\u{ab}{stéréotype}\u{bb}"),
+                    police.clone(),
+                    couleur_faible,
+                );
+                y += hauteur_ligne;
+            }
+            // Le compartiment de titre, centré comme un nom de classe.
             peintre.text(
-                egui::pos2(rect.left() + PAD_X, rect.center().y),
-                egui::Align2::LEFT_CENTER,
-                &boîte.label,
+                egui::pos2(rect.center().x, y),
+                egui::Align2::CENTER_TOP,
+                &boîte.titre,
                 police.clone(),
                 couleur,
             );
+            y += hauteur_ligne + PAD_Y;
+            // LE FILET QUI SÉPARE LES DEUX COMPARTIMENTS. C'est lui qui
+            // fait une classe plutôt qu'une étiquette encadrée.
+            peintre.line_segment(
+                [egui::pos2(rect.left(), y), egui::pos2(rect.right(), y)],
+                egui::Stroke::new(1.0, couleur_cadre),
+            );
+            y += PAD_Y;
+            for ligne in &boîte.corps {
+                peintre.text(
+                    egui::pos2(rect.left() + PAD_X, y),
+                    egui::Align2::LEFT_TOP,
+                    ligne,
+                    police.clone(),
+                    couleur_faible,
+                );
+                y += hauteur_ligne;
+            }
             if survol && réponse.clicked() {
                 // Vers le CODE, sans demander : une boîte de ce graphe
                 // est une fonction, et une fonction se lit désassemblée.
@@ -552,20 +637,41 @@ impl CallGraphModule {
     }
 }
 
-/// Une petite flèche pleine, pointant vers la droite, à l'entrée d'une
-/// boîte appelée : c'est ce qui fait d'un trait un appel orienté.
+/// Un segment en TIRETS, parce qu'egui n'en trace pas tout seul.
+///
+/// Le motif est fixe — six pixels de trait, quatre de vide — et non
+/// proportionnel à la longueur : deux dépendances de longueurs
+/// différentes doivent se ressembler, sinon le tireté se lit comme une
+/// information qu'il ne porte pas.
+fn tirets(peintre: &egui::Painter, de: egui::Pos2, à: egui::Pos2, trait_: egui::Stroke) {
+    const TRAIT: f32 = 6.0;
+    const VIDE: f32 = 4.0;
+    let total = de.distance(à);
+    if total <= f32::EPSILON {
+        return;
+    }
+    let pas = (à - de) / total;
+    let mut parcouru = 0.0;
+    while parcouru < total {
+        let fin = (parcouru + TRAIT).min(total);
+        peintre.line_segment([de + pas * parcouru, de + pas * fin], trait_);
+        parcouru = fin + VIDE;
+    }
+}
+
+/// La pointe d'une DÉPENDANCE UML : deux traits, et rien entre eux.
+///
+/// Elle était pleine — un triangle rempli —, ce qui en UML désigne une
+/// autre relation. Une pointe ouverte, deux segments en V, est celle
+/// d'une dépendance ou d'une association simple, et c'est ce qu'un
+/// appel est. La forme porte donc une information juste, au lieu d'en
+/// porter une fausse.
 fn flèche(peintre: &egui::Painter, bout: egui::Pos2, couleur: egui::Color32) {
-    const T: f32 = 5.0;
+    const T: f32 = 7.0;
+    let trait_ = egui::Stroke::new(1.5, couleur);
     let arrière = bout - egui::vec2(T, 0.0);
-    peintre.add(egui::Shape::convex_polygon(
-        vec![
-            bout,
-            arrière + egui::vec2(0.0, T * 0.6),
-            arrière - egui::vec2(0.0, T * 0.6),
-        ],
-        couleur,
-        egui::Stroke::NONE,
-    ));
+    peintre.line_segment([bout, arrière + egui::vec2(0.0, T * 0.55)], trait_);
+    peintre.line_segment([bout, arrière - egui::vec2(0.0, T * 0.55)], trait_);
 }
 
 /// La rubrique de code d'une fonction : par instruction, les octets puis

@@ -4948,3 +4948,43 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      qu'il faudra évaluer, et la montée se fera avec lui — pas sans.
      serde 1.0.229 n'est, lui, pas un sujet : il est déjà résolu par
      `serde = "1"`, et le verrou le porte.
+
+8.22 [FAIT] LE GRAPHE D'APPELS EN STYLE UML
+     Demandé le 20 octobre : « j'aimerais pour le graphe du programme un style
+     UML et non une suite de boîtes ; les fonctions devront pouvoir être
+     renommées et répercutées ».
+     C'ÉTAIT bien une suite de boîtes : des rectangles d'une ligne — « nom
+     0x401136 » — reliés par des traits pleins, ce qui tient de la liste
+     indentée plus que du diagramme.
+     La grammaire d'UML est reprise là où elle dit quelque chose de VRAI sur
+     un graphe d'appels, et nulle part ailleurs :
+       - un STÉRÉOTYPE entre guillemets pour ce que la fonction est —
+         « entrée », « main », « renvoi » ;
+       - un compartiment de TITRE, le nom, centré comme un nom de classe ;
+       - un filet, puis un compartiment de CORPS : l'adresse, la taille,
+         combien l'appellent, combien elle en appelle ;
+       - des angles DROITS, parce qu'une classe UML n'a pas de coins
+         arrondis — c'est le premier signe qui dit qu'on lit un diagramme ;
+       - et des DÉPENDANCES entre les boîtes : en tirets, à pointe OUVERTE.
+         C'est exactement ce qu'un appel est, « celle-ci a besoin de
+         celle-là ». La pointe était pleine, ce qui en UML désigne une
+         association — un lien durable entre deux objets, qui ne veut rien
+         dire ici. La forme porte désormais une information juste au lieu
+         d'en porter une fausse.
+     Le renommage et sa répercussion, eux, existaient déjà et sont tenus par
+     des contrôles aux deux bouts : `a_user_name_replaces_the_default` pour
+     la boîte du graphe, et le contrôle du listing pour le reste — le nom
+     donné s'insère comme étiquette, les lignes se décalent, et les points
+     d'arrêt suivent leur instruction.
+
+     --- LE DÉFAUT QUE LA CAPTURE A MONTRÉ ---
+     Le compte des lignes d'une boîte oubliait que le compartiment du bas en
+     porte DEUX : la seconde — « 0 appelants · 13 appels » — se peignait sous
+     le trait du cadre, hors de la boîte. Invisible à la lecture du code,
+     évident sur la capture.
+     Retenu par `no_text_of_the_call_graph_escapes_its_box`, qui apparie
+     chaque texte du graphe avec le rectangle qui devrait le contenir et
+     refuse qu'il n'y en ait aucun. Le graphe est dessiné à la main sur un
+     canevas : rien, dans egui, ne garantit qu'un texte tienne dans le
+     rectangle qu'on a peint pour lui. C'est à la hauteur réservée de le
+     garantir — donc elle se trompe, donc elle se mesure.
