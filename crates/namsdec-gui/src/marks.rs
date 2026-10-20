@@ -237,7 +237,8 @@ impl NamsdecApp {
             return;
         }
         let symboles = symbols_with_names(&state.output.symbols, &self.notes);
-        let (listing, line_to_addr) = annotated_listing(&state.disasm, &symboles);
+        let indirects = indirect_notes(&state.disasm, &state.output.file, &symboles, self.lang);
+        let (listing, line_to_addr) = annotated_listing(&state.disasm, &symboles, &indirects);
         if listing == self.source {
             return;
         }

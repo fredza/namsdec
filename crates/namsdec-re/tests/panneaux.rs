@@ -612,6 +612,7 @@ const SOURCES_DES_PANNEAUX: &[(&str, &str)] = &[
     ("functions.rs", include_str!("../src/functions.rs")),
     ("gadgets.rs", include_str!("../src/gadgets.rs")),
     ("imports.rs", include_str!("../src/imports.rs")),
+    ("indirect.rs", include_str!("../src/indirect.rs")),
     ("ioc.rs", include_str!("../src/ioc.rs")),
     ("libc.rs", include_str!("../src/libc.rs")),
     ("literals.rs", include_str!("../src/literals.rs")),

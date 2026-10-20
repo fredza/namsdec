@@ -5065,3 +5065,65 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      connexion et ne charge aucune bibliothèque — c'est sa définition, et
      ces quatre-là resteront du bon côté de la limite. Un contrôle de limite
      qui vise une fonction susceptible d'être ajoutée tombe à chaque lot.
+
+8.24 [FAIT] LES BRANCHEMENTS DONT LA DESTINATION SE CALCULE
+     « Améliorer fortement l'analyse statique » demande d'abord de savoir OÙ
+     elle est faible. `trous_analyse` compte, sur le corpus, les endroits où
+     elle rend « je ne sais pas ». Le verdict est net :
+       16 260 branchements calculés (7 496 sauts, 8 764 appels)
+       contre 147 301 directs — UN BRANCHEMENT SUR DIX EST MUET.
+       73 appels système sur 591 au numéro illisible (12 %).
+     Le plus gros compte désigne le chantier, et ce n'était pas les appels
+     système.
+
+     --- QUATRE CHEMINS, DU PLUS SÛR AU MOINS SÛR ---
+     `indirect.rs` résout, et CHACUN SE NOMME — ce qui compte pour qui
+     apprend n'est pas la réponse mais la raison :
+       1. la TABLE DE LIAISON : `call [rip+N]` où la case est une entrée de
+          la GOT. La relocation porte le nom, écrit par l'éditeur de liens ;
+          aucune déduction ;
+       2. un POINTEUR CONSTANT : la case visée est en lecture seule et porte
+          déjà une adresse de code ;
+       3. un REGISTRE CHARGÉ juste avant : `mov rax, 0x401136` puis
+          `call rax` ;
+       4. une ADRESSE CALCULÉE : `lea rax, [rip+N]` puis `call rax`, la forme
+          ordinaire d'un pointeur de fonction en code indépendant de la
+          position.
+     La remontée est bornée à douze instructions : au-delà, la valeur vient
+     d'ailleurs, et remonter plus haut reviendrait à inventer.
+
+     --- LES TABLES DE SAUTS, ET POURQUOI ELLES COMPTENT PLUS QUE LE % ---
+     La mesure par binaire est instructive : 50 à 82 % de résolution sur les
+     binaires DYNAMIQUES, mais 0 à 1 % sur les statiques. Un relevé des
+     formes a dit pourquoi : sur trois binaires statiques, 5 336 sauts
+     indirects sont de la forme `mov` / `call` / `jmp REG` — la résolution
+     IFUNC de la glibc, qui choisit une implémentation selon le PROCESSEUR
+     et n'est donc PAS déterminable avant l'exécution. Prétendre la résoudre
+     produirait un graphe plausible et faux.
+     Les tables de sauts, elles, sont le `switch` qu'une personne a écrit :
+     295 + 72 + 28 occurrences sur ces trois binaires. C'est peu en
+     pourcentage et c'est tout ce qui compte pour lire le programme — sans
+     elles, le graphe s'arrête à chaque aiguillage.
+     Deux formes lues : la relative de gcc en code indépendant de la
+     position (`lea base,[rip+T]` · `movsxd idx,[base+i*4]` · `add idx,base`
+     · `jmp idx`), et l'absolue hors PIE (`jmp [T + i*8]`).
+     MESURE : 318 tables, 9 631 cas retrouvés sur le corpus.
+
+     --- LE REFUS QUI TIENT TOUT LE RESTE ---
+     LA TAILLE D'UNE TABLE VIENT DU CODE, jamais d'une estimation : un
+     `switch` se compile toujours avec son contrôle de borne — `cmp i, N`
+     suivi d'un saut au cas par défaut —, et c'est lui qui dit le nombre de
+     cas. Sans ce `cmp`, aucune table n'est rendue. Lire une table dont on
+     ignore la fin, c'est lire ce qui la suit comme si c'était elle.
+     De même une destination qui sort du code arrête la lecture, et une
+     borne absurde (deux milliards de cas) est refusée.
+     Trois contrôles retiennent ces refus, et c'est la moitié du module :
+     `a_table_without_a_bound_check_is_not_read`,
+     `an_absurd_bound_is_refused`, `what_cannot_be_known_stays_unknown`.
+
+     --- CE QUE ÇA CHANGE À L'ÉCRAN ---
+     Le listing nomme ce qu'un branchement calculé vise, en commentaire, là
+     où il nommait déjà les cibles directes : `call qword [rip+0x2f3a]
+     ; -> puts`, et `jmp rax ; -> table de sauts, 23 cas (switch)`. Relevé
+     une fois à l'ouverture, non par image : c'est un parcours du
+     désassemblage.

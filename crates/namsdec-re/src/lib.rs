@@ -27,6 +27,7 @@ mod gadgets_module;
 mod hex_editor_module;
 pub mod imports;
 pub(crate) mod imports_module;
+pub mod indirect;
 pub mod ioc;
 pub mod libc;
 pub mod literals;

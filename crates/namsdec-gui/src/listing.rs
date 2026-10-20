@@ -197,6 +197,7 @@ pub(crate) fn plt_labels(
 pub(crate) fn annotated_listing(
     disasm: &[DecodedInstruction],
     symbols: &[namsdec_asm::elf::Symbol],
+    indirects: &BTreeMap<u64, String>,
 ) -> (String, BTreeMap<u32, u64>) {
     // La place à peu près juste, demandée d'un coup : une quarantaine
     // d'octets par instruction. Un million d'instructions, c'est sinon
@@ -243,6 +244,17 @@ pub(crate) fn annotated_listing(
         {
             listing.push_str("    ; -> ");
             listing.push_str(&label);
+        } else if let Some(note) = indirects.get(&instruction.address) {
+            // UNE CIBLE QUI SE CALCULE, retrouvée quand même.
+            //
+            // `call qword [rip+0x2f3a]` ne porte pas sa destination :
+            // elle est dans une case mémoire, et le désassembleur
+            // s'arrête là. Sur les seize binaires d'épreuve, un
+            // branchement sur dix est dans ce cas. Le nombre reste —
+            // c'est lui qui est dans les octets — et le commentaire dit
+            // où il mène.
+            listing.push_str("    ; -> ");
+            listing.push_str(note);
         }
         listing.push('\n');
         line += 1;
@@ -345,4 +357,49 @@ pub(crate) fn symbol_at(symbols: &[namsdec_asm::elf::Symbol], addr: u64) -> Opti
     } else {
         Some(format!("{}+{offset}", symbol.name))
     }
+}
+
+/// Ce qu'on sait des branchements dont la destination se calcule, prêt
+/// à être posé en commentaire du listing.
+///
+/// Trois sources, et chacune se nomme dans le commentaire : la table de
+/// liaison (qui porte le nom de la fonction, écrit par l'éditeur de
+/// liens), un pointeur ou un registre chargé juste avant, et les tables
+/// de sauts d'un `switch`. Ce qui n'entre dans aucune n'est pas deviné.
+pub(crate) fn indirect_notes(
+    disasm: &[DecodedInstruction],
+    file: &[u8],
+    symbols: &[namsdec_asm::elf::Symbol],
+    lang: Lang,
+) -> BTreeMap<u64, String> {
+    let fr = lang == Lang::Fr;
+    let mut notes = BTreeMap::new();
+    if file.is_empty() {
+        return notes;
+    }
+    let imports = namsdec_re::imports::scan(file);
+    for résolu in namsdec_re::indirect::resolve(disasm, file, &imports) {
+        // Le nom d'abord — c'est ce qu'on lit —, l'adresse sinon.
+        let quoi = résolu
+            .name
+            .clone()
+            .or_else(|| résolu.target.and_then(|t| symbol_at(symbols, t)))
+            .or_else(|| résolu.target.map(|t| format!("{t:#x}")));
+        let Some(quoi) = quoi else { continue };
+        notes.insert(résolu.at, quoi);
+    }
+    // Les tables de sauts par-dessus : elles en disent davantage qu'une
+    // destination unique, puisqu'il y en a plusieurs.
+    for table in namsdec_re::indirect::jump_tables(disasm, file) {
+        let combien = table.cases.len();
+        notes.insert(
+            table.at,
+            if fr {
+                format!("table de sauts, {combien} cas (switch)")
+            } else {
+                format!("jump table, {combien} cases (switch)")
+            },
+        );
+    }
+    notes
 }

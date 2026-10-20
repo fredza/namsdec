@@ -1009,8 +1009,12 @@ impl NamsdecApp {
         // relus — passent devant ceux du fichier : rouvrir un crackme
         // doit le rouvrir tel qu'on l'avait compris, non tel qu'il
         // était la première fois.
-        let (listing, line_to_addr) =
-            annotated_listing(&disasm, &symbols_with_names(&symbols, &self.notes));
+        // Ce que les branchements calculés visent, relevé une fois :
+        // sur un gros binaire, c'est un parcours du désassemblage, et
+        // il n'a pas à se refaire à chaque image.
+        let nommés = symbols_with_names(&symbols, &self.notes);
+        let indirects = indirect_notes(&disasm, bytes, &nommés, self.lang);
+        let (listing, line_to_addr) = annotated_listing(&disasm, &nommés, &indirects);
         let addr_to_line = line_to_addr.iter().map(|(l, a)| (*a, *l)).collect();
         let loaded = image.len();
 
@@ -1256,7 +1260,8 @@ impl NamsdecApp {
             let addr = BASE_ADDR.checked_add(offset)?;
             (offset < bytes.len() as u64).then_some(addr)
         });
-        let (listing, line_to_addr) = annotated_listing(&disasm, &symbols);
+        let indirects = indirect_notes(&disasm, &file, &symbols, self.lang);
+        let (listing, line_to_addr) = annotated_listing(&disasm, &symbols, &indirects);
 
         let addr_to_line = line_to_addr.iter().map(|(l, a)| (*a, *l)).collect();
         let loaded = bytes.len();

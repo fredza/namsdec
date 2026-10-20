@@ -4318,6 +4318,59 @@ fn the_re_tab_card_fits_without_cutting_anything() {
     }
 }
 
+/// LE LISTING NOMME CE QU'UN APPEL CALCULÉ VISE.
+///
+/// `call qword [rip+0x2f3a]` ne porte pas sa destination : elle est
+/// dans une case mémoire, et le désassembleur s'arrête là. Sur les
+/// seize binaires d'épreuve, relevé le 20 octobre 2026, **un
+/// branchement sur dix est dans ce cas** — 16 260 contre 147 301
+/// directs. Le graphe d'appels y perdait l'arête, la découverte de
+/// fonctions la cible, et la ligne à l'écran ne disait rien.
+///
+/// Le contrôle part d'un vrai binaire et vérifie deux choses : qu'au
+/// moins un appel calculé porte désormais un nom, et que ce nom est
+/// celui d'une fonction que le binaire emprunte vraiment — non une
+/// invention.
+#[test]
+fn the_listing_names_what_a_computed_call_targets() {
+    let Ok(octets) = std::fs::read("/bin/ls") else {
+        return;
+    };
+    let mut app = NamsdecApp::default();
+    if !app.load_elf(&octets, "ls") {
+        return;
+    }
+    let empruntées: std::collections::BTreeSet<String> = namsdec_re::imports::scan(&octets)
+        .into_iter()
+        .map(|i| i.name)
+        .collect();
+    assert!(!empruntées.is_empty(), "/bin/ls emprunte des fonctions");
+
+    // Les lignes du listing qui portent un `call` calculé ET un nom.
+    let nommées: Vec<&str> = app
+        .source
+        .lines()
+        .filter(|l| l.contains("call") && l.contains('[') && l.contains("; -> "))
+        .collect();
+    assert!(
+        !nommées.is_empty(),
+        "aucun appel calculé n'est nommé — le listing ne dit rien de ce qu'ils visent"
+    );
+    // Et ce qui est nommé l'est JUSTEMENT : au moins une de ces lignes
+    // doit nommer une fonction que le binaire emprunte pour de vrai.
+    let juste = nommées.iter().any(|ligne| {
+        ligne
+            .rsplit("; -> ")
+            .next()
+            .is_some_and(|nom| empruntées.contains(nom.trim()))
+    });
+    assert!(
+        juste,
+        "les noms doivent venir de la table de liaison, pas d'une invention : {:?}",
+        &nommées[..nommées.len().min(5)]
+    );
+}
+
 /// Le panneau latéral ne défile pas : ni les registres, ni les
 /// vectoriels, ni la pile x87.
 ///

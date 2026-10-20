@@ -117,6 +117,10 @@ un panneau de plus. Six points, six reproductions, six contrôles.
       Les classes de caractères et les tables de `<ctype.h>`, `sscanf`,
       `strtok`, le temps, les signaux, et une couche fichiers qui dit
       honnêtement qu'il n'y a pas de système de fichiers.
+- [x] **Les branchements calculés sont résolus** (A 8.24) — un sur dix
+      était muet. Quatre chemins qui se nomment, plus les tables de
+      sauts : 318 tables et 9 631 cas retrouvés sur le corpus. Ce qui
+      n'entre dans aucun chemin reste inconnu, et le dit.
 - [x] **Le fuzzing couvre le chargeur** (A 8.6) — et y a trouvé cinq
       débordements d'entier. La classe est traitée à la source : les
       lecteurs de champs composent base et déplacement de façon
