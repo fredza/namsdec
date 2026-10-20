@@ -110,6 +110,9 @@ impl NamsdecApp {
         };
         plugin
             .run_on(&cible, namsdec_disasm::plugin::TIMEOUT)
+            // Le statut de l'outil se lit en tête du texte : un listing
+            // produit par un outil qui a échoué n'est pas un listing.
+            .map(|rendu| crate::jobs::texte_de_sortie(&rendu, self.lang))
             // Le message brut, comme avant : la traduction de
             // `namsdec-theme::PluginError` ne couvre pas celle-ci, et
             // inventer une correspondance dirait autre chose que l'outil.

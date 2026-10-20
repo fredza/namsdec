@@ -187,6 +187,15 @@ impl NamsdecApp {
                 // Un outil des autres, demandé par sa rubrique. C'est
                 // ici qu'on sort du bac à sable, jamais dans le module.
                 namsdec_re::ReRequest::RunTool { tool } => self.start_tool_run(&tool),
+                // UPX. Interroger ne demande rien de plus ; déballer
+                // demande D'ABORD où écrire — un déballage qui finit
+                // sans destination n'aurait que deux issues, écrire à
+                // côté de l'échantillon sans l'avoir demandé, ou jeter
+                // le résultat.
+                namsdec_re::ReRequest::Upx { action } => match action {
+                    namsdec_re::UpxAction::List => self.start_upx_list(),
+                    namsdec_re::UpxAction::Unpack => self.ask_where_to_unpack(),
+                },
             }
         }
     }

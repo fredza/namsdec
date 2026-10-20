@@ -219,6 +219,14 @@ pub struct RelocReport {
 pub struct Elf {
     pub entry: u64,
     pub kind: Kind,
+    /// Le processeur pour lequel le fichier est écrit (`e_machine`).
+    ///
+    /// Lu, et pas seulement toléré : le lecteur vérifiait ELF64 et le
+    /// petit-boutisme, ce qu'un ELF AArch64 satisfait aussi. Son image
+    /// se construisait, et le reste du parcours la désassemblait en
+    /// x86-64 — un listing entier qui n'a aucun rapport avec le
+    /// programme. Mieux vaut un refus qui nomme l'architecture.
+    pub machine: Machine,
     pub sections: Vec<Section>,
     /// Les étiquettes du programme, triées par adresse croissante.
     pub symbols: Vec<Symbol>,
@@ -241,6 +249,60 @@ pub struct Elf {
     /// tampon d'origine à chaque appel — et surtout d'avoir à se demander
     /// si c'est bien le même.
     pub file: Vec<u8>,
+}
+
+/// Le processeur qu'un ELF déclare, par son champ `e_machine`.
+///
+/// Les valeurs sont celles de la spécification ELF ; seules celles que
+/// l'on risque de rencontrer sur un bureau sont nommées, les autres
+/// gardent leur numéro — ce qui suffit à écrire un refus utile.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Machine {
+    /// x86-64, le seul que namsdec désassemble et exécute.
+    #[default]
+    X86_64,
+    /// x86 32 bits.
+    I386,
+    /// ARM 64 bits.
+    Aarch64,
+    /// ARM 32 bits.
+    Arm,
+    /// RISC-V.
+    RiscV,
+    /// Tout le reste, par son numéro.
+    Other(u16),
+}
+
+impl Machine {
+    /// Ce que namsdec sait lire. Un seul, et c'est délibéré : ajouter
+    /// une architecture multiplierait ce qu'il faut valider pour que les
+    /// explications restent vraies.
+    pub fn supported(self) -> bool {
+        self == Self::X86_64
+    }
+
+    /// Le nom qu'on écrit à l'écran.
+    pub fn name(self) -> String {
+        match self {
+            Self::X86_64 => "x86-64".to_owned(),
+            Self::I386 => "x86 32 bits".to_owned(),
+            Self::Aarch64 => "AArch64".to_owned(),
+            Self::Arm => "ARM".to_owned(),
+            Self::RiscV => "RISC-V".to_owned(),
+            Self::Other(code) => format!("machine ELF n° {code}"),
+        }
+    }
+
+    fn from_code(code: u16) -> Self {
+        match code {
+            0x3e => Self::X86_64,
+            0x03 => Self::I386,
+            0xb7 => Self::Aarch64,
+            0x28 => Self::Arm,
+            0xf3 => Self::RiscV,
+            autre => Self::Other(autre),
+        }
+    }
 }
 
 impl Kind {
@@ -331,6 +393,99 @@ pub fn align_up(value: u64, align: u64) -> u64 {
     value.div_ceil(align).saturating_mul(align)
 }
 
+/// Le plafond par défaut d'une image mémoire : 256 Mio.
+///
+/// La même valeur que la fenêtre que l'interface simule, et ce n'est
+/// pas un hasard : au-delà, il n'y aurait de toute façon pas de place
+/// où poser le programme.
+pub const IMAGE_MAX: usize = 256 * 1024 * 1024;
+
+/// Ce qu'une image mémoire coûterait, avant d'en allouer le premier
+/// octet : où elle commence, et combien d'octets elle demande.
+///
+/// L'intérêt de ce type tient en une phrase : **un plan ne s'alloue
+/// pas**. Les en-têtes d'un ELF décrivent une étendue de mémoire qui
+/// n'a aucun rapport avec la taille du fichier — cent vingt octets
+/// peuvent réclamer un demi-gigaoctet, et deux segments très éloignés
+/// réclamer bien davantage. Tant que le calcul et l'allocation tenaient
+/// dans la même fonction, le plafond ne pouvait s'appliquer qu'après,
+/// c'est-à-dire trop tard.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ImagePlan {
+    /// L'adresse virtuelle du premier octet.
+    pub addr: u64,
+    /// Combien d'octets l'image occupe.
+    pub len: usize,
+}
+
+impl ImagePlan {
+    /// Le plan d'une étendue `[début, fin[`, ou `None` si elle ne tient
+    /// pas dans un `usize` — ce qui, sur une machine 32 bits, est le cas
+    /// de n'importe quel en-tête qui ment un peu fort.
+    fn new(début: u64, fin: u64) -> Option<Self> {
+        let len = usize::try_from(fin.checked_sub(début)?).ok()?;
+        Some(Self { addr: début, len })
+    }
+
+    /// Les octets, si le plafond les permet et si le système les donne.
+    ///
+    /// Deux refus distincts, et la distinction se voit à l'écran : un
+    /// plan trop grand est une décision de namsdec, qu'on peut expliquer
+    /// (« ce fichier demande 512 Mio, la limite est de 256 ») ; une
+    /// allocation refusée est l'état de la machine. `try_reserve_exact`
+    /// rend la seconde **récupérable**, là où `vec![0; n]` interrompt le
+    /// programme sans un mot.
+    fn allocate(&self, max: usize) -> Result<Vec<u8>, ImageError> {
+        if self.len > max {
+            return Err(ImageError::TooLarge {
+                needed: self.len,
+                max,
+            });
+        }
+        let mut image: Vec<u8> = Vec::new();
+        image
+            .try_reserve_exact(self.len)
+            .map_err(|_| ImageError::OutOfMemory { needed: self.len })?;
+        image.resize(self.len, 0);
+        Ok(image)
+    }
+}
+
+/// Pourquoi une image n'a pas été construite.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ImageError {
+    /// Rien à charger : un `.o` que `ld` n'a pas encore vu, ou un ELF
+    /// dont l'étendue ne tient pas dans un `usize`.
+    Nothing,
+    /// Le plan dépasse ce que namsdec accepte de simuler.
+    TooLarge {
+        /// Ce que le fichier demande.
+        needed: usize,
+        /// Ce que namsdec accorde.
+        max: usize,
+    },
+    /// Le plan tenait dans le plafond, la machine n'a pas suivi.
+    OutOfMemory {
+        /// Ce qui a été demandé au système.
+        needed: usize,
+    },
+}
+
+impl std::fmt::Display for ImageError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Nothing => write!(f, "rien à charger dans ce fichier"),
+            Self::TooLarge { needed, max } => write!(
+                f,
+                "ce fichier décrit {needed} octets de mémoire, la limite est de {max}"
+            ),
+            Self::OutOfMemory { needed } => {
+                write!(f, "la machine a refusé {needed} octets")
+            }
+        }
+    }
+}
+
 /// Lit un mot de 64 bits dans l'image, à une adresse *virtuelle*.
 fn read_u64(image: &[u8], image_addr: u64, at: u64) -> Option<u64> {
     let offset = at.checked_sub(image_addr)? as usize;
@@ -351,22 +506,42 @@ fn write_u64(image: &mut [u8], image_addr: u64, at: u64, value: u64) -> bool {
     true
 }
 
-fn u16_at(bytes: &[u8], offset: usize) -> Option<u16> {
+/// Lire un champ d'un fichier qu'on n'a pas écrit, c'est faire de
+/// l'arithmétique sur des nombres que quelqu'un d'autre a choisis.
+///
+/// Les décalages étaient additionnés AU POINT D'APPEL —
+/// `u32_at(bytes, header, 0x04)` — et débordaient en *debug* dès qu'un
+/// en-tête annonçait un décalage proche de `usize::MAX` : une panique,
+/// et un analyseur qui panique n'analyse plus rien. Le fuzzing du
+/// chargeur l'a trouvée, une fois le chemin `parse` couvert.
+///
+/// `base` et `disp` se composent donc ICI, et de façon contrôlée. Un
+/// champ hors du fichier, ou un calcul qui déborde, rendent `None` —
+/// ce qui se lit, à l'étage du dessus, « ce fichier ne dit rien de
+/// lisible à cet endroit ».
+fn u16_at(bytes: &[u8], base: usize, disp: usize) -> Option<u16> {
     Some(u16::from_le_bytes(
-        bytes.get(offset..offset + 2)?.try_into().ok()?,
+        champ(bytes, base, disp, 2)?.try_into().ok()?,
     ))
 }
 
-fn u32_at(bytes: &[u8], offset: usize) -> Option<u32> {
+fn u32_at(bytes: &[u8], base: usize, disp: usize) -> Option<u32> {
     Some(u32::from_le_bytes(
-        bytes.get(offset..offset + 4)?.try_into().ok()?,
+        champ(bytes, base, disp, 4)?.try_into().ok()?,
     ))
 }
 
-fn u64_at(bytes: &[u8], offset: usize) -> Option<u64> {
+fn u64_at(bytes: &[u8], base: usize, disp: usize) -> Option<u64> {
     Some(u64::from_le_bytes(
-        bytes.get(offset..offset + 8)?.try_into().ok()?,
+        champ(bytes, base, disp, 8)?.try_into().ok()?,
     ))
+}
+
+/// Les `large` octets qui commencent à `base + disp`, si le fichier les
+/// contient et si l'addition ne déborde pas.
+fn champ(bytes: &[u8], base: usize, disp: usize, large: usize) -> Option<&[u8]> {
+    let début = base.checked_add(disp)?;
+    bytes.get(début..début.checked_add(large)?)
 }
 
 /// Lit l'en-tête, les segments à charger, la table dynamique et les
@@ -386,19 +561,20 @@ pub fn parse(bytes: &[u8]) -> Option<Elf> {
         return None;
     }
 
-    let kind = match u16_at(bytes, 0x10)? {
+    let kind = match u16_at(bytes, 0x10, 0)? {
         1 => Kind::Relocatable,
         2 => Kind::Executable,
         3 => Kind::Shared,
         autre => Kind::Other(autre),
     };
-    let entry = u64_at(bytes, 0x18)?;
+    let machine = Machine::from_code(u16_at(bytes, 0x12, 0)?);
+    let entry = u64_at(bytes, 0x18, 0)?;
     let (segments, tls, dynamic_at, phdr) = parse_program_headers(bytes).unwrap_or_default();
     let sections = parse_sections(bytes).unwrap_or_default();
 
-    let shoff = u64_at(bytes, 0x28)? as usize;
-    let shentsize = u16_at(bytes, 0x3a)? as usize;
-    let shnum = u16_at(bytes, 0x3c)? as usize;
+    let shoff = u64_at(bytes, 0x28, 0)? as usize;
+    let shentsize = u16_at(bytes, 0x3a, 0)? as usize;
+    let shnum = u16_at(bytes, 0x3c, 0)? as usize;
     let symbols = parse_symbols(bytes, shoff, shentsize, shnum).unwrap_or_default();
 
     // Les relocations se lisent dans la table dynamique — celle que
@@ -411,6 +587,7 @@ pub fn parse(bytes: &[u8]) -> Option<Elf> {
     Some(Elf {
         entry,
         kind,
+        machine,
         sections,
         symbols,
         segments,
@@ -434,9 +611,9 @@ fn parse_program_headers(
     Option<(usize, usize)>,
     Option<(u64, usize, usize)>,
 )> {
-    let phoff = u64_at(bytes, 0x20)? as usize;
-    let phentsize = u16_at(bytes, 0x36)? as usize;
-    let phnum = u16_at(bytes, 0x38)? as usize;
+    let phoff = u64_at(bytes, 0x20, 0)? as usize;
+    let phentsize = u16_at(bytes, 0x36, 0)? as usize;
+    let phnum = u16_at(bytes, 0x38, 0)? as usize;
     if phoff == 0 || phentsize < 56 || phnum == 0 {
         // Un `.o` n'a pas d'en-têtes de programme : il n'est pas
         // chargeable, et c'est précisément ce qu'on veut savoir.
@@ -448,13 +625,13 @@ fn parse_program_headers(
     let mut dynamic_at = None;
     for index in 0..phnum {
         let at = phoff.checked_add(index.checked_mul(phentsize)?)?;
-        let kind = u32_at(bytes, at)?;
-        let flags = u32_at(bytes, at + 0x04)?;
-        let offset = u64_at(bytes, at + 0x08)? as usize;
-        let vaddr = u64_at(bytes, at + 0x10)?;
-        let filesz = u64_at(bytes, at + 0x20)? as usize;
-        let memsz = u64_at(bytes, at + 0x28)? as usize;
-        let align = u64_at(bytes, at + 0x30)?;
+        let kind = u32_at(bytes, at, 0)?;
+        let flags = u32_at(bytes, at, 0x04)?;
+        let offset = u64_at(bytes, at, 0x08)? as usize;
+        let vaddr = u64_at(bytes, at, 0x10)?;
+        let filesz = u64_at(bytes, at, 0x20)? as usize;
+        let memsz = u64_at(bytes, at, 0x28)? as usize;
+        let align = u64_at(bytes, at, 0x30)?;
         match kind {
             PT_LOAD => segments.push(Segment {
                 vaddr,
@@ -489,14 +666,28 @@ fn parse_program_headers(
     let phdr = segments
         .iter()
         .find(|segment| {
-            phoff >= segment.offset && phoff + phentsize * phnum <= segment.offset + segment.filesz
+            // La table doit tenir ENTIÈREMENT dans le segment, et le
+            // calcul de sa fin ne doit pas déborder : les trois nombres
+            // viennent du fichier.
+            let fin_table = phentsize
+                .checked_mul(phnum)
+                .and_then(|taille| phoff.checked_add(taille));
+            let fin_segment = segment.offset.checked_add(segment.filesz);
+            match (fin_table, fin_segment) {
+                (Some(table), Some(seg)) => phoff >= segment.offset && table <= seg,
+                _ => false,
+            }
         })
-        .map(|segment| {
-            (
-                segment.vaddr + (phoff - segment.offset) as u64,
+        .and_then(|segment| {
+            // `phoff >= segment.offset` est acquis par le filtre
+            // ci-dessus ; l'adresse, elle, est une addition sur deux
+            // nombres du fichier et peut déborder.
+            let dans_le_segment = (phoff - segment.offset) as u64;
+            Some((
+                segment.vaddr.checked_add(dans_le_segment)?,
                 phentsize,
                 phnum,
-            )
+            ))
         });
 
     Some((segments, tls, dynamic_at, phdr))
@@ -507,10 +698,10 @@ fn parse_program_headers(
 /// Elles ne décident de rien — c'est le rôle des segments — mais elles
 /// nomment ce qui a été chargé.
 fn parse_sections(bytes: &[u8]) -> Option<Vec<Section>> {
-    let shoff = u64_at(bytes, 0x28)? as usize;
-    let shentsize = u16_at(bytes, 0x3a)? as usize;
-    let shnum = u16_at(bytes, 0x3c)? as usize;
-    let shstrndx = u16_at(bytes, 0x3e)? as usize;
+    let shoff = u64_at(bytes, 0x28, 0)? as usize;
+    let shentsize = u16_at(bytes, 0x3a, 0)? as usize;
+    let shnum = u16_at(bytes, 0x3c, 0)? as usize;
+    let shstrndx = u16_at(bytes, 0x3e, 0)? as usize;
     if shoff == 0 || shnum == 0 || shstrndx >= shnum {
         return None;
     }
@@ -518,14 +709,14 @@ fn parse_sections(bytes: &[u8]) -> Option<Vec<Section>> {
     // La table des noms de sections est elle-même une section : il faut la
     // lire en premier pour pouvoir nommer les autres.
     let shstr_header = shoff.checked_add(shstrndx.checked_mul(shentsize)?)?;
-    let shstr_offset = u64_at(bytes, shstr_header + 0x18)? as usize;
-    let shstr_size = u64_at(bytes, shstr_header + 0x20)? as usize;
+    let shstr_offset = u64_at(bytes, shstr_header, 0x18)? as usize;
+    let shstr_size = u64_at(bytes, shstr_header, 0x20)? as usize;
     let names = bytes.get(shstr_offset..shstr_offset.checked_add(shstr_size)?)?;
 
     let mut sections = Vec::new();
     for index in 0..shnum {
         let header = shoff.checked_add(index.checked_mul(shentsize)?)?;
-        let flags = u64_at(bytes, header + 0x08)?;
+        let flags = u64_at(bytes, header, 0x08)?;
         // Seules les sections présentes en mémoire à l'exécution nous
         // intéressent : les tables de symboles et de chaînes n'ont pas
         // d'adresse et n'ont rien à faire dans la mémoire simulée.
@@ -533,18 +724,21 @@ fn parse_sections(bytes: &[u8]) -> Option<Vec<Section>> {
             continue;
         }
 
-        let name_offset = u32_at(bytes, header)? as usize;
+        let name_offset = u32_at(bytes, header, 0)? as usize;
         let name = names
             .get(name_offset..)?
             .iter()
             .position(|&b| b == 0)
-            .map(|end| String::from_utf8_lossy(&names[name_offset..name_offset + end]).into_owned())
+            .and_then(|end| {
+                let fin = name_offset.checked_add(end)?;
+                Some(String::from_utf8_lossy(names.get(name_offset..fin)?).into_owned())
+            })
             .unwrap_or_default();
 
-        let kind = u32_at(bytes, header + 0x04)?;
-        let addr = u64_at(bytes, header + 0x10)?;
-        let offset = u64_at(bytes, header + 0x18)? as usize;
-        let size = u64_at(bytes, header + 0x20)? as usize;
+        let kind = u32_at(bytes, header, 0x04)?;
+        let addr = u64_at(bytes, header, 0x10)?;
+        let offset = u64_at(bytes, header, 0x18)? as usize;
+        let size = u64_at(bytes, header, 0x20)? as usize;
 
         let data = if kind == SHT_NOBITS {
             Vec::new()
@@ -572,7 +766,8 @@ fn file_offset(segments: &[Segment], vaddr: u64) -> Option<usize> {
     segments.iter().find_map(|segment| {
         let fin = segment.vaddr.checked_add(segment.filesz as u64)?;
         (vaddr >= segment.vaddr && vaddr < fin)
-            .then(|| segment.offset + (vaddr - segment.vaddr) as usize)
+            .then(|| segment.offset.checked_add((vaddr - segment.vaddr) as usize))
+            .flatten()
     })
 }
 
@@ -590,8 +785,8 @@ fn parse_dynamic_relocs(
 ) -> Option<Vec<Reloc>> {
     let mut valeurs: Vec<(u64, u64)> = Vec::new();
     for at in (offset..offset.checked_add(size)?).step_by(16) {
-        let tag = u64_at(bytes, at)?;
-        let value = u64_at(bytes, at + 8)?;
+        let tag = u64_at(bytes, at, 0)?;
+        let value = u64_at(bytes, at, 8)?;
         if tag == DT_NULL {
             break;
         }
@@ -619,22 +814,25 @@ fn parse_dynamic_relocs(
             continue;
         };
         for at in (début..début.saturating_add(taille as usize)).step_by(entsize) {
-            let Some(r_offset) = u64_at(bytes, at) else {
+            let Some(r_offset) = u64_at(bytes, at, 0) else {
                 break;
             };
-            let Some(info) = u64_at(bytes, at + 8) else {
+            let Some(info) = u64_at(bytes, at, 8) else {
                 break;
             };
-            let Some(addend) = u64_at(bytes, at + 16) else {
+            let Some(addend) = u64_at(bytes, at, 16) else {
                 break;
             };
             let index = (info >> 32) as usize;
             let kind = RelocKind::from_type((info & 0xffff_ffff) as u32);
             let (symbol, symbol_value) = match (symtab, index) {
-                (Some(symtab), index) if index > 0 => {
-                    dynamic_symbol(bytes, symtab + index * syment, strtab, strsz)
-                        .unwrap_or_default()
-                }
+                // `index` et `syment` viennent tous deux du fichier :
+                // leur produit déborde sur une table qui ment.
+                (Some(symtab), index) if index > 0 => index
+                    .checked_mul(syment)
+                    .and_then(|dans_la_table| symtab.checked_add(dans_la_table))
+                    .and_then(|at| dynamic_symbol(bytes, at, strtab, strsz))
+                    .unwrap_or_default(),
                 _ => (String::new(), 0),
             };
             relocs.push(Reloc {
@@ -656,7 +854,9 @@ fn parse_dynamic_relocs(
     {
         let mut curseur = 0u64;
         for at in (début..début.saturating_add(taille as usize)).step_by(8) {
-            let Some(mot) = u64_at(bytes, at) else { break };
+            let Some(mot) = u64_at(bytes, at, 0) else {
+                break;
+            };
             if mot & 1 == 0 {
                 // Une adresse : elle est relogée, et la suite se compte
                 // à partir de la case d'après.
@@ -701,15 +901,18 @@ fn dynamic_symbol(
     strtab: Option<usize>,
     strsz: usize,
 ) -> Option<(String, u64)> {
-    let name_offset = u32_at(bytes, at)? as usize;
-    let value = u64_at(bytes, at + 8)?;
+    let name_offset = u32_at(bytes, at, 0)? as usize;
+    let value = u64_at(bytes, at, 8)?;
     let strtab = strtab?;
     let names = bytes.get(strtab..strtab.checked_add(strsz)?)?;
     let name = names
         .get(name_offset..)?
         .iter()
         .position(|&b| b == 0)
-        .map(|end| String::from_utf8_lossy(&names[name_offset..name_offset + end]).into_owned())
+        .and_then(|end| {
+            let fin = name_offset.checked_add(end)?;
+            Some(String::from_utf8_lossy(names.get(name_offset..fin)?).into_owned())
+        })
         .unwrap_or_default();
     Some((name, value))
 }
@@ -728,29 +931,29 @@ fn parse_symbols(
     let mut symbols = Vec::new();
     for index in 0..shnum {
         let header = shoff.checked_add(index.checked_mul(shentsize)?)?;
-        if u32_at(bytes, header + 0x04)? != SHT_SYMTAB {
+        if u32_at(bytes, header, 0x04)? != SHT_SYMTAB {
             continue;
         }
         // `sh_link` d'une table de symboles donne la section de chaînes
         // où sont leurs noms.
-        let strtab = u32_at(bytes, header + 0x28)? as usize;
+        let strtab = u32_at(bytes, header, 0x28)? as usize;
         let strtab_header = shoff.checked_add(strtab.checked_mul(shentsize)?)?;
-        let str_offset = u64_at(bytes, strtab_header + 0x18)? as usize;
-        let str_size = u64_at(bytes, strtab_header + 0x20)? as usize;
+        let str_offset = u64_at(bytes, strtab_header, 0x18)? as usize;
+        let str_size = u64_at(bytes, strtab_header, 0x20)? as usize;
         let names = bytes.get(str_offset..str_offset.checked_add(str_size)?)?;
 
-        let offset = u64_at(bytes, header + 0x18)? as usize;
-        let size = u64_at(bytes, header + 0x20)? as usize;
-        let entry_size = u64_at(bytes, header + 0x38)? as usize;
+        let offset = u64_at(bytes, header, 0x18)? as usize;
+        let size = u64_at(bytes, header, 0x20)? as usize;
+        let entry_size = u64_at(bytes, header, 0x38)? as usize;
         if entry_size == 0 {
             continue;
         }
         for at in (offset..offset.checked_add(size)?).step_by(entry_size) {
-            let name_offset = u32_at(bytes, at)? as usize;
+            let name_offset = u32_at(bytes, at, 0)? as usize;
             let info = *bytes.get(at + 4)?;
-            let shndx = u16_at(bytes, at + 6)?;
-            let value = u64_at(bytes, at + 8)?;
-            let sym_size = u64_at(bytes, at + 16)?;
+            let shndx = u16_at(bytes, at, 6)?;
+            let value = u64_at(bytes, at, 8)?;
+            let sym_size = u64_at(bytes, at, 16)?;
             // Le type est dans les quatre bits bas de st_info.
             let kind = info & 0xf;
             if !matches!(kind, STT_NOTYPE | STT_OBJECT | STT_FUNC) {
@@ -764,7 +967,11 @@ fn parse_symbols(
                 .iter()
                 .position(|&b| b == 0)
                 .map(|end| {
-                    String::from_utf8_lossy(&names[name_offset..name_offset + end]).into_owned()
+                    name_offset
+                        .checked_add(end)
+                        .and_then(|fin| names.get(name_offset..fin))
+                        .map(|nom| String::from_utf8_lossy(nom).into_owned())
+                        .unwrap_or_default()
                 })
                 .unwrap_or_default();
             // Les symboles que produit l'assembleur pour son propre usage
@@ -812,7 +1019,30 @@ impl Elf {
     ///
     /// Rend `None` pour un fichier sans segment chargeable — un `.o`,
     /// que `ld` n'a pas encore vu.
-    pub fn load_image(&self) -> Option<(u64, Vec<u8>)> {
+    pub fn load_image(&self, max: usize) -> Result<(u64, Vec<u8>), ImageError> {
+        let plan = self.load_plan().ok_or(ImageError::Nothing)?;
+        let mut image = plan.allocate(max)?;
+        for segment in &self.segments {
+            let at = (segment.vaddr - plan.addr) as usize;
+            let depuis = segment.offset;
+            let combien = segment.filesz.min(image.len().saturating_sub(at));
+            if let Some(source) = self.bytes_at(depuis, combien) {
+                image[at..at + source.len()].copy_from_slice(source);
+            }
+        }
+        Ok((plan.addr, image))
+    }
+
+    /// Ce que [`Elf::load_image`] coûterait, **sans allouer un octet**.
+    ///
+    /// Séparé de la construction, et c'est tout l'objet de la séparation :
+    /// le plafond se contrôlait après coup, sur une image déjà en
+    /// mémoire. Un en-tête de cent vingt octets déclarant un segment de
+    /// 512 Mio obtenait donc ses 512 Mio avant d'être refusé — et, dans
+    /// un processus borné, un défaut d'allocation plutôt qu'un refus.
+    /// Le plan se calcule sur les seuls en-têtes ; il ne dépend pas de
+    /// la taille du fichier, ce qui est précisément le danger.
+    pub fn load_plan(&self) -> Option<ImagePlan> {
         let début = self
             .segments
             .iter()
@@ -823,17 +1053,7 @@ impl Elf {
             .iter()
             .map(|segment| page_up(segment.vaddr.saturating_add(segment.memsz as u64)))
             .max()?;
-        let taille = fin.checked_sub(début)? as usize;
-        let mut image = vec![0u8; taille];
-        for segment in &self.segments {
-            let at = (segment.vaddr - début) as usize;
-            let depuis = segment.offset;
-            let combien = segment.filesz.min(image.len().saturating_sub(at));
-            if let Some(source) = self.bytes_at(depuis, combien) {
-                image[at..at + source.len()].copy_from_slice(source);
-            }
-        }
-        Some((début, image))
+        ImagePlan::new(début, fin)
     }
 
     /// Les octets du fichier, quand on les a encore.
@@ -952,23 +1172,40 @@ impl Elf {
     /// Les trous entre sections (l'écart entre `.text` et `.data`, aligné
     /// sur une page) sont comblés par des zéros — comme `.bss`, qui n'a
     /// rien à copier mais doit exister en mémoire.
-    pub fn image(&self) -> Option<(u64, Vec<u8>)> {
+    pub fn image(&self, max: usize) -> Result<(u64, Vec<u8>), ImageError> {
         // Un binaire dépouillé de sa table de sections n'en a aucune —
         // c'est courant sur un crackme, et c'est même le but. Ses
         // segments, eux, sont toujours là : le noyau ne saurait pas le
         // charger sinon. On retombe donc sur eux plutôt que de déclarer
         // illisible un programme qui s'exécute très bien.
         if self.sections.is_empty() {
-            return self.load_image();
+            return self.load_image(max);
+        }
+        let plan = self.image_plan().ok_or(ImageError::Nothing)?;
+        let mut image = plan.allocate(max)?;
+        for section in &self.sections {
+            let at = (section.addr - plan.addr) as usize;
+            let combien = section.data.len().min(image.len().saturating_sub(at));
+            image[at..at + combien].copy_from_slice(&section.data[..combien]);
+        }
+        Ok((plan.addr, image))
+    }
+
+    /// Ce que [`Elf::image`] coûterait, sans allouer — même raison
+    /// qu'en [`Elf::load_plan`], et le même danger : deux sections très
+    /// éloignées décrivent une étendue qui n'a aucun rapport avec la
+    /// taille du fichier.
+    pub fn image_plan(&self) -> Option<ImagePlan> {
+        if self.sections.is_empty() {
+            return self.load_plan();
         }
         let start = self.sections.iter().map(|s| s.addr).min()?;
-        let end = self.sections.iter().map(|s| s.addr + s.size as u64).max()?;
-        let mut image = vec![0u8; (end - start) as usize];
-        for section in &self.sections {
-            let at = (section.addr - start) as usize;
-            image[at..at + section.data.len()].copy_from_slice(&section.data);
-        }
-        Some((start, image))
+        let end = self
+            .sections
+            .iter()
+            .map(|s| s.addr.saturating_add(s.size as u64))
+            .max()?;
+        ImagePlan::new(start, end)
     }
 
     /// Les tranches exécutables, quelle que soit la façon dont le binaire
@@ -1091,7 +1328,7 @@ mod loader_tests {
             elf.entry
         );
 
-        let (début, image) = elf.load_image().expect("une image");
+        let (début, image) = elf.load_image(IMAGE_MAX).expect("une image");
         assert_eq!(début % PAGE, 0, "l'image commence sur une page");
         assert_eq!(image.len() as u64 % PAGE, 0, "et finit sur une page");
         // Elle couvre le point d'entrée, et ce qu'on y lit est bien le
@@ -1125,7 +1362,7 @@ mod loader_tests {
             return;
         }
 
-        let (début, mut image) = elf.load_image().expect("une image");
+        let (début, mut image) = elf.load_image(IMAGE_MAX).expect("une image");
         let rapport = elf.relocate(début, &mut image, 0, |_| Some(0xdead_0000));
         assert!(
             rapport.applied > 0,
@@ -1176,6 +1413,89 @@ mod loader_tests {
         let elf = parse(&std::fs::read(&objet).unwrap()).expect("c'est bien un ELF64");
         assert_eq!(elf.kind, Kind::Relocatable, "`ld` n'est pas passé");
         assert!(elf.segments.is_empty(), "rien à charger");
-        assert!(elf.load_image().is_none(), "et donc pas d'image");
+        assert_eq!(
+            elf.load_image(IMAGE_MAX),
+            Err(ImageError::Nothing),
+            "et donc pas d'image"
+        );
+    }
+
+    /// Un en-tête ELF de cent vingt octets qui déclare un segment de
+    /// 512 Mio : le PLAN le dit, et aucune allocation n'a lieu.
+    ///
+    /// C'est la reproduction du défaut, retournée en contrôle. Avant,
+    /// `load_image` allouait les 536 870 912 octets *puis* l'appelant
+    /// regardait le plafond — dans un processus borné, cela terminait
+    /// par un défaut d'allocation et un SIGABRT. Le plan se calcule sur
+    /// les seuls en-têtes : il est gratuit, et il refuse à temps.
+    #[test]
+    fn a_tiny_header_cannot_demand_a_huge_allocation() {
+        const DEMANDÉ: u64 = 512 * 1024 * 1024;
+        let octets = elf_synthétique(0x3e, DEMANDÉ);
+        assert_eq!(octets.len(), 0x78, "un en-tête, et rien d'autre");
+
+        let elf = parse(&octets).expect("un ELF64 bien formé");
+        let plan = elf.load_plan().expect("un plan");
+        assert!(
+            plan.len as u64 >= DEMANDÉ,
+            "le plan dit ce que le fichier demande : {} octets",
+            plan.len
+        );
+
+        // Le plafond refuse AVANT d'allouer, et nomme les deux nombres.
+        let refus = elf.load_image(256 * 1024 * 1024);
+        assert_eq!(
+            refus,
+            Err(ImageError::TooLarge {
+                needed: plan.len,
+                max: 256 * 1024 * 1024,
+            }),
+            "un refus chiffré, pas une allocation"
+        );
+        // Et le message le dit en toutes lettres.
+        let dit = refus.unwrap_err().to_string();
+        assert!(dit.contains(&plan.len.to_string()), "il cite la demande");
+    }
+
+    /// Un ELF AArch64 est refusé en tant que tel, et pas désassemblé en
+    /// x86-64.
+    ///
+    /// Le lecteur vérifiait ELF64 et le petit-boutisme — ce qu'un ELF
+    /// AArch64 satisfait aussi. Son image se construisait, et le reste
+    /// du parcours la lisait comme du x86-64.
+    #[test]
+    fn a_foreign_architecture_is_named_and_refused() {
+        let aarch64 = parse(&elf_synthétique(0xb7, 0x1000)).expect("un ELF64");
+        assert_eq!(aarch64.machine, Machine::Aarch64);
+        assert!(!aarch64.machine.supported(), "namsdec ne lit que x86-64");
+        assert_eq!(aarch64.machine.name(), "AArch64", "et il le nomme");
+
+        let x86 = parse(&elf_synthétique(0x3e, 0x1000)).expect("un ELF64");
+        assert!(x86.machine.supported(), "celui-là, oui");
+    }
+
+    /// Un ELF minimal : en-tête, un en-tête de programme, un segment
+    /// `PT_LOAD` de `memsz` octets. Rien d'autre — c'est tout l'objet.
+    fn elf_synthétique(machine: u16, memsz: u64) -> Vec<u8> {
+        let mut octets = vec![0u8; 0x78];
+        octets[..4].copy_from_slice(b"\x7fELF");
+        octets[4] = 2; // ELF64
+        octets[5] = 1; // petit-boutiste
+        octets[6] = 1; // version
+        octets[0x10..0x12].copy_from_slice(&2u16.to_le_bytes()); // exécutable
+        octets[0x12..0x14].copy_from_slice(&machine.to_le_bytes());
+        octets[0x18..0x20].copy_from_slice(&0x400000u64.to_le_bytes()); // entrée
+        octets[0x20..0x28].copy_from_slice(&0x40u64.to_le_bytes()); // e_phoff
+        octets[0x36..0x38].copy_from_slice(&0x38u16.to_le_bytes()); // e_phentsize
+        octets[0x38..0x3a].copy_from_slice(&1u16.to_le_bytes()); // e_phnum
+
+        let ph = 0x40;
+        octets[ph..ph + 4].copy_from_slice(&PT_LOAD.to_le_bytes());
+        octets[ph + 4..ph + 8].copy_from_slice(&(PF_R | PF_X).to_le_bytes());
+        octets[ph + 0x10..ph + 0x18].copy_from_slice(&0x400000u64.to_le_bytes()); // vaddr
+        octets[ph + 0x20..ph + 0x28].copy_from_slice(&0u64.to_le_bytes()); // filesz
+        octets[ph + 0x28..ph + 0x30].copy_from_slice(&memsz.to_le_bytes()); // memsz
+        octets[ph + 0x30..ph + 0x38].copy_from_slice(&0x1000u64.to_le_bytes()); // align
+        octets
     }
 }

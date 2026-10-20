@@ -64,7 +64,8 @@ impl ReModule for DzfDecompilerModule {
             // sa propre rubrique, et sa sortie n'est pas du JSON DZF.
             ReResult::ToolOutput { .. }
             | ReResult::ToolState { .. }
-            | ReResult::ShowBytesAt { .. } => {}
+            | ReResult::ShowBytesAt { .. }
+            | ReResult::UpxOutput { .. } => {}
         }
     }
 

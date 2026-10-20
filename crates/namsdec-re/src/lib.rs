@@ -48,6 +48,7 @@ pub mod structure;
 pub mod syscalls;
 pub mod table;
 mod tool_module;
+mod upx_module;
 pub mod xrefs;
 mod xrefs_module;
 mod yara_module;
@@ -71,6 +72,7 @@ pub use slack_module::SlackModule;
 pub use strings::StringsModule;
 pub use syscalls::SyscallsModule;
 pub use tool_module::ToolModule;
+pub use upx_module::UpxModule;
 pub use xrefs_module::XrefsModule;
 pub use yara_module::YaraModule;
 
@@ -218,6 +220,30 @@ pub enum ReRequest {
     /// on lance un travail en fond. L'application le sait, et c'est
     /// elle qui décide — comme pour tout ce qui sort du bac à sable.
     RunTool { tool: String },
+    /// Lancer UPX sur le binaire ouvert : l'interroger, ou le déballer.
+    ///
+    /// À part de [`ReRequest::RunTool`], et pas par coquetterie : les
+    /// outils de cette liste-là sont des **moteurs de désassemblage**
+    /// qu'on peut activer, chacun décrit par une fiche qu'on installe.
+    /// UPX n'en est pas un — il ne lit pas, il écrit un fichier —, et
+    /// le ranger parmi eux l'aurait fait proposer comme décompilateur
+    /// dans Outils › Désassembleurs.
+    Upx { action: UpxAction },
+}
+
+/// Ce qu'on demande à UPX.
+///
+/// Deux gestes, et un seul des deux écrit quelque chose : la distinction
+/// est dans l'énumération plutôt que dans un booléen, pour qu'on ne
+/// puisse pas lancer un déballage en croyant lancer une lecture.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UpxAction {
+    /// `upx -l` : ce qu'UPX voit. Rien n'est écrit.
+    List,
+    /// `upx -d -o <neuf> <copie>` : l'original déballé, dans un fichier
+    /// neuf. **Jamais en place** — c'est tout l'écart avec la commande
+    /// qu'on tape de mémoire, qui écrase l'échantillon.
+    Unpack,
 }
 
 /// Ce que l'application rend à un module, en retour de ce qu'il a demandé.
@@ -255,6 +281,16 @@ pub enum ReResult {
     /// vient de cliquer dessus, et la retrouver à l'arrivée est ce qui
     /// dit qu'on est au bon endroit.
     ShowBytesAt { offset: usize, addr: Option<u64> },
+    /// Ce qu'UPX a répondu — sa sortie, ou son refus.
+    ///
+    /// `unpacked` porte le fichier écrit quand `upx -d` a réussi :
+    /// le panneau ne le devine pas, puisque c'est l'application qui a
+    /// demandé où l'écrire.
+    UpxOutput {
+        action: UpxAction,
+        text: Result<String, String>,
+        unpacked: Option<std::path::PathBuf>,
+    },
 }
 
 /// Souligne un texte quand la souris est dessus — le signe qu'il se

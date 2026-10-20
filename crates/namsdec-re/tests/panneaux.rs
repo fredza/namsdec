@@ -274,6 +274,12 @@ fn panneaux() -> Vec<(&'static str, Box<dyn ReModule>)> {
         ),
         ("chaînes", Box::new(namsdec_re::StringsModule::default())),
         ("entropie", Box::new(namsdec_re::EntropyModule::default())),
+        // UPX : trois rangées dont deux portent un bouton ET la commande
+        // en toutes lettres à côté. C'est « [Déballer vers…]
+        // upx -d -o <choisi> <copie> » qui est à surveiller — un bouton
+        // et un texte en largeur fixe sur la même ligne, dans deux
+        // langues dont l'une est plus longue.
+        ("upx", Box::new(namsdec_re::UpxModule::default())),
         ("figures", Box::new(namsdec_re::PatternsModule::default())),
         (
             "fonctions",

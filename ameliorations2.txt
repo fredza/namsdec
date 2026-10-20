@@ -1,0 +1,35 @@
+ameliorations2.md
+
+SUIVRE UNE VALEUR À REBOURS (voir 4.4)
+     « D'où vient ce que RAX contient ? » Le module de provenance existe et
+     répond pour un pas ; l'étendre à plusieurs en s'appuyant sur le pas à pas
+     inverse donnerait l'outil le plus utile devant un contrôle de mot de
+     passe.
+     C'est là que namsdec a un avantage qu'un débogueur n'a pas : il garde
+     l'histoire. Personne d'autre ne peut répondre à cette question sans
+     réexécuter.
+     
+       UN SEUL VRAI DÉFAUT s'est trouvé derrière ces contrôles rouverts : le bouton
+  « Écrire » du panneau mémoire était plat, donc indiscernable d'une étiquette
+  tant qu'on ne le survolait pas. Le manuel affirmait depuis des semaines que
+  les boutons sont « plats dans les menus et encadrés ailleurs » ; le code le
+  respecte enfin, les boutons doivent être de vrais boutons graphiques.
+  
+  j'aimerai pour le graph du programme un style UML et non une suite de boites.
+	les fonctions devront pouvoir être renommés et répercutée.
+	
+	**Cliquer une adresse emmène vraiment au listing.** Le canal marchait
+déjà, mais rien ne se voyait : poser le curseur sur une ligne ne
+déplace pas la vue, et la fenêtre d'analyse restait devant. Le listing
+**défile et centre** la ligne, la fenêtre s'efface (un clic la rouvre
+à la même rubrique), et la barre d'état dit où l'on arrive. C'est
+aussi ce qui rend la **barre de chaleur** atteignable : dans un
+binaire de soixante mille lignes, les lignes chaudes sont loin du
+haut, et l'onglet Profil n'y menait pas davantage. CA NE FONCTIONNE PAS ENCORE
+
+Le périmètre a grandi plus vite que certains
+contrats de robustesse. L'interface et les analyses sont riches, mais le
+chargement d'un fichier ou la réponse d'un outil externe peuvent encore
+contourner des limites que le programme prétend imposer. Pour un atelier
+qui ouvre des exécutables inconnus, ces frontières méritent de passer avant
+l'ajout de nouveaux panneaux.

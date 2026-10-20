@@ -24418,10 +24418,21 @@ fn what_the_tools_answer_is_asked_once_and_kept() {
     // Première demande : le relevé se remplit, pour tous les outils
     // d'un coup.
     let première = app.tool_availability("rizin-ghidra");
+    // Les outils connus, PLUS upx. Il n'est pas dans `known::all()` et
+    // ne doit pas y être : cette liste porte les moteurs de
+    // désassemblage qu'on peut activer, et upx n'en est pas un — il
+    // écrit un fichier déballé. Son état se relève pourtant au même
+    // moment, pour que le panneau « UPX » le sache sans parcourir le
+    // PATH soixante fois par seconde.
     assert_eq!(
         app.tools_ready.len(),
-        namsdec_disasm::known::all().len(),
-        "un seul relevé couvre tous les outils"
+        namsdec_disasm::known::all().len() + 1,
+        "un seul relevé couvre tous les outils, upx compris"
+    );
+    assert!(
+        app.tools_ready.contains_key("upx"),
+        "et upx en fait partie : {:?}",
+        app.tools_ready.keys().collect::<Vec<_>>()
     );
 
     // Les demandes suivantes ne relancent rien : elles lisent. On le

@@ -179,6 +179,42 @@ fn tout_analyser(octets: &[u8]) {
     let _ = namsdec_re::digest::sha256(octets);
     let _ = namsdec_re::gadgets::find(octets, BASE, 64);
 
+    // --- LE CHARGEUR, de bout en bout ------------------------------
+    //
+    // Ce chemin manquait, et c'est celui par lequel l'interface ouvre
+    // un fichier : `parse` -> le plan mémoire -> l'image. Le défaut
+    // qu'on y a trouvé n'était pas une panique de lecture mais une
+    // ALLOCATION : les en-têtes décrivent une étendue de mémoire qui
+    // n'a aucun rapport avec la taille du fichier, et cent vingt octets
+    // peuvent en réclamer un demi-gigaoctet. Un fuzzing qui n'appelle
+    // pas `image` ne voit rien de cela.
+    //
+    // Le plafond passé est VOLONTAIREMENT petit : ce qu'on éprouve est
+    // que le refus arrive avant l'allocation, et sur un fichier abîmé
+    // au hasard les tailles tirées sont énormes. Sans lui, le test
+    // demanderait au système des gigaoctets par cas.
+    if let Some(elf) = namsdec_asm::elf::parse(octets) {
+        let _ = elf.machine.name();
+        let _ = elf.machine.supported();
+        // Le plan se calcule toujours, et ne coûte rien.
+        let plan = elf.load_plan();
+        let _ = elf.image_plan();
+        // Les deux chemins d'image, bornés.
+        let _ = elf.load_image(1024 * 1024);
+        let _ = elf.image(1024 * 1024);
+        // Et le refus est bien un refus, pas une allocation : un plan
+        // plus grand que le plafond ne doit jamais rendre d'octets.
+        if let Some(plan) = plan
+            && plan.len > 1024 * 1024
+        {
+            assert!(
+                elf.load_image(1024 * 1024).is_err(),
+                "un plan de {} octets ne s'alloue pas sous un plafond d'un mébioctet",
+                plan.len
+            );
+        }
+    }
+
     // --- Le désassembleur, qui reçoit des octets arbitraires -------
     //
     // Borné à quatre kibioctets : ce qu'on éprouve est le décodage d'une
@@ -246,18 +282,34 @@ fn tout_analyser(octets: &[u8]) {
 /// revienne *est* la garantie.
 #[test]
 fn no_analyser_ever_panics_on_a_hostile_elf() {
-    let mut rnd = Hasard(0x00C0_FFEE_1234);
     let germe = germe();
 
-    // Le germe fabriqué, d'abord : il tourne partout, et il mène
-    // l'analyse jusque dans les tables.
-    // Deux cent cinquante tours : chaque tour fait travailler une
-    // vingtaine d'analyseurs, le désassembleur et les deux rapports. Le
-    // compte est choisi pour que le contrôle reste de l'ordre de
-    // quelques secondes en debug — un test qu'on désactive parce qu'il
-    // est long ne protège plus rien.
-    for _ in 0..250 {
-        tout_analyser(&abîme(&germe, &mut rnd));
+    // QUATRE GRAINES, et non une seule.
+    //
+    // C'est la leçon de la séance où ce contrôle a été étendu au
+    // chargeur : avec la seule graine d'origine, il passait au vert
+    // alors que trois débordements d'entier dormaient encore — un dans
+    // le relogement, un dans la table dynamique, un dans le relevé des
+    // chaînes. Changer de graine les a sortis en un tour de main. Une
+    // graine unique n'éprouve qu'un chemin ; quatre en éprouvent
+    // quatre, et restent parfaitement reproductibles.
+    //
+    // Deux cents tours chacune : chaque tour fait travailler une
+    // vingtaine d'analyseurs, le désassembleur, le chargeur et les deux
+    // rapports. Le compte est choisi pour que le contrôle reste de
+    // l'ordre de quelques secondes en debug — un test qu'on désactive
+    // parce qu'il est long ne protège plus rien.
+    let mut rnd = Hasard(0x00C0_FFEE_1234);
+    for graine in [
+        0x00C0_FFEE_1234u64,
+        0x1111_2222_3333,
+        0xDEAD_BEEF_0001,
+        0x0BAD_C0DE_7777,
+    ] {
+        rnd = Hasard(graine);
+        for _ in 0..200 {
+            tout_analyser(&abîme(&germe, &mut rnd));
+        }
     }
 
     // Puis quelques cas dégénérés, qu'un hasard mettrait longtemps à

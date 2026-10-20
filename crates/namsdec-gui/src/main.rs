@@ -81,7 +81,7 @@ use namsdec_re::{
     BinaryInfoModule, CallGraphModule, DetourModule, DigestModule, DumpModule, DzfDecompilerModule,
     EntropyModule, FunctionsModule, GadgetsModule, HexEditorModule, ImportsModule, MapModule,
     PatternsModule, ProtectionsModule, ReContext, ReModuleRegistry, SignalsModule, SlackModule,
-    StringsModule, SyscallsModule, XrefsModule, YaraModule,
+    StringsModule, SyscallsModule, UpxModule, XrefsModule, YaraModule,
 };
 use namsdec_theme::Theme;
 
@@ -951,6 +951,13 @@ struct NamsdecApp {
     /// même endroit — celui-ci revient au panneau qui l'a demandé, et à
     /// lui seul.
     tool_job: Option<(String, mpsc::Receiver<Result<String, String>>)>,
+    /// Le geste UPX en cours, le fichier où il doit écrire, et son fil.
+    ///
+    /// À part de `tool_job` : celui-là porte un **moteur de
+    /// désassemblage** qu'on a activé, celui-ci un outil qui écrit un
+    /// fichier. Les deux peuvent tourner en même temps et ne rendent
+    /// pas au même endroit.
+    upx_job: Option<UpxJob>,
     /// Ce qui tourne à côté, pour la barre d'état et le titre de la
     /// fenêtre : un seul travail à la fois suffit à ce que namsdec fait.
     job: Option<BackgroundJob>,
@@ -1456,6 +1463,18 @@ struct NamsdecApp {
     theme_to_remove: Option<String>,
 }
 
+/// Le geste UPX en cours : ce qu'on lui demande, où il doit écrire, et
+/// le fil qui attend sa réponse.
+///
+/// Nommé plutôt qu'écrit en place : un triplet dont le troisième membre
+/// est un `Receiver` d'un `Result` de deux chaînes ne se lit plus au
+/// milieu d'une déclaration de champ.
+type UpxJob = (
+    namsdec_re::UpxAction,
+    Option<PathBuf>,
+    mpsc::Receiver<Result<String, String>>,
+);
+
 /// Ce qu'on demande au sélecteur natif, et donc ce qu'on fera du chemin
 /// qu'il rend.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -1482,6 +1501,10 @@ enum FileDialogKind {
     /// Choisir le binaire d'un outil bâti hors du PATH (DZF, par exemple).
     /// L'outil visé est retenu à part, dans `locating_tool`.
     LocateTool,
+    /// Choisir où écrire l'original déballé par `upx -d` — un fichier
+    /// NEUF, et c'est tout l'objet de la question : `upx -d fichier`
+    /// écrase l'échantillon en place, et l'on perd ce qu'on analysait.
+    UnpackUpx,
 }
 
 /// Les fiches dont un programme se sert, dans l'ordre où il les emploie.
@@ -1793,6 +1816,14 @@ impl Default for NamsdecApp {
         // trois cents octets en croyant analyser le programme — autant le
         // savoir tout de suite.
         re_registry.register(Box::new(EntropyModule::default()));
+        // Puis UPX, tout de suite après : c'est l'entropie qui pose la
+        // question — « y a-t-il seulement le vrai programme ici ? » —,
+        // et sur le plus répandu des empaqueteurs la réponse est à un
+        // clic. Avant les modules de code, parce qu'un binaire
+        // empaqueté les ferait analyser un déballeur de trois cents
+        // octets en croyant analyser le programme : il n'y a rien à
+        // décoder tant qu'on n'a pas déballé.
+        re_registry.register(Box::new(UpxModule::default()));
         // Puis « par où commencer » : dans un binaire dépouillé, la
         // question précède toutes les autres. Le module retrouve le
         // `main` et découpe le code en fonctions.
@@ -1989,6 +2020,7 @@ impl Default for NamsdecApp {
             decompiler: String::new(),
             decompile_job: None,
             tool_job: None,
+            upx_job: None,
             job: None,
             window_title: None,
             decompile_result: None,
@@ -3218,6 +3250,7 @@ impl NamsdecApp {
         self.poll_update_check(&ctx);
         self.poll_decompile(&ctx);
         self.poll_tool_run(&ctx);
+        self.poll_upx(&ctx);
         self.poll_install(&ctx);
         self.reflect_job_in_title(&ctx);
         // Au retour dans la fenêtre : un autre programme a pu passer par

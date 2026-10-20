@@ -31,7 +31,7 @@
 use std::collections::BTreeMap;
 use std::ops::Range;
 
-use namsdec_asm::elf::{Elf, RelocKind, align_up, page_down, page_up};
+use namsdec_asm::elf::{self, Elf, RelocKind, align_up, page_down, page_up};
 use namsdec_core::{Memory, Perms};
 
 /// La taille d'une page. Celle d'x86-64, et celle dans laquelle un noyau
@@ -232,16 +232,30 @@ pub fn load(
     env: &[String],
     max: usize,
 ) -> Result<Loaded, LoadError> {
-    let Some((load_addr, mut image)) = elf.load_image() else {
+    // Le plan AVANT l'image : `load_image` allouait, et le plafond
+    // n'était contrôlé qu'ensuite, sur le résultat. Un en-tête qui
+    // déclare un demi-gigaoctet obtenait donc son demi-gigaoctet pour
+    // se voir refuser juste après.
+    let Some(plan) = elf.load_plan() else {
         return Err(LoadError::NotLoadable);
     };
     let tls_memsz = elf.tls.map(|tls| tls.memsz).unwrap_or(0);
-    let layout = Layout::for_binary(load_addr, image.len(), tls_memsz);
+    let layout = Layout::for_binary(plan.addr, plan.len, tls_memsz);
     if layout.size > max {
         return Err(LoadError::TooLarge {
             needed: layout.size,
         });
     }
+    // La disposition tient dans la fenêtre : l'image peut être bâtie.
+    // Le plafond qu'on lui passe est celui qui vient d'être vérifié, et
+    // la machine peut encore refuser — auquel cas on le dit.
+    let (load_addr, mut image) = match elf.load_image(plan.len) {
+        Ok(fait) => fait,
+        Err(elf::ImageError::OutOfMemory { needed }) => {
+            return Err(LoadError::TooLarge { needed });
+        }
+        Err(_) => return Err(LoadError::NotLoadable),
+    };
 
     // Les relocations, avant même de poser l'image : c'est l'ordre du
     // vrai chargeur, et cela évite de devoir écrire deux fois dans la

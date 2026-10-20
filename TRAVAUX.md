@@ -6,8 +6,8 @@ retiré — reste dans `AMELIORATIONS.txt`, qui ne bouge pas de rôle : une
 seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
-Tenue à jour au fil des séances. Dernière mise à jour : **14 octobre
-2026**, version 0.2.9-beta.1, 1 213 tests au vert.
+Tenue à jour au fil des séances. Dernière mise à jour : **20 octobre
+2026**, version 0.2.9-beta.1.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -29,6 +29,43 @@ Ce qui reste est de la finition mesurée : des alignements de quelques
 pixels, deux tailles de police, et le vide sous « Prochaine
 instruction », qui tient au même nœud que le vide de 56 px — l'état du
 processeur est ancré.
+
+---
+
+## 16. Les frontières, avant les panneaux (A 8.1 à 8.6)
+
+L'examen du 16 octobre disait la même chose de six façons : le périmètre
+a grandi plus vite que les contrats de robustesse, et un atelier qui
+ouvre des exécutables inconnus doit tenir ses frontières avant d'ajouter
+un panneau de plus. Six points, six reproductions, six contrôles.
+
+- [x] **Le plafond mémoire arrive avant l'allocation** (A 8.1) — un
+      en-tête de 120 octets déclarant 512 Mio les obtenait pour se voir
+      refuser juste après. Le plan (`load_plan`, `image_plan`) se calcule
+      sur les seuls en-têtes et ne coûte rien ; `load_image(max)` et
+      `image(max)` prennent le plafond en argument, de sorte qu'aucun
+      appelant ne peut plus l'oublier. `try_reserve_exact` rend un refus
+      du système affichable au lieu d'un arrêt.
+- [x] **La sortie d'un outil est bornée pendant sa lecture** (A 8.2) —
+      et non après. La coupe tombe sur une frontière UTF-8 (elle
+      paniquait au milieu d'un « é »), stderr et le fichier `{out}`
+      obéissent au même plafond, et l'incomplétude est dite.
+- [x] **Le délai vaut pour toute la descendance** (A 8.3) — l'outil part
+      dans son propre groupe de processus, c'est le groupe qu'on arrête,
+      et la récolte des sorties a elle aussi une échéance. Un délai de
+      100 ms rendait la main en cinq secondes.
+- [x] **Le statut de sortie est gardé** (A 8.4) — `ToolOutput` porte le
+      code, la provenance et la troncature. Un outil qui échoue le dit en
+      tête de son panneau.
+- [x] **Le format et l'architecture, dits explicitement** (A 8.5) —
+      `e_machine` est lu, un ELF étranger est refusé en le nommant, et le
+      type d'un fichier se décide à sa signature et non à la validité de
+      son UTF-8.
+- [x] **Le fuzzing couvre le chargeur** (A 8.6) — et y a trouvé cinq
+      débordements d'entier. La classe est traitée à la source : les
+      lecteurs de champs composent base et déplacement de façon
+      contrôlée. Quatre graines au lieu d'une, parce qu'une seule laissait
+      trois de ces cinq défauts au vert.
 
 ---
 

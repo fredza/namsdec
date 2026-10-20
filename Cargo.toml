@@ -40,6 +40,10 @@ rfd = "0.17"
 # et as. Deux formateurs pèsent plus qu'un, et c'est le prix de lire un
 # rapport d'outil sans le retraduire de tête.
 iced-x86 = { version = "1.21", default-features = false, features = ["std", "decoder", "nasm", "gas", "instr_info"] }
+# `kill(2)` sur un GROUPE de processus : c'est la seule façon qu'un
+# délai atteigne la descendance d'un outil extérieur. Déjà dans l'arbre
+# par les dépendances de fenêtrage ; la nommer ne tire rien de neuf.
+libc = "0.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"

@@ -32,6 +32,131 @@ impl NamsdecApp {
                 (outil.plugin.id, dispo)
             })
             .collect();
+        // UPX, qui n'est pas dans cette liste et ne doit pas y être :
+        // `known::all()` porte les **moteurs de désassemblage** qu'on
+        // peut activer, chacun avec sa fiche dans
+        // `plugins/fonctionnalites/`. UPX ne désassemble rien — il
+        // écrit un fichier déballé —, et l'y ranger l'aurait fait
+        // proposer comme décompilateur dans cette même fenêtre. Son
+        // état se relève donc à part, et part au panneau par le même
+        // `ToolState` que les autres.
+        let upx = match namsdec_disasm::known::program_path_in("upx", outils.as_deref()) {
+            Some(_) => namsdec_disasm::known::Availability::Ready,
+            None => namsdec_disasm::known::Availability::Missing,
+        };
+        self.tools_ready.insert("upx".to_owned(), upx);
+    }
+
+    /// Lance `upx -l` sur une copie du binaire ouvert.
+    ///
+    /// Lecture seule : rien n'est écrit, nulle part. C'est le geste qui
+    /// répond « est-ce packé, et par quoi » avant qu'on décide de
+    /// déballer.
+    pub(crate) fn start_upx_list(&mut self) {
+        self.run_upx(namsdec_re::UpxAction::List, None);
+    }
+
+    /// Demande où écrire l'original déballé.
+    ///
+    /// La question est posée AVANT de lancer upx, et non après : un
+    /// déballage qui se termine sans savoir où aller n'aurait que deux
+    /// issues — écrire à côté de l'échantillon sans l'avoir demandé, ou
+    /// jeter le résultat.
+    pub(crate) fn ask_where_to_unpack(&mut self) {
+        self.spawn_file_dialog(FileDialogKind::UnpackUpx);
+    }
+
+    /// Déballe le binaire ouvert dans ce fichier-là.
+    pub(crate) fn unpack_upx_to(&mut self, path: &Path) {
+        self.run_upx(namsdec_re::UpxAction::Unpack, Some(path.to_path_buf()));
+    }
+
+    /// Lance upx sur une **copie** du binaire ouvert, sur un fil à part.
+    ///
+    /// LA COPIE EST LE SUJET DE CETTE FONCTION. `upx -d fichier` écrase
+    /// l'échantillon en place, et c'est la commande que tout le monde
+    /// tape de mémoire : on perd ce qu'on analysait, sans sauvegarde.
+    /// namsdec écrit donc les octets ouverts dans un fichier temporaire,
+    /// lance upx là-dessus, et lui demande d'écrire ailleurs. Le fichier
+    /// de l'utilisateur n'est même pas ouvert en écriture.
+    fn run_upx(&mut self, action: namsdec_re::UpxAction, vers: Option<PathBuf>) {
+        if self.upx_job.is_some() {
+            return;
+        }
+        let s = strings(self.lang);
+        let Some(state) = &self.assemble_state else {
+            return;
+        };
+        let octets = state.output.file.clone();
+        let programme = match namsdec_disasm::known::program_path_in("upx", None) {
+            Some(chemin) => chemin,
+            None => {
+                self.re_registry.deliver(&namsdec_re::ReResult::UpxOutput {
+                    action,
+                    text: Err(s.upx_missing.to_owned()),
+                    unpacked: None,
+                });
+                return;
+            }
+        };
+        let sortie = vers.clone();
+        let (sender, receiver) = mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = sender.send(run_upx_on(&programme, action, &octets, sortie.as_deref()));
+        });
+        self.upx_job = Some((action, vers, receiver));
+        self.job = Some(BackgroundJob {
+            label: s.upx_working.to_owned(),
+            started: std::time::Instant::now(),
+            limit: Some(UPX_TIMEOUT),
+        });
+    }
+
+    /// Relève ce qu'upx a rendu, s'il a fini, et le livre au panneau.
+    pub(crate) fn poll_upx(&mut self, ctx: &egui::Context) {
+        let Some((action, vers, receiver)) = &self.upx_job else {
+            return;
+        };
+        let action = *action;
+        let vers = vers.clone();
+        match receiver.try_recv() {
+            Ok(réponse) => {
+                self.upx_job = None;
+                self.job = None;
+                // Le fichier n'est annoncé que s'il existe vraiment et
+                // qu'il porte quelque chose : upx refuse en rendant 2 et
+                // n'écrit alors rien, et montrer un chemin dans ce cas
+                // ferait croire à un déballage réussi.
+                let écrit =
+                    vers.filter(|chemin| std::fs::metadata(chemin).is_ok_and(|m| m.len() > 0));
+                self.re_registry.deliver(&namsdec_re::ReResult::UpxOutput {
+                    action,
+                    text: réponse,
+                    unpacked: écrit.clone(),
+                });
+                // Et le déballé s'ouvre, dans un onglet à côté :
+                // l'échantillon empaqueté reste dans le sien, et c'est
+                // le programme déballé qu'on voulait lire. Sans cela,
+                // il ne restait qu'un chemin à recopier à la main.
+                if let Some(chemin) = écrit {
+                    self.status = Status::Note(|s| s.upx_unpacked);
+                    self.open_file(chemin);
+                }
+            }
+            Err(TryRecvError::Empty) => {
+                ctx.request_repaint_after(std::time::Duration::from_millis(150));
+            }
+            Err(TryRecvError::Disconnected) => {
+                self.upx_job = None;
+                self.job = None;
+                let perdu = strings(self.lang).decompiler_lost.to_owned();
+                self.re_registry.deliver(&namsdec_re::ReResult::UpxOutput {
+                    action,
+                    text: Err(perdu),
+                    unpacked: None,
+                });
+            }
+        }
     }
 
     /// Ce que cet outil répond, relevé si on ne le sait pas encore.
@@ -1406,4 +1531,90 @@ pub(crate) fn load_installed_decompilers() -> Vec<namsdec_disasm::plugin::Plugin
 /// éteindre « Lancer », la ligne d'en dessous pour dire ce qu'on attend.
 pub(crate) fn occupé_maintenant(app: &NamsdecApp) -> bool {
     app.decompile_job.is_some()
+}
+
+/// Ce qu'on tolère d'upx : il déballe un fichier, il ne tourne pas en
+/// fond.
+///
+/// Dix secondes sont très large — upx déballe un binaire de vingt
+/// méga-octets en une fraction de seconde. La borne n'est pas là pour
+/// les cas normaux : elle est là pour qu'un programme qui ne rend pas la
+/// main ne fige pas l'application.
+pub(crate) const UPX_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// Lance upx sur une **copie** des octets ouverts, et rend ce qu'il dit.
+///
+/// Tourne sur un fil à part — voir `run_upx`. Le binaire part par un
+/// fichier temporaire et les arguments sont passés tels quels au
+/// programme : aucun interpréteur de commandes n'est en jeu, donc rien
+/// de ce que contient un nom de fichier ne peut être relu comme une
+/// commande.
+///
+/// LA SORTIE D'ERREUR FAIT PARTIE DE LA RÉPONSE, et non de l'échec :
+/// `NotPackedException` arrive sur `stderr` avec un code de retour de 2,
+/// et c'est pourtant la réponse la plus instructive qu'upx donne. La
+/// traiter comme une panne l'aurait remplacée par « upx a échoué », qui
+/// n'apprend rien.
+fn run_upx_on(
+    programme: &Path,
+    action: namsdec_re::UpxAction,
+    octets: &[u8],
+    vers: Option<&Path>,
+) -> Result<String, String> {
+    let dossier = tempfile::tempdir().map_err(|e| e.to_string())?;
+    let copie = dossier.path().join("programme");
+    std::fs::write(&copie, octets).map_err(|e| e.to_string())?;
+
+    let mut commande = std::process::Command::new(programme);
+    match action {
+        namsdec_re::UpxAction::List => {
+            commande.arg("-l").arg(&copie);
+        }
+        namsdec_re::UpxAction::Unpack => {
+            // `-o` est ce qui distingue ce geste de la commande qu'on
+            // tape de mémoire : sans lui, upx écrase son entrée.
+            let Some(vers) = vers else {
+                return Err("no destination for the unpacked file".to_owned());
+            };
+            commande.arg("-d").arg("-o").arg(vers).arg(&copie);
+        }
+    }
+
+    let mut enfant = commande
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+
+    // On surveille à petits pas plutôt que d'attendre : c'est la seule
+    // façon, sans bibliothèque supplémentaire, de reprendre la main sur
+    // un programme qui ne la rend pas. Les tubes d'upx portent une
+    // dizaine de lignes, loin du tampon qui ferait bloquer l'écriture —
+    // pas de fil de lecture à prévoir, contrairement à objdump.
+    let début = std::time::Instant::now();
+    loop {
+        match enfant.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) if début.elapsed() >= UPX_TIMEOUT => {
+                let _ = enfant.kill();
+                let _ = enfant.wait();
+                return Err(format!(
+                    "upx took longer than {} seconds and was stopped",
+                    UPX_TIMEOUT.as_secs()
+                ));
+            }
+            Ok(None) => std::thread::sleep(std::time::Duration::from_millis(20)),
+            Err(e) => return Err(e.to_string()),
+        }
+    }
+    let fin = enfant.wait_with_output().map_err(|e| e.to_string())?;
+    let mut texte = String::from_utf8_lossy(&fin.stdout).into_owned();
+    let erreur = String::from_utf8_lossy(&fin.stderr);
+    if !erreur.trim().is_empty() {
+        if !texte.ends_with('\n') && !texte.is_empty() {
+            texte.push('\n');
+        }
+        texte.push_str(&erreur);
+    }
+    Ok(texte)
 }

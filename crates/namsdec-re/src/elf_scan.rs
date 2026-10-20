@@ -419,7 +419,12 @@ fn read_dynamic(bytes: &[u8], offset: usize, size: usize, segments: &[Segment]) 
         return info;
     };
     for (tag, value) in wanted {
-        let Some(text) = string_at(bytes, strtab + value as usize) else {
+        // `strtab` vient des segments, `value` de la table dynamique :
+        // l'addition déborde sur un fichier qui annonce n'importe quoi.
+        let Some(text) = strtab
+            .checked_add(value as usize)
+            .and_then(|at| string_at(bytes, at))
+        else {
             continue;
         };
         match tag {

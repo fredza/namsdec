@@ -4501,3 +4501,96 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
   « le saut court vaut un site sur dix-huit », et où le détour butera
   vraiment. Un outil qui sert à apprendre doit savoir dire l'étendue de
   ce qu'il sait faire, et pas seulement la raison d'un non.
+
+
+--------------------------------------------------------------------------------
+ 8. LES FRONTIÈRES, AVANT LES PANNEAUX (examen du 16 octobre 2026)
+--------------------------------------------------------------------------------
+
+8.1  [FAIT] LE PLAFOND ARRIVAIT APRÈS L'ALLOCATION
+     Reproduit : un en-tête ELF de 120 octets qui déclare un segment de
+     512 Mio était accepté par `parse`, et `image()` allouait bel et bien ses
+     536 870 912 octets. Dans un processus borné à 128 Mio, cela se terminait
+     par un défaut d'allocation et un SIGABRT. Le contrôle de MEM_MAX se
+     faisait sur `image.len()` — c'est-à-dire sur un `Vec` déjà en mémoire.
+     Le défaut n'est pas la limite : c'est l'ORDRE. Un plan mémoire ne dépend
+     que des en-têtes, et ne coûte rien à calculer. `Elf::load_plan` et
+     `Elf::image_plan` le rendent sans allouer un octet ; `load_image(max)` et
+     `image(max)` prennent le plafond en argument, donc aucun appelant ne peut
+     plus l'oublier, et allouent par `try_reserve_exact` — un refus du système
+     redevient une erreur qu'on affiche au lieu d'un arrêt du programme.
+     Trois refus distincts et nommés : rien à charger, plan trop grand (avec
+     les deux nombres), machine à court de mémoire.
+     Retenu par `a_tiny_header_cannot_demand_a_huge_allocation`, qui fabrique
+     exactement l'en-tête de la reproduction.
+
+8.2  [FAIT] LA LIMITE DE SORTIE DES OUTILS N'EN ÉTAIT PAS UNE
+     Trois défauts dans la même fonction, et ils se tenaient.
+     (a) `borner` tronquait une `String` à un INDICE D'OCTET : 4 Mio moins un
+     octet de « A » suivis d'un « é » faisaient paniquer `String::truncate` au
+     milieu du caractère, et le fil de travail mourait avec son résultat. On
+     coupe désormais les octets, sur une frontière UTF-8 valide.
+     (b) Le repli sur stderr se faisait APRÈS la troncature : 5 Mio d'erreur
+     seule revenaient en entier malgré le plafond annoncé. Les deux sorties
+     sont bornées de la même façon, et le fichier `{out}` aussi.
+     (c) `read_to_end` lisait tout avant de tronquer : la limite était
+     d'affichage, pas de mémoire. Les fils de lecture gardent au plus 4 Mio et
+     CONTINUENT DE VIDER le tube — s'arrêter le remplirait, et l'outil
+     resterait bloqué sur son écriture suivante.
+     Et l'incomplétude se DIT, en tête du panneau.
+
+8.3  [FAIT] LE DÉLAI NE TENAIT PAS SUR LA DESCENDANCE
+     Reproduit : un outil qui lance `sleep 5 &` en héritant des sorties, puis
+     reste actif. Avec un délai demandé de 100 ms, `run_within` revenait après
+     environ cinq secondes — on tuait l'enfant direct, puis on attendait les
+     fils de lecture, et ce `join` n'était soumis à aucun délai.
+     Deux corrections, et il fallait les deux : l'enfant part dans son PROPRE
+     GROUPE de processus (`process_group(0)`), et c'est le groupe qu'on arrête
+     — toute sa descendance avec lui ; et la récolte des sorties a elle aussi
+     une échéance, car un descendant qui s'échapperait du groupe tiendrait
+     sinon le tube ouvert pour toujours. Le tampon est partagé avec le fil, de
+     sorte qu'un fil abandonné ne fait rien perdre de ce qui était arrivé.
+
+8.4  [FAIT] LE STATUT DE SORTIE ÉTAIT JETÉ
+     `try_wait` le rendait, on l'ignorait : un programme qui écrit
+     « tool failed » sur stderr puis sort avec 7 donnait `Ok("tool failed\n")`,
+     que rien ne distinguait d'un résultat normal. `run_on` rend maintenant un
+     `ToolOutput` — texte, code de sortie, provenance (sortie ordinaire,
+     sortie d'erreur, fichier), et troncature. Un résultat partiel reste
+     affiché : il est utile, à condition d'être NOMMÉ comme tel, et c'est la
+     première ligne du panneau qui le nomme.
+
+8.5  [FAIT] LE FORMAT ET L'ARCHITECTURE, DITS EXPLICITEMENT
+     Deux omissions, et la seconde surprend davantage.
+     Le lecteur vérifiait ELF64 et le petit-boutisme, mais pas `e_machine` :
+     un en-tête déclarant AArch64 (183) était accepté, son image construite,
+     et tout le parcours la désassemblait en x86-64. Le champ est lu, nommé
+     (`Machine`), et un ELF étranger est refusé EN LE NOMMANT — ses octets
+     restent consultables, mais plus aucun listing ne prétend les comprendre.
+     Et l'ouverture choisissait « source » dès que tous les octets formaient
+     un UTF-8 valide. Cela ne démontre rien : les octets nuls sont valides en
+     UTF-8, et le petit ELF synthétique qui sert aux épreuves satisfait
+     justement ce critère. `sniff` décide désormais dans cet ordre : signature
+     connue (ELF, PE, Mach-O, ar, zip, PDF, PNG, gzip, xz, lz4, zstd, wasm,
+     dex, classe Java), puis octet nul, puis densité de caractères de
+     contrôle. L'UTF-8 n'a plus que le droit de refuser.
+
+8.6  [FAIT] LE FUZZING NE COUVRAIT PAS LE CHARGEUR — ET CE QU'IL A TROUVÉ
+     `hostile.rs` couvrait les analyseurs RE, pas le chemin
+     `parse -> plan -> image -> chargement`, qui est pourtant celui par lequel
+     l'interface ouvre un fichier. Étendu, il a sorti CINQ débordements
+     d'entier en *debug*, tous sur de l'arithmétique faite avec des nombres
+     venus du fichier :
+       - `parse_symbols` : `header + 0x04` sur un décalage proche de usize::MAX ;
+       - `parse_program_headers` : l'adresse de la table des en-têtes ;
+       - le relogement : `index * syment` dans la table dynamique ;
+       - `elf_scan` : `strtab + value` pour un nom de bibliothèque ;
+       - `strings::scan` : `base + offset` sur une section d'adresse extrême.
+     La classe entière est traitée à la source : `u16_at`/`u32_at`/`u64_at`
+     prennent une BASE et un DÉPLACEMENT, et composent les deux de façon
+     contrôlée — le débordement se produisait au point d'appel, où personne ne
+     le voyait.
+     Autre leçon, et elle vaut pour tous les contrôles de ce genre : la graine
+     UNIQUE du fuzzing le faisait passer au vert alors que trois de ces cinq
+     défauts dormaient encore. Quatre graines sont désormais jouées, ce qui
+     reste parfaitement reproductible et éprouve quatre chemins au lieu d'un.

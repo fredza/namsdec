@@ -1,0 +1,336 @@
+Avis sur namsdec — examen du 16 octobre 2026
+Version déclarée : 0.2.9-beta.1
+
+Mon avis sincère
+
+namsdec a une vraie raison d'exister. Sa meilleure idée est de montrer ce
+qu'une instruction signifie dans l'état présent du programme : adresse
+effective, valeurs avant et après, condition du saut, provenance d'un
+registre. Associé au retour en arrière, cela constitue un atelier
+d'apprentissage convaincant. Les fonctions de rétro-ingénierie prolongent
+assez naturellement cette idée : apprendre à lire ce qui se passe.
+
+Le dépôt contient un travail sérieux. Les tests, les exercices, les
+diagnostics et les précautions sur les sauvegardes en sont des signes
+concrets. Je ne me suis pas contenté de lire le README : les contrôles
+exécutés et les reproductions ci-dessous fondent cet avis.
+
+Ma réserve principale est que le périmètre a grandi plus vite que certains
+contrats de robustesse. L'interface et les analyses sont riches, mais le
+chargement d'un fichier ou la réponse d'un outil externe peuvent encore
+contourner des limites que le programme prétend imposer. Pour un atelier
+qui ouvre des exécutables inconnus, ces frontières méritent de passer avant
+l'ajout de nouveaux panneaux.
+
+Je le considère donc comme une bêta pédagogique ambitieuse et crédible,
+avec une base technique réelle. Je ne le qualifierais pas encore d'outil
+d'analyse durci pour n'importe quel fichier hostile. À ta place, je
+consacrerais la prochaine étape à la consolidation et à la clarté du
+produit. Le manque de fonctionnalités n'est pas son problème principal.
+
+Ce que j'ai effectivement vérifié
+
+- Lecture ciblée de l'architecture, du chargeur ELF, de l'émulateur, des
+  outils externes, de la gestion des fichiers, des exercices, des analyses,
+  des tests d'interface et des workflows d'intégration continue.
+- cargo test --workspace --locked --offline : 1 251 tests réussis,
+  aucun échec, 3 tests ignorés explicitement parce qu'ils écrivent dans
+  le dossier de plugins de l'utilisateur. Ce total inclut les doctests.
+- cargo fmt --all --check : réussi, sans modifier les fichiers.
+- cargo clippy --workspace --all-targets --all-features --locked --offline
+  -- -D warnings : réussi.
+- Oracle matériel existant, avec --graines 8 : 94 instructions éprouvées,
+  752 cas, aucun écart. Exécution sans SDE ; ce résultat ne valide donc pas
+  toute la couverture AVX-512 ni l'ensemble des comportements x86-64.
+- Petits programmes de reproduction placés uniquement dans /tmp, appelant
+  les bibliothèques compilées du projet. Ils ne sont pas ajoutés aux tests
+  du dépôt.
+
+Les tests d'interface existants mesurent notamment des formes peintes,
+des chevauchements, des dimensions et la stabilité des fenêtres. Ils ont
+été exécutés avec la suite. Je n'ai pas effectué de séance manuelle dans
+la fenêtre graphique ni de nouvelle capture d'écran : je ne prétends pas
+avoir validé l'esthétique ou l'ergonomie de chaque écran à l'œil.
+
+L'option Cargo --offline concerne Cargo ; certains tests du projet peuvent
+sonder le réseau et retourner sans validation lorsque celui-ci manque.
+Leur réussite ne certifie pas l'installation effective des outils distants.
+
+L'examen porte sur l'état de travail présent, avec ses modifications déjà
+existantes, et non uniquement sur le dernier commit. Aucune modification
+du code, aucun correctif, aucun ajout de test dans le dépôt n'a été fait.
+Le seul fichier de compte rendu ajouté est celui-ci.
+
+Ce qui mérite d'être conservé
+
+1. La pédagogie est intégrée au fonctionnement.
+   Les explications ne sont pas seulement un manuel posé à côté d'un
+   débogueur : elles dépendent des registres, de la mémoire et du pas
+   exécuté. Les exercices vérifient un résultat plutôt qu'une forme de
+   code imposée. C'est la partie la plus distinctive du programme.
+
+2. Le retour en arrière repose sur un mécanisme substantiel.
+   L'émulateur conserve les états et les anciennes valeurs mémoire, et
+   annule les effets d'une instruction qui échoue. L'historique est borné
+   en nombre de pas. L'oracle qui confronte l'émulation au processeur est
+   particulièrement pertinent pour éviter les erreurs silencieuses.
+   Références : namsdec-emu/src/lib.rs, step et begin_undo ;
+   namsdec-emu/examples/oracle.rs, sous crates/.
+
+3. Le découpage en crates est utile.
+   Le cœur machine, l'assemblage, le désassemblage, l'émulation, les
+   exercices et la documentation ont leurs responsabilités. Le registre
+   ReModule et les demandes ReRequest permettent d'étendre les analyses
+   sans donner à chaque panneau la responsabilité de toute l'application.
+   La frontière reste imparfaite : namsdec-re rassemble aussi les panneaux
+   egui, ce qui limite son indépendance vis-à-vis de l'interface.
+
+4. Plusieurs détails protègent réellement le travail de l'utilisateur.
+   Écriture par fichier temporaire puis renommage, notes séparées des
+   binaires, garde contre la fermeture d'un tampon modifié, commandes
+   externes passées par arguments plutôt que par interpolation dans un
+   shell : ce sont de bons choix. Ils ne dispensent pas de corriger les
+   limites décrites plus bas, mais ils constituent une bonne base.
+
+5. La performance de l'affichage a déjà été prise au sérieux.
+   La vue du listing ne peint que les lignes visibles et conserve un index
+   du texte. Il serait injuste de recommander simplement « virtualiser le
+   listing » : c'est déjà fait. Le prochain travail concerne davantage
+   l'ouverture, les calculs et les volumes gardés en mémoire.
+   Référence : crates/namsdec-gui/src/vue_listing.rs.
+
+Défauts et améliorations prioritaires
+
+1. PRIORITÉ HAUTE — Contrôler la taille ELF avant d'allouer son image.
+   Défaut confirmé par reproduction sur l'API ELF.
+
+   Elf::load_image calcule une étendue mémoire à partir des segments du
+   fichier, puis alloue directement un Vec de cette taille. Dans le chemin
+   d'ouverture de l'interface, MEM_MAX est contrôlé après elf.image(). Le
+   chargeur de processus contrôle lui aussi sa limite après load_image().
+   Le refus arrive donc trop tard pour protéger la première allocation.
+
+   Reproduction : un en-tête ELF synthétique de 120 octets déclarant un
+   segment de 512 Mio est accepté par parse(). L'appel image() tente bien
+   d'allouer 536 870 912 octets. Dans un processus d'épreuve limité à
+   128 Mio, il termine par une erreur d'allocation et SIGABRT. La limite
+   était appliquée au seul processus de reproduction pour éviter de
+   saturer la machine. Ce n'est pas une reproduction par clic dans la GUI.
+
+   Conséquence : un très petit fichier peut imposer une allocation énorme
+   avant le message de refus ; un écart considérable entre deux segments
+   peut produire le même problème.
+
+   À faire : calculer et valider le plan mémoire sans allocation, vérifier
+   les additions et conversions, appliquer le plafond, puis allouer avec
+   une erreur récupérable. Étendre les essais d'entrées hostiles au chemin
+   complet parse -> image -> chargement. Le test hostile actuel des
+   analyseurs RE ne couvre pas ce chemin du chargeur.
+
+   Références : crates/namsdec-asm/src/elf.rs:815 et :955 ;
+   crates/namsdec-gui/src/files.rs:924 ;
+   crates/namsdec-gui/src/loader.rs:235 ;
+   crates/namsdec-re/tests/hostile.rs.
+
+2. PRIORITÉ HAUTE — Rendre réelle la limite de sortie des outils externes.
+   Deux défauts confirmés, plus un risque directement visible dans le code.
+
+   La fonction borner tronque une String à 4 Mio en utilisant un indice
+   d'octet qui peut tomber au milieu d'un caractère UTF-8. Reproduction :
+   4 Mio moins un octet de « A », suivis de « é », renvoyés par cat,
+   provoquent une panique. En tâche de fond, cela peut se traduire par la
+   perte du résultat ou l'échec du travail, sans nécessairement fermer
+   toute l'application.
+
+   Autre reproduction : une sortie stderr seule de 5 Mio est rendue en
+   entier, malgré le plafond annoncé de 4 Mio. Le repli sur stderr est
+   effectué après la troncature, sans lui appliquer la même limite.
+
+   Enfin, stdout et stderr sont lus entièrement par read_to_end avant
+   toute troncature ; le fichier {out} est lui aussi lu entièrement.
+   La limite d'affichage n'est donc pas une limite de consommation mémoire.
+
+   À faire : borner les données pendant leur lecture, en continuant à
+   vider les tubes ou en arrêtant explicitement l'outil ; traiter stdout,
+   stderr et {out} de façon cohérente ; tronquer sur une frontière UTF-8
+   valide ; afficher clairement que le résultat est incomplet.
+
+   Référence : crates/namsdec-disasm/src/plugin.rs:240, :288 et :304.
+
+3. PRIORITÉ HAUTE — Faire respecter le délai à tout le travail externe.
+   Défaut confirmé par reproduction.
+
+   Le programme tue le processus enfant direct, puis attend les fils qui
+   lisent ses sorties. Si un descendant conserve les tubes ouverts, ces
+   lecteurs attendent encore. Leur join n'est pas soumis au délai.
+
+   Reproduction : un outil Python lance un sleep de deux secondes en
+   héritant des sorties, puis reste lui-même actif. Avec un délai demandé
+   de 100 ms, run_within revient après environ 2 050 ms. Un descendant
+   restant actif plus longtemps prolongerait cette attente.
+
+   À faire : gérer le groupe de processus, prévoir l'arrêt des descendants
+   et garantir que la récupération des sorties respecte elle aussi une
+   échéance. Appliquer une politique cohérente aux installations, qui
+   lancent couramment des sous-processus de compilation.
+
+   Référence : crates/namsdec-disasm/src/plugin.rs:258-280 ; mécanisme
+   apparenté à examiner dans crates/namsdec-gui/src/jobs.rs:85.
+
+4. PRIORITÉ MOYENNE — Garder le statut de sortie d'un outil.
+   Défaut confirmé par reproduction.
+
+   Le statut obtenu par try_wait est jeté. Un programme qui écrit
+   « tool failed » sur stderr puis termine avec le code 7 produit
+   Ok("tool failed\n"). Le texte reste visible, mais l'API ne distingue
+   plus l'échec du résultat normal. Un fichier de sortie partiel peut
+   également être présenté sans le statut qui expliquerait sa nature.
+
+   À faire : renvoyer un résultat structuré avec statut, stdout, stderr,
+   éventuel fichier produit et indication de troncature. Conserver un
+   résultat partiel peut être utile, à condition de le nommer comme tel.
+
+   Référence : crates/namsdec-disasm/src/plugin.rs:261-295.
+
+5. PRIORITÉ MOYENNE — Identifier le format et l'architecture explicitement.
+   Omission confirmée dans le lecteur et logique d'ouverture examinée.
+
+   Le lecteur vérifie ELF64 et le petit-boutisme, mais pas e_machine.
+   Un en-tête synthétique déclarant AArch64, valeur 183, est accepté et
+   son image est construite. Le reste du parcours désassemble en x86-64.
+   Mieux vaut un refus explicite qu'une lecture sans rapport avec le CPU.
+
+   L'ouverture choisit aussi « source » dès que tous les octets forment
+   un UTF-8 valide. Cela ne démontre pas qu'il s'agit d'un texte : les
+   zéros sont valides en UTF-8. Le petit ELF x86-64 synthétique employé
+   pour l'examen satisfait justement ce critère. Des octets bruts peuvent
+   aussi être valides en UTF-8 et partir dans l'éditeur de source.
+
+   À faire : détecter d'abord les signatures connues, vérifier la machine
+   avant décodage ou exécution, distinguer un ELF non pris en charge d'un
+   binaire brut, et proposer un choix explicite pour les cas ambigus.
+
+   Références : crates/namsdec-asm/src/elf.rs:380 ;
+   crates/namsdec-gui/src/files.rs:833 et :938.
+
+6. PRIORITÉ MOYENNE — Étendre le travail en arrière-plan aux opérations
+   internes coûteuses. Constat d'architecture, sans mesure de gel manuel.
+
+   Les décompilateurs travaillent déjà dans un fil séparé. En revanche,
+   assemble_once appelle nasm et ld de façon synchrone ; open_file_now lit
+   le fichier puis effectue le chargement et le désassemblage dans le
+   parcours de l'interface. Un source long à assembler ou un gros binaire
+   peut donc retarder le retour à la boucle d'affichage.
+
+   À faire : séparer préparation et adoption du résultat, avec annulation
+   et identification du document concerné. Éviter qu'un résultat ancien
+   remplace celui d'un onglet changé entre-temps. Mesurer le temps
+   d'ouverture et le pic mémoire sur un petit corpus stable.
+
+   Pour l'exécution, un lot de 5 000 instructions ne constitue pas une
+   garantie de durée : toutes les instructions n'ont pas le même coût.
+   Un budget de temps en complément du budget de pas serait plus adapté
+   à la réactivité, avec traitement spécifique des opérations longues.
+
+   Références : crates/namsdec-gui/src/run.rs:43 et :768 ;
+   crates/namsdec-asm/src/lib.rs:306 ;
+   crates/namsdec-gui/src/files.rs:833.
+
+Améliorations de fond, après ces corrections
+
+- Consolider la validation de l'émulateur.
+  L'oracle existe et fonctionne : l'intégrer à une tâche CI adaptée,
+  avec un socle x86-64 reproductible et des extensions selon les capacités
+  du processeur, apporterait davantage que des tests qui répètent les
+  formules de l'implémentation. Ajouter ensuite des cas aux limites et
+  conserver chaque divergence découverte comme régression. Le passage
+  de 752 cas pendant cet examen est encourageant, pas une preuve complète.
+
+- Tester les budgets, pas seulement les réponses.
+  L'historique est limité à 5 000 pas, mais chaque pas peut garder des
+  octets mémoire modifiés ; la sortie du programme émulé peut également
+  croître. Définir un budget mémoire global pour historique, sorties,
+  documents ouverts et analyses, puis expliquer ce qui est réduit lorsque
+  ce budget est atteint. Ce point est une recommandation de conception,
+  pas une saturation de l'émulateur reproduite pendant cet examen.
+
+- Réduire progressivement le couplage de NamsdecApp.
+  Le découpage en fichiers est déjà présent, mais beaucoup de fonctions
+  restent des méthodes d'un même objet central. Regrouper document,
+  session d'exécution, travaux de fond et état des fenêtres rendrait les
+  transitions plus faciles à vérifier. Ne pas entreprendre une réécriture
+  générale : extraire ces responsabilités au fil des corrections.
+  main.rs fait environ 4 300 lignes, sidebar.rs environ 4 240 ; ces
+  volumes incluent les commentaires et ne sont pas, seuls, des défauts.
+
+- Rendre la suite plus facile à maintenir.
+  Le fichier GUI tests.rs dépasse 31 000 lignes. Organiser les tests par
+  comportement et partager les scènes d'interface faciliterait la lecture
+  et le diagnostic. Garder les contrôles géométriques transversaux.
+  Distinguer les tests déterministes, ceux qui dépendent des outils locaux
+  et ceux qui interrogent le réseau. En CI, ajouter --workspace à la
+  commande Clippy pour inclure explicitement les cibles de tous les crates,
+  notamment leurs tests et exemples ; le workspace a un default-member.
+
+- Mettre la documentation en accord avec le produit actuel.
+  Le README dit vers la ligne 185 que mmap n'est pas exécuté, puis le
+  liste parmi les appels simulés vers la ligne 662. Il affirme vers la
+  ligne 672 qu'AVX-512 n'est pas implémenté alors que le code et des tests
+  couvrent déjà plusieurs opérations AVX-512. Décrire une couverture
+  partielle serait plus exact qu'une affirmation globale dans un sens
+  ou dans l'autre. Les commentaires d'introduction de namsdec-re parlent
+  encore d'une phase où aucun module métier n'existait.
+  Le README gagnerait aussi à présenter d'abord une prise en main courte,
+  puis à renvoyer vers le détail. Il contient aujourd'hui beaucoup de
+  récit des corrections successives. Ces explications sont utiles, mais
+  leur place naturelle est souvent le changelog ou la documentation
+  technique. Les commentaires qui expliquent une contrainte réelle sont,
+  eux, précieux et méritent de rester.
+
+- Clarifier les deux usages sans multiplier les fonctions.
+  Un débutant qui veut comprendre une boucle et un utilisateur qui étudie
+  un ELF inconnu n'ont pas besoin du même écran initial. Deux dispositions
+  « Apprendre » et « Analyser », construites avec les panneaux existants,
+  seraient une piste à éprouver avec des utilisateurs. Je la propose
+  comme hypothèse produit, pas comme défaut d'ergonomie observé à l'écran.
+  Un essai avec quelques personnes découvrant le logiciel serait plus
+  instructif qu'une nouvelle série de réglages.
+
+- Présenter le temps d'attente comme du temps d'attente.
+  BackgroundJob::fraction calcule le temps écoulé divisé par le délai
+  maximal ; reflect_job_in_title l'affiche en pourcentage. « Décompilation
+  45 % » peut donc être lu comme un avancement réel alors que l'outil
+  n'en fournit aucun. Préférer une activité indéterminée accompagnée de
+  « 54 s écoulées, limite 120 s ». L'installation dispose, elle, d'un
+  nombre d'étapes et peut annoncer ce qu'elle a réellement terminé.
+  Références : crates/namsdec-gui/src/main.rs:281 ;
+  crates/namsdec-gui/src/jobs.rs, reflect_job_in_title.
+
+Ordre de travail que je choisirais
+
+1. Plafonds avant allocation, lecture bornée des sorties, UTF-8 et délais
+   des sous-processus. Ce sont les corrections les plus urgentes.
+2. Statut des outils et identification correcte des fichiers/architectures.
+3. Régressions ciblées, oracle automatisé et documentation mise à jour.
+4. Ouverture et assemblage annulables, mesures de temps et de mémoire.
+5. Simplification des parcours et extraction progressive des gros états.
+
+Je préserverais le périmètre Linux x86-64 pour l'instant. Ajouter d'autres
+architectures ou chercher à tout émuler multiplierait les obligations de
+validation. La valeur de namsdec tient à la qualité de ses explications et
+à la confiance dans ce qu'il montre : c'est là que les prochains efforts
+me semblent les mieux investis.
+
+Traces de cet examen, conservées dans /tmp
+
+  /tmp/namsdec-audit-1610-tests.log
+  /tmp/namsdec-audit-1610-fmt.log
+  /tmp/namsdec-audit-1610-clippy.log
+  /tmp/namsdec-audit-1610-oracle.log
+  /tmp/namsdec-audit-1610-probe.rs
+  /tmp/namsdec-audit-1610-probe.log
+  /tmp/namsdec-audit-1610-elf.rs
+  /tmp/namsdec-audit-1610-elf.log
+
+Ces fichiers temporaires peuvent disparaître au nettoyage de /tmp.
+Les résultats et leurs limites sont donc décrits dans le présent rapport.

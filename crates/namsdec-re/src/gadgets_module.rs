@@ -69,6 +69,21 @@ impl ReModule for GadgetsModule {
         }
     }
 
+    /// Le nom court dans la colonne : le titre entier y passait sur
+    /// DEUX lignes.
+    ///
+    /// Vingt-trois pixels de plus pour une seule entrée, et c'est la
+    /// dernière rubrique de la colonne — « Détourner » — qui tombait
+    /// sous le bord. Mesuré, non supposé : le relevé de la fenêtre
+    /// d'analyse donnait une hauteur de galley de 30 pour cette entrée
+    /// et de 15 pour toutes les autres. Le panneau garde son titre
+    /// entier, où la place ne manque pas. Le même mot sert dans les
+    /// deux langues : « fragments » s'écrit pareil, et « ROP » est un
+    /// sigle.
+    fn nav_title(&self, _lang: &str) -> &'static str {
+        "Fragments (ROP)"
+    }
+
     fn on_binary_loaded(&mut self, ctx: &ReContext) {
         self.found = gadgets::from_disasm(ctx.disasm, RÉCOLTE);
         self.total = self.found.len();

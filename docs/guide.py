@@ -439,6 +439,24 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "et <b>Fichier > Ouvrir un fichier…</b> (Ctrl+O) ouvre un fichier existant, "
          "lui aussi dans son onglet."),
 
+        ("p",
+         "<b>Texte ou binaire&nbsp;?</b> namsdec le décide à la <b>signature</b> du "
+         "fichier, et non à son nom ni à son encodage. Un ELF, un exécutable Windows, "
+         "une archive, un PDF, une image partent au désassembleur et aux panneaux RE ; "
+         "le reste va dans l'éditeur, à condition de ne contenir aucun octet nul et "
+         "presque aucun caractère de contrôle. Le critère précédent — « tous les "
+         "octets forment de l'UTF-8 valide » — ne démontrait rien&nbsp;: les octets "
+         "nuls sont de l'UTF-8 valide, et un petit exécutable satisfait souvent ce "
+         "test. Il atterrissait alors dans l'éditeur de source."),
+
+        ("note",
+         "Un ELF écrit pour un AUTRE PROCESSEUR est refusé en le nommant : "
+         "« ceci est un ELF AArch64 : namsdec ne lit que x86-64 ». Ses octets restent "
+         "consultables — l'éditeur binaire, les chaînes, les sections —, mais aucun "
+         "listing ne prétend plus les comprendre. Auparavant, seuls « ELF 64 bits » et "
+         "« petit-boutiste » étaient vérifiés : un binaire ARM passait, et se lisait "
+         "en x86-64 sur toute sa longueur."),
+
         ("h2", "Ce que l'éditeur sait faire"),
         ("p",
          "En mode NORMAL, les déplacements sont ceux de vim : "
@@ -658,10 +676,10 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
         ("p",
          "Quand le programme se met \u00e0 attendre, une <b>bo\u00eete de saisie</b> s'ouvre "
          "d'elle-m\u00eame, au premier plan, le curseur d\u00e9j\u00e0 dans le champ. Elle montre "
-         "<b>ce que le programme vient d'\u00e9crire</b> \u2014 neuf fois sur dix c'est "
+         "<b>ce que le programme vient d'\u00e9crire</b> — neuf fois sur dix c'est "
          "l'invite, et c'est la seule chose qui dise ce qu'on attend de nous. Entr\u00e9e "
          "envoie. Elle <b>reste ouverte</b> ensuite, et montre ce que le programme a "
-         "r\u00e9pondu \u2014 « Incorrect password » \u2014 avant de s'arr\u00eater : la refermer "
+         "r\u00e9pondu — « Incorrect password » — avant de s'arr\u00eater : la refermer "
          "aussit\u00f4t renverrait devant une console souvent repli\u00e9e, o\u00f9 l'on ne verrait "
          "rien de ce qu'on vient de provoquer. \u00c9chap ou OK la ferment. Elle sert "
          "pr\u00e9cis\u00e9ment quand la console est repli\u00e9e ou couverte par une autre "
@@ -670,8 +688,8 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
         ("p",
          "Elle montre ce que le programme a \u00e9crit <b>en entier</b>, et sans "
          "ascenseur : la bo\u00eete prend la largeur de la plus longue ligne et la "
-         "hauteur de toutes. Un logo de sept lignes sur quatre-vingts colonnes \u2014 ce "
-         "par quoi commence la moiti\u00e9 des crackmes \u2014 y tient donc entier. Quand "
+         "hauteur de toutes. Un logo de sept lignes sur quatre-vingts colonnes — ce "
+         "par quoi commence la moiti\u00e9 des crackmes — y tient donc entier. Quand "
          "la sortie d\u00e9passe l'\u00e9cran, c'est <b>la fin</b> qui est montr\u00e9e, "
          "puisque l'invite est toujours en bas, et une ligne dit ce qui reste au-dessus, "
          "dans la console."),
@@ -990,7 +1008,7 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
         ("p",
          "Les touches sont peintes en couleurs <b>opaques et franches</b> : les chiffres "
          "sur un gris net, les op\u00e9rateurs sur la couleur d'accent du th\u00e8me, ce "
-         "qui efface sur du rouge. Trois familles, trois teintes \u2014 on vise une touche "
+         "qui efface sur du rouge. Trois familles, trois teintes — on vise une touche "
          "sans la lire. L'encre est celle des deux couleurs du th\u00e8me qui contraste le "
          "plus avec le fond de la touche — le contraste au sens des "
          "recommandations d’accessibilité, mesuré sur la clarté que "
@@ -1118,12 +1136,12 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "fermée sinon."),
         ("p",
          "Un but manqu\u00e9 dit <b>laquelle</b> de ses conditions manque, et ce que "
-         "l\u2019expression vaut \u00e0 la place \u2014 <font face='Courier'>rax == 0xf</font> "
+         "l\u2019expression vaut \u00e0 la place — <font face='Courier'>rax == 0xf</font> "
          "suivi de <font face='Courier'>rax vaut 0xc</font>. Un point plein marque ce qui "
          "tient, un cercle vide ce qui manque. \u00ab Pas encore \u00bb tout seul est un "
          "verdict : sur un but \u00e0 plusieurs conditions, on ne savait pas laquelle "
-         "regarder, et l\u2019on relan\u00e7ait au hasard. Ce que namsdec sait \u2014 la "
-         "valeur \u2014 il le dit ; comment y arriver, il se tait, parce que c\u2019est le "
+         "regarder, et l\u2019on relan\u00e7ait au hasard. Ce que namsdec sait — la "
+         "valeur — il le dit ; comment y arriver, il se tait, parce que c\u2019est le "
          "geste qu\u2019on est venu apprendre."),
         ("p",
          "Il dit aussi <b>ce que le programme a fait</b> : « la boucle de la ligne 6 a "
@@ -1444,7 +1462,19 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "<b>namsdec n'installe rien à votre place</b> — un outil absent dit ce qu'il "
          "faut taper pour l'obtenir, et laisse taper. La sortie se <b>cherche</b> et se "
          "lit par pages de trois cents lignes ; ses <b>adresses sont cliquables</b> et "
-         "mènent au listing, comme ailleurs.",
+         "mènent au listing, comme ailleurs. "
+         "Un outil qui <b>échoue</b> le dit désormais en tête de son panneau — "
+         "« l'outil a échoué (code de sortie 7) », et ce qui suit est ce qu'il a tout "
+         "de même écrit. Le code de sortie était jeté : un programme qui se plaignait "
+         "puis sortait en erreur rendait un texte que rien ne distinguait d'un "
+         "résultat normal. La même ligne dit, le cas échéant, que la sortie vient de "
+         "la sortie d'erreur, ou qu'elle a été <b>coupée à 4 Mio</b> et qu'elle est "
+         "donc incomplète. Cette limite est maintenant une limite de mémoire et plus "
+         "seulement d'affichage : la sortie est bornée <i>pendant</i> sa lecture. "
+         "Et le <b>délai</b> vaut pour tout ce que l'outil a lancé : il part dans son "
+         "propre groupe de processus, et c'est le groupe qu'on arrête — un sous-"
+         "processus qui survivait à son père prolongeait l'attente bien au-delà du "
+         "délai demandé.",
          "<b>Fragments réutilisables (ROP)</b> — les fins de séquence utiles à une "
          "chaîne ROP : chacune finit par <font face='Courier'>ret</font>, et les "
          "enchaîner revient à écrire un programme avec les morceaux d'un autre. La "
@@ -1604,6 +1634,39 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "cela il se présentait en quatorze morceaux là où il n'y a qu'une chose à voir. "
          "Une position que rien ne projette en mémoire — l'en-tête, la table des "
          "symboles — le dit, plutôt que de laisser une case vide.",
+         "<b>UPX — déballer l'original</b> — la suite du geste que le panneau "
+         "d'entropie annonce. Il disait « c'est de l'UPX, et <font face='Courier'>upx -d"
+         "</font> le rendra » ; cette rubrique le fait, sans qu'on sorte de namsdec. Deux "
+         "boutons, et <b>aucun des deux ne touche le fichier ouvert</b> : "
+         "<b>Identifier</b> lance <font face='Courier'>upx -l</font> sur une copie "
+         "temporaire — lecture seule, rien n'est écrit —, et <b>Déballer "
+         "vers\u2026</b> lance <font face='Courier'>upx -d -o &lt;choisi&gt; &lt;copie&gt;"
+         "</font>, qui écrit l'original déballé dans un fichier que vous nommez, puis "
+         "l'ouvre dans un onglet à côté. L'échantillon empaqueté reste dans le sien, et "
+         "l'on compare les deux.",
+         "C'est le <font face='Courier'>-o</font> qui fait toute la différence avec la "
+         "commande qu'on tape de mémoire. <font face='Courier'>upx -d fichier</font> "
+         "écrase l'échantillon <b>en place</b> : on a déballé, et l'on a perdu ce qu'on "
+         "analysait — sans sauvegarde, et sans que rien l'ait annoncé. namsdec écrit "
+         "donc les octets ouverts dans un fichier temporaire, lance upx là-dessus, et lui "
+         "demande d'écrire ailleurs. Votre fichier n'est pas même ouvert en écriture.",
+         "Et ce que la rubrique dit <b>quand elle ne trouve rien</b> compte autant que le "
+         "reste. Pas de marque <font face='Courier'>UPX!</font>, pas de section "
+         "<font face='Courier'>UPX0</font> : cela ne prouve pas l'absence d'UPX. La "
+         "signature et les noms de section s'effacent en trois octets, et c'est la "
+         "première chose qu'un protecteur fait pour qu'upx refuse de déballer. De même, "
+         "« <font face='Courier'>NotPackedException</font> » ne veut pas dire « pas "
+         "d'UPX » : elle veut dire que les en-têtes de bloc ne sont pas là où upx les "
+         "attend. Sur un binaire ordinaire c'est la bonne réponse ; sur un binaire à "
+         "forte entropie, c'est le signe qu'on les a abîmés exprès — et la suite "
+         "passe alors par le vidage mémoire, après que le programme s'est déballé "
+         "lui-même. La rubrique écrit ces deux nuances sous la réponse, parce qu'une "
+         "réponse lue de travers coûte une soirée.",
+         "Si upx n'est pas sur la machine, la rubrique le dit et donne la ligne à taper "
+         "(<font face='Courier'>sudo dnf install upx</font>) — elle ne l'installe "
+         "pas à votre place. C'est la même règle que pour Ghidra, RetDec ou radare2 : "
+         "exécuter du code au nom de quelqu'un n'est pas une commodité, c'est une "
+         "décision.",
         ]),
         ("p",
          "<b>Les adresses de ces panneaux sont cliquables.</b> Une entrée de liaison, une "
@@ -1911,7 +1974,7 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
         ("p",
          "On ouvre un crackme, on voit le <font face='Courier'>je</font> qu'il faudrait "
          "inverser, et jusqu'ici l'on ne pouvait rien en faire : r\u00e9assembler le "
-         "listing est refus\u00e9, et \u00e0 juste titre \u2014 un d\u00e9sassemblage "
+         "listing est refus\u00e9, et \u00e0 juste titre — un d\u00e9sassemblage "
          "n'est pas un source. \u00c9crire les octets \u00e0 leur place, si. Outils \u203a "
          "<b>Patcher le binaire\u2026</b>, sur la ligne o\u00f9 est le curseur."),
         ("table", [
@@ -1929,12 +1992,12 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "r\u00e8gle qui rend l'op\u00e9ration s\u00fbre : un octet de plus ou de moins "
          "d\u00e9calerait tout ce qui suit, et chaque adresse du fichier deviendrait "
          "fausse. La fen\u00eatre \u00e9crit les octets d'avant et ceux d'apr\u00e8s "
-         "<i>avant</i> qu'on clique \u2014 on ne change pas les octets de quelqu'un \u00e0 "
-         "l'aveugle \u2014 et chaque changement se d\u00e9fait."),
+         "<i>avant</i> qu'on clique — on ne change pas les octets de quelqu'un \u00e0 "
+         "l'aveugle — et chaque changement se d\u00e9fait."),
         ("p",
          "Inverser et forcer ne r\u00e9pondent pas \u00e0 la m\u00eame question. "
          "Inverser demande \u00ab et si la condition \u00e9tait l\u2019autre ? \u00bb ; "
-         "forcer demande \u00ab et si on y allait de toute fa\u00e7on ? \u00bb \u2014 "
+         "forcer demande \u00ab et si on y allait de toute fa\u00e7on ? \u00bb — "
          "c\u2019est celui qu\u2019on veut devant un contr\u00f4le qu\u2019on n\u2019a pas "
          "encore compris. Le saut long y gagne un <font face='Courier'>nop</font> : "
          "<font face='Courier'>jmp</font> long fait un octet de moins que "
@@ -1951,7 +2014,7 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "On \u00e9crit aussi les octets \u00e0 la main, depuis le module <b>Vidage du "
          "fichier</b> de la fen\u00eatre d'analyse : on choisit la tranche, on tape ce "
          "qu'on veut \u00e0 la place, et le changement rejoint la liste des patchs. "
-         "Autant d'octets que la tranche en compte, exactement \u2014 c'est la m\u00eame "
+         "Autant d'octets que la tranche en compte, exactement — c'est la m\u00eame "
          "r\u00e8gle, et c'est elle qui garde toutes les autres adresses justes."),
         ("p",
          "Le binaire est recharg\u00e9 apr\u00e8s chaque changement : les octets chang\u00e9s "

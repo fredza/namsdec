@@ -29,7 +29,11 @@ arboard.workspace = true
 rfd.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+# Le fichier temporaire sur lequel upx travaille : une copie du binaire
+# ouvert, pour que `upx -d` n'écrase jamais l'échantillon. Déjà dans le
+# binaire par namsdec-disasm, qui s'en sert pour les outils extérieurs —
+# le promouvoir depuis les dépendances de test ne coûte donc rien.
+tempfile.workspace = true
 
 [dev-dependencies]
-tempfile.workspace = true
 egui_kittest.workspace = true

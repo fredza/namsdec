@@ -47,7 +47,8 @@ impl NamsdecApp {
                 | FileDialogKind::ExportDump
                 | FileDialogKind::ExportDot
                 | FileDialogKind::ExportKeymap
-                | FileDialogKind::ExportBinary => dialog.save_file(),
+                | FileDialogKind::ExportBinary
+                | FileDialogKind::UnpackUpx => dialog.save_file(),
             };
             // Si l'application s'est arrêtée entre-temps, le résultat
             // n'intéresse plus personne : l'envoi échoue et le thread
@@ -127,6 +128,18 @@ impl NamsdecApp {
             FileDialogKind::ExportKeymap => dialog
                 .add_filter(s.filter_theme, &["json"])
                 .set_file_name("keymap.json"),
+            // Le nom de l'échantillon suivi de `-depaquete` : on se
+            // retrouve avec les deux côte à côte dans le même dossier,
+            // et le nom dit lequel est lequel. Sans extension imposée —
+            // un exécutable Linux n'en a pas.
+            FileDialogKind::UnpackUpx => dialog.set_file_name(format!(
+                "{}-depaquete",
+                self.current_file
+                    .as_ref()
+                    .and_then(|path| path.file_stem())
+                    .map(|nom| nom.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| "programme".to_owned())
+            )),
             FileDialogKind::OpenFolder | FileDialogKind::SaveAs => dialog,
         }
     }
@@ -183,6 +196,7 @@ impl NamsdecApp {
             FileDialogKind::ExportDot => self.export_dot(&path),
             FileDialogKind::ExportKeymap => self.export_keymap(&path),
             FileDialogKind::LocateTool => self.locate_tool(path),
+            FileDialogKind::UnpackUpx => self.unpack_upx_to(&path),
         }
     }
 
@@ -829,7 +843,19 @@ impl NamsdecApp {
             }
         };
 
-        match String::from_utf8(bytes) {
+        // La signature DÉCIDE, et l'UTF-8 ne décide plus rien.
+        //
+        // L'ouverture choisissait « source » dès que tous les octets
+        // formaient un UTF-8 valide, ce qui ne démontre rien : les
+        // octets nuls sont valides en UTF-8, et le petit ELF x86-64
+        // qu'on écrit pour éprouver le lecteur satisfait justement ce
+        // critère. Un exécutable partait donc dans l'éditeur de source.
+        let texte = match sniff(&bytes) {
+            FileKind::Binary => None,
+            FileKind::Text => String::from_utf8(bytes.clone()).ok(),
+        };
+
+        match texte.ok_or(bytes) {
             Ok(text) => {
                 self.saved_source = text.clone();
                 self.set_source(text);
@@ -846,13 +872,13 @@ impl NamsdecApp {
                 self.diagnostics.clear();
                 self.status = Status::Idle;
             }
-            Err(e) => {
+            Err(octets) => {
                 let nom = path
                     .file_name()
                     .map(|nom| nom.to_string_lossy().into_owned())
                     .unwrap_or_else(|| "programme".to_owned());
                 self.note_recent(&path);
-                self.load_binary(e.into_bytes(), &nom);
+                self.load_binary(octets, &nom);
                 // Retenu pour la séance suivante. Pas dans
                 // `current_file`, qui reste vide exprès pour un binaire :
                 // un Ctrl+S distrait n'a pas à écraser l'exécutable par
@@ -884,6 +910,28 @@ impl NamsdecApp {
         let Some(elf) = namsdec_asm::elf::parse(bytes) else {
             return false;
         };
+        // L'ARCHITECTURE, avant de décoder quoi que ce soit.
+        //
+        // Le lecteur vérifiait ELF64 et le petit-boutisme ; un en-tête
+        // déclarant AArch64 passait, son image se construisait, et le
+        // reste du parcours la désassemblait en x86-64 — soixante mille
+        // lignes qui n'ont aucun rapport avec le programme. On refuse
+        // le chemin ELF en NOMMANT la machine : les octets restent
+        // ouverts pour les panneaux RE et l'éditeur binaire, mais plus
+        // rien ne prétend les comprendre.
+        if !elf.machine.supported() {
+            let machine = elf.machine.name();
+            self.status = Status::Error(if self.lang == Lang::Fr {
+                format!(
+                    "{name} est un ELF {machine} : namsdec ne lit que x86-64.                      Les octets restent consultables, le listing ne veut rien dire."
+                )
+            } else {
+                format!(
+                    "{name} is a {machine} ELF: namsdec only reads x86-64.                      The bytes stay inspectable, the listing means nothing."
+                )
+            });
+            return false;
+        }
         // « Prochaine instruction » se replie sur un binaire, et pas sur
         // un source qu'on assemble.
         //
@@ -907,14 +955,39 @@ impl NamsdecApp {
         // Un fichier de réadressage : aucune section n'a d'adresse, et
         // il n'y a pas de point d'entrée. `ld` n'est pas encore passé.
         let relocatable = elf.entry == 0 && elf.sections.iter().all(|section| section.addr == 0);
-        let Some((load_addr, image)) = elf.image() else {
+        // Le PLAN d'abord, l'image ensuite : `elf.image()` allouait
+        // l'étendue décrite par les en-têtes, et le plafond n'était
+        // contrôlé qu'après, sur un `Vec` déjà en mémoire. Un fichier
+        // de cent vingt octets pouvait ainsi réclamer un demi-
+        // gigaoctet avant d'être refusé.
+        let Some(plan) = elf.image_plan() else {
             return false;
         };
         // La fenêtre s'adapte au programme : ce qui est refusé, c'est
         // ce qui dépasse ce qu'une machine accepte d'allouer.
-        if memory_window(load_addr, image.len()).1 > MEM_MAX {
+        if memory_window(plan.addr, plan.len).1 > MEM_MAX {
+            self.status = Status::Error(if self.lang == Lang::Fr {
+                format!(
+                    "{name} décrit {} Mio de mémoire : au-delà des {} Mio que namsdec simule.",
+                    plan.len / (1024 * 1024),
+                    MEM_MAX / (1024 * 1024)
+                )
+            } else {
+                format!(
+                    "{name} describes {} MiB of memory: beyond the {} MiB namsdec simulates.",
+                    plan.len / (1024 * 1024),
+                    MEM_MAX / (1024 * 1024)
+                )
+            });
             return false;
         }
+        let (load_addr, image) = match elf.image(plan.len) {
+            Ok(fait) => fait,
+            Err(pourquoi) => {
+                self.status = Status::Error(format!("{name} : {pourquoi}"));
+                return false;
+            }
+        };
 
         // Le listing ne montre que les sections exécutables : le reste est
         // de la donnée, et la donnée désassemblée ne veut rien dire.
@@ -1371,4 +1444,85 @@ impl NamsdecApp {
         ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
         self.pending = Some(Pending::Quit);
     }
+}
+
+/// Ce qu'un fichier est, décidé avant d'essayer de le lire.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FileKind {
+    /// Du texte : il ira dans l'éditeur de source.
+    Text,
+    /// Des octets : ils iront au désassembleur et aux panneaux RE.
+    Binary,
+}
+
+/// Les signatures qu'on reconnaît d'emblée, et le nom qu'on leur donne.
+///
+/// La liste n'a pas à être complète pour servir : elle a à contenir ce
+/// qu'on ouvre par erreur. Un `.o`, une archive, une image, un PDF
+/// traversaient le test « UTF-8 valide » quand leurs octets s'y
+/// prêtaient, et finissaient dans l'éditeur.
+const SIGNATURES: &[(&[u8], &str)] = &[
+    (b"\x7fELF", "ELF"),
+    (b"MZ", "PE/DOS"),
+    (b"\xca\xfe\xba\xbe", "Mach-O universel"),
+    (b"\xcf\xfa\xed\xfe", "Mach-O 64 bits"),
+    (b"!<arch>", "archive ar"),
+    (b"PK\x03\x04", "zip"),
+    (b"%PDF", "PDF"),
+    (b"\x89PNG", "PNG"),
+    (b"\x1f\x8b", "gzip"),
+    (b"\xfd7zXZ", "xz"),
+    (b"\x04\x22\x4d\x18", "lz4"),
+    (b"\x28\xb5\x2f\xfd", "zstd"),
+    (b"\x00asm", "WebAssembly"),
+    (b"dex\n", "Android dex"),
+    (b"\xca\xfe\xba\xbe\x00\x00", "classe Java"),
+];
+
+/// Le nom de la signature que ces octets portent, s'ils en portent une.
+pub(crate) fn signature_name(bytes: &[u8]) -> Option<&'static str> {
+    SIGNATURES
+        .iter()
+        .find(|(magie, _)| bytes.starts_with(magie))
+        .map(|(_, nom)| *nom)
+}
+
+/// Texte ou octets ?
+///
+/// Trois questions, dans cet ordre, et l'ordre est la correction :
+///
+/// 1. **une signature connue** — un ELF est un ELF, même si tous ses
+///    octets forment par chance de l'UTF-8 valide ;
+/// 2. **un octet nul** — aucun fichier source n'en contient, et c'est le
+///    test que tout le monde emploie depuis `diff` ;
+/// 3. **trop de caractères de contrôle** — au-delà d'un centième, ce
+///    n'est pas du texte qu'on a sous les yeux.
+///
+/// Ce n'est qu'après que l'UTF-8 a son mot à dire, et seulement pour
+/// refuser : un fichier qui a passé les trois questions mais n'est pas
+/// de l'UTF-8 valide (du latin-1, par exemple) n'ira pas dans l'éditeur.
+pub(crate) fn sniff(bytes: &[u8]) -> FileKind {
+    if signature_name(bytes).is_some() {
+        return FileKind::Binary;
+    }
+    // Un fichier vide est un source vide : c'est ce qu'on vient de
+    // créer, pas un binaire de zéro octet.
+    if bytes.is_empty() {
+        return FileKind::Text;
+    }
+    // Le début suffit, et le borner garde l'ouverture d'un gros fichier
+    // instantanée : un source dont les huit premiers kilo-octets sont du
+    // texte l'est.
+    let tête = &bytes[..bytes.len().min(8 * 1024)];
+    if tête.contains(&0) {
+        return FileKind::Binary;
+    }
+    let contrôles = tête
+        .iter()
+        .filter(|octet| **octet < 0x20 && !matches!(octet, b'\t' | b'\n' | b'\r' | 0x0c))
+        .count();
+    if contrôles * 100 > tête.len() {
+        return FileKind::Binary;
+    }
+    FileKind::Text
 }

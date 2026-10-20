@@ -371,7 +371,12 @@ pub fn assemble(source: &str, base_addr: u64) -> Result<AssembleOutput, AsmError
 
     let file = fs::read(&program_path)?;
     let elf = elf::parse(&file).ok_or(AsmError::UnreadableProgram)?;
-    let (load_addr, bytes) = elf.image().ok_or(AsmError::UnreadableProgram)?;
+    // Le plafond vaut même ici, où le fichier vient d'être produit par
+    // nasm et ld : une directive `times` ou un `.bss` énorme dans le
+    // source de l'utilisateur décrit une image aussi grande qu'il veut.
+    let (load_addr, bytes) = elf
+        .image(elf::IMAGE_MAX)
+        .map_err(|_| AsmError::UnreadableProgram)?;
 
     let listing = fs::read_to_string(&listing_path).unwrap_or_default();
     let line_to_addr = parse_listing(&listing, &elf);

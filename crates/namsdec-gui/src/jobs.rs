@@ -291,6 +291,7 @@ impl NamsdecApp {
             .collect();
         let base = state.disasm.first().map(|i| i.address).unwrap_or(0);
         let (sender, receiver) = mpsc::channel();
+        let lang = self.lang;
         std::thread::spawn(move || {
             let cible = namsdec_disasm::plugin::Cible {
                 fichier: &fichier,
@@ -299,6 +300,7 @@ impl NamsdecApp {
             };
             let réponse = plugin
                 .run_on(&cible, DECOMPILER_TIMEOUT)
+                .map(|rendu| texte_de_sortie(&rendu, lang))
                 .map_err(|e| e.to_string());
             // Personne n'attend plus si l'on a changé de binaire :
             // l'envoi échoue, et le fil s'achève là.
@@ -470,4 +472,49 @@ impl NamsdecApp {
             }
         }
     }
+}
+
+/// Le texte qu'un panneau peint à partir de ce qu'un outil a rendu — et
+/// ce qu'on en pense.
+///
+/// Le statut de sortie était jeté : un programme qui écrit
+/// « tool failed » sur sa sortie d'erreur puis sort avec le code 7
+/// rendait un texte que rien ne distinguait d'un résultat normal. Il
+/// est gardé, et il se lit **avant** le texte — un résultat partiel
+/// peut être utile, à condition d'être nommé comme tel.
+pub(crate) fn texte_de_sortie(rendu: &namsdec_disasm::plugin::ToolOutput, lang: Lang) -> String {
+    use namsdec_disasm::plugin::Source;
+    let mut lignes = Vec::new();
+    match rendu.status {
+        Some(0) => {}
+        Some(code) => lignes.push(if lang == Lang::Fr {
+            format!("⚠ L'outil a échoué (code de sortie {code}). Ce qui suit est ce qu'il a tout de même écrit.")
+        } else {
+            format!("⚠ The tool failed (exit code {code}). What follows is what it wrote anyway.")
+        }),
+        None => lignes.push(if lang == Lang::Fr {
+            "⚠ L'outil a été arrêté par un signal : il n'a pas fini de lui-même.".to_owned()
+        } else {
+            "⚠ The tool was killed by a signal: it did not finish on its own.".to_owned()
+        }),
+    }
+    if rendu.source == Source::Stderr && !rendu.text.trim().is_empty() {
+        lignes.push(if lang == Lang::Fr {
+            "Rien sur la sortie ordinaire ; ce qui suit vient de la sortie d'erreur.".to_owned()
+        } else {
+            "Nothing on standard output; what follows comes from standard error.".to_owned()
+        });
+    }
+    if rendu.truncated {
+        lignes.push(if lang == Lang::Fr {
+            "La sortie dépassait 4 Mio : elle est coupée, et incomplète.".to_owned()
+        } else {
+            "The output was over 4 MiB: it is cut, and incomplete.".to_owned()
+        });
+    }
+    if lignes.is_empty() {
+        return rendu.text.clone();
+    }
+    lignes.push(String::new());
+    format!("{}{}", lignes.join("\n"), rendu.text)
 }

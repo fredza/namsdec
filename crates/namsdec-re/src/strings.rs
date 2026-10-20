@@ -109,7 +109,13 @@ pub fn scan(bytes: &[u8], base: u64) -> Vec<Found> {
         let printable = (0x20..0x7f).contains(byte) || *byte == b'\t';
         if printable {
             if current.is_empty() {
-                start = base + offset as u64;
+                // `base` vient du fichier (l'adresse d'une section) et
+                // `offset` du parcours : leur somme débordait en *debug*
+                // sur un en-tête qui annonce une adresse proche de
+                // `u64::MAX`. Une chaîne dont l'adresse déborde existe
+                // tout de même dans le fichier ; elle est gardée, avec
+                // l'adresse repliée, plutôt que perdue.
+                start = base.wrapping_add(offset as u64);
             }
             current.push(*byte as char);
             continue;
