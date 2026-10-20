@@ -61,6 +61,11 @@ un panneau de plus. Six points, six reproductions, six contrôles.
       `e_machine` est lu, un ELF étranger est refusé en le nommant, et le
       type d'un fichier se décide à sa signature et non à la validité de
       son UTF-8.
+- [x] **« En bref » dit qui a produit le binaire** (A 8.7) — le langage
+      et le compilateur, chacun avec son degré de certitude et les
+      indices qui le portent. L'essai sur /bin et /usr/bin a corrigé
+      trois défauts invisibles à la lecture ; sur les quatre cents
+      premiers fichiers, deux restent indéterminés.
 - [x] **Le fuzzing couvre le chargeur** (A 8.6) — et y a trouvé cinq
       débordements d'entier. La classe est traitée à la source : les
       lecteurs de champs composent base et déplacement de façon

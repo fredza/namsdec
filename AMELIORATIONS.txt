@@ -4594,3 +4594,46 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      UNIQUE du fuzzing le faisait passer au vert alors que trois de ces cinq
      défauts dormaient encore. Quatre graines sont désormais jouées, ce qui
      reste parfaitement reproductible et éprouve quatre chemins au lieu d'un.
+
+8.7  [FAIT] QUI A PRODUIT CE BINAIRE, ET DANS QUEL LANGAGE
+     Demandé le 20 octobre : « dans l'onglet RE en bref, détecte le compilateur
+     utilisé, et le langage (avec une certitude) ».
+     La certitude entre parenthèses est le vrai sujet. Un outil qui affiche
+     « compilateur : GCC » sans dire d'où il le tient apprend à croire plutôt
+     qu'à lire. `toolchain.rs` rend donc une conclusion ET les indices qui la
+     portent, avec quatre degrés : déclaré par le fichier (la section
+     `.comment`, écrite par le compilateur lui-même, qui est la seule source
+     qui donne un NUMÉRO DE VERSION), quasi certain, probable, un seul indice.
+     La règle d'agrégation est écrite et retenue par un contrôle : dix indices
+     de même nature ne valent pas mieux qu'un — ils disent tous la même chose.
+     Ce qui renforce une conclusion, c'est qu'un indice d'une AUTRE nature la
+     confirme. Et rien ne monte jusqu'à « déclaré », qui n'appartient qu'à ce
+     que le fichier écrit de lui-même.
+     Les sources : `.comment`, les sections propres à un langage, les
+     bibliothèques réclamées, les symboles de runtime, le décor des noms, les
+     chaînes, le shebang d'un script, et l'absence de tout cela.
+
+     --- CE QUE L'ESSAI SUR DE VRAIS BINAIRES A CORRIGÉ ---
+     Écrit d'abord, essayé ensuite sur /bin et /usr/bin : trois défauts, et
+     aucun des trois n'était visible à la lecture du code.
+     (a) `.gcc_except_table` figurait parmi les sections qui nomment C++. Elle
+     porte les tables de déroulement de pile, que GCC pose pour `throw` et que
+     rustc pose AUSSI pour `panic!`. `ripgrep`, écrit en Rust, se voyait donc
+     classer « C++, quasi certain ». Une section que deux langages posent ne
+     nomme ni l'un ni l'autre.
+     (b) Le motif `zig` se trouvait à l'intérieur d'un mot, dans un message
+     d'erreur quelconque. Les motifs sont désormais délimités à gauche, et
+     l'extrait montré est RECENTRÉ sur ce qu'on a trouvé — montrer les cent
+     vingt premiers caractères d'une chaîne où l'indice ne paraît pas ne vaut
+     pas mieux que pas d'indice.
+     (c) Un binaire Rust porte dans son `.comment` GCC (pour les objets C de
+     ses dépendances), rustc, et l'éditeur de liens. Garder le premier venu
+     annonçait « GCC 16.2.1 » pour un programme Rust. C'est le langage conclu
+     — sur des indices indépendants de `.comment` — qui choisit la ligne.
+     Et deux manques : le C, qu'AUCUN indice positif ne désigne jamais (ni
+     décor, ni runtime nommé, ni section à lui), déduit par élimination de la
+     libc seule ; et les chemins REMAPPÉS par les distributions —
+     `/usr/share/cargo/registry/…` au lieu de `/rustc/<empreinte>/` —, sans
+     lesquels `ripgrep` et `eza`, dépouillés et empaquetés, passaient pour du C.
+     Mesure finale sur les quatre cents premiers fichiers de /usr/bin :
+     2 indéterminés, et ce sont deux fragments de bibliothèque sans shebang.

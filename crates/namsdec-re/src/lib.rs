@@ -48,6 +48,7 @@ pub mod structure;
 pub mod syscalls;
 pub mod table;
 mod tool_module;
+pub mod toolchain;
 mod upx_module;
 pub mod xrefs;
 mod xrefs_module;

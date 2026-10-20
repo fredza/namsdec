@@ -1,5 +1,7 @@
 use crate::behaviour::{self, Family};
-use crate::{ReContext, ReModule, ReSection, elf_scan, imports, strings, syscalls, xrefs};
+use crate::{
+    ReContext, ReModule, ReSection, elf_scan, imports, strings, syscalls, toolchain, xrefs,
+};
 
 /// Le résumé : de quoi on parle, avant d'ouvrir les autres panneaux.
 ///
@@ -25,6 +27,9 @@ pub struct BinaryInfoModule {
     /// liaison, protections. Gardé entier pour en tirer plusieurs lignes
     /// sans rescanner à chaque image.
     scan: Option<elf_scan::Scan>,
+    /// Qui a produit ce fichier, et dans quel langage — avec le degré
+    /// de certitude et les indices qui le portent.
+    toolchain: toolchain::Toolchain,
 }
 
 impl ReModule for BinaryInfoModule {
@@ -82,6 +87,15 @@ impl ReModule for BinaryInfoModule {
             .collect();
 
         self.scan = elf_scan::scan(ctx.binary);
+        // La chaîne d'outils : relevée une fois au chargement, comme le
+        // reste. Elle lit des sections entières et parcourt les chaînes
+        // du fichier — ce n'est pas un calcul à refaire par image.
+        let symboles: Vec<String> = self
+            .scan
+            .as_ref()
+            .map(|scan| scan.functions.iter().map(|f| f.name.clone()).collect())
+            .unwrap_or_default();
+        self.toolchain = toolchain::detect(ctx.binary, self.scan.as_ref(), &symboles);
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
@@ -139,6 +153,78 @@ impl ReModule for BinaryInfoModule {
                     );
                 }
             });
+
+        // CE QUI L'A PRODUIT.
+        //
+        // La première question qu'on pose devant un fichier inconnu, et
+        // la plus rentable : un binaire Go ne se lit pas comme un
+        // binaire C, et savoir qu'on a du C++ devant soi change la
+        // façon dont on lit un `call` indirect — c'est peut-être une
+        // table virtuelle.
+        //
+        // Chaque réponse porte SON DEGRÉ DE CERTITUDE, et le détail des
+        // indices se déplie. Un outil qui affiche « compilateur : GCC »
+        // sans dire d'où il le tient apprend à croire plutôt qu'à lire.
+        ui.add_space(8.0);
+        ui.separator();
+        ui.add_space(4.0);
+        ui.strong(ctx.t("Ce qui l'a produit", "What produced it"));
+        let certitude = |ui: &mut egui::Ui, trouvé: &toolchain::Finding| {
+            ui.monospace(&trouvé.name);
+            ui.weak(format!("({})", trouvé.confidence.label(ctx.lang)));
+        };
+        if self.toolchain.language.is_none() && self.toolchain.compiler.is_none() {
+            ui.weak(ctx.t(
+                "Indéterminé : ni section .comment, ni runtime nommé, ni décor de \
+                 symboles reconnu. Un binaire dépouillé peut n'en porter aucun.",
+                "Undetermined: no .comment section, no named runtime, no recognised \
+                 symbol mangling. A stripped binary may carry none of these.",
+            ));
+        } else {
+            egui::Grid::new("binary_info_toolchain")
+                .num_columns(3)
+                .min_col_width(0.0)
+                .striped(true)
+                .show(ui, |ui| {
+                    if let Some(langage) = &self.toolchain.language {
+                        ui.label(ctx.t("Langage", "Language"));
+                        certitude(ui, langage);
+                        ui.end_row();
+                    }
+                    if let Some(compilateur) = &self.toolchain.compiler {
+                        ui.label(ctx.t("Compilateur", "Compiler"));
+                        certitude(ui, compilateur);
+                        ui.end_row();
+                    }
+                });
+        }
+        if !self.toolchain.evidence.is_empty() {
+            egui::CollapsingHeader::new(ctx.t("Ce qui le dit", "What says so"))
+                .id_salt("binary_info_evidence")
+                .show(ui, |ui| {
+                    for indice in &self.toolchain.evidence {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.weak(format!("[{}]", indice.where_));
+                            ui.monospace(&indice.what);
+                            ui.weak(format!("— {}", indice.means));
+                        });
+                    }
+                    ui.add_space(4.0);
+                    // CE QUE CELA NE PROUVE PAS, et ce n'est pas une
+                    // formule de prudence : `.comment` s'écrit, les
+                    // symboles s'effacent, les chaînes se remplacent. Un
+                    // lecteur qui l'ignore tirerait de « Go 1.22 » une
+                    // confiance qu'aucun octet ne justifie.
+                    ui.weak(ctx.t(
+                        "Tout cela se falsifie : la section .comment s'écrit, les symboles \
+                     s'effacent, les chaînes se remplacent. Ces indices disent ce que le \
+                     fichier MONTRE, non ce qu'il est.",
+                        "All of this can be forged: the .comment section can be written, symbols \
+                     stripped, strings replaced. These clues say what the file SHOWS, not \
+                     what it is.",
+                    ));
+                });
+        }
 
         // Ce qu'il sait faire : le portrait, puis une ligne par famille
         // présente. C'est la réponse à « a-t-il accès au réseau ? » et aux

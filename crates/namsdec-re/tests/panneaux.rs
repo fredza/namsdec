@@ -628,6 +628,7 @@ const SOURCES_DES_PANNEAUX: &[(&str, &str)] = &[
     ("structure.rs", include_str!("../src/structure.rs")),
     ("syscalls.rs", include_str!("../src/syscalls.rs")),
     ("table.rs", include_str!("../src/table.rs")),
+    ("toolchain.rs", include_str!("../src/toolchain.rs")),
     ("xrefs.rs", include_str!("../src/xrefs.rs")),
 ];
 
