@@ -4903,3 +4903,48 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      l'état du processeur en croyant mesurer la fiche : ouvrir un binaire
      ramène le panneau sur « Processeur », et l'onglet RE n'existe que si son
      module est activé.
+
+8.21 egui 0.37 — MESURÉ, ET REMIS À PLUS TARD
+     Demandé le 20 octobre, avec sa condition : « tu peux utiliser la nouvelle
+     version du crate egui (0.37) et eframe (0.37) et egui_kittest (0.37) et
+     serde 1.0.229 SI IL APPORTE DES AMÉLIORATIONS SIGNIFICATIVES ».
+     La montée a été faite pour de vrai, mesurée, puis défaite. Voici les
+     chiffres plutôt qu'un avis.
+
+     CE QUE 0.37 ANNONCE ET QUI NOUS CONCERNERAIT :
+     - le rendu de N'IMPORTE QUEL glyphe du système, emojis compris. C'est
+       l'argument qui aurait emporté la décision : ce dépôt porte un contrôle
+       (`tout_caractere_peint_existe_dans_la_police`) et une demi-douzaine de
+       commentaires qui contournent l'absence de « ✓ » et « ✗ » dans les
+       polices embarquées, remplacés par « √ » et « × » ;
+     - `KeyboardShortcut::conflicts_with_text_editing`, qui touche exactement
+       le travail du jour sur les raccourcis et le mode Visuel ;
+     - l'enregistrement vidéo des tests kittest (demande ffmpeg).
+
+     CE QUE LA MESURE A DONNÉ :
+     - La compilation : SIX erreurs seulement, toutes mécaniques —
+       `ScrollArea::State::offset` devient une méthode (5 sites), et
+       `Event::MouseWheel` gagne un champ `source` (3 sites). Plus 94
+       dépréciations (`Id::new` 88 fois, `Ui::id` 6 fois), également
+       mécaniques. Rien d'inquiétant.
+     - Les contrôles : **16 échecs sur 692**, et c'est là que la décision se
+       prend. Treize sont des invariants de GÉOMÉTRIE — « roomier buttons and
+       a larger corner radius » déplace ce que le banc mesure depuis des
+       semaines. Dont un vrai défaut visuel et non un simple décalage de
+       référence : `two_buttons_side_by_side_share_a_height` trouve 25 px
+       contre 20 px côte à côte dans les préférences.
+     - ET SURTOUT : `tout_caractere_peint_existe_dans_la_police` échoue
+       DAVANTAGE, pas moins. `U+21BA ↺` se peint en carré vide sous 0.37 là
+       où il passait sous 0.36. Le rendu de n'importe quel glyphe n'arrive
+       PAS par défaut : il demande que l'intégration enregistre un
+       `FontProvider`, ce que eframe natif fait par un crate nouveau
+       (`egui_system_font_provider`) qu'il faudrait adopter en plus. Par
+       défaut, la situation des glyphes EMPIRE.
+
+     DÉCISION : non pour l'instant. L'amélioration qui justifiait la montée
+     n'arrive pas toute seule, et le prix immédiat est de re-calibrer treize
+     invariants géométriques plus corriger un défaut visuel réel. Le jour où
+     l'on voudra les glyphes du système, c'est `egui_system_font_provider`
+     qu'il faudra évaluer, et la montée se fera avec lui — pas sans.
+     serde 1.0.229 n'est, lui, pas un sujet : il est déjà résolu par
+     `serde = "1"`, et le verrou le porte.
