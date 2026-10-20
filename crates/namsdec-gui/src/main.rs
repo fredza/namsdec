@@ -1401,6 +1401,17 @@ struct NamsdecApp {
     /// oublié qui s'appliquerait à un mouvement tapé une minute plus
     /// tard serait pire que pas de compteur du tout.
     count_pending: Option<u32>,
+    /// L'ANCRE du mode Visuel : l'octet où la sélection a commencé.
+    ///
+    /// Le curseur, lui, est `cursor_byte` et bouge avec les mouvements.
+    /// La sélection est l'intervalle entre les deux, dans l'ordre où ils
+    /// se trouvent — on peut étendre vers le haut comme vers le bas,
+    /// comme dans vim.
+    ///
+    /// `None` hors du mode Visuel, et remis à `None` en en sortant :
+    /// une ancre oubliée ferait surligner au hasard à la prochaine
+    /// entrée en Visuel.
+    visual_anchor: Option<usize>,
     /// La proposition mise en avant, dans la liste affichée.
     ///
     /// Zéro le plus souvent : on tape, et la première est la bonne. Les
@@ -2162,6 +2173,7 @@ impl Default for NamsdecApp {
             pending_selection: None,
             g_pending: false,
             count_pending: None,
+            visual_anchor: None,
             completion_index: 0,
             completion_dismissed: false,
             completion_keys: CompletionKeys::default(),
@@ -3277,7 +3289,16 @@ impl NamsdecApp {
             // désarmer la touche leader, pas seulement l'éditeur : taper
             // "une note" dans le filtre de l'explorateur ne doit pas
             // refermer celui-ci sur le "e" qui suit l'espace.
-            let text_focused = self.editor_focused || ctx.memory(|m| m.focused().is_some());
+            //
+            // LE MODE VISUEL compte comme un champ de saisie, et pour la
+            // même raison : ses lettres lui appartiennent. `y` y copie
+            // la sélection, et ne doit pas armer la séquence `y y` qui
+            // duplique une ligne — ni `d` ouvrir quoi que ce soit. En
+            // Visuel on a quelque chose de sélectionné sous les yeux, et
+            // la frappe suivante porte dessus.
+            let text_focused = self.editor_focused
+                || self.editor_mode == EditorMode::Visual
+                || ctx.memory(|m| m.focused().is_some());
             if let Some(action) = self.dispatcher.poll(&ctx, &self.keybindings, text_focused) {
                 self.dispatch(action);
             }

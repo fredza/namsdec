@@ -341,15 +341,21 @@ Pour lancer sans installer : `cargo run -p namsdec-gui`.
 ## Prendre en main
 
 1. **Ctrl+Maj+B** assemble le programme (nasm puis ld, pour de vrai).
-2. **Espace p i** avance d'une instruction, **Espace p o** passe par-dessus
+2. **Espace s i** avance d'une instruction (`stepi`), **Espace n i** passe par-dessus
    un `call`, **Espace p r** lance, **Espace p b** revient en arrière d'un
-   pas. Les séquences sont rangées par famille : `p` pour ce qui fait
-   tourner le **programme**, `/` pour chercher, `m` pour **marquer**, `v`
-   pour les **vues**, `u` pour courir **jusqu'à** quelque chose.
-3. **F1** sur un mot du code en donne la fiche ; le survol aussi.
-4. Un clic dans la gouttière pose un point d'arrêt ; **Ctrl+F10** exécute
+   pas. Les deux premiers gardent les lettres de gdb parce que ce sont
+   les plus frappés de tout le programme ; le reste des séquences est
+   rangé par famille : `p` pour ce qui fait tourner le **programme**,
+   `/` pour chercher, `m` pour **marquer**, `v` pour les **vues**, `u`
+   pour courir **jusqu'à** quelque chose.
+3. L'éditeur a trois modes, comme vim : **NORMAL** (les mouvements
+   `hjkl w b e gg G`, et le compteur `5j`), **INSERT** (`i`, et Échap
+   pour sortir) et **VISUEL** (`v` : les mouvements étendent une
+   sélection, `y` copie, `d` coupe, Échap renonce).
+4. **F1** sur un mot du code en donne la fiche ; le survol aussi.
+5. Un clic dans la gouttière pose un point d'arrêt ; **Ctrl+F10** exécute
    jusqu'à la ligne du curseur.
-5. **Ctrl+Maj+P** ouvre la palette : toutes les commandes s'y trouvent.
+6. **Ctrl+Maj+P** ouvre la palette : toutes les commandes s'y trouvent.
 
 Les raccourcis sont dans Préférences ▸ Raccourcis, et se changent.
 
@@ -462,7 +468,7 @@ et ils portent ici les mêmes noms qu'ailleurs.
 | (ce qu'on regarde en ouvrant un échantillon) | fenêtre Analyse ▸ Signaux |
 | `got`, `plt` | fenêtre Analyse ▸ Fonctions importées |
 | `nearpc` | le listing lui-même, RIP dans la gouttière |
-| `stepi`, `nexti`, `reverse-stepi` | `Espace p i`, `Espace p o`, `Espace p b` |
+| `stepi`, `nexti`, `reverse-stepi` | `Espace s i`, `Espace n i`, `Espace p b` |
 
 ### Trois façons de lire la même instruction
 

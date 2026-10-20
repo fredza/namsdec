@@ -366,6 +366,31 @@ impl NamsdecApp {
                 painter.rect_filled(rect, 2.0, teinte);
             }
         }
+
+        // LA SÉLECTION DU MODE VISUEL.
+        //
+        // Peinte ici et pas par le champ de texte : en mode Normal — et
+        // donc en Visuel, qui en vient — le champ n'est pas dessiné du
+        // tout, c'est la vue ligne à ligne qui peint le listing. Sans
+        // cela, `v` suivi de `j j` n'aurait rien montré, et le mode
+        // Visuel se serait réduit à une pastille qui change de couleur.
+        //
+        // Découpée par ligne : une étendue à cheval sur deux lignes ne
+        // se situe pas (voir `text::place_spans`), et une sélection de
+        // plusieurs lignes est le cas ordinaire.
+        if let Some(étendue) = self.visual_span() {
+            let par_ligne = découper_par_ligne(&self.source, étendue);
+            for place in crate::text::place_spans(&self.source, &par_ligne) {
+                if place.ligne < première_visible || place.ligne > dernière_visible {
+                    continue;
+                }
+                let Some(rect) = géo.rect_de_place(&place) else {
+                    continue;
+                };
+                painter.rect_filled(rect, 2.0, theme.selection);
+            }
+        }
+
         for line in lignes.clone() {
             let Some(row_rect) = géo.rect_de_ligne(line) else {
                 continue;
@@ -614,13 +639,19 @@ impl NamsdecApp {
             let consumed = self.dispatcher.consumed().to_vec();
             let g_armé = self.g_pending;
             let compte_armé = self.count_pending;
-            let (enter_insert, exit_insert, mouvement, armer_g, désarmer_g, compte) =
+            let mode_courant = self.editor_mode;
+            let (enter_insert, exit_insert, mouvement, armer_g, désarmer_g, compte, visuel) =
                 ui.ctx().input(|inp| {
                     let mut enter = false;
                     let mut exit = false;
                     let mut mouvement = None;
                     let mut armer_g = false;
                     let mut désarmer_g = false;
+                    // Ce que le mode Visuel demande, s'il demande quelque
+                    // chose. Relevé dans la même passe que le reste : les
+                    // touches sont les mêmes, c'est le mode qui décide de
+                    // ce qu'elles veulent dire.
+                    let mut visuel: Option<Visuel> = None;
                     // Le compteur en cours de frappe : `None` tant
                     // qu'aucun chiffre n'est venu.
                     let mut compte = compte_armé;
@@ -639,6 +670,28 @@ impl NamsdecApp {
                             // (Step Into).
                             let plain = !modifiers.ctrl && !modifiers.alt && !modifiers.mac_cmd;
                             match key {
+                                // `v` ouvre le mode Visuel, et seulement
+                                // depuis le mode Normal : en Insertion
+                                // c'est une lettre qu'on tape.
+                                egui::Key::V
+                                    if plain
+                                        && !consumed.contains(key)
+                                        && mode_courant == EditorMode::Normal =>
+                                {
+                                    visuel = Some(Visuel::Ouvrir);
+                                }
+                                // En Visuel, `y` copie, `d` et `x`
+                                // coupent. Les trois lettres de vim, et
+                                // les trois seules : ce qu'on ne peut pas
+                                // faire ici se fait en Insertion.
+                                egui::Key::Y if plain && mode_courant == EditorMode::Visual => {
+                                    visuel = Some(Visuel::Copier);
+                                }
+                                egui::Key::D | egui::Key::X
+                                    if plain && mode_courant == EditorMode::Visual =>
+                                {
+                                    visuel = Some(Visuel::Couper);
+                                }
                                 egui::Key::I if plain && !consumed.contains(key) => enter = true,
                                 egui::Key::Escape => exit = true,
                                 // Les déplacements, seulement en mode Normal
@@ -712,7 +765,7 @@ impl NamsdecApp {
                             }
                         }
                     }
-                    (enter, exit, mouvement, armer_g, désarmer_g, compte)
+                    (enter, exit, mouvement, armer_g, désarmer_g, compte, visuel)
                 });
             // `g` seul attend son second `g` ; tout le reste le désarme.
             // Sans cela, `g` puis `j` sauterait au début du fichier à la
@@ -721,7 +774,12 @@ impl NamsdecApp {
             self.count_pending = compte;
             // Se déplacer avant de changer de mode : `i` entre en
             // Insertion là où le curseur est, non là où il était.
-            if self.editor_mode == EditorMode::Normal
+            //
+            // Les mouvements valent en Normal ET en Visuel : c'est tout
+            // l'objet du mode Visuel, où ils étendent la sélection au
+            // lieu de seulement porter le curseur. L'ancre ne bouge pas,
+            // donc il n'y a rien de plus à faire ici.
+            if matches!(self.editor_mode, EditorMode::Normal | EditorMode::Visual)
                 && let Some(mouvement) = mouvement
             {
                 // Le compteur est consommé par le mouvement, et par lui
@@ -753,7 +811,20 @@ impl NamsdecApp {
                     just_entered_insert = true;
                 }
                 EditorMode::Insert if exit_insert => self.editor_mode = EditorMode::Normal,
+                // Échap renonce à la sélection et revient en Normal :
+                // c'est le geste de vim, et c'est aussi le seul moyen de
+                // sortir sans rien couper.
+                EditorMode::Visual if exit_insert => {
+                    self.editor_mode = EditorMode::Normal;
+                    self.visual_anchor = None;
+                }
                 _ => {}
+            }
+            // Puis ce que le mode Visuel demande. Après le changement de
+            // mode : `v` suivi d'Échap dans la même image doit sortir, et
+            // non ouvrir une sélection qui ne se fermera plus.
+            if let Some(demande) = visuel {
+                self.appliquer_visuel(ui.ctx(), demande);
             }
         }
 
@@ -1638,6 +1709,129 @@ impl NamsdecApp {
             self.note_edit = Some((genre, adresse, texte));
         }
     }
+
+    /// L'étendue sélectionnée en mode Visuel, en octets.
+    ///
+    /// L'ancre et le curseur dans l'ordre où ils se trouvent : on étend
+    /// vers le haut comme vers le bas. La borne haute compte le
+    /// caractère sous le curseur, comme dans vim — où le Visuel est
+    /// inclusif, et où `v` seul suivi de `y` copie une lettre et non
+    /// rien du tout.
+    pub(crate) fn visual_span(&self) -> Option<std::ops::Range<usize>> {
+        let ancre = self.visual_anchor?;
+        let curseur = self.cursor_byte;
+        let (début, fin) = if ancre <= curseur {
+            (ancre, fin_du_caractère(&self.source, curseur))
+        } else {
+            (curseur, fin_du_caractère(&self.source, ancre))
+        };
+        (début < fin).then_some(début..fin)
+    }
+
+    /// Ce que le mode Visuel vient de demander.
+    fn appliquer_visuel(&mut self, ctx: &egui::Context, demande: Visuel) {
+        match demande {
+            Visuel::Ouvrir => {
+                self.editor_mode = EditorMode::Visual;
+                self.visual_anchor = Some(self.cursor_byte);
+                // Le compteur en attente n'a plus de sens : ce qui suit
+                // est un mouvement d'extension, pas une répétition de ce
+                // qu'on avait commencé à taper.
+                self.count_pending = None;
+            }
+            Visuel::Copier | Visuel::Couper => {
+                let Some(étendue) = self.visual_span() else {
+                    self.editor_mode = EditorMode::Normal;
+                    self.visual_anchor = None;
+                    return;
+                };
+                let texte = self.source[étendue.clone()].to_owned();
+                ctx.copy_text(texte);
+                if demande == Visuel::Couper {
+                    let mut neuf = self.source.clone();
+                    neuf.replace_range(étendue.clone(), "");
+                    self.set_source(neuf);
+                    // Le curseur se pose là où la coupe a eu lieu : c'est
+                    // ce que fait vim, et c'est là qu'on regarde.
+                    let (ligne, colonne, octet) = self.cursor_place(byte_to_char(
+                        &self.source,
+                        étendue.start.min(self.source.len()),
+                    ));
+                    self.cursor_pos = (ligne, colonne);
+                    self.cursor_byte = octet;
+                }
+                self.editor_mode = EditorMode::Normal;
+                self.visual_anchor = None;
+                self.status = Status::Note(if demande == Visuel::Couper {
+                    |s| s.visual_cut
+                } else {
+                    |s| s.visual_copied
+                });
+            }
+        }
+    }
+}
+
+/// Ce que le mode Visuel peut demander en une frappe.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Visuel {
+    /// `v` : ouvrir une sélection à partir du curseur.
+    Ouvrir,
+    /// `y` : copier, et revenir en Normal.
+    Copier,
+    /// `d` ou `x` : copier, retirer, et revenir en Normal.
+    Couper,
+}
+
+/// Découpe une étendue d'octets en une étendue par ligne.
+///
+/// `text::place_spans` refuse une étendue à cheval sur deux lignes, et
+/// il a raison de la refuser : un surlignage qui traverserait une fin
+/// de ligne serait faux. Une sélection visuelle, elle, en traverse
+/// couramment — on la rend donc sous la forme qu'il sait situer.
+///
+/// Les fins de ligne elles-mêmes ne sont pas surlignées : peindre le
+/// `\n` dessinerait un rectangle qui dépasse à droite du texte, pour
+/// un caractère qu'on ne voit pas.
+fn découper_par_ligne(
+    texte: &str,
+    étendue: std::ops::Range<usize>,
+) -> Vec<std::ops::Range<usize>> {
+    let mut morceaux = Vec::new();
+    let mut début = étendue.start;
+    while début < étendue.end {
+        let reste = &texte[début..étendue.end];
+        match reste.find('\n') {
+            Some(saut) => {
+                if saut > 0 {
+                    morceaux.push(début..début + saut);
+                }
+                début += saut + 1;
+            }
+            None => {
+                morceaux.push(début..étendue.end);
+                break;
+            }
+        }
+    }
+    morceaux
+}
+
+/// La fin du caractère qui commence à `octet` — ou `octet` lui-même en
+/// fin de texte.
+///
+/// Le Visuel de vim est INCLUSIF : le caractère sous le curseur fait
+/// partie de la sélection. Compter en octets sans cette fonction
+/// couperait un « é » en deux.
+fn fin_du_caractère(texte: &str, octet: usize) -> usize {
+    if octet >= texte.len() {
+        return texte.len();
+    }
+    texte[octet..]
+        .chars()
+        .next()
+        .map(|c| octet + c.len_utf8())
+        .unwrap_or(octet)
 }
 
 pub(crate) fn editor_id() -> egui::Id {

@@ -78,10 +78,27 @@ impl NamsdecApp {
             // de la pastille de mode, qui est le même endroit — ce qui
             // dit où l'on en est.
             if let Some(compte) = self.count_pending {
+                // « ×9999 », et non « 9999 » tout court. Le nombre seul
+                // ne disait pas ce qu'il était : à côté de « NORMAL »,
+                // on y lit un numéro de ligne, un code, n'importe quoi —
+                // et il ne s'efface que par Échap, qu'on ne pense pas à
+                // frapper pour quelque chose qu'on n'a pas compris. Le
+                // « × » dit « répétition », et l'infobulle dit le reste.
                 ui.colored_label(
                     theme.accent,
-                    egui::RichText::new(compte.to_string()).monospace(),
-                );
+                    egui::RichText::new(format!("×{compte}")).monospace(),
+                )
+                .on_hover_text(if self.lang == Lang::Fr {
+                    format!(
+                        "Compteur de répétition : le prochain mouvement sera fait {compte} fois.
+                         C'est le « {compte} » de « {compte}j » dans vim. Échap l'annule."
+                    )
+                } else {
+                    format!(
+                        "Repeat count: the next motion will be done {compte} times.
+                         This is the “{compte}” of “{compte}j” in vim. Escape clears it."
+                    )
+                });
             }
             ui.separator();
             // Quel fichier on édite, et s'il reste quelque chose à

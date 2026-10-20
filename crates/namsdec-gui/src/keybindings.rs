@@ -481,8 +481,8 @@ impl KeyBindings {
     }
 
     /// Les commandes d'exécution reprennent celles de gdb/pwndbg, derrière
-    /// la touche leader : `Espace r` pour lancer, `Espace s i` pour entrer
-    /// dans l'instruction (`stepi`), `Espace n i` pour l'enjamber
+    /// la touche leader : `Espace p r` pour lancer, `Espace s i` pour
+    /// entrer dans l'instruction (`stepi`), `Espace n i` pour l'enjamber
     /// (`nexti`). Quelqu'un qui apprend l'assembleur passe sa vie dans un
     /// débogueur : autant que les mêmes lettres y fassent la même chose,
     /// plutôt que d'inventer des raccourcis propres à namsdec.
@@ -522,13 +522,25 @@ impl KeyBindings {
         // Le prix est réel et il faut le dire : toutes les habitudes
         // prises sur `Espace r`, `Espace b`, `Espace s i` changent.
         map.insert(Action::Run, Chord::leader(&[Key::Space, Key::P, Key::R]));
+        // LES DEUX PAS GARDENT LES LETTRES DE gdb, et c'est un retour en
+        // arrière assumé sur le rangement par famille.
+        //
+        // `stepi` et `nexti` sont ce que les doigts tapent depuis des
+        // années dans gdb et pwndbg ; `Espace p i` / `Espace p o` étaient
+        // plus cohérents sur le papier et faux sous les doigts. Entre une
+        // règle de rangement et une habitude de métier, c'est l'habitude
+        // qui gagne : ces deux-là sont les raccourcis les plus frappés de
+        // tout le programme.
+        //
+        // Le reste de la famille `Espace p…` ne bouge pas : il n'a pas
+        // d'équivalent à imiter.
         map.insert(
             Action::StepInto,
-            Chord::leader(&[Key::Space, Key::P, Key::I]),
+            Chord::leader(&[Key::Space, Key::S, Key::I]),
         );
         map.insert(
             Action::StepOver,
-            Chord::leader(&[Key::Space, Key::P, Key::O]),
+            Chord::leader(&[Key::Space, Key::N, Key::I]),
         );
         // `p b` comme *back* : gdb écrit `reverse-stepi`, qui n'a pas
         // d'abréviation courte à imiter.
@@ -1258,8 +1270,8 @@ mod tests {
     #[test]
     fn a_three_key_sequence_resolves() {
         for (keys, expected) in [
-            (vec![Key::Space, Key::P, Key::I], Action::StepInto),
-            (vec![Key::Space, Key::P, Key::O], Action::StepOver),
+            (vec![Key::Space, Key::S, Key::I], Action::StepInto),
+            (vec![Key::Space, Key::N, Key::I], Action::StepOver),
             (vec![Key::Space, Key::P, Key::R], Action::Run),
         ] {
             let ctx = egui::Context::default();
@@ -1341,10 +1353,10 @@ mod tests {
         run(&ctx, vec![key_event(Key::Space)], |ui| {
             assert_eq!(dispatcher.poll(ui.ctx(), &bindings, false), None);
         });
-        run(&ctx, vec![key_event(Key::P)], |ui| {
+        run(&ctx, vec![key_event(Key::S)], |ui| {
             assert_eq!(dispatcher.poll(ui.ctx(), &bindings, false), None);
         });
-        assert_eq!(dispatcher.pending(), [Key::Space, Key::P]);
+        assert_eq!(dispatcher.pending(), [Key::Space, Key::S]);
 
         let mut result = None;
         run(&ctx, vec![key_event(Key::I)], |ui| {
@@ -1373,7 +1385,7 @@ mod tests {
         };
         run(
             &ctx,
-            vec![key_event(Key::Space), shifted(Key::P), shifted(Key::I)],
+            vec![key_event(Key::Space), shifted(Key::S), shifted(Key::I)],
             |ui| {
                 result = dispatcher.poll(ui.ctx(), &bindings, false);
             },
@@ -1426,7 +1438,7 @@ mod tests {
 
         run(
             &ctx,
-            vec![key_event(Key::Space), key_event(Key::P), key_event(Key::I)],
+            vec![key_event(Key::Space), key_event(Key::S), key_event(Key::I)],
             |ui| {
                 assert_eq!(
                     dispatcher.poll(ui.ctx(), &bindings, false),
@@ -1567,20 +1579,31 @@ mod family_tests {
             }
         };
 
-        // Les pas, tous sous `Espace p`.
-        for action in [
-            Action::Run,
-            Action::StepInto,
-            Action::StepOver,
-            Action::StepBack,
-            Action::RunToCursor,
-        ] {
+        // Les pas, sous `Espace p` — SAUF les deux qui portent les
+        // lettres de gdb.
+        //
+        // L'exception est écrite dans le contrôle plutôt que la règle
+        // assouplie : `stepi` et `nexti` sont ce que les doigts tapent
+        // depuis des années, et c'est une raison suffisante pour sortir
+        // de la famille. Toute AUTRE sortie reste un défaut, et c'est ce
+        // que la boucle continue de retenir.
+        for action in [Action::Run, Action::StepBack, Action::RunToCursor] {
             assert_eq!(
                 préfixe_de(action),
                 Some(vec![Key::Space, Key::P]),
                 "{action:?} appartient à la famille des pas"
             );
         }
+        assert_eq!(
+            préfixe_de(Action::StepInto),
+            Some(vec![Key::Space, Key::S]),
+            "entrer dans l'instruction garde le `s` de `stepi`"
+        );
+        assert_eq!(
+            préfixe_de(Action::StepOver),
+            Some(vec![Key::Space, Key::N]),
+            "l'enjamber garde le `n` de `nexti`"
+        );
 
         // Chercher, tous sous `Espace /`.
         for action in [

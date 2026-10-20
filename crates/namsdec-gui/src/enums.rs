@@ -541,14 +541,22 @@ pub(crate) enum Status {
 /// Mode d'édition façon (n)vim : en Normal, l'éditeur ne prend pas la
 /// frappe comme du texte (`i`/`I` pour passer en Insertion) ; en
 /// Insertion, il se comporte comme un éditeur de texte classique
-/// (`Échap` pour revenir en Normal). Volontairement limité à ces deux
-/// modes et ces trois touches — pas les mouvements hjkl ni les commandes
-/// (dd, yy, ...) de vim, qui n'ont pas été demandés.
+/// (`Échap` pour revenir en Normal) ; en Visuel, les mouvements
+/// étendent une sélection au lieu de déplacer seulement le curseur.
+///
+/// Les mouvements de vim sont là — `hjkl`, `w b e`, `0 Fin`, `gg G`, et
+/// le compteur qui les précède. Les commandes d'édition à deux lettres
+/// (`dd`, `yy`) ne le sont pas : ce qu'elles font se fait en Visuel, où
+/// l'on VOIT ce qu'on s'apprête à couper.
 #[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
 pub(crate) enum EditorMode {
     #[default]
     Normal,
     Insert,
+    /// `v` depuis le mode Normal. Les mouvements étendent la sélection
+    /// depuis l'ancre posée à l'entrée ; `y` copie, `d` ou `x` coupe,
+    /// `Échap` renonce.
+    Visual,
 }
 
 impl EditorMode {
@@ -558,6 +566,7 @@ impl EditorMode {
         match self {
             EditorMode::Normal => "NORMAL",
             EditorMode::Insert => "INSERT",
+            EditorMode::Visual => "VISUAL",
         }
     }
 
@@ -565,6 +574,10 @@ impl EditorMode {
         match self {
             EditorMode::Normal => theme.accent,
             EditorMode::Insert => theme.good,
+            // La couleur d'avertissement : en Visuel, la frappe suivante
+            // peut COUPER ce qui est surligné. Ce n'est pas un état
+            // neutre, et la pastille ne doit pas le laisser croire.
+            EditorMode::Visual => theme.warn,
         }
     }
 }

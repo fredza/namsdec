@@ -406,8 +406,8 @@ syscall
 #[test]
 fn stepping_with_a_leader_sequence_stays_in_normal_mode() {
     for sequence in [
-        [egui::Key::Space, egui::Key::P, egui::Key::I],
-        [egui::Key::Space, egui::Key::P, egui::Key::O],
+        [egui::Key::Space, egui::Key::S, egui::Key::I],
+        [egui::Key::Space, egui::Key::N, egui::Key::I],
     ] {
         let mut app = NamsdecApp::default();
         assert_eq!(app.editor_mode, EditorMode::Normal);
@@ -452,8 +452,8 @@ fn stepping_with_a_leader_sequence_stays_in_normal_mode() {
 #[test]
 fn stepping_stays_in_normal_mode_across_separate_frames() {
     for sequence in [
-        [egui::Key::Space, egui::Key::P, egui::Key::I],
-        [egui::Key::Space, egui::Key::P, egui::Key::O],
+        [egui::Key::Space, egui::Key::S, egui::Key::I],
+        [egui::Key::Space, egui::Key::N, egui::Key::I],
     ] {
         let mut app = NamsdecApp::default();
         let ctx = egui::Context::default();
@@ -534,7 +534,7 @@ fn stepping_works_after_leaving_insert_mode() {
     assert_eq!(app.editor_mode, EditorMode::Normal, "Échap la referme");
 
     // Puis la séquence de pas, touche par touche.
-    for key in [egui::Key::Space, egui::Key::P, egui::Key::I] {
+    for key in [egui::Key::Space, egui::Key::S, egui::Key::I] {
         frame(&mut app, key);
     }
 
@@ -569,6 +569,132 @@ fn plain_i_still_enters_insert_mode() {
     output.textures_delta.clear();
 
     assert_eq!(app.editor_mode, EditorMode::Insert);
+}
+
+/// Le mode VISUEL existe, et `v` y mène depuis le mode Normal.
+///
+/// Il manquait : `v` ne faisait rien, et l'on ne pouvait sélectionner
+/// qu'à la souris ou en Insertion. Les mouvements y étendent la
+/// sélection depuis l'ancre posée à l'entrée, `y` copie, `d` coupe,
+/// Échap renonce.
+#[test]
+fn visual_mode_selects_and_yanks() {
+    let frappe = |app: &mut NamsdecApp, ctx: &egui::Context, key: egui::Key| {
+        let input = egui::RawInput {
+            events: vec![
+                egui::Event::Key {
+                    key,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+                egui::Event::Key {
+                    key,
+                    physical_key: None,
+                    pressed: false,
+                    repeat: false,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+            ..Default::default()
+        };
+        let mut output = ctx.run_ui(input, |ui| app.draw(ui));
+        output.textures_delta.clear();
+    };
+
+    let mut app = NamsdecApp::default();
+    app.set_source("abcdef\nghijkl\n".to_owned());
+    app.cursor_byte = 0;
+    let ctx = egui::Context::default();
+
+    // `v` ouvre le mode, et pose l'ancre là où le curseur est.
+    frappe(&mut app, &ctx, egui::Key::V);
+    assert_eq!(app.editor_mode, EditorMode::Visual, "`v` ouvre le Visuel");
+    assert_eq!(app.visual_anchor, Some(0), "l'ancre est sous le curseur");
+    // Un seul caractère, et non zéro : le Visuel de vim est inclusif.
+    assert_eq!(app.visual_span(), Some(0..1));
+
+    // Deux `l` étendent la sélection vers la droite.
+    frappe(&mut app, &ctx, egui::Key::L);
+    frappe(&mut app, &ctx, egui::Key::L);
+    assert_eq!(
+        app.visual_span(),
+        Some(0..3),
+        "les mouvements étendent au lieu de porter seulement le curseur"
+    );
+
+    // `y` copie et revient en Normal, sans toucher au texte.
+    frappe(&mut app, &ctx, egui::Key::Y);
+    assert_eq!(app.editor_mode, EditorMode::Normal, "`y` referme le Visuel");
+    assert_eq!(app.visual_anchor, None, "et l'ancre ne traîne pas");
+    assert_eq!(app.source, "abcdef\nghijkl\n", "copier ne coupe pas");
+}
+
+/// `d` en Visuel retire la sélection — y compris sur plusieurs lignes.
+#[test]
+fn visual_mode_cuts_across_lines() {
+    let frappe = |app: &mut NamsdecApp, ctx: &egui::Context, key: egui::Key| {
+        let input = egui::RawInput {
+            events: vec![egui::Event::Key {
+                key,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+            ..Default::default()
+        };
+        let mut output = ctx.run_ui(input, |ui| app.draw(ui));
+        output.textures_delta.clear();
+    };
+
+    let mut app = NamsdecApp::default();
+    app.set_source("abc\ndef\nghi\n".to_owned());
+    app.cursor_byte = 0;
+    let ctx = egui::Context::default();
+
+    frappe(&mut app, &ctx, egui::Key::V);
+    // Une ligne plus bas : la sélection traverse une fin de ligne, ce
+    // qui est le cas ordinaire et celui que `place_spans` refuse de
+    // situer d'un seul tenant.
+    frappe(&mut app, &ctx, egui::Key::J);
+    let étendue = app.visual_span().expect("une sélection");
+    assert!(
+        app.source[étendue.clone()].contains('\n'),
+        "elle traverse une fin de ligne : {:?}",
+        &app.source[étendue]
+    );
+
+    frappe(&mut app, &ctx, egui::Key::D);
+    assert_eq!(app.editor_mode, EditorMode::Normal);
+    assert_eq!(app.source, "ef\nghi\n", "la sélection est retirée");
+}
+
+/// Échap renonce sans rien couper : c'est la seule sortie sûre.
+#[test]
+fn escape_leaves_visual_mode_without_cutting() {
+    let mut app = NamsdecApp::default();
+    app.set_source("abcdef\n".to_owned());
+    app.cursor_byte = 0;
+    let ctx = egui::Context::default();
+    for key in [egui::Key::V, egui::Key::L, egui::Key::Escape] {
+        let input = egui::RawInput {
+            events: vec![egui::Event::Key {
+                key,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+            ..Default::default()
+        };
+        let mut output = ctx.run_ui(input, |ui| app.draw(ui));
+        output.textures_delta.clear();
+    }
+    assert_eq!(app.editor_mode, EditorMode::Normal);
+    assert_eq!(app.visual_anchor, None);
+    assert_eq!(app.source, "abcdef\n", "rien n'a été touché");
 }
 
 /// Un programme qui lit son entrée puis la répète : il doit se
@@ -30927,14 +31053,16 @@ fn a_pending_count_is_shown() {
     // en est un, et c'est ce qui faisait passer ce contrôle pour rien.
     let sans = peints(&mut app);
     assert!(
-        !sans.iter().any(|texte| texte == "4242"),
+        !sans.iter().any(|texte| texte == "×4242"),
         "rien à montrer tant qu'aucun chiffre n'est tapé : {sans:?}"
     );
     app.count_pending = Some(4242);
     let avec = peints(&mut app);
+    // « ×4242 » et non « 4242 » : le nombre seul ne disait pas ce qu'il
+    // était, et il se lisait comme un numéro de ligne.
     assert!(
-        avec.iter().any(|texte| texte == "4242"),
-        "le compteur en attente est peint : {avec:?}"
+        avec.iter().any(|texte| texte == "×4242"),
+        "le compteur en attente est peint, et dit qu'il compte : {avec:?}"
     );
 }
 

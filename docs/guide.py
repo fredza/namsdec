@@ -277,7 +277,7 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
         ("liste", [
          "<b>Assembler</b> (Ctrl+Maj+B) : nasm et ld font leur travail. Les erreurs "
          "apparaissent dans l'onglet Diagnostics, chacune cliquable vers sa ligne.",
-         "<b>Pas à pas</b> (Espace puis p puis i) : une instruction à la fois. Le bandeau "
+         "<b>Pas à pas</b> (Espace puis s puis i) : une instruction à la fois. Le bandeau "
          "du panneau droit montre ce qui vient, puis ce qui a changé.",
          "<b>Exécuter</b> (Espace puis p puis r) : jusqu'au bout, ou jusqu'au premier point "
          "d'arrêt.",
@@ -483,7 +483,25 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "pastille de mode</b>, dans la barre d'état — un état qui change ce que la "
          "touche suivante va faire doit se voir. Échap l'efface, comme tout le reste. "
          "<font face='Courier'>0</font> seul reste le début de la ligne : il ne devient un "
-         "chiffre qu'une fois qu'un autre l'a ouvert (<font face='Courier'>10j</font>)."),
+         "chiffre qu'une fois qu'un autre l'a ouvert (<font face='Courier'>10j</font>). "
+         "Il s'écrit <font face='Courier'>×12</font> et non <font face='Courier'>12</font> "
+         "tout court&nbsp;: le nombre seul, à côté de « NORMAL », se lisait comme un "
+         "numéro de ligne, et l'on ne savait pas quoi en faire — le survol dit le reste."),
+        ("p",
+         "<b>Le mode VISUEL</b> — <font face='Courier'>v</font> depuis le mode NORMAL. "
+         "Les mouvements y <b>étendent une sélection</b> au lieu de porter seulement le "
+         "curseur&nbsp;: <font face='Courier'>v j j</font> prend trois lignes, "
+         "<font face='Courier'>v 5 l</font> cinq caractères. La sélection est peinte dans "
+         "le listing, et la pastille passe à <b>VISUAL</b>, en couleur d'avertissement — "
+         "ce n'est pas un état neutre, la frappe suivante peut couper. "
+         "<font face='Courier'>y</font> copie, <font face='Courier'>d</font> ou "
+         "<font face='Courier'>x</font> coupe, <b>Échap</b> renonce sans rien toucher. "
+         "Comme dans vim, le Visuel est <b>inclusif</b>&nbsp;: le caractère sous le "
+         "curseur fait partie de la sélection, et <font face='Courier'>v y</font> copie "
+         "une lettre plutôt que rien. "
+         "Pendant tout le temps du Visuel, les lettres appartiennent à la sélection&nbsp;: "
+         "<font face='Courier'>y</font> y copie, et n'arme pas la séquence "
+         "<font face='Courier'>y y</font> qui duplique une ligne en mode NORMAL."),
         ("liste", [
          "<b>Surligner les occurrences</b> — le mot sous le curseur, ou la sélection, est "
          "montré partout où il revient. Il cherche des jetons et non du texte : le "
