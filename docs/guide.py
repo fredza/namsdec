@@ -1365,9 +1365,24 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "« Brancher son propre outil »."),
         ("p",
          "Le module <b>RE</b> (Préférences › Modules) ajoute un onglet au panneau "
-         "latéral et une fenêtre d'analyse. L'onglet ne porte qu'un bouton, celui qui "
-         "ouvre la fenêtre : une douzaine de modules empilés dans une colonne de trois cents "
-         "pixels se parcourent à l'ascenseur."),
+         "latéral et une fenêtre d'analyse. La douzaine de panneaux vit dans la fenêtre&nbsp;: "
+         "empilés dans une colonne de trois cents pixels, ils se parcourraient à l'ascenseur."),
+        ("p",
+         "L'onglet, lui, porte la <b>fiche d'identité</b> du fichier — ce qu'on veut savoir "
+         "sans rien ouvrir&nbsp;: sa forme (<font face='Courier'>ELF64 · PIE · dyn</font>) et "
+         "sa taille, le <b>langage et le compilateur</b> avec leur degré de certitude, les "
+         "quatre <b>protections</b> cochées ou barrées, les quatre nombres (fonctions, "
+         "chaînes, fonctions empruntées, appels système), et <b>ce qu'il sait faire</b> par "
+         "familles. Le bouton « Analyse du binaire… » est dessous, et mène au détail. "
+         "L'onglet ne portait auparavant que ce bouton, et deux mille pixels de vide sous "
+         "lui&nbsp;: un onglet dont le seul contenu est « ouvrir une fenêtre » ne mérite pas "
+         "la place qu'il occupe."),
+        ("note",
+         "La fiche est relevée <b>une fois par fichier</b>, et non par image&nbsp;: le scan "
+         "ELF, la reconnaissance de chaîne d'outils et le portrait des appels lisent le "
+         "fichier entier, et les refaire soixante fois par seconde coûterait une image par "
+         "seconde sur un gros binaire. Elle se refait quand le fichier change — un détour "
+         "posé, par exemple."),
         ("p",
          "La fenêtre se lit <b>en largeur</b> : une colonne à gauche nomme les "
          "modules, celui qu'on choisit prend tout le reste. « Tout » les remet à la "

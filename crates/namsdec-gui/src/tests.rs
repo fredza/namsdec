@@ -4223,6 +4223,101 @@ _start:
     );
 }
 
+/// LA FICHE DE L'ONGLET RE tient dans le panneau, sans rien couper.
+///
+/// L'onglet ne portait qu'un bouton — « Analyse du binaire… » — et deux
+/// mille pixels de vide : tout ce qu'il savait vivait derrière une
+/// fenêtre qu'il fallait ouvrir. Il porte maintenant la fiche
+/// d'identité du fichier, et c'est précisément ce qui le met en danger :
+/// un panneau étroit, des valeurs longues.
+///
+/// Première écriture, en grille à deux colonnes : la taille du fichier
+/// coupée, « (GNU) 16.2.1 » tronqué, le canari hors du bord, et la
+/// suite de la ligne du compilateur peinte PAR-DESSUS les protections.
+/// Mesuré ici, au sens de l'invariant « rien n'est coupé » : l'encre
+/// comparée à l'encre ∩ découpage, rangée par rangée.
+#[test]
+fn the_re_tab_card_fits_without_cutting_anything() {
+    let Ok(octets) = std::fs::read("/bin/ls") else {
+        return;
+    };
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp {
+        next_instruction_open: false,
+        ..Default::default()
+    };
+    app.apply_theme(&ctx);
+    if !app.load_elf(&octets, "ls") {
+        return;
+    }
+    // L'onglet est posé APRÈS le chargement : ouvrir un binaire ramène
+    // le panneau sur « Processeur », et le poser avant ne tenait pas —
+    // le relevé mesurait alors l'état du processeur en croyant mesurer
+    // la fiche.
+    // Et l'onglet RE n'existe que si le module est activé : sans cela
+    // le panneau retombe sur « Processeur », et le relevé mesurait
+    // l'état du processeur en croyant mesurer la fiche.
+    app.show_re_tab = true;
+    app.active_tab = SidebarTab::Re;
+    app.next_instruction_open = false;
+    // Les deux largeurs qui comptent : celle d'un écran ordinaire, et
+    // une plus étroite — c'est là que les valeurs longues débordent.
+    for largeur in [1280.0, 1100.0] {
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(largeur, 1000.0),
+            )),
+            ..Default::default()
+        };
+        let mut coupés: Vec<String> = Vec::new();
+        let mut vu_la_fiche = false;
+        for _ in 0..4 {
+            coupés.clear();
+            vu_la_fiche = false;
+            let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+            for clipped in &output.shapes {
+                let egui::epaint::Shape::Text(t) = &clipped.shape else {
+                    continue;
+                };
+                if t.galley.text().contains("Compilateur") || t.galley.text().contains("Langage") {
+                    vu_la_fiche = true;
+                }
+                for rangée in t.galley.rows.iter() {
+                    let texte = rangée.text();
+                    if texte.trim().is_empty() {
+                        continue;
+                    }
+                    let encre = rangée
+                        .rect_without_leading_space()
+                        .translate(t.pos.to_vec2());
+                    if !encre.is_positive() {
+                        continue;
+                    }
+                    let vu = encre.intersect(clipped.clip_rect);
+                    if vu.width() + 1.0 < encre.width() {
+                        coupés.push(format!(
+                            "« {} » : {:.0} px peints sur {:.0}",
+                            texte.chars().take(40).collect::<String>(),
+                            vu.width(),
+                            encre.width()
+                        ));
+                    }
+                }
+            }
+            output.textures_delta.clear();
+        }
+        assert!(
+            vu_la_fiche,
+            "à {largeur}px, la fiche n'est pas peinte — le relevé ne mesure rien"
+        );
+        assert!(
+            coupés.is_empty(),
+            "à {largeur}px, des textes sont coupés : {coupés:#?}"
+        );
+    }
+}
+
 /// Le panneau latéral ne défile pas : ni les registres, ni les
 /// vectoriels, ni la pile x87.
 ///
@@ -10445,7 +10540,7 @@ fn opening_a_binary_shows_its_code_not_its_header() {
 #[test]
 fn both_languages_say_the_same_things() {
     /// Les champs dont les deux langues partagent le texte, et pourquoi.
-    const LES_MÊMES: [&str; 28] = [
+    const LES_MÊMES: [&str; 29] = [
         // « Pseudo-code » s'écrit pareil des deux côtés de la Manche.
         "flow_pseudo",
         // Une adresse d'exemple : elle s'écrit pareil partout.
@@ -10462,6 +10557,7 @@ fn both_languages_say_the_same_things() {
         "action_step_back",
         "action_stop",
         // Un mot identique dans les deux langues.
+        "re_bref_protections",
         "shortcuts_action_col",
         "abi_arguments",
         "about_build_word",

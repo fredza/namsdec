@@ -605,6 +605,20 @@ pub struct Strings {
     pub vectors_title: &'static str,
     pub vectors_hint: &'static str,
     pub analysis_open: &'static str,
+    /// Onglet RE : l'étiquette de la ligne « fichier ».
+    pub re_bref_file: &'static str,
+    /// Onglet RE : l'étiquette du langage.
+    pub re_bref_language: &'static str,
+    /// Onglet RE : l'étiquette du compilateur.
+    pub re_bref_compiler: &'static str,
+    /// Onglet RE : l'étiquette des protections.
+    pub re_bref_protections: &'static str,
+    /// Onglet RE : l'étiquette des quatre nombres.
+    pub re_bref_counts: &'static str,
+    /// Ce que les quatre nombres comptent, au survol.
+    pub re_bref_counts_hint: &'static str,
+    /// Onglet RE : le titre du portrait par familles.
+    pub re_bref_can_do: &'static str,
     pub analysis_title: &'static str,
     pub analysis_hint: &'static str,
     /// Quand on clique une adresse d'un panneau d'analyse et que le
@@ -1560,6 +1574,13 @@ déclenchera jamais.",
     vectors_title: "Registres étendus",
     vectors_hint: "Les seize registres vectoriels et la pile x87, dans une fenêtre où ils tiennent en entier.",
     analysis_open: "Analyse du binaire…",
+    re_bref_file: "Fichier",
+    re_bref_language: "Langage",
+    re_bref_compiler: "Compilateur",
+    re_bref_protections: "Protections",
+    re_bref_counts: "Fonctions · chaînes · emprunts · appels",
+    re_bref_counts_hint: "Les fonctions trouvées par les `call`, les chaînes lisibles, les fonctions empruntées à d'autres bibliothèques, et les appels système.",
+    re_bref_can_do: "Ce qu'il sait faire",
     analysis_title: "Analyse du binaire",
     analysis_hint: "Ce que le fichier dit de lui-même : ses protections, ses chaînes, ses appels système.",
     analysis_addr_absent: "Cette adresse n'est dans aucune partie désassemblée : le listing ne montre que le code.",
@@ -2400,6 +2421,13 @@ other is there to compare — that is how gaps and clashes become visible.",
     vectors_title: "Extended registers",
     vectors_hint: "The sixteen vector registers and the x87 stack, in a window that fits them whole.",
     analysis_open: "Analyse the binary…",
+    re_bref_file: "File",
+    re_bref_language: "Language",
+    re_bref_compiler: "Compiler",
+    re_bref_protections: "Protections",
+    re_bref_counts: "Functions · strings · borrowed · calls",
+    re_bref_counts_hint: "Functions found through `call`, readable strings, functions borrowed from other libraries, and system calls.",
+    re_bref_can_do: "What it can do",
     analysis_title: "Binary analysis",
     analysis_hint: "What the file says about itself: its protections, its strings, its system calls.",
     analysis_addr_absent: "This address is in no disassembled part: the listing shows code only.",

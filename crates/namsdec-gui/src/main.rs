@@ -1403,6 +1403,13 @@ struct NamsdecApp {
     count_pending: Option<u32>,
     /// Le nom sous lequel enregistrer le jeu de raccourcis courant.
     keymap_save_name: String,
+    /// La fiche d'identité du binaire, pour l'onglet RE — relevée une
+    /// fois par fichier, et gardée.
+    ///
+    /// La clé est ce qui la périme : la taille du fichier et l'adresse
+    /// de chargement. Deux binaires différents ne partagent pas les
+    /// deux, et un détour posé recharge le fichier, donc la refait.
+    re_bref: Option<((usize, u64), ReBref)>,
     /// L'ANCRE du mode Visuel : l'octet où la sélection a commencé.
     ///
     /// Le curseur, lui, est `cursor_byte` et bouge avec les mouvements.
@@ -1487,6 +1494,40 @@ type UpxJob = (
     Option<PathBuf>,
     mpsc::Receiver<Result<String, String>>,
 );
+
+/// LA FICHE D'IDENTITÉ D'UN BINAIRE, telle que l'onglet RE la peint.
+///
+/// L'onglet ne portait qu'un bouton — « Analyse du binaire… » — et deux
+/// mille pixels de vide sous lui. Tout ce qu'il savait vivait derrière
+/// une fenêtre qu'il fallait ouvrir, et un onglet dont le seul contenu
+/// est « ouvrir une fenêtre » ne mérite pas la place qu'il occupe.
+///
+/// Ce qu'il y a ici est ce qu'on veut savoir SANS ouvrir quoi que ce
+/// soit : de quoi on parle, qui l'a produit, comment il est armé, ce
+/// qu'il sait faire. Le détail reste dans la fenêtre, et le bouton y
+/// mène toujours.
+///
+/// Relevé une fois par fichier : `elf_scan`, la reconnaissance de
+/// chaîne d'outils et le relevé des appels lisent le fichier entier, et
+/// le refaire par image coûterait une image par seconde sur un gros
+/// binaire.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct ReBref {
+    /// La taille du fichier, en octets.
+    taille: usize,
+    /// « ELF64 · PIE · dyn », ou ce qu'on en sait.
+    forme: String,
+    /// Le langage et son degré de certitude.
+    langage: Option<(String, String)>,
+    /// Le compilateur et son degré de certitude.
+    compilateur: Option<(String, String)>,
+    /// Les quatre protections qui décident de tout.
+    protections: Vec<(&'static str, bool)>,
+    /// Ce qu'il sait faire, par famille, avec le nombre d'appels.
+    comportement: Vec<(namsdec_re::behaviour::Family, usize)>,
+    /// Fonctions, chaînes, fonctions empruntées, appels système.
+    chiffres: (usize, usize, usize, usize),
+}
 
 /// Ce qu'on demande au sélecteur natif, et donc ce qu'on fera du chemin
 /// qu'il rend.
@@ -2176,6 +2217,7 @@ impl Default for NamsdecApp {
             g_pending: false,
             count_pending: None,
             keymap_save_name: String::new(),
+            re_bref: None,
             visual_anchor: None,
             completion_index: 0,
             completion_dismissed: false,

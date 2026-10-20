@@ -2999,6 +2999,20 @@ impl NamsdecApp {
         let theme = self.theme;
         let prêt = self.emulator.is_some() && self.assemble_state.is_some();
 
+        // LA FICHE D'IDENTITÉ D'ABORD, le bouton ensuite.
+        //
+        // L'onglet ne portait que le bouton, et deux mille pixels de
+        // vide sous lui : tout ce qu'il savait vivait derrière une
+        // fenêtre qu'il fallait ouvrir. Un onglet dont le seul contenu
+        // est « ouvrir une fenêtre » ne mérite pas sa place.
+        self.relever_la_fiche_re();
+        if let Some((_, bref)) = self.re_bref.clone() {
+            ui.add_space(6.0);
+            self.peindre_la_fiche_re(ui, &bref);
+            ui.add_space(8.0);
+            ui.separator();
+        }
+
         ui.add_space(10.0);
         let bouton = ui
             .add_enabled_ui(prêt, |ui| {
@@ -3019,6 +3033,192 @@ impl NamsdecApp {
             self.deliver_tool_states();
         }
         ui.add_space(10.0);
+    }
+
+    /// Relève la fiche d'identité du binaire, si elle n'est pas déjà à
+    /// jour.
+    ///
+    /// Une fois par fichier, et pas une de plus : les trois relevés
+    /// qu'elle demande — le scan ELF, la reconnaissance de chaîne
+    /// d'outils, le portrait des appels — lisent le fichier ENTIER.
+    /// Les refaire par image coûterait une image par seconde sur un
+    /// gros binaire, ce qui a déjà été mesuré ailleurs dans ce panneau.
+    fn relever_la_fiche_re(&mut self) {
+        let Some(state) = &self.assemble_state else {
+            self.re_bref = None;
+            return;
+        };
+        let fichier = &state.output.file;
+        if fichier.is_empty() {
+            self.re_bref = None;
+            return;
+        }
+        let clé = (fichier.len(), state.output.load_addr);
+        if self.re_bref.as_ref().is_some_and(|(vue, _)| *vue == clé) {
+            return;
+        }
+
+        let scan = namsdec_re::elf_scan::scan(fichier);
+        let symboles: Vec<String> = scan
+            .as_ref()
+            .map(|s| s.functions.iter().map(|f| f.name.clone()).collect())
+            .unwrap_or_default();
+        let chaîne = namsdec_re::toolchain::detect(fichier, scan.as_ref(), &symboles);
+        let fr = self.lang == Lang::Fr;
+        let dit = |trouvé: &namsdec_re::toolchain::Finding| {
+            (
+                trouvé.name.clone(),
+                trouvé
+                    .confidence
+                    .label(if fr { "fr" } else { "en" })
+                    .to_owned(),
+            )
+        };
+
+        let forme = match &scan {
+            Some(scan) => format!(
+                "ELF64 · {} · {}",
+                if scan.pie() { "PIE" } else { "EXEC" },
+                if scan.dynamic() { "dyn" } else { "static" }
+            ),
+            // Pas d'en-tête lisible : des octets bruts, et le dire vaut
+            // mieux que de laisser la ligne vide.
+            None => if fr { "octets bruts" } else { "raw bytes" }.to_owned(),
+        };
+        let protections = scan
+            .as_ref()
+            .map(|scan| {
+                vec![
+                    ("PIE", scan.pie()),
+                    ("NX", scan.nx.unwrap_or(false)),
+                    ("RELRO", scan.relro == namsdec_re::elf_scan::Relro::Full),
+                    (if fr { "canari" } else { "canary" }, scan.canary),
+                ]
+            })
+            .unwrap_or_default();
+
+        // Ce qu'il sait faire : les fonctions empruntées ET les appels
+        // système, comme « En bref ». Les deux, car un programme qui
+        // veut passer inaperçu appelle le noyau par son numéro.
+        let imports = namsdec_re::imports::scan(fichier);
+        let appels = namsdec_re::syscalls::scan(&state.disasm);
+        let comportement: Vec<(namsdec_re::behaviour::Family, usize)> = namsdec_re::behaviour::ALL
+            .iter()
+            .filter_map(|&famille| {
+                let combien = imports
+                    .iter()
+                    .filter(|i| namsdec_re::behaviour::family_of(&i.name) == Some(famille))
+                    .count()
+                    + appels
+                        .iter()
+                        .filter(|c| c.family() == Some(famille))
+                        .count();
+                (combien > 0).then_some((famille, combien))
+            })
+            .collect();
+
+        let plage = self
+            .emulator
+            .as_ref()
+            .map(|e| e.cpu().mem.range())
+            .unwrap_or(0..0);
+        let fonctions = namsdec_re::xrefs::scan(&state.disasm, plage.clone())
+            .functions()
+            .len();
+        let chaînes = namsdec_re::strings::scan_elf(fichier)
+            .map(|v| v.len())
+            .unwrap_or(0);
+
+        self.re_bref = Some((
+            clé,
+            ReBref {
+                taille: fichier.len(),
+                forme,
+                langage: chaîne.language.as_ref().map(dit),
+                compilateur: chaîne.compiler.as_ref().map(dit),
+                protections,
+                comportement,
+                chiffres: (fonctions, chaînes, imports.len(), appels.len()),
+            },
+        ));
+    }
+
+    /// Peint la fiche d'identité. Rien n'est calculé ici.
+    ///
+    /// SANS GRILLE, et c'est une correction mesurée. Une grille à deux
+    /// colonnes dans un panneau étroit donne à la première tout ce que
+    /// son étiquette la plus longue demande — ici « Fonctions · chaînes
+    /// · emprunts · appels » — et ce qui reste à la seconde. Vu à
+    /// l'écran : la taille du fichier coupée, « (GNU) 16.2.1 2026 »
+    /// tronqué, le « canari » hors du bord, et la suite de la ligne du
+    /// compilateur peinte PAR-DESSUS la ligne des protections.
+    ///
+    /// Une rangée qui s'enroule par ligne n'a pas ce défaut : chaque
+    /// valeur prend la largeur du panneau et passe à la ligne, et deux
+    /// lignes valent mieux qu'une phrase coupée.
+    fn peindre_la_fiche_re(&mut self, ui: &mut egui::Ui, bref: &ReBref) {
+        let s = strings(self.lang);
+        let theme = self.theme;
+        let ligne = |ui: &mut egui::Ui, étiquette: &str, peindre: &dyn Fn(&mut egui::Ui)| {
+            ui.horizontal_wrapped(|ui| {
+                ui.colored_label(theme.dim, étiquette);
+                peindre(ui);
+            });
+        };
+
+        let taille = format!("{} · {}", bref.forme, group_digits(bref.taille as u64));
+        ligne(ui, s.re_bref_file, &|ui| {
+            ui.monospace(&taille);
+        });
+        // Le langage et le compilateur portent leur CERTITUDE : « Rust »
+        // sans elle apprend à croire plutôt qu'à lire.
+        for (étiquette, trouvé) in [
+            (s.re_bref_language, &bref.langage),
+            (s.re_bref_compiler, &bref.compilateur),
+        ] {
+            let Some((nom, certitude)) = trouvé else {
+                continue;
+            };
+            ligne(ui, étiquette, &|ui| {
+                ui.monospace(nom);
+                ui.weak(format!("({certitude})"));
+            });
+        }
+        if !bref.protections.is_empty() {
+            ligne(ui, s.re_bref_protections, &|ui| {
+                for (nom, bon) in &bref.protections {
+                    // « √ » et « × », et non « ✓ » et « ✗ » : ces
+                    // deux-là n'existent pas dans les polices qu'egui
+                    // embarque et se peignaient en carré vide. Voir le
+                    // même choix dans `binary_info`.
+                    ui.colored_label(
+                        if *bon { theme.good } else { theme.bad },
+                        format!("{} {nom}", if *bon { "\u{221a}" } else { "\u{00d7}" }),
+                    );
+                }
+            });
+        }
+        let (fonctions, chaînes, empruntées, appels) = bref.chiffres;
+        // L'étiquette dit ce que les quatre nombres comptent, et c'est
+        // la plus longue de la fiche : elle est donc SUR SA PROPRE
+        // LIGNE, au-dessus des nombres, plutôt qu'à leur gauche.
+        ui.colored_label(theme.dim, egui::RichText::new(s.re_bref_counts).small())
+            .on_hover_text(s.re_bref_counts_hint);
+        ui.monospace(format!("{fonctions} · {chaînes} · {empruntées} · {appels}"))
+            .on_hover_text(s.re_bref_counts_hint);
+        if !bref.comportement.is_empty() {
+            ui.add_space(4.0);
+            ui.colored_label(theme.dim, s.re_bref_can_do);
+            ui.horizontal_wrapped(|ui| {
+                for (famille, combien) in &bref.comportement {
+                    ui.colored_label(
+                        famille.color(),
+                        format!("{} ({combien})", famille.label(self.lang.code())),
+                    )
+                    .on_hover_text(famille.why(self.lang.code()));
+                }
+            });
+        }
     }
 
     /// Les modules de rétro-ingénierie.

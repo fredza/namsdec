@@ -101,6 +101,9 @@ un panneau de plus. Six points, six reproductions, six contrôles.
 - [x] **Plusieurs jeux de raccourcis** (A 8.19) — `~/.config/namsdec/
       keymaps/`, listés dans Préférences › Raccourcis, chargés d'un clic.
       namsdec ne fait que lire ce dossier.
+- [x] **L'onglet RE porte une fiche d'identité** (A 8.20) — forme,
+      langage, compilateur, protections, chiffres, portrait : ce qu'on
+      veut savoir sans rien ouvrir. Il ne portait qu'un bouton.
 - [x] **Le fuzzing couvre le chargeur** (A 8.6) — et y a trouvé cinq
       débordements d'entier. La classe est traitée à la source : les
       lecteurs de champs composent base et déplacement de façon
