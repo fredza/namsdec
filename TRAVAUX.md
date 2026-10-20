@@ -98,6 +98,9 @@ un panneau de plus. Six points, six reproductions, six contrôles.
       doit rester lisible et copiable. Oui, peut-être, pour les notes d'un
       binaire, l'histoire d'exécution et le cache des analyses : c'est là
       qu'on voudrait interroger sans tout relire.
+- [x] **Plusieurs jeux de raccourcis** (A 8.19) — `~/.config/namsdec/
+      keymaps/`, listés dans Préférences › Raccourcis, chargés d'un clic.
+      namsdec ne fait que lire ce dossier.
 - [x] **Le fuzzing couvre le chargeur** (A 8.6) — et y a trouvé cinq
       débordements d'entier. La classe est traitée à la source : les
       lecteurs de champs composent base et déplacement de façon

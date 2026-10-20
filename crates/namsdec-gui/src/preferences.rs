@@ -305,6 +305,61 @@ impl NamsdecApp {
         {
             exporter_raccourcis = true;
         }
+
+        // --- LES JEUX ENREGISTRÉS ----------------------------------
+        //
+        // `keymap.json` est le jeu ACTIF, et il n'y en a qu'un : on
+        // façonne un jeu pour la rétro-ingénierie, un autre pour écrire
+        // de l'assembleur, un troisième copié d'une machine, et il n'y
+        // avait nulle part où les garder. Passer de l'un à l'autre
+        // voulait dire les recopier à la main.
+        //
+        // namsdec ne fait que LIRE ce dossier : il n'y écrit que sur le
+        // bouton ci-dessous, et n'y touche jamais au démarrage.
+        ui.add_space(8.0);
+        ui.strong(s.shortcuts_saved_sets);
+        ui.weak(s.shortcuts_saved_hint);
+        let enregistrés = settings::list_keymaps();
+        if enregistrés.is_empty() {
+            ui.weak(s.shortcuts_saved_none);
+        } else {
+            for (nom, chemin) in &enregistrés {
+                ui.horizontal(|ui| {
+                    ui.monospace(nom);
+                    if ui
+                        .add(framed(theme, s.shortcuts_load).small())
+                        .on_hover_text(chemin.display().to_string())
+                        .clicked()
+                        && let Some(jeu) = settings::read_keymap(chemin)
+                    {
+                        // Chargé ET posé comme jeu actif : charger sans
+                        // écrire laisserait le jeu d'avant revenir au
+                        // lancement suivant, ce qui se lirait comme un
+                        // bouton mort.
+                        self.keymap_preset = jeu.preset();
+                        self.keybindings = jeu.bindings();
+                        self.write_keymap(&jeu);
+                    }
+                });
+            }
+        }
+        ui.horizontal(|ui| {
+            ui.add(
+                egui::TextEdit::singleline(&mut self.keymap_save_name)
+                    .desired_width(180.0)
+                    .hint_text(s.shortcuts_name_hint),
+            );
+            let nommé = !self.keymap_save_name.trim().is_empty();
+            if ui
+                .add_enabled(nommé, framed(theme, s.shortcuts_save_as).small())
+                .clicked()
+            {
+                let jeu = settings::Keymap::from_bindings(self.keymap_preset, &self.keybindings);
+                if settings::save_keymap_as(&self.keymap_save_name, &jeu).is_ok() {
+                    self.keymap_save_name.clear();
+                }
+            }
+        });
         ui.add_space(6.0);
         ui.separator();
         ui.add_space(4.0);

@@ -1401,6 +1401,8 @@ struct NamsdecApp {
     /// oublié qui s'appliquerait à un mouvement tapé une minute plus
     /// tard serait pire que pas de compteur du tout.
     count_pending: Option<u32>,
+    /// Le nom sous lequel enregistrer le jeu de raccourcis courant.
+    keymap_save_name: String,
     /// L'ANCRE du mode Visuel : l'octet où la sélection a commencé.
     ///
     /// Le curseur, lui, est `cursor_byte` et bouge avec les mouvements.
@@ -2173,6 +2175,7 @@ impl Default for NamsdecApp {
             pending_selection: None,
             g_pending: false,
             count_pending: None,
+            keymap_save_name: String::new(),
             visual_anchor: None,
             completion_index: 0,
             completion_dismissed: false,

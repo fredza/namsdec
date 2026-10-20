@@ -4852,3 +4852,21 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      relire. C'est la piste à instruire, et elle n'a rien à voir avec la
      configuration — mélanger les deux ferait perdre la lisibilité des
      réglages sans rien gagner sur les volumes.
+
+8.19 [FAIT] PLUSIEURS JEUX DE RACCOURCIS, DANS LEUR DOSSIER
+     Demandé le 20 octobre, avec le reste de l'arborescence : « un autre
+     [répertoire] pour les fichiers de configurations de clavier, fakevim,
+     normal ».
+     `keymap.json` est le jeu ACTIF, et il n'y en avait qu'un. On façonne
+     pourtant un jeu pour la rétro-ingénierie, un autre pour écrire de
+     l'assembleur, un troisième copié d'une autre machine — et passer de l'un
+     à l'autre voulait dire les recopier à la main.
+     `~/.config/namsdec/keymaps/` les garde, un fichier par jeu, et
+     Préférences › Raccourcis les liste avec un bouton « Charger ». Charger
+     écrit aussi `keymap.json` : charger sans écrire laisserait le jeu d'avant
+     revenir au lancement suivant, ce qui se lirait comme un bouton mort.
+     namsdec ne fait que LIRE ce dossier. Il n'y écrit que sur le bouton
+     « Enregistrer sous ce nom », et n'y touche jamais au démarrage — c'est la
+     leçon de 8.17, tirée le même jour. Le nom saisi est nettoyé avant de
+     devenir un nom de fichier : un champ de saisie libre où l'on peut écrire
+     « ../../tout » écrirait où il veut.

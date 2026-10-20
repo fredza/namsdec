@@ -693,6 +693,85 @@ pub fn save_keymap(keymap: &Keymap) -> std::io::Result<()> {
     crate::write_atomically(&chemin, (texte + "\n").as_bytes())
 }
 
+/// Le dossier des jeux de raccourcis NOMMÉS, à côté de `keymap.json`.
+///
+/// `keymap.json` est le jeu ACTIF, celui que namsdec lit au démarrage et
+/// réécrit à chaque touche posée. Il n'y en a qu'un, et c'est ce qui
+/// manquait : on façonne un jeu pour la rétro-ingénierie, un autre pour
+/// écrire de l'assembleur, un troisième qu'on a copié d'une machine, et
+/// il n'y avait nulle part où les garder — passer de l'un à l'autre
+/// voulait dire les recopier à la main.
+///
+/// Ce dossier les garde. namsdec le LIT seulement : il n'y écrit que sur
+/// demande explicite, et n'y touche jamais au démarrage.
+pub fn keymaps_dir() -> Option<PathBuf> {
+    keymap_path().and_then(|p| p.parent().map(|d| d.join("keymaps")))
+}
+
+/// Les jeux enregistrés, par leur nom de fichier sans l'extension.
+///
+/// Triés, pour que la liste ne danse pas d'un lancement à l'autre selon
+/// l'ordre que le système rend.
+pub fn list_keymaps() -> Vec<(String, PathBuf)> {
+    let Some(dir) = keymaps_dir() else {
+        return Vec::new();
+    };
+    let Ok(entrées) = std::fs::read_dir(&dir) else {
+        return Vec::new();
+    };
+    let mut trouvés: Vec<(String, PathBuf)> = entrées
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|e| e == "json"))
+        .filter_map(|p| {
+            let nom = p.file_stem()?.to_string_lossy().into_owned();
+            Some((nom, p))
+        })
+        .collect();
+    trouvés.sort_by(|a, b| a.0.cmp(&b.0));
+    trouvés
+}
+
+/// Lit un jeu enregistré.
+pub fn read_keymap(chemin: &std::path::Path) -> Option<Keymap> {
+    serde_json::from_str(&std::fs::read_to_string(chemin).ok()?).ok()
+}
+
+/// Enregistre le jeu courant sous un nom, dans le dossier des jeux.
+///
+/// Le nom est NETTOYÉ : il devient un nom de fichier, et un nom de
+/// fichier ne contient ni séparateur ni `..`. Sans cela, « ../../tout »
+/// écrirait où il veut — ce qui n'est pas un risque théorique dans un
+/// champ de saisie libre.
+pub fn save_keymap_as(nom: &str, keymap: &Keymap) -> std::io::Result<PathBuf> {
+    let propre: String = nom
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' || c == ' ' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    let propre = propre.trim().to_owned();
+    if propre.is_empty() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "un nom vide",
+        ));
+    }
+    let Some(dir) = keymaps_dir() else {
+        return Err(std::io::Error::other("aucun dossier de réglages"));
+    };
+    std::fs::create_dir_all(&dir)?;
+    let chemin = dir.join(format!("{propre}.json"));
+    let texte = serde_json::to_string_pretty(keymap)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    crate::write_atomically(&chemin, (texte + "\n").as_bytes())?;
+    Ok(chemin)
+}
+
 pub fn shortcuts_to_strings(bindings: &KeyBindings) -> BTreeMap<String, String> {
     bindings
         .map

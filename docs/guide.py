@@ -2640,6 +2640,8 @@ def main():
         ["Chemin", "Ce qu'il contient"],
         ["~/.local/bin/namsdec", "le programme"],
         ["~/.config/namsdec/settings.json", "tous vos réglages"],
+        ["~/.config/namsdec/keymap.json", "le jeu de raccourcis actif"],
+        ["~/.config/namsdec/keymaps/", "les jeux de raccourcis enregistrés"],
         ["~/.local/share/namsdec/exercises/", "le parcours et vos séries"],
         ["~/.local/share/namsdec/themes/", "les thèmes installés"],
         ["~/.local/share/namsdec/modules/", "les outils extérieurs déclarés"],

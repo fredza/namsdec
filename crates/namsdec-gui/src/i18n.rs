@@ -489,6 +489,18 @@ pub struct Strings {
     /// Bouton : écrire le jeu de raccourcis entier.
     pub shortcuts_export: &'static str,
     pub shortcuts_export_hint: &'static str,
+    /// Le titre de la liste des jeux enregistrés.
+    pub shortcuts_saved_sets: &'static str,
+    /// Ce qu'est cette liste, et où elle vit.
+    pub shortcuts_saved_hint: &'static str,
+    /// Le bouton qui charge un jeu enregistré.
+    pub shortcuts_load: &'static str,
+    /// Le bouton qui enregistre le jeu courant sous un nom.
+    pub shortcuts_save_as: &'static str,
+    /// L'exemple dans le champ du nom.
+    pub shortcuts_name_hint: &'static str,
+    /// Ce qu'on dit quand le dossier est vide.
+    pub shortcuts_saved_none: &'static str,
     pub shortcuts_exported: &'static str,
     pub shortcuts_export_failed: &'static str,
     /// Le fichier de raccourcis a changé sur le disque, et a été repris.
@@ -1443,6 +1455,12 @@ déclenchera jamais.",
     flow_none: "Aucun graphe à enregistrer : assemblez d'abord.",
     shortcuts_export: "Exporter le jeu entier…",
     shortcuts_export_hint: "Écrire les trente raccourcis, un par un, dans un fichier. Le fichier de réglages, lui, ne garde que les écarts.",
+    shortcuts_saved_sets: "Jeux enregistrés",
+    shortcuts_saved_hint: "Plusieurs jeux, et l'on passe de l'un à l'autre d'un clic : un pour la rétro-ingénierie, un pour écrire de l'assembleur, un copié d'une autre machine. namsdec ne fait que LIRE ce dossier — il n'y écrit que sur demande.",
+    shortcuts_load: "Charger",
+    shortcuts_save_as: "Enregistrer sous ce nom",
+    shortcuts_name_hint: "ex. retro-ingenierie",
+    shortcuts_saved_none: "Aucun jeu enregistré pour l'instant. Celui que vous avez sous les doigts s'enregistre ci-dessous, et revient d'un clic.",
     shortcuts_exported: "Jeu de raccourcis exporté en entier.",
     shortcuts_export_failed: "Le jeu de raccourcis n'a pas pu être écrit",
     shortcuts_reloaded: "Le fichier de raccourcis a changé sur le disque : il a été repris.",
@@ -2277,6 +2295,12 @@ other is there to compare — that is how gaps and clashes become visible.",
     flow_none: "No graph to save: assemble first.",
     shortcuts_export: "Export the whole set…",
     shortcuts_export_hint: "Write all thirty shortcuts, one by one, to a file. The settings file only keeps what departs from the set.",
+    shortcuts_saved_sets: "Saved sets",
+    shortcuts_saved_hint: "Several sets, and one click to switch: one for reverse engineering, one for writing assembly, one copied from another machine. namsdec only READS this folder — it writes there on request alone.",
+    shortcuts_load: "Load",
+    shortcuts_save_as: "Save under this name",
+    shortcuts_name_hint: "e.g. reverse-engineering",
+    shortcuts_saved_none: "No set saved yet. The one under your fingers saves below, and comes back with one click.",
     shortcuts_exported: "Whole shortcut set exported.",
     shortcuts_export_failed: "The shortcut set could not be written",
     shortcuts_reloaded: "The shortcuts file changed on disk: it has been picked up.",
