@@ -2694,7 +2694,7 @@ def main():
     blocs.append(("table", [
         ["Chemin", "Ce qu'il contient"],
         ["~/.local/bin/namsdec", "le programme"],
-        ["~/.config/namsdec/settings.json", "tous vos réglages"],
+        ["~/.config/namsdec/settings.json", "tous vos réglages, dont `donation_url`"],
         ["~/.config/namsdec/keymap.json", "le jeu de raccourcis actif"],
         ["~/.config/namsdec/keymaps/", "les jeux de raccourcis enregistrés"],
         ["~/.local/share/namsdec/exercises/", "le parcours et vos séries"],
@@ -2719,6 +2719,28 @@ def main():
         "Les appels système qui touchent au monde — `mmap`, `open`, `fork` — sont nommés "
         "mais pas exécutés. namsdec le dit dès l'assemblage, avec la ligne.",
         "AVX-512 : ses <b>trente-deux registres de 512 bits</b> (`zmm`), ses huit <b>registres de masque</b> (`k0` à `k7`) et les instructions qui les remplissent, et l'<b>application</b> du masque — les voies retenues reçoivent le résultat, les autres gardent leur valeur ou tombent à zéro. Une instruction dont namsdec ne sait pas nommer l'élément s'arrête en le disant, plutôt que de décaler les voies et de rendre un résultat faux sans avertissement. FMA, `in`/`out` et `cmpxchg16b` ne sont pas implémentés ; SSE, SSE2, SSSE3, SSE4.1, SSE4.2, AVX et AVX2 le sont entièrement.",
+    ]))
+    blocs.append(("h1", "Signaler une anomalie"))
+    blocs.append(("p",
+        "<b>Aide › Signaler une anomalie…</b> rassemble le contexte d'un défaut — version, "
+        "système, outils trouvés, forme du fichier ouvert, et ce que namsdec disait au "
+        "moment du clic. C'est la moitié du travail qui coûte du temps à qui signale, et "
+        "c'est elle qui fait qu'une anomalie n'est jamais signalée."))
+    blocs.append(("liste", [
+        "<b>Rien ne part tout seul.</b> Aucune requête n'est faite en ouvrant la fenêtre. "
+        "Le texte reste sur la machine tant qu'on n'a pas cliqué.",
+        "<b>Ce qui part est montré avant</b>, en entier, dans un champ qu'on lit et qu'on "
+        "corrige. Un rapport qu'on n'a pas lu est un rapport qu'on n'a pas consenti à "
+        "envoyer.",
+        "<b>Ni le fichier, ni son chemin.</b> Un binaire analysé est souvent ce qu'on a de "
+        "plus privé — un échantillon, un travail en cours, le code de quelqu'un d'autre —, "
+        "et un rapport part sur un tracker public. Le rapport dit sa FORME — « ELF64 "
+        "x86-64 · PIE · dyn · dépouillé, 84&nbsp;548 octets » — et jamais son nom ni son "
+        "contenu. Une case, décochée, joint le chemin pour qui le veut vraiment.",
+        "<b>Deux sorties, les deux au clic</b> : copier le rapport dans le presse-papiers, "
+        "ou ouvrir le formulaire du dépôt avec le titre et le corps déjà remplis. namsdec "
+        "n'héberge pas de serveur, et ce qu'il met dans l'adresse est exactement ce que la "
+        "fenêtre montrait.",
     ]))
     blocs.append(("h1", "Mises à jour, licence et contact"))
     blocs.append(("p",

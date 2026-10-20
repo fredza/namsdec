@@ -577,7 +577,8 @@ impl NamsdecApp {
 
                 ui.separator();
                 ui.colored_label(theme.dim, s.about_donate_hint);
-                let can_donate = !DONATION_URL.is_empty();
+                let adresse = self.donation_url.trim().to_owned();
+                let can_donate = !adresse.is_empty();
                 let texture = self.treat_texture(ctx);
                 ui.add_enabled_ui(can_donate, |ui| {
                     // `Image::sense` plutôt qu'un `ImageButton` : egui
@@ -593,7 +594,7 @@ impl NamsdecApp {
                         .on_hover_text(s.about_donate)
                         .clicked()
                     {
-                        ui.ctx().open_url(egui::OpenUrl::new_tab(DONATION_URL));
+                        ui.ctx().open_url(egui::OpenUrl::new_tab(&adresse));
                     }
                 });
                 if !can_donate {

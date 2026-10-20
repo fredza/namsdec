@@ -55,6 +55,7 @@ impl NamsdecApp {
             auto_indent: settings.auto_indent,
             auto_pairs: settings.auto_pairs,
             hover_help: settings.hover_help,
+            donation_url: settings.donation_url.clone(),
             exercises: settings.exercises,
             disabled_packs: settings.disabled_packs.iter().cloned().collect(),
             located_tools: settings
@@ -512,6 +513,7 @@ impl NamsdecApp {
             auto_indent: self.auto_indent,
             auto_pairs: self.auto_pairs,
             hover_help: self.hover_help,
+            donation_url: self.donation_url.clone(),
             exercises: self.exercises,
             disabled_packs: self.disabled_packs.iter().cloned().collect(),
             located_tools: self

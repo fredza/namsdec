@@ -85,6 +85,19 @@ pub struct Settings {
     /// La fiche de l'instruction au survol du code.
     #[serde(default = "vrai")]
     pub hover_help: bool,
+    /// Où mène le bouton de don de la fenêtre « À propos ».
+    ///
+    /// UN RÉGLAGE ET NON UNE CONSTANTE : une adresse de paiement
+    /// appartient à qui reçoit, et ne se devine pas. Elle valait
+    /// `https://example.com/…` dans le binaire — un domaine réservé à
+    /// la documentation, où personne ne reçoit rien —, si bien que le
+    /// bouton paraissait actif et menait nulle part.
+    ///
+    /// Vide, le bouton est éteint et dit où poser l'adresse. Ko-fi,
+    /// PayPal.me, Liberapay, GitHub Sponsors : namsdec n'en privilégie
+    /// aucun, il ouvre ce qu'on lui donne.
+    #[serde(default)]
+    pub donation_url: String,
     /// Le module des exercices. Éteint par défaut : quelqu'un qui écrit
     /// son propre code n'a pas besoin qu'on lui propose des devoirs, et
     /// rien n'apparaît tant qu'il ne le demande pas.
@@ -345,6 +358,7 @@ impl Default for Settings {
             auto_indent: true,
             auto_pairs: true,
             hover_help: true,
+            donation_url: String::new(),
             disabled_packs: Vec::new(),
             located_tools: std::collections::BTreeMap::new(),
             current_exercise: None,

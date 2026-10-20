@@ -4,6 +4,7 @@
 //! en affichant les panneaux des modules `ReModule` enregistrés.
 
 mod ansi;
+mod bugreport;
 mod calc;
 mod calc_ui;
 mod chrome;
@@ -225,12 +226,18 @@ const MIT_LICENSE_URL: &str = "https://opensource.org/license/mit";
 const SITE_URL: &str = "https://namsdec.io";
 const DISCORD_URL: &str = "https://discord.gg/pv6pHkzB5";
 const GITHUB_URL: &str = "https://github.com/fredza/namsdec";
-/// Où mène le bouton de don. Adresse **fictive** pour l'instant —
-/// `example.com` est réservé à la documentation, personne n'y reçoit
-/// rien : à remplacer par le vrai lien (Ko-fi, PayPal.me, Liberapay…).
-/// Vidée, la constante laisse le bouton affiché mais inactif plutôt que
-/// d'envoyer l'utilisateur nulle part.
-const DONATION_URL: &str = "https://example.com/namsdec/offrir-un-repas";
+/// Où mène le bouton de don, **quand rien n'est réglé**.
+///
+/// VIDE, et c'est délibéré. Elle valait `https://example.com/…`, un
+/// domaine réservé à la documentation où personne ne reçoit rien : le
+/// bouton paraissait actif et menait nulle part, ce qui est pire qu'un
+/// bouton éteint. Une adresse de paiement ne se devine pas — elle
+/// appartient à qui reçoit —, et namsdec ne peut donc que la LIRE.
+///
+/// Elle se règle dans `settings.json`, champ `donation_url`, ou dans
+/// Préférences › Général. Tant qu'elle est vide, le bouton est éteint
+/// et dit où la poser.
+const DONATION_URL: &str = "";
 
 /// Les valeurs d'egui pour les infobulles, reprises telles quelles : le
 /// réglage ne fait que les remplacer par un délai qui n'échoit jamais.
@@ -1403,6 +1410,12 @@ struct NamsdecApp {
     count_pending: Option<u32>,
     /// Le nom sous lequel enregistrer le jeu de raccourcis courant.
     keymap_save_name: String,
+    /// Où mène le bouton de don. Vide : il est éteint, et dit pourquoi.
+    donation_url: String,
+    /// La fenêtre « Signaler une anomalie » est-elle ouverte ?
+    show_bug_report: bool,
+    /// Ce qu'on y a saisi.
+    bug_report: bugreport::BugReport,
     /// La fiche d'identité du binaire, pour l'onglet RE — relevée une
     /// fois par fichier, et gardée.
     ///
@@ -2217,6 +2230,9 @@ impl Default for NamsdecApp {
             g_pending: false,
             count_pending: None,
             keymap_save_name: String::new(),
+            donation_url: DONATION_URL.to_owned(),
+            show_bug_report: false,
+            bug_report: bugreport::BugReport::default(),
             re_bref: None,
             visual_anchor: None,
             completion_index: 0,
@@ -2593,10 +2609,11 @@ impl NamsdecApp {
     /// ajouter une fenêtre sans y penser reviendrait à réintroduire le
     /// défaut sans le voir. Les noms sont les identifiants qu'on passe à
     /// `egui::Window::id`, lesquels ne changent pas avec la langue.
-    fn window_states(&self) -> [(&'static str, bool); 18] {
+    fn window_states(&self) -> [(&'static str, bool); 19] {
         [
             ("preferences_window", self.show_preferences),
             (ABOUT_WINDOW, self.show_about),
+            ("bug_report", self.show_bug_report),
             ("instruction_help", self.show_help),
             ("vectors_window", self.show_vectors),
             ("breakpoints_window", self.show_breakpoints),
@@ -3574,6 +3591,7 @@ impl NamsdecApp {
             self.raise_new_windows(&ctx);
             self.preferences_window_ui(&ctx);
             self.about_window_ui(&ctx);
+            self.bug_report_ui(&ctx);
             self.help_window_ui(&ctx);
             self.vectors_window_ui(&ctx);
             self.breakpoints_window_ui(&ctx);

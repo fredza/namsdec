@@ -219,6 +219,23 @@ impl NamsdecApp {
 
         ui.separator();
 
+        // L'ADRESSE DE DON SE RÈGLE ICI, et nulle part dans le binaire.
+        //
+        // Elle était une constante, et valait `https://example.com/…` —
+        // un domaine réservé à la documentation, où personne ne reçoit
+        // rien. Le bouton d'« À propos » paraissait donc actif et menait
+        // nulle part. Une adresse de paiement appartient à qui reçoit :
+        // namsdec ne peut que la lire.
+        ui.label(s.preferences_donation);
+        ui.add(
+            egui::TextEdit::singleline(&mut self.donation_url)
+                .desired_width(ui.available_width().min(420.0))
+                .hint_text("https://ko-fi.com/…"),
+        );
+        ui.weak(s.preferences_donation_hint);
+
+        ui.separator();
+
         ui.label(s.preferences_language);
         ui.horizontal(|ui| {
             if ui

@@ -5204,3 +5204,53 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      silence. Il ne mesurait rien. Les droits sont posés avant l'appel, et il
      tourne maintenant en 0,58 seconde — ce qui est le temps d'un vrai
      empaquetage suivi d'un vrai déballage.
+
+9.4  [FAIT] LE BOUTON DE DON MENAIT NULLE PART
+     Demandé le 21 octobre : « implémente aussi le système de dons ». Le
+     bouton existait déjà dans « À propos », avec son illustration — et
+     pointait sur `https://example.com/namsdec/offrir-un-repas`. Or
+     `example.com` est un domaine RÉSERVÉ à la documentation : personne n'y
+     reçoit rien. Le bouton paraissait actif et menait nulle part, ce qui
+     est pire qu'un bouton éteint.
+     UNE ADRESSE DE PAIEMENT NE SE DEVINE PAS : elle appartient à qui
+     reçoit, et namsdec ne peut que la LIRE. Elle est donc passée d'une
+     constante du binaire à un réglage — `donation_url` dans settings.json,
+     ou Préférences › Général. Vide par défaut : le bouton est éteint et dit
+     où poser l'adresse, plutôt que d'envoyer quelqu'un sur un domaine de
+     documentation.
+     Ko-fi, PayPal.me, Liberapay, GitHub Sponsors : namsdec n'en privilégie
+     aucun et ouvre ce qu'on lui donne. Rien n'est envoyé depuis namsdec —
+     le lien s'ouvre dans le navigateur, au clic.
+     RESTE À FAIRE, et ce n'est pas à namsdec de le faire : poser la vraie
+     adresse.
+
+9.5  [FAIT] SIGNALER UNE ANOMALIE, SANS SERVEUR ET SANS INDISCRÉTION
+     Demandé : « et aussi si c'est possible un retour de bugs (comme
+     bugzilla) ».
+     namsdec n'héberge pas de serveur et n'en hébergera pas : un tracker à
+     soi demande qu'on le tienne. Mais la moitié du travail qui coûte du
+     temps à qui signale n'est pas l'envoi — c'est RASSEMBLER LE CONTEXTE.
+     Version, système, outils trouvés, forme du fichier, ce que le programme
+     répondait : personne n'a envie de recopier cela à la main, et c'est la
+     vraie raison pour laquelle les anomalies ne se signalent pas.
+     Aide › Signaler une anomalie… le compose, et le laisse partir par l'un
+     des deux gestes de l'utilisateur : copié dans le presse-papiers, ou
+     dans un formulaire d'issue PRÉREMPLI que le navigateur ouvre.
+
+     --- TROIS RÈGLES, ET ELLES SONT LE SUJET ---
+     1. RIEN NE PART TOUT SEUL. Aucune requête à l'ouverture de la fenêtre.
+     2. CE QUI PART EST MONTRÉ AVANT, en entier, dans un champ qu'on lit et
+        qu'on corrige. Un rapport qu'on n'a pas lu est un rapport qu'on n'a
+        pas consenti à envoyer. Le texte est composé en UN SEUL endroit, de
+        sorte que ce qui est montré soit exactement ce qui est copié et ce
+        qui est mis dans l'adresse — trois textes seraient trois occasions
+        de mentir.
+     3. NI LE FICHIER, NI SON CHEMIN. Un binaire analysé est souvent ce
+        qu'on a de plus privé, et un rapport part sur un tracker public. Le
+        rapport dit la FORME — « ELF64 x86-64 · PIE · dyn · dépouillé,
+        84 548 octets » — et jamais son nom ni son contenu. Une case,
+        décochée, joint le chemin pour qui le veut vraiment.
+     `a_bug_report_carries_neither_the_file_nor_its_path` le retient : il
+     charge un vrai binaire, pose un chemin qui porte un nom de client, et
+     vérifie que ni le chemin, ni les octets du fichier ne paraissent dans
+     le rapport — puis que cocher la case fait bien entrer le chemin.

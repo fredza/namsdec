@@ -39,6 +39,11 @@ processeur est ancré.
       contrôles éprouvaient la décision, jamais le geste.
 - [x] **Le compteur comptait en Insertion** (A 9.2) — « INSERT ×8 »,
       trouvé sur la même capture en la lisant pour autre chose.
+- [x] **Le don est réglable, et n'est plus fictif** (A 9.4) — l'adresse
+      passe de constante à réglage, vide par défaut. Il reste à y poser
+      la vraie : namsdec ne peut que la lire.
+- [x] **Signaler une anomalie** (A 9.5) — le contexte rassemblé, montré
+      en entier, et qui ne part qu'au clic. Ni le fichier ni son chemin.
 - [x] **Ce qu'upx refuse, dit en français** (A 9.3) — le déballage
       fonctionnait ; c'est ce que le panneau en disait qui ne disait
       rien. Le contrôle qui le prouve avait lui aussi menti, en

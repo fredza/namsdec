@@ -41,6 +41,7 @@ use crate::sidebar::*;
 const SOURCES_DE_L_INTERFACE: &[(&str, &str)] = &[
     ("main.rs", include_str!("main.rs")),
     ("ansi.rs", include_str!("ansi.rs")),
+    ("bugreport.rs", include_str!("bugreport.rs")),
     ("calc.rs", include_str!("calc.rs")),
     ("calc_ui.rs", include_str!("calc_ui.rs")),
     ("chrome.rs", include_str!("chrome.rs")),
@@ -10593,7 +10594,7 @@ fn opening_a_binary_shows_its_code_not_its_header() {
 #[test]
 fn both_languages_say_the_same_things() {
     /// Les champs dont les deux langues partagent le texte, et pourquoi.
-    const LES_MÊMES: [&str; 29] = [
+    const LES_MÊMES: [&str; 30] = [
         // « Pseudo-code » s'écrit pareil des deux côtés de la Manche.
         "flow_pseudo",
         // Une adresse d'exemple : elle s'écrit pareil partout.
@@ -10610,6 +10611,7 @@ fn both_languages_say_the_same_things() {
         "action_step_back",
         "action_stop",
         // Un mot identique dans les deux langues.
+        "bug_absent",
         "re_bref_protections",
         "shortcuts_action_col",
         "abi_arguments",
@@ -21319,6 +21321,70 @@ fn typing_one_parenthesis_inserts_one_closing_not_a_hundred() {
     );
 }
 
+/// LE RAPPORT D'ANOMALIE NE PORTE NI LE FICHIER, NI SON CHEMIN.
+///
+/// C'est la règle qui tient tout le reste. Un binaire analysé est
+/// souvent ce qu'on a de plus privé — un échantillon, un travail en
+/// cours, le code de quelqu'un d'autre —, et un rapport part sur un
+/// tracker public. Il dit la FORME du fichier et jamais son contenu ;
+/// le chemin n'y entre que si la case est cochée, et elle est décochée.
+#[test]
+fn a_bug_report_carries_neither_the_file_nor_its_path() {
+    let Ok(octets) = std::fs::read("/bin/ls") else {
+        return;
+    };
+    let mut app = NamsdecApp::default();
+    if !app.load_elf(&octets, "secret_de_famille") {
+        return;
+    }
+    app.binary_path = Some(std::path::PathBuf::from(
+        "/home/quelquun/clients/acme/binaire_confidentiel",
+    ));
+    app.bug_report.récit = "j'ai cliqué, rien ne s'est passé".to_owned();
+
+    let rapport = app.bug_report_text();
+
+    // La forme y est : c'est elle qui aide à reproduire.
+    assert!(
+        rapport.contains("ELF64"),
+        "la forme du fichier doit y être : {rapport}"
+    );
+    assert!(
+        rapport.contains(&octets.len().to_string()),
+        "sa taille aussi"
+    );
+    // Le chemin n'y est PAS, case décochée.
+    assert!(
+        !app.bug_report.avec_chemin,
+        "la case est décochée par défaut"
+    );
+    for secret in ["acme", "binaire_confidentiel", "quelquun"] {
+        assert!(
+            !rapport.contains(secret),
+            "« {secret} » ne doit pas figurer dans un rapport public :\n{rapport}"
+        );
+    }
+    // Et le contenu du fichier non plus : on cherche une suite d'octets
+    // qui s'y trouve et qui n'a aucune raison d'être dans un rapport.
+    let début: String = octets
+        .iter()
+        .skip(1)
+        .take(3)
+        .map(|o| format!("{o:02x}"))
+        .collect();
+    assert!(
+        !rapport.contains(&début),
+        "le contenu du fichier ne doit pas fuir : « {début} » est dedans"
+    );
+
+    // Cochée, le chemin entre — et seulement alors.
+    app.bug_report.avec_chemin = true;
+    assert!(
+        app.bug_report_text().contains("binaire_confidentiel"),
+        "coché, le chemin entre : c'est le seul moyen de le joindre"
+    );
+}
+
 /// LE COMPTEUR DE RÉPÉTITION N'EXISTE QU'EN MODE NORMAL.
 ///
 /// Rien ne le disait : taper « 8 » en Insertion écrivait le chiffre ET
@@ -24771,6 +24837,7 @@ fn every_setting_that_is_written_is_read_back() {
         auto_indent: false,
         auto_pairs: false,
         hover_help: false,
+        donation_url: "https://exemple.invalid/don".to_owned(),
         disabled_packs: vec!["une-serie".to_owned()],
         located_tools: std::collections::BTreeMap::new(),
         current_exercise: Some("namsdec/boucle".to_owned()),

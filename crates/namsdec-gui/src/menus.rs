@@ -795,6 +795,20 @@ impl NamsdecApp {
                     ui.close();
                 }
                 ui.separator();
+                // SIGNALER, et non « contacter » : ce que namsdec
+                // rassemble est le CONTEXTE d'un défaut, pas un
+                // message. La moitié du travail de qui signale est de
+                // retrouver sa version, son système et ce que l'outil
+                // répondait — et c'est cette moitié-là qui fait qu'une
+                // anomalie n'est jamais signalée.
+                if ui
+                    .button(s.help_report_bug)
+                    .on_hover_text(s.help_report_bug_hint)
+                    .clicked()
+                {
+                    self.show_bug_report = true;
+                    ui.close();
+                }
                 if ui.button(s.help_about).clicked() {
                     self.show_about = true;
                     ui.close();
