@@ -4798,3 +4798,57 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      Un contrôle de géométrie qui n'a jamais échoué ne prouve rien. Les deux
      ont été remis en défaut jusqu'à ce qu'ils accusent : 1 256 px de vide
      pour l'un, 363 px peints sur 462 pour l'autre.
+
+8.16 [FAIT] UN SEUL DOSSIER POUR LES MODULES
+     Demandé le 20 octobre : « il devrait y avoir un répertoire module avec
+     tous les modules genre ghidra-rizin, retdec, dzf… ».
+     Il y en avait deux, `disassemblers/` et `decompilers/`, et c'était le
+     DOSSIER qui portait le sens : la même fiche changeait de nature selon
+     l'endroit où on la posait. Deux défauts, et le second est le pire : une
+     fiche recopiée à la main dans le mauvais dossier était simplement
+     ignorée, SANS MESSAGE, puisque namsdec ne savait pas qu'elle existait.
+     La fiche le dit maintenant elle-même — `"kind": "disassembler"` ou
+     `"decompiler"`, absent valant désassembleur —, et tous les modules
+     vivent dans `modules/`. Le filtre compte autant que l'unification : la
+     liste des moteurs de la fenêtre de désassemblage ne doit pas proposer un
+     décompilateur, qui ne rend pas des instructions.
+     Les deux dossiers d'avant sont relus au premier lancement et leur
+     contenu recopié ; RIEN N'Y EST EFFACÉ. Une version qui déplace les
+     fichiers de quelqu'un doit pouvoir être désinstallée sans rien emporter,
+     et l'ancienne version continue de les lire.
+
+8.17 [FAIT] UN CONTRÔLE QUI A ÉCRIT DANS LES FICHIERS DE L'UTILISATEUR
+     La reprise ci-dessus a d'abord été posée dans `NamsdecApp::default()`.
+     Elle s'exécutait donc à CHAQUE construction de l'application — c'est-à-
+     dire dans les six cent quatre-vingt-dix contrôles. Deux fichiers sont
+     apparus dans `~/.local/share/namsdec/modules/` pendant une simple
+     exécution de `cargo test`, ce qui enfreint une règle ancienne du dépôt.
+     Déplacée dans le vrai démarrage, là où l'application est déjà celle qui
+     écrit. Et la règle a désormais un contrôle :
+     `building_the_app_writes_nothing_into_anyones_files` relève le contenu
+     du dossier de données RÉEL, construit l'application cinquante fois, et
+     vérifie que rien n'a bougé. Il ne crée rien lui-même et s'abstient là où
+     ce dossier n'existe pas.
+     La leçon vaut au-delà de ce cas : tout ce qu'on met dans un constructeur
+     s'exécute partout, y compris là où l'on croyait ne rien faire.
+
+8.18 UNE BASE DE DONNÉES AIDERAIT-ELLE NAMSDEC ? — NON POUR LA CONFIGURATION
+     Question posée le 20 octobre. Réponse honnête, et elle n'est pas la même
+     partout.
+     POUR LA CONFIGURATION : non, et ce serait une perte. `settings.json`,
+     `keymap.json`, les fiches de `modules/` et les thèmes sont de petits
+     fichiers qu'on OUVRE, qu'on lit, qu'on copie d'une machine à l'autre,
+     qu'on met dans un dépôt de fichiers de configuration, qu'on corrige à la
+     main quand quelque chose cloche. Une base rendrait tout cela opaque,
+     indiffable, et impossible à réparer sans outil. Le gain — des requêtes,
+     des transactions — n'existe pas : il y a une dizaine d'entrées, lues une
+     fois au démarrage.
+     LÀ OÙ ELLE AIDERAIT VRAIMENT, en revanche, c'est pour ce qui est
+     VOLUMINEUX et INTERROGÉ : les notes et les noms donnés aux adresses d'un
+     binaire (aujourd'hui un fichier par binaire, relu en entier), l'histoire
+     d'exécution (cinq mille pas, chacun gardant les octets modifiés), et le
+     cache des analyses d'un gros fichier. Ce sont les trois endroits où l'on
+     voudrait demander « quels noms entre 0x401000 et 0x402000 » sans tout
+     relire. C'est la piste à instruire, et elle n'a rien à voir avec la
+     configuration — mélanger les deux ferait perdre la lisibilité des
+     réglages sans rien gagner sur les volumes.

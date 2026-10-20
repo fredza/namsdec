@@ -8,5 +8,6 @@
     "{out}",
     "{file}"
   ],
-  "install": "github.com/avast/retdec/releases"
+  "install": "github.com/avast/retdec/releases",
+  "kind": "decompiler"
 }

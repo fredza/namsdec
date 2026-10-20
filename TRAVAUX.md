@@ -88,6 +88,16 @@ un panneau de plus. Six points, six reproductions, six contrôles.
       grand écran), et les phrases du vidage se replient au lieu de
       partir hors de l'écran. Les deux contrôles passaient au vert avec
       les défauts remis : ils ne mesuraient rien, et c'est écrit.
+- [x] **Un seul dossier pour les modules** (A 8.16) — `modules/`, et la
+      fiche dit ce qu'elle rend par son champ `kind`. Les deux dossiers
+      d'avant sont repris sans rien effacer.
+- [x] **Rien n'écrit dans les fichiers de quelqu'un depuis un
+      constructeur** (A 8.17) — la règle était tenue par l'habitude ;
+      elle l'est maintenant par un contrôle, après avoir été enfreinte.
+- [ ] **Une base de données ?** (A 8.18) — non pour la configuration, qui
+      doit rester lisible et copiable. Oui, peut-être, pour les notes d'un
+      binaire, l'histoire d'exécution et le cache des analyses : c'est là
+      qu'on voudrait interroger sans tout relire.
 - [x] **Le fuzzing couvre le chargeur** (A 8.6) — et y a trouvé cinq
       débordements d'entier. La classe est traitée à la source : les
       lecteurs de champs composent base et déplacement de façon

@@ -80,6 +80,47 @@ pub struct Plugin {
     /// décision. Il dit ce qu'il faut taper, et laisse taper.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub install: Option<String>,
+    /// Ce que l'outil REND : des instructions, ou du pseudo-code.
+    ///
+    /// Le format le dit maintenant lui-même. Il le disait auparavant par
+    /// le DOSSIER où le fichier se trouvait — `disassemblers/` ou
+    /// `decompilers/` —, ce qui a deux défauts : une fiche recopiée à la
+    /// main atterrit n'importe où et change de sens, et l'on ne peut pas
+    /// ranger tous les modules au même endroit, ce qui était justement
+    /// demandé.
+    ///
+    /// Absent, c'est un désassembleur : c'est ce qu'était tout fichier
+    /// du dossier `disassemblers/`, et c'est le cas le plus courant.
+    #[serde(default)]
+    pub kind: Kind,
+}
+
+/// Ce qu'un outil extérieur rend.
+///
+/// Deux mots qui ne sont pas interchangeables, et c'est pour cela qu'ils
+/// sont dans le format : un désassembleur rend les instructions du
+/// programme, un décompilateur en rend une lecture en C — devinée, et
+/// qui n'a jamais existé telle quelle.
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum Kind {
+    /// Des instructions. Le cas par défaut.
+    #[default]
+    Disassembler,
+    /// Du pseudo-code.
+    Decompiler,
+}
+
+impl Kind {
+    /// Le mot qu'on écrit à l'écran.
+    pub fn label(self, fr: bool) -> &'static str {
+        match (self, fr) {
+            (Self::Disassembler, true) => "désassemblage",
+            (Self::Disassembler, false) => "disassembly",
+            (Self::Decompiler, true) => "décompilation",
+            (Self::Decompiler, false) => "decompilation",
+        }
+    }
 }
 
 /// Ce que namsdec sait du binaire, et qu'il peut passer à l'outil.
@@ -550,6 +591,7 @@ mod tests {
             command: "cat".to_owned(),
             args: vec!["{file}".to_owned()],
             install: None,
+            kind: Kind::default(),
         };
         // Un méga-octet : seize fois le tampon d'un tube.
         let gros = vec![b'A'; 1024 * 1024];
@@ -580,6 +622,7 @@ mod tests {
             command: "sleep".to_owned(),
             args: vec!["30".to_owned()],
             install: None,
+            kind: Kind::default(),
         };
         let début = std::time::Instant::now();
         let rendu = plugin.run_within(b"peu importe", Duration::from_secs(1));
@@ -760,6 +803,7 @@ mod bornes_tests {
                 "{file}".to_owned(),
             ],
             install: None,
+            kind: Kind::default(),
         }
     }
 
@@ -942,6 +986,7 @@ mod dzf_tests {
                 "{file}".to_owned(),
             ],
             install: None,
+            kind: Kind::default(),
         };
         // `push rbp ; mov rbp, rsp ; mov rax, 42 ; pop rbp ; ret` — le
         // début de n'importe quelle fonction, et de quoi vérifier que les

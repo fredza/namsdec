@@ -7,5 +7,6 @@
     "64",
     "{file}"
   ],
-  "install": "sudo dnf install nasm"
+  "install": "sudo dnf install nasm",
+  "kind": "disassembler"
 }

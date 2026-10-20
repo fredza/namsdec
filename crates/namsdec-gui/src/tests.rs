@@ -14333,6 +14333,7 @@ fn two_texts_of_a_window_never_overlap() {
                 "{out}".to_owned(),
             ],
             install: None,
+            kind: Default::default(),
         }],
         decompiler: "dzf".to_owned(),
         ..Default::default()
@@ -19515,6 +19516,7 @@ fn a_huge_decompilation_stays_readable() {
             command: "wc".to_owned(),
             args: vec!["-c".to_owned(), "{file}".to_owned()],
             install: None,
+            kind: Default::default(),
         }],
         decompiler: "essai".to_owned(),
         ..Default::default()
@@ -19575,6 +19577,7 @@ fn the_decompiler_shows_the_command_then_runs_it() {
         command: "wc".to_owned(),
         args: vec!["-c".to_owned(), "{file}".to_owned()],
         install: None,
+        kind: Default::default(),
     };
     let mut app = NamsdecApp {
         show_decompiler_module: true,
@@ -19640,6 +19643,7 @@ fn a_tool_that_never_finishes_is_stopped() {
         command: "tail".to_owned(),
         args: vec!["-f".to_owned(), "{file}".to_owned()],
         install: None,
+        kind: Default::default(),
     };
     let début = std::time::Instant::now();
     let erreur = dormeur
@@ -19731,6 +19735,67 @@ fn a_background_job_shows_its_progress_where_one_looks() {
     assert_eq!(app.window_title.as_deref(), Some("Namsdec"));
 }
 
+/// CONSTRUIRE L'APPLICATION N'ÉCRIT RIEN DANS LES FICHIERS DE
+/// QUELQU'UN.
+///
+/// La règle est ancienne — aucun contrôle n'écrit dans `settings.json`
+/// ni dans `~/.local/share/namsdec` — et elle a été enfreinte le
+/// 20 octobre 2026 en ajoutant la reprise des anciens dossiers de
+/// modules : posée dans `NamsdecApp::default()`, elle s'exécutait à
+/// chaque construction, donc dans les six cent quatre-vingt-dix
+/// contrôles. Deux fichiers sont apparus dans le dossier de données de
+/// la personne pendant une simple exécution de `cargo test`.
+///
+/// Le contrôle surveille le dossier de données RÉEL : il relève ce
+/// qu'il contient, construit l'application une centaine de fois, et
+/// vérifie que rien n'a bougé. Il ne crée rien lui-même, et s'abstient
+/// quand ce dossier n'existe pas — sur une machine d'intégration
+/// continue, il n'y a rien à protéger.
+#[test]
+fn building_the_app_writes_nothing_into_anyones_files() {
+    let Some(données) = data_dir() else {
+        return;
+    };
+    let relevé = |dossier: &std::path::Path| -> Vec<String> {
+        let Ok(entrées) = std::fs::read_dir(dossier) else {
+            return Vec::new();
+        };
+        let mut noms: Vec<String> = entrées
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        noms.sort();
+        noms
+    };
+    // Les sous-dossiers qu'une reprise ou une installation toucherait.
+    let surveillés: Vec<std::path::PathBuf> = ["modules", "decompilers", "disassemblers", "themes"]
+        .iter()
+        .map(|nom| données.join(nom))
+        .collect();
+    let avant: Vec<Vec<String>> = surveillés.iter().map(|d| relevé(d)).collect();
+    let existait: Vec<bool> = surveillés.iter().map(|d| d.exists()).collect();
+
+    for _ in 0..50 {
+        let _ = NamsdecApp::default();
+    }
+
+    for ((dossier, avant), existait) in surveillés.iter().zip(&avant).zip(&existait) {
+        assert_eq!(
+            dossier.exists(),
+            *existait,
+            "construire l'application a créé ou retiré {} — elle ne doit rien \
+             écrire dans les fichiers de quelqu'un",
+            dossier.display()
+        );
+        assert_eq!(
+            &relevé(dossier),
+            avant,
+            "construire l'application a changé le contenu de {}",
+            dossier.display()
+        );
+    }
+}
+
 /// Déclarer un outil écrit un fichier — et rien d'autre.
 ///
 /// C'est la promesse de cet écran : namsdec ne télécharge pas Rizin, ne
@@ -19752,10 +19817,17 @@ fn declaring_a_tool_writes_a_file_and_nothing_else() {
 
     // Le fichier est là, lisible, et namsdec le relit comme n'importe
     // quelle description écrite à la main.
-    let écrit = dossier.path().join("namsdec/decompilers/rizin-ghidra.json");
+    // Dans `modules/`, qui porte maintenant TOUS les outils : le
+    // dossier ne dit plus ce qu'une fiche rend, la fiche le dit.
+    let écrit = dossier.path().join("namsdec/modules/rizin-ghidra.json");
     assert!(écrit.is_file(), "{} manque", écrit.display());
     let relu = namsdec_disasm::plugin::read(&écrit).expect("la description est valide");
     assert_eq!(relu.command, "rizin");
+    assert_eq!(
+        relu.kind,
+        namsdec_disasm::plugin::Kind::Decompiler,
+        "et la fiche dit qu'il décompile"
+    );
     assert!(
         relu.args.iter().any(|a| a.contains("pdg")),
         "c'est `pdg` qui décompile : {:?}",
@@ -22101,22 +22173,32 @@ fn the_readme_names_both_plugin_directories() {
         std::fs::read_to_string(racine.join("plugins/README.md")).expect("plugins/README.md");
     // Les noms exacts que le code emploie, relevés ici même : si l'un
     // change, ce test le rappelle.
-    for dossier in ["disassemblers/", "decompilers/", "themes/", "exercises/"] {
+    //
+    // `modules/` est désormais SEUL à porter les outils : il y en avait
+    // deux, et c'est le dossier qui disait ce qu'une fiche rendait. La
+    // fiche le dit elle-même, par son champ `kind`.
+    for dossier in ["modules/", "themes/", "exercises/"] {
         assert!(
             sommaire.contains(dossier),
             "le mode d'emploi doit nommer « {dossier} » : c'est là que namsdec regarde"
         );
     }
-    // Et le code lit bien ces deux-là, sous ces noms.
+    // Et le code lit bien celui-là, sous ce nom.
     let data = data_dir().expect("un dossier de données");
     assert_eq!(
-        crate::tools::decompilers_dir().expect("decompilers"),
-        data.join("decompilers")
+        crate::tools::decompilers_dir().expect("modules"),
+        data.join("modules")
     );
-    assert!(
-        data.join("disassemblers").ends_with("disassemblers"),
-        "c'est le dossier que load_disassembler_plugins lit"
-    );
+    // Les deux noms d'avant restent cités : ce qu'on y avait posé est
+    // recopié vers `modules/`, et le mode d'emploi doit dire où
+    // retrouver ce qui ne l'a pas été.
+    for ancien in ["disassemblers/", "decompilers/"] {
+        assert!(
+            sommaire.contains(ancien),
+            "le mode d'emploi doit encore nommer « {ancien} » : c'est là que les \
+             fiches d'avant sont reprises"
+        );
+    }
 }
 
 /// Un désassembleur maison déclaré devient un moteur de listing.

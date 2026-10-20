@@ -11,5 +11,6 @@
     "--output",
     "{out}"
   ],
-  "install": "cd /home/fred/Projects/DZF && cmake -S x64-disassembler -B build-dzf && cmake --build build-dzf"
+  "install": "cd /home/fred/Projects/DZF && cmake -S x64-disassembler -B build-dzf && cmake --build build-dzf",
+  "kind": "decompiler"
 }

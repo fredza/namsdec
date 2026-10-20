@@ -1514,11 +1514,62 @@ pub(crate) fn recette_existe(outil: &str) -> bool {
     data_dir().is_some_and(|dir| namsdec_disasm::install::recipe_for(outil, &dir).is_some())
 }
 
+/// UN SEUL DOSSIER POUR TOUS LES MODULES.
+///
+/// Il y en avait deux — `decompilers/` et `disassemblers/` —, et le
+/// DOSSIER portait le sens : une même fiche changeait de nature selon
+/// l'endroit où on la posait. C'est fragile (une fiche recopiée à la
+/// main atterrit n'importe où) et cela éparpille ce qu'on vient
+/// chercher ensemble. La fiche dit désormais elle-même ce qu'elle rend,
+/// par son champ `kind`, et tous les modules vivent au même endroit —
+/// ce qui était demandé le 20 octobre 2026.
 pub(crate) fn decompilers_dir() -> Option<PathBuf> {
-    data_dir().map(|base| base.join("decompilers"))
+    data_dir().map(|base| base.join("modules"))
 }
 
-/// Les décompilateurs installés. Lus une fois au démarrage.
+/// Les deux dossiers d'avant, qu'on relit encore.
+///
+/// Rien n'y est effacé : une version qui déplace les fichiers de
+/// quelqu'un doit pouvoir être désinstallée sans rien emporter. Ils sont
+/// RECOPIÉS vers `modules/` au premier lancement, et restent lisibles
+/// par l'ancienne version tant qu'on ne les retire pas soi-même.
+const DOSSIERS_D_AVANT: [(&str, namsdec_disasm::plugin::Kind); 2] = [
+    ("disassemblers", namsdec_disasm::plugin::Kind::Disassembler),
+    ("decompilers", namsdec_disasm::plugin::Kind::Decompiler),
+];
+
+/// Recopie vers `modules/` ce que les deux anciens dossiers portaient.
+///
+/// Le genre vient du dossier d'origine : c'est tout ce qu'il disait, et
+/// c'est exactement ce qu'on veut garder. Une fiche déjà présente dans
+/// `modules/` n'est pas touchée — ce qu'on a réglé depuis gagne.
+pub(crate) fn migrer_les_modules() {
+    let Some(modules) = decompilers_dir() else {
+        return;
+    };
+    let Some(base) = data_dir() else {
+        return;
+    };
+    for (ancien, genre) in DOSSIERS_D_AVANT {
+        let dossier = base.join(ancien);
+        for fiche in namsdec_disasm::plugin::read_dir(&dossier) {
+            let vers = modules.join(format!("{}.json", fiche.id));
+            if vers.exists() {
+                continue;
+            }
+            let mut fiche = fiche;
+            fiche.kind = genre;
+            let Ok(json) = serde_json::to_string_pretty(&fiche) else {
+                continue;
+            };
+            if std::fs::create_dir_all(&modules).is_ok() {
+                let _ = std::fs::write(&vers, json);
+            }
+        }
+    }
+}
+
+/// Les modules installés. Lus une fois au démarrage.
 pub(crate) fn load_installed_decompilers() -> Vec<namsdec_disasm::plugin::Plugin> {
     decompilers_dir()
         .map(|dir| namsdec_disasm::plugin::read_dir(&dir))

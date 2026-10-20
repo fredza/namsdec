@@ -2153,9 +2153,20 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
         ("h2", "Où ils vivent"),
         ("code",
          "~/.local/share/namsdec/\n"
+         "|-- modules/         TOUS les outils extérieurs\n"
          "|-- themes/          les thèmes\n"
-         "|-- decompilers/     les désassembleurs et décompilateurs\n"
-         "`-- exercises/       les séries d'exercices"),
+         "|-- exercises/       les séries d'exercices\n"
+         "`-- tools/           ce que namsdec a bâti lui-même"),
+        ("p",
+         "<b>Un seul dossier pour les modules</b>, et la fiche dit ce qu'elle rend. Il y en "
+         "avait deux — <font face='Courier'>disassemblers/</font> et "
+         "<font face='Courier'>decompilers/</font> —, et c'était le DOSSIER qui portait le "
+         "sens&nbsp;: la même fiche changeait de nature selon l'endroit où on la posait, et "
+         "une fiche recopiée dans le mauvais dossier était simplement ignorée, sans message. "
+         "Elle porte maintenant un champ <font face='Courier'>\"kind\"</font>, qui vaut "
+         "<font face='Courier'>disassembler</font> (par défaut) ou "
+         "<font face='Courier'>decompiler</font>. Les deux dossiers d'avant sont relus au "
+         "premier lancement et leur contenu recopié&nbsp;; rien n'y est effacé."),
         ("p",
          "Installer, c'est copier un fichier JSON dans le bon dossier. Depuis namsdec : "
          "Préférences › Plugins pour un thème, Préférences › Outils pour un décompilateur. Le "
@@ -2192,7 +2203,7 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "bouton « Ajouter aux moteurs »."),
         ("p",
          "L'y ajouter n'écrit qu'un fichier de quelques lignes dans "
-         "<font face='Courier'>~/.local/share/namsdec/decompilers/</font> : rien n'est téléchargé "
+         "<font face='Courier'>~/.local/share/namsdec/modules/</font> : rien n'est téléchargé "
          "ni lancé tant qu'on ne le demande pas. Un outil proposé comme moteur mais disparu de la "
          "machine échouera au lancement, ce que la fiche dit en rouge. Un troisième réglage, distinct des deux "
          "premiers, est le <b>module d'installation</b> (Préférences › Modules) : c'est lui qui "
@@ -2631,7 +2642,7 @@ def main():
         ["~/.config/namsdec/settings.json", "tous vos réglages"],
         ["~/.local/share/namsdec/exercises/", "le parcours et vos séries"],
         ["~/.local/share/namsdec/themes/", "les thèmes installés"],
-        ["~/.local/share/namsdec/disassemblers/", "les désassembleurs externes"],
+        ["~/.local/share/namsdec/modules/", "les outils extérieurs déclarés"],
     ]))
     blocs.append(("h1", "Ce que namsdec ne fait pas"))
     blocs.append(("liste", [

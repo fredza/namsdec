@@ -9,5 +9,6 @@
     "--no-show-raw-insn",
     "{file}"
   ],
-  "install": "sudo dnf install binutils"
+  "install": "sudo dnf install binutils",
+  "kind": "disassembler"
 }

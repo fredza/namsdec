@@ -17,26 +17,43 @@ explicite, et écrit la commande complète avant de la lancer.
 
 ```
 ~/.local/share/namsdec/
+├── modules/         TOUS les outils extérieurs, une fiche par outil
 ├── themes/          les thèmes
-├── disassemblers/   les désassembleurs — ils remplacent le listing
-├── decompilers/     les décompilateurs — Outils ▸ Décompiler…
-└── exercises/       les séries d'exercices (dont le parcours livré)
+├── exercises/       les séries d'exercices (dont le parcours livré)
+└── tools/           ce que namsdec a bâti lui-même (rizin, retdec…)
 ```
 
-**Deux dossiers, et non un seul** : namsdec les lit séparément, parce que
-les deux ne répondent pas à la même question. Un désassembleur rend un
-listing, une instruction par ligne, et devient le moteur du panneau
-principal. Un décompilateur rend du pseudo-code, dans sa propre fenêtre.
-Une fiche rangée dans le mauvais dossier est simplement ignorée — sans
-message, puisque namsdec ne sait pas qu'elle existe.
+**Un seul dossier pour les modules**, et la fiche dit ce qu'elle rend.
+Il y en avait deux — `disassemblers/` et `decompilers/` —, et c'était le
+DOSSIER qui portait le sens : la même fiche changeait de nature selon
+l'endroit où on la posait, et une fiche recopiée à la main dans le
+mauvais dossier était simplement ignorée, sans message. Elle porte
+maintenant un champ :
+
+```json
+"kind": "disassembler"   ou   "kind": "decompiler"
+```
+
+Un **désassembleur** rend un listing, une instruction par ligne, et peut
+devenir le moteur du panneau principal. Un **décompilateur** rend du
+pseudo-code, dans sa propre rubrique. Le champ absent vaut
+`disassembler`, qui est le cas courant.
+
+Les deux dossiers d'avant sont **relus au premier lancement** et leur
+contenu recopié vers `modules/` — rien n'y est effacé, et l'ancienne
+version continue de les lire. Ce qui s'y trouve encore se déplace à la
+main : `mv ~/.local/share/namsdec/decompilers/*.json
+~/.local/share/namsdec/modules/`, en ajoutant `"kind": "decompiler"`
+dans chacun.
 
 Installer, c'est copier un fichier JSON dans le bon dossier. Trois façons,
 au choix :
 
 - **Depuis namsdec** — Préférences ▸ Plugins pour un thème, Préférences ▸
-  Outils pour un décompilateur. C'est la voie normale : elle vérifie le
+  Outils pour un module. C'est la voie normale : elle vérifie le
   fichier avant de l'accepter.
-- **À la main** — `cp plugins/themes/ardoise.json ~/.local/share/namsdec/themes/`
+- **À la main** — `cp plugins/themes/ardoise.json ~/.local/share/namsdec/themes/`,
+  `cp plugins/fonctionnalites/objdump.json ~/.local/share/namsdec/modules/`
 - **En les déclarant** — pour les outils connus, le bouton « Déclarer »
   de Préférences ▸ Outils écrit le fichier pour vous, avec les arguments
   qui marchent.

@@ -12,5 +12,6 @@
     "--",
     "{file}"
   ],
-  "install": "sudo dnf install radare2"
+  "install": "sudo dnf install radare2",
+  "kind": "decompiler"
 }

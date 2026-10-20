@@ -13,7 +13,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::plugin::Plugin;
+use crate::plugin::{Kind, Plugin};
 
 /// Ce qu'on sait d'un outil sur cette machine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,6 +50,7 @@ pub fn all() -> Vec<Known> {
         Known {
             plugin: Plugin {
                 id: "objdump".to_owned(),
+                kind: Kind::Disassembler,
                 name: "objdump — désassemblage (Intel)".to_owned(),
                 command: "objdump".to_owned(),
                 // `--no-show-raw-insn` enlève les octets : on les a déjà
@@ -71,6 +72,7 @@ pub fn all() -> Vec<Known> {
         Known {
             plugin: Plugin {
                 id: "ndisasm".to_owned(),
+                kind: Kind::Disassembler,
                 name: "ndisasm — désassemblage brut".to_owned(),
                 command: "ndisasm".to_owned(),
                 args: vec!["-b".to_owned(), "64".to_owned(), "{file}".to_owned()],
@@ -86,6 +88,7 @@ pub fn all() -> Vec<Known> {
         Known {
             plugin: Plugin {
                 id: "radare2".to_owned(),
+                kind: Kind::Decompiler,
                 name: "radare2 — pseudo-code (pdc)".to_owned(),
                 command: "r2".to_owned(),
                 // `-N` saute le fichier de configuration personnel : ce
@@ -117,6 +120,7 @@ pub fn all() -> Vec<Known> {
         Known {
             plugin: Plugin {
                 id: "rizin-ghidra".to_owned(),
+                kind: Kind::Decompiler,
                 name: "Rizin + rz-ghidra — décompilation (pdg)".to_owned(),
                 command: "rizin".to_owned(),
                 // Même script que pour radare2, mais `pdg` : c'est le
@@ -145,6 +149,7 @@ pub fn all() -> Vec<Known> {
         Known {
             plugin: Plugin {
                 id: "retdec".to_owned(),
+                kind: Kind::Decompiler,
                 name: "RetDec — décompilation en C".to_owned(),
                 command: "retdec-decompiler".to_owned(),
                 // RetDec écrit dans un fichier, d'où `{out}` : namsdec
@@ -180,6 +185,7 @@ pub fn all() -> Vec<Known> {
         Known {
             plugin: Plugin {
                 id: "dzf".to_owned(),
+                kind: Kind::Disassembler,
                 name: "DZF — désassemblage x86-64 (maison)".to_owned(),
                 command: "x64-disassembler".to_owned(),
                 args: vec![

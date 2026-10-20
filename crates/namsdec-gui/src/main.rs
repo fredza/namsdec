@@ -4293,6 +4293,17 @@ fn main() -> eframe::Result<()> {
         APP_NAME,
         options,
         Box::new(|cc| {
+            // LES MODULES D'AVANT SONT REPRIS ICI, et nulle part
+            // ailleurs. C'est une ÉCRITURE dans le dossier de données de
+            // la personne : la poser dans `NamsdecApp::default()`
+            // reviendrait à la faire à chaque construction de
+            // l'application — y compris dans les six cent quatre-vingt-dix
+            // contrôles, qui écriraient alors dans les fichiers de
+            // quelqu'un. C'est arrivé en l'écrivant, et c'est la raison
+            // de ce commentaire.
+            //
+            // Ici, l'application est celle qui démarre pour de vrai.
+            tools::migrer_les_modules();
             // Les thèmes installés sont chargés *avant* les réglages :
             // celui que l'utilisateur avait choisi peut être l'un d'eux,
             // et `by_id` doit pouvoir le retrouver.

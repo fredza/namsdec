@@ -12,5 +12,6 @@
     "--",
     "{file}"
   ],
-  "install": "sudo dnf install rizin"
+  "install": "sudo dnf install rizin",
+  "kind": "decompiler"
 }

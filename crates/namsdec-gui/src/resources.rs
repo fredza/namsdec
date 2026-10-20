@@ -13,10 +13,18 @@ use super::*;
 /// désassembleur extérieur *est un programme* : il ne s'exécute que
 /// lorsqu'on le choisit, et le panneau le dit avant.
 pub(crate) fn load_disassembler_plugins() -> Vec<namsdec_disasm::plugin::Plugin> {
-    let Some(dir) = data_dir().map(|dir| dir.join("disassemblers")) else {
-        return Vec::new();
-    };
-    namsdec_disasm::plugin::read_dir(&dir)
+    // LE MÊME DOSSIER QUE TOUT LE RESTE, filtré par ce que la fiche dit
+    // rendre. C'est le dossier qui disait le genre, et il y en avait
+    // donc deux ; la fiche le dit maintenant elle-même, et il n'y en a
+    // plus qu'un.
+    //
+    // Le filtre compte autant que l'unification : la liste des moteurs
+    // de la fenêtre de désassemblage ne doit pas proposer un
+    // décompilateur, qui ne rend pas des instructions.
+    crate::tools::load_installed_decompilers()
+        .into_iter()
+        .filter(|fiche| fiche.kind == namsdec_disasm::plugin::Kind::Disassembler)
+        .collect()
 }
 
 /// Où vivent les thèmes installés : à côté des réglages, dans le dossier

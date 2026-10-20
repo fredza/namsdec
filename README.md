@@ -129,7 +129,7 @@ pas l'ELF et n'a pas à l'apprendre — namsdec lui passe les octets
 exécutables et leur adresse. Tant qu'il n'est pas bâti, sa fiche dit où le
 prendre. Le vôtre s'ajoute de la
 même façon, par un JSON déposé dans
-`~/.local/share/namsdec/decompilers/` — avec `{out}` dans les arguments
+`~/.local/share/namsdec/modules/` — avec `{out}` dans les arguments
 si l'outil écrit son résultat dans un fichier plutôt que sur la sortie
 standard. Trois
 verrous, parce qu'il s'agit d'exécuter un programme sur votre machine :
@@ -145,7 +145,7 @@ Décompilation 45 % ».
 d'abord — `RAX = RAX + RCX` plutôt que `add rax, rcx`, `si différent,
 aller à boucle` plutôt que `jne` —, la syntaxe NASM ensuite, et les
 outils qu'on installe soi-même : un fichier JSON dans
-`~/.local/share/namsdec/disassemblers/` décrit la commande à lancer
+`~/.local/share/namsdec/modules/` décrit la commande à lancer
 (`objdump`, `ndisasm`, le vôtre). Ceux-là sont des **programmes** : ils
 ne s'exécutent que sur demande, et le panneau annonce ce qu'il va lancer
 avant de le faire.
@@ -488,7 +488,10 @@ pas. Elle est là parce que tout ce qu'on trouve hors de namsdec est
 
 Le panneau de désassemblage propose deux moteurs livrés — le pseudo-code
 et la syntaxe NASM — et tous ceux qu'on lui décrit. Un fichier JSON par
-outil, dans `~/.local/share/namsdec/disassemblers/` :
+outil, dans `~/.local/share/namsdec/modules/` — tous les outils y vivent,
+et c'est le champ `"kind"` qui dit si la fiche rend des instructions
+(`"disassembler"`, la valeur par défaut) ou du pseudo-code
+(`"decompiler"`) :
 
 ```json
 {
