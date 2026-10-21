@@ -757,6 +757,9 @@ pub struct Strings {
     /// Menu Aide : l'entrée qui ouvre la fenêtre.
     pub help_report_bug: &'static str,
     pub help_report_bug_hint: &'static str,
+    /// Un correctif qui rendrait le fichier illisible : pourquoi il
+    /// n'a pas été posé.
+    pub patch_breaks_file: &'static str,
     pub preferences_auto_pairs: &'static str,
     /// Préférences : l'étiquette du champ d'adresse de don.
     pub preferences_donation: &'static str,
@@ -1738,6 +1741,7 @@ déclenchera jamais.",
     bug_no_file: "aucun fichier ouvert",
     help_report_bug: "Signaler une anomalie…",
     help_report_bug_hint: "Rassembler le contexte d'un défaut. Rien n'est envoyé sans votre clic, et vous lisez le rapport avant.",
+    patch_breaks_file: "Ces octets rendraient le fichier illisible — c'est l'en-tête ELF, et namsdec ne saurait plus le désassembler. Le correctif n'a PAS été posé, et le fichier n'a pas changé. Pour abîmer un en-tête à dessein, enregistrez d'abord une copie (Fichier › Enregistrer le binaire sous…).",
     preferences_auto_pairs: "Fermeture automatique des paires",
     preferences_donation: "Adresse de don (Aide › À propos)",
     preferences_donation_hint: "Ko-fi, PayPal.me, Liberapay, GitHub Sponsors : namsdec n'en privilégie aucun et ouvre ce qu'on lui donne. Vide, le bouton de don reste éteint plutôt que de mener nulle part. Rien n'est envoyé d'ici : le lien s'ouvre dans votre navigateur, à votre clic.",
@@ -2619,6 +2623,7 @@ other is there to compare — that is how gaps and clashes become visible.",
     bug_no_file: "no file open",
     help_report_bug: "Report a problem…",
     help_report_bug_hint: "Gather the context of a defect. Nothing is sent without your click, and you read the report first.",
+    patch_breaks_file: "Those bytes would make the file unreadable — this is the ELF header, and namsdec could no longer disassemble it. The patch was NOT applied, and the file did not change. To break a header on purpose, save a copy first (File › Save binary as…).",
     preferences_auto_pairs: "Close pairs automatically",
     preferences_donation: "Donation address (Help › About)",
     preferences_donation_hint: "Ko-fi, PayPal.me, Liberapay, GitHub Sponsors: namsdec favours none of them and opens whatever it is given. Empty, the donation button stays off rather than leading nowhere. Nothing is sent from here: the link opens in your browser, on your click.",

@@ -44,11 +44,13 @@ processeur est ancré.
       la vraie : namsdec ne peut que la lire.
 - [x] **Signaler une anomalie** (A 9.5) — le contexte rassemblé, montré
       en entier, et qui ne part qu'au clic. Ni le fichier ni son chemin.
-- [ ] **L'éditeur binaire : défaut non reproduit** (A 9.6) — trois
-      chemins éprouvés, tous répondent, et la capture envoyée montrait
-      « Octets changés ». Reste à savoir quel fichier et quel geste. Un
-      correctif écrit sur une hypothèse plausible s'est révélé sans
-      effet à la mesure, et a été retiré.
+- [x] **L'éditeur binaire : le refus était muet** (A 9.7) — trouvé avec
+      crackme2. La grille marche de bout en bout ; c'est le rechargement
+      qui refusait l'octet zéro, celui du nombre magique, et le
+      correctif était jeté SANS UN MOT. Le refus s'explique, dit que le
+      fichier n'a pas changé, et renvoie vers la copie à enregistrer.
+      Trois relevés avaient conclu « tout va bien » avant (A 9.6) : ils
+      ne pouvaient pas échouer.
 - [x] **Ce qu'upx refuse, dit en français** (A 9.3) — le déballage
       fonctionnait ; c'est ce que le panneau en disait qui ne disait
       rien. Le contrôle qui le prouve avait lui aussi menti, en

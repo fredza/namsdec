@@ -5291,3 +5291,43 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      identifiant JAMAIS DESSINÉ. egui le lâche à la fin de l'image, si bien
      qu'il n'y avait rien à reprendre et que le contrôle passait au vert dans
      les deux cas. C'est en mesurant qu'on l'a vu.
+
+9.7  L'ÉDITEUR BINAIRE : LE REFUS ÉTAIT MUET  (défaut trouvé, corrigé)
+     Le fichier qui a servi à le signaler : /home/fred/CrackMe/crackme2.
+
+     La grille marche de bout en bout — mesuré pas à pas : le clic choisit
+     l'octet, egui rend le clavier au panneau de lui-même, « 4 » puis « 2 »
+     composent 0x42, et la demande d'écriture part. Puis `write_patch`
+     relisait l'image corrigée, `load_elf` REFUSAIT, et l'on sortait
+     SANS RIEN CHANGER ET SANS RIEN DIRE.
+
+     L'octet visé était le ZÉRO — celui du 7f du nombre magique —, parce
+     que la grille s'ouvre au début du fichier. Le refus est juste :
+     namsdec ne désassemble pas ce qu'il ne sait plus lire. Il manquait
+     seulement de le dire. L'octet reprenait sa valeur à l'image suivante :
+     on tapait, et il ne se passait rien. « Dans l'éditeur binaire on ne
+     sait rien modifier. »
+
+     Le refus s'explique désormais, nomme l'en-tête ELF, dit que le fichier
+     n'a PAS changé, et renvoie vers le geste qui le permet — enregistrer
+     une copie d'abord. Les deux sites qui rechargent après un correctif
+     sont traités : l'octet seul et le détour.
+
+     --- COMMENT IL A ÉTÉ TROUVÉ, ET CE QUE CELA APPREND ---
+     Trois essais ont donné « tout va bien » avant celui qui a trouvé :
+       1. `write_patch` appelé directement, sur /bin/ls puis sur crackme2 :
+          l'octet change. Vrai, et à côté — il visait le MILIEU du code.
+       2. La grille mesurée SEULE : aucun champ de texte dans l'image,
+          donc la question du focus ne se posait pas.
+       3. L'application entière, mais SANS ÉMULATEUR : `re_modules_ui`
+          s'arrête sur son état vide et ne dessine AUCUN panneau. Ce
+          troisième essai échouait, et j'ai failli conclure « reproduit » sur
+          un panneau qui n'existait pas. C'est une trace posée dans le
+          module — qui ne s'est jamais imprimée — qui l'a dit.
+     Ce qui a fini par trouver : l'application entière, l'émulateur
+     construit, le vrai parcours, et une trace à chaque étape. Le défaut
+     n'était à aucune des étapes mesurées ; il était APRÈS.
+
+     Retenu dans la lignée de 9.6 : un relevé qui passe au vert ne dit
+     « pas de défaut » que s'il a pu en voir un. Les trois premiers
+     n'auraient JAMAIS échoué.

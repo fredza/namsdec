@@ -82,6 +82,22 @@ impl NamsdecApp {
                 group: None,
             });
             self.status = Status::Note(|s| s.patch_applied);
+        } else {
+            // LE REFUS SE DIT. Il ne se disait pas, et c'est la
+            // réponse au grief « dans l'éditeur binaire on ne sait rien
+            // modifier » du 21 octobre 2026.
+            //
+            // Écrire sur l'en-tête — l'octet zéro porte le `7f` du
+            // nombre magique — rend le fichier illisible, `load_elf`
+            // refuse de le relire, et l'on sortait d'ici SANS RIEN
+            // CHANGER ET SANS RIEN DIRE. L'octet retrouvait sa valeur
+            // d'avant à l'image suivante : on tapait, et il ne se
+            // passait rien.
+            //
+            // Le refus est juste — namsdec ne peut pas désassembler ce
+            // qu'il ne sait plus lire —, et il manquait seulement de le
+            // dire. Reproduit par `the_binary_editor_refuses_loudly`.
+            self.status = Status::Error(s.patch_breaks_file.to_owned());
         }
     }
 
@@ -134,6 +150,10 @@ impl NamsdecApp {
             self.patches.push(corps);
             self.patches.push(aller);
             self.status = Status::Note(|s| s.patch_applied);
+        } else {
+            // Même refus, même silence, même correction : un détour qui
+            // rendrait le fichier illisible ne se pose pas, et le dit.
+            self.status = Status::Error(s.patch_breaks_file.to_owned());
         }
     }
 

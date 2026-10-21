@@ -1662,6 +1662,18 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "par-dessus l\'original. C\'est un début : éditer plusieurs octets d\'un coup et "
          "insérer viendront ensuite, l\'insertion avec sa prudence propre, car elle décale "
          "tout ce qui suit et chaque adresse du fichier deviendrait fausse.",
+         "<b>Un octet de l\'en-tête ne s\'écrit pas, et namsdec le dit.</b> L\'octet zéro "
+         "d\'un ELF porte le <font face=\'Courier\'>7f</font> du nombre magique, et les "
+         "soixante-trois suivants disent l\'architecture, le point d\'entrée, où sont les "
+         "segments. Les changer rend le fichier illisible — namsdec ne saurait plus le "
+         "désassembler —, et le correctif n\'est donc pas posé&nbsp;: le fichier reste "
+         "exactement ce qu\'il était. C\'est ce qu\'on voit à l\'ouverture de la grille, "
+         "puisqu\'elle commence à l\'octet zéro. Jusqu\'au 21 octobre 2026, ce refus était "
+         "<b>muet</b>&nbsp;: on cliquait, on tapait, l\'octet reprenait sa valeur à l\'image "
+         "suivante, et rien ne disait pourquoi — ce qui se résume en « dans l\'éditeur "
+         "binaire on ne sait rien modifier ». Il s\'explique désormais, et renvoie vers le "
+         "geste qui le permet : enregistrer d\'abord une copie, et abîmer l\'en-tête de "
+         "celle-là, qui n\'a plus à être relue.",
          "<b>Détourner (ajouter du code)</b> — le champ « Détourner depuis » est "
          "<b>prérempli</b> de la première adresse du listing&nbsp;: il montrait un exemple "
          "en gris, et un exemple en gris dans un champ se lit comme une valeur — on "

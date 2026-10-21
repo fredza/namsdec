@@ -21385,6 +21385,213 @@ fn the_binary_editor_really_writes_a_byte() {
     assert_eq!(app.patches.len(), 1, "rien de neuf, rien d'inscrit");
 }
 
+/// L'ÉDITEUR BINAIRE SUR LE FICHIER QUI A SERVI À LE SIGNALER.
+///
+/// Un essai de reproduction, et il vise un fichier NOMMÉ plutôt qu'un
+/// binaire du système : « /home/fred/CrackMe/crackme2 ». S'il n'est pas
+/// là, le contrôle s'abstient — mais il a servi à chercher.
+#[test]
+fn the_binary_editor_on_the_reported_file() {
+    let Ok(octets) = std::fs::read("/home/fred/CrackMe/crackme2") else {
+        return;
+    };
+    let mut app = NamsdecApp::default();
+    assert!(app.load_elf(&octets, "crackme2"), "ce binaire s'ouvre");
+    let state = app.assemble_state.as_ref().expect("un état");
+    println!(
+        "crackme2 : {} octets dans output.file, {} instructions, from_binary {}",
+        state.output.file.len(),
+        state.disasm.len(),
+        state.from_binary.is_some()
+    );
+    let offset = 0x1000usize.min(state.output.file.len().saturating_sub(1));
+    let avant = state.output.file[offset];
+    // Et l'octet ZÉRO, celui du nombre magique : l'écrire rend le
+    // fichier illisible, et le correctif était alors jeté EN SILENCE.
+    let mut muet = NamsdecApp::default();
+    assert!(muet.load_elf(&octets, "crackme2"));
+    muet.write_patch(0, vec![0x42], 0);
+    println!(
+        "octet 0 : statut {:?}, correctifs {}",
+        muet.status,
+        muet.patches.len()
+    );
+    app.write_patch(offset, vec![avant ^ 0xff], 0);
+    let state = app.assemble_state.as_ref().expect("un état");
+    assert_eq!(
+        state.output.file[offset],
+        avant ^ 0xff,
+        "le bouton « Écrire » change l'octet, sur ce fichier-là aussi"
+    );
+    assert_eq!(app.patches.len(), 1);
+}
+
+/// LA GRILLE PREND-ELLE LE CLAVIER QUAND L'ÉDITEUR L'A ?
+///
+/// Le parcours de la capture : l'éditeur en mode INSERTION — donc son
+/// champ de texte a le clavier, et le garde —, la fenêtre d'analyse
+/// ouverte sur l'éditeur binaire, et l'on clique un octet pour taper
+/// dedans. La grille n'écoute que si AUCUN champ n'a le focus.
+///
+/// C'est l'application ENTIÈRE qui est dessinée ici, et non le panneau
+/// seul : mesuré seul, il n'y a aucun champ de texte dans l'image, et
+/// la question ne se pose pas. C'est précisément ce qui rendait les
+/// mesures précédentes rassurantes et vaines.
+#[test]
+fn the_hex_grid_takes_the_keyboard_from_the_editor() {
+    let Ok(octets) = std::fs::read("/home/fred/CrackMe/crackme2") else {
+        return;
+    };
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp::default();
+    app.apply_theme(&ctx);
+    if !app.load_elf(&octets, "crackme2") {
+        return;
+    }
+    // L'ÉMULATEUR, sans quoi la fenêtre d'analyse ne dessine AUCUN
+    // panneau : `re_modules_ui` s'arrête sur son état vide. Le premier
+    // essai l'avait oublié et concluait « reproduit » sur un panneau
+    // qui n'existait pas.
+    app.rebuild_emulator();
+    assert!(app.emulator.is_some(), "l'émulateur est là");
+    app.show_re_tab = true;
+    app.show_analysis = true;
+    app.analysis_module = "hex_editor".to_owned();
+    app.editor_mode = EditorMode::Insert;
+
+    let image = |app: &mut NamsdecApp, events: Vec<egui::Event>| {
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1600.0, 1100.0),
+            )),
+            events,
+            ..Default::default()
+        };
+        let mut output = ctx.run_ui(input, |ui| app.draw(ui));
+        output.textures_delta.clear();
+    };
+
+    // L'éditeur prend le clavier, comme après un `i`.
+    image(&mut app, vec![]);
+    ctx.memory_mut(|m| m.request_focus(editor_id()));
+    image(&mut app, vec![]);
+    println!("focus avant le clic : {:?}", ctx.memory(|m| m.focused()));
+
+    // Où une cellule hexadécimale est peinte, DANS la fenêtre d'analyse.
+    let mut cible = None;
+    for _ in 0..2 {
+        cible = None;
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1600.0, 1100.0),
+            )),
+            ..Default::default()
+        };
+        let mut output = ctx.run_ui(input, |ui| app.draw(ui));
+        // DANS LA FENÊTRE D'ANALYSE, et nulle part ailleurs : l'onglet
+        // « Octets » du panneau latéral et le listing peignent eux
+        // aussi des paires hexadécimales, et le premier relevé cliquait
+        // dans le panneau latéral en croyant cliquer dans la grille.
+        let fenêtre = egui::AreaState::load(&ctx, egui::Id::new("analysis_window"))
+            .and_then(|a| a.rect().into());
+        for clipped in &output.shapes {
+            if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                let texte = t.galley.text();
+                if texte.len() == 2
+                    && texte.chars().all(|c| c.is_ascii_hexdigit())
+                    && cible.is_none()
+                {
+                    let rect = egui::Rect::from_min_size(t.pos, t.galley.size());
+                    let vu = rect.intersect(clipped.clip_rect);
+                    let dedans = fenêtre.is_none_or(|f: egui::Rect| f.contains(vu.center()));
+                    if vu.is_positive() && dedans {
+                        cible = Some(vu.center());
+                    }
+                }
+            }
+        }
+        output.textures_delta.clear();
+    }
+    let Some(cible) = cible else {
+        println!("aucune cellule peinte — rien à mesurer");
+        return;
+    };
+
+    for pressé in [true, false] {
+        let mut events = Vec::new();
+        if pressé {
+            events.push(egui::Event::PointerMoved(cible));
+        }
+        events.push(egui::Event::PointerButton {
+            pos: cible,
+            button: egui::PointerButton::Primary,
+            pressed: pressé,
+            modifiers: egui::Modifiers::NONE,
+        });
+        image(&mut app, events);
+    }
+    assert!(
+        ctx.memory(|m| m.focused()).is_none(),
+        "cliquer un octet rend le clavier à la grille — egui s'en charge"
+    );
+
+    let avant = app
+        .assemble_state
+        .as_ref()
+        .map(|s| s.output.file.clone())
+        .unwrap_or_default();
+    for key in [egui::Key::Num4, egui::Key::Num2] {
+        image(
+            &mut app,
+            vec![egui::Event::Key {
+                key,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+        );
+    }
+    // Une image de plus : la demande du panneau est relevée par
+    // l'application APRÈS le dessin de la fenêtre, donc elle s'applique
+    // à l'image suivante.
+    image(&mut app, vec![]);
+    let après = app
+        .assemble_state
+        .as_ref()
+        .map(|s| s.output.file.clone())
+        .unwrap_or_default();
+    let changés = avant.iter().zip(&après).filter(|(a, b)| a != b).count();
+
+    // La grille a bien reçu la frappe et demandé l'écriture — c'était
+    // mesuré pas à pas. Mais l'octet visé est le ZÉRO, celui du `7f` du
+    // nombre magique : l'écrire rend le fichier illisible, `load_elf`
+    // refuse de le relire, et le correctif n'est pas posé.
+    //
+    // C'EST JUSTE, ET CELA DOIT SE DIRE. Avant le 21 octobre 2026, on
+    // sortait de `write_patch` sans rien changer et SANS RIEN DIRE :
+    // l'octet reprenait sa valeur à l'image suivante, et l'on tapait
+    // dans le vide. « Dans l'éditeur binaire on ne sait rien
+    // modifier. »
+    assert_eq!(
+        changés, 0,
+        "l'en-tête n'est pas écrit : namsdec ne saurait plus lire le fichier"
+    );
+    let s = strings(app.lang);
+    match &app.status {
+        Status::Error(message) => assert_eq!(
+            message, s.patch_breaks_file,
+            "le refus se dit, et il dit POURQUOI"
+        ),
+        autre => panic!(
+            "un correctif refusé doit le dire — c'est tout le grief du \
+             21 octobre. Statut : {autre:?}"
+        ),
+    }
+}
+
 /// LE RAPPORT D'ANOMALIE NE PORTE NI LE FICHIER, NI SON CHEMIN.
 ///
 /// C'est la règle qui tient tout le reste. Un binaire analysé est
@@ -32720,4 +32927,106 @@ hlt
         peint.contains("00000000000000000000000000001111"),
         "la valeur en binaire, où l'on LIT les quatre voies :\n{peint}"
     );
+}
+
+/// UN ELF MINIMAL, fabriqué ici.
+///
+/// Les contrôles voisins partent de `/bin/ls` ou de nasm, et s'abstiennent
+/// quand ils manquent — ce qui les rend muets sur une machine
+/// d'intégration. Celui-ci ne demande rien : un en-tête, un segment
+/// chargeable, un peu de code.
+fn elf_minimal() -> Vec<u8> {
+    const BASE: u64 = 0x40_0000;
+    const DÉPART: u64 = 0x78;
+    let code: &[u8] = &[
+        0x48, 0xc7, 0xc0, 0x3c, 0x00, 0x00, 0x00, // mov rax, 60
+        0x48, 0x31, 0xff, // xor rdi, rdi
+        0x0f, 0x05, // syscall
+    ];
+    let mut f = vec![0u8; DÉPART as usize];
+    f[..4].copy_from_slice(&[0x7f, b'E', b'L', b'F']);
+    f[4] = 2; // ELFCLASS64
+    f[5] = 1; // ELFDATA2LSB
+    f[6] = 1; // EV_CURRENT
+    f[16..18].copy_from_slice(&2u16.to_le_bytes()); // ET_EXEC
+    f[18..20].copy_from_slice(&62u16.to_le_bytes()); // EM_X86_64
+    f[20..24].copy_from_slice(&1u32.to_le_bytes());
+    f[24..32].copy_from_slice(&(BASE + DÉPART).to_le_bytes()); // e_entry
+    f[32..40].copy_from_slice(&64u64.to_le_bytes()); // e_phoff
+    f[52..54].copy_from_slice(&64u16.to_le_bytes()); // e_ehsize
+    f[54..56].copy_from_slice(&56u16.to_le_bytes()); // e_phentsize
+    f[56..58].copy_from_slice(&1u16.to_le_bytes()); // e_phnum
+    // Le segment : tout le fichier, chargeable et exécutable.
+    let total = DÉPART + code.len() as u64;
+    let p = 64usize;
+    f[p..p + 4].copy_from_slice(&1u32.to_le_bytes()); // PT_LOAD
+    f[p + 4..p + 8].copy_from_slice(&5u32.to_le_bytes()); // R+X
+    f[p + 16..p + 24].copy_from_slice(&BASE.to_le_bytes()); // p_vaddr
+    f[p + 24..p + 32].copy_from_slice(&BASE.to_le_bytes()); // p_paddr
+    f[p + 32..p + 40].copy_from_slice(&total.to_le_bytes()); // p_filesz
+    f[p + 40..p + 48].copy_from_slice(&total.to_le_bytes()); // p_memsz
+    f[p + 48..p + 56].copy_from_slice(&0x1000u64.to_le_bytes()); // p_align
+    f.extend_from_slice(code);
+    f
+}
+
+/// UN CORRECTIF REFUSÉ LE DIT, et ne laisse pas croire qu'il a été posé.
+///
+/// Écrire sur l'en-tête — l'octet zéro porte le `7f` du nombre magique —
+/// rend le fichier illisible par namsdec, qui refuse alors de le relire.
+/// Le refus est juste : on ne désassemble pas ce qu'on ne sait plus lire.
+///
+/// Mais il ne se DISAIT pas. On sortait de `write_patch` sans rien
+/// changer et sans un mot : l'octet reprenait sa valeur à l'image
+/// suivante, et l'on tapait dans le vide. C'est la réponse au grief
+/// « dans l'éditeur binaire on ne sait rien modifier » du 21 octobre
+/// 2026, dont le parcours complet est éprouvé par
+/// `the_hex_grid_takes_the_keyboard_from_the_editor`.
+///
+/// Ce contrôle-ci ne demande ni binaire du système ni nasm : il vaut
+/// aussi sur une machine d'intégration.
+#[test]
+fn a_refused_patch_says_so() {
+    let octets = elf_minimal();
+    let mut app = NamsdecApp::default();
+    assert!(app.load_elf(&octets, "minimal"), "l'ELF minimal se charge");
+    let s = strings(app.lang);
+
+    // D'abord ce qui MARCHE : un octet du code, loin de l'en-tête.
+    let dans_le_code = octets.len() - 1;
+    let avant = octets[dans_le_code];
+    app.write_patch(dans_le_code, vec![avant ^ 0xff], 0);
+    assert_eq!(
+        app.assemble_state.as_ref().expect("un état").output.file[dans_le_code],
+        avant ^ 0xff,
+        "un octet du code s'écrit"
+    );
+    assert_eq!(app.patches.len(), 1, "et le correctif est inscrit");
+    assert!(
+        matches!(app.status, Status::Note(_)),
+        "une écriture réussie se dit aussi"
+    );
+
+    // Puis ce qui est REFUSÉ : le nombre magique.
+    let image = app
+        .assemble_state
+        .as_ref()
+        .expect("un état")
+        .output
+        .file
+        .clone();
+    app.write_patch(0, vec![0x42], 0);
+    assert_eq!(
+        app.assemble_state.as_ref().expect("un état").output.file,
+        image,
+        "le fichier n'a pas changé d'un octet"
+    );
+    assert_eq!(app.patches.len(), 1, "et rien n'est inscrit à défaire");
+    match &app.status {
+        Status::Error(message) => assert_eq!(
+            message, s.patch_breaks_file,
+            "le refus se dit, et il dit pourquoi"
+        ),
+        autre => panic!("un correctif refusé doit le DIRE. Statut : {autre:?}"),
+    }
 }
