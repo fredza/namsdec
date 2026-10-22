@@ -2551,6 +2551,85 @@ fn a_control_that_measures_geometry_sets_the_style_first() {
     );
 }
 
+/// Aucun contrôle ne lit un chemin de la machine de quelqu'un.
+///
+/// Trouvé le 22 octobre 2026 en comptant les abstentions : deux
+/// contrôles lisaient `/home/fred/CrackMe/crackme2`, le fichier qui
+/// avait servi à signaler le défaut de l'éditeur binaire. Ils
+/// s'abstenaient partout ailleurs — et l'un des deux était la
+/// RÉTENTION de ce défaut. Elle ne retenait rien sur aucune autre
+/// machine, et sur la CI non plus, tout en passant au vert.
+///
+/// C'est la même faute que « demander à la machine ce qu'on devrait
+/// semer », vue du côté de l'entrée au lieu de l'assertion : un
+/// contrôle dont l'entrée n'existe que chez une personne ne protège
+/// qu'elle.
+///
+/// `/bin/ls` n'est pas visé : il est là sur toute machine POSIX, et le
+/// coureur de la CI l'a. Ce qui est visé est le dossier de quelqu'un.
+///
+/// UN CHEMIN INVENTÉ POUR L'EXEMPLE — un rapport d'anomalie qui ne doit
+/// pas trahir le chemin d'un client, une fiche d'outil qui montre une
+/// installation ailleurs — s'écrit sous `/home/quelquun/`. Il n'est
+/// jamais lu, il est raconté, et la convention le dit d'un coup d'œil.
+#[test]
+fn no_control_reads_a_path_from_someones_home() {
+    // Les racines qui n'appartiennent qu'à une personne.
+    const PERSONNELS: [&str; 3] = ["/home/", "/root/", "/Users/"];
+
+    // Le chemin qu'on invente pour l'exemple, et qu'on ne lit pas.
+    const INVENTÉ: &str = "/home/quelquun/";
+
+    // Ce contrôle-ci porte les motifs puisqu'il les cherche.
+    const MOI: &str = "no_control_reads_a_path_from_someones_home";
+
+    let mut fautifs: Vec<String> = Vec::new();
+    for (fichier, source) in SOURCES_DU_BANC {
+        for morceau in source.split("#[test]\n").skip(1) {
+            let Some(nom) = morceau
+                .split_once("fn ")
+                .and_then(|(_, reste)| reste.split_once('('))
+                .map(|(nom, _)| nom.trim())
+            else {
+                continue;
+            };
+            if nom == MOI {
+                continue;
+            }
+            // Le corps seul, et jusqu'à sa propre accolade : un récit
+            // peut raconter le chemin qui a servi à chercher, et ce
+            // récit est même ce qui doit rester.
+            let corps = morceau
+                .split_once('{')
+                .map(|(_, reste)| reste)
+                .unwrap_or(morceau);
+            let corps = corps.split_once("\n}\n").map(|(c, _)| c).unwrap_or(corps);
+            for racine in PERSONNELS {
+                let mut reste = corps;
+                while let Some(at) = reste.find(racine) {
+                    let depuis = &reste[at..];
+                    if !depuis.starts_with(INVENTÉ) {
+                        let fin = depuis.find('"').unwrap_or(depuis.len().min(48));
+                        fautifs.push(format!("{fichier} : {nom} lit {}", &depuis[..fin]));
+                    }
+                    reste = &reste[at + racine.len()..];
+                }
+            }
+        }
+    }
+
+    assert!(
+        fautifs.is_empty(),
+        "{} contrôle(s) dont l'entrée n'existe que sur une machine — ils \
+         s'abstiennent partout ailleurs, EN PASSANT AU VERT :\n  {}\n\n\
+         Fabriquez l'entrée (`binaire_fabriqué`), ou semez-la dans un \
+         dossier temporaire. Un chemin inventé pour l'exemple s'écrit sous \
+         « {INVENTÉ} », et ne se lit pas.",
+        fautifs.len(),
+        fautifs.join("\n  ")
+    );
+}
+
 /// Aucun contrôle ne demande à la machine ce qu'il doit vérifier.
 ///
 /// Ce défaut a coûté quatre CI rouges d'affilée, et il était passé quatre

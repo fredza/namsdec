@@ -1558,45 +1558,73 @@ fn the_binary_editor_really_writes_a_byte() {
     assert_eq!(app.patches.len(), 1, "rien de neuf, rien d'inscrit");
 }
 
-/// L'ÉDITEUR BINAIRE SUR LE FICHIER QUI A SERVI À LE SIGNALER.
+/// L'OCTET DU NOMBRE MAGIQUE EST REFUSÉ, ET LE REFUS EST DIT.
 ///
-/// Un essai de reproduction, et il vise un fichier NOMMÉ plutôt qu'un
-/// binaire du système : « /home/fred/CrackMe/crackme2 ». S'il n'est pas
-/// là, le contrôle s'abstient — mais il a servi à chercher.
+/// C'est le défaut de 9.7, et le seul qui ait été reproduit : écrire le
+/// premier octet du fichier — celui du `7f` d'ELF — rend l'image
+/// illisible, `load_elf` refuse de la relire, et l'on sortait SANS RIEN
+/// CHANGER ET SANS RIEN DIRE. On tapait, et rien ne se passait.
+///
+/// Ce contrôle est né comme un essai de reproduction sur le fichier qui
+/// a servi à le signaler — `/home/fred/CrackMe/crackme2`, en clair dans
+/// le code. Il ne tournait donc que sur UNE machine, et se taisait
+/// partout ailleurs : c'est la rétention de 9.7 qui n'en était pas une.
+/// Il travaille maintenant sur le binaire fabriqué, comme les autres.
 #[test]
-fn the_binary_editor_on_the_reported_file() {
-    let Ok(octets) = std::fs::read("/home/fred/CrackMe/crackme2") else {
+fn the_magic_byte_is_refused_and_the_refusal_is_spoken() {
+    let Some(octets) = binaire_fabriqué() else {
         return;
     };
+
+    // L'octet zéro : le refus doit se dire, et rien ne doit changer.
     let mut app = NamsdecApp::default();
-    assert!(app.load_elf(&octets, "crackme2"), "ce binaire s'ouvre");
-    let state = app.assemble_state.as_ref().expect("un état");
-    println!(
-        "crackme2 : {} octets dans output.file, {} instructions, from_binary {}",
-        state.output.file.len(),
-        state.disasm.len(),
-        state.from_binary.is_some()
+    assert!(app.load_elf(&octets, NOM_FABRIQUÉ), "le binaire s'ouvre");
+    let avant = app
+        .assemble_state
+        .as_ref()
+        .expect("un état")
+        .output
+        .file
+        .clone();
+    app.write_patch(0, vec![0x42], 0);
+    assert!(
+        matches!(app.status, Status::Error(_)),
+        "le refus doit se DIRE : {:?}",
+        app.status
     );
-    let offset = 0x1000usize.min(state.output.file.len().saturating_sub(1));
-    let avant = state.output.file[offset];
-    // Et l'octet ZÉRO, celui du nombre magique : l'écrire rend le
-    // fichier illisible, et le correctif était alors jeté EN SILENCE.
-    let mut muet = NamsdecApp::default();
-    assert!(muet.load_elf(&octets, "crackme2"));
-    muet.write_patch(0, vec![0x42], 0);
-    println!(
-        "octet 0 : statut {:?}, correctifs {}",
-        muet.status,
-        muet.patches.len()
+    assert!(
+        app.patches.is_empty(),
+        "et ne rien inscrire : {} correctif(s)",
+        app.patches.len()
     );
-    app.write_patch(offset, vec![avant ^ 0xff], 0);
-    let state = app.assemble_state.as_ref().expect("un état");
     assert_eq!(
-        state.output.file[offset],
-        avant ^ 0xff,
-        "le bouton « Écrire » change l'octet, sur ce fichier-là aussi"
+        app.assemble_state.as_ref().expect("un état").output.file,
+        avant,
+        "le fichier n'a pas changé d'un octet"
     );
-    assert_eq!(app.patches.len(), 1);
+
+    // Et un octet du code, lui, s'écrit : sans quoi ce contrôle dirait
+    // seulement que tout est refusé.
+    let mut app = NamsdecApp::default();
+    assert!(app.load_elf(&octets, NOM_FABRIQUÉ));
+    let (offset, avant) = {
+        let state = app.assemble_state.as_ref().expect("un état");
+        let scan = namsdec_re::elf_scan::scan(&state.output.file).expect("un ELF");
+        let texte = scan
+            .sections
+            .iter()
+            .find(|s| s.name == ".text" && s.size > 16)
+            .expect("une section de code");
+        let at = texte.offset as usize + 8;
+        (at, state.output.file[at])
+    };
+    app.write_patch(offset, vec![avant ^ 0xff], 0);
+    assert_eq!(
+        app.assemble_state.as_ref().expect("un état").output.file[offset],
+        avant ^ 0xff,
+        "l'octet du code change"
+    );
+    assert_eq!(app.patches.len(), 1, "et le correctif est inscrit");
 }
 
 /// LA GRILLE PREND-ELLE LE CLAVIER QUAND L'ÉDITEUR L'A ?
@@ -1612,13 +1640,13 @@ fn the_binary_editor_on_the_reported_file() {
 /// mesures précédentes rassurantes et vaines.
 #[test]
 fn the_hex_grid_takes_the_keyboard_from_the_editor() {
-    let Ok(octets) = std::fs::read("/home/fred/CrackMe/crackme2") else {
+    let Some(octets) = binaire_fabriqué() else {
         return;
     };
     let ctx = egui::Context::default();
     let mut app = NamsdecApp::default();
     app.apply_theme(&ctx);
-    if !app.load_elf(&octets, "crackme2") {
+    if !app.load_elf(&octets, NOM_FABRIQUÉ) {
         return;
     }
     // L'ÉMULATEUR, sans quoi la fenêtre d'analyse ne dessine AUCUN

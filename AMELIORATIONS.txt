@@ -5486,3 +5486,64 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      Le corps s'arrête maintenant à sa propre accolade de colonne zéro.
      Ce n'était pas un faux positif de hasard : tant que le dernier item
      du fichier était un test, la faute ne pouvait pas se voir.
+
+
+9.10 [FAIT] UN CHEMIN DE MA MACHINE DANS DEUX CONTRÔLES  (7.6)
+     7.6 demandait « un contrôle qui dit ce qui n'est pas testé ». Le
+     relevé de 9.9 donnait l'outil : compter les ABSTENTIONS, c'est-à-dire
+     les contrôles qui se taisent au lieu de juger.
+
+     --- CE QUE LE COMPTE DIT ---
+     212 contrôles sur 556 peuvent se taire. Ce n'est pas une mauvaise
+     nouvelle en soi, et c'est pour cela qu'il fallait les RANGER PAR
+     RAISON :
+       - 132 demandent nasm et ld — installés sur la CI ;
+       -  36 demandent le binaire fabriqué — donc nasm, idem ;
+       -  24 lisent `/bin/ls` ou `/usr/bin` — là sur toute machine POSIX ;
+       -   3 demandent un compilateur C ;
+       -  11 ne nommaient aucune raison. C'est là qu'il fallait regarder.
+
+     --- LES DEUX QUI NE PROTÉGEAIENT QUE MOI ---
+     Deux des onze lisaient `/home/fred/CrackMe/crackme2` — le fichier qui
+     avait servi à signaler le défaut de l'éditeur binaire, écrit en clair
+     dans le code la veille. Ils s'abstenaient donc partout ailleurs, et
+     sur la CI.
+     ET L'UN DES DEUX ÉTAIT LA RÉTENTION DE 9.7. Le défaut corrigé était
+     « le refus de l'octet zéro ne se disait pas » ; le contrôle censé
+     empêcher son retour ne tournait que sur cette machine. Pire : il
+     n'assertait rien du refus, il l'IMPRIMAIT — deux `println!` restés de
+     la chasse. Il aurait pu passer au vert avec le défaut remis.
+     Il retient maintenant les trois choses qui comptent, sur le binaire
+     fabriqué : le refus se DIT (`Status::Error`), il n'inscrit AUCUN
+     correctif, et le fichier ne change pas d'un octet. Et, pour qu'il ne
+     dise pas seulement « tout est refusé », qu'un octet du code s'écrit.
+     Un troisième contrôle lisait le corpus par son chemin en dur, sans
+     passer par l'aide commune : il avait donc échappé au relevé de 9.9.
+     Il prend le binaire fabriqué long.
+
+     --- LA RÈGLE, ET POURQUOI ELLE EST ÉCRITE AINSI ---
+     `no_control_reads_a_path_from_someones_home` refuse `/home/`,
+     `/root/` et `/Users/` dans le corps d'un contrôle. C'est la faute de
+     7.4 vue du côté de l'ENTRÉE au lieu de l'assertion : un contrôle dont
+     l'entrée n'existe que chez une personne ne protège qu'elle, et se
+     taire n'est pas juger.
+     `/bin/ls` n'est pas visé, et le dire fait partie de la règle : il est
+     là sur toute machine POSIX et le coureur de la CI l'a. Ce qui est
+     visé est le dossier de quelqu'un.
+     UN CHEMIN INVENTÉ POUR L'EXEMPLE reste nécessaire — le rapport
+     d'anomalie doit montrer qu'il ne trahit pas le chemin d'un client, la
+     fiche d'un outil montre une installation ailleurs. Il s'écrit donc
+     sous `/home/quelquun/`, il n'est jamais lu, et la convention se voit
+     d'un coup d'œil plutôt que de demander une liste d'exceptions qui
+     pourrirait.
+     Éprouvée en semant le chemin dans un autre fichier : elle rougit et
+     le nomme.
+
+     --- CE QUI RESTE DE 7.6, ET CE QU'IL FAUDRAIT POUR LE FERMER ---
+     Le relevé des abstentions a été fait À LA MAIN, par un script jeté
+     après usage. Le rendre permanent demanderait de ranger chaque
+     abstention sous une raison NOMMÉE — comme la liste blanche de 7.4 —
+     et de refuser celles qui n'en ont pas. Les onze sans raison nommée
+     sont aujourd'hui huit, et toutes légitimes (DZF optionnel, un guide
+     absent, un dossier de greffons). C'est le bon moment pour l'écrire,
+     et ce n'est pas fait : noté comme tel plutôt que donné pour fait.

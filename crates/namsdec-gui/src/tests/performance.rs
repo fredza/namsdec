@@ -413,15 +413,16 @@ fn the_frame_that_lays_out_the_text_is_the_one_that_says_so() {
 /// cinquante fois plus.
 #[test]
 fn a_big_binarys_profile_draws_in_tens_of_milliseconds() {
-    let chemin =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/binaires/crackme-01");
-    let Ok(octets) = std::fs::read(&chemin) else {
+    // Le binaire fabriqué LONG, et non le corpus par son chemin : ce
+    // contrôle était le dernier à lire `tests/binaires/` sans passer par
+    // l'aide commune, et il s'abstenait donc là où le dossier est vide.
+    let Some(octets) = binaire_fabriqué_long() else {
         return;
     };
     let ctx = egui::Context::default();
     let mut app = NamsdecApp::default();
     app.apply_theme(&ctx);
-    app.load_binary(octets, "crackme-01");
+    app.load_binary(octets, NOM_FABRIQUÉ);
     assert!(
         app.source.lines().count() > 20_000,
         "le binaire d'essai doit être gros : {} lignes",

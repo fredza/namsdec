@@ -1793,6 +1793,28 @@ le code binaire et le pseudo-code. Un seul module neuf les réunit.
       lequel a échoué le jour où namsdec a été installé sur la machine.
 - [x] `the_assembled_program_can_leave_the_workbench` stabilisé (A 3.4)
 - [x] Le rendu hors écran est mesuré, et les captures sont outillées (A 3.2)
+- [x] **Un chemin de ma machine dans deux contrôles** (A 7.6) — relevé
+      en comptant les abstentions : **212 contrôles sur 556 peuvent se
+      taire**, et la plupart pour une bonne raison (132 demandent nasm et
+      ld, 24 un binaire du système — tous présents sur la CI). Onze
+      s'abstenaient sans raison nommée, et deux d'entre eux lisaient
+      `/home/fred/CrackMe/crackme2`, le fichier qui avait servi à
+      signaler le défaut de l'éditeur binaire. L'un des deux était la
+      RÉTENTION de ce défaut (A 9.7) : elle ne retenait rien sur aucune
+      autre machine, tout en passant au vert.
+      Les deux travaillent maintenant sur le binaire fabriqué, et le
+      premier retient enfin quelque chose — il n'assertait rien, il
+      IMPRIMAIT : le refus de l'octet zéro doit se dire, ne rien
+      inscrire, et ne pas changer le fichier d'un octet.
+      Un troisième lisait le corpus par son chemin, sans passer par
+      l'aide commune, et échappait donc au relevé de la veille.
+      `no_control_reads_a_path_from_someones_home` refuse désormais
+      `/home/`, `/root/` et `/Users/` dans un corps de contrôle. Un
+      chemin INVENTÉ pour l'exemple — le rapport d'anomalie qui ne doit
+      pas trahir le chemin d'un client — s'écrit sous `/home/quelquun/`,
+      et la convention se lit d'un coup d'œil. Éprouvé en semant le
+      chemin : il rougit et le nomme.
+
 - [~] **Un contrôle qui dit ce qui n'est pas testé** (A 7.6) — commencé ;
       reste à relire les tests d'affichage existants
 - [x] **Un test de bout en bout sur l'installation** (A 3.3) — il LANCE

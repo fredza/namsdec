@@ -585,10 +585,12 @@ const NOM_FABRIQUÉ: &str = "crackme-fabrique";
 /// Trois contrôles ne mesurent quelque chose que sur un gros listing :
 /// ne pas mettre en page le fichier entier, ne relever les occurrences
 /// qu'une fois, retrouver la ligne qu'on lisait au millier. Le seuil
-/// qu'ils exigent est dix mille occurrences de « mov » ; douze mille
-/// instructions les donnent avec de la marge, et coûtent trois dixièmes
-/// de seconde de nasm, une fois par processus.
-const INSTRUCTIONS_DU_LONG: usize = 12_000;
+/// Deux seuils sont exigés, et c'est le plus haut qui commande : dix
+/// mille occurrences de « mov » pour le relevé de recherche, et plus de
+/// vingt mille LIGNES pour le profil d'un gros binaire. Vingt-quatre
+/// mille instructions donnent les deux avec de la marge, et coûtent une
+/// fraction de seconde de nasm, une fois par processus.
+const INSTRUCTIONS_DU_LONG: usize = 24_000;
 
 /// Le même binaire, mais long : de quoi mesurer ce qui ne se voit que
 /// sur un gros fichier.
@@ -672,6 +674,11 @@ fn le_binaire_fabrique_est_un_vrai_binaire() {
     assert!(app.load_elf(&long, NOM_FABRIQUÉ));
     let movs = app.source.matches("mov").count();
     assert!(movs > 10_000, "{movs} occurrences de « mov »");
+    // Et le second seuil, celui du profil d'un gros binaire : les deux
+    // sont écrits ici, là où la longueur est décidée, et non répartis
+    // chez ceux qui en dépendent.
+    let lignes = app.source.lines().count();
+    assert!(lignes > 20_000, "{lignes} lignes de listing");
 
     // Le court, lui, demande vraiment une entrée : c'est ce que les
     // contrôles de la console éprouvent sur lui.
