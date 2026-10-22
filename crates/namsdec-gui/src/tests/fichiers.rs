@@ -715,14 +715,14 @@ fn quitting_looks_at_every_open_file() {
 /// il voyage dans `from_binary`. C'est lui qui s'écrit maintenant.
 #[test]
 fn l_onglet_d_un_binaire_porte_son_nom() {
-    let Some(octets) = binaire_dépreuve("crackme-01") else {
+    let Some(octets) = binaire_fabriqué() else {
         return;
     };
     let mut app = NamsdecApp::default();
-    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    assert!(app.load_elf(&octets, NOM_FABRIQUÉ), "l'ELF se charge");
     let noms: Vec<String> = app.tab_labels().into_iter().map(|(nom, _)| nom).collect();
     assert!(
-        noms.iter().any(|n| n == "crackme-01"),
+        noms.iter().any(|n| n == NOM_FABRIQUÉ),
         "l'onglet devrait porter le nom du binaire : {noms:?}"
     );
 }
@@ -813,11 +813,11 @@ fn a_file_changed_on_disk_is_noticed_and_never_silently_overwritten() {
 /// points d'arrêt et de retaper ses arguments.
 #[test]
 fn a_binary_session_comes_back_at_the_next_launch() {
-    let Some(octets) = binaire_dépreuve("crackme-01") else {
+    let Some(octets) = binaire_fabriqué() else {
         return;
     };
     let dossier = tempfile::tempdir().unwrap();
-    let binaire = dossier.path().join("crackme-01");
+    let binaire = dossier.path().join(NOM_FABRIQUÉ);
     std::fs::write(&binaire, &octets).unwrap();
 
     // Une séance : on ouvre le binaire, on pose des repères, on règle
@@ -873,11 +873,11 @@ fn a_binary_session_comes_back_at_the_next_launch() {
 /// que de ne pas en poser, et le faire en silence est pire encore.
 #[test]
 fn a_changed_binary_drops_its_marks_and_says_so() {
-    let Some(octets) = binaire_dépreuve("crackme-01") else {
+    let Some(octets) = binaire_fabriqué() else {
         return;
     };
     let dossier = tempfile::tempdir().unwrap();
-    let binaire = dossier.path().join("crackme-01");
+    let binaire = dossier.path().join(NOM_FABRIQUÉ);
     std::fs::write(&binaire, &octets).unwrap();
 
     let mut app = NamsdecApp::default();

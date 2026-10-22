@@ -436,11 +436,11 @@ fn the_input_line_opens_as_soon_as_we_know_the_program_will_read() {
 
     // Et sur un vrai binaire : celui-ci demande un mot de passe, sans
     // jamais faire de syscall de lecture lui-même.
-    let Some(octets) = binaire_dépreuve("crackme-01") else {
+    let Some(octets) = binaire_fabriqué() else {
         return;
     };
     let mut app = NamsdecApp::default();
-    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    assert!(app.load_elf(&octets, NOM_FABRIQUÉ), "l'ELF se charge");
     assert!(
         app.program_reads,
         "namsdec doit savoir qu'il demandera quelque chose avant de le lancer"
@@ -477,14 +477,14 @@ fn a_program_can_be_given_its_arguments() {
     assert_eq!(split_args("\"\" x"), vec!["", "x"]);
 
     // Et sur un vrai binaire : ce qu'on donne se retrouve dans argv.
-    let Some(octets) = binaire_dépreuve("crackme-01") else {
+    let Some(octets) = binaire_fabriqué() else {
         return;
     };
     let mut app = NamsdecApp {
         program_args: "sesame \"deux mots\"".to_owned(),
         ..Default::default()
     };
-    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    assert!(app.load_elf(&octets, NOM_FABRIQUÉ), "l'ELF se charge");
 
     let binaire = app
         .assemble_state
@@ -493,7 +493,7 @@ fn a_program_can_be_given_its_arguments() {
         .expect("un binaire chargé");
     assert_eq!(
         binaire.load.argv,
-        vec!["crackme-01", "sesame", "deux mots"],
+        vec![NOM_FABRIQUÉ, "sesame", "deux mots"],
         "argv[0] est le nom, puis ce qu'on a donné"
     );
 
@@ -516,11 +516,11 @@ fn a_program_can_be_given_its_arguments() {
 /// champs à des abscisses différentes.
 #[test]
 fn the_input_rows_line_up_and_stay_inside_their_frame() {
-    let Some(octets) = binaire_dépreuve("crackme-01") else {
+    let Some(octets) = binaire_fabriqué() else {
         return;
     };
     let mut app = NamsdecApp::default();
-    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    assert!(app.load_elf(&octets, NOM_FABRIQUÉ), "l'ELF se charge");
 
     let s = strings(app.lang);
     let ctx = egui::Context::default();
@@ -593,14 +593,14 @@ fn the_input_rows_line_up_and_stay_inside_their_frame() {
 /// `getenv("SECRET")` ne pouvait rien recevoir.
 #[test]
 fn a_program_can_be_given_its_environment() {
-    let Some(octets) = binaire_dépreuve("crackme-01") else {
+    let Some(octets) = binaire_fabriqué() else {
         return;
     };
     let mut app = NamsdecApp {
         program_env: "SECRET=sesame\n\nLANG=fr_FR.UTF-8\n".to_owned(),
         ..Default::default()
     };
-    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    assert!(app.load_elf(&octets, NOM_FABRIQUÉ), "l'ELF se charge");
 
     // On relit la pile là où le programme ira les chercher : après argv
     // et son zéro terminal.
@@ -661,11 +661,11 @@ fn a_program_can_be_given_its_environment() {
 /// les deux rangées du milieu n'existent pas.
 #[test]
 fn a_waiting_binary_shows_the_whole_input_area() {
-    let Some(octets) = binaire_dépreuve("crackme-01") else {
+    let Some(octets) = binaire_fabriqué() else {
         return;
     };
     let mut app = NamsdecApp::default();
-    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    assert!(app.load_elf(&octets, NOM_FABRIQUÉ), "l'ELF se charge");
     app.do_run();
     for _ in 0..4000 {
         if !app.running {
@@ -731,7 +731,7 @@ fn a_waiting_binary_shows_the_whole_input_area() {
 /// ne prouve donc rien.
 #[test]
 fn the_input_area_stays_on_screen_when_the_environment_unfolds() {
-    let Some(octets) = binaire_dépreuve("crackme-01") else {
+    let Some(octets) = binaire_fabriqué() else {
         return;
     };
     let mut app = NamsdecApp {
@@ -740,7 +740,7 @@ fn the_input_area_stays_on_screen_when_the_environment_unfolds() {
         console_height: Some(128.0),
         ..Default::default()
     };
-    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    assert!(app.load_elf(&octets, NOM_FABRIQUÉ), "l'ELF se charge");
     app.do_run();
     for _ in 0..4000 {
         if !app.running {
@@ -804,11 +804,11 @@ fn the_input_area_stays_on_screen_when_the_environment_unfolds() {
 #[test]
 fn the_input_dialog_opens_when_the_program_waits_and_shows_what_it_asked() {
     let s = strings(Lang::Fr);
-    let Some(octets) = binaire_dépreuve("crackme-01") else {
+    let Some(octets) = binaire_fabriqué() else {
         return;
     };
     let mut app = NamsdecApp::default();
-    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    assert!(app.load_elf(&octets, NOM_FABRIQUÉ), "l'ELF se charge");
     assert!(!app.show_input_dialog, "rien tant que rien n'attend");
 
     app.do_run();
@@ -901,11 +901,11 @@ fn the_input_dialog_opens_when_the_program_waits_and_shows_what_it_asked() {
 #[test]
 fn after_the_answer_the_dialog_shows_what_the_program_said() {
     let s = strings(Lang::Fr);
-    let Some(octets) = binaire_dépreuve("crackme-01") else {
+    let Some(octets) = binaire_fabriqué() else {
         return;
     };
     let mut app = NamsdecApp::default();
-    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    assert!(app.load_elf(&octets, NOM_FABRIQUÉ), "l'ELF se charge");
     // La console repliée, comme sur la capture qui a servi à trouver le
     // défaut : rien d'autre que la boîte ne dira ce qui s'est passé.
     app.show_console = false;
@@ -1134,7 +1134,7 @@ fn the_console_says_why_it_is_empty_and_always_lets_one_type() {
 /// n'a fixée comprise.
 #[test]
 fn the_input_row_is_visible_at_every_console_height() {
-    let Some(octets) = binaire_dépreuve("crackme-01") else {
+    let Some(octets) = binaire_fabriqué() else {
         return;
     };
     let s = strings(Lang::Fr);
@@ -1156,7 +1156,7 @@ fn the_input_row_is_visible_at_every_console_height() {
                 console_env_open: env_ouvert,
                 ..Default::default()
             };
-            assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+            assert!(app.load_elf(&octets, NOM_FABRIQUÉ), "l'ELF se charge");
             app.do_run();
             for _ in 0..4000 {
                 if !app.running {
@@ -1241,11 +1241,11 @@ fn the_input_row_is_visible_at_every_console_height() {
 /// d'attendre, et il fallait cliquer « Envoyer ».
 #[test]
 fn pressing_enter_sends_the_line_to_the_program() {
-    let Some(octets) = binaire_dépreuve("crackme-01") else {
+    let Some(octets) = binaire_fabriqué() else {
         return;
     };
     let mut app = NamsdecApp::default();
-    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    assert!(app.load_elf(&octets, NOM_FABRIQUÉ), "l'ELF se charge");
     app.do_run();
     for _ in 0..4000 {
         if !app.running {
@@ -1344,11 +1344,11 @@ fn pressing_enter_sends_the_line_to_the_program() {
 /// panneau déjà sombre passait pour une nuance.
 #[test]
 fn the_waiting_input_area_announces_itself() {
-    let Some(octets) = binaire_dépreuve("crackme-01") else {
+    let Some(octets) = binaire_fabriqué() else {
         return;
     };
     let mut app = NamsdecApp::default();
-    assert!(app.load_elf(&octets, "crackme-01"));
+    assert!(app.load_elf(&octets, NOM_FABRIQUÉ));
     app.do_run();
     for _ in 0..4000 {
         if !app.running {

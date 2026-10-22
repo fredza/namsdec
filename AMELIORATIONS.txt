@@ -5404,3 +5404,85 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      regarder les sept fichiers d'essais d'intégration, qui ne sont pas
      sous un `src/`. Semé, mesuré : une faute posée dans un thème le
      laisse vert, la liste des sources reste au-delà de quarante fichiers.
+
+
+9.9  [FAIT] TRENTE-SEPT CONTRÔLES VERTS QUI NE REGARDAIENT RIEN
+     Le plan du 15 octobre portait ceci « en fond, sans urgence » :
+     « `tests/binaires/` rempli ici, vide sur la CI, donc onze binaires
+     d'épreuve qui ne protègent qu'une machine ». La formulation visait le
+     corpus ; le vrai sujet était ailleurs, et il fallait un chiffre pour
+     le voir.
+
+     --- LE CHIFFRE ---
+     Mesuré en faisant CRIER le dossier absent — une panique posée le
+     temps d'un relevé dans l'accès au corpus, et la suite lancée avec
+     `NAMSDEC_TEST_BINARIES` pointant nulle part :
+       - 40 contrôles lisaient le corpus ;
+       - 37 s'abstenaient en silence quand il manque — verts, sans avoir
+         ouvert un seul fichier ;
+       - 3 repliaient sur `/bin/ls`, donc sur un binaire qui change d'une
+         machine à l'autre.
+     Et l'un des trois demandait `crackme-010` : une faute de frappe qui
+     lui faisait éprouver `/bin/ls` depuis le premier jour. Personne ne
+     pouvait le voir — il passait.
+     Ce que ces 37 couvrent n'est pas accessoire : ouvrir un vrai binaire,
+     la fenêtre d'analyse, l'éditeur hexadécimal, les correctifs, la boîte
+     d'entrée quand un programme attend. La moitié de ce que namsdec fait
+     de plus que son éditeur.
+
+     --- LA SORTIE : FABRIQUER, NON TROUVER ---
+     Verser des exécutables dans le dépôt aurait réglé la CI et cassé une
+     décision qui tient. Et se replier sur un binaire du système revient à
+     demander à la machine ce qu'on devrait semer — ce que 7.4 interdit
+     ailleurs, pour la raison exacte qu'on vient de mesurer.
+     nasm et ld sont installés sur la CI, et la moitié de la suite les
+     demande déjà. Un binaire d'épreuve est donc FABRIQUÉ au moment du
+     contrôle, une fois par processus, par le chemin réel de namsdec
+     (`do_assemble` puis `export_binary`, non un appel direct à nasm) : le
+     même partout, donc le contrôle dit la même chose partout.
+     Le programme porte ce dont les contrôles ont besoin d'un vrai
+     programme, et rien de plus : deux sections, des chaînes dans les
+     données, un `call`/`ret`, une boucle de comparaison octet par octet,
+     deux branches qui se rejoignent, un `read` qui attend vraiment, un
+     code de sortie qui dit laquelle des deux branches a été prise. Ses
+     invites sont celles que les contrôles attendaient d'un crackme —
+     « Enter the password: », « Incorrect password » —, de sorte que les
+     deux contrôles de la boîte d'entrée tiennent sans une ligne de
+     changement.
+     UNE VARIANTE LONGUE, douze mille instructions, pour les cinq
+     contrôles qui ne mesurent quelque chose que sur un gros listing : ne
+     pas mettre le fichier en page d'un bloc, ne relever les occurrences
+     qu'une fois, retrouver la ligne qu'on lisait au millier. Ils exigent
+     dix mille occurrences de « mov » ; douze mille instructions les
+     donnent, et coûtent trois dixièmes de seconde.
+     32 des 37 ont tenu sur le binaire fabriqué SANS AUCUN CHANGEMENT.
+     C'est ce qui dit que la plupart demandaient « un vrai binaire » et
+     non « ce binaire-là ».
+
+     --- LA CLEF DE VOÛTE, ET POURQUOI ELLE EXISTE ---
+     Le défaut qu'on vient de retirer peut revenir par la porte de la
+     fabrication : si nasm change d'avis, si une directive est refusée, si
+     `export_binary` n'écrit plus, la fabrication rend `None` et les
+     trente-sept s'abstiennent de nouveau EN SILENCE. On a donc écrit
+     `le_binaire_fabrique_est_un_vrai_binaire`, qui exige des deux
+     binaires : qu'ils commencent par `\x7fELF`, se chargent, se
+     désassemblent, avancent d'un pas ; que le long porte ses dix mille
+     « mov » ; que le court demande vraiment son mot de passe et attende.
+     Un chantier qui retire un silence doit laisser derrière lui qui le
+     guette.
+
+     --- LE RÉSULTAT, MESURÉ DES DEUX CÔTÉS ---
+     704 contrôles au vert AVEC le corpus, 704 SANS. Avant : 703 avec, et
+     37 d'entre eux muets sans. La CI vérifie enfin ce qu'elle croyait
+     vérifier, et `binaire_dépreuve` a disparu — plus personne ne
+     l'appelait, le corpus n'ayant plus qu'un lecteur,
+     `every_binary_here_loads_and_runs`, qui est sa raison d'être.
+
+     --- UN DÉFAUT TROUVÉ EN CHEMIN ---
+     La règle qui lit la source des contrôles découpait sur `#[test]` et
+     courait jusqu'au suivant : un test s'appropriait donc les fonctions
+     libres posées sous lui. Elle a accusé le contrôle neuf d'un
+     `clip_rect` écrit trente lignes plus bas, dans `ce_qui_est_écrit`.
+     Le corps s'arrête maintenant à sa propre accolade de colonne zéro.
+     Ce n'était pas un faux positif de hasard : tant que le dernier item
+     du fichier était un test, la faute ne pouvait pas se voir.

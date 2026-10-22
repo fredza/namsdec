@@ -943,13 +943,13 @@ fn the_modules_tab_shows_every_module_namsdec_carries() {
 /// l'œil doit chercher chacun au lieu de descendre une liste.
 #[test]
 fn the_analysis_window_has_margins_and_a_left_aligned_column() {
-    let Some(octets) = binaire_dépreuve("crackme-01") else {
+    let Some(octets) = binaire_fabriqué() else {
         return;
     };
     let ctx = egui::Context::default();
     let mut app = NamsdecApp::default();
     app.apply_theme(&ctx);
-    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    assert!(app.load_elf(&octets, NOM_FABRIQUÉ), "l'ELF se charge");
     app.show_analysis = true;
     app.analysis_module = "protections".to_owned();
 
@@ -1040,7 +1040,7 @@ fn the_analysis_window_has_margins_and_a_left_aligned_column() {
 /// test vérifie qu'elles ne partagent plus la même ligne.
 #[test]
 fn lire_en_ne_se_peint_pas_sur_suivre() {
-    let Some(octets) = binaire_dépreuve("crackme-01") else {
+    let Some(octets) = binaire_fabriqué() else {
         return;
     };
     let ctx = egui::Context::default();
@@ -1050,7 +1050,7 @@ fn lire_en_ne_se_peint_pas_sur_suivre() {
         ..Default::default()
     };
     app.apply_theme(&ctx);
-    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    assert!(app.load_elf(&octets, NOM_FABRIQUÉ), "l'ELF se charge");
     for _ in 0..4 {
         app.do_step();
     }
@@ -1112,7 +1112,7 @@ fn lire_en_ne_se_peint_pas_sur_suivre() {
 /// bandeau.
 #[test]
 fn la_carte_depliee_ne_couvre_pas_le_bandeau() {
-    let Some(octets) = binaire_dépreuve("crackme-01") else {
+    let Some(octets) = binaire_fabriqué() else {
         return;
     };
     let s = strings(Lang::Fr);
@@ -1124,7 +1124,7 @@ fn la_carte_depliee_ne_couvre_pas_le_bandeau() {
         ..Default::default()
     };
     app.apply_theme(&ctx);
-    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    assert!(app.load_elf(&octets, NOM_FABRIQUÉ), "l'ELF se charge");
     for _ in 0..4 {
         app.do_step();
     }
@@ -1257,11 +1257,11 @@ fn la_carte_depliee_ne_couvre_pas_le_bandeau() {
 /// `.rodata` annonce des données chiffrées.
 #[test]
 fn the_map_and_the_dump_say_where_and_what() {
-    let Some(octets) = binaire_dépreuve("crackme-01") else {
+    let Some(octets) = binaire_fabriqué() else {
         return;
     };
     let mut app = NamsdecApp::default();
-    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    assert!(app.load_elf(&octets, NOM_FABRIQUÉ), "l'ELF se charge");
     app.show_analysis = true;
 
     let ids: Vec<&str> = app
@@ -1378,11 +1378,11 @@ fn the_free_space_panel_shows_a_real_binarys_padding() {
 /// fichier sous les yeux.
 #[test]
 fn the_analysis_gives_the_fingerprint_of_the_file() {
-    let Some(octets) = binaire_dépreuve("crackme-01") else {
+    let Some(octets) = binaire_fabriqué() else {
         return;
     };
     let mut app = NamsdecApp::default();
-    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    assert!(app.load_elf(&octets, NOM_FABRIQUÉ), "l'ELF se charge");
 
     // Celle du fichier entier, comme `sha256sum` la donne — sinon on ne
     // pourrait pas la comparer à celle d'un autre outil.
@@ -1416,7 +1416,7 @@ fn the_analysis_gives_the_fingerprint_of_the_file() {
 #[test]
 fn the_analysis_window_reads_across_and_not_only_down() {
     let s = strings(Lang::Fr);
-    let Some(octets) = binaire_dépreuve("crackme-01") else {
+    let Some(octets) = binaire_fabriqué() else {
         return;
     };
     let ctx = egui::Context::default();
@@ -1443,7 +1443,7 @@ fn the_analysis_window_reads_across_and_not_only_down() {
 
     let mut app = NamsdecApp::default();
     app.apply_theme(&ctx);
-    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    assert!(app.load_elf(&octets, NOM_FABRIQUÉ), "l'ELF se charge");
     app.show_analysis = true;
 
     // La colonne porte « Tout » et le nom de chaque module — le nom de
@@ -1488,11 +1488,11 @@ fn the_analysis_window_reads_across_and_not_only_down() {
 #[test]
 fn the_dump_can_be_saved_in_a_shape_one_can_compare() {
     let s = strings(Lang::Fr);
-    let Some(octets) = binaire_dépreuve("crackme-01") else {
+    let Some(octets) = binaire_fabriqué() else {
         return;
     };
     let mut app = NamsdecApp::default();
-    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    assert!(app.load_elf(&octets, NOM_FABRIQUÉ), "l'ELF se charge");
     app.show_analysis = true;
 
     // Le bouton n'apparaît que sur le module qui le concerne : c'est le
@@ -1530,11 +1530,11 @@ fn the_dump_can_be_saved_in_a_shape_one_can_compare() {
 /// autrement, et l'on n'avait aucun moyen de la poser.
 #[test]
 fn the_dump_can_write_bytes_and_the_change_is_a_patch() {
-    let Some(octets) = binaire_dépreuve("crackme-01") else {
+    let Some(octets) = binaire_fabriqué() else {
         return;
     };
     let mut app = NamsdecApp::default();
-    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    assert!(app.load_elf(&octets, NOM_FABRIQUÉ), "l'ELF se charge");
     assert!(app.patches.is_empty());
 
     // Ce qu'un module demande, l'application le fait : c'est le chemin
@@ -2156,14 +2156,13 @@ fn an_address_from_an_analysis_panel_reaches_its_line() {
 /// Une rubrique nouvelle y entre sans qu'on y pense.
 #[test]
 fn la_fenetre_d_analyse_ne_grandit_pas_avec_son_contenu() {
-    let Some(octets) = binaire_dépreuve("crackme-01").or_else(|| std::fs::read("/bin/ls").ok())
-    else {
+    let Some(octets) = binaire_fabriqué() else {
         return;
     };
     let ctx = egui::Context::default();
     let mut app = NamsdecApp::default();
     app.apply_theme(&ctx);
-    if !app.load_elf(&octets, "crackme-01") {
+    if !app.load_elf(&octets, NOM_FABRIQUÉ) {
         return;
     }
     app.show_analysis = true;

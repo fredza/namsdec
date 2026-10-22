@@ -1750,6 +1750,41 @@ le code binaire et le pseudo-code. Un seul module neuf les réunit.
       que ce qu'il trouve n'est jamais un faux positif — un échec y est
       une liste de fiches à écrire, non un défaut de l'application.
 
+- [x] **Les contrôles ne dépendent plus d'un corpus que la CI n'a pas**
+      (A 7.15, « en fond ») — `tests/binaires/` n'est pas versionné, et
+      cette décision tient : un dépôt n'embarque pas d'exécutables. Mais
+      elle laissait **37 contrôles sur 555 s'abstenir en silence** là où
+      le dossier est vide, donc sur la CI — verts sans rien ouvrir.
+      Le chiffre a été mesuré avant d'y toucher, en faisant CRIER le
+      dossier absent : 40 contrôles l'appelaient, 37 s'abstenaient, 3
+      repliaient sur `/bin/ls` — dont un qui demandait `crackme-010`,
+      une faute de frappe qui lui faisait éprouver `/bin/ls` depuis
+      toujours sans que rien ne le dise.
+      Un binaire d'épreuve est maintenant FABRIQUÉ par nasm et ld au
+      moment du contrôle, le même sur toute machine : deux sections, des
+      chaînes, un appel et son retour, une boucle de comparaison, un
+      `read` qui attend vraiment. Et une variante LONGUE — douze mille
+      instructions — pour les cinq contrôles qui ne mesurent quelque
+      chose que sur un gros listing. 32 des 37 ont tenu dessus sans une
+      ligne de changement ; les cinq autres demandaient soit l'invite
+      exacte du crackme, soit la taille — la fabrication leur donne les
+      deux.
+      Le corpus de chacun garde son contrôle, qui est sa raison d'être :
+      `every_binary_here_loads_and_runs`, désormais son SEUL lecteur.
+      LA CLEF DE VOÛTE est un contrôle neuf : si la fabrication se
+      rompait, les trente-sept redeviendraient muets en silence. Il exige
+      donc que les deux binaires soient des ELF, se chargent, se
+      désassemblent, avancent d'un pas, que le long porte ses dix mille
+      « mov » et que le court demande vraiment son mot de passe.
+      Mesuré : la suite rend 704 contrôles au vert AVEC le corpus et 704
+      SANS — c'est-à-dire que la CI vérifie enfin ce qu'elle croyait
+      vérifier.
+      Un défaut trouvé en chemin, dans la règle qui lit la source des
+      contrôles : son découpage courait jusqu'au `#[test]` suivant, donc
+      un test s'appropriait les fonctions libres posées sous lui. Elle
+      s'arrête à sa propre accolade. C'est ce qui l'a fait accuser le
+      contrôle neuf d'un `clip_rect` écrit trente lignes plus bas.
+
 - [~] **Des tests dépendent encore de la machine** (A 3.1) — un dossier
       `tests/binaires/` existe, le reste passe encore par nasm et ld.
       Deux fuites trouvées et bouchées le 25-26 septembre : le

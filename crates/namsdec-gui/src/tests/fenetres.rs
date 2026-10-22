@@ -973,7 +973,7 @@ fn the_two_dialog_buttons_share_a_width() {
 /// et il se trouve au même endroit partout.
 #[test]
 fn every_window_carries_a_way_out() {
-    let Some(octets) = binaire_dépreuve("crackme-01") else {
+    let Some(octets) = binaire_fabriqué() else {
         // Sans binaire d'épreuve, plusieurs fenêtres restent vides : on
         // ne peut pas juger.
         return;
@@ -1006,7 +1006,7 @@ fn every_window_carries_a_way_out() {
     for (nom, ouvrir) in fenêtres {
         let mut app = NamsdecApp::default();
         app.apply_theme(&ctx);
-        assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+        assert!(app.load_elf(&octets, NOM_FABRIQUÉ), "l'ELF se charge");
         ouvrir(&mut app);
 
         let mut peint = String::new();

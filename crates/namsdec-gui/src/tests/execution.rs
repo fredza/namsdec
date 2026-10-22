@@ -3185,11 +3185,11 @@ fn the_breakpoints_of_a_source_come_back_next_time() {
 /// qu'on veut devant un contrôle qu'on n'a pas encore compris.
 #[test]
 fn a_jump_can_be_forced_and_still_lands_where_it_pointed() {
-    let Some(octets) = binaire_dépreuve("crackme-01") else {
+    let Some(octets) = binaire_fabriqué() else {
         return;
     };
     let mut app = NamsdecApp::default();
-    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    assert!(app.load_elf(&octets, NOM_FABRIQUÉ), "l'ELF se charge");
 
     // On cherche un saut conditionnel long : c'est le cas qui demande
     // du soin, puisque `jmp` long fait un octet de moins.

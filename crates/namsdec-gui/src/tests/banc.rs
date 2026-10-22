@@ -2511,6 +2511,13 @@ fn a_control_that_measures_geometry_sets_the_style_first() {
                 .split_once('{')
                 .map(|(_, reste)| reste)
                 .unwrap_or(morceau);
+            // Et il s'arrête à SON accolade fermante, en colonne zéro.
+            // Sans cela, le morceau court jusqu'au `#[test]` suivant et
+            // s'approprie les fonctions libres posées entre les deux :
+            // le relevé a désigné `le_binaire_fabrique_est_un_vrai_binaire`
+            // pour un `clip_rect` qui appartenait à `ce_qui_est_écrit`,
+            // trente lignes plus bas.
+            let corps = corps.split_once("\n}\n").map(|(c, _)| c).unwrap_or(corps);
             // Il faut qu'il peigne : un test qui parle de `clip_rect` sans
             // jamais faire tourner une image ne mesure rien.
             if !corps.contains("run_ui(") {
@@ -2612,11 +2619,14 @@ fn no_control_asks_the_machine_what_it_should_be_checking() {
                 continue;
             }
             // Le corps seul : la documentation d'un test peut très bien
-            // parler de `availability_in` sans l'appeler.
+            // parler de `availability_in` sans l'appeler. Et le corps
+            // s'arrête à son accolade de colonne zéro, pour ne pas
+            // s'approprier les fonctions libres qui le suivent.
             let corps = morceau
                 .split_once('{')
                 .map(|(_, reste)| reste)
                 .unwrap_or(morceau);
+            let corps = corps.split_once("\n}\n").map(|(c, _)| c).unwrap_or(corps);
             for lecture in LECTURES {
                 if corps.contains(lecture) {
                     fautifs.push(format!("{fichier} : {nom} appelle {lecture}"));

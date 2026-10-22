@@ -199,8 +199,7 @@ hlt
 /// la place à celle qu'on regarde.
 #[test]
 fn l_etat_du_processeur_est_un_onglet_et_la_vue_choisie_a_tout_le_panneau() {
-    let Some(octets) = binaire_dépreuve("crackme-01").or_else(|| std::fs::read("/bin/ls").ok())
-    else {
+    let Some(octets) = binaire_fabriqué() else {
         return;
     };
     assert_eq!(
@@ -213,7 +212,7 @@ fn l_etat_du_processeur_est_un_onglet_et_la_vue_choisie_a_tout_le_panneau() {
         let ctx = egui::Context::default();
         let mut app = NamsdecApp::default();
         app.apply_theme(&ctx);
-        assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+        assert!(app.load_elf(&octets, NOM_FABRIQUÉ), "l'ELF se charge");
         app.show_sidebar = true;
         app.active_tab = onglet;
         let entrée = écran_du_banc();
@@ -1535,12 +1534,12 @@ fn the_next_instruction_folds_for_a_binary_and_not_for_a_source() {
         );
     }
 
-    let Some(octets) = binaire_dépreuve("crackme-01") else {
+    let Some(octets) = binaire_fabriqué() else {
         return;
     };
     let mut app = NamsdecApp::default();
     assert!(app.next_instruction_open, "dépliée au départ");
-    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    assert!(app.load_elf(&octets, NOM_FABRIQUÉ), "l'ELF se charge");
     assert!(
         !app.next_instruction_open,
         "un binaire replie la section : elle porte deux lignes de plus, \

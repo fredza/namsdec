@@ -223,7 +223,7 @@ fn what_the_tools_answer_is_asked_once_and_kept() {
 /// image passe de 343 ms à 12,5 ms, et le régime de 410 µs à 185 µs.
 #[test]
 fn opening_a_binary_never_lays_out_the_whole_listing() {
-    let Some(octets) = binaire_dépreuve("crackme-01") else {
+    let Some(octets) = binaire_fabriqué_long() else {
         return;
     };
     let ctx = egui::Context::default();
@@ -236,7 +236,7 @@ fn opening_a_binary_never_lays_out_the_whole_listing() {
         )),
         ..Default::default()
     };
-    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    assert!(app.load_elf(&octets, NOM_FABRIQUÉ), "l'ELF se charge");
     let lignes = app.source.lines().count();
     assert!(lignes > 10_000, "un listing de {lignes} lignes");
     assert_eq!(
@@ -498,13 +498,13 @@ fn the_visible_occurrences_are_found_without_walking_the_others() {
 /// complets du texte.
 #[test]
 fn the_search_hits_are_gathered_once_and_kept() {
-    let Some(octets) = binaire_dépreuve("crackme-01") else {
+    let Some(octets) = binaire_fabriqué_long() else {
         return;
     };
     let ctx = egui::Context::default();
     let mut app = NamsdecApp::default();
     app.apply_theme(&ctx);
-    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    assert!(app.load_elf(&octets, NOM_FABRIQUÉ), "l'ELF se charge");
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
@@ -565,13 +565,13 @@ fn the_search_hits_are_gathered_once_and_kept() {
 /// d'instructions, l'ouvrir revenait à la fermer.
 #[test]
 fn the_disassembly_window_decodes_once_per_question() {
-    let Some(octets) = binaire_dépreuve("crackme-01") else {
+    let Some(octets) = binaire_fabriqué_long() else {
         return;
     };
     let ctx = egui::Context::default();
     let mut app = NamsdecApp::default();
     app.apply_theme(&ctx);
-    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    assert!(app.load_elf(&octets, NOM_FABRIQUÉ), "l'ELF se charge");
     app.show_disassembly = true;
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
@@ -682,13 +682,13 @@ fn the_visible_rows_are_the_same_the_dichotomy_finds_them() {
 /// sert pas.
 #[test]
 fn the_whole_text_is_surveyed_once_per_text() {
-    let Some(octets) = binaire_dépreuve("crackme-01") else {
+    let Some(octets) = binaire_fabriqué_long() else {
         return;
     };
     let ctx = egui::Context::default();
     let mut app = NamsdecApp::default();
     app.apply_theme(&ctx);
-    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    assert!(app.load_elf(&octets, NOM_FABRIQUÉ), "l'ELF se charge");
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,

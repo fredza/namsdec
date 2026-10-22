@@ -447,6 +447,11 @@ fn paint(app: &mut NamsdecApp) -> String {
 ///
 /// Voir son LISEZMOI. `NAMSDEC_TEST_BINARIES` le déplace ailleurs, pour
 /// qui garde ses programmes hors du dépôt.
+///
+/// Un seul contrôle le lit désormais, et c'est sa raison d'être :
+/// `every_binary_here_loads_and_runs`, qui passe en revue ce que
+/// chacun y dépose. Tout le reste travaille sur
+/// [`binaire_fabriqué`], le même partout.
 fn dossier_dépreuve() -> Option<std::path::PathBuf> {
     if let Some(ailleurs) = std::env::var_os("NAMSDEC_TEST_BINARIES") {
         let chemin = std::path::PathBuf::from(ailleurs);
@@ -458,14 +463,239 @@ fn dossier_dépreuve() -> Option<std::path::PathBuf> {
         .ok()
 }
 
-/// Un binaire d'épreuve, s'il est là.
+/// Le programme du binaire d'épreuve FABRIQUÉ : il demande un mot de
+/// passe, le lit sur son entrée, le compare octet par octet et répond.
 ///
-/// `None` plutôt qu'une panique : ces programmes ne sont pas dans le
-/// dépôt — ce sont ceux de chacun —, et un test qui exigerait leur
-/// présence échouerait sur toute machine fraîchement clonée. Il se tait,
-/// et c'est la bonne réponse : il n'a rien à juger.
-fn binaire_dépreuve(nom: &str) -> Option<Vec<u8>> {
-    std::fs::read(dossier_dépreuve()?.join(nom)).ok()
+/// Écrit pour porter ce dont les contrôles ont besoin d'un vrai
+/// programme, et rien de plus : deux sections, des chaînes dans les
+/// données, un appel et son retour, une boucle de comparaison, deux
+/// branches qui se rejoignent, un `read` qui attend vraiment, et un
+/// code de sortie qui dit laquelle des deux branches a été prise.
+const PROGRAMME_FABRIQUÉ: &str = "\
+global _start
+
+section .data
+invite      db \"Enter the password: \"
+invite_len  equ $ - invite
+secret      db \"ouvre-toi\"
+secret_len  equ $ - secret
+gagne       db \"Correct password\", 10
+gagne_len   equ $ - gagne
+perdu       db \"Incorrect password\", 10
+perdu_len   equ $ - perdu
+saisie      times 64 db 0
+
+section .text
+_start:
+    mov rsi, invite
+    mov rdx, invite_len
+    call ecrire
+
+    xor eax, eax
+    xor edi, edi
+    mov rsi, saisie
+    mov rdx, 64
+    syscall
+    mov r8, rax
+
+    mov rcx, secret_len
+    mov rsi, secret
+    mov rdi, saisie
+compare:
+    mov al, [rsi]
+    cmp al, [rdi]
+    jne echec
+    inc rsi
+    inc rdi
+    dec rcx
+    jnz compare
+
+    mov rsi, gagne
+    mov rdx, gagne_len
+    call ecrire
+    xor edi, edi
+    jmp sortir
+
+echec:
+    mov rsi, perdu
+    mov rdx, perdu_len
+    call ecrire
+    mov edi, 1
+
+sortir:
+    mov eax, 60
+    syscall
+
+ecrire:
+    mov eax, 1
+    mov edi, 1
+    syscall
+    ret
+";
+
+/// Un vrai binaire, le MÊME sur toute machine, bâti par nasm et ld au
+/// moment du contrôle.
+///
+/// `tests/binaires/` n'est pas versionné, et cette décision tient : un
+/// dépôt n'embarque pas d'exécutables. Mais elle laissait trente-sept
+/// contrôles s'abstenir EN SILENCE là où le dossier est vide — donc sur
+/// la CI, où ils passaient au vert sans rien ouvrir. Mesuré le 22
+/// octobre 2026 en faisant crier le dossier absent.
+///
+/// Un binaire fabriqué vaut mieux ici qu'un binaire trouvé : il est le
+/// même partout, donc le contrôle dit la même chose partout. Le corpus
+/// de chacun garde son propre contrôle —
+/// `every_binary_here_loads_and_runs` —, qui est sa raison d'être :
+/// éprouver namsdec sur ce que personne n'avait prévu.
+///
+/// `None` seulement quand nasm ou ld manquent : se taire alors n'est pas
+/// s'adapter, c'est l'absence d'un outil.
+fn binaire_fabriqué() -> Option<Vec<u8>> {
+    static OCTETS: std::sync::OnceLock<Option<Vec<u8>>> = std::sync::OnceLock::new();
+    OCTETS
+        .get_or_init(|| {
+            if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+                return None;
+            }
+            // Le chemin réel de namsdec, non un appel direct à nasm :
+            // ce qui est éprouvé derrière est aussi la chaîne que
+            // l'application emploie pour livrer un programme.
+            let dossier = tempfile::tempdir().ok()?;
+            let chemin = dossier.path().join("crackme-fabrique");
+            let mut app = NamsdecApp {
+                source: PROGRAMME_FABRIQUÉ.to_owned(),
+                ..Default::default()
+            };
+            app.do_assemble();
+            app.export_binary(&chemin);
+            std::fs::read(&chemin).ok()
+        })
+        .clone()
+}
+
+/// Le nom sous lequel le binaire fabriqué se charge.
+///
+/// Les contrôles le passaient en clair — `"crackme-01"` —, ce qui était
+/// vrai quand c'était ce fichier-là. Un nom en clair sur des octets
+/// fabriqués serait faux, et ce qui se lit à l'écran le répéterait.
+const NOM_FABRIQUÉ: &str = "crackme-fabrique";
+
+/// Combien d'instructions porte le binaire fabriqué LONG.
+///
+/// Trois contrôles ne mesurent quelque chose que sur un gros listing :
+/// ne pas mettre en page le fichier entier, ne relever les occurrences
+/// qu'une fois, retrouver la ligne qu'on lisait au millier. Le seuil
+/// qu'ils exigent est dix mille occurrences de « mov » ; douze mille
+/// instructions les donnent avec de la marge, et coûtent trois dixièmes
+/// de seconde de nasm, une fois par processus.
+const INSTRUCTIONS_DU_LONG: usize = 12_000;
+
+/// Le même binaire, mais long : de quoi mesurer ce qui ne se voit que
+/// sur un gros fichier.
+///
+/// Douze mille `mov` d'affilée ne ressemblent pas à du vrai code, et
+/// c'est assumé : ce que les trois contrôles concernés mesurent est un
+/// COMPTE de poses et de relevés, qui ne dépend pas de la variété des
+/// instructions. Ce qui dépendrait d'elle est mesuré ailleurs, sur le
+/// corpus de chacun.
+fn binaire_fabriqué_long() -> Option<Vec<u8>> {
+    static OCTETS: std::sync::OnceLock<Option<Vec<u8>>> = std::sync::OnceLock::new();
+    OCTETS
+        .get_or_init(|| {
+            if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+                return None;
+            }
+            let mut source = String::from("global _start\n\nsection .text\n_start:\n");
+            for i in 0..INSTRUCTIONS_DU_LONG {
+                // Deux formes qui alternent : un listing d'une seule
+                // ligne répétée se mettrait en page comme une ligne.
+                if i % 2 == 0 {
+                    source.push_str("    mov rax, rbx\n");
+                } else {
+                    source.push_str("    mov rcx, rdx\n");
+                }
+            }
+            source.push_str("    mov eax, 60\n    xor edi, edi\n    syscall\n");
+            let dossier = tempfile::tempdir().ok()?;
+            let chemin = dossier.path().join("crackme-fabrique-long");
+            let mut app = NamsdecApp {
+                source,
+                ..Default::default()
+            };
+            app.do_assemble();
+            app.export_binary(&chemin);
+            std::fs::read(&chemin).ok()
+        })
+        .clone()
+}
+
+/// Le binaire fabriqué EST un vrai binaire — et ce contrôle est la
+/// clef de voûte des trente-sept autres.
+///
+/// Si la fabrication se rompait — nasm qui change d'avis, une directive
+/// refusée, `export_binary` qui n'écrit plus —, `binaire_fabriqué`
+/// rendrait `None` et les trente-sept contrôles qui s'en servent
+/// s'abstiendraient EN SILENCE, exactement comme avant lui. C'est
+/// précisément le défaut qu'on vient de retirer ; il faut donc quelqu'un
+/// pour le guetter.
+#[test]
+fn le_binaire_fabrique_est_un_vrai_binaire() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    for (quoi, octets) in [
+        ("le court", binaire_fabriqué()),
+        ("le long", binaire_fabriqué_long()),
+    ] {
+        let octets = octets.unwrap_or_else(|| {
+            panic!(
+                "{quoi} ne se fabrique plus — trente-sept contrôles viennent \
+                    de devenir muets sans rien dire"
+            )
+        });
+        assert!(octets.starts_with(b"\x7fELF"), "{quoi} est un ELF");
+        let mut app = NamsdecApp::default();
+        assert!(app.load_elf(&octets, NOM_FABRIQUÉ), "{quoi} se charge");
+        let lignes = app.source.lines().count();
+        assert!(lignes > 10, "{quoi} se désassemble : {lignes} lignes");
+        app.do_step();
+        assert!(
+            app.emulator.as_ref().is_some_and(|e| e.cpu().regs.rip != 0),
+            "{quoi} avance d'un pas"
+        );
+    }
+
+    // Et le long est vraiment long : c'est tout ce que les trois
+    // contrôles de relevés lui demandent.
+    let long = binaire_fabriqué_long().expect("le long se fabrique");
+    let mut app = NamsdecApp::default();
+    assert!(app.load_elf(&long, NOM_FABRIQUÉ));
+    let movs = app.source.matches("mov").count();
+    assert!(movs > 10_000, "{movs} occurrences de « mov »");
+
+    // Le court, lui, demande vraiment une entrée : c'est ce que les
+    // contrôles de la console éprouvent sur lui.
+    let court = binaire_fabriqué().expect("le court se fabrique");
+    let mut app = NamsdecApp::default();
+    assert!(app.load_elf(&court, NOM_FABRIQUÉ));
+    app.do_run();
+    for _ in 0..4000 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&egui::Context::default());
+    }
+    assert!(
+        matches!(app.status, Status::WaitingForInput),
+        "il attend son mot de passe : {:?}",
+        app.status
+    );
+    let écrit =
+        String::from_utf8_lossy(app.emulator.as_ref().expect("un émulateur").output()).to_string();
+    assert!(
+        écrit.contains("Enter the password:"),
+        "et il a demandé : {écrit:?}"
+    );
 }
 
 /// Lance un binaire qu'on vient d'écrire, en attendant qu'il se libère.

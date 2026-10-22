@@ -504,7 +504,7 @@ fn the_sidebar_banner_never_cuts_a_line_in_half() {
     // binaire qu'on ouvre. La seconde manquait, et c'est elle qui a
     // laissé passer le repli « Détail » rogné — la prochaine
     // instruction d'un binaire tient deux lignes de plus.
-    let binaire = binaire_dépreuve("crackme-01");
+    let binaire = binaire_fabriqué();
     let séances: Vec<(&str, bool)> = match &binaire {
         Some(_) => vec![("source", false), ("binaire", true)],
         None => vec![("source", false)],
@@ -525,7 +525,7 @@ fn the_sidebar_banner_never_cuts_a_line_in_half() {
             };
             app.apply_theme(&ctx);
             if depuis_binaire {
-                assert!(app.load_elf(binaire.as_ref().unwrap(), "crackme-01"));
+                assert!(app.load_elf(binaire.as_ref().unwrap(), NOM_FABRIQUÉ));
             } else {
                 app.do_assemble();
                 assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
@@ -599,15 +599,14 @@ fn the_sidebar_banner_never_cuts_a_line_in_half() {
 /// passe les cinq onglets.
 #[test]
 fn le_panneau_lateral_ne_se_recouvre_jamais_meme_a_l_etroit() {
-    let Some(octets) = binaire_dépreuve("crackme-010").or_else(|| std::fs::read("/bin/ls").ok())
-    else {
+    let Some(octets) = binaire_fabriqué() else {
         return;
     };
     for onglet in SidebarTab::ALL {
         let ctx = egui::Context::default();
         let mut app = NamsdecApp::default();
         app.apply_theme(&ctx);
-        if !app.load_elf(&octets, "crackme-010") {
+        if !app.load_elf(&octets, NOM_FABRIQUÉ) {
             return;
         }
         app.show_sidebar = true;

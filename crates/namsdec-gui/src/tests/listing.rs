@@ -932,13 +932,13 @@ fn a_long_instruction_is_cut_rather_than_spilled() {
 /// Ce test choisit un octet et vérifie que la fenêtre ne bouge plus.
 #[test]
 fn choisir_un_octet_ne_fait_pas_enfler_la_fenetre() {
-    let Some(octets) = binaire_dépreuve("crackme-01") else {
+    let Some(octets) = binaire_fabriqué() else {
         return;
     };
     let ctx = egui::Context::default();
     let mut app = NamsdecApp::default();
     app.apply_theme(&ctx);
-    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    assert!(app.load_elf(&octets, NOM_FABRIQUÉ), "l'ELF se charge");
     app.show_analysis = true;
     app.analysis_module = "hex_editor".to_owned();
 
@@ -1019,11 +1019,11 @@ fn choisir_un_octet_ne_fait_pas_enfler_la_fenetre() {
 /// n'est pas un source.
 #[test]
 fn a_jump_can_be_inverted_and_the_change_reaches_the_exported_file() {
-    let Some(octets) = binaire_dépreuve("crackme-01") else {
+    let Some(octets) = binaire_fabriqué() else {
         return;
     };
     let mut app = NamsdecApp::default();
-    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    assert!(app.load_elf(&octets, NOM_FABRIQUÉ), "l'ELF se charge");
 
     // La ligne d'un saut conditionnel : on la cherche dans le listing,
     // comme on la chercherait des yeux.
@@ -1091,11 +1091,11 @@ fn a_jump_can_be_inverted_and_the_change_reaches_the_exported_file() {
 /// deviendrait fausse.
 #[test]
 fn neutralising_an_instruction_keeps_every_other_address() {
-    let Some(octets) = binaire_dépreuve("crackme-01") else {
+    let Some(octets) = binaire_fabriqué() else {
         return;
     };
     let mut app = NamsdecApp::default();
-    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    assert!(app.load_elf(&octets, NOM_FABRIQUÉ), "l'ELF se charge");
 
     let état = app.assemble_state.as_ref().expect("chargé");
     let (ligne, longueur) = état
@@ -1139,11 +1139,11 @@ fn neutralising_an_instruction_keeps_every_other_address() {
 #[test]
 fn the_patch_window_says_what_it_would_do_before_one_clicks() {
     let s = strings(Lang::Fr);
-    let Some(octets) = binaire_dépreuve("crackme-01") else {
+    let Some(octets) = binaire_fabriqué() else {
         return;
     };
     let mut app = NamsdecApp::default();
-    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    assert!(app.load_elf(&octets, NOM_FABRIQUÉ), "l'ELF se charge");
     app.show_patches = true;
 
     let peint = paint(&mut app);
@@ -1772,11 +1772,11 @@ fn the_hex_grid_takes_the_keyboard_from_the_editor() {
 /// points d'arrêt et le suivi de RIP.
 #[test]
 fn a_binary_listing_does_not_duplicate_lines() {
-    let Some(octets) = binaire_dépreuve("crackme-01") else {
+    let Some(octets) = binaire_fabriqué() else {
         return;
     };
     let mut app = NamsdecApp::default();
-    assert!(app.load_elf(&octets, "crackme-01"));
+    assert!(app.load_elf(&octets, NOM_FABRIQUÉ));
     let avant = app.source.clone();
     app.cursor_byte = 40;
     app.duplicate_line();

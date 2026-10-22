@@ -1702,9 +1702,9 @@ fn pasting_inserts_at_the_cursor_instead_of_replacing_the_program() {
 
     // Sur un listing venu d'un binaire, les deux refusent : y insérer
     // du texte décalerait les correspondances ligne ↔ adresse.
-    if let Some(octets) = binaire_dépreuve("crackme-01") {
+    if let Some(octets) = binaire_fabriqué() {
         let mut app = NamsdecApp::default();
-        assert!(app.load_elf(&octets, "crackme-01"));
+        assert!(app.load_elf(&octets, NOM_FABRIQUÉ));
         let listing = app.source.clone();
         app.insert_at_cursor(COLLÉ);
         app.replace_all_with(COLLÉ);
@@ -1841,13 +1841,13 @@ fn a_count_cannot_grow_without_bound() {
 /// pas pour autant.
 #[test]
 fn the_line_we_were_reading_comes_back() {
-    let Some(octets) = binaire_dépreuve("crackme-01") else {
+    let Some(octets) = binaire_fabriqué_long() else {
         return;
     };
     let ctx = egui::Context::default();
     let mut app = NamsdecApp::default();
     app.apply_theme(&ctx);
-    assert!(app.load_elf(&octets, "crackme-01"), "l'ELF se charge");
+    assert!(app.load_elf(&octets, NOM_FABRIQUÉ), "l'ELF se charge");
     let lignes = app.source.lines().count();
     assert!(lignes > 1_000, "un listing de {lignes} lignes");
     // Ce que les réglages de la séance précédente porteraient.
