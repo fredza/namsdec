@@ -1179,7 +1179,9 @@ Détail chiffré dans `AMELIORATIONS.txt` 7.11, section « REVUE DU
       presque toutes position et taille, donc un rectangle. Rien à
       réécrire — c'est un résultat, pas un renoncement.
 - [x] **`no_control_asks_the_machine_what_it_should_be_checking`** — le
-      contrôle qui empêche la récidive. Il lit `tests.rs`, découpe par
+      contrôle qui empêche la récidive. Il lit la source des contrôles —
+      `SOURCES_DU_BANC` depuis le découpage du 22 octobre 2026, `tests.rs`
+      avant lui —, découpe par
       `#[test]`, et refuse `availability_in`, `.availability()` et
       `tool_availability` dans un corps de test. Deux exceptions nommées
       avec leur raison — vérifier une relation vraie partout, vérifier la
@@ -1783,6 +1785,34 @@ le code binaire et le pseudo-code. Un seul module neuf les réunit.
 
 ## 7. Dette technique
 
+- [x] **Le découpage de `tests.rs`** (A 7.15 §3) — 33 032 lignes et 554
+      contrôles dans un fichier, un quart du code du dépôt. Vingt
+      modules de thème dans `src/tests/`, nommés par ce qu'ils gardent :
+      `execution` en porte 47, `banc` 39, `chassis` 10. Les 574
+      fonctions sont retrouvées une à une, et un contrôle de relecture
+      compare chaque corps à ce qu'il était : **quatre seulement ont
+      changé**, les trois qu'il fallait changer et un artefact de la
+      comparaison. Rien ne s'est perdu — 703 contrôles au vert avant,
+      703 après, plus un neuf.
+      LE MOTIF INVOQUÉ NE TENAIT PAS, et c'est écrit en tête du fichier
+      plutôt qu'oublié : « chaque contrôle modifié recompile les 31
+      kloc ». Mesuré AVANT d'y toucher — une ligne ajoutée dans
+      `tests.rs`, 5,74 s ; la même dans `timeline.rs`, 5,65 s. L'unité
+      de compilation est le crate, non le fichier. Le découpage ne fait
+      rien gagner à la compilation ; il est fait pour la seule raison
+      qui restait : on retrouve un contrôle, et surtout on voit ce qui
+      n'en a pas.
+      LE PIÈGE ÉTAIT AILLEURS. Trois contrôles lisent la source des
+      contrôles — la règle qu'ils vérifient est une règle d'écriture.
+      Ils faisaient `include_str!("tests.rs")` : après le découpage ils
+      auraient regardé un vingtième du banc, EN PASSANT AU VERT. Ils
+      lisent maintenant `SOURCES_DU_BANC`, qu'un contrôle neuf confronte
+      aux `mod` déclarés. Les trois ont été éprouvés en semant une faute
+      dans un AUTRE fichier qu'eux — chacun rougit, et nomme le fichier.
+      Et le relevé qui lit tout le dépôt exclut `src/tests/` comme il
+      excluait `tests.rs`, sans cesser de regarder les essais
+      d'intégration : semé, mesuré.
+
 - [~] **Le découpage de `main.rs`** (A 5.1, 7.2) — 20 641 lignes au
       départ, 6 440 aujourd'hui. Dix-neuf modules en sont sortis :
       `flow`, `tools`, `windows`, `editor`, `menus`, `calc_ui`,
@@ -2032,13 +2062,15 @@ le code binaire et le pseudo-code. Un seul module neuf les réunit.
       explique ses refus : un outil qui sert à apprendre doit dire
       l'étendue de ce qu'il sait faire, et pas seulement la raison d'un
       non.
-- [ ] **Le plan de la séance suivante** (A 7.15, arrêté le 15 octobre
-      2026) — cinq points, et l'ordre est l'avis : (1) 7.9, expliquer un
+- [x] **Le plan de la séance suivante** (A 7.15, arrêté le 15 octobre
+      2026) — les cinq points sont faits : (1) [FAIT] 7.9, expliquer un
       ENSEMBLE et non plus une instruction, puis la moitié manquante de
-      7.10 ; (2) [FAIT] mesurer le taux de refus du détour sur les
+      7.10 — voir les deux entrées de la section 5 ; (2) [FAIT] mesurer
+      le taux de refus du détour sur les
       onze binaires d'épreuve — 66 %, et la relocalisation n'est pas la
-      condition : la place libre l'est ; (3)
-      découper `tests.rs`, 31 602 lignes et 689 contrôles d'un bloc ;
+      condition : la place libre l'est ; (3) [FAIT] découper `tests.rs`,
+      33 032 lignes et 554 contrôles d'un bloc — vingt thèmes, et le
+      motif invoqué ne tenait pas (voir la section 7) ;
       (4) [FAIT] réconcilier l'analyse d'AMELIORATIONS avec son journal —
       5.3 et 7.8 se donnaient encore pour le gros chantier restant, 3.5
       et 7.7 pour une dépendance inutile ; (5) [FAIT] le ménage

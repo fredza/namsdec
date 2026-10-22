@@ -4389,12 +4389,17 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      condition. Huit sur dix : elle attend. Décider sur un chiffre, comme
      partout ailleurs ici.
 
-  3. tests.rs : 31 602 LIGNES DANS UN FICHIER.
+  3. [FAIT LE 22 OCTOBRE — voir 9.8] tests.rs : 31 602 LIGNES DANS UN
+     FICHIER.
      689 contrôles, un quart du code du projet, quatre fois `main.rs` —
      qui lui est suivi de près (5.1, et le découpage en cours). Chaque
      contrôle modifié recompile les 31 kloc. À découper par thème : le
      banc de mise en page, l'éditeur, les fenêtres, l'émulateur vu de
      l'interface. N'était inscrit nulle part.
+     ATTENTION EN RELISANT CECI : la phrase sur la recompilation est
+     FAUSSE, et c'est 9.8 qui l'a mesurée. L'unité de compilation est le
+     crate, non le fichier. Le découpage a été fait quand même, pour une
+     autre raison — qui tient, elle.
 
   4. CE FICHIER DÉRIVAIT DE LA RÉALITÉ.
      Deux entrées faisaient choisir le mauvais chantier : 5.3 et 7.8 se
@@ -5331,3 +5336,71 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      Retenu dans la lignée de 9.6 : un relevé qui passe au vert ne dit
      « pas de défaut » que s'il a pu en voir un. Les trois premiers
      n'auraient JAMAIS échoué.
+
+
+9.8  [FAIT] TESTS.RS : 33 032 LIGNES, VINGT THÈMES — ET LE MOTIF ÉTAIT FAUX
+     Dernier point ouvert du plan du 15 octobre (7.15 §3). Le fichier avait
+     grossi depuis : 33 032 lignes, 554 contrôles, 574 fonctions, un quart
+     du code du dépôt dans un seul fichier.
+
+     --- D'ABORD LA MESURE, ET ELLE CONTREDIT LE PLAN ---
+     Le plan donnait un motif chiffrable : « chaque contrôle modifié
+     recompile les 31 kloc ». Mesuré AVANT d'y toucher, parce qu'un motif
+     qui se mesure se mesure :
+       - une ligne ajoutée dans `tests.rs`   → 5,74 s de recompilation ;
+       - la même ligne dans `timeline.rs`    → 5,65 s.
+     Identique. L'unité de compilation est le CRATE, non le fichier, et
+     rustc s'arrête déjà aux fonctions qui ont changé — un fichier de
+     trente-trois mille lignes ne coûte pas une recompilation de plus
+     qu'un fichier de deux cents. Le découpage ne fait RIEN gagner à la
+     compilation, et la phrase du plan est retirée de l'analyse (point 3
+     ci-dessus porte l'avertissement, plutôt que d'être effacée : une
+     analyse corrigée en silence se refait un jour à l'identique).
+
+     IL A ÉTÉ FAIT QUAND MÊME, pour la raison qui restait et qui suffit :
+     on retrouve un contrôle, et surtout ON VOIT CE QUI N'EN A PAS. Vingt
+     fichiers nommés par ce qu'ils gardent disent d'un coup d'œil que
+     l'exécution en porte 47, le banc 39, le châssis 10 — ce qu'un fichier
+     unique de 33 kloc ne disait pas et ne pouvait pas dire.
+
+     --- LE DÉCOUPAGE ---
+     `src/tests/` et vingt modules : banc, performance, editeur, listing,
+     processeur, memoire, execution, flux, analyse, exercices, aide,
+     console, calculatrice, fichiers, fenetres, panneau, commandes,
+     chassis, outils, preferences. `tests.rs` garde ce dont TOUS se
+     servent — les scènes du banc, l'écran de mesure, les binaires
+     d'épreuve, trente-deux fonctions en tout — et les contrôles qui
+     regardent le dépôt lui-même.
+     Le patron est celui du découpage de `main.rs` : `use super::*` en
+     tête, et le texte déplacé sans une virgule de différence. Vérifié, et
+     non supposé : les 574 fonctions sont comparées une à une à ce
+     qu'elles étaient, et QUATRE SEULEMENT diffèrent — les trois qu'il
+     fallait changer, et une quatrième qui n'était qu'un artefact de la
+     comparaison elle-même. 703 contrôles au vert avant, 703 après, plus
+     un neuf.
+
+     --- LE VRAI PIÈGE N'ÉTAIT PAS LE DÉMÉNAGEMENT ---
+     Trois contrôles lisent la SOURCE des contrôles, parce que la règle
+     qu'ils vérifient est une règle d'écriture et non de pixels : celui
+     qui exige qu'on pose le style avant de mesurer une géométrie, et
+     celui qui interdit de demander à la machine ce qu'on devrait semer.
+     Ils faisaient `include_str!("tests.rs")`.
+     Après le découpage, ils auraient regardé UN VINGTIÈME du banc — et
+     ils auraient passé au VERT en le faisant. C'est la seule façon dont
+     un contrôle peut mentir sans qu'on le voie, et c'est exactement ce
+     qui est arrivé à ces mêmes contrôles au découpage de `main.rs` en
+     septembre (voir l'en-tête de SOURCES_DE_L_INTERFACE).
+     Ils lisent donc `SOURCES_DU_BANC`, liste écrite une fois, et un
+     contrôle neuf — `la_liste_des_controles_ne_rate_aucun_theme` — la
+     confronte aux `mod` déclarés : un thème ajouté sans être inscrit fait
+     rougir, au lieu de sortir du regard en silence.
+     LES TROIS ONT ÉTÉ ÉPROUVÉS EN SEMANT UNE FAUTE, et dans un AUTRE
+     fichier qu'eux-mêmes : chacun rougit et nomme désormais le fichier
+     fautif en plus du contrôle. Un relevé qui passe au vert ne dit « pas
+     de défaut » que s'il a pu en voir un.
+     Enfin, le contrôle qui lit tout le dépôt pour traquer les
+     commentaires collés exclut `src/tests/` comme il excluait `tests.rs`
+     — la forme y est trop libre pour la règle —, mais SANS cesser de
+     regarder les sept fichiers d'essais d'intégration, qui ne sont pas
+     sous un `src/`. Semé, mesuré : une faute posée dans un thème le
+     laisse vert, la liste des sources reste au-delà de quarante fichiers.
