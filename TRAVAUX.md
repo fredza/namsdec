@@ -1793,6 +1793,42 @@ le code binaire et le pseudo-code. Un seul module neuf les réunit.
       lequel a échoué le jour où namsdec a été installé sur la machine.
 - [x] `the_assembled_program_can_leave_the_workbench` stabilisé (A 3.4)
 - [x] Le rendu hors écran est mesuré, et les captures sont outillées (A 3.2)
+- [x] **Toute abstention nomme sa raison** (A 7.6, clos) — 7.6
+      demandait « un contrôle qui dit ce qui n'est pas testé ». Il tient
+      à l'envers de ce qu'on croirait : non pas compter ce qui manque,
+      mais **refuser qu'un silence n'ait pas de nom**. Un `return;` nu
+      est un contrôle qui rend la main au lieu de juger, et qui passe au
+      vert en le faisant.
+      `every_abstention_names_its_reason` relève les 225 abstentions des
+      556 contrôles et exige que chacune porte, dans ses trente lignes
+      d'amont, l'une des neuf raisons nommées — l'assembleur, le
+      compilateur C, le corpus, un binaire du système, rien d'assemblé,
+      pas de dossier de données, un outil non installé, bash, un réglage
+      hors du dépôt. Allonger la liste demande une phrase écrite, comme
+      la liste blanche de 7.4.
+      **SIX DÉFAUTS TROUVÉS EN L'ÉCRIVANT**, et le pire d'abord :
+      `the_install_button_brings_its_plan_to_the_front` ne vérifiait
+      RIEN, et sur aucune machine. Il semait l'état des outils dans le
+      littéral de sa structure, or ouvrir les préférences JETTE le relevé
+      par conception et l'image suivante interroge la machine — ce que le
+      message d'erreur de 7.4 dit mot pour mot. rizin-ghidra se
+      présentait donc « installé », aucun bouton « Réparer » n'était
+      peint, et le contrôle s'abstenait. Il sème maintenant APRÈS la
+      première image, fait défiler la liste pour amener le bouton dans sa
+      zone visible — les trois outils qui ont une recette sont les
+      derniers des six —, et crie s'il ne le trouve pas.
+      Quatre s'abstenaient sur l'absence d'un fichier DU DÉPÔT
+      (`docs/guide.py`, `src/`, `install.sh` deux fois) : ce n'est pas une
+      machine mal outillée, c'est le dépôt qui a bougé. Elles échouent.
+      Trois autres s'abstenaient faute de trouver ce qu'elles venaient
+      cliquer — un en-tête, un numéro de ligne du profil, une cellule de
+      la grille hexadécimale. Mesuré : les trois tournent ici, donc leur
+      garde-fou ne protégeait que leur propre silence le jour où le
+      panneau changerait. Elles crient, et l'une d'elles rendait son
+      silence par un `println!` resté de la chasse d'octobre.
+      Éprouvée en semant une abstention anonyme : elle rougit et la
+      nomme.
+
 - [x] **Un chemin de ma machine dans deux contrôles** (A 7.6) — relevé
       en comptant les abstentions : **212 contrôles sur 556 peuvent se
       taire**, et la plupart pour une bonne raison (132 demandent nasm et

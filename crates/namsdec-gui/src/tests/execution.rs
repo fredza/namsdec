@@ -2193,9 +2193,14 @@ boucle:
         }
         output.textures_delta.clear();
     }
-    let Some(où) = où else {
-        return;
-    };
+    // UN NUMÉRO DE LIGNE EST PEINT, ou c'est un défaut : le profil
+    // vient d'être rempli, et c'est son numéro qu'on s'apprête à
+    // cliquer. S'abstenir ici, c'est se taire le jour où la colonne des
+    // numéros disparaît du classement.
+    let où = où.expect(
+        "aucun numéro de ligne visible dans le classement du profil — \
+         la colonne a disparu, ou rien n'a été classé",
+    );
 
     app.goto_line = None;
     for étape in 0..4 {

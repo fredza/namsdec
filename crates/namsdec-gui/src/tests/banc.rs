@@ -2551,6 +2551,139 @@ fn a_control_that_measures_geometry_sets_the_style_first() {
     );
 }
 
+/// Toute abstention nomme sa raison.
+///
+/// Un contrôle qui rend la main au lieu de juger — un `return;` nu — ne
+/// vérifie rien, et il passe au VERT en ne vérifiant rien. C'est
+/// souvent juste : sans nasm, il n'y a rien à assembler, et se taire
+/// vaut mieux qu'échouer sur l'absence d'un outil.
+///
+/// Mais il faut que la raison se LISE, et c'est tout ce que cette règle
+/// demande. 7.6 réclamait « un contrôle qui dit ce qui n'est pas
+/// testé » : le voici, et il tient à l'envers de ce qu'on croirait —
+/// non pas compter ce qui manque, mais refuser qu'un silence n'ait pas
+/// de nom.
+///
+/// Le relevé du 22 octobre 2026 donnait 228 abstentions sur 557
+/// contrôles. Rangées par raison, trois n'en avaient aucune, et les
+/// trois étaient des défauts :
+///   - deux s'abstenaient sur l'absence d'un fichier DU DÉPÔT
+///     (`docs/guide.py`, `src/`) — ce qui n'est pas un état de la
+///     machine, mais le dépôt qui a bougé : elles crient maintenant ;
+///   - la troisième — `the_install_button_brings_its_plan_to_the_front`
+///     — s'abstenait PARTOUT, y compris ici, parce qu'elle semait son
+///     état avant la première image et qu'ouvrir les préférences jette
+///     le relevé. Elle n'avait jamais rien vérifié.
+///
+/// Trente lignes d'amont, et non trois : l'appel qui justifie
+/// l'abstention peut être loin du `return`, un `compile_c` portant
+/// vingt lignes de source C entre les deux.
+#[test]
+fn every_abstention_names_its_reason() {
+    // Les raisons de se taire, et ce qui les nomme dans le code.
+    //
+    // Allonger cette liste demande une raison écrite, et c'est le but :
+    // le prochain qui voudra une abstention nouvelle devra dire ici
+    // pourquoi se taire est la bonne réponse. Ce qu'on refuse n'est pas
+    // le silence, c'est le silence anonyme.
+    const RAISONS: [(&str, &str); 9] = [
+        ("find_nasm", "sans assembleur, rien à assembler"),
+        ("find_linker", "sans éditeur de liens, rien à lier"),
+        (
+            "binaire_fabriqué",
+            "le binaire d'épreuve demande nasm et ld",
+        ),
+        ("compile_c", "pas de compilateur C sur cette machine"),
+        (
+            "dossier_dépreuve",
+            "le corpus de chacun, qui n'est pas versionné",
+        ),
+        ("assemble_state", "rien n'a été assemblé, donc rien à lire"),
+        (
+            "install_plan",
+            "sans dossier de données, la fenêtre d'installation se referme seule",
+        ),
+        ("program_path", "l'outil n'est pas installé"),
+        (
+            "bash",
+            "sans bash, un script d'installation ne se lance pas",
+        ),
+    ];
+
+    // Les mêmes, sous une forme que le code écrit autrement.
+    const AUSSI: [&str; 5] = [
+        "\"/bin/",
+        "\"/usr/bin",
+        "data_dir()",
+        "external_abyss",
+        ".diagnostics",
+    ];
+
+    // Ce contrôle-ci porte les motifs puisqu'il les cherche.
+    const MOI: &str = "every_abstention_names_its_reason";
+
+    let mut muets: Vec<String> = Vec::new();
+    let mut abstentions = 0usize;
+    for (fichier, source) in SOURCES_DU_BANC {
+        for morceau in source.split("#[test]\n").skip(1) {
+            let Some(nom) = morceau
+                .split_once("fn ")
+                .and_then(|(_, reste)| reste.split_once('('))
+                .map(|(nom, _)| nom.trim())
+            else {
+                continue;
+            };
+            if nom == MOI {
+                continue;
+            }
+            let corps = morceau
+                .split_once('{')
+                .map(|(_, reste)| reste)
+                .unwrap_or(morceau);
+            let corps = corps.split_once("\n}\n").map(|(c, _)| c).unwrap_or(corps);
+            let lignes: Vec<&str> = corps.lines().collect();
+            // TOUTES les abstentions du contrôle, et non la première :
+            // n'en regarder qu'une les fait sortir du bois l'une après
+            // l'autre, et la dernière reste anonyme sans que rien ne le
+            // dise.
+            for (rang, _) in lignes
+                .iter()
+                .enumerate()
+                .filter(|(_, l)| l.trim() == "return;")
+            {
+                abstentions += 1;
+                let amont = lignes[rang.saturating_sub(30)..=rang].join("\n");
+                let nommée = RAISONS.iter().any(|(motif, _)| amont.contains(motif))
+                    || AUSSI.iter().any(|motif| amont.contains(motif));
+                if !nommée {
+                    muets.push(format!(
+                        "{fichier} : {nom}\n      …{}",
+                        lignes[rang.saturating_sub(2)..=rang]
+                            .join("\n      ")
+                            .trim_start()
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        abstentions > 100,
+        "le relevé ne trouve presque aucune abstention ({abstentions}) — il \
+         lit au mauvais endroit, et cette règle ne garde plus rien"
+    );
+    assert!(
+        muets.is_empty(),
+        "{} abstention(s) sans raison nommée — un contrôle qui rend la main \
+         sans dire pourquoi passe au vert en ne vérifiant rien :\n  {}\n\n\
+         Trois issues, dans cet ordre : SEMER ce qui manque plutôt que de \
+         s'en passer ; ÉCHOUER si ce qui manque est un fichier du dépôt ; ou \
+         inscrire la raison dans RAISONS, avec sa phrase.",
+        muets.len(),
+        muets.join("\n  ")
+    );
+}
+
 /// Aucun contrôle ne lit un chemin de la machine de quelqu'un.
 ///
 /// Trouvé le 22 octobre 2026 en comptant les abstentions : deux
@@ -2801,10 +2934,20 @@ fn unfolding_the_memory_tools_never_cuts_a_title() {
         image(&mut app, Vec::new());
     }
     let textes = image(&mut app, Vec::new());
-    let Some((_, entête, _)) = textes.iter().find(|(t, _, _)| t.contains("Outils mémoire"))
-    else {
-        return;
-    };
+    // L'en-tête EST peint, ou c'est un défaut : c'est lui qu'on vient
+    // déplier, et sans lui le contrôle ne mesure rien. Il s'abstenait
+    // ici, donc il se serait tu le jour où la section aurait changé de
+    // nom — exactement le jour où il sert.
+    let (_, entête, _) = textes
+        .iter()
+        .find(|(t, _, _)| t.contains("Outils mémoire"))
+        .unwrap_or_else(|| {
+            panic!(
+                "« Outils mémoire » n'est pas peint — la section a changé de \
+                 nom, ou elle a disparu de l'onglet Mémoire. Textes vus : {:?}",
+                textes.iter().map(|(t, _, _)| t).collect::<Vec<_>>()
+            )
+        });
     let cible = entête.center();
     let clic = |pressed| egui::Event::PointerButton {
         pos: cible,

@@ -1715,10 +1715,14 @@ fn the_hex_grid_takes_the_keyboard_from_the_editor() {
         }
         output.textures_delta.clear();
     }
-    let Some(cible) = cible else {
-        println!("aucune cellule peinte — rien à mesurer");
-        return;
-    };
+    // UNE CELLULE EST PEINTE, ou c'est un défaut. Ce `println!` était
+    // resté de la chasse d'octobre : il imprimait là où il fallait
+    // crier, et le contrôle — celui qui retient que la grille prend le
+    // clavier — se serait tu le jour où la grille cesse de peindre.
+    let cible = cible.expect(
+        "aucune cellule hexadécimale visible dans la grille — elle ne \
+         peint plus, ou elle est hors de la fenêtre d'analyse",
+    );
 
     for pressé in [true, false] {
         let mut events = Vec::new();

@@ -5547,3 +5547,94 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      sont aujourd'hui huit, et toutes légitimes (DZF optionnel, un guide
      absent, un dossier de greffons). C'est le bon moment pour l'écrire,
      et ce n'est pas fait : noté comme tel plutôt que donné pour fait.
+
+
+9.11 [FAIT] 7.6 EST CLOS : TOUTE ABSTENTION NOMME SA RAISON
+     9.10 laissait ceci en l'air : « le relevé des abstentions a été fait à
+     la main, par un script jeté après usage. Le rendre permanent
+     demanderait de ranger chaque abstention sous une raison NOMMÉE, et de
+     refuser celles qui n'en ont pas. C'est le bon moment pour l'écrire, et
+     ce n'est pas fait. » C'est fait.
+
+     --- LA FORME QUE PREND 7.6, ET POURQUOI C'EST L'ENVERS ---
+     7.6 demandait « un contrôle qui dit ce qui n'est pas testé ». On
+     imaginait un rapport : tant de pour cent de couverture, tant de
+     chemins jamais pris. Un tel rapport se lit une fois et ne protège
+     rien.
+     Ce qui protège, c'est de refuser qu'un SILENCE N'AIT PAS DE NOM. Un
+     `return;` nu dans un contrôle est un contrôle qui rend la main au lieu
+     de juger — et qui passe au vert en le faisant. C'est souvent la bonne
+     réponse : sans nasm, il n'y a rien à assembler. Mais la raison doit se
+     LIRE, et c'est tout ce que `every_abstention_names_its_reason`
+     demande : dans les trente lignes d'amont du `return`, l'une des neuf
+     raisons nommées. Trente et non trois, parce qu'un `compile_c` porte
+     vingt lignes de source C entre l'appel et le refus.
+     Neuf raisons, chacune avec sa phrase, et allonger la liste demande
+     d'écrire la sienne — le même dispositif que la liste blanche de 7.4,
+     pour la même raison : le prochain qui voudra se taire devra dire
+     pourquoi.
+
+     --- SIX DÉFAUTS TROUVÉS EN L'ÉCRIVANT ---
+     Le relevé donnait 228 abstentions sur 557 contrôles. Trois n'avaient
+     aucune raison nommée ; la règle, plus stricte que le script, en a
+     trouvé trois de plus, puis trois autres encore en regardant TOUTES les
+     abstentions d'un contrôle et non la première — n'en regarder qu'une
+     les fait sortir du bois l'une après l'autre.
+
+     1. LE PIRE : `the_install_button_brings_its_plan_to_the_front` ne
+        vérifiait RIEN, et sur aucune machine.
+        Il sème l'état des outils — deux incomplets, le reste prêt — pour
+        que le bouton « Réparer » paraisse, puis le clique. Mais il semait
+        dans le LITTÉRAL de la structure, avant la première image. Or
+        ouvrir les préférences jette le relevé des outils par conception,
+        et l'image suivante le refait en interrogeant la machine : c'est
+        écrit mot pour mot dans le message d'erreur de la règle de 7.4.
+        rizin-ghidra se présentait donc « installé sur la machine », aucun
+        bouton n'était peint, et le contrôle s'abstenait — en se
+        justifiant par un commentaire qui disait « sur une machine où tout
+        est déjà bâti, ce test n'a rien à observer ». Le commentaire était
+        vrai du temps où le relevé lisait le disque, et faux depuis.
+        Trois choses étaient nécessaires pour le réveiller, et aucune
+        n'était devinable : semer APRÈS la première image ; choisir deux
+        outils QUI ONT UNE RECETTE (le bouton ne paraît que là où namsdec
+        sait quoi installer — objdump vient des paquets du système et n'en
+        a pas, ce qui a coûté une fausse piste) ; et FAIRE DÉFILER la
+        liste, les trois outils à recette étant les derniers des six, si
+        bien que leur bouton est peint 3,5 px SOUS le bas de la zone
+        visible. Il crie maintenant s'il ne le trouve pas, après quarante
+        images.
+
+     2-5. QUATRE S'ABSTENAIENT SUR UN FICHIER DU DÉPÔT : `docs/guide.py`,
+        `src/`, et `install.sh` deux fois. L'absence d'un fichier versionné
+        n'est pas un état de la machine dont il faudrait s'accommoder,
+        c'est le dépôt qui a bougé — et se taire alors, c'est se taire au
+        seul moment où le contrôle aurait quelque chose à dire. Elles
+        échouent, avec la phrase qui le dit. Deux autres du même acabit ont
+        suivi dans `installing_really_puts_everything_in_place` : un
+        dossier temporaire qui refuse de se créer, un fichier qui refuse de
+        s'écrire. Éteindre le contrôle là revenait à conclure que
+        l'installation est bonne sans l'avoir essayée.
+
+     6-8. TROIS S'ABSTENAIENT FAUTE DE TROUVER CE QU'ELLES VENAIENT
+        CLIQUER : l'en-tête « Outils mémoire », un numéro de ligne du
+        classement du profil, une cellule de la grille hexadécimale.
+        MESURÉ, en faisant crier l'abstention : les trois tournent ici.
+        Leur garde-fou ne protégeait donc rien — il ne se déclencherait
+        que le jour où le panneau change, c'est-à-dire le jour où le
+        contrôle sert. Elles crient, et l'une d'elles rendait son silence
+        par un `println!` resté de la chasse du 21 octobre : elle
+        imprimait là où il fallait crier. C'est la grille hexadécimale,
+        donc la rétention de 9.6 — la seconde de cette série à n'en être
+        pas une.
+
+     --- CE QUE LA SÉRIE 9.8 → 9.11 APPREND ---
+     Quatre chantiers de suite, et le même défaut dessous : UN CONTRÔLE QUI
+     SE TAIT PASSE AU VERT. Le découpage l'aurait fait aux trois règles qui
+     lisent la source ; le corpus absent le faisait à trente-sept ; un
+     chemin personnel à deux ; une semence posée trop tôt à un, et celui-là
+     n'avait jamais rien vérifié.
+     Aucun de ces cinquante contrôles n'était rouge. Aucun n'aurait jamais
+     rougi. C'est pour cela qu'il faut des règles qui regardent les
+     contrôles eux-mêmes, et qu'il faut les éprouver en semant une faute —
+     dans un AUTRE fichier qu'eux, sans quoi on ne mesure que leur capacité
+     à se dénoncer.

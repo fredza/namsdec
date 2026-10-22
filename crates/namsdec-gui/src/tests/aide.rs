@@ -1741,9 +1741,12 @@ fn the_readme_names_both_plugin_directories() {
 #[test]
 fn le_manuel_nomme_les_panneaux_comme_l_interface() {
     let racine = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let Ok(guide) = std::fs::read_to_string(racine.join("docs/guide.py")) else {
-        return;
-    };
+    // `docs/guide.py` est DANS le dépôt : son absence n'est pas un état
+    // de la machine dont il faudrait s'accommoder, c'est le dépôt qui a
+    // bougé. S'abstenir alors, c'est se taire au seul moment où ce
+    // contrôle aurait quelque chose à dire.
+    let guide = std::fs::read_to_string(racine.join("docs/guide.py"))
+        .expect("docs/guide.py — le manuel est versionné avec le code");
     let mut app = NamsdecApp::default();
     let mut manquants: Vec<&'static str> = Vec::new();
     for module in app.re_registry.iter_mut() {

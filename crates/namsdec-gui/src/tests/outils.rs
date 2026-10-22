@@ -169,32 +169,6 @@ fn the_install_button_brings_its_plan_to_the_front() {
         preferences_tab: PreferencesTab::Tools,
         show_decompiler_module: true,
         show_installer_module: true,
-        // CE QUE LA MACHINE RÉPOND, POSÉ ICI plutôt que demandé au
-        // disque. Le test lisait vraiment `~/.local/share` pour savoir
-        // quels outils portent un bouton « Installer » — il dépendait
-        // donc de ce qui est installé sur le poste, et il a fini par
-        // échouer le jour où namsdec lui-même a été installé dessus.
-        //
-        // Un seul outil manquant, tous les autres prêts : le bouton
-        // cherché est alors le sien, et il n'y en a qu'un.
-        tools_ready: namsdec_disasm::known::all()
-            .into_iter()
-            .map(|k| {
-                // Deux outils incomplets, et non un seul : lequel des
-                // deux boutons se trouve en premier dans la fenêtre
-                // dépend de la mise en page, laquelle bouge quand on
-                // touche à un widget voisin. Le test n'a pas à le
-                // savoir — il a à vérifier que le bouton cliqué est
-                // celui d'un outil qui a vraiment besoin d'être
-                // installé.
-                let état = if matches!(k.plugin.id.as_str(), "rizin-ghidra" | "retdec") {
-                    namsdec_disasm::known::Availability::Incomplete
-                } else {
-                    namsdec_disasm::known::Availability::Ready
-                };
-                (k.plugin.id.clone(), état)
-            })
-            .collect(),
         ..Default::default()
     };
     let s = strings(app.lang);
@@ -208,38 +182,88 @@ fn the_install_button_brings_its_plan_to_the_front() {
         ..Default::default()
     };
 
-    // Où se trouve le bouton, d'après ce qui est peint.
+    // Où se trouve le bouton, d'après ce qui est peint — et il faut
+    // trois choses pour qu'il y soit.
     let mut cible = None;
-    for _ in 0..3 {
-        cible = None;
-        let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+    // Où poser le pointeur pour faire défiler la liste : la zone de
+    // découpe du bouton qu'on a vu peint mais hors de vue. Rien n'est
+    // écrit en dur, de sorte qu'une liste qui déménage reste trouvable.
+    let mut poignée: Option<egui::Pos2> = None;
+    for image in 0..40 {
+        let mut entrée = entrée.clone();
+        // (2) FAIRE DÉFILER LA LISTE. Les trois outils qui ont une
+        // recette sont les derniers des six, et leur carte tombe sous le
+        // bas de la liste : le bouton est peint, mais hors de sa zone de
+        // découpe. Cliquer à sa position ne l'atteindrait pas.
+        if let Some(défilement) = poignée {
+            entrée.events.push(egui::Event::PointerMoved(défilement));
+            entrée.events.push(egui::Event::MouseWheel {
+                unit: egui::MouseWheelUnit::Point,
+                delta: egui::vec2(0.0, -120.0),
+                modifiers: egui::Modifiers::NONE,
+                phase: egui::TouchPhase::Move,
+            });
+        }
+        let mut sortie = ctx.run_ui(entrée, |ui| app.draw(ui));
+        // (1) SEMER L'ÉTAT APRÈS LA PREMIÈRE IMAGE, et c'est tout le
+        // sujet : ouvrir les préférences JETTE le relevé des outils par
+        // conception, et l'image suivante le refait en interrogeant
+        // vraiment la machine. Semé dans le littéral de la structure,
+        // comme il l'était, l'état était écrasé avant d'avoir servi —
+        // rizin-ghidra se présentait « installé sur la machine », aucun
+        // bouton « Réparer » n'était peint, et le contrôle s'abstenait.
+        // Sur toute machine, y compris celle-ci.
+        if image == 0 {
+            // Deux outils incomplets, et non un seul : lequel des deux
+            // boutons se trouve en premier dans la fenêtre dépend de la
+            // mise en page, laquelle bouge quand on touche à un widget
+            // voisin. Et ces deux-là, parce qu'ils ont une RECETTE : le
+            // bouton ne paraît que là où namsdec sait quoi installer —
+            // `objdump` vient des paquets du système, et n'en a pas.
+            app.tools_ready = namsdec_disasm::known::all()
+                .into_iter()
+                .map(|k| {
+                    let état = if matches!(k.plugin.id.as_str(), "rizin-ghidra" | "retdec") {
+                        namsdec_disasm::known::Availability::Incomplete
+                    } else {
+                        namsdec_disasm::known::Availability::Ready
+                    };
+                    (k.plugin.id.clone(), état)
+                })
+                .collect();
+        }
         for clipped in &sortie.shapes {
-            // Deux outils INCOMPLETS : leur bouton de complétion dit
-            // « Réparer » (accent), et non « Installer… » — on ne peut pas
-            // les activer avant de les avoir complétés.
             if let egui::epaint::Shape::Text(texte) = &clipped.shape
                 && texte.galley.text() == s.install_repair
             {
                 let milieu = texte.pos + texte.galley.size() / 2.0;
-                // **Visible**, et pas seulement peint : la liste des
-                // outils défile, et le dernier bouton peint est souvent
-                // celui qui dépasse du bas. Cliquer à sa position ne
-                // l'atteindrait pas — le test échouait alors en accusant
-                // le clic, alors que c'est la cible qui était mauvaise.
+                // **Visible**, et pas seulement peint.
                 if clipped.clip_rect.contains(milieu) {
                     cible = Some(milieu);
                     break;
                 }
+                // Peint mais hors de vue : on sait désormais où poser le
+                // pointeur pour faire défiler sa liste.
+                poignée = Some(clipped.clip_rect.center());
             }
         }
         sortie.textures_delta.clear();
+        if cible.is_some() {
+            break;
+        }
     }
-    // Pas de bouton s'il n'y a rien à installer : sur une machine où
-    // tout est déjà bâti, ce test n'a rien à observer. Il le dit plutôt
-    // que d'échouer sur l'état du poste.
-    let Some(cible) = cible else {
-        return;
-    };
+    // (3) ET S'IL N'Y EST PAS, C'EST UN DÉFAUT. Ce contrôle s'abstenait
+    // ici — « sur une machine où tout est déjà bâti, ce test n'a rien à
+    // observer » —, et il s'abstenait partout : il n'a jamais rien
+    // vérifié depuis que son état est semé. Trouvé le 22 octobre 2026 en
+    // refusant les abstentions sans raison nommée.
+    let cible = cible.unwrap_or_else(|| {
+        panic!(
+            "aucun bouton « {} » visible après quarante images, alors que \
+             deux outils à recette sont semés incomplets",
+            s.install_repair
+        )
+    });
 
     let mut presse = entrée.clone();
     presse.events.push(egui::Event::PointerMoved(cible));
@@ -261,11 +285,10 @@ fn the_install_button_brings_its_plan_to_the_front() {
     let mut sortie = ctx.run_ui(relâche, |ui| app.draw(ui));
     sortie.textures_delta.clear();
 
-    // Le plan demandé est celui d'un outil qui a vraiment besoin d'être
-    // installé — et non un nom écrit en dur : lequel des outils porte un
-    // bouton « Installer » dépend de ce que la machine a déjà. Nommer
-    // « rizin-ghidra » faisait échouer le test sur un poste où rizin
-    // était complet, c'est-à-dire là où tout allait bien.
+    // Le plan demandé est celui d'un outil qu'on a DIT incomplet. Les
+    // nommer ici est juste depuis que leur état est semé : c'est la
+    // machine qu'il ne faut pas interroger, pas la semence qu'il faut
+    // oublier.
     let plan = app
         .install_plan
         .as_deref()
@@ -1884,9 +1907,13 @@ fn namsdec_answers_its_command_line() {
 #[test]
 fn the_scripts_say_what_they_will_do_before_doing_it() {
     let racine = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    if !racine.join("install.sh").is_file() {
-        return;
-    }
+    // `install.sh` est DANS le dépôt : s'il manque, ce n'est pas une
+    // machine mal outillée, c'est le dépôt qui a bougé — et se taire
+    // alors, c'est se taire au seul moment où ce contrôle sert.
+    assert!(
+        racine.join("install.sh").is_file(),
+        "install.sh est versionné : son absence est une anomalie du dépôt"
+    );
     let dossier = tempfile::tempdir().expect("un dossier temporaire");
 
     for (nom, attendus) in [
@@ -2073,9 +2100,13 @@ fn a_dry_run_writes_nothing() {
 #[test]
 fn installing_really_puts_everything_in_place() {
     let racine = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    if !racine.join("install.sh").is_file() {
-        return;
-    }
+    // `install.sh` est DANS le dépôt : s'il manque, ce n'est pas une
+    // machine mal outillée, c'est le dépôt qui a bougé — et se taire
+    // alors, c'est se taire au seul moment où ce contrôle sert.
+    assert!(
+        racine.join("install.sh").is_file(),
+        "install.sh est versionné : son absence est une anomalie du dépôt"
+    );
     // Un binaire de remplacement, là où le script ira le chercher. On
     // ne touche à `target/` que s'il n'y a rien : écraser celui de la
     // compilation en cours serait une mauvaise surprise.
@@ -2083,13 +2114,14 @@ fn installing_really_puts_everything_in_place() {
     if faux.exists() {
         // Le vrai est là : tant mieux, on l'installera lui.
     } else {
-        let Some(parent) = faux.parent() else { return };
-        if std::fs::create_dir_all(parent).is_err() {
-            return;
-        }
-        if std::fs::write(&faux, b"#!/bin/sh\nexit 0\n").is_err() {
-            return;
-        }
+        // Ce qu'on sème dans un dossier temporaire, on l'exige : un
+        // dossier qui refuse de se créer ou un fichier qui refuse de
+        // s'écrire n'est pas une machine mal outillée, c'est une
+        // anomalie — et l'éteindre en silence revient à dire que
+        // l'installation est bonne alors qu'on ne l'a pas essayée.
+        let parent = faux.parent().expect("un dossier parent");
+        std::fs::create_dir_all(parent).expect("le dossier d'essai se crée");
+        std::fs::write(&faux, b"#!/bin/sh\nexit 0\n").expect("le faux binaire s'écrit");
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;

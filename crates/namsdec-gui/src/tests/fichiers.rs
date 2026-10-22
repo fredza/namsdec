@@ -1207,9 +1207,10 @@ fn tout_reglage_bascule_par_l_interface_est_garde() {
     const EPHEMERES: [(&str, &str); 0] = [];
 
     let mut bascules: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-    let Ok(entrees) = std::fs::read_dir(&src) else {
-        return;
-    };
+    // `src/` est le dépôt lui-même : illisible, c'est une anomalie, non
+    // une machine qui n'a pas l'outil. Le relevé vide passerait au vert
+    // en ne regardant aucune bascule.
+    let entrees = std::fs::read_dir(&src).expect("les sources de l'interface");
     for entree in entrees.flatten() {
         let chemin = entree.path();
         if chemin.extension().is_none_or(|e| e != "rs")
