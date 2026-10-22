@@ -5638,3 +5638,56 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      contrôles eux-mêmes, et qu'il faut les éprouver en semant une faute —
      dans un AUTRE fichier qu'eux, sans quoi on ne mesure que leur capacité
      à se dénoncer.
+
+
+9.12 [FAIT] LE DÉTOUR S'EXÉCUTE — L'ORACLE QUI MANQUAIT
+     Le plan du 15 octobre avait tranché : la relocalisation à longueur
+     variable n'est pas la suite, fabriquer de la place l'est. Entre-temps
+     le détour lui-même avait été bâti en entier — module, interface,
+     `plan_detour`, relocalisation des deux formes courantes — et éprouvé
+     par une douzaine de contrôles. TRAVAUX le donnait pourtant « non
+     commencé » : une entrée qui avait dérivé, corrigée.
+
+     --- CE QUE LES DOUZE CONTRÔLES NE FAISAIENT PAS ---
+     Ils vérifiaient les OCTETS du plan et l'ARITHMÉTIQUE des sauts :
+     l'aller atterrit dans la place, le retour retombe après ce qu'on a
+     recouvert, la somme d'une relocalisation redonne la cible d'origine,
+     le détour se défait octet pour octet. Tout cela est juste, et
+     nécessaire.
+     Mais l'idée tout entière — « on sort par un `jmp`, on exécute le code
+     ajouté, on rejoue ce qu'on a recouvert, on revient » — n'avait jamais
+     été confrontée à l'émulateur. Un plan dont les octets sont justes et
+     qui, EXÉCUTÉ, partirait dans le décor, serait passé au vert. C'est le
+     même angle mort que toute la série 9.8–9.11 : un contrôle qui ne fait
+     pas la chose ne peut pas voir qu'elle casse.
+
+     --- L'ORACLE ---
+     `a_planned_detour_runs_in_the_emulator` monte un binaire À LA MAIN —
+     pas de nasm, donc il tourne partout sans s'abstenir —, y pose un
+     détour par `plan_detour`, applique les deux changements comme la
+     fenêtre Correctifs le ferait, et LANCE l'émulateur dessus.
+     Le site est un `mov eax, [rip+0x1000]`, choisi exprès : c'est la
+     forme relative à `rip` que la relocalisation doit corriger, et la
+     seule façon de prouver qu'elle la corrige VRAIMENT est de lire, après
+     exécution, la même valeur qu'avant le détour. L'instruction, déplacée
+     dans la place libre, vise toujours 0x401006 et y lit 0xcafe. Le code
+     ajouté pose rbx — un registre que l'original ne touche pas, de sorte
+     qu'on sait que c'est l'ajout qui l'a écrit —, et l'arrêt est le `hlt`
+     d'origine, non une dérive dans la place libre.
+     Trois faits, donc, qu'aucun relevé d'octets ne donne : l'ajout a
+     tourné (rbx), le recouvert a été rejoué juste (eax), on est revenu au
+     bon endroit (rip sur le hlt).
+
+     --- ÉPROUVÉ EN REMETTANT LE DÉFAUT ---
+     Le déplacement relocalisé corrompu d'un octet : eax lit alors une
+     autre adresse, et l'oracle rougit sur « l'instruction recouverte,
+     relocalisée, lit la même globale ». C'est l'assertion qui ne peut pas
+     passer au vert par accident — une relocalisation fausse ne se trahit
+     que si on exécute.
+
+     --- ET DEUX ENTRÉES DE TRAVAUX RENDUES EXACTES ---
+     Le détour se donnait « non commencé » ; l'éditeur binaire aussi,
+     alors que 9.6 et 9.7 l'ont fait et corrigé. Deux dérives du journal,
+     du genre que le point 4 du plan du 15 octobre nommait déjà :
+     l'analyse doit se réconcilier avec ce qui est, sinon elle oriente le
+     travail contre la réalité.

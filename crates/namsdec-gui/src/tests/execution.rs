@@ -3410,3 +3410,109 @@ fn the_line_where_the_cpu_stopped_wears_a_band() {
         vues[0].width()
     );
 }
+
+/// UN DÉTOUR POSÉ S'EXÉCUTE VRAIMENT — l'oracle qui manquait.
+///
+/// `plan_detour` était éprouvé par une douzaine de contrôles, et aucun
+/// ne faisait TOURNER ce qu'il fabrique. Ils vérifiaient les octets du
+/// plan et l'arithmétique des sauts — justes, et c'est nécessaire —,
+/// mais l'idée tout entière (« on sort par un `jmp`, on exécute le code
+/// ajouté, on rejoue ce qu'on a recouvert, on revient ») n'avait jamais
+/// été confrontée à l'émulateur. Un plan dont les octets sont justes et
+/// qui, exécuté, part dans le décor, serait passé au vert.
+///
+/// Monté À LA MAIN, sans nasm : l'oracle tourne donc partout, CI
+/// comprise, sans s'abstenir. Et le site est un `mov eax, [rip+…]` —
+/// relatif à `rip` — à dessein : c'est la forme que la relocalisation
+/// doit corriger, et la seule façon de prouver qu'elle la corrige
+/// VRAIMENT est de lire, après exécution, la même valeur qu'avant le
+/// détour. Une relocalisation fausse lirait ailleurs, et `eax` ne
+/// vaudrait pas 0xcafe.
+#[test]
+fn a_planned_detour_runs_in_the_emulator() {
+    use namsdec_core::{Cpu, Memory, Reg64};
+
+    const BASE: u64 = 0x40_0000;
+    const TAILLE: usize = 0x2000;
+    // Ce que la globale du site vaut (elle est posée à 0x401006, là où
+    // l'instruction rip-relative pointe).
+    const DONNÉE: u32 = 0xcafe;
+
+    // L'image nue : six octets de `mov eax, [rip+0x1000]`, puis `hlt`.
+    //
+    // `8B 05` + un déplacement de quatre octets : l'instruction fait six
+    // octets, finit à BASE+6, et vise donc BASE+6+0x1000 = 0x401006,
+    // où l'on pose 0xcafe. Six octets recouverts (> cinq), donc le
+    // détour comblera d'un `nop`.
+    let image_nue = |image: &mut Vec<u8>| {
+        image[0..6].copy_from_slice(&[0x8b, 0x05, 0x00, 0x10, 0x00, 0x00]);
+        image[6] = 0xf4; // hlt
+        image[0x1006..0x100a].copy_from_slice(&DONNÉE.to_le_bytes());
+    };
+
+    // Ce que l'image nue fait, pour servir de témoin : eax lit la
+    // globale, rbx ne bouge pas, et l'on s'arrête sur le `hlt`.
+    let exécute = |image: &[u8]| -> (u64, u64, bool, u64) {
+        let mut mem = Memory::new(BASE, TAILLE);
+        mem.load(BASE, image).expect("l'image se charge");
+        let mut cpu = Cpu::new(mem);
+        cpu.regs.rip = BASE;
+        let mut emu = namsdec_emu::Emulator::new(cpu);
+        let arrêt = emu.run(10_000).expect("l'exécution aboutit");
+        (
+            emu.cpu().regs.get64(Reg64::Rax),
+            emu.cpu().regs.get64(Reg64::Rbx),
+            matches!(arrêt, namsdec_emu::RunStop::Halted),
+            emu.cpu().regs.rip,
+        )
+    };
+
+    // Le témoin, sans détour : eax lit la globale, rbx reste nul.
+    let mut témoin = vec![0u8; TAILLE];
+    image_nue(&mut témoin);
+    let (rax0, rbx0, halt0, _) = exécute(&témoin);
+    assert_eq!(rax0, DONNÉE as u64, "sans détour, eax lit la globale");
+    assert_eq!(rbx0, 0, "et rbx n'est pas touché");
+    assert!(halt0, "et le programme s'arrête sur son hlt");
+
+    // Le détour : une place libre exécutable à 0x400800, et du code
+    // ajouté qui pose rbx — un registre que l'original NE touche pas,
+    // pour qu'on sache ensuite que c'est bien l'ajout qui l'a écrit.
+    let mut image = vec![0u8; TAILLE];
+    image_nue(&mut image);
+    let place = namsdec_re::slack::Slack {
+        vaddr: 0x40_0800,
+        offset: 0x800,
+        len: 0x100,
+        filler: 0x00,
+        executable: true,
+        section: Some(".text".to_owned()),
+    };
+    let ajout = [0xbb, 0x42, 0x00, 0x00, 0x00]; // mov ebx, 0x42
+    let detour = namsdec_re::patch::plan_detour(&image, 64, 0x00, BASE, &place, &ajout)
+        .expect("ce détour est posable");
+
+    // On pose les deux changements, comme la fenêtre Correctifs le ferait.
+    namsdec_re::patch::apply(&mut image, detour.aller.offset, &detour.aller.after)
+        .expect("l'aller s'écrit");
+    namsdec_re::patch::apply(&mut image, detour.corps.offset, &detour.corps.after)
+        .expect("le corps s'écrit");
+
+    let (rax, rbx, halt, rip) = exécute(&image);
+
+    // L'ajout a tourné : rbx porte ce que seul lui écrit.
+    assert_eq!(rbx, 0x42, "le code ajouté par le détour s'est exécuté");
+    // Ce qu'on a recouvert a été REJOUÉ, et sa relocalisation est juste :
+    // le `mov eax, [rip+…]`, déplacé dans la place libre, lit toujours
+    // 0x401006 — donc toujours 0xcafe. C'est l'assertion qui compte le
+    // plus : une relocalisation fausse donnerait une autre valeur, sans
+    // rien signaler.
+    assert_eq!(
+        rax, DONNÉE as u64,
+        "l'instruction recouverte, relocalisée, lit la même globale"
+    );
+    // Et l'on est REVENU : l'arrêt est le `hlt` d'origine, pas une
+    // dérive dans la place libre.
+    assert!(halt, "l'exécution revient et s'arrête sur le hlt d'origine");
+    assert_eq!(rip, BASE + 7, "le hlt atteint est celui du site, à BASE+6");
+}

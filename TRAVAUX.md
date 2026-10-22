@@ -1419,11 +1419,22 @@ jamais ajouter. Il faut de la place, et d'abord savoir où elle est.
       pour un trou entre deux sections. `.bss` (qui n'occupe rien) ne nomme
       jamais un trou, bien que son adresse chevauche celle d'une vraie
       section.
-- [ ] **La suite, non commencée** : assembler du code dans une zone libre,
-      et détourner l'exécution vers lui puis la ramener. Passe par
-      `patch.rs`, qui sait déjà défaire ce qu'il pose, et par
-      `ReRequest::PatchBytes`, qui existe déjà. À faire pas à pas, chaque
-      geste réversible et montré avant d'être posé — comme les correctifs.
+- [x] **Le détour est bâti, et il S'EXÉCUTE** (A 9.12) — l'entrée
+      ci-dessus se donnait pour « non commencée », et elle avait dérivé :
+      le module `DetourModule` est complet (saisie en assembleur ou en
+      octets, choix de la place libre exécutable, aperçu du plan, refus
+      nommés), `plan_detour` rend deux `Patch` réversibles sous un même
+      groupe, et `write_detour` les pose par le chemin ordinaire des
+      correctifs. Une douzaine de contrôles l'éprouvaient.
+      CE QUI MANQUAIT : aucun ne faisait TOURNER ce que le plan fabrique.
+      Ils vérifiaient les octets et l'arithmétique des sauts — justes —,
+      mais jamais que l'idée s'exécute. `a_planned_detour_runs_in_the_emulator`
+      monte un détour À LA MAIN (sans nasm, donc sans abstention),
+      l'applique, et lance l'émulateur : le code ajouté tourne (rbx), ce
+      qu'on a recouvert est rejoué, et — le site étant `mov eax, [rip+…]`
+      — sa relocalisation est prouvée À L'EXÉCUTION, eax lisant la même
+      globale qu'avant le détour. Éprouvé en corrompant le déplacement
+      relocalisé : eax lit alors ailleurs, et l'oracle rougit.
 
 ## 4 sexdecies. DZF : namsdec sait l'installer lui-même
 
@@ -1504,10 +1515,12 @@ le code binaire et le pseudo-code. Un seul module neuf les réunit.
       **gardé d'une séance à l'autre** (persisté par empreinte du
       binaire). `ReContext` porte la table (`names`), les 29 littéraux
       complétés. Un test : un nom donné prend la place du défaut.
-- [ ] **Reste demandé par Fred, non commencé :** un **éditeur binaire**
-      (modifier les octets à la main dans l'onglet RE — passe par
-      `patch.rs` et `ReRequest::PatchBytes`, pas à pas et réversible, voir
-      « Modifier un binaire »).
+- [x] **L'éditeur binaire est fait** (A 9.6, 9.7) — la grille
+      hexadécimale de la fenêtre d'analyse écrit les octets à la main,
+      par `patch.rs` et `ReRequest::PatchBytes`, réversible comme les
+      correctifs. Le défaut signalé le 21 octobre — « on ne sait rien
+      modifier » — était le refus muet de l'octet du nombre magique,
+      corrigé en 9.7 ; le refus se dit désormais et ne change rien.
 
 ## 4 octies. Découpage de main.rs (suite)
 
