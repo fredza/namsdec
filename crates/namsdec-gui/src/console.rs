@@ -298,7 +298,7 @@ impl NamsdecApp {
             // c'est le chiffre au-dessus qui le règle : on ne cherche pas
             // à dérouler ce qu'on croit avoir vu en entier.
             .on_hover_text(s.profile_scroll_hint);
-            if ui.small_button(s.profile_copy).clicked() {
+            if small_framed_button(ui, self.theme, s.profile_copy).clicked() {
                 ui.ctx().copy_text(self.profile_text(&classement, total));
                 self.status = Status::Note(|s| s.profile_copied);
             }
@@ -490,8 +490,7 @@ impl NamsdecApp {
         let commandes = namsdec_asm::build_commands(&format!("{fichier}.asm"), &fichier, BASE_ADDR);
         ui.horizontal_wrapped(|ui| {
             ui.colored_label(theme.dim, s.assemble_commands);
-            if ui
-                .small_button(s.assemble_commands_copy)
+            if small_framed_button(ui, theme, s.assemble_commands_copy)
                 .on_hover_text(s.assemble_commands_hint)
                 .clicked()
             {
@@ -900,10 +899,21 @@ impl NamsdecApp {
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if attend {
+                            // LE LISERÉ EST DE LA COULEUR DU FOND : on
+                            // ne le voit pas, et il sert quand même.
+                            // egui ajoute la largeur du trait à la
+                            // taille d'un bouton tracé — sans lui,
+                            // « Envoyer » faisait 25 px de haut et
+                            // « Plus tard », posé huit pixels à sa
+                            // gauche, 27. C'est le remède que
+                            // `dialog_bar` porte déjà et que cette
+                            // boîte-ci, qui refait sa barre d'action à
+                            // la main, n'avait jamais reçu.
                             let envoi = egui::Button::new(
                                 egui::RichText::new(s.console_send).color(theme.bg),
                             )
                             .fill(theme.accent)
+                            .stroke(egui::Stroke::new(1.0, theme.accent))
                             .min_size(egui::vec2(110.0, 0.0));
                             envoyer |= ui.add(envoi).clicked();
                             if ui
@@ -920,9 +930,15 @@ impl NamsdecApp {
                         } else {
                             // Plus rien à répondre : un seul bouton, et
                             // Entrée le presse.
+                            // Même liseré invisible que ci-dessus :
+                            // seul à l'écran aujourd'hui, ce bouton
+                            // partagerait sa rangée demain, et deux
+                            // pixels d'écart ne se voient que sur une
+                            // mesure.
                             let ok =
                                 egui::Button::new(egui::RichText::new(s.dialog_ok).color(theme.bg))
                                     .fill(theme.accent)
+                                    .stroke(egui::Stroke::new(1.0, theme.accent))
                                     .min_size(egui::vec2(110.0, 0.0));
                             fermer |= ui.add(ok).clicked() || entrée_frappée;
                         }

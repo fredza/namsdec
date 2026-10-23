@@ -110,6 +110,22 @@ impl Theme {
         visuals.widgets.inactive.weak_bg_fill = Color32::TRANSPARENT;
         visuals.widgets.inactive.bg_stroke = egui::Stroke::NONE;
 
+        // L'ALERTE ET L'ERREUR SONT CELLES DU THÈME, et pas celles
+        // d'egui. Elles manquaient, et personne ne les voyait manquer :
+        // un module d'analyse qui dit « Cet outil n'est pas sur cette
+        // machine. » employait `visuals().warn_fg_color`, c'est-à-dire
+        // l'orange vif d'egui (#FF8F00), au milieu d'une fenêtre où tout
+        // autre avertissement est en #DCDCAA. L'erreur était pire — le
+        // rouge pur d'egui, 3,44 de contraste sur le fond des fenêtres,
+        // contre 5,61 pour celui du thème.
+        //
+        // Dix sites de `namsdec-re` passent par ces deux couleurs, dans
+        // les trois thèmes livrés. Deux lignes ici les redressent tous,
+        // là où dix corrections les auraient laissés diverger au
+        // prochain module.
+        visuals.warn_fg_color = self.warn;
+        visuals.error_fg_color = self.bad;
+
         visuals
     }
 }
@@ -503,5 +519,32 @@ mod tests {
     #[test]
     fn unknown_id_falls_back_instead_of_panicking() {
         assert_eq!(by_id("thème-désinstallé").id, VSCODE_DARK.id);
+    }
+
+    /// L'alerte et l'erreur d'egui sont celles du thème.
+    ///
+    /// Un thème qui ne les pose pas laisse egui peindre son orange et
+    /// son rouge par défaut. Ce n'est pas une nuance : `warn_fg_color`
+    /// et `error_fg_color` sont lus par dix endroits de `namsdec-re`,
+    /// et ils y voisinent avec des textes peints, eux, à la palette du
+    /// thème. Le contrôle vaut pour TOUS les thèmes livrés — c'est
+    /// justement ce qu'un oubli dans `visuals()` fait perdre d'un coup.
+    #[test]
+    fn every_theme_paints_its_own_warning_and_its_own_error() {
+        for theme in BUILT_IN {
+            let visuals = theme.visuals();
+            assert_eq!(
+                visuals.warn_fg_color,
+                theme.warn,
+                "« {} » laisse egui choisir la couleur d'un avertissement",
+                theme.name
+            );
+            assert_eq!(
+                visuals.error_fg_color,
+                theme.bad,
+                "« {} » laisse egui choisir la couleur d'une erreur",
+                theme.name
+            );
+        }
     }
 }

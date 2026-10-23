@@ -6,7 +6,7 @@ retiré — reste dans `AMELIORATIONS.txt`, qui ne bouge pas de rôle : une
 seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
-Tenue à jour au fil des séances. Dernière mise à jour : **20 octobre
+Tenue à jour au fil des séances. Dernière mise à jour : **23 octobre
 2026**, version 0.2.9-beta.1.
 
 - `[x]` fait et vérifié — un contrôle le retient
@@ -20,17 +20,102 @@ Tenue à jour au fil des séances. Dernière mise à jour : **20 octobre
 **Non, l'UX/UI n'est pas terminée.** Une passe complète a été faite le
 25 septembre : seize scènes capturées sur profil neuf, deux relevés de
 mesure sur les trente-trois scènes du banc, **vingt et un écarts corrigés,
-dix-sept contrôles nouveaux et un élargi**. Ce que cette passe a mesuré
-et **pas** corrigé est en bas de la section suivante, chiffré. C'est du
-travail identifié, pas de l'exploration : il n'y a plus de relevé à
-refaire.
+dix-sept contrôles nouveaux et un élargi**. Tout ce qu'elle avait mesuré
+et pas corrigé est fait depuis.
 
-Ce qui reste est de la finition mesurée : des alignements de quelques
-pixels, deux tailles de police, et le vide sous « Prochaine
-instruction », qui tient au même nœud que le vide de 56 px — l'état du
-processeur est ancré.
+**Et il restait un relevé à refaire**, contrairement à ce qui était
+écrit ici. La passe du 23 octobre — trois relevés menés en parallèle,
+sur trois axes que le banc ne regardait pas — a trouvé **neuf écarts de
+plus**, dont deux trous du banc lui-même : une scène qui ne montrait pas
+l'onglet qu'elle nommait, et une quatrième écriture de bouton que le
+contrôle de source ne connaissait pas. Voir la section 1 ci-dessous.
+
+La leçon qui se répète : ce qu'un relevé ne cherche pas, aucun contrôle
+ne le retient. Les trois axes de cette passe — l'écran le plus petit,
+l'inventaire des tailles, l'inventaire des commandes — n'étaient pas des
+défauts suspectés, c'étaient des questions qu'on n'avait jamais posées.
 
 ---
+
+## 1. La passe UX/UI du 23 octobre (A 7.11)
+
+Trois relevés en parallèle — l'écran le plus petit, les tailles de
+texte, les formes et les commandes — puis un seul arbitrage, parce que
+les invariants se contredisent et qu'il faut une seule tête pour
+trancher. Neuf écarts, **six contrôles nouveaux**, deux élargis.
+
+- [x] **Trois fenêtres sortaient de l'écran par le haut** — à 800 x 520,
+      le plus petit affichage que l'application accepte, la calculatrice
+      dépassait de 236 px, « À propos » de 79 et les registres étendus
+      de 68. Et c'est le HAUT qui manquait : une fenêtre trop haute pour
+      l'écran déborde des deux côtés à la fois, bandeau et croix de
+      fermeture compris — on ne pouvait plus ni la déplacer ni la fermer
+      à la souris. La calculatrice portait même l'intention inverse en
+      commentaire. Contrôle :
+      `a_window_fits_the_smallest_screen_the_app_accepts`.
+- [x] **Ce que la correction a appris sur egui**, et qui a coûté trois
+      allers-retours : une fenêtre grandit parce que son contenu
+      DÉBORDE de la place qu'on lui laisse. Une zone qui défile ne
+      déborde jamais — elle prend ce qu'on lui donne —, si bien qu'une
+      fenêtre sans hauteur d'ouverture reste figée à la taille d'egui
+      par défaut et coupe son propre contenu. Et `default_size` n'est
+      pas `default_width` + `default_height` : la première pose aussi la
+      taille de l'aire, qui ne redescend plus sur le contenu. Les
+      registres étendus sont restés 440 x 1040 avec 405 px de vide le
+      temps qu'on le comprenne.
+- [x] **La barre « OK » ancrée empêchait la fenêtre de rétrécir** — un
+      panneau bas réclame toute la hauteur du cadre. Posée dans le flux,
+      elle suit le contenu. Second contrôle :
+      `a_window_of_known_content_does_not_scroll_when_there_is_room`,
+      qui interdit l'inverse — une fenêtre qui se met à défiler sur un
+      écran qui avait la place.
+- [x] **Une scène du banc ne montrait pas l'onglet qu'elle nommait** —
+      l'onglet RE est masqué par défaut et le panneau retombe en
+      silence sur le processeur. « application / re » mesurait donc
+      l'onglet Processeur une seconde fois, sous un autre nom, dans les
+      deux moitiés du banc. Tous les invariants passaient : ils
+      regardaient un onglet, simplement pas celui qu'ils nommaient.
+      Trouvé en cherchant pourquoi le seul texte en 14 pt de
+      l'application n'était peint nulle part. Contrôle :
+      `chaque_scene_d_onglet_montre_bien_son_onglet`.
+- [x] **Le thème ne posait ni l'alerte ni l'erreur d'egui** — dix sites
+      de `namsdec-re` peignaient donc l'orange vif (#FF8F00) et le rouge
+      pur d'egui au milieu de fenêtres où tout le reste suit la palette.
+      Deux lignes dans `Theme::visuals()`, et les trois thèmes livrés
+      sont justes d'un coup. Contrôle :
+      `every_theme_paints_its_own_warning_and_its_own_error`.
+- [x] **Six commandes sur douze étaient plus petites que leurs voisines
+      dans la barre d'outils** — « Exécuter », les trois pas, « Stop »
+      et « Réinitialiser » à 18 px quand « Assembler » et les cinq
+      onglets de la même rangée font 25. Celles dont on se sert le plus
+      étaient les plus petites, et six pixels sous la cible de 24 que
+      l'on vise à la souris. `icon_button` demandait `interact_size.y`,
+      la hauteur de ce qu'on n'a pas décrit : un bouton à icône n'est
+      pas une autre sorte de bouton. Contrôle :
+      `every_command_of_the_toolbar_has_the_same_height`.
+- [x] **Une quatrième écriture de bouton, invisible du contrôle** —
+      `ui.small_button(`, onze fois. « RAX », « RSP » et « RIP » du
+      motif cyclique se lisaient comme trois étiquettes à soixante
+      pixels de trois boutons encadrés. Le contrôle de source en
+      connaissait trois sur quatre ; il en connaît quatre, et
+      `small_framed_button` encadre sans rien épaissir.
+- [x] **Le bouton principal de la boîte de saisie était deux pixels
+      plus court que son voisin** — 110 x 25 contre 110 x 27, à huit
+      pixels l'un de l'autre, faute du liseré invisible que `dialog_bar`
+      pose déjà. L'invariant qui l'attrape existait depuis septembre ;
+      il manquait la scène où le programme attend VRAIMENT une réponse.
+      Une scène de plus, zéro contrôle neuf.
+- [x] **Le même titre changeait de corps quand on cliquait dessus** —
+      un module d'analyse s'écrivait en 13 pt dans la liste et en 15 pt
+      une fois choisi : même texte, même fenêtre, même place. La page
+      Outils des préférences ouvrait de même deux points au-dessus des
+      quatre autres. Les deux avaient été relevés en septembre et
+      rangés comme « inatteignables par le banc » : ils étaient peints
+      cinquante-deux fois, dans vingt-cinq scènes. Ce qui manquait
+      n'était pas une scène, c'était un inventaire. Contrôle :
+      `every_text_size_belongs_to_a_declared_set`, qui aurait attrapé
+      les deux d'un coup — et qui a trouvé en passant les onglets de la
+      calculatrice en 11 pt, seuls de leur espèce.
 
 ## 17. Trois défauts vus à l'écran (A 9.1 à 9.3)
 

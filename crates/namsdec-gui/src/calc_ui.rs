@@ -50,6 +50,12 @@ impl NamsdecApp {
         let mut frappe = Frappe::default();
         let mut bit_basculé: Option<u32> = None;
 
+        // Ce que l'écran laisse à une fenêtre : sa hauteur moins de quoi
+        // voir son bandeau et son ombre. Prise sur l'ÉCRAN et non sur le
+        // contenu — une dimension qu'on lit de son propre contenu se
+        // reboucle d'une image à l'autre, et c'est le premier piège de
+        // cette interface.
+        let hauteur_libre = (ctx.viewport_rect().height() - 60.0).max(320.0);
         let fenêtre = egui::Window::new(s.calculator_title)
             .id(egui::Id::new("calculator_window"))
             .open(&mut open)
@@ -60,17 +66,28 @@ impl NamsdecApp {
             // trois cent soixante-six flottait au milieu du vide.
             // Bornée, la rangée se replie et l'appareil garde sa forme.
             //
-            // Aucune hauteur imposée : la fenêtre épouse celle de son
-            // contenu. Une hauteur figée laissait cent pixels de vide
-            // entre la dernière ligne et le bouton — un appareil ne se
-            // termine pas par du vide.
+            // La fenêtre épouse la hauteur de son contenu. Une hauteur
+            // figée laissait cent pixels de vide entre la dernière ligne
+            // et le bouton — un appareil ne se termine pas par du vide.
             .default_width(500.0)
             .min_width(420.0)
             .max_width(560.0)
             // Jamais plus haute que l'écran : une fenêtre qui le dépasse
             // pose son bouton hors de vue, et l'on ne sait plus comment
             // la fermer.
-            .max_height((ctx.viewport_rect().height() - 60.0).max(320.0))
+            //
+            // LA HAUTEUR D'OUVERTURE EST CELLE DE L'ÉCRAN, et c'est ce
+            // qui rend la zone défilante inoffensive. Une fenêtre
+            // s'agrandit parce que son contenu DÉBORDE de la place qu'on
+            // lui laisse : egui l'y amène en quelques images. Une zone
+            // qui défile ne déborde jamais — elle prend la place
+            // disponible —, si bien qu'une fenêtre sans hauteur imposée
+            // restait figée à la taille d'egui par défaut et coupait son
+            // propre clavier. Partir de la hauteur de l'écran puis
+            // laisser `auto_shrink` redescendre sur le contenu donne les
+            // deux : rien n'est coupé, et rien ne se termine par du vide.
+            .default_height(hauteur_libre)
+            .max_height(hauteur_libre)
             .pivot(egui::Align2::CENTER_CENTER)
             .default_pos(default_window_pos(ctx, "calculator"));
         let rendue = self
@@ -90,231 +107,264 @@ impl NamsdecApp {
                 // fenêtre changeait de largeur — l'écran d'un côté, le
                 // clavier de l'autre, à quarante pixels l'un de l'autre.
                 //
-                // Dans une zone qui défile : la fenêtre épouse la hauteur
-                // de son contenu, mais pas au-delà de l'écran. Sans cela,
-                // sur une fenêtre moins haute que l'appareil, les
-                // dernières lignes passaient sous le bouton.
-                centered_row(ui, CALC_LARGEUR + 20.0, |ui| {
-                    ui.vertical(|ui| {
-                        ui.set_width(CALC_LARGEUR + 20.0);
-                        // Le résultat en grand, dans la base choisie et sur la
-                        // largeur choisie. C'est la ligne qu'on regarde, elle a
-                        // donc la taille qui va avec.
-                        let valeur = résultat.as_ref().ok().map(|v| *v & self.calc_width.mask());
-                        ui.add_space(8.0);
-                        // Tout ce qui suit est centré : le résultat, les bits,
-                        // les sélecteurs et le clavier. Alignés à gauche dans une
-                        // fenêtre large, ils flottaient contre un bord avec du
-                        // vide en face — une page, et non un appareil.
-                        //
-                        // Le résultat et les bits vivent dans un cadre à part,
-                        // sur le fond de l'éditeur : c'est l'écran de
-                        // l'appareil, et il se distingue des touches comme sur
-                        // n'importe quelle calculatrice.
-                        // La lunette de l'écran : dix pixels de chaque côté du
-                        // clavier, et son contenu fait exactement la largeur de
-                        // celui-ci.
-                        egui::Frame::new()
-                            .fill(theme.bg)
-                            .stroke(egui::Stroke::new(1.0, mélange(theme.bg, theme.text, 0.18)))
-                            .corner_radius(10.0)
-                            .inner_margin(egui::Margin::symmetric(10, 10))
-                            .show(ui, |ui| {
-                                ui.set_width(CALC_LARGEUR);
-                                écran_calculatrice(
+                // ET DANS UNE ZONE QUI DÉFILE. Ce qui précède le disait
+                // déjà — « la fenêtre épouse la hauteur de son contenu,
+                // mais pas au-delà de l'écran » — et ce n'était qu'un
+                // commentaire : aucune zone défilante n'existait. La
+                // fenêtre borne sa hauteur par
+                // `max_height`, mais `max_height` borne ce que la
+                // poignée permet, non ce que le contenu prend. Un
+                // contenu qui ne défile pas pousse le cadre au-delà :
+                // mesuré sur l'écran le plus petit que l'application
+                // accepte (800x520), l'appareil faisait 756 px de haut
+                // là où il s'était promis 460, et son bandeau — qui
+                // porte la croix — se posait 178 px AU-DESSUS du bord.
+                // Hors de vue, la fenêtre ne se déplace plus et ne se
+                // ferme plus à la souris.
+                //
+                // La barre « OK » reste HORS de la zone défilante : ce
+                // qui ferme une fenêtre ne doit jamais avoir à être
+                // amené à l'écran. Et la zone épouse son contenu quand
+                // il tient (`auto_shrink` en hauteur), de sorte qu'aucune
+                // barre ne paraît sur un écran ordinaire.
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, true])
+                    .show(ui, |ui| {
+                        centered_row(ui, CALC_LARGEUR + 20.0, |ui| {
+                            ui.vertical(|ui| {
+                                ui.set_width(CALC_LARGEUR + 20.0);
+                                // Le résultat en grand, dans la base choisie et sur la
+                                // largeur choisie. C'est la ligne qu'on regarde, elle a
+                                // donc la taille qui va avec.
+                                let valeur =
+                                    résultat.as_ref().ok().map(|v| *v & self.calc_width.mask());
+                                ui.add_space(8.0);
+                                // Tout ce qui suit est centré : le résultat, les bits,
+                                // les sélecteurs et le clavier. Alignés à gauche dans une
+                                // fenêtre large, ils flottaient contre un bord avec du
+                                // vide en face — une page, et non un appareil.
+                                //
+                                // Le résultat et les bits vivent dans un cadre à part,
+                                // sur le fond de l'éditeur : c'est l'écran de
+                                // l'appareil, et il se distingue des touches comme sur
+                                // n'importe quelle calculatrice.
+                                // La lunette de l'écran : dix pixels de chaque côté du
+                                // clavier, et son contenu fait exactement la largeur de
+                                // celui-ci.
+                                egui::Frame::new()
+                                    .fill(theme.bg)
+                                    .stroke(egui::Stroke::new(
+                                        1.0,
+                                        mélange(theme.bg, theme.text, 0.18),
+                                    ))
+                                    .corner_radius(10.0)
+                                    .inner_margin(egui::Margin::symmetric(10, 10))
+                                    .show(ui, |ui| {
+                                        ui.set_width(CALC_LARGEUR);
+                                        écran_calculatrice(
+                                            ui,
+                                            theme,
+                                            s,
+                                            &mut self.calc_input,
+                                            !self.calculator_was_open,
+                                            &résultat,
+                                            valeur,
+                                            self.calc_base,
+                                            self.calc_width,
+                                            &mut à_copier,
+                                            &mut bit_basculé,
+                                        );
+                                    });
+                                ui.add_space(6.0);
+                                // Deux couples « étiquette + liste » de mesures
+                                // identiques, de part et d'autre du filet.
+                                //
+                                // Ils ne l'étaient pas : chaque liste prenait la largeur
+                                // de ce qu'elle affichait, si bien que « Binaire » et
+                                // « 8 bits » donnaient deux boîtes de tailles
+                                // différentes et deux flèches qui ne tombaient pas au
+                                // même endroit. Deux réglages jumeaux doivent se lire
+                                // comme jumeaux.
+                                //
+                                // Les largeurs sont mesurées sur les textes les plus
+                                // longs — « Hexadécimal », « Largeur » — et non écrites
+                                // en dur : les libellés changent de longueur avec la
+                                // langue, et un chiffre posé à la main aligne le
+                                // français en désalignant l'anglais.
+                                let (étiquette, liste) = calculator_pick_widths(ui, s);
+                                let couple = étiquette + 6.0 + liste;
+                                let rangée = (couple * 2.0 + 20.0).min(CALC_LARGEUR);
+                                // Chaque couple dans sa propre case, de mesures
+                                // identiques : c'est ce qui les aligne vraiment.
+                                //
+                                // Tout dans une seule rangée ne suffisait pas. Une
+                                // rangée horizontale d'egui centre chaque élément sur sa
+                                // hauteur du moment, et ne recale pas ce qui est déjà
+                                // posé quand un élément plus haut arrive ensuite — la
+                                // liste est plus haute qu'une étiquette, si bien que
+                                // « Base », posé avant la première liste, se retrouvait
+                                // deux pixels au-dessus de « Largeur », posé après.
+                                // Dans deux cases jumelles, les deux subissent la même
+                                // chose, donc rien ne bouge.
+                                // Une hauteur qui dépasse tout ce que la rangée porte, la
+                                // liste comprise.
+                                //
+                                // C'est la clé, et elle a demandé trois essais. Une
+                                // rangée horizontale d'egui centre chaque élément sur la
+                                // hauteur qu'elle a *à cet instant*, et ne recale pas ce
+                                // qui est déjà posé quand un élément plus haut arrive
+                                // ensuite. La liste est plus haute qu'une étiquette :
+                                // « Base », posé avant la première liste, se retrouvait
+                                // deux pixels au-dessus de « Largeur », posé après. Si
+                                // rien ne fait grandir la rangée, personne ne se décale.
+                                let hauteur = ui.spacing().interact_size.y.max(30.0);
+                                centered_row(ui, rangée, |ui| {
+                                    ui.spacing_mut().item_spacing.x = 6.0;
+                                    ui.allocate_ui_with_layout(
+                                        egui::vec2(couple, hauteur),
+                                        egui::Layout::left_to_right(egui::Align::Center),
+                                        |ui| {
+                                            ui.spacing_mut().item_spacing.x = 6.0;
+                                            ui.allocate_ui_with_layout(
+                                                egui::vec2(étiquette, hauteur),
+                                                egui::Layout::left_to_right(egui::Align::Center),
+                                                |ui| {
+                                                    // `set_min_width` en plus de la
+                                                    // taille demandée : une case
+                                                    // allouée avance sur ce qu'elle
+                                                    // CONTIENT, non sur ce qu'on lui a
+                                                    // donné. Sans cela, « Base », plus
+                                                    // court que « Largeur », laissait
+                                                    // sa liste remonter de dix-sept
+                                                    // pixels — et les deux flèches ne
+                                                    // tombaient pas au même endroit.
+                                                    ui.set_min_width(étiquette);
+                                                    ui.colored_label(
+                                                        theme.dim,
+                                                        s.calculator_base_label,
+                                                    )
+                                                },
+                                            );
+                                            let bases: Vec<(CalcBase, String)> = CalcBase::ALL
+                                                .into_iter()
+                                                .map(|b| (b, b.label(s).to_owned()))
+                                                .collect();
+                                            liste_déroulante(
+                                                ui,
+                                                theme,
+                                                egui::Id::new("calculator_base"),
+                                                liste,
+                                                &mut self.calc_base,
+                                                &bases,
+                                                "",
+                                            );
+                                        },
+                                    );
+                                    ui.separator();
+                                    ui.allocate_ui_with_layout(
+                                        egui::vec2(couple, hauteur),
+                                        egui::Layout::left_to_right(egui::Align::Center),
+                                        |ui| {
+                                            ui.spacing_mut().item_spacing.x = 6.0;
+                                            ui.allocate_ui_with_layout(
+                                                egui::vec2(étiquette, hauteur),
+                                                egui::Layout::left_to_right(egui::Align::Center),
+                                                |ui| {
+                                                    ui.set_min_width(étiquette);
+                                                    ui.colored_label(
+                                                        theme.dim,
+                                                        s.calculator_width_label,
+                                                    )
+                                                },
+                                            );
+                                            let largeurs: Vec<(CalcWidth, String)> = CalcWidth::ALL
+                                                .into_iter()
+                                                .map(|l| (l, format!("{} bits", l.bits())))
+                                                .collect();
+                                            liste_déroulante(
+                                                ui,
+                                                theme,
+                                                egui::Id::new("calculator_width"),
+                                                liste,
+                                                &mut self.calc_width,
+                                                &largeurs,
+                                                "",
+                                            );
+                                        },
+                                    );
+                                });
+
+                                ui.add_space(6.0);
+                                calculator_keypad_ui(
                                     ui,
                                     theme,
                                     s,
-                                    &mut self.calc_input,
-                                    !self.calculator_was_open,
-                                    &résultat,
-                                    valeur,
                                     self.calc_base,
-                                    self.calc_width,
-                                    &mut à_copier,
-                                    &mut bit_basculé,
+                                    &self.calc_input,
+                                    &mut frappe,
                                 );
-                            });
-                        ui.add_space(6.0);
-                        // Deux couples « étiquette + liste » de mesures
-                        // identiques, de part et d'autre du filet.
-                        //
-                        // Ils ne l'étaient pas : chaque liste prenait la largeur
-                        // de ce qu'elle affichait, si bien que « Binaire » et
-                        // « 8 bits » donnaient deux boîtes de tailles
-                        // différentes et deux flèches qui ne tombaient pas au
-                        // même endroit. Deux réglages jumeaux doivent se lire
-                        // comme jumeaux.
-                        //
-                        // Les largeurs sont mesurées sur les textes les plus
-                        // longs — « Hexadécimal », « Largeur » — et non écrites
-                        // en dur : les libellés changent de longueur avec la
-                        // langue, et un chiffre posé à la main aligne le
-                        // français en désalignant l'anglais.
-                        let (étiquette, liste) = calculator_pick_widths(ui, s);
-                        let couple = étiquette + 6.0 + liste;
-                        let rangée = (couple * 2.0 + 20.0).min(CALC_LARGEUR);
-                        // Chaque couple dans sa propre case, de mesures
-                        // identiques : c'est ce qui les aligne vraiment.
-                        //
-                        // Tout dans une seule rangée ne suffisait pas. Une
-                        // rangée horizontale d'egui centre chaque élément sur sa
-                        // hauteur du moment, et ne recale pas ce qui est déjà
-                        // posé quand un élément plus haut arrive ensuite — la
-                        // liste est plus haute qu'une étiquette, si bien que
-                        // « Base », posé avant la première liste, se retrouvait
-                        // deux pixels au-dessus de « Largeur », posé après.
-                        // Dans deux cases jumelles, les deux subissent la même
-                        // chose, donc rien ne bouge.
-                        // Une hauteur qui dépasse tout ce que la rangée porte, la
-                        // liste comprise.
-                        //
-                        // C'est la clé, et elle a demandé trois essais. Une
-                        // rangée horizontale d'egui centre chaque élément sur la
-                        // hauteur qu'elle a *à cet instant*, et ne recale pas ce
-                        // qui est déjà posé quand un élément plus haut arrive
-                        // ensuite. La liste est plus haute qu'une étiquette :
-                        // « Base », posé avant la première liste, se retrouvait
-                        // deux pixels au-dessus de « Largeur », posé après. Si
-                        // rien ne fait grandir la rangée, personne ne se décale.
-                        let hauteur = ui.spacing().interact_size.y.max(30.0);
-                        centered_row(ui, rangée, |ui| {
-                            ui.spacing_mut().item_spacing.x = 6.0;
-                            ui.allocate_ui_with_layout(
-                                egui::vec2(couple, hauteur),
-                                egui::Layout::left_to_right(egui::Align::Center),
-                                |ui| {
-                                    ui.spacing_mut().item_spacing.x = 6.0;
-                                    ui.allocate_ui_with_layout(
-                                        egui::vec2(étiquette, hauteur),
-                                        egui::Layout::left_to_right(egui::Align::Center),
-                                        |ui| {
-                                            // `set_min_width` en plus de la
-                                            // taille demandée : une case
-                                            // allouée avance sur ce qu'elle
-                                            // CONTIENT, non sur ce qu'on lui a
-                                            // donné. Sans cela, « Base », plus
-                                            // court que « Largeur », laissait
-                                            // sa liste remonter de dix-sept
-                                            // pixels — et les deux flèches ne
-                                            // tombaient pas au même endroit.
-                                            ui.set_min_width(étiquette);
-                                            ui.colored_label(theme.dim, s.calculator_base_label)
-                                        },
-                                    );
-                                    let bases: Vec<(CalcBase, String)> = CalcBase::ALL
-                                        .into_iter()
-                                        .map(|b| (b, b.label(s).to_owned()))
-                                        .collect();
-                                    liste_déroulante(
-                                        ui,
-                                        theme,
-                                        egui::Id::new("calculator_base"),
-                                        liste,
-                                        &mut self.calc_base,
-                                        &bases,
-                                        "",
-                                    );
-                                },
-                            );
-                            ui.separator();
-                            ui.allocate_ui_with_layout(
-                                egui::vec2(couple, hauteur),
-                                egui::Layout::left_to_right(egui::Align::Center),
-                                |ui| {
-                                    ui.spacing_mut().item_spacing.x = 6.0;
-                                    ui.allocate_ui_with_layout(
-                                        egui::vec2(étiquette, hauteur),
-                                        egui::Layout::left_to_right(egui::Align::Center),
-                                        |ui| {
-                                            ui.set_min_width(étiquette);
-                                            ui.colored_label(theme.dim, s.calculator_width_label)
-                                        },
-                                    );
-                                    let largeurs: Vec<(CalcWidth, String)> = CalcWidth::ALL
-                                        .into_iter()
-                                        .map(|l| (l, format!("{} bits", l.bits())))
-                                        .collect();
-                                    liste_déroulante(
-                                        ui,
-                                        theme,
-                                        egui::Id::new("calculator_width"),
-                                        liste,
-                                        &mut self.calc_width,
-                                        &largeurs,
-                                        "",
-                                    );
-                                },
-                            );
-                        });
 
-                        ui.add_space(6.0);
-                        calculator_keypad_ui(
-                            ui,
-                            theme,
-                            s,
-                            self.calc_base,
-                            &self.calc_input,
-                            &mut frappe,
-                        );
+                                // Pas de filet entre le clavier et les fonctions : les
+                                // deux blocs se distinguent déjà par leur forme, et une
+                                // barre de plus dans une fenêtre qui en a déjà deux
+                                // (le bandeau, la barre d'action) fait un formulaire.
+                                ui.add_space(8.0);
+                                if regs.is_none() {
+                                    ui.colored_label(theme.dim, s.calculator_no_registers);
+                                }
+                                calculator_functions_ui(
+                                    ui,
+                                    theme,
+                                    s,
+                                    lang,
+                                    &mut self.calc_family,
+                                    &mut frappe.écrire,
+                                );
 
-                        // Pas de filet entre le clavier et les fonctions : les
-                        // deux blocs se distinguent déjà par leur forme, et une
-                        // barre de plus dans une fenêtre qui en a déjà deux
-                        // (le bandeau, la barre d'action) fait un formulaire.
-                        ui.add_space(8.0);
-                        if regs.is_none() {
-                            ui.colored_label(theme.dim, s.calculator_no_registers);
-                        }
-                        calculator_functions_ui(
-                            ui,
-                            theme,
-                            s,
-                            lang,
-                            &mut self.calc_family,
-                            &mut frappe.écrire,
-                        );
-
-                        ui.add_space(6.0);
-                        // Toutes les bases à la fois, en petit : c'est ce qu'on
-                        // vient chercher quand on ne sait pas encore *laquelle*
-                        // on veut. Chacune se copie d'un clic.
-                        if let Some(valeur) = valeur {
-                            // Deux paires par rangée : sept lectures empilées
-                            // faisaient une colonne plus haute que le clavier,
-                            // et sur un écran de portable les dernières
-                            // passaient sous le bouton. Côte à côte, elles
-                            // tiennent en quatre lignes — et l'on compare
-                            // d'autant mieux deux bases qu'on les voit
-                            // ensemble.
-                            let lectures = readings::all_bases(lang, valeur);
-                            egui::Grid::new("calculator_bases")
-                                .num_columns(4)
-                                .min_col_width(0.0)
-                                .spacing([10.0, 3.0])
-                                .show(ui, |ui| {
-                                    for paire in lectures.chunks(2) {
-                                        for (nom, texte) in paire {
-                                            ui.colored_label(theme.dim, *nom);
-                                            let réponse = cliquable(
-                                                ui,
-                                                egui::Label::new(
-                                                    egui::RichText::new(texte)
-                                                        .monospace()
-                                                        .size(11.5)
-                                                        .color(theme.text),
-                                                ),
-                                            );
-                                            if réponse.on_hover_text(s.calculator_copy).clicked() {
-                                                à_copier = Some(texte.clone());
+                                ui.add_space(6.0);
+                                // Toutes les bases à la fois, en petit : c'est ce qu'on
+                                // vient chercher quand on ne sait pas encore *laquelle*
+                                // on veut. Chacune se copie d'un clic.
+                                if let Some(valeur) = valeur {
+                                    // Deux paires par rangée : sept lectures empilées
+                                    // faisaient une colonne plus haute que le clavier,
+                                    // et sur un écran de portable les dernières
+                                    // passaient sous le bouton. Côte à côte, elles
+                                    // tiennent en quatre lignes — et l'on compare
+                                    // d'autant mieux deux bases qu'on les voit
+                                    // ensemble.
+                                    let lectures = readings::all_bases(lang, valeur);
+                                    egui::Grid::new("calculator_bases")
+                                        .num_columns(4)
+                                        .min_col_width(0.0)
+                                        .spacing([10.0, 3.0])
+                                        .show(ui, |ui| {
+                                            for paire in lectures.chunks(2) {
+                                                for (nom, texte) in paire {
+                                                    ui.colored_label(theme.dim, *nom);
+                                                    let réponse = cliquable(
+                                                        ui,
+                                                        egui::Label::new(
+                                                            egui::RichText::new(texte)
+                                                                .monospace()
+                                                                .size(11.5)
+                                                                .color(theme.text),
+                                                        ),
+                                                    );
+                                                    if réponse
+                                                        .on_hover_text(s.calculator_copy)
+                                                        .clicked()
+                                                    {
+                                                        à_copier = Some(texte.clone());
+                                                    }
+                                                }
+                                                ui.end_row();
                                             }
-                                        }
-                                        ui.end_row();
-                                    }
-                                });
-                        }
+                                        });
+                                }
+                            });
+                        });
                     });
-                });
                 if ok_bar_inline(ui, theme, s) {
                     fermer_ok = true;
                 }
@@ -921,13 +971,19 @@ fn calculator_functions_ui(
     // avant d'avoir lu.
     // Les onglets : courts, et dans l'ordre où l'on apprend — lire un
     // bit avant de les compter, les compter avant de les faire tourner.
+    //
+    // À LA TAILLE DES AUTRES ONGLETS. Ceux-ci étaient en onze quand les
+    // cinq du panneau latéral — Octets, Tas, Mémoire, Pile, Processeur —
+    // sont en treize : même rôle, deux corps, et onze ne paraissait
+    // nulle part ailleurs en proportionnelle. La rangée se replie si
+    // elle manque de place, ce qu'elle savait déjà faire.
     ui.horizontal_wrapped(|ui| {
         for (famille, court, long) in calc::FAMILIES {
             let choisi = famille_active == famille;
             if ui
                 .add(egui::Button::selectable(
                     choisi,
-                    egui::RichText::new(*court).size(11.0),
+                    egui::RichText::new(*court),
                 ))
                 .on_hover_text(*long)
                 .clicked()

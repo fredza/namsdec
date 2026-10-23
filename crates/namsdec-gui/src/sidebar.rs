@@ -2405,8 +2405,7 @@ impl NamsdecApp {
         let mut remove = None;
         for &(addr, value) in watched {
             ui.horizontal(|ui| {
-                if ui
-                    .small_button("×")
+                if small_framed_button(ui, theme, "×")
                     .on_hover_text(s.watchpoints_remove)
                     .clicked()
                 {
@@ -3262,11 +3261,14 @@ impl NamsdecApp {
                 // n'y a rien d'autre.
                 Some(voulu) if module.id() == voulu => {
                     ui.add_space(2.0);
-                    ui.label(
-                        egui::RichText::new(module.title(ctx.lang))
-                            .strong()
-                            .size(15.0),
-                    );
+                    // La MÊME taille que dans la liste. Le titre
+                    // grossissait de deux points dès qu'on cliquait
+                    // dessus : même texte, même fenêtre, même place, et
+                    // un corps qui change parce qu'on l'a choisi. Un
+                    // titre de section vaut treize partout ailleurs —
+                    // « Composants », « Thèmes », « Registres
+                    // vectoriels (SSE et AVX) ».
+                    ui.label(egui::RichText::new(module.title(ctx.lang)).strong());
                     ui.add_space(6.0);
                     module.ui(ui, &ctx);
                     return;

@@ -187,7 +187,9 @@ impl NamsdecApp {
                             .desired_width(200.0)
                             .hint_text(s.exercises_search_hint),
                     );
-                    if !self.exercise_query.is_empty() && ui.small_button("x").clicked() {
+                    if !self.exercise_query.is_empty()
+                        && small_framed_button(ui, theme, "x").clicked()
+                    {
                         self.exercise_query.clear();
                     }
                 });
@@ -415,12 +417,13 @@ impl NamsdecApp {
                                             ui.horizontal_wrapped(|ui| {
                                                 ui.colored_label(theme.dim, s.exercises_sheets);
                                                 for name in fiches {
-                                                    if ui
-                                                        .small_button(
-                                                            egui::RichText::new(name).monospace(),
-                                                        )
-                                                        .on_hover_text(s.help_open_sheet)
-                                                        .clicked()
+                                                    if small_framed_button(
+                                                        ui,
+                                                        theme,
+                                                        egui::RichText::new(name).monospace(),
+                                                    )
+                                                    .on_hover_text(s.help_open_sheet)
+                                                    .clicked()
                                                     {
                                                         fiche = Some(name);
                                                     }
@@ -476,183 +479,217 @@ impl NamsdecApp {
             // de trois cents pixels sans se replier en accordéon.
             .default_width(ABOUT_WIDTH)
             .min_width(ABOUT_WIDTH)
+            // Jamais plus haute que l'écran. Une boîte non
+            // redimensionnable n'a aucune poignée pour rattraper le
+            // coup : si elle dépasse, elle dépasse pour toujours.
+            //
+            // La hauteur d'OUVERTURE est celle de l'écran, et non celle
+            // du contenu : une zone qui défile ne déborde jamais, donc
+            // rien ne pousse plus la boîte à grandir, et elle resterait
+            // figée à la taille d'egui par défaut en coupant le bouton
+            // de don. On part de l'écran, `auto_shrink` redescend sur le
+            // contenu.
+            .default_height((ctx.viewport_rect().height() - 48.0).max(320.0))
+            .max_height((ctx.viewport_rect().height() - 48.0).max(320.0))
             .title_bar(false)
             .show(ctx, |ui| {
                 if chrome::window_head(ui, self.theme, s, s.about_title) {
                     close = true;
                 }
-                ui.set_min_width(ABOUT_WIDTH - 24.0);
-                // L'en-tête : l'icône de l'application à gauche — la
-                // même que celle du lanceur —, et à droite ce qu'elle
-                // est, ce qu'elle vaut, ce qu'elle fait.
-                let icône = self.app_icon_texture(ctx);
-                ui.horizontal(|ui| {
-                    ui.add(
-                        egui::Image::new(egui::load::SizedTexture::from_handle(&icône))
-                            .fit_to_exact_size(egui::vec2(APP_ICON_SHOWN, APP_ICON_SHOWN))
-                            .corner_radius(12),
-                    );
-                    ui.add_space(12.0);
-                    ui.vertical(|ui| {
+                // CE QUI RENSEIGNE DÉFILE, LE BOUTON NON.
+                //
+                // Cette boîte n'est pas redimensionnable et sa
+                // hauteur était donc celle de son contenu, quelle que
+                // soit celle de l'écran : mesurée à 800x520 — le plus
+                // petit que l'application accepte —, elle faisait
+                // 599 px de haut et son bandeau se posait 40 px
+                // au-dessus du bord, hors de vue. Le pivot est centré,
+                // de sorte qu'une boîte trop haute sort des DEUX côtés
+                // à la fois : ni le bandeau ni le bouton « OK »
+                // n'étaient atteignables.
+                //
+                // Le bouton reste hors de la zone qui défile : ce qui
+                // ferme une boîte ne s'amène pas à l'écran.
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, true])
+                    .show(ui, |ui| {
+                        ui.set_min_width(ABOUT_WIDTH - 24.0);
+                        // L'en-tête : l'icône de l'application à gauche — la
+                        // même que celle du lanceur —, et à droite ce qu'elle
+                        // est, ce qu'elle vaut, ce qu'elle fait.
+                        let icône = self.app_icon_texture(ctx);
                         ui.horizontal(|ui| {
-                            ui.heading(egui::RichText::new("namsdec").strong().size(28.0));
-                            ui.colored_label(
-                                theme.dim,
-                                egui::RichText::new(format!("v{APP_VERSION}")).monospace(),
-                            )
-                            .on_hover_text(format!("{} {BUILD_DATE}", s.about_build_word));
+                            ui.add(
+                                egui::Image::new(egui::load::SizedTexture::from_handle(&icône))
+                                    .fit_to_exact_size(egui::vec2(APP_ICON_SHOWN, APP_ICON_SHOWN))
+                                    .corner_radius(12),
+                            );
+                            ui.add_space(12.0);
+                            ui.vertical(|ui| {
+                                ui.horizontal(|ui| {
+                                    ui.heading(egui::RichText::new("namsdec").strong().size(28.0));
+                                    ui.colored_label(
+                                        theme.dim,
+                                        egui::RichText::new(format!("v{APP_VERSION}")).monospace(),
+                                    )
+                                    .on_hover_text(format!("{} {BUILD_DATE}", s.about_build_word));
+                                });
+                                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
+                                ui.colored_label(theme.dim, s.about_description);
+                                ui.add_space(8.0);
+                                // Les trois portes du projet : le site, le
+                                // salon, le dépôt. Chacune avec sa marque —
+                                // dessinée, donc de la couleur du thème et nette
+                                // à toute taille.
+                                ui.horizontal_wrapped(|ui| {
+                                    for (label, url, infobulle, dessin) in [
+                                        (
+                                            s.about_site,
+                                            SITE_URL,
+                                            s.about_site_hint,
+                                            chrome::icon_globe
+                                                as fn(&egui::Painter, egui::Rect, egui::Color32),
+                                        ),
+                                        (
+                                            s.about_discord,
+                                            DISCORD_URL,
+                                            s.about_discord_hint,
+                                            chrome::icon_discord,
+                                        ),
+                                        (
+                                            s.about_github,
+                                            GITHUB_URL,
+                                            s.about_github_hint,
+                                            chrome::icon_github,
+                                        ),
+                                    ] {
+                                        if link_button_ui(ui, theme, label, dessin)
+                                            .on_hover_text(format!("{infobulle}\n{url}"))
+                                            .clicked()
+                                        {
+                                            ui.ctx().open_url(egui::OpenUrl::new_tab(url));
+                                        }
+                                    }
+                                });
+                            });
                         });
-                        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
-                        ui.colored_label(theme.dim, s.about_description);
-                        ui.add_space(8.0);
-                        // Les trois portes du projet : le site, le
-                        // salon, le dépôt. Chacune avec sa marque —
-                        // dessinée, donc de la couleur du thème et nette
-                        // à toute taille.
+                        ui.add_space(10.0);
+
+                        // Le bandeau des préversions : il dit ce qu'on tient
+                        // entre les mains, et disparaît de lui-même le jour où
+                        // la version n'en est plus une.
+                        if let Some(étiquette) = prerelease(APP_VERSION) {
+                            egui::Frame::new()
+                                .fill(theme.warn.gamma_multiply(0.15))
+                                .stroke(egui::Stroke::new(1.0, theme.warn))
+                                .inner_margin(egui::Margin::symmetric(12, 10))
+                                .corner_radius(8.0)
+                                .show(ui, |ui| {
+                                    ui.set_min_width(ABOUT_WIDTH - 60.0);
+                                    ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
+                                    ui.colored_label(
+                                        theme.warn,
+                                        egui::RichText::new(format!(
+                                            "{} — {étiquette}",
+                                            s.about_beta_title
+                                        ))
+                                        .strong(),
+                                    );
+                                    ui.add_space(4.0);
+                                    ui.colored_label(theme.text, s.about_beta_body);
+                                });
+                            ui.add_space(10.0);
+                        }
+
+                        ui.add_space(6.0);
                         ui.horizontal_wrapped(|ui| {
-                            for (label, url, infobulle, dessin) in [
-                                (
-                                    s.about_site,
-                                    SITE_URL,
-                                    s.about_site_hint,
-                                    chrome::icon_globe
-                                        as fn(&egui::Painter, egui::Rect, egui::Color32),
-                                ),
-                                (
-                                    s.about_discord,
-                                    DISCORD_URL,
-                                    s.about_discord_hint,
-                                    chrome::icon_discord,
-                                ),
-                                (
-                                    s.about_github,
-                                    GITHUB_URL,
-                                    s.about_github_hint,
-                                    chrome::icon_github,
-                                ),
-                            ] {
-                                if link_button_ui(ui, theme, label, dessin)
-                                    .on_hover_text(format!("{infobulle}\n{url}"))
-                                    .clicked()
-                                {
-                                    ui.ctx().open_url(egui::OpenUrl::new_tab(url));
-                                }
+                            ui.colored_label(theme.dim, s.about_license);
+                            ui.hyperlink_to(s.about_license_link, MIT_LICENSE_URL);
+                        });
+
+                        ui.separator();
+                        ui.colored_label(theme.dim, s.about_donate_hint);
+                        let adresse = self.donation_url.trim().to_owned();
+                        let can_donate = !adresse.is_empty();
+                        let texture = self.treat_texture(ctx);
+                        ui.add_enabled_ui(can_donate, |ui| {
+                            // `Image::sense` plutôt qu'un `ImageButton` : egui
+                            // 0.36 a retiré ce dernier, une image cliquable le
+                            // remplace.
+                            let image =
+                                egui::Image::new(egui::load::SizedTexture::from_handle(&texture))
+                                    .fit_to_exact_size(egui::vec2(
+                                        TREAT_IMAGE_SHOWN,
+                                        TREAT_IMAGE_SHOWN,
+                                    ))
+                                    .corner_radius(6)
+                                    .sense(egui::Sense::click());
+                            if ui
+                                .add(image)
+                                .on_hover_cursor(egui::CursorIcon::PointingHand)
+                                .on_hover_text(s.about_donate)
+                                .clicked()
+                            {
+                                ui.ctx().open_url(egui::OpenUrl::new_tab(&adresse));
                             }
                         });
-                    });
-                });
-                ui.add_space(10.0);
+                        if !can_donate {
+                            ui.colored_label(theme.dim, s.about_donate_unset);
+                        }
 
-                // Le bandeau des préversions : il dit ce qu'on tient
-                // entre les mains, et disparaît de lui-même le jour où
-                // la version n'en est plus une.
-                if let Some(étiquette) = prerelease(APP_VERSION) {
-                    egui::Frame::new()
-                        .fill(theme.warn.gamma_multiply(0.15))
-                        .stroke(egui::Stroke::new(1.0, theme.warn))
-                        .inner_margin(egui::Margin::symmetric(12, 10))
-                        .corner_radius(8.0)
-                        .show(ui, |ui| {
-                            ui.set_min_width(ABOUT_WIDTH - 60.0);
-                            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
-                            ui.colored_label(
-                                theme.warn,
-                                egui::RichText::new(format!(
-                                    "{} — {étiquette}",
-                                    s.about_beta_title
-                                ))
-                                .strong(),
-                            );
-                            ui.add_space(4.0);
-                            ui.colored_label(theme.text, s.about_beta_body);
+                        ui.separator();
+                        // La recherche est un geste, jamais un réflexe : rien
+                        // n'est demandé à GitHub tant que personne n'a cliqué,
+                        // et rien n'est envoyé d'autre que la requête.
+                        //
+                        // Un binaire bâti sans l'option `reseau` n'en montre pas
+                        // le bouton : un bouton qui ne peut rien faire est pire
+                        // qu'une absence, et ici l'absence se comprend — le
+                        // paquet d'une distribution met à jour lui-même.
+                        #[cfg(feature = "reseau")]
+                        ui.horizontal_wrapped(|ui| {
+                            ui.add_enabled_ui(self.update_check.is_none(), |ui| {
+                                if framed_button(ui, self.theme, s.about_check_update)
+                                    .on_hover_text(s.about_check_update_hint)
+                                    .clicked()
+                                {
+                                    lancer_recherche = true;
+                                }
+                            });
+                            if self.update_check.is_some() {
+                                ui.colored_label(theme.dim, s.about_update_checking);
+                            }
                         });
-                    ui.add_space(10.0);
-                }
-
-                ui.add_space(6.0);
-                ui.horizontal_wrapped(|ui| {
-                    ui.colored_label(theme.dim, s.about_license);
-                    ui.hyperlink_to(s.about_license_link, MIT_LICENSE_URL);
-                });
-
-                ui.separator();
-                ui.colored_label(theme.dim, s.about_donate_hint);
-                let adresse = self.donation_url.trim().to_owned();
-                let can_donate = !adresse.is_empty();
-                let texture = self.treat_texture(ctx);
-                ui.add_enabled_ui(can_donate, |ui| {
-                    // `Image::sense` plutôt qu'un `ImageButton` : egui
-                    // 0.36 a retiré ce dernier, une image cliquable le
-                    // remplace.
-                    let image = egui::Image::new(egui::load::SizedTexture::from_handle(&texture))
-                        .fit_to_exact_size(egui::vec2(TREAT_IMAGE_SHOWN, TREAT_IMAGE_SHOWN))
-                        .corner_radius(6)
-                        .sense(egui::Sense::click());
-                    if ui
-                        .add(image)
-                        .on_hover_cursor(egui::CursorIcon::PointingHand)
-                        .on_hover_text(s.about_donate)
-                        .clicked()
-                    {
-                        ui.ctx().open_url(egui::OpenUrl::new_tab(&adresse));
-                    }
-                });
-                if !can_donate {
-                    ui.colored_label(theme.dim, s.about_donate_unset);
-                }
-
-                ui.separator();
-                // La recherche est un geste, jamais un réflexe : rien
-                // n'est demandé à GitHub tant que personne n'a cliqué,
-                // et rien n'est envoyé d'autre que la requête.
-                //
-                // Un binaire bâti sans l'option `reseau` n'en montre pas
-                // le bouton : un bouton qui ne peut rien faire est pire
-                // qu'une absence, et ici l'absence se comprend — le
-                // paquet d'une distribution met à jour lui-même.
-                #[cfg(feature = "reseau")]
-                ui.horizontal_wrapped(|ui| {
-                    ui.add_enabled_ui(self.update_check.is_none(), |ui| {
-                        if framed_button(ui, self.theme, s.about_check_update)
-                            .on_hover_text(s.about_check_update_hint)
-                            .clicked()
-                        {
-                            lancer_recherche = true;
+                        #[cfg(feature = "reseau")]
+                        match &self.update_result {
+                            Some(Ok(namsdec_update::Verdict::UpToDate)) => {
+                                ui.colored_label(theme.good, s.about_update_uptodate);
+                            }
+                            Some(Ok(namsdec_update::Verdict::Newer(release))) => {
+                                ui.colored_label(
+                                    theme.warn,
+                                    format!("{} {}", s.about_update_newer, release.tag),
+                                );
+                                if !release.url.is_empty() {
+                                    ui.hyperlink_to(s.about_update_open, &release.url);
+                                }
+                                // Ce que namsdec ne fera pas : se remplacer tout
+                                // seul. Dire comment mettre à jour vaut mieux que
+                                // de le faire dans le dos de celui qui travaille.
+                                ui.colored_label(theme.dim, s.about_update_how);
+                            }
+                            Some(Ok(namsdec_update::Verdict::Ahead(release))) => {
+                                ui.colored_label(
+                                    theme.dim,
+                                    format!("{} ({})", s.about_update_ahead, release.tag),
+                                );
+                            }
+                            Some(Err(message)) => {
+                                ui.colored_label(theme.bad, message);
+                            }
+                            None => {}
                         }
                     });
-                    if self.update_check.is_some() {
-                        ui.colored_label(theme.dim, s.about_update_checking);
-                    }
-                });
-                #[cfg(feature = "reseau")]
-                match &self.update_result {
-                    Some(Ok(namsdec_update::Verdict::UpToDate)) => {
-                        ui.colored_label(theme.good, s.about_update_uptodate);
-                    }
-                    Some(Ok(namsdec_update::Verdict::Newer(release))) => {
-                        ui.colored_label(
-                            theme.warn,
-                            format!("{} {}", s.about_update_newer, release.tag),
-                        );
-                        if !release.url.is_empty() {
-                            ui.hyperlink_to(s.about_update_open, &release.url);
-                        }
-                        // Ce que namsdec ne fera pas : se remplacer tout
-                        // seul. Dire comment mettre à jour vaut mieux que
-                        // de le faire dans le dos de celui qui travaille.
-                        ui.colored_label(theme.dim, s.about_update_how);
-                    }
-                    Some(Ok(namsdec_update::Verdict::Ahead(release))) => {
-                        ui.colored_label(
-                            theme.dim,
-                            format!("{} ({})", s.about_update_ahead, release.tag),
-                        );
-                    }
-                    Some(Err(message)) => {
-                        ui.colored_label(theme.bad, message);
-                    }
-                    None => {}
-                }
 
                 ui.separator();
                 // Un seul bouton : il n'y a rien à annuler dans une boîte
@@ -939,8 +976,7 @@ impl NamsdecApp {
                     // L'exemple se copie : on lit une fiche pour essayer
                     // ce qu'elle décrit, et le retaper à la main n'ajoute
                     // rien à ce qu'on en apprend.
-                    if ui
-                        .small_button(s.help_copy_example)
+                    if small_framed_button(ui, theme, s.help_copy_example)
                         .on_hover_text(s.help_copy_hint)
                         .clicked()
                     {
@@ -962,10 +998,13 @@ impl NamsdecApp {
                     ui.horizontal_wrapped(|ui| {
                         ui.colored_label(theme.dim, s.help_see_also);
                         for autre in renvois {
-                            if ui
-                                .small_button(egui::RichText::new(autre.names[0]).monospace())
-                                .on_hover_text(autre.title.get(lang))
-                                .clicked()
+                            if small_framed_button(
+                                ui,
+                                theme,
+                                egui::RichText::new(autre.names[0]).monospace(),
+                            )
+                            .on_hover_text(autre.title.get(lang))
+                            .clicked()
                             {
                                 suivante = Some(autre.names[0]);
                             }

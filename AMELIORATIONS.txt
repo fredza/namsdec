@@ -1642,6 +1642,121 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
          chasse fixe. Si elles sont peintes, ce sont deux tailles de plus pour
          des rôles qui en ont déjà une.
 
+     PASSE DU 23 OCTOBRE — CE QUE LE 25 SEPTEMBRE N'AVAIT PAS CHERCHÉ.
+     Tout ce que la revue de septembre avait mesuré et pas corrigé est fait,
+     et la note en tête de TRAVAUX disait « il n'y a plus de relevé à
+     refaire ». C'était faux, et de la pire manière : non pas des défauts
+     connus qu'on aurait laissés, mais des QUESTIONS qu'on n'avait jamais
+     posées. Trois relevés menés en parallèle, sur trois axes que rien ne
+     regardait, puis un seul arbitrage — les invariants se contredisent, et
+     cela s'est vu trois fois dans la journée.
+
+     1. L'ÉCRAN LE PLUS PETIT. Le banc dessine sur 1600x1100 ; l'application
+        déclare accepter 800x520, et personne n'avait jamais regardé ce
+        format. Trois fenêtres en sortaient — calculatrice 236 px, « À
+        propos » 79, registres étendus 68 — et par le HAUT. C'est le détail
+        qui fait la gravité : egui autorise une fenêtre trop haute à déborder
+        des deux côtés (`constrain_window_rect_to_area` borne le haut à zéro
+        au plus), si bien que le bandeau — qui porte la croix de fermeture,
+        ces fenêtres n'ayant pas la barre de titre d'egui — se posait
+        au-dessus du bord. Une fenêtre qu'on ne peut plus ni déplacer ni
+        fermer.
+        La calculatrice portait l'intention en commentaire — « Jamais plus
+        haute que l'écran : une fenêtre qui le dépasse pose son bouton hors
+        de vue » — et faisait 756 px sur un écran de 520. `max_height` borne
+        ce que la POIGNÉE permet, pas ce que le contenu prend.
+
+        TROIS CHOSES APPRISES SUR EGUI, chacune payée d'un aller-retour :
+        — Une fenêtre grandit parce que son contenu DÉBORDE de la place qu'on
+          lui laisse ; egui l'y amène en quelques images. Une zone qui défile
+          ne déborde jamais — elle prend exactement ce qu'on lui donne. Une
+          fenêtre sans hauteur d'ouverture + une zone défilante = un point
+          fixe à la taille d'egui par défaut, et le contenu coupé. C'est ce
+          qui a cassé sept contrôles au premier essai.
+        — `default_size` n'est pas `default_width` + `default_height` : la
+          première pose AUSSI la taille de l'aire, qui ne redescend plus sur
+          le contenu. Les registres étendus sont restés 440x1040 avec 405 px
+          de vide jusqu'à ce qu'on le voie.
+        — Une barre d'action en panneau bas réclame toute la hauteur du
+          cadre : la fenêtre ne rétrécit jamais. Posée dans le flux, elle
+          suit le contenu. C'est le choix que la calculatrice avait déjà
+          fait, et que les registres étendus n'avaient pas.
+        DEUX CONTRÔLES, l'un contre l'autre, et c'est voulu :
+        `a_window_fits_the_smallest_screen_the_app_accepts` interdit de
+        dépasser, `a_window_of_known_content_does_not_scroll_when_there_is_room`
+        interdit de défiler quand l'écran avait la place. Un seul des deux se
+        contenterait d'une fenêtre grande comme l'écran, ou d'une fenêtre qui
+        défile toujours.
+
+     2. L'INVENTAIRE DES TAILLES DE TEXTE. L'application n'a pas de table de
+        styles : chaque endroit écrit sa taille. Rien n'empêchait donc un
+        15 pt de paraître dans un coin, et deux l'avaient fait — le titre
+        d'un module d'analyse grossissait de 13 à 15 dès qu'on cliquait
+        dessus (même texte, même fenêtre, même place), et la page Outils des
+        préférences ouvrait deux points au-dessus des quatre autres.
+        CES DEUX-LÀ ÉTAIENT DÉJÀ DANS CETTE SECTION, en D, rangés comme
+        « deux tailles qu'aucune scène du banc n'atteint ». C'était faux :
+        elles étaient peintes cinquante-deux fois, dans vingt-cinq scènes. Ce
+        qui manquait n'était pas une scène, c'était l'inventaire —
+        `every_text_size_belongs_to_a_declared_set`, qui déclare le jeu
+        {9, 12, 13, 14, 28} et nomme tout intrus. Il a trouvé en passant les
+        six onglets de la calculatrice en 11 pt, seuls de leur espèce en
+        proportionnelle, quand les cinq onglets du panneau latéral — même
+        rôle — sont en 13.
+        Ce qu'il ne couvre pas, et c'est écrit dans son commentaire : la
+        chasse fixe. La calculatrice et le graphe comptent en colonnes de
+        caractères, leurs tailles tiennent à leur géométrie. Sept tailles de
+        chasse fixe existent (9, 10, 11, 11,5, 12, 13, 16) ; le relevé les
+        nomme toutes, aucune n'est corrigée. À reprendre.
+
+     3. L'INVENTAIRE DES COMMANDES. Deux trouvailles, et toutes deux sont des
+        trous du BANC plutôt que de l'interface :
+        — Une quatrième écriture de bouton. Le contrôle de source qui exige
+          qu'un bouton se voie sans survol en connaissait trois ;
+          `ui.small_button(` est la quatrième, et elle valait onze boutons
+          plats. « RAX », « RSP », « RIP » du motif cyclique se lisaient
+          comme trois étiquettes à soixante pixels de trois boutons
+          encadrés. L'histoire se répète : le commentaire du contrôle
+          raconte déjà que la troisième écriture avait coûté soixante
+          boutons.
+        — Une scène qui ne montrait pas son onglet. L'onglet RE est masqué
+          par défaut et `sidebar_ui` retombe en silence sur le processeur ;
+          « application / re » mesurait donc le processeur une seconde fois,
+          sous un autre nom, dans les deux moitiés du banc. Aucun invariant
+          ne rougissait — ils regardaient un onglet, simplement pas celui
+          qu'ils nommaient. Trouvé en cherchant pourquoi le seul texte en
+          14 pt de l'application n'était peint nulle part.
+          `chaque_scene_d_onglet_montre_bien_son_onglet` demande désormais à
+          l'application ce qu'elle montre APRÈS avoir dessiné.
+        Mesuré aussi, et corrigé : les six commandes d'exécution de la barre
+        d'outils faisaient 18 px quand « Assembler » et les cinq onglets de
+        la même rangée en font 25 — celles dont on se sert le plus étaient
+        les plus petites, et six pixels sous la cible de 24 qu'on vise à la
+        souris. `icon_button` demandait `interact_size.y`, c'est-à-dire la
+        hauteur de ce qu'on n'a pas décrit.
+        Et la boîte de saisie, qui refait sa barre d'action à la main, n'avait
+        jamais reçu le liseré invisible de `dialog_bar` : 110x25 contre
+        110x27 à huit pixels l'un de l'autre. L'invariant qui l'attrape
+        existait depuis septembre ; il manquait la scène où le programme
+        attend vraiment une réponse. Une scène de plus, zéro contrôle neuf —
+        c'est la correction la moins chère de la journée.
+
+     UN QUATRIÈME AXE, NON CORRIGÉ, et il faut le dire : le relevé des
+     commandes compte une vingtaine de cibles sous 24 px hors de la barre
+     d'outils — les listes déroulantes maison et les en-têtes de section du
+     bandeau à 18 px, les petits boutons encadrés à 15, les deux chevrons de
+     pagination à 23,6 px de large. Tout tient à `interact_size.y`, et le
+     porter à 24 dans `apply_theme` toucherait la densité du bandeau latéral,
+     c'est-à-dire exactement ce que surveille « l'état du processeur ne
+     défile jamais ». C'est un arbitrage de produit, pas un réglage : à
+     mesurer avant de décider, et l'invariant ne s'écrit qu'après.
+
+     CE QUE LES RELEVÉS N'ONT PAS COUVERT : un seul thème sur trois, une
+     seule langue, aucun menu déroulant ouvert (aucune scène du banc n'en
+     ouvre), et aucune capture d'écran — tout est mesuré, rien n'est vu.
+     Les défauts qu'on ne pense pas à mesurer restent donc dehors, et c'est
+     précisément ce que la méthode dit de ne pas oublier.
+
      E. LE VIDE SOUS « PROCHAINE INSTRUCTION », à vide, fait encore ~260 px :
      le bandeau donne à cette zone la place que l'onglet ne prend pas. Même
      famille que le vide de 56 px ci-dessus, et même contrainte : l'état du

@@ -169,6 +169,15 @@ const RUN_TOTAL_STEPS_CAP: u64 = 50_000_000;
 /// processeur — ce qu'on regarde entre deux pas — ne se lisait qu'en le
 /// faisant défiler.
 const SIDEBAR_WIDTH: f32 = 380.0;
+/// Le plus petit écran que l'application accepte — ce que le
+/// gestionnaire de fenêtres ne laissera pas réduire davantage.
+///
+/// Elle est ici et non écrite à la main dans les options d'eframe parce
+/// qu'un invariant s'en sert : les fenêtres internes doivent tenir dans
+/// CE format, et pas seulement dans celui du banc. Deux nombres écrits
+/// à deux endroits auraient fini par diverger, et c'est le contrôle qui
+/// se serait tu.
+pub(crate) const MIN_SCREEN: [f32; 2] = [800.0, 520.0];
 /// Hauteur du panneau bas à la première ouverture, puis ses bornes — même
 /// raison que pour le panneau latéral : une hauteur aberrante enregistrée
 /// ne doit pas pouvoir revenir au lancement suivant.
@@ -4340,7 +4349,7 @@ fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1280.0, 820.0])
-            .with_min_inner_size([800.0, 520.0])
+            .with_min_inner_size(MIN_SCREEN)
             // Sous Wayland, c'est par cet identifiant que le bureau relie
             // la fenêtre à son fichier `.desktop`, et donc à son icône :
             // il doit valoir le nom de ce fichier (`namsdec.desktop`),

@@ -170,7 +170,7 @@ impl NamsdecApp {
                         .font(egui::TextStyle::Monospace)
                         .desired_width(120.0),
                 );
-                if !self.flow_goal.is_empty() && ui.small_button("x").clicked() {
+                if !self.flow_goal.is_empty() && small_framed_button(ui, theme, "x").clicked() {
                     self.flow_goal.clear();
                 }
             });

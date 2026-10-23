@@ -973,6 +973,19 @@ fn scènes() -> Vec<Scène> {
                         démarre(app);
                     }
                     app.show_sidebar = true;
+                    // L'ONGLET RE EST MASQUÉ PAR DÉFAUT, et le panneau
+                    // retombe en silence sur le processeur quand on le
+                    // demande sans l'avoir allumé (`sidebar_ui`, en
+                    // tête). La scène « application / re » mesurait donc
+                    // l'onglet Processeur une seconde fois, sous un autre
+                    // nom, dans les deux moitiés du banc : un onglet
+                    // entier hors de contrôle depuis que l'option
+                    // existe, et rien ne rougissait.
+                    //
+                    // C'est la pire espèce de trou — un contrôle vert
+                    // qui ne regarde pas ce qu'il nomme. Il est retenu
+                    // par `chaque_scene_d_onglet_montre_bien_son_onglet`.
+                    app.show_re_tab = onglet == SidebarTab::Re || app.show_re_tab;
                     app.active_tab = onglet;
                 }),
             ));
@@ -1020,6 +1033,27 @@ fn scènes() -> Vec<Scène> {
     // la barre d'état —, et les invariants de scène sont ce qui dit
     // qu'elle ne pousse ni ne recouvre rien. Quatre chiffres, qui est le
     // plus large qu'elle puisse porter.
+    // LA BOÎTE DE SAISIE QUAND LE PROGRAMME ATTEND VRAIMENT.
+    //
+    // La scène « saisie du programme » ouvre la boîte, mais sur un
+    // programme qui n'attend rien : elle montre alors UN bouton, et la
+    // rangée des trois — « Fin d'entrée », « Plus tard », « Envoyer » —
+    // n'était peinte par aucune scène. C'est là que
+    // `two_buttons_side_by_side_share_a_height` a trouvé un 110x25
+    // contre un 110x27, posés à huit pixels l'un de l'autre : le bouton
+    // principal, le seul sans liseré, était deux pixels plus court que
+    // son voisin.
+    //
+    // Un invariant déjà écrit, un défaut déjà là, et rien entre les
+    // deux qu'une scène manquante.
+    scènes.push((
+        "saisie du programme / le programme attend".to_owned(),
+        Some(INPUT_DIALOG),
+        Box::new(|app| {
+            app.status = Status::WaitingForInput;
+            app.show_input_dialog = true;
+        }),
+    ));
     scènes.push((
         "application / compteur en attente".to_owned(),
         None,

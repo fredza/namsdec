@@ -1313,7 +1313,21 @@ fn outside_the_menus_a_button_shows_itself_without_being_hovered() {
                     .skip(n)
                     .take(10)
                     .any(|d| d.contains(".fill(") || d.contains(".stroke("));
+            // QUATRIÈME écriture, et elle coûte onze boutons :
+            // `ui.small_button(`. Trouvée par un relevé des formes, qui
+            // mesurait les hauteurs de commandes et s'est étonné d'en
+            // voir à quinze pixels — « RAX », « RSP », « RIP » dans le
+            // motif cyclique, à soixante pixels de trois boutons
+            // encadrés de vingt-sept. Un petit bouton reste un bouton :
+            // il doit se voir sans qu'on le survole.
+            let petit = ligne.contains("ui.small_button(")
+                || (ligne.trim_start().starts_with(".small_button(")
+                    && source
+                        .lines()
+                        .nth(n.saturating_sub(1))
+                        .is_some_and(|d| d.trim_end().ends_with("ui")));
             let plat = ligne.contains("ui.button(")
+                || petit
                 || nu
                 || (ligne.trim_start().starts_with(".button(")
                     && source
@@ -3079,5 +3093,385 @@ fn nothing_becomes_clickable_without_saying_so() {
         "ces textes se cliquent sans le dire — passez par `cliquable` / `clickable_label`, \
          ou appelez `souligne_au_survol` si c'est une rangée :\n{}",
         fautifs.join("\n")
+    );
+}
+
+/// Une fenêtre tient dans l'écran — jusqu'au plus petit que
+/// l'application accepte.
+///
+/// Le banc dessine sur 1600x1100, et c'est là que toutes les règles de
+/// mise en page ont été éprouvées. Mais l'application déclare accepter
+/// 800x520 (`MIN_SCREEN`), et personne ne regardait ce format : à
+/// 800x520, trois fenêtres dépassaient l'écran EN HAUT, c'est-à-dire du
+/// mauvais côté — la calculatrice de 236 px, « À propos » de 79, les
+/// registres étendus de 68. Posées au centre avec un pivot centré, une
+/// fenêtre plus haute que l'écran répartit son débord moitié en haut,
+/// moitié en bas ; et ces trois-là n'ont pas de barre de titre d'egui
+/// mais leur propre bandeau, qui porte la croix de fermeture. Le
+/// bandeau hors de vue, la fenêtre ne se déplace plus et ne se ferme
+/// plus à la souris.
+///
+/// La calculatrice portait même, en commentaire, l'intention inverse :
+/// « Jamais plus haute que l'écran : une fenêtre qui le dépasse pose son
+/// bouton hors de vue ». Elle borne bien sa hauteur par
+/// `max_height`, mais `max_height` borne ce que la POIGNÉE permet, non
+/// ce que le contenu prend : un contenu qui ne défile pas pousse le
+/// cadre au-delà, et la fenêtre mesure 756 px là où elle s'était
+/// promis 460.
+///
+/// On mesure le cadre et non le contenu : une fenêtre dont le cadre
+/// tient dans l'écran a son bandeau atteignable, et le reste est
+/// l'affaire des invariants de découpage.
+#[test]
+fn a_window_fits_the_smallest_screen_the_app_accepts() {
+    let écran = egui::Rect::from_min_size(egui::Pos2::ZERO, MIN_SCREEN.into());
+    let mut dehors: Vec<String> = Vec::new();
+    for (nom, id, ouvre) in scènes() {
+        let Some(id) = id else { continue };
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp::default();
+        app.apply_theme(&ctx);
+        ouvre(&mut app);
+        let entrée = egui::RawInput {
+            screen_rect: Some(écran),
+            ..Default::default()
+        };
+        // Douze images : une fenêtre dont la hauteur épouse son contenu
+        // n'a pas fini de se poser avant la neuvième.
+        let mut cadre = egui::Rect::NOTHING;
+        for _ in 0..12 {
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            cadre = egui::AreaState::load(&ctx, egui::Id::new(id))
+                .map(|a| a.rect())
+                .unwrap_or(egui::Rect::NOTHING);
+            sortie.textures_delta.clear();
+        }
+        let manque = egui::vec2(
+            (cadre.right() - écran.right()).max(0.0) + (écran.left() - cadre.left()).max(0.0),
+            (cadre.bottom() - écran.bottom()).max(0.0) + (écran.top() - cadre.top()).max(0.0),
+        );
+        if manque.x > 1.0 || manque.y > 1.0 {
+            dehors.push(format!(
+                "« {nom} » : {:.0}x{:.0} posée en ({:.0},{:.0}) — {:.0} px hors de \
+                 l'écran en largeur et {:.0} px en hauteur",
+                cadre.width(),
+                cadre.height(),
+                cadre.left(),
+                cadre.top(),
+                manque.x,
+                manque.y
+            ));
+        }
+    }
+    assert!(
+        dehors.is_empty(),
+        "à {:.0}x{:.0}, le plus petit écran que l'application accepte, \
+         {} fenêtre(s) sortent de l'écran :\n  {}",
+        MIN_SCREEN[0],
+        MIN_SCREEN[1],
+        dehors.len(),
+        dehors.join("\n  ")
+    );
+}
+
+/// Une fenêtre qui montre un contenu de taille connue ne défile pas
+/// quand l'écran a la place.
+///
+/// Le revers de l'invariant précédent. Trois fenêtres ont dû recevoir
+/// une hauteur d'ouverture ÉCRITE, parce qu'une zone qui défile ne
+/// déborde jamais et qu'une fenêtre qui ne déborde pas ne grandit pas :
+/// il faut lui dire ce qu'elle a à montrer. Un nombre écrit à la main
+/// est un nombre qui vieillit — le jour où les registres étendus
+/// gagneront une ligne, la fenêtre ne la montrera plus et se mettra à
+/// défiler sur un écran qui avait la place. Ce contrôle est ce qui
+/// l'empêche, et c'est lui que nomme le commentaire de
+/// `VECTEURS_HAUTEUR`.
+///
+/// Trois fenêtres et pas toutes : l'analyse, l'aide, le désassemblage ou
+/// la console montrent des listes sans longueur connue, et elles
+/// DOIVENT défiler. Celles-ci montrent un contenu de taille fixe — un
+/// appareil, vingt-quatre registres, une boîte de renseignements.
+#[test]
+fn a_window_of_known_content_does_not_scroll_when_there_is_room() {
+    let entrée = écran_du_banc();
+    let mut défilent: Vec<String> = Vec::new();
+    for (nom, id, ouvre) in scènes() {
+        let Some(id) = id else { continue };
+        if !nom.starts_with("calculatrice")
+            && !nom.starts_with("à propos")
+            && !nom.starts_with("registres étendus")
+        {
+            continue;
+        }
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp::default();
+        app.apply_theme(&ctx);
+        ouvre(&mut app);
+        let mut barres: Vec<f32> = Vec::new();
+        for _ in 0..12 {
+            let cadre = egui::AreaState::load(&ctx, egui::Id::new(id))
+                .map(|a| a.rect())
+                .unwrap_or(egui::Rect::NOTHING);
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            barres.clear();
+            for clipped in &sortie.shapes {
+                let large = cadre.x_range().expand(2.0);
+                if !large.contains(clipped.clip_rect.left())
+                    || !large.contains(clipped.clip_rect.right())
+                {
+                    continue;
+                }
+                // Une barre de défilement : étroite et haute. Le même
+                // relevé que `a_scroll_bar_shows_up_when_there_is_…`,
+                // qui ne regardait que les panneaux.
+                if let egui::epaint::Shape::Rect(r) = &clipped.shape
+                    && r.rect.width() < 20.0
+                    && r.rect.height() > 60.0
+                {
+                    barres.push(r.rect.height());
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+        if !barres.is_empty() {
+            défilent.push(format!(
+                "« {nom} » montre {} barre(s) de défilement ({} px) sur un écran \
+                 de {:.0}x{:.0} : sa hauteur d'ouverture écrite ne couvre plus ce \
+                 qu'elle a à montrer",
+                barres.len(),
+                barres
+                    .iter()
+                    .map(|h| format!("{h:.0}"))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                entrée.screen_rect.unwrap().width(),
+                entrée.screen_rect.unwrap().height(),
+            ));
+        }
+    }
+    assert!(défilent.is_empty(), "{}", défilent.join("\n  "));
+}
+
+/// Chaque scène d'onglet montre bien l'onglet qu'elle nomme.
+///
+/// Trouvé par un relevé des tailles de police, et c'est ce qui le rend
+/// intéressant : il cherchait pourquoi le gros bouton d'action — le
+/// seul texte en 14 pt de l'application — n'était peint par aucune
+/// scène. Parce que la scène qui aurait dû le peindre ne montrait pas
+/// ce qu'elle disait montrer. L'onglet RE est masqué par défaut
+/// (Préférences > Modules), et `sidebar_ui` rabat l'onglet actif sur le
+/// processeur quand on le demande sans l'avoir allumé — en silence,
+/// comme il se doit pour quelqu'un qui vient d'éteindre le module.
+///
+/// Les deux moitiés du banc mesuraient donc l'onglet Processeur sous le
+/// nom de l'onglet RE. Tous les invariants de scène passaient : ils
+/// regardaient un onglet, simplement pas celui qu'ils nommaient.
+///
+/// Le contrôle demande à l'application ce qu'elle montre APRÈS avoir
+/// dessiné, et non ce qu'on lui a demandé de montrer — c'est tout
+/// l'écart entre les deux qui était passé inaperçu.
+#[test]
+fn chaque_scene_d_onglet_montre_bien_son_onglet() {
+    let entrée = écran_du_banc();
+    for onglet in SidebarTab::ALL {
+        let nom = format!("application / {}", onglet.id());
+        let Some((_, _, ouvre)) = scènes().into_iter().find(|(n, _, _)| *n == nom) else {
+            panic!("la scène « {nom} » doit exister dans le banc");
+        };
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp::default();
+        app.apply_theme(&ctx);
+        ouvre(&mut app);
+        for _ in 0..3 {
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            sortie.textures_delta.clear();
+        }
+        assert_eq!(
+            app.active_tab, onglet,
+            "« {nom} » dit montrer {:?} et montre {:?} : la scène mesure un autre \
+             onglet que celui qu'elle nomme",
+            onglet, app.active_tab
+        );
+    }
+}
+
+/// Les commandes de la barre d'outils ont toutes la même hauteur.
+///
+/// Mesuré dans une seule rangée, celle qu'on a sous les yeux toute la
+/// journée : « Assembler » 25 px, puis « Exécuter », « Step Into »,
+/// « Step Over », « Step Back », « Stop » et « Réinitialiser » à
+/// 18 px, puis les cinq onglets à 25 px. Les commandes dont on se sert
+/// le plus étaient les plus petites de la barre, et sept pixels
+/// séparaient deux voisines immédiates.
+///
+/// La cause tenait en un mot : `icon_button` demandait
+/// `interact_size.y` — la hauteur d'un widget quelconque, 18 px —
+/// quand un bouton de cette application vaut son texte plus deux fois
+/// son rembourrage, soit 25. Un bouton à icône n'est pas une autre
+/// sorte de bouton.
+///
+/// Dix-huit pixels, c'est aussi six de moins que la cible de
+/// vingt-quatre que recommandent les règles d'accessibilité pour une
+/// zone qu'on vise à la souris.
+///
+/// La mesure porte sur les rectangles peints de la barre, et non sur
+/// les formes des icônes qu'ils contiennent : on groupe par bande
+/// horizontale, et l'on exige une seule hauteur par bande.
+#[test]
+fn every_command_of_the_toolbar_has_the_same_height() {
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp {
+        source: DEFAULT_SOURCE.to_owned(),
+        ..Default::default()
+    };
+    app.apply_theme(&ctx);
+    let entrée = écran_du_banc();
+    let mut hauteurs: Vec<(f32, f32)> = Vec::new();
+    for _ in 0..4 {
+        hauteurs.clear();
+        let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Rect(r) = &clipped.shape {
+                // La barre d'outils : la bande sous la barre de menus,
+                // au-dessus de l'éditeur. On prend les rectangles de la
+                // taille d'un bouton, et rien d'autre.
+                let dans_la_barre = r.rect.top() > 24.0 && r.rect.bottom() < 70.0;
+                // Entre 24 et 300 px de large : au-delà, c'est le fond
+                // de la barre elle-même, qui court sur tout l'écran et
+                // n'est pas une commande.
+                if dans_la_barre
+                    && (24.0..300.0).contains(&r.rect.width())
+                    && r.rect.height() > 12.0
+                {
+                    hauteurs.push((r.rect.left(), r.rect.height()));
+                }
+            }
+        }
+        sortie.textures_delta.clear();
+    }
+    hauteurs.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let mut vues: Vec<f32> = hauteurs.iter().map(|(_, h)| *h).collect();
+    vues.dedup();
+    assert!(
+        !vues.is_empty(),
+        "le relevé ne trouve aucune commande dans la barre d'outils : \
+         il ne mesure plus ce qu'il croit mesurer"
+    );
+    assert_eq!(
+        vues.len(),
+        1,
+        "la barre d'outils mêle {} hauteurs de commande : {:?}",
+        vues.len(),
+        hauteurs
+            .iter()
+            .map(|(x, h)| format!("x={x:.0} → {h:.0} px"))
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        vues[0] >= 24.0,
+        "une commande de la barre d'outils fait {:.0} px de haut : \
+         sous les vingt-quatre que l'on vise à la souris",
+        vues[0]
+    );
+}
+
+/// Toute taille de texte peinte appartient à un jeu déclaré.
+///
+/// Un inventaire, et non une règle de plus : l'application n'a pas de
+/// table de styles — chaque endroit écrit sa taille, ou laisse egui
+/// choisir la sienne. Rien n'empêchait donc un 15 pt de paraître dans
+/// un coin, et deux l'ont fait : le titre d'un module d'analyse
+/// grossissait de treize à quinze dès qu'on cliquait dessus — même
+/// texte, même fenêtre, même place —, et la page Outils des
+/// préférences ouvrait deux points au-dessus des quatre autres.
+///
+/// Les deux avaient été relevés en septembre et rangés comme
+/// « inatteignables par le banc ». Ils ne l'étaient pas : ils étaient
+/// peints cinquante-deux fois, dans vingt-cinq scènes. Ce qui manquait
+/// n'était pas une scène, c'était ce contrôle-ci.
+///
+/// Le jeu déclaré, et pourquoi chaque taille y est :
+///   * **9** — le détail d'un état vide, l'explication sous une
+///     phrase, le libellé d'un travail en cours. `TextStyle::Small`.
+///   * **13** — tout le reste : prose, étiquettes, valeurs, titres de
+///     section, libellés de boutons, titres de fenêtres.
+///     `TextStyle::Body`, `Button` et `Monospace`.
+///   * **12** et **14** — la vignette d'un thème, et elle seule : son
+///     nom en 14, son « actif » en 12. `theme_card_width` calcule la
+///     largeur des vignettes sur ces deux tailles exactement ; les
+///     changer sans la changer décalerait les boutons « Retirer ».
+///   * **14** aussi pour le gros bouton d'action du panneau RE, le seul
+///     bouton de l'application qui porte une icône et une phrase.
+///   * **28** — le nom « namsdec » dans « À propos », une fois.
+///
+/// Les tailles de la CHASSE FIXE ne sont pas ici : la calculatrice et
+/// le graphe sont deux appareils qui comptent en colonnes de
+/// caractères, et leurs tailles tiennent à leur géométrie, pas à une
+/// hiérarchie de texte. C'est un relevé à part, et il reste à faire.
+#[test]
+fn every_text_size_belongs_to_a_declared_set() {
+    const DÉCLARÉES: &[f32] = &[9.0, 12.0, 13.0, 14.0, 28.0];
+    let entrée = écran_du_banc();
+    let mut étrangères: Vec<String> = Vec::new();
+    for (nom, id, ouvre) in scènes() {
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp::default();
+        app.apply_theme(&ctx);
+        ouvre(&mut app);
+        for image in 0..6 {
+            let cadre =
+                id.and_then(|id| egui::AreaState::load(&ctx, egui::Id::new(id)).map(|a| a.rect()));
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            if image < 5 {
+                sortie.textures_delta.clear();
+                continue;
+            }
+            for clipped in &sortie.shapes {
+                if cadre.is_some_and(|c| {
+                    let large = c.x_range().expand(2.0);
+                    !large.contains(clipped.clip_rect.left())
+                        || !large.contains(clipped.clip_rect.right())
+                }) {
+                    continue;
+                }
+                let egui::epaint::Shape::Text(t) = &clipped.shape else {
+                    continue;
+                };
+                // Ce qui se voit : une ligne rognée à néant par un
+                // ascenseur n'est pas peinte, et n'a pas à être jugée.
+                if t.galley.rows.iter().all(|l| {
+                    l.glyphs.is_empty()
+                        || !l
+                            .rect_without_leading_space()
+                            .translate(t.pos.to_vec2())
+                            .intersect(clipped.clip_rect)
+                            .is_positive()
+                }) {
+                    continue;
+                }
+                for section in &t.galley.job.sections {
+                    let police = &section.format.font_id;
+                    if police.family != egui::FontFamily::Proportional {
+                        continue;
+                    }
+                    if DÉCLARÉES.iter().any(|d| (d - police.size).abs() < 0.01) {
+                        continue;
+                    }
+                    let texte: String = t.galley.text().chars().take(40).collect();
+                    let ligne = format!("{:.1} pt — « {nom} » : {texte:?}", police.size);
+                    if !étrangères.contains(&ligne) {
+                        étrangères.push(ligne);
+                    }
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+    }
+    étrangères.sort();
+    assert!(
+        étrangères.is_empty(),
+        "{} taille(s) de texte hors du jeu déclaré {DÉCLARÉES:?} :\n  {}",
+        étrangères.len(),
+        étrangères.join("\n  ")
     );
 }

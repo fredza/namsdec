@@ -680,8 +680,7 @@ impl NamsdecApp {
                     // Les registres où l'on retrouve le motif après un
                     // débordement : il n'y a pas à les recopier.
                     for (name, value) in &registres {
-                        if ui
-                            .small_button(*name)
+                        if small_framed_button(ui, theme, *name)
                             .on_hover_text(format!("{value:#x}"))
                             .clicked()
                         {
@@ -1296,22 +1295,49 @@ impl NamsdecApp {
         let s = strings(self.lang);
         let mut open = true;
         let mut fermer_ok = false;
+        // Ce que l'écran laisse à une fenêtre, bandeau et ombre déduits.
+        // Prise sur l'ÉCRAN et non sur le contenu : une dimension lue de
+        // son propre contenu se reboucle d'une image à l'autre.
+        let hauteur_libre = (ctx.viewport_rect().height() - 60.0).max(320.0);
         egui::Window::new(s.vectors_title)
             .id(egui::Id::new("vectors_window"))
             .open(&mut open)
             .resizable(true)
             .collapsible(false)
-            .default_size(window_size(
-                self.emulator.is_some(),
-                // Seize XMM et huit ST : un contenu de taille fixe et
-                // connue, qui tenait dans 374 x 381 pixels quand la
-                // fenêtre en demandait 520 x 620.
-                egui::vec2(440.0, 480.0),
+            .max_height(hauteur_libre)
+            // Seize XMM, les masques AVX-512 et huit ST : la largeur est
+            // celle du contenu, la hauteur celle de l'ÉCRAN. Les 480
+            // pixels écrits ici venaient d'un relevé qui ne comptait pas
+            // encore les masques ; le contenu en demandait 588, et la
+            // fenêtre les prenait en GRANDISSANT toute seule — jusqu'à
+            // sortir de l'écran par le haut sur un affichage de 520 px,
+            // emportant son bandeau et sa croix de fermeture hors de vue.
+            //
+            // Partir de la hauteur de l'écran et laisser le cadre
+            // redescendre sur son contenu évite les deux : rien ne
+            // déclare ici ce que le contenu mesure — un nombre pareil
+            // vieillit au premier registre ajouté —, et la fenêtre ne
+            // dépasse jamais l'écran.
+            //
+            // `default_width` et `default_height` plutôt que
+            // `default_size` : ce ne sont pas deux façons d'écrire la
+            // même chose. `default_size` pose AUSSI la taille de l'aire,
+            // qui ne redescend plus sur le contenu — la fenêtre restait
+            // alors grande comme l'écran avec 405 px de vide au milieu,
+            // et c'est l'invariant du vide qui l'a dit.
+            .default_width(if self.emulator.is_some() {
+                440.0
+            } else {
+                540.0
+            })
+            .default_height(if self.emulator.is_some() {
+                hauteur_libre
+            } else {
                 // Plus courte que les autres fenêtres vides : son
                 // explication tient sur une ligne quand celles du
                 // désassemblage et de la chronologie en prennent trois.
-                egui::vec2(540.0, 220.0),
-            ))
+                220.0
+            })
             .pivot(egui::Align2::CENTER_CENTER)
             .default_pos(default_window_pos(ctx, "vectors"))
             .title_bar(false)
@@ -1319,30 +1345,65 @@ impl NamsdecApp {
                 if chrome::window_head(ui, self.theme, s, s.vectors_title) {
                     fermer_ok = true;
                 }
-                if ok_bar(ui, self.theme, strings(self.lang), "vectors") {
+                // CE QUI DÉFILE, ET CE QUI NE DÉFILE PAS.
+                //
+                // Les vingt-quatre valeurs se posent sur autant de
+                // colonnes que la fenêtre en tient, et tiennent donc en
+                // entier : c'est toute la raison d'être de cette
+                // fenêtre, et sur un écran ordinaire aucune barre ne
+                // paraît — la zone épouse son contenu quand il tient.
+                //
+                // CE QU'UN ÉCRAN NE PEUT PAS TOUJOURS TENIR : 800x520,
+                // le plus petit que l'application accepte. Mesurée là,
+                // la fenêtre faisait 588 px de haut et son bandeau — qui
+                // porte la croix de fermeture — se posait 54 px
+                // AU-DESSUS du bord, donc hors de vue : on ne pouvait
+                // plus ni la déplacer ni la fermer à la souris. Entre
+                // une barre de défilement sur un écran de 520 px et une
+                // fenêtre qu'on ne sait plus fermer, on prend la barre.
+                // La promesse « ça ne défile jamais » valait pour un
+                // écran qui a la place ; elle ne pouvait pas valoir pour
+                // celui qui ne l'a pas.
+                //
+                // LA BARRE « OK » EST PASSÉE DU PANNEAU BAS AU FLUX, et
+                // ce n'est pas un détail de style : un panneau ancré
+                // réclame toute la hauteur du cadre, de sorte que la
+                // fenêtre ne redescendait jamais sur son contenu —
+                // 440x1040 pour 524 px de registres, 405 px de vide au
+                // milieu, et c'est l'invariant du vide qui l'a dit.
+                // Posée dans le flux, elle suit le contenu, et la
+                // fenêtre retrouve la taille de ce qu'elle montre.
+                //
+                // La zone est bornée par L'ÉCRAN et non par la place
+                // qu'il lui reste : une hauteur lue de son propre
+                // conteneur se reboucle d'une image à l'autre, et la
+                // barre d'action se ferait rogner de quarante pixels de
+                // plus à chaque passage.
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, true])
+                    .max_height((hauteur_libre - 80.0).max(120.0))
+                    .show(ui, |ui| {
+                        if self.emulator.is_none() {
+                            empty_state(
+                                ui,
+                                self.theme,
+                                s.no_binary_assembled,
+                                Some(s.empty_vectors),
+                                None,
+                            );
+                            return;
+                        }
+                        self.xmm_ui(ui);
+                        // Les masques entre les deux : ils appartiennent
+                        // au monde vectoriel, et un programme AVX-512 les
+                        // lit plus souvent que la pile du 8087.
+                        self.mask_ui(ui);
+                        ui.add_space(10.0);
+                        self.x87_ui(ui);
+                    });
+                if ok_bar_inline(ui, self.theme, s) {
                     fermer_ok = true;
                 }
-                if self.emulator.is_none() {
-                    empty_state(
-                        ui,
-                        self.theme,
-                        s.no_binary_assembled,
-                        Some(s.empty_vectors),
-                        None,
-                    );
-                    return;
-                }
-                // Aucune zone de défilement : les vingt-quatre valeurs
-                // se posent sur autant de colonnes que la fenêtre en
-                // tient, et tiennent donc en entier. C'est toute la
-                // raison d'être de cette fenêtre.
-                self.xmm_ui(ui);
-                // Les masques entre les deux : ils appartiennent au
-                // monde vectoriel, et un programme AVX-512 les lit plus
-                // souvent que la pile du 8087.
-                self.mask_ui(ui);
-                ui.add_space(10.0);
-                self.x87_ui(ui);
             });
         self.show_vectors = open && !fermer_ok;
     }
@@ -1454,7 +1515,7 @@ impl NamsdecApp {
                         .show(ui, |ui| {
                             for (rang, patch) in self.patches.iter().enumerate() {
                                 ui.horizontal(|ui| {
-                                    if ui.small_button(s.patch_undo).clicked() {
+                                    if small_framed_button(ui, theme, s.patch_undo).clicked() {
                                         défaire = Some(rang);
                                     }
                                     // Sans adresse — un patch venu du

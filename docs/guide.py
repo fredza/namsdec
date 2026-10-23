@@ -2421,6 +2421,14 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "module est encore allumé. Elles se posent en <b>escalier</b> et non les unes "
          "sur les autres : chacune a son cran, si bien qu'on voit du premier coup "
          "combien il y en a et qu'on attrape celle qu'on veut par sa barre de titre."),
+        ("p",
+         "<b>Aucune ne sort de l'écran.</b> Sur un affichage étroit — namsdec accepte de "
+         "descendre jusqu'à 800 x 520 —, c'est le <b>contenu</b> d'une fenêtre qui défile, "
+         "jamais son bandeau qui passe au-dessus du bord. La différence n'est pas "
+         "cosmétique : une fenêtre dont le bandeau n'est plus visible ne se déplace plus "
+         "et ne se ferme plus à la souris. La calculatrice, « À propos » et les registres "
+         "étendus en sortaient — de 236, 79 et 68 pixels, mesurés — et c'est le haut qui "
+         "manquait, car une fenêtre trop haute déborde des deux côtés à la fois."),
         ("note",
          "Les repères posés sur un binaire ne reviennent que si le <b>fichier n'a pas "
          "changé</b> — taille et date. Ils se comptent en numéros de ligne d'un listing "

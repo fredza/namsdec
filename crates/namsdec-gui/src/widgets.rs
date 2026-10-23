@@ -326,10 +326,20 @@ pub(crate) fn icon_button(
         egui::Color32::PLACEHOLDER,
     );
     let padding = ui.spacing().button_padding;
-    let desired_size = egui::vec2(
-        icon_size + gap + galley.size().x + padding.x * 2.0,
-        ui.spacing().interact_size.y,
-    );
+    // LA HAUTEUR D'UN BOUTON, et non celle d'un widget quelconque.
+    //
+    // `interact_size.y` vaut dix-huit : c'est la hauteur que donne egui
+    // à ce qu'on ne lui a pas décrit. Un bouton de cette application
+    // vaut son texte plus deux fois son rembourrage — vingt-cinq —, et
+    // c'est ce que mesurent « Assembler » et les cinq onglets de la même
+    // rangée. Les six commandes qu'on emploie le plus — exécuter, les
+    // trois pas, arrêter, réinitialiser — étaient donc les plus petites
+    // de la barre, sept pixels sous leurs voisines immédiates, et six
+    // sous les vingt-quatre que l'on vise à la souris.
+    //
+    // Un bouton à icône n'est pas une autre sorte de bouton.
+    let hauteur = (galley.size().y + padding.y * 2.0).max(ui.spacing().interact_size.y);
+    let desired_size = egui::vec2(icon_size + gap + galley.size().x + padding.x * 2.0, hauteur);
     let (rect, response) = ui.allocate_exact_size(desired_size, egui::Sense::click());
 
     if ui.is_rect_visible(rect) {
@@ -442,6 +452,30 @@ pub(crate) fn icon_square_button(
 /// se lisait comme une phrase, et personne n'allait cliquer dessus.
 pub(crate) fn framed_button(ui: &mut egui::Ui, theme: &Theme, label: &str) -> egui::Response {
     ui.add(framed(theme, label))
+}
+
+/// Le même, en petit — pour ce qui se glisse dans une rangée dense.
+///
+/// `ui.small_button` existait pour cela et posait un bouton PLAT : onze
+/// dans l'application, et personne ne les voyait parce que le contrôle
+/// de source ne connaissait que trois écritures de bouton sur quatre.
+/// « RAX », « RSP » et « RIP », dans le motif cyclique, se lisaient
+/// comme trois étiquettes à soixante pixels de trois boutons encadrés.
+///
+/// Petit veut dire : le rembourrage vertical d'egui en moins, donc une
+/// rangée qui reste serrée. Il ne veut pas dire invisible — c'est tout
+/// l'objet de celui-ci.
+pub(crate) fn small_framed_button(
+    ui: &mut egui::Ui,
+    theme: &Theme,
+    label: impl Into<egui::WidgetText>,
+) -> egui::Response {
+    ui.add(
+        egui::Button::new(label)
+            .small()
+            .stroke(egui::Stroke::new(1.0, theme.dim))
+            .corner_radius(egui::CornerRadius::from(6)),
+    )
 }
 
 /// Le bouton encadré, non encore posé.

@@ -252,7 +252,10 @@ impl NamsdecApp {
         let mut allumer_décompilation = false;
 
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new(s.tools_title).strong().size(15.0));
+            // `ui.strong` et non un 15 pt : les quatre autres pages
+            // des préférences ouvrent sur un titre de treize, et
+            // celle-ci était la seule à deux points au-dessus.
+            ui.strong(s.tools_title);
             // Combien il y en a. Six fiches ne tiennent plus dans la
             // fenêtre quand aucun outil n'est installé — chacune écrit
             // alors une ligne de plus —, et rien ne disait que la liste
@@ -1254,7 +1257,7 @@ impl NamsdecApp {
                     ui.spinner();
                 }
                 if let Some(Ok(texte)) = &self.decompile_result
-                    && ui.small_button(s.decompiler_copy).clicked()
+                    && small_framed_button(ui, self.theme, s.decompiler_copy).clicked()
                 {
                     ui.ctx().copy_text(texte.clone());
                 }
