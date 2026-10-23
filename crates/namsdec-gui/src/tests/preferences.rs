@@ -328,7 +328,7 @@ fn every_preferences_page_keeps_its_buttons_on_screen() {
         let peint = paint(&mut app);
         assert!(
             peint.contains(strings(Lang::Fr).dialog_ok)
-                && peint.contains(strings(Lang::Fr).dialog_quit),
+                && peint.contains(strings(Lang::Fr).dialog_cancel),
             "OK et Quitter doivent se lire sur chaque page :\n{peint}"
         );
     }
@@ -418,5 +418,51 @@ fn no_preferences_page_grows_by_itself() {
                 hauteurs
             );
         }
+    }
+}
+
+/// Le second bouton des préférences annule, et le dit.
+///
+/// Il s'est appelé « Quitter » tant que les réglages s'appliquaient à
+/// mesure qu'on cochait : un bouton qui ne défait rien ne doit pas
+/// prétendre défaire, et le commentaire du code le justifiait ainsi.
+/// L'instantané est venu depuis — `close_preferences(ctx, false)` remet
+/// le thème, la langue, les onglets et les raccourcis tels qu'ils
+/// étaient en ouvrant — et le commentaire est resté pendant que le code
+/// changeait sous lui. Le bouton défait, et portait encore le mot de
+/// Fichier > Quitter : le même mot pour deux gestes dont l'un perd des
+/// réglages et l'autre perd la séance.
+///
+/// Deux choses tenues ensemble, parce que l'une sans l'autre se
+/// remettrait à mentir : ce que le bouton FAIT, et ce qu'il DIT.
+#[test]
+fn the_second_button_of_the_preferences_cancels_and_says_so() {
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp::default();
+    app.apply_theme(&ctx);
+    let avant = (app.lang, app.show_re_tab, app.show_tooltips);
+
+    app.open_preferences();
+    app.lang = Lang::En;
+    app.show_re_tab = !avant.1;
+    app.show_tooltips = !avant.2;
+    app.close_preferences(&ctx, false);
+
+    assert_eq!(
+        (app.lang, app.show_re_tab, app.show_tooltips),
+        avant,
+        "le second bouton des préférences remet les réglages tels qu'ils \
+         étaient à l'ouverture"
+    );
+
+    // Et il ne porte pas le mot qui ferme l'application : « Quitter »
+    // dans un dialogue de réglages se lit comme Fichier > Quitter.
+    for lang in [Lang::Fr, Lang::En] {
+        let s = strings(lang);
+        assert_ne!(
+            s.dialog_cancel, s.file_quit,
+            "le bouton d'annulation des préférences ne doit pas porter le mot \
+             qui ferme l'application"
+        );
     }
 }

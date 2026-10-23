@@ -155,14 +155,24 @@ impl NamsdecApp {
                         PreferencesTab::Tools => self.preferences_tools_ui(ui),
                     });
                 ui.separator();
-                // Les préférences s'appliquent à mesure qu'on coche :
-                // « Annuler » n'y défait rien, et un bouton qui ne défait
-                // rien ment. D'où « Quitter » — qui dit ce qu'il fait —,
-                // et non « Annuler ».
+                // « ANNULER », et non « Quitter ». Ce bouton s'est
+                // appelé « Quitter » tant que les réglages s'appliquaient
+                // à mesure qu'on cochait : un bouton qui ne défait rien
+                // ne doit pas dire qu'il défait. Mais l'instantané est
+                // venu depuis — `close_preferences(ctx, false)` remet le
+                // thème, la langue, les onglets et les raccourcis tels
+                // qu'ils étaient en ouvrant —, et le commentaire qui
+                // justifiait le nom est resté pendant que le code
+                // changeait sous lui.
+                //
+                // « Quitter » est d'ailleurs le mot de Fichier > Quitter,
+                // qui ferme l'application : le même mot pour deux gestes
+                // dont l'un perd des réglages et l'autre perd la séance.
+                //
                 // `or` et non une affectation sèche : la pastille du
                 // bandeau a peut-être déjà répondu plus haut.
                 close_keeping = close_keeping.or_else(|| {
-                    dialog_bar(ui, theme, s.dialog_ok, Some(s.dialog_quit))
+                    dialog_bar(ui, theme, s.dialog_ok, Some(s.dialog_cancel))
                         .map(|réponse| réponse == Answer::Ok)
                 });
             });
@@ -682,19 +692,30 @@ impl NamsdecApp {
         }
         ui.weak(s.plugins_add_hint);
 
+        // Sans thème installé, rien ne porte de bouton « Retirer » : la
+        // page le dit, plutôt que de laisser croire qu'il manque quelque
+        // chose.
+        //
+        // AVANT la section des exercices, et c'est tout le défaut :
+        // posée après, la phrase « Aucun thème installé pour l'instant »
+        // se peignait en dernier, sous « Séries d'exercices » et sous
+        // l'explication du fichier JSON d'une série. Elle parle des
+        // thèmes, elle était rangée avec les exercices — vu sur une
+        // capture, invisible à la mesure.
+        if self.theme_files.is_empty() {
+            ui.weak(s.plugins_none_installed);
+        }
+
         // Les séries d'exercices s'installent de la même façon : un
         // fichier JSON, copié dans le dossier de données, relu au
         // lancement suivant. Même page, même gestes.
         ui.add_space(10.0);
         ui.separator();
-        ui.label(egui::RichText::new(s.exercises_packs_title).color(theme.dim));
+        // `strong` comme le titre des thèmes au-dessus : les deux
+        // sections de cette page sont sœurs, et l'une s'écrivait en gris
+        // maigre quand l'autre est en blanc gras.
+        ui.strong(s.exercises_packs_title);
         self.exercise_packs_ui(ui);
-        // Sans thème installé, rien ne porte de bouton « Retirer » : la
-        // page le dit, plutôt que de laisser croire qu'il manque quelque
-        // chose.
-        if self.theme_files.is_empty() {
-            ui.weak(s.plugins_none_installed);
-        }
         // Le compte rendu de la dernière installation reste affiché
         // jusqu'à la suivante : une boîte modale de plus pour dire « c'est
         // fait » n'apprendrait rien, un refus doit en revanche pouvoir

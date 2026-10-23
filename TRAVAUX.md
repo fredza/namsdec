@@ -117,6 +117,72 @@ trancher. Neuf écarts, **six contrôles nouveaux**, deux élargis.
       les deux d'un coup — et qui a trouvé en passant les onglets de la
       calculatrice en 11 pt, seuls de leur espèce.
 
+## 1 bis. Ce que la capture a vu, et que la mesure ne demandait pas
+
+Le troisième relevé du 23 octobre : seize scènes de plus capturées sur
+profil neuf, et regardées. C'est le seul des trois qui ait trouvé des
+défauts que personne n'avait pensé à mesurer.
+
+- [x] **La barre d'outils et la rangée d'onglets se peignaient l'une
+      sur l'autre** à 800x520 — « Step Back », « Stop » et
+      « Réinitialiser » sous « Processeur », « Pile » et « Mémoire »,
+      lettres sur lettres. Une disposition de droite à gauche ne recule
+      pas devant le manque de place : elle part du bord droit et peint
+      par-dessus. Les onglets passent maintenant à la ligne quand la
+      rangée n'a plus la place, et la place se demande AVANT de poser,
+      dans la même image. Contrôle :
+      `panels_do_not_overlap_on_the_smallest_screen`.
+- [x] **Un profil neuf ouvrait sur la pile** alors que `SidebarTab::Cpu`
+      porte en commentaire « en tête, et vue par défaut ». Le premier
+      écran d'un nouveau venu montrait donc l'onglet qui n'a rien à
+      dire tant qu'on n'a pas assemblé, et le premier onglet de la
+      rangée n'était pas celui qui était allumé.
+- [x] **Une phrase des thèmes était rangée avec les exercices** — « Aucun
+      thème installé pour l'instant » peinte en dernier, sous le titre
+      « Séries d'exercices ». Et les deux titres de section de cette
+      page, qui sont sœurs, n'avaient pas la même emphase.
+- [x] **« Ce qu'il sait faire » s'écrivait deux fois**, à une ligne
+      d'écart, parce que la ligne de pastilles des imports porte son
+      propre libellé — elle est écrite pour vivre seule. Les familles
+      qu'elle énumérait étaient réécrites juste en dessous, avec leur
+      explication. Le contrôle vit dans `namsdec-re` : aucune scène du
+      banc de l'interface n'a de binaire dont le comportement soit non
+      vide, de sorte que ce chemin n'y est jamais peint.
+- [x] **Les vingt-six modules d'analyse étaient énumérés deux fois** —
+      une ligne de titres séparés par des virgules dans la carte, et le
+      repli juste en dessous qui les redonne un par un. Le commentaire
+      du code disait déjà « un par ligne PLUTÔT QU'en énumération dans
+      la carte » : l'énumération était restée. Au passage, « 26
+      module(s) » devant un nombre connu.
+- [x] **Le contrôle qui l'aurait vu passait pour la mauvaise raison** :
+      il cherchait chaque titre dans ce qui est peint, et la ligne de
+      virgules — celle qu'il dit refuser — les contenait tous. Il ouvre
+      désormais le repli d'un clic et regarde dedans.
+- [x] **Le second bouton des préférences s'appelait « Quitter »**, le
+      mot de Fichier > Quitter. Et il ne quitte pas : il REMET le thème,
+      la langue, les onglets et les raccourcis tels qu'ils étaient à
+      l'ouverture. Le commentaire qui justifiait ce nom — « les réglages
+      s'appliquent à mesure, Annuler n'y défait rien » — datait d'avant
+      l'instantané : le code avait changé sous lui. « Annuler », et un
+      contrôle qui tient les deux bouts, ce que le bouton fait et ce
+      qu'il dit.
+
+**Mesuré, pas corrigé** (voir A 7.11) : une case à cocher décochée ne se
+distingue pas du fond — fond `#3C3C3C`, trait de largeur zéro, rayon 6
+sur un côté de 14, contraste **1,25:1** là où l'on demande 3. Elle se
+lit comme un bouton radio, et comme allumée. La corriger demande notre
+propre case, comme on a déjà fait notre propre liste déroulante : le
+thème met tous les boutons à plat au repos, et c'est le même réglage qui
+efface le bord de la case.
+
+**Et une divergence entre l'interface et le manuel** : la barre d'outils
+dit « Step Into », « Step Over », « Step Back », « Stop » en anglais
+dans l'interface française, là où le manuel les nomme « Pas à pas
+détaillé », « Pas à pas principal », « Pas en arrière », « Arrêter ».
+Les mots français sont deux fois plus larges, et la rangée ne les tient
+pas à 800 px : c'est une décision de produit avant d'être une
+traduction.
+
 ## 17. Trois défauts vus à l'écran (A 9.1 à 9.3)
 
 - [x] **Une parenthèse en posait cent** (A 9.1) — rien ne liait la pose

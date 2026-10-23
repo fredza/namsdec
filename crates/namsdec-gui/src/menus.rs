@@ -854,6 +854,7 @@ impl NamsdecApp {
     pub(crate) fn toolbar_ui(&mut self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
         let ctx = ui.ctx().clone();
+        let mut onglets_posés = false;
         ui.horizontal(|ui| {
             ui.add_enabled_ui(self.can_assemble(), |ui| {
                 if ui
@@ -974,47 +975,99 @@ impl NamsdecApp {
                 }
             });
 
-            // À droite, ce que le panneau latéral montre : Pile,
-            // Mémoire, Tas, Octets, et RE quand il est demandé. Ces
-            // onglets étaient en bas du panneau, entre l'état du
-            // processeur et leur propre contenu — ils montaient et
-            // descendaient selon la taille du bandeau. Ici, ils sont
-            // toujours au même endroit, et le panneau gagne leur
-            // hauteur.
-            if self.show_sidebar {
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    // De droite à gauche : la boucle est inversée pour
-                    // que l'ordre lu reste Pile, Mémoire, Tas, Octets.
-                    for tab in SidebarTab::ALL.iter().rev() {
-                        if *tab == SidebarTab::Re && !self.show_re_tab {
-                            continue;
-                        }
-                        if ui
-                            .selectable_label(self.active_tab == *tab, tab.label(s))
-                            .clicked()
-                        {
-                            self.active_tab = *tab;
-                        }
-                    }
-                    // La calculatrice, juste à gauche de « Pile ». La
-                    // disposition est de droite à gauche, donc elle vient
-                    // après la boucle. Sa place est là parce que c'est là
-                    // qu'on s'en sert : on lit une valeur dans la pile ou
-                    // dans un registre, et l'on veut savoir ce qu'elle
-                    // vaut dans une autre base. Elle était dans le menu
-                    // Outils, à trois gestes de l'endroit où le besoin
-                    // naît.
-                    ui.add_space(4.0);
-                    if icon_square_button(ui, chrome::icon_calculator)
-                        .on_hover_text(s.calculator_title)
-                        .clicked()
-                    {
-                        self.show_calculator = true;
-                    }
-                });
+            // À droite, ce que le panneau latéral montre — SI LA RANGÉE
+            // A LA PLACE. Sinon ils passent à la ligne : voir
+            // `onglets_du_panneau`.
+            if self.show_sidebar
+                && ui.available_width() >= largeur_des_onglets(ui, s, self.show_re_tab)
+            {
+                self.onglets_du_panneau(ui);
+                onglets_posés = true;
+            }
+        });
+        // LA RANGÉE NE TIENT PAS TOUJOURS. À 800x520 — le plus petit
+        // écran que l'application accepte — les sept commandes
+        // d'exécution et les cinq onglets demandent plus que la largeur
+        // disponible, et une disposition de droite à gauche ne recule
+        // pas devant ça : elle part du bord droit et peint par-dessus.
+        // « Step Back », « Stop » et « Réinitialiser » disparaissaient
+        // sous « Processeur », « Pile » et « Mémoire », lettres sur
+        // lettres, dans la même couche.
+        //
+        // Vu sur une capture, et seulement là : aucune mesure ne
+        // regardait ce format. Le contrôle existe maintenant
+        // (`nothing_overlaps_on_the_smallest_screen_either`).
+        //
+        // La place se demande AVANT de poser, dans la même image : la
+        // largeur des onglets se calcule sur leurs libellés, et rien
+        // n'est repris d'une image à l'autre.
+        if self.show_sidebar && !onglets_posés {
+            ui.horizontal(|ui| self.onglets_du_panneau(ui));
+        }
+    }
+
+    /// Les onglets du panneau latéral, posés de droite à gauche.
+    ///
+    /// Sortis de la barre d'outils pour pouvoir être posés AILLEURS
+    /// qu'au bout de sa rangée quand elle n'a plus la place.
+    fn onglets_du_panneau(&mut self, ui: &mut egui::Ui) {
+        let s = strings(self.lang);
+
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            // De droite à gauche : la boucle est inversée pour
+            // que l'ordre lu reste Pile, Mémoire, Tas, Octets.
+            for tab in SidebarTab::ALL.iter().rev() {
+                if *tab == SidebarTab::Re && !self.show_re_tab {
+                    continue;
+                }
+                if ui
+                    .selectable_label(self.active_tab == *tab, tab.label(s))
+                    .clicked()
+                {
+                    self.active_tab = *tab;
+                }
+            }
+            // La calculatrice, juste à gauche de « Pile ». La
+            // disposition est de droite à gauche, donc elle vient
+            // après la boucle. Sa place est là parce que c'est là
+            // qu'on s'en sert : on lit une valeur dans la pile ou
+            // dans un registre, et l'on veut savoir ce qu'elle
+            // vaut dans une autre base. Elle était dans le menu
+            // Outils, à trois gestes de l'endroit où le besoin
+            // naît.
+            ui.add_space(4.0);
+            if icon_square_button(ui, chrome::icon_calculator)
+                .on_hover_text(s.calculator_title)
+                .clicked()
+            {
+                self.show_calculator = true;
             }
         });
     }
+}
+
+/// Ce que les onglets du panneau réclament, libellés compris.
+///
+/// Calculée sur les textes et les espacements du style en cours, dans
+/// l'image où l'on s'en sert : rien n'est mesuré sur ce qui a été peint,
+/// donc rien ne peut se reboucler.
+fn largeur_des_onglets(ui: &egui::Ui, s: &Strings, re: bool) -> f32 {
+    let espacement = ui.spacing().item_spacing.x;
+    let rembourrage = ui.spacing().button_padding.x * 2.0;
+    let police = egui::TextStyle::Button.resolve(ui.style());
+    let mut largeur = ui.spacing().interact_size.y + 4.0 + espacement; // la calculatrice
+    for tab in SidebarTab::ALL {
+        if tab == SidebarTab::Re && !re {
+            continue;
+        }
+        let galley = ui.painter().layout_no_wrap(
+            tab.label(s).to_owned(),
+            police.clone(),
+            egui::Color32::PLACEHOLDER,
+        );
+        largeur += galley.size().x + rembourrage + espacement;
+    }
+    largeur
 }
 
 /// `show_re_tab` filtre la seule commande qui mène à une vue

@@ -90,7 +90,14 @@ impl NamsdecApp {
                 .sidebar_tab
                 .as_deref()
                 .and_then(SidebarTab::from_id)
-                .unwrap_or(SidebarTab::Stack),
+                // Le processeur, comme le dit `SidebarTab::Cpu` —
+                // « en tête, et vue par défaut ». Le code répondait la
+                // pile : sur un profil neuf, le premier écran ouvrait
+                // donc sur un onglet qui n'a rien à montrer tant qu'on
+                // n'a pas assemblé, et le premier de la rangée n'était
+                // pas celui qui était choisi. Vu sur la capture du
+                // premier lancement.
+                .unwrap_or(SidebarTab::Cpu),
             show_decompiler_module: settings.decompiler_module,
             show_installer_module: settings.installer_module,
             decompiler: settings.decompiler.clone(),

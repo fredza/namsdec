@@ -1335,12 +1335,24 @@ impl NamsdecApp {
         );
 
         let titles = self.re_registry.titles(self.lang.code());
+        // LE COMPTE, PAS LA LISTE — le repli juste en dessous la
+        // donne, une ligne par module, et le commentaire qui l'y a mise
+        // dit déjà « un par ligne PLUTÔT QU'en énumération dans la
+        // carte ». L'énumération était restée : la carte écrivait les
+        // vingt-six titres séparés par des virgules, et le repli les
+        // réécrivait aussitôt. Vu sur une capture.
+        //
+        // Et le pluriel se décide, puisqu'on compte : « module(s) »
+        // devant un nombre connu est une parenthèse qu'on peut fermer.
         let re_status = if titles.is_empty() {
             s.no_re_module_registered.to_string()
-        } else if fr {
-            format!("{} module(s) : {}", titles.len(), titles.join(", "))
         } else {
-            format!("{} module(s): {}", titles.len(), titles.join(", "))
+            let pluriel = if titles.len() > 1 { "s" } else { "" };
+            if fr {
+                format!("{} module{pluriel} d'analyse", titles.len())
+            } else {
+                format!("{} analysis module{pluriel}", titles.len())
+            }
         };
         module_card(
             ui,

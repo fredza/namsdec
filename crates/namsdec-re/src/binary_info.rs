@@ -248,8 +248,20 @@ impl ReModule for BinaryInfoModule {
                  A program may need none of these.",
             ));
         } else {
-            crate::imports_module::portrait(ui, ctx, &présentes);
-            ui.add_space(2.0);
+            // SANS LE PORTRAIT. `portrait` est la ligne de pastilles du
+            // panneau « Fonctions importées », et il porte son propre
+            // libellé — « Ce qu'il sait faire » —, écrit pour vivre
+            // seul. Appelé ici, sous un titre qui dit déjà la même
+            // phrase, il la redisait à la ligne suivante, puis
+            // réénumérait les familles que les lignes ci-dessous
+            // détaillent. Trois lignes, deux répétitions :
+            //
+            //     Ce qu'il sait faire
+            //     Ce qu'il sait faire   Fichiers (4)
+            //     Fichiers (4)   Le programme touche au système de…
+            //
+            // Vu sur une capture. On garde les lignes expliquées, qui
+            // disent la même chose et de plus disent pourquoi.
             for (famille, combien) in &présentes {
                 ui.horizontal_wrapped(|ui| {
                     ui.colored_label(
@@ -381,6 +393,70 @@ mod tests {
 
     /// Le portrait compte ce que le code DEMANDE au système, même par
     /// numéro : `mov eax, 41 ; syscall` est un `socket`, donc du réseau.
+    /// « Ce qu'il sait faire » ne s'écrit qu'une fois.
+    ///
+    /// Cette phrase existe à DEUX endroits par construction : c'est le
+    /// titre de la section ici, et c'est aussi le libellé que
+    /// `imports_module::portrait` porte en tête de sa ligne de
+    /// pastilles — écrit pour vivre seul dans le panneau « Fonctions
+    /// importées ». L'un appelé sous l'autre donnait trois lignes dont
+    /// deux redites :
+    ///
+    /// ```text
+    /// Ce qu'il sait faire
+    /// Ce qu'il sait faire   Réseau (1)
+    /// Réseau (1)   Le programme ouvre ou écoute une connexion…
+    /// ```
+    ///
+    /// Vu sur une capture du 23 octobre, et nulle part ailleurs :
+    /// aucune scène du banc de l'interface n'a de binaire dont le
+    /// comportement soit non vide, de sorte que ce chemin n'y est
+    /// jamais peint. Le contrôle vit donc ici, où l'état se construit
+    /// en sept octets.
+    #[test]
+    fn what_it_can_do_is_written_only_once() {
+        // Le même appel système que ci-dessous : il suffit à remplir le
+        // comportement, qui est la condition pour que la section
+        // s'affiche.
+        let bytes: &[u8] = &[0xb8, 0x29, 0x00, 0x00, 0x00, 0x0f, 0x05];
+        let disasm = namsdec_disasm::disassemble(bytes, 0x400000);
+        let mut mem = Memory::new(0x400000, 0x100);
+        mem.load(0x400000, bytes).unwrap();
+        let cpu = Cpu::new(mem);
+        let ctx = ReContext {
+            cpu: &cpu,
+            disasm: &disasm,
+            source: "",
+            binary: &[],
+            lang: "fr",
+            names: None,
+        };
+        let mut module = BinaryInfoModule::default();
+        module.on_binary_loaded(&ctx);
+        assert!(
+            !module.comportement.is_empty(),
+            "sans comportement, la section ne se peint pas et le contrôle \
+             ne prouverait rien"
+        );
+
+        let egui_ctx = egui::Context::default();
+        let mut combien = 0;
+        let mut sortie = egui_ctx.run_ui(Default::default(), |ui| module.ui(ui, &ctx));
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(texte) = &clipped.shape
+                && texte.galley.text().trim() == "Ce qu'il sait faire"
+            {
+                combien += 1;
+            }
+        }
+        sortie.textures_delta.clear();
+        assert_eq!(
+            combien, 1,
+            "« Ce qu'il sait faire » est peint {combien} fois : le titre de la \
+             section et le libellé de la ligne de pastilles disent la même chose"
+        );
+    }
+
     #[test]
     fn the_portrait_counts_a_network_syscall() {
         // b8 29 00 00 00 = mov eax, 41 (socket) ; 0f 05 = syscall.

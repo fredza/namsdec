@@ -1103,7 +1103,24 @@ fn ce_qui_est_écrit(
     id: Option<&str>,
     images: usize,
 ) -> (Option<egui::Rect>, Vec<(String, egui::Rect)>) {
-    let entrée = écran_du_banc();
+    ce_qui_est_écrit_sur(ctx, app, id, images, écran_du_banc())
+}
+
+/// Le même relevé, sur un écran qu'on choisit.
+///
+/// Le banc dessine sur 1600x1100, et c'est là que tout a été éprouvé.
+/// Mais l'application accepte de descendre à `MIN_SCREEN`, et ce qui
+/// tient au large ne tient pas forcément à l'étroit : à 800x520, la
+/// barre d'outils et la rangée d'onglets du panneau se peignaient l'une
+/// sur l'autre — « Step Back » sous « Processeur », dans la même
+/// couche. Une règle qui ne vaut qu'à une taille ne vaut pas.
+fn ce_qui_est_écrit_sur(
+    ctx: &egui::Context,
+    app: &mut NamsdecApp,
+    id: Option<&str>,
+    images: usize,
+    entrée: egui::RawInput,
+) -> (Option<egui::Rect>, Vec<(String, egui::Rect)>) {
     let mut lignes: Vec<(String, egui::Rect)> = Vec::new();
     for _ in 0..images {
         lignes.clear();

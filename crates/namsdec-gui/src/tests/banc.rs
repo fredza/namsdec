@@ -3475,3 +3475,145 @@ fn every_text_size_belongs_to_a_declared_set() {
         étrangères.join("\n  ")
     );
 }
+
+/// Et les panneaux ne se recouvrent pas non plus sur le plus petit
+/// écran.
+///
+/// Le banc dessine sur 1600x1100 ; l'application accepte 800x520, et
+/// c'est là, et là seulement, que la barre d'outils et la rangée
+/// d'onglets du panneau latéral se peignaient L'UNE SUR L'AUTRE :
+/// « Step Back », « Stop » et « Réinitialiser » sous « Processeur »,
+/// « Pile » et « Mémoire », des lettres sur des lettres. Une
+/// disposition de droite à gauche ne recule pas devant le manque de
+/// place : elle part du bord droit et peint par-dessus.
+///
+/// Vu sur une capture, et seulement là. La règle existait depuis des
+/// mois (`no_two_texts_of_a_scene_ever_overlap`) ; ce qui manquait
+/// n'était pas la règle, c'était la taille.
+///
+/// LES SCÈNES À FENÊTRE SONT HORS DE CE CONTRÔLE, et c'est une limite
+/// assumée plutôt qu'un oubli. Une fenêtre flottante couvre ce qu'il y
+/// a derrière elle — c'est son métier — et il faut donc savoir
+/// distinguer les couches. Deux façons ont été essayées et mesurées :
+/// trier sur la LARGEUR du découpage, qui marche à 1600 px où une
+/// fenêtre est plus étroite que l'écran et ne marche plus à 800 px où
+/// elle l'occupe presque entièrement ; ranger chaque texte sous le
+/// cadre de la fenêtre qui le contient, qui échoue parce qu'egui laisse
+/// à une fenêtre un cadre parfois plus petit que ce qu'elle peint — les
+/// phrases des préférences retombaient dans le fond. Le découpage ne
+/// suffit pas non plus : la rangée d'onglets, posée de droite à gauche,
+/// a le sien, distinct de celui de la barre d'outils, alors que les
+/// deux sont dans le même panneau.
+///
+/// Restent les scènes sans fenêtre, où tout est panneau et où la
+/// question ne se pose pas. C'est là que vit le défaut, et c'est tout
+/// ce que ce contrôle prétend couvrir.
+#[test]
+fn panels_do_not_overlap_on_the_smallest_screen() {
+    let entrée = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            MIN_SCREEN.into(),
+        )),
+        ..Default::default()
+    };
+    let mut vues = 0;
+    for (nom, id, prépare) in scènes() {
+        if id.is_some() {
+            continue;
+        }
+        vues += 1;
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp::default();
+        app.apply_theme(&ctx);
+        prépare(&mut app);
+        let (_, textes) = ce_qui_est_écrit_sur(&ctx, &mut app, None, 4, entrée.clone());
+        for (i, (texte_a, a)) in textes.iter().enumerate() {
+            for (texte_b, b) in &textes[i + 1..] {
+                // Deux pixels de tolérance : les jambages d'une ligne
+                // frôlent les hampes de la suivante sans se gêner.
+                assert!(
+                    !a.shrink(2.0).intersects(b.shrink(2.0)),
+                    "à {:.0}x{:.0}, « {nom} » peint « {texte_a} » sur « {texte_b} »\
+                     \n  {a:?}\n  {b:?}",
+                    MIN_SCREEN[0],
+                    MIN_SCREEN[1],
+                );
+            }
+        }
+    }
+    assert!(
+        vues >= 5,
+        "le contrôle n'a regardé que {vues} scène(s) sans fenêtre : \
+         il ne mesure plus ce qu'il croit mesurer"
+    );
+}
+
+/// Un profil neuf ouvre sur l'onglet que le code annonce.
+///
+/// `SidebarTab::Cpu` porte en commentaire « en tête, et vue par
+/// défaut » ; la lecture des réglages répondait `Stack`. Sur un profil
+/// neuf — le premier écran d'un nouveau venu — l'onglet choisi était
+/// donc la pile, qui n'a rien à montrer tant qu'on n'a pas assemblé,
+/// et le premier onglet de la rangée n'était pas celui qui était
+/// allumé. Vu sur la capture du premier lancement.
+///
+/// Le contrôle part des réglages VIDES et non d'un `NamsdecApp` nu :
+/// c'est le chemin que prend un profil neuf, et c'est là qu'était
+/// l'écart.
+#[test]
+fn a_fresh_profile_opens_on_the_tab_the_code_announces() {
+    let app = NamsdecApp::from_settings(Settings::default());
+    assert_eq!(
+        app.active_tab,
+        SidebarTab::Cpu,
+        "un profil neuf doit ouvrir sur l'onglet que `SidebarTab::Cpu` \
+         annonce comme la vue par défaut"
+    );
+}
+
+/// Sur la page Plugins, ce qui parle des thèmes est écrit avec les
+/// thèmes.
+///
+/// « Aucun thème installé pour l'instant — les trois thèmes d'origine
+/// ne se retirent pas. » était peinte en DERNIER, sous le titre
+/// « Séries d'exercices » et sous l'explication du fichier d'une série.
+/// Une phrase rangée sous la mauvaise section ne se mesure pas : elle
+/// se voit. Celle-ci a été trouvée sur une capture.
+///
+/// Le contrôle compare deux ordonnées peintes, ce qui est tout ce dont
+/// il s'agit : la phrase des thèmes au-dessus du titre des exercices.
+#[test]
+fn what_speaks_of_themes_is_written_with_the_themes() {
+    for lang in [Lang::Fr, Lang::En] {
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp {
+            lang,
+            show_preferences: true,
+            preferences_tab: PreferencesTab::Plugins,
+            ..Default::default()
+        };
+        app.apply_theme(&ctx);
+        let s = strings(lang);
+        let (_, textes) = ce_qui_est_écrit(&ctx, &mut app, Some("preferences_window"), 4);
+        let y_de = |cherché: &str| {
+            textes
+                .iter()
+                .find(|(t, _)| t.starts_with(cherché))
+                .map(|(_, r)| r.top())
+        };
+        let (Some(thèmes), Some(exercices)) = (
+            y_de(s.plugins_none_installed),
+            y_de(s.exercises_packs_title),
+        ) else {
+            panic!("la page Plugins doit peindre les deux sections");
+        };
+        assert!(
+            thèmes < exercices,
+            "« {} » est peinte à y={thèmes:.0}, sous « {} » à y={exercices:.0} : \
+             elle parle des thèmes et se range avec les exercices",
+            s.plugins_none_installed,
+            s.exercises_packs_title
+        );
+    }
+}

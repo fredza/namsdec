@@ -881,6 +881,10 @@ fn the_modules_tab_shows_every_module_namsdec_carries() {
     // qu'une zone défilante laisse hors de vue. Ce qu'on vérifie ici est
     // ce que la page écrit, non ce que la fenêtre en montre d'un coup.
     let ctx = egui::Context::default();
+    // Le style de l'application avant toute mesure : ce test lit
+    // désormais la position d'un en-tête pour aller cliquer dessus, et
+    // une galley mesurée sous le style d'egui n'est pas la nôtre.
+    app.apply_theme(&ctx);
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
@@ -921,12 +925,77 @@ fn the_modules_tab_shows_every_module_namsdec_carries() {
 
     // Les modules d'analyse sont nommés un par un, et non entassés dans
     // une ligne de titres séparés par des virgules.
+    //
+    // CE CONTRÔLE PASSAIT POUR LA MAUVAISE RAISON. Il cherchait chaque
+    // titre dans ce qui est peint, et la ligne de titres séparés par des
+    // virgules — celle qu'il dit refuser — les contenait tous. Il
+    // n'aurait rougi que le jour où l'on aurait retiré les deux.
+    //
+    // La carte ne donne plus que le compte ; les titres sont dans le
+    // repli, qui est fermé. On l'OUVRE donc, d'un clic à l'endroit où
+    // son en-tête est peint, et l'on regarde ce qu'il y a dedans. Ce
+    // que le contrôle vérifie est désormais ce qu'il annonce.
     let s = strings(app.lang);
     assert!(peint.contains(s.modules_re_detail), "{peint}");
+    assert!(
+        !peint.contains(&app.re_registry.titles(app.lang.code()).join(", ")),
+        "les titres ne doivent pas être entassés en une ligne de virgules :\n{peint}"
+    );
+
+    let en_tête = {
+        let mut trouvé = None;
+        let mut sortie = ctx.run_ui(input.clone(), |ui| app.modules_ui(ui));
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(texte) = &clipped.shape
+                && texte.galley.text().starts_with(s.modules_re_detail)
+            {
+                trouvé = Some(egui::Rect::from_min_size(texte.pos, texte.galley.size()).center());
+            }
+        }
+        sortie.textures_delta.clear();
+        trouvé.expect("l'en-tête du repli des modules d'analyse est peint")
+    };
+    // Un clic : la pression et le relâchement au même endroit, dans la
+    // même image, comme egui les reçoit d'une souris.
+    let clic = egui::RawInput {
+        events: vec![
+            egui::Event::PointerMoved(en_tête),
+            egui::Event::PointerButton {
+                pos: en_tête,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: egui::Modifiers::default(),
+            },
+            egui::Event::PointerButton {
+                pos: en_tête,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: egui::Modifiers::default(),
+            },
+        ],
+        ..input.clone()
+    };
+    let mut sortie = ctx.run_ui(clic, |ui| app.modules_ui(ui));
+    sortie.textures_delta.clear();
+    // Le repli s'ouvre par une animation : quelques images pour qu'il
+    // ait sa hauteur entière.
+    let mut déplié = String::new();
+    for _ in 0..12 {
+        déplié.clear();
+        let mut sortie = ctx.run_ui(input.clone(), |ui| app.modules_ui(ui));
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(texte) = &clipped.shape {
+                déplié.push_str(texte.galley.text());
+                déplié.push('|');
+            }
+        }
+        sortie.textures_delta.clear();
+    }
     for titre in app.re_registry.titles(app.lang.code()) {
         assert!(
-            peint.contains(titre),
-            "le module d'analyse « {titre} » doit se lire :\n{peint}"
+            déplié.contains(titre),
+            "le module d'analyse « {titre} » doit se lire une fois le repli \
+             ouvert :\n{déplié}"
         );
     }
 

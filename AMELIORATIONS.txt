@@ -1751,11 +1751,82 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      défile jamais ». C'est un arbitrage de produit, pas un réglage : à
      mesurer avant de décider, et l'invariant ne s'écrit qu'après.
 
+     4. ET LA CAPTURE, c'est-à-dire le relevé qui REGARDE. Seize scènes de
+        plus sur profil neuf. C'est le seul des trois qui ait trouvé des
+        défauts que personne n'avait pensé à mesurer, et il confirme ce que
+        la méthode dit depuis septembre.
+        — À 800x520, la barre d'outils et la rangée d'onglets se peignaient
+          L'UNE SUR L'AUTRE. Une disposition de droite à gauche ne recule
+          pas devant le manque de place : elle part du bord droit et peint
+          par-dessus. La règle existait (« deux textes ne se recouvrent
+          jamais ») ; ce qui manquait était la taille.
+          Le contrôle a demandé trois essais, et chacun apprend quelque
+          chose sur la séparation des couches : trier sur la LARGEUR du
+          découpage marche à 1600 px, où une fenêtre est plus étroite que
+          l'écran, et plus du tout à 800 px où elle l'occupe presque
+          entièrement — le premier jet accusait le décompilateur de peindre
+          sur le bandeau, ce qui est son métier. Ranger chaque texte sous le
+          cadre de la fenêtre qui le contient échoue aussi : egui laisse à
+          une fenêtre un cadre parfois plus petit que ce qu'elle peint, et
+          les phrases des préférences retombaient dans le fond. Le découpage
+          seul ne suffit pas non plus : la rangée d'onglets, posée de droite
+          à gauche, a le sien, distinct de celui de la barre d'outils, alors
+          que les deux sont dans le même panneau. Le contrôle ne couvre donc
+          que les scènes SANS fenêtre, où tout est panneau — c'est là que
+          vit le défaut, et c'est tout ce qu'il prétend couvrir.
+        — Un profil neuf ouvrait sur la pile quand le code annonce le
+          processeur. Le commentaire avait raison, le code non, et c'est le
+          premier écran d'un nouveau venu.
+        — Une phrase des thèmes rangée sous les exercices ; « Ce qu'il sait
+          faire » écrit deux fois à une ligne d'écart ; les vingt-six
+          modules d'analyse énumérés deux fois. Les trois sont des fautes de
+          MONTAGE — un bloc écrit pour vivre seul, posé sous un titre qui
+          dit déjà ce qu'il porte — et aucune ne se mesure : elles se
+          voient.
+        — Le second bouton des préférences s'appelait « Quitter », le mot de
+          Fichier > Quitter, et il ne quitte pas : il remet le thème, la
+          langue, les onglets et les raccourcis tels qu'ils étaient. Le
+          commentaire qui justifiait ce nom datait d'avant l'instantané ; le
+          code avait changé sous lui. C'est le troisième commentaire de la
+          journée que la mesure prend en défaut, après celui de la
+          calculatrice et celui de la carte des modules.
+        — ET UN CONTRÔLE QUI PASSAIT POUR LA MAUVAISE RAISON, trouvé en
+          corrigeant : « les modules d'analyse sont nommés un par un, et non
+          entassés dans une ligne de virgules » cherchait chaque titre dans
+          ce qui est peint — et la ligne de virgules les contenait tous. Il
+          n'aurait rougi que le jour où l'on aurait retiré les deux.
+
+     MESURÉ ET PAS CORRIGÉ — LA CASE À COCHER. Décochée, elle ne se
+     distingue pas du fond : fond #3C3C3C, trait de largeur ZÉRO, rayon 6
+     sur un côté de 14. Contraste 1,25:1 sur le fond des fenêtres, là où
+     l'on demande 3 pour le bord d'une commande. Elle se lit comme un bouton
+     radio — donc comme un choix exclusif — et comme ALLUMÉE, puisqu'elle
+     est plus claire que la case cochée.
+     La cause est le même réglage qui met les boutons à plat au repos :
+     `inactive.bg_stroke = NONE` efface aussi le bord de la case, et les
+     deux passent par le même style. Le rétablir encadrerait tous les
+     boutons. Il faut donc notre propre case, comme on a déjà fait notre
+     propre liste déroulante pour une raison du même ordre — onze appels,
+     dans deux crates. C'est le premier point de la prochaine passe.
+
+     DIVERGENCE INTERFACE / MANUEL, à arbitrer : la barre d'outils dit
+     « Step Into », « Step Over », « Step Back », « Stop » dans l'interface
+     FRANÇAISE ; le manuel les nomme « Pas à pas détaillé », « Pas à pas
+     principal », « Pas en arrière », « Arrêter ». Pour un outil qui sert à
+     apprendre, c'est le manuel qui a raison. Mais les mots français font
+     deux fois la largeur des anglais, et la rangée ne les tient pas à
+     800 px : il faudrait replier la barre d'outils comme on vient de
+     replier ses onglets. Décision de produit, et elle n'est pas prise.
+
      CE QUE LES RELEVÉS N'ONT PAS COUVERT : un seul thème sur trois, une
      seule langue, aucun menu déroulant ouvert (aucune scène du banc n'en
-     ouvre), et aucune capture d'écran — tout est mesuré, rien n'est vu.
-     Les défauts qu'on ne pense pas à mesurer restent donc dehors, et c'est
-     précisément ce que la méthode dit de ne pas oublier.
+     ouvre). La capture, elle, n'a pas pu atteindre quatre scènes par le
+     semis du profil — préférences, « À propos », saisie du programme,
+     fiche d'aide chargée — parce que `settings.json` ne les retient pas.
+     Le skill dit que ce qu'une application ne reprend pas est souvent le
+     signe qu'elle devrait le reprendre ; la fiche d'aide ouverte et l'état
+     « agrandie » sont les deux cas où ça se défend — `maximize.rs` promet
+     même le second en commentaire, et rien ne le tient.
 
      E. LE VIDE SOUS « PROCHAINE INSTRUCTION », à vide, fait encore ~260 px :
      le bandeau donne à cette zone la place que l'onglet ne prend pas. Même

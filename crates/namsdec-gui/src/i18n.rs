@@ -85,7 +85,7 @@ pub struct Strings {
     pub unsaved_save: &'static str,
     pub unsaved_discard: &'static str,
     pub unsaved_cancel: &'static str,
-    pub dialog_quit: &'static str,
+    pub dialog_cancel: &'static str,
 
     // Onglets du panneau latéral / menu Affichage
     /// Le libellé COURT de l'onglet du processeur : il tient dans une
@@ -1193,7 +1193,7 @@ const FR: Strings = Strings {
     unsaved_save: "Enregistrer",
     unsaved_discard: "Abandonner",
     unsaved_cancel: "Annuler",
-    dialog_quit: "Quitter",
+    dialog_cancel: "Annuler",
 
     tab_cpu: "Processeur",
     tab_stack: "Pile",
@@ -2076,7 +2076,7 @@ const EN: Strings = Strings {
     unsaved_save: "Save",
     unsaved_discard: "Discard",
     unsaved_cancel: "Cancel",
-    dialog_quit: "Quit",
+    dialog_cancel: "Cancel",
 
     tab_cpu: "Processor",
     tab_stack: "Stack",

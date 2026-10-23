@@ -951,7 +951,7 @@ fn the_tools_tab_shows_every_tool_not_just_the_first() {
     // plus toute la hauteur de l'écran.
     assert!(
         peint.contains(strings(Lang::Fr).dialog_ok)
-            && peint.contains(strings(Lang::Fr).dialog_quit),
+            && peint.contains(strings(Lang::Fr).dialog_cancel),
         "OK et Quitter doivent rester à l'écran :\n{peint}"
     );
 }

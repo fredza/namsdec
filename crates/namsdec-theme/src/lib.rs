@@ -534,14 +534,12 @@ mod tests {
         for theme in BUILT_IN {
             let visuals = theme.visuals();
             assert_eq!(
-                visuals.warn_fg_color,
-                theme.warn,
+                visuals.warn_fg_color, theme.warn,
                 "« {} » laisse egui choisir la couleur d'un avertissement",
                 theme.name
             );
             assert_eq!(
-                visuals.error_fg_color,
-                theme.bad,
+                visuals.error_fg_color, theme.bad,
                 "« {} » laisse egui choisir la couleur d'une erreur",
                 theme.name
             );
