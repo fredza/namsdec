@@ -551,13 +551,19 @@ impl NamsdecApp {
                     }
                 });
                 ui.separator();
-                // L'analyse du binaire dans sa propre fenêtre : le
+                // L'analyse du binaire dans la zone centrale : le
                 // panneau latéral est trop étroit et trop court pour une
                 // liste de protections, de segments et de chaînes — et
                 // l'onglet RE est masqué par défaut, donc invisible pour
                 // qui ne sait pas qu'il existe.
+                //
+                // LES HUIT ENTRÉES QUI SUIVENT CHOISISSENT UN ONGLET de
+                // la rangée des vues, et ne font rien de plus quand la
+                // vue est détachée : sa fenêtre est déjà sous les yeux,
+                // et la rattacher d'autorité défairait le côte à côte
+                // qu'on venait d'installer.
                 if ui.button(s.analysis_open).clicked() {
-                    self.show_analysis = true;
+                    self.montrer_vue(VueCentrale::Analysis);
                     ui.close();
                 }
                 // Patcher : le geste qui manquait. On ouvre un crackme,
@@ -594,7 +600,7 @@ impl NamsdecApp {
                         .on_hover_text(s.patch_hint)
                         .clicked()
                     {
-                        self.show_patches = true;
+                        self.montrer_vue(VueCentrale::Patches);
                         ui.close();
                     }
                 });
@@ -609,38 +615,43 @@ impl NamsdecApp {
                     ))
                     .clicked()
                 {
-                    self.show_flow = true;
+                    self.montrer_vue(VueCentrale::Flow);
                     ui.close();
                 }
                 // La décompilation : une entrée seulement si le module
                 // est allumé. Un menu qui propose ce qui ne se fera pas
                 // ment poliment.
                 if self.show_decompiler_module && ui.button(s.decompiler_open).clicked() {
-                    self.show_decompiler = true;
+                    self.montrer_vue(VueCentrale::Decompiler);
                     ui.close();
                 }
                 if ui.button(s.vectors_open).clicked() {
-                    self.show_vectors = true;
+                    self.montrer_vue(VueCentrale::Vectors);
                     ui.close();
                 }
                 if ui
-                    .button(s.calculator_open)
+                    .button(shortcut_hint(
+                        &self.keybindings,
+                        &ui.ctx().clone(),
+                        s.calculator_open,
+                        Action::ToggleCalculator,
+                    ))
                     .on_hover_text(s.calculator_hint)
                     .clicked()
                 {
-                    self.show_calculator = true;
+                    self.dispatch(Action::ToggleCalculator);
                     ui.close();
                 }
                 if ui.button(s.breakpoints_open).clicked() {
-                    self.show_breakpoints = true;
+                    self.montrer_vue(VueCentrale::Breakpoints);
                     ui.close();
                 }
                 if ui.button(s.timeline_open).clicked() {
-                    self.show_timeline = true;
+                    self.montrer_vue(VueCentrale::Timeline);
                     ui.close();
                 }
                 if ui.button(s.disassembly_open).clicked() {
-                    self.show_disassembly = true;
+                    self.montrer_vue(VueCentrale::Disassembly);
                     ui.close();
                 }
                 if ui
@@ -854,7 +865,6 @@ impl NamsdecApp {
     pub(crate) fn toolbar_ui(&mut self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
         let ctx = ui.ctx().clone();
-        let mut onglets_posés = false;
         ui.horizontal(|ui| {
             ui.add_enabled_ui(self.can_assemble(), |ui| {
                 if ui
@@ -975,99 +985,46 @@ impl NamsdecApp {
                 }
             });
 
-            // À droite, ce que le panneau latéral montre — SI LA RANGÉE
-            // A LA PLACE. Sinon ils passent à la ligne : voir
-            // `onglets_du_panneau`.
-            if self.show_sidebar
-                && ui.available_width() >= largeur_des_onglets(ui, s, self.show_re_tab)
-            {
-                self.onglets_du_panneau(ui);
-                onglets_posés = true;
-            }
+            // À droite, la calculatrice — et elle seule.
+            //
+            // LES ONGLETS DU PANNEAU SONT PARTIS EN TÊTE DU PANNEAU, le
+            // 26 octobre 2026 : ils y sont collés à ce qu'ils
+            // commandent, et la barre d'outils n'a plus à se dédoubler
+            // sous mille pixels de large. Ce qui suit — la mesure de
+            // leur largeur, la rangée de repli — n'a plus lieu d'être.
+            //
+            // L'icône, elle, RESTE ICI. Sa place se justifiait par la
+            // proximité des valeurs qu'on vient convertir, et elle la
+            // garde ; mais surtout elle ne doit pas dépendre du panneau :
+            // panneau masqué, la calculatrice n'aurait plus de chemin
+            // visible, et il faudrait la deviner dans un menu. Une seule
+            // icône tient dans la barre à toutes les largeurs.
+            self.bouton_calculatrice(ui);
         });
-        // LA RANGÉE NE TIENT PAS TOUJOURS. À 800x520 — le plus petit
-        // écran que l'application accepte — les sept commandes
-        // d'exécution et les cinq onglets demandent plus que la largeur
-        // disponible, et une disposition de droite à gauche ne recule
-        // pas devant ça : elle part du bord droit et peint par-dessus.
-        // « Step Back », « Stop » et « Réinitialiser » disparaissaient
-        // sous « Processeur », « Pile » et « Mémoire », lettres sur
-        // lettres, dans la même couche.
-        //
-        // Vu sur une capture, et seulement là : aucune mesure ne
-        // regardait ce format. Le contrôle existe maintenant
-        // (`nothing_overlaps_on_the_smallest_screen_either`).
-        //
-        // La place se demande AVANT de poser, dans la même image : la
-        // largeur des onglets se calcule sur leurs libellés, et rien
-        // n'est repris d'une image à l'autre.
-        if self.show_sidebar && !onglets_posés {
-            ui.horizontal(|ui| self.onglets_du_panneau(ui));
-        }
     }
 
-    /// Les onglets du panneau latéral, posés de droite à gauche.
+    /// La calculatrice, au bout de la barre d'outils.
     ///
-    /// Sortis de la barre d'outils pour pouvoir être posés AILLEURS
-    /// qu'au bout de sa rangée quand elle n'a plus la place.
-    fn onglets_du_panneau(&mut self, ui: &mut egui::Ui) {
+    /// Sa place est là parce que c'est là qu'on s'en sert : on lit une
+    /// valeur dans la pile ou dans un registre, et l'on veut savoir ce
+    /// qu'elle vaut dans une autre base. Elle était dans le menu Outils,
+    /// à trois gestes de l'endroit où le besoin naît.
+    fn bouton_calculatrice(&mut self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
-
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            // De droite à gauche : la boucle est inversée pour
-            // que l'ordre lu reste Pile, Mémoire, Tas, Octets.
-            for tab in SidebarTab::ALL.iter().rev() {
-                if *tab == SidebarTab::Re && !self.show_re_tab {
-                    continue;
-                }
-                if ui
-                    .selectable_label(self.active_tab == *tab, tab.label(s))
-                    .clicked()
-                {
-                    self.active_tab = *tab;
-                }
-            }
-            // La calculatrice, juste à gauche de « Pile ». La
-            // disposition est de droite à gauche, donc elle vient
-            // après la boucle. Sa place est là parce que c'est là
-            // qu'on s'en sert : on lit une valeur dans la pile ou
-            // dans un registre, et l'on veut savoir ce qu'elle
-            // vaut dans une autre base. Elle était dans le menu
-            // Outils, à trois gestes de l'endroit où le besoin
-            // naît.
-            ui.add_space(4.0);
             if icon_square_button(ui, chrome::icon_calculator)
-                .on_hover_text(s.calculator_title)
+                .on_hover_text(shortcut_hint(
+                    &self.keybindings,
+                    &ui.ctx().clone(),
+                    s.calculator_title,
+                    Action::ToggleCalculator,
+                ))
                 .clicked()
             {
-                self.show_calculator = true;
+                self.dispatch(Action::ToggleCalculator);
             }
         });
     }
-}
-
-/// Ce que les onglets du panneau réclament, libellés compris.
-///
-/// Calculée sur les textes et les espacements du style en cours, dans
-/// l'image où l'on s'en sert : rien n'est mesuré sur ce qui a été peint,
-/// donc rien ne peut se reboucler.
-fn largeur_des_onglets(ui: &egui::Ui, s: &Strings, re: bool) -> f32 {
-    let espacement = ui.spacing().item_spacing.x;
-    let rembourrage = ui.spacing().button_padding.x * 2.0;
-    let police = egui::TextStyle::Button.resolve(ui.style());
-    let mut largeur = ui.spacing().interact_size.y + 4.0 + espacement; // la calculatrice
-    for tab in SidebarTab::ALL {
-        if tab == SidebarTab::Re && !re {
-            continue;
-        }
-        let galley = ui.painter().layout_no_wrap(
-            tab.label(s).to_owned(),
-            police.clone(),
-            egui::Color32::PLACEHOLDER,
-        );
-        largeur += galley.size().x + rembourrage + espacement;
-    }
-    largeur
 }
 
 /// `show_re_tab` filtre la seule commande qui mène à une vue
@@ -1274,7 +1231,7 @@ pub(crate) fn palette_commands(
     // démonte un crackme.
     commands.push((
         s.calculator_open.to_string(),
-        PaletteCommand::ShowCalculator,
+        PaletteCommand::Do(Action::ToggleCalculator),
     ));
 
     if show_re_tab {

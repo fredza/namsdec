@@ -49,6 +49,11 @@ impl NamsdecApp {
         // `self` en écriture, et la fenêtre le tient déjà.
         let mut frappe = Frappe::default();
         let mut bit_basculé: Option<u32> = None;
+        // Le clavier appartient à l'expression : à l'ouverture, et à
+        // nouveau dès qu'un clic dans la fenêtre l'a laissé à personne.
+        // Voir `calc_reprendre_clavier`.
+        let reprendre_le_clavier =
+            !self.calculator_was_open || std::mem::take(&mut self.calc_reprendre_clavier);
 
         // Ce que l'écran laisse à une fenêtre : sa hauteur moins de quoi
         // voir son bandeau et son ombre. Prise sur l'ÉCRAN et non sur le
@@ -166,13 +171,14 @@ impl NamsdecApp {
                                             theme,
                                             s,
                                             &mut self.calc_input,
-                                            !self.calculator_was_open,
+                                            reprendre_le_clavier,
                                             &résultat,
                                             valeur,
                                             self.calc_base,
                                             self.calc_width,
                                             &mut à_copier,
                                             &mut bit_basculé,
+                                            &mut frappe,
                                         );
                                     });
                                 ui.add_space(6.0);
@@ -298,7 +304,6 @@ impl NamsdecApp {
                                 calculator_keypad_ui(
                                     ui,
                                     theme,
-                                    s,
                                     self.calc_base,
                                     &self.calc_input,
                                     &mut frappe,
@@ -369,7 +374,35 @@ impl NamsdecApp {
                     fermer_ok = true;
                 }
             });
+        let cadre = rendue.as_ref().map(|r| r.response.rect);
         self.place_maximize_button(ctx, Self::CALCULATOR_WINDOW, rendue);
+
+        // UN CLIC DANS LA FENÊTRE QUI N'A DONNÉ LE FOCUS À PERSONNE rend
+        // le clavier à l'expression. C'est le cas d'une touche du
+        // clavier, d'un bit, d'une pastille de fonction : des surfaces
+        // qui se cliquent sans se focaliser, et après lesquelles egui ne
+        // focalise plus rien. Le champ muet, Ctrl+C et Ctrl+V ne
+        // servaient plus — sur une calculatrice, c'est-à-dire là où l'on
+        // vient justement chercher une valeur pour la recoller ailleurs.
+        //
+        // La condition porte sur le CADRE de la fenêtre et non sur
+        // l'application entière : en mode Normal, l'éditeur ne prend pas
+        // le focus non plus, et une règle écrite sur « personne n'a le
+        // focus » volerait la frappe à l'éditeur dès qu'on clique dans
+        // le code avec la calculatrice ouverte.
+        //
+        // Les listes déroulantes « Base » et « Largeur » sont des
+        // boutons : elles prennent le focus, donc elles le gardent, et
+        // l'on peut choisir une base au clavier sans que l'expression le
+        // reprenne sous les doigts.
+        if let Some(cadre) = cadre
+            && ctx.memory(|m| m.focused().is_none())
+            && ctx.input(|i| {
+                i.pointer.any_click() && i.pointer.interact_pos().is_some_and(|p| cadre.contains(p))
+            })
+        {
+            self.calc_reprendre_clavier = true;
+        }
 
         if frappe.effacer {
             self.calc_input.clear();
@@ -553,31 +586,33 @@ fn centered_row<R>(ui: &mut egui::Ui, largeur: f32, contenu: impl FnOnce(&mut eg
 /// À quelle famille une touche appartient, et donc de quelle couleur
 /// elle est.
 ///
-/// Trois familles et pas davantage : les chiffres, les opérateurs, et ce
-/// qui efface. C'est le partage de toutes les calculatrices de
-/// programmeur, et c'est ce qui permet de viser une touche sans la lire
-/// — on va vers la zone grise pour un chiffre, vers la bleue pour une
-/// opération, vers la rouge quand on s'est trompé.
+/// DEUX familles : les chiffres, et ce qu'on en fait. C'est ce qui
+/// permet de viser une touche sans la lire — on va vers la zone grise
+/// pour un chiffre, vers la bleue pour une opération.
+///
+/// Il y en avait trois : « ce qui efface » portait un rouge franc, sur
+/// les deux plus grandes touches de l'appareil. Ces deux-là ont quitté
+/// le clavier pour la ligne d'expression (voir `touche_défaire`), et la
+/// famille est partie avec elles — un clavier de programmeur n'a pas de
+/// touche rouge, il a des chiffres et des opérations.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum TouchePour {
     Chiffre,
     Opérateur,
-    Effacer,
 }
 
 impl TouchePour {
     /// Le fond et l'encre de cette famille, dans le thème courant.
     ///
     /// Des couleurs opaques et **franches** : les chiffres sur un gris
-    /// net, les opérateurs sur la couleur d'accent, ce qui efface sur du
-    /// rouge. Trois familles, trois teintes, et l'on vise une touche
-    /// sans la lire. Des mélanges timides donnaient six nuances du même
-    /// bleu sombre, où il fallait lire chaque touche pour la trouver.
+    /// net, les opérateurs sur la couleur d'accent. Deux familles, deux
+    /// teintes, et l'on vise une touche sans la lire. Des mélanges
+    /// timides donnaient six nuances du même bleu sombre, où il fallait
+    /// lire chaque touche pour la trouver.
     fn couleurs(self, theme: &Theme) -> (egui::Color32, egui::Color32) {
         let fond = match self {
             TouchePour::Chiffre => mélange(theme.surface, theme.text, 0.30),
             TouchePour::Opérateur => mélange(theme.surface, theme.accent, 0.72),
-            TouchePour::Effacer => mélange(theme.surface, theme.bad, 0.66),
         };
         (fond, encre_sur(fond, theme))
     }
@@ -633,6 +668,15 @@ fn calculator_pick_widths(ui: &egui::Ui, s: &Strings) -> (f32, f32) {
     let autour =
         ui.spacing().icon_spacing + ui.spacing().icon_width + ui.spacing().button_padding.x * 2.0;
     (étiquette.ceil(), (choix + autour).ceil() + 1.0)
+}
+
+/// L'identifiant du champ où l'expression se tape.
+///
+/// Posé plutôt que laissé à egui : c'est à lui qu'on rend le clavier
+/// après un clic sur une touche, et c'est lui qu'un contrôle interroge
+/// pour savoir si le collage ira au bon endroit.
+pub(crate) fn calc_expression_id() -> egui::Id {
+    egui::Id::new("calculator_expression")
 }
 
 /// La largeur commune de l'écran et du clavier.
@@ -728,6 +772,72 @@ fn calculator_key(
     réponse
 }
 
+/// Le côté d'un des deux boutons qui défont, au bout de la ligne
+/// d'expression.
+///
+/// Carré, et à peine plus grand qu'une ligne de texte : ce sont des
+/// commandes de champ, pas des touches de clavier. Leur ancienne taille
+/// — la moitié de la largeur de l'appareil, en rouge — disait qu'effacer
+/// était l'opération principale.
+const DÉFAIRE: f32 = 26.0;
+
+/// Un des deux boutons qui défont. Rend `true` s'il vient d'être cliqué.
+///
+/// Discret au repos, rouge au survol : il ne doit pas tirer l'œil avant
+/// qu'on le cherche, et doit dire ce qu'il fait au moment où on le
+/// vise. Éteint, il reste visible — une commande qui disparaît quand
+/// elle ne sert pas se cherche en vain quand elle sert.
+fn touche_défaire(
+    ui: &mut egui::Ui,
+    theme: &Theme,
+    dessin: fn(&egui::Painter, egui::Rect, egui::Color32),
+    permis: bool,
+    infobulle: &str,
+) -> bool {
+    let (rect, réponse) = ui.allocate_exact_size(
+        egui::vec2(DÉFAIRE, DÉFAIRE),
+        if permis {
+            egui::Sense::click()
+        } else {
+            egui::Sense::hover()
+        },
+    );
+    let (fond, encre) = if !permis {
+        (
+            egui::Color32::TRANSPARENT,
+            mélange(theme.bg, theme.dim, 0.45),
+        )
+    } else if réponse.is_pointer_button_down_on() {
+        (
+            mélange(theme.bg, theme.bad, 0.75),
+            encre_sur(theme.bad, theme),
+        )
+    } else if réponse.hovered() {
+        (
+            mélange(theme.bg, theme.bad, 0.55),
+            encre_sur(theme.bad, theme),
+        )
+    } else {
+        (egui::Color32::TRANSPARENT, theme.dim)
+    };
+    if fond != egui::Color32::TRANSPARENT {
+        ui.painter().rect_filled(rect, 6.0, fond);
+    }
+    dessin(
+        ui.painter(),
+        egui::Rect::from_center_size(rect.center(), egui::vec2(16.0, 13.0)),
+        encre,
+    );
+    // L'infobulle est posée DANS LES DEUX CAS, et c'est tout l'objet
+    // d'un bouton peint à la main : `on_disabled_hover_text` n'apparaît
+    // que sur un widget qu'egui sait éteint, et celui-ci ne l'est pas —
+    // il est seulement peint comme tel. Éteint, il dit pourquoi ; sans
+    // cette ligne, on le survolait, rien ne venait, et l'on croyait
+    // l'interface en panne plutôt que l'expression vide.
+    let réponse = réponse.on_hover_text(infobulle);
+    permis && réponse.clicked()
+}
+
 /// L'écran de la calculatrice : le résultat, et les bits.
 ///
 /// Dans son cadre, sur le fond de l'éditeur : c'est ce qui distingue ce
@@ -740,13 +850,14 @@ fn écran_calculatrice(
     theme: &'static Theme,
     s: &Strings,
     expression: &mut String,
-    prendre_le_clavier: bool,
+    rendre_le_clavier: bool,
     résultat: &Result<u64, calc::CalcError>,
     valeur: Option<u64>,
     base: CalcBase,
     largeur: CalcWidth,
     à_copier: &mut Option<String>,
     bit_basculé: &mut Option<u32>,
+    frappe: &mut Frappe,
 ) {
     // L'expression **dans** l'écran, en grand : c'est la ligne du haut
     // d'une calculatrice, celle où l'on tape. Un champ de saisie
@@ -761,17 +872,91 @@ fn écran_calculatrice(
     // Sans cadre et sans fond : le cadre de l'écran est déjà là, et un
     // second liseré à l'intérieur ferait deux boîtes imbriquées. C'est
     // le curseur qui dit que la ligne s'écrit.
-    let champ = ui.add(
-        egui::TextEdit::singleline(expression)
-            .hint_text(s.calculator_hint_text)
-            .font(egui::FontId::monospace(19.0))
-            .frame(egui::Frame::NONE)
-            .margin(egui::Margin::ZERO)
-            .desired_width(ui.available_width()),
-    );
-    // Le curseur y est dès l'ouverture : on vient là pour taper, pas
-    // pour cliquer d'abord.
-    if prendre_le_clavier {
+    // LE CLAVIER EST REPRIS AVANT que le champ ne soit posé, et le
+    // curseur avec lui. Fait après, le focus arrivait bien mais le
+    // curseur restait à zéro : une touche cliquée écrivait à la fin de
+    // l'expression, et le collage qui suivait se posait au DÉBUT —
+    // « 0x » cliqué puis « ff » collé donnait `ff0x`. Le champ lit son
+    // état en entrant ; c'est donc avant d'y entrer qu'il faut l'écrire.
+    if rendre_le_clavier {
+        ui.ctx()
+            .memory_mut(|m| m.request_focus(calc_expression_id()));
+        if let Some(mut état) = egui::TextEdit::load_state(ui.ctx(), calc_expression_id()) {
+            let fin = egui::text::CCursor::new(expression.chars().count());
+            état
+                .cursor
+                .set_char_range(Some(egui::text::CCursorRange::one(fin)));
+            egui::TextEdit::store_state(ui.ctx(), calc_expression_id(), état);
+        }
+    }
+    // AU BOUT DE LA LIGNE, les deux gestes qui défont : le retour
+    // arrière et la croix. Ils tenaient un bandeau rouge pleine largeur
+    // au-dessus du clavier — la plus grande surface de l'appareil, et
+    // la plus criarde, pour ce qu'on fait quand on s'est trompé. Ici,
+    // ils sont là où est ce qu'ils effacent, comme la croix d'un champ
+    // de recherche, et le clavier redevient un pavé régulier.
+    //
+    // LA RANGÉE A UNE HAUTEUR IMPOSÉE. Une rangée horizontale d'egui
+    // centre chaque élément sur la hauteur qu'elle a à cet instant et
+    // ne recale pas ce qui est déjà posé : le champ, posé avant des
+    // boutons plus hauts que lui, se serait retrouvé deux pixels trop
+    // haut. C'est le piège qui a déjà coûté trois essais à la rangée
+    // « Base / Largeur », quelques lignes plus bas.
+    let hauteur = DÉFAIRE.max(ui.spacing().interact_size.y);
+    let champ = ui
+        .allocate_ui_with_layout(
+            egui::vec2(ui.available_width(), hauteur),
+            egui::Layout::left_to_right(egui::Align::Center),
+            |ui| {
+                ui.spacing_mut().item_spacing.x = 6.0;
+                let réservé = DÉFAIRE * 2.0 + 6.0 + 6.0;
+                let champ = ui.add(
+                    egui::TextEdit::singleline(expression)
+                        // Un identifiant posé et non dérivé de la place du
+                        // widget : c'est par lui qu'on sait, de l'extérieur,
+                        // si le clavier est bien à l'expression — et un
+                        // contrôle qui ne peut pas nommer ce qu'il mesure ne
+                        // mesure rien.
+                        .id(calc_expression_id())
+                        .hint_text(s.calculator_hint_text)
+                        .font(egui::FontId::monospace(19.0))
+                        .frame(egui::Frame::NONE)
+                        .margin(egui::Margin::ZERO)
+                        .desired_width((ui.available_width() - réservé).max(60.0)),
+                );
+                // Éteints sur une expression vide, et non cachés : savoir
+                // qu'ils existent avant d'en avoir besoin vaut mieux que
+                // de les voir apparaître.
+                let vivants = !expression.is_empty();
+                let dire = |actif: &'static str| {
+                    if vivants {
+                        actif
+                    } else {
+                        s.calculator_nothing_to_erase
+                    }
+                };
+                frappe.reculer |= touche_défaire(
+                    ui,
+                    theme,
+                    chrome::icon_backspace,
+                    vivants,
+                    dire(s.calculator_backspace),
+                );
+                frappe.effacer |= touche_défaire(
+                    ui,
+                    theme,
+                    chrome::icon_clear,
+                    vivants,
+                    dire(s.calculator_clear),
+                );
+                champ
+            },
+        )
+        .inner;
+    // La demande a été faite plus haut ; ce qui reste ici est le cas de
+    // la toute première image, où le champ n'avait pas encore d'état à
+    // charger.
+    if rendre_le_clavier && !champ.has_focus() {
         champ.request_focus();
     }
     ui.add_space(2.0);
@@ -837,60 +1022,18 @@ fn écran_calculatrice(
 fn calculator_keypad_ui(
     ui: &mut egui::Ui,
     theme: &'static Theme,
-    s: &Strings,
     base: CalcBase,
     courant: &str,
     frappe: &mut Frappe,
 ) {
     let total = CALC_LARGEUR;
-    let moitié = (total - TOUCHE_ÉCART) / 2.0;
 
     ui.vertical(|ui| {
         ui.spacing_mut().item_spacing = egui::vec2(TOUCHE_ÉCART, TOUCHE_ÉCART);
 
-        // Effacer et revenir en arrière, au-dessus et en rouge : ce sont
-        // les deux touches qu'on cherche quand on s'est trompé, et les
-        // seules qui défont.
-        centered_row(ui, total, |ui| {
-            ui.spacing_mut().item_spacing = egui::vec2(TOUCHE_ÉCART, TOUCHE_ÉCART);
-            frappe.effacer |= calculator_key(
-                ui,
-                theme,
-                s.calculator_clear,
-                TouchePour::Effacer,
-                moitié,
-                true,
-            )
-            .clicked();
-
-            // Le retour arrière porte une icône et non un caractère :
-            // `←` n'est pas dans la police d'egui.
-            let (fond, encre) = TouchePour::Effacer.couleurs(theme);
-            let (rect, réponse) =
-                ui.allocate_exact_size(egui::vec2(moitié, TOUCHE_H), egui::Sense::click());
-            let fond = if réponse.is_pointer_button_down_on() {
-                mélange(fond, theme.bg, 0.30)
-            } else if réponse.hovered() {
-                mélange(fond, theme.text, 0.14)
-            } else {
-                fond
-            };
-            ui.painter().rect(
-                rect,
-                8.0,
-                fond,
-                egui::Stroke::new(1.0, mélange(fond, theme.text, 0.18)),
-                egui::StrokeKind::Inside,
-            );
-            chrome::icon_backspace(
-                ui.painter(),
-                egui::Rect::from_center_size(rect.center(), egui::vec2(18.0, 14.0)),
-                encre,
-            );
-            frappe.reculer |= réponse.on_hover_text(s.calculator_backspace).clicked();
-        });
-
-        ui.add_space(2.0);
+        // Rien au-dessus des chiffres : « Effacer tout » et le retour
+        // arrière sont remontés sur la ligne d'expression, là où est ce
+        // qu'ils effacent. Voir `écran_calculatrice`.
         for rangée in TOUCHES {
             centered_row(ui, total, |ui| {
                 ui.spacing_mut().item_spacing = egui::vec2(TOUCHE_ÉCART, TOUCHE_ÉCART);
@@ -978,6 +1121,14 @@ fn calculator_functions_ui(
     // nulle part ailleurs en proportionnelle. La rangée se replie si
     // elle manque de place, ce qu'elle savait déjà faire.
     ui.horizontal_wrapped(|ui| {
+        // SERRÉS, pour que les six tiennent sur UNE ligne. Aux écarts
+        // d'egui par défaut, le sixième — « Calculer » — passait seul à
+        // la ligne suivante, où il ne ressemblait plus à un onglet mais
+        // à l'intertitre de la rangée de pastilles qui le suit. Une
+        // rangée d'onglets dont le dernier a l'air d'autre chose ment
+        // sur ce qu'elle est.
+        ui.spacing_mut().item_spacing.x = 3.0;
+        ui.spacing_mut().button_padding.x = 6.0;
         for (famille, court, long) in calc::FAMILIES {
             let choisi = famille_active == famille;
             if ui

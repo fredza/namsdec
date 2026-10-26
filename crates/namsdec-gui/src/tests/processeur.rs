@@ -555,35 +555,38 @@ fn the_cpu_state_fills_the_panel_without_a_scroll_bar() {
         ..Default::default()
     };
     // Les mêmes noms se peignent ailleurs — la pile nomme le registre
-    // qui pointe sur un mot —, donc on ne retient que ce qui est dans
-    // l'état du processeur : entre son titre et celui de l'onglet, qui
-    // vit dessous.
+    // qui pointe sur un mot, le bandeau dit le dernier pas —, donc on ne
+    // retient que ce qui est SOUS LA RANGÉE D'ONGLETS du panneau : c'est
+    // là que vit la vue choisie.
+    //
+    // La rangée a remplacé l'en-tête « État du processeur » le 26
+    // octobre 2026 : elle est posée en tête du panneau, juste au-dessus
+    // de ce qu'elle commande, et l'onglet souligné EST le titre. Le
+    // repère change donc de nom, pas de rôle.
     let mut registres: Vec<egui::Pos2> = Vec::new();
-    let mut onglet_y = f32::MAX;
+    let mut rangée_y = f32::MAX;
     let mut barres: Vec<egui::Rect> = Vec::new();
     for _ in 0..4 {
         let mut trouvés: Vec<(&'static str, egui::Pos2)> = Vec::new();
-        let mut état_y = f32::MAX;
+        rangée_y = f32::MAX;
         barres.clear();
         let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
         // Deux passes : l'ordre de peinture ne dit pas l'ordre à
         // l'écran — le panneau de l'onglet est posé avant le bandeau
         // qu'il surmonte —, donc on relève d'abord les repères, on
         // décide ensuite.
-        let mut titres_onglet: Vec<egui::Pos2> = Vec::new();
         for clipped in &output.shapes {
             match &clipped.shape {
                 egui::epaint::Shape::Text(text) => match text.galley.text() {
                     "RAX" => trouvés.push(("RAX", text.pos)),
                     "R15" => trouvés.push(("R15", text.pos)),
                     "RIP" => trouvés.push(("RIP", text.pos)),
-                    t if t == strings(Lang::Fr).cpu_state => état_y = état_y.min(text.pos.y),
-                    // Le titre de l'onglet dans le panneau, et non celui
-                    // de la barre d'outils, qui est tout en haut.
-                    t if t == strings(Lang::Fr).tab_stack
+                    // L'onglet dans le PANNEAU : la rangée n'est plus
+                    // dans la barre d'outils, et c'est elle le repère.
+                    t if t == SidebarTab::Cpu.label(strings(Lang::Fr))
                         && text.pos.x > 1280.0 - SIDEBAR_WIDTH =>
                     {
-                        titres_onglet.push(text.pos)
+                        rangée_y = rangée_y.min(text.pos.y);
                     }
                     _ => {}
                 },
@@ -593,18 +596,18 @@ fn the_cpu_state_fills_the_panel_without_a_scroll_bar() {
                 _ => {}
             }
         }
-        onglet_y = titres_onglet
-            .iter()
-            .map(|pos| pos.y)
-            .filter(|y| *y > état_y)
-            .fold(f32::MAX, f32::min);
         registres = trouvés
             .into_iter()
-            .filter(|(_, pos)| pos.y > état_y && pos.y < onglet_y)
+            .filter(|(_, pos)| pos.y > rangée_y)
             .map(|(_, pos)| pos)
             .collect();
         output.textures_delta.clear();
     }
+    assert!(
+        rangée_y.is_finite(),
+        "la rangée d'onglets doit être peinte en tête du panneau : c'est \
+         le repère de tout ce contrôle"
+    );
     // Deux colonnes : RAX et R15 ne sont pas sur la même ligne, mais RAX
     // n'est pas seul sur la sienne — la grille occupe la largeur.
     let colonnes: std::collections::BTreeSet<i32> =
@@ -621,11 +624,11 @@ fn the_cpu_state_fills_the_panel_without_a_scroll_bar() {
         droite > 1280.0 - SIDEBAR_WIDTH / 2.0,
         "la seconde colonne doit occuper la moitié droite du panneau : {colonnes:?}"
     );
-    // Et aucune barre de défilement au-dessus des onglets, là où vit
-    // l'état du processeur.
+    // Et aucune barre de défilement SOUS la rangée, là où vit l'état du
+    // processeur.
     let fautives: Vec<_> = barres
         .iter()
-        .filter(|r| r.min.x > 1280.0 - SIDEBAR_WIDTH && r.max.y < onglet_y)
+        .filter(|r| r.min.x > 1280.0 - SIDEBAR_WIDTH && r.min.y > rangée_y)
         .collect();
     assert!(
         fautives.is_empty(),
@@ -1594,11 +1597,16 @@ fn the_banner_leaves_no_hole_between_its_two_zones() {
     };
     app.apply_theme(&ctx);
     let (_, lignes) = ce_qui_est_écrit(&ctx, &mut app, None, 5);
-    // La dernière ligne de « Prochaine instruction », et le titre qui
-    // suit : entre les deux, il ne doit y avoir que de l'air normal.
+    // La dernière ligne de « Prochaine instruction », et ce qui suit :
+    // entre les deux, il ne doit y avoir que de l'air normal.
+    //
+    // Ce qui suit est la RANGÉE D'ONGLETS depuis le 26 octobre 2026 —
+    // elle a pris la place de l'en-tête « État du processeur », qu'elle
+    // rendait redondant. Le trou se mesure donc jusqu'à son premier
+    // onglet.
     let titre = lignes
         .iter()
-        .filter(|(t, r)| t == s.cpu_state && r.left() > 1200.0)
+        .filter(|(t, r)| t == SidebarTab::Cpu.label(s) && r.left() > 1200.0)
         .map(|(_, r)| r.top())
         .fold(f32::INFINITY, f32::min);
     let bas_du_bandeau = lignes
@@ -1615,7 +1623,7 @@ fn the_banner_leaves_no_hole_between_its_two_zones() {
         trou < 80.0,
         "« {} » doit suivre ce qui le précède, non flotter tout en bas : \
          {trou:.0} px de blanc",
-        s.cpu_state
+        SidebarTab::Cpu.label(s)
     );
 }
 

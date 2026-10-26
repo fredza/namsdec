@@ -44,14 +44,11 @@ impl NamsdecApp {
         let theme = self.theme;
         let mut open = self.show_flow;
         let mut fermer_ok = false;
-        let mut aller: Option<u32> = None;
         let agrandie = self.window_maximized(Self::FLOW_WINDOW);
-        // Ce que le bouton a demandé : appliqué une fois la fenêtre
+        // Ce que la pastille a demandé : appliqué une fois la fenêtre
         // refermée, car tant qu'elle se dessine, ce qu'elle montre est
         // emprunté à `self`.
         let mut bascule = false;
-        let mut enregistrer_dot = false;
-        let mut copier_pseudo = false;
         let mut fenêtre = egui::Window::new(s.flow_title)
             .id(egui::Id::new("flow_window"))
             .open(&mut open)
@@ -60,6 +57,14 @@ impl NamsdecApp {
         // poser à la suite ne marchait pas — `min_size` et `default_size`
         // écrasaient ce que `fixed_rect` venait de fixer, et la fenêtre
         // gardait sa taille d'origine en changeant seulement de coin.
+        let taille_voulue = {
+            let écran = ctx.viewport_rect().size();
+            window_size(
+                self.assemble_state.is_some(),
+                egui::vec2(écran.x * 0.92, écran.y * 0.88),
+                egui::vec2(540.0, 220.0),
+            )
+        };
         fenêtre = if agrandie {
             Self::fill_the_screen(fenêtre, ctx)
         } else {
@@ -68,14 +73,7 @@ impl NamsdecApp {
                 // se lit à la taille de l'écran. Sept cent soixante
                 // pixels de large montraient trois boîtes sur mille.
                 .resizable(true)
-                .default_size({
-                    let écran = ctx.viewport_rect().size();
-                    window_size(
-                        self.assemble_state.is_some(),
-                        egui::vec2(écran.x * 0.92, écran.y * 0.88),
-                        egui::vec2(540.0, 220.0),
-                    )
-                })
+                .default_size(taille_voulue)
                 .min_size(window_size(
                     self.assemble_state.is_some(),
                     egui::vec2(640.0, 420.0),
@@ -85,7 +83,10 @@ impl NamsdecApp {
                     egui::vec2(420.0, 180.0),
                 ))
                 .pivot(egui::Align2::CENTER_CENTER)
-                .default_pos(default_window_pos(ctx, "flow"))
+                // La taille lui est passée : chargée, elle remplit
+                // l'écran, et une fenêtre qui le remplit garde le
+                // centre — un cran la ferait sortir.
+                .default_pos(default_window_pos_sized(ctx, "flow", taille_voulue))
         };
         let rendue = fenêtre.title_bar(false).show(ctx, |ui| {
             if chrome::window_head(ui, self.theme, s, s.flow_title) {
@@ -94,6 +95,45 @@ impl NamsdecApp {
             if ok_bar(ui, self.theme, strings(self.lang), "flow") {
                 fermer_ok = true;
             }
+            self.flow_body_ui(ui);
+        });
+        self.show_flow = open && !fermer_ok;
+        if let Some(rendue) = rendue
+            && title_bar_maximize_button(
+                ctx,
+                Self::FLOW_WINDOW,
+                rendue.response.rect,
+                theme,
+                s,
+                agrandie,
+            )
+        {
+            bascule = true;
+        }
+        if bascule {
+            self.toggle_maximized(Self::FLOW_WINDOW);
+        }
+    }
+
+    /// Le graphe lui-même, sans son cadre : un seul corps pour l'onglet
+    /// de la rangée et pour la fenêtre détachée.
+    ///
+    /// Ce que le corps ne peut pas faire lui-même, il le demande :
+    /// enregistrer le DOT ouvre une boîte de fichier, et copier le
+    /// pseudo-code relit le programme — deux appels de méthode, donc
+    /// deux emprunts de `self`, impossibles tant que le dessin tient le
+    /// graphe. Ils sont relevés à la fin, comme ailleurs.
+    pub(crate) fn flow_body_ui(&mut self, ui: &mut egui::Ui) {
+        let s = strings(self.lang);
+        let theme = self.theme;
+        let mut enregistrer_dot = false;
+        let mut copier_pseudo = false;
+        // Un bloc, et il a sa raison : ce qu'on montre est EMPRUNTÉ au
+        // programme assemblé pendant tout le dessin, et les deux
+        // demandes ci-dessous appellent des méthodes — c'est-à-dire
+        // reprennent `self` en entier. L'emprunt se termine à
+        // l'accolade, et elles passent après.
+        {
             let Some(state) = &self.assemble_state else {
                 empty_state(ui, theme, s.flow_empty, Some(s.empty_flow), None);
                 return;
@@ -444,28 +484,17 @@ impl NamsdecApp {
                     )
                 });
             let (destination, tiré) = sortie.inner;
-            aller = destination;
+            // La ligne visée se pose ici même : `goto_line` est un
+            // champ, et l'écrire ne reprend pas `self` en entier — le
+            // graphe reste emprunté à côté, sans conflit.
+            if let Some(ligne) = destination {
+                self.goto_line = Some(ligne);
+            }
             // Le glisser déplace la vue, comme sur une carte. On
             // repart de ce que la zone défilante dit d'elle-même :
             // les barres et la molette la déplacent aussi, et les
             // trois doivent parler du même point.
             self.flow_offset = sortie.state.offset - tiré;
-        });
-        self.show_flow = open && !fermer_ok;
-        if let Some(rendue) = rendue
-            && title_bar_maximize_button(
-                ctx,
-                Self::FLOW_WINDOW,
-                rendue.response.rect,
-                theme,
-                s,
-                agrandie,
-            )
-        {
-            bascule = true;
-        }
-        if bascule {
-            self.toggle_maximized(Self::FLOW_WINDOW);
         }
         if copier_pseudo && let Some(state) = &self.assemble_state {
             let entier = namsdec_re::cfg::build(&state.disasm);
@@ -480,14 +509,11 @@ impl NamsdecApp {
                 entier
             };
             let lignes = namsdec_re::structure::pseudo_code(&cfg, &state.disasm, self.lang.code());
-            ctx.copy_text(namsdec_re::structure::en_texte(&lignes));
+            ui.ctx().copy_text(namsdec_re::structure::en_texte(&lignes));
             self.status = Status::Note(|s| s.flow_pseudo_copied);
         }
         if enregistrer_dot {
             self.spawn_file_dialog(FileDialogKind::ExportDot);
-        }
-        if let Some(ligne) = aller {
-            self.goto_line = Some(ligne);
         }
     }
 }
@@ -533,10 +559,7 @@ pub(crate) fn flow_pseudo_ui(
     // L'état vide ci-dessus, lui, ne se déclenche que sur un graphe
     // vide — que la fenêtre a déjà écarté plus haut. Il est donc mort,
     // et c'est cette ligne-ci qui dit ce qu'il croyait dire.
-    if lignes
-        .iter()
-        .all(|l| l.adresse.is_some() || l.est_étiquette)
-    {
+    if lignes.iter().all(|l| !l.est_structure) {
         ui.colored_label(theme.dim, s.flow_pseudo_flat);
         ui.add_space(4.0);
     }
@@ -560,9 +583,13 @@ pub(crate) fn flow_pseudo_ui(
                         theme.accent
                     } else if ligne.est_étiquette {
                         theme.dim
-                    } else if ligne.adresse.is_none() {
+                    } else if ligne.est_structure {
                         // Un mot de structure : il vient du graphe, non
-                        // d'une instruction.
+                        // d'une instruction. Demandé à la ligne et non
+                        // déduit d'une adresse absente — un `si` qui a
+                        // absorbé sa comparaison porte l'adresse de
+                        // celle-ci, et se peignait donc en texte
+                        // ordinaire le jour où il l'a eue.
                         theme.warn
                     } else {
                         theme.text

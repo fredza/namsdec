@@ -29,6 +29,35 @@ pub(crate) fn relevés_de_désassemblage() -> u64 {
     RELEVÉS_DE_DÉSASSEMBLAGE.with(std::cell::Cell::get)
 }
 
+/// En dessous de cette hauteur restante, la phrase qui explique le
+/// moteur s'efface au profit du listing.
+///
+/// Mesuré des deux côtés, parce que la vue vit à deux endroits. À
+/// 800×520, l'onglet dispose de cent soixante-seize pixels, et il en
+/// reste cent cinquante quand on arrive à la phrase : elle s'efface, et
+/// le listing a de quoi montrer quelques lignes. La fenêtre détachée,
+/// elle, s'ouvre en 540×280 et en laisse deux cents : elle garde sa
+/// phrase — sans quoi elle s'ouvrirait plus grande que ce qu'elle
+/// montre, ce que `a_window_opens_at_the_size_of_what_it_shows` refuse.
+const PLACE_POUR_L_INDICE: f32 = 170.0;
+
+/// Ce qu'un clic dans le désassemblage a demandé, et que l'on ne peut
+/// pas satisfaire tout de suite.
+///
+/// Le corps de la vue tient `self` pendant qu'il peint : aller à une
+/// ligne, viser un symbole ou revenir au début touchent tous les trois
+/// à l'état de l'application, et attendent donc la fin du dessin.
+#[derive(Default)]
+pub(crate) struct DemandesDésassemblage {
+    /// Le symbole choisi dans la liste « aller à ».
+    vise: Option<u64>,
+    /// Montrer tout le listing, et non plus la seule suite d'un
+    /// symbole.
+    revenir_au_début: bool,
+    /// L'adresse d'une rangée cliquée, à traduire en ligne de source.
+    aller_adresse: Option<u64>,
+}
+
 /// Une ligne de la fenêtre de désassemblage : l'adresse, les octets, et
 /// ce que le moteur choisi en dit.
 ///
@@ -188,6 +217,372 @@ impl NamsdecApp {
         RELEVÉS_DE_DÉSASSEMBLAGE.with(|n| n.set(n.get() + 1));
     }
 
+    /// Le désassemblage lui-même, sans son cadre : c'est ce que peint
+    /// l'onglet de la rangée, et c'est ce que peint la fenêtre quand on
+    /// l'a détaché. Un seul corps pour les deux, sinon l'un des deux
+    /// finit par diverger sans qu'on le remarque.
+    pub(crate) fn disassembly_view_ui(&mut self, ui: &mut egui::Ui) {
+        // Ce que la vue montre, relevé AVANT de peindre : le corps
+        // emprunte `self` champ par champ, et ce relevé le prend en
+        // entier.
+        self.refresh_disassembly_rows();
+        let mut demandes = DemandesDésassemblage::default();
+        self.disassembly_body_ui(ui, &mut demandes, true);
+        self.suivre_demandes_désassemblage(demandes);
+    }
+
+    /// Ce que le corps a demandé pendant qu'il peignait, appliqué après
+    /// lui : il emprunte `self`, et rien de tout cela ne peut se faire
+    /// pendant qu'il tient cet emprunt.
+    fn suivre_demandes_désassemblage(&mut self, demandes: DemandesDésassemblage) {
+        let mut aller: Option<u32> = None;
+        let DemandesDésassemblage {
+            vise,
+            revenir_au_début,
+            aller_adresse,
+        } = demandes;
+        if let Some(adresse) = aller_adresse {
+            aller = self
+                .assemble_state
+                .as_ref()
+                .and_then(|state| state.addr_to_line.get(&adresse).copied());
+        }
+        if let Some(ligne) = aller {
+            self.goto_line = Some(ligne);
+        }
+        // Posée pour la frame suivante, puis oubliée : sans quoi la vue
+        // resterait collée là et l'on ne pourrait plus la faire défiler.
+        if let Some(addr) = vise {
+            self.disassembly_target = Some(addr);
+        }
+        if revenir_au_début {
+            self.disassembly_target = None;
+        }
+    }
+
+    /// Le corps : le choix du moteur, la recherche, et le listing.
+    ///
+    /// `demandes` recueille ce qu'un clic a voulu — une adresse à
+    /// viser, une ligne où aller, un retour au début. Le corps ne peut
+    /// pas les appliquer lui-même : il tient `self` pendant qu'il
+    /// peint.
+    ///
+    /// `dans_la_rangée` dit où l'on peint. La vue est la même des deux
+    /// côtés ; ce qui change est la place, qu'une fenêtre prend à sa
+    /// guise et qu'un onglet reçoit de ce qui reste.
+    fn disassembly_body_ui(
+        &mut self,
+        ui: &mut egui::Ui,
+        demandes: &mut DemandesDésassemblage,
+        dans_la_rangée: bool,
+    ) {
+        let s = strings(self.lang);
+        let theme = self.theme;
+        let lang = self.lang.code();
+        // Le choix du moteur, en tête : c'est lui qui décide de
+        // tout ce qu'on lit en dessous.
+        ui.horizontal_wrapped(|ui| {
+            ui.label(s.disassembly_engine);
+            ui.selectable_value(
+                &mut self.disassembler,
+                PSEUDO_ID.to_owned(),
+                s.disassembly_pseudo,
+            );
+            ui.selectable_value(
+                &mut self.disassembler,
+                NASM_ID.to_owned(),
+                s.disassembly_nasm,
+            );
+            ui.selectable_value(
+                &mut self.disassembler,
+                SYSTEM_ID.to_owned(),
+                s.disassembly_system,
+            )
+            .on_hover_text(s.disassembly_system_hint);
+            for plugin in &self.disassembler_plugins {
+                ui.selectable_value(&mut self.disassembler, plugin.id.clone(), &plugin.name)
+                    .on_hover_text(format!("{} {}", s.disassembly_external, plugin.command));
+            }
+        });
+        // La phrase qui dit ce que le moteur fait : deux ou trois
+        // lignes, et elle ne se lit qu'une fois. Dans la rangée, sur un
+        // petit écran, ces cinquante pixels sont ceux du listing, qui
+        // est ce qu'on est venu voir. Elle reste sous le curseur :
+        // chaque moteur porte la sienne en infobulle.
+        //
+        // DANS LA FENÊTRE, ELLE RESTE TOUJOURS. La hauteur ne distingue
+        // pas les deux cas — la fenêtre à vide en laisse cent
+        // quarante-trois, l'onglet à l'étroit cent cinquante — et une
+        // fenêtre qui s'ouvre à 540×280 pour une phrase en moins
+        // laisserait quatre-vingt-six pixels de vide.
+        if !dans_la_rangée || ui.available_height() > PLACE_POUR_L_INDICE {
+            ui.weak(if self.disassembler == PSEUDO_ID {
+                s.disassembly_pseudo_hint
+            } else if self.disassembler == SYSTEM_ID {
+                s.disassembly_system_hint
+            } else {
+                s.disassembly_nasm_hint
+            });
+        }
+        ui.separator();
+
+        let Some(state) = &self.assemble_state else {
+            empty_state(
+                ui,
+                theme,
+                s.no_binary_assembled,
+                Some(s.empty_disassembly),
+                None,
+            );
+            return;
+        };
+        if state.disasm.is_empty() {
+            empty_state(
+                ui,
+                theme,
+                s.no_binary_assembled,
+                Some(s.empty_disassembly),
+                None,
+            );
+            return;
+        }
+
+        // Un moteur extérieur : on l'appelle sur demande, et
+        // l'on garde sa réponse. Le relancer à chaque frame
+        // reviendrait à lancer un programme soixante fois par
+        // seconde.
+        if let Some(plugin) = self
+            .disassembler_plugins
+            .iter()
+            .find(|plugin| plugin.id == self.disassembler)
+        {
+            let déjà = self
+                .plugin_output
+                .as_ref()
+                .filter(|(id, _)| *id == plugin.id)
+                .map(|(_, texte)| texte.clone());
+            match déjà {
+                Some(texte) => {
+                    egui::ScrollArea::both()
+                        .id_salt("plugin_output")
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            ui.add(
+                                egui::Label::new(egui::RichText::new(texte).monospace())
+                                    .wrap_mode(egui::TextWrapMode::Extend),
+                            );
+                        });
+                }
+                None => {
+                    ui.weak(format!("{} {}", s.disassembly_will_run, plugin.command));
+                    if framed_button(ui, theme, s.disassembly_run).clicked() {
+                        let texte = self.lancer_désassembleur(plugin, state);
+                        self.plugin_output = Some((plugin.id.clone(), texte));
+                    }
+                }
+            }
+            return;
+        }
+        let rip = self.emulator.as_ref().map(|e| e.cpu().regs.rip);
+        let symbols = &state.output.symbols;
+        // La colonne des étiquettes, sur une largeur FIXE.
+        //
+        // Elle n'en avait pas : une rangée sans étiquette ne
+        // réservait rien, et les octets comme le texte de
+        // l'instruction reculaient de cinquante-cinq pixels dès
+        // qu'une ligne en portait une. Un listing dont les
+        // colonnes dansent d'une ligne à l'autre ne se lit plus
+        // en colonnes, et c'est tout ce qu'on lui demande.
+        //
+        // Vingt signes au plus : au-delà, un nom long pousserait
+        // le code hors de la fenêtre pour le confort d'une seule
+        // ligne. Zéro quand il n'y a aucun symbole, auquel cas la
+        // colonne disparaît au lieu de laisser un blanc.
+        let colonne_étiquette = symbols
+            .iter()
+            .map(|s| s.name.chars().count() + 1)
+            .max()
+            .unwrap_or(0)
+            .min(20);
+        let pseudo = self.disassembler == PSEUDO_ID;
+        let syntaxe = if self.disassembler == SYSTEM_ID {
+            namsdec_disasm::Syntax::System
+        } else {
+            namsdec_disasm::Syntax::Nasm
+        };
+
+        // Ce qu'on cherche : une étiquette, un registre, une
+        // adresse. Le listing d'un binaire fait quinze mille
+        // lignes, et l'on sait ce qu'on y cherche.
+        ui.horizontal(|ui| {
+            ui.add(
+                egui::TextEdit::singleline(&mut self.disassembly_query)
+                    .hint_text(s.find_placeholder)
+                    .desired_width(200.0),
+            );
+            if !self.disassembly_query.is_empty() && framed_button(ui, theme, "x").clicked() {
+                self.disassembly_query.clear();
+            }
+        });
+        let query = self.disassembly_query.to_lowercase();
+
+        // Où aller : les étiquettes du programme, dans l'ordre
+        // des adresses. Sur un binaire, c'est par là qu'on entre
+        // — et faire défiler quinze mille lignes pour trouver
+        // une fonction n'est pas une façon de lire.
+        if !symbols.is_empty() {
+            ui.horizontal_wrapped(|ui| {
+                ui.label(s.disassembly_goto_label);
+                egui::ComboBox::from_id_salt("disassembly_symbols")
+                    .selected_text(s.disassembly_choose)
+                    .show_ui(ui, |ui| {
+                        for symbol in symbols {
+                            if ui.selectable_label(false, &symbol.name).clicked() {
+                                demandes.vise = Some(symbol.addr);
+                            }
+                        }
+                    });
+            });
+        }
+
+        // Les rangs retenus : relevés une fois, avant la
+        // fenêtre. Ils l'étaient à chaque image, et chacun
+        // demandait de REDÉCODER l'instruction et de composer
+        // deux chaînes — un million de fois par image sur un
+        // gros binaire, pour quarante rangées visibles. La zone
+        // de défilement, elle, savait déjà ne peindre que ce
+        // qu'elle montre (`show_rows`) : c'est la liste qu'on
+        // lui donnait qui coûtait tout.
+        let rangs = &self.disassembly_rows;
+        if !query.is_empty() {
+            ui.weak(format!("{} / {}", rangs.len(), state.disasm.len()));
+        }
+        if let Some(addr) = self.disassembly_target {
+            ui.horizontal(|ui| {
+                let nom = symbols
+                    .iter()
+                    .find(|s| s.addr == addr)
+                    .map(|s| s.name.clone())
+                    .unwrap_or_else(|| format!("{addr:#x}"));
+                ui.colored_label(theme.accent, format!("{} {nom}", s.disassembly_from));
+                if framed_button(ui, theme, s.disassembly_all).clicked() {
+                    demandes.revenir_au_début = true;
+                }
+            });
+        }
+
+        let row_height =
+            ui.text_style_height(&egui::TextStyle::Monospace) + ui.spacing().item_spacing.y;
+        // Suivre l'exécution, comme l'onglet Octets — sauf
+        // pendant une recherche, où c'est elle qui commande.
+        let suivie = (query.is_empty() && self.disassembly_target.is_none() && self.follow_rip)
+            .then(|| {
+                // Les rangs sont dans l'ordre des adresses :
+                // dichotomie.
+                rip.and_then(|rip| {
+                    rangs
+                        .binary_search_by_key(&rip, |rang| state.disasm[*rang as usize].address)
+                        .ok()
+                })
+            })
+            .flatten();
+        // Bornée à la place qu'on lui laisse : une zone qui se
+        // croit plus haute déborde, et ce qui dépasse est coupé —
+        // y compris les lignes vers lesquelles on vient de
+        // demander à aller.
+        //
+        // LE PLANCHER NE S'APPLIQUE QU'À UNE PLACE NULLE. Il était
+        // de cent vingt pixels en toute circonstance, ce qui ne se
+        // voyait pas dans une fenêtre — elle rogne ce qui dépasse.
+        // Dans la rangée, la vue n'a pas de cadre : à 800×520, les
+        // adresses du listing se peignaient par-dessus l'onglet
+        // « Console », relevé par `panels_do_not_overlap_on_the_
+        // smallest_screen`. Une place étroite est une place
+        // étroite ; seule une place encore inconnue — la fenêtre à
+        // sa première image — mérite qu'on en invente une.
+        let place = ui.available_height();
+        let mut zone = egui::ScrollArea::vertical()
+            .id_salt("disassembly_rows")
+            .max_height(if place > 1.0 { place } else { 120.0 })
+            .auto_shrink([false, false]);
+        if let Some(index) = suivie {
+            // Trois lignes de contexte au-dessus, et non un
+            // centrage : la hauteur visible n'est pas connue
+            // avant que la zone existe, et un centrage calculé
+            // sur une hauteur approximative tombe à côté.
+            const CONTEXTE: usize = 3;
+            zone = zone.vertical_scroll_offset(index.saturating_sub(CONTEXTE) as f32 * row_height);
+        }
+        zone.show_rows(ui, row_height, rangs.len(), |ui, rows| {
+            for rang in &rangs[rows] {
+                // La ligne est composée ici, pour celles qu'on
+                // voit : c'est ce qui permet de ne pas en
+                // composer un million.
+                let ligne =
+                    ligne_désassemblée(&state.disasm[*rang as usize], pseudo, syntaxe, lang);
+                let ligne = &ligne;
+                let ici = rip == Some(ligne.address);
+                let rangée = ui
+                    .horizontal(|ui| {
+                        ui.colored_label(
+                            if ici { theme.accent } else { theme.dim },
+                            egui::RichText::new(format!("{:08x}", ligne.address)).monospace(),
+                        );
+                        // L'étiquette sur la rangée de son
+                        // instruction, et non sur une ligne à
+                        // elle : toutes les rangées gardent la
+                        // même hauteur, ce dont la zone a besoin
+                        // pour savoir où elle en est.
+                        // Les symboles sont triés par adresse :
+                        // dichotomie, et non un parcours de la
+                        // table par rangée peinte.
+                        let étiquette = symbols
+                            .binary_search_by_key(&ligne.address, |s| s.addr)
+                            .ok()
+                            .map(|rang| format!("{}:", symbols[rang].name))
+                            .unwrap_or_default();
+                        if colonne_étiquette > 0 {
+                            ui.colored_label(
+                                theme.label,
+                                egui::RichText::new(format!("{étiquette:<colonne_étiquette$}"))
+                                    .monospace(),
+                            );
+                        }
+                        // Les octets : ce qui distingue un
+                        // désassemblage d'une traduction. Sur une
+                        // largeur fixe, sinon les colonnes
+                        // dansent d'une ligne à l'autre.
+                        ui.colored_label(
+                            theme.dim,
+                            egui::RichText::new(format!("{:<23}", ligne.octets)).monospace(),
+                        );
+                        ui.add(
+                            egui::Label::new(egui::RichText::new(&ligne.texte).monospace().color(
+                                if ici {
+                                    theme.accent
+                                } else {
+                                    ui.visuals().text_color()
+                                },
+                            ))
+                            .truncate(),
+                        );
+                    })
+                    .response;
+                // Un clic mène à la ligne source : le listing
+                // montre ce que le programme *est*, l'éditeur ce
+                // qu'on a écrit, et l'on passe de l'un à l'autre.
+                let rangée = rangée
+                    .interact(egui::Sense::click())
+                    .on_hover_cursor(egui::CursorIcon::PointingHand)
+                    .on_hover_text(s.disassembly_goto);
+                souligne_au_survol(ui, &rangée);
+                if rangée.clicked() {
+                    demandes.aller_adresse = Some(ligne.address);
+                }
+            }
+        });
+    }
+
     /// Le panneau de désassemblage : le programme, lu par le moteur
     /// qu'on a choisi.
     ///
@@ -201,19 +596,9 @@ impl NamsdecApp {
             return;
         }
         let s = strings(self.lang);
-        let theme = self.theme;
-        let lang = self.lang.code();
         let mut open = true;
         let mut fermer_ok = false;
-        let mut aller: Option<u32> = None;
-        let mut vise: Option<u64> = None;
-        let mut revenir_au_début = false;
-        // L'adresse cliquée, traduite en ligne APRÈS la fenêtre : celle-ci
-        // emprunte `self` en écriture, et la carte des adresses était donc
-        // recopiée à chaque image pour une traduction qui n'arrive qu'au
-        // clic. Un listing d'un million d'instructions, c'est un million
-        // d'entrées recopiées soixante fois par seconde pour rien.
-        let mut aller_adresse: Option<u64> = None;
+        let mut demandes = DemandesDésassemblage::default();
         // Ce que la fenêtre montre, relevé AVANT elle : la fenêtre
         // emprunte `self` champ par champ, et ce relevé le prend en
         // entier. Avant elle, et non dedans, il n'y a rien à contourner.
@@ -241,322 +626,14 @@ impl NamsdecApp {
                 if ok_bar(ui, self.theme, strings(self.lang), "disassembly") {
                     fermer_ok = true;
                 }
-                // Le choix du moteur, en tête : c'est lui qui décide de
-                // tout ce qu'on lit en dessous.
-                ui.horizontal_wrapped(|ui| {
-                    ui.label(s.disassembly_engine);
-                    ui.selectable_value(
-                        &mut self.disassembler,
-                        PSEUDO_ID.to_owned(),
-                        s.disassembly_pseudo,
-                    );
-                    ui.selectable_value(
-                        &mut self.disassembler,
-                        NASM_ID.to_owned(),
-                        s.disassembly_nasm,
-                    );
-                    ui.selectable_value(
-                        &mut self.disassembler,
-                        SYSTEM_ID.to_owned(),
-                        s.disassembly_system,
-                    )
-                    .on_hover_text(s.disassembly_system_hint);
-                    for plugin in &self.disassembler_plugins {
-                        ui.selectable_value(
-                            &mut self.disassembler,
-                            plugin.id.clone(),
-                            &plugin.name,
-                        )
-                        .on_hover_text(format!("{} {}", s.disassembly_external, plugin.command));
-                    }
-                });
-                ui.weak(if self.disassembler == PSEUDO_ID {
-                    s.disassembly_pseudo_hint
-                } else if self.disassembler == SYSTEM_ID {
-                    s.disassembly_system_hint
-                } else {
-                    s.disassembly_nasm_hint
-                });
-                ui.separator();
-
-                let Some(state) = &self.assemble_state else {
-                    empty_state(
-                        ui,
-                        theme,
-                        s.no_binary_assembled,
-                        Some(s.empty_disassembly),
-                        None,
-                    );
-                    return;
-                };
-                if state.disasm.is_empty() {
-                    empty_state(
-                        ui,
-                        theme,
-                        s.no_binary_assembled,
-                        Some(s.empty_disassembly),
-                        None,
-                    );
-                    return;
-                }
-
-                // Un moteur extérieur : on l'appelle sur demande, et
-                // l'on garde sa réponse. Le relancer à chaque frame
-                // reviendrait à lancer un programme soixante fois par
-                // seconde.
-                if let Some(plugin) = self
-                    .disassembler_plugins
-                    .iter()
-                    .find(|plugin| plugin.id == self.disassembler)
-                {
-                    let déjà = self
-                        .plugin_output
-                        .as_ref()
-                        .filter(|(id, _)| *id == plugin.id)
-                        .map(|(_, texte)| texte.clone());
-                    match déjà {
-                        Some(texte) => {
-                            egui::ScrollArea::both()
-                                .id_salt("plugin_output")
-                                .auto_shrink([false, false])
-                                .show(ui, |ui| {
-                                    ui.add(
-                                        egui::Label::new(egui::RichText::new(texte).monospace())
-                                            .wrap_mode(egui::TextWrapMode::Extend),
-                                    );
-                                });
-                        }
-                        None => {
-                            ui.weak(format!("{} {}", s.disassembly_will_run, plugin.command));
-                            if framed_button(ui, theme, s.disassembly_run).clicked() {
-                                let texte = self.lancer_désassembleur(plugin, state);
-                                self.plugin_output = Some((plugin.id.clone(), texte));
-                            }
-                        }
-                    }
-                    return;
-                }
-                let rip = self.emulator.as_ref().map(|e| e.cpu().regs.rip);
-                let symbols = &state.output.symbols;
-                // La colonne des étiquettes, sur une largeur FIXE.
-                //
-                // Elle n'en avait pas : une rangée sans étiquette ne
-                // réservait rien, et les octets comme le texte de
-                // l'instruction reculaient de cinquante-cinq pixels dès
-                // qu'une ligne en portait une. Un listing dont les
-                // colonnes dansent d'une ligne à l'autre ne se lit plus
-                // en colonnes, et c'est tout ce qu'on lui demande.
-                //
-                // Vingt signes au plus : au-delà, un nom long pousserait
-                // le code hors de la fenêtre pour le confort d'une seule
-                // ligne. Zéro quand il n'y a aucun symbole, auquel cas la
-                // colonne disparaît au lieu de laisser un blanc.
-                let colonne_étiquette = symbols
-                    .iter()
-                    .map(|s| s.name.chars().count() + 1)
-                    .max()
-                    .unwrap_or(0)
-                    .min(20);
-                let pseudo = self.disassembler == PSEUDO_ID;
-                let syntaxe = if self.disassembler == SYSTEM_ID {
-                    namsdec_disasm::Syntax::System
-                } else {
-                    namsdec_disasm::Syntax::Nasm
-                };
-
-                // Ce qu'on cherche : une étiquette, un registre, une
-                // adresse. Le listing d'un binaire fait quinze mille
-                // lignes, et l'on sait ce qu'on y cherche.
-                ui.horizontal(|ui| {
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.disassembly_query)
-                            .hint_text(s.find_placeholder)
-                            .desired_width(200.0),
-                    );
-                    if !self.disassembly_query.is_empty() && framed_button(ui, theme, "x").clicked()
-                    {
-                        self.disassembly_query.clear();
-                    }
-                });
-                let query = self.disassembly_query.to_lowercase();
-
-                // Où aller : les étiquettes du programme, dans l'ordre
-                // des adresses. Sur un binaire, c'est par là qu'on entre
-                // — et faire défiler quinze mille lignes pour trouver
-                // une fonction n'est pas une façon de lire.
-                if !symbols.is_empty() {
-                    ui.horizontal_wrapped(|ui| {
-                        ui.label(s.disassembly_goto_label);
-                        egui::ComboBox::from_id_salt("disassembly_symbols")
-                            .selected_text(s.disassembly_choose)
-                            .show_ui(ui, |ui| {
-                                for symbol in symbols {
-                                    if ui.selectable_label(false, &symbol.name).clicked() {
-                                        vise = Some(symbol.addr);
-                                    }
-                                }
-                            });
-                    });
-                }
-
-                // Les rangs retenus : relevés une fois, avant la
-                // fenêtre. Ils l'étaient à chaque image, et chacun
-                // demandait de REDÉCODER l'instruction et de composer
-                // deux chaînes — un million de fois par image sur un
-                // gros binaire, pour quarante rangées visibles. La zone
-                // de défilement, elle, savait déjà ne peindre que ce
-                // qu'elle montre (`show_rows`) : c'est la liste qu'on
-                // lui donnait qui coûtait tout.
-                let rangs = &self.disassembly_rows;
-                if !query.is_empty() {
-                    ui.weak(format!("{} / {}", rangs.len(), state.disasm.len()));
-                }
-                if let Some(addr) = self.disassembly_target {
-                    ui.horizontal(|ui| {
-                        let nom = symbols
-                            .iter()
-                            .find(|s| s.addr == addr)
-                            .map(|s| s.name.clone())
-                            .unwrap_or_else(|| format!("{addr:#x}"));
-                        ui.colored_label(theme.accent, format!("{} {nom}", s.disassembly_from));
-                        if framed_button(ui, theme, s.disassembly_all).clicked() {
-                            revenir_au_début = true;
-                        }
-                    });
-                }
-
-                let row_height =
-                    ui.text_style_height(&egui::TextStyle::Monospace) + ui.spacing().item_spacing.y;
-                // Suivre l'exécution, comme l'onglet Octets — sauf
-                // pendant une recherche, où c'est elle qui commande.
-                let suivie =
-                    (query.is_empty() && self.disassembly_target.is_none() && self.follow_rip)
-                        .then(|| {
-                            // Les rangs sont dans l'ordre des adresses :
-                            // dichotomie.
-                            rip.and_then(|rip| {
-                                rangs
-                                    .binary_search_by_key(&rip, |rang| {
-                                        state.disasm[*rang as usize].address
-                                    })
-                                    .ok()
-                            })
-                        })
-                        .flatten();
-                // Bornée à la place que la fenêtre laisse : une zone qui
-                // se croit plus haute déborde, et ce qui dépasse est
-                // coupé — y compris les lignes vers lesquelles on vient
-                // de demander à aller.
-                let mut zone = egui::ScrollArea::vertical()
-                    .id_salt("disassembly_rows")
-                    .max_height(ui.available_height().max(120.0))
-                    .auto_shrink([false, false]);
-                if let Some(index) = suivie {
-                    // Trois lignes de contexte au-dessus, et non un
-                    // centrage : la hauteur visible n'est pas connue
-                    // avant que la zone existe, et un centrage calculé
-                    // sur une hauteur approximative tombe à côté.
-                    const CONTEXTE: usize = 3;
-                    zone = zone
-                        .vertical_scroll_offset(index.saturating_sub(CONTEXTE) as f32 * row_height);
-                }
-                zone.show_rows(ui, row_height, rangs.len(), |ui, rows| {
-                    for rang in &rangs[rows] {
-                        // La ligne est composée ici, pour celles qu'on
-                        // voit : c'est ce qui permet de ne pas en
-                        // composer un million.
-                        let ligne = ligne_désassemblée(
-                            &state.disasm[*rang as usize],
-                            pseudo,
-                            syntaxe,
-                            lang,
-                        );
-                        let ligne = &ligne;
-                        let ici = rip == Some(ligne.address);
-                        let rangée = ui
-                            .horizontal(|ui| {
-                                ui.colored_label(
-                                    if ici { theme.accent } else { theme.dim },
-                                    egui::RichText::new(format!("{:08x}", ligne.address))
-                                        .monospace(),
-                                );
-                                // L'étiquette sur la rangée de son
-                                // instruction, et non sur une ligne à
-                                // elle : toutes les rangées gardent la
-                                // même hauteur, ce dont la zone a besoin
-                                // pour savoir où elle en est.
-                                // Les symboles sont triés par adresse :
-                                // dichotomie, et non un parcours de la
-                                // table par rangée peinte.
-                                let étiquette = symbols
-                                    .binary_search_by_key(&ligne.address, |s| s.addr)
-                                    .ok()
-                                    .map(|rang| format!("{}:", symbols[rang].name))
-                                    .unwrap_or_default();
-                                if colonne_étiquette > 0 {
-                                    ui.colored_label(
-                                        theme.label,
-                                        egui::RichText::new(format!(
-                                            "{étiquette:<colonne_étiquette$}"
-                                        ))
-                                        .monospace(),
-                                    );
-                                }
-                                // Les octets : ce qui distingue un
-                                // désassemblage d'une traduction. Sur une
-                                // largeur fixe, sinon les colonnes
-                                // dansent d'une ligne à l'autre.
-                                ui.colored_label(
-                                    theme.dim,
-                                    egui::RichText::new(format!("{:<23}", ligne.octets))
-                                        .monospace(),
-                                );
-                                ui.add(
-                                    egui::Label::new(
-                                        egui::RichText::new(&ligne.texte).monospace().color(
-                                            if ici {
-                                                theme.accent
-                                            } else {
-                                                ui.visuals().text_color()
-                                            },
-                                        ),
-                                    )
-                                    .truncate(),
-                                );
-                            })
-                            .response;
-                        // Un clic mène à la ligne source : le listing
-                        // montre ce que le programme *est*, l'éditeur ce
-                        // qu'on a écrit, et l'on passe de l'un à l'autre.
-                        let rangée = rangée
-                            .interact(egui::Sense::click())
-                            .on_hover_cursor(egui::CursorIcon::PointingHand)
-                            .on_hover_text(s.disassembly_goto);
-                        souligne_au_survol(ui, &rangée);
-                        if rangée.clicked() {
-                            aller_adresse = Some(ligne.address);
-                        }
-                    }
-                });
+                self.disassembly_body_ui(ui, &mut demandes, false);
             });
         self.place_maximize_button(ctx, Self::DISASSEMBLY_WINDOW, rendue_disassembly_window);
-        if let Some(adresse) = aller_adresse {
-            aller = self
-                .assemble_state
-                .as_ref()
-                .and_then(|state| state.addr_to_line.get(&adresse).copied());
-        }
-        if let Some(ligne) = aller {
-            self.goto_line = Some(ligne);
-        }
-        // Posée pour la frame suivante, puis oubliée : sans quoi la vue
-        // resterait collée là et l'on ne pourrait plus la faire défiler.
-        if let Some(addr) = vise {
-            self.disassembly_target = Some(addr);
-        }
-        if revenir_au_début {
-            self.disassembly_target = None;
-        }
+        self.suivre_demandes_désassemblage(demandes);
+        // Fermer la fenêtre ne ferme pas la vue : elle retourne dans la
+        // rangée, où son onglet réapparaît. Une vue est quelque part —
+        // dans la rangée ou dans sa fenêtre —, jamais nulle part, et
+        // c'est ce qui permet de la détacher sans crainte de l'égarer.
         self.show_disassembly = open && !fermer_ok;
     }
 
@@ -717,32 +794,8 @@ impl NamsdecApp {
             return;
         }
         let s = strings(self.lang);
-        let theme = self.theme;
         let mut open = true;
         let mut fermer_ok = false;
-        let mut revenir = None;
-        let mut aller = None;
-
-        // Relevé avant la fenêtre : elle emprunte `self` en écriture
-        // pour poser le retour en arrière.
-        // Le rang est celui du chemin entier, même quand on n'en montre
-        // qu'une partie : « revenir à ce pas » doit rembobiner du bon
-        // nombre de pas, filtre ou pas filtre.
-        let pas: Vec<(usize, namsdec_emu::Step)> = self
-            .emulator
-            .as_ref()
-            .map(|emulator| {
-                emulator
-                    .trace()
-                    .iter()
-                    .copied()
-                    .enumerate()
-                    .filter(|(_, pas)| {
-                        !self.timeline_notable_only || pas.kind != namsdec_emu::StepKind::Plain
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
 
         let fenêtre_timeline_window = egui::Window::new(s.timeline_title)
             .id(egui::Id::new("timeline_window"))
@@ -766,126 +819,152 @@ impl NamsdecApp {
                 if ok_bar(ui, self.theme, strings(self.lang), "timeline") {
                     fermer_ok = true;
                 }
-                if pas.is_empty() {
-                    // La même forme que les neuf autres panneaux : le
-                    // constat, puis ce que la fenêtre montrera. Une
-                    // phrase seule alignée à gauche disait le premier et
-                    // taisait le second.
-                    if self.timeline_notable_only {
-                        empty_state(ui, self.theme, s.timeline_nothing_notable, None, None);
-                    } else {
-                        empty_state(
-                            ui,
-                            self.theme,
-                            s.timeline_empty,
-                            Some(s.empty_timeline),
-                            None,
-                        );
-                    }
-                    return;
-                }
-                ui.weak(s.timeline_hint);
-                // La barre, avant la liste : elle répond à « où j'en
-                // suis », question qui vient avant « qu'est-ce qui s'est
-                // passé ». Le filtre ne la touche pas — c'est le parcours
-                // entier qu'elle montre, sans quoi sa forme mentirait.
-                if let Some(index) = timeline_bar(ui, theme, self.timeline_trace()) {
-                    let total = self.timeline_trace().len();
-                    revenir = Some(timeline::rewind_to(total, index));
-                }
-                ui.add_space(4.0);
-                ui.horizontal(|ui| {
-                    ui.checkbox(&mut self.timeline_notable_only, s.timeline_notable);
-                });
-                ui.separator();
-                let row_height =
-                    ui.text_style_height(&egui::TextStyle::Monospace) + ui.spacing().item_spacing.y;
-                // Le nombre de pas du chemin, et non celui des lignes
-                // montrées : c'est de lui que se compte le recul.
-                let total = self
-                    .emulator
-                    .as_ref()
-                    .map(|emulator| emulator.trace().len())
-                    .unwrap_or(0);
-                // Cinq mille pas : on ne dessine que ce qui est à
-                // l'écran, comme pour l'onglet Octets.
-                // Collée au bas : le dernier pas est celui qu'on regarde
-                // entre deux avancées, et le chercher à chaque fois
-                // reviendrait à faire défiler cinq mille lignes.
-                egui::ScrollArea::vertical()
-                    .id_salt("timeline_rows")
-                    .auto_shrink([false, false])
-                    .stick_to_bottom(true)
-                    .show_rows(ui, row_height, pas.len(), |ui, rows| {
-                        for (index, pas) in &pas[rows] {
-                            let addr = &pas.addr;
-                            // Le rang par rapport à maintenant : le
-                            // dernier pas est « -1 », celui d'avant
-                            // « -2 ». C'est ainsi qu'on le pense.
-                            let recul = total - index;
-                            let ligne = self
-                                .assemble_state
-                                .as_ref()
-                                .and_then(|state| state.addr_to_line.get(addr).copied());
-                            let texte = self
-                                .assemble_state
-                                .as_ref()
-                                .and_then(|state| {
-                                    state
-                                        .disasm
-                                        .iter()
-                                        .find(|instruction| instruction.address == *addr)
-                                })
-                                .map(|instruction| instruction.text.clone())
-                                .unwrap_or_default();
-                            let réponse = ui
-                                .horizontal(|ui| {
-                                    ui.colored_label(theme.dim, format!("-{recul}"));
-                                    // Ce que le pas a fait, en une
-                                    // marque : c'est ce qu'on cherche des
-                                    // yeux en parcourant un chemin.
-                                    let (marque, couleur, quoi) = step_mark(s, pas.kind, theme);
-                                    ui.colored_label(couleur, marque).on_hover_text(quoi);
-                                    ui.monospace(format!("{addr:#010x}"));
-                                    match ligne {
-                                        Some(ligne) => {
-                                            ui.colored_label(theme.accent, format!("{ligne}"))
-                                        }
-                                        None => ui.colored_label(theme.dim, " "),
-                                    };
-                                    ui.add(
-                                        egui::Label::new(egui::RichText::new(texte).monospace())
-                                            .truncate(),
-                                    );
-                                })
-                                .response;
-                            let réponse = réponse
-                                .interact(egui::Sense::click())
-                                .on_hover_cursor(egui::CursorIcon::PointingHand)
-                                .on_hover_text(s.timeline_go_back);
-                            souligne_au_survol(ui, &réponse);
-                            if réponse.clicked() {
-                                revenir = Some(recul);
-                            }
-                            // Le clic droit mène à la ligne dans
-                            // l'éditeur, sans toucher à l'exécution :
-                            // lire le code d'un pas et rembobiner
-                            // jusqu'à lui sont deux gestes différents.
-                            if réponse.secondary_clicked() {
-                                aller = ligne;
-                            }
-                        }
-                    });
+                self.timeline_body_ui(ui);
             });
         self.place_maximize_button(ctx, Self::TIMELINE_WINDOW, rendue_timeline_window);
+        self.show_timeline = open && !fermer_ok;
+    }
 
+    /// La chronologie elle-même, sans son cadre : c'est ce que peint
+    /// l'onglet de la rangée, et c'est ce que peint la fenêtre quand on
+    /// l'a détachée. Un seul corps pour les deux, sinon l'un des deux
+    /// finit par diverger sans qu'on le remarque.
+    pub(crate) fn timeline_body_ui(&mut self, ui: &mut egui::Ui) {
+        let s = strings(self.lang);
+        let theme = self.theme;
+        let mut revenir = None;
+        let mut aller = None;
+        // Le rang est celui du chemin entier, même quand on n'en montre
+        // qu'une partie : « revenir à ce pas » doit rembobiner du bon
+        // nombre de pas, filtre ou pas filtre.
+        let pas: Vec<(usize, namsdec_emu::Step)> = self
+            .emulator
+            .as_ref()
+            .map(|emulator| {
+                emulator
+                    .trace()
+                    .iter()
+                    .copied()
+                    .enumerate()
+                    .filter(|(_, pas)| {
+                        !self.timeline_notable_only || pas.kind != namsdec_emu::StepKind::Plain
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        if pas.is_empty() {
+            // La même forme que les neuf autres panneaux : le
+            // constat, puis ce que la fenêtre montrera. Une
+            // phrase seule alignée à gauche disait le premier et
+            // taisait le second.
+            if self.timeline_notable_only {
+                empty_state(ui, self.theme, s.timeline_nothing_notable, None, None);
+            } else {
+                empty_state(
+                    ui,
+                    self.theme,
+                    s.timeline_empty,
+                    Some(s.empty_timeline),
+                    None,
+                );
+            }
+            return;
+        }
+        ui.weak(s.timeline_hint);
+        // La barre, avant la liste : elle répond à « où j'en
+        // suis », question qui vient avant « qu'est-ce qui s'est
+        // passé ». Le filtre ne la touche pas — c'est le parcours
+        // entier qu'elle montre, sans quoi sa forme mentirait.
+        if let Some(index) = timeline_bar(ui, theme, self.timeline_trace()) {
+            let total = self.timeline_trace().len();
+            revenir = Some(timeline::rewind_to(total, index));
+        }
+        ui.add_space(4.0);
+        ui.horizontal(|ui| {
+            ui.checkbox(&mut self.timeline_notable_only, s.timeline_notable);
+        });
+        ui.separator();
+        let row_height =
+            ui.text_style_height(&egui::TextStyle::Monospace) + ui.spacing().item_spacing.y;
+        // Le nombre de pas du chemin, et non celui des lignes
+        // montrées : c'est de lui que se compte le recul.
+        let total = self
+            .emulator
+            .as_ref()
+            .map(|emulator| emulator.trace().len())
+            .unwrap_or(0);
+        // Cinq mille pas : on ne dessine que ce qui est à
+        // l'écran, comme pour l'onglet Octets.
+        // Collée au bas : le dernier pas est celui qu'on regarde
+        // entre deux avancées, et le chercher à chaque fois
+        // reviendrait à faire défiler cinq mille lignes.
+        egui::ScrollArea::vertical()
+            .id_salt("timeline_rows")
+            .auto_shrink([false, false])
+            .stick_to_bottom(true)
+            .show_rows(ui, row_height, pas.len(), |ui, rows| {
+                for (index, pas) in &pas[rows] {
+                    let addr = &pas.addr;
+                    // Le rang par rapport à maintenant : le
+                    // dernier pas est « -1 », celui d'avant
+                    // « -2 ». C'est ainsi qu'on le pense.
+                    let recul = total - index;
+                    let ligne = self
+                        .assemble_state
+                        .as_ref()
+                        .and_then(|state| state.addr_to_line.get(addr).copied());
+                    let texte = self
+                        .assemble_state
+                        .as_ref()
+                        .and_then(|state| {
+                            state
+                                .disasm
+                                .iter()
+                                .find(|instruction| instruction.address == *addr)
+                        })
+                        .map(|instruction| instruction.text.clone())
+                        .unwrap_or_default();
+                    let réponse = ui
+                        .horizontal(|ui| {
+                            ui.colored_label(theme.dim, format!("-{recul}"));
+                            // Ce que le pas a fait, en une
+                            // marque : c'est ce qu'on cherche des
+                            // yeux en parcourant un chemin.
+                            let (marque, couleur, quoi) = step_mark(s, pas.kind, theme);
+                            ui.colored_label(couleur, marque).on_hover_text(quoi);
+                            ui.monospace(format!("{addr:#010x}"));
+                            match ligne {
+                                Some(ligne) => ui.colored_label(theme.accent, format!("{ligne}")),
+                                None => ui.colored_label(theme.dim, " "),
+                            };
+                            ui.add(
+                                egui::Label::new(egui::RichText::new(texte).monospace()).truncate(),
+                            );
+                        })
+                        .response;
+                    let réponse = réponse
+                        .interact(egui::Sense::click())
+                        .on_hover_cursor(egui::CursorIcon::PointingHand)
+                        .on_hover_text(s.timeline_go_back);
+                    souligne_au_survol(ui, &réponse);
+                    if réponse.clicked() {
+                        revenir = Some(recul);
+                    }
+                    // Le clic droit mène à la ligne dans
+                    // l'éditeur, sans toucher à l'exécution :
+                    // lire le code d'un pas et rembobiner
+                    // jusqu'à lui sont deux gestes différents.
+                    if réponse.secondary_clicked() {
+                        aller = ligne;
+                    }
+                }
+            });
         if let Some(recul) = revenir {
             self.rewind(recul);
         }
         if let Some(ligne) = aller {
             self.goto_line = Some(ligne);
         }
-        self.show_timeline = open && !fermer_ok;
     }
 
     /// Les points d'arrêt, avec leur condition.
@@ -899,10 +978,8 @@ impl NamsdecApp {
             return;
         }
         let s = strings(self.lang);
-        let theme = self.theme;
         let mut open = true;
         let mut fermer_ok = false;
-        let mut retirer = None;
         egui::Window::new(s.breakpoints_title)
             .id(egui::Id::new("breakpoints_window"))
             .open(&mut open)
@@ -923,57 +1000,66 @@ impl NamsdecApp {
                 if ok_bar(ui, self.theme, strings(self.lang), "breakpoints") {
                     fermer_ok = true;
                 }
-                if self.breakpoint_lines.is_empty() {
-                    empty_state(
-                        ui,
-                        self.theme,
-                        s.breakpoints_empty,
-                        Some(s.empty_breakpoints),
-                        None,
+                self.breakpoints_body_ui(ui);
+            });
+        self.show_breakpoints = open && !fermer_ok;
+    }
+
+    /// La liste des points d'arrêt, sans son cadre : un seul corps pour
+    /// l'onglet de la rangée et pour la fenêtre détachée.
+    pub(crate) fn breakpoints_body_ui(&mut self, ui: &mut egui::Ui) {
+        let s = strings(self.lang);
+        let theme = self.theme;
+        let mut retirer = None;
+        if self.breakpoint_lines.is_empty() {
+            empty_state(
+                ui,
+                self.theme,
+                s.breakpoints_empty,
+                Some(s.empty_breakpoints),
+                None,
+            );
+            return;
+        }
+        ui.weak(s.breakpoints_hint);
+        ui.separator();
+        let lignes: Vec<u32> = self.breakpoint_lines.iter().copied().collect();
+        for ligne in lignes {
+            ui.horizontal(|ui| {
+                ui.colored_label(theme.accent, format!("{} {ligne}", s.breakpoints_line));
+                let texte = self.breakpoint_conditions.entry(ligne).or_default();
+                let réponse = ui.add(
+                    egui::TextEdit::singleline(texte)
+                        .id(egui::Id::new(("bp_cond", ligne)))
+                        .hint_text(s.breakpoints_condition_hint)
+                        .font(egui::TextStyle::Monospace)
+                        .desired_width(180.0),
+                );
+                // Le refus se voit sur le champ : une condition
+                // qu'on ne sait pas lire ne filtre rien, et il
+                // vaut mieux le dire que de laisser croire.
+                if !texte.trim().is_empty() && condition::parse(texte).is_none() {
+                    ui.painter().rect_stroke(
+                        réponse.rect,
+                        ui.visuals().widgets.inactive.corner_radius,
+                        egui::Stroke::new(1.0, theme.bad),
+                        egui::StrokeKind::Inside,
                     );
-                    return;
+                    ui.colored_label(theme.bad, s.breakpoints_condition_bad);
                 }
-                ui.weak(s.breakpoints_hint);
-                ui.separator();
-                let lignes: Vec<u32> = self.breakpoint_lines.iter().copied().collect();
-                for ligne in lignes {
-                    ui.horizontal(|ui| {
-                        ui.colored_label(theme.accent, format!("{} {ligne}", s.breakpoints_line));
-                        let texte = self.breakpoint_conditions.entry(ligne).or_default();
-                        let réponse = ui.add(
-                            egui::TextEdit::singleline(texte)
-                                .id(egui::Id::new(("bp_cond", ligne)))
-                                .hint_text(s.breakpoints_condition_hint)
-                                .font(egui::TextStyle::Monospace)
-                                .desired_width(180.0),
-                        );
-                        // Le refus se voit sur le champ : une condition
-                        // qu'on ne sait pas lire ne filtre rien, et il
-                        // vaut mieux le dire que de laisser croire.
-                        if !texte.trim().is_empty() && condition::parse(texte).is_none() {
-                            ui.painter().rect_stroke(
-                                réponse.rect,
-                                ui.visuals().widgets.inactive.corner_radius,
-                                egui::Stroke::new(1.0, theme.bad),
-                                egui::StrokeKind::Inside,
-                            );
-                            ui.colored_label(theme.bad, s.breakpoints_condition_bad);
-                        }
-                        if framed_button(ui, theme, "x")
-                            .on_hover_text(s.breakpoints_remove)
-                            .clicked()
-                        {
-                            retirer = Some(ligne);
-                        }
-                    });
+                if framed_button(ui, theme, "x")
+                    .on_hover_text(s.breakpoints_remove)
+                    .clicked()
+                {
+                    retirer = Some(ligne);
                 }
             });
+        }
         if let Some(ligne) = retirer {
             self.breakpoint_lines.remove(&ligne);
             self.breakpoint_conditions.remove(&ligne);
             self.sync_breakpoints();
         }
-        self.show_breakpoints = open && !fermer_ok;
     }
 
     /// La fenêtre d'analyse : tous les modules de rétro-ingénierie, avec
@@ -1055,218 +1141,7 @@ impl NamsdecApp {
             if ok_bar(ui, self.theme, strings(self.lang), "analysis") {
                 fermer_ok = true;
             }
-            // Ce qu'on a compris d'un binaire ne vaut que si on peut
-            // le transmettre : le rapport part en Markdown, prêt à
-            // coller dans un compte rendu ou un support de cours.
-            //
-            // La rangée est encadrée d'air : collée sous le filet du
-            // bandeau, elle passait pour une seconde barre de titre
-            // plutôt que pour deux boutons.
-            ui.add_space(6.0);
-            egui::Frame::NONE
-                .inner_margin(egui::Margin {
-                    left: 8,
-                    right: 8,
-                    top: 0,
-                    bottom: 0,
-                })
-                .show(ui, |ui| {
-                    ui.horizontal_wrapped(|ui| {
-                        if framed_button(ui, self.theme, s.analysis_copy).clicked()
-                            && let Some(report) = self.analysis_report()
-                        {
-                            ui.ctx().copy_text(report);
-                            self.status = Status::Note(|s| s.analysis_copied);
-                        }
-                        // Et sur le disque : un compte rendu se
-                        // garde, se relit, s'attache à un courriel.
-                        // Le presse-papier ne survit pas à la
-                        // fenêtre suivante.
-                        if framed_button(ui, self.theme, s.analysis_save)
-                            .on_hover_text(s.analysis_save_hint)
-                            .clicked()
-                        {
-                            self.spawn_file_dialog(FileDialogKind::ExportReport);
-                        }
-                        // Le vidage a son propre enregistrement :
-                        // ce n'est pas un rapport, c'est le fichier
-                        // lui-même, et il sert à être comparé.
-                        if self.analysis_module == "dump"
-                            && framed_button(ui, self.theme, s.dump_save)
-                                .on_hover_text(s.dump_save_hint)
-                                .clicked()
-                        {
-                            self.spawn_file_dialog(FileDialogKind::ExportDump);
-                        }
-                        ui.separator();
-                        ui.weak(s.analysis_hint);
-                    });
-                });
-            ui.add_space(8.0);
-
-            // Une colonne de navigation à gauche, le module à
-            // droite. Les sept modules empilés les uns sous les
-            // autres n'employaient que la hauteur : on relisait une
-            // page de deux mille pixels dans une fenêtre large de
-            // mille, en cherchant un titre à l'ascenseur. Ici, on
-            // choisit, et le module a toute la largeur.
-            let lang = self.lang.code();
-            // Les noms de colonne, qui ne sont pas toujours les titres :
-            // « Décompilation par RetDec » passe sur deux lignes dans deux
-            // cents pixels, et cinq entrées de ce genre repoussent les
-            // dernières sous le bord.
-            let titres = self.re_registry.nav_entries(lang);
-            let theme = self.theme;
-            egui::Panel::left(egui::Id::new("analysis_nav"))
-                .resizable(true)
-                .default_size(200.0)
-                .min_size(150.0)
-                .max_size(340.0)
-                // Un fond léger et une marge : les deux colonnes se
-                // lisent alors comme deux zones, et non comme un
-                // texte coupé par un trait. Sans la marge de droite,
-                // les libellés touchaient la ligne de séparation.
-                .frame(
-                    egui::Frame::NONE
-                        .fill(theme.dim.gamma_multiply(0.07))
-                        .inner_margin(egui::Margin {
-                            left: 8,
-                            right: 10,
-                            top: 8,
-                            bottom: 8,
-                        }),
-                )
-                .show(ui, |ui| {
-                    egui::ScrollArea::vertical()
-                        .id_salt("analysis_nav_scroll")
-                        .auto_shrink([false, false])
-                        .show(ui, |ui| {
-                            // Justifié à gauche : les entrées
-                            // prennent toute la largeur — on clique
-                            // la ligne, non le mot — et leur texte
-                            // commence au même endroit. Centrés,
-                            // treize libellés de longueurs
-                            // différentes n'ont plus de bord commun,
-                            // et l'œil doit chercher chacun.
-                            ui.with_layout(
-                                egui::Layout::top_down_justified(egui::Align::LEFT),
-                                |ui| {
-                                    // Serré, et c'est la place qui
-                                    // le demande : vingt-cinq
-                                    // rubriques — les cinq outils
-                                    // extérieurs comprises — ne
-                                    // tiennent dans la colonne que
-                                    // si chaque entrée s'en tient à
-                                    // sa ligne. Au-delà, la liste
-                                    // défile, et l'on cherche à
-                                    // l'ascenseur une rubrique dont
-                                    // on ignore l'existence.
-                                    ui.spacing_mut().item_spacing.y = 2.0;
-                                    ui.spacing_mut().button_padding = egui::vec2(8.0, 3.0);
-                                    // « Tout » en tête : c'est la
-                                    // forme d'un compte rendu, celle
-                                    // qu'on copie.
-                                    let tout = self.analysis_module.is_empty();
-                                    if ui
-                                        .add(egui::Button::selectable(tout, s.analysis_all))
-                                        .clicked()
-                                    {
-                                        self.analysis_module.clear();
-                                    }
-                                    ui.add_space(4.0);
-                                    ui.separator();
-                                    // LES RUBRIQUES PAR FAMILLES. Vingt-
-                                    // quatre entrées à plat ne se
-                                    // cherchent pas : on les parcourt
-                                    // une à une, et l'on finit par ne
-                                    // plus voir celles du bas. Rangées
-                                    // sous cinq ou six intertitres, on
-                                    // sait où regarder avant d'avoir
-                                    // lu — et une rubrique qu'on n'a
-                                    // jamais ouverte se trouve tout de
-                                    // même, parce qu'on sait de quelle
-                                    // question elle relève.
-                                    //
-                                    // L'intertitre est posé quand la
-                                    // famille change : c'est le module
-                                    // qui déclare la sienne, et l'ordre
-                                    // d'enregistrement les tient
-                                    // groupées — un contrôle le
-                                    // vérifie.
-                                    let mut famille = None;
-                                    for (id, titre, section) in &titres {
-                                        if famille != Some(*section) {
-                                            famille = Some(*section);
-                                            ui.add_space(6.0);
-                                            ui.label(
-                                                egui::RichText::new(section.label(lang))
-                                                    .small()
-                                                    .color(theme.dim),
-                                            );
-                                            ui.add_space(1.0);
-                                        }
-                                        let choisi = self.analysis_module == *id;
-                                        if ui
-                                            .add(egui::Button::selectable(choisi, *titre))
-                                            .clicked()
-                                        {
-                                            self.analysis_module = (*id).to_owned();
-                                        }
-                                    }
-                                },
-                            );
-                        });
-                });
-
-            // Le contenu, avec la même marge : collé au trait, un
-            // tableau donne l'impression d'être coupé.
-            egui::Frame::NONE
-                .inner_margin(egui::Margin {
-                    left: 14,
-                    right: 6,
-                    top: 8,
-                    bottom: 4,
-                })
-                .show(ui, |ui| {
-                    // La largeur de lecture, RELEVÉE AVANT la zone
-                    // défilante : dedans, une zone qui défile aussi en
-                    // largeur laisse à son contenu une place sans
-                    // borne, et les panneaux qui se dimensionnent sur
-                    // `available_width()` — le profil d'entropie, les
-                    // tables — s'étireraient à l'infini.
-                    //
-                    // Une largeur de lecture, et non toute la place :
-                    // sur un écran large, une table à deux colonnes
-                    // posait la seconde à mille pixels de la première,
-                    // et l'on suivait la ligne du doigt. Ce que fait
-                    // tout volet de détail.
-                    let lecture = ui.available_width().min(ANALYSIS_CONTENT_MAX);
-                    // DÉFILANTE DANS LES DEUX SENS, et c'est ce qui
-                    // empêche la fenêtre d'enfler.
-                    //
-                    // Les chemins que montre « Chaînes lisibles » font
-                    // parfois cent caractères — un chemin de source
-                    // Rust avec son empreinte de version. Peints dans
-                    // une zone qui ne défile qu'en hauteur, ils
-                    // poussaient la fenêtre : mesuré, 1 100 px de
-                    // large sur « En bref », 1 831 sur « Chaînes »,
-                    // c'est-à-dire tout l'écran — et la colonne de
-                    // navigation sortie par la gauche. Pire, la
-                    // fenêtre y RESTAIT : revenue sur « En bref », elle
-                    // gardait sa taille d'écran.
-                    //
-                    // Bornée, elle ne pousse plus rien : ce qui dépasse
-                    // se fait défiler, comme dans n'importe quel volet.
-                    egui::ScrollArea::both()
-                        .id_salt("analysis_content")
-                        .auto_shrink([false, false])
-                        .show(ui, |ui| {
-                            ui.set_max_width(lecture);
-                            let choisi = self.analysis_module.clone();
-                            let seul = (!choisi.is_empty()).then_some(choisi.as_str());
-                            self.re_modules_ui(ui, seul);
-                        });
-                });
+            self.analysis_body_ui(ui);
         });
         // L'état de la fenêtre AVANT de relever les demandes des
         // panneaux : l'une d'elles — aller voir une adresse — ferme
@@ -1278,6 +1153,260 @@ impl NamsdecApp {
         }
         self.show_analysis = open && !fermer_ok;
         self.apply_re_requests();
+    }
+
+    /// Les modules d'analyse eux-mêmes, sans leur cadre : un seul corps
+    /// pour l'onglet de la rangée et pour la fenêtre détachée.
+    ///
+    /// Les demandes des panneaux — « montre-moi cette adresse » — ne
+    /// sont PAS relevées ici : les deux lieux les relèvent après avoir
+    /// peint, et dans cet ordre-là, parce que l'une d'elles fait partir
+    /// la vue. Relevée pendant le dessin, elle serait défaite par ce
+    /// que l'enveloppe écrit après lui.
+    pub(crate) fn analysis_body_ui(&mut self, ui: &mut egui::Ui) {
+        let s = strings(self.lang);
+        // Ce qu'on a compris d'un binaire ne vaut que si on peut
+        // le transmettre : le rapport part en Markdown, prêt à
+        // coller dans un compte rendu ou un support de cours.
+        //
+        // La rangée est encadrée d'air : collée sous le filet du
+        // bandeau, elle passait pour une seconde barre de titre
+        // plutôt que pour deux boutons.
+        ui.add_space(6.0);
+        egui::Frame::NONE
+            .inner_margin(egui::Margin {
+                left: 8,
+                right: 8,
+                top: 0,
+                bottom: 0,
+            })
+            .show(ui, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    if framed_button(ui, self.theme, s.analysis_copy).clicked()
+                        && let Some(report) = self.analysis_report()
+                    {
+                        ui.ctx().copy_text(report);
+                        self.status = Status::Note(|s| s.analysis_copied);
+                    }
+                    // Et sur le disque : un compte rendu se
+                    // garde, se relit, s'attache à un courriel.
+                    // Le presse-papier ne survit pas à la
+                    // fenêtre suivante.
+                    if framed_button(ui, self.theme, s.analysis_save)
+                        .on_hover_text(s.analysis_save_hint)
+                        .clicked()
+                    {
+                        self.spawn_file_dialog(FileDialogKind::ExportReport);
+                    }
+                    // Le vidage a son propre enregistrement :
+                    // ce n'est pas un rapport, c'est le fichier
+                    // lui-même, et il sert à être comparé.
+                    if self.analysis_module == "dump"
+                        && framed_button(ui, self.theme, s.dump_save)
+                            .on_hover_text(s.dump_save_hint)
+                            .clicked()
+                    {
+                        self.spawn_file_dialog(FileDialogKind::ExportDump);
+                    }
+                    ui.separator();
+                    ui.weak(s.analysis_hint);
+                });
+            });
+        ui.add_space(8.0);
+
+        // Une colonne de navigation à gauche, le module à
+        // droite. Les sept modules empilés les uns sous les
+        // autres n'employaient que la hauteur : on relisait une
+        // page de deux mille pixels dans une fenêtre large de
+        // mille, en cherchant un titre à l'ascenseur. Ici, on
+        // choisit, et le module a toute la largeur.
+        let lang = self.lang.code();
+        // Les noms de colonne, qui ne sont pas toujours les titres :
+        // « Décompilation par RetDec » passe sur deux lignes dans deux
+        // cents pixels, et cinq entrées de ce genre repoussent les
+        // dernières sous le bord.
+        let titres = self.re_registry.nav_entries(lang);
+        let theme = self.theme;
+        egui::Panel::left(egui::Id::new("analysis_nav"))
+            .resizable(true)
+            .default_size(200.0)
+            .min_size(150.0)
+            .max_size(340.0)
+            // Un fond léger et une marge : les deux colonnes se
+            // lisent alors comme deux zones, et non comme un
+            // texte coupé par un trait. Sans la marge de droite,
+            // les libellés touchaient la ligne de séparation.
+            .frame(
+                egui::Frame::NONE
+                    .fill(theme.dim.gamma_multiply(0.07))
+                    .inner_margin(egui::Margin {
+                        left: 8,
+                        right: 10,
+                        top: 8,
+                        bottom: 8,
+                    }),
+            )
+            .show(ui, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("analysis_nav_scroll")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        // Justifié à gauche : les entrées
+                        // prennent toute la largeur — on clique
+                        // la ligne, non le mot — et leur texte
+                        // commence au même endroit. Centrés,
+                        // treize libellés de longueurs
+                        // différentes n'ont plus de bord commun,
+                        // et l'œil doit chercher chacun.
+                        ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
+                            // Serré, et c'est la place qui
+                            // le demande : vingt-cinq
+                            // rubriques — les cinq outils
+                            // extérieurs comprises — ne
+                            // tiennent dans la colonne que
+                            // si chaque entrée s'en tient à
+                            // sa ligne. Au-delà, la liste
+                            // défile, et l'on cherche à
+                            // l'ascenseur une rubrique dont
+                            // on ignore l'existence.
+                            ui.spacing_mut().item_spacing.y = 2.0;
+                            ui.spacing_mut().button_padding = egui::vec2(8.0, 3.0);
+                            // « Tout » en tête : c'est la
+                            // forme d'un compte rendu, celle
+                            // qu'on copie.
+                            let tout = self.analysis_module.is_empty();
+                            if ui
+                                .add(egui::Button::selectable(tout, s.analysis_all))
+                                .clicked()
+                            {
+                                self.analysis_module.clear();
+                            }
+                            ui.add_space(4.0);
+                            ui.separator();
+                            // LES RUBRIQUES PAR FAMILLES. Vingt-
+                            // quatre entrées à plat ne se
+                            // cherchent pas : on les parcourt
+                            // une à une, et l'on finit par ne
+                            // plus voir celles du bas. Rangées
+                            // sous cinq ou six intertitres, on
+                            // sait où regarder avant d'avoir
+                            // lu — et une rubrique qu'on n'a
+                            // jamais ouverte se trouve tout de
+                            // même, parce qu'on sait de quelle
+                            // question elle relève.
+                            //
+                            // L'intertitre est posé quand la
+                            // famille change : c'est le module
+                            // qui déclare la sienne, et l'ordre
+                            // d'enregistrement les tient
+                            // groupées — un contrôle le
+                            // vérifie.
+                            let mut famille = None;
+                            for (id, titre, section) in &titres {
+                                if famille != Some(*section) {
+                                    famille = Some(*section);
+                                    ui.add_space(6.0);
+                                    ui.label(
+                                        egui::RichText::new(section.label(lang))
+                                            .small()
+                                            .color(theme.dim),
+                                    );
+                                    ui.add_space(1.0);
+                                }
+                                let choisi = self.analysis_module == *id;
+                                if ui.add(egui::Button::selectable(choisi, *titre)).clicked() {
+                                    self.analysis_module = (*id).to_owned();
+                                }
+                            }
+                        });
+                    });
+            });
+
+        // Le contenu, avec la même marge : collé au trait, un
+        // tableau donne l'impression d'être coupé.
+        egui::Frame::NONE
+            .inner_margin(egui::Margin {
+                left: 14,
+                right: 6,
+                top: 8,
+                bottom: 4,
+            })
+            .show(ui, |ui| {
+                // La largeur de lecture, RELEVÉE AVANT la zone
+                // défilante : dedans, une zone qui défile aussi en
+                // largeur laisse à son contenu une place sans
+                // borne, et les panneaux qui se dimensionnent sur
+                // `available_width()` — le profil d'entropie, les
+                // tables — s'étireraient à l'infini.
+                //
+                // Une largeur de lecture, et non toute la place :
+                // sur un écran large, une table à deux colonnes
+                // posait la seconde à mille pixels de la première,
+                // et l'on suivait la ligne du doigt. Ce que fait
+                // tout volet de détail.
+                //
+                // LA LARGEUR DE L'ASCENSEUR EN MOINS, et c'est la
+                // capture qui l'a dit : dans l'onglet, la zone centrale
+                // est plus étroite que la largeur de lecture, si bien
+                // que `lecture` valait toute la place — ascenseur
+                // vertical compris. Le texte se posait donc une dizaine
+                // de pixels trop large, se faisait couper à droite
+                // (« dan », « à ce ») et réclamait une barre
+                // HORIZONTALE pour trois caractères. Dans la fenêtre le
+                // défaut ne se voyait pas : elle est plus large que la
+                // largeur de lecture, et la soustraction y est sans
+                // effet.
+                //
+                // LA LARGEUR DE L'ASCENSEUR EN MOINS, et c'est la
+                // capture qui l'a dit : dans l'onglet, la zone centrale
+                // est plus étroite que la largeur de lecture, et la
+                // table des fonctions assez large pour faire paraître
+                // une barre horizontale. Le texte se posait alors une
+                // dizaine de pixels trop large et se faisait couper à
+                // droite, au milieu d'un mot — « l'ad », « dan », « à
+                // ce ». Dans la fenêtre le défaut ne se voyait pas :
+                // elle est plus large que la largeur de lecture, et la
+                // soustraction y est sans effet.
+                //
+                // AUCUN CONTRÔLE NE LE RETIENT, et il faut le dire : la
+                // correction se voit sur deux captures prises avant et
+                // après, mais le banc ne la reproduit pas — ni à
+                // vingt-six largeurs, ni avec un binaire chargé, ni à
+                // l'échelle 3 de cet écran. Le contrôle écrit pour elle
+                // passait au vert avec le défaut remis ; il a été
+                // retiré plutôt que gardé pour l'ornement. Ce que
+                // l'écran montre et que le banc ne retrouve pas est une
+                // question ouverte (A 9.16).
+                let lecture = (ui.available_width()
+                    - ui.spacing().scroll.bar_width
+                    - ui.spacing().item_spacing.x)
+                    .clamp(120.0, ANALYSIS_CONTENT_MAX);
+                // DÉFILANTE DANS LES DEUX SENS, et c'est ce qui
+                // empêche la fenêtre d'enfler.
+                //
+                // Les chemins que montre « Chaînes lisibles » font
+                // parfois cent caractères — un chemin de source
+                // Rust avec son empreinte de version. Peints dans
+                // une zone qui ne défile qu'en hauteur, ils
+                // poussaient la fenêtre : mesuré, 1 100 px de
+                // large sur « En bref », 1 831 sur « Chaînes »,
+                // c'est-à-dire tout l'écran — et la colonne de
+                // navigation sortie par la gauche. Pire, la
+                // fenêtre y RESTAIT : revenue sur « En bref », elle
+                // gardait sa taille d'écran.
+                //
+                // Bornée, elle ne pousse plus rien : ce qui dépasse
+                // se fait défiler, comme dans n'importe quel volet.
+                egui::ScrollArea::both()
+                    .id_salt("analysis_content")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        ui.set_max_width(lecture);
+                        let choisi = self.analysis_module.clone();
+                        let seul = (!choisi.is_empty()).then_some(choisi.as_str());
+                        self.re_modules_ui(ui, seul);
+                    });
+            });
     }
 
     /// Les registres étendus, dans une fenêtre à eux.
@@ -1345,67 +1474,84 @@ impl NamsdecApp {
                 if chrome::window_head(ui, self.theme, s, s.vectors_title) {
                     fermer_ok = true;
                 }
-                // CE QUI DÉFILE, ET CE QUI NE DÉFILE PAS.
-                //
-                // Les vingt-quatre valeurs se posent sur autant de
-                // colonnes que la fenêtre en tient, et tiennent donc en
-                // entier : c'est toute la raison d'être de cette
-                // fenêtre, et sur un écran ordinaire aucune barre ne
-                // paraît — la zone épouse son contenu quand il tient.
-                //
-                // CE QU'UN ÉCRAN NE PEUT PAS TOUJOURS TENIR : 800x520,
-                // le plus petit que l'application accepte. Mesurée là,
-                // la fenêtre faisait 588 px de haut et son bandeau — qui
-                // porte la croix de fermeture — se posait 54 px
-                // AU-DESSUS du bord, donc hors de vue : on ne pouvait
-                // plus ni la déplacer ni la fermer à la souris. Entre
-                // une barre de défilement sur un écran de 520 px et une
-                // fenêtre qu'on ne sait plus fermer, on prend la barre.
-                // La promesse « ça ne défile jamais » valait pour un
-                // écran qui a la place ; elle ne pouvait pas valoir pour
-                // celui qui ne l'a pas.
-                //
-                // LA BARRE « OK » EST PASSÉE DU PANNEAU BAS AU FLUX, et
-                // ce n'est pas un détail de style : un panneau ancré
-                // réclame toute la hauteur du cadre, de sorte que la
-                // fenêtre ne redescendait jamais sur son contenu —
-                // 440x1040 pour 524 px de registres, 405 px de vide au
-                // milieu, et c'est l'invariant du vide qui l'a dit.
-                // Posée dans le flux, elle suit le contenu, et la
-                // fenêtre retrouve la taille de ce qu'elle montre.
-                //
-                // La zone est bornée par L'ÉCRAN et non par la place
-                // qu'il lui reste : une hauteur lue de son propre
+                // La hauteur vient de l'ÉCRAN, et non de la place qui
+                // reste dans le cadre : une hauteur lue de son propre
                 // conteneur se reboucle d'une image à l'autre, et la
                 // barre d'action se ferait rogner de quarante pixels de
                 // plus à chaque passage.
-                egui::ScrollArea::vertical()
-                    .auto_shrink([false, true])
-                    .max_height((hauteur_libre - 80.0).max(120.0))
-                    .show(ui, |ui| {
-                        if self.emulator.is_none() {
-                            empty_state(
-                                ui,
-                                self.theme,
-                                s.no_binary_assembled,
-                                Some(s.empty_vectors),
-                                None,
-                            );
-                            return;
-                        }
-                        self.xmm_ui(ui);
-                        // Les masques entre les deux : ils appartiennent
-                        // au monde vectoriel, et un programme AVX-512 les
-                        // lit plus souvent que la pile du 8087.
-                        self.mask_ui(ui);
-                        ui.add_space(10.0);
-                        self.x87_ui(ui);
-                    });
+                self.vectors_body_ui(ui, (hauteur_libre - 80.0).max(120.0));
                 if ok_bar_inline(ui, self.theme, s) {
                     fermer_ok = true;
                 }
             });
         self.show_vectors = open && !fermer_ok;
+    }
+
+    /// Les registres étendus eux-mêmes, sans leur cadre : un seul corps
+    /// pour l'onglet de la rangée et pour la fenêtre détachée.
+    ///
+    /// `hauteur_max` est la place qu'on leur donne, et elle est dite par
+    /// l'appelant : la fenêtre la tient de l'écran, l'onglet du panneau
+    /// qui le porte. Dans les deux cas, c'est une mesure qui ne dépend
+    /// pas de ce que la vue dessine — sans quoi elle se reboucle.
+    pub(crate) fn vectors_body_ui(&mut self, ui: &mut egui::Ui, hauteur_max: f32) {
+        let s = strings(self.lang);
+        // CE QUI DÉFILE, ET CE QUI NE DÉFILE PAS.
+        //
+        // Les vingt-quatre valeurs se posent sur autant de
+        // colonnes que la fenêtre en tient, et tiennent donc en
+        // entier : c'est toute la raison d'être de cette
+        // fenêtre, et sur un écran ordinaire aucune barre ne
+        // paraît — la zone épouse son contenu quand il tient.
+        //
+        // CE QU'UN ÉCRAN NE PEUT PAS TOUJOURS TENIR : 800x520,
+        // le plus petit que l'application accepte. Mesurée là,
+        // la fenêtre faisait 588 px de haut et son bandeau — qui
+        // porte la croix de fermeture — se posait 54 px
+        // AU-DESSUS du bord, donc hors de vue : on ne pouvait
+        // plus ni la déplacer ni la fermer à la souris. Entre
+        // une barre de défilement sur un écran de 520 px et une
+        // fenêtre qu'on ne sait plus fermer, on prend la barre.
+        // La promesse « ça ne défile jamais » valait pour un
+        // écran qui a la place ; elle ne pouvait pas valoir pour
+        // celui qui ne l'a pas.
+        //
+        // LA BARRE « OK » EST PASSÉE DU PANNEAU BAS AU FLUX, et
+        // ce n'est pas un détail de style : un panneau ancré
+        // réclame toute la hauteur du cadre, de sorte que la
+        // fenêtre ne redescendait jamais sur son contenu —
+        // 440x1040 pour 524 px de registres, 405 px de vide au
+        // milieu, et c'est l'invariant du vide qui l'a dit.
+        // Posée dans le flux, elle suit le contenu, et la
+        // fenêtre retrouve la taille de ce qu'elle montre.
+        //
+        // La zone est bornée par L'ÉCRAN et non par la place
+        // qu'il lui reste : une hauteur lue de son propre
+        // conteneur se reboucle d'une image à l'autre, et la
+        // barre d'action se ferait rogner de quarante pixels de
+        // plus à chaque passage.
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, true])
+            .max_height(hauteur_max)
+            .show(ui, |ui| {
+                if self.emulator.is_none() {
+                    empty_state(
+                        ui,
+                        self.theme,
+                        s.no_binary_assembled,
+                        Some(s.empty_vectors),
+                        None,
+                    );
+                    return;
+                }
+                self.xmm_ui(ui);
+                // Les masques entre les deux : ils appartiennent
+                // au monde vectoriel, et un programme AVX-512 les
+                // lit plus souvent que la pile du 8087.
+                self.mask_ui(ui);
+                ui.add_space(10.0);
+                self.x87_ui(ui);
+            });
     }
 
     /// La fenêtre des patchs : ce qu'on peut changer, et ce qu'on a
@@ -1422,11 +1568,6 @@ impl NamsdecApp {
         let s = strings(self.lang);
         let theme = self.theme;
         let mut fermer = false;
-        let mut geste: Option<PatchGeste> = None;
-        let mut défaire: Option<usize> = None;
-        let inversion = self.patch_preview(PatchGeste::Inverser);
-        let neutralisation = self.patch_preview(PatchGeste::Neutraliser);
-        let forçage = self.patch_preview(PatchGeste::Forcer);
 
         egui::Window::new(s.patch_title)
             .id(egui::Id::new(PATCHES_WINDOW))
@@ -1448,108 +1589,119 @@ impl NamsdecApp {
                 if ok_bar(ui, theme, s, "patches") {
                     fermer = true;
                 }
-                ui.add_space(6.0);
-                ui.weak(s.patch_hint);
-                ui.add_space(8.0);
-
-                // Ce que les trois gestes feraient à la ligne du curseur,
-                // écrit avant qu'on clique : on ne change pas les octets
-                // de quelqu'un à l'aveugle.
-                let mut bouton = |ui: &mut egui::Ui,
-                                  libellé: &str,
-                                  aperçu: &Option<(u64, Vec<u8>, Vec<u8>)>,
-                                  quoi: PatchGeste| {
-                    ui.horizontal(|ui| {
-                        ui.add_enabled_ui(aperçu.is_some(), |ui| {
-                            if framed_button(ui, theme, libellé).clicked() {
-                                geste = Some(quoi);
-                            }
-                        });
-                        match aperçu {
-                            Some((addr, avant, après)) => {
-                                ui.monospace(format!(
-                                    "{addr:#x} : {} -> {}",
-                                    namsdec_re::digest::hex(avant),
-                                    namsdec_re::digest::hex(après)
-                                ));
-                            }
-                            None => {
-                                ui.weak(s.patch_nothing_here);
-                            }
-                        }
-                    });
-                };
-                bouton(ui, s.patch_invert, &inversion, PatchGeste::Inverser);
-                bouton(ui, s.patch_force, &forçage, PatchGeste::Forcer);
-                bouton(
-                    ui,
-                    s.patch_neutralise,
-                    &neutralisation,
-                    PatchGeste::Neutraliser,
-                );
-
-                ui.add_space(10.0);
-                ui.separator();
-                ui.add_space(6.0);
-                if self.patches.is_empty() {
-                    empty_state(
-                        ui,
-                        self.theme,
-                        s.patch_none_yet,
-                        Some(s.empty_patches),
-                        None,
-                    );
-                } else {
-                    ui.label(
-                        egui::RichText::new(format!(
-                            "{} {}",
-                            self.patches.len(),
-                            s.patch_applied_count
-                        ))
-                        .strong(),
-                    );
-                    ui.add_space(4.0);
-                    egui::ScrollArea::vertical()
-                        .id_salt("patch_list")
-                        .auto_shrink([false, false])
-                        .show(ui, |ui| {
-                            for (rang, patch) in self.patches.iter().enumerate() {
-                                ui.horizontal(|ui| {
-                                    if small_framed_button(ui, theme, s.patch_undo).clicked() {
-                                        défaire = Some(rang);
-                                    }
-                                    // Sans adresse — un patch venu du
-                                    // vidage désigne une position dans
-                                    // le fichier, non une instruction —
-                                    // on écrit la position, précédée
-                                    // d'un plus pour qu'on ne la
-                                    // confonde pas avec une adresse.
-                                    let où = if patch.addr == 0 {
-                                        format!("+{:#x}", patch.offset)
-                                    } else {
-                                        format!("{:#x}", patch.addr)
-                                    };
-                                    ui.monospace(format!(
-                                        "{où} : {} -> {}",
-                                        namsdec_re::digest::hex(&patch.before),
-                                        namsdec_re::digest::hex(&patch.after)
-                                    ));
-                                });
-                            }
-                        });
-                    ui.add_space(6.0);
-                    ui.weak(s.patch_export_hint);
-                }
+                self.patches_body_ui(ui);
             });
 
+        if fermer {
+            self.show_patches = false;
+        }
+    }
+
+    /// Les correctifs eux-mêmes, sans leur cadre : un seul corps pour
+    /// l'onglet de la rangée et pour la fenêtre détachée.
+    pub(crate) fn patches_body_ui(&mut self, ui: &mut egui::Ui) {
+        let s = strings(self.lang);
+        let theme = self.theme;
+        let mut geste: Option<PatchGeste> = None;
+        let mut défaire: Option<usize> = None;
+        // Les trois aperçus, relevés avant de peindre : ils lisent
+        // l'instruction sous le curseur, et le dessin tient `self`.
+        let inversion = self.patch_preview(PatchGeste::Inverser);
+        let neutralisation = self.patch_preview(PatchGeste::Neutraliser);
+        let forçage = self.patch_preview(PatchGeste::Forcer);
+        ui.add_space(6.0);
+        ui.weak(s.patch_hint);
+        ui.add_space(8.0);
+
+        // Ce que les trois gestes feraient à la ligne du curseur,
+        // écrit avant qu'on clique : on ne change pas les octets
+        // de quelqu'un à l'aveugle.
+        let mut bouton = |ui: &mut egui::Ui,
+                          libellé: &str,
+                          aperçu: &Option<(u64, Vec<u8>, Vec<u8>)>,
+                          quoi: PatchGeste| {
+            ui.horizontal(|ui| {
+                ui.add_enabled_ui(aperçu.is_some(), |ui| {
+                    if framed_button(ui, theme, libellé).clicked() {
+                        geste = Some(quoi);
+                    }
+                });
+                match aperçu {
+                    Some((addr, avant, après)) => {
+                        ui.monospace(format!(
+                            "{addr:#x} : {} -> {}",
+                            namsdec_re::digest::hex(avant),
+                            namsdec_re::digest::hex(après)
+                        ));
+                    }
+                    None => {
+                        ui.weak(s.patch_nothing_here);
+                    }
+                }
+            });
+        };
+        bouton(ui, s.patch_invert, &inversion, PatchGeste::Inverser);
+        bouton(ui, s.patch_force, &forçage, PatchGeste::Forcer);
+        bouton(
+            ui,
+            s.patch_neutralise,
+            &neutralisation,
+            PatchGeste::Neutraliser,
+        );
+
+        ui.add_space(10.0);
+        ui.separator();
+        ui.add_space(6.0);
+        if self.patches.is_empty() {
+            empty_state(
+                ui,
+                self.theme,
+                s.patch_none_yet,
+                Some(s.empty_patches),
+                None,
+            );
+        } else {
+            ui.label(
+                egui::RichText::new(format!("{} {}", self.patches.len(), s.patch_applied_count))
+                    .strong(),
+            );
+            ui.add_space(4.0);
+            egui::ScrollArea::vertical()
+                .id_salt("patch_list")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    for (rang, patch) in self.patches.iter().enumerate() {
+                        ui.horizontal(|ui| {
+                            if small_framed_button(ui, theme, s.patch_undo).clicked() {
+                                défaire = Some(rang);
+                            }
+                            // Sans adresse — un patch venu du
+                            // vidage désigne une position dans
+                            // le fichier, non une instruction —
+                            // on écrit la position, précédée
+                            // d'un plus pour qu'on ne la
+                            // confonde pas avec une adresse.
+                            let où = if patch.addr == 0 {
+                                format!("+{:#x}", patch.offset)
+                            } else {
+                                format!("{:#x}", patch.addr)
+                            };
+                            ui.monospace(format!(
+                                "{où} : {} -> {}",
+                                namsdec_re::digest::hex(&patch.before),
+                                namsdec_re::digest::hex(&patch.after)
+                            ));
+                        });
+                    }
+                });
+            ui.add_space(6.0);
+            ui.weak(s.patch_export_hint);
+        }
         if let Some(quoi) = geste {
             self.apply_patch(quoi);
         }
         if let Some(rang) = défaire {
             self.undo_patch(rang);
-        }
-        if fermer {
-            self.show_patches = false;
         }
     }
 }

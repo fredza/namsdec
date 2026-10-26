@@ -33,6 +33,20 @@ pub fn of(instr: &Instruction, lang: &str) -> String {
     }
 
     match m {
+        // LES INSTRUCTIONS DE CHAÎNE EN PREMIER, et reconnues à leurs
+        // opérandes plutôt qu'à leur mnémonique : chez iced-x86,
+        // `Movsd` et `Cmpsd` nomment DEUX instructions chacun — la
+        // copie de chaîne et la copie flottante —, et trier par le nom
+        // aurait fait dire « XMM0 = XMM1 (8 octets) » à un `rep movsd`.
+        // Les opérandes, eux, ne mentent pas : une instruction de
+        // chaîne lit [RSI] et écrit [RDI] par des modes d'adressage qui
+        // n'existent que pour elle.
+        //
+        // C'est le cœur de `memcpy`, `memset` et `strlen` tels qu'un
+        // compilateur les déroule. Sans `rep`, elles traitent UN élément
+        // et avancent ; avec, elles recommencent RCX fois — et ce
+        // préfixe, qui change tout, ne se voit pas dans le mnémonique.
+        _ if est_une_chaîne(instr) => chaîne(instr, fr),
         Mnemonic::Mov | Mnemonic::Movzx | Mnemonic::Movsx | Mnemonic::Movsxd => {
             format!("{} = {}", op(0), op(1))
         }
@@ -42,7 +56,17 @@ pub fn of(instr: &Instruction, lang: &str) -> String {
         }
         Mnemonic::Add => format!("{} = {} + {}", op(0), op(0), op(1)),
         Mnemonic::Sub => format!("{} = {} − {}", op(0), op(0), op(1)),
-        Mnemonic::Imul | Mnemonic::Mul if instr.op_count() >= 2 => {
+        // `imul rax, rbx, 4` : la forme à TROIS opérandes ne multiplie
+        // pas la destination par la source — elle range dans la
+        // destination le produit des DEUX autres. Lue comme la forme à
+        // deux, elle disait « RAX = RAX × RBX » là où le programme
+        // écrit « RAX = RBX × 4 » : une phrase fausse, sur une
+        // instruction que tout compilateur produit pour indexer un
+        // tableau.
+        Mnemonic::Imul if instr.op_count() == 3 => {
+            format!("{} = {} × {}", op(0), op(1), op(2))
+        }
+        Mnemonic::Imul | Mnemonic::Mul if instr.op_count() == 2 => {
             format!("{} = {} × {}", op(0), op(0), op(1))
         }
         Mnemonic::Mul => format!("RDX:RAX = RAX × {}", op(0)),
@@ -340,6 +364,97 @@ pub fn of(instr: &Instruction, lang: &str) -> String {
                 format!("{} = {} in the other precision", op(0), op(1))
             }
         }
+        Mnemonic::Xchg => {
+            if fr {
+                format!("échanger {} et {}", op(0), op(1))
+            } else {
+                format!("swap {} and {}", op(0), op(1))
+            }
+        }
+        // `loop` fait deux choses d'un coup, et c'est précisément ce
+        // qu'on oublie en la lisant : elle décrémente RCX *puis* teste.
+        Mnemonic::Loop | Mnemonic::Loope | Mnemonic::Loopne => {
+            let reste = match (m, fr) {
+                (Mnemonic::Loope, true) => " et égal",
+                (Mnemonic::Loope, false) => " and equal",
+                (Mnemonic::Loopne, true) => " et différent",
+                (Mnemonic::Loopne, false) => " and not equal",
+                _ => "",
+            };
+            if fr {
+                format!("RCX = RCX − 1 ; si RCX ≠ 0{reste}, aller à {}", op(0))
+            } else {
+                format!("RCX = RCX − 1; if RCX ≠ 0{reste}, go to {}", op(0))
+            }
+        }
+        // `jrcxz` n'a pas de code de condition : son test est le
+        // registre lui-même, et `conditional` ne la voit donc pas.
+        Mnemonic::Jrcxz | Mnemonic::Jecxz | Mnemonic::Jcxz => {
+            let registre = match m {
+                Mnemonic::Jrcxz => "RCX",
+                Mnemonic::Jecxz => "ECX",
+                _ => "CX",
+            };
+            if fr {
+                format!("si {registre} = 0, aller à {}", op(0))
+            } else {
+                format!("if {registre} = 0, go to {}", op(0))
+            }
+        }
+        Mnemonic::Int3 => {
+            if fr {
+                "point d'arrêt (c'est ce qu'un débogueur écrit)".to_owned()
+            } else {
+                "breakpoint (this is what a debugger writes)".to_owned()
+            }
+        }
+        Mnemonic::Int => {
+            if fr {
+                format!("interruption {}", op(0))
+            } else {
+                format!("interrupt {}", op(0))
+            }
+        }
+        Mnemonic::Cmpxchg => {
+            if fr {
+                format!(
+                    "si {} = RAX, alors {} = {} ; sinon RAX = {}",
+                    op(0),
+                    op(0),
+                    op(1),
+                    op(0)
+                )
+            } else {
+                format!(
+                    "if {} = RAX then {} = {}; else RAX = {}",
+                    op(0),
+                    op(0),
+                    op(1),
+                    op(0)
+                )
+            }
+        }
+        Mnemonic::Xadd => {
+            if fr {
+                format!(
+                    "échanger {} et {}, puis {} = {} + {}",
+                    op(0),
+                    op(1),
+                    op(0),
+                    op(0),
+                    op(1)
+                )
+            } else {
+                format!(
+                    "swap {} and {}, then {} = {} + {}",
+                    op(0),
+                    op(1),
+                    op(0),
+                    op(0),
+                    op(1)
+                )
+            }
+        }
         Mnemonic::Nop => {
             if fr {
                 "ne rien faire".to_owned()
@@ -372,6 +487,117 @@ pub fn of(instr: &Instruction, lang: &str) -> String {
             // d'origine, qui au moins est exacte.
             nasm(instr)
         }
+    }
+}
+
+/// Cette instruction lit-elle [RSI] ou écrit-elle [RDI] à la manière
+/// d'une instruction de chaîne ?
+///
+/// La question se pose sur les OPÉRANDES et non sur le mnémonique :
+/// voir la note en tête du `match`.
+fn est_une_chaîne(instr: &Instruction) -> bool {
+    (0..instr.op_count()).any(|i| {
+        matches!(
+            instr.op_kind(i),
+            OpKind::MemorySegSI
+                | OpKind::MemorySegESI
+                | OpKind::MemorySegRSI
+                | OpKind::MemoryESDI
+                | OpKind::MemoryESEDI
+                | OpKind::MemoryESRDI
+        )
+    })
+}
+
+/// Une instruction de chaîne, dite avec ce que son préfixe en fait.
+///
+/// `movsb` copie un octet ; `rep movsb` copie RCX octets. C'est la même
+/// ligne dans un listing, et ce sont deux choses différentes : l'une est
+/// un pas, l'autre est `memcpy`. Le préfixe n'apparaît pas dans le
+/// mnémonique, donc nulle part dans la paraphrase — et c'est justement
+/// lui qu'on cherche en lisant une boucle de copie.
+fn chaîne(instr: &Instruction, fr: bool) -> String {
+    let taille = instr.memory_size().size();
+    let répété = instr.has_rep_prefix() || instr.has_repne_prefix();
+    let accumulateur = match taille {
+        1 => "AL",
+        2 => "AX",
+        4 => "EAX",
+        _ => "RAX",
+    };
+    let unité = match (taille, fr) {
+        (1, true) => "octet".to_owned(),
+        (1, false) => "byte".to_owned(),
+        (n, true) => format!("bloc de {n} octets"),
+        (n, false) => format!("{n}-byte block"),
+    };
+    let unités = match (taille, fr) {
+        (1, true) => "octets".to_owned(),
+        (1, false) => "bytes".to_owned(),
+        (n, true) => format!("blocs de {n} octets"),
+        (n, false) => format!("{n}-byte blocks"),
+    };
+    let nom = format!("{:?}", instr.mnemonic()).to_ascii_lowercase();
+    match (nom.as_str(), répété, fr) {
+        (n, true, true) if n.starts_with("movs") => {
+            format!("copier RCX {unités} de mémoire[RSI] vers mémoire[RDI]")
+        }
+        (n, true, false) if n.starts_with("movs") => {
+            format!("copy RCX {unités} from memory[RSI] to memory[RDI]")
+        }
+        (n, false, true) if n.starts_with("movs") => {
+            format!("copier un {unité} de mémoire[RSI] vers mémoire[RDI], puis avancer les deux")
+        }
+        (n, false, false) if n.starts_with("movs") => {
+            format!("copy one {unité} from memory[RSI] to memory[RDI], then advance both")
+        }
+        (n, true, true) if n.starts_with("stos") => {
+            format!("écrire {accumulateur} dans mémoire[RDI], RCX fois")
+        }
+        (n, true, false) if n.starts_with("stos") => {
+            format!("write {accumulateur} into memory[RDI], RCX times")
+        }
+        (n, false, true) if n.starts_with("stos") => {
+            format!("mémoire[RDI] = {accumulateur}, puis avancer RDI")
+        }
+        (n, false, false) if n.starts_with("stos") => {
+            format!("memory[RDI] = {accumulateur}, then advance RDI")
+        }
+        (n, _, true) if n.starts_with("lods") => {
+            format!("{accumulateur} = mémoire[RSI], puis avancer RSI")
+        }
+        (n, _, false) if n.starts_with("lods") => {
+            format!("{accumulateur} = memory[RSI], then advance RSI")
+        }
+        (n, true, true) if n.starts_with("scas") => {
+            format!("chercher {accumulateur} dans mémoire[RDI], au plus RCX {unités}")
+        }
+        (n, true, false) if n.starts_with("scas") => {
+            format!("look for {accumulateur} in memory[RDI], at most RCX {unités}")
+        }
+        (n, false, true) if n.starts_with("scas") => {
+            format!("comparer mémoire[RDI] et {accumulateur}, puis avancer RDI")
+        }
+        (n, false, false) if n.starts_with("scas") => {
+            format!("compare memory[RDI] and {accumulateur}, then advance RDI")
+        }
+        (n, true, true) if n.starts_with("cmps") => {
+            format!(
+                "comparer mémoire[RSI] et mémoire[RDI] tant qu'ils se suivent, au plus RCX {unités}"
+            )
+        }
+        (n, true, false) if n.starts_with("cmps") => {
+            format!("compare memory[RSI] and memory[RDI] while they match, at most RCX {unités}")
+        }
+        (n, false, true) if n.starts_with("cmps") => {
+            "comparer mémoire[RSI] et mémoire[RDI], puis avancer les deux".to_owned()
+        }
+        (n, false, false) if n.starts_with("cmps") => {
+            "compare memory[RSI] and memory[RDI], then advance both".to_owned()
+        }
+        // `ins` et `outs` passent aussi par les mêmes modes
+        // d'adressage, et n'ont rien à voir : on les rend telles quelles.
+        _ => nasm(instr),
     }
 }
 
@@ -469,8 +695,13 @@ pub fn condition_of(instr: &Instruction, lang: &str) -> Option<&'static str> {
 /// demande donc de retourner la condition — sans quoi tout `si` du
 /// pseudo-code dirait l'inverse de ce que fait le programme.
 pub fn condition_opposée(instr: &Instruction, lang: &str) -> Option<&'static str> {
+    describe_condition(opposée(instr.condition_code())?, lang.starts_with("fr"))
+}
+
+/// Le code de condition contraire. `None` quand il n'y en a pas.
+fn opposée(code: ConditionCode) -> Option<ConditionCode> {
     use ConditionCode as C;
-    let contraire = match instr.condition_code() {
+    Some(match code {
         C::None => return None,
         C::o => C::no,
         C::no => C::o,
@@ -488,8 +719,139 @@ pub fn condition_opposée(instr: &Instruction, lang: &str) -> Option<&'static st
         C::ge => C::l,
         C::le => C::g,
         C::g => C::le,
+    })
+}
+
+/// La comparaison et le saut qui la suit, dits d'un trait.
+///
+/// C'EST LE CHAÎNON QUI MANQUAIT AU PSEUDO-CODE. Le déroulement écrivait
+/// deux lignes là où le programme pose une question :
+///
+/// ```text
+///     comparer RCX et 0
+///     tant que différent :
+/// ```
+///
+/// « différent » de quoi ? La réponse est sur la ligne du dessus, et
+/// l'œil fait l'aller-retour à chaque boucle. Dites ensemble, les deux
+/// lignes deviennent `tant que RCX ≠ 0 :`, qui est ce qu'on aurait
+/// écrit dans le langage d'où ce code vient.
+///
+/// Rien n'est deviné : `cmp a, b` suivi de `jl` DIT que le programme
+/// demande « a < b », et le code de condition dit lequel des deux sens
+/// et avec quel signe. Ce qui ne se ramène pas à une relation — une
+/// parité, un débordement, un `cmp` suivi d'un `js` — rend `None`, et
+/// l'appelant garde les deux lignes séparées.
+///
+/// Rend `(telle quelle, retournée, absorbable)`. Les deux premières sont
+/// la question ; `absorbable` dit si l'instruction de test peut
+/// DISPARAÎTRE du corps.
+///
+/// Elle le peut quand elle ne fait rien d'autre que poser les
+/// indicateurs — `cmp`, `test` —, et seulement alors. `dec ecx` suivi
+/// d'un `jnz` se lit aussi « tant que ECX ≠ 0 », mais le `dec` décrémente
+/// pour de bon : l'effacer ferait tourner une boucle dont rien ne
+/// changerait jamais. La condition se dit, l'instruction reste.
+pub fn comparaison(
+    test: &Instruction,
+    saut: &Instruction,
+    lang: &str,
+) -> Option<(String, String, bool)> {
+    let fr = lang.starts_with("fr");
+    let code = saut.condition_code();
+    let contraire = opposée(code)?;
+    let absorbable = matches!(test.mnemonic(), Mnemonic::Cmp | Mnemonic::Test);
+    Some((
+        relation(test, code, fr)?,
+        relation(test, contraire, fr)?,
+        absorbable,
+    ))
+}
+
+/// La question que pose `test`, lue sous ce code de condition.
+fn relation(test: &Instruction, code: ConditionCode, fr: bool) -> Option<String> {
+    use ConditionCode as C;
+    // Le signe est DIT, des deux côtés. Sur `0xFFFFFFFF`, « plus petit »
+    // est vrai en signé (c'est −1) et faux en non signé (c'est le plus
+    // grand des nombres) : taire lequel des deux, c'est laisser lire le
+    // contraire de ce qui se passe. C'est aussi ce que faisait déjà
+    // `describe_condition`, dont ceci est la forme courte.
+    let (signe, marque) = match (code, fr) {
+        (C::l | C::le | C::g | C::ge, true) => (true, " (signé)"),
+        (C::l | C::le | C::g | C::ge, false) => (true, " (signed)"),
+        (C::b | C::be | C::a | C::ae, true) => (true, " (non signé)"),
+        (C::b | C::be | C::a | C::ae, false) => (true, " (unsigned)"),
+        _ => (false, ""),
     };
-    describe_condition(contraire, lang.starts_with("fr"))
+    let symbole = match code {
+        C::e => "=",
+        C::ne => "≠",
+        C::l | C::b => "<",
+        C::le | C::be => "≤",
+        C::g | C::a => ">",
+        C::ge | C::ae => "≥",
+        _ => return None,
+    };
+    match test.mnemonic() {
+        Mnemonic::Cmp if test.op_count() == 2 => Some(format!(
+            "{} {symbole} {}{marque}",
+            operand(test, 0),
+            operand(test, 1)
+        )),
+        // `test rax, rax` ne compare pas deux choses : il demande si
+        // l'une est nulle. C'est l'idiome le plus fréquent de tout
+        // l'assembleur compilé, et le lire « RAX ET RAX, puis si égal »
+        // est la plus sûre façon de ne pas le reconnaître.
+        Mnemonic::Test
+            if test.op_count() == 2
+                && test.op0_kind() == OpKind::Register
+                && test.op1_kind() == OpKind::Register
+                && test.op0_register() == test.op1_register()
+                && !signe =>
+        {
+            Some(format!("{} {symbole} 0", operand(test, 0)))
+        }
+        // `test al, 1` : on demande si des bits précis sont posés.
+        Mnemonic::Test if test.op_count() == 2 && !signe => {
+            let et = if fr { "ET" } else { "AND" };
+            Some(format!(
+                "({} {et} {}) {symbole} 0",
+                operand(test, 0),
+                operand(test, 1)
+            ))
+        }
+        // UNE OPÉRATION ORDINAIRE POSE AUSSI LES INDICATEURS, et la
+        // boucle la plus courante qui soit en vit : `dec ecx` puis
+        // `jnz`. Il n'y a aucun `cmp` à lire — le compilateur sait que
+        // `dec` a déjà dit si le résultat est nul —, et le pseudo-code
+        // écrivait donc « tant que différent », différent de rien.
+        //
+        // SEULEMENT `= 0` ET `≠ 0`, et c'est une borne, pas une
+        // timidité : ZF est le seul indicateur que toutes ces
+        // instructions posent de la même façon. `dec` ne touche PAS à
+        // la retenue, si bien qu'un `jb` qui la suit lit celle d'une
+        // instruction d'avant — lire ici « ECX < 0 » serait inventer un
+        // test que le programme ne fait pas.
+        Mnemonic::Add
+        | Mnemonic::Sub
+        | Mnemonic::Inc
+        | Mnemonic::Dec
+        | Mnemonic::And
+        | Mnemonic::Or
+        | Mnemonic::Xor
+        | Mnemonic::Neg
+        | Mnemonic::Adc
+        | Mnemonic::Sbb
+        | Mnemonic::Shl
+        | Mnemonic::Sal
+        | Mnemonic::Shr
+        | Mnemonic::Sar
+            if matches!(code, C::e | C::ne) =>
+        {
+            Some(format!("{} {symbole} 0", operand(test, 0)))
+        }
+        _ => None,
+    }
 }
 
 /// La condition, dite comme on la lit — et non comme elle s'écrit.
@@ -665,6 +1027,124 @@ mod tests {
     fn what_cannot_be_said_plainly_is_left_alone() {
         // 0f ae f0 : mfence
         assert_eq!(dire(&[0x0f, 0xae, 0xf0]), "mfence");
+    }
+
+    /// `imul` à trois opérandes ne multiplie pas la destination.
+    ///
+    /// `imul rax, rbx, 4` range dans RAX le produit des DEUX AUTRES.
+    /// Lue comme la forme à deux opérandes, elle disait « RAX = RAX ×
+    /// RBX » — une phrase fausse, sur l'instruction que tout
+    /// compilateur produit pour indexer un tableau.
+    #[test]
+    fn the_three_operand_multiply_does_not_multiply_the_destination() {
+        // 48 6b c3 04 : imul rax, rbx, 4
+        assert_eq!(dire(&[0x48, 0x6b, 0xc3, 0x04]), "RAX = RBX × 4");
+        // La forme à deux opérandes, elle, ne change pas.
+        // 48 0f af c3 : imul rax, rbx
+        assert_eq!(dire(&[0x48, 0x0f, 0xaf, 0xc3]), "RAX = RAX × RBX");
+    }
+
+    /// `rep movsb` n'est pas `movsb` : c'est `memcpy`.
+    ///
+    /// Le préfixe n'apparaît pas dans le mnémonique, donc nulle part
+    /// dans la paraphrase — et c'est pourtant lui qu'on cherche en
+    /// lisant une boucle de copie.
+    #[test]
+    fn a_repeated_string_instruction_says_that_it_repeats() {
+        assert_eq!(
+            dire(&[0xf3, 0xa4]),
+            "copier RCX octets de mémoire[RSI] vers mémoire[RDI]"
+        );
+        assert_eq!(
+            dire(&[0xa4]),
+            "copier un octet de mémoire[RSI] vers mémoire[RDI], puis avancer les deux"
+        );
+        // Et `rep stosq` remplit : c'est `memset`.
+        assert_eq!(
+            dire(&[0xf3, 0x48, 0xab]),
+            "écrire RAX dans mémoire[RDI], RCX fois"
+        );
+    }
+
+    /// `rep movsd` est une copie de chaîne, pas une copie flottante.
+    ///
+    /// Chez iced-x86, `Movsd` nomme DEUX instructions. Trier par le
+    /// mnémonique faisait dire « XMM0 = XMM1 (8 octets) » à un
+    /// `rep movsd`, qui ne touche aucun registre vectoriel.
+    #[test]
+    fn the_two_instructions_named_movsd_do_not_get_confused() {
+        // f3 a5 : rep movsd
+        assert_eq!(
+            dire(&[0xf3, 0xa5]),
+            "copier RCX blocs de 4 octets de mémoire[RSI] vers mémoire[RDI]"
+        );
+        // f2 0f 10 c1 : movsd xmm0, xmm1
+        assert_eq!(dire(&[0xf2, 0x0f, 0x10, 0xc1]), "XMM0 = XMM1  (8 octets)");
+    }
+
+    /// `loop` fait deux choses, et c'est ce qu'on oublie en la lisant.
+    #[test]
+    fn the_loop_instruction_says_that_it_also_decrements() {
+        // e2 fe : loop $
+        assert_eq!(
+            dire(&[0xe2, 0xfe]),
+            "RCX = RCX − 1 ; si RCX ≠ 0, aller à 0x400000"
+        );
+    }
+
+    /// La comparaison et le saut, dits d'un trait.
+    ///
+    /// C'est le chaînon qui manquait : « comparer RCX et 0 » suivi de
+    /// « si différent » faisait faire à l'œil un aller-retour à chaque
+    /// boucle. Et le signe est dit des deux côtés — sur `0xFFFFFFFF`,
+    /// « plus petit » est vrai en signé et faux en non signé.
+    #[test]
+    fn a_comparison_and_its_jump_are_read_as_one_question() {
+        let compare = crate::decode_one(&[0x83, 0xf8, 0x05], 0x400000).unwrap(); // cmp eax, 5
+        let si_égal = crate::decode_one(&[0x74, 0x02], 0x400010).unwrap(); // je
+        let (telle, retournée, absorbable) = comparaison(&compare, &si_égal, "fr").unwrap();
+        assert_eq!(telle, "EAX = 5");
+        assert_eq!(retournée, "EAX ≠ 5");
+        assert!(absorbable, "un `cmp` ne fait rien d'autre que comparer");
+
+        // Le signe, dit : c'est là qu'on se trompe.
+        let plus_petit = crate::decode_one(&[0x7c, 0x02], 0x400010).unwrap(); // jl
+        let (telle, _, _) = comparaison(&compare, &plus_petit, "fr").unwrap();
+        assert_eq!(telle, "EAX < 5 (signé)");
+        let au_dessous = crate::decode_one(&[0x72, 0x02], 0x400010).unwrap(); // jb
+        let (telle, _, _) = comparaison(&compare, &au_dessous, "fr").unwrap();
+        assert_eq!(telle, "EAX < 5 (non signé)");
+
+        // `test rax, rax` demande si c'est nul, et rien d'autre.
+        let nul = crate::decode_one(&[0x48, 0x85, 0xc0], 0x400000).unwrap();
+        let (telle, retournée, _) = comparaison(&nul, &si_égal, "fr").unwrap();
+        assert_eq!(telle, "RAX = 0");
+        assert_eq!(retournée, "RAX ≠ 0");
+    }
+
+    /// Une opération ordinaire pose aussi les indicateurs — mais elle
+    /// ne s'efface pas pour autant.
+    ///
+    /// `dec ecx` suivi d'un `jnz` se lit « tant que ECX ≠ 0 ». Le `dec`
+    /// décrémente pour de bon : l'absorber ferait tourner une boucle
+    /// dont rien ne changerait jamais.
+    #[test]
+    fn an_ordinary_operation_lends_its_flags_without_disappearing() {
+        let moins_un = crate::decode_one(&[0xff, 0xc9], 0x400000).unwrap(); // dec ecx
+        let si_pas_nul = crate::decode_one(&[0x75, 0xfc], 0x400010).unwrap(); // jnz
+        let (telle, retournée, absorbable) = comparaison(&moins_un, &si_pas_nul, "fr").unwrap();
+        assert_eq!(telle, "ECX ≠ 0");
+        assert_eq!(retournée, "ECX = 0");
+        assert!(!absorbable, "le `dec` décrémente : il doit rester écrit");
+
+        // Et rien au-delà de « nul » ou « non nul » : `dec` ne touche
+        // pas à la retenue, donc un `jb` qui la suit lit celle d'une
+        // instruction d'avant.
+        let au_dessous = crate::decode_one(&[0x72, 0x02], 0x400010).unwrap(); // jb
+        assert!(
+            comparaison(&moins_un, &au_dessous, "fr").is_none(),
+            "la retenue n'appartient pas au `dec` : on ne l'invente pas"
+        );
     }
 
     /// Et les deux langues disent la même chose autrement.

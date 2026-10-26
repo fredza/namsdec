@@ -1022,6 +1022,7 @@ fn every_setting_that_is_written_is_read_back() {
         program_args: "-v --long".to_owned(),
         program_env: "A=1".to_owned(),
         sidebar_tab: Some("heap".to_owned()),
+        central_view: Some("disassembly".to_owned()),
         open_windows: vec!["calculator".to_owned(), "timeline".to_owned()],
         explorer_root: Some(dir.path().display().to_string()),
         current_file: Some(source.display().to_string()),
@@ -1204,7 +1205,16 @@ fn tout_reglage_bascule_par_l_interface_est_garde() {
 
     // Les bascules qui ne SONT pas des réglages : à inscrire ici avec la
     // raison, plutôt que d'élargir les motifs jusqu'à ne plus rien voir.
-    const EPHEMERES: [(&str, &str); 0] = [];
+    const EPHEMERES: [(&str, &str); 1] = [(
+        "show_calculator",
+        "gardée, mais pas sous son nom : c'est une FENÊTRE, et les \
+         fenêtres se reprennent toutes par la même table — \
+         `FENÊTRES_REPRISES` dans main.rs, qu'un instantané écrit sous \
+         `open_windows`. Lui donner en plus un champ à elle la ferait \
+         rouvrir deux fois, par deux chemins qui peuvent diverger. Elle \
+         est entrée ici le jour où `Espace c a` l'a fait BASCULER : \
+         jusque-là l'interface ne savait que l'ouvrir.",
+    )];
 
     let mut bascules: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     // `src/` est le dépôt lui-même : illisible, c'est une anomalie, non

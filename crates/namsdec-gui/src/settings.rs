@@ -311,6 +311,11 @@ pub struct Settings {
     /// L'onglet du panneau latéral qu'on regardait.
     #[serde(default)]
     pub sidebar_tab: Option<String>,
+    /// La vue qu'on regardait dans la zone centrale : la source, ou le
+    /// désassemblage. Gardée comme l'onglet latéral — on retrouve son
+    /// établi là où on l'a laissé.
+    #[serde(default)]
+    pub central_view: Option<String>,
     /// Les fenêtres laissées ouvertes à la dernière séance.
     ///
     /// Une liste de noms plutôt qu'un booléen par fenêtre : le fichier
@@ -393,6 +398,7 @@ impl Default for Settings {
             program_args: String::new(),
             program_env: String::new(),
             sidebar_tab: None,
+            central_view: None,
             open_windows: Vec::new(),
             explorer_root: None,
             current_file: None,
@@ -847,6 +853,7 @@ pub fn action_id(action: Action) -> &'static str {
         Action::PreviousMatch => "previous_match",
         Action::NameAddress => "name_address",
         Action::CommentAddress => "comment_address",
+        Action::ToggleCalculator => "toggle_calculator",
     }
 }
 

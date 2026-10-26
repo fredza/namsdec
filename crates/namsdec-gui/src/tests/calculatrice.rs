@@ -473,13 +473,20 @@ fn the_calculator_shows_its_keypad_its_bits_and_its_functions() {
     assert!(peint.contains("32|"), "{peint}");
 }
 
-/// La calculatrice se prend juste à gauche de l'onglet Pile.
+/// La calculatrice se prend au bout de la barre d'outils.
 ///
 /// C'est là qu'on s'en sert : on lit une valeur dans la pile ou dans un
 /// registre, et l'on veut la même dans une autre base. Elle était dans
 /// le menu Outils, à trois gestes de l'endroit où le besoin naît.
+///
+/// Elle était jusqu'au 26 octobre 2026 collée à l'onglet « Pile », que
+/// la barre d'outils portait alors. Les onglets sont partis en tête du
+/// panneau ; l'icône, elle, RESTE dans la barre, et c'est une décision :
+/// panneau masqué, elle n'aurait plus de chemin visible et il faudrait
+/// la deviner dans un menu. Une seule icône tient dans la barre à toutes
+/// les largeurs — ce que six onglets ne faisaient pas.
 #[test]
-fn the_calculator_sits_just_left_of_the_stack_tab() {
+fn the_calculator_sits_at_the_end_of_the_toolbar() {
     let s = strings(Lang::Fr);
     let ctx = egui::Context::default();
     let mut app = NamsdecApp::default();
@@ -493,27 +500,26 @@ fn the_calculator_sits_just_left_of_the_stack_tab() {
         ..Default::default()
     };
     let mut touches = Vec::new();
-    let mut pile: Option<f32> = None;
+    let mut dernière_commande: Option<f32> = None;
     for _ in 0..2 {
         touches.clear();
-        pile = None;
+        dernière_commande = None;
         let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
         for clipped in &sortie.shapes {
             match &clipped.shape {
                 // Les six touches de l'icône : des points, les seuls
                 // cercles aussi petits de la barre d'outils.
-                // La barre d'outils occupe la deuxième rangée : « Pile »
-                // est aussi le titre du panneau, plus bas, et c'est le
-                // titre qu'on attrapait.
                 egui::epaint::Shape::Circle(cercle)
                     if cercle.radius < 1.5 && cercle.center.y < 60.0 =>
                 {
                     touches.push(cercle.center);
                 }
+                // La dernière commande d'exécution de la rangée : la
+                // calculatrice vient APRÈS elle, au bout.
                 egui::epaint::Shape::Text(texte)
-                    if texte.galley.text() == s.tab_stack && texte.pos.y < 60.0 =>
+                    if texte.galley.text() == s.action_reset && texte.pos.y < 60.0 =>
                 {
-                    pile = Some(texte.pos.x);
+                    dernière_commande = Some(texte.pos.x);
                 }
                 _ => {}
             }
@@ -521,13 +527,14 @@ fn the_calculator_sits_just_left_of_the_stack_tab() {
         sortie.textures_delta.clear();
     }
 
-    let pile = pile.expect("l'onglet Pile est peint");
+    let commande = dernière_commande.expect("« Réinitialiser » est peint dans la barre");
     assert_eq!(touches.len(), 6, "les six touches de la calculatrice");
     for point in &touches {
         assert!(
-            point.x < pile,
-            "la calculatrice est à gauche de « {} » : {} contre {pile}",
-            s.tab_stack,
+            point.x > commande,
+            "la calculatrice est au bout de la rangée, après « {} » : {} \
+             contre {commande}",
+            s.action_reset,
             point.x
         );
     }
@@ -740,4 +747,170 @@ fn the_base_and_the_width_are_two_twins_and_read_as_twins() {
              {vers_flèche_base:.1} px contre {vers_flèche_largeur:.1} px"
         );
     }
+}
+
+/// Le clavier de la calculatrice ne vole pas le presse-papiers.
+///
+/// Une touche cliquée est une surface qui se clique sans se focaliser :
+/// egui retire alors le focus au champ de saisie et ne le donne à
+/// personne. Le champ muet, Ctrl+V ne collait plus rien et Ctrl+C ne
+/// copiait plus rien — sur une calculatrice, c'est-à-dire là où l'on
+/// vient justement chercher une valeur pour la recoller ailleurs.
+///
+/// Le contrôle fait le geste entier : on clique une touche, puis on
+/// colle. Mesurer le focus seul aurait laissé passer un champ focalisé
+/// qui ne reçoit pas les évènements.
+#[test]
+fn the_keypad_gives_the_keyboard_back_to_the_expression() {
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp {
+        show_calculator: true,
+        ..Default::default()
+    };
+    app.apply_theme(&ctx);
+    let entrée = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1600.0, 1200.0),
+        )),
+        ..Default::default()
+    };
+    let image = |app: &mut NamsdecApp, events: Vec<egui::Event>| {
+        let mut entrée = entrée.clone();
+        entrée.events = events;
+        let mut sortie = ctx.run_ui(entrée, |ui| app.draw(ui));
+        sortie.textures_delta.clear();
+    };
+
+    // La fenêtre se pose, et le champ prend le clavier de lui-même.
+    for _ in 0..3 {
+        image(&mut app, Vec::new());
+    }
+    assert_eq!(
+        ctx.memory(|m| m.focused()),
+        Some(crate::calc_ui::calc_expression_id()),
+        "à l'ouverture, on tape dans l'expression sans cliquer"
+    );
+
+    // La touche « 0x » : elle n'est écrite nulle part ailleurs dans la
+    // fenêtre, contrairement aux chiffres, que les index de la grille
+    // de bits portent aussi.
+    let (_, lignes) = ce_qui_est_écrit_sur(&ctx, &mut app, None, 2, entrée.clone());
+    let touche = lignes
+        .iter()
+        .find(|(t, _)| t == "0x")
+        .map(|(_, r)| r.center())
+        .expect("la touche « 0x » est peinte");
+    for pressé in [true, false] {
+        image(
+            &mut app,
+            vec![egui::Event::PointerButton {
+                pos: touche,
+                button: egui::PointerButton::Primary,
+                pressed: pressé,
+                modifiers: egui::Modifiers::NONE,
+            }],
+        );
+    }
+    assert_eq!(app.calc_input, "0x", "la touche écrit ce qu'elle porte");
+
+    // Et le collage arrive là où l'on tape.
+    image(&mut app, Vec::new());
+    image(&mut app, vec![egui::Event::Paste("ff".to_owned())]);
+    assert_eq!(
+        app.calc_input, "0xff",
+        "le collage doit atteindre l'expression après un clic sur une touche"
+    );
+}
+
+/// Les six familles de fonctions tiennent sur une seule ligne.
+///
+/// Aux écarts d'egui par défaut, la sixième — « Calculer » — passait
+/// seule à la ligne suivante. Elle n'y ressemblait plus à un onglet
+/// mais à l'intertitre de la rangée de pastilles qui la suit : on
+/// cherchait ce que cette section voulait dire au lieu de la cliquer.
+///
+/// Le contrôle compare les ORDONNÉES, et non le nombre de lignes : une
+/// rangée qui se replie ne le dit nulle part, elle se voit seulement à
+/// ce que le dernier élément est plus bas que le premier.
+#[test]
+fn the_six_function_families_stay_on_one_row() {
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp {
+        show_calculator: true,
+        ..Default::default()
+    };
+    app.apply_theme(&ctx);
+    let entrée = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1600.0, 1200.0),
+        )),
+        ..Default::default()
+    };
+    let (_, lignes) = ce_qui_est_écrit_sur(&ctx, &mut app, None, 3, entrée);
+    let haut_de = |titre: &str| -> f32 {
+        lignes
+            .iter()
+            .find(|(t, _)| t == titre)
+            .map(|(_, r)| r.top())
+            .unwrap_or_else(|| panic!("l'onglet « {titre} » est peint"))
+    };
+    let premier = haut_de(calc::FAMILIES[0].1);
+    for (_, court, _) in calc::FAMILIES {
+        let ici = haut_de(court);
+        assert!(
+            (ici - premier).abs() < 3.0,
+            "« {court} » est posé à y={ici} quand « {} » l'est à y={premier} : \
+             la rangée d'onglets s'est repliée",
+            calc::FAMILIES[0].1
+        );
+    }
+}
+
+/// `Espace c a` ouvre la calculatrice, et la referme.
+///
+/// Une BASCULE, et c'est le seul chemin qui en soit une : la
+/// calculatrice s'ouvre au milieu d'autre chose — on lit `and eax,
+/// 0xff`, on veut savoir ce que ça garde, on revient. L'ouvrir sans
+/// pouvoir la refermer de la même main obligeait à viser sa croix,
+/// c'est-à-dire à quitter le clavier pour revenir au code.
+#[test]
+fn the_calculator_opens_and_closes_on_its_own_shortcut() {
+    let mut app = NamsdecApp::default();
+    let chord = app
+        .keybindings
+        .map
+        .get(&Action::ToggleCalculator)
+        .expect("le raccourci existe");
+    assert_eq!(
+        *chord,
+        crate::keybindings::Chord::leader(&[egui::Key::Space, egui::Key::C, egui::Key::A]),
+        "« Espace c a » — les deux premières lettres de « calculatrice »"
+    );
+
+    assert!(!app.show_calculator);
+    app.dispatch(Action::ToggleCalculator);
+    assert!(app.show_calculator, "la première frappe l'ouvre");
+    app.dispatch(Action::ToggleCalculator);
+    assert!(!app.show_calculator, "la seconde la referme");
+
+    // Et le préfixe `Espace c` n'est partagé avec personne : une
+    // séquence qui en court-circuite une autre la rend inatteignable.
+    let concurrents: Vec<String> = app
+        .keybindings
+        .map
+        .iter()
+        .filter(|(action, _)| **action != Action::ToggleCalculator)
+        .filter(|(_, chord)| {
+            matches!(chord, crate::keybindings::Chord::Leader(suite)
+                if suite.as_slice().first() == Some(&egui::Key::Space)
+                    && suite.as_slice().get(1) == Some(&egui::Key::C))
+        })
+        .map(|(action, _)| format!("{action:?}"))
+        .collect();
+    assert!(
+        concurrents.is_empty(),
+        "la famille « Espace c » est partagée avec {concurrents:?}"
+    );
 }

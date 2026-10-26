@@ -1126,7 +1126,6 @@ impl NamsdecApp {
         let theme = self.theme;
         let mut open = self.show_decompiler;
         let mut fermer_ok = false;
-        let mut lancer = false;
         let agrandie = self.window_maximized(Self::DECOMPILER_WINDOW);
         let mut bascule = false;
         let mut fenêtre = egui::Window::new(s.decompiler_title)
@@ -1166,6 +1165,36 @@ impl NamsdecApp {
             if ok_bar(ui, self.theme, strings(self.lang), "decompiler") {
                 fermer_ok = true;
             }
+            self.decompiler_body_ui(ui);
+        });
+        self.show_decompiler = open && !fermer_ok;
+        if let Some(rendue) = rendue
+            && title_bar_maximize_button(
+                ctx,
+                Self::DECOMPILER_WINDOW,
+                rendue.response.rect,
+                theme,
+                s,
+                agrandie,
+            )
+        {
+            bascule = true;
+        }
+        if bascule {
+            self.toggle_maximized(Self::DECOMPILER_WINDOW);
+        }
+    }
+
+    /// Le pseudo-code lui-même, sans son cadre : un seul corps pour
+    /// l'onglet de la rangée et pour la fenêtre détachée.
+    pub(crate) fn decompiler_body_ui(&mut self, ui: &mut egui::Ui) {
+        let s = strings(self.lang);
+        let theme = self.theme;
+        // Lancer l'outil extérieur est un appel de méthode, donc un
+        // emprunt de `self` : il se relève à la fin, jamais pendant le
+        // dessin.
+        let mut lancer = false;
+        {
             // La largeur de retour à la ligne, dite explicitement :
             // une fenêtre agrandie n'a pas de borne, et le texte
             // s'allouerait de nouveau une ligne pour s'en peindre
@@ -1413,22 +1442,6 @@ impl NamsdecApp {
                     ui.colored_label(theme.dim, s.decompiler_idle);
                 }
             }
-        });
-        self.show_decompiler = open && !fermer_ok;
-        if let Some(rendue) = rendue
-            && title_bar_maximize_button(
-                ctx,
-                Self::DECOMPILER_WINDOW,
-                rendue.response.rect,
-                theme,
-                s,
-                agrandie,
-            )
-        {
-            bascule = true;
-        }
-        if bascule {
-            self.toggle_maximized(Self::DECOMPILER_WINDOW);
         }
         if lancer {
             self.start_decompile();

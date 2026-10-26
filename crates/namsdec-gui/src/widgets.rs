@@ -205,6 +205,7 @@ pub(crate) fn action_label(s: &Strings, action: Action) -> &'static str {
         Action::RunToCall => s.action_run_to_call,
         Action::RunToReturn => s.action_run_to_return,
         Action::RunToSyscall => s.action_run_to_syscall,
+        Action::ToggleCalculator => s.calculator_open,
     }
 }
 
@@ -698,4 +699,137 @@ pub(crate) fn module_card(
         ui.label(detail);
     });
     ui.add_space(4.0);
+}
+
+/// La hauteur d'une ligne d'une rangée d'onglets plats.
+///
+/// Plus basse que celle des fichiers (30) : une rangée d'onglets plats
+/// est subordonnée à ce qui la surmonte, et l'œil doit le voir avant de
+/// lire.
+pub(crate) const ONGLET_HAUTEUR: f32 = 26.0;
+/// De chaque côté d'une étiquette, et la gouttière qu'une commande
+/// garde au bord.
+pub(crate) const ONGLET_MARGE: f32 = 12.0;
+
+/// Une rangée d'onglets PLATS, qui passe à la ligne quand la place
+/// manque.
+///
+/// Deux endroits la peignent — les vues de la zone centrale, et les
+/// vues du panneau latéral —, et c'est le même corps pour les deux :
+/// ce sont la même chose, des façons de regarder un même objet, et
+/// elles doivent se lire pareil. Le jour où l'une des deux divergerait,
+/// l'application aurait trois idiomes d'onglets au lieu de deux.
+///
+/// Les deux idiomes, justement : l'onglet de FICHIER est un rectangle
+/// plein, marqué EN HAUT, avec sa croix — c'est un document qu'on ouvre
+/// et qu'on ferme ; l'onglet de VUE est une étiquette plate, soulignée
+/// EN BAS, qui ne se ferme pas. Marques opposées, formes opposées : on
+/// ne les confond pas, même du coin de l'œil.
+///
+/// `réserve` est la place gardée libre à droite, sur toutes les lignes,
+/// et `commande` ce qu'on y pose — posé DANS la première ligne, et non
+/// après coup : `ui.put` ramène le curseur au rectangle qu'on lui donne,
+/// de sorte qu'une commande posée après les lignes faisait repartir
+/// tout ce qui suit du bas de la PREMIÈRE. Mesuré : à 800 x 520, la
+/// deuxième ligne d'onglets se peignait sur le « Moteur : » du
+/// désassemblage.
+///
+/// Les étiquettes sont MESURÉES AVANT D'ÊTRE POSÉES : une ligne ne se
+/// mesure pas pendant qu'on la peint — ce qui déborde serait déjà peint
+/// dehors, rogné au bord, et un onglet rogné se lit comme un onglet
+/// entier. Rien n'est repris de l'image précédente : la place
+/// disponible et la largeur des textes ne sont pas produites par la
+/// rangée, donc rien ne peut se reboucler.
+pub(crate) fn rangée_d_onglets(
+    ui: &mut egui::Ui,
+    theme: &'static Theme,
+    onglets: &[(&str, Option<&str>)],
+    actif: usize,
+    réserve: f32,
+    commande: impl FnOnce(&mut egui::Ui),
+) -> Option<usize> {
+    let police = egui::TextStyle::Body.resolve(ui.style());
+    let galettes: Vec<std::sync::Arc<egui::Galley>> = onglets
+        .iter()
+        .map(|(libellé, _)| {
+            ui.painter().layout_no_wrap(
+                (*libellé).to_owned(),
+                police.clone(),
+                egui::Color32::PLACEHOLDER,
+            )
+        })
+        .collect();
+
+    let dispo = (ui.available_width() - réserve).max(0.0);
+    let mut lignes: Vec<Vec<usize>> = vec![Vec::new()];
+    let mut large = 0.0_f32;
+    for (rang, galette) in galettes.iter().enumerate() {
+        let onglet = galette.size().x + ONGLET_MARGE * 2.0;
+        if !lignes.last().is_some_and(|l| l.is_empty()) && large + onglet > dispo {
+            lignes.push(Vec::new());
+            large = 0.0;
+        }
+        lignes.last_mut().expect("une ligne au moins").push(rang);
+        large += onglet;
+    }
+
+    let mut choisi = None;
+    let mut commande = Some(commande);
+    for (numéro, ligne) in lignes.iter().enumerate() {
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 0.0;
+            for rang in ligne {
+                let galette = &galettes[*rang];
+                let ici = *rang == actif;
+                let (rect, réponse) = ui.allocate_exact_size(
+                    egui::vec2(galette.size().x + ONGLET_MARGE * 2.0, ONGLET_HAUTEUR),
+                    egui::Sense::click(),
+                );
+                let peintre = ui.painter();
+                if réponse.hovered() && !ici {
+                    peintre.rect_filled(rect, 0.0, mélange(theme.panel, theme.text, 0.06));
+                }
+                peintre.galley(
+                    egui::pos2(
+                        rect.left() + ONGLET_MARGE,
+                        rect.center().y - galette.size().y / 2.0,
+                    ),
+                    galette.clone(),
+                    if ici { theme.text } else { theme.dim },
+                );
+                if ici {
+                    peintre.rect_filled(
+                        egui::Rect::from_min_size(
+                            egui::pos2(rect.left(), rect.bottom() - 2.0),
+                            egui::vec2(rect.width(), 2.0),
+                        ),
+                        0.0,
+                        theme.accent,
+                    );
+                }
+                if réponse.clicked() {
+                    choisi = Some(*rang);
+                }
+                let réponse = réponse.on_hover_cursor(egui::CursorIcon::PointingHand);
+                // L'infobulle seulement quand l'étiquette a dû
+                // raccourcir ce qu'elle nomme : une infobulle qui répète
+                // l'étiquette apprend qu'il est inutile de survoler.
+                if let Some(infobulle) = onglets[*rang].1 {
+                    réponse.on_hover_text(infobulle);
+                }
+            }
+            // La commande, au bord droit de la première ligne : sa
+            // gouttière d'abord, puisqu'on part du bord.
+            if numéro == 0
+                && réserve > 0.0
+                && let Some(commande) = commande.take()
+            {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.add_space(ONGLET_MARGE);
+                    commande(ui);
+                });
+            }
+        });
+    }
+    choisi
 }

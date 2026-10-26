@@ -1102,7 +1102,7 @@ fn the_windows_left_open_come_back_next_time() {
 ///
 /// Toutes partaient du centre exact du viewport, avec un pivot centré :
 /// elles se superposaient AU PIXEL PRÈS, et celle du dessous devenait
-/// introuvable — on la cherchait dans le menu Affichage en la croyant
+/// introuvable — on la cherchait dans le menu Outils en la croyant
 /// fermée. Le défaut dormait tant qu'on les ouvrait une à une ; la
 /// reprise de séance, qui peut en rouvrir douze, l'a mis au jour.
 ///
@@ -1172,6 +1172,154 @@ fn two_windows_opened_together_do_not_land_on_the_same_spot() {
         assert!(
             écran.expand(1.0).contains_rect(*a),
             "« {nom_a} » doit tenir dans l'écran — {a:?} pour un écran de {écran:?}"
+        );
+    }
+}
+
+/// Une fenêtre qui revient n'est jamais enterrée.
+///
+/// Le contrôle voisin — deux fenêtres ne se posent pas au même endroit —
+/// passait, et pourtant la capture d'une séance rouverte montrait trois
+/// fenêtres empilées dont la première était illisible. Il mesurait la
+/// distance entre CENTRES, et huit pixels lui suffisaient : un éventail
+/// qui tenait tout entier dans deux cent soixante pixels de diagonale le
+/// satisfaisait pendant que la moitié des fenêtres disparaissait sous
+/// l'autre. Mesuré sur l'écran de cette machine, 3840 × 2460 : dix-huit
+/// paires se recouvraient à cent pour cent.
+///
+/// Ce qu'on vérifie ici est ce qui décide vraiment du sort d'une
+/// fenêtre : sa BARRE DE TITRE reste-t-elle saisissable ? Une fenêtre
+/// dont le titre est entièrement couvert par celles du dessus est
+/// introuvable — on la cherche dans le menu Outils en la croyant
+/// fermée, et l'y rappeler ne fait que la reposer au même endroit.
+///
+/// Trois précautions, et chacune vient d'un faux résultat :
+///
+/// * **L'ordre de peinture, et non celui de la table.** Une fenêtre
+///   n'est cachée que par ce qui se peint APRÈS elle. `layer_ids()` le
+///   donne, du fond vers le dessus.
+/// * **Un identifiant revient sur plusieurs couches.** Sans
+///   dédoublonner, chaque fenêtre se trouve couverte par elle-même, et
+///   le relevé annonce douze fenêtres enterrées sur douze.
+/// * **Pas en dessous de 1920 × 1200.** À 1600 × 1100, la fenêtre
+///   d'analyse mesure 1100 × 1000 et celle des exercices 920 × 720 :
+///   elles couvrent à elles deux la presque totalité de l'écran, et
+///   aucun placement ne peut y sauver douze fenêtres. Ce qui se corrige
+///   là est la taille de ces deux fenêtres, pas l'éventail — et c'est un
+///   autre contrôle.
+///
+/// Éprouvé en remettant l'ancienne formule — un pas unique sur une
+/// diagonale, écrêté à vingt-quatre pixels : le test échoue alors en
+/// nommant les fenêtres enterrées.
+#[test]
+fn no_window_that_comes_back_is_buried_under_the_others() {
+    // Chaque écran avec ce qu'on peut lui garantir. Sur les deux grands,
+    // AUCUNE fenêtre enterrée ; en dessous, au plus une par demi-douzaine
+    // — car la fenêtre d'analyse mesure à elle seule 1100 × 1000 et celle
+    // des exercices 920 × 720 : à 1280 × 800, elles couvrent presque tout,
+    // et ce qui se corrige alors est LEUR taille, non le placement.
+    for (larg, haut, toléré) in [
+        (1280.0_f32, 800.0_f32, 3_usize),
+        (1920.0, 1200.0, 2),
+        (2560.0, 1440.0, 0),
+        (3840.0, 2460.0, 0),
+    ] {
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp {
+            // Les deux fenêtres de module ne s'ouvrent qu'avec lui.
+            show_decompiler_module: true,
+            exercises: true,
+            ..Default::default()
+        };
+        app.apply_theme(&ctx);
+        for (_, _, ouvre) in FENÊTRES_REPRISES {
+            ouvre(&mut app);
+        }
+        let entrée = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(larg, haut),
+            )),
+            ..Default::default()
+        };
+        // Vingt images : egui AMÈNE une fenêtre à sa taille au lieu de
+        // l'y poser, et une fenêtre dont la hauteur épouse son contenu
+        // met plusieurs images à se fixer.
+        for _ in 0..20 {
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            sortie.textures_delta.clear();
+        }
+
+        // Les fenêtres dans l'ordre où elles se peignent, le fond
+        // d'abord — et une seule fois chacune.
+        let mut ordre: Vec<egui::Id> = Vec::new();
+        for id in ctx.memory(|m| m.layer_ids().map(|couche| couche.id).collect::<Vec<_>>()) {
+            ordre.retain(|déjà| *déjà != id);
+            ordre.push(id);
+        }
+        let mut posées: Vec<(&str, egui::Rect)> = Vec::new();
+        for id in &ordre {
+            for (nom, ouverte) in app.window_states() {
+                if ouverte
+                    && egui::Id::new(nom) == *id
+                    && let Some(état) = egui::AreaState::load(&ctx, *id)
+                {
+                    posées.push((nom, état.rect()));
+                }
+            }
+        }
+        assert!(
+            posées.len() >= 10,
+            "il faut plusieurs fenêtres pour que le test prouve quelque chose — \
+             {} seulement",
+            posées.len()
+        );
+
+        // La hauteur de la poignée : la bande du haut, celle qu'on
+        // saisit pour déplacer une fenêtre.
+        const POIGNÉE: f32 = 28.0;
+        // Ce qu'il faut en voir pour pouvoir la saisir sans tâtonner.
+        // Trente-deux points, et non les quarante-huit des cibles
+        // tactiles : on saisit une barre de titre à la souris, et un
+        // carré de trente-deux se vise sans peine. Le seuil sépare
+        // bien les deux cas — l'ancienne formule laissait ZÉRO.
+        const ATTRAPABLE: f32 = 32.0;
+        let mut enterrées = Vec::new();
+        for (i, (nom, cadre)) in posées.iter().enumerate() {
+            let titre =
+                egui::Rect::from_min_max(cadre.min, egui::pos2(cadre.max.x, cadre.min.y + POIGNÉE));
+            // La plus large tranche de titre qu'aucune fenêtre du dessus
+            // ne mord. On retranche les intervalles couverts et l'on
+            // garde le plus long morceau — et non, comme au premier
+            // essai, en reculant seulement les deux bords : cette
+            // mesure-là ignore les trous du milieu, et déclarait
+            // introuvable une fenêtre dont la moitié centrale du titre
+            // était parfaitement visible.
+            let mut couverts: Vec<(f32, f32)> = posées[i + 1..]
+                .iter()
+                .filter(|(_, dessus)| {
+                    dessus.min.y <= titre.min.y + 4.0 && dessus.max.y >= titre.min.y
+                })
+                .map(|(_, dessus)| (dessus.min.x.max(titre.min.x), dessus.max.x.min(titre.max.x)))
+                .filter(|(a, b)| b > a)
+                .collect();
+            couverts.sort_by(|a, b| a.0.total_cmp(&b.0));
+            let mut libre: f32 = 0.0;
+            let mut bord = titre.min.x;
+            for (début, fin) in couverts {
+                libre = libre.max(début - bord);
+                bord = bord.max(fin);
+            }
+            libre = libre.max(titre.max.x - bord);
+            if libre < ATTRAPABLE {
+                enterrées.push(format!("{nom} ({libre:.0} px de poignée)"));
+            }
+        }
+        assert!(
+            enterrées.len() <= toléré,
+            "à {larg}×{haut}, {} fenêtres rouvertes sont introuvables au lieu \
+             des {toléré} tolérées : {enterrées:?}",
+            enterrées.len()
         );
     }
 }

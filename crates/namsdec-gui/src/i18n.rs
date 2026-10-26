@@ -651,6 +651,12 @@ pub struct Strings {
     pub calculator_width_label: &'static str,
     pub calculator_clear: &'static str,
     pub calculator_backspace: &'static str,
+    /// Pourquoi les deux boutons qui défont sont éteints.
+    ///
+    /// Une commande grisée dit pourquoi : sans cela, on la survole, il
+    /// ne se passe rien, et l'on croit l'interface en panne plutôt que
+    /// l'expression vide.
+    pub calculator_nothing_to_erase: &'static str,
     pub calculator_bits_hint: &'static str,
     pub calculator_pick_function: &'static str,
     pub calculator_hint_text: &'static str,
@@ -1000,6 +1006,32 @@ pub struct Strings {
     /// pouvait ouvrir un second fichier depuis le menu, mais il fallait
     /// le deviner.
     pub tab_open_another: &'static str,
+    // La rangée des vues, sous celle des fichiers : ce qu'on regarde du
+    // programme, et par quoi on le regarde.
+    /// L'onglet de l'éditeur. Il porte « Source » et non « Éditeur » :
+    /// la rangée dit ce qu'on regarde, pas l'outil qui le montre — le
+    /// voisin dit « Désassemblage », pas « désassembleur ».
+    pub view_source: &'static str,
+    /// Les quatre vues dont le titre de fenêtre ne tient pas dans un
+    /// onglet. « Déroulement du programme », « Décompiler — outil
+    /// extérieur », « Analyse du binaire » et « Patcher le binaire »
+    /// prennent à elles seules la moitié de la rangée ; l'onglet garde
+    /// le nom de la vue, et dit le titre entier au survol.
+    pub view_flow: &'static str,
+    /// Et non « Décompilateur » : la rangée dit ce qu'on regarde, pas
+    /// l'outil qui le produit — comme « Source » et non « Éditeur ».
+    pub view_decompiler: &'static str,
+    pub view_analysis: &'static str,
+    /// « Patcher le binaire » est un geste ; l'onglet nomme ce qu'on y
+    /// voit, c'est-à-dire la liste de ce qu'on a changé.
+    pub view_patches: &'static str,
+    /// Sortir la vue de la rangée, dans une fenêtre à elle : c'est ce
+    /// qu'il faut pour lire la source et le désassemblage CÔTE À CÔTE,
+    /// qu'un onglet rend impossible par construction.
+    pub view_detach: &'static str,
+    /// Et comment elle revient : en fermant la fenêtre. Le dire, parce
+    /// qu'une croix qui range plutôt que de jeter ne se devine pas.
+    pub view_detach_hint: &'static str,
     /// Pourquoi « Fermer le fichier » est grisé.
     pub why_nothing_to_close: &'static str,
     /// L'appel qui sort du programme : ce qu'on dit quand l'exécution
@@ -1647,6 +1679,7 @@ déclenchera jamais.",
     calculator_width_label: "Largeur",
     calculator_clear: "Effacer tout",
     calculator_backspace: "Effacer le dernier caractère",
+    calculator_nothing_to_erase: "L'expression est déjà vide",
     calculator_bits_hint: "Cliquez un bit pour le basculer.",
     calculator_pick_function: "Survolez une fonction pour lire ce qu'elle fait ; cliquez pour l'écrire.",
     calculator_hint_text: "0xff & 0x0f,  rax >> 3,  bswap32(0x12345678)",
@@ -1922,6 +1955,13 @@ déclenchera jamais.",
     why_nothing_to_undo: "Aucun pas à défaire : avancez d'abord d'un pas.",
     why_nothing_running: "Rien ne tourne en ce moment : il n'y a rien à arrêter.",
     tab_open_another: "un programme de plus, dans son propre onglet.",
+    view_source: "Source",
+    view_flow: "Déroulement",
+    view_decompiler: "Décompilation",
+    view_analysis: "Analyse",
+    view_patches: "Correctifs",
+    view_detach: "Détacher",
+    view_detach_hint: "Sortir cette vue dans une fenêtre, pour la lire à côté de la source. Fermer la fenêtre la ramène dans la rangée.",
     why_nothing_to_close: "Aucun fichier ouvert : il n'y a rien à fermer.",
     binary_not_linked: "Objet non lié : ses sections n'ont pas encore d'adresse et il n'a pas de point d'entrée. Il se lit et s'analyse, mais ne s'exécute pas — liez-le : ld -Ttext 0x400000 -o programme fichier.o",
     assemble_commands: "Les deux commandes lancées :",
@@ -2529,6 +2569,7 @@ other is there to compare — that is how gaps and clashes become visible.",
     calculator_width_label: "Width",
     calculator_clear: "Clear everything",
     calculator_backspace: "Delete the last character",
+    calculator_nothing_to_erase: "The expression is already empty",
     calculator_bits_hint: "Click a bit to flip it.",
     calculator_pick_function: "Hover a function to read what it does; click to write it.",
     calculator_hint_text: "0xff & 0x0f,  rax >> 3,  bswap32(0x12345678)",
@@ -2804,6 +2845,13 @@ other is there to compare — that is how gaps and clashes become visible.",
     why_nothing_to_undo: "No step to undo: take a step first.",
     why_nothing_running: "Nothing is running: there is nothing to stop.",
     tab_open_another: "one more program, in a tab of its own.",
+    view_source: "Source",
+    view_flow: "Flow",
+    view_decompiler: "Decompilation",
+    view_analysis: "Analysis",
+    view_patches: "Patches",
+    view_detach: "Detach",
+    view_detach_hint: "Move this view into a window of its own, to read it next to the source. Closing the window brings it back to the row.",
     why_nothing_to_close: "No file open: there is nothing to close.",
     binary_not_linked: "Unlinked object: its sections have no address yet and it has no entry point. It reads and analyses, but does not run — link it: ld -Ttext 0x400000 -o program file.o",
     assemble_commands: "The two commands run:",

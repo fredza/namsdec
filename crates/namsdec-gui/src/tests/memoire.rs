@@ -1253,3 +1253,144 @@ _start:
     assert!(dump.contains("\"salut\""), "{dump}");
     assert_eq!(dump.lines().count(), 8, "huit mots, comme telescope");
 }
+
+/// LES OUTILS DÉPLIÉS N'ÉVINCENT PAS LE VIDAGE.
+///
+/// L'onglet Mémoire montre deux choses : une boîte à outils — la carte,
+/// la recherche, l'écriture — et le vidage lui-même, qui est ce qu'on
+/// est venu voir. La boîte était déjà sous un seul repli pour qu'elle ne
+/// pousse pas le vidage dehors ; cela ne suffisait pas.
+///
+/// Mesuré le 26 octobre 2026, les trois replis ouverts : à 1280 x 820,
+/// le vidage n'était pas peint DU TOUT. Pas rogné, pas repoussé sous une
+/// barre de défilement qu'on aurait pu tirer : absent. La hauteur de
+/// l'onglet est imposée à son contenu (`sidebar_ui`), si bien que ce qui
+/// déborde est coupé et que la zone défilante du panneau n'a rien à
+/// faire défiler. On déplie les outils, et l'on perd la vue sans que
+/// rien ne le dise.
+///
+/// Le vidage garde donc un plancher, et c'est la boîte à outils qui
+/// défile. Le contrôle ouvre les trois replis par de VRAIS clics, puis
+/// demande que le vidage soit là — à six hauteurs, parce que le défaut
+/// n'apparaît que lorsque la place manque.
+#[test]
+fn les_outils_depliés_n_evincent_pas_le_vidage() {
+    let Some(octets) = binaire_fabriqué() else {
+        return;
+    };
+    let s = strings(Lang::Fr);
+    for hauteur in [700.0_f32, 760.0, 820.0, 880.0, 940.0, 1000.0] {
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp {
+            show_sidebar: true,
+            active_tab: SidebarTab::Memory,
+            next_instruction_open: false,
+            // « Lire en : Texte » : c'est dans cette branche-là que le
+            // vidage a disparu.
+            memory_format: MemoryFormat::Text,
+            ..Default::default()
+        };
+        app.apply_theme(&ctx);
+        assert!(app.load_elf(&octets, NOM_FABRIQUÉ), "l'ELF se charge");
+        for _ in 0..4 {
+            app.do_step();
+        }
+        let écran = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, hauteur));
+        let rend = |app: &mut NamsdecApp, ev: Vec<egui::Event>| -> Vec<(String, egui::Rect)> {
+            let mut textes = Vec::new();
+            let mut sortie = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(écran),
+                    events: ev,
+                    ..Default::default()
+                },
+                |ui| app.draw(ui),
+            );
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                    for ligne in &t.galley.rows {
+                        if ligne.glyphs.is_empty() {
+                            continue;
+                        }
+                        let encre = ligne
+                            .rect_without_leading_space()
+                            .translate(t.pos.to_vec2())
+                            .intersect(clipped.clip_rect);
+                        if encre.width() <= 0.0 || encre.height() <= 0.0 {
+                            continue;
+                        }
+                        textes.push((t.galley.text().to_owned(), encre));
+                    }
+                }
+            }
+            sortie.textures_delta.clear();
+            textes
+        };
+        let clic = |app: &mut NamsdecApp, textes: &[(String, egui::Rect)], début: &str| -> bool {
+            let Some(où) = textes
+                .iter()
+                .find(|(texte, _)| texte.starts_with(début))
+                .map(|(_, rect)| rect.center())
+            else {
+                return false;
+            };
+            rend(
+                app,
+                vec![
+                    egui::Event::PointerButton {
+                        pos: où,
+                        button: egui::PointerButton::Primary,
+                        pressed: true,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                    egui::Event::PointerButton {
+                        pos: où,
+                        button: egui::PointerButton::Primary,
+                        pressed: false,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ],
+            );
+            true
+        };
+
+        // Le partage du panneau se recale sur quelques images avant
+        // qu'on clique quoi que ce soit.
+        let mut textes = rend(&mut app, vec![]);
+        for _ in 0..5 {
+            textes = rend(&mut app, vec![]);
+        }
+        // Les deux premiers sont exigés : ce sont eux qui remplissent la
+        // boîte. Le troisième n'est cliqué que s'il est sous la main —
+        // une fois la boîte bornée, il peut demander qu'on la fasse
+        // défiler, et ce n'est pas ce qu'on mesure ici.
+        for titre in [s.memory_tools, s.memory_map] {
+            assert!(
+                clic(&mut app, &textes, titre),
+                "à {hauteur} px de haut, « {titre} » doit être là pour qu'on \
+                 l'ouvre"
+            );
+            for _ in 0..8 {
+                textes = rend(&mut app, vec![]);
+            }
+        }
+        if clic(&mut app, &textes, s.poke_title) {
+            for _ in 0..8 {
+                textes = rend(&mut app, vec![]);
+            }
+        }
+
+        // Le vidage : une adresse en chasse fixe, qui n'est pas une
+        // ligne de la carte (« 0x…-0x… »).
+        let vidage = textes
+            .iter()
+            .filter(|(texte, _)| texte.starts_with("0x0") && !texte.contains("-0x"))
+            .count();
+        assert!(
+            vidage > 0,
+            "à {hauteur} px de haut, les outils dépliés ont évincé le \
+             vidage : il n'en reste rien à l'écran, et c'est lui qu'on est \
+             venu voir"
+        );
+    }
+}

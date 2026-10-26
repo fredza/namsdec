@@ -98,6 +98,13 @@ impl NamsdecApp {
                 // pas celui qui était choisi. Vu sur la capture du
                 // premier lancement.
                 .unwrap_or(SidebarTab::Cpu),
+            // La source, faute de mieux : c'est la vue qui a toujours
+            // quelque chose à montrer, même sans programme assemblé.
+            vue_centrale: settings
+                .central_view
+                .as_deref()
+                .and_then(VueCentrale::from_id)
+                .unwrap_or(VueCentrale::Source),
             show_decompiler_module: settings.decompiler_module,
             show_installer_module: settings.installer_module,
             decompiler: settings.decompiler.clone(),
@@ -504,6 +511,7 @@ impl NamsdecApp {
             program_args: self.program_args.clone(),
             program_env: self.program_env.clone(),
             sidebar_tab: Some(self.active_tab.id().to_owned()),
+            central_view: Some(self.vue_centrale.id().to_owned()),
             open_windows: FENÊTRES_REPRISES
                 .iter()
                 .filter(|(_, ouverte, _)| ouverte(self))

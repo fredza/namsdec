@@ -617,9 +617,9 @@ impl NamsdecApp {
         // `relever_alt`).
         self.relever_alt(ui);
         let theme = self.theme;
-        // Les fichiers ouverts, en tête : on passe de l'un à l'autre
-        // sans rien perdre de ce qu'on faisait sur les autres.
-        self.tabs_bar_ui(ui);
+        // La barre des fichiers ouverts était ici. Elle est maintenant
+        // posée avant la rangée des vues (voir `update`) : elle vaut
+        // pour toutes, et non pour la seule édition.
         self.disk_changed_ui(ui);
         // La barre de recherche, au-dessus du code : elle pousse
         // l'éditeur d'une ligne plutôt que de flotter par-dessus, pour

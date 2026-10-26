@@ -93,10 +93,18 @@ pub enum Action {
     /// cruellement en assembleur : quatre lignes qui ne diffèrent que
     /// par un registre se dupliquent plus vite qu'elles ne se retapent.
     DuplicateLine,
+    /// Ouvrir ou refermer la calculatrice.
+    ///
+    /// La seule fenêtre qu'on ouvre au milieu d'une autre tâche : on lit
+    /// `and eax, 0xff`, on veut savoir ce que ça garde, on revient. Un
+    /// aller-retour par le menu Affichage casse justement ce qu'on était
+    /// en train de suivre — et c'est pour cela qu'elle bascule au lieu
+    /// de seulement s'ouvrir : la même frappe la renvoie d'où elle vient.
+    ToggleCalculator,
 }
 
 impl Action {
-    pub const ALL: [Action; 30] = [
+    pub const ALL: [Action; 31] = [
         Action::ToggleExplorer,
         Action::Assemble,
         Action::Run,
@@ -127,6 +135,7 @@ impl Action {
         Action::PreviousMatch,
         Action::NameAddress,
         Action::CommentAddress,
+        Action::ToggleCalculator,
     ];
 }
 
@@ -476,6 +485,12 @@ impl KeyBindings {
         // Les panneaux.
         map.insert(Action::ToggleExplorer, simple(M::CTRL, Key::B));
         map.insert(Action::ShowFlow, simple(M::CTRL | M::SHIFT, Key::G));
+        // La calculatrice sur la DEUXIÈME lettre de son nom : Ctrl+C
+        // copie, Ctrl+Maj+C commente et Ctrl+Alt+C court jusqu'au
+        // prochain appel. Sa première lettre est prise trois fois, on
+        // prend la suivante plutôt que d'inventer une touche sans
+        // rapport.
+        map.insert(Action::ToggleCalculator, simple(M::CTRL | M::SHIFT, Key::A));
 
         Self { map }
     }
@@ -691,6 +706,18 @@ impl KeyBindings {
         map.insert(
             Action::RunToSyscall,
             Chord::leader(&[Key::Space, Key::U, Key::S]),
+        );
+        // --- `Espace c…` : calculer --------------------------------
+        //
+        // `c a` comme les deux premières lettres de « calculatrice » —
+        // la famille n'en compte qu'une pour l'instant, et c'est
+        // délibéré : le préfixe est posé là où le reste de ce qui
+        // CALCULE viendra se ranger, plutôt que sur la place libre du
+        // moment. C'est la leçon du rangement par famille, appliquée
+        // avant d'en avoir besoin.
+        map.insert(
+            Action::ToggleCalculator,
+            Chord::leader(&[Key::Space, Key::C, Key::A]),
         );
         Self { map }
     }

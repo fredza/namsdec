@@ -6,7 +6,7 @@ retiré — reste dans `AMELIORATIONS.txt`, qui ne bouge pas de rôle : une
 seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
-Tenue à jour au fil des séances. Dernière mise à jour : **23 octobre
+Tenue à jour au fil des séances. Dernière mise à jour : **27 octobre
 2026**, version 0.2.9-beta.1.
 
 - `[x]` fait et vérifié — un contrôle le retient
@@ -30,10 +30,308 @@ plus**, dont deux trous du banc lui-même : une scène qui ne montrait pas
 l'onglet qu'elle nommait, et une quatrième écriture de bouton que le
 contrôle de source ne connaissait pas. Voir la section 1 ci-dessous.
 
+Et une leçon de méthode, payée d'une demi-journée le 25 octobre : il y a
+**trois endroits où mesurer**, et non deux. Le banc, la capture, et
+*l'application en marche* — six `eprintln` dans le code qui pose les
+rectangles. Quand le banc dit « peint » et que l'image dit « vide », ni
+l'un ni l'autre ne tranche ; le programme, lui, sait où il a posé ses
+rectangles. Voir la section 0 ter.
+
 La leçon qui se répète : ce qu'un relevé ne cherche pas, aucun contrôle
 ne le retient. Les trois axes de cette passe — l'écran le plus petit,
 l'inventaire des tailles, l'inventaire des commandes — n'étaient pas des
 défauts suspectés, c'étaient des questions qu'on n'avait jamais posées.
+
+---
+
+## 0 quinquies. La calculatrice : le presse-papiers, et l'épuration (A 9.20)
+
+- [x] **Le clavier appartient à l'expression** — un clic sur une touche,
+      un bit ou une fonction est une surface qui se clique sans se
+      focaliser : egui retirait alors le focus au champ et ne le donnait
+      à personne. Ctrl+C et Ctrl+V ne servaient plus dès la PREMIÈRE
+      touche cliquée, c'est-à-dire au moment précis où l'on s'en sert.
+      Le focus revient, et **le curseur avec lui** — posé avant que le
+      champ ne soit construit, sans quoi « 0x » cliqué puis « ff » collé
+      donnait `ff0x`. Contrôle :
+      `the_keypad_gives_the_keyboard_back_to_the_expression`, qui fait
+      le geste entier (cliquer, puis coller) et a échoué deux fois avant
+      de passer.
+- [x] **Les deux touches rouges quittent le clavier** — « Effacer tout »
+      et le retour arrière tenaient un bandeau pleine largeur au-dessus
+      des chiffres : la plus grande surface de l'appareil pour ce qu'on
+      fait quand on s'est trompé. Elles sont au bout de la ligne
+      d'expression, là où est ce qu'elles effacent, et disent pourquoi
+      elles sont éteintes. Le clavier redevient un pavé régulier, et la
+      famille de couleur « ce qui efface » s'en va — deux familles, deux
+      teintes.
+- [x] **Les six familles de fonctions tiennent sur une ligne** —
+      « Calculer » passait seule à la suivante, où elle ne ressemblait
+      plus à un onglet mais à l'intertitre de la rangée de pastilles
+      qui la suit. Contrôle : `the_six_function_families_stay_on_one_row`,
+      qui compare les ordonnées, éprouvé en remettant les écarts par
+      défaut.
+- [x] **`Espace c a` ouvre et referme la calculatrice** — une famille
+      nouvelle, `Espace c…` (calculer), posée là où le reste de ce qui
+      calcule viendra se ranger. Ctrl+Maj+A dans le jeu ordinaire. C'est
+      la **seule bascule** du programme : elle s'ouvre au milieu d'autre
+      chose, et la refermer ne doit pas demander de viser sa croix. Le
+      bouton, le menu et la palette passent par la même action ;
+      `PaletteCommand::ShowCalculator` disparaît.
+
+---
+
+## 0 sexies. Le pseudo-code : la comparaison fondue dans la condition (A 9.21)
+
+- [x] **`comparer RCX et 0` + `tant que différent` deviennent
+      `tant que RCX ≠ 0`** — c'était le dernier endroit où le pseudo-code
+      restait du désassemblage traduit mot à mot. Le signe est dit des
+      deux côtés : sur `0xFFFFFFFF`, « plus petit » est vrai en signé et
+      faux en non signé.
+- [x] **Une opération ordinaire prête sa condition sans disparaître** —
+      `dec ecx` + `jnz` se lit « tant que ECX ≠ 0 », mais le `dec`
+      décrémente pour de bon. Et seulement « nul » ou « non nul » : ZF
+      est le seul indicateur que toutes ces instructions posent de la
+      même façon, et un contrôle exige que `dec` + `jb` soit refusé.
+- [x] **La ligne de structure garde l'adresse qu'elle a avalée** — sinon
+      le processeur arrêté sur le `cmp` n'a plus de ligne à surligner.
+      `Ligne` porte `est_structure`, au lieu de laisser déduire la
+      couleur d'une adresse absente.
+- [x] **`imul` à trois opérandes disait une phrase fausse** —
+      `imul rax, rbx, 4` veut dire « RAX = RBX × 4 », et non
+      « RAX = RAX × RBX ». Sur l'instruction que tout compilateur
+      produit pour indexer un tableau.
+- [x] **Les instructions de chaîne, `loop`, `jrcxz`, `xchg`, `cmpxchg`,
+      `xadd`, `int3`** — `rep movsb` est `memcpy`, `movsb` est un pas,
+      et le préfixe ne se voit pas dans le mnémonique. Reconnues à leurs
+      opérandes : chez iced-x86, `Movsd` nomme deux instructions.
+
+---
+
+## 0. Des onglets de vues, façon Cutter (A 9.15, A 9.16)
+
+Deux captures posées côte à côte — Cutter et Binary Ninja — et une
+question : « ne serait-ce pas mieux ? » Oui pour Cutter, non pour Binary
+Ninja, dont les onglets de documents existent déjà ici sous le nom de
+barre des fichiers. Ce que Cutter désigne, c'est l'autre rangée : **les
+vues d'un même objet**, que namsdec traitait en dix-neuf fenêtres
+flottantes. **Les neuf vues y sont passées**, en deux temps et dans la
+même journée.
+
+- [x] **Une rangée de vues sous les onglets de fichiers** — `Source` et
+      `Désassemblage` pour commencer. Deux rangées, deux rôles : l'une
+      dit *quel* programme, l'autre *comment* on le regarde, et elles se
+      distinguent à l'œil — rectangle plein marqué en haut et croix pour
+      un fichier, étiquette soulignée en bas et pas de croix pour une
+      vue. Contrôles : `tests/vues.rs`.
+- [x] **Le désassemblage a quitté sa fenêtre** — il garde le chemin du
+      retour. « Détacher » le sort dans une fenêtre pour le lire à côté
+      de la source, ce qu'un onglet interdit par construction ; fermer
+      la fenêtre le rend à la rangée. L'invariant : une vue est quelque
+      part, jamais aux deux endroits ni nulle part. Un seul corps pour
+      les deux lieux, retenu par
+      `le_desassemblage_dit_la_meme_chose_dans_la_rangee_et_dans_sa_fenetre`.
+- [x] **La barre des fichiers est sortie de l'éditeur** — elle vaut pour
+      toutes les vues : le désassemblage est celui de *ce* fichier, et
+      elle disparaissait avec l'éditeur.
+- [x] **Ce que le passage d'une fenêtre à un panneau a révélé** — un
+      contenu qui vivait dans une fenêtre ignore qu'il déborde, le cadre
+      le rognait. À 800 x 520 le listing n'a que deux pixels, et ses
+      adresses se peignaient sur l'onglet « Console ». Trouvé par le
+      banc dès que les scènes `vue / source` et `vue / disassembly` y
+      sont entrées. Deux remèdes : un `CentralPanel` qui borne et rogne,
+      et la phrase du moteur qui s'efface quand la place manque **dans
+      la rangée** — la hauteur seule ne distingue pas les deux lieux
+      (143 px dans la fenêtre à vide, 150 dans l'onglet à l'étroit),
+      c'est donc le lieu qui décide.
+
+- [x] **Les sept autres vues ont suivi** (A 9.16) — la rangée en portait
+      deux, elle en porte **neuf** : analyse, déroulement, décompilation,
+      chronologie, points d'arrêt, registres étendus et correctifs ont
+      quitté les fenêtres flottantes. Le menu Outils, la palette et
+      « Espace v g » *choisissent l'onglet* au lieu d'ouvrir une
+      fenêtre ; « Détacher » reste le chemin du côte à côte. L'onglet
+      porte un nom court et dit son titre entier au survol — « Analyse »
+      pour « Analyse du binaire » —, et la décompilation n'a d'onglet
+      que si son module est allumé. Contrôles : cinq nouveaux, deux
+      élargis, quatorze scènes de plus au banc.
+- [x] **La rangée passe à la ligne plutôt que de raboter** — 840 px
+      d'étiquettes pour 400 de zone centrale à 800 x 520 : trois lignes
+      là, une seule à partir de 1280. Le premier contrôle passait au
+      vert avec le défaut remis — « Correctifs » se peignait sur six
+      pixels, rogné au bord : *un onglet repoussé hors du bord n'est pas
+      absent, il est rogné*. Il compare maintenant chaque onglet à
+      lui-même au large, où rien ne le rogne.
+- [x] **Ce que la capture a vu, et que la mesure ne cherchait pas** —
+      « Détacher » se retrouvait seul sur une deuxième ligne, à vingt
+      pixels de l'onglet qu'il commande. Sa place est retenue d'avance
+      en haut à droite : une commande se cherche à sa place.
+- [x] **Un trou du banc** — la scène « vue / decompiler » ne montrait pas
+      la décompilation : son module est éteint par défaut, et la zone
+      centrale retombait en silence sur la source. Le même piège que
+      l'onglet RE du panneau. Retenu par
+      `chaque_scene_de_vue_montre_bien_sa_vue`, qui demande à
+      l'application ce qu'elle montre **après** avoir dessiné.
+
+- [x] **Deux retours sur la capture du bouton « Détacher »** — il
+      *touchait le bord* (une disposition de droite à gauche n'en laisse
+      rien : son liseré venait contre le trait du panneau, et deux
+      cadres qui se touchent se lisent comme un seul) et il était *trop
+      grand* — 27 px de haut dans une rangée de 26. Il garde sa
+      gouttière, la même constante que les onglets, et passe en petit :
+      17 px. Contrôle :
+      `le_bouton_detacher_garde_sa_gouttiere_et_reste_petit`, éprouvé en
+      remettant les deux défauts.
+- [x] **Renommer une fonction inconnue marche depuis la rangée** — le
+      geste tenait à un fil : un module ne renomme pas, il *demande*, et
+      la rangée devait apprendre à relever sa demande après le dessin.
+      Sans cela le champ s'ouvre, on tape, on valide, et il ne se passe
+      rien. Le contrôle refait le geste en entier — clic, Ctrl+A,
+      frappe, Entrée — et relit le nom dans les notes et à l'écran, sans
+      écrire sur le disque.
+- [~] **Le texte de l'analyse était coupé par son propre ascenseur** — la
+      largeur de lecture se prenait sur toute la place disponible,
+      ascenseur compris ; dans l'onglet, plus étroit que la largeur de
+      lecture, les paragraphes se posaient dix pixels trop larges et se
+      coupaient au milieu d'un mot. Corrigé, et **la correction se voit
+      sur deux captures** — mais aucun contrôle ne la retient : celui
+      qui a été écrit pour elle passait au vert avec le défaut remis, à
+      vingt-six largeurs, avec un binaire chargé et à l'échelle de cet
+      écran. Retiré plutôt que gardé pour l'ornement.
+
+Ce qui reste ouvert : l'**explorateur de fichiers**, flottant ici, docké
+à gauche chez Cutter comme chez Binary Ninja — ce n'est pas un onglet,
+c'est un panneau. La rangée des vues n'y est pour rien : la barre d'outils se
+dessine avant elle, dans un panneau à part.
+
+---
+
+## 0 bis. La revue egui du 24 octobre (A 9.13, A 9.14)
+
+Suite verte — 1 312 contrôles — et deux défauts trouvés en REGARDANT
+l'écran. Les deux étaient hors d'atteinte d'une mesure : le premier
+parce que le contrôle qui le couvrait posait la mauvaise question, le
+second parce qu'aucune question ne pouvait le poser.
+
+- [x] **Douze fenêtres rouvertes se posaient au même endroit** — dix-huit
+      paires se recouvraient à cent pour cent sur cet écran, et la moitié
+      des barres de titre était entièrement enterrée. Le contrôle en
+      place passait : il mesurait l'écart entre CENTRES, et huit pixels
+      lui suffisaient. L'éventail en diagonale devient une grille en
+      quinconce, à pas proportionnel ; les barres de titre couvertes
+      passent de 20 à 5, aux quatre tailles d'écran mesurées, et de 5 à 0
+      au-dessus de 2560 x 1440. Contrôle :
+      `no_window_that_comes_back_is_buried_under_the_others`.
+- [x] **Une fenêtre qui remplit l'écran ne prend plus de cran** — trouvé
+      par le banc, qui a rougi à la correction précédente : le graphe
+      chargé s'ouvre à 92 % de la largeur, son cran le faisait sortir, et
+      le numéro d'un bloc s'écrivait par-dessus la légende.
+      `default_window_pos_sized` rend le centre au-delà des deux tiers de
+      l'écran.
+- [x] **Le chevron de repli était la lettre « v »** — et « > » replié,
+      aux trois en-têtes du panneau. Un « v » gris devant un titre se lit
+      comme une lettre orpheline. Les chevrons d'egui à la place, choisis
+      après avoir DEMANDÉ à la police lesquels elle a : ⏷ et ⏵ oui, ▾ ▸
+      ▼ ▶ ⌄ ˅ non. Contrôle :
+      `a_fold_is_announced_by_a_chevron_never_by_a_letter`.
+
+Ce qui reste ouvert : à 1280 x 800, trois fenêtres restent enterrées, et
+ce n'est pas le placement qui en est cause — la fenêtre d'analyse mesure
+1 100 x 1 000 et celle des exercices 920 x 720. **La taille d'ouverture
+des grandes fenêtres sur petit écran** est le chantier suivant. La
+calculatrice, qui occupe 95 % de la hauteur, couvre la barre de menu au
+premier affichage : c'est la même cause.
+
+---
+
+## 0 quater. Les onglets du panneau en tête du panneau (A 9.19)
+
+« Menus onglets en bas ? » Non pour le bas — la console y a déjà ses
+onglets, et une rangée séparée de son contenu ne se lit plus. Mais la
+question pointait juste : ces onglets vivaient dans la **barre
+d'outils**, détachés du panneau qu'ils commandent.
+
+- [x] **Ils sont en tête du panneau** — sous le bandeau, au-dessus de ce
+      qu'ils commandent. Mesuré des deux côtés : la zone de travail
+      commençait à y=91 sous mille pixels (la barre se dédoublait pour
+      porter la rangée) et commence à **y=60 à toutes les largeurs**.
+      Trente-et-un pixels rendus à l'établi sur un écran qui n'en a que
+      520.
+- [x] **Le titre de la vue disparaît** — une rangée qui souligne
+      l'onglet actif *est* le titre de ce qu'on regarde ; « Pile » dans
+      la barre et « Pile » en tête de la vue, c'était deux fois la même
+      chose à trois cents pixels l'une de l'autre. `section_header` n'a
+      plus d'emploi.
+- [x] **Un seul corps pour les deux rangées d'onglets plats**
+      (`rangée_d_onglets`) — les vues de l'établi et les vues du panneau
+      sont la même chose, et doivent se lire pareil. Sans ce partage,
+      trois idiomes d'onglets au lieu de deux.
+- [x] **La calculatrice reste dans la barre** — panneau masqué, elle
+      n'aurait plus de chemin visible. Une icône tient à toutes les
+      largeurs, ce que six onglets ne faisaient pas.
+- [x] **Un défaut introduit par la factorisation, attrapé dans la
+      minute** — « Détacher » posé après les lignes avec `ui.put`, qui
+      ramène le curseur : tout ce qui suivait repartait du bas de la
+      *première* ligne, et à 800 x 520 la deuxième ligne d'onglets se
+      peignait sur le « Moteur : » du désassemblage.
+- [x] **Sept contrôles réancrés** — quatre cherchaient le titre disparu,
+      un comptait le nom de la vue deux fois, un situait la calculatrice
+      par rapport à l'onglet Pile, un prenait le titre comme repère du
+      haut de la vue. Aucun affaibli : celui de la place est même devenu
+      plus exigeant.
+
+---
+
+## 0 ter bis. Les outils mémoire évinçaient le vidage (A 9.18)
+
+« Les textes se chevauchent, RE-Mémoire », sur capture. Le
+chevauchement n'a pas été reproduit — binaire réel, mode Texte, replis
+ouverts par de vrais clics, vingt-quatre tailles, molette comprise :
+zéro recouvrement. Sa signature est celle de la veille : deux mises en
+page superposées, dont une restée du tampon. Mais la mesure a trouvé le
+voisin, et celui-là était réel.
+
+- [x] **Le vidage garde un plancher** — à 1280 x 820, les trois replis
+      ouverts, il n'était pas peint *du tout* : la hauteur de l'onglet
+      est imposée à son contenu, donc ce qui déborde est coupé et la
+      zone défilante du panneau n'a rien à faire défiler. On ouvrait la
+      carte et l'on perdait la vue, sans qu'une barre ne le dise. Cent
+      vingt pixels lui sont réservés et c'est la boîte à outils qui
+      défile ; la borne se calcule sur la place de l'onglet, jamais sur
+      ce que les outils mesurent. Au large, rien ne change — mêmes 208 à
+      222 textes peints. Contrôle :
+      `les_outils_depliés_n_evincent_pas_le_vidage`, éprouvé en
+      remettant le défaut.
+
+---
+
+## 0 ter. La bande vide qui n'existait pas (A 9.17)
+
+Une capture à 800 x 520 montrait une bande vide là où la barre d'outils
+replie les onglets du panneau — « Processeur », « Pile »… — et le banc
+disait l'inverse. L'affaire a été portée une demi-journée comme « l'un
+des deux se trompe ».
+
+- [x] **C'est le banc qui avait raison** — la mesure posée dans
+      *l'application en marche* (six `eprintln` derrière une variable
+      d'environnement) rend les rectangles : « onglet "cpu" : rect
+      [[421.9 63.0] - [505.7 88.0]] clip [[0.0 30.0] - [800.0 91.0]] ».
+      Posés, dans le cadre, non recouverts. Rien à corriger dans
+      l'application.
+- [x] **Ce qui mentait, c'était la capture** — l'application s'ouvre à
+      1280 x 820 ; je la redimensionnais après coup à `wmctrl`, et la
+      bande des onglets restait telle que le tampon l'avait laissée.
+      Un repeint complet, et les cinq onglets paraissent. Une capture
+      prise après un redimensionnement forcé n'est pas une capture de
+      l'application : c'est une capture d'un tampon. **Il y a un
+      troisième endroit où mesurer, et c'est le programme en marche.**
+- [x] **L'invariant qui aurait tranché tout de suite** — le repli
+      n'était tenu que par « ne rien recouvrir », qui est l'invariant
+      d'un évitement : une rangée qui ne se peint pas du tout ne
+      recouvre rien non plus.
+      `the_sidebar_tabs_are_painted_whole_on_the_smallest_screen` exige
+      la présence et compare chaque étiquette à elle-même au large.
+      Éprouvé en remettant deux défauts, un par invariant.
 
 ---
 

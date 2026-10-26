@@ -227,19 +227,49 @@ impl NamsdecApp {
             .min_size(SIDEBAR_TAB_MIN.min(plafond))
             .max_size(plafond)
             .show(ui, |ui| {
-                // Pas de filet ici : `section_header` en pose un sous le
-                // titre, exactement comme `section_toggle` le fait pour
-                // les deux zones du dessus. Il y en avait donc DEUX à
-                // trente-quatre pixels l'un de l'autre au-dessus de
-                // « Pile », là où « Prochaine instruction » et « État du
-                // processeur » n'en portent qu'un. On lisait une rayure
-                // sans savoir d'où elle venait.
-                // Le titre de la vue qu'on regarde. Les onglets sont
-                // montés dans la barre d'outils, et le panneau se
-                // retrouvait à montrer des adresses sans dire de quoi :
-                // une colonne de nombres n'annonce pas qu'elle est une
-                // pile.
-                section_header(ui, self.theme, self.active_tab.title(s));
+                // LES ONGLETS, EN TÊTE DU PANNEAU, juste au-dessus de ce
+                // qu'ils commandent.
+                //
+                // Ils vivaient dans la barre d'outils, en haut à droite,
+                // et le panneau portait à leur place le TITRE de la vue
+                // active. Deux défauts tenaient à cette distance : une
+                // étiquette séparée de son contenu ne se lit plus comme
+                // son étiquette — on cherchait en haut de l'écran de
+                // quoi parlait une colonne de nombres —, et la rangée ne
+                // tenait pas dans la barre en dessous de mille pixels,
+                // où elle passait à la ligne et grandissait la barre de
+                // trente-et-un pixels pour toute la séance.
+                //
+                // Le titre disparaît avec le déplacement : une rangée
+                // qui souligne l'onglet actif EST le titre de ce qu'on
+                // regarde, et le répéter en dessous ne faisait que
+                // prendre une ligne de plus dans un panneau dense.
+                //
+                // La forme est celle de la rangée des vues, et c'est le
+                // même corps qui la peint (`rangée_d_onglets`) : ce sont
+                // la même chose — des façons de regarder un même objet.
+                let onglets: Vec<SidebarTab> = SidebarTab::ALL
+                    .into_iter()
+                    .filter(|tab| *tab != SidebarTab::Re || self.show_re_tab)
+                    .collect();
+                let étiquettes: Vec<(&str, Option<&str>)> = onglets
+                    .iter()
+                    .map(|tab| {
+                        let label = tab.label(s);
+                        let titre = tab.title(s);
+                        (label, (titre != label).then_some(titre))
+                    })
+                    .collect();
+                let actif = onglets
+                    .iter()
+                    .position(|tab| *tab == self.active_tab)
+                    .unwrap_or(0);
+                if let Some(rang) =
+                    rangée_d_onglets(ui, self.theme, &étiquettes, actif, 0.0, |_| {})
+                {
+                    self.active_tab = onglets[rang];
+                }
+                ui.add_space(2.0);
                 // LE CONTENU EST BORNÉ À LA PLACE DU PANNEAU, et ce
                 // n'est pas un confort : c'est ce qui empêche l'état du
                 // processeur de se peindre par-dessus.
@@ -809,7 +839,7 @@ impl NamsdecApp {
             egui::Label::new(egui::RichText::new(s.vectors_open).color(theme.dim)),
         );
         if link.on_hover_text(s.vectors_hint).clicked() {
-            self.show_vectors = true;
+            self.montrer_vue(VueCentrale::Vectors);
         }
         // De l'air sous le dernier élément de la zone.
         //
@@ -919,7 +949,7 @@ impl NamsdecApp {
         // ailleurs, ce qui évite d'avoir à connaître cette façon-là.
         let entête = ui
             .horizontal(|ui| {
-                ui.colored_label(theme.dim, if détail { "v" } else { ">" });
+                ui.colored_label(theme.dim, if détail { "⏷" } else { "⏵" });
                 ui.colored_label(theme.dim, s.next_instruction_detail);
             })
             .response
@@ -2777,176 +2807,209 @@ impl NamsdecApp {
         // dense, où il n'apprenait rien.
         let mut aller = None;
         let mut écrire = None;
-        repli(
-            ui,
-            theme,
-            ui.make_persistent_id("memory_tools"),
-            s.memory_tools,
-            |ui| {
-                // La carte, comme `vmmap` : où commence le code, où
-                // finit la pile, ce que le tas occupe. Un refus d'accès
-                // n'apprend rien à qui ne sait pas où il se trouvait.
-                if !zones.is_empty() {
-                    repli(
-                        ui,
-                        theme,
-                        ui.make_persistent_id("memory_map"),
-                        &format!("{} ({})", s.memory_map, zones.len()),
-                        |ui| {
-                            // La carte défile dans sa propre fenêtre, bornée
-                            // en hauteur. Sans ça, un binaire aux régions
-                            // nombreuses — les sections d'un programme lié
-                            // dynamiquement, .init, .text, .fini… — dépliait
-                            // une carte si haute que le contenu de l'onglet
-                            // dépassait la place que le panneau latéral lui
-                            // réserve. Le partage à trois (bandeau, état du
-                            // processeur, onglet) divergeait alors : l'onglet
-                            // remontait par-dessus les registres — la carte se
-                            // peignait sur RAX…RIP — ou filait sous le bas de
-                            // la fenêtre. Mesuré sur les deux faces du défaut.
-                            // Bornée, la carte ne peut plus pousser le reste.
-                            egui::ScrollArea::vertical()
-                                .id_salt("memory_map_scroll")
-                                .max_height(180.0)
-                                .show(ui, |ui| {
-                                    egui::Grid::new("memory_map_grid")
-                                        .num_columns(3)
-                                        .min_col_width(0.0)
-                                        .striped(true)
+        // LE VIDAGE GARDE SON PLANCHER, et les outils dépliés ne
+        // l'évincent plus. Mesuré le 26 octobre 2026 sur un binaire lié
+        // dynamiquement, les trois replis ouverts : à 1280 x 820, la
+        // boîte à outils prenait tout, et le vidage — ce qu'on est venu
+        // voir — n'était pas peint DU TOUT. Pas rogné, pas repoussé sous
+        // une barre : absent. La hauteur de l'onglet est imposée à son
+        // contenu (voir `sidebar_ui`), si bien que ce qui ne tient pas
+        // est coupé et que la zone défilante du panneau n'a rien à faire
+        // défiler.
+        //
+        // La borne est CALCULÉE sur la place de l'onglet, jamais sur ce
+        // que les outils mesurent : rien ne se reboucle. Au large elle
+        // est plus haute que leur contenu, la zone épouse ce contenu
+        // (`auto_shrink` en hauteur) et aucune barre ne paraît — l'écran
+        // large ne change pas d'allure.
+        let place_outils = (ui.available_height() - PLANCHER_DU_VIDAGE).max(90.0);
+        egui::ScrollArea::vertical()
+            .id_salt("memory_tools_scroll")
+            .auto_shrink([false, true])
+            .max_height(place_outils)
+            .show(ui, |ui| {
+                repli(
+                    ui,
+                    theme,
+                    ui.make_persistent_id("memory_tools"),
+                    s.memory_tools,
+                    |ui| {
+                        // La carte, comme `vmmap` : où commence le code, où
+                        // finit la pile, ce que le tas occupe. Un refus d'accès
+                        // n'apprend rien à qui ne sait pas où il se trouvait.
+                        if !zones.is_empty() {
+                            repli(
+                                ui,
+                                theme,
+                                ui.make_persistent_id("memory_map"),
+                                &format!("{} ({})", s.memory_map, zones.len()),
+                                |ui| {
+                                    // La carte défile dans sa propre fenêtre, bornée
+                                    // en hauteur. Sans ça, un binaire aux régions
+                                    // nombreuses — les sections d'un programme lié
+                                    // dynamiquement, .init, .text, .fini… — dépliait
+                                    // une carte si haute que le contenu de l'onglet
+                                    // dépassait la place que le panneau latéral lui
+                                    // réserve. Le partage à trois (bandeau, état du
+                                    // processeur, onglet) divergeait alors : l'onglet
+                                    // remontait par-dessus les registres — la carte se
+                                    // peignait sur RAX…RIP — ou filait sous le bas de
+                                    // la fenêtre. Mesuré sur les deux faces du défaut.
+                                    // Bornée, la carte ne peut plus pousser le reste.
+                                    egui::ScrollArea::vertical()
+                                        .id_salt("memory_map_scroll")
+                                        .max_height(180.0)
                                         .show(ui, |ui| {
-                                            for zone in &zones {
-                                                let dedans = zone.range.contains(&self.mem_addr);
-                                                let ligne = ui
-                                                    .colored_label(
-                                                        if dedans {
-                                                            theme.accent
-                                                        } else {
-                                                            theme.text
-                                                        },
-                                                        egui::RichText::new(format!(
-                                                            "{:#x}-{:#x}",
-                                                            zone.range.start, zone.range.end
-                                                        ))
-                                                        .monospace(),
-                                                    )
-                                                    .on_hover_text(s.memory_map_hint);
-                                                ui.colored_label(
-                                                    theme.register,
-                                                    egui::RichText::new(perms_text(zone.perms))
-                                                        .monospace(),
-                                                );
-                                                ui.colored_label(theme.dim, zone.name);
-                                                let rangée = ligne
-                                                    .interact(egui::Sense::click())
-                                                    .on_hover_cursor(
-                                                        egui::CursorIcon::PointingHand,
-                                                    );
-                                                souligne_au_survol(ui, &rangée);
-                                                if rangée.clicked() {
-                                                    aller = Some(zone.range.start);
-                                                }
-                                                ui.end_row();
-                                            }
+                                            egui::Grid::new("memory_map_grid")
+                                                .num_columns(3)
+                                                .min_col_width(0.0)
+                                                .striped(true)
+                                                .show(ui, |ui| {
+                                                    for zone in &zones {
+                                                        let dedans =
+                                                            zone.range.contains(&self.mem_addr);
+                                                        let ligne = ui
+                                                            .colored_label(
+                                                                if dedans {
+                                                                    theme.accent
+                                                                } else {
+                                                                    theme.text
+                                                                },
+                                                                egui::RichText::new(format!(
+                                                                    "{:#x}-{:#x}",
+                                                                    zone.range.start,
+                                                                    zone.range.end
+                                                                ))
+                                                                .monospace(),
+                                                            )
+                                                            .on_hover_text(s.memory_map_hint);
+                                                        ui.colored_label(
+                                                            theme.register,
+                                                            egui::RichText::new(perms_text(
+                                                                zone.perms,
+                                                            ))
+                                                            .monospace(),
+                                                        );
+                                                        ui.colored_label(theme.dim, zone.name);
+                                                        let rangée = ligne
+                                                            .interact(egui::Sense::click())
+                                                            .on_hover_cursor(
+                                                                egui::CursorIcon::PointingHand,
+                                                            );
+                                                        souligne_au_survol(ui, &rangée);
+                                                        if rangée.clicked() {
+                                                            aller = Some(zone.range.start);
+                                                        }
+                                                        ui.end_row();
+                                                    }
+                                                });
                                         });
+                                },
+                            );
+                        }
+                        // Chercher : c'est le `search` de pwndbg. On a une chaîne, une
+                        // valeur, une adresse — la question est « où ? », et la réponse
+                        // ne s'obtient pas en faisant défiler un vidage.
+                        repli(
+                            ui,
+                            theme,
+                            ui.make_persistent_id("memory_search"),
+                            s.search_title,
+                            |ui| {
+                                ui.horizontal_wrapped(|ui| {
+                                    for kind in SearchKind::ALL {
+                                        if ui
+                                            .selectable_label(
+                                                self.mem_search_kind == kind,
+                                                kind.label(s),
+                                            )
+                                            .clicked()
+                                        {
+                                            self.mem_search_kind = kind;
+                                        }
+                                    }
                                 });
-                        },
-                    );
-                }
-                // Chercher : c'est le `search` de pwndbg. On a une chaîne, une
-                // valeur, une adresse — la question est « où ? », et la réponse
-                // ne s'obtient pas en faisant défiler un vidage.
-                repli(
-                    ui,
-                    theme,
-                    ui.make_persistent_id("memory_search"),
-                    s.search_title,
-                    |ui| {
-                        ui.horizontal_wrapped(|ui| {
-                            for kind in SearchKind::ALL {
-                                if ui
-                                    .selectable_label(self.mem_search_kind == kind, kind.label(s))
-                                    .clicked()
-                                {
-                                    self.mem_search_kind = kind;
+                                ui.add(
+                                    egui::TextEdit::singleline(&mut self.mem_search)
+                                        .font(egui::TextStyle::Monospace)
+                                        .desired_width(f32::INFINITY)
+                                        .hint_text(s.search_hint),
+                                );
+                                if cherché.is_none() {
+                                    return;
                                 }
-                            }
-                        });
-                        ui.add(
-                            egui::TextEdit::singleline(&mut self.mem_search)
-                                .font(egui::TextStyle::Monospace)
-                                .desired_width(f32::INFINITY)
-                                .hint_text(s.search_hint),
+                                // Vingt-quatre adresses : au-delà, la liste cesse
+                                // d'être une réponse.
+                                if trouvés.is_empty() {
+                                    ui.colored_label(theme.dim, s.search_none);
+                                    return;
+                                }
+                                ui.colored_label(
+                                    theme.dim,
+                                    format!("{} {} :", trouvés.len(), s.search_found),
+                                );
+                                for addr in &trouvés {
+                                    let addr = *addr;
+                                    let étiquette = egui::Label::new(
+                                        egui::RichText::new(format!("{addr:#x}"))
+                                            .monospace()
+                                            .color(theme.accent),
+                                    );
+                                    let lien =
+                                        cliquable(ui, étiquette).on_hover_text(s.search_goto);
+                                    if lien.clicked() {
+                                        aller = Some(addr);
+                                    }
+                                }
+                            },
                         );
-                        if cherché.is_none() {
-                            return;
-                        }
-                        // Vingt-quatre adresses : au-delà, la liste cesse
-                        // d'être une réponse.
-                        if trouvés.is_empty() {
-                            ui.colored_label(theme.dim, s.search_none);
-                            return;
-                        }
-                        ui.colored_label(
-                            theme.dim,
-                            format!("{} {} :", trouvés.len(), s.search_found),
+                        // Écrire ici, à la main : le pendant de l'édition d'un registre.
+                        // Un débogueur écrit là où le programme n'a pas le droit — c'est
+                        // ce qui permet d'essayer « et si ce tampon contenait ça ? » —,
+                        // et le dire vaut mieux que de le cacher.
+                        repli(
+                            ui,
+                            theme,
+                            ui.make_persistent_id("memory_poke"),
+                            s.poke_title,
+                            |ui| {
+                                ui.horizontal_wrapped(|ui| {
+                                    for kind in SearchKind::ALL {
+                                        if ui
+                                            .selectable_label(
+                                                self.mem_search_kind == kind,
+                                                kind.label(s),
+                                            )
+                                            .clicked()
+                                        {
+                                            self.mem_search_kind = kind;
+                                        }
+                                    }
+                                });
+                                ui.horizontal(|ui| {
+                                    ui.add(
+                                        egui::TextEdit::singleline(&mut self.mem_poke)
+                                            .font(egui::TextStyle::Monospace)
+                                            .desired_width(180.0)
+                                            .hint_text(s.poke_hint),
+                                    );
+                                    let octets = self.mem_search_kind.needle(&self.mem_poke);
+                                    ui.add_enabled_ui(octets.is_some(), |ui| {
+                                        if framed_button(ui, theme, s.poke_write)
+                                            .on_hover_text(s.poke_write_hint)
+                                            .clicked()
+                                            && let Some(octets) = octets
+                                        {
+                                            écrire = Some(octets);
+                                        }
+                                    });
+                                });
+                                ui.colored_label(theme.dim, s.poke_explain);
+                            },
                         );
-                        for addr in &trouvés {
-                            let addr = *addr;
-                            let étiquette = egui::Label::new(
-                                egui::RichText::new(format!("{addr:#x}"))
-                                    .monospace()
-                                    .color(theme.accent),
-                            );
-                            let lien = cliquable(ui, étiquette).on_hover_text(s.search_goto);
-                            if lien.clicked() {
-                                aller = Some(addr);
-                            }
-                        }
                     },
                 );
-                // Écrire ici, à la main : le pendant de l'édition d'un registre.
-                // Un débogueur écrit là où le programme n'a pas le droit — c'est
-                // ce qui permet d'essayer « et si ce tampon contenait ça ? » —,
-                // et le dire vaut mieux que de le cacher.
-                repli(
-                    ui,
-                    theme,
-                    ui.make_persistent_id("memory_poke"),
-                    s.poke_title,
-                    |ui| {
-                        ui.horizontal_wrapped(|ui| {
-                            for kind in SearchKind::ALL {
-                                if ui
-                                    .selectable_label(self.mem_search_kind == kind, kind.label(s))
-                                    .clicked()
-                                {
-                                    self.mem_search_kind = kind;
-                                }
-                            }
-                        });
-                        ui.horizontal(|ui| {
-                            ui.add(
-                                egui::TextEdit::singleline(&mut self.mem_poke)
-                                    .font(egui::TextStyle::Monospace)
-                                    .desired_width(180.0)
-                                    .hint_text(s.poke_hint),
-                            );
-                            let octets = self.mem_search_kind.needle(&self.mem_poke);
-                            ui.add_enabled_ui(octets.is_some(), |ui| {
-                                if framed_button(ui, theme, s.poke_write)
-                                    .on_hover_text(s.poke_write_hint)
-                                    .clicked()
-                                    && let Some(octets) = octets
-                                {
-                                    écrire = Some(octets);
-                                }
-                            });
-                        });
-                        ui.colored_label(theme.dim, s.poke_explain);
-                    },
-                );
-            },
-        );
+            });
         match coloré {
             Some(job) => {
                 egui::ScrollArea::both()
@@ -3025,11 +3088,13 @@ impl NamsdecApp {
             .on_hover_text(s.analysis_hint)
             .on_disabled_hover_text(s.no_binary_assembled);
         if bouton.clicked() {
-            self.show_analysis = true;
-            // Les rubriques d'outils apprennent à cet instant lequel
-            // est là : la question coûte un parcours du PATH, parfois
-            // un lancement, et ne se pose donc qu'en ouvrant.
-            self.deliver_tool_states();
+            // Les rubriques d'outils apprennent lequel est là en
+            // ouvrant la vue, et non ici : la question coûte un
+            // parcours du PATH, parfois un lancement, et l'analyse
+            // s'ouvre aussi par son onglet, par le menu et par la
+            // palette. Posée dans `montrer_vue`, elle se pose une fois
+            // pour les quatre chemins.
+            self.montrer_vue(VueCentrale::Analysis);
         }
         ui.add_space(10.0);
     }
@@ -3566,6 +3631,14 @@ pub(crate) fn hex_job(
 /// L'état est gardé par egui, comme celui d'un `CollapsingHeader` : il
 /// survit donc au redémarrage, et les deux triangles de la vue mémoire
 /// se retrouvent repliés comme on les avait laissés.
+/// Ce que le vidage de la mémoire garde pour lui, quoi qu'on déplie
+/// au-dessus.
+///
+/// Six lignes de seize octets, ou quatre lignes de texte : de quoi lire
+/// quelque chose. En dessous, l'onglet ne montre plus ce qu'il promet,
+/// et l'on déplie les outils sans savoir qu'on perd la vue.
+const PLANCHER_DU_VIDAGE: f32 = 120.0;
+
 pub(crate) fn repli(
     ui: &mut egui::Ui,
     theme: &'static Theme,
@@ -3579,7 +3652,7 @@ pub(crate) fn repli(
         .unwrap_or(false);
     let bande = ui
         .horizontal(|ui| {
-            ui.colored_label(theme.dim, if ouvert { "v" } else { ">" });
+            ui.colored_label(theme.dim, if ouvert { "⏷" } else { "⏵" });
             ui.label(egui::RichText::new(titre).color(theme.text));
         })
         .response
@@ -3607,7 +3680,12 @@ pub(crate) fn section_toggle(
     ui.add_space(2.0);
     let réponse = ui
         .horizontal(|ui| {
-            ui.colored_label(theme.dim, if *ouvert { "v" } else { ">" });
+            // LES CHEVRONS D'EGUI, et non les lettres « v » et « > » :
+            // en gris pâle à côté d'un titre, un « v » minuscule se lit
+            // comme une lettre orpheline, et l'on ne devine pas qu'il
+            // annonce un repli. La police les a — demandé à
+            // `has_glyph`, qui refuse en revanche ▾ et ▼.
+            ui.colored_label(theme.dim, if *ouvert { "⏷" } else { "⏵" });
             ui.label(egui::RichText::new(titre).strong().color(theme.text));
         })
         .response
@@ -3640,12 +3718,6 @@ pub(crate) fn rule(ui: &mut egui::Ui, theme: &'static Theme) {
     ui.painter()
         .rect_filled(rect, 0.0, theme.dim.gamma_multiply(0.35));
     ui.add_space(4.0);
-}
-
-pub(crate) fn section_header(ui: &mut egui::Ui, theme: &'static Theme, titre: &str) {
-    ui.add_space(2.0);
-    ui.label(egui::RichText::new(titre).strong().color(theme.text));
-    rule(ui, theme);
 }
 
 /// Les droits d'une zone, à la façon d'un `vmmap` : `rwx`, un tiret pour

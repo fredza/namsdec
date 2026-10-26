@@ -295,7 +295,20 @@ fin:
     );
 
     app.dispatch(Action::ShowFlow);
-    assert!(app.show_flow, "l'action ouvre la fenêtre");
+    // Le raccourci MONTRE LA VUE, et depuis le 25 octobre 2026 la vue
+    // est un onglet de la rangée : « Espace v g » la choisit au lieu
+    // d'ouvrir une fenêtre. Ce qui suit vaut pour les deux lieux — le
+    // graphe se peint le même, et c'est tout l'objet d'un corps unique.
+    assert_eq!(
+        app.vue_centrale,
+        VueCentrale::Flow,
+        "l'action montre le déroulement"
+    );
+    assert!(
+        !app.show_flow,
+        "et elle ne le détache pas : une vue est quelque part, et la \
+         rangée est son lieu par défaut"
+    );
 
     let ctx = egui::Context::default();
     app.apply_theme(&ctx);
@@ -330,7 +343,14 @@ fin:
         output.textures_delta.clear();
     }
 
-    assert!(peint.contains(strings(Lang::Fr).flow_title), "{peint}");
+    // La vue se nomme à l'écran : dans la rangée, c'est son onglet qui
+    // le fait — « Déroulement » —, le titre entier (« Déroulement du
+    // programme ») restant au bandeau de la fenêtre quand on la
+    // détache, et en infobulle sur l'onglet.
+    assert!(
+        peint.contains(VueCentrale::Flow.label(strings(Lang::Fr))),
+        "{peint}"
+    );
     // Les instructions du programme sont dans les boîtes.
     for attendu in ["dec rcx", "hlt"] {
         assert!(peint.contains(attendu), "« {attendu} » manque :\n{peint}");

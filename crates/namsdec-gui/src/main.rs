@@ -51,6 +51,7 @@ mod text;
 mod timeline;
 mod tools;
 mod vue_listing;
+mod vues;
 mod widgets;
 mod windows;
 
@@ -1100,6 +1101,20 @@ struct NamsdecApp {
     /// Sans ce témoin, le champ redemanderait le focus à chaque image et
     /// l'on ne pourrait plus rien cliquer d'autre dans la fenêtre.
     calculator_was_open: bool,
+    /// Le clavier doit-il revenir à l'expression à la prochaine image ?
+    ///
+    /// Un clic sur une touche du clavier, sur un bit ou sur une fonction
+    /// RETIRE le focus au champ de saisie — ce sont des surfaces
+    /// cliquables qui ne le prennent pas, et egui rend alors le focus à
+    /// personne. Le champ muet, Ctrl+V ne collait plus rien et Ctrl+C ne
+    /// copiait plus rien : la calculatrice perdait le presse-papiers dès
+    /// la première touche cliquée, ce qui est exactement le moment où
+    /// l'on s'en sert.
+    ///
+    /// Relevé à la fin d'une image et agi à la suivante : le focus se
+    /// rend pendant l'image, et le redemander avant que ce soit fait ne
+    /// tient pas.
+    calc_reprendre_clavier: bool,
     /// La fenêtre de l'aide sur l'instruction. Une fenêtre et non un
     /// onglet de la console : celle-ci porte ce que *le programme* dit —
     /// sa sortie, les diagnostics de nasm —, et une fiche d'instruction
@@ -1224,8 +1239,14 @@ struct NamsdecApp {
     /// tampon pour voir ce que le programme en fera. `patch` chez
     /// pwndbg.
     mem_poke: String,
-    /// Le panneau de désassemblage, et le moteur qu'il emploie.
+    /// Ce que la zone centrale montre : la source, ou l'une des vues
+    /// qui ont quitté les fenêtres flottantes pour la rangée.
+    vue_centrale: VueCentrale,
+    /// Le désassemblage DANS SA FENÊTRE, c'est-à-dire détaché de la
+    /// rangée. Fermer la fenêtre l'y ramène : `vue_détachée` lit ce
+    /// booléen, et la rangée s'en déduit.
     show_disassembly: bool,
+    /// Le moteur que le désassemblage emploie.
     disassembler: String,
     /// Ce qu'on cherche dans le listing.
     disassembly_query: String,
@@ -1673,7 +1694,6 @@ enum PaletteCommand {
     /// Ouvrir la liste des exercices — seulement quand le module est
     /// chargé, sans quoi la commande n'est pas proposée.
     ShowExercises,
-    ShowCalculator,
     ShowAnalysis,
     ShowVectors,
     ShowBreakpoints,
@@ -2132,6 +2152,7 @@ impl Default for NamsdecApp {
             show_calculator: false,
             calc_input: String::new(),
             calculator_was_open: false,
+            calc_reprendre_clavier: false,
             show_help: false,
             show_analysis: false,
             show_vectors: false,
@@ -2166,6 +2187,7 @@ impl Default for NamsdecApp {
             sidebar_banner_height: 0.0,
             sidebar_tab_last: SIDEBAR_TAB_MIN,
             mem_poke: String::new(),
+            vue_centrale: VueCentrale::Source,
             show_disassembly: false,
             disassembler: PSEUDO_ID.to_owned(),
             disassembly_query: String::new(),
@@ -2357,7 +2379,7 @@ impl NamsdecApp {
             Action::GoToLabel => self.do_goto_label(),
             Action::Find => self.do_find(),
             Action::New => self.do_new(),
-            Action::ShowFlow => self.show_flow = true,
+            Action::ShowFlow => self.montrer_vue(VueCentrale::Flow),
             Action::NextTab => self.cycle_tab(1),
             Action::PreviousTab => self.cycle_tab(-1),
             Action::CloseTab => self.close_tab(self.active_tab_index),
@@ -2368,6 +2390,16 @@ impl NamsdecApp {
             Action::CommentAddress => self.start_note(NoteKind::Comment),
             Action::NextMatch => self.go_to_match(true),
             Action::PreviousMatch => self.go_to_match(false),
+            // Une BASCULE, et c'est le seul chemin qui en soit une :
+            // la calculatrice s'ouvre au milieu d'autre chose, et la
+            // même frappe doit la renvoyer. L'ouvrir sans pouvoir la
+            // refermer de la même main obligeait à viser sa croix.
+            Action::ToggleCalculator => {
+                self.show_calculator = !self.show_calculator;
+                if !self.show_calculator {
+                    self.calculator_was_open = false;
+                }
+            }
         }
     }
 
@@ -2485,13 +2517,15 @@ impl NamsdecApp {
             PaletteCommand::ShowPreferences => self.open_preferences(),
             PaletteCommand::ShowAbout => self.show_about = true,
             PaletteCommand::ShowExercises => self.show_exercises = true,
-            PaletteCommand::ShowCalculator => self.show_calculator = true,
-            PaletteCommand::ShowAnalysis => self.show_analysis = true,
-            PaletteCommand::ShowVectors => self.show_vectors = true,
-            PaletteCommand::ShowBreakpoints => self.show_breakpoints = true,
-            PaletteCommand::ShowTimeline => self.show_timeline = true,
+            // Les vues de la rangée : la palette les y choisit, comme
+            // le menu Outils, et laisse en place celles qu'on a
+            // détachées.
+            PaletteCommand::ShowAnalysis => self.montrer_vue(VueCentrale::Analysis),
+            PaletteCommand::ShowVectors => self.montrer_vue(VueCentrale::Vectors),
+            PaletteCommand::ShowBreakpoints => self.montrer_vue(VueCentrale::Breakpoints),
+            PaletteCommand::ShowTimeline => self.montrer_vue(VueCentrale::Timeline),
             PaletteCommand::ShowCyclic => self.show_cyclic = true,
-            PaletteCommand::ShowDisassembly => self.show_disassembly = true,
+            PaletteCommand::ShowDisassembly => self.montrer_vue(VueCentrale::Disassembly),
             PaletteCommand::SetTheme(theme) => {
                 self.theme = theme;
                 self.apply_theme(ctx);
@@ -3588,7 +3622,18 @@ impl NamsdecApp {
         // l'éditeur. C'est elle qu'une fenêtre agrandie occupe, pour ne
         // pas recouvrir les menus ni la barre d'état.
         self.zone_de_travail = ui.available_rect_before_wrap();
-        timed(&mut spans, "éditeur", || self.editor_ui(ui));
+        // Les fichiers, puis les vues, puis la vue elle-même.
+        //
+        // La barre des fichiers est sortie de `editor_ui` : elle dit
+        // quel programme on travaille, ce qui reste vrai quelle que
+        // soit la vue — le désassemblage est celui de CE fichier. Elle
+        // disparaissait en même temps que l'éditeur, et l'on ne savait
+        // plus de quoi on lisait le code machine.
+        timed(&mut spans, "onglets", || {
+            self.tabs_bar_ui(ui);
+            self.views_bar_ui(ui);
+        });
+        timed(&mut spans, "éditeur", || self.vue_centrale_ui(ui));
 
         // Fenêtres flottantes — dont l'explorateur, qui n'occupe donc plus
         // de place dans la mise en page et ne dépend d'aucun panneau.
@@ -3815,19 +3860,27 @@ fn window_size(plein: bool, pleine: egui::Vec2, vide: egui::Vec2) -> egui::Vec2 
 /// tant qu'on les ouvrait une à une — depuis que la séance rouvre celles
 /// qu'on avait laissées, on peut en retrouver douze au même endroit.
 ///
-/// Chacune reçoit donc un cran sur une diagonale, comme un jeu de cartes
-/// qu'on étale. Le cran vient du RANG de la fenêtre dans
+/// Chacune reçoit donc sa case dans une GRILLE, comme un jeu de cartes
+/// qu'on étale. La case vient du RANG de la fenêtre dans
 /// `FENÊTRES_REPRISES`, c'est-à-dire d'une table fixe : la place d'une
 /// fenêtre ne dépend ni de ce qu'elle contient, ni de sa taille, ni de
 /// ce qui est déjà ouvert. Rien ne se mesure, donc rien ne peut se
 /// reboucler d'une image à l'autre — c'est le premier piège de cette
 /// interface, et il a déjà coûté trois corrections retirées.
 ///
-/// L'éventail est CENTRÉ sur le milieu de l'écran : la première fenêtre
-/// se pose en haut à gauche de ce milieu, la dernière en bas à droite,
-/// et l'ensemble reste groupé là où l'œil va le chercher. Le pas se
-/// resserre sur un petit écran, de sorte que l'éventail n'occupe jamais
-/// plus du tiers de la hauteur.
+/// Une grille, et non plus une diagonale à pas unique : celle-ci
+/// n'étalait que sur un axe, et son pas écrêté à vingt-quatre pixels
+/// tassait douze fenêtres dans deux cent soixante pixels — sur l'écran
+/// de cette machine, dix-huit paires se recouvraient entièrement, et
+/// l'on cherchait dans le menu Outils des fenêtres qu'on croyait
+/// fermées. Le contrôle d'alors ne voyait rien : il mesurait l'écart
+/// entre centres, que huit pixels contentaient.
+///
+/// La grille est CENTRÉE sur le milieu de l'écran, et son pas est
+/// proportionnel à lui : l'éventail couvre la majeure partie de la
+/// place quand il y en a, et se resserre quand il n'y en a plus. Un
+/// plafond le retient de partir aux quatre coins d'un très grand écran,
+/// où l'ensemble doit rester groupé là où l'œil va le chercher.
 ///
 /// Une fenêtre absente de la table garde le centre : c'est ce qu'il faut
 /// pour les boîtes modales — Préférences, « À propos », la saisie du
@@ -3835,14 +3888,63 @@ fn window_size(plein: bool, pleine: egui::Vec2, vide: egui::Vec2) -> egui::Vec2 
 /// elle, a son propre coin en bas à droite et ne demande pas de cran :
 /// on la lit en continuant d'écrire.
 fn default_window_pos(ctx: &egui::Context, nom: &str) -> egui::Pos2 {
+    default_window_pos_sized(ctx, nom, egui::Vec2::ZERO)
+}
+
+/// Le même, pour une fenêtre dont on sait déjà la taille qu'elle
+/// demande.
+///
+/// UNE FENÊTRE QUI REMPLIT L'ÉCRAN NE PREND PAS DE CRAN : il n'y a pas
+/// de place pour l'étaler, et l'écart la ferait sortir — egui la ramène
+/// alors, en rognant ce qu'elle montre. Le graphe en a fait la preuve :
+/// chargé, il s'ouvre à quatre-vingt-douze pour cent de la largeur, et
+/// son cran lui faisait écrire le numéro d'un bloc par-dessus sa propre
+/// légende.
+///
+/// La taille passée est celle que la fenêtre DEMANDE, un calcul et non
+/// une mesure de l'image précédente : rien ne se reboucle.
+fn default_window_pos_sized(ctx: &egui::Context, nom: &str, voulue: egui::Vec2) -> egui::Pos2 {
     let écran = ctx.viewport_rect();
+    if voulue.x > écran.width() * 0.66 || voulue.y > écran.height() * 0.66 {
+        return écran.center();
+    }
     let Some(rang) = FENÊTRES_REPRISES.iter().position(|(id, _, _)| *id == nom) else {
         return écran.center();
     };
     let combien = FENÊTRES_REPRISES.len() as f32;
-    let pas = (écran.height() / (3.0 * combien)).clamp(8.0, 24.0);
-    let cran = rang as f32 - (combien - 1.0) / 2.0;
-    écran.center() + egui::vec2(cran * pas, cran * pas)
+    // Le nombre de colonnes suit la LARGEUR DISPONIBLE, et non la
+    // racine du nombre de fenêtres : à 1280 points de large — ce que
+    // donne cet écran sous une densité de trois —, quatre colonnes
+    // écartent tant la première qu'egui la plaque contre le bord, par
+    // dessus les pastilles de la barre de titre. Une fenêtre ordinaire
+    // demande ses six cents points ; on en met autant que l'écran en
+    // porte, et jamais plus de quatre.
+    const LARGEUR_TYPE: f32 = 640.0;
+    let colonnes = (écran.width() / LARGEUR_TYPE).floor().clamp(1.0, 4.0);
+    let lignes = (combien / colonnes).ceil().max(1.0);
+    // Le pas : une bonne part de l'écran, sans dépasser la largeur d'une
+    // fenêtre ordinaire. Les deux bornes se mesurent — au-dessus du
+    // plafond, les fenêtres se dispersent aux bords et egui les y ramène
+    // en tas ; en dessous du plancher, elles se tassent au centre et
+    // s'enterrent. Les valeurs retenues laissent à chaque poignée au
+    // moins deux cents pixels libres à partir de 1920 × 1200.
+    let pas_x = (écran.width() * 0.7 / colonnes).clamp(24.0, 320.0);
+    let pas_y = (écran.height() * 0.7 / lignes).clamp(24.0, 260.0);
+    let colonne = (rang as f32) % colonnes;
+    let ligne = (rang as f32 / colonnes).floor();
+    // UNE LIGNE SUR DEUX EST DÉCALÉE d'un quart de pas, de part et
+    // d'autre. Sans ce quinconce, deux fenêtres de la même colonne sur
+    // des lignes voisines se superposent EXACTEMENT en largeur : il
+    // suffit alors que l'une soit plus haute que le pas pour couvrir la
+    // barre de titre de l'autre sur toute sa longueur. Mesuré aux
+    // quatre résolutions du contrôle, le quart de pas fait passer le
+    // compte des fenêtres enterrées de sept à cinq ; la demie, qui
+    // paraissait plus franche, le remonte à onze — elle recolle les
+    // colonnes voisines l'une sur l'autre.
+    let quinconce = if (ligne as i32) % 2 == 0 { -0.25 } else { 0.25 };
+    let cran_x = colonne - (colonnes - 1.0) / 2.0 + quinconce;
+    let cran_y = ligne - (lignes - 1.0) / 2.0;
+    écran.center() + egui::vec2(cran_x * pas_x, cran_y * pas_y)
 }
 
 #[allow(clippy::type_complexity)]

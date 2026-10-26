@@ -243,10 +243,11 @@ impl NamsdecApp {
             self.status = Status::Error(s.analysis_addr_absent.to_owned());
             return;
         };
-        // La fenêtre d'analyse RESTE OUVERTE : la destination est
-        // dedans. C'est l'inverse exact du saut au listing, qui
-        // l'efface parce que ce qu'on va voir est derrière elle.
-        self.show_analysis = true;
+        // L'ANALYSE RESTE SOUS LES YEUX : la destination est dedans.
+        // C'est l'inverse exact du saut au listing, qui l'efface parce
+        // que ce qu'on va voir est derrière elle. Dans la rangée, elle
+        // redevient l'onglet actif ; dans sa fenêtre, elle y est déjà.
+        self.montrer_vue(VueCentrale::Analysis);
         self.analysis_module = "hex_editor".to_owned();
         self.re_registry
             .deliver(&namsdec_re::ReResult::ShowBytesAt {
@@ -294,14 +295,16 @@ impl NamsdecApp {
                 // ramènerait le listing là où l'exécution en est, et le
                 // clic paraîtrait n'avoir rien fait.
                 self.follow_rip = false;
-                // LA FENÊTRE D'ANALYSE S'EFFACE. Elle couvre le listing
-                // — c'est tout l'objet d'une grande fenêtre —, et l'on
-                // venait de demander à voir ce qu'elle cache. Le clic
-                // marchait déjà, mais personne ne pouvait le savoir :
-                // le listing défilait derrière un panneau opaque. Le
-                // panneau choisi est retenu ; « Analyse du binaire… »
-                // le rouvre à la même page.
-                self.show_analysis = false;
+                // L'ANALYSE S'EFFACE. Elle couvre le listing — c'est
+                // tout l'objet d'une grande vue —, et l'on venait de
+                // demander à voir ce qu'elle cache. Le clic marchait
+                // déjà, mais personne ne pouvait le savoir : le listing
+                // défilait derrière un panneau opaque. Détachée, sa
+                // fenêtre se referme ; dans la rangée, c'est la source
+                // qui revient — le listing est dans l'éditeur. La
+                // rubrique choisie est retenue, et l'onglet « Analyse »
+                // la rouvre à la même page.
+                self.masquer_vue(VueCentrale::Analysis);
                 self.status = Status::WentTo(addr);
             }
             // Une adresse qui n'est dans aucune partie désassemblée —

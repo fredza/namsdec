@@ -239,9 +239,19 @@ fn the_sidebar_never_scrolls_its_state() {
     );
 }
 
-/// Le panneau dit ce qu'il montre : depuis que les onglets sont montés
-/// dans la barre d'outils, une colonne d'adresses n'annonçait plus
-/// qu'elle était une pile.
+/// Le panneau dit ce qu'il montre, et UNE SEULE FOIS.
+///
+/// Les onglets ont longtemps vécu dans la barre d'outils, loin du
+/// panneau : une colonne d'adresses n'annonçait plus qu'elle était une
+/// pile, et le panneau portait donc un en-tête qui répétait le nom de
+/// l'onglet actif. Depuis le 26 octobre 2026, la rangée est posée en
+/// tête du panneau, juste au-dessus de ce qu'elle commande — et l'onglet
+/// souligné EST le titre. L'en-tête a disparu avec la distance qui le
+/// justifiait.
+///
+/// Le compte est donc d'UN, et c'est ce qu'on mesure : deux voudrait
+/// dire que la répétition est revenue, zéro que le panneau ne dit plus
+/// ce qu'il montre.
 #[test]
 fn the_sidebar_names_the_view_it_shows() {
     let mut app = NamsdecApp {
@@ -250,14 +260,17 @@ fn the_sidebar_names_the_view_it_shows() {
         ..Default::default()
     };
     let s = strings(app.lang);
-    // Le titre est peint deux fois : une fois comme onglet dans la barre
-    // d'outils, une fois comme en-tête de la vue.
     let compte =
         |app: &mut NamsdecApp, titre: &str| paint(app).matches(&format!("{titre}|")).count();
-    assert_eq!(compte(&mut app, s.tab_stack), 2, "onglet et en-tête");
+    assert_eq!(
+        compte(&mut app, s.tab_stack),
+        1,
+        "l'onglet nomme la vue, et rien ne le répète"
+    );
     app.active_tab = SidebarTab::Heap;
-    assert_eq!(compte(&mut app, s.tab_heap), 2);
-    // Et l'onglet qu'on ne regarde pas n'a que son bouton.
+    assert_eq!(compte(&mut app, s.tab_heap), 1);
+    // Et l'onglet qu'on ne regarde pas est là lui aussi : la rangée dit
+    // ce qu'on regarde ET ce qu'on pourrait regarder.
     assert_eq!(compte(&mut app, s.tab_stack), 1);
 }
 

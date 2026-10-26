@@ -378,7 +378,11 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "coupe la lecture. Il garde sa hauteur entière quelle que soit la taille de "
          "la fenêtre ; quand la place manque, c’est la <b>prochaine "
          "instruction</b> qui cède — elle se replie d’un clic, les registres "
-         "non."),
+         "non. Ce qui se replie porte un <b>chevron</b> devant son titre, "
+         "pointant vers le bas quand c’est ouvert et vers la droite quand "
+         "c’est fermé. C’était naguère les lettres « v » et « > » : un « v » "
+         "gris posé devant un titre se lit comme une lettre orpheline, et "
+         "rien ne disait que le titre se repliait."),
         ("p",
          "Les couleurs sont tenues à un <b>plancher de contraste</b> : tout texte actif "
          "se détache de son fond d’au moins 3 pour 1, la mesure des recommandations "
@@ -438,6 +442,65 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "« sans titre 2 », « sans titre 3 ». Ctrl+Tab passe au suivant, Ctrl+W ferme, "
          "et <b>Fichier > Ouvrir un fichier…</b> (Ctrl+O) ouvre un fichier existant, "
          "lui aussi dans son onglet."),
+
+        ("h2", "Deux rangées : le fichier, et la façon de le regarder"),
+        ("p",
+         "Sous la barre des fichiers court une seconde rangée, plus discrète : les "
+         "<b>vues</b>. La première rangée dit <i>quel</i> programme on travaille, la "
+         "seconde <i>comment</i> on le regarde. On les distingue à l'œil sans y penser : "
+         "un onglet de fichier est un rectangle plein, marqué en haut et muni d'une "
+         "croix ; un onglet de vue est une étiquette soulignée, et il ne se "
+         "ferme pas — une façon de regarder ne s'abandonne pas, on en change."),
+        ("p",
+         "Neuf vues, rangées dans l'ordre d'une lecture et non dans celui du menu : ce "
+         "qu'on écrit, puis ce que la machine en a fait, puis ce qu'on en comprend, puis "
+         "ce qu'on observe quand ça tourne, et enfin ce qu'on y change."),
+        ("table", [
+            ["Onglet", "Ce qu'il montre"],
+            ["Source", "l'éditeur : ce qu'on écrit"],
+            ["Désassemblage", "le programme tel que le processeur le lit"],
+            ["Déroulement", "les blocs et les sauts qui les relient"],
+            ["Décompilation", "le pseudo-code d'un outil extérieur (module)"],
+            ["Analyse", "les vingt-cinq rubriques de rétro-ingénierie"],
+            ["Chronologie", "le chemin parcouru, pas à pas"],
+            ["Points d'arrêt", "où l'on s'arrête, et à quelle condition"],
+            ["Registres étendus", "SSE, AVX, AVX-512 et la pile du 8087"],
+            ["Correctifs", "ce qu'on a changé dans les octets"],
+        ]),
+        ("p",
+         "L'onglet porte un <b>nom court</b> — « Analyse », « Déroulement » — et dit son "
+         "titre entier au survol : « Analyse du binaire », « Déroulement du programme ». "
+         "Neuf titres entiers ne tiennent pas dans une rangée, et un onglet se cherche à "
+         "sa place avant de se lire. <b>Décompilation</b> n'a d'onglet que si son module "
+         "est allumé (Préférences › Modules) : un onglet qui ne mène à rien est pire "
+         "qu'un onglet absent."),
+        ("p",
+         "Le <b>menu Outils</b>, la <b>palette</b> (Ctrl+Maj+P) et les raccourcis "
+         "mènent aux mêmes vues : ils choisissent l'onglet. Le bouton de l'onglet RE du "
+         "panneau latéral, « Analyse du binaire… », fait de même."),
+        ("p",
+         "Le bouton <b>Détacher</b>, en haut à droite de la rangée, sort la vue active "
+         "dans une fenêtre à elle. C'est ce qu'il faut pour lire la source et le "
+         "désassemblage <b>côte à côte</b>, ce qu'un onglet interdit par construction. "
+         "L'onglet disparaît alors de la rangée : une vue est à un seul endroit à la "
+         "fois. <b>Fermer la fenêtre la ramène</b> dans la rangée — elle n'est jamais "
+         "perdue, elle est quelque part. La <b>source</b>, elle, ne se détache pas : "
+         "c'est la vue qui reste quand les autres partent."),
+        ("p",
+         "Sur un écran étroit, la rangée <b>passe à la ligne</b> plutôt que de raboter "
+         "ses onglets : à 800 x 520, le plus petit affichage que namsdec accepte, les "
+         "neuf noms tiennent sur trois lignes, et aucun n'est coupé. Un onglet à moitié "
+         "peint est pire qu'un onglet absent, parce qu'on croit l'avoir lu."),
+        ("note",
+         "Ces huit vues vivaient en fenêtres flottantes, et l'on pouvait les agrandir "
+         "jusqu'à occuper tout l'établi : c'était un onglet qui s'ignorait, en moins "
+         "bien. La fenêtre recouvrait l'éditeur sans le dire, il fallait la refermer "
+         "pour retrouver sa source, et rien à l'écran ne disait qu'elle existait — il "
+         "fallait retourner au menu pour le savoir. La rangée dit les deux choses d'un "
+         "coup : ce qu'on regarde, et ce qu'on pourrait regarder. L'idée vient de "
+         "Cutter, dont les onglets du bas sont les vues d'un même objet ; elle est ici "
+         "en haut, parce que le bas de l'établi porte déjà la console et ses propres "
+         "onglets."),
 
         ("p",
          "<b>Texte ou binaire&nbsp;?</b> namsdec le décide à la <b>signature</b> du "
@@ -588,7 +651,10 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
         ("h2", "Le panneau de droite"),
         ("p",
          "Il se lit de haut en bas, et se partage en <b>deux zones</b> : le bandeau, "
-         "qui dit ce qui vient, et la <b>vue choisie</b>, qui prend tout le reste."),
+         "qui dit ce qui vient, et la <b>vue choisie</b>, qui prend tout le reste. "
+         "Entre les deux, la <b>rangée des onglets</b> : elle dit ce qu'on regarde et "
+         "ce qu'on pourrait regarder, et elle se lit comme celle des vues de "
+         "l'établi — une étiquette plate, soulignée quand c'est elle qu'on lit."),
         ("liste", [
          "<b>Prochaine instruction</b> — l’adresse et le pseudo-code "
          "(<font face='Courier'>RAX = RAX + RCX</font> plutôt que "
@@ -630,8 +696,14 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "nombre d'octets doit rester le même — en récrire plus ou moins déplacerait "
          "tout ce qui suit, donc toutes les adresses et tous les sauts ; pour cela, "
          "Outils > Patcher le binaire propose « Neutraliser (nop) ». Ce qui a changé "
-         "porte la couleur des changements, et la fenêtre Correctifs sait le défaire. "
-         "Les onglets sont en haut à droite, dans la barre d'outils.",
+         "porte la couleur des changements, et la vue Correctifs sait le défaire. "
+         "Les onglets sont <b>en tête du panneau</b>, juste au-dessus de ce qu'ils "
+         "commandent, et l'onglet souligné dit ce qu'on regarde — il n'y a donc pas de "
+         "titre sous eux qui le répéterait. Ils ont vécu dans la barre d'outils "
+         "jusqu'au 26 octobre 2026 : une étiquette séparée de son contenu ne se lit "
+         "plus comme son étiquette, et six onglets ne tenaient pas dans la barre en "
+         "dessous de mille pixels de large, où ils la faisaient se dédoubler pour "
+         "toute la séance.",
          "<b>Le processeur est une vue, et non plus un bandeau fixe</b> — depuis le "
          "13 octobre 2026, et c'est un retour en arrière assumé. Les registres "
          "occupaient une zone ancrée au milieu du panneau, au nom d'un principe "
@@ -760,7 +832,7 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
         ("p",
          "Le <b>pas en arrière</b> est ce qu'un débogueur ordinaire rend laborieux et qu'un "
          "interpréteur offre : namsdec garde l'histoire de l'exécution, et la chronologie "
-         "(Outils › Chronologie) permet de cliquer un pas passé pour y revenir."),
+         "(la vue Chronologie) permet de cliquer un pas passé pour y revenir."),
         ("p",
          "Cette fenêtre montre deux choses distinctes. La <b>liste</b> répond à « qu'est-ce "
          "qui s'est passé » : un pas par ligne, avec sa nature, son adresse et sa ligne. La "
@@ -812,7 +884,7 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "Un clic dans la gouttière pose un point d'arrêt. Il peut porter une "
          "<b>condition</b>, auquel cas l'exécution ne s'arrête que si elle est vraie. "
          "Dans une boucle de cinq cents tours, s'arrêter à chaque passage n'est pas "
-         "déboguer, c'est une punition : la condition fait le tri. La fenêtre des points "
+         "déboguer, c'est une punition : la condition fait le tri. La vue des points "
          "d'arrêt les liste tous, avec leur condition et le nombre de fois qu'ils ont "
          "arrêté le programme."),
         ("p",
@@ -905,6 +977,12 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "<b>Chercher en mémoire</b> — un texte, des octets ou une valeur.",
          "<b>Écrire ici</b> — poser une valeur à la main, pour essayer une hypothèse.",
         ]),
+        ("p",
+         "Les trois sont sous un seul repli, et <b>le vidage garde sa place sous eux</b> : "
+         "quoi qu'on déplie, il en reste de quoi lire — c'est la boîte à outils qui défile, "
+         "pas la vue qui s'efface. Dépliée sans cette règle, elle prenait toute la hauteur "
+         "du panneau et le vidage n'était plus peint du tout : on ouvrait la carte et l'on "
+         "perdait ce qu'on était venu voir, sans qu'une barre de défilement ne le dise."),
         ("h2", "La pile et le tas"),
         ("p",
          "L'onglet Pile lit la pile <i>comme une pile</i> : un mot de huit octets par ligne, "
@@ -993,6 +1071,57 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "compilateur écrit « si NON condition, sauter par-dessus » : recopier le "
          "mnémonique dirait l'inverse de ce que fait le code — et se lirait très bien, ce "
          "qui est le pire des cas."),
+        ("p",
+         "<b>La comparaison et le saut se disent d'un trait.</b> Le pseudo-code écrivait "
+         "deux lignes là où le programme pose une question : « comparer RCX et 0 », puis "
+         "« tant que différent ». Différent de quoi ? La réponse était sur la ligne du "
+         "dessus, et l'œil faisait l'aller-retour à chaque boucle. Dites ensemble, les "
+         "deux lignes n'en font plus qu'une, « tant que RCX n'est pas nul : », qui est "
+         "ce qu'on aurait écrit dans le langage d'où ce code vient. La comparaison "
+         "disparaît alors du corps : la redire laisserait croire qu'il y a là deux "
+         "tests."),
+        ("p",
+         "<b>Le signe est dit des deux côtés</b> — "
+         "<font face='Courier'>RAX &lt; 5 (signé)</font>, "
+         "<font face='Courier'>RAX &lt; 5 (non signé)</font>. Sur "
+         "<font face='Courier'>0xFFFFFFFF</font>, « plus petit » est vrai en signé (c'est "
+         "-1) et faux en non signé (c'est le plus grand des nombres) : taire lequel des "
+         "deux, c'est laisser lire le contraire de ce qui se passe."),
+        ("note",
+         "Une <b>opération ordinaire</b> pose aussi les indicateurs, et prête sa "
+         "condition sans disparaître. <font face='Courier'>dec ecx</font> suivi d'un "
+         "<font face='Courier'>jnz</font> se lit « tant que ECX n'est pas nul » — c'est la boucle "
+         "la plus courante qui soit, et il n'y a aucun <font face='Courier'>cmp</font> à "
+         "y lire. Mais le <font face='Courier'>dec</font> décrémente pour de bon : il "
+         "reste écrit, sans quoi on lirait une boucle dont rien ne changerait jamais. Et "
+         "seulement « nul » ou « non nul » : <font face='Courier'>dec</font> ne touche "
+         "pas à la retenue, donc un <font face='Courier'>jb</font> qui le suit lit celle "
+         "d'une instruction d'avant, et namsdec s'y refuse plutôt que d'inventer un "
+         "test."),
+        ("p",
+         "Chaque <b>instruction</b> est dite en clair sous la même règle : ce qui ne se "
+         "paraphrase pas sans risque reste en syntaxe NASM, qui au moins est exacte. "
+         "Trois familles qu'on lisait mal :"),
+        ("liste", [
+            "<b>Les instructions de chaîne</b> — "
+            "<font face='Courier'>rep movsb</font> se lit « copier RCX octets de "
+            "mémoire[RSI] vers mémoire[RDI] », c'est-à-dire "
+            "<font face='Courier'>memcpy</font> ; sans le préfixe, c'est un seul octet "
+            "et l'on avance. Le préfixe n'apparaît pas dans le mnémonique, et c'est "
+            "pourtant lui qu'on cherche en lisant une boucle de copie. "
+            "<font face='Courier'>rep stosq</font> remplit, "
+            "<font face='Courier'>repne scasb</font> cherche : "
+            "<font face='Courier'>memset</font> et "
+            "<font face='Courier'>strlen</font> déroulés.",
+            "<b><font face='Courier'>loop</font></b> fait deux choses d'un coup — "
+            "« RCX = RCX - 1 ; si RCX n'est pas nul, aller à … » —, et c'est précisément ce qu'on "
+            "oublie en la lisant.",
+            "<b><font face='Courier'>imul</font> à trois opérandes</b> — "
+            "<font face='Courier'>imul rax, rbx, 4</font> veut dire "
+            "« RAX = RBX × 4 » et non « RAX = RAX × RBX ». namsdec disait la seconde : "
+            "une phrase fausse, sur l'instruction que tout compilateur produit pour "
+            "indexer un tableau.",
+        ]),
         ("liste", [
             "<b>si … sinon</b> — deux branches qui se rejoignent plus bas.",
             "<b>tant que</b> — le test est en haut : le corps peut ne jamais tourner.",
@@ -1006,7 +1135,9 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "remplace : on relit un saut, on ne relit pas ce qu'on croit avoir compris. Les "
          "mots de structure sont d'une autre couleur que les instructions, parce qu'ils "
          "ne viennent d'aucune d'elles — ils viennent du graphe. La ligne où le "
-         "processeur se trouve est surlignée, comme dans l'éditeur."),
+         "processeur se trouve est surlignée, comme dans l'éditeur : un "
+         "<font face='Courier'>si</font> qui a absorbé sa comparaison garde l'adresse de "
+         "celle-ci, et s'allume donc quand le processeur l'atteint."),
         ("p",
          "Les commandes d'échelle — moins, plus, <b>Taille réelle</b>, <b>Tout voir</b> — "
          "sont <b>grisées</b> dans cette vue : un texte n'a pas d'échelle. Elles disent "
@@ -1031,9 +1162,13 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
 
         ("h2", "La calculatrice"),
         ("p",
-         "Son bouton est dans la barre d'outils, juste à gauche de l'onglet "
-         "<b>Pile</b> — là où le besoin naît —, et Outils › "
-         "Calculatrice l'ouvre aussi. Le besoin revient tout le temps : on lit "
+         "Son bouton est au bout de la barre d'outils, à droite — là où le besoin "
+         "naît, à côté du panneau qui porte les valeurs —, Outils › "
+         "Calculatrice l'ouvre aussi, et <b>Espace c a</b> la fait apparaître et "
+         "disparaître sans quitter le clavier (Ctrl+Maj+A dans le jeu ordinaire). C'est "
+         "le seul raccourci de namsdec qui BASCULE : elle s'ouvre au milieu d'autre "
+         "chose, et l'ouvrir sans pouvoir la refermer de la même main obligerait à viser "
+         "sa croix, c'est-à-dire à quitter le code des yeux. Le besoin revient tout le temps : on lit "
          "<font face='Courier'>and eax, 0x1f</font> et l'on veut savoir ce que ça garde ; "
          "on voit <font face='Courier'>shr rax, 3</font> et l'on cherche le diviseur ; on "
          "trouve <font face='Courier'>0x6c6c6568</font> dans un registre et l'on se demande "
@@ -1062,10 +1197,18 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "qu'un appareil dont l'écran et le clavier n'ont pas la même largeur a l'air "
          "monté de deux morceaux."),
         ("p",
+         "<b>Effacer tout</b> et le <b>retour arrière</b> sont au bout de la ligne "
+         "d'expression, comme la croix d'un champ de recherche — là où est ce qu'ils "
+         "effacent. Ils tenaient un bandeau rouge pleine largeur au-dessus du clavier : "
+         "la plus grande surface de l'appareil, et la plus criarde, pour ce qu'on fait "
+         "quand on s'est trompé. Un appareil dont la plus grande touche est « Effacer "
+         "tout » se trompe sur ce qu'on vient y faire. Discrets au repos, ils "
+         "rougissent au survol, et disent pourquoi ils sont éteints quand l'expression "
+         "est vide."),
+        ("p",
          "Les touches sont peintes en couleurs <b>opaques et franches</b> : les chiffres "
-         "sur un gris net, les op\u00e9rateurs sur la couleur d'accent du th\u00e8me, ce "
-         "qui efface sur du rouge. Trois familles, trois teintes — on vise une touche "
-         "sans la lire. L'encre est celle des deux couleurs du th\u00e8me qui contraste le "
+         "sur un gris net, les op\u00e9rateurs sur la couleur d'accent du th\u00e8me. "
+         "Deux familles, deux teintes — on vise une touche sans la lire. L'encre est celle des deux couleurs du th\u00e8me qui contraste le "
          "plus avec le fond de la touche — le contraste au sens des "
          "recommandations d’accessibilité, mesuré sur la clarté que "
          "l’œil reçoit vraiment, et non sur les nombres que reçoit "
@@ -1075,6 +1218,16 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "sombre. Elles "
          "s'\u00e9claircissent au survol et s'assombrissent sous le clic, comme une vraie "
          "touche qui descend."),
+        ("p",
+         "<b>Le clavier physique appartient à l'expression, toujours.</b> Une touche "
+         "cliquée, un bit basculé, une fonction choisie : la frappe revient aussitôt à "
+         "la ligne où l'on tape, et le curseur au bout de ce qui vient d'être écrit. "
+         "<b>Ctrl+C</b>, <b>Ctrl+V</b> et <b>Ctrl+X</b> y marchent donc comme dans "
+         "n'importe quel champ — on colle une valeur relevée dans le listing, on emporte "
+         "celle qu'on vient de calculer. Sans cette règle, la calculatrice perdait le "
+         "presse-papiers dès la première touche cliquée, c'est-à-dire exactement au "
+         "moment où l'on s'en sert. Le grand résultat et chacune de ses sept lectures se "
+         "copient aussi d'un clic."),
         ("p",
          "Le clavier écrit <b>ce que l'évaluateur lit</b> — "
          "<font face='Courier'>&amp;</font>, <font face='Courier'>|</font>, "
@@ -1343,7 +1496,8 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "points d'arrêt."),
         ("h2", "Trois façons de lire la même instruction"),
         ("p",
-         "La fenêtre de désassemblage (Outils › Désassemblage) offre un choix de "
+         "La vue Désassemblage — l'onglet de la rangée, ou <b>Outils › Désassemblage</b>, "
+         "qui l'y emmène — offre un choix de "
          "<b>moteur</b>, en tête, parce que c'est lui qui décide de tout ce qu'on lit en "
          "dessous :"),
         ("table", [
@@ -1365,7 +1519,7 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "« Brancher son propre outil »."),
         ("p",
          "Le module <b>RE</b> (Préférences › Modules) ajoute un onglet au panneau "
-         "latéral et une fenêtre d'analyse. La douzaine de panneaux vit dans la fenêtre&nbsp;: "
+         "latéral et la vue Analyse. La douzaine de panneaux vit dans la vue&nbsp;: "
          "empilés dans une colonne de trois cents pixels, ils se parcourraient à l'ascenseur."),
         ("p",
          "L'onglet, lui, porte la <b>fiche d'identité</b> du fichier — ce qu'on veut savoir "
@@ -1848,7 +2002,7 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "Une adresse qui tombe entre deux lignes mène à la ligne juste avant ; une "
          "adresse qui n'est dans aucune partie désassemblée le dit."),
         ("p",
-         "<b>Le listing y défile vraiment, et la fenêtre d'analyse s'efface.</b> Deux "
+         "<b>Le listing y défile vraiment, et l'analyse s'efface.</b> Deux "
          "défauts se cachaient l'un derrière l'autre. Poser le curseur sur une ligne ne "
          "déplace pas la vue — egui ne défile vers le curseur d'un champ de texte que "
          "lorsque la sélection change pendant que le champ a le focus, ce qui n'arrive "
@@ -1869,7 +2023,7 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "sens dans un listing et se lisent dans l'éditeur binaire. Cliquer une adresse "
          "ouvre donc un menu de deux entrées — « dans le code désassemblé », « dans "
          "l'éditeur binaire ». Les deux destinations ne se comportent pas pareil, et "
-         "c'est voulu : aller au code <b>ferme</b> la fenêtre d'analyse, qui recouvrait "
+         "c'est voulu : aller au code <b>quitte</b> la vue Analyse, qui recouvrait "
          "ce qu'on venait demander à voir ; aller aux octets la garde ouverte, puisque "
          "la destination est dedans."),
         ("note",
@@ -1878,7 +2032,7 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "ou dans la sortie d'objdump désigne une instruction. Ces clics-là vont droit "
          "au code."),
         ("p",
-         "La fenêtre d'analyse retrouve son bouton <b>agrandir/restaurer</b> : la "
+         "L'analyse, quand on la détache, retrouve son bouton <b>agrandir/restaurer</b> : la "
          "pastille verte, à côté de la rouge. Elle l'avait perdu parce qu'agrandie, elle "
          "recouvrait tout — adresse cliquée, listing derrière un panneau opaque. Les "
          "deux moitiés de ce défaut sont réparées : le saut au listing efface la "
@@ -2265,7 +2419,7 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "c'était trompeur&nbsp;: on lisait « désactivé » sur six outils installés dont les "
          "panneaux fonctionnaient parfaitement — « je ne comprends pas, tout est désactivé » "
          "(signalé le 20 octobre 2026). Elle ne parle que de la <b>liste des moteurs</b> de la "
-         "fenêtre de désassemblage, celle où l'on choisit qui désassemble le listing. Elle dit "
+         "vue de désassemblage, celle où l'on choisit qui désassemble le listing. Elle dit "
          "donc maintenant « proposé comme moteur » ou « pas dans la liste des moteurs », et le "
          "bouton « Ajouter aux moteurs »."),
         ("p",
@@ -2403,7 +2557,9 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
         ("p",
          "namsdec rouvre ce qu'on avait : les fichiers sources et leurs onglets, le "
          "<b>binaire</b> ouvert, ses points d'arrêt, ses zones surveillées, les arguments "
-         "et variables d'environnement du programme, et l'onglet latéral qu'on regardait."),
+         "et variables d'environnement du programme, l'onglet latéral qu'on regardait, et "
+         "la <b>vue</b> qu'on avait choisie dans la rangée — l'établi se retrouve là où "
+         "on l'a laissé."),
         ("p",
          "Et <b>la ligne qu'on lisait</b>. Un listing de binaire fait des dizaines de "
          "milliers de lignes : retrouver le fichier et ses points d'arrêt mais rouvrir à "
@@ -2411,16 +2567,30 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "revient dessus, centrée, le curseur l'y suit, et le mode ne change pas : on "
          "rouvre un binaire pour le lire."),
         ("p",
-         "Les <b>fenêtres d'établi</b> reviennent aussi : la calculatrice, le graphe, la "
-         "chronologie, le désassemblage, les registres étendus, les points d'arrêt, "
-         "l'analyse, les correctifs, le motif cyclique, l'aide, les exercices et le "
-         "décompilateur. Ce qu'on a disposé autour de son code est un réglage comme un "
+         "Les <b>fenêtres d'établi</b> reviennent aussi : la calculatrice, le motif "
+         "cyclique, l'aide, les exercices — et les <b>vues qu'on avait détachées</b>, "
+         "qui reviennent détachées : le désassemblage, le déroulement, la "
+         "décompilation, l'analyse, la chronologie, les points d'arrêt, les registres "
+         "étendus et les correctifs. Ce qu'on a disposé autour de son code est un réglage comme un "
          "autre. Les boîtes qui posent une question — Préférences, « À propos », la saisie "
          "du programme — ne se rouvrent pas toutes seules : elles se ferment sur leur "
          "réponse. Les deux fenêtres qui appartiennent à un module ne reviennent que si le "
-         "module est encore allumé. Elles se posent en <b>escalier</b> et non les unes "
-         "sur les autres : chacune a son cran, si bien qu'on voit du premier coup "
-         "combien il y en a et qu'on attrape celle qu'on veut par sa barre de titre."),
+         "module est encore allumé. Elles se posent en <b>damier</b> et non les unes "
+         "sur les autres : chacune a sa case, une ligne sur deux décalée d'un quart "
+         "de pas, si bien qu'on voit du premier coup combien il y en a et qu'on "
+         "attrape celle qu'on veut par sa barre de titre."),
+        ("p",
+         "C'était un <b>escalier</b> jusqu'ici — un seul cran en diagonale, le même "
+         "pour tous —, et il ne suffisait pas. Son pas s'arrêtait à vingt-quatre "
+         "pixels : douze fenêtres tenaient dans deux cent soixante pixels de "
+         "diagonale, et sur un grand écran elles se rouvraient en tas au milieu. "
+         "Mesuré aux quatre tailles d'écran du banc d'essai, vingt barres de titre "
+         "étaient entièrement couvertes ; il en reste cinq, et aucune au-dessus de "
+         "2560 x 1440. Une fenêtre dont la poignée est enterrée n'est pas seulement "
+         "laide à voir : on la cherche dans le menu « Affichage » en la croyant "
+         "fermée. Les fenêtres qui s'ouvrent à la taille de l'écran — le graphe, "
+         "quand un programme est chargé — gardent le centre : il n'y a pas de place "
+         "pour les étaler, et un cran ne ferait que les pousser dehors."),
         ("p",
          "<b>Aucune ne sort de l'écran.</b> Sur un affichage étroit — namsdec accepte de "
          "descendre jusqu'à 800 x 520 —, c'est le <b>contenu</b> d'une fenêtre qui défile, "
@@ -2793,6 +2963,7 @@ def _lisible(action):
         "GoToLabel": "Aller à l'étiquette", "Find": "Chercher", "New": "Nouveau fichier",
         "ShowFlow": "Déroulement du programme", "NextTab": "Fichier suivant",
         "PreviousTab": "Fichier précédent", "CloseTab": "Fermer le fichier",
+        "ToggleCalculator": "Calculatrice",
     }
     return noms.get(action, action)
 

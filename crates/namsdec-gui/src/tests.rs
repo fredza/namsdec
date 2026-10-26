@@ -71,6 +71,7 @@ mod panneau;
 mod performance;
 mod preferences;
 mod processeur;
+mod vues;
 
 /// TOUT ce qui dessine l'interface, fichier par fichier.
 ///
@@ -137,6 +138,7 @@ const SOURCES_DE_L_INTERFACE: &[(&str, &str)] = &[
     ("timeline.rs", include_str!("timeline.rs")),
     ("tools.rs", include_str!("tools.rs")),
     ("vue_listing.rs", include_str!("vue_listing.rs")),
+    ("vues.rs", include_str!("vues.rs")),
     ("widgets.rs", include_str!("widgets.rs")),
     ("windows.rs", include_str!("windows.rs")),
 ];
@@ -179,6 +181,7 @@ const SOURCES_DU_BANC: &[(&str, &str)] = &[
     ("tests/performance.rs", include_str!("tests/performance.rs")),
     ("tests/preferences.rs", include_str!("tests/preferences.rs")),
     ("tests/processeur.rs", include_str!("tests/processeur.rs")),
+    ("tests/vues.rs", include_str!("tests/vues.rs")),
 ];
 
 /// La liste ci-dessus n'oublie aucun thème.
@@ -990,6 +993,36 @@ fn scènes() -> Vec<Scène> {
                 }),
             ));
         }
+        // Les vues de la zone centrale, une par une.
+        //
+        // Les neuf vues ont quitté leurs fenêtres pour la rangée : elles
+        // se peignent désormais dans la place de l'éditeur, qui n'a ni
+        // cadre ni marge de fenêtre pour les tenir. Les invariants du
+        // banc valent là comme ailleurs — et c'est précisément en
+        // passant d'une fenêtre à un panneau qu'un contenu découvre
+        // qu'il touchait le bord.
+        for vue in VueCentrale::ALL {
+            scènes.push((
+                format!("vue / {}{suffixe}", vue.id()),
+                None,
+                Box::new(move |app| {
+                    if marche {
+                        démarre(app);
+                    }
+                    // LA DÉCOMPILATION EST UN MODULE QU'ON ALLUME, et
+                    // sans lui elle n'a pas d'onglet : `montrer_vue`
+                    // refuse, et la scène retomberait en silence sur la
+                    // source — elle nommerait une vue et en mesurerait
+                    // une autre, exactement comme l'onglet RE du
+                    // panneau l'a fait pendant des semaines. Retenu par
+                    // `chaque_scene_de_vue_montre_bien_sa_vue`.
+                    if vue == VueCentrale::Decompiler {
+                        app.show_decompiler_module = true;
+                    }
+                    app.montrer_vue(vue);
+                }),
+            ));
+        }
         // La fenêtre d'analyse, UN MODULE À LA FOIS. Ouverte par
         // `fenêtres_ouvrables`, elle ne montrait que son module par défaut :
         // l'éditeur binaire, YARA, le graphe d'appels et les autres
@@ -1202,6 +1235,7 @@ fn icônes_du_banc() -> Vec<Icône> {
         ("github", chrome::icon_github),
         ("discord", chrome::icon_discord),
         ("retour arrière", chrome::icon_backspace),
+        ("tout effacer", chrome::icon_clear),
         ("œil", icon_watch),
         ("aller", icon_go),
         ("exécuter", icon_run),

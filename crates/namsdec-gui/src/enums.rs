@@ -581,3 +581,138 @@ impl EditorMode {
         }
     }
 }
+
+/// Ce que la zone centrale montre : la source, ou l'une des huit façons
+/// de regarder le programme qu'elle décrit.
+///
+/// Ces vues vivaient en fenêtres flottantes. Une fenêtre agrandie
+/// occupait déjà toute la zone de travail (voir `maximize.rs`) : c'était
+/// un onglet qui s'ignorait, en moins bien. Elle recouvrait l'éditeur
+/// sans le dire, il fallait la refermer pour retrouver sa source, et
+/// rien à l'écran ne disait qu'elle existait — il fallait retourner au
+/// menu Outils pour le savoir.
+///
+/// La rangée dit les deux choses d'un coup : ce qu'on regarde, et ce
+/// qu'on pourrait regarder. C'est ce que fait Cutter avec ses onglets du
+/// bas, et c'est ce qui manquait ici.
+///
+/// Les onglets de FICHIERS sont une autre rangée, au-dessus : elle dit
+/// *quoi* — quel programme —, celle-ci dit *comment* on le regarde. Les
+/// deux se distinguent à l'œil : le fichier porte son liseré en haut et
+/// sa croix, la vue porte le sien en bas et ne se ferme pas.
+///
+/// L'ORDRE EST CELUI D'UNE LECTURE, et non celui du menu Outils :
+/// ce qu'on écrit, puis ce que la machine en a fait, puis ce qu'on en
+/// comprend, puis ce qu'on observe quand ça tourne, et enfin ce qu'on y
+/// change. Un onglet se cherche à sa place, pas à son nom.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum VueCentrale {
+    /// Ce qu'on écrit : l'éditeur, et la vue par défaut.
+    Source,
+    /// Ce que le programme est devenu, lu par le moteur choisi.
+    Disassembly,
+    /// Les blocs et les sauts qui les relient : un listing se lit de
+    /// haut en bas, un programme non.
+    Flow,
+    /// Le pseudo-code rendu par un outil extérieur, quand on en a
+    /// installé un.
+    Decompiler,
+    /// Les vingt-cinq rubriques de rétro-ingénierie : sections,
+    /// chaînes, imports, entropie, graphe d'appels.
+    Analysis,
+    /// Le chemin parcouru, pas à pas, et de quoi y revenir.
+    Timeline,
+    /// Où l'on s'arrête, et à quelle condition.
+    Breakpoints,
+    /// Les registres que le panneau latéral n'a pas la place de
+    /// montrer : SSE, AVX, AVX-512 et la pile du 8087.
+    Vectors,
+    /// Ce qu'on a changé dans les octets, et ce qu'on pourrait changer.
+    Patches,
+}
+
+impl VueCentrale {
+    pub(crate) const ALL: [VueCentrale; 9] = [
+        VueCentrale::Source,
+        VueCentrale::Disassembly,
+        VueCentrale::Flow,
+        VueCentrale::Decompiler,
+        VueCentrale::Analysis,
+        VueCentrale::Timeline,
+        VueCentrale::Breakpoints,
+        VueCentrale::Vectors,
+        VueCentrale::Patches,
+    ];
+
+    /// L'identifiant qui part dans les réglages — stable, et distinct
+    /// du libellé, lequel change avec la langue.
+    ///
+    /// Le même nom que dans `FENÊTRES_REPRISES` : c'est la même vue,
+    /// qu'elle soit dans la rangée ou dans sa fenêtre, et deux noms pour
+    /// une chose finissent par désigner deux choses.
+    pub(crate) fn id(self) -> &'static str {
+        match self {
+            VueCentrale::Source => "source",
+            VueCentrale::Disassembly => "disassembly",
+            VueCentrale::Flow => "flow",
+            VueCentrale::Decompiler => "decompiler",
+            VueCentrale::Analysis => "analysis",
+            VueCentrale::Timeline => "timeline",
+            VueCentrale::Breakpoints => "breakpoints",
+            VueCentrale::Vectors => "vectors",
+            VueCentrale::Patches => "patches",
+        }
+    }
+
+    pub(crate) fn from_id(id: &str) -> Option<Self> {
+        VueCentrale::ALL.into_iter().find(|vue| vue.id() == id)
+    }
+
+    /// Ce que l'onglet porte : un NOM DE VUE, court.
+    ///
+    /// Court, parce que neuf onglets et un bouton se partagent une
+    /// rangée : « Déroulement du programme » en prend à lui seul le
+    /// cinquième. Et un nom de vue, non un nom d'outil — la rangée dit
+    /// ce qu'on regarde, pas ce qui le montre : « Source » et non
+    /// « Éditeur », « Décompilation » et non « Décompilateur ».
+    ///
+    /// Le titre entier reste dit en infobulle (voir `titre`), et c'est
+    /// lui que porte le bandeau de la fenêtre quand la vue s'en va.
+    pub(crate) fn label(self, s: &Strings) -> &'static str {
+        match self {
+            VueCentrale::Source => s.view_source,
+            VueCentrale::Disassembly => s.disassembly_title,
+            VueCentrale::Flow => s.view_flow,
+            VueCentrale::Decompiler => s.view_decompiler,
+            VueCentrale::Analysis => s.view_analysis,
+            VueCentrale::Timeline => s.timeline_title,
+            VueCentrale::Breakpoints => s.breakpoints_title,
+            VueCentrale::Vectors => s.vectors_title,
+            VueCentrale::Patches => s.view_patches,
+        }
+    }
+
+    /// Le titre entier : celui du bandeau de la fenêtre, et celui que
+    /// l'onglet dit au survol quand il a dû raccourcir son nom.
+    pub(crate) fn titre(self, s: &Strings) -> &'static str {
+        match self {
+            VueCentrale::Source => s.view_source,
+            VueCentrale::Disassembly => s.disassembly_title,
+            VueCentrale::Flow => s.flow_title,
+            VueCentrale::Decompiler => s.decompiler_title,
+            VueCentrale::Analysis => s.analysis_title,
+            VueCentrale::Timeline => s.timeline_title,
+            VueCentrale::Breakpoints => s.breakpoints_title,
+            VueCentrale::Vectors => s.vectors_title,
+            VueCentrale::Patches => s.patch_title,
+        }
+    }
+
+    /// Cette vue peut-elle quitter la rangée pour une fenêtre ?
+    ///
+    /// La source, non : c'est elle qui reste quand une autre part, et
+    /// une rangée vide ne mène nulle part.
+    pub(crate) fn détachable(self) -> bool {
+        !matches!(self, VueCentrale::Source)
+    }
+}

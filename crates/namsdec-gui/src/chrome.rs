@@ -687,6 +687,31 @@ pub fn icon_calculator(painter: &egui::Painter, rect: egui::Rect, color: egui::C
     }
 }
 
+/// L'icône « tout effacer » : une croix, et rien de plus.
+///
+/// Dessinée et non écrite, pour la même raison que la précédente : ni
+/// `×` ni `✕` ne sont dans la police d'egui, et un caractère absent se
+/// peint en carré vide.
+///
+/// Elle vit à côté du retour arrière, sur la ligne où l'on tape : ce
+/// sont les deux gestes qui DÉFONT, et les mettre là plutôt qu'en
+/// bandeau rouge au-dessus du clavier rend à celui-ci sa forme de
+/// clavier. Un appareil dont la plus grande touche est « Effacer tout »
+/// se trompe sur ce qu'on vient y faire.
+pub fn icon_clear(painter: &egui::Painter, rect: egui::Rect, color: egui::Color32) {
+    let trait_ = egui::Stroke::new(1.4, color);
+    let bras = rect.width().min(rect.height()) * 0.30;
+    let c = rect.center();
+    painter.line_segment(
+        [c - egui::vec2(bras, bras), c + egui::vec2(bras, bras)],
+        trait_,
+    );
+    painter.line_segment(
+        [c - egui::vec2(bras, -bras), c + egui::vec2(bras, -bras)],
+        trait_,
+    );
+}
+
 /// L'icône « effacer le dernier caractère » : la flèche à gauche avec
 /// sa croix, comme sur tous les claviers.
 ///

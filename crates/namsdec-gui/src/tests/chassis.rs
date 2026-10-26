@@ -161,14 +161,23 @@ fn the_status_bar_says_what_is_unsaved() {
     );
 }
 
-/// Les onglets du panneau latéral se choisissent dans la barre d'outils,
-/// à droite, et non plus au fond du panneau.
+/// Les onglets du panneau se choisissent EN TÊTE DU PANNEAU, juste
+/// au-dessus de ce qu'ils commandent.
 ///
-/// Ils vivaient entre l'état du processeur et leur propre contenu :
-/// selon que le bandeau était déplié ou non, la rangée montait ou
-/// descendait, et l'on visait une cible qui bouge.
+/// Trois endroits en trois ans, et chacun pour une raison mesurée :
+/// au fond du panneau d'abord — la rangée montait et descendait avec le
+/// bandeau, on visait une cible qui bouge ; dans la barre d'outils
+/// ensuite — mais une étiquette séparée de son contenu ne se lit plus
+/// comme son étiquette, et six onglets ne tenaient pas dans la barre en
+/// dessous de mille pixels, où ils la faisaient se dédoubler de
+/// trente-et-un pixels pour toute la séance ; en tête du panneau enfin,
+/// le 26 octobre 2026, où ils touchent ce qu'ils gouvernent et ne
+/// bougent plus.
+///
+/// On mesure les deux : l'ordre lu de gauche à droite, et la place —
+/// dans le panneau, sous le bandeau, au-dessus du contenu.
 #[test]
-fn the_sidebar_tabs_live_in_the_toolbar() {
+fn the_sidebar_tabs_live_at_the_head_of_the_panel() {
     let mut app = NamsdecApp {
         show_toolbar: true,
         show_sidebar: true,
@@ -214,8 +223,51 @@ fn the_sidebar_tabs_live_in_the_toolbar() {
         x.windows(2).all(|paire| paire[0] < paire[1]),
         "de gauche à droite : Pile, Mémoire, Tas, Octets — obtenu {x:?}"
     );
-    // Et à droite de la barre, pas à gauche : au-delà de sa moitié.
-    assert!(x[0] > 1280.0 / 2.0, "la rangée est à droite : {x:?}");
+    // Dans le panneau, et non dans la barre : à droite de l'écran, et
+    // SOUS la barre d'outils.
+    assert!(
+        x[0] > 1280.0 - SIDEBAR_WIDTH,
+        "la rangée est dans le panneau : {x:?}"
+    );
+    // Un programme en marche pour que la vue ait du contenu à montrer :
+    // « RAX » est ce qu'on cherche sous la rangée.
+    if namsdec_asm::find_nasm().is_some() && namsdec_asm::find_linker() {
+        app.source = DEFAULT_SOURCE.to_owned();
+        app.do_assemble();
+        app.do_step();
+        let ctx = egui::Context::default();
+        app.apply_theme(&ctx);
+        let (_, lignes) = ce_qui_est_écrit(&ctx, &mut app, None, 4);
+        let y = |quoi: &str| -> f32 {
+            lignes
+                .iter()
+                .filter(|(t, r)| t == quoi && r.left() > 1280.0 - SIDEBAR_WIDTH)
+                .map(|(_, r)| r.top())
+                .fold(f32::INFINITY, f32::min)
+        };
+        let barre = lignes
+            .iter()
+            .filter(|(t, _)| t == s.action_reset)
+            .map(|(_, r)| r.bottom())
+            .fold(0.0_f32, f32::max);
+        let rangée = y(s.tab_cpu);
+        let contenu = y("RAX");
+        assert!(
+            rangée.is_finite() && contenu.is_finite(),
+            "la rangée et le contenu de la vue sont peints : rangée \
+             {rangée}, contenu {contenu}"
+        );
+        assert!(
+            rangée > barre,
+            "la rangée est sous la barre d'outils : {rangée:.0} contre \
+             {barre:.0}"
+        );
+        assert!(
+            rangée < contenu,
+            "la rangée est au-dessus de ce qu'elle commande : {rangée:.0} \
+             contre {contenu:.0}"
+        );
+    }
     let painted = paint(&mut app);
     // L'onglet RE ne s'affiche que s'il est demandé.
     assert!(!painted.contains(s.tab_re), "{painted}");

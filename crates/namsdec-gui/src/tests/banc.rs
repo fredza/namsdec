@@ -613,7 +613,9 @@ fn every_panel_fits_the_window_at_any_size() {
         output.textures_delta.clear();
         for attendu in [
             "RIP",
-            strings(Lang::Fr).cpu_state,
+            // L'onglet de la vue, qui en est le titre depuis qu'il est
+            // posé juste au-dessus d'elle.
+            SidebarTab::Cpu.label(strings(Lang::Fr)),
             strings(Lang::Fr).tab_stack,
         ] {
             assert!(
@@ -1503,12 +1505,15 @@ fn an_open_section_always_has_something_to_say() {
                 .unwrap_or_else(|| panic!("{lang:?} : « {quoi} » est peint"))
         };
         let haut = titre(s.next_instruction);
-        let bas = titre(s.cpu_state);
+        // L'onglet, et non le titre de la vue : celui-ci a disparu avec
+        // le déplacement de la rangée en tête du panneau, où l'onglet
+        // souligné dit déjà ce qu'on regarde.
+        let bas = titre(SidebarTab::Cpu.label(s));
         assert!(
             haut.bottom() < bas.top(),
             "{lang:?} : « {} » est au-dessus de « {} »",
             s.next_instruction,
-            s.cpu_state
+            SidebarTab::Cpu.label(s)
         );
         let dedans = lignes.iter().any(|(t, r)| {
             r.top() > haut.bottom()
@@ -1859,8 +1864,11 @@ fn the_banner_titles_all_start_at_one_edge() {
             .fold(f32::INFINITY, f32::min)
     };
 
-    // Les titres de vue, qui ne portent pas de chevron : les six
-    // partent du bord du panneau, et du même.
+    // LA RANGÉE D'ONGLETS a remplacé les six titres de vue le 26
+    // octobre 2026 : c'est elle, maintenant, qui dit en tête du panneau
+    // ce qu'on regarde. Son premier onglet part donc du bord du
+    // panneau, et il en part TOUJOURS DU MÊME — quelle que soit la vue
+    // choisie, puisque la rangée ne change pas d'ordre.
     let mut bords: Vec<(&str, f32)> = Vec::new();
     for onglet in SidebarTab::ALL {
         if onglet == SidebarTab::Re {
@@ -1868,25 +1876,31 @@ fn the_banner_titles_all_start_at_one_edge() {
         }
         app.active_tab = onglet;
         let (_, lignes) = ce_qui_est_écrit(&ctx, &mut app, None, 4);
-        let titre = onglet.title(s);
-        let x = gauche(&lignes, titre);
-        assert!(x.is_finite(), "« {titre} » est peint en tête de sa vue");
-        bords.push((titre, x));
+        let premier = SidebarTab::Cpu.label(s);
+        let x = gauche(&lignes, premier);
+        assert!(
+            x.is_finite(),
+            "la rangée porte « {premier} » en tête du panneau, vue {onglet:?} \
+             choisie"
+        );
+        bords.push((onglet.label(s), x));
     }
     let premier = bords[0].1;
     let hors: Vec<String> = bords
         .iter()
         .filter(|(_, x)| (x - premier).abs() > 0.5)
-        .map(|(quoi, x)| format!("« {quoi} » à {x:.1}"))
+        .map(|(quoi, x)| format!("vue « {quoi} » à {x:.1}"))
         .collect();
     assert!(
         hors.is_empty(),
-        "les titres de vue ne partent pas du même bord : {premier:.1} px, sauf {}",
+        "la rangée ne part pas du même bord selon la vue choisie : \
+         {premier:.1} px, sauf {}",
         hors.join(", ")
     );
 
     // Et le titre À CHEVRON du bandeau s'écarte de ce bord, mais de peu :
-    // la largeur du chevron, pas davantage.
+    // la largeur du chevron, pas davantage. C'est ce qui tient les deux
+    // rangées du panneau sur un même bord à l'œil.
     app.active_tab = SidebarTab::Cpu;
     let (_, lignes) = ce_qui_est_écrit(&ctx, &mut app, None, 4);
     let bandeau = gauche(&lignes, s.next_instruction);
@@ -1946,30 +1960,28 @@ fn a_zone_title_is_underlined_and_not_boxed() {
     // d'outils et le titre de la zone — et prendre le plus haut des deux
     // faisait mesurer la barre d'outils : le contrôle passait alors même
     // avec le défaut remis, ce qui est la pire sorte de contrôle.
-    let mut plancher = 0.0f32;
-    // Deux zones depuis que l'état du processeur est une vue comme les
-    // autres : le bandeau, puis le titre de la vue choisie — ici celle
-    // du processeur, qui est la vue par défaut.
-    for titre in [s.next_instruction, SidebarTab::Cpu.title(s)] {
-        let haut = lignes
-            .iter()
-            .filter(|(t, r)| t == titre && r.top() > plancher)
-            .map(|(_, r)| r.top())
-            .fold(f32::INFINITY, f32::min);
-        assert!(haut.is_finite(), "« {titre} » est peint dans le bandeau");
-        plancher = haut + 1.0;
-        let dessus: Vec<f32> = filets
-            .iter()
-            .copied()
-            .filter(|y| *y < haut && haut - *y < 24.0)
-            .collect();
-        assert!(
-            dessus.is_empty(),
-            "« {titre} » porte un filet au-dessus de lui, en y = {dessus:?} \
-             pour un titre en {haut:.0} — les trois zones doivent se souligner \
-             de la même façon"
-        );
-    }
+    // UNE SEULE ZONE À TITRE depuis le 26 octobre 2026 : le bandeau. La
+    // vue, elle, est annoncée par la RANGÉE D'ONGLETS posée juste
+    // au-dessus d'elle, qui porte sa propre marque — un trait SOUS
+    // l'onglet actif, et non au-dessus d'un titre. Deux idiomes, deux
+    // mesures : celui-ci ne vaut que pour les titres de zone.
+    let titre = s.next_instruction;
+    let haut = lignes
+        .iter()
+        .filter(|(t, _)| t == titre)
+        .map(|(_, r)| r.top())
+        .fold(f32::INFINITY, f32::min);
+    assert!(haut.is_finite(), "« {titre} » est peint dans le bandeau");
+    let dessus: Vec<f32> = filets
+        .iter()
+        .copied()
+        .filter(|y| *y < haut && haut - *y < 24.0)
+        .collect();
+    assert!(
+        dessus.is_empty(),
+        "« {titre} » porte un filet au-dessus de lui, en y = {dessus:?} pour \
+         un titre en {haut:.0} — une zone se souligne, elle ne s'encadre pas"
+    );
 }
 
 /// Un panneau vide se dit toujours de la même façon.
@@ -3295,6 +3307,43 @@ fn chaque_scene_d_onglet_montre_bien_son_onglet() {
     }
 }
 
+/// Chaque scène de vue montre bien la vue qu'elle nomme.
+///
+/// Le même piège que pour les onglets du panneau, et il s'est refermé
+/// une fois déjà : une vue indisponible — la décompilation, dont le
+/// module s'allume dans les préférences — fait retomber la zone
+/// centrale sur la source, en silence. La scène « vue / decompiler »
+/// mesurait alors l'éditeur sous un autre nom, et aucun invariant ne
+/// rougissait.
+///
+/// On le demande à l'application APRÈS qu'elle a dessiné, et non à la
+/// scène qui l'a réglée : c'est la seule façon de voir un repli
+/// silencieux.
+#[test]
+fn chaque_scene_de_vue_montre_bien_sa_vue() {
+    let entrée = écran_du_banc();
+    for vue in VueCentrale::ALL {
+        let nom = format!("vue / {}", vue.id());
+        let Some((_, _, ouvre)) = scènes().into_iter().find(|(n, _, _)| *n == nom) else {
+            panic!("la scène « {nom} » doit exister dans le banc");
+        };
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp::default();
+        app.apply_theme(&ctx);
+        ouvre(&mut app);
+        for _ in 0..3 {
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            sortie.textures_delta.clear();
+        }
+        assert_eq!(
+            app.vue_centrale, vue,
+            "« {nom} » dit montrer {:?} et montre {:?} : la scène mesure une autre \
+             vue que celle qu'elle nomme",
+            vue, app.vue_centrale
+        );
+    }
+}
+
 /// Les commandes de la barre d'outils ont toutes la même hauteur.
 ///
 /// Mesuré dans une seule rangée, celle qu'on a sous les yeux toute la
@@ -3508,6 +3557,101 @@ fn every_text_size_belongs_to_a_declared_set() {
 /// Restent les scènes sans fenêtre, où tout est panneau et où la
 /// question ne se pose pas. C'est là que vit le défaut, et c'est tout
 /// ce que ce contrôle prétend couvrir.
+/// À 800 x 520, les onglets du panneau sont peints EN ENTIER.
+///
+/// Quand la barre d'outils n'a plus la place de les porter au bout de
+/// sa rangée, ils passent à la ligne (voir `toolbar_ui`). Ce repli n'a
+/// qu'un invariant jusqu'ici — ne rien recouvrir —, et c'est
+/// l'invariant d'un évitement : une rangée qui ne se peint pas du tout
+/// ne recouvre rien non plus.
+///
+/// Il en fallait donc un qui exige la PRÉSENCE. Le 25 octobre 2026, une
+/// capture a fait croire une demi-journée que ces cinq onglets étaient
+/// invisibles à cette taille, et le banc disait le contraire ; c'est le
+/// banc qui avait raison — la capture montrait une bande laissée par un
+/// redimensionnement, que rien n'avait repeinte. Un invariant écrit
+/// alors aurait tranché en une minute.
+///
+/// La mesure compare chaque étiquette à ELLE-MÊME au large, où rien ne
+/// la rogne : un onglet repoussé hors du bord n'est pas absent, il est
+/// rogné, et six pixels d'encre passent pour un onglet entier.
+#[test]
+fn the_sidebar_tabs_are_painted_whole_on_the_smallest_screen() {
+    /// L'encre de chaque onglet du panneau, sur un écran donné.
+    fn encres(largeur: f32, hauteur: f32) -> Vec<(SidebarTab, egui::Rect)> {
+        let entrée = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(largeur, hauteur),
+            )),
+            ..Default::default()
+        };
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp::default();
+        app.apply_theme(&ctx);
+        let s = strings(app.lang);
+        let (_, lignes) = ce_qui_est_écrit_sur(&ctx, &mut app, None, 4, entrée);
+        let mut encres = Vec::new();
+        for onglet in SidebarTab::ALL {
+            // L'onglet RE est masqué par défaut : il n'a pas à être là.
+            if onglet == SidebarTab::Re {
+                continue;
+            }
+            for (texte, rect) in &lignes {
+                if texte == onglet.label(s) {
+                    encres.push((onglet, *rect));
+                }
+            }
+        }
+        encres
+    }
+
+    let s = strings(Lang::Fr);
+    let large = encres(1600.0, 1100.0);
+    let petit = encres(MIN_SCREEN[0], MIN_SCREEN[1]);
+    for onglet in SidebarTab::ALL {
+        if onglet == SidebarTab::Re {
+            continue;
+        }
+        let nom = onglet.label(s);
+        let au_large = large
+            .iter()
+            .find(|(o, _)| *o == onglet)
+            .map(|(_, r)| *r)
+            .unwrap_or_else(|| panic!("l'onglet « {nom} » doit être peint au large"));
+        let posés: Vec<egui::Rect> = petit
+            .iter()
+            .filter(|(o, _)| *o == onglet)
+            .map(|(_, r)| *r)
+            .collect();
+        assert_eq!(
+            posés.len(),
+            1,
+            "l'onglet « {nom} » doit être peint une fois à {} x {} : la \
+             rangée de repli existe pour cela",
+            MIN_SCREEN[0],
+            MIN_SCREEN[1]
+        );
+        let rect = posés[0];
+        assert!(
+            rect.width() >= au_large.width() - 0.5,
+            "l'onglet « {nom} » est rogné à l'étroit : {:.0} px d'encre \
+             contre {:.0} au large",
+            rect.width(),
+            au_large.width()
+        );
+        assert!(
+            rect.right() <= MIN_SCREEN[0] && rect.left() >= 0.0,
+            "l'onglet « {nom} » sort de l'écran : {rect:?}"
+        );
+        assert!(
+            rect.bottom() <= MIN_SCREEN[1] && rect.top() >= 0.0,
+            "l'onglet « {nom} » sort de l'écran par le haut ou le bas : \
+             {rect:?}"
+        );
+    }
+}
+
 #[test]
 fn panels_do_not_overlap_on_the_smallest_screen() {
     let entrée = egui::RawInput {
@@ -3615,5 +3759,60 @@ fn what_speaks_of_themes_is_written_with_the_themes() {
             s.plugins_none_installed,
             s.exercises_packs_title
         );
+    }
+}
+
+/// Un repli s'annonce par un chevron, jamais par une lettre.
+///
+/// Les trois en-têtes repliables du panneau écrivaient « v » et « > » —
+/// deux lettres de l'alphabet. Sur la capture, le « v » gris posé devant
+/// « Prochaine instruction » ne se lit pas comme un signe : c'est une
+/// lettre orpheline, et rien ne dit que le titre se replie. Le défaut
+/// est de ceux qu'aucune mesure ne trouve, parce que tout est aligné,
+/// contrasté et entier — il faut avoir regardé l'écran.
+///
+/// On demande donc les chevrons d'egui, U+23F7 et U+23F5. Le choix
+/// n'est pas libre : la police ne porte ni ▾, ni ▼, ni ⌄: interrogée
+/// par `has_glyph`, elle répond non à tous les trois, et un caractère
+/// absent se peint en carré vide.
+#[test]
+fn a_fold_is_announced_by_a_chevron_never_by_a_letter() {
+    for ouvert in [true, false] {
+        let ctx = egui::Context::default();
+        NamsdecApp::default().apply_theme(&ctx);
+        let mut état = ouvert;
+        let mut écrits: Vec<String> = Vec::new();
+        let mut sortie = ctx.run_ui(egui::RawInput::default(), |ui| {
+            section_toggle(ui, DEFAULT_THEME, "Prochaine instruction", &mut état);
+        });
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                écrits.push(t.galley.text().to_owned());
+            }
+        }
+        sortie.textures_delta.clear();
+        let attendu = if ouvert { "⏷" } else { "⏵" };
+        assert!(
+            écrits.iter().any(|texte| texte == attendu),
+            "le repli {} doit s'annoncer par « {attendu} » — écrit : {écrits:?}",
+            if ouvert { "ouvert" } else { "fermé" }
+        );
+        for lettre in ["v", ">", "V", "<"] {
+            assert!(
+                !écrits.iter().any(|texte| texte == lettre),
+                "« {lettre} » n'est pas un chevron : c'est une lettre, et elle \
+                 se lit comme telle"
+            );
+        }
+        // Et le caractère existe vraiment dans la police : un chevron
+        // absent se peint en carré vide, ce qui est pire que la lettre.
+        let police = egui::FontId::proportional(13.0);
+        for c in attendu.chars() {
+            assert!(
+                ctx.fonts_mut(|f| f.has_glyph(&police, c)),
+                "la police n'a pas U+{:04X} — il se peindrait en carré vide",
+                c as u32
+            );
+        }
     }
 }

@@ -52,6 +52,19 @@ pub struct Ligne {
     /// aussi, et le premier jet effaçait donc tous les mots-clés de
     /// structure en croyant nettoyer les étiquettes inutiles.
     pub est_étiquette: bool,
+    /// Cette ligne vient-elle du GRAPHE plutôt que d'une instruction ?
+    ///
+    /// `si`, `sinon`, `tant que`, `répéter`, `aller à` : les mots que
+    /// personne n'a écrits et que la forme du programme donne. C'est la
+    /// seule chose à comprendre en lisant ce texte, et c'est ce que la
+    /// couleur dit à l'écran.
+    ///
+    /// DIT ICI, et non déduit d'une adresse absente. C'était la règle —
+    /// « pas d'adresse, donc un mot de structure » — et elle est tombée
+    /// le jour où un `si` s'est mis à porter l'adresse de la
+    /// comparaison qu'il avait absorbée. Deux questions différentes
+    /// répondaient à la même mesure ; il en fallait deux.
+    pub est_structure: bool,
 }
 
 impl Ligne {
@@ -61,6 +74,20 @@ impl Ligne {
             texte: texte.into(),
             adresse: None,
             est_étiquette: false,
+            est_structure: true,
+        }
+    }
+
+    /// Un mot de structure qui sait d'où il vient.
+    ///
+    /// Un `si` a mangé le `cmp` et le `jcc` qui le disaient : sans cette
+    /// adresse, le processeur arrêté sur l'un des deux n'aurait plus de
+    /// ligne à surligner, et le pseudo-code redeviendrait un texte mort
+    /// à côté d'un listing vivant.
+    fn mot_sur(profondeur: usize, texte: impl Into<String>, adresse: u64) -> Self {
+        Self {
+            adresse: Some(adresse),
+            ..Self::mot(profondeur, texte)
         }
     }
 
@@ -70,6 +97,7 @@ impl Ligne {
             texte: format!("{nom}:"),
             adresse: None,
             est_étiquette: true,
+            est_structure: false,
         }
     }
 }
@@ -309,6 +337,7 @@ impl<'a> Contexte<'a> {
                 texte: clair,
                 adresse: décodée.map(|d| d.address),
                 est_étiquette: false,
+                est_structure: false,
             });
         }
         lignes
@@ -339,6 +368,67 @@ impl<'a> Contexte<'a> {
             (Some(a), Some(b)) => (a.to_owned(), b.to_owned()),
             _ => (brut.clone(), brut),
         }
+    }
+
+    /// L'avant-dernière instruction d'un bloc, décodée.
+    ///
+    /// C'est celle qui prépare la condition du saut qui ferme le bloc.
+    /// Elle se retrouve en marchant depuis le début : un bloc ne garde
+    /// que le TEXTE de ses instructions, et seule l'adresse permet de
+    /// retrouver les octets.
+    fn avant_dernière(&self, bloc: usize) -> Option<&'a DecodedInstruction> {
+        let b = &self.cfg.blocks[bloc];
+        let mut adresse = b.start;
+        let mut précédente = None;
+        while adresse < b.last {
+            let d = self.par_adresse.get(&adresse).copied()?;
+            précédente = Some(d);
+            adresse += d.bytes.len() as u64;
+        }
+        précédente
+    }
+
+    /// La condition du bloc, fusionnée avec la comparaison qui la
+    /// prépare quand les deux se disent d'un trait.
+    ///
+    /// Rend `(telle quelle, retournée, instructions absorbées, ancre)`.
+    ///
+    /// Le troisième nombre est ce que l'appelant doit retirer de la fin
+    /// du bloc : un, quand seul le saut devient une structure ; DEUX
+    /// quand la comparaison l'a rejoint. Le dire ici plutôt que de le
+    /// recalculer chez chaque appelant évite la faute qui guette —
+    /// écrire `tant que RCX ≠ 0` ET garder `comparer RCX et 0` juste
+    /// au-dessus, c'est-à-dire dire deux fois la même chose en laissant
+    /// croire qu'il y a là deux tests.
+    ///
+    /// L'ancre est l'adresse de la PREMIÈRE instruction absorbée. C'est
+    /// elle que la ligne de structure portera : sans elle, le
+    /// processeur arrêté sur le `cmp` n'aurait aucune ligne à surligner
+    /// dans le pseudo-code, alors que la question qu'il pose y est
+    /// écrite en toutes lettres.
+    fn condition_lisible(&self, bloc: usize) -> (String, String, usize, u64) {
+        let b = &self.cfg.blocks[bloc];
+        if let Some(saut) = self
+            .par_adresse
+            .get(&b.last)
+            .and_then(|d| namsdec_disasm::decode_one(&d.bytes, d.address))
+            && let Some(avant) = self.avant_dernière(bloc)
+            && let Some(test) = namsdec_disasm::decode_one(&avant.bytes, avant.address)
+            && let Some((telle, retournée, absorbable)) =
+                namsdec_disasm::pseudo::comparaison(&test, &saut, self.lang)
+        {
+            // `cmp`/`test` disparaissent — la condition les dit toute
+            // entière. Une opération ordinaire reste : elle calcule
+            // quelque chose, et seule sa trace dans les indicateurs est
+            // reprise par la condition.
+            return if absorbable {
+                (telle, retournée, 2, avant.address)
+            } else {
+                (telle, retournée, 1, b.last)
+            };
+        }
+        let (telle, retournée) = self.condition(bloc);
+        (telle, retournée, 1, b.last)
     }
 
     /// Le bloc ne fait-il que préparer sa condition ?
@@ -400,7 +490,11 @@ impl<'a> Contexte<'a> {
             }
 
             if self.ferme_la_boucle == Some(courant) {
-                lignes.extend(self.corps(courant, profondeur, 1));
+                // Le saut de retour est tu — il EST le « tant que » déjà
+                // posé —, et la comparaison qui le prépare l'est aussi
+                // quand elle a été fondue dedans.
+                let (_, _, absorbées, _) = self.condition_lisible(courant);
+                lignes.extend(self.corps(courant, profondeur, absorbées));
                 return lignes;
             }
 
@@ -427,15 +521,19 @@ impl<'a> Contexte<'a> {
                         lignes.extend(self.corps(courant, profondeur, 0));
                         return lignes;
                     };
-                    lignes.extend(self.corps(courant, profondeur, 1));
-                    let (telle, retournée) = self.condition(courant);
+                    let (telle, retournée, absorbées, ancre) = self.condition_lisible(courant);
+                    lignes.extend(self.corps(courant, profondeur, absorbées));
                     let joint = self.convergence(courant, vrai, faux);
                     match joint {
                         // Le saut passe par-dessus une branche : c'est le
                         // `si` sans `sinon` qu'écrivent tous les
                         // compilateurs, et la condition s'y retourne.
                         Some(j) if j == vrai => {
-                            lignes.push(Ligne::mot(profondeur, format!("si {retournée} :")));
+                            lignes.push(Ligne::mot_sur(
+                                profondeur,
+                                format!("si {retournée} :"),
+                                ancre,
+                            ));
                             lignes.extend(self.région(
                                 faux,
                                 Some(j),
@@ -445,7 +543,7 @@ impl<'a> Contexte<'a> {
                             courant = j;
                         }
                         Some(j) if j == faux => {
-                            lignes.push(Ligne::mot(profondeur, format!("si {telle} :")));
+                            lignes.push(Ligne::mot_sur(profondeur, format!("si {telle} :"), ancre));
                             lignes.extend(self.région(
                                 vrai,
                                 Some(j),
@@ -455,7 +553,11 @@ impl<'a> Contexte<'a> {
                             courant = j;
                         }
                         Some(j) => {
-                            lignes.push(Ligne::mot(profondeur, format!("si {retournée} :")));
+                            lignes.push(Ligne::mot_sur(
+                                profondeur,
+                                format!("si {retournée} :"),
+                                ancre,
+                            ));
                             lignes.extend(self.région(
                                 faux,
                                 Some(j),
@@ -478,8 +580,11 @@ impl<'a> Contexte<'a> {
                         None => {
                             let nom = self.étiquette(vrai);
                             self.étiquettes_utilisées.insert(nom.clone());
-                            lignes
-                                .push(Ligne::mot(profondeur, format!("si {telle}, aller à {nom}")));
+                            lignes.push(Ligne::mot_sur(
+                                profondeur,
+                                format!("si {telle}, aller à {nom}"),
+                                ancre,
+                            ));
                             courant = faux;
                         }
                     }
@@ -537,16 +642,21 @@ impl<'a> Contexte<'a> {
             // décide pas de la sortie, et la boucle se ferme plus bas.
             // On ne renonce pas pour autant — c'est le cas d'un `si`
             // posé en tête d'un `répéter`.
+            let lisible = self.condition_lisible(tête);
             let en_haut = match (dedans.contains(&vrai), dedans.contains(&faux)) {
                 _ if vrai == tête || faux == tête => None,
-                (true, false) => Some((vrai, faux, self.condition(tête).0)),
-                (false, true) => Some((faux, vrai, self.condition(tête).1)),
+                (true, false) => Some((vrai, faux, lisible.0.clone())),
+                (false, true) => Some((faux, vrai, lisible.1.clone())),
                 _ => None,
             };
             if let Some((entrer, sortir, condition)) = en_haut {
                 if self.ne_fait_que_tester(tête) {
                     let mot = self.mot_tant_que();
-                    lignes.push(Ligne::mot(profondeur, format!("{mot} {condition} :")));
+                    lignes.push(Ligne::mot_sur(
+                        profondeur,
+                        format!("{mot} {condition} :"),
+                        lisible.3,
+                    ));
                     let corps = self.région(entrer, Some(tête), profondeur + 1, récursion + 1);
                     lignes.extend(corps);
                 } else {
@@ -555,9 +665,12 @@ impl<'a> Contexte<'a> {
                     // écrit la boucle telle qu'elle tourne, sortie au
                     // milieu. C'est plus long et c'est vrai.
                     lignes.push(Ligne::mot(profondeur, self.mot_boucler()));
-                    lignes.extend(self.corps(tête, profondeur + 1, 1));
-                    let (_, retournée) = self.condition(tête);
-                    lignes.push(Ligne::mot(profondeur + 1, self.mot_sortir(&retournée)));
+                    lignes.extend(self.corps(tête, profondeur + 1, lisible.2));
+                    lignes.push(Ligne::mot_sur(
+                        profondeur + 1,
+                        self.mot_sortir(&lisible.1),
+                        lisible.3,
+                    ));
                     let corps = self.région(entrer, Some(tête), profondeur + 1, récursion + 1);
                     lignes.extend(corps);
                 }
@@ -582,7 +695,7 @@ impl<'a> Contexte<'a> {
         match self.cfg.blocks[fin].exit {
             Exit::Branch => {
                 let reste = self.suivant(fin, Kind::Taken) == Some(tête);
-                let (telle, retournée) = self.condition(fin);
+                let (telle, retournée, _, ancre) = self.condition_lisible(fin);
                 let condition = if reste { telle } else { retournée };
                 let sortie = if reste {
                     self.suivant(fin, Kind::NotTaken)
@@ -591,9 +704,10 @@ impl<'a> Contexte<'a> {
                 };
                 lignes.push(Ligne::mot(profondeur, self.mot_répéter()));
                 lignes.extend(self.corps_de_la_boucle(tête, fin, profondeur + 1, récursion));
-                lignes.push(Ligne::mot(
+                lignes.push(Ligne::mot_sur(
                     profondeur,
                     format!("{} {condition}", self.mot_tant_que()),
+                    ancre,
                 ));
                 Some(sortie)
             }
@@ -702,7 +816,7 @@ mod tests {
         let bytes: &[u8] = &[0xB9, 0x03, 0x00, 0x00, 0x00, 0xFF, 0xC9, 0x75, 0xFC, 0xF4];
         let texte = dire(bytes, "fr");
         assert!(texte.contains("répéter :"), "{texte}");
-        assert!(texte.contains("tant que différent"), "{texte}");
+        assert!(texte.contains("tant que ECX ≠ 0"), "{texte}");
         // Et le saut de retour n'est pas redit : il EST le « tant que ».
         assert!(!texte.contains("aller à"), "{texte}");
         // Le corps est bien à l'intérieur.
@@ -724,7 +838,7 @@ mod tests {
         // jmp vers le test / dec eax / test eax,eax / jnz vers le dec / hlt
         let bytes: &[u8] = &[0xEB, 0x02, 0xFF, 0xC8, 0x85, 0xC0, 0x75, 0xFA, 0xF4];
         let texte = dire(bytes, "fr");
-        assert!(texte.contains("tant que différent :"), "{texte}");
+        assert!(texte.contains("tant que EAX ≠ 0 :"), "{texte}");
         assert!(!texte.contains("répéter"), "{texte}");
         assert!(!texte.contains("aller à"), "{texte}");
     }
@@ -740,8 +854,12 @@ mod tests {
     fn the_condition_is_the_programs_not_the_jumps() {
         let bytes: &[u8] = &[0x83, 0xF8, 0x05, 0x75, 0x02, 0xFF, 0xC0, 0xF4];
         let texte = dire(bytes, "fr");
-        assert!(texte.contains("si égal :"), "{texte}");
-        assert!(!texte.contains("différent"), "{texte}");
+        assert!(texte.contains("si EAX = 5 :"), "{texte}");
+        assert!(!texte.contains("≠"), "{texte}");
+        // La comparaison a DISPARU du corps : elle est tout entière
+        // dans la condition, et la redire laisserait croire à un
+        // second test.
+        assert!(!texte.contains("comparer"), "{texte}");
         let lignes: Vec<&str> = texte.lines().collect();
         let sous = lignes
             .iter()
@@ -758,7 +876,7 @@ mod tests {
             0x83, 0xF8, 0x05, 0x75, 0x04, 0xFF, 0xC0, 0xEB, 0x02, 0xFF, 0xC8, 0xF4,
         ];
         let texte = dire(bytes, "fr");
-        assert!(texte.contains("si égal :"), "{texte}");
+        assert!(texte.contains("si EAX = 5 :"), "{texte}");
         assert!(texte.contains("sinon :"), "{texte}");
         // Les deux branches sont en retrait, la suite ne l'est pas.
         let lignes: Vec<&str> = texte.lines().collect();
@@ -772,6 +890,42 @@ mod tests {
         assert!(
             lignes.iter().any(|l| l == &"arrêter la machine"),
             "la suite revient au ras de la marge :\n{texte}"
+        );
+    }
+
+    /// Une ligne de structure sait d'où elle vient.
+    ///
+    /// Le `si` a mangé le `cmp` et le `jcc` qui le disaient. Sans
+    /// l'adresse de la comparaison, le processeur arrêté dessus
+    /// n'aurait plus aucune ligne à surligner dans le pseudo-code,
+    /// alors que la question qu'il pose y est écrite en toutes lettres.
+    ///
+    /// Et elle reste un MOT DE STRUCTURE : la couleur se demande à
+    /// `est_structure`, non à l'absence d'adresse — deux questions
+    /// différentes, qui ont partagé la même mesure jusqu'ici.
+    #[test]
+    fn a_structure_line_keeps_the_address_it_swallowed() {
+        // cmp eax, 5 / jne +2 / inc eax / hlt
+        let bytes: &[u8] = &[0x83, 0xF8, 0x05, 0x75, 0x02, 0xFF, 0xC0, 0xF4];
+        let dis = namsdec_disasm::disassemble(bytes, 0x400000);
+        let cfg = crate::cfg::build(&dis);
+        let lignes = pseudo_code(&cfg, &dis, "fr");
+        let si = lignes
+            .iter()
+            .find(|l| l.texte.starts_with("si "))
+            .expect("le si est écrit");
+        assert!(si.est_structure, "« {} » vient du graphe", si.texte);
+        assert_eq!(
+            si.adresse,
+            Some(0x400000),
+            "« {} » doit pointer sur la comparaison qu'elle a absorbée",
+            si.texte
+        );
+        // Et la comparaison n'est plus écrite nulle part ailleurs.
+        assert!(
+            !lignes.iter().any(|l| l.texte.contains("comparer")),
+            "{}",
+            en_texte(&lignes)
         );
     }
 
@@ -795,11 +949,11 @@ mod tests {
         let texte = dire(bytes, "fr");
         let lignes: Vec<&str> = texte.lines().collect();
         assert!(texte.contains("répéter :"), "{texte}");
-        assert!(texte.contains("si différent :"), "{texte}");
+        assert!(texte.contains("si ECX ≠ 2 :"), "{texte}");
         // Le `si` est DANS la boucle, son corps encore plus profond.
         let si = lignes
             .iter()
-            .position(|l| l.contains("si différent"))
+            .position(|l| l.contains("si ECX ≠ 2"))
             .expect("le si");
         let inc = lignes
             .iter()
