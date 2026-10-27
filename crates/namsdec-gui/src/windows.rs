@@ -701,6 +701,22 @@ impl NamsdecApp {
             .id(egui::Id::new("cyclic_window"))
             .open(&mut open)
             .resizable(true)
+            // LA HAUTEUR EST IMPOSÉE, ET C'EST MESURÉ.
+            //
+            // Le vide entre « Retrouver un décalage » et le bouton
+            // « OK » saute aux yeux sur une capture, et l'on pense à la
+            // fiche d'instruction, qui a perdu sa hauteur imposée pour
+            // cette raison. Essayé : la retirer ici REND LA FENÊTRE PLUS
+            // HAUTE — 560×420 au lieu de 560×400 — et le trou passe de
+            // 80 à 90 px, au-dessus de ce que
+            // `a_window_opens_at_the_size_of_what_it_shows` tolère.
+            //
+            // La différence avec la fiche : celle-ci borne ses zones
+            // défilantes à `window_room` et se rétracte avec elles ;
+            // celle-là n'a pas de zone défilante, et son bouton est
+            // épinglé en bas par un panneau. Le vide n'est pas de la
+            // hauteur en trop, c'est la place que garde la réponse à
+            // venir.
             .default_size([560.0, 400.0])
             .pivot(egui::Align2::CENTER_CENTER)
             .default_pos(default_window_pos(ctx, "cyclic"))

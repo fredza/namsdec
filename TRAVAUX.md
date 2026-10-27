@@ -132,6 +132,21 @@ défauts suspectés, c'étaient des questions qu'on n'avait jamais posées.
       Éprouvé : 10 sur 13.
       Le banc vérifiait qu'une liste ne déborde pas ; jamais qu'elle
       occupe ce qu'on lui donne.
+- [x] **Une hypothèse essayée et rejetée** — le vide entre « Retrouver
+      un décalage » et « OK », dans Motif cyclique, ressemblait au
+      défaut que la fiche d'instruction a eu (« cent trois pixels de
+      vide »). Retirer la hauteur imposée REND LA FENÊTRE PLUS HAUTE —
+      560×420 au lieu de 560×400 — et le trou passe de 80 à 90 px.
+      La différence : la fiche borne ses zones défilantes et se rétracte
+      avec elles ; celle-ci n'en a pas, et son bouton est épinglé en bas
+      par un panneau. Le vide n'est pas de la hauteur en trop, c'est la
+      place que garde la réponse à venir. Mesure écrite dans le code,
+      pour que personne ne refasse l'essai.
+- [x] **Quatre autres hauteurs figées, toutes légitimes** —
+      prévisualisation du rapport de bogue, deux journaux d'installation,
+      carte mémoire. Chacune partage son volet avec des voisines, là où
+      les deux corrigées l'occupaient seules. Recensement fait, aucune
+      autre à changer.
 - [x] **Un commentaire écrit deux fois** — le même paragraphe de douze
       lignes, dans `analysis_body_ui`, avec deux fins différentes.
       Retiré.
