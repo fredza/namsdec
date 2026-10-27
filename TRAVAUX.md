@@ -99,6 +99,59 @@ défauts suspectés, c'étaient des questions qu'on n'avait jamais posées.
 
 ---
 
+## 0 sexdecies. Cinq défauts que seule l'image pouvait montrer (A 9.35)
+
+Première revue menée sur les captures, maintenant qu'elles existent.
+Cinq écarts, et **aucun des cinq n'était atteignable par une mesure** :
+tous relèvent de ce qu'on n'avait pas pensé à demander.
+
+- [x] **Le désassemblage cachait le début du programme** — treize
+      instructions, neuf peintes, six cents pixels de vide dessous.
+      `_start` et les trois suivantes poussées hors du cadre, sur un
+      programme qui tient trois fois dans la vue. egui ne ramène pas
+      dans ses bornes une position de défilement posée à la main :
+      « trois lignes de contexte au-dessus » est juste sur un long
+      listing et absurde sur un court. Borné au contenu — quand tout
+      tient, rien ne défile, et la demi-ligne coupée en haut disparaît
+      avec. Même remède pour l'onglet Octets, qui avait le même calcul.
+      Contrôle : `un_listing_qui_tient_en_entier_ne_cache_pas_son_debut`,
+      qui compte les ADRESSES peintes — la seule mesure qui réponde à
+      « voit-on le programme ? ». Éprouvé : 9 sur 13.
+- [x] **L'onglet RE n'avait pas d'état vide** — le seul du panneau. Un
+      bouton gris, et pas un mot, dans l'onglet qui porte tout le
+      travail de rétro-ingénierie : celui qu'un nouveau venu ouvre par
+      curiosité. Il dit maintenant ce qu'il attend, avec son détail à
+      lui — les six autres attendent un programme assemblé, celui-ci
+      attend un FICHIER, et il sert aussi bien pour un binaire qu'on n'a
+      pas écrit.
+- [x] **Quatre comptes à un portaient un pluriel** — « 1 fonctions
+      retrouvées », « 1 boucles », « 1 étiquettes », « 1 adresses de
+      données ». Le cas à UN est celui qu'on ne voit jamais en
+      développant : on essaie toujours sur un binaire qui en a douze.
+      `ModuleContext::compte` accorde, écrit une fois.
+      Contrôle : `aucun_compte_a_un_ne_porte_un_pluriel`, qui balaie
+      toutes les scènes du banc et lit ce qui est peint, avec la liste
+      des mots invariables français.
+- [x] **« 1 passages par ligne »** dans la légende de chaleur, sur le
+      programme d'accueil. Le relevé général ne pouvait pas l'attraper :
+      le chiffre et l'unité sont deux étiquettes peintes séparément, et
+      il ne lit qu'un texte à la fois. L'unité s'accorde maintenant à
+      son dernier repère.
+- [x] **La fiche d'instruction s'ouvrait sur la barre d'état** — ancrée
+      à 24 px du bas, la barre en fait 28 : « Lig 1, Col 1 » et l'état
+      de nasm disparaissaient dessous, au moment précis où l'on regarde
+      une instruction. `hauteur_des_barres_du_bas` est désormais écrite
+      une fois et sert aux deux surfaces qui choisissent leur place en
+      bas. Contrôle : `rien_ne_s_ouvre_par_dessus_la_barre_d_etat`.
+
+**Et un faux positif, qui vaut d'être dit** : le détail d'un état vide
+est peint en 9 points là où la prose voisine est en 13, et cela saute
+aux yeux sur l'image. Ce n'est pas un écart — `every_text_size_belongs_
+to_a_declared_set` déclare cette taille et sa raison. La capture pose
+des questions ; c'est au code de répondre, et ici il répondait.
+
+---
+
 ## 0 quindecies. Voir l'interface sans écran (A 9.34)
 
 - [x] **La capture ne dépendait plus d'un bureau** — sous Wayland,

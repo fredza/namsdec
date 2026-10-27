@@ -148,7 +148,7 @@ impl ReModule for XrefsModule {
         let boucles = self.xrefs.loops();
         if !boucles.is_empty() {
             ui.add_space(4.0);
-            ui.strong(format!("{} {}", boucles.len(), ctx.t("boucles", "loops")));
+            ui.strong(ctx.compte(boucles.len(), ("boucle", "boucles"), ("loop", "loops")));
             ui.weak(ctx.t(
                 "Un saut qui revient en arrière ferme un chemin. Combien de fois on y \
                  tourne ne se sait qu'en exécutant : la gouttière le compte.",
@@ -183,12 +183,16 @@ impl ReModule for XrefsModule {
         let étiquettes = self.xrefs.labels().len();
         if étiquettes > 0 {
             ui.add_space(4.0);
-            ui.weak(format!(
-                "{étiquettes} {}",
-                ctx.t(
+            ui.weak(ctx.compte(
+                étiquettes,
+                (
+                    "étiquette — début de boucle ou de branche",
                     "étiquettes — débuts de boucle et de branche",
-                    "labels — starts of loops and branches"
-                )
+                ),
+                (
+                    "label — start of a loop or a branch",
+                    "labels — starts of loops and branches",
+                ),
             ));
         }
 
@@ -205,12 +209,16 @@ impl ReModule for XrefsModule {
             .count();
         if données > 0 {
             ui.add_space(4.0);
-            ui.weak(format!(
-                "{données} {}",
-                ctx.t(
+            ui.weak(ctx.compte(
+                données,
+                (
+                    "adresse de données désignée par le code",
                     "adresses de données désignées par le code",
-                    "data addresses pointed at by the code"
-                )
+                ),
+                (
+                    "data address pointed at by the code",
+                    "data addresses pointed at by the code",
+                ),
             ));
         }
     }

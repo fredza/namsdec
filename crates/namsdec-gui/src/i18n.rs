@@ -903,6 +903,13 @@ pub struct Strings {
     pub module_disasm_idle: &'static str,
     /// Ce qu'on fait quand rien n'est assemblé, dit sous le constat.
     pub empty_assemble_hint: &'static str,
+    /// Le détail de l'état vide de l'onglet RE. Le sien, et non celui
+    /// des autres : les six panneaux du processeur attendent tous la
+    /// même chose — un programme assemblé —, celui-ci attend un
+    /// FICHIER, et il sert aussi bien pour un binaire qu'on n'a pas
+    /// écrit. C'était le seul onglet du panneau sans état vide : un
+    /// bouton gris, et pas un mot.
+    pub empty_re_hint: &'static str,
     /// Ce que chaque onglet du panneau montrera, une fois le programme
     /// lancé. Un panneau vide qui ne dit pas à quoi il sert n'apprend
     /// rien à qui le découvre.
@@ -1142,6 +1149,12 @@ pub struct Strings {
     pub next_instruction_detail_hint: &'static str,
     pub heat_legend: &'static str,
     pub heat_legend_hint: &'static str,
+    /// La même unité au singulier. Sur un programme où la ligne la plus
+    /// chaude n'est passée qu'une fois, la légende n'a qu'un repère et
+    /// disait « 1 passages par ligne ». Le relevé des comptes ne le
+    /// voyait pas : le chiffre et l'unité sont deux étiquettes, et il
+    /// ne lit qu'un texte à la fois.
+    pub heat_legend_hint_one: &'static str,
     pub preferences_heat_legend: &'static str,
     pub preferences_heat_legend_hint: &'static str,
     pub window_minimize: &'static str,
@@ -1883,6 +1896,7 @@ déclenchera jamais.",
     no_binary_assembled: "Aucun binaire assemblé.",
     module_disasm_idle: "rien à désassembler pour l'instant",
     empty_assemble_hint: "Écrivez un programme, puis assemblez-le : tout ce qui suit décrira ce qu'il fait au processeur.",
+    empty_re_hint: "Assemblez votre programme, ou ouvrez un binaire que vous n'avez pas écrit : cet onglet dit ce que le fichier révèle de lui-même — ses protections, ses chaînes, ses appels système.",
     empty_stack: "Ici s'afficheront la pile, la chaîne des appels et ce que la convention d'appel promet.",
     empty_memory: "Ici s'afficheront les pages du programme, leurs droits, et de quoi y chercher un motif.",
     empty_heap: "Ici s'afficheront les blocs alloués, leur taille et ce qu'ils contiennent.",
@@ -2055,6 +2069,7 @@ déclenchera jamais.",
     next_instruction_detail_hint: "La fiche, les opérandes résolus, les arguments d'un appel. S'ouvre de lui-même devant un appel, un saut conditionnel ou un appel système.",
     heat_legend: "Chaleur :",
     heat_legend_hint: "passages par ligne",
+    heat_legend_hint_one: "passage par ligne",
     preferences_heat_legend: "Légende de la chaleur sous l'éditeur",
     preferences_heat_legend_hint: "Ce que valent les couleurs de la gouttière. Utile le temps d'apprendre à les lire.",
     window_minimize: "Réduire",
@@ -2779,6 +2794,7 @@ other is there to compare — that is how gaps and clashes become visible.",
     no_binary_assembled: "No binary assembled.",
     module_disasm_idle: "nothing to disassemble yet",
     empty_assemble_hint: "Write a program, then assemble it: everything below will describe what it does to the processor.",
+    empty_re_hint: "Assemble your program, or open a binary you did not write: this tab tells what the file reveals about itself — its protections, its strings, its system calls.",
     empty_stack: "The stack, the call chain and what the calling convention promises will appear here.",
     empty_memory: "The program's pages, their permissions, and a way to search them will appear here.",
     empty_heap: "Allocated blocks, their size and their contents will appear here.",
@@ -2951,6 +2967,7 @@ other is there to compare — that is how gaps and clashes become visible.",
     next_instruction_detail_hint: "The sheet, the resolved operands, a call's arguments. Opens by itself before a call, a conditional jump or a system call.",
     heat_legend: "Heat:",
     heat_legend_hint: "passes per line",
+    heat_legend_hint_one: "pass per line",
     preferences_heat_legend: "Heat legend under the editor",
     preferences_heat_legend_hint: "What the gutter's colours are worth. Useful while learning to read them.",
     window_minimize: "Minimise",

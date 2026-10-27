@@ -7585,3 +7585,78 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
 
      Une mesure ne répond qu'aux questions qu'on lui pose. Une image
      répond à celles qu'on n'a pas posées.
+
+9.35 [FAIT] CINQ DÉFAUTS QUE SEULE L'IMAGE POUVAIT MONTRER
+     (27 octobre 2026)
+--------------------------------------------------------------------------------
+     Première revue menée sur les captures, le lendemain du jour où
+     elles sont devenues possibles. Cinq écarts, et le point commun est
+     ce qui compte : AUCUN n'était atteignable par une mesure. Sept cent
+     cinquante contrôles passaient au vert pendant que la vue du
+     désassemblage cachait `_start`.
+
+     1. LE DÉSASSEMBLAGE CACHAIT LE DÉBUT DU PROGRAMME. Neuf
+        instructions peintes sur treize, et six cents pixels de vide
+        dessous. On regarde un programme de treize lignes dans une vue
+        qui en tient trente-huit, et l'on ne voit pas son point
+        d'entrée.
+        La cause tient en une phrase : **egui ne ramène pas dans ses
+        bornes une position de défilement posée à la main**. « Trois
+        lignes de contexte au-dessus de l'instruction courante » est
+        juste sur un long listing et absurde sur un court, où il n'y a
+        rien à faire défiler. Bornée au contenu, la position vaut zéro
+        quand tout tient — et la demi-ligne coupée en haut, qui était le
+        symptôme VU en premier, disparaît avec, parce qu'elle venait de
+        là.
+        L'onglet Octets avait le même calcul, centré au lieu de décalé :
+        même remède.
+
+     2. L'ONGLET RE N'AVAIT PAS D'ÉTAT VIDE. Le seul du panneau. Les six
+        autres disent ce qu'ils attendent et offrent le bouton qui y
+        mène — c'est une règle du projet depuis septembre, « un panneau
+        simplement vide se lit comme cassé ». Celui-ci montrait un
+        bouton gris et pas un mot, dans l'onglet qui porte tout le
+        travail de rétro-ingénierie : celui qu'un nouveau venu ouvre par
+        curiosité.
+        Son détail lui est propre, et c'est le point : les autres
+        attendent un programme assemblé, celui-ci attend un FICHIER, et
+        il sert aussi bien pour un binaire qu'on n'a pas écrit.
+
+     3. QUATRE COMPTES À UN PORTAIENT UN PLURIEL. « 1 fonctions
+        retrouvées », « 1 boucles », « 1 étiquettes », « 1 adresses de
+        données ». C'est la faute la plus visible d'une interface
+        française, et c'est le cas qu'on ne voit jamais en développant :
+        on essaie toujours sur un binaire qui en a douze.
+        Corrigé une fois pour toutes par `ModuleContext::compte`, et
+        surtout : c'est la MACHINE qui les a tous trouvés. Le contrôle
+        balaie les scènes du banc, lit ce qui est peint, et refuse « 1 »
+        suivi d'un mot au pluriel — avec la liste des invariables
+        français, sans quoi « 1 fois » et « 1 pas » crieraient au loup.
+        Deux vus à l'œil, quatre trouvés par le relevé.
+
+     4. « 1 PASSAGES PAR LIGNE » dans la légende de chaleur, sur le
+        programme d'accueil, c'est-à-dire sur le premier écran venu. Le
+        relevé du point 3 ne pouvait pas l'attraper : le chiffre et
+        l'unité sont DEUX étiquettes peintes séparément, et il ne lit
+        qu'un texte à la fois. Il a fallu l'œil pour celui-là, et c'est
+        la limite du relevé — elle est écrite dans son commentaire.
+
+     5. LA FICHE D'INSTRUCTION S'OUVRAIT SUR LA BARRE D'ÉTAT. Ancrée à
+        vingt-quatre pixels du bas ; la barre en fait vingt-huit. « Lig
+        1, Col 1 » et l'état de nasm disparaissaient dessous, au moment
+        précis où l'on regarde une instruction — la seule bande qui dise
+        en permanence où l'on en est. Le placement était pourtant
+        réfléchi (« en bas à droite, loin du curseur ») : c'est le
+        chiffre en dur qui était faux.
+        `hauteur_des_barres_du_bas` est maintenant écrite une fois et
+        sert aux deux surfaces qui choisissent leur place en bas.
+
+     ET UN FAUX POSITIF, QUI VAUT D'ÊTRE DIT. Le détail d'un état vide
+     est peint en 9 points là où la prose voisine est en 13 ; sur
+     l'image, cela saute aux yeux comme une disparate. J'allais le
+     corriger. Ce n'en est pas une : `every_text_size_belongs_to_a_
+     declared_set` déclare cette taille, et sa raison — « le détail d'un
+     état vide, l'explication sous une phrase ». La capture pose les
+     questions ; c'est au code de répondre, et ici il répondait. Un
+     relevé qui ne lit pas le code avant de corriger aurait défait une
+     hiérarchie voulue.

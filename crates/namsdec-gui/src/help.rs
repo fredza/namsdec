@@ -804,7 +804,17 @@ impl NamsdecApp {
             // continuant d'écrire, elle ne doit pas couvrir la ligne sur
             // laquelle on vient de demander de l'aide.
             .pivot(egui::Align2::RIGHT_BOTTOM)
-            .default_pos(ctx.viewport_rect().max - egui::vec2(24.0, 24.0))
+            // AU-DESSUS DE LA BARRE D'ÉTAT, et non dessus. Vingt-quatre
+            // pixels en dur plaçaient le bas de la fiche DANS la barre,
+            // qui en fait vingt-huit : « Lig 1, Col 1 » et l'état de
+            // nasm disparaissaient sous elle. Vu sur une capture, et
+            // nulle part ailleurs — c'est la seule bande qui dise en
+            // permanence où l'on en est, et on la cachait pour lire une
+            // fiche.
+            .default_pos(
+                ctx.viewport_rect().max
+                    - egui::vec2(24.0, self.hauteur_des_barres_du_bas(ctx) + 12.0),
+            )
             .title_bar(false)
             .show(ctx, |ui| {
                 if chrome::window_head(ui, self.theme, s, s.help_title) {

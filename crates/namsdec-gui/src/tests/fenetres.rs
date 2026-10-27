@@ -1323,3 +1323,80 @@ fn no_window_that_comes_back_is_buried_under_the_others() {
         );
     }
 }
+
+/// Rien ne s'ouvre par-dessus la barre d'état.
+///
+/// C'est la seule bande qui dise en permanence où l'on en est : le
+/// mode, la ligne, la colonne, l'état de l'assemblage. La fiche
+/// d'instruction s'ancrait à vingt-quatre pixels du bas — la barre en
+/// fait vingt-huit —, si bien qu'elle couvrait « Lig 1, Col 1 » et
+/// l'indicateur de nasm au moment précis où l'on regarde une
+/// instruction.
+///
+/// Vu sur une capture, et nulle part ailleurs : aucune mesure ne
+/// demandait « cette fenêtre laisse-t-elle la barre d'état lisible ? ».
+///
+/// La règle vaut pour ce qui se POSE tout seul : une fenêtre qu'on
+/// traîne va où l'on veut. Elle couvre donc les deux surfaces qui
+/// choisissent leur place en bas — la fiche et le panneau des suites.
+#[test]
+fn rien_ne_s_ouvre_par_dessus_la_barre_d_etat() {
+    for (nom, avec_console, poser) in [
+        (
+            "fiche d'instruction",
+            false,
+            (|app: &mut NamsdecApp| app.show_help = true) as fn(&mut NamsdecApp),
+        ),
+        ("fiche d'instruction / console ouverte", true, |app| {
+            app.show_help = true
+        }),
+        ("suites d'une séquence", false, |app| {
+            app.dispatcher.arm(&[egui::Key::Space]);
+            app.leader_since = Some(std::time::Instant::now() - std::time::Duration::from_secs(1));
+        }),
+    ] {
+        let id = if nom.starts_with("suites") {
+            "leader_hints"
+        } else {
+            "instruction_help"
+        };
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp {
+            show_console: avec_console,
+            ..Default::default()
+        };
+        app.apply_theme(&ctx);
+        poser(&mut app);
+
+        let hauteur = 900.0;
+        let entrée = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1400.0, hauteur),
+            )),
+            ..Default::default()
+        };
+        // Plusieurs images : une fenêtre est AMENÉE à sa place, et les
+        // panneaux du bas ne connaissent leur hauteur qu'une fois posés.
+        let mut cadre = None;
+        let mut barres = 0.0f32;
+        for _ in 0..6 {
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            sortie.textures_delta.clear();
+            cadre = egui::AreaState::load(&ctx, egui::Id::new(id)).map(|a| a.rect());
+            barres = app.hauteur_des_barres_du_bas(&ctx);
+        }
+        let cadre = cadre.unwrap_or_else(|| panic!("« {nom} » doit être affichée"));
+        assert!(
+            barres > 10.0,
+            "« {nom} » : la barre d'état doit avoir une hauteur — {barres}"
+        );
+        let haut_des_barres = hauteur - barres;
+        assert!(
+            cadre.bottom() <= haut_des_barres + 0.5,
+            "« {nom} » descend à {:.2} px ; les barres du bas commencent à \
+             {haut_des_barres:.2}",
+            cadre.bottom()
+        );
+    }
+}

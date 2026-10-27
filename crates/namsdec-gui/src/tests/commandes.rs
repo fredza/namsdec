@@ -1768,3 +1768,34 @@ fn les_suites_se_rangent_dans_l_ordre_ou_elles_s_ecrivent() {
         );
     }
 }
+
+/// La légende de chaleur accorde son unité à son dernier repère.
+///
+/// Le relevé général des comptes ne pouvait pas l'attraper : le chiffre
+/// et l'unité sont DEUX étiquettes peintes séparément, et il ne lit
+/// qu'un texte à la fois. C'est la capture qui l'a montré — « Chaleur :
+/// ▪ 1 passages par ligne », sur le programme d'accueil, c'est-à-dire
+/// sur le premier écran venu.
+#[test]
+fn la_legende_de_chaleur_accorde_son_unite() {
+    use crate::listing::heat_legend_steps;
+
+    // Un seul passage : un seul repère, et l'unité au singulier.
+    assert_eq!(heat_legend_steps(1), vec![1]);
+    // Plusieurs : le dernier repère est le maximum.
+    let plusieurs = heat_legend_steps(1000);
+    assert!(plusieurs.len() > 1 && plusieurs.last() != Some(&1));
+
+    let s = strings(Lang::Fr);
+    assert_eq!(s.heat_legend_hint_one, "passage par ligne");
+    assert_eq!(s.heat_legend_hint, "passages par ligne");
+    assert_ne!(
+        s.heat_legend_hint_one, s.heat_legend_hint,
+        "les deux formes doivent différer, sinon l'accord ne sert à rien"
+    );
+    for lang in [Lang::Fr, Lang::En] {
+        let s = strings(lang);
+        assert!(!s.heat_legend_hint_one.trim().is_empty());
+        assert!(!s.heat_legend_hint.trim().is_empty());
+    }
+}

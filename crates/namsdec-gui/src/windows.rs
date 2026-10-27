@@ -511,7 +511,24 @@ impl NamsdecApp {
             // avant que la zone existe, et un centrage calculé
             // sur une hauteur approximative tombe à côté.
             const CONTEXTE: usize = 3;
-            zone = zone.vertical_scroll_offset(index.saturating_sub(CONTEXTE) as f32 * row_height);
+            // BORNÉ À CE QU'IL Y A VRAIMENT À FAIRE DÉFILER. Une
+            // position posée à la main n'est pas ramenée dans les
+            // bornes par egui : sur un programme de treize
+            // instructions dans une vue qui en tient trente-huit,
+            // la vue descendait quand même de cinq lignes — quatre
+            // instructions, dont `_start`, poussées hors du cadre
+            // avec six cents pixels de vide en dessous. Mesuré :
+            // treize instructions, neuf peintes.
+            //
+            // Quand tout tient, la borne vaut zéro et rien ne
+            // défile. C'est aussi ce qui évite la demi-ligne en
+            // haut : une position bornée au contenu cale la
+            // dernière ligne en bas, une position inventée coupe la
+            // première.
+            let total = rangs.len() as f32 * row_height;
+            let plafond = (total - place).max(0.0);
+            let voulu = (index.saturating_sub(CONTEXTE) as f32 * row_height).min(plafond);
+            zone = zone.vertical_scroll_offset(voulu);
         }
         zone.show_rows(ui, row_height, rangs.len(), |ui, rows| {
             for rang in &rangs[rows] {

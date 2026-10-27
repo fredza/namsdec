@@ -1636,14 +1636,24 @@ fn the_dump_can_write_bytes_and_the_change_is_a_patch() {
     assert_eq!(&rendu[offset..offset + avant.len()], avant.as_slice());
 }
 
-/// L'onglet RE ne porte plus qu'un bouton.
+/// L'onglet RE dit ce qu'il est AVANT d'avoir quelque chose à montrer.
 ///
-/// Les sept modules empilés dessous faisaient deux mille pixels à
-/// parcourir dans une colonne de trois cents. La fenêtre d'analyse
-/// montre exactement les mêmes, en grand et tout dépliés : c'est là
-/// qu'on les lit.
+/// Deux règles, et la seconde est venue d'une capture.
+///
+/// LA PREMIÈRE, ancienne : les sept modules empilés dessous faisaient
+/// deux mille pixels à parcourir dans une colonne de trois cents. La
+/// fenêtre d'analyse montre exactement les mêmes, en grand et tout
+/// dépliés : c'est là qu'on les lit.
+///
+/// LA SECONDE : sans binaire, l'onglet ne montrait qu'un bouton GRIS et
+/// pas un mot. C'était le seul onglet du panneau sans état vide — les
+/// six autres disent ce qu'ils attendent et offrent le bouton qui y
+/// mène. Et c'est l'onglet qui porte tout le travail de
+/// rétro-ingénierie : celui qu'un nouveau venu ouvre par curiosité.
+///
+/// Aucune mesure ne l'avait demandé. Il a fallu regarder l'image.
 #[test]
-fn the_re_tab_carries_only_its_button() {
+fn the_re_tab_explains_itself_before_it_has_anything_to_show() {
     let s = strings(Lang::Fr);
     let mut app = NamsdecApp {
         show_re_tab: true,
@@ -1651,10 +1661,28 @@ fn the_re_tab_carries_only_its_button() {
         ..Default::default()
     };
     let peint = paint(&mut app);
+
+    // Rien d'assemblé : l'onglet explique, et propose la porte.
     assert!(
-        peint.contains(s.analysis_open),
-        "le bouton est là :\n{peint}"
+        peint.contains(s.no_binary_assembled),
+        "il doit dire ce qui manque :\n{peint}"
     );
+    assert!(
+        peint.contains(s.empty_re_hint),
+        "et ce qu'il est — son détail à lui, celui qui parle d'un \
+         binaire qu'on n'a pas écrit :\n{peint}"
+    );
+    assert!(
+        peint.contains(s.action_assemble),
+        "et la porte qui y mène :\n{peint}"
+    );
+    // Et PAS le bouton gris : un état vide qui porte sa propre action
+    // n'a pas besoin d'une seconde commande éteinte sous elle.
+    assert!(
+        !peint.contains(s.analysis_open),
+        "le bouton éteint n'a plus de raison d'être :\n{peint}"
+    );
+
     for module in [
         "En bref",
         "Fonctions importées",
@@ -2470,6 +2498,82 @@ fn the_analysis_text_is_not_cut_by_its_own_scrollbar() {
             barres.is_empty(),
             "à {largeur}x{hauteur}, « En bref » déborde sa vue et réclame une barre \
              horizontale : {barres:?}"
+        );
+    }
+}
+
+/// Un listing qui tient en entier ne cache pas son début.
+///
+/// Vu sur une capture : la vue du désassemblage montrait les neuf
+/// dernières instructions d'un programme qui en compte treize, avec six
+/// cents pixels de vide en dessous. `_start` et les trois instructions
+/// qui suivent étaient poussés hors du cadre — sur un programme de
+/// treize lignes, dans une vue qui en tient trente-huit.
+///
+/// La cause : egui ne ramène pas dans ses bornes une position de
+/// défilement posée à la main. « Trois lignes de contexte au-dessus de
+/// l'instruction courante » est juste sur un long listing et absurde
+/// sur un court, où il n'y a rien à faire défiler du tout.
+///
+/// Le relevé compte les ADRESSES peintes : c'est la seule mesure qui
+/// réponde à la question qu'on se pose vraiment — « voit-on le
+/// programme ? ».
+#[test]
+fn un_listing_qui_tient_en_entier_ne_cache_pas_son_debut() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    for (nom, vue) in [
+        ("la vue du désassemblage", Some(VueCentrale::Disassembly)),
+        ("l'onglet Octets", None),
+    ] {
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp::default();
+        app.apply_theme(&ctx);
+        app.source = PROGRAMME_DU_BANC.to_owned();
+        app.do_assemble();
+        // Huit pas : on est au milieu du programme, donc la vue a une
+        // raison de vouloir suivre.
+        for _ in 0..8 {
+            app.do_step();
+        }
+        match vue {
+            Some(vue) => app.montrer_vue(vue),
+            None => {
+                app.show_sidebar = true;
+                app.active_tab = SidebarTab::Bytes;
+            }
+        }
+
+        let attendues = app
+            .assemble_state
+            .as_ref()
+            .map(|s| s.disasm.len())
+            .expect("le programme est assemblé");
+        assert!(
+            attendues > 8,
+            "le programme d'épreuve doit avoir de quoi défiler : {attendues}"
+        );
+
+        // Les adresses, d'où qu'elles viennent : la vue les peint
+        // seules, l'onglet Octets les colle au numéro de ligne
+        // (« 8 00400000 »). On cherche donc le MOT, et non l'étiquette
+        // entière — un premier essai filtrait sur l'étiquette et
+        // comptait zéro adresse dans l'onglet, ce qui aurait fait
+        // passer le contrôle pour un défaut qu'il n'avait pas vu.
+        let (_, lignes) = ce_qui_est_écrit(&ctx, &mut app, None, 4);
+        let adresses: std::collections::BTreeSet<String> = lignes
+            .iter()
+            .flat_map(|(t, _)| t.split_whitespace())
+            .filter(|mot| mot.len() == 8 && mot.chars().all(|c| c.is_ascii_hexdigit()))
+            .map(|mot| mot.to_owned())
+            .collect();
+        assert_eq!(
+            adresses.len(),
+            attendues,
+            "{nom} : {} instruction(s) peinte(s) sur {attendues} — le début \
+             du programme est caché alors que tout y tient : {adresses:?}",
+            adresses.len()
         );
     }
 }

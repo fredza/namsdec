@@ -129,15 +129,20 @@ impl ReModule for FunctionsModule {
             }
         }
         ui.add_space(4.0);
-        ui.weak(format!(
-            "{} {}",
+        ui.weak(ctx.compte(
             self.found.len(),
-            ctx.t(
+            (
+                "fonction retrouvée — les cibles d'appel, et rien d'autre : ce qu'on \
+                 n'appelle que par pointeur échappe à ce relevé.",
                 "fonctions retrouvées — les cibles d'appel, et rien d'autre : ce qu'on \
                  n'appelle que par pointeur échappe à ce relevé.",
+            ),
+            (
+                "function recovered — call targets, and nothing else: what is only \
+                 called through a pointer escapes this survey.",
                 "functions recovered — call targets, and nothing else: what is only \
                  called through a pointer escapes this survey.",
-            )
+            ),
         ));
         ui.add_space(4.0);
 

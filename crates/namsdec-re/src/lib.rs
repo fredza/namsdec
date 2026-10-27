@@ -141,6 +141,27 @@ impl ReContext<'_> {
         if self.lang.starts_with("fr") { fr } else { en }
     }
 
+    /// Un compte et son nom ACCORDÉ : « 1 fonction », « 12 fonctions ».
+    ///
+    /// Écrit une fois, parce que le cas à UN est celui qu'on ne voit
+    /// jamais en développant — on essaie toujours sur un binaire qui en
+    /// a douze. Les captures, elles, l'ont montré quatre fois : « 1
+    /// fonctions retrouvées », « 1 boucles », « 1 étiquettes », « 1
+    /// adresses de données ». Un compte qui ne s'accorde pas est la
+    /// faute la plus visible d'une interface française.
+    ///
+    /// Les deux langues séparément : l'anglais accorde le nom et pas
+    /// l'adjectif, le français les deux.
+    pub fn compte(
+        &self,
+        n: usize,
+        fr: (&'static str, &'static str),
+        en: (&'static str, &'static str),
+    ) -> String {
+        let (un, plusieurs) = if self.lang.starts_with("fr") { fr } else { en };
+        format!("{n} {}", if n == 1 { un } else { plusieurs })
+    }
+
     /// Le nom d'une adresse : celui que l'utilisateur a donné, sinon le
     /// nom par défaut qu'on propose.
     ///

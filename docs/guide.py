@@ -512,7 +512,9 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
         ("p",
          "Le <b>menu Outils</b>, la <b>palette de commandes</b> et les raccourcis "
          "mènent aux mêmes vues : ils choisissent l'onglet. Le bouton de l'onglet RE du "
-         "panneau latéral, « Analyse du binaire… », fait de même."),
+         "panneau latéral, « Analyse du binaire… », fait de même. Tant qu'il n'y a rien à "
+         "lire, cet onglet <b>dit ce qu'il est</b> plutôt que de montrer un bouton éteint : "
+         "assemblez votre programme, ou ouvrez un binaire que vous n'avez pas écrit."),
         ("p",
          "Le bouton <b>Détacher</b>, en haut à droite de la rangée, sort la vue active "
          "dans une fenêtre à elle. C'est ce qu'il faut pour lire la source et le "

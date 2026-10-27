@@ -2316,7 +2316,15 @@ impl NamsdecApp {
             // Centrée : on veut voir ce qui précède et ce qui suit
             // l'instruction courante, pas seulement elle.
             let milieu = (index as f32 + 0.5) * row_height;
-            (milieu - ui.available_height() / 2.0).max(0.0)
+            // Et bornée à ce qu'il y a vraiment à faire défiler :
+            // egui ne ramène pas dans ses bornes une position posée
+            // à la main, si bien qu'un court listing descendait
+            // quand même et cachait ses premières lignes sous le
+            // bord, place libre en dessous. Même défaut que la vue
+            // du désassemblage, même remède.
+            let total = state.disasm.len() as f32 * row_height;
+            let plafond = (total - ui.available_height()).max(0.0);
+            (milieu - ui.available_height() / 2.0).max(0.0).min(plafond)
         });
         if let Some(voulu) = voulu {
             zone = zone.vertical_scroll_offset(voulu);
@@ -3104,6 +3112,34 @@ impl NamsdecApp {
         // vide sous lui : tout ce qu'il savait vivait derrière une
         // fenêtre qu'il fallait ouvrir. Un onglet dont le seul contenu
         // est « ouvrir une fenêtre » ne mérite pas sa place.
+        // L'ÉTAT VIDE, QUI MANQUAIT. C'était le seul onglet du panneau
+        // à n'en pas avoir : les six autres disent ce qu'ils attendent
+        // et offrent le bouton qui y mène ; celui-ci montrait un bouton
+        // gris, et pas un mot. Vu sur une capture, et nulle part
+        // ailleurs — aucune mesure ne demandait « cet onglet
+        // explique-t-il ce qu'il est ? ».
+        //
+        // Son détail lui est propre : les autres attendent un programme
+        // assemblé, celui-ci attend un FICHIER, et il sert aussi bien
+        // pour un binaire qu'on n'a pas écrit. C'est tout son objet.
+        if !prêt {
+            let peut = self.can_assemble();
+            let mut lancer = false;
+            ui.add_enabled_ui(peut, |ui| {
+                lancer = empty_state(
+                    ui,
+                    theme,
+                    s.no_binary_assembled,
+                    Some(s.empty_re_hint),
+                    Some(s.action_assemble),
+                );
+            });
+            if lancer {
+                self.dispatch(Action::Assemble);
+            }
+            return;
+        }
+
         self.relever_la_fiche_re();
         if let Some((_, bref)) = self.re_bref.clone() {
             ui.add_space(6.0);

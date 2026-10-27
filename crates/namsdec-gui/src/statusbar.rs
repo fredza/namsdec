@@ -358,6 +358,14 @@ impl NamsdecApp {
             // Cinq repères entre une fois et le maximum : assez pour
             // situer une teinte, assez peu pour tenir sur une ligne.
             let repères = heat_legend_steps(max);
+            // L'unité s'accorde au DERNIER repère, le seul qu'elle
+            // suive dans la phrase. Sur un programme dont la ligne la
+            // plus chaude n'est passée qu'une fois, la légende n'a
+            // qu'un repère et disait « 1 passages par ligne ».
+            let unité = match repères.last() {
+                Some(1) => s.heat_legend_hint_one,
+                _ => s.heat_legend_hint,
+            };
             for valeur in repères {
                 let (rect, réponse) =
                     ui.allocate_exact_size(egui::vec2(14.0, 12.0), egui::Sense::hover());
@@ -374,7 +382,7 @@ impl NamsdecApp {
                 );
                 ui.add_space(4.0);
             }
-            ui.colored_label(theme.dim, s.heat_legend_hint);
+            ui.colored_label(theme.dim, unité);
         });
     }
 }
@@ -399,6 +407,38 @@ fn mode_pill_ui(ui: &mut egui::Ui, theme: &Theme, mode: EditorMode) {
 }
 
 impl NamsdecApp {
+    /// Ce que prennent les panneaux du bas — barre d'état et console —,
+    /// relu à l'image.
+    ///
+    /// RIEN NE SE POSE PAR-DESSUS LA BARRE D'ÉTAT. C'est la seule bande
+    /// qui dise en permanence où l'on en est : le mode, la ligne, la
+    /// colonne, l'état de l'assemblage. Une fenêtre qui s'ouvre dessus
+    /// cache précisément ce qu'on regarde en travaillant.
+    ///
+    /// Un décalage en dur ne suffit pas : la barre fait vingt-huit
+    /// pixels, la console en prend deux cents quand elle est ouverte, et
+    /// les deux se cachent au gré des réglages. Deux endroits s'en
+    /// servent — le panneau des suites et la fiche d'instruction —,
+    /// d'où cette fonction plutôt que deux constantes qui dériveraient.
+    pub(crate) fn hauteur_des_barres_du_bas(&self, ctx: &egui::Context) -> f32 {
+        let hauteur = |id: &str| {
+            egui::containers::panel::PanelState::load(ctx, egui::Id::new(id))
+                .map(|p| p.outer_rect.height())
+                .unwrap_or(0.0)
+        };
+        let statut = if self.show_statusbar {
+            hauteur("statusbar")
+        } else {
+            0.0
+        };
+        let console = if self.show_console {
+            hauteur("console")
+        } else {
+            0.0
+        };
+        statut + console
+    }
+
     /// Les suites possibles d'une séquence armée, montrées après un
     /// temps d'hésitation.
     ///
@@ -448,21 +488,7 @@ impl NamsdecApp {
         let fr = self.lang == Lang::Fr;
         let theme = self.theme;
 
-        // Ce que prennent les panneaux du bas, relu à l'image.
-        let hauteur = |id: &str| {
-            egui::containers::panel::PanelState::load(ctx, egui::Id::new(id))
-                .map(|p| p.outer_rect.height())
-                .unwrap_or(0.0)
-        };
-        let bas = if self.show_statusbar {
-            hauteur("statusbar")
-        } else {
-            0.0
-        } + if self.show_console {
-            hauteur("console")
-        } else {
-            0.0
-        };
+        let bas = self.hauteur_des_barres_du_bas(ctx);
         // UNE FENÊTRE, ET NON UNE SURFACE NUE, bien qu'elle n'ait ni
         // titre ni poignée. egui ne découpe pas le contenu d'une
         // `Area` : son découpage reste celui de l'écran. Le banc, qui

@@ -3892,3 +3892,100 @@ fn captures_de_toutes_les_scenes() {
     );
     assert!(écrites > 20, "le banc a plus de vingt scènes : {écrites}");
 }
+
+/// Aucun texte peint ne dit « 1 » suivi d'un pluriel.
+///
+/// Trouvé en REGARDANT les captures : « 1 fonctions retrouvées » dans
+/// l'analyse, « 1 passages par ligne » dans la légende de chaleur. Un
+/// compte qui ne s'accorde pas est la faute la plus visible d'une
+/// interface française, et c'est le cas à UNE qu'on ne voit jamais en
+/// développant — on essaie toujours sur un programme qui en a douze.
+///
+/// Le relevé balaie toutes les scènes du banc et lit ce qui est PEINT.
+/// Les mots invariables sont listés : « 1 fois », « 1 pas », « 1 octet
+/// de plus » sont corrects.
+#[test]
+fn aucun_compte_a_un_ne_porte_un_pluriel() {
+    // Les mots français qui finissent par s ou x au singulier. La liste
+    // est courte, et elle vaut mieux qu'un contrôle qui crie au loup.
+    const INVARIABLES: &[&str] = &[
+        "fois",
+        "pas",
+        "mois",
+        "temps",
+        "corps",
+        "cours",
+        "sens",
+        "processus",
+        "relais",
+        "jamais",
+        "plus",
+        "moins",
+        "après",
+        "très",
+        "souris",
+        "choix",
+        "prix",
+        "faux",
+        "deux",
+        "ceux",
+        "os",
+        "bis",
+        "alias",
+        "index",
+        "parcours",
+        "concours",
+        "discours",
+        "univers",
+        "travers",
+        "divers",
+        "gras",
+        "bas",
+        "dessous",
+        "dessus",
+        "puis",
+        "depuis",
+        "vers",
+        "lors",
+        "hors",
+        "dans",
+        "sous",
+        "sans",
+    ];
+
+    let mut fautifs: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for (nom, _, prépare) in scènes() {
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp::default();
+        app.apply_theme(&ctx);
+        prépare(&mut app);
+        // Sans identifiant : on veut TOUT ce qui est peint, fenêtres
+        // comprises, et non le contenu d'une seule.
+        let (_, textes) = ce_qui_est_écrit(&ctx, &mut app, None, 3);
+        for (texte, _) in &textes {
+            let mots: Vec<&str> = texte.split_whitespace().collect();
+            for paire in mots.windows(2) {
+                if paire[0] != "1" {
+                    continue;
+                }
+                let mot = paire[1]
+                    .trim_matches(|c: char| !c.is_alphabetic())
+                    .to_lowercase();
+                if mot.len() < 3 || !(mot.ends_with('s') || mot.ends_with('x')) {
+                    continue;
+                }
+                if INVARIABLES.contains(&mot.as_str()) {
+                    continue;
+                }
+                fautifs.insert(format!("« {nom} » : « {texte} »"));
+            }
+        }
+    }
+
+    assert!(
+        fautifs.is_empty(),
+        "{} compte(s) à un qui portent un pluriel :\n  {}",
+        fautifs.len(),
+        fautifs.iter().cloned().collect::<Vec<_>>().join("\n  ")
+    );
+}
