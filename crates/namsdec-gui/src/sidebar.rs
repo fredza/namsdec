@@ -55,13 +55,33 @@ impl NamsdecApp {
         // La part du bas est posée **avant** le bandeau : sans cela, le
         // bandeau prend ce qu'il veut et la vue hérite de ce qui reste —
         // deux lignes, quand il en faut vingt pour lire une analyse.
-        self.sidebar_tab_panel_ui(ui);
+        // CE QUE LE PANNEAU DU BAS PREND, SU D'AVANCE.
+        //
+        // `ui.available_height()` ment après qu'un panneau s'est posé :
+        // à 800×520, console ouverte sur Profil, le panneau du bas
+        // occupe 84,4 px et le parent n'en défalque que 69,8. Le
+        // bandeau croit donc avoir quinze pixels de plus qu'il n'en a,
+        // les remplit, et sa dernière ligne se peint sur la rangée
+        // d'onglets.
+        //
+        // La part du bas sait, elle, ce qu'elle a demandé : elle le
+        // rend, et c'est ce chiffre-là qui borne le bandeau.
+        let total = ui.available_height();
+        let prise = self.sidebar_tab_panel_ui(ui);
 
         // Ce qui vient avant : la prochaine instruction, le dernier pas,
         // les conseils. Repliables, et c'est à eux de céder quand la
         // fenêtre est courte.
+        // CE QU'IL RESTE, RELEVÉ AVANT. La part du bas est déjà posée ;
+        // ce qui reste au-dessus est exactement ce que le bandeau peut
+        // prendre, et il faut le lui DIRE. `auto_shrink` ne suffit pas
+        // sur un panneau très court : relevé à 800×520, console
+        // ouverte sur Profil, le bandeau s'arrêtait à 146 et peignait
+        // « Détail » jusqu'à 161 — par-dessus la rangée d'onglets.
+        let place = (total - prise).max(0.0);
         let bandeau = egui::ScrollArea::vertical()
             .id_salt("sidebar_banner")
+            .max_height(place)
             // `false` AUSSI EN HAUTEUR : réglée sur « vrai », la zone
             // épouse son contenu, et sur un panneau très court elle
             // dépassait de quelques pixels la place qui lui restait —
@@ -141,9 +161,14 @@ impl NamsdecApp {
     /// est retenu, et l'ajustement automatique s'arrête là — exactement
     /// comme la console. Tant que rien n'a été tiré, la part suit ce que
     /// le bandeau laisse, sans jamais tomber sous [`SIDEBAR_TAB_MIN`].
-    fn sidebar_tab_panel_ui(&mut self, ui: &mut egui::Ui) {
+    ///
+    /// Rend la hauteur qu'elle a demandée : le bandeau s'en sert pour
+    /// se borner, `ui.available_height()` n'étant pas fiable après
+    /// qu'un panneau s'est posé.
+    fn sidebar_tab_panel_ui(&mut self, ui: &mut egui::Ui) -> f32 {
         let s = strings(self.lang);
         let total = ui.available_height();
+        let haut_du_panneau = ui.max_rect();
         // Ce que la vue peut prendre au plus : il reste toujours au
         // bandeau de quoi montrer ce qui vient, et de quoi le replier —
         // un titre et son filet, sans quoi le repli n'aurait plus où se
@@ -165,7 +190,21 @@ impl NamsdecApp {
             .sidebar_banner_height
             .clamp(TITRE_REPLIÉ, SIDEBAR_BANNER_MIN)
             .min(total * 0.5);
-        let plafond = (total - plancher).max(0.0);
+        // UNE GARDE ENTRE LES DEUX PARTS, et elle vient d'une mesure.
+        //
+        // À 800×520, console ouverte sur Profil, le panneau du bas
+        // occupe 84,4 px et le parent n'en défalque que 69,8 : quatorze
+        // pixels et demi d'écart — une hauteur de ligne — que le
+        // bandeau croit libres et remplit. Sa dernière ligne, « Détail »,
+        // se peignait alors sur la rangée d'onglets, relevé par
+        // `panels_do_not_overlap_on_the_smallest_screen`.
+        //
+        // On ne demande donc jamais TOUT ce qui reste. Seize pixels sur
+        // un panneau qui en fait mille ne se voient pas ; sur un
+        // panneau qui en fait cent soixante-dix, ils séparent deux
+        // zones au lieu de les laisser se chevaucher.
+        const GARDE_ENTRE_LES_PARTS: f32 = 16.0;
+        let plafond = (total - plancher - GARDE_ENTRE_LES_PARTS).max(0.0);
         // Ce que le bandeau laisse, mesuré à l'image précédente. Au
         // tout premier passage on ne sait rien : la moitié du panneau
         // est un départ honnête, et l'image suivante corrige.
@@ -212,10 +251,24 @@ impl NamsdecApp {
         let actuelle = egui::containers::panel::PanelState::load(ui.ctx(), id)
             .map(|état| état.outer_rect.height());
         if !tirée && actuelle.is_none_or(|haut| (haut - voulue).abs() > 1.0) {
+            // LE RECTANGLE EST POSÉ OÙ LE PANNEAU VIT, et non à
+            // l'origine. C'était `Pos2::ZERO` : on ne voulait écrire
+            // qu'une HAUTEUR, et egui lit aussi la position — il
+            // plaçait alors le panneau quatorze pixels sous le bas de
+            // son parent, et la rangée d'onglets se peignait sur le
+            // bandeau. Mesuré à 800×520, console ouverte sur Profil :
+            // l'état écrit valait [[429 0] – [792 84]] pour un parent
+            // qui s'arrête à 230,8, et le panneau sortait à 245,4.
+            //
+            // Défaut invisible jusqu'ici faute de scène : les trois
+            // onglets de la console n'étaient dans aucune, et c'est
+            // leur hauteur qui rend le panneau assez court pour que le
+            // décalage se voie.
+            let parent = haut_du_panneau;
             let état = egui::containers::panel::PanelState {
-                outer_rect: egui::Rect::from_min_size(
-                    egui::Pos2::ZERO,
-                    egui::vec2(ui.available_width(), voulue),
+                outer_rect: egui::Rect::from_min_max(
+                    egui::pos2(parent.left(), parent.bottom() - voulue),
+                    egui::pos2(parent.right(), parent.bottom()),
                 ),
             };
             ui.ctx().data_mut(|data| data.insert_persisted(id, état));
@@ -368,6 +421,23 @@ impl NamsdecApp {
                 _ => {}
             }
         }
+        // CE QU'ELLE A VRAIMENT PRIS, et non ce qu'elle a demandé.
+        //
+        // Les deux coïncident presque toujours ; ils divergent pendant
+        // qu'une poignée est sous un doigt, où c'est egui qui décide.
+        // Rendre la demande bornerait alors le bandeau sur une hauteur
+        // que personne n'occupe, et l'on reverrait le recouvrement
+        // pendant le geste — c'est-à-dire au seul moment où l'on
+        // regarde ces deux zones ensemble.
+        // LA PLUS GRANDE DES DEUX : ce qui a été pris et ce qui a été
+        // demandé.
+        //
+        // Elles coïncident presque toujours ; elles divergent pendant
+        // qu'une poignée est sous un doigt, où c'est egui qui décide.
+        // Borner le bandeau sur la plus petite le laisserait déborder
+        // pendant le geste — c'est-à-dire au seul moment où l'on
+        // regarde ces deux zones ensemble.
+        self.sidebar_tab_last.max(voulue).clamp(0.0, total)
     }
 
     /// Où en est le but de l'exercice, quand il y en a un.

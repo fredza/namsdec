@@ -99,6 +99,39 @@ défauts suspectés, c'étaient des questions qu'on n'avait jamais posées.
 
 ---
 
+## 0 octodecies. Un panneau qui déborde vole la place de son voisin (A 9.37)
+
+- [x] **Les onglets de la console entrent au banc** — ils étaient à
+      l'écran en permanence et dans aucune scène : ni mesurés, ni jamais
+      vus. Trouvé par un recensement des états vides — on cherchait des
+      panneaux mal présentés, on a trouvé des panneaux qu'on ne
+      regardait pas du tout.
+- [x] **Et la première scène a rougi** — à 800×520, le bandeau du
+      panneau latéral peignait « Détail » par-dessus la rangée
+      d'onglets.
+      LA CAUSE EST GÉNÉRALE, et elle est dans egui : quand le contenu
+      d'un panneau dépasse la place qu'on lui laisse, son rectangle
+      GLISSE, et le parent n'avance son curseur que jusqu'à la partie
+      restée visible (`cursor.max = visible_outer_rect.min`). Le voisin
+      croit donc avoir une hauteur de ligne de plus qu'il n'en a, la
+      remplit, et peint dessus. Mesuré : le panneau du bas occupe
+      84,4 px, le parent n'en défalque que 69,8.
+      Le remède : la part du bas REND ce qu'elle a demandé, et c'est ce
+      chiffre-là qui borne le bandeau — `ui.available_height()` n'étant
+      pas fiable après qu'un panneau s'est posé.
+- [ ] **L'éditeur peint quatorze pixels sous sa zone** — troisième
+      maillon de la même chaîne, et il reste ouvert. Relevé à 800×520,
+      console ouverte sur Profil : zone de travail [0, 60]–[420, 205,8],
+      légende de chaleur de 205,8 à 232,8, et le numéro de ligne « 4 »
+      peint de 205,0 à 220,0.
+      **Le compte des panneaux est juste** — ce n'est pas le défaut
+      ci-dessus. C'est le contenu de l'éditeur qui dépasse son cadre.
+      La scène « console / Profile » reste donc hors du banc, avec la
+      raison écrite à l'endroit où on la retirerait ; elle y rentre le
+      jour où ce défaut-là tombe.
+
+---
+
 ## 0 septdecies. La décompilation se présente enfin (A 9.36)
 
 - [x] **La vue de décompilation ouvrait sur une notice de

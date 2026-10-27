@@ -7714,3 +7714,65 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
        pastille comprise. Un relevé qui mesure la galley au lieu de
        l'encre accuse à tort — c'est la première des cinq précautions du
        skill, et je l'ai oubliée le temps d'un diagnostic.
+
+9.37 [FAIT, EN PARTIE] UN PANNEAU QUI DÉBORDE VOLE LA PLACE DE SON
+     VOISIN  (27 octobre 2026)
+--------------------------------------------------------------------------------
+     Parti d'un recensement : après trois états vides mal présentés en
+     deux jours, chercher s'il en restait. Le recensement a rendu autre
+     chose — LES TROIS ONGLETS DE LA CONSOLE NE SONT DANS AUCUNE SCÈNE.
+     Ils sont à l'écran en permanence, et ni le banc ni les captures ne
+     les regardaient : la console s'ouvre sur « Sortie », et les deux
+     autres n'apparaissent qu'au clic.
+
+     On cherchait des panneaux mal présentés ; on a trouvé des panneaux
+     qu'on ne regardait pas du tout. C'est la leçon qui se répète dans
+     ce fichier : ce qu'un relevé ne cherche pas, aucun contrôle ne le
+     retient.
+
+     LA PREMIÈRE SCÈNE A ROUGI, et la cause est générale.
+
+     À 800×520, le bandeau du panneau latéral peignait « Détail »
+     par-dessus la rangée d'onglets. En remontant :
+
+       · le panneau du bas occupe 84,4 px (161,0 → 245,4) ;
+       · son parent s'arrête à 230,8 ;
+       · et le bandeau, qui vient après, lit
+         `ui.available_height() = 99` au lieu de 84,4.
+
+     C'EST DANS egui, et c'est écrit dans son code : quand le contenu
+     d'un panneau dépasse la place qu'on lui laisse, le rectangle du
+     cadre GLISSE, et le parent n'avance son curseur que jusqu'à la
+     partie restée visible — `cursor.max[axis] = visible_outer_rect.
+     min[axis]`. Le voisin croit donc avoir une hauteur de ligne de plus
+     qu'il n'en a. Ce projet avait déjà rencontré le phénomène deux fois
+     et l'avait traité sur place ; c'est la première fois qu'il est
+     nommé pour ce qu'il est — un piège général de la mise en page en
+     panneaux.
+
+     LE REMÈDE EST DE NE PAS CROIRE `available_height` : la part du bas
+     REND la hauteur qu'elle a demandée, et c'est ce chiffre-là qui
+     borne le bandeau. Deux lignes, et le recouvrement disparaît.
+
+     TROIS ESSAIS QUI N'ONT RIEN DONNÉ, et ils valent d'être dits :
+       · poser le `PanelState` au bon endroit plutôt qu'à l'origine —
+         l'état était bien écrit à `Pos2::ZERO`, ce qui est douteux, mais
+         le corriger ne change rien au recouvrement ;
+       · ne plus écrire le `PanelState` du tout — rien non plus ;
+       · une garde de seize pixels entre les deux parts — le
+         recouvrement se déplace de huit pixels et demeure.
+     Les trois visaient le partage ; le défaut n'était pas là.
+
+     CE QUI RESTE OUVERT, et c'est un troisième maillon de la même
+     chaîne : à 800×520 avec la console sur Profil, l'ÉDITEUR peint
+     quatorze pixels sous sa zone, par-dessus la légende de chaleur.
+     Zone de travail [0, 60]–[420, 205,8], légende de 205,8 à 232,8,
+     numéro de ligne « 4 » peint de 205,0 à 220,0. Le compte des
+     panneaux est JUSTE cette fois — ce n'est pas le défaut ci-dessus,
+     c'est le contenu de l'éditeur qui dépasse son cadre.
+
+     La scène « console / Profile » reste donc hors du banc, et la
+     raison est écrite À L'ENDROIT OÙ ON LA RETIRERAIT, avec la mesure.
+     Elle y rentre le jour où ce défaut-là tombe. Laisser un contrôle au
+     rouge n'est pas une option ; laisser une trouvaille sans trace non
+     plus.
