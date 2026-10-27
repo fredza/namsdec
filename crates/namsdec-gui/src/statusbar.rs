@@ -19,11 +19,10 @@ impl NamsdecApp {
         // séquence, sinon il ne dit plus rien après la deuxième frappe.
         let pending = self.dispatcher.pending();
         if !pending.is_empty() {
-            let keys = pending
-                .iter()
-                .map(|k| k.name())
-                .collect::<Vec<_>>()
-                .join(" ");
+            // La même notation que le tableau des raccourcis et que le
+            // manuel : « Espace s », et non « Space S ». C'est la
+            // séquence qu'on vient d'y lire qu'on est en train de taper.
+            let keys = keybindings::keys_display(pending, lang == Lang::Fr);
             let text = if lang == Lang::Fr {
                 format!("{keys} — touche suivante attendue…")
             } else {

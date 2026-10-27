@@ -1301,7 +1301,13 @@ impl NamsdecApp {
         let ctx_raccourcis = ui.ctx().clone();
         let neuf_infobulle = format!(
             "{} — {}",
-            shortcut_hint(&self.keybindings, &ctx_raccourcis, s.file_new, Action::New),
+            shortcut_hint(
+                &self.keybindings,
+                self.lang,
+                &ctx_raccourcis,
+                s.file_new,
+                Action::New
+            ),
             s.tab_open_another
         );
 

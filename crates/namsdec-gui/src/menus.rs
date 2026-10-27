@@ -33,15 +33,43 @@ impl NamsdecApp {
             )
         }));
 
+        // Le raccourci de chaque commande, lu dans le jeu ACTIF.
+        //
+        // La palette est l'endroit où l'on cherche une action dont on ne
+        // connaît pas la frappe : c'est donc l'endroit où l'apprendre.
+        // Sans cela elle reste le chemin le plus court pour toujours, et
+        // les trente-deux raccourcis du programme n'existent que dans le
+        // tableau de Préférences, qu'on n'ouvre pas en travaillant.
+        //
+        // Lu en direct, et non figé : un raccourci déplacé à l'instant
+        // s'affiche déplacé.
+        let commands: Vec<(String, PaletteCommand, Option<String>)> = commands
+            .into_iter()
+            .map(|(label, cmd)| {
+                let touches = match cmd {
+                    PaletteCommand::Do(action) => self
+                        .keybindings
+                        .map
+                        .get(&action)
+                        .map(|chord| chord.display(ctx, self.lang == Lang::Fr)),
+                    // Les autres n'en ont pas : ce ne sont pas des
+                    // actions du tableau, et inventer une colonne vide
+                    // ferait croire à un raccourci oublié.
+                    _ => None,
+                };
+                (label, cmd, touches)
+            })
+            .collect();
+
         let (mut query, mut selected, measured_row) = {
             let p = self.command_palette.as_ref().unwrap();
             (p.query.clone(), p.selected, p.row)
         };
 
         let query_lower = query.to_lowercase();
-        let filtered: Vec<&(String, PaletteCommand)> = commands
+        let filtered: Vec<&(String, PaletteCommand, Option<String>)> = commands
             .iter()
-            .filter(|(label, _)| {
+            .filter(|(label, _, _)| {
                 query_lower.is_empty() || label.to_lowercase().contains(&query_lower)
             })
             .collect();
@@ -110,14 +138,27 @@ impl NamsdecApp {
                         if filtered.is_empty() {
                             ui.weak(s.palette_no_match);
                         }
-                        for (i, (label, cmd)) in filtered.iter().enumerate() {
+                        for (i, (label, cmd, touches)) in filtered.iter().enumerate() {
                             // Pleine largeur : la ligne entière se
                             // surligne et se clique, pas seulement son
                             // texte.
-                            let item = ui.add(
+                            let mut bouton =
                                 egui::Button::selectable(i == selected, label.as_str())
-                                    .min_size(egui::vec2(ui.available_width(), 0.0)),
-                            );
+                                    .min_size(egui::vec2(ui.available_width(), 0.0))
+                                    // Le nom d'une étiquette peut être
+                                    // long, et la palette a une largeur
+                                    // fixe : on rogne le libellé plutôt
+                                    // que de pousser le raccourci hors
+                                    // du cadre.
+                                    .truncate();
+                            if let Some(touches) = touches {
+                                // `shortcut_text` pose la frappe à
+                                // droite, en couleur atténuée, et c'est
+                                // la place qu'elle occupe dans tous les
+                                // menus — y compris ceux de namsdec.
+                                bouton = bouton.shortcut_text(touches.as_str());
+                            }
+                            let item = ui.add(bouton);
                             // Les flèches déplacent la sélection ; si la
                             // liste défile, elle doit suivre.
                             if i == selected && !filtered.is_empty() {
@@ -145,7 +186,7 @@ impl NamsdecApp {
                 selected = selected.saturating_sub(1);
             }
             if i.key_pressed(egui::Key::Enter)
-                && let Some((_, cmd)) = filtered.get(selected)
+                && let Some((_, cmd, _)) = filtered.get(selected)
             {
                 execute = Some(*cmd);
             }
@@ -183,6 +224,7 @@ impl NamsdecApp {
                 if ui
                     .button(shortcut_hint(
                         &self.keybindings,
+                        self.lang,
                         &ctx,
                         s.file_new,
                         Action::New,
@@ -196,6 +238,7 @@ impl NamsdecApp {
                 if ui
                     .button(shortcut_hint(
                         &self.keybindings,
+                        self.lang,
                         &ctx,
                         s.file_open_file,
                         Action::OpenFile,
@@ -208,6 +251,7 @@ impl NamsdecApp {
                 if ui
                     .button(shortcut_hint(
                         &self.keybindings,
+                        self.lang,
                         &ctx,
                         s.file_open_folder,
                         Action::OpenFolder,
@@ -238,6 +282,7 @@ impl NamsdecApp {
                     if ui
                         .button(shortcut_hint(
                             &self.keybindings,
+                            self.lang,
                             &ctx,
                             s.action_close_tab,
                             Action::CloseTab,
@@ -256,6 +301,7 @@ impl NamsdecApp {
                         if ui
                             .button(shortcut_hint(
                                 &self.keybindings,
+                                self.lang,
                                 &ctx,
                                 action_label(s, action),
                                 action,
@@ -300,6 +346,7 @@ impl NamsdecApp {
                 if ui
                     .button(shortcut_hint(
                         &self.keybindings,
+                        self.lang,
                         &ui.ctx().clone(),
                         s.action_save,
                         Action::Save,
@@ -332,8 +379,17 @@ impl NamsdecApp {
                     },
                 );
                 ui.separator();
-                if ui.button(s.file_preferences).clicked() {
-                    self.open_preferences();
+                if ui
+                    .button(shortcut_hint(
+                        &self.keybindings,
+                        self.lang,
+                        &ui.ctx().clone(),
+                        s.file_preferences,
+                        Action::ShowPreferences,
+                    ))
+                    .clicked()
+                {
+                    self.dispatch(Action::ShowPreferences);
                     ui.close();
                 }
                 ui.separator();
@@ -366,6 +422,7 @@ impl NamsdecApp {
                     if ui
                         .button(shortcut_hint(
                             &self.keybindings,
+                            self.lang,
                             &ui.ctx().clone(),
                             action_label(s, action),
                             action,
@@ -381,6 +438,7 @@ impl NamsdecApp {
                     if ui
                         .button(shortcut_hint(
                             &self.keybindings,
+                            self.lang,
                             &ui.ctx().clone(),
                             action_label(s, action),
                             action,
@@ -500,6 +558,7 @@ impl NamsdecApp {
                     if ui
                         .button(shortcut_hint(
                             &self.keybindings,
+                            self.lang,
                             &ui.ctx().clone(),
                             s.action_run_to_cursor,
                             Action::RunToCursor,
@@ -533,6 +592,7 @@ impl NamsdecApp {
                         if ui
                             .button(shortcut_hint(
                                 &self.keybindings,
+                                self.lang,
                                 &ui.ctx().clone(),
                                 label,
                                 action,
@@ -585,6 +645,7 @@ impl NamsdecApp {
                         if ui
                             .button(shortcut_hint(
                                 &self.keybindings,
+                                self.lang,
                                 &ui.ctx().clone(),
                                 action_label(s, action),
                                 action,
@@ -609,6 +670,7 @@ impl NamsdecApp {
                 if ui
                     .button(shortcut_hint(
                         &self.keybindings,
+                        self.lang,
                         &ui.ctx().clone(),
                         s.flow_open,
                         Action::ShowFlow,
@@ -632,6 +694,7 @@ impl NamsdecApp {
                 if ui
                     .button(shortcut_hint(
                         &self.keybindings,
+                        self.lang,
                         &ui.ctx().clone(),
                         s.calculator_open,
                         Action::ToggleCalculator,
@@ -738,6 +801,7 @@ impl NamsdecApp {
                 if ui
                     .button(shortcut_hint(
                         &self.keybindings,
+                        self.lang,
                         &ui.ctx().clone(),
                         s.action_toggle_explorer,
                         Action::ToggleExplorer,
@@ -749,8 +813,20 @@ impl NamsdecApp {
                 }
 
                 ui.separator();
-                if ui.button(s.palette_open).clicked() {
-                    self.command_palette = Some(CommandPalette::default());
+                // Son raccourci écrit à côté, comme les autres entrées
+                // du menu : c'est là qu'on l'apprend, et la palette est
+                // justement ce qu'on ouvre quand on ne sait pas encore.
+                if ui
+                    .button(shortcut_hint(
+                        &self.keybindings,
+                        self.lang,
+                        &ui.ctx().clone(),
+                        s.palette_open,
+                        Action::ToggleCommandPalette,
+                    ))
+                    .clicked()
+                {
+                    self.dispatch(Action::ToggleCommandPalette);
                     ui.close();
                 }
                 ui.separator();
@@ -785,6 +861,7 @@ impl NamsdecApp {
                 if ui
                     .button(shortcut_hint(
                         &self.keybindings,
+                        self.lang,
                         &ui.ctx().clone(),
                         s.action_goto_label,
                         Action::GoToLabel,
@@ -871,6 +948,7 @@ impl NamsdecApp {
                     .button(s.action_assemble)
                     .on_hover_text(shortcut_hint(
                         &self.keybindings,
+                        self.lang,
                         &ctx,
                         s.action_assemble,
                         Action::Assemble,
@@ -902,6 +980,7 @@ impl NamsdecApp {
                 if icon_button(ui, icon_run, s.action_run)
                     .on_hover_text(shortcut_hint(
                         &self.keybindings,
+                        self.lang,
                         &ctx,
                         s.action_run,
                         Action::Run,
@@ -914,6 +993,7 @@ impl NamsdecApp {
                 if icon_button(ui, icon_step_into, s.action_step_into)
                     .on_hover_text(shortcut_hint(
                         &self.keybindings,
+                        self.lang,
                         &ctx,
                         s.action_step_into,
                         Action::StepInto,
@@ -926,6 +1006,7 @@ impl NamsdecApp {
                 if icon_button(ui, icon_step_over, s.action_step_over)
                     .on_hover_text(shortcut_hint(
                         &self.keybindings,
+                        self.lang,
                         &ctx,
                         s.action_step_over,
                         Action::StepOver,
@@ -940,6 +1021,7 @@ impl NamsdecApp {
                 if icon_button(ui, icon_step_back, s.action_step_back)
                     .on_hover_text(shortcut_hint(
                         &self.keybindings,
+                        self.lang,
                         &ctx,
                         s.action_step_back,
                         Action::StepBack,
@@ -954,6 +1036,7 @@ impl NamsdecApp {
                 if icon_button(ui, icon_stop, s.action_stop)
                     .on_hover_text(shortcut_hint(
                         &self.keybindings,
+                        self.lang,
                         &ctx,
                         s.action_stop,
                         Action::Stop,
@@ -974,6 +1057,7 @@ impl NamsdecApp {
                 if icon_button(ui, icon_reset, s.action_reset)
                     .on_hover_text(shortcut_hint(
                         &self.keybindings,
+                        self.lang,
                         &ctx,
                         s.action_reset,
                         Action::Reset,
@@ -1015,6 +1099,7 @@ impl NamsdecApp {
             if icon_square_button(ui, chrome::icon_calculator)
                 .on_hover_text(shortcut_hint(
                     &self.keybindings,
+                    self.lang,
                     &ui.ctx().clone(),
                     s.calculator_title,
                     Action::ToggleCalculator,
@@ -1071,7 +1156,7 @@ pub(crate) fn palette_commands(
         ),
         (
             s.file_preferences.to_string(),
-            PaletteCommand::ShowPreferences,
+            PaletteCommand::Do(Action::ShowPreferences),
         ),
         (
             s.action_instruction_help.to_string(),
@@ -1232,6 +1317,14 @@ pub(crate) fn palette_commands(
     commands.push((
         s.calculator_open.to_string(),
         PaletteCommand::Do(Action::ToggleCalculator),
+    ));
+    // Elle-même, pour la forme : la palette promet TOUTES les
+    // commandes, et une action absente de la liste n'existe que pour qui
+    // connaît déjà sa frappe. L'y choisir la referme — voir
+    // `execute_palette_command`.
+    commands.push((
+        s.palette_action.to_string(),
+        PaletteCommand::Do(Action::ToggleCommandPalette),
     ));
 
     if show_re_tab {

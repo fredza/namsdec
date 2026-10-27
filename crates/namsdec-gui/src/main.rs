@@ -1689,7 +1689,6 @@ struct CommandPalette {
 #[derive(Clone, Copy)]
 enum PaletteCommand {
     Do(Action),
-    ShowPreferences,
     ShowAbout,
     /// Ouvrir la liste des exercices — seulement quand le module est
     /// chargé, sans quoi la commande n'est pas proposée.
@@ -2400,6 +2399,17 @@ impl NamsdecApp {
                     self.calculator_was_open = false;
                 }
             }
+            // L'autre bascule : la palette se referme de la frappe qui
+            // l'a ouverte. Elle le faisait déjà — mais depuis un
+            // `consume_shortcut` posé en dur dans la boucle
+            // d'affichage, qu'aucun réglage ne pouvait atteindre.
+            Action::ToggleCommandPalette => {
+                self.command_palette = match self.command_palette {
+                    Some(_) => None,
+                    None => Some(CommandPalette::default()),
+                };
+            }
+            Action::ShowPreferences => self.open_preferences(),
         }
     }
 
@@ -2513,8 +2523,16 @@ impl NamsdecApp {
 
     fn execute_palette_command(&mut self, ctx: &egui::Context, cmd: PaletteCommand) {
         match cmd {
+            // Choisir « Palette de commandes » DANS la palette la
+            // referme, et ne la rouvre pas.
+            //
+            // L'appelant l'a déjà fermée avant d'arriver ici : la
+            // bascule la verrait absente et la rouvrirait aussitôt,
+            // vidée de ce qu'on venait d'y taper. Une commande qui se
+            // relance elle-même n'a rien fait, et le geste qu'on
+            // attendait — fermer — est celui qui arrive.
+            PaletteCommand::Do(Action::ToggleCommandPalette) => {}
             PaletteCommand::Do(action) => self.dispatch(action),
-            PaletteCommand::ShowPreferences => self.open_preferences(),
             PaletteCommand::ShowAbout => self.show_about = true,
             PaletteCommand::ShowExercises => self.show_exercises = true,
             // Les vues de la rangée : la palette les y choisit, comme
@@ -3432,20 +3450,6 @@ impl NamsdecApp {
             if let Some(action) = self.dispatcher.poll(&ctx, &self.keybindings, text_focused) {
                 self.dispatch(action);
             }
-        }
-
-        if self.rebinding.is_none()
-            && ctx.input_mut(|i| {
-                i.consume_shortcut(&egui::KeyboardShortcut::new(
-                    egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
-                    egui::Key::P,
-                ))
-            })
-        {
-            self.command_palette = match self.command_palette {
-                Some(_) => None,
-                None => Some(CommandPalette::default()),
-            };
         }
 
         self.guard_close(&ctx);

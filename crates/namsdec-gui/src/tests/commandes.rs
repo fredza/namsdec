@@ -833,3 +833,418 @@ fn a_shortcut_one_moved_oneself_is_marked_as_such() {
         "la frappe posée est celle qui s'affiche : {textes:?}"
     );
 }
+
+/// Aucun raccourci n'est posé en dur ailleurs que dans la table.
+///
+/// C'est l'invariant que la palette de commandes violait, seule, et
+/// depuis le début : son Ctrl+Maj+P vivait dans un `consume_shortcut` au
+/// milieu de la boucle d'affichage. Conséquences, toutes invisibles
+/// depuis le code qui le posait — absent des deux jeux, absent du
+/// tableau de Préférences, absent du fichier exporté, absent du manuel
+/// qui lit `keybindings.rs`. Le seul raccourci qu'on ne pouvait pas
+/// déplacer était celui qui sert à trouver tous les autres.
+///
+/// Deux fichiers ont le droit d'en fabriquer : `keybindings.rs`, qui
+/// POSE les jeux, et `settings.rs`, qui les relit depuis le fichier de
+/// l'utilisateur.
+#[test]
+fn aucun_raccourci_n_est_pose_en_dur_hors_de_la_table() {
+    let dossier = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let permis = ["keybindings.rs", "settings.rs"];
+    let mut fautifs = Vec::new();
+    let mut lus = 0;
+
+    let mut à_voir = vec![dossier];
+    while let Some(chemin) = à_voir.pop() {
+        for entrée in std::fs::read_dir(&chemin).expect("le source du greffon se lit") {
+            let entrée = entrée.expect("une entrée de dossier").path();
+            if entrée.is_dir() {
+                à_voir.push(entrée);
+                continue;
+            }
+            if entrée.extension().is_none_or(|e| e != "rs") {
+                continue;
+            }
+            let nom = entrée
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or_default()
+                .to_owned();
+            if permis.contains(&nom.as_str()) {
+                continue;
+            }
+            // Les contrôles fabriquent des frappes pour les jouer :
+            // c'est leur métier.
+            if entrée.components().any(|c| c.as_os_str() == "tests")
+                || nom == "tests.rs"
+                || nom == "banc.rs"
+            {
+                continue;
+            }
+            let texte = std::fs::read_to_string(&entrée).expect("un fichier source se lit");
+            lus += 1;
+            for (n, ligne) in texte.lines().enumerate() {
+                // Une ligne ne se compte qu'une fois, même quand elle
+                // porte les deux motifs — `consume_shortcut(&…::new(`
+                // les porte tous les deux, et un rapport qui dit deux
+                // fois la même ligne se lit mal.
+                if ["consume_shortcut(", "KeyboardShortcut::new("]
+                    .iter()
+                    .any(|motif| ligne.contains(motif))
+                {
+                    fautifs.push(format!("{nom}:{} {}", n + 1, ligne.trim()));
+                }
+            }
+        }
+    }
+
+    assert!(lus > 20, "le balayage doit voir tout le greffon : {lus}");
+    assert!(
+        fautifs.is_empty(),
+        "{} frappe(s) posée(s) hors de la table des raccourcis — elles \
+         n'apparaissent ni dans Préférences, ni dans le jeu exporté, ni \
+         dans le manuel :\n  {}",
+        fautifs.len(),
+        fautifs.join("\n  ")
+    );
+}
+
+/// La palette écrit, à droite de chaque commande, la frappe qui la
+/// déclenche.
+///
+/// La palette est l'endroit où l'on cherche une action dont on ne
+/// connaît pas le raccourci : c'est donc le seul endroit où l'apprendre
+/// au bon moment. Sans cela, les trente-deux frappes du programme
+/// n'existent que dans le tableau de Préférences — qu'on n'ouvre pas en
+/// travaillant — et la palette reste le chemin le plus court pour
+/// toujours.
+///
+/// Le relevé porte sur ce qui est PEINT, et vérifie la place : la frappe
+/// est sur la même ligne que son libellé, et à sa droite.
+#[test]
+fn la_palette_ecrit_le_raccourci_de_chaque_commande() {
+    let mut app = NamsdecApp {
+        command_palette: Some(CommandPalette::default()),
+        ..Default::default()
+    };
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let s = strings(app.lang);
+    let fr = app.lang == Lang::Fr;
+
+    let (_, lignes) = ce_qui_est_écrit_sur(
+        &ctx,
+        &mut app,
+        Some("command_palette"),
+        3,
+        egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1280.0, 1600.0),
+            )),
+            ..Default::default()
+        },
+    );
+    assert!(
+        !lignes.is_empty(),
+        "la palette n'est pas peinte — un contrôle qui ne voit pas son \
+         sujet ne mesure rien"
+    );
+
+    // Trois actions aux trois formes de frappe : une séquence, une
+    // touche de fonction, un Ctrl+Maj.
+    let bindings = app.keybindings.clone();
+    for (action, libellé) in [
+        (Action::Run, s.action_run),
+        (Action::Stop, s.action_stop),
+        (Action::Assemble, s.action_assemble),
+    ] {
+        let frappe = bindings
+            .map
+            .get(&action)
+            .expect("l'action a un raccourci")
+            .display(&ctx, fr);
+        let gauche = lignes
+            .iter()
+            .find(|(t, _)| t == libellé)
+            .unwrap_or_else(|| panic!("« {libellé} » doit être peint dans la palette"));
+        let droite = lignes
+            .iter()
+            .find(|(t, r)| t == &frappe && (r.center().y - gauche.1.center().y).abs() < 4.0)
+            .unwrap_or_else(|| {
+                panic!(
+                    "« {frappe} » doit être écrit sur la ligne de « {libellé} » : {:?}",
+                    lignes
+                        .iter()
+                        .filter(|(_, r)| (r.center().y - gauche.1.center().y).abs() < 4.0)
+                        .collect::<Vec<_>>()
+                )
+            });
+        assert!(
+            droite.1.left() > gauche.1.right(),
+            "« {frappe} » va à droite du libellé, sans le recouvrir : \
+             {:?} contre {:?}",
+            droite.1,
+            gauche.1
+        );
+    }
+}
+
+/// La palette garde sa largeur, quoi que ses libellés contiennent.
+///
+/// Elle fait 520 px, le raccourci est collé au bord droit, et la liste
+/// accueille aussi les étiquettes du programme — lesquelles viennent
+/// d'un binaire et ne sont bornées par rien : un nom décoré de C++ fait
+/// couramment quatre-vingts caractères. Un libellé qui prend la largeur
+/// de son texte élargit la fenêtre entière, et la palette saute d'une
+/// frappe à l'autre selon le fichier ouvert.
+///
+/// LE RELEVÉ PORTE SUR LE CADRE, et c'est le deuxième essai : mesurer
+/// l'encre ne voyait rien, parce que ce qui déborde n'est pas rogné —
+/// c'est la fenêtre qui cède. Le contrôle est éprouvé en remettant le
+/// défaut : `wrap_mode(Extend)` sur la ligne, et le cadre passe de 520 à
+/// 606 px.
+#[test]
+fn la_palette_garde_sa_largeur_quel_que_soit_le_libelle() {
+    // La largeur du cadre, avec et sans une étiquette démesurée dans le
+    // programme ouvert : c'est l'écart entre les deux qui est le défaut,
+    // et une largeur absolue seule ne le dirait pas.
+    let cadre = |source: &str| -> (f32, Vec<String>) {
+        let mut app = NamsdecApp {
+            command_palette: Some(CommandPalette::default()),
+            source: source.to_owned(),
+            ..Default::default()
+        };
+        let ctx = egui::Context::default();
+        app.apply_theme(&ctx);
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1280.0, 1600.0),
+            )),
+            ..Default::default()
+        };
+        let mut largeur = 0.0f32;
+        let mut coupées = Vec::new();
+        for _ in 0..3 {
+            coupées.clear();
+            let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+            let frame = egui::AreaState::load(&ctx, egui::Id::new("command_palette"))
+                .expect("la palette est affichée")
+                .rect();
+            largeur = frame.width();
+            for clipped in &output.shapes {
+                let egui::epaint::Shape::Text(text) = &clipped.shape else {
+                    continue;
+                };
+                // Ce que peint la palette, et non ce qui se trouve
+                // dessous.
+                if !(frame.x_range().expand(2.0).contains(text.pos.x)
+                    && frame.y_range().expand(2.0).contains(text.pos.y))
+                {
+                    continue;
+                }
+                let droite = text.pos.x + text.galley.size().x;
+                if droite > clipped.clip_rect.right() + 0.5 {
+                    coupées.push(format!(
+                        "« {} » demande jusqu'à {droite:.2} px pour un bord à {:.2}",
+                        text.galley.text(),
+                        clipped.clip_rect.right()
+                    ));
+                }
+            }
+            output.textures_delta.clear();
+        }
+        (largeur, coupées)
+    };
+
+    let (nue, _) = cadre("section .text\n_start:\n  nop\n");
+    // Un nom décoré de C++, tel qu'un binaire en porte.
+    let (chargée, coupées) = cadre(
+        "section .text\n_ZNSt6vectorIiSaIiEE13_M_insert_auxEN9__gnu_cxx17__normal_iteratorIPiS1_EERKi:\n  nop\n",
+    );
+
+    assert!(
+        (nue - 520.0).abs() < 2.0,
+        "la palette fait 520 px de large : {nue}"
+    );
+    assert!(
+        (chargée - nue).abs() < 2.0,
+        "une étiquette au nom démesuré élargit la palette : {chargée} \
+         contre {nue} px"
+    );
+    assert!(
+        coupées.is_empty(),
+        "{} ligne(s) de la palette perdent du texte sous le bord :\n  {}",
+        coupées.len(),
+        coupées.join("\n  ")
+    );
+}
+
+/// Les touches s'écrivent à l'écran comme le manuel les écrit.
+///
+/// Le générateur du guide traduit les noms d'egui depuis toujours —
+/// « Espace », « / », « Maj » — parce que « Slash » dans une phrase ne
+/// dit pas sur quoi appuyer. L'écran, lui, affichait le nom brut : on
+/// lisait « Espace puis / » dans le PDF et « Space Slash » dans
+/// l'application, pour la même frappe. Une notation de trop est une
+/// notation qu'il faut traduire de tête au moment où l'on cherche son
+/// raccourci.
+///
+/// Les deux tables sont maintenant confrontées l'une à l'autre.
+#[test]
+fn les_touches_s_ecrivent_comme_le_manuel_les_ecrit() {
+    use crate::keybindings::{Chord, key_name, keys_display};
+    use egui::Key;
+
+    // La table du manuel, lue dans le générateur : c'est la source, et
+    // elle ne doit pas se recopier à la main.
+    let guide = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/guide.py"),
+    )
+    .expect("docs/guide.py — le manuel est versionné avec le code");
+    let début = guide
+        .find("def _touche(nom):")
+        .expect("le manuel traduit les noms de touches");
+    let fin = guide[début..]
+        .find("\n\n\n")
+        .map(|d| début + d)
+        .unwrap_or(guide.len());
+    let table = &guide[début..fin];
+
+    // Chaque touche que le manuel traduit doit se lire pareil à l'écran.
+    for (nom_egui, attendu) in [
+        ("Space", "Espace"),
+        ("Slash", "/"),
+        ("Semicolon", ";"),
+        ("Comma", ","),
+        ("Period", "."),
+        ("Minus", "-"),
+        ("Equals", "="),
+        ("OpenBracket", "["),
+        ("CloseBracket", "]"),
+    ] {
+        assert!(
+            table.contains(&format!("\"{nom_egui}\": \"{attendu}\""))
+                || table.contains(&format!(
+                    "\"{nom_egui}\": \"{}\"",
+                    attendu.replace('\\', "\\\\")
+                )),
+            "le manuel n'écrit plus {nom_egui} « {attendu} » — les deux \
+             tables ont divergé : {table}"
+        );
+        let touche = Key::from_name(nom_egui).expect("egui connaît cette touche");
+        assert_eq!(
+            key_name(touche, true),
+            attendu,
+            "l'écran doit écrire {nom_egui} comme le manuel"
+        );
+    }
+
+    // Et la séquence entière s'assemble pareil des deux côtés : une
+    // espace entre les touches, les lettres en minuscule. Le guide
+    // écrivait « Espace puis S puis I » — plus explicite dans une
+    // phrase, et introuvable à l'écran.
+    let assemblage = {
+        let début = guide
+            .find("def raccourcis():")
+            .expect("le manuel tire ses raccourcis du code");
+        let fin = guide[début..]
+            .find("\ndef ")
+            .map(|d| début + d)
+            .unwrap_or(guide.len());
+        &guide[début..fin]
+    };
+    assert!(
+        !assemblage.contains("\" puis \""),
+        "le manuel sépare encore les touches d'une séquence par « puis » :          l'écran écrit « Espace s i »"
+    );
+    assert!(
+        assemblage.contains("_minuscule("),
+        "le manuel doit écrire les lettres d'une séquence en minuscule,          comme l'écran"
+    );
+
+    // La forme complète, telle qu'on la lit dans la prose du projet.
+    assert_eq!(
+        keys_display(&[Key::Space, Key::S, Key::I], true),
+        "Espace s i",
+        "les lettres d'une séquence sont en minuscule : une séquence \
+         ignore les modificateurs, un « S » majuscule annoncerait un Maj \
+         inutile"
+    );
+    assert_eq!(keys_display(&[Key::Y, Key::Y], true), "y y");
+    assert_eq!(
+        keys_display(&[Key::Space, Key::Slash, Key::Slash], true),
+        "Espace / /"
+    );
+
+    // Et « Maj », pas « Shift », dans la version française.
+    let ctx = egui::Context::default();
+    let assembler = Chord::Simple(egui::KeyboardShortcut::new(
+        egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
+        Key::B,
+    ));
+    assert_eq!(assembler.display(&ctx, true), "Ctrl+Maj+B");
+    assert_eq!(assembler.display(&ctx, false), "Ctrl+Shift+B");
+
+    // Aucun raccourci des deux jeux ne laisse passer un nom
+    // d'identificateur en français.
+    let interdits = ["Shift", "Slash", "Space ", "Escape", "Backslash"];
+    for preset in crate::keybindings::Preset::ALL {
+        for (action, chord) in &crate::keybindings::KeyBindings::preset(preset).map {
+            let écrit = chord.display(&ctx, true);
+            for mot in interdits {
+                assert!(
+                    !écrit.contains(mot),
+                    "{action:?} s'écrit « {écrit} » : « {mot} » n'est pas \
+                     du français"
+                );
+            }
+        }
+    }
+}
+
+/// L'infobulle de l'export compte les raccourcis au lieu de les deviner.
+///
+/// Elle annonçait « les trente raccourcis » en dur, et il y en avait
+/// trente-deux : le nombre avait été juste un jour, puis deux actions
+/// sont arrivées et personne n'a relu la phrase. Un chiffre figé dans
+/// une chaîne de langue vieillit sans bruit — il n'a ni compilateur ni
+/// contrôle pour le rappeler.
+///
+/// Aucune chaîne ne doit donc écrire ce nombre en mots : il se compte
+/// sur `Action::ALL`, à l'affichage.
+#[test]
+fn l_infobulle_de_l_export_compte_les_raccourcis() {
+    for lang in [Lang::Fr, Lang::En] {
+        let s = strings(lang);
+        assert!(
+            s.shortcuts_export_hint.contains("{}"),
+            "{lang:?} : l'infobulle de l'export doit recevoir le compte, \
+             et non le porter en dur : « {} »",
+            s.shortcuts_export_hint
+        );
+        let écrit = s
+            .shortcuts_export_hint
+            .replace("{}", &Action::ALL.len().to_string());
+        assert!(
+            écrit.contains(&Action::ALL.len().to_string()),
+            "{lang:?} : le compte doit s'écrire : « {écrit} »"
+        );
+        // Et aucun nombre de raccourcis écrit en mots, dans aucune
+        // chaîne : c'est la forme que le compilateur ne voit pas
+        // vieillir.
+        for (nom, valeur) in [
+            ("shortcuts_export_hint", s.shortcuts_export_hint),
+            ("shortcuts_both", s.shortcuts_both),
+            ("shortcuts_saved_hint", s.shortcuts_saved_hint),
+        ] {
+            for mot in ["trente", "thirty", "quarante", "forty"] {
+                assert!(
+                    !valeur.to_lowercase().contains(mot),
+                    "{nom} fige un compte en mots (« {mot} ») : « {valeur} »"
+                );
+            }
+        }
+    }
+}

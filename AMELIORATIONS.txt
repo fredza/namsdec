@@ -7214,3 +7214,185 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      mesure se fait liste fermée. Les étiquettes du menu sont les mêmes
      chaînes ; si elles débordent, c'est dans une surface qui lui est
      propre et qui ne replie rien du panneau.
+
+9.28 [FAIT] LE SEUL RACCOURCI QU'ON NE POUVAIT PAS DÉPLACER ÉTAIT CELUI
+     QUI SERT À TROUVER TOUS LES AUTRES  (27 octobre 2026)
+--------------------------------------------------------------------------------
+     Cherché autre chose, trouvé cela : en relisant comment les frappes
+     arrivent à l'application, une seule ne passait pas par la table.
+     `Ctrl+Maj+P` — la palette de commandes — vivait dans un
+     `consume_shortcut` posé au milieu de la boucle d'affichage, à
+     quarante lignes du dispatcher.
+
+     LA CONSÉQUENCE N'EST PAS CELLE QU'ON CROIT. Le raccourci marchait ;
+     ce n'était pas un défaut de comportement. Ce qui manquait, c'est
+     tout ce qui ENTOURE un raccourci dans ce programme : il n'était pas
+     dans les deux jeux livrés, donc pas dans le tableau de Préférences
+     qui les met côte à côte ; pas dans le fichier exporté, qui promet
+     « le jeu entier, à plat » ; pas dans le manuel, dont le chapitre
+     des raccourcis est GÉNÉRÉ en lisant `keybindings.rs` ; et pas
+     déplaçable, puisque rien ne le lisait depuis `keymap.json`.
+
+     L'ironie est entière : le seul geste qu'on ne pouvait pas régler
+     était celui qui sert à trouver tous les autres.
+
+     `Action::ToggleCommandPalette` le rejoint donc, avec sa bascule
+     dans `dispatch` — la seconde du programme, après la calculatrice,
+     et pour la même raison : on ouvre la palette au milieu d'autre
+     chose, la même frappe doit la renvoyer.
+
+     CE QUI NE CHANGE PAS, ET C'EST DÉLIBÉRÉ : la frappe reste
+     `Ctrl+Maj+P` dans les deux jeux. `Espace Espace` aurait été le
+     geste des configurations Neovim, et il suivait l'idiome du
+     doublement que le projet emploie déjà (`y y` duplique, `/ /`
+     surligne). Mais c'est la frappe que namsdec pose depuis le début :
+     la rendre réglable ne doit pas faire payer l'amélioration à ceux
+     qui la connaissent. Elle se déplace maintenant d'un clic pour qui
+     préfère l'autre — c'était tout l'objet.
+
+     LE CONTRÔLE NE PORTE PAS SUR LA PALETTE, et c'est ce qui lui donne
+     sa valeur : `aucun_raccourci_n_est_pose_en_dur_hors_de_la_table`
+     balaye tout le greffon et refuse `consume_shortcut` ou
+     `KeyboardShortcut::new` partout sauf dans les deux fichiers qui ont
+     le droit d'en fabriquer — `keybindings.rs`, qui POSE les jeux, et
+     `settings.rs`, qui les relit. Éprouvé en remettant le défaut : la
+     ligne d'avant, et le contrôle la nomme avec son numéro.
+
+     Une seule ligne aurait suffi à réintroduire le défaut ailleurs ;
+     c'est exactement le genre de chose qu'aucune relecture n'attrape
+     deux ans de suite.
+
+9.29 [FAIT] LA PALETTE APPREND LE RACCOURCI QU'ON EST VENU Y CHERCHER
+     (27 octobre 2026)
+--------------------------------------------------------------------------------
+     La palette de commandes est l'endroit où l'on cherche une action
+     dont on ne connaît PAS la frappe. C'était donc le seul endroit où
+     l'apprendre au moment où l'on en a besoin — et elle ne disait rien.
+
+     Les trente-deux raccourcis n'existaient que dans Préférences ›
+     Raccourcis, c'est-à-dire dans une fenêtre qu'on n'ouvre pas en
+     travaillant. Résultat prévisible : la palette reste le chemin le
+     plus court pour toujours, parce que rien ne pousse jamais vers
+     l'autre.
+
+     Chaque ligne porte maintenant sa frappe à droite, en couleur
+     atténuée — la place qu'elle occupe dans tous les menus, y compris
+     ceux de namsdec. Lue EN DIRECT dans le jeu actif : un raccourci
+     déplacé à l'instant s'affiche déplacé. Les entrées qui ne sont pas
+     des actions — « Enregistrer sous… », « Aller à : une_étiquette » —
+     n'en portent pas, et c'est voulu : une colonne vide ferait croire à
+     un raccourci oublié.
+
+     DEUX CONTRÔLES, ET LE SECOND A ÉTÉ ÉCRIT DEUX FOIS.
+
+     Le premier relève ce qui est PEINT et vérifie la place : la frappe
+     est sur la même ligne que son libellé, et à sa droite. Éprouvé en
+     retirant le `shortcut_text` — « Espace p r doit être écrit sur la
+     ligne de Exécuter », et la ligne ne porte plus que son libellé.
+
+     Le second devait répondre à la vraie crainte : la palette fait
+     520 px, le raccourci est collé au bord droit, et la liste accueille
+     aussi les étiquettes DU PROGRAMME — un nom décoré de C++ fait
+     couramment quatre-vingts caractères, et rien ne le borne.
+
+     SA PREMIÈRE VERSION MESURAIT L'ENCRE, et elle passait au vert avec
+     le défaut remis. C'est la leçon de la séance, et elle est
+     contre-intuitive : ce qui déborde n'est pas rogné — c'est la
+     FENÊTRE qui cède. Un libellé qui prend la largeur de son texte
+     élargit la palette entière, laquelle passe de 520 à 630 px selon le
+     fichier ouvert. L'encre, elle, reste sagement dans son cadre : le
+     cadre a grandi.
+
+     Le relevé porte donc sur le CADRE, à programme nu puis avec une
+     étiquette démesurée, et c'est l'écart entre les deux qui est le
+     défaut — une largeur absolue seule ne l'aurait pas dit. Éprouvé en
+     remettant `wrap_mode(Extend)` : 630,2 contre 520.
+
+9.30 [FAIT] DEUX NOTATIONS POUR LA MÊME FRAPPE  (27 octobre 2026)
+--------------------------------------------------------------------------------
+     Le manuel écrivait « Ctrl+Maj+B » et « Espace puis S puis I ».
+     L'écran écrivait « Ctrl+Shift+B » et « Space S I ». La même frappe,
+     deux fois, dans deux notations — et celle du manuel est la seule
+     des deux qui dise sur quoi appuyer : « Slash » n'est écrit sur
+     aucune touche.
+
+     Le générateur du guide traduisait depuis toujours
+     (`docs/guide.py::_touche`), parce qu'un guide imprimé ne peut pas
+     se permettre « Slash ». L'application, elle, affichait le nom brut
+     que rend `Key::name()`. Personne n'avait rapproché les deux parce
+     qu'on ne les lit jamais en même temps — sauf précisément au moment
+     où l'on cherche son raccourci dans le PDF pour le taper dans
+     l'application.
+
+     UNE SEULE TABLE MAINTENANT, et elle est du côté du code :
+     `keybindings::key_name`. Elle rend « Espace », « Échap », « / »,
+     « ; », et `Chord::display` compose avec des modificateurs français
+     — egui n'en propose qu'un jeu, en anglais. Les lettres d'une
+     séquence passent en minuscule : une séquence ignore les
+     modificateurs, un « S » majuscule annonçait un Maj à presser qui ne
+     sert à rien. C'est aussi la forme que le projet écrit dans sa prose
+     depuis le premier jour — « Espace p i » — sans l'avoir jamais
+     affichée.
+
+     LE GUIDE A SUIVI, et c'est lui qui a bougé sur un point : son
+     tableau séparait les touches par « puis ». Plus explicite dans une
+     phrase, et introuvable à l'écran. Il écrit « Espace s i » comme
+     l'application, et le paragraphe qui précède explique la notation
+     une fois pour toutes.
+
+     LE CONTRÔLE CONFRONTE LES DEUX TABLES, et il a trouvé un écart du
+     premier coup — exactement ce qu'on lui demandait. egui rend pour la
+     touche « - » le SIGNE MOINS typographique U+2212 ; le manuel écrit
+     le trait d'union, et c'est le trait d'union qui est gravé sur le
+     clavier. Un signe plus beau qu'on ne trouve pas sous les doigts ne
+     rend pas service.
+
+     Le contrôle lit `docs/guide.py` comme texte, et ne l'exécute pas :
+     un contrôle qui lance python passe ici et échoue sur une machine
+     qui n'a pas reportlab.
+
+     AU PASSAGE, UN CHIFFRE QUI MENTAIT : l'infobulle de l'export
+     annonçait « les trente raccourcis » quand il y en avait trente-deux.
+     Il avait été juste un jour. Il se compte maintenant sur
+     `Action::ALL`, et un contrôle refuse qu'un nombre de raccourcis soit
+     écrit en mots dans une chaîne de langue — c'est la forme que le
+     compilateur ne voit pas vieillir.
+
+     CE QUI N'A PAS PU ÊTRE FAIT, et il faut le dire : la capture de la
+     palette dans l'application EN MARCHE. Sous Wayland, l'injection de
+     touches par XTEST n'atteint pas la fenêtre XWayland — `xdotool
+     type` ne fait rien, vérifié avec un témoin. La capture de la
+     fenêtre, elle, marche. Il manque donc le troisième lieu de mesure
+     pour cette palette-là ; le banc a tenu seul, et il le dit.
+
+9.31 [FAIT] LE DERNIER GESTE COURANT SANS TOUCHE  (27 octobre 2026)
+--------------------------------------------------------------------------------
+     En dressant l'inventaire pour 9.28 — quelles actions passent par la
+     table, lesquelles n'y passent pas — une absence s'est vue : il n'y
+     avait aucun raccourci pour OUVRIR LES PRÉFÉRENCES. C'est-à-dire
+     pour ouvrir la fenêtre où l'on règle les raccourcis.
+
+     `Ctrl+,` dans le jeu ordinaire : la convention, de VS Code aux
+     navigateurs, et la virgule était libre partout. `Espace v r` dans
+     le jeu vim — voir les réglages. La famille `v…` est celle de ce qui
+     ouvre une vue sans rien changer au programme, et les Préférences en
+     sont une : on y regarde ce qu'on a réglé au moins aussi souvent
+     qu'on y change quelque chose.
+
+     AU PASSAGE, UNE ROUTE EN DOUBLE QUI DISPARAÎT.
+     `PaletteCommand::ShowPreferences` faisait exactement ce que fait
+     maintenant `Action::ShowPreferences`, et c'est la maladie que ce
+     projet traque depuis le début : deux formes pour un rôle. L'une des
+     deux ne figurait ni au tableau, ni dans le fichier exporté, ni au
+     manuel. La palette appelle l'action comme tout le monde.
+
+     CE QUI RESTE, ET POURQUOI CE N'EST PAS FAIT ICI : les quatre
+     bascules d'affichage — barre d'outils, panneau latéral, barre de
+     statut, console — n'ont que la palette et une case à cocher. Leur
+     donner une touche est trivial ; la MONTRER ne l'est pas. Les trois
+     chemins visibles de ce programme écrivent le raccourci à côté du
+     libellé, et `ui.checkbox` n'a pas de place prévue pour cela — ni
+     `shortcut_text`, ni colonne de droite. Poser la frappe dans une
+     infobulle serait la seule entrée de menu du programme dont le
+     raccourci ne se lit pas sans survoler. C'est une question de
+     dessin, elle mérite son relevé, et elle est écrite dans TRAVAUX.

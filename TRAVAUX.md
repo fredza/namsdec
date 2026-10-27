@@ -99,6 +99,65 @@ défauts suspectés, c'étaient des questions qu'on n'avait jamais posées.
 
 ---
 
+## 0 terdecies. La palette, les raccourcis, et une notation de trop (A 9.28 à 9.30)
+
+- [x] **Le seul raccourci qu'on ne pouvait pas déplacer** — `Ctrl+Maj+P`,
+      la palette de commandes, vivait dans un `consume_shortcut` posé au
+      milieu de la boucle d'affichage. Il marchait ; c'est tout ce qui
+      ENTOURE un raccourci dans ce programme qui lui manquait — absent
+      des deux jeux, du tableau de Préférences, du fichier exporté, du
+      chapitre du manuel qui lit `keybindings.rs`, et non déplaçable.
+      Le seul geste qu'on ne pouvait pas régler était celui qui sert à
+      trouver tous les autres.
+      `Action::ToggleCommandPalette` le rejoint, avec sa bascule — la
+      seconde du programme après la calculatrice, et pour la même
+      raison. La frappe ne bouge pas : la rendre réglable ne doit pas
+      faire payer l'amélioration à qui la connaît déjà.
+      Contrôle : `aucun_raccourci_n_est_pose_en_dur_hors_de_la_table`,
+      qui balaye tout le greffon et ne tolère une frappe fabriquée que
+      dans `keybindings.rs` et `settings.rs`. Il ne parle pas de la
+      palette, et c'est ce qui lui donne sa valeur. Éprouvé en remettant
+      la ligne d'avant.
+- [x] **La palette apprend le raccourci qu'on est venu y chercher** —
+      chaque ligne porte sa frappe à droite, lue en direct dans le jeu
+      actif. C'est l'endroit où l'on cherche une action dont on ne
+      connaît pas la frappe : c'était donc le seul endroit où
+      l'apprendre, et il ne disait rien.
+      Deux contrôles, dont le second a été écrit deux fois : sa première
+      version mesurait l'encre et passait au vert avec le défaut remis.
+      Ce qui déborde n'est pas rogné — c'est la FENÊTRE qui cède, et la
+      palette passe de 520 à 630 px selon le fichier ouvert. Le relevé
+      porte donc sur le cadre, à programme nu puis avec une étiquette
+      démesurée. Éprouvé : 630,2 contre 520.
+- [x] **Deux notations pour la même frappe** — le manuel écrivait
+      « Ctrl+Maj+B » et « Espace puis S puis I », l'écran
+      « Ctrl+Shift+B » et « Space S I ». Une seule table maintenant,
+      `keybindings::key_name`, et c'est le guide qui s'aligne sur
+      l'écran pour le séparateur. Les lettres d'une séquence passent en
+      minuscule : une séquence ignore les modificateurs.
+      Le contrôle confronte les deux tables et a trouvé un écart du
+      premier coup : egui rend U+2212 pour la touche « - », le clavier
+      porte le trait d'union.
+- [x] **Un chiffre qui mentait** — « les trente raccourcis » dans
+      l'infobulle de l'export, quand il y en avait trente-deux. Compté
+      sur `Action::ALL`, et un contrôle refuse qu'un nombre de
+      raccourcis s'écrive en mots dans une chaîne de langue.
+- [x] **Préférences a enfin une touche** — `Ctrl+,` dans le jeu
+      ordinaire, `Espace v r` dans l'autre. C'était le dernier geste
+      courant sans raccourci, et c'est la fenêtre où l'on règle les
+      raccourcis. Au passage, `PaletteCommand::ShowPreferences`
+      disparaît : deux routes vers la même chose, dont une seule
+      figurait au tableau.
+- [ ] **Les quatre bascules d'affichage** — barre d'outils, panneau,
+      barre de statut, console — n'ont toujours que la palette et une
+      case à cocher. Leur donner une touche demande d'abord de décider
+      comment une CASE À COCHER montre son raccourci : les trois autres
+      chemins l'écrivent à côté du libellé, et `ui.checkbox` n'a pas de
+      place prévue pour cela. C'est une question de dessin, pas de
+      câblage, et elle mérite son propre relevé.
+
+---
+
 ## 0 duodecies. Le panneau du détour se repliait sur 327 px (A 9.27)
 
 Trouvé en écrivant l'invariant de la section précédente, et c'est l'ordre

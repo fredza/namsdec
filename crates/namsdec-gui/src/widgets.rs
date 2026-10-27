@@ -206,6 +206,8 @@ pub(crate) fn action_label(s: &Strings, action: Action) -> &'static str {
         Action::RunToReturn => s.action_run_to_return,
         Action::RunToSyscall => s.action_run_to_syscall,
         Action::ToggleCalculator => s.calculator_open,
+        Action::ToggleCommandPalette => s.palette_action,
+        Action::ShowPreferences => s.file_preferences,
     }
 }
 
@@ -214,12 +216,13 @@ pub(crate) fn action_label(s: &Strings, action: Action) -> &'static str {
 /// pour qu'un changement dans Préférences se reflète aussitôt.
 pub(crate) fn shortcut_hint(
     bindings: &KeyBindings,
+    lang: Lang,
     ctx: &egui::Context,
     label: &str,
     action: Action,
 ) -> String {
     match bindings.map.get(&action) {
-        Some(chord) => format!("{label} ({})", chord.display(ctx)),
+        Some(chord) => format!("{label} ({})", chord.display(ctx, lang == Lang::Fr)),
         None => label.to_string(),
     }
 }

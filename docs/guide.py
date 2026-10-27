@@ -97,6 +97,15 @@ def fonctions_de_la_calculatrice():
     return len(re.findall(r'^\s*\(\s*\n?\s*"', texte[debut:fin], re.M))
 
 
+def nb_actions():
+    """Combien d'actions ont un raccourci, compté dans `Action::ALL`."""
+    texte = (RACINE / "crates/namsdec-gui/src/keybindings.rs").read_text(encoding="utf-8")
+    trouvé = re.search(r"pub const ALL: \[Action; (\d+)\]", texte)
+    if not trouvé:
+        raise SystemExit("la table des actions a changé de forme")
+    return int(trouvé.group(1))
+
+
 def raccourcis():
     """Les raccourcis par défaut, lus dans le code qui les pose."""
     texte = (RACINE / "crates/namsdec-gui/src/keybindings.rs").read_text(encoding="utf-8")
@@ -117,8 +126,15 @@ def raccourcis():
     ):
         action, mods, touche, séquence = bloc.group(1), bloc.group(2), bloc.group(3), bloc.group(4)
         if séquence:
-            touches = " puis ".join(
-                _touche(t.strip().replace("Key::", ""))
+            # Séparées par une espace, et les lettres en minuscule :
+            # « Espace s i ». C'est ce que l'application écrit dans son
+            # tableau des raccourcis, dans son infobulle de bouton et
+            # dans sa barre d'état. Le guide écrivait « Espace puis S
+            # puis I » — plus explicite dans une phrase, mais introuvable
+            # à l'écran, et c'est l'écran qu'on a sous les yeux au moment
+            # où l'on cherche sa frappe.
+            touches = " ".join(
+                _minuscule(_touche(t.strip().replace("Key::", "")))
                 for t in séquence.split(",")
                 if t.strip()
             )
@@ -158,6 +174,15 @@ def _sans_les_tests(texte):
             i += 1
         reste = reste[i + 1:]
     return "".join(out)
+
+
+def _minuscule(nom):
+    """Une lettre de séquence s'écrit en minuscule.
+
+    Une séquence ignore les modificateurs : un « S » majuscule
+    annoncerait un Maj à presser qui ne sert à rien.
+    """
+    return nom.lower() if len(nom) == 1 and nom.isalpha() else nom
 
 
 def _touche(nom):
@@ -485,7 +510,7 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "est allumé (Préférences › Modules) : un onglet qui ne mène à rien est pire "
          "qu'un onglet absent."),
         ("p",
-         "Le <b>menu Outils</b>, la <b>palette</b> (Ctrl+Maj+P) et les raccourcis "
+         "Le <b>menu Outils</b>, la <b>palette de commandes</b> et les raccourcis "
          "mènent aux mêmes vues : ils choisissent l'onglet. Le bouton de l'onglet RE du "
          "panneau latéral, « Analyse du binaire… », fait de même."),
         ("p",
@@ -2733,16 +2758,33 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "auxquels on s'attend ailleurs. On change de jeu dans Préférences › Raccourcis, "
          "et les deux couvrent les mêmes actions."),
         ("p",
-         "Les séquences notées « Espace puis … » sont des touches relâchées l'une après "
-         "l'autre, à la façon de la touche « leader » de vim. Elles ne s'arment que lorsque "
-         "l'éditeur n'a pas le focus, sinon un espace tapé dans le code déclencherait tout."),
+         "Les séquences notées « Espace s i » sont des touches relâchées l'une après "
+         "l'autre, à la façon de la touche « leader » de vim : on tape Espace, puis s, puis "
+         "i. Elles ne s'arment que lorsque "
+         "l'éditeur n'a pas le focus, sinon un espace tapé dans le code déclencherait tout. "
+         "Les lettres sont écrites en minuscule parce qu'une séquence ignore les "
+         "modificateurs — un « S » majuscule annoncerait un Maj qui ne sert à rien. C'est "
+         "la notation que l'application emploie elle aussi, dans son tableau, dans ses "
+         "infobulles et dans sa barre d'état : il n'y en a qu'une à retenir."),
+        ("p",
+         "La <b>palette de commandes</b> écrit, à droite de chaque commande, la frappe qui "
+         "la déclenche. C'est l'endroit où l'on cherche une action dont on ne connaît pas "
+         "le raccourci : c'est donc le seul endroit où l'apprendre au moment où l'on en a "
+         "besoin. <b>Préférences</b> en a reçu un au passage — <font face='Courier'>Ctrl+,</font> "
+         "dans le jeu ordinaire, « Espace v r » dans l'autre : c'était le dernier geste "
+         "courant sans touche, et c'est la fenêtre où l'on règle les raccourcis. "
+         "Son propre raccourci, Ctrl+Maj+P, est désormais une action comme les "
+         "autres — il figure dans les deux jeux, dans le tableau, dans le fichier exporté, "
+         "et il se déplace. Il était jusqu'ici posé en dur dans le code : le seul raccourci "
+         "qu'on ne pouvait pas changer était celui qui sert à trouver tous les autres."),
         ("p",
          "Les raccourcis vivent dans <font face='Courier'>~/.config/namsdec/keymap.json</font>, "
          "qui ne garde que ce qui <b>s’écarte</b> du jeu choisi : un jeu qui gagne une "
          "action l’apporte alors sans qu’on ait rien à faire. Le fichier est "
          "<b>surveillé</b> — modifié pendant que namsdec tourne, il est repris dans "
          "la seconde, et la barre d’état le dit. Et Préférences › Raccourcis "
-         "propose d’<b>exporter le jeu entier</b>, à plat : les trente actions "
+         "propose d’<b>exporter le jeu entier</b>, à plat : les "
+         f"{nb_actions()} actions "
          "écrites une par une, pour partir d’une liste complète plutôt que d’un "
          "écart."),
     ]

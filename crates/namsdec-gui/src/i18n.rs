@@ -499,6 +499,9 @@ pub struct Strings {
     pub flow_none: &'static str,
     /// Bouton : écrire le jeu de raccourcis entier.
     pub shortcuts_export: &'static str,
+    /// Porte un `{}` : le nombre d'actions, compté sur `Action::ALL`.
+    /// Il disait « les trente raccourcis » en dur, et il en est resté à
+    /// trente le jour où une trente-et-unième action est arrivée.
     pub shortcuts_export_hint: &'static str,
     /// Le titre de la liste des jeux enregistrés.
     pub shortcuts_saved_sets: &'static str,
@@ -803,6 +806,10 @@ pub struct Strings {
 
     // Palette de commandes
     pub palette_open: &'static str,
+    /// Le nom de la palette SANS points de suspension : ceux du menu
+    /// annoncent « ceci ouvre quelque chose », ce qui n'a pas de sens
+    /// dans le tableau des raccourcis ni dans la palette elle-même.
+    pub palette_action: &'static str,
     pub palette_placeholder: &'static str,
     pub palette_no_match: &'static str,
     pub palette_toggle_toolbar: &'static str,
@@ -1557,7 +1564,7 @@ déclenchera jamais.",
     flow_dot_save_failed: "Le graphe n'a pas pu être enregistré",
     flow_none: "Aucun graphe à enregistrer : assemblez d'abord.",
     shortcuts_export: "Exporter le jeu entier…",
-    shortcuts_export_hint: "Écrire les trente raccourcis, un par un, dans un fichier. Le fichier de réglages, lui, ne garde que les écarts.",
+    shortcuts_export_hint: "Écrire les {} raccourcis, un par un, dans un fichier. Le fichier de réglages, lui, ne garde que les écarts.",
     shortcuts_saved_sets: "Jeux enregistrés",
     shortcuts_saved_hint: "Plusieurs jeux, et l'on passe de l'un à l'autre d'un clic : un pour la rétro-ingénierie, un pour écrire de l'assembleur, un copié d'une autre machine. namsdec ne fait que LIRE ce dossier — il n'y écrit que sur demande.",
     shortcuts_load: "Charger",
@@ -1810,6 +1817,7 @@ déclenchera jamais.",
     explorer_path_not_a_directory: "« {} » n'est pas un dossier.",
 
     palette_open: "Palette de commandes…",
+    palette_action: "Palette de commandes",
     palette_placeholder: "Tapez une commande…",
     palette_no_match: "Aucune commande ne correspond.",
     palette_toggle_toolbar: "Afficher/masquer la barre d'outils",
@@ -2451,7 +2459,7 @@ other is there to compare — that is how gaps and clashes become visible.",
     flow_dot_save_failed: "The graph could not be saved",
     flow_none: "No graph to save: assemble first.",
     shortcuts_export: "Export the whole set…",
-    shortcuts_export_hint: "Write all thirty shortcuts, one by one, to a file. The settings file only keeps what departs from the set.",
+    shortcuts_export_hint: "Write all {} shortcuts, one by one, to a file. The settings file only keeps what departs from the set.",
     shortcuts_saved_sets: "Saved sets",
     shortcuts_saved_hint: "Several sets, and one click to switch: one for reverse engineering, one for writing assembly, one copied from another machine. namsdec only READS this folder — it writes there on request alone.",
     shortcuts_load: "Load",
@@ -2704,6 +2712,7 @@ other is there to compare — that is how gaps and clashes become visible.",
     explorer_path_not_a_directory: "“{}” is not a folder.",
 
     palette_open: "Command Palette…",
+    palette_action: "Command Palette",
     palette_placeholder: "Type a command…",
     palette_no_match: "No matching command.",
     palette_toggle_toolbar: "Toggle Toolbar",

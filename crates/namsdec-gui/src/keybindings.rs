@@ -101,10 +101,27 @@ pub enum Action {
     /// en train de suivre — et c'est pour cela qu'elle bascule au lieu
     /// de seulement s'ouvrir : la même frappe la renvoie d'où elle vient.
     ToggleCalculator,
+    /// Ouvrir ou refermer la palette de commandes.
+    ///
+    /// Elle a toujours eu son raccourci — Ctrl+Maj+P —, mais posé en dur
+    /// au milieu de la boucle d'affichage : absent des deux jeux, absent
+    /// du tableau de Préférences, absent du fichier exporté. Le seul
+    /// raccourci de l'application qu'on ne pouvait pas déplacer était
+    /// aussi celui qui sert à trouver tous les autres.
+    ///
+    /// Une BASCULE, comme la calculatrice : la même frappe la renvoie
+    /// d'où elle vient, sans viser sa croix.
+    ToggleCommandPalette,
+    /// Ouvrir les Préférences.
+    ///
+    /// Le dernier geste courant sans touche, et le plus ironique :
+    /// c'est la fenêtre où l'on règle les raccourcis. `Ctrl+,` est la
+    /// convention, de VS Code aux navigateurs.
+    ShowPreferences,
 }
 
 impl Action {
-    pub const ALL: [Action; 31] = [
+    pub const ALL: [Action; 33] = [
         Action::ToggleExplorer,
         Action::Assemble,
         Action::Run,
@@ -136,6 +153,8 @@ impl Action {
         Action::NameAddress,
         Action::CommentAddress,
         Action::ToggleCalculator,
+        Action::ToggleCommandPalette,
+        Action::ShowPreferences,
     ];
 }
 
@@ -213,9 +232,24 @@ impl Chord {
         Chord::Leader(Sequence::new(keys).expect("séquence valide"))
     }
 
-    pub fn display(&self, ctx: &egui::Context) -> String {
+    pub fn display(&self, ctx: &egui::Context, fr: bool) -> String {
         match self {
-            Chord::Simple(sc) => ctx.format_shortcut(sc),
+            // Notre propre mise en forme plutôt que `format_shortcut` :
+            // celle d'egui écrit « Shift », et le manuel écrit « Maj »
+            // depuis la première page.
+            Chord::Simple(sc) => {
+                let noms = if fr {
+                    MODIFICATEURS_FR
+                } else {
+                    MODIFICATEURS_EN
+                };
+                let mut texte = noms.format(&sc.modifiers, ctx.os().is_mac());
+                if !texte.is_empty() {
+                    texte += noms.concat;
+                }
+                texte += key_name(sc.logical_key, fr);
+                texte
+            }
             // Séparées par une espace, et non par « , ».
             //
             // Le tableau des deux jeux a mis les deux formes côte à
@@ -224,14 +258,138 @@ impl Chord {
             // rien et se lit comme un signe de plus à démêler. Le projet
             // écrit d'ailleurs « Espace p i » partout dans sa prose, et
             // c'est cette forme-là qu'on retrouve maintenant à l'écran.
-            Chord::Leader(sequence) => sequence
-                .as_slice()
-                .iter()
-                .map(|k| k.name())
-                .collect::<Vec<_>>()
-                .join(" "),
+            Chord::Leader(sequence) => keys_display(sequence.as_slice(), fr),
         }
     }
+}
+
+/// Les modificateurs comme le manuel les écrit : « Maj » et non
+/// « Shift ».
+///
+/// egui n'a qu'un jeu de noms, en anglais. Les deux notations se sont
+/// croisées pendant longtemps — le guide imprimé disait « Ctrl+Maj+B »,
+/// l'écran disait « Ctrl+Shift+B », et c'était la même frappe. Une
+/// notation de trop est une notation qu'il faut traduire de tête au
+/// moment où l'on cherche son raccourci.
+const MODIFICATEURS_FR: &egui::ModifierNames<'static> = &egui::ModifierNames {
+    is_short: false,
+    alt: "Alt",
+    ctrl: "Ctrl",
+    shift: "Maj",
+    mac_cmd: "Cmd",
+    mac_alt: "Option",
+    concat: "+",
+};
+
+/// Ceux d'egui, inchangés : en anglais, « Shift » est le bon mot.
+const MODIFICATEURS_EN: &egui::ModifierNames<'static> = &egui::ModifierNames::NAMES;
+
+/// Le nom d'une touche, tel qu'on le dit — et tel que le manuel l'écrit.
+///
+/// `Key::name()` rend des noms d'identificateurs : « Space », « Slash »,
+/// « Escape ». Le générateur du guide les traduit depuis toujours
+/// (`docs/guide.py::_touche`) parce que « Slash » dans une phrase ne dit
+/// pas sur quoi appuyer. L'écran, lui, affichait le nom brut : on lisait
+/// « Espace puis / » dans le PDF et « Space Slash » dans l'application.
+///
+/// Les deux tables sont maintenant la même, et c'est tout ce qu'on
+/// demande à une notation : qu'il n'y en ait qu'une.
+pub fn key_name(key: Key, fr: bool) -> &'static str {
+    // La ponctuation d'abord, dans les deux langues : `symbol_or_name`
+    // rend « / », « ; », « [ » — ce qui est gravé sur la touche, donc
+    // ce qui se cherche des yeux.
+    match key {
+        Key::Space => {
+            if fr {
+                "Espace"
+            } else {
+                "Space"
+            }
+        }
+        Key::Escape => {
+            if fr {
+                "Échap"
+            } else {
+                "Escape"
+            }
+        }
+        Key::Enter => {
+            if fr {
+                "Entrée"
+            } else {
+                "Enter"
+            }
+        }
+        Key::Backspace => {
+            if fr {
+                "Retour arr."
+            } else {
+                "Backspace"
+            }
+        }
+        Key::Delete => {
+            if fr {
+                "Suppr"
+            } else {
+                "Delete"
+            }
+        }
+        Key::Insert => {
+            if fr {
+                "Inser"
+            } else {
+                "Insert"
+            }
+        }
+        Key::Home => {
+            if fr {
+                "Origine"
+            } else {
+                "Home"
+            }
+        }
+        Key::End => {
+            if fr {
+                "Fin"
+            } else {
+                "End"
+            }
+        }
+        // Le trait d'union, et non le SIGNE MOINS d'egui (U+2212).
+        //
+        // Relevé par le contrôle qui confronte cette table à celle du
+        // manuel, et c'est exactement ce qu'on lui demandait de
+        // trouver : egui écrit « − », le manuel écrit « - », et la
+        // touche du clavier porte le second. Un signe typographique
+        // plus beau qui ne se trouve pas sur le clavier ne rend pas
+        // service à qui cherche sur quoi appuyer.
+        Key::Minus => "-",
+        // Flèches et ponctuation : le symbole plutôt que le mot. Pour
+        // tout le reste — lettres, chiffres, touches de fonction —
+        // `symbol_or_name` rend déjà le nom, identique dans les deux
+        // langues.
+        _ => key.symbol_or_name(),
+    }
+}
+
+/// Une suite de touches, écrite comme on la tape : `Espace s i`, `y y`.
+///
+/// Les lettres en minuscule, et c'est voulu : une séquence ignore les
+/// modificateurs (voir l'en-tête du module), donc une majuscule à
+/// l'écran annoncerait un Maj à presser qui ne sert à rien. C'est aussi
+/// la forme que le projet écrit dans sa prose depuis le début.
+pub fn keys_display(keys: &[Key], fr: bool) -> String {
+    keys.iter()
+        .map(|k| {
+            let nom = key_name(*k, fr);
+            if nom.len() == 1 && nom.chars().all(|c| c.is_ascii_uppercase()) {
+                nom.to_lowercase()
+            } else {
+                nom.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 #[derive(Clone)]
@@ -491,6 +649,17 @@ impl KeyBindings {
         // prend la suivante plutôt que d'inventer une touche sans
         // rapport.
         map.insert(Action::ToggleCalculator, simple(M::CTRL | M::SHIFT, Key::A));
+        // Ctrl+Maj+P : celui de VS Code, et celui que namsdec posait
+        // déjà en dur. Il ne change pas de place en devenant
+        // déplaçable — on rend le geste réglable, on ne rééduque pas
+        // les doigts.
+        map.insert(
+            Action::ToggleCommandPalette,
+            simple(M::CTRL | M::SHIFT, Key::P),
+        );
+        // Ctrl+, : la convention des préférences, de VS Code aux
+        // navigateurs. La virgule est libre partout ailleurs.
+        map.insert(Action::ShowPreferences, simple(M::CTRL, Key::Comma));
 
         Self { map }
     }
@@ -718,6 +887,32 @@ impl KeyBindings {
         map.insert(
             Action::ToggleCalculator,
             Chord::leader(&[Key::Space, Key::C, Key::A]),
+        );
+        // Ctrl+Maj+P ici aussi, et non une séquence.
+        //
+        // Le jeu vim garde les raccourcis simples là où ils sont une
+        // habitude de métier plus forte que sa propre règle : Ctrl+S,
+        // Ctrl+O, Ctrl+F, Ctrl+N, Ctrl+W. La palette est de ceux-là.
+        // `Espace Espace` aurait été le geste des configurations
+        // Neovim et suivait l'idiome du doublement (`y y`, `/ /`) —
+        // mais c'est la frappe que namsdec posait en dur depuis le
+        // début, et la changer en la rendant réglable aurait fait payer
+        // une amélioration à ceux qui la connaissent déjà. Elle se
+        // déplace maintenant d'un clic pour qui préfère l'autre.
+        map.insert(
+            Action::ToggleCommandPalette,
+            Chord::Simple(KeyboardShortcut::new(
+                Modifiers::CTRL.plus(Modifiers::SHIFT),
+                Key::P,
+            )),
+        );
+        // `Espace v r` : voir les réglages. La famille `v…` est celle
+        // de ce qui ouvre une vue sans rien changer au programme, et
+        // les Préférences en sont une — on y regarde ce qu'on a réglé
+        // au moins aussi souvent qu'on y change quelque chose.
+        map.insert(
+            Action::ShowPreferences,
+            Chord::leader(&[Key::Space, Key::V, Key::R]),
         );
         Self { map }
     }

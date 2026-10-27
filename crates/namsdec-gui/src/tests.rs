@@ -874,6 +874,14 @@ fn fenêtres_ouvrables() -> Vec<Ouverture> {
             app.show_input_dialog = true;
         }),
         ("correctifs", PATCHES_WINDOW, |app| app.show_patches = true),
+        // LA PALETTE N'ÉTAIT PAS AU BANC, et c'est une fenêtre comme
+        // les autres : elle a une largeur fixe, une liste qui défile et
+        // un champ de saisie. Elle y entre le jour où ses lignes se
+        // mettent à porter DEUX textes — le libellé et la frappe —,
+        // c'est-à-dire le jour où elles peuvent se marcher dessus.
+        ("palette de commandes", "command_palette", |app| {
+            app.command_palette = Some(CommandPalette::default());
+        }),
     ]
 }
 

@@ -327,7 +327,10 @@ impl NamsdecApp {
         // à quoi se raccrocher pour partir d'une liste complète, la
         // relire, ou la donner à quelqu'un.
         if framed_button(ui, theme, s.shortcuts_export)
-            .on_hover_text(s.shortcuts_export_hint)
+            .on_hover_text(
+                s.shortcuts_export_hint
+                    .replace("{}", &Action::ALL.len().to_string()),
+            )
             .clicked()
         {
             exporter_raccourcis = true;
@@ -414,7 +417,7 @@ impl NamsdecApp {
         let mut par_frappe: BTreeMap<String, Vec<Action>> = BTreeMap::new();
         for (action, chord) in &self.keybindings.map {
             par_frappe
-                .entry(chord.display(&ctx))
+                .entry(chord.display(&ctx, fr))
                 .or_default()
                 .push(*action);
         }
@@ -450,7 +453,7 @@ impl NamsdecApp {
                         .keybindings
                         .map
                         .get(&action)
-                        .map(|chord| chord.display(&ctx));
+                        .map(|chord| chord.display(&ctx, fr));
 
                     for (preset, jeu) in &jeux {
                         let actif = self.keymap_preset == *preset;
@@ -459,15 +462,19 @@ impl NamsdecApp {
                             // sans voir ce qu'il a déjà tapé,
                             // l'utilisateur ne sait pas s'il doit
                             // continuer ou valider.
-                            let captured: Vec<&str> = self
+                            // Écrites comme le tableau les écrit — en
+                            // minuscules, « Espace » et non « Space » :
+                            // on tape une séquence en regardant la
+                            // colonne d'à côté.
+                            let captured = self
                                 .rebinding
                                 .as_ref()
-                                .map(|r| r.captured().iter().map(|k| k.name()).collect())
+                                .map(|r| keybindings::keys_display(r.captured(), fr))
                                 .unwrap_or_default();
                             if captured.is_empty() {
                                 ui.colored_label(theme.accent, s.rebind_waiting);
                             } else {
-                                ui.colored_label(theme.accent, format!("{} …", captured.join(" ")));
+                                ui.colored_label(theme.accent, format!("{captured} …"));
                             }
                             continue;
                         }
@@ -483,7 +490,7 @@ impl NamsdecApp {
                             ui.colored_label(theme.warn, s.shortcuts_missing);
                             continue;
                         };
-                        let écrit = chord.display(&ctx);
+                        let écrit = chord.display(&ctx, fr);
                         // La même frappe que dans le jeu actif : on le
                         // dit, on ne la recopie pas. Les deux jeux en
                         // partagent une sur trois, et deux fois la même
@@ -530,7 +537,7 @@ impl NamsdecApp {
                                 let proposé = jeu
                                     .map
                                     .get(&action)
-                                    .map(|c| c.display(&ctx))
+                                    .map(|c| c.display(&ctx, fr))
                                     .unwrap_or_else(|| s.shortcuts_missing.to_owned());
                                 étiquette.on_hover_text(format!(
                                     "{} {proposé}",

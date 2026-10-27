@@ -1328,7 +1328,7 @@ fn the_shortcuts_tab_shows_both_sets_side_by_side() {
             .map
             .get(&Action::StepInto)
             .expect("« pas dedans » a un raccourci dans les deux jeux")
-            .display(&ctx);
+            .display(&ctx, app.lang == Lang::Fr);
         assert!(
             textes.contains(&frappe.as_str()),
             "la frappe « {frappe} » doit être écrite : {textes:?}"
@@ -1354,7 +1354,7 @@ fn the_shortcuts_tab_shows_both_sets_side_by_side() {
         .map
         .get(&Action::Save)
         .expect("« enregistrer » a un raccourci")
-        .display(&ctx);
+        .display(&ctx, app.lang == Lang::Fr);
     assert_eq!(
         textes.iter().filter(|t| **t == ctrl_s).count(),
         1,

@@ -854,6 +854,8 @@ pub fn action_id(action: Action) -> &'static str {
         Action::NameAddress => "name_address",
         Action::CommentAddress => "comment_address",
         Action::ToggleCalculator => "toggle_calculator",
+        Action::ToggleCommandPalette => "toggle_command_palette",
+        Action::ShowPreferences => "show_preferences",
     }
 }
 
