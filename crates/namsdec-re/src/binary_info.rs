@@ -377,6 +377,7 @@ mod tests {
             binary: &[],
             lang: "fr",
             names: None,
+            patches: &[],
         };
 
         let mut module = BinaryInfoModule::default();
@@ -430,6 +431,7 @@ mod tests {
             binary: &[],
             lang: "fr",
             names: None,
+            patches: &[],
         };
         let mut module = BinaryInfoModule::default();
         module.on_binary_loaded(&ctx);
@@ -472,6 +474,7 @@ mod tests {
             binary: &[],
             lang: "fr",
             names: None,
+            patches: &[],
         };
         let mut module = BinaryInfoModule::default();
         module.on_binary_loaded(&ctx);

@@ -1691,6 +1691,7 @@ mod tests {
             binary: &[1, 2, 3],
             lang: "fr",
             names: None,
+            patches: &[],
         };
         let mut module = HexEditorModule::default();
         module.touchés.insert(2);

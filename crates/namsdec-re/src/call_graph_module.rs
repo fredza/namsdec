@@ -766,6 +766,7 @@ mod tests {
             binary: &[],
             lang: "fr",
             names: None,
+            patches: &[],
         }
     }
 
@@ -820,6 +821,7 @@ mod tests {
             binary: &[],
             lang: "fr",
             names: Some(&noms),
+            patches: &[],
         };
         assert_eq!(avec.display_name(0x401000, "sub_401000"), "vérifie_clé");
         // Une adresse non nommée garde son défaut, même quand la table existe.

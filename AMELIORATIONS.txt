@@ -813,13 +813,20 @@ aujourd'hui ; les suivantes, ce vers quoi l'outil peut aller.
      c'est la trace qu'un détour laisse dans une analyse, et elle se verra sur
      tout binaire corrigé.
 
-     RESTE À FAIRE : le brancher dans l'onglet RE (choisir le site, voir le
-     plan, voir la place libre offerte, poser et défaire) ; assembler l'ajout
-     depuis du texte plutôt que des octets, par `namsdec-asm` ; refuser un
-     site déjà détourné — `plan_detour` ne connaît pas les correctifs déjà
-     posés, et ce paramètre se décidera en branchant l'interface, qui les a.
-     Le piège est réel : un crochet posé sur un site déjà détourné écrase le
-     premier saut, c'est ce que Frida a fait sur `main`.
+     CE QUI RESTAIT À FAIRE, ET CE QUI EST FAIT DEPUIS :
+       · le brancher dans l'onglet RE (choisir le site, voir le plan, voir la
+         place libre offerte, poser et défaire) — FAIT le 16 octobre 2026,
+         `detour_module` ;
+       · assembler l'ajout depuis du texte plutôt que des octets, par
+         `namsdec-asm` — FAIT, c'est le mode par défaut du panneau ;
+       · refuser un site déjà détourné — FAIT le 27 octobre 2026, voir 9.26.
+         `plan_detour` reçoit la liste des correctifs posés, et `ReContext`
+         la porte jusqu'aux panneaux. Le paramètre s'est décidé en branchant
+         l'interface, comme annoncé ici. Le piège était réel : un crochet
+         posé sur un site déjà détourné écrase le premier saut, c'est ce que
+         Frida a fait sur `main`, et l'émulateur l'a refait à la demande.
+     RESTE : relocaliser un saut court en l'élargissant, ce qui demanderait
+     de changer la longueur d'une instruction dans la zone recouverte.
 
 4.16 [FAIT] DZF branché comme désassembleur
      DZF est le désassembleur x86-64 maison (dépôt ~/Projects/DZF) : C++23,
@@ -7021,3 +7028,189 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      ne déborde JAMAIS d'elle-même. Un panneau dont le contenu est
      large de lui-même — les chaînes et leurs chemins de cent
      caractères — a droit à sa barre, et n'aurait rien prouvé.
+
+
+9.26 [FAIT] UN SECOND DÉTOUR ÉCRASAIT LE PREMIER, SANS RIEN DIRE
+     (27 octobre 2026)
+--------------------------------------------------------------------------------
+     Le danger était écrit ici depuis le 15 octobre, à la fin de 4.17 :
+     « refuser un site déjà détourné — `plan_detour` ne connaît pas les
+     correctifs déjà posés, et ce paramètre se décidera en branchant
+     l'interface, qui les a. » L'interface est branchée depuis le 16.
+     La phrase, elle, est restée une phrase, et UNE PHRASE NE RETIENT
+     RIEN.
+
+     CE QUE L'IMAGE NE PEUT PAS DIRE. Le plan se calcule sur le fichier
+     tel qu'il est — donc déjà corrigé, puisque chaque écriture recharge
+     l'ELF. On pourrait croire que cela suffit. Mais des octets ne disent
+     pas d'où ils viennent : le `jmp` qu'un premier détour a posé se
+     décode comme n'importe quel `jmp`, il se relocalise très bien, et le
+     second plan sort sans se plaindre. Rien, dans l'image seule, ne
+     distingue le code d'origine du travail qu'on y a fait. Il fallait
+     donc la LISTE, et c'est l'application qui la tient.
+
+     DEUX DÉGÂTS, et le second est le pire.
+
+       · Le premier détour perd son effet. Ses cinq octets réécrits, son
+         corps devient inatteignable, et le programme refait ce qu'il
+         faisait avant qu'on le corrige. C'est exactement ce qu'un
+         crochet Frida posé sur `main` a fait à un détour de namsdec le
+         15 octobre : cinq octets de saut, un seul endroit où les
+         mettre, et la raison vaut des deux côtés.
+
+       · LE RETOUR EN ARRIÈRE EST PERDU. Les `before` des deux
+         correctifs se chevauchent, et défaire le premier réécrit des
+         octets que le second avait posés : le fichier obtenu dépend de
+         l'ordre dans lequel on les retire. Un correctif qui ne se défait
+         pas de façon unique n'est plus réversible, et la réversibilité
+         est la promesse de toute cette fenêtre — « pas à pas et
+         réversible » est le cahier des charges de l'onglet RE.
+
+     MESURÉ, ET PAS SEULEMENT RAISONNÉ. L'oracle de l'émulateur fait
+     tourner les deux détours croisés, et le résultat est pire que
+     prévu : le programme ne s'arrête PLUS DU TOUT. Son `hlt` était
+     juste après le site, le second aller l'a recouvert, et le retour du
+     premier détour y revient quand même — au milieu d'un saut.
+     L'émulateur décode du bourrage et s'arrête en erreur ; rax et rbx
+     restent nuls, donc ni l'original ni l'ajout n'ont eu lieu.
+
+     LE SITE DE LA MESURE A ÉTÉ CHOISI APRÈS UN PREMIER ESSAI RATÉ, et
+     ce détour vaut d'être gardé. Viser le MILIEU du `jmp` posé — un
+     octet de son déplacement — est refusé de toute façon, mais par
+     hasard : `0xFB 0x07` ne se décode pas, et l'on reçoit
+     `SiteIndécodable`. Le hasard protège ici et ne protégera pas
+     ailleurs, un autre déplacement se décodant très bien. Le `nop` de
+     complément qu'un détour laisse derrière lui, en revanche, se décode
+     toujours — et c'est l'endroit le plus tentant du fichier, parce que
+     le listing le montre comme une instruction ordinaire, inoffensive,
+     et que le désigner ne semble rien coûter.
+
+     LA GARDE EST POSÉE EN DEUX ENDROITS, et pour deux raisons
+     différentes.
+       · `plan_detour` reçoit `posés: &[Patch]` et refuse avant de
+         décoder — sans quoi un site déjà détourné rend le refus de
+         l'instruction qui s'y trouve, qui est vrai mais ne nomme pas la
+         cause. Puis une seconde fois, sur les DEUX écritures en entier :
+         on sait alors ce que le détour recouvre vraiment, jusqu'à
+         quinze octets, et où son corps atterrit.
+       · `write_detour` la rejoue, parce qu'un refus qui protège des
+         octets appartient à l'endroit qui les écrit. Ce n'est pas la
+         réparation d'un trou de l'interface — le panneau jette son plan
+         à chaque rechargement, donc il n'offre pas de plan caduc —, et
+         le dire autrement serait faux. C'est que `ReRequest::PatchDetour`
+         peut venir d'ailleurs, et qu'une garde posée ailleurs que là où
+         l'on écrit dépend de qui appelle. Mesuré sans elle : le second
+         appel répond « Octets changés, binaire rechargé », c'est-à-dire
+         qu'il ANNONCE UN SUCCÈS.
+
+     `chevauche` est publique pour cette raison, et compare les octets
+     ÉCRITS — `offset` à `offset + after.len()` — et non ceux qui ont été
+     remplacés : une écriture à la main peut changer la longueur du
+     fichier, et c'est ce qui occupe la place aujourd'hui qui compte.
+
+     LE CONTRÔLE QUI DONNE LEUR SENS AUX AUTRES est celui qui vérifie
+     qu'un détour AILLEURS passe encore. Sans lui, les trois refus
+     passeraient au vert avec un refus inconditionnel, c'est-à-dire avec
+     la fonctionnalité éteinte.
+
+     ET UN CONTRÔLE DE BRANCHEMENT, parce que la garde se désarme d'un
+     caractère : un `&[]` laissé à la place de `ctx.patches` l'éteint en
+     entier, sans qu'aucun contrôle de `patch.rs` ne s'en aperçoive —
+     ils lui passent, eux, ce qu'ils veulent éprouver. Il commence par
+     montrer que le plan SORT quand rien n'est posé : un site
+     introuvable dans le fichier, un trou mal décrit ou un champ mal lu
+     laissent aussi `plan` sans `Ok`, et l'on croirait tenir la garde.
+     Éprouvé en remettant le `&[]`.
+
+     ÉPROUVÉS EN REMETTANT LE DÉFAUT, tous :
+       · « un site déjà détourné se refuse, et nomme le correctif »
+       · « un détour en 0x1001 tombe encore dans le `jmp` posé en 0x1000 »
+       · « le corps du premier détour n'est pas de la place libre »
+       · « le second clic doit se refuser À HAUTE VOIX : Note(…) »
+       · « attendu un refus pour correctif posé, reçu Ok(Detour { … }) »
+
+     Reste de 4.17, et inchangé : assembler l'ajout depuis du texte est
+     fait (`namsdec-asm`), le brancher dans l'onglet RE est fait. Ce qui
+     n'est pas fait : relocaliser un saut court en l'élargissant, ce qui
+     demanderait de sortir du cadre de la longueur exacte dans la zone
+     recouverte — c'est la limite honnête de la méthode, et non un
+     défaut d'implémentation.
+
+
+9.27 [FAIT] UNE LISTE DÉROULANTE QUI REPLIAIT LE PANNEAU SUR 327 PX
+     (27 octobre 2026)
+--------------------------------------------------------------------------------
+     Trouvé en écrivant l'invariant de 9.26 : les messages de
+     `DetourRefusé` sont de la prose longue, et un refus COUPÉ est pire
+     qu'un refus muet — on lit la moitié d'une explication et l'on croit
+     avoir compris. Le relevé a donc été monté sur les neuf variantes à
+     la fois, pour qu'un refus ajouté un jour ne passe pas au travers.
+
+     À 220 PX, CINQ TEXTES ÉTAIENT COUPÉS, dont le message de refus
+     lui-même — alors que tous se replient correctement. C'est le signe
+     qui ne trompe pas : un texte qui se replie et qui dépasse quand
+     même se replie sur une largeur QU'ON NE VOIT PAS.
+
+     L'application en marche l'a dit en quatre lignes, pour la troisième
+     fois en trois séances :
+
+         SONDE A dispo=220   max=[0..220]   clip=[0..220]
+         S1 (après le site)  max=[0..220]
+         S2 (après le trou)  max=[0..327.2]
+         SONDE B dispo=327.2 max=[0..327.2] clip=[0..220]
+
+     La rangée « vers la place libre » débordait de 107 px, et un enfant
+     qui déborde AGRANDIT LE `max_rect` de son parent. Tout ce qui suit
+     lit alors 327 là où le découpage reste à 220 : la consigne du code,
+     l'avertissement de nasm, et le refus.
+
+     TROIS CAUSES EMPILÉES, et il a fallu les trois pour que la rangée
+     tienne. Chacune paraissait suffire, et aucune ne suffisait :
+
+       · `.width(230.0)` EN DUR dans un panneau de 220. Remplacé par un
+         plafond — `available_width().min(230.0)` —, ce qui est la forme
+         sûre : du contenu qui prend MOINS que la place offerte ne
+         reboucle pas. Mesuré après : 327,2 px, inchangé.
+
+       · UNE LISTE DÉROULANTE PREND LA LARGEUR DE SON TEXTE si celui-ci
+         dépasse ce qu'on lui a dit. « 0x00401100 · 256 octets ·
+         .text » demande 220 px à lui seul. `.truncate()` le borne — et
+         le survol rend le texte entier, parce qu'une troncature sans
+         survol cache une information qu'on n'a pas d'autre moyen
+         d'obtenir : l'adresse, la taille et la section du trou où le
+         code atterrira. Mesuré après : 327,2 px, toujours.
+
+       · ET LE PIÈGE, celui qui ne se lit pas dans la documentation :
+         dans une rangée REPLIABLE, `available_width` rend la largeur de
+         la rangée et non ce qu'il en reste. C'est voulu — c'est ce qui
+         permet à un enfant de décider s'il passe à la ligne —, mais
+         cela veut dire que le plafond lisait 220 et s'ajoutait aux 110
+         de l'étiquette. L'étiquette est donc passée AU-DESSUS de la
+         liste, et la largeur lue est redevenue la vraie. Mesuré après :
+         220 px, et plus un texte coupé.
+
+     `horizontal_wrapped` seul ne suffisait pas non plus : il n'a rien
+     changé au relevé, parce que la liste ne passait pas à la ligne — sa
+     largeur demandée tenait, c'est sa largeur RÉELLE qui débordait.
+
+     LE CONTRÔLE A D'ABORD PASSÉ POUR LA MAUVAISE RAISON, et c'est la
+     leçon à garder. Il montait un `DetourModule` avec un refus mais
+     SANS place libre, et `ui` écrit alors « aucune place libre
+     exécutable dans ce fichier » et rend la main : le refus n'était
+     jamais peint. Il passait au vert avec le repli du texte retiré
+     exprès — c'est ce faux négatif qui a mis la puce à l'oreille. Il
+     exige maintenant d'avoir VU son sujet avant de le mesurer :
+     « le refus n'est pas peint du tout — un contrôle qui ne voit pas
+     son sujet ne mesure rien ».
+
+     Éprouvé deux fois, chaque fois en remettant le défaut :
+       · le repli du texte retiré → « perd du texte au bord : 20,09 px »
+         à 420 px ;
+       · la disposition d'avant → cinq textes coupés à 220 px, dont le
+         refus pour 103,97 px.
+
+     Ce que le relevé ne couvre PAS, et il faut le dire : la liste
+     OUVERTE. Son menu est une autre couche, dessinée ailleurs, et la
+     mesure se fait liste fermée. Les étiquettes du menu sont les mêmes
+     chaînes ; si elles débordent, c'est dans une surface qui lui est
+     propre et qui ne replie rien du panneau.

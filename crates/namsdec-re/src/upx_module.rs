@@ -597,6 +597,7 @@ mod tests {
                 binary: &octets,
                 lang: "fr",
                 names: None,
+                patches: &[],
             };
             module.on_binary_loaded(&ctx);
             assert_eq!(module.marque.is_some(), attendu, "{} octets", octets.len());
@@ -628,6 +629,7 @@ mod tests {
             binary: &octets,
             lang: "fr",
             names: None,
+            patches: &[],
         };
         module.on_binary_loaded(&ctx);
         assert!(module.lines().is_empty(), "{:?}", module.lines());

@@ -399,6 +399,7 @@ mod tests {
             binary: &[],
             lang: "fr",
             names: Some(&noms),
+            patches: &[],
         };
         let mut module = DzfDecompilerModule::default();
         let mut sortie = dzf::DzfOutput::default();
@@ -434,6 +435,7 @@ mod tests {
             binary: &[],
             lang: "fr",
             names: None,
+            patches: &[],
         };
         let mut module = DzfDecompilerModule::default();
         let peint = rendre(&mut module, &ctx);
@@ -451,6 +453,7 @@ mod tests {
             binary: &[],
             lang: "fr",
             names: None,
+            patches: &[],
         };
         let mut module = DzfDecompilerModule::default();
         let mut sortie = dzf::DzfOutput::default();

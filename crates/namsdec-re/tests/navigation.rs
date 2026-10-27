@@ -148,6 +148,7 @@ fn clicking_an_address_asks_to_go_there() {
         binary: &binaire,
         lang: "fr",
         names: None,
+        patches: &[],
     };
 
     let panneaux: Vec<(&str, Box<dyn ReModule>)> = vec![
@@ -241,6 +242,7 @@ fn drawing_alone_asks_for_nothing() {
         binary: &binaire,
         lang: "fr",
         names: None,
+        patches: &[],
     };
     let egui_ctx = egui::Context::default();
     for mut module in [
@@ -301,6 +303,7 @@ fn a_clickable_text_underlines_itself_at_rest_and_more_under_the_pointer() {
         binary: &binaire,
         lang: "fr",
         names: None,
+        patches: &[],
     };
     let mut module = namsdec_re::ImportsModule::default();
     module.on_binary_loaded(&ctx);

@@ -119,6 +119,20 @@ pub struct ReContext<'a> {
     /// séance à l'autre. Un nom donné dans l'arbre d'appels se lit donc
     /// aussi dans le listing, et survit à la fermeture.
     pub names: Option<&'a std::collections::BTreeMap<u64, String>>,
+    /// Les correctifs déjà posés sur ce binaire, dans l'ordre où ils
+    /// l'ont été.
+    ///
+    /// `binary` est l'image CORRIGÉE — chaque écriture recharge l'ELF —,
+    /// mais des octets ne disent pas d'où ils viennent : un `jmp` posé
+    /// par un détour se décode comme n'importe quel `jmp`. Un panneau
+    /// qui s'apprête à écrire a besoin de savoir ce qui est déjà écrit,
+    /// faute de quoi il passe par-dessus le travail fait, et deux
+    /// correctifs qui se chevauchent ne se défont plus dans un ordre
+    /// unique.
+    ///
+    /// Vide quand rien n'a été posé, ce qui est le cas d'un fichier
+    /// qu'on vient d'ouvrir — et le cas d'un test qui ne s'en occupe pas.
+    pub patches: &'a [patch::Patch],
 }
 
 impl ReContext<'_> {

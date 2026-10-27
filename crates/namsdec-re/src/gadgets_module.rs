@@ -309,6 +309,7 @@ mod tests {
             binary: &[],
             lang: "fr",
             names: None,
+            patches: &[],
         };
 
         let mut module = GadgetsModule::default();
@@ -369,6 +370,7 @@ mod tests {
             binary: &[],
             lang: "fr",
             names: None,
+            patches: &[],
         };
         let mut module = GadgetsModule::default();
         module.on_binary_loaded(&ctx);
@@ -396,6 +398,7 @@ mod tests {
             binary: &[],
             lang: "fr",
             names: None,
+            patches: &[],
         };
 
         let mut module = GadgetsModule::default();

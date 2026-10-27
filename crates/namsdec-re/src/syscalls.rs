@@ -343,6 +343,7 @@ mod tests {
             binary: &[],
             lang: "fr",
             names: None,
+            patches: &[],
         };
         let mut module = SyscallsModule::default();
         module.on_binary_loaded(&ctx);
@@ -369,6 +370,7 @@ mod tests {
             binary: &[],
             lang: "fr",
             names: None,
+            patches: &[],
         };
         let mut module = SyscallsModule::default();
         module.on_binary_loaded(&ctx);

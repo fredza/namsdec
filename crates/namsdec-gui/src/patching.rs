@@ -127,6 +127,32 @@ impl NamsdecApp {
         };
         let mut image = state.output.file.clone();
 
+        // LA MÊME GARDE, LÀ OÙ LES OCTETS PARTENT. `plan_detour` refuse
+        // déjà d'écrire sur un correctif posé, mais il le fait au
+        // CALCUL du plan, et c'est une autre fonction, appelée par un
+        // autre chemin. Le panneau, de son côté, jette son plan à
+        // chaque rechargement — donc l'interface n'offre pas de plan
+        // caduc aujourd'hui, et ce contrôle-ci ne compte pas là-dessus :
+        // `ReRequest::PatchDetour` peut venir d'ailleurs, et un refus
+        // qui protège des octets appartient à l'endroit qui les écrit.
+        // Le même refus, et le même message, pour que l'explication ne
+        // se dédouble pas.
+        for écriture in [&detour.aller, &detour.corps] {
+            if let Some(p) =
+                namsdec_re::patch::chevauche(&self.patches, écriture.offset, écriture.after.len())
+            {
+                self.status = Status::Error(
+                    namsdec_re::patch::DetourRefusé::SurUnCorrectif {
+                        à: écriture.addr,
+                        offset: écriture.offset,
+                        correctif: p.addr,
+                    }
+                    .message(self.lang.code().starts_with("fr")),
+                );
+                return;
+            }
+        }
+
         // Le corps d'abord, le saut ensuite. L'ordre ne change rien ici
         // — les deux sont appliqués avant tout rechargement —, mais il
         // dit l'intention : la destination existe avant qu'on y envoie

@@ -99,6 +99,80 @@ défauts suspectés, c'étaient des questions qu'on n'avait jamais posées.
 
 ---
 
+## 0 duodecies. Le panneau du détour se repliait sur 327 px (A 9.27)
+
+Trouvé en écrivant l'invariant de la section précédente, et c'est l'ordre
+habituel : le relevé cherche une chose et en montre une autre.
+
+- [x] **Aucun refus ne se fait couper par le bord** — les neuf variantes
+      de `DetourRefusé`, à 220, 420 et 900 px. Un refus coupé est pire
+      qu'un refus muet : on lit la moitié d'une explication et l'on croit
+      avoir compris. Contrôle :
+      `no_refusal_is_cut_by_the_edge_of_the_panel`.
+- [x] **La rangée de la place libre débordait de 107 px**, et un enfant
+      qui déborde agrandit le `max_rect` de son parent : tout ce qui
+      suivait se repliait sur 327 px là où le découpage restait à 220.
+      Trois causes empilées, et aucune ne suffisait seule — `.width(230.0)`
+      en dur devenu un plafond, `.truncate()` parce qu'une liste
+      déroulante prend la largeur de son texte, et l'étiquette passée
+      **au-dessus** parce que dans une rangée repliable
+      `available_width` rend la largeur de la rangée et non ce qu'il en
+      reste. Diagnostiqué par l'application en marche, pour la troisième
+      séance de suite.
+- [x] **Le texte tronqué se lit encore en entier** — survol sur la liste
+      déroulante : l'adresse, la taille et la section du trou où le code
+      atterrira ne s'obtiennent nulle part ailleurs.
+- [x] **Et le contrôle a d'abord passé pour la mauvaise raison** — monté
+      sans place libre, le panneau rendait la main avant de peindre le
+      refus. Il exige maintenant d'avoir **vu** son sujet avant de le
+      mesurer.
+
+---
+
+## 0 undecies. Un second détour écrasait le premier (A 9.26)
+
+- [x] **`plan_detour` refuse d'écrire sur un correctif posé** — le plan se
+      calcule sur le fichier déjà corrigé, mais des octets ne disent pas
+      d'où ils viennent : le `jmp` d'un premier détour se décode comme
+      n'importe quel `jmp`, se relocalise très bien, et le second plan
+      sortait sans se plaindre. La fonction reçoit désormais la liste des
+      correctifs, et refuse deux fois — à l'endroit visé avant de
+      décoder, puis sur les deux écritures en entier. Contrôles :
+      `a_second_detour_does_not_quietly_overwrite_the_first`,
+      `overlapping_a_patch_by_one_byte_is_refused_too`,
+      `writing_over_the_body_of_a_detour_is_refused`, tous éprouvés en
+      éteignant la garde.
+- [x] **Et un détour ailleurs passe encore** —
+      `a_detour_elsewhere_is_still_allowed`. C'est lui qui donne leur
+      sens aux trois autres : sans lui, ils passeraient au vert avec un
+      refus inconditionnel, c'est-à-dire avec la fonctionnalité éteinte.
+- [x] **Mesuré sur l'émulateur, et pire que prévu** — deux détours
+      croisés ne privent pas seulement le premier de son effet : le
+      programme ne s'arrête **plus du tout**, son `hlt` ayant été
+      recouvert. Contrôle :
+      `two_crossing_detours_break_the_program_and_are_refused`, qui
+      montre le défaut puis la garde dans le même corps. Le site visé est
+      le `nop` de complément et non le milieu du saut — celui-là est
+      refusé par hasard, `0xFB 0x07` ne se décodant pas.
+- [x] **La garde est rejouée là où les octets partent** — `write_detour`.
+      Non pour réparer un trou de l'interface, qui jette son plan à
+      chaque rechargement, mais parce que `ReRequest::PatchDetour` peut
+      venir d'ailleurs. Mesuré sans elle : le second appel répond
+      « Octets changés, binaire rechargé ». Contrôle :
+      `posing_the_same_detour_twice_changes_nothing_the_second_time`.
+- [x] **`ReContext` porte les correctifs posés** — un panneau qui
+      s'apprête à écrire a besoin de savoir ce qui est déjà écrit. La
+      garde se désarmant d'un caractère (`&[]` au lieu de
+      `ctx.patches`), un contrôle de branchement la retient :
+      `the_panel_refuses_a_site_that_a_patch_already_holds`, qui montre
+      d'abord que le plan SORT quand rien n'est posé.
+- [ ] **Ce qui reste de A 4.17** — relocaliser un saut court en
+      l'élargissant. Il faudrait sortir du cadre de la longueur exacte
+      dans la zone recouverte : c'est la limite honnête de la méthode, et
+      non un défaut d'implémentation.
+
+---
+
 ## 0 decies. L'épingle du dock ne tenait pas (A 9.25)
 
 - [x] **`install.sh` vérifie que l'épinglage a tenu** — GNOME Shell élague

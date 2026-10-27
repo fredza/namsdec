@@ -174,6 +174,7 @@ mod tests {
             binary,
             lang: "fr",
             names: None,
+            patches: &[],
         }
     }
 

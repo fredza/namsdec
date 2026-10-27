@@ -3489,7 +3489,7 @@ fn a_planned_detour_runs_in_the_emulator() {
         section: Some(".text".to_owned()),
     };
     let ajout = [0xbb, 0x42, 0x00, 0x00, 0x00]; // mov ebx, 0x42
-    let detour = namsdec_re::patch::plan_detour(&image, 64, 0x00, BASE, &place, &ajout)
+    let detour = namsdec_re::patch::plan_detour(&image, 64, 0x00, BASE, &place, &ajout, &[])
         .expect("ce détour est posable");
 
     // On pose les deux changements, comme la fenêtre Correctifs le ferait.
@@ -3515,4 +3515,257 @@ fn a_planned_detour_runs_in_the_emulator() {
     // dérive dans la place libre.
     assert!(halt, "l'exécution revient et s'arrête sur le hlt d'origine");
     assert_eq!(rip, BASE + 7, "le hlt atteint est celui du site, à BASE+6");
+}
+
+/// DEUX DÉTOURS QUI SE CROISENT CASSENT LE PROGRAMME — mesuré, puis
+/// refusé.
+///
+/// Le danger était écrit dans AMELIORATIONS depuis le 15 octobre 2026,
+/// et il y était resté à l'état de phrase : « deux détours au même
+/// endroit ne cohabitent pas ». Une phrase ne retient rien. Celui-ci le
+/// FAIT FAIRE à l'émulateur — d'abord sans la garde, pour voir ce qui
+/// arrive, puis avec, pour voir que cela n'arrive plus.
+///
+/// Il faut un oracle d'exécution pour ce défaut-là, et aucun contrôle
+/// d'octets ne l'aurait trouvé : les deux plans sont parfaitement
+/// formés, chacun pris séparément. C'est leur superposition qui ment,
+/// et une superposition ne se lit pas dans un plan.
+///
+/// LE SITE CHOISI EST LE `nop` DE COMPLÉMENT, et ce choix a été mesuré.
+/// Viser le milieu du `jmp` posé — un octet de son déplacement — est
+/// refusé de toute façon, mais par hasard : `0xFB 0x07` ne se décode
+/// pas, et l'on reçoit `SiteIndécodable`. Le hasard protège ici et ne
+/// protégera pas ailleurs — un autre déplacement se décode très bien.
+/// Le `nop` que le détour laisse derrière lui, en revanche, se décode
+/// toujours, et c'est l'endroit le plus tentant du fichier : le listing
+/// le montre comme une instruction ordinaire, inoffensive, et le
+/// désigner ne semble rien coûter.
+#[test]
+fn two_crossing_detours_break_the_program_and_are_refused() {
+    use namsdec_core::{Cpu, Memory, Reg64};
+
+    const BASE: u64 = 0x40_0000;
+    const TAILLE: usize = 0x2000;
+    const DONNÉE: u32 = 0xcafe;
+
+    let mut image = vec![0u8; TAILLE];
+    // `mov eax, [rip+0x1000]` (six octets), puis `hlt`.
+    image[0..6].copy_from_slice(&[0x8b, 0x05, 0x00, 0x10, 0x00, 0x00]);
+    image[6] = 0xf4;
+    image[0x1006..0x100a].copy_from_slice(&DONNÉE.to_le_bytes());
+
+    let exécute = |image: &[u8]| -> (u64, u64, bool) {
+        let mut mem = Memory::new(BASE, TAILLE);
+        mem.load(BASE, image).expect("l'image se charge");
+        let mut cpu = Cpu::new(mem);
+        cpu.regs.rip = BASE;
+        let mut emu = namsdec_emu::Emulator::new(cpu);
+        match emu.run(10_000) {
+            Ok(arrêt) => (
+                emu.cpu().regs.get64(Reg64::Rax),
+                emu.cpu().regs.get64(Reg64::Rbx),
+                matches!(arrêt, namsdec_emu::RunStop::Halted),
+            ),
+            // Un détour cassé ne s'arrête pas proprement : il décode du
+            // bourrage, et l'émulateur le dit. C'est un échec, pas une
+            // exception du contrôle.
+            Err(_) => (0, 0, false),
+        }
+    };
+
+    let trou = |vaddr: u64, offset: u64, len: u64| namsdec_re::slack::Slack {
+        vaddr,
+        offset,
+        len,
+        filler: 0x00,
+        executable: true,
+        section: Some(".text".to_owned()),
+    };
+
+    // LE PREMIER DÉTOUR, posé sur un fichier neuf : il tient, c'est le
+    // contrôle voisin qui l'a montré.
+    let premier = namsdec_re::patch::plan_detour(
+        &image,
+        64,
+        0x00,
+        BASE,
+        &trou(0x40_0800, 0x800, 0x100),
+        &[0xbb, 0x42, 0x00, 0x00, 0x00], // mov ebx, 0x42
+        &[],
+    )
+    .expect("le premier détour est posable");
+    namsdec_re::patch::apply(&mut image, premier.aller.offset, &premier.aller.after).unwrap();
+    namsdec_re::patch::apply(&mut image, premier.corps.offset, &premier.corps.after).unwrap();
+
+    let (rax, rbx, halt) = exécute(&image);
+    assert_eq!(rbx, 0x42, "le premier détour s'exécute");
+    assert_eq!(rax, DONNÉE as u64, "et l'original garde son sens");
+    assert!(halt, "et le programme s'arrête où il faut");
+
+    let posés = vec![premier.corps.clone(), premier.aller.clone()];
+    // La queue du trou : ce que `slack::find` offrirait encore.
+    let pris = premier.corps.after.len() as u64;
+    let reste = trou(0x40_0800 + pris, 0x800 + pris, 0x100 - pris);
+
+    // LE SECOND, SUR LE `nop` DE COMPLÉMENT, SANS LA GARDE. `&[]` est
+    // exactement ce que namsdec passait avant aujourd'hui : l'aveu que
+    // rien n'est posé, alors que tout l'est.
+    let mut cassée = image.clone();
+    assert_eq!(
+        cassée[0x05], 0x90,
+        "l'octet visé est bien le nop que le premier détour a laissé"
+    );
+    let second = namsdec_re::patch::plan_detour(
+        &cassée,
+        64,
+        0x05,
+        BASE + 5,
+        &reste,
+        &[0xb9, 0x07, 0x00, 0x00, 0x00], // mov ecx, 7
+        &[],
+    )
+    .expect("sans la garde, ce plan sort sans se plaindre");
+    namsdec_re::patch::apply(&mut cassée, second.aller.offset, &second.aller.after).unwrap();
+    namsdec_re::patch::apply(&mut cassée, second.corps.offset, &second.corps.after).unwrap();
+
+    let (rax2, rbx2, halt2) = exécute(&cassée);
+    // CE QUE LA MESURE DONNE, et c'est pire que « le premier détour est
+    // perdu » : le programme ne s'arrête plus du tout. Son `hlt` était
+    // à BASE+6, le second aller l'a recouvert, et le retour du premier
+    // détour y revient quand même — au milieu d'un `jmp`. L'émulateur
+    // décode alors du bourrage et s'arrête en erreur. rax et rbx
+    // restent nuls : ni l'original ni l'ajout n'ont eu lieu.
+    assert!(
+        !halt2,
+        "le programme ne devrait plus s'arrêter : son hlt a été recouvert \
+         (rax={rax2:#x}, rbx={rbx2:#x})"
+    );
+    assert_eq!(rbx2, 0, "et l'ajout du premier détour n'a pas tourné");
+    assert_eq!(rax2, 0, "et l'original n'a pas tourné non plus");
+
+    // AVEC LA GARDE : la même demande, et rien n'est écrit.
+    let refus = namsdec_re::patch::plan_detour(
+        &image,
+        64,
+        0x05,
+        BASE + 5,
+        &reste,
+        &[0xb9, 0x07, 0x00, 0x00, 0x00],
+        &posés,
+    );
+    assert_eq!(
+        refus,
+        Err(namsdec_re::patch::DetourRefusé::SurUnCorrectif {
+            à: BASE + 5,
+            offset: 0x05,
+            correctif: BASE,
+        }),
+        "le second détour est refusé, et nomme le correctif qu'il aurait abîmé"
+    );
+    // Et le refus se dit dans les deux langues, sans « {:?} » qui
+    // traîne : c'est ce que la fenêtre affiche.
+    let message = refus.unwrap_err().message(true);
+    assert!(
+        message.contains("0x400005") && message.contains("0x400000"),
+        "le message nomme l'adresse visée et le correctif : {message}"
+    );
+}
+
+/// POSER DEUX FOIS LE MÊME PLAN NE DOIT RIEN FAIRE LA SECONDE — et ce
+/// qui serait perdu, c'est la réversibilité.
+///
+/// Les octets écrits sont les mêmes, et c'est ce qui rend le défaut
+/// invisible : le fichier obtenu est juste. Mais le `before` du second
+/// correctif est relevé sur l'image DÉJÀ corrigée — c'est-à-dire le
+/// `jmp` du premier. Défaire ramènerait alors le détour au lieu de
+/// l'original, et l'on ne pourrait plus revenir en arrière : le fichier
+/// garderait son détour pour toujours, sans qu'aucune ligne de la
+/// fenêtre Correctifs le dise. Mesuré sans la garde : le second appel
+/// répond « Octets changés, binaire rechargé », c'est-à-dire qu'il
+/// annonce un succès.
+///
+/// CE N'EST PAS CE QUE L'INTERFACE PERMET AUJOURD'HUI, et le dire
+/// autrement serait faux : le panneau jette son plan à chaque
+/// rechargement, donc le bouton « Poser » ne se reclique pas sur un
+/// plan déjà posé. Ce contrôle porte sur `write_detour` lui-même, qui
+/// est le seul endroit où les octets partent et qui sert aussi la
+/// demande `ReRequest::PatchDetour` — d'où qu'elle vienne. Une garde
+/// posée ailleurs que là où l'on écrit dépend de qui appelle.
+#[test]
+fn posing_the_same_detour_twice_changes_nothing_the_second_time() {
+    let Some(octets) = binaire_fabriqué() else {
+        return;
+    };
+    let mut app = NamsdecApp::default();
+    assert!(app.load_elf(&octets, NOM_FABRIQUÉ), "le binaire s'ouvre");
+
+    let state = app.assemble_state.as_ref().expect("un état d'assemblage");
+    let origine = state.output.file.clone();
+    let place = namsdec_re::slack::find(&origine)
+        .into_iter()
+        .find(|t| t.executable && t.len > 64)
+        .expect("le binaire fabriqué porte du bourrage exécutable");
+
+    // Le premier site détournable du listing. On cherche plutôt que de
+    // viser une adresse écrite en clair : ce que nasm produit peut
+    // changer d'une version à l'autre, la règle non.
+    let ajout = [0x90u8];
+    let plan = state
+        .disasm
+        .iter()
+        .find_map(|instr| {
+            let offset = namsdec_re::imports::file_offset(&origine, instr.address)?;
+            namsdec_re::patch::plan_detour(
+                &origine,
+                64,
+                offset as usize,
+                instr.address,
+                &place,
+                &ajout,
+                &[],
+            )
+            .ok()
+        })
+        .expect("au moins une instruction du binaire fabriqué se détourne");
+
+    // LE PREMIER CLIC : les deux écritures partent, sous un seul groupe.
+    app.write_detour(&plan);
+    assert_eq!(app.patches.len(), 2, "un détour pose deux correctifs");
+    let après_un = app
+        .assemble_state
+        .as_ref()
+        .expect("un état")
+        .output
+        .file
+        .clone();
+    assert_ne!(après_un, origine, "et le fichier a changé");
+
+    // LE SECOND CLIC : refusé, dit, et sans effet.
+    app.write_detour(&plan);
+    assert!(
+        matches!(app.status, Status::Error(_)),
+        "le second clic doit se refuser À HAUTE VOIX : {:?}",
+        app.status
+    );
+    assert_eq!(
+        app.patches.len(),
+        2,
+        "et n'inscrire aucun correctif de plus : {}",
+        app.patches.len()
+    );
+    assert_eq!(
+        app.assemble_state.as_ref().expect("un état").output.file,
+        après_un,
+        "et ne pas toucher au fichier"
+    );
+
+    // ET LE DÉTOUR SE DÉFAIT ENCORE, jusqu'à l'octet : c'est ce que le
+    // second clic aurait perdu.
+    app.undo_patch(0);
+    assert!(app.patches.is_empty(), "le groupe entier est retiré");
+    assert_eq!(
+        app.assemble_state.as_ref().expect("un état").output.file,
+        origine,
+        "et le fichier est exactement celui du départ"
+    );
 }

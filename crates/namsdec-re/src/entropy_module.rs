@@ -635,6 +635,7 @@ mod tests {
             binary: binaire,
             lang: "fr",
             names: None,
+            patches: &[],
         }
     }
 

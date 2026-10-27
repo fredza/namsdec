@@ -603,6 +603,7 @@ mod tests {
             binary: &[],
             lang: "fr",
             names: None,
+            patches: &[],
         });
         assert!(module.signals().is_empty());
         assert!(!module.loaded, "sans fichier, ce n'est pas « rien à dire »");

@@ -54,7 +54,15 @@ fn main() {
 
     let mut posé = false;
     for trou in trous.iter().filter(|t| t.executable) {
-        match patch::plan_detour(&bytes, 64, site_offset as usize, site_vaddr, trou, &ajout) {
+        match patch::plan_detour(
+            &bytes,
+            64,
+            site_offset as usize,
+            site_vaddr,
+            trou,
+            &ajout,
+            &[],
+        ) {
             Ok(detour) => {
                 println!(
                     "\n== détour depuis {:#x} vers {:#x}",

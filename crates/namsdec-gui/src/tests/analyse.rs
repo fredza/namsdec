@@ -2133,6 +2133,7 @@ fn the_imported_calls_are_counted_on_a_binary_the_app_opened() {
         binary: &state.output.file,
         lang: "fr",
         names: None,
+        patches: &[],
     };
     namsdec_re::ReModule::on_binary_loaded(&mut module, &ctx);
 

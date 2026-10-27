@@ -189,6 +189,27 @@ pub fn splice(
     Some(retirés)
 }
 
+/// Le correctif déjà posé qui occupe ces octets, s'il y en a un.
+///
+/// Deux correctifs qui se chevauchent ne se défont pas : l'annulation
+/// du premier réécrit des octets que le second avait posés, et le
+/// fichier obtenu dépend de l'ordre dans lequel on les retire. Cette
+/// fonction est donc la garde de la réversibilité, et c'est pour cela
+/// qu'elle est publique : l'interface s'en sert une seconde fois au
+/// moment de POSER, parce qu'un plan calculé reste affiché et qu'un
+/// autre correctif peut être venu entre-temps.
+///
+/// L'intervalle est celui des octets ÉCRITS — `offset` à
+/// `offset + after.len()` —, et non celui des octets remplacés : une
+/// écriture à la main peut changer la longueur (voir [`splice`]), et
+/// c'est ce qui occupe la place aujourd'hui qui compte.
+pub fn chevauche(posés: &[Patch], offset: usize, combien: usize) -> Option<&Patch> {
+    let fin = offset.saturating_add(combien);
+    posés
+        .iter()
+        .find(|p| offset < p.offset + p.after.len() && p.offset < fin)
+}
+
 // ---------------------------------------------------------------------
 // Le détour : sortir du cadre de la longueur exacte, sans rien décaler.
 // ---------------------------------------------------------------------
@@ -308,6 +329,41 @@ pub enum DetourRefusé {
     /// Ne devrait pas arriver sur du code valide. On refuse plutôt que
     /// d'écrire au hasard dans une instruction.
     ChampIntrouvable { à: u64, mnémonique: String },
+    /// Les octets que ce détour écrirait sont déjà ceux d'un correctif
+    /// posé.
+    ///
+    /// C'est le refus qui protège le travail DÉJÀ FAIT, et il manquait.
+    /// Un détour écrit à deux endroits : cinq octets à l'endroit visé,
+    /// et son corps dans la place libre. Si un correctif occupe l'un ou
+    /// l'autre — un autre détour, un saut inversé, une écriture faite à
+    /// la main depuis le vidage —, le second passe PAR-DESSUS le
+    /// premier, et deux dégâts s'ensuivent, tous deux silencieux.
+    ///
+    /// Le premier détour perd son saut : ses cinq octets réécrits, son
+    /// corps devient inatteignable, et le programme fait de nouveau ce
+    /// qu'il faisait avant qu'on le corrige — sauf si le nouveau saut
+    /// tombe au milieu de l'ancien, et alors le déplacement est à
+    /// moitié réécrit et le programme part dans le vide. C'est
+    /// exactement ce qu'un crochet Frida posé sur `main` a fait à un
+    /// détour de namsdec le 15 octobre 2026 : deux détours au même
+    /// endroit ne cohabitent pas, et cela vaut des deux côtés.
+    ///
+    /// Le second est pour DÉFAIRE. Les `before` des deux correctifs se
+    /// chevauchent alors, et l'annulation du premier réécrit des octets
+    /// que le second avait posés : l'ordre dans lequel on les défait
+    /// change le fichier obtenu. Un correctif qui ne se défait pas de
+    /// façon unique n'est plus réversible, et la réversibilité est la
+    /// promesse de toute cette fenêtre.
+    SurUnCorrectif {
+        /// L'adresse virtuelle de ce que le détour voulait écrire là.
+        à: u64,
+        /// Où, dans le fichier, les deux écritures se croisent.
+        offset: usize,
+        /// L'adresse du correctif déjà posé. Zéro pour une écriture
+        /// faite depuis le vidage, où l'on désigne une position et non
+        /// une instruction — d'où `offset`, qui vaut toujours.
+        correctif: u64,
+    },
 }
 
 impl DetourRefusé {
@@ -376,6 +432,26 @@ impl DetourRefusé {
             Self::ChampIntrouvable { à, mnémonique } => format!(
                 "`{mnémonique}` at {à:#x} is position-dependent, but the decoder \
                  does not say where the field to rewrite is — it will not be guessed"
+            ),
+            Self::SurUnCorrectif {
+                à,
+                offset,
+                correctif,
+            } if fr => format!(
+                "ce détour écrirait en {à:#x} (position {offset:#x}) sur les octets \
+                 d'un correctif déjà posé en {correctif:#x} : le premier perdrait \
+                 son effet, et les deux ne se défont plus dans un ordre unique. \
+                 Défais-le par la fenêtre Correctifs, ou vise une autre instruction"
+            ),
+            Self::SurUnCorrectif {
+                à,
+                offset,
+                correctif,
+            } => format!(
+                "this detour would write at {à:#x} (offset {offset:#x}) over bytes \
+                 already changed by a patch at {correctif:#x}: the first would lose \
+                 its effect, and neither could be undone in a single order. Undo it \
+                 from the Patches window, or aim at another instruction"
             ),
         }
     }
@@ -534,6 +610,15 @@ pub struct Detour {
 /// un chemin qui tombe en séquence : le retour est ajouté après lui, et
 /// un `ret` au milieu de `ajout` sauterait le reste du détour — ce qui
 /// se fait exprès parfois, mais jamais par accident.
+///
+/// `posés` est la liste des correctifs DÉJÀ en place. Le plan se calcule
+/// sur l'image telle qu'elle est — donc déjà corrigée —, mais les octets
+/// ne disent pas d'où ils viennent : un `jmp` posé par un premier détour
+/// se décode comme n'importe quel `jmp`, et rien, dans l'image seule, ne
+/// distingue le code d'origine du travail qu'on y a fait. C'est cette
+/// liste qui le dit, et sans elle le second détour écrase le premier en
+/// silence. Passer `&[]` revient à affirmer qu'aucun correctif n'est
+/// posé, ce qui est vrai d'un fichier qu'on vient d'ouvrir.
 pub fn plan_detour(
     image: &[u8],
     bitness: u32,
@@ -541,11 +626,26 @@ pub fn plan_detour(
     site_vaddr: u64,
     place: &crate::slack::Slack,
     ajout: &[u8],
+    posés: &[Patch],
 ) -> Result<Detour, DetourRefusé> {
     use iced_x86::{Decoder, DecoderOptions};
 
     if !place.executable {
         return Err(DetourRefusé::PlaceNonExécutable);
+    }
+
+    // L'ENDROIT VISÉ, AVANT DE LE DÉCODER. Le détour y recouvrira au
+    // moins les cinq octets du `jmp` ; si un correctif en occupe un
+    // seul, c'est déjà perdu, et il vaut mieux le dire ici qu'après
+    // avoir décodé. Sans quoi un site déjà détourné rend le refus de
+    // l'instruction qui s'y trouve — « `jmp` dépend de sa position » —,
+    // qui est vrai mais ne nomme pas la cause.
+    if let Some(p) = chevauche(posés, site_offset, JMP_REL32) {
+        return Err(DetourRefusé::SurUnCorrectif {
+            à: site_vaddr,
+            offset: site_offset,
+            correctif: p.addr,
+        });
     }
 
     // Les instructions à recouvrir : on décode à partir de l'endroit
@@ -643,6 +743,27 @@ pub fn plan_detour(
         .get(place_offset..place_offset + corps.len())
         .ok_or(DetourRefusé::HorsFichier)?
         .to_vec();
+
+    // LES DEUX ÉCRITURES EN ENTIER, cette fois. La garde du début ne
+    // connaissait que les cinq octets du `jmp` ; on sait maintenant ce
+    // que le détour recouvre vraiment — jusqu'à quinze octets si la
+    // dernière instruction est longue — et où son corps atterrit. Le
+    // corps compte autant : `slack::find` reconnaît le bourrage à
+    // lui-même, et il ne reste donc que la queue d'un trou déjà employé
+    // ; mais un plan reste affiché après son calcul, et la place qu'il
+    // visait peut avoir été prise depuis.
+    for (quoi, offset, combien) in [
+        (site_vaddr, site_offset, aller.len()),
+        (place.vaddr, place_offset, corps.len()),
+    ] {
+        if let Some(p) = chevauche(posés, offset, combien) {
+            return Err(DetourRefusé::SurUnCorrectif {
+                à: quoi,
+                offset,
+                correctif: p.addr,
+            });
+        }
+    }
 
     // Le numéro du groupe se déduit du site : le même plan rend le même
     // numéro, et deux détours posés à des endroits différents ne se
@@ -951,7 +1072,7 @@ mod tests_detour {
 
         let libre = place(0x1100, 0x100, 64);
         // Le code ajouté : `nop` deux fois, de quoi se reconnaître.
-        let detour = plan_detour(&image, 64, 0x00, 0x1000, &libre, &[0x90, 0x90])
+        let detour = plan_detour(&image, 64, 0x00, 0x1000, &libre, &[0x90, 0x90], &[])
             .expect("ce détour est posable");
 
         // Cinq octets recouverts : `mov eax, 1` en fait exactement cinq,
@@ -996,7 +1117,7 @@ mod tests_detour {
         let original = image.clone();
 
         let libre = place(0x1100, 0x100, 64);
-        let detour = plan_detour(&image, 64, 0x00, 0x1000, &libre, &[0x90]).unwrap();
+        let detour = plan_detour(&image, 64, 0x00, 0x1000, &libre, &[0x90], &[]).unwrap();
 
         apply(&mut image, detour.aller.offset, &detour.aller.after).unwrap();
         apply(&mut image, detour.corps.offset, &detour.corps.after).unwrap();
@@ -1029,7 +1150,7 @@ mod tests_detour {
         let cible_avant = 0x1000u64 + 7 + 0x2e4f;
 
         let libre = place(0x1100, 0x100, 64);
-        let detour = plan_detour(&image, 64, 0x00, 0x1000, &libre, &[0x90])
+        let detour = plan_detour(&image, 64, 0x00, 0x1000, &libre, &[0x90], &[])
             .expect("une instruction relative à rip se relocalise");
 
         // Elle est réécrite : l'écart a changé.
@@ -1064,7 +1185,7 @@ mod tests_detour {
         let cible_avant = 0x1015u64;
 
         let libre = place(0x1100, 0x100, 64);
-        let detour = plan_detour(&image, 64, 0x00, 0x1000, &libre, &[])
+        let detour = plan_detour(&image, 64, 0x00, 0x1000, &libre, &[], &[])
             .expect("un call relatif se relocalise");
 
         assert_eq!(detour.déplacé[0], 0xE8, "c'est toujours un call");
@@ -1092,7 +1213,7 @@ mod tests_detour {
         // La place libre est à 0x100 octets de là : hors de portée d'un
         // champ d'un seul octet.
         let libre = place(0x1100, 0x100, 64);
-        let refus = plan_detour(&image, 64, 0x00, 0x1000, &libre, &[])
+        let refus = plan_detour(&image, 64, 0x00, 0x1000, &libre, &[], &[])
             .expect_err("un saut court ne peut pas suivre");
 
         match &refus {
@@ -1125,7 +1246,7 @@ mod tests_detour {
 
         // Vingt octets plus loin : un champ d'un octet y suffit.
         let libre = place(0x1014, 0x14, 64);
-        let detour = plan_detour(&image, 64, 0x00, 0x1000, &libre, &[])
+        let detour = plan_detour(&image, 64, 0x00, 0x1000, &libre, &[], &[])
             .expect("de près, le saut court se relocalise");
 
         assert_eq!(detour.déplacé[0], 0xEB);
@@ -1154,7 +1275,7 @@ mod tests_detour {
 
         let libre = place(0x1100, 0x100, 64);
         let detour =
-            plan_detour(&image, 64, 0x00, 0x1000, &libre, &[]).expect("elle se relocalise");
+            plan_detour(&image, 64, 0x00, 0x1000, &libre, &[], &[]).expect("elle se relocalise");
 
         // L'immédiat est intact.
         assert_eq!(
@@ -1179,7 +1300,7 @@ mod tests_detour {
         image[0x00..0x05].copy_from_slice(&original);
 
         let libre = place(0x1100, 0x100, 64);
-        let detour = plan_detour(&image, 64, 0x00, 0x1000, &libre, &[]).unwrap();
+        let detour = plan_detour(&image, 64, 0x00, 0x1000, &libre, &[], &[]).unwrap();
         assert_eq!(detour.déplacé, original.to_vec());
     }
 
@@ -1200,7 +1321,7 @@ mod tests_detour {
         données.section = Some(".rodata".to_string());
 
         assert_eq!(
-            plan_detour(&image, 64, 0x00, 0x1000, &données, &[0x90]),
+            plan_detour(&image, 64, 0x00, 0x1000, &données, &[0x90], &[]),
             Err(DetourRefusé::PlaceNonExécutable)
         );
     }
@@ -1214,7 +1335,7 @@ mod tests_detour {
         // Besoin : 3 (ajout) + 5 (déplacé) + 5 (retour) = 13.
         let étroite = place(0x1100, 0x100, 12);
         assert_eq!(
-            plan_detour(&image, 64, 0x00, 0x1000, &étroite, &[0x90, 0x90, 0x90]),
+            plan_detour(&image, 64, 0x00, 0x1000, &étroite, &[0x90, 0x90, 0x90], &[]),
             Err(DetourRefusé::PlaceTropPetite {
                 besoin: 13,
                 offert: 12
@@ -1222,7 +1343,7 @@ mod tests_detour {
         );
         // Un octet de plus, et il passe.
         let juste = place(0x1100, 0x100, 13);
-        assert!(plan_detour(&image, 64, 0x00, 0x1000, &juste, &[0x90, 0x90, 0x90]).is_ok());
+        assert!(plan_detour(&image, 64, 0x00, 0x1000, &juste, &[0x90, 0x90, 0x90], &[]).is_ok());
     }
 
     /// Des instructions courtes sont recouvertes ENTIÈRES, et le reste
@@ -1239,7 +1360,7 @@ mod tests_detour {
         image[0x00..0x06].copy_from_slice(&[0x90, 0x90, 0x90, 0x90, 0x55, 0xC3]);
 
         let libre = place(0x1100, 0x100, 64);
-        let detour = plan_detour(&image, 64, 0x00, 0x1000, &libre, &[]).unwrap();
+        let detour = plan_detour(&image, 64, 0x00, 0x1000, &libre, &[], &[]).unwrap();
 
         // Quatre `nop` font quatre octets, il en faut cinq : `push rbp`
         // entre aussi, ce qui porte à cinq.
@@ -1259,7 +1380,7 @@ mod tests_detour {
             .copy_from_slice(&[0x48, 0xB8, 0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11]);
 
         let libre = place(0x1100, 0x100, 64);
-        let detour = plan_detour(&image, 64, 0x00, 0x1000, &libre, &[]).unwrap();
+        let detour = plan_detour(&image, 64, 0x00, 0x1000, &libre, &[], &[]).unwrap();
 
         assert_eq!(detour.recouvert, 10, "l'instruction entière");
         assert_eq!(detour.aller.after.len(), 10);
@@ -1276,7 +1397,7 @@ mod tests_detour {
         let image = vec![0u8; 0x10];
         let libre = place(0x1100, 0x00, 64);
         assert_eq!(
-            plan_detour(&image, 64, 0x100, 0x1000, &libre, &[]),
+            plan_detour(&image, 64, 0x100, 0x1000, &libre, &[], &[]),
             Err(DetourRefusé::HorsFichier)
         );
     }
@@ -1289,8 +1410,187 @@ mod tests_detour {
         image[0x00..0x05].copy_from_slice(&[0xB8, 0x01, 0x00, 0x00, 0x00]);
         let menteuse = place(0x9000, 0x1000, 4096);
         assert_eq!(
-            plan_detour(&image, 64, 0x00, 0x1000, &menteuse, &[]),
+            plan_detour(&image, 64, 0x00, 0x1000, &menteuse, &[], &[]),
             Err(DetourRefusé::HorsFichier)
         );
+    }
+
+    /// Un binaire où l'on a posé un premier détour, et la liste des
+    /// correctifs qui va avec.
+    ///
+    /// Deux instructions de cinq octets, à 0x1000 et 0x1005, puis un
+    /// `ret`. Le premier détour part de la première ; la seconde reste
+    /// libre, et sert à montrer que la garde ne refuse pas tout.
+    fn un_detour_deja_pose() -> (Vec<u8>, Vec<Patch>, crate::slack::Slack) {
+        let mut image = vec![0u8; 0x400];
+        // mov eax, 1 ; mov ecx, 2 ; ret
+        image[0x00..0x05].copy_from_slice(&[0xB8, 0x01, 0x00, 0x00, 0x00]);
+        image[0x05..0x0A].copy_from_slice(&[0xB9, 0x02, 0x00, 0x00, 0x00]);
+        image[0x0A] = 0xC3;
+
+        let libre = place(0x1100, 0x100, 64);
+        let premier = plan_detour(&image, 64, 0x00, 0x1000, &libre, &[0x90], &[])
+            .expect("le premier détour se pose");
+        apply(&mut image, premier.corps.offset, &premier.corps.after).unwrap();
+        apply(&mut image, premier.aller.offset, &premier.aller.after).unwrap();
+
+        // Ce que l'application garde : les deux écritures, dans l'ordre
+        // où elle les empile.
+        let posés = vec![premier.corps.clone(), premier.aller.clone()];
+
+        // La place libre telle qu'elle reste : `slack::find` reconnaît
+        // le bourrage à lui-même, donc le corps écrit n'en est plus. On
+        // reprend donc la queue du trou.
+        let pris = premier.corps.after.len() as u64;
+        let reste = place(0x1100 + pris, 0x100 + pris, 64 - pris);
+        (image, posés, reste)
+    }
+
+    /// Détourner deux fois le même endroit écrasait le premier détour,
+    /// en silence.
+    ///
+    /// Le piège n'est pas théorique : un crochet Frida posé sur `main`
+    /// a fait exactement cela à un détour de namsdec, et la raison vaut
+    /// des deux côtés — cinq octets de saut, un seul endroit où les
+    /// mettre. Mais vu de l'image seule, il n'y a rien à voir : le `jmp`
+    /// du premier détour se décode comme n'importe quel `jmp`, il se
+    /// relocalise très bien, et le plan sort sans se plaindre.
+    ///
+    /// Le contrôle MONTRE le défaut avant de montrer la garde, dans le
+    /// même corps : sans la liste des correctifs, le second plan vise
+    /// les mêmes octets que le premier — c'est-à-dire qu'il les écrase.
+    #[test]
+    fn a_second_detour_does_not_quietly_overwrite_the_first() {
+        let (image, posés, reste) = un_detour_deja_pose();
+
+        // LE DÉFAUT, remis sous les yeux : sans la liste, le plan sort.
+        let aveugle = plan_detour(&image, 64, 0x00, 0x1000, &reste, &[0x90], &[])
+            .expect("sans la liste, rien ne s'y oppose");
+        assert_eq!(
+            aveugle.aller.offset, posés[1].offset,
+            "le second aller écrirait sur les octets du premier : \
+             position {:#x} contre {:#x}",
+            aveugle.aller.offset, posés[1].offset
+        );
+
+        // LA GARDE : la même demande, avec ce qui est déjà posé.
+        assert_eq!(
+            plan_detour(&image, 64, 0x00, 0x1000, &reste, &[0x90], &posés),
+            Err(DetourRefusé::SurUnCorrectif {
+                à: 0x1000,
+                offset: 0x00,
+                correctif: 0x1000,
+            }),
+            "un site déjà détourné se refuse, et nomme le correctif"
+        );
+    }
+
+    /// Le refus ne demande pas que les deux sites coïncident : un seul
+    /// octet commun suffit à perdre les deux correctifs.
+    ///
+    /// C'est le cas le PLUS dangereux, et le moins visible : viser un
+    /// octet après le site d'un détour réécrit le déplacement du `jmp`
+    /// à moitié. Le premier détour ne redevient pas inoffensif — il
+    /// saute quelque part, et ce quelque part n'existe pas.
+    #[test]
+    fn overlapping_a_patch_by_one_byte_is_refused_too() {
+        let (image, posés, reste) = un_detour_deja_pose();
+
+        for décalage in 1..JMP_REL32 {
+            let site = 0x1000 + décalage as u64;
+            let refus = plan_detour(&image, 64, décalage, site, &reste, &[], &posés);
+            assert_eq!(
+                refus,
+                Err(DetourRefusé::SurUnCorrectif {
+                    à: site,
+                    offset: décalage,
+                    correctif: 0x1000,
+                }),
+                "un détour en {site:#x} tombe encore dans le `jmp` posé en 0x1000"
+            );
+        }
+    }
+
+    /// Et la garde ne refuse pas tout : un endroit libre reste posable.
+    ///
+    /// Un contrôle qui ne dirait que « ça refuse » passerait au vert
+    /// avec un refus inconditionnel, c'est-à-dire avec la
+    /// fonctionnalité éteinte. C'est lui qui donne son sens au
+    /// précédent.
+    #[test]
+    fn a_detour_elsewhere_is_still_allowed() {
+        let (image, posés, reste) = un_detour_deja_pose();
+
+        // 0x1005 : la seconde instruction, hors de tout ce qui est posé.
+        let second = plan_detour(&image, 64, 0x05, 0x1005, &reste, &[0x90], &posés)
+            .expect("rien n'est posé là : ce détour tient");
+        assert_eq!(second.recouvert, 5, "`mov ecx, 2` fait cinq octets");
+        assert!(
+            chevauche(&posés, second.aller.offset, second.aller.after.len()).is_none(),
+            "et il n'empiète sur rien"
+        );
+        assert!(
+            chevauche(&posés, second.corps.offset, second.corps.after.len()).is_none(),
+            "son corps non plus"
+        );
+    }
+
+    /// Le corps compte autant que l'aller : écrire par-dessus le corps
+    /// d'un premier détour le prive de son code sans toucher à son saut.
+    ///
+    /// Le programme continue alors d'y sauter, et exécute ce que le
+    /// second y a mis — un détour qui part, et ne revient pas où il
+    /// croyait.
+    #[test]
+    fn writing_over_the_body_of_a_detour_is_refused() {
+        let (image, posés, _) = un_detour_deja_pose();
+
+        // La place libre reprise depuis son DÉBUT, c'est-à-dire là où le
+        // corps du premier détour est écrit. `slack::find` ne l'offrirait
+        // plus, mais un plan calculé avant lui, si.
+        let occupée = place(0x1100, 0x100, 64);
+        let refus = plan_detour(&image, 64, 0x05, 0x1005, &occupée, &[0x90], &posés);
+        assert_eq!(
+            refus,
+            Err(DetourRefusé::SurUnCorrectif {
+                à: 0x1100,
+                offset: 0x100,
+                correctif: 0x1100,
+            }),
+            "le corps du premier détour n'est pas de la place libre"
+        );
+    }
+
+    /// `chevauche` compare les octets ÉCRITS, bornes comprises d'un
+    /// côté et exclues de l'autre.
+    ///
+    /// Une erreur d'un octet ici refuserait un détour parfaitement
+    /// posable, ou en laisserait passer un qui mord sur le voisin.
+    #[test]
+    fn overlap_is_measured_on_the_bytes_actually_written() {
+        let posés = vec![Patch {
+            offset: 0x10,
+            before: vec![0; 4],
+            after: vec![0x90; 4],
+            addr: 0x2000,
+            group: None,
+        }];
+        // Juste avant, bord à bord : pas de chevauchement.
+        assert!(chevauche(&posés, 0x0C, 4).is_none());
+        // Un octet de plus, et il mord.
+        assert!(chevauche(&posés, 0x0C, 5).is_some());
+        // Juste après, bord à bord.
+        assert!(chevauche(&posés, 0x14, 4).is_none());
+        // Le dernier octet écrit.
+        assert!(chevauche(&posés, 0x13, 1).is_some());
+        // Un correctif qui n'écrit rien n'occupe rien.
+        let vide = vec![Patch {
+            offset: 0x10,
+            before: vec![0; 4],
+            after: Vec::new(),
+            addr: 0x2000,
+            group: None,
+        }];
+        assert!(chevauche(&vide, 0x10, 4).is_none());
     }
 }

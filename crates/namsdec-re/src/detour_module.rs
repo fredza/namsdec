@@ -146,6 +146,7 @@ impl DetourModule {
                 site_vaddr,
                 &place,
                 &ajout,
+                ctx.patches,
             )
             .map(Box::new),
         );
@@ -239,7 +240,15 @@ impl ReModule for DetourModule {
         ui.add_space(8.0);
 
         // --- L'endroit visé ---------------------------------------
-        ui.horizontal(|ui| {
+        //
+        // REPLIABLE, et c'est ce qui tient la largeur. Une rangée
+        // `horizontal` ne recule pas devant le manque de place : elle
+        // dépasse, et la largeur disponible qu'elle laisse derrière
+        // elle est celle de son débordement — si bien que les textes
+        // SUIVANTS se replient sur une largeur qu'on ne voit pas. Le
+        // même défaut avait été corrigé sur la rangée d'onglets du
+        // processeur le 23 octobre 2026.
+        ui.horizontal_wrapped(|ui| {
             ui.label(ctx.t("Détourner depuis", "Detour from"));
             ui.add(
                 egui::TextEdit::singleline(&mut self.site)
@@ -266,22 +275,53 @@ impl ReModule for DetourModule {
 
         // --- La place libre où atterrir ----------------------------
         ui.add_space(4.0);
-        ui.horizontal(|ui| {
-            ui.label(ctx.t("vers la place libre", "towards the slack"));
+        // L'ÉTIQUETTE AU-DESSUS, ET NON À CÔTÉ. Dans une rangée
+        // repliable, `available_width` rend la largeur de la RANGÉE et
+        // non ce qu'il en reste — c'est ce qui permet à un enfant de
+        // décider s'il passe à la ligne. La liste déroulante y lisait
+        // donc 220 et s'ajoutait aux 110 de l'étiquette : la rangée
+        // débordait de 107 px, le `max_rect` du panneau grandissait
+        // d'autant, et tous les textes SUIVANTS se repliaient sur une
+        // largeur qu'on ne voit pas — jusqu'au message de refus.
+        // Au-dessus, la largeur lue est la vraie.
+        ui.label(ctx.t("vers la place libre", "towards the slack"));
+        {
+            let ui = &mut *ui;
             let étiquette = self
                 .trous
                 .get(self.choix)
                 .map(|t| étiquette_du_trou(t, ctx))
                 .unwrap_or_default();
+            // UN PLAFOND, ET NON UNE LARGEUR. 230 px en dur dans un
+            // panneau plus étroit n'est pas seulement un choix trop
+            // large : la liste déroulante allonge la rangée, la rangée
+            // allonge la largeur disponible, et TOUT CE QUI SUIT se
+            // replie sur une largeur qui n'est pas visible. Mesuré à
+            // 220 px : cinq textes coupés, dont le message de refus,
+            // alors qu'ils se replient tous correctement. Lire la place
+            // offerte comme un maximum ne reboucle pas — le contenu en
+            // prend moins, jamais plus.
             egui::ComboBox::from_id_salt("detour_slack")
-                .selected_text(étiquette)
-                .width(230.0)
+                .selected_text(étiquette.clone())
+                .width(ui.available_width().clamp(90.0, 230.0))
+                // TRONQUER, sans quoi le plafond ne sert à rien : une
+                // liste déroulante prend la largeur de son texte si
+                // celui-ci dépasse ce qu'on lui a dit. « 0x00401100 ·
+                // 256 octets · .text » demande deux cent vingt pixels à
+                // lui seul, et la rangée en débordait de cent sept.
+                .truncate()
                 .show_ui(ui, |ui| {
                     for (rang, trou) in self.trous.iter().enumerate() {
                         ui.selectable_value(&mut self.choix, rang, étiquette_du_trou(trou, ctx));
                     }
-                });
-        });
+                })
+                .response
+                // ET LE TEXTE TRONQUÉ SE LIT ENCORE EN ENTIER. Une
+                // troncature sans survol cache une information qu'on
+                // n'a pas d'autre moyen d'obtenir : ici l'adresse, la
+                // taille et la section du trou où le code atterrira.
+                .on_hover_text(étiquette);
+        }
 
         // --- Le code à ajouter -------------------------------------
         ui.add_space(8.0);
@@ -562,6 +602,7 @@ mod tests {
             binary,
             lang: "fr",
             names: None,
+            patches: &[],
         }
     }
 
@@ -652,6 +693,95 @@ mod tests {
             module.octets_de_l_ajout(0x1000),
             Ok(vec![0x41, 0xbb, 0x0c, 0x30, 0x40, 0x00])
         );
+    }
+
+    /// Le plus petit ELF où une adresse se retrouve dans le fichier.
+    ///
+    /// Pas de table de sections : `imports::file_offset` se replie alors
+    /// sur les segments, ce qui est le chemin des binaires dépouillés —
+    /// donc des crackmes. Un seul `PT_LOAD`, qui projette tout le
+    /// fichier à 0x400000.
+    fn elf_d_un_segment(taille: usize) -> Vec<u8> {
+        let mut f = vec![0u8; taille.max(0x80)];
+        f[..8].copy_from_slice(b"\x7fELF\x02\x01\x01\x00");
+        f[0x10..0x12].copy_from_slice(&2u16.to_le_bytes()); // ET_EXEC
+        f[0x12..0x14].copy_from_slice(&0x3eu16.to_le_bytes()); // x86-64
+        f[0x20..0x28].copy_from_slice(&0x40u64.to_le_bytes()); // e_phoff
+        f[0x36..0x38].copy_from_slice(&56u16.to_le_bytes()); // e_phentsize
+        f[0x38..0x3a].copy_from_slice(&1u16.to_le_bytes()); // e_phnum
+        // Le segment : PT_LOAD, tout le fichier, projeté à 0x400000.
+        let taille = f.len() as u64;
+        f[0x40..0x44].copy_from_slice(&1u32.to_le_bytes()); // p_type
+        f[0x44..0x48].copy_from_slice(&5u32.to_le_bytes()); // R+X
+        f[0x48..0x50].copy_from_slice(&0u64.to_le_bytes()); // p_offset
+        f[0x50..0x58].copy_from_slice(&0x400000u64.to_le_bytes()); // p_vaddr
+        f[0x60..0x68].copy_from_slice(&taille.to_le_bytes()); // p_filesz
+        f[0x68..0x70].copy_from_slice(&taille.to_le_bytes()); // p_memsz
+        f
+    }
+
+    /// LE PANNEAU TIENT COMPTE DES CORRECTIFS DÉJÀ POSÉS.
+    ///
+    /// C'est un contrôle de BRANCHEMENT, et il vaut par ce qu'il
+    /// attrape : `plan_detour` sait refuser d'écrire sur un correctif,
+    /// mais seulement si on lui dit lesquels sont posés. Un `&[]` oublié
+    /// ici — c'était la valeur de passage avant le 27 octobre 2026 —
+    /// éteint la garde en entier, sans qu'aucun contrôle de `patch.rs`
+    /// ne s'en aperçoive : ils lui passent, eux, ce qu'ils veulent
+    /// éprouver.
+    ///
+    /// Il commence donc par montrer que le plan SORT quand rien n'est
+    /// posé. Sans cette moitié, le contrôle passerait au vert pour la
+    /// mauvaise raison — une adresse introuvable dans le fichier, un
+    /// trou mal décrit, un champ mal lu laissent aussi `plan` sans
+    /// `Ok`, et l'on croirait tenir la garde.
+    #[test]
+    fn the_panel_refuses_a_site_that_a_patch_already_holds() {
+        let cpu = Cpu::new(Memory::new(0x400000, 0x100));
+        let binaire = elf_d_un_segment(0x400);
+
+        let neuf = || DetourModule {
+            // 0x400100 : du zéro dans le fichier, donc des instructions
+            // décodables (`add [rax], al`), et de quoi en couvrir cinq.
+            site: "0x400100".to_owned(),
+            mode: ModeAjout::Octets,
+            code: "90".to_owned(),
+            trous: vec![Slack {
+                vaddr: 0x400200,
+                offset: 0x200,
+                len: 0x100,
+                filler: 0x00,
+                executable: true,
+                section: None,
+            }],
+            ..Default::default()
+        };
+
+        // D'ABORD SANS RIEN DE POSÉ : le plan sort. C'est la moitié qui
+        // donne son sens à l'autre.
+        let mut module = neuf();
+        module.calculer(&contexte(&binaire, &cpu));
+        let plan = module.plan.as_ref().expect("un plan a été calculé");
+        assert!(
+            plan.is_ok(),
+            "sur un fichier neuf, ce site se détourne : {:?}",
+            plan.as_ref().err().map(|e| e.message(true))
+        );
+        let posé = plan.as_ref().unwrap().aller.clone();
+
+        // PUIS AVEC CE MÊME ALLER DÉJÀ POSÉ : refusé, et nommément.
+        let posés = [posé];
+        let mut avec = contexte(&binaire, &cpu);
+        avec.patches = &posés;
+        let mut module = neuf();
+        module.calculer(&avec);
+        match module.plan.as_ref().expect("un refus est un plan aussi") {
+            Err(DetourRefusé::SurUnCorrectif { à, correctif, .. }) => {
+                assert_eq!(*à, 0x400100, "le site visé");
+                assert_eq!(*correctif, 0x400100, "et le correctif qu'il heurte");
+            }
+            autre => panic!("attendu un refus pour correctif posé, reçu {autre:?}"),
+        }
     }
 
     /// Un plan calculé devient caduc quand le fichier change.
@@ -755,6 +885,127 @@ mod tests {
     fn the_plan_grid_is_also_clean_when_wide() {
         let longue = [0xF0, 0x48, 0x0F, 0xC7, 0x8C, 0xD8, 0x78, 0x56, 0x34, 0x12];
         assert!(largeur_perdue(&longue, 1200.0).is_empty());
+    }
+
+    /// AUCUN REFUS NE SE FAIT COUPER PAR LE BORD DU PANNEAU.
+    ///
+    /// Les messages de `DetourRefusé` sont de la prose, et de la prose
+    /// longue : ils nomment l'instruction, l'adresse, la taille du
+    /// champ, et disent quoi faire. Un refus coupé est pire qu'un refus
+    /// muet — on lit la moitié d'une explication et l'on croit avoir
+    /// compris. Mesuré sur TOUTES les variantes, pour qu'un refus ajouté
+    /// un jour ne passe pas au travers, et à la largeur la plus étroite
+    /// que le panneau latéral prenne.
+    #[test]
+    fn no_refusal_is_cut_by_the_edge_of_the_panel() {
+        let refus = [
+            DetourRefusé::PlaceNonExécutable,
+            DetourRefusé::PlaceTropPetite {
+                besoin: 42,
+                offert: 8,
+            },
+            DetourRefusé::HorsFichier,
+            DetourRefusé::SiteIndécodable { à: 0x401136 },
+            DetourRefusé::TropLoin,
+            DetourRefusé::CodeDéplacéRelatif {
+                à: 0x401136,
+                mnémonique: "lea".to_owned(),
+            },
+            DetourRefusé::PortéeTropCourte {
+                à: 0x401136,
+                mnémonique: "jmp".to_owned(),
+                champ: 1,
+            },
+            DetourRefusé::ChampIntrouvable {
+                à: 0x401136,
+                mnémonique: "call".to_owned(),
+            },
+            DetourRefusé::SurUnCorrectif {
+                à: 0x401136,
+                offset: 0x1136,
+                correctif: 0x401131,
+            },
+        ];
+
+        let egui_ctx = egui::Context::default();
+        for largeur in [220.0f32, 420.0, 900.0] {
+            let entrée = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(largeur, 2400.0),
+                )),
+                ..Default::default()
+            };
+            for cas in &refus {
+                let cpu = Cpu::new(Memory::new(0x400000, 0x100));
+                let ctx = contexte(b"", &cpu);
+                let mut module = DetourModule {
+                    plan: Some(Err(cas.clone())),
+                    // UN TROU EST NÉCESSAIRE, et l'oubli a coûté un
+                    // essai : sans place libre, `ui` écrit « aucune
+                    // place libre exécutable » et REND LA MAIN. Le
+                    // refus n'était jamais peint, et le contrôle passait
+                    // au vert sans rien mesurer — y compris avec le
+                    // repli du texte retiré exprès.
+                    trous: vec![Slack {
+                        vaddr: 0x401100,
+                        offset: 0x1100,
+                        len: 0x100,
+                        filler: 0x00,
+                        executable: true,
+                        section: Some(".text".to_owned()),
+                    }],
+                    ..Default::default()
+                };
+                let attendu = cas.message(true);
+                let mut coupées = Vec::new();
+                let mut peint = false;
+                // Deux images : la première pose ce qu'egui garde.
+                for _ in 0..2 {
+                    coupées.clear();
+                    peint = false;
+                    let mut sortie = egui_ctx.run_ui(entrée.clone(), |ui| {
+                        module.ui(ui, &ctx);
+                    });
+                    for clipped in &sortie.shapes {
+                        let egui::epaint::Shape::Text(t) = &clipped.shape else {
+                            continue;
+                        };
+                        if t.galley.text() == attendu {
+                            peint = true;
+                        }
+                        for ligne in &t.galley.rows {
+                            if ligne.glyphs.is_empty() {
+                                continue;
+                            }
+                            let posée = ligne
+                                .rect_without_leading_space()
+                                .translate(t.pos.to_vec2());
+                            let encre = posée.intersect(clipped.clip_rect);
+                            if encre.width() <= 0.0 {
+                                continue;
+                            }
+                            if posée.width() - encre.width() > 0.5 {
+                                coupées.push((
+                                    t.galley.text().to_owned(),
+                                    posée.width() - encre.width(),
+                                ));
+                            }
+                        }
+                    }
+                    sortie.textures_delta.clear();
+                }
+                assert!(
+                    peint,
+                    "à {largeur:.0} px, le refus {cas:?} n'est pas peint du tout — \
+                     un contrôle qui ne voit pas son sujet ne mesure rien"
+                );
+                assert!(
+                    coupées.is_empty(),
+                    "à {largeur:.0} px, le refus {cas:?} perd du texte au bord : {coupées:?}"
+                );
+            }
+        }
     }
 
     /// Le titre du panneau existe dans les deux langues, et le nom de

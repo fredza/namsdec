@@ -183,6 +183,7 @@ fn tout_caractere_ecrit_existe_dans_la_police() {
         binary: &binaire,
         lang: "fr",
         names: None,
+        patches: &[],
     };
     let mut absents: Vec<(String, char)> = Vec::new();
     // TOUS les panneaux, et non les neuf du relevé de mise en page :
@@ -321,6 +322,7 @@ fn no_analysis_panel_overlaps_or_cuts_its_own_text() {
             binary: &binaire,
             lang,
             names: None,
+            patches: &[],
         };
         // Étroite comme la colonne d'un écran partagé, large comme un
         // écran d'aujourd'hui : un texte qui déborde ne déborde souvent
@@ -428,6 +430,7 @@ fn an_analysis_panel_left_alone_stays_where_it_is() {
         binary: &binaire,
         lang: "fr",
         names: None,
+        patches: &[],
     };
 
     for (nom, mut module) in panneaux() {
@@ -575,6 +578,7 @@ fn what_was_added_is_really_on_screen() {
             binary: &binaire,
             lang,
             names: None,
+            patches: &[],
         };
         let (_, mut module) = panneaux()
             .into_iter()
@@ -758,6 +762,7 @@ fn no_text_of_the_call_graph_escapes_its_box() {
         binary: &binaire,
         lang: "fr",
         names: None,
+        patches: &[],
     };
     let mut module = namsdec_re::CallGraphModule::default();
     module.on_binary_loaded(&ctx);
@@ -854,6 +859,7 @@ fn clicking_a_byte_takes_the_keyboard_back() {
         binary: &binaire,
         lang: "fr",
         names: None,
+        patches: &[],
     };
     let mut module = namsdec_re::HexEditorModule::default();
     module.on_binary_loaded(&ctx);
@@ -1003,6 +1009,7 @@ fn the_column_ruler_lines_up_with_the_bytes() {
         binary: &binaire,
         lang: "fr",
         names: None,
+        patches: &[],
     };
     let mut module = namsdec_re::HexEditorModule::default();
     module.on_binary_loaded(&ctx);
@@ -1117,6 +1124,7 @@ fn the_dump_stays_inside_the_width_it_is_given() {
         binary: &binaire,
         lang: "fr",
         names: None,
+        patches: &[],
     };
     // Trois largeurs, dont une trop étroite pour seize octets par
     // ligne : c'est là que le débordement se produisait.
@@ -1179,6 +1187,7 @@ fn the_picked_byte_says_which_section_it_falls_in() {
         binary: &binaire,
         lang: "fr",
         names: None,
+        patches: &[],
     };
     // La section qu'on vise, demandée au même lecteur d'ELF que le
     // panneau : écrire « .text » ici supposerait un binaire d'épreuve
@@ -1247,6 +1256,7 @@ fn shift_arrows_pick_several_bytes_and_fill_writes_them_at_once() {
         binary: &binaire,
         lang: "fr",
         names: None,
+        patches: &[],
     };
     let mut module = namsdec_re::HexEditorModule::default();
     module.on_binary_loaded(&ctx);
@@ -1375,6 +1385,7 @@ fn the_selection_can_be_copied_and_the_clipboard_lands_in_the_field() {
         binary: &binaire,
         lang: "fr",
         names: None,
+        patches: &[],
     };
     let mut module = namsdec_re::HexEditorModule::default();
     module.on_binary_loaded(&ctx);

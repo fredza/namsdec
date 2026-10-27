@@ -80,6 +80,7 @@ fn the_shapes_panel_shows_both_readings() {
             binary: &binaire,
             lang,
             names: None,
+            patches: &[],
         };
         let mut module = namsdec_re::PatternsModule::default();
         module.on_binary_loaded(&ctx);

@@ -485,6 +485,7 @@ mod tests {
             binary: &[],
             lang: "fr",
             names: None,
+            patches: &[],
         };
         let mut module = StringsModule::default();
         module.on_binary_loaded(&ctx);
@@ -640,6 +641,7 @@ mod tests {
                     binary: &[],
                     lang: "fr",
                     names: None,
+                    patches: &[],
                 };
                 module.ui(ui, &re);
             });

@@ -451,6 +451,7 @@ mod tests {
             binary: &octets,
             lang: "fr",
             names: None,
+            patches: &[],
         };
         let mut module = ImportsModule::default();
         module.on_binary_loaded(&ctx);
@@ -514,6 +515,7 @@ mod tests {
             binary: &[],
             lang: "fr",
             names: None,
+            patches: &[],
         };
         let egui_ctx = egui::Context::default();
         let mut vus: Vec<String> = Vec::new();
@@ -571,6 +573,7 @@ mod tests {
             binary: &bytes,
             lang: "fr",
             names: None,
+            patches: &[],
         };
 
         let mut module = ImportsModule::default();
@@ -633,6 +636,7 @@ mod tests {
             binary: &bytes,
             lang: "fr",
             names: None,
+            patches: &[],
         };
         let mut module = ImportsModule::default();
         module.on_binary_loaded(&ctx);
@@ -662,6 +666,7 @@ mod tests {
             binary: bytes,
             lang: "fr",
             names: None,
+            patches: &[],
         };
         let mut module = ImportsModule::default();
         module.on_binary_loaded(&ctx);

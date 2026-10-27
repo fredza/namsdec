@@ -196,7 +196,7 @@ fn main() {
 fn essayer(bytes: &[u8], site_offset: usize, site_vaddr: u64, trous: &[slack::Slack]) -> Issue {
     let mut dernier = Issue::Refus("AucunePlaceLibre", None);
     for trou in trous {
-        match patch::plan_detour(bytes, 64, site_offset, site_vaddr, trou, &[]) {
+        match patch::plan_detour(bytes, 64, site_offset, site_vaddr, trou, &[], &[]) {
             Ok(_) => return Issue::Posé,
             Err(refus) => {
                 let (motif, mnémonique, dépend_du_site) = classer(&refus);
@@ -233,6 +233,12 @@ fn classer(refus: &patch::DetourRefusé) -> (&'static str, Option<String>, bool)
         R::ChampIntrouvable { mnémonique, .. } => {
             ("ChampIntrouvable", Some(mnémonique.clone()), true)
         }
+        // Cet exemple mesure un fichier NEUF, sans aucun correctif
+        // posé : il passe `&[]`, et ce refus ne peut donc pas tomber.
+        // Il est nommé quand même plutôt que balayé par `_` — un refus
+        // de plus ajouté un jour et oublié ici se compterait en silence
+        // dans la colonne de la place libre.
+        R::SurUnCorrectif { .. } => ("SurUnCorrectif", None, true),
     }
 }
 

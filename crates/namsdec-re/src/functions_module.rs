@@ -361,6 +361,7 @@ mod tests {
             binary: &[],
             lang: "fr",
             names: None,
+            patches: &[],
         };
         let mut module = FunctionsModule::default();
         module.on_binary_loaded(&ctx);

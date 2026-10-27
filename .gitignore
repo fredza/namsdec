@@ -7,3 +7,6 @@ docs/__pycache__/
 
 # Les vidages mémoire des essais (QEMU, SDE) : jamais du dépôt.
 *.core
+
+# Les réglages de Claude Code : ceux de chacun, jamais du dépôt.
+/.claude/
