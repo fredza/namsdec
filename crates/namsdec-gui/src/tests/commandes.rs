@@ -1248,3 +1248,161 @@ fn l_infobulle_de_l_export_compte_les_raccourcis() {
         }
     }
 }
+
+/// Les frappes du menu Affichage s'alignent en colonne, et le menu ne
+/// grandit pas pour autant.
+///
+/// `ui.checkbox` n'a pas de `shortcut_text` : la frappe est posée par un
+/// `Atom::grow` entre le libellé et elle, ce qui la pousse au bord droit
+/// de la case. Deux choses à mesurer, et une seule saute aux yeux.
+///
+/// CE QU'ON VOIT : les frappes doivent former une COLONNE. « À droite du
+/// libellé » ne suffit pas — sans l'atome qui pousse, chaque frappe se
+/// colle à son libellé et la colonne se disloque, « Panneau latéral »
+/// étant deux fois plus long que « Console ». C'est l'alignement qui
+/// permet de descendre le menu des yeux.
+///
+/// CE QU'ON NE VOIT PAS : une case à cocher occupe toute la largeur du
+/// menu, et la largeur du menu se calcule sur son contenu le plus large.
+/// **Un enfant qui réclame toute la place offerte dans un parent qui se
+/// dimensionne sur ses enfants est la boucle la plus connue d'egui** —
+/// la surface grandit de quelques pixels par image, sans fin. Le relevé
+/// suit l'abscisse de la frappe sur vingt images ; alignée à droite,
+/// elle se déplace d'autant que le menu s'élargit.
+#[test]
+fn les_frappes_du_menu_affichage_s_alignent_sans_elargir_le_menu() {
+    use egui_kittest::Harness;
+    use egui_kittest::kittest::Queryable;
+
+    let s = strings(Lang::Fr);
+    let ctx_frappes = egui::Context::default();
+    let jeu = KeyBindings::default();
+    let frappe_de = |action| {
+        jeu.map
+            .get(&action)
+            .expect("cette bascule a un raccourci")
+            .display(&ctx_frappes, true)
+    };
+    let console = frappe_de(Action::ToggleConsole);
+    let panneau = frappe_de(Action::ToggleSidebar);
+
+    let mut app = NamsdecApp::default();
+    let mut harness = Harness::builder()
+        .with_size(egui::Vec2::new(1400.0, 900.0))
+        .build_ui(move |ui| app.draw(ui));
+    harness.run();
+    harness.get_by_label(s.menu_view).click();
+    harness.run();
+
+    // Tout ce qui est peint et qui nous intéresse, image par image.
+    let relever = |harness: &Harness<'_>| -> Vec<(String, egui::Rect)> {
+        let mut vus = Vec::new();
+        for clipped in &harness.output().shapes {
+            if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                vus.push((
+                    t.galley.text().to_owned(),
+                    egui::Rect::from_min_size(t.pos, t.galley.size()).intersect(clipped.clip_rect),
+                ));
+            }
+        }
+        vus
+    };
+    let premier = relever(&harness);
+    let trouver = |quoi: &str| -> egui::Rect {
+        premier
+            .iter()
+            .find(|(t, _)| t == quoi)
+            .map(|(_, r)| *r)
+            .unwrap_or_else(|| {
+                panic!(
+                    "« {quoi} » doit être peint dans le menu ouvert : {:?}",
+                    premier.iter().map(|(t, _)| t).collect::<Vec<_>>()
+                )
+            })
+    };
+
+    let mut droites = Vec::new();
+    for (frappe, libellé) in [(&console, s.view_console), (&panneau, s.view_sidebar)] {
+        let écrite = trouver(frappe);
+        // Le libellé est peint DEUX FOIS pour la console — l'entrée du
+        // menu et l'onglet du bas, à sept cents pixels de là. On prend
+        // celui de la ligne de la frappe : c'est celui dont on parle.
+        let texte = premier
+            .iter()
+            .find(|(t, r)| t == libellé && (r.center().y - écrite.center().y).abs() < 4.0)
+            .map(|(_, r)| *r)
+            .unwrap_or_else(|| {
+                panic!("« {libellé} » doit être peint sur la ligne de « {frappe} »")
+            });
+        assert!(
+            écrite.left() > texte.right(),
+            "« {frappe} » va à droite de « {libellé} », sans le recouvrir : \
+             {écrite:?} contre {texte:?}"
+        );
+        droites.push((frappe.clone(), écrite.right()));
+    }
+
+    let écart = (droites[0].1 - droites[1].1).abs();
+    assert!(
+        écart < 1.0,
+        "les frappes du menu doivent s'aligner à droite, en colonne : \
+         {} finit à {:.2} px et {} à {:.2} — {écart:.2} px d'écart",
+        droites[0].0,
+        droites[0].1,
+        droites[1].0,
+        droites[1].1
+    );
+
+    // Vingt images, et les huit dernières au même endroit. Vingt parce
+    // qu'egui AMÈNE une surface à sa taille au lieu de l'y poser : une
+    // mise en place qui converge n'est pas une dérive.
+    let mut abscisses = Vec::new();
+    for _ in 0..20 {
+        harness.step();
+        if let Some((_, r)) = relever(&harness).into_iter().find(|(t, _)| t == &console) {
+            abscisses.push(r.left());
+        }
+    }
+    assert!(
+        abscisses.len() >= 12,
+        "la frappe doit rester peinte tout du long : {} image(s)",
+        abscisses.len()
+    );
+    let fin = &abscisses[abscisses.len() - 8..];
+    let dérive = fin
+        .iter()
+        .fold(0.0f32, |pire, x| pire.max((x - fin[0]).abs()));
+    assert!(
+        dérive < 0.5,
+        "le menu s'élargit image après image — la frappe dérive de \
+         {dérive:.2} px : {fin:?}"
+    );
+}
+
+/// Les deux bascules d'affichage basculent, et reviennent.
+///
+/// Une bascule qui ne rebascule pas est une porte à sens unique : on
+/// cache la console d'une frappe, et il faut le menu pour la retrouver.
+/// C'est le défaut qu'on ne voit pas en écrivant le code, parce qu'on
+/// essaie toujours l'aller.
+#[test]
+fn les_bascules_d_affichage_vont_et_reviennent() {
+    let mut app = NamsdecApp::default();
+    for (action, lire) in [
+        (
+            Action::ToggleConsole,
+            (|a: &NamsdecApp| a.show_console) as fn(&NamsdecApp) -> bool,
+        ),
+        (Action::ToggleSidebar, |a: &NamsdecApp| a.show_sidebar),
+    ] {
+        let départ = lire(&app);
+        app.dispatch(action);
+        assert_ne!(lire(&app), départ, "{action:?} doit basculer");
+        app.dispatch(action);
+        assert_eq!(
+            lire(&app),
+            départ,
+            "{action:?} doit revenir d'où elle vient"
+        );
+    }
+}

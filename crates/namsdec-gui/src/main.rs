@@ -1708,9 +1708,7 @@ enum PaletteCommand {
     GoLine(u32),
     GoConsoleTab(ConsoleTab),
     ToggleToolbar,
-    ToggleSidebar,
     ToggleStatusbar,
-    ToggleConsole,
 }
 
 struct PreferencesSnapshot {
@@ -2410,6 +2408,8 @@ impl NamsdecApp {
                 };
             }
             Action::ShowPreferences => self.open_preferences(),
+            Action::ToggleConsole => self.show_console = !self.show_console,
+            Action::ToggleSidebar => self.show_sidebar = !self.show_sidebar,
         }
     }
 
@@ -2567,9 +2567,7 @@ impl NamsdecApp {
                 self.show_console = true;
                 self.console_tab = tab;
             }
-            PaletteCommand::ToggleConsole => self.show_console = !self.show_console,
             PaletteCommand::ToggleToolbar => self.show_toolbar = !self.show_toolbar,
-            PaletteCommand::ToggleSidebar => self.show_sidebar = !self.show_sidebar,
             PaletteCommand::ToggleStatusbar => self.show_statusbar = !self.show_statusbar,
         }
     }

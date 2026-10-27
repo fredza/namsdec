@@ -7396,3 +7396,68 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      infobulle serait la seule entrée de menu du programme dont le
      raccourci ne se lit pas sans survoler. C'est une question de
      dessin, elle mérite son relevé, et elle est écrite dans TRAVAUX.
+
+9.32 [FAIT] UNE CASE À COCHER N'A PAS DE PLACE POUR UN RACCOURCI — SI
+     (27 octobre 2026)
+--------------------------------------------------------------------------------
+     Suite de 9.31, qui avait laissé la question ouverte faute de savoir
+     OÙ écrire la frappe. Les quatre bascules du menu Affichage sont des
+     cases à cocher — un choix ancien et bon : on en active plusieurs
+     sans refermer le menu. Mais `ui.checkbox` n'a ni `shortcut_text` ni
+     colonne de droite, et poser la frappe dans une infobulle en aurait
+     fait les seules entrées de menu du programme dont le raccourci ne
+     se lise pas sans survoler.
+
+     LA RÉPONSE ÉTAIT DANS egui 0.36 : `Checkbox::new` prend un
+     `impl IntoAtoms`, donc un tuple. `(libellé, Atom::grow(), frappe
+     atténuée)` pousse la frappe au bord droit de la case — la place
+     exacte qu'elle occupe sur les boutons voisins, et le même gris.
+
+     DEUX DES QUATRE SEULEMENT, et c'est le point qui méritait d'être
+     pesé. La console et le panneau latéral s'ouvrent et se referment
+     pendant qu'on travaille : on cache le panneau pour lire un long
+     listing, on montre la console pour voir ce que le programme a
+     écrit. La barre d'outils et la barre de statut se règlent une fois
+     et ne bougent plus. Leur donner une frappe, ce serait la retirer à
+     quelque chose qu'on fait tous les jours — un raccourci qu'on
+     n'emploie jamais occupe une touche que quelque chose d'autre
+     voudra. Le menu montre donc deux frappes sur quatre lignes, et la
+     raison est écrite dans le code.
+
+     `Ctrl+J` est le panneau du bas de VS Code, et c'est la même chose
+     ici. `Ctrl+Alt+B` est « l'autre B » : Ctrl+B montre l'explorateur à
+     gauche, celui-ci le panneau à droite — VS Code n'a rien à imiter
+     ici, il n'a qu'une barre latérale. Côté vim, la famille `v…`
+     s'étoffe : `v c` la console, `v p` le panneau. C'est exactement ce
+     pour quoi elle avait été posée — chaque ajout a une place évidente
+     au lieu d'une place libre.
+
+     LE CONTRÔLE MESURE DEUX CHOSES, ET UNE SEULE SAUTE AUX YEUX.
+
+     Ce qu'on voit : les frappes doivent former une COLONNE. La première
+     version se contentait de « la frappe est à droite du libellé » —
+     elle passait au vert avec l'atome retiré, parce qu'une frappe
+     collée à son texte est encore à sa droite. Sans l'atome, « Espace v
+     c » finit à 402,66 px et « Espace v p » à 503,72 : 101 px d'écart,
+     et le menu ne se descend plus des yeux. C'est l'alignement qui est
+     le service rendu, pas la position.
+
+     Ce qu'on ne voit pas : une case à cocher occupe toute la largeur du
+     menu, et la largeur du menu se calcule sur son contenu le plus
+     large. Un enfant qui réclame toute la place offerte dans un parent
+     qui se dimensionne sur ses enfants est LA boucle d'egui — la
+     surface grandit de quelques pixels par image, sans fin. Vingt
+     images, les huit dernières au même pixel : elle n'existe pas ici,
+     mais c'est le risque que ce dessin porte, et il est désormais
+     gardé.
+
+     Au passage, deux nettoyages. « Affichage: Console » devient
+     « Afficher/masquer la console » dans la palette : elle était seule
+     de son groupe de quatre à ne pas le dire ainsi. Et
+     `PaletteCommand::ToggleConsole` / `::ToggleSidebar` disparaissent
+     au profit des actions — deux routes pour un rôle, dont une seule
+     figurait au tableau des raccourcis.
+
+     Le jeu compte maintenant 35 actions, toutes dans la table, toutes
+     dans les deux jeux, toutes dans la palette avec leur frappe écrite,
+     toutes dans un menu, et toutes dans le manuel.

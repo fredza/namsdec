@@ -856,6 +856,8 @@ pub fn action_id(action: Action) -> &'static str {
         Action::ToggleCalculator => "toggle_calculator",
         Action::ToggleCommandPalette => "toggle_command_palette",
         Action::ShowPreferences => "show_preferences",
+        Action::ToggleConsole => "toggle_console",
+        Action::ToggleSidebar => "toggle_sidebar",
     }
 }
 

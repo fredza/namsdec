@@ -2778,6 +2778,14 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "et il se déplace. Il était jusqu'ici posé en dur dans le code : le seul raccourci "
          "qu'on ne pouvait pas changer était celui qui sert à trouver tous les autres."),
         ("p",
+         "<b>La console et le panneau latéral</b> se montrent et se cachent au clavier — "
+         "<font face='Courier'>Ctrl+J</font> et <font face='Courier'>Ctrl+Alt+B</font> dans "
+         "le jeu ordinaire, « Espace v c » et « Espace v p » dans l'autre. Les deux autres "
+         "bascules du menu Affichage, la barre d'outils et la barre de statut, n'en ont "
+         "pas, et c'est un choix : on les règle une fois. Leur donner une frappe, ce serait "
+         "la retirer à quelque chose qu'on fait tous les jours. Dans le menu, les raccourcis "
+         "des cases à cocher s'alignent en colonne au bord droit, comme ceux des boutons."),
+        ("p",
          "Les raccourcis vivent dans <font face='Courier'>~/.config/namsdec/keymap.json</font>, "
          "qui ne garde que ce qui <b>s’écarte</b> du jeu choisi : un jeu qui gagne une "
          "action l’apporte alors sans qu’on ait rien à faire. Le fichier est "

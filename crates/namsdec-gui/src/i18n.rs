@@ -815,6 +815,9 @@ pub struct Strings {
     pub palette_toggle_toolbar: &'static str,
     pub palette_toggle_sidebar: &'static str,
     pub palette_toggle_statusbar: &'static str,
+    /// La console disait « Affichage: Console » là où ses trois sœurs
+    /// disent « Afficher/masquer … ». Une seule forme pour un rôle.
+    pub palette_toggle_console: &'static str,
 
     // Éditeur
     pub memory_address_label: &'static str,
@@ -1823,6 +1826,7 @@ déclenchera jamais.",
     palette_toggle_toolbar: "Afficher/masquer la barre d'outils",
     palette_toggle_sidebar: "Afficher/masquer le panneau latéral",
     palette_toggle_statusbar: "Afficher/masquer la barre de statut",
+    palette_toggle_console: "Afficher/masquer la console",
 
     memory_address_label: "Adresse :",
     memory_address_invalid: "Ce n'est pas une adresse : des chiffres hexadécimaux, un registre, ou une somme des deux.",
@@ -2718,6 +2722,7 @@ other is there to compare — that is how gaps and clashes become visible.",
     palette_toggle_toolbar: "Toggle Toolbar",
     palette_toggle_sidebar: "Toggle Side Panel",
     palette_toggle_statusbar: "Toggle Status Bar",
+    palette_toggle_console: "Toggle Console",
 
     memory_address_label: "Address:",
     memory_address_invalid: "Not an address: hexadecimal digits, a register, or a sum of both.",

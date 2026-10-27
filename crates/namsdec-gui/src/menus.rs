@@ -746,10 +746,49 @@ impl NamsdecApp {
                 // ici — des cases à cocher, pas des boutons, pour pouvoir en
                 // activer/désactiver plusieurs sans refermer le menu à
                 // chaque fois.
+                //
+                // DEUX DES QUATRE PORTENT UNE FRAPPE, et il fallait
+                // d'abord savoir où l'écrire : `ui.checkbox` n'a pas de
+                // `shortcut_text`, et la poser dans une infobulle en
+                // aurait fait les seules entrées de menu dont le
+                // raccourci ne se lise pas sans survoler. La réponse
+                // est dans les atomes d'egui 0.36 : un `Atom::grow`
+                // entre le libellé et la frappe, et celle-ci va au bord
+                // droit, atténuée — la place exacte qu'elle occupe sur
+                // les boutons voisins.
+                //
+                // Les deux autres n'en ont pas, et c'est un choix : on
+                // règle la barre d'outils et la barre de statut une
+                // fois. Leur donner une frappe, ce serait la retirer à
+                // quelque chose qu'on fait tous les jours.
+                let ctx_menu = ui.ctx().clone();
+                let frappe = |app: &Self, action| {
+                    app.keybindings
+                        .map
+                        .get(&action)
+                        .map(|c: &keybindings::Chord| c.display(&ctx_menu, app.lang == Lang::Fr))
+                        .unwrap_or_default()
+                };
+                let frappe_panneau = frappe(self, Action::ToggleSidebar);
+                let frappe_console = frappe(self, Action::ToggleConsole);
                 ui.checkbox(&mut self.show_toolbar, s.view_toolbar);
-                ui.checkbox(&mut self.show_sidebar, s.view_sidebar);
+                ui.add(egui::Checkbox::new(
+                    &mut self.show_sidebar,
+                    (
+                        s.view_sidebar,
+                        egui::Atom::grow(),
+                        egui::RichText::new(frappe_panneau).weak(),
+                    ),
+                ));
                 ui.checkbox(&mut self.show_statusbar, s.view_statusbar);
-                ui.checkbox(&mut self.show_console, s.view_console);
+                ui.add(egui::Checkbox::new(
+                    &mut self.show_console,
+                    (
+                        s.view_console,
+                        egui::Atom::grow(),
+                        egui::RichText::new(frappe_console).weak(),
+                    ),
+                ));
                 // Rendre la hauteur à ce qu'elle dit : une console qu'on
                 // a agrandie pour lire vingt lignes n'a plus de raison
                 // d'occuper autant devant deux.
@@ -1293,15 +1332,17 @@ pub(crate) fn palette_commands(
         ),
         (
             s.palette_toggle_sidebar.to_string(),
-            PaletteCommand::ToggleSidebar,
+            PaletteCommand::Do(Action::ToggleSidebar),
         ),
         (
             s.palette_toggle_statusbar.to_string(),
             PaletteCommand::ToggleStatusbar,
         ),
         (
-            format!("{}: {}", s.menu_view, s.view_console),
-            PaletteCommand::ToggleConsole,
+            // « Afficher/masquer la console », comme ses trois sœurs :
+            // elle disait « Affichage: Console », seule de son groupe.
+            s.palette_toggle_console.to_string(),
+            PaletteCommand::Do(Action::ToggleConsole),
         ),
         (s.file_quit.to_string(), PaletteCommand::Quit),
     ];

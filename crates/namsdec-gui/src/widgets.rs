@@ -208,6 +208,8 @@ pub(crate) fn action_label(s: &Strings, action: Action) -> &'static str {
         Action::ToggleCalculator => s.calculator_open,
         Action::ToggleCommandPalette => s.palette_action,
         Action::ShowPreferences => s.file_preferences,
+        Action::ToggleConsole => s.palette_toggle_console,
+        Action::ToggleSidebar => s.palette_toggle_sidebar,
     }
 }
 

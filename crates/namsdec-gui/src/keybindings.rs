@@ -118,10 +118,21 @@ pub enum Action {
     /// c'est la fenêtre où l'on règle les raccourcis. `Ctrl+,` est la
     /// convention, de VS Code aux navigateurs.
     ShowPreferences,
+    /// Montrer ou cacher la console, et le panneau latéral.
+    ///
+    /// DEUX DES QUATRE BASCULES D'AFFICHAGE, et c'est un choix. La barre
+    /// d'outils et la barre de statut se règlent une fois et ne bougent
+    /// plus : leur donner une frappe, ce serait retirer cette frappe à
+    /// quelque chose qu'on fait tous les jours. Ces deux-là, au
+    /// contraire, s'ouvrent et se referment pendant qu'on travaille —
+    /// on cache le panneau pour lire un long listing, on montre la
+    /// console pour voir ce que le programme a écrit.
+    ToggleConsole,
+    ToggleSidebar,
 }
 
 impl Action {
-    pub const ALL: [Action; 33] = [
+    pub const ALL: [Action; 35] = [
         Action::ToggleExplorer,
         Action::Assemble,
         Action::Run,
@@ -155,6 +166,8 @@ impl Action {
         Action::ToggleCalculator,
         Action::ToggleCommandPalette,
         Action::ShowPreferences,
+        Action::ToggleConsole,
+        Action::ToggleSidebar,
     ];
 }
 
@@ -660,6 +673,13 @@ impl KeyBindings {
         // Ctrl+, : la convention des préférences, de VS Code aux
         // navigateurs. La virgule est libre partout ailleurs.
         map.insert(Action::ShowPreferences, simple(M::CTRL, Key::Comma));
+        // Ctrl+J : le panneau du bas de VS Code, et c'est la même
+        // chose ici — la sortie, les diagnostics, le profil.
+        map.insert(Action::ToggleConsole, simple(M::CTRL, Key::J));
+        // Ctrl+Alt+B : « l'autre B ». Ctrl+B montre l'explorateur, à
+        // gauche ; celui-ci montre le panneau, à droite. VS Code n'a
+        // rien à imiter ici — il n'a qu'une barre latérale.
+        map.insert(Action::ToggleSidebar, simple(M::CTRL | M::ALT, Key::B));
 
         Self { map }
     }
@@ -913,6 +933,17 @@ impl KeyBindings {
         map.insert(
             Action::ShowPreferences,
             Chord::leader(&[Key::Space, Key::V, Key::R]),
+        );
+        // La famille `v…` s'étoffe, et c'est exactement ce pour quoi
+        // elle a été posée : chaque ajout a une place évidente au lieu
+        // d'une place libre. `v c` la console, `v p` le panneau.
+        map.insert(
+            Action::ToggleConsole,
+            Chord::leader(&[Key::Space, Key::V, Key::C]),
+        );
+        map.insert(
+            Action::ToggleSidebar,
+            Chord::leader(&[Key::Space, Key::V, Key::P]),
         );
         Self { map }
     }

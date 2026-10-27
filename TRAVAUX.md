@@ -148,13 +148,31 @@ défauts suspectés, c'étaient des questions qu'on n'avait jamais posées.
       raccourcis. Au passage, `PaletteCommand::ShowPreferences`
       disparaît : deux routes vers la même chose, dont une seule
       figurait au tableau.
-- [ ] **Les quatre bascules d'affichage** — barre d'outils, panneau,
-      barre de statut, console — n'ont toujours que la palette et une
-      case à cocher. Leur donner une touche demande d'abord de décider
-      comment une CASE À COCHER montre son raccourci : les trois autres
-      chemins l'écrivent à côté du libellé, et `ui.checkbox` n'a pas de
-      place prévue pour cela. C'est une question de dessin, pas de
-      câblage, et elle mérite son propre relevé.
+- [x] **Deux des quatre bascules d'affichage** — la console (`Ctrl+J`,
+      `Espace v c`) et le panneau latéral (`Ctrl+Alt+B`, `Espace v p`).
+      Pas les quatre : on règle la barre d'outils et la barre de statut
+      une fois, et leur donner une frappe, ce serait la retirer à
+      quelque chose qu'on fait tous les jours.
+      La question était de dessin — `ui.checkbox` n'a pas de
+      `shortcut_text`, et une infobulle en aurait fait les seules
+      entrées de menu dont le raccourci ne se lise pas sans survoler.
+      La réponse est dans les atomes d'egui 0.36 : un `Atom::grow` entre
+      le libellé et la frappe.
+      Deux choses à mesurer, et une seule saute aux yeux. Ce qu'on
+      voit : les frappes forment une COLONNE — « à droite du libellé »
+      ne suffit pas, sans l'atome chacune se colle à son texte et la
+      colonne se disloque de 101 px. Ce qu'on ne voit pas : un enfant
+      qui réclame toute la place dans un parent qui se dimensionne sur
+      ses enfants est la boucle la plus connue d'egui ; vingt images,
+      les huit dernières au même pixel.
+      Contrôle : `les_frappes_du_menu_affichage_s_alignent_sans_elargir_le_menu`,
+      éprouvé en retirant l'atome. Et
+      `les_bascules_d_affichage_vont_et_reviennent` : une bascule qui ne
+      rebascule pas est une porte à sens unique.
+      Au passage, « Affichage: Console » devient « Afficher/masquer la
+      console » dans la palette — elle était seule de son groupe à ne
+      pas le dire ainsi — et deux `PaletteCommand` de plus disparaissent
+      au profit des actions.
 
 ---
 
