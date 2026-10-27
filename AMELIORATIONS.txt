@@ -7820,3 +7820,35 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      « Sortie ». Le contrôle mesurait donc le bon code sur le mauvais
      écran et accusait à tort. Il repose l'onglet avant de mesurer, et
      le dit.
+
+9.39 [FAIT] UNE LISTE QUI TENAIT SE REPLIAIT QUAND MÊME
+     (27 octobre 2026)
+--------------------------------------------------------------------------------
+     Capture de « Chaînes lisibles » : le module annonce treize chaînes,
+     en montre onze et demie — la douzième coupée au milieu —, et laisse
+     deux cent cinquante pixels de vide dessous. On fait défiler treize
+     lignes dans un hublot, devant un écran libre.
+
+     `max_height(220.0)`, en dur. Le vidage du fichier avait le même
+     avec 320. Les deux datent du temps où ces modules s'empilaient dans
+     le panneau latéral, où brider chacun était la bonne réponse ; ils
+     vivent maintenant seuls dans la fenêtre d'analyse, qui leur donne
+     tout. Le chiffre est resté, la raison est partie.
+
+     La place offerte, donc, avec l'ancien chiffre pour PLANCHER : ces
+     modules se montrent encore dans des cadres courts, et un plafond
+     plus bas que 220 ne serait pas une amélioration.
+
+     CE QUE LE BANC NE DEMANDAIT PAS, et c'est le motif de la journée :
+     il vérifie depuis toujours qu'une liste ne DÉBORDE pas. Jamais
+     qu'elle OCCUPE ce qu'on lui donne. Les deux défauts sont
+     symétriques et un seul était gardé.
+
+     Le contrôle compare les adresses peintes au nombre que le module
+     ANNONCE lui-même — on ne recopie pas treize dans le test, il dépend
+     du binaire d'épreuve. Éprouvé en remettant le chiffre : dix sur
+     treize.
+
+     AU PASSAGE, un commentaire écrit deux fois : le même paragraphe de
+     douze lignes sur la largeur de l'ascenseur, dans `analysis_body_ui`,
+     avec deux fins différentes. Celui qui reste est le plus complet.

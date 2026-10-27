@@ -1361,18 +1361,7 @@ impl NamsdecApp {
                 // posait la seconde à mille pixels de la première,
                 // et l'on suivait la ligne du doigt. Ce que fait
                 // tout volet de détail.
-                //
-                // LA LARGEUR DE L'ASCENSEUR EN MOINS, et c'est la
-                // capture qui l'a dit : dans l'onglet, la zone centrale
-                // est plus étroite que la largeur de lecture, si bien
-                // que `lecture` valait toute la place — ascenseur
-                // vertical compris. Le texte se posait donc une dizaine
-                // de pixels trop large, se faisait couper à droite
-                // (« dan », « à ce ») et réclamait une barre
-                // HORIZONTALE pour trois caractères. Dans la fenêtre le
-                // défaut ne se voyait pas : elle est plus large que la
-                // largeur de lecture, et la soustraction y est sans
-                // effet.
+
                 //
                 // LA LARGEUR DE L'ASCENSEUR EN MOINS, et c'est la
                 // capture qui l'a dit : dans l'onglet, la zone centrale

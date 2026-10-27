@@ -2577,3 +2577,78 @@ fn un_listing_qui_tient_en_entier_ne_cache_pas_son_debut() {
         );
     }
 }
+
+/// Une liste qui tient dans la place qu'on lui laisse n'en cache aucune
+/// ligne.
+///
+/// Vu sur une capture : « Chaînes lisibles » annonçait treize chaînes et
+/// en montrait onze et demie, avec deux cent cinquante pixels de vide
+/// dessous. On faisait défiler treize lignes dans un hublot, devant un
+/// écran libre. La cause était un `max_height(220.0)` en dur, et le
+/// vidage du fichier avait le même avec 320.
+///
+/// Aucune mesure ne le demandait : le banc vérifie qu'une liste ne
+/// déborde pas, jamais qu'elle occupe ce qu'on lui donne.
+///
+/// Le relevé compte les ADRESSES peintes, et les compare au nombre que
+/// le module annonce lui-même — on ne recopie pas le chiffre ici, il
+/// dépend du binaire.
+#[test]
+fn une_liste_qui_tient_ne_cache_aucune_ligne() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp::default();
+    app.apply_theme(&ctx);
+    app.source = PROGRAMME_DU_BANC.to_owned();
+    app.do_assemble();
+    app.analysis_module = "strings".to_owned();
+    app.montrer_vue(VueCentrale::Analysis);
+
+    let (_, lignes) = ce_qui_est_écrit_sur(
+        &ctx,
+        &mut app,
+        None,
+        4,
+        egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1600.0, 1100.0),
+            )),
+            ..Default::default()
+        },
+    );
+    let peint: Vec<&str> = lignes.iter().map(|(t, _)| t.as_str()).collect();
+
+    // Ce que le module annonce : « 13 chaînes d'au moins quatre
+    // caractères ». On lit SON chiffre, on ne le recopie pas.
+    let annoncé = peint
+        .iter()
+        .find_map(|t| {
+            t.contains("chaînes")
+                .then(|| t.split_whitespace().next())
+                .flatten()
+                .and_then(|mot| mot.parse::<usize>().ok())
+        })
+        .expect("le module annonce combien de chaînes il a trouvées");
+    assert!(
+        annoncé > 8,
+        "le programme d'épreuve doit en porter assez pour que la \
+         question se pose : {annoncé}"
+    );
+
+    // Et ce qu'il montre : une adresse par chaîne, huit chiffres
+    // hexadécimaux, chacune dans sa propre étiquette.
+    let adresses = peint
+        .iter()
+        .filter(|t| t.len() == 8 && t.chars().all(|c| c.is_ascii_hexdigit()))
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(
+        adresses.len(),
+        annoncé,
+        "le module annonce {annoncé} chaînes et en montre {} — la liste \
+         se replie alors que la place ne manque pas : {adresses:?}",
+        adresses.len()
+    );
+}

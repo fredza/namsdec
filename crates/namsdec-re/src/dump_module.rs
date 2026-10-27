@@ -330,7 +330,11 @@ impl ReModule for DumpModule {
         let mut zone = egui::ScrollArea::vertical()
             .id_salt("dump_rows")
             .auto_shrink([false, false])
-            .max_height(320.0);
+            // Ce que la place offre, et non un chiffre — même défaut
+            // que la liste des chaînes : trois cent vingt pixels en dur
+            // laissaient le reste de la fenêtre vide. Le plancher garde
+            // l'ancien comportement là où la place manque.
+            .max_height(ui.available_height().max(320.0));
         if let Some(cible) = self.aller_à.take() {
             zone = zone.vertical_scroll_offset((cible / PAR_LIGNE) as f32 * hauteur);
         }

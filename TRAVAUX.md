@@ -119,6 +119,22 @@ défauts suspectés, c'étaient des questions qu'on n'avait jamais posées.
       Le remède : la part du bas REND ce qu'elle a demandé, et c'est ce
       chiffre-là qui borne le bandeau — `ui.available_height()` n'étant
       pas fiable après qu'un panneau s'est posé.
+- [x] **Une liste qui tenait se repliait quand même** — « Chaînes
+      lisibles » annonçait treize chaînes et en montrait onze et demie,
+      avec deux cent cinquante pixels de vide dessous : on faisait
+      défiler treize lignes dans un hublot, devant un écran libre.
+      `max_height(220.0)` en dur, et le vidage du fichier avait le même
+      avec 320. La place offerte, désormais, avec l'ancien chiffre pour
+      plancher — ces modules se montrent aussi dans des cadres courts.
+      Contrôle : `une_liste_qui_tient_ne_cache_aucune_ligne`, qui
+      compare les adresses PEINTES au nombre que le module annonce
+      lui-même — on ne recopie pas le chiffre, il dépend du binaire.
+      Éprouvé : 10 sur 13.
+      Le banc vérifiait qu'une liste ne déborde pas ; jamais qu'elle
+      occupe ce qu'on lui donne.
+- [x] **Un commentaire écrit deux fois** — le même paragraphe de douze
+      lignes, dans `analysis_body_ui`, avec deux fins différentes.
+      Retiré.
 - [x] **« Les deux commandes lancées » avant tout assemblage** — le
       panneau des diagnostics les montre dès l'ouverture, et c'est tout
       son intérêt : « et si je veux le faire sans namsdec ? » est la

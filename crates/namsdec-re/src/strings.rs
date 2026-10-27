@@ -245,9 +245,22 @@ impl ReModule for StringsModule {
                      a length. The cut is therefore in the code, not in the data — \
                      « used at » says where to go and read.",
                 ));
+                // CE QUE LA PLACE OFFRE, ET NON UN CHIFFRE.
+                //
+                // Deux cent vingt pixels en dur : la liste s'arrêtait à
+                // onze lignes et laissait deux cent cinquante pixels de
+                // vide dessous, dans une fenêtre qui en tenait quarante.
+                // On faisait défiler treize chaînes dans un hublot, devant
+                // un écran libre. Vu sur une capture — aucune mesure ne
+                // demandait « la liste occupe-t-elle la place qu'on lui
+                // laisse ? ».
+                //
+                // Le plancher garde l'ancien comportement là où la place
+                // manque : ce module se montre aussi dans des cadres
+                // courts.
                 egui::ScrollArea::vertical()
                     .id_salt("strings_literals_scroll")
-                    .max_height(220.0)
+                    .max_height(ui.available_height().max(220.0))
                     .show(ui, |ui| {
                         egui::Grid::new("strings_literals_grid")
                             .num_columns(3)
@@ -315,9 +328,22 @@ impl ReModule for StringsModule {
                 ctx.t("chaînes", "strings")
             )
         });
+        // CE QUE LA PLACE OFFRE, ET NON UN CHIFFRE.
+        //
+        // Deux cent vingt pixels en dur : la liste s'arrêtait à
+        // onze lignes et laissait deux cent cinquante pixels de
+        // vide dessous, dans une fenêtre qui en tenait quarante.
+        // On faisait défiler treize chaînes dans un hublot, devant
+        // un écran libre. Vu sur une capture — aucune mesure ne
+        // demandait « la liste occupe-t-elle la place qu'on lui
+        // laisse ? ».
+        //
+        // Le plancher garde l'ancien comportement là où la place
+        // manque : ce module se montre aussi dans des cadres
+        // courts.
         egui::ScrollArea::vertical()
             .id_salt("re_strings")
-            .max_height(220.0)
+            .max_height(ui.available_height().max(220.0))
             // Toute la largeur du panneau : sans cela, la zone se réduit
             // à la plus longue ligne *déjà* affichée, et les chaînes
             // suivantes se tronquent bien avant le bord.
