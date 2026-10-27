@@ -119,16 +119,28 @@ défauts suspectés, c'étaient des questions qu'on n'avait jamais posées.
       Le remède : la part du bas REND ce qu'elle a demandé, et c'est ce
       chiffre-là qui borne le bandeau — `ui.available_height()` n'étant
       pas fiable après qu'un panneau s'est posé.
-- [ ] **L'éditeur peint quatorze pixels sous sa zone** — troisième
-      maillon de la même chaîne, et il reste ouvert. Relevé à 800×520,
-      console ouverte sur Profil : zone de travail [0, 60]–[420, 205,8],
-      légende de chaleur de 205,8 à 232,8, et le numéro de ligne « 4 »
-      peint de 205,0 à 220,0.
-      **Le compte des panneaux est juste** — ce n'est pas le défaut
-      ci-dessus. C'est le contenu de l'éditeur qui dépasse son cadre.
-      La scène « console / Profile » reste donc hors du banc, avec la
-      raison écrite à l'endroit où on la retirerait ; elle y rentre le
-      jour où ce défaut-là tombe.
+- [x] **« Les deux commandes lancées » avant tout assemblage** — le
+      panneau des diagnostics les montre dès l'ouverture, et c'est tout
+      son intérêt : « et si je veux le faire sans namsdec ? » est la
+      bonne question. Il les annonçait au passé alors que rien n'avait
+      tourné. Au futur tant que rien n'est assemblé.
+      Vu sur une capture, et seulement parce que les onglets de la
+      console venaient d'entrer au banc : l'écran existait, personne ne
+      l'avait jamais regardé sans programme assemblé.
+- [x] **L'éditeur peignait quatorze pixels sous sa zone** — troisième
+      maillon de la même chaîne, et le plus simple une fois nommé.
+      Relevé à 800×520, console ouverte sur Profil : zone de travail
+      [0, 60]–[420, 205,8], légende de chaleur de 205,8 à 232,8, et le
+      numéro de ligne « 4 » peint de 205,0 à 220,0.
+      **Le compte des panneaux était juste** : ce n'était pas le défaut
+      ci-dessus. L'indice était dans le code, à six lignes de là —
+      toutes les vues de la rangée sont dans un `CentralPanel` « qui
+      borne ce qu'il contient et le rogne », SAUF l'éditeur, parce
+      qu'il « EST la zone centrale ». Vrai de sa place, faux de son
+      découpage : un `Ui` ordinaire garde celui de son parent, et rien
+      n'empêchait ce qu'on y peint de descendre sous le curseur.
+      Un panneau sans cadre pour lui aussi, et la scène
+      « console / Profile » rentre au banc.
 
 ---
 

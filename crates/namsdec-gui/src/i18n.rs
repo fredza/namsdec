@@ -1084,6 +1084,12 @@ pub struct Strings {
     pub loaded_tls: &'static str,
     pub loaded_others: &'static str,
     pub assemble_commands: &'static str,
+    /// La même annonce, AVANT tout assemblage. Les deux commandes sont
+    /// montrées dès l'ouverture — c'est leur intérêt, « et si je veux
+    /// le faire sans namsdec ? » —, mais dire « lancées » quand rien ne
+    /// l'a été est une petite fausseté, et le panneau des diagnostics
+    /// est le dernier endroit où en laisser une.
+    pub assemble_commands_future: &'static str,
     pub assemble_commands_copy: &'static str,
     pub assemble_commands_hint: &'static str,
     pub assemble_commands_copied: &'static str,
@@ -2016,6 +2022,7 @@ déclenchera jamais.",
     why_nothing_to_close: "Aucun fichier ouvert : il n'y a rien à fermer.",
     binary_not_linked: "Objet non lié : ses sections n'ont pas encore d'adresse et il n'a pas de point d'entrée. Il se lit et s'analyse, mais ne s'exécute pas — liez-le : ld -Ttext 0x400000 -o programme fichier.o",
     assemble_commands: "Les deux commandes lancées :",
+    assemble_commands_future: "Les deux commandes qui seront lancées :",
     assemble_commands_copy: "Copier",
     assemble_commands_hint: "De quoi refaire l'assemblage dans un terminal, sans namsdec.",
     assemble_commands_copied: "Commandes copiées",
@@ -2916,6 +2923,7 @@ other is there to compare — that is how gaps and clashes become visible.",
     why_nothing_to_close: "No file open: there is nothing to close.",
     binary_not_linked: "Unlinked object: its sections have no address yet and it has no entry point. It reads and analyses, but does not run — link it: ld -Ttext 0x400000 -o program file.o",
     assemble_commands: "The two commands run:",
+    assemble_commands_future: "The two commands that will be run:",
     assemble_commands_copy: "Copy",
     assemble_commands_hint: "What it takes to redo the assembly in a terminal, without namsdec.",
     assemble_commands_copied: "Commands copied",

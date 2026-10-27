@@ -1575,3 +1575,72 @@ hlt
         "« vert » doit porter le vert du thème :\n{galettes:?}"
     );
 }
+
+/// Le panneau des diagnostics ne dit « lancées » que si elles l'ont été.
+///
+/// Il montre les deux commandes — `nasm` puis `ld` — dès l'ouverture, et
+/// c'est tout son intérêt : « et si je veux le faire sans namsdec ? »
+/// est la bonne question, et un atelier d'apprentissage y répond. Mais
+/// il les annonçait au passé avant le premier assemblage, alors que rien
+/// n'avait tourné.
+///
+/// Vu sur une capture, et seulement parce que les onglets de la console
+/// venaient d'entrer au banc : l'écran existait, personne ne l'avait
+/// jamais regardé sans programme assemblé.
+#[test]
+fn les_commandes_ne_sont_dites_lancees_que_si_elles_l_ont_ete() {
+    let s = strings(Lang::Fr);
+    assert_ne!(
+        s.assemble_commands, s.assemble_commands_future,
+        "les deux formes doivent différer, sinon la distinction ne sert à rien"
+    );
+
+    // Rien d'assemblé : au futur.
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp {
+        show_console: true,
+        console_tab: ConsoleTab::Diagnostics,
+        ..Default::default()
+    };
+    app.apply_theme(&ctx);
+    assert!(app.assemble_state.is_none());
+    let (_, lignes) = ce_qui_est_écrit(&ctx, &mut app, None, 3);
+    let peint: Vec<&str> = lignes.iter().map(|(t, _)| t.as_str()).collect();
+    assert!(
+        peint.contains(&s.assemble_commands_future),
+        "avant d'assembler, les commandes s'annoncent au futur : {peint:?}"
+    );
+    assert!(
+        !peint.contains(&s.assemble_commands),
+        "et surtout pas au passé : {peint:?}"
+    );
+
+    // Assemblé : au passé.
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    app.source = PROGRAMME_DU_BANC.to_owned();
+    app.do_assemble();
+    assert!(app.assemble_state.is_some(), "le programme est assemblé");
+    // Assembler ramène la console sur « Sortie » : on revient à
+    // l'onglet qu'on mesure. Sans cela, on mesurait un écran qui ne
+    // porte pas le sujet — et le contrôle accusait le bon code.
+    app.console_tab = ConsoleTab::Diagnostics;
+    let (_, lignes) = ce_qui_est_écrit(&ctx, &mut app, None, 3);
+    let peint: Vec<&str> = lignes.iter().map(|(t, _)| t.as_str()).collect();
+    assert!(
+        peint.contains(&s.assemble_commands),
+        "une fois lancées, elles se disent au passé : {peint:?}"
+    );
+    assert!(
+        !peint.contains(&s.assemble_commands_future),
+        "et plus au futur : {peint:?}"
+    );
+
+    // Les deux langues portent les deux formes.
+    for lang in [Lang::Fr, Lang::En] {
+        let s = strings(lang);
+        assert!(!s.assemble_commands.trim().is_empty());
+        assert!(!s.assemble_commands_future.trim().is_empty());
+    }
+}

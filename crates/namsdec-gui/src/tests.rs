@@ -1020,22 +1020,6 @@ fn scènes() -> Vec<Scène> {
         // cherchait des panneaux mal présentés, on a trouvé des panneaux
         // qu'on ne regardait pas du tout.
         for onglet in ConsoleTab::ALL {
-            // PROFIL RESTE DEHORS, ET C'EST ÉCRIT PLUTÔT QUE TU.
-            //
-            // Il est le plus haut des trois, et à 800×520 il met le
-            // reste à l'étroit au point qu'un défaut antérieur se
-            // voit : l'éditeur peint quatorze pixels sous sa zone,
-            // par-dessus la légende de chaleur. Relevé : zone de
-            // travail [0, 60]–[420, 205,8], légende de 205,8 à 232,8,
-            // et le numéro de ligne « 4 » peint de 205,0 à 220,0.
-            //
-            // Le compte des panneaux est JUSTE ; c'est le contenu de
-            // l'éditeur qui dépasse. Ce n'est pas le même défaut que
-            // celui du panneau latéral corrigé ci-contre, et le
-            // corriger demande sa propre séance — voir TRAVAUX.
-            if onglet == ConsoleTab::Profile {
-                continue;
-            }
             scènes.push((
                 format!("console / {onglet:?}{suffixe}"),
                 None,

@@ -488,8 +488,17 @@ impl NamsdecApp {
             .map(|nom| nom.to_string_lossy().into_owned())
             .unwrap_or_else(|| "programme".to_owned());
         let commandes = namsdec_asm::build_commands(&format!("{fichier}.asm"), &fichier, BASE_ADDR);
+        // AU PASSÉ SEULEMENT SI ELLES L'ONT ÉTÉ. Le panneau les montre
+        // dès l'ouverture, et c'est tout son intérêt ; mais « lancées »
+        // avant le premier assemblage est une petite fausseté, et c'est
+        // le dernier endroit où en laisser une — on vient y lire ce que
+        // la machine a vraiment fait.
+        let annonce = match self.assemble_state {
+            Some(_) => s.assemble_commands,
+            None => s.assemble_commands_future,
+        };
         ui.horizontal_wrapped(|ui| {
-            ui.colored_label(theme.dim, s.assemble_commands);
+            ui.colored_label(theme.dim, annonce);
             if small_framed_button(ui, theme, s.assemble_commands_copy)
                 .on_hover_text(s.assemble_commands_hint)
                 .clicked()

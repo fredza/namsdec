@@ -7771,8 +7771,52 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      panneaux est JUSTE cette fois — ce n'est pas le défaut ci-dessus,
      c'est le contenu de l'éditeur qui dépasse son cadre.
 
-     La scène « console / Profile » reste donc hors du banc, et la
-     raison est écrite À L'ENDROIT OÙ ON LA RETIRERAIT, avec la mesure.
-     Elle y rentre le jour où ce défaut-là tombe. Laisser un contrôle au
-     rouge n'est pas une option ; laisser une trouvaille sans trace non
-     plus.
+     [FERMÉ le même jour.] L'indice était dans le code, à six lignes
+     de là : toutes les vues de la rangée sont posées dans un
+     `CentralPanel`, « un panneau, et non un simple cadre : un panneau
+     borne ce qu'il contient à la place qui reste et le rogne » — et
+     l'éditeur en est exclu, parce qu'il « EST la zone centrale ».
+
+     C'est vrai de sa PLACE et faux de son DÉCOUPAGE. Un `Ui` ordinaire
+     garde celui de son parent : le curseur s'arrête bien au-dessus de
+     la légende, mais rien n'empêche ce qu'on y peint de descendre
+     dessous. Un panneau sans cadre pour l'éditeur aussi — trois lignes
+     —, et la scène « console / Profile » rentre au banc.
+
+     LA LEÇON EST LA MÊME QUE CELLE DU COMMENTAIRE QUI L'A DONNÉE, et
+     elle avait été écrite pour les autres vues sans qu'on la retourne
+     vers celle-ci : **un curseur qui s'arrête n'est pas un contenu qui
+     s'arrête**. Arrêter le curseur est ce que fait un panneau pour son
+     voisin ; rogner le contenu est ce qu'il fait pour lui-même. Les
+     deux moitiés du même piège, et il a fallu les rencontrer
+     séparément.
+
+9.38 [FAIT] « LANCÉES » AVANT D'AVOIR ÉTÉ LANCÉES  (27 octobre 2026)
+--------------------------------------------------------------------------------
+     Première capture des onglets de la console — ils venaient d'entrer
+     au banc —, et l'onglet Diagnostics annonce, sur une application
+     qu'on vient d'ouvrir :
+
+         Les deux commandes lancées :   [Copier]
+         nasm -f elf64 -o programme.o programme.asm
+         ld -Ttext 0x400000 -o programme programme.o
+
+     Rien n'a été lancé. Le panneau montre les commandes dès
+     l'ouverture, et c'est tout son intérêt — « et si je veux le faire
+     sans namsdec ? » est la bonne question, et un atelier
+     d'apprentissage y répond au lieu de garder son tour de main pour
+     lui. Mais le PASSÉ est faux tant que rien n'a tourné, et le
+     panneau des diagnostics est le dernier endroit où laisser une
+     fausseté : on vient y lire ce que la machine a vraiment fait.
+
+     Deux formes, et l'état de l'assemblage choisit. Trois lignes.
+
+     L'ÉCRAN EXISTAIT DEPUIS TOUJOURS ; personne ne l'avait jamais
+     regardé sans programme assemblé. C'est la même leçon que les états
+     vides : on développe avec un binaire chargé, et le premier écran
+     du nouveau venu est celui qu'on ne voit jamais.
+
+     UN PIÈGE DE CONTRÔLE, AU PASSAGE : assembler ramène la console sur
+     « Sortie ». Le contrôle mesurait donc le bon code sur le mauvais
+     écran et accusait à tort. Il repose l'onglet avant de mesurer, et
+     le dit.

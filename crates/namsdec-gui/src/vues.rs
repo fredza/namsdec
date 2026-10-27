@@ -222,7 +222,25 @@ impl NamsdecApp {
     /// Ce que la zone centrale peint : la vue choisie dans la rangée.
     pub(crate) fn vue_centrale_ui(&mut self, ui: &mut egui::Ui) {
         if self.vue_centrale == VueCentrale::Source {
-            self.editor_ui(ui);
+            // UN PANNEAU POUR LUI AUSSI, et sans cadre.
+            //
+            // Il « EST la zone centrale », disait-on, et c'est vrai de
+            // sa PLACE ; ce n'était pas vrai de son DÉCOUPAGE. Un Ui
+            // ordinaire garde le découpage de son parent : le curseur
+            // s'arrête bien au-dessus de la légende de chaleur, mais
+            // rien n'empêche ce qu'on y peint de descendre dessous.
+            //
+            // Relevé à 800×520, console ouverte sur Profil : zone de
+            // travail [0, 60]–[420, 205,8], légende de 205,8 à 232,8,
+            // et le numéro de ligne « 4 » peint de 205,0 à 220,0 —
+            // quatorze pixels par-dessus la légende.
+            //
+            // `Frame::NONE` : la marge des autres vues n'a pas lieu
+            // d'être ici, l'éditeur ayant sa gouttière pour écarter le
+            // texte du bord.
+            egui::CentralPanel::default()
+                .frame(egui::Frame::NONE)
+                .show(ui, |ui| self.editor_ui(ui));
             return;
         }
         // UN PANNEAU, et non un simple cadre : un panneau borne ce
