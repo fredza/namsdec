@@ -439,6 +439,14 @@ pub struct Strings {
     /// Le déballage a réussi, et le fichier est ouvert à côté.
     pub upx_unpacked: &'static str,
     pub decompiler_none_installed: &'static str,
+    /// Ce qu'est un décompilateur, et où l'on en branche un. L'état
+    /// vide de la vue ne disait QUE la syntaxe du fichier de
+    /// déclaration : une notice de configuration là où l'on attend
+    /// « qu'est-ce que c'est, et que faire ? ».
+    pub decompiler_empty_hint: &'static str,
+    /// Le titre de la notice technique, sous l'état vide : elle reste,
+    /// elle n'est plus la première chose qu'on lit.
+    pub decompiler_declare_your_own: &'static str,
     pub decompiler_install_hint: &'static str,
     pub decompiler_example: &'static str,
     pub flow_title: &'static str,
@@ -1530,6 +1538,8 @@ déclenchera jamais.",
     upx_working: "upx travaille",
     upx_unpacked: "Original déballé, et ouvert dans un onglet à côté.",
     decompiler_none_installed: "Aucun décompilateur installé.",
+    decompiler_empty_hint: "Un décompilateur relit le code machine et en rend quelque chose qui ressemble à du C — des si, des boucles, des variables, là où le listing n'a que des registres. namsdec n'en embarque aucun : il branche celui que vous avez. Préférences › Outils dit lesquels il reconnaît.",
+    decompiler_declare_your_own: "Déclarer le vôtre",
     decompiler_install_hint: "Un outil se décrit par un fichier JSON déposé dans :",
     decompiler_example: "Deux exemples, à adapter à ce que vous avez :",
     flow_title: "Déroulement du programme",
@@ -2428,6 +2438,8 @@ other is there to compare — that is how gaps and clashes become visible.",
     upx_working: "upx is working",
     upx_unpacked: "Original unpacked, and opened in a tab beside this one.",
     decompiler_none_installed: "No decompiler installed.",
+    decompiler_empty_hint: "A decompiler reads the machine code back and renders something that looks like C — ifs, loops, variables, where the listing only has registers. namsdec ships none: it plugs in the one you have. Preferences › Tools says which ones it knows.",
+    decompiler_declare_your_own: "Declare your own",
     decompiler_install_hint: "A tool is described by a JSON file dropped into:",
     decompiler_example: "Two examples, to adapt to what you have:",
     flow_title: "Program flow",

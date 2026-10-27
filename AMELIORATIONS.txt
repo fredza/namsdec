@@ -7660,3 +7660,57 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      questions ; c'est au code de répondre, et ici il répondait. Un
      relevé qui ne lit pas le code avant de corriger aurait défait une
      hiérarchie voulue.
+
+9.36 [FAIT] LA DÉCOMPILATION OUVRAIT SUR UN FICHIER JSON
+     (27 octobre 2026)
+--------------------------------------------------------------------------------
+     Suite de la revue sur captures. La vue de décompilation — l'un des
+     quatre axes que namsdec revendique — s'ouvrait, sans outil
+     installé, sur DEUX BLOCS DE JSON en chasse fixe, collés en haut à
+     gauche. Pas un mot sur ce qu'est un décompilateur, ni sur ce qu'il
+     faut faire. Une notice de configuration à l'endroit où l'on attend
+     « qu'est-ce que c'est, et que faire ? ».
+
+     C'est le même défaut que l'onglet RE de la veille, et le même
+     remède : l'état vide de la maison — ce qui manque, ce que c'est, et
+     la porte. La porte mène à Préférences › Outils, là où se déclarent
+     les décompilateurs, et non à la page générale.
+
+     LA NOTICE NE DISPARAÎT PAS. On branche son propre outil avec, et
+     c'est une bonne chose que namsdec l'enseigne : il n'embarque aucun
+     décompilateur, et il faut bien dire comment on en ajoute un. Elle
+     passe sous l'état vide, derrière un titre — « Déclarer le vôtre ».
+     Un contrôle exige les deux : l'état vide ET la notice.
+
+     ET UNE BORNE QUI MANQUAIT À TOUS LES ÉTATS VIDES. En regardant le
+     résultat, la phrase explicative courait d'un bord à l'autre de la
+     vue : mille soixante et un pixels sur une seule ligne. `empty_state`
+     prenait la place offerte, quelle qu'elle soit. Trois cents pixels
+     dans le panneau latéral, c'est juste ; mille deux cents dans une
+     vue de la rangée, c'est illisible — un œil qui revient à la ligne
+     perd son rang au-delà d'une quinzaine de mots, et c'est la raison
+     pour laquelle un livre n'est pas composé sur la largeur de sa page.
+
+     Bornée à 560 px et centrée dedans. Le minimum garde les panneaux
+     étroits inchangés : ils offrent moins que la borne, et c'est leur
+     largeur qui commande. Les dix-neuf états vides du programme en
+     profitent d'un seul changement.
+
+     DEUX PISTES EXAMINÉES ET ÉCARTÉES, et il faut les dire : un faux
+     positif coûte plus cher qu'il n'informe.
+
+     · Le vidage mémoire du panneau latéral perd sa colonne de texte au
+       bord droit. C'est VOULU — `ScrollArea::both`, et le commentaire
+       qui l'explique date du 20 octobre : « seize octets et leur
+       transcription ne doivent pas se replier à la largeur du
+       panneau ». La décision est prise et elle est écrite ; on ne la
+       défait pas au vu d'une image. Si elle doit changer un jour, ce
+       sera pour un choix d'octets par ligne comme celui de l'éditeur
+       binaire, et c'est un autre travail.
+
+     · « NASM 3.02 » paraissait déborder la fenêtre de 53 px au relevé.
+       Non : c'est la largeur de la GALLEY dans une rangée alignée à
+       droite, pas celle de l'encre. L'image montre le texte entier,
+       pastille comprise. Un relevé qui mesure la galley au lieu de
+       l'encre accuse à tort — c'est la première des cinq précautions du
+       skill, et je l'ai oubliée le temps d'un diagnostic.

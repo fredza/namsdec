@@ -3989,3 +3989,77 @@ fn aucun_compte_a_un_ne_porte_un_pluriel() {
         fautifs.iter().cloned().collect::<Vec<_>>().join("\n  ")
     );
 }
+
+/// Un état vide ne s'étire jamais sur toute la largeur d'un écran.
+///
+/// Il prenait la place offerte, quelle qu'elle soit. Dans le panneau
+/// latéral — trois cents pixels — c'est juste ; dans une vue de la
+/// rangée — mille deux cents —, la phrase qui explique ce qu'est un
+/// décompilateur s'étirait d'un bord à l'autre sur une seule ligne. Un
+/// œil qui revient à la ligne perd son rang au-delà d'une quinzaine de
+/// mots : c'est la raison pour laquelle un livre n'est pas composé sur
+/// la largeur de sa page.
+///
+/// Le relevé mesure l'ENCRE des phrases d'état vide, dans la vue la
+/// plus large que l'application propose.
+#[test]
+fn un_etat_vide_tient_dans_une_largeur_de_lecture() {
+    // Deux vues larges, et deux états vides différents : celui qui
+    // attend un binaire, celui qui attend un décompilateur.
+    for (nom, poser) in [
+        (
+            "décompilation",
+            (|app: &mut NamsdecApp| {
+                app.show_decompiler_module = true;
+                app.montrer_vue(VueCentrale::Decompiler);
+            }) as fn(&mut NamsdecApp),
+        ),
+        ("analyse", |app| {
+            app.montrer_vue(VueCentrale::Analysis);
+        }),
+    ] {
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp::default();
+        app.apply_theme(&ctx);
+        // Panneau et console repliés : la vue prend alors toute la
+        // largeur, et c'est le cas qui déborde.
+        app.show_sidebar = false;
+        app.show_console = false;
+        poser(&mut app);
+
+        let (_, lignes) = ce_qui_est_écrit_sur(
+            &ctx,
+            &mut app,
+            None,
+            3,
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1900.0, 1000.0),
+                )),
+                ..Default::default()
+            },
+        );
+        // Une phrase, et non un titre ni une valeur : au moins six mots.
+        let longues: Vec<&(String, egui::Rect)> = lignes
+            .iter()
+            .filter(|(t, _)| t.split_whitespace().count() >= 6)
+            .collect();
+        assert!(
+            !longues.is_empty(),
+            "« {nom} » n'écrit aucune phrase — le contrôle ne mesure rien"
+        );
+        const LARGEUR_DE_LECTURE: f32 = 560.0;
+        let débordent: Vec<String> = longues
+            .iter()
+            .filter(|(_, r)| r.width() > LARGEUR_DE_LECTURE)
+            .map(|(t, r)| format!("{:.0} px — « {t} »", r.width()))
+            .collect();
+        assert!(
+            débordent.is_empty(),
+            "« {nom} » : {} phrase(s) plus larges que {LARGEUR_DE_LECTURE:.0} px :\n  {}",
+            débordent.len(),
+            débordent.join("\n  ")
+        );
+    }
+}

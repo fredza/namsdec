@@ -514,7 +514,10 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "mènent aux mêmes vues : ils choisissent l'onglet. Le bouton de l'onglet RE du "
          "panneau latéral, « Analyse du binaire… », fait de même. Tant qu'il n'y a rien à "
          "lire, cet onglet <b>dit ce qu'il est</b> plutôt que de montrer un bouton éteint : "
-         "assemblez votre programme, ou ouvrez un binaire que vous n'avez pas écrit."),
+         "assemblez votre programme, ou ouvrez un binaire que vous n'avez pas écrit. La vue "
+         "<b>Décompilation</b> fait de même quand aucun décompilateur n'est branché : elle "
+         "dit ce qu'un décompilateur fait, mène à Préférences › Outils, et garde en dessous "
+         "la notice qui explique comment déclarer le vôtre."),
         ("p",
          "Le bouton <b>Détacher</b>, en haut à droite de la rangée, sort la vue active "
          "dans une fenêtre à elle. C'est ce qu'il faut pour lire la source et le "

@@ -99,6 +99,44 @@ défauts suspectés, c'étaient des questions qu'on n'avait jamais posées.
 
 ---
 
+## 0 septdecies. La décompilation se présente enfin (A 9.36)
+
+- [x] **La vue de décompilation ouvrait sur une notice de
+      configuration** — deux blocs de JSON en chasse fixe, collés en
+      haut à gauche, sans un mot sur ce qu'est un décompilateur ni sur
+      ce qu'il faut faire. Le même défaut que l'onglet RE, vu sur la
+      même planche de captures, et dans l'axe que namsdec revendique.
+      Elle se présente maintenant — ce que fait un décompilateur, que
+      namsdec n'en embarque aucun, et où l'on branche le sien — avec le
+      bouton qui mène à Préférences › Outils. La notice reste, sous son
+      propre titre : on branche son outil avec, et c'est une bonne chose
+      que namsdec l'enseigne. Elle n'est plus la première chose qu'on
+      lit.
+- [x] **Un état vide s'étirait sur toute la largeur de l'écran** — il
+      prenait la place offerte, quelle qu'elle soit. Trois cents pixels
+      dans le panneau : juste. Mille deux cents dans une vue de la
+      rangée : la phrase courait d'un bord à l'autre sur une seule
+      ligne. Borné à 560 px et centré dedans ; les panneaux étroits ne
+      bougent pas, puisqu'ils offrent moins. Les dix-neuf états vides en
+      profitent d'un coup.
+      Contrôle : `un_etat_vide_tient_dans_une_largeur_de_lecture`,
+      éprouvé en retirant la borne — 1 061 px.
+
+**Deux pistes examinées et écartées**, parce qu'un faux positif coûte
+plus cher qu'il n'informe :
+
+- le vidage mémoire du panneau perd sa colonne de texte au bord droit.
+  C'est **voulu** : `ScrollArea::both`, et le commentaire date du
+  20 octobre — « seize octets et leur transcription ne doivent pas se
+  replier à la largeur du panneau ». La décision est prise, elle est
+  écrite, on ne la défait pas au vu d'une image.
+- « NASM 3.02 » paraissait déborder la fenêtre de 53 px au relevé. Non :
+  c'est la largeur de la GALLEY dans une rangée alignée à droite, pas
+  celle de l'encre. L'image montre le texte entier. Un relevé qui
+  mesure la galley au lieu de l'encre accuse à tort.
+
+---
+
 ## 0 sexdecies. Cinq défauts que seule l'image pouvait montrer (A 9.35)
 
 Première revue menée sur les captures, maintenant qu'elles existent.

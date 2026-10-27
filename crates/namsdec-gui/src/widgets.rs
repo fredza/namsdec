@@ -396,7 +396,22 @@ pub(crate) fn empty_state(
     // Toute la largeur, et le texte replié dedans : centrer une phrase
     // longue sans la replier la ferait déborder du panneau.
     ui.vertical_centered(|ui| {
-        ui.set_max_width(ui.available_width() - 16.0);
+        // BORNÉ À UNE LARGEUR DE LECTURE, et centré dedans.
+        //
+        // L'état vide prenait toute la place offerte. Dans le panneau
+        // latéral, trois cents pixels : parfait. Dans une vue de la
+        // rangée, mille deux cents — et la phrase qui explique ce
+        // qu'est un décompilateur s'étirait sur une seule ligne d'un
+        // bout à l'autre de l'écran. Un œil qui revient à la ligne
+        // perd son rang au-delà d'une quinzaine de mots ; c'est la
+        // raison pour laquelle un livre n'est pas composé sur la
+        // largeur de sa page.
+        //
+        // Le minimum garde les panneaux étroits inchangés : ils
+        // offrent moins que cette borne, et c'est leur largeur qui
+        // commande.
+        const LARGEUR_DE_LECTURE: f32 = 560.0;
+        ui.set_max_width(ui.available_width().min(LARGEUR_DE_LECTURE) - 16.0);
         ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
         ui.colored_label(theme.text, phrase);
         if let Some(détail) = détail {

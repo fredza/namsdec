@@ -1206,7 +1206,33 @@ impl NamsdecApp {
                 760.0
             });
             if self.decompilers.is_empty() {
-                ui.colored_label(theme.warn, s.decompiler_none_installed);
+                // L'ÉTAT VIDE D'ABORD, LA NOTICE ENSUITE.
+                //
+                // La vue n'ouvrait que sur la syntaxe du fichier de
+                // déclaration : deux blocs de JSON en chasse fixe, collés
+                // en haut à gauche. Une notice de configuration là où
+                // l'on attend « qu'est-ce que c'est, et que faire ? ».
+                // Vu sur une capture, et c'est le même défaut que
+                // l'onglet RE : un panneau qui ne se présente pas.
+                //
+                // La notice ne disparaît pas — on branche son propre
+                // outil avec, et c'est une bonne chose que namsdec
+                // l'enseigne. Elle n'est simplement plus la première
+                // chose qu'on lit.
+                let ouvrir = empty_state(
+                    ui,
+                    theme,
+                    s.decompiler_none_installed,
+                    Some(s.decompiler_empty_hint),
+                    Some(s.file_preferences),
+                );
+                if ouvrir {
+                    self.open_preferences();
+                    self.preferences_tab = PreferencesTab::Tools;
+                }
+                ui.separator();
+                ui.add_space(6.0);
+                ui.colored_label(theme.text, s.decompiler_declare_your_own);
                 ui.add_space(4.0);
                 ui.colored_label(theme.dim, s.decompiler_install_hint);
                 if let Some(dir) = decompilers_dir() {

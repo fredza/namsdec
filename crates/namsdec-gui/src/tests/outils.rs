@@ -2378,3 +2378,66 @@ fn a_tool_panel_really_runs_its_tool_and_shows_the_output() {
         "la barre de recherche paraît avec la sortie"
     );
 }
+
+/// Sans décompilateur, la vue se présente avant de donner sa notice.
+///
+/// Elle ouvrait sur la syntaxe du fichier de déclaration : deux blocs de
+/// JSON en chasse fixe, collés en haut à gauche, sans un mot sur ce
+/// qu'est un décompilateur ni sur ce qu'il faut faire. Une notice de
+/// configuration là où l'on attend « qu'est-ce que c'est, et que
+/// faire ? » — le même défaut que l'onglet RE, vu sur la même planche
+/// de captures.
+///
+/// La notice reste : on branche son propre outil avec, et c'est une
+/// bonne chose que namsdec l'enseigne. Elle n'est plus la première
+/// chose qu'on lit.
+#[test]
+fn sans_decompilateur_la_vue_se_presente_avant_de_donner_sa_notice() {
+    let s = strings(Lang::Fr);
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp {
+        show_decompiler_module: true,
+        ..Default::default()
+    };
+    app.apply_theme(&ctx);
+    app.montrer_vue(VueCentrale::Decompiler);
+    assert!(
+        app.decompilers.is_empty(),
+        "la scène suppose qu'aucun décompilateur n'est déclaré"
+    );
+
+    let (_, lignes) = ce_qui_est_écrit(&ctx, &mut app, None, 3);
+    let peint: Vec<&str> = lignes.iter().map(|(t, _)| t.as_str()).collect();
+    let dit = |quoi: &str| peint.iter().any(|t| t.contains(quoi));
+
+    assert!(
+        dit(s.decompiler_none_installed),
+        "ce qui manque : {peint:?}"
+    );
+    assert!(
+        dit(s.decompiler_empty_hint),
+        "ce qu'est un décompilateur, et où en brancher un : {peint:?}"
+    );
+    assert!(
+        dit(s.file_preferences),
+        "et la porte qui y mène : {peint:?}"
+    );
+    // La notice technique est TOUJOURS là, sous l'état vide.
+    assert!(
+        dit(s.decompiler_declare_your_own) && dit(s.decompiler_install_hint),
+        "la notice ne disparaît pas, elle passe dessous : {peint:?}"
+    );
+
+    // Et la porte mène aux outils, là où se déclarent les
+    // décompilateurs — et non à la page générale. C'est le code de la
+    // vue qui le dit : on lit la ligne qui suit l'ouverture.
+    let source = include_str!("../tools.rs");
+    let i = source
+        .find("self.open_preferences();")
+        .expect("la vue ouvre les préférences");
+    assert!(
+        source[i..i + 200].contains("PreferencesTab::Tools"),
+        "elle doit ouvrir sur la page des outils :\n{}",
+        &source[i..i + 200]
+    );
+}
