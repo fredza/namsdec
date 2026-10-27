@@ -101,3 +101,29 @@ Avant d'inscrire un défaut, **trace l'appel jusqu'au bout**. Un « bug »
 récent — « l'analyse reste périmée après un patch » — n'existait pas :
 la fonction soupçonnée déléguait à une autre qui faisait le travail. Un
 faux positif dans le registre coûte plus qu'il n'informe.
+
+## Voir l'interface sans écran
+
+Mesurer ce qui est peint attrape beaucoup, mais **une mesure ne répond
+qu'aux questions qu'on lui pose**. Il faut aussi regarder. Or les écrans
+qui n'apparaissent qu'au clavier — la palette de commandes, le panneau
+des suites d'une séquence — ne se capturent pas sous Wayland : XTEST
+n'atteint pas la fenêtre XWayland, et GNOME ne donne pas le focus à une
+fenêtre qu'on vient de lancer.
+
+D'où ceci, qui ne demande ni écran, ni carte graphique, ni droits :
+
+```sh
+cargo test -p namsdec-gui -- --ignored --nocapture captures_de_toutes_les_scenes
+```
+
+Chaque scène du banc est rendue en PNG dans `target/captures/` —
+une centaine d'images en une dizaine de secondes. Le rendu passe par
+`egui_kittest` et wgpu sur **lavapipe** (Vulkan logiciel) ; aucune de ces
+dépendances n'entre dans le programme livré, elles sont en
+`dev-dependencies`.
+
+Et cela paie : le tri du panneau des suites rangeait `/` entre `s` et
+`u` — parce qu'il portait sur `Key::name()`, où la barre oblique
+s'appelle « Slash ». Aucune mesure ne l'avait demandé. **L'image l'a
+montré en une seconde.**

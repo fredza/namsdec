@@ -33,7 +33,19 @@ egui = "0.36"
 eframe = { version = "0.36", default-features = false, features = ["default_fonts", "glow", "links", "persistence", "wayland", "x11"] }
 egui_code_editor = "0.4"
 # À l'essai : voir le contrôle `kittest_*` de namsdec-gui.
-egui_kittest = "0.36"
+# `wgpu` + `snapshot` : de quoi RENDRE une image d'une scène, et non
+# seulement la mesurer. Sans cela, les écrans qui n'apparaissent qu'au
+# clavier — la palette, les suites d'une séquence — ne peuvent pas être
+# regardés du tout : sous Wayland, l'injection de touches par XTEST
+# n'atteint pas la fenêtre, et GNOME ne donne pas le focus à une fenêtre
+# qu'on vient de lancer. Le rendu passe par lavapipe (Vulkan logiciel),
+# donc sans écran, sans carte graphique et sans droits.
+#
+# En dev-dependency uniquement : rien de tout cela n'entre dans le
+# programme livré.
+egui_kittest = { version = "0.36", features = ["wgpu", "snapshot"] }
+# Pour écrire les images rendues. Déjà tirée par `egui_kittest`.
+image = { version = "0.25", default-features = false, features = ["png"] }
 arboard = "3"
 rfd = "0.17"
 # `gas` en plus de `nasm` : la syntaxe du système — celle de gdb, objdump

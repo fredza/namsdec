@@ -37,3 +37,4 @@ tempfile.workspace = true
 
 [dev-dependencies]
 egui_kittest.workspace = true
+image.workspace = true

@@ -1727,3 +1727,44 @@ fn le_panneau_des_suites_reste_au_dessus_des_barres_du_bas() {
         );
     }
 }
+
+/// Les suites se rangent dans l'ordre où elles s'écrivent.
+///
+/// Trouvé en REGARDANT la capture, et par rien d'autre : le tri portait
+/// sur `Key::name()`, où la barre oblique s'appelle « Slash » — elle se
+/// rangeait donc entre `s` et `u`, au milieu des lettres, alors qu'on la
+/// voit écrite `/`. Aucune mesure ne l'avait demandé, et une colonne
+/// dont l'ordre ne se devine pas se relit ligne à ligne au lieu de se
+/// parcourir.
+#[test]
+fn les_suites_se_rangent_dans_l_ordre_ou_elles_s_ecrivent() {
+    let jeu = KeyBindings::default();
+    let suites = keybindings::continuations(&jeu, &[egui::Key::Space]);
+    let écrites: Vec<String> = suites
+        .iter()
+        .map(|(reste, _)| keybindings::keys_display(reste, true))
+        .collect();
+
+    let mut rangées = écrites.clone();
+    rangées.sort();
+    assert_eq!(
+        écrites, rangées,
+        "la colonne doit se parcourir dans l'ordre où elle s'écrit"
+    );
+    // Et le cas qui l'a révélé : la ponctuation ne se glisse pas entre
+    // deux lettres.
+    let première_lettre = écrites
+        .iter()
+        .position(|t| t.starts_with(|c: char| c.is_ascii_alphabetic()))
+        .expect("il y a des lettres");
+    let dernière_ponctuation = écrites
+        .iter()
+        .rposition(|t| !t.starts_with(|c: char| c.is_ascii_alphabetic()));
+    if let Some(fin) = dernière_ponctuation {
+        assert!(
+            fin < première_lettre,
+            "« {} » est rangée au milieu des lettres : {écrites:?}",
+            écrites[fin]
+        );
+    }
+}

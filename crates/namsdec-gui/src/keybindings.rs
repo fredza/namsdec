@@ -1000,7 +1000,18 @@ pub fn continuations(bindings: &KeyBindings, pending: &[Key]) -> Vec<(Vec<Key>, 
             _ => None,
         })
         .collect();
-    suites.sort_by(|(a, _), (b, _)| a.iter().map(|k| k.name()).cmp(b.iter().map(|k| k.name())));
+    // TRIÉ SUR CE QUI S'AFFICHE, et non sur le nom interne de la
+    // touche. La première version triait sur `Key::name()`, où la barre
+    // oblique s'appelle « Slash » : elle se rangeait donc entre `s` et
+    // `u`, au milieu des lettres, alors qu'on la voit écrite `/`. C'est
+    // la CAPTURE qui l'a montrée là — aucune mesure ne l'avait demandé,
+    // et une colonne dont l'ordre ne se devine pas se relit ligne à
+    // ligne au lieu de se parcourir.
+    suites.sort_by(|(a, _), (b, _)| {
+        a.iter()
+            .map(|k| k.symbol_or_name())
+            .cmp(b.iter().map(|k| k.symbol_or_name()))
+    });
     suites
 }
 

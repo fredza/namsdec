@@ -99,6 +99,28 @@ défauts suspectés, c'étaient des questions qu'on n'avait jamais posées.
 
 ---
 
+## 0 quindecies. Voir l'interface sans écran (A 9.34)
+
+- [x] **La capture ne dépendait plus d'un bureau** — sous Wayland,
+      XTEST n'atteint pas la fenêtre XWayland et GNOME ne donne pas le
+      focus à une fenêtre qu'on vient de lancer : tout ce qui n'apparaît
+      qu'au clavier était hors d'atteinte de l'œil. Le deuxième des
+      trois lieux de mesure manquait, et pour une raison qui ne se
+      répare pas côté namsdec.
+      `captures_de_toutes_les_scenes` rend chaque scène du banc en PNG
+      par `egui_kittest` et wgpu sur **lavapipe** — Vulkan logiciel.
+      Ni écran, ni carte graphique, ni droits, et le même résultat
+      partout : **101 images en 12 secondes**. Ignoré par défaut, en
+      `dev-dependencies` seulement.
+- [x] **Et cela a payé tout de suite** — le panneau des suites rangeait
+      `/` entre `s` et `u`, parce que le tri portait sur `Key::name()`,
+      où la barre oblique s'appelle « Slash ». Aucune mesure ne l'avait
+      demandé ; l'image l'a montré en une seconde. Trié sur ce qui
+      s'affiche, retenu par
+      `les_suites_se_rangent_dans_l_ordre_ou_elles_s_ecrivent`.
+
+---
+
 ## 0 quaterdecies. « Touche suivante attendue » — lesquelles ? (A 9.33)
 
 - [x] **Le programme dit enfin quoi taper** — une séquence armée, une

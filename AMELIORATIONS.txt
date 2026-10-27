@@ -7530,3 +7530,58 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      horloge. Un contrôle qui compare deux `Instant` pris à deux lignes
      d'intervalle passe sur une machine au repos et échoue sur une
      machine chargée — c'est écrit dans ce fichier depuis le 4 octobre.
+
+9.34 [FAIT] VOIR L'INTERFACE SANS ÉCRAN  (27 octobre 2026)
+--------------------------------------------------------------------------------
+     « Il y a trois endroits où mesurer : le banc, la capture, et
+     l'application en marche. » Le deuxième manquait pour tout ce qui
+     n'apparaît qu'au clavier — la palette, le panneau des suites —, et
+     la cause n'était pas dans namsdec.
+
+     CE QUI BLOQUAIT, ÉTABLI ET NON SUPPOSÉ. Sous une session Wayland,
+     l'injection de touches par XTEST n'atteint pas la fenêtre
+     XWayland : vérifié avec un témoin, `xdotool type ZZZTEMOIN`
+     n'écrit rien dans l'éditeur, et `xdotool key ctrl+shift+p` n'ouvre
+     pas la palette. `xdotool windowactivate --sync` rend la main sans
+     erreur et ne donne pourtant pas le focus — c'est le compositeur qui
+     le distribue, et GNOME le refuse à une fenêtre qu'on vient de
+     lancer (prévention du vol de focus). La capture de la FENÊTRE, elle,
+     marche très bien : `import -window` rend l'image. C'est donc bien le
+     clavier, et lui seul.
+
+     TROIS ROUTES EXAMINÉES :
+       · `wtype` — ne marche pas sous GNOME, qui n'implémente pas
+         `virtual-keyboard-v1`.
+       · `ydotool` — passe par `/dev/uinput`, qui est ici `crw------- root
+         root` : il faut une règle udev et des droits. Et il taperait
+         dans la fenêtre focalisée, c'est-à-dire pas la nôtre.
+       · `Xvfb`/`Xephyr` — la bonne réponse pour voir le VRAI programme :
+         sur un serveur X sans compositeur, `windowactivate` et XTEST
+         marchent comme prévu, et le GL logiciel est là (`swrast_dri.so`,
+         `zink_dri.so`). Un `dnf install` et des droits.
+
+     LA QUATRIÈME NE DEMANDE RIEN À PERSONNE, et c'est celle qui est
+     faite. `egui_kittest` avec ses options `wgpu` et `snapshot` rend une
+     scène en image, hors de tout serveur d'affichage, par **lavapipe** —
+     le Vulkan logiciel de Mesa, déjà installé (`lvp_icd.x86_64.json`).
+     `captures_de_toutes_les_scenes` parcourt les scènes du banc et écrit
+     **101 PNG en 12 secondes** dans `target/captures/`. Ignoré par
+     défaut : il écrit des fichiers et compile un pilote graphique
+     entier. En `dev-dependencies` uniquement — rien n'entre dans le
+     programme livré.
+
+     Le clavier, lui, marchait déjà : `draw()` contient le dispatch des
+     touches, donc une frappe injectée dans les évènements suit le vrai
+     chemin. C'était l'IMAGE qui manquait, pas l'entrée.
+
+     ET L'IMAGE A PARLÉ TOUT DE SUITE, ce qui est l'argument entier de
+     ce travail. Le panneau des suites rangeait `/ /`, `/ n`, `/ p`,
+     `/ r` ENTRE `s i` ET `u c` — au milieu des lettres. Le tri portait
+     sur `Key::name()`, où la barre oblique s'appelle « Slash », et
+     « Slash » se range après « S ». Les quatre contrôles écrits sur ce
+     panneau ne l'avaient pas demandé : ils vérifiaient la présence,
+     l'alignement, la place et le contenu — pas l'ordre, parce que
+     personne n'avait pensé que l'ordre pouvait être faux.
+
+     Une mesure ne répond qu'aux questions qu'on lui pose. Une image
+     répond à celles qu'on n'a pas posées.

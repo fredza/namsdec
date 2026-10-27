@@ -3816,3 +3816,79 @@ fn a_fold_is_announced_by_a_chevron_never_by_a_letter() {
         }
     }
 }
+
+/// Rend chaque scène du banc en image, pour qu'on puisse la REGARDER.
+///
+/// « Il y a trois endroits où mesurer : le banc, la capture, et
+/// l'application en marche. » La capture manquait pour tout ce qui
+/// n'apparaît qu'au clavier — la palette de commandes, les suites d'une
+/// séquence armée —, et elle manquait pour une raison qui ne se répare
+/// pas côté namsdec : **sous Wayland, l'injection de touches par XTEST
+/// n'atteint pas la fenêtre**, et GNOME ne donne pas le focus à une
+/// fenêtre qu'on vient de lancer. Vérifié avec un témoin : `xdotool
+/// type` n'écrit rien dans l'éditeur.
+///
+/// Ici il n'y a ni serveur d'affichage ni compositeur : egui_kittest
+/// rend la scène par wgpu sur lavapipe — Vulkan logiciel — et l'on
+/// écrit le PNG. Pas d'écran, pas de carte graphique, pas de droits, et
+/// le même résultat sur toute machine.
+///
+/// IGNORÉ PAR DÉFAUT : il écrit une trentaine de fichiers et compile un
+/// pilote graphique entier. Il se demande :
+///
+/// ```text
+/// cargo test -p namsdec-gui -- --ignored --nocapture captures_de_toutes_les_scenes
+/// ```
+///
+/// Les images vont dans `target/captures/`, qui n'est pas suivi.
+#[test]
+#[ignore = "écrit des images ; se demande explicitement"]
+fn captures_de_toutes_les_scenes() {
+    use egui_kittest::Harness;
+
+    let dossier = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/captures");
+    std::fs::create_dir_all(&dossier).expect("le dossier des captures se crée");
+
+    let mut écrites = 0;
+    let mut refusées = Vec::new();
+    for (nom, _, prépare) in scènes() {
+        let mut app = NamsdecApp::default();
+        // La scène se pose UNE fois, avant la première image : `prépare`
+        // écrit dans l'application, et la rejouer à chaque image
+        // remettrait l'état à zéro sous ce qu'on regarde. C'est ce que
+        // fait le relevé du banc, et pour la même raison.
+        prépare(&mut app);
+        let taille = écran_du_banc()
+            .screen_rect
+            .map(|r| r.size())
+            .unwrap_or(egui::vec2(1600.0, 1100.0));
+        let mut harness = Harness::builder()
+            .with_size(taille)
+            .wgpu()
+            .build_ui(move |ui| app.draw(ui));
+        // Plusieurs images : une surface ancrée ne se place qu'après
+        // s'être mesurée, et une fenêtre est AMENÉE à sa taille.
+        for _ in 0..6 {
+            harness.step();
+        }
+        match harness.render() {
+            Ok(image) => {
+                let fichier = dossier.join(format!("{}.png", nom.replace(['/', ' '], "_")));
+                image
+                    .save(&fichier)
+                    .unwrap_or_else(|e| panic!("{} : {e}", fichier.display()));
+                écrites += 1;
+            }
+            Err(e) => refusées.push(format!("{nom} : {e}")),
+        }
+    }
+
+    eprintln!("{écrites} image(s) dans {}", dossier.display());
+    assert!(
+        refusées.is_empty(),
+        "{} scène(s) n'ont pas pu être rendues :\n  {}",
+        refusées.len(),
+        refusées.join("\n  ")
+    );
+    assert!(écrites > 20, "le banc a plus de vingt scènes : {écrites}");
+}
