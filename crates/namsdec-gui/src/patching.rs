@@ -51,13 +51,24 @@ impl NamsdecApp {
     /// tous finissent ici. `adresse` ne sert qu'à le dire à l'écran —
     /// zéro quand on ne l'a pas, comme depuis le vidage, où l'on désigne
     /// une position et non une instruction.
-    pub(crate) fn write_patch(&mut self, offset: usize, après: Vec<u8>, adresse: u64) {
+    /// `retirés` est le nombre d'octets qu'on remplace. Égal à la
+    /// longueur de `après`, rien ne bouge ailleurs — c'est le cas de
+    /// tous les gestes que namsdec pose lui-même. Différent, le fichier
+    /// change de taille et TOUT CE QUI SUIT SE DÉCALE ; c'est permis,
+    /// et c'est à l'appelant d'avoir prévenu.
+    pub(crate) fn write_patch(
+        &mut self,
+        offset: usize,
+        retirés: usize,
+        après: Vec<u8>,
+        adresse: u64,
+    ) {
         let s = strings(self.lang);
         let Some(state) = &self.assemble_state else {
             return;
         };
         let mut image = state.output.file.clone();
-        let Some(avant) = namsdec_re::patch::apply(&mut image, offset, &après) else {
+        let Some(avant) = namsdec_re::patch::splice(&mut image, offset, retirés, &après) else {
             self.status = Status::Error(s.patch_no_offset.to_owned());
             return;
         };
@@ -172,8 +183,12 @@ impl NamsdecApp {
         }
         for demande in demandes {
             match demande {
-                namsdec_re::ReRequest::PatchBytes { offset, bytes } => {
-                    self.write_patch(offset, bytes, 0);
+                namsdec_re::ReRequest::PatchBytes {
+                    offset,
+                    retirés,
+                    bytes,
+                } => {
+                    self.write_patch(offset, retirés, bytes, 0);
                 }
                 // Un détour : les deux changements ensemble, sous un même
                 // groupe. Voir `write_detour` pour la raison.
@@ -338,7 +353,7 @@ impl NamsdecApp {
             self.status = Status::Error(s.patch_no_offset.to_owned());
             return;
         };
-        self.write_patch(offset as usize, après, adresse);
+        self.write_patch(offset as usize, après.len(), après, adresse);
     }
 
     /// Récrit les octets d'une instruction, depuis l'onglet Octets.
@@ -421,7 +436,7 @@ impl NamsdecApp {
             self.status = Status::Error(s.patch_no_offset.to_owned());
             return;
         };
-        self.write_patch(offset as usize, nouveaux, adresse);
+        self.write_patch(offset as usize, nouveaux.len(), nouveaux, adresse);
         self.status = Status::Note(|s| s.bytes_changed);
     }
 
@@ -458,7 +473,13 @@ impl NamsdecApp {
             let Some(p) = self.patches.get(*r) else {
                 return;
             };
-            if namsdec_re::patch::apply(&mut image, p.offset, &p.before).is_none() {
+            // AUTANT D'OCTETS QU'ON EN AVAIT POSÉS, et non autant qu'on
+            // en remet : un correctif qui a changé la taille du fichier
+            // se défait en retirant ce qu'il a écrit — `after.len()` —
+            // pour y remettre ce qu'il avait pris. Avec `apply`, qui
+            // suppose les deux longueurs égales, défaire une insertion
+            // aurait écrasé les octets d'après au lieu de la retirer.
+            if namsdec_re::patch::splice(&mut image, p.offset, p.after.len(), &p.before).is_none() {
                 return;
             }
         }

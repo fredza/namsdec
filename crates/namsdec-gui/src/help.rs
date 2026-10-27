@@ -10,6 +10,41 @@ use super::*;
 // Le parcours vit dans son module ; l'aide y mène.
 use crate::exercises::exercises_dir;
 
+/// Une barre de progression mince : ce qui est fait, sur ce qu'il y a.
+///
+/// Un chiffre — « 8/10 » — se LIT ; une barre se VOIT, et c'est toute
+/// la différence quand on hésite à rouvrir un parcours de
+/// quatre-vingt-seize étapes. Elle ne récompense rien et ne compte pas
+/// les jours : elle montre l'avancée, ce qu'un parcours doit à qui le
+/// suit, et pas un gramme de plus. Le seul mérite de namsdec reste
+/// l'anneau du budget, qui se gagne en réécrivant.
+///
+/// Verte quand tout est fait, à la couleur d'accent sinon : la
+/// distinction se voit du coin de l'œil, sans lire le compte.
+fn barre_progression(ui: &mut egui::Ui, theme: &Theme, faits: usize, total: usize, largeur: f32) {
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(largeur, 6.0), egui::Sense::hover());
+    ui.painter()
+        .rect_filled(rect, 3.0, mélange(theme.surface, theme.text, 0.16));
+    if total == 0 || faits == 0 {
+        return;
+    }
+    let part = (faits as f32 / total as f32).clamp(0.0, 1.0);
+    // Au moins la hauteur de la barre : une avancée d'un sur
+    // quatre-vingt-seize donne six dixièmes de pixel, c'est-à-dire
+    // rien — et « rien » est exactement ce qu'on vient de ne pas
+    // mériter.
+    let plein = (rect.width() * part).max(rect.height());
+    ui.painter().rect_filled(
+        egui::Rect::from_min_size(rect.min, egui::vec2(plein, rect.height())),
+        3.0,
+        if faits == total {
+            theme.good
+        } else {
+            theme.accent
+        },
+    );
+}
+
 impl NamsdecApp {
     /// La liste des séries installées, avec de quoi en ajouter et en
     /// retirer. La série livrée avec l'application n'y figure pas : on ne
@@ -254,6 +289,20 @@ impl NamsdecApp {
                             .default_open(true);
                             let total = pack.exercises.len();
                             header.show(ui, |ui| {
+                                // LE PARCOURS ENTIER, D'UN TRAIT. Le
+                                // repli porte déjà « 12/96 » ; le
+                                // chiffre se lit, la barre se voit, et
+                                // c'est elle qui dit s'il reste
+                                // beaucoup. Posée ici plutôt que dans le
+                                // titre du repli, qui n'accepte qu'un
+                                // texte.
+                                ui.horizontal(|ui| {
+                                    barre_progression(ui, theme, faits, total, 220.0);
+                                    if faits == total && total > 0 {
+                                        ui.colored_label(theme.good, s.exercises_level_done);
+                                    }
+                                });
+                                ui.add_space(2.0);
                                 let mut palier = None;
                                 let cherché = self.exercise_query.to_lowercase();
                                 for (index, exercise) in pack.exercises.iter().enumerate() {
@@ -309,6 +358,15 @@ impl NamsdecApp {
                                                 },
                                                 format!("{faits_ici}/{total_ici}"),
                                             );
+                                            barre_progression(
+                                                ui, theme, faits_ici, total_ici, 90.0,
+                                            );
+                                            if faits_ici == total_ici && total_ici > 0 {
+                                                ui.colored_label(
+                                                    theme.good,
+                                                    s.exercises_level_done,
+                                                );
+                                            }
                                         });
                                     }
                                     let id = namsdec_exercises::full_id(pack, exercise);

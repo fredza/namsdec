@@ -44,6 +44,133 @@ défauts suspectés, c'étaient des questions qu'on n'avait jamais posées.
 
 ---
 
+## 0 septies. L'éditeur binaire : une règle, et plus de pages (A 9.22)
+
+- [x] **Une règle de colonnes** — `00 01 02 … 0f` au-dessus des octets,
+      alignée au pixel. C'était le défaut principal, et le plus bête :
+      sans elle, on comptait les colonnes avec le doigt pour savoir à
+      quelle position un octet tombe. La grille de bits de la
+      calculatrice porte ses index pour exactement cette raison.
+      Contrôle : `the_column_ruler_lines_up_with_the_bytes`, qui compare
+      les abscisses colonne par colonne, éprouvé en décalant la règle
+      d'une chasse.
+- [x] **Une géométrie calculée** — chaque octet était une étiquette dans
+      une rangée horizontale, dont personne ne connaissait l'abscisse,
+      pas même le code qui la posait. Les colonnes se calculent
+      maintenant en caractères puis se multiplient par la chasse,
+      mesurée sur huit caractères et divisée — sur un seul, elle revient
+      arrondie, et l'erreur décale la règle d'un caractère entier au bout
+      de la ligne.
+- [x] **Les deux colonnes d'adresses portent leur nom** — « fichier » et
+      « mémoire ». Elles étaient sans titre et parfois identiques chiffre
+      pour chiffre ; rien ne disait laquelle on patche.
+- [x] **Le fichier défile d'un bout à l'autre** — plus de pages de 256
+      octets avec « ‹ » et « › » PAR-DESSUS une zone défilante : deux
+      façons de se déplacer dans la même chose, dont l'une s'arrêtait
+      tous les 256 octets sans raison. Seules les lignes visibles sont
+      construites.
+- [x] **8, 16 ou 32 octets par ligne** — au choix, et des puissances de
+      deux seulement pour que chaque ligne commence à une adresse ronde.
+      Le choix ne se déduit PAS de la largeur disponible : c'est la
+      boucle que ce fichier a déjà payée une fois, sur l'inspecteur.
+- [x] **Deux barres de défilement l'une sur l'autre** — la règle était
+      allouée à la largeur du vidage, qui dépassait le panneau. Les
+      chiffres d'adresse sont désormais taillés sur le fichier, et la
+      largeur vue est **bornée** par ce qu'on offre : un plafond, jamais
+      un plancher — du contenu qui prend moins que la place disponible
+      ne peut pas faire grandir la fenêtre qui la lui offre. La règle est
+      rognée et **suit** le défilement horizontal. Contrôle :
+      `the_dump_stays_inside_the_width_it_is_given`, à trois largeurs.
+- [x] **Une barre horizontale de trop** — l'ascenseur vertical d'une
+      zone egui se pose **à l'intérieur** de sa largeur, pas à côté : la
+      vue faisait 633 px pour un contenu de 642, et une barre
+      horizontale paraissait sous un vidage qui tenait. Ni le banc ni la
+      capture ne pouvaient trancher — un vidage trop large DOIT défiler.
+      C'est l'application en marche qui a répondu, pour la deuxième fois
+      en deux séances. Contrôle :
+      `the_hex_dump_adds_no_horizontal_scrollbar`, aux trois tailles dont
+      la plus petite acceptée, éprouvé en remettant le défaut.
+- [x] **L'octet choisi dit où il est** — sa section (`.text`,
+      `.rodata`, `.data`) et ce que cela veut dire : du code, des données
+      modifiables, des données en lecture seule. Il fallait aller le
+      demander à la carte du fichier, dans un autre panneau.
+- [x] **Plusieurs octets d'un coup, et l'insertion** — faits le
+      27 octobre 2026, voir la section 0 nonies.
+
+---
+
+## 0 decies. L'épingle du dock ne tenait pas (A 9.25)
+
+- [x] **`install.sh` vérifie que l'épinglage a tenu** — GNOME Shell élague
+      de lui-même les favoris dont il ne trouve pas le `.desktop`. Juste
+      après une réinstallation, le lanceur vient d'être réécrit et le
+      cache des applications n'est pas forcément relu : le dash retirait
+      l'entrée qu'on venait de poser, sans rien dire — et l'on concluait
+      que l'installation avait désinstallé l'icône. On relit, on laisse
+      au bureau le temps de voir le fichier, on repose une fois, et si
+      l'épingle ne tient toujours pas, **on le dit** plutôt que
+      d'annoncer « épinglé ».
+- [x] **La garde d'essai à blanc est là où l'écriture se fait** — elle
+      vivait vingt lignes plus haut, dans un `elif` qui englobait tout :
+      juste, et illisible. `a_dry_run_writes_nothing` a attrapé la
+      première version de ce correctif, qui aurait écrit dans le dock
+      malgré `--dry-run`.
+
+---
+
+## 0 octies. Les exercices : une première étape qu'on pouvait finir (A 9.23)
+
+- [x] **Un exercice SANS but se termine quand on l'a regardé tourner** —
+      sept des quatre-vingt-seize sont des démonstrations, et le tout
+      premier du parcours en est une. `exercise_goal` rend `None` pour
+      eux, et `note_goal_reached` sortait là sans rien noter : on allait
+      jusqu'au `hlt`, la pastille restait creuse, « en cours » ne partait
+      jamais. Contrôle :
+      `a_demonstration_is_finished_once_it_has_been_watched_through`,
+      éprouvé en remettant le défaut — il nomme `namsdec/registres`,
+      c'est-à-dire l'étape 1.
+- [x] **Le panneau dit que c'en est une** — il se taisait, et l'on
+      cherchait le but qu'on venait de lire dans l'énoncé. Contrôle :
+      `a_demonstration_says_that_it_is_one`.
+- [x] **Une barre d'avancement par palier, et une pour le parcours** — un
+      chiffre se lit, une barre se voit. Pas de flamme, pas de série de
+      jours, pas de points : la seule distinction reste l'anneau du
+      budget, qui se gagne en réécrivant.
+
+---
+
+## 0 nonies. L'éditeur binaire : plusieurs octets, et l'insertion (A 9.24)
+
+- [x] **`patch::splice`** — la forme générale dont `apply` est le cas
+      sûr : remplacer, insérer, supprimer. Le commentaire dit ce que
+      chaque cas coûte.
+- [x] **Défaire une insertion la RETIRE** — on remet les octets d'avant
+      en retirant `after.len()`, ce qu'on a écrit, et non `before.len()`,
+      ce qu'on a pris. Contrôle :
+      `inserting_grows_the_file_and_undoing_gives_it_back_whole`, qui
+      compare le fichier entier — sa taille seule aurait laissé passer la
+      faute.
+- [x] **Maj+clic et Maj+flèches tendent une sélection** — un bout fixe,
+      un curseur qui bouge, et un trait sous le curseur pour savoir
+      lequel des trente octets la frappe touchera. Piège trouvé :
+      `matches_logically` tolère les modificateurs en trop, donc
+      `consume_key(NONE, …)` avalait les Maj+flèches.
+- [x] **« Écrire » remplace toute la sélection, « Remplir de 90 » la
+      recouvre** — en UN correctif, donc un seul geste pour défaire.
+      Contrôle : `shift_arrows_pick_several_bytes_and_fill_writes_them_at_once`.
+- [x] **La sélection s'emporte** — Ctrl+A prend tout, Ctrl+C copie dans
+      l'écriture de la colonne active, Ctrl+V rapporte **dans le champ**
+      sans rien écrire : un collage peut porter quatre mille octets venus
+      d'on ne sait où, et c'est le seul endroit du panneau où la frappe
+      n'atteint pas le fichier. Contrôle :
+      `the_selection_can_be_copied_and_the_clipboard_lands_in_the_field`,
+      éprouvé en retirant la copie.
+- [x] **Ce que l'écriture ferait à la taille est dit avant le clic** — le
+      refus existait après coup ; apprendre après que tout s'est décalé
+      n'est pas apprendre.
+
+---
+
 ## 0 quinquies. La calculatrice : le presse-papiers, et l'épuration (A 9.20)
 
 - [x] **Le clavier appartient à l'expression** — un clic sur une touche,
@@ -189,15 +316,19 @@ même journée.
       rien. Le contrôle refait le geste en entier — clic, Ctrl+A,
       frappe, Entrée — et relit le nom dans les notes et à l'écran, sans
       écrire sur le disque.
-- [~] **Le texte de l'analyse était coupé par son propre ascenseur** — la
+- [x] **Le texte de l'analyse était coupé par son propre ascenseur** — la
       largeur de lecture se prenait sur toute la place disponible,
       ascenseur compris ; dans l'onglet, plus étroit que la largeur de
       lecture, les paragraphes se posaient dix pixels trop larges et se
-      coupaient au milieu d'un mot. Corrigé, et **la correction se voit
-      sur deux captures** — mais aucun contrôle ne la retient : celui
-      qui a été écrit pour elle passait au vert avec le défaut remis, à
-      vingt-six largeurs, avec un binaire chargé et à l'échelle de cet
-      écran. Retiré plutôt que gardé pour l'ornement.
+      coupaient au milieu d'un mot. **Un contrôle le retient depuis le
+      27 octobre 2026** : `the_analysis_text_is_not_cut_by_its_own_scrollbar`.
+      Le premier essai cherchait le TEXTE COUPÉ et passait au vert avec
+      le défaut remis — à vingt-six largeurs, avec un binaire chargé, à
+      l'échelle de cet écran ; il avait été retiré plutôt que gardé pour
+      l'ornement. Celui-ci cherche la BARRE HORIZONTALE, c'est-à-dire le
+      mécanisme et non le symptôme : le contenu déborde la vue de la
+      largeur exacte de l'ascenseur. Éprouvé en remettant le défaut —
+      il rougit dès 1100 px.
 
 Ce qui reste ouvert : l'**explorateur de fichiers**, flottant ici, docké
 à gauche chez Cutter comme chez Binary Ninja — ce n'est pas un onglet,

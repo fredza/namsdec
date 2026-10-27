@@ -201,15 +201,43 @@ impl NamsdecApp {
         self.status = Status::Idle;
     }
 
+    /// L'exercice en cours est-il une DÉMONSTRATION ?
+    ///
+    /// C'est-à-dire : un programme à regarder tourner, sans but à
+    /// atteindre. Sept des quatre-vingt-seize en sont, et le tout
+    /// premier du parcours aussi — « Registres et largeurs » montre ce
+    /// qu'une écriture 32 bits fait à la moitié haute, et il n'y a rien
+    /// à y réussir.
+    pub(crate) fn exercise_is_demo(&self) -> bool {
+        self.current_exercise
+            .as_deref()
+            .and_then(|id| namsdec_exercises::find(&self.exercise_packs, id))
+            .is_some_and(|exercise| exercise.goal.is_empty())
+    }
+
     /// Note l'exercice en cours comme réussi si son but est atteint.
     ///
     /// Appelé à chaque image, mais n'écrit qu'une fois : le premier
     /// passage au vert suffit, et repasser sur un exercice déjà fait ne
     /// le défait pas — on ne retire pas ce qu'on a compris.
+    ///
+    /// UNE DÉMONSTRATION SE TERMINE QUAND ON L'A REGARDÉE TOURNER
+    /// jusqu'au bout. C'était le défaut : sept exercices n'ont pas de
+    /// but — ce sont des programmes à observer —, `exercise_goal` rend
+    /// `None` pour eux, et l'on sortait ici sans rien noter. Le premier
+    /// exercice du parcours en est un : on l'exécutait jusqu'au `hlt`,
+    /// la pastille restait creuse, « en cours » ne partait jamais, et
+    /// rien ne disait pourquoi. Un parcours dont la première étape ne
+    /// peut pas se finir n'invite pas à faire la deuxième.
+    ///
+    /// Le critère n'est pas inventé pour l'occasion : c'est celui des
+    /// autres, moins les conditions. Avoir exécuté quelque chose, et
+    /// être allé jusqu'à l'arrêt.
     pub(crate) fn note_goal_reached(&mut self) {
-        let Some((_, true)) = self.exercise_goal() else {
+        let démonstration = self.exercise_is_demo();
+        if !démonstration && !matches!(self.exercise_goal(), Some((_, true))) {
             return;
-        };
+        }
         // Un but atteint sans avoir rien exécuté n'est pas une
         // solution : « rax == 0 » est vrai avant le premier pas, et
         // remettre à zéro suffisait à s'attribuer un score de zéro

@@ -2351,3 +2351,97 @@ fn the_workshop_exercises_are_complete_and_reach_their_goal() {
         fautifs.join("\n  ")
     );
 }
+
+/// Un exercice SANS but se termine quand on l'a regardé tourner.
+///
+/// Sept des quatre-vingt-seize sont des programmes à observer, et le
+/// tout premier du parcours en est un. `exercise_goal` rend `None` pour
+/// eux, et `note_goal_reached` sortait là sans rien noter : on allait
+/// jusqu'au `hlt`, la pastille restait creuse, « en cours » ne partait
+/// jamais, et rien ne disait pourquoi. Un parcours dont la PREMIÈRE
+/// étape ne peut pas se finir n'invite pas à faire la deuxième.
+///
+/// Le contrôle prend le premier exercice sans but que la série porte,
+/// et non un identifiant écrit ici : celui du jour peut changer de nom,
+/// la règle non.
+#[test]
+fn a_demonstration_is_finished_once_it_has_been_watched_through() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let pack = builtin_pack();
+    let démo = pack
+        .exercises
+        .iter()
+        .find(|e| e.goal.is_empty())
+        .expect("la série porte au moins un exercice à regarder");
+    let id = namsdec_exercises::full_id(&pack, démo);
+
+    let mut app = NamsdecApp {
+        exercises: true,
+        exercise_packs: vec![pack.clone()],
+        ..Default::default()
+    };
+    app.load_exercise(&id);
+    assert!(
+        app.exercise_is_demo(),
+        "« {id} » n'a pas de but à atteindre"
+    );
+
+    // Rien n'est noté tant qu'on n'a pas lancé : charger un exercice ne
+    // le fait pas.
+    paint(&mut app);
+    assert!(
+        !app.exercises_done.contains(&id),
+        "un exercice seulement chargé n'est pas fait"
+    );
+
+    app.do_assemble();
+    app.do_run();
+    for _ in 0..200 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&egui::Context::default());
+    }
+    paint(&mut app);
+    assert!(
+        app.exercises_done.contains(&id),
+        "« {id} » a tourné jusqu'à son arrêt : il est fait. {:?}",
+        app.exercises_done
+    );
+}
+
+/// Et le panneau le DIT, au lieu de se taire.
+///
+/// Le but d'un exercice ordinaire s'affiche sous son titre ; pour une
+/// démonstration, rien ne s'affichait du tout. On cherchait le but
+/// qu'on venait de lire dans l'énoncé, il n'y en avait pas, et rien ne
+/// disait que c'était normal.
+#[test]
+fn a_demonstration_says_that_it_is_one() {
+    let pack = builtin_pack();
+    let démo = pack
+        .exercises
+        .iter()
+        .find(|e| e.goal.is_empty())
+        .expect("la série porte au moins un exercice à regarder");
+    let id = namsdec_exercises::full_id(&pack, démo);
+    let mut app = NamsdecApp {
+        exercises: true,
+        exercise_packs: vec![pack],
+        show_exercises: true,
+        ..Default::default()
+    };
+    app.load_exercise(&id);
+    let s = strings(app.lang);
+    let peint = paint(&mut app);
+    assert!(
+        peint.contains(s.goal_demo),
+        "le panneau doit annoncer une démonstration :\n{peint}"
+    );
+    assert!(
+        peint.contains(s.goal_demo_watch),
+        "et dire ce qu'on en attend :\n{peint}"
+    );
+}

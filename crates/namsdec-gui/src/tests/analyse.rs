@@ -1612,7 +1612,7 @@ fn the_dump_can_write_bytes_and_the_change_is_a_patch() {
     let nouveaux = vec![0x90u8, 0x90, 0x90, 0x90];
     let avant = octets[offset..offset + nouveaux.len()].to_vec();
     assert_ne!(avant, nouveaux, "de quoi voir la différence");
-    app.write_patch(offset, nouveaux.clone(), 0);
+    app.write_patch(offset, nouveaux.len(), nouveaux.clone(), 0);
 
     assert_eq!(app.patches.len(), 1, "un changement enregistré");
     assert_eq!(app.patches[0].offset, offset);
@@ -1626,7 +1626,7 @@ fn the_dump_can_write_bytes_and_the_change_is_a_patch() {
 
     // Écrire ce qui s'y trouve déjà n'enregistre rien : un patch qui ne
     // change rien encombrerait la liste de ce qu'on peut défaire.
-    app.write_patch(offset, nouveaux.clone(), 0);
+    app.write_patch(offset, nouveaux.len(), nouveaux.clone(), 0);
     assert_eq!(app.patches.len(), 1, "et toujours un seul");
 
     // Et il se défait comme les autres.
@@ -2089,7 +2089,7 @@ fn une_ecriture_rafraichit_l_analyse() {
     let Some(off) = off else {
         return; // pas d'octet repère ici : rien à prouver sans risque
     };
-    app.write_patch(off, vec![0x08], 0);
+    app.write_patch(off, 1, vec![0x08], 0);
     assert!(
         matches!(app.status, Status::Note(_)),
         "le patch doit s'appliquer : {:?}",
@@ -2391,4 +2391,84 @@ fn the_analysis_window_grows_by_its_green_pastille_and_comes_back() {
         !app.window_maximized(NamsdecApp::ANALYSIS_WINDOW),
         "le second clic doit la restaurer"
     );
+}
+
+/// Le texte de l'analyse n'est pas coupé par son propre ascenseur.
+///
+/// LE DÉFAUT, ET POURQUOI IL A ÉCHAPPÉ À UN CONTRÔLE PENDANT DES
+/// SEMAINES. La largeur de lecture se prenait sur toute la place
+/// disponible, ascenseur vertical compris ; dans l'onglet — plus étroit
+/// que la largeur de lecture, donc là où la borne ne mord pas — les
+/// paragraphes se posaient une dizaine de pixels trop larges, se
+/// coupaient au milieu d'un mot (« l'ad », « dan », « à ce ») et
+/// réclamaient une barre HORIZONTALE pour trois caractères.
+///
+/// Le premier contrôle écrit pour lui cherchait le TEXTE COUPÉ, et il
+/// passait au vert avec le défaut remis — à vingt-six largeurs, avec un
+/// binaire chargé, à l'échelle de cet écran. Il a été retiré plutôt que
+/// gardé pour l'ornement, et la question est restée ouverte.
+///
+/// CELUI-CI CHERCHE LA BARRE, et c'est tout ce qui change. Le texte
+/// coupé est le SYMPTÔME ; la barre horizontale est le mécanisme — le
+/// contenu déborde la vue de la largeur exacte de l'ascenseur. C'est la
+/// même mesure qui a tranché sur le vidage hexadécimal le même jour, et
+/// pour la même raison : l'ascenseur vertical d'une zone egui se pose à
+/// l'intérieur de sa largeur, pas à côté.
+///
+/// Le module est « En bref » : sa prose se replie à la largeur de
+/// lecture, donc elle ne déborde JAMAIS d'elle-même. Un panneau dont le
+/// contenu est large de lui-même — les chaînes et leurs chemins de cent
+/// caractères — a le droit à sa barre, et n'aurait rien prouvé.
+#[test]
+fn the_analysis_text_is_not_cut_by_its_own_scrollbar() {
+    let Some(octets) = binaire_fabriqué() else {
+        return;
+    };
+    // Des largeurs où la zone centrale reste PLUS ÉTROITE que la
+    // largeur de lecture : au-delà, la borne mord et la soustraction
+    // est sans effet — c'est exactement pourquoi le défaut ne se voyait
+    // pas dans la fenêtre, qui est plus large.
+    for (largeur, hauteur) in [(1100.0_f32, 800.0_f32), (1280.0, 820.0), (1400.0, 900.0)] {
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp::default();
+        app.apply_theme(&ctx);
+        if !app.load_elf(&octets, NOM_FABRIQUÉ) {
+            return;
+        }
+        app.show_re_tab = true;
+        app.vue_centrale = VueCentrale::Analysis;
+        app.analysis_module = "binary_info".to_owned();
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(largeur, hauteur),
+            )),
+            ..Default::default()
+        };
+        let mut barres: Vec<egui::Rect> = Vec::new();
+        for _ in 0..3 {
+            barres.clear();
+            let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+            for clipped in &output.shapes {
+                // La poignée d'un ascenseur horizontal : basse, large,
+                // et dans la zone centrale. Reconnue à ses MESURES et
+                // non à sa couleur — les thèmes changent, la
+                // silhouette non.
+                if let egui::epaint::Shape::Rect(r) = &clipped.shape
+                    && r.rect.height() < 14.0
+                    && r.rect.width() > 200.0
+                    && r.rect.top() > hauteur * 0.2
+                    && r.rect.bottom() < hauteur * 0.8
+                {
+                    barres.push(r.rect);
+                }
+            }
+            output.textures_delta.clear();
+        }
+        assert!(
+            barres.is_empty(),
+            "à {largeur}x{hauteur}, « En bref » déborde sa vue et réclame une barre \
+             horizontale : {barres:?}"
+        );
+    }
 }

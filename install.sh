@@ -391,6 +391,25 @@ fi
 # --- Dock (GNOME) ------------------------------------------------------
 # Épingler au dash est propre à GNOME ; ailleurs, le lanceur installé
 # ci-dessus suffit à faire apparaître namsdec dans le menu.
+
+# Pose l'épingle en fin de liste, en gérant la liste vide.
+#
+# Une fonction, et non deux fois le même couple de lignes : elle sert
+# une première fois pour poser, une seconde pour reposer si le bureau a
+# élagué. La garde d'essai à blanc est DEDANS, là où l'écriture se fait
+# — écrite vingt lignes plus haut, dans un `elif` qui englobe tout, elle
+# était juste et illisible, et le contrôle qui relit ces scripts ne
+# pouvait pas la voir.
+epingler() {
+    [ "$ESSAI" = 1 ] && return 0
+    liste=$1
+    if [ "$liste" = "@as []" ] || [ "$liste" = "[]" ]; then
+        gsettings set org.gnome.shell favorite-apps "['$APP.desktop']"
+    else
+        gsettings set org.gnome.shell favorite-apps "${liste%]}, '$APP.desktop']"
+    fi
+}
+
 if [ "$AVEC_DOCK" = 1 ]; then
     etape "Épinglage au dock"
     if command -v gsettings >/dev/null && gsettings writable org.gnome.shell favorite-apps >/dev/null 2>&1; then
@@ -400,13 +419,32 @@ if [ "$AVEC_DOCK" = 1 ]; then
         elif [ "$ESSAI" = 1 ]; then
             detail "serait épinglé au dash de GNOME"
         else
-            # Insère l'entrée en fin de liste, en gérant la liste vide.
-            if [ "$favorites" = "@as []" ] || [ "$favorites" = "[]" ]; then
-                gsettings set org.gnome.shell favorite-apps "['$APP.desktop']"
-            else
-                gsettings set org.gnome.shell favorite-apps "${favorites%]}, '$APP.desktop']"
+            epingler "$favorites"
+            # ON VÉRIFIE QUE L'ÉPINGLE A TENU, et ce n'est pas du zèle :
+            # GNOME Shell ÉLAGUE de lui-même les favoris dont il ne
+            # trouve pas le fichier `.desktop`. Juste après une
+            # réinstallation, le lanceur vient d'être réécrit et le cache
+            # des applications n'est pas forcément relu : le dash retire
+            # alors l'entrée qu'on vient de poser, sans rien dire — et
+            # l'on conclut que l'installation a désinstallé l'icône.
+            # On relit, on laisse au bureau le temps de voir le fichier,
+            # et l'on repose une fois.
+            relu=$(gsettings get org.gnome.shell favorite-apps)
+            if ! printf '%s' "$relu" | grep -q "'$APP.desktop'"; then
+                sleep 1
+                command -v update-desktop-database >/dev/null \
+                    && update-desktop-database "$DESKTOP_DIR" 2>/dev/null || true
+                epingler "$(gsettings get org.gnome.shell favorite-apps)"
+                relu=$(gsettings get org.gnome.shell favorite-apps)
             fi
-            ok "épinglé"
+            if printf '%s' "$relu" | grep -q "'$APP.desktop'"; then
+                ok "épinglé"
+            else
+                # Dit, et non tu : une épingle qui ne tient pas est
+                # exactement ce qu'on vient de corriger, et la taire
+                # ferait croire que c'est fait.
+                detail "le dash a refusé l'épingle — rouvrez la session, ou épinglez à la main"
+            fi
         fi
     else
         detail "pas de dash GNOME ici — le lanceur suffit"

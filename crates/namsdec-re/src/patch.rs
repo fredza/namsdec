@@ -34,7 +34,13 @@ pub struct Patch {
     /// un patch qu'on ne peut pas défaire n'est pas un outil d'analyse,
     /// c'est une décision définitive.
     pub before: Vec<u8>,
-    /// Ce qu'on a mis à la place. De la même longueur que `before`.
+    /// Ce qu'on a mis à la place.
+    ///
+    /// De la même longueur que `before` pour tout ce que namsdec pose
+    /// lui-même — inverser un saut, neutraliser, détourner —, et c'est
+    /// la règle qui rend ces gestes sûrs. Une ÉCRITURE À LA MAIN peut
+    /// en changer la longueur : voir [`splice`], qui dit ce que cela
+    /// coûte.
     pub after: Vec<u8>,
     /// L'adresse virtuelle correspondante, pour le dire à l'écran.
     pub addr: u64,
@@ -141,6 +147,46 @@ pub fn apply(image: &mut [u8], offset: usize, nouveaux: &[u8]) -> Option<Vec<u8>
     let avant = place.to_vec();
     place.copy_from_slice(nouveaux);
     Some(avant)
+}
+
+/// Remplace `combien` octets à `offset` par `nouveaux`, et rend ceux
+/// qu'on a retirés.
+///
+/// C'est la forme générale dont [`apply`] est le cas sûr. Elle accepte
+/// trois choses que l'autre refuse, et il faut dire ce qu'elles
+/// coûtent :
+///
+/// - `combien == nouveaux.len()` — un remplacement, rien ne bouge.
+///   C'est [`apply`], et c'est le seul cas où le fichier reste ce qu'il
+///   était ailleurs qu'ici ;
+/// - `combien == 0` — une **insertion**. Le fichier grandit, et TOUT CE
+///   QUI SUIT SE DÉCALE : chaque position devient fausse, et dans un
+///   ELF, chaque en-tête qui désigne un segment ou une section désigne
+///   désormais autre chose. L'appelant doit s'attendre à ce que le
+///   fichier ne se relise plus — c'est le cas ordinaire, et non
+///   l'accident ;
+/// - `nouveaux.is_empty()` — une **suppression**, avec le même effet en
+///   sens inverse.
+///
+/// Elle ne juge pas : elle fait ce qu'on demande et rend de quoi le
+/// défaire. C'est à l'interface de prévenir, et à `load_elf` de refuser
+/// ce qu'il ne sait plus lire.
+///
+/// `None` quand la tranche demandée sort du fichier — on ne devine pas
+/// ce qu'il y aurait au-delà.
+pub fn splice(
+    image: &mut Vec<u8>,
+    offset: usize,
+    combien: usize,
+    nouveaux: &[u8],
+) -> Option<Vec<u8>> {
+    let fin = offset.checked_add(combien)?;
+    if fin > image.len() {
+        return None;
+    }
+    let retirés = image[offset..fin].to_vec();
+    image.splice(offset..fin, nouveaux.iter().copied());
+    Some(retirés)
 }
 
 // ---------------------------------------------------------------------
@@ -627,6 +673,57 @@ pub fn plan_detour(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `splice` couvre les trois cas, et le troisième est celui qui
+    /// manquait : ajouter.
+    #[test]
+    fn splice_replaces_inserts_and_deletes() {
+        // Remplacer : rien ne bouge ailleurs, et c'est `apply`.
+        let mut image = vec![1u8, 2, 3, 4];
+        assert_eq!(splice(&mut image, 1, 2, &[9, 9]), Some(vec![2, 3]));
+        assert_eq!(image, vec![1, 9, 9, 4]);
+
+        // Insérer : le fichier grandit, et tout ce qui suit se décale.
+        let mut image = vec![1u8, 2, 3, 4];
+        assert_eq!(splice(&mut image, 2, 0, &[7, 7, 7]), Some(Vec::new()));
+        assert_eq!(image, vec![1, 2, 7, 7, 7, 3, 4]);
+
+        // Supprimer : le même effet en sens inverse.
+        let mut image = vec![1u8, 2, 3, 4];
+        assert_eq!(splice(&mut image, 1, 2, &[]), Some(vec![2, 3]));
+        assert_eq!(image, vec![1, 4]);
+
+        // Au-delà du fichier, on ne devine pas : rien n'est touché.
+        let mut image = vec![1u8, 2];
+        assert_eq!(splice(&mut image, 1, 5, &[0]), None);
+        assert_eq!(image, vec![1, 2]);
+    }
+
+    /// Ce qu'une insertion a fait se défait exactement.
+    ///
+    /// C'est la condition de tout le reste : un correctif qu'on ne peut
+    /// pas défaire n'est pas un outil d'analyse, c'est une décision
+    /// définitive. Défaire une insertion demande de RETIRER ce qu'on a
+    /// écrit — `after.len()` octets — et non d'en réécrire autant
+    /// qu'on en avait pris, ce qui aurait écrasé les voisins.
+    #[test]
+    fn an_insertion_is_undone_exactly() {
+        let original = vec![0x7fu8, 0x45, 0x4c, 0x46, 0xaa, 0xbb];
+        for (offset, retirés, écrits) in [
+            (2usize, 0usize, vec![0x90u8, 0x90]),
+            (4, 2, vec![0x11]),
+            (0, 1, vec![0x22, 0x33, 0x44]),
+            (6, 0, vec![0xff]),
+        ] {
+            let mut image = original.clone();
+            let avant = splice(&mut image, offset, retirés, &écrits).expect("la tranche existe");
+            assert_ne!(image, original, "le correctif doit changer quelque chose");
+            // Défaire : retirer ce qu'on a écrit, remettre ce qu'on
+            // avait pris.
+            splice(&mut image, offset, écrits.len(), &avant).expect("la tranche existe encore");
+            assert_eq!(image, original, "défait à {offset:#x}");
+        }
+    }
 
     /// Les seize conditions courtes vont par paires, et l'inverse est
     /// une involution : l'inverse de l'inverse est l'original.

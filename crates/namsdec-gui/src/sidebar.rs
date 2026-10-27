@@ -378,6 +378,43 @@ impl NamsdecApp {
     pub(crate) fn goal_ui(&mut self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
         let theme = self.theme;
+        // UNE DÉMONSTRATION LE DIT, au lieu de se taire. Sept exercices
+        // n'ont pas de but — ce sont des programmes à regarder tourner
+        // —, et le panneau sortait ici sans rien écrire : on cherchait
+        // le but qu'on venait de lire dans l'énoncé, il n'y en avait
+        // pas, et rien ne disait que c'était normal.
+        if self.exercise_is_demo() {
+            let fini = self
+                .emulator
+                .as_ref()
+                .is_some_and(|e| e.executed() > 0 && e.cpu().halted);
+            ui.add_space(4.0);
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing.x = 6.0;
+                let (cadre, _) =
+                    ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
+                let couleur = if fini { theme.good } else { theme.warn };
+                if fini {
+                    ui.painter().circle_filled(cadre.center(), 4.0, couleur);
+                } else {
+                    ui.painter().circle_stroke(
+                        cadre.center(),
+                        3.5,
+                        egui::Stroke::new(1.5, couleur),
+                    );
+                }
+                ui.colored_label(theme.dim, s.goal_demo);
+                ui.colored_label(
+                    couleur,
+                    if fini {
+                        s.goal_demo_done
+                    } else {
+                        s.goal_demo_watch
+                    },
+                );
+            });
+            return;
+        }
         let Some((conditions, atteint)) = self.exercise_goal() else {
             return;
         };

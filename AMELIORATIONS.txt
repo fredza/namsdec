@@ -6647,3 +6647,377 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      Le cinquième, `a_loop_that_tests_at_the_bottom_repeats_first`,
      passait toujours au vert : `dec ecx` n'était pas encore reconnu. Il
      dit maintenant `répéter : ECX = ECX − 1 / tant que ECX ≠ 0`.
+
+
+9.22 [FAIT] L'ÉDITEUR BINAIRE : UNE RÈGLE, ET PLUS DE PAGES
+     (27 octobre 2026)
+--------------------------------------------------------------------------------
+     « L'éditeur binaire n'est pas digne de ce que tu es capable. » La
+     capture d'écran disait quoi, une fois qu'on acceptait de la
+     regarder au lieu de relire le code.
+
+     IL N'Y AVAIT PAS DE RÈGLE DE COLONNES. C'est le défaut principal,
+     et le plus bête : aucun `00 01 02 … 0f` au-dessus des octets. Pour
+     savoir à quelle position tombait un octet, on comptait les
+     colonnes avec le doigt. La grille de bits de la calculatrice porte
+     ses index depuis toujours, pour exactement cette raison, écrite
+     dans son propre commentaire — « sans eux, on compte les colonnes
+     avec le doigt ». Le vidage hexadécimal, qui a cinq fois plus de
+     colonnes, n'en avait pas.
+
+     ET ON NE POUVAIT PAS LUI EN DONNER. Chaque octet était une
+     étiquette posée dans une rangée horizontale : son abscisse
+     dépendait des largeurs de glyphe et des écarts d'egui, personne ne
+     la connaissait — pas même le code qui la posait —, et rien ne
+     pouvait donc être écrit au-dessus qui tombe juste. La règle a
+     demandé de poser d'abord une GÉOMÉTRIE : les colonnes se calculent
+     en caractères, puis se multiplient par la chasse, et la ligne
+     entière se peint sur un seul rectangle. Le clic est rendu à une
+     cellule par la même géométrie, à l'envers.
+
+     La chasse est mesurée sur HUIT caractères puis divisée. Sur un
+     seul, elle revient arrondie, et l'erreur multipliée par les
+     quatre-vingts colonnes d'une ligne décalait la règle d'un
+     caractère entier au bout.
+
+     DEUX COLONNES D'ADRESSES SANS NOM, ET PARFOIS IDENTIQUES. Sur la
+     capture : « 00002000  00002000 ». L'une dit où l'octet est écrit,
+     l'autre où il sera lu ; sur une page où segment et fichier
+     coïncident elles sont identiques chiffre pour chiffre, et rien ne
+     disait laquelle on patche. Elles s'appellent maintenant
+     « fichier » et « mémoire » — pas « position » et « adresse », qui
+     supposent la différence connue, et dont le premier ne tenait
+     d'ailleurs pas dans la colonne.
+
+     LE FICHIER N'A PAS DE PAGES. Il s'affichait par pages de 256
+     octets, avec « ‹ » et « › » pour tourner — ET une zone défilante
+     par-dessus, parce que seize lignes ne tenaient pas dans la hauteur
+     accordée. Deux façons de se déplacer dans la même chose, dont
+     l'une s'arrête tous les 256 octets sans raison. Il défile
+     maintenant d'un bout à l'autre, `show_rows` ne construisant que
+     les lignes visibles. Tout ce qui sautait — « aller à », une
+     trouvaille, une arrivée d'un autre panneau, le curseur sorti de
+     l'écran — passe par un seul champ, `amener`, et la ligne visée
+     arrive au tiers haut de la zone : collée en haut, on ne verrait
+     pas ce qui la précède, et c'est souvent là qu'est la réponse.
+
+     HUIT, SEIZE OU TRENTE-DEUX OCTETS PAR LIGNE, et le choix est à la
+     main. Déduire la largeur de ligne de la place disponible aurait
+     rempli le panneau tout seul — et c'est précisément la boucle que
+     ce fichier a déjà payée une fois, sur l'inspecteur, jusqu'à faire
+     gonfler la fenêtre d'analyse hors de l'écran. Un réglage ne se
+     reboucle pas. Des puissances de deux seulement : à vingt-quatre
+     octets par ligne on remplirait mieux et l'on ne saurait plus lire
+     une adresse.
+
+     DEUX BARRES DE DÉFILEMENT L'UNE SUR L'AUTRE, trouvées à la
+     capture suivante — et c'est l'enseignement de la séance. La règle
+     était allouée à la largeur du vidage, qui dépassait le panneau :
+     celui-ci se dotait d'une barre horizontale, la zone du vidage
+     d'une seconde juste en dessous, pour trois pixels à faire défiler.
+     Deux corrections, et la seconde est une règle générale :
+
+       * les chiffres d'adresse sont TAILLÉS SUR LE FICHIER. Huit zéros
+         devant chaque ligne d'un fichier de cent cinquante kilooctets,
+         c'est trois colonnes qui ne disent jamais rien d'autre que
+         « zéro », deux fois — de quoi faire déborder le vidage à lui
+         seul ;
+       * la largeur vue est BORNÉE par ce qu'on offre, et c'est un
+         plafond, jamais un plancher. Du contenu qui prend MOINS que la
+         place disponible ne peut pas faire grandir la fenêtre qui la
+         lui offre : c'est ce qui rend cette lecture sûre là où la
+         lecture symétrique — prendre toute la place — reboucle. La
+         règle est donc rognée à la largeur offerte, et SUIT le
+         défilement horizontal du vidage : une règle qui ne le suivrait
+         pas désignerait la mauvaise colonne, ce qui est pire que pas
+         de règle du tout.
+
+     UNE BARRE HORIZONTALE DE TROP, ET LA TROISIÈME MESURE. Elle a
+     survécu à deux corrections, et c'est le piège d'egui qui mérite le
+     plus d'être écrit de toute la séance : L'ASCENSEUR VERTICAL D'UNE
+     ZONE SE POSE À L'INTÉRIEUR DE SA LARGEUR, pas à côté. Bornée à la
+     largeur exacte du vidage, la zone n'en montrait que « largeur
+     moins barre » ; le contenu dépassait d'une dizaine de pixels, et
+     une barre HORIZONTALE paraissait sous un vidage qui tenait
+     pourtant dans la place offerte. Le premier essai avait supposé
+     l'inverse et réservé la barre EN DEHORS, ce qui ne changeait rien.
+
+     NI LE BANC NI LA CAPTURE NE POUVAIENT TRANCHER : l'un voyait une
+     barre, l'autre aussi, et aucun ne savait si elle était légitime —
+     un vidage trop large pour son panneau DOIT défiler. C'est
+     l'application elle-même qui a répondu, par six lignes d'`eprintln`
+     derrière une variable d'environnement : « dispo=962 largeur=642
+     vue=641,9 inner=633,8 ». La vue faisait 633,8 pour un contenu de
+     642. Trois endroits où mesurer, et c'est le troisième qui a
+     tranché — pour la deuxième fois en deux séances.
+
+     Et le pas d'une cellule d'octet est passé à six dixièmes d'espace
+     au lieu d'un plein : mesuré, seize octets par ligne avec leurs
+     deux colonnes d'adresses faisaient 642 pixels dans un panneau qui
+     en offre 622. Un appareil dont la vue ORDINAIRE ne tient pas dans
+     sa place n'a pas la bonne taille.
+
+     `the_hex_dump_adds_no_horizontal_scrollbar` le retient, aux trois
+     tailles qui comptent dont la plus petite que l'application
+     accepte. Il reconnaît la poignée à ses MESURES et non à sa couleur
+     — les thèmes changent, la silhouette non. Éprouvé en remettant le
+     défaut : « à 1280x820, le vidage pose une barre horizontale ».
+
+     OÙ L'ON EST, enfin. L'octet choisi dit sa section — `.text`,
+     `.rodata`, `.data` — et ce que cela veut dire : du code, des
+     données modifiables, des données en lecture seule. C'est la
+     première question qu'on se pose devant un octet qu'on s'apprête à
+     changer, parce que la réponse décide de tout le reste, et il
+     fallait aller la poser à la carte du fichier, dans un autre
+     panneau. Les sections sont relevées UNE FOIS au chargement :
+     relire les en-têtes à chaque image pour une ligne d'information
+     coûterait plus que tout le reste du panneau.
+
+     DEUX INVARIANTS, ET DEUX CONTRÔLES QUI MENTAIENT.
+
+     `the_column_ruler_lines_up_with_the_bytes` compare les abscisses,
+     colonne par colonne, entre la règle et la première ligne du
+     vidage. Éprouvé en décalant la règle d'une chasse : « colonne 0 :
+     la règle est à x=133,1 et l'octet à x=125,3 — 7,8 px d'écart ».
+
+     `the_dump_stays_inside_the_width_it_is_given` exige qu'aucune
+     encre vue ne dépasse la largeur offerte, à trois largeurs dont une
+     trop étroite pour seize octets par ligne. C'est le débordement qui
+     faisait naître les deux barres, dit directement plutôt que par le
+     symptôme.
+
+     ET DEUX CONTRÔLES EXISTANTS SONT PASSÉS AU ROUGE POUR LA MÊME
+     RAISON — la deuxième façon de mentir du catalogue, « il cherche le
+     premier ». Tous deux cliquaient « la première cellule de deux
+     chiffres hexadécimaux » ; la règle en pose seize AVANT le vidage,
+     et ils cliquaient donc un en-tête, qui ne se clique pas. L'un
+     accusait alors l'éditeur de ne pas rendre le clavier, l'autre le
+     refus d'un correctif. Les deux disent maintenant ce qu'ils
+     cherchent : une rangée d'au moins huit colonnes, et dans la
+     seconde. Le choix « par ligne : 8 / 16 / 32 » est lui aussi fait
+     de deux chiffres hexadécimaux, et il est posé plus haut encore —
+     il a été le premier à être cliqué par erreur.
+
+
+9.23 [FAIT] UN PARCOURS DONT LA PREMIÈRE ÉTAPE NE POUVAIT PAS SE FINIR
+     (27 octobre 2026)
+--------------------------------------------------------------------------------
+     « L'exercice 1, je vais jusqu'à la fin, et il ne me met pas une
+     pastille verte, il reste toujours en cours. »
+
+     SEPT DES QUATRE-VINGT-SEIZE N'ONT PAS DE BUT. Ce sont des
+     programmes à REGARDER tourner — le premier du parcours,
+     « Registres et largeurs », montre ce qu'une écriture 32 bits fait
+     à la moitié haute d'un registre, et il n'y a rien à y réussir.
+     `exercise_goal` rend `None` pour eux, et `note_goal_reached`
+     sortait là sans rien noter. On allait jusqu'au `hlt`, la pastille
+     restait creuse, « en cours » ne partait jamais, et RIEN NE DISAIT
+     POURQUOI.
+
+     Le commentaire d'alors avait raison sur le principe — « dire
+     "atteint" d'un exercice qui ne demande rien n'apprendrait rien » —
+     et tort sur la conséquence : l'interface montre ces sept-là dans
+     le MÊME vocabulaire que les autres, pastille creuse et « en
+     cours ». Un exercice qu'on ne peut pas finir n'est pas neutre, il
+     dit qu'il reste quelque chose à faire, et il le dit pour toujours.
+     Sur la PREMIÈRE étape du parcours, c'est le pire endroit possible.
+
+     LE CRITÈRE N'EST PAS INVENTÉ POUR L'OCCASION : c'est celui des
+     autres, moins les conditions. Avoir exécuté quelque chose, et être
+     allé jusqu'à l'arrêt. Regarder tourner EST ce que la démonstration
+     demande.
+
+     ET LE PANNEAU LE DIT, au lieu de se taire. Il affichait le but
+     sous le titre de l'exercice en cours ; pour ces sept-là il
+     n'affichait rien du tout, et l'on cherchait le but qu'on venait de
+     lire dans l'énoncé.
+
+     Éprouvé en remettant le défaut : « namsdec/registres a tourné
+     jusqu'à son arrêt : il est fait. {} ». Le contrôle prend le
+     PREMIER exercice sans but que la série porte, et non un
+     identifiant écrit en dur : celui du jour peut changer de nom, la
+     règle non.
+
+     UN PEU PLUS DE GAMIFICATION, ET PAS DE DUOLINGO. Une barre
+     d'avancement par palier, et une pour le parcours entier. Un
+     chiffre — « 12/96 » — se LIT ; une barre se VOIT, et c'est toute
+     la différence quand on hésite à rouvrir une liste de
+     quatre-vingt-seize étapes. Verte quand tout est fait, à la couleur
+     d'accent sinon, et « palier terminé » écrit à côté.
+
+     Ce qu'on n'a PAS fait, et qui a été envisagé : pas de flamme, pas
+     de série de jours, pas de points, pas de niveaux déverrouillés.
+     Un parcours d'assembleur n'a pas besoin qu'on le fasse tous les
+     jours ; il a besoin qu'on voie où l'on en est. La seule
+     distinction de namsdec reste l'anneau du budget, qui se gagne en
+     réécrivant son programme plus court que la solution livrée — c'est
+     un mérite technique, pas une récompense d'assiduité.
+
+     Le seul détail de mesure : une avancée d'un sur quatre-vingt-seize
+     donne six dixièmes de pixel. La barre pleine ne descend jamais
+     sous sa propre hauteur — « rien » est exactement ce qu'on vient de
+     ne pas mériter.
+
+
+9.24 [FAIT] PLUSIEURS OCTETS D'UN COUP, ET L'INSERTION  (27 octobre 2026)
+--------------------------------------------------------------------------------
+     Les deux manques notés `[ ]` dans TRAVAUX depuis l'écriture de
+     l'éditeur binaire. Ils tenaient à une règle écrite en tête de
+     `patch.rs` : « les deux gardent la longueur exacte de ce qu'ils
+     remplacent — un octet de plus ou de moins décalerait tout ce qui
+     suit ». La règle est juste pour ce que NAMSDEC pose lui-même ; elle
+     n'avait pas à interdire ce que l'utilisateur demande.
+
+     `splice` EST LA FORME GÉNÉRALE dont `apply` est le cas sûr :
+     remplacer `combien` octets par d'autres, en nombre quelconque.
+     Trois cas, et le commentaire dit ce que chacun coûte — remplacer
+     (rien ne bouge), insérer (tout ce qui suit se décale), supprimer
+     (le même effet en sens inverse). Elle ne juge pas : elle fait et
+     rend de quoi défaire. C'est à l'interface de prévenir, et à
+     `load_elf` de refuser ce qu'il ne sait plus lire.
+
+     DÉFAIRE UNE INSERTION LA RETIRE, et c'est la subtilité qui aurait
+     pu passer inaperçue. On remet les octets d'avant en retirant
+     `after.len()` octets — ce qu'on avait ÉCRIT — et non `before.len()`
+     — ce qu'on avait PRIS. Avec l'ancienne `apply`, qui suppose les
+     deux longueurs égales, défaire une insertion de trois octets en
+     aurait écrasé trois de plus. Le contrôle compare le fichier
+     ENTIER, octet par octet : comparer sa taille seule aurait laissé
+     passer exactement cette faute. Éprouvé en remettant `before.len()`
+     à la place de `after.len()`.
+
+     LA SÉLECTION : un bout FIXE et un curseur qui bouge, et non deux
+     bornes rangées — c'est ce qui permet d'étendre dans les deux sens
+     avec Maj+flèches sans que la sélection se retourne sous les
+     doigts. Toute la sélection porte le fond, et le curseur garde un
+     TRAIT sous sa cellule : sans lui, une sélection de trente octets ne
+     dit pas lequel la frappe suivante touchera.
+
+     Le trait a d'abord été peint AVANT les fonds, qui le recouvraient.
+     On cherchait un repère qui existait pourtant.
+
+     `matches_logically` TOLÈRE LES MODIFICATEURS EN TROP, et c'est le
+     piège de la séance. `consume_key(Modifiers::NONE, Droite)`
+     n'exige RIEN et avalait donc les Maj+flèches avant que la ligne
+     suivante ne les voie : le curseur se déplaçait sans rien
+     sélectionner, et aucune des deux lignes n'avait l'air fausse. Maj
+     se demande d'abord. `keybindings.rs` connaissait déjà ce piège et
+     l'avait écrit ; il n'était pas écrit ici.
+
+     « REMPLIR DE 90 » recouvre la sélection de `nop` en UN correctif.
+     C'est le geste le plus fréquent devant un binaire — neutraliser une
+     instruction entière — et on le faisait octet par octet, en tapant
+     « 9 0 » autant de fois qu'il le fallait, pour autant de correctifs
+     à défaire un par un.
+
+     CE QUE L'ÉCRITURE FERAIT À LA TAILLE EST DIT AVANT LE CLIC. Le
+     refus existait déjà après coup — un fichier illisible n'est pas
+     chargé, et rien n'est perdu —, mais apprendre après que tout s'est
+     décalé n'est pas apprendre, c'est essayer.
+
+     Et `octet()` s'en va : `motif()` lit déjà une suite d'octets, et
+     deux lecteurs pour la même chose finissent par diverger. Le prix
+     est dit : « 9 » tout seul n'est plus accepté, il faut « 09 ». Sur
+     un champ qui prend plusieurs octets, deviner un demi-octet rendrait
+     « 901 » ambigu.
+
+     ET LA SÉLECTION S'EMPORTE. Dès qu'elle a existé, deux gestes ont
+     manqué : on choisit seize octets et l'on n'a aucun moyen de les
+     sortir de là, ni d'y mettre ceux qu'on a relevés ailleurs. Ctrl+A
+     prend tout le fichier, Ctrl+C copie dans l'écriture de la COLONNE
+     ACTIVE — hexadécimal à gauche, texte à droite, la même règle que
+     pour la frappe : on copie ce qu'on voit.
+
+     CTRL+V REMPLIT LE CHAMP ET N'ÉCRIT RIEN, et c'est le seul endroit
+     de ce panneau où la frappe n'atteint pas le fichier. Taper des
+     chiffres écrit UN octet qu'on vient de voir ; un collage peut
+     porter quatre mille octets venus d'on ne sait où. Posé dans le
+     champ, il se lit avant de partir, la ligne qui dit ce que
+     l'écriture ferait à la taille s'affiche, et « Écrire » reste un
+     geste qu'on fait. L'incohérence apparente est assumée et écrite :
+     ce ne sont pas les mêmes risques.
+
+     Les évènements de presse-papiers sont lus AVANT les déplacements.
+     egui fabrique `Copy` et `Paste` à partir de Ctrl+C et Ctrl+V et
+     n'en laisse pas la touche ; les lire d'abord évite de se demander
+     lequel des deux a mangé la frappe. Ctrl+A, lui, doit passer avant
+     la boucle des chiffres hexadécimaux : `consume_key(NONE, A)` y
+     attend la lettre `a`, et `matches_logically` tolérant les
+     modificateurs en trop, il aurait pris le Ctrl+A pour un `a`.
+
+
+9.25 [FAIT] L'ÉPINGLE DU DOCK NE TENAIT PAS, ET LE TEXTE DE L'ANALYSE A
+     ENFIN SON CONTRÔLE  (27 octobre 2026)
+--------------------------------------------------------------------------------
+     « À chaque modification du binaire tu désinstalles l'icône du
+     dock. »
+
+     CE QUE LA MACHINE DISAIT, avant toute hypothèse : le lanceur
+     `namsdec.desktop` est là, les dix icônes sont là, le binaire
+     installé est là — mais `gsettings get org.gnome.shell
+     favorite-apps` ne contient PAS `namsdec.desktop`. L'essai à blanc
+     l'a confirmé : « serait épinglé au dash de GNOME », c'est-à-dire
+     « il ne l'est pas ». Et le binaire installé était PÉRIMÉ : 17,9 Mo
+     contre 20,4 Mo dans `target/release`.
+
+     CE QUE JE N'AI PAS PU ÉTABLIR, et il faut le dire plutôt que de
+     l'inventer : qui a retiré l'épingle. Rien dans l'application ni
+     dans `cargo build` n'y touche — `poll_install` installe des OUTILS
+     extérieurs, pas namsdec. `uninstall.sh` le fait, mais il n'a pas
+     tourné ici.
+
+     CE QUI EST SÛR, EN REVANCHE, c'est que `install.sh` posait
+     l'épingle SANS JAMAIS VÉRIFIER qu'elle tenait. Or GNOME Shell
+     élague de lui-même les favoris dont il ne trouve pas le fichier
+     `.desktop` ; juste après une réinstallation, le lanceur vient
+     d'être réécrit et le cache des applications n'est pas forcément
+     relu. Le dash retire alors l'entrée qu'on vient de poser, le script
+     annonce « épinglé », et l'on conclut que l'installation a
+     désinstallé l'icône. C'est exactement le symptôme décrit.
+
+     On relit donc, on laisse une seconde au bureau, on rafraîchit le
+     cache, on repose une fois — et si l'épingle ne tient toujours pas,
+     ON LE DIT. Annoncer « épinglé » quand ça ne l'est pas est pire que
+     de ne rien annoncer.
+
+     ET `a_dry_run_writes_nothing` A ATTRAPÉ LA PREMIÈRE VERSION de ce
+     correctif. Le bloc de vérification écrivait dans le dock malgré
+     `--dry-run` : la garde vivait vingt lignes plus haut, dans un
+     `elif` qui englobait tout. Juste, et illisible — le contrôle qui
+     relit ces scripts cherche `$ESSAI` dans les quinze lignes
+     au-dessus, et il avait raison de refuser. La pose est devenue une
+     FONCTION, avec la garde dedans, là où l'écriture se fait ; elle
+     sert deux fois au lieu d'être recopiée.
+
+
+     LE TEXTE DE L'ANALYSE A ENFIN SON CONTRÔLE, et c'est la même leçon
+     qu'au vidage hexadécimal, le même jour.
+
+     Le défaut : la largeur de lecture se prenait sur toute la place
+     disponible, ascenseur vertical compris. Dans l'ONGLET — plus
+     étroit que la largeur de lecture, donc là où la borne ne mord pas
+     — les paragraphes se posaient une dizaine de pixels trop larges,
+     se coupaient au milieu d'un mot (« l'ad », « dan », « à ce ») et
+     réclamaient une barre horizontale pour trois caractères. Dans la
+     fenêtre, plus large, la soustraction est sans effet et le défaut
+     ne se voyait pas.
+
+     LE PREMIER CONTRÔLE CHERCHAIT LE TEXTE COUPÉ, et il passait au
+     vert avec le défaut remis — à vingt-six largeurs, avec un binaire
+     chargé, à l'échelle de cet écran. Il avait été retiré plutôt que
+     gardé pour l'ornement, et la question laissée ouverte depuis le
+     25 octobre.
+
+     CELUI-CI CHERCHE LA BARRE, et c'est tout ce qui change. Le texte
+     coupé est le SYMPTÔME ; la barre horizontale est le MÉCANISME — le
+     contenu déborde la vue de la largeur exacte de l'ascenseur, parce
+     que l'ascenseur vertical d'une zone egui se pose à l'intérieur de
+     sa largeur et non à côté. C'est la mesure qui avait tranché sur le
+     vidage hexadécimal quelques heures plus tôt ; elle tranche ici
+     aussi, et dès 1100 px.
+
+     Le module mesuré est « En bref », et ce choix fait partie du
+     contrôle : sa prose se replie à la largeur de lecture, donc elle
+     ne déborde JAMAIS d'elle-même. Un panneau dont le contenu est
+     large de lui-même — les chaînes et leurs chemins de cent
+     caractères — a droit à sa barre, et n'aurait rien prouvé.

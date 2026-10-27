@@ -869,7 +869,15 @@ fn clicking_a_byte_takes_the_keyboard_back() {
 
     // Deux images pour poser la grille, et le relevé de ce qu'il faut
     // cliquer : une cellule hexadécimale, et le champ « Chercher ».
-    let mut cible = None;
+    //
+    // LA CELLULE EST CELLE DU BAS, et non la première venue. Depuis que
+    // le vidage porte une RÈGLE DE COLONNES, « 00 », « 01 », … « 1f »
+    // sont peints au-dessus de lui, en tête : deux chiffres
+    // hexadécimaux comme les octets, et en premier dans la liste des
+    // formes. Le relevé cliquait donc la règle, qui ne se clique pas,
+    // et le contrôle échouait sans rien dire de l'éditeur. Prendre la
+    // plus BASSE lève l'ambiguïté : la règle est toujours au-dessus.
+    let mut cible: Option<egui::Pos2> = None;
     let mut champ = None;
     for _ in 0..2 {
         cible = None;
@@ -887,7 +895,7 @@ fn clicking_a_byte_takes_the_keyboard_back() {
                 // d'autre.
                 if texte.len() == 2
                     && texte.chars().all(|c| c.is_ascii_hexdigit())
-                    && cible.is_none()
+                    && cible.is_none_or(|déjà| vu.center().y > déjà.y)
                 {
                     cible = Some(vu.center());
                 }
@@ -970,4 +978,486 @@ fn clicking_a_byte_takes_the_keyboard_back() {
         }
         autre => panic!("taper deux chiffres doit demander une écriture : {autre:?}"),
     }
+}
+
+/// La règle des colonnes tombe juste au-dessus des octets.
+///
+/// C'est tout ce qu'on lui demande, et c'est ce qu'un vidage sans règle
+/// ne peut pas offrir : savoir à quelle position un octet se trouve
+/// sans compter les colonnes avec le doigt. Décalée d'un seul
+/// caractère, elle est pire que rien — elle désigne la mauvaise.
+///
+/// Le contrôle compare les ABSCISSES, colonne par colonne, entre la
+/// rangée d'en-tête et la première ligne du vidage. C'était impossible
+/// tant que chaque octet était une étiquette posée dans une rangée
+/// horizontale : personne ne connaissait son abscisse, pas même le code
+/// qui la posait.
+#[test]
+fn the_column_ruler_lines_up_with_the_bytes() {
+    let binaire = binaire();
+    let cpu = Cpu::new(Memory::new(BASE, 0x1000));
+    let ctx = ReContext {
+        cpu: &cpu,
+        disasm: &[],
+        source: "",
+        binary: &binaire,
+        lang: "fr",
+        names: None,
+    };
+    let mut module = namsdec_re::HexEditorModule::default();
+    module.on_binary_loaded(&ctx);
+
+    let egui_ctx = egui::Context::default();
+    let entrée = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1400.0, 1200.0),
+        )),
+        ..Default::default()
+    };
+
+    // Deux images : la première pose la zone défilante, la seconde la
+    // peint à sa taille.
+    let mut cellules: Vec<(String, egui::Rect)> = Vec::new();
+    for _ in 0..2 {
+        cellules.clear();
+        let mut sortie = egui_ctx.run_ui(entrée.clone(), |ui| module.ui(ui, &ctx));
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                let texte = t.galley.text();
+                if texte.len() != 2 || !texte.chars().all(|c| c.is_ascii_hexdigit()) {
+                    continue;
+                }
+                let vu =
+                    egui::Rect::from_min_size(t.pos, t.galley.size()).intersect(clipped.clip_rect);
+                if vu.is_positive() {
+                    cellules.push((texte.to_owned(), vu));
+                }
+            }
+        }
+        sortie.textures_delta.clear();
+        let _ = module.take_request();
+    }
+    assert!(
+        cellules.len() > 32,
+        "le relevé n'a trouvé que {} cellules : il ne mesure rien",
+        cellules.len()
+    );
+
+    // Les rangées, par ordonnée : la première est la règle, la suivante
+    // est la première ligne du vidage.
+    let mut rangées: std::collections::BTreeMap<i32, Vec<(String, egui::Rect)>> =
+        Default::default();
+    for (texte, rect) in &cellules {
+        rangées
+            .entry(rect.top().round() as i32)
+            .or_default()
+            .push((texte.clone(), *rect));
+    }
+    // Seules les rangées PLEINES : « 16 » et « 32 », le choix du nombre
+    // d'octets par ligne, sont aussi deux chiffres hexadécimaux, et
+    // sont posés plus haut que la règle. Le relevé les prenait pour
+    // elle et comparait deux boutons à une ligne de vidage. C'est la
+    // deuxième façon de mentir du catalogue — « il cherche le premier »
+    // —, et elle se corrige en disant ce qu'on cherche : une rangée
+    // d'au moins huit colonnes.
+    let mut rangées: Vec<Vec<(String, egui::Rect)>> = rangées
+        .into_values()
+        .filter(|rangée| rangée.len() >= 8)
+        .collect();
+    for rangée in &mut rangées {
+        rangée.sort_by(|a, b| a.1.left().total_cmp(&b.1.left()));
+    }
+    assert!(
+        rangées.len() >= 2,
+        "il faut une règle et au moins une ligne"
+    );
+    let règle = &rangées[0];
+    let première = &rangées[1];
+
+    // La règle numérote ses colonnes à partir de zéro : c'est ce qui
+    // permet de lire la position d'un octet en lisant sa colonne.
+    let numéros: Vec<String> = règle.iter().map(|(t, _)| t.clone()).collect();
+    let attendus: Vec<String> = (0..numéros.len()).map(|i| format!("{i:02x}")).collect();
+    assert_eq!(
+        numéros, attendus,
+        "la règle doit numéroter les colonnes à partir de zéro"
+    );
+
+    // Et chaque numéro tombe sur la colonne qu'il désigne.
+    assert!(
+        première.len() >= règle.len(),
+        "la première ligne du vidage porte moins d'octets que la règle n'a de colonnes"
+    );
+    for (col, ((_, haut), (_, bas))) in règle.iter().zip(première.iter()).enumerate() {
+        let écart = (haut.left() - bas.left()).abs();
+        assert!(
+            écart < 1.0,
+            "colonne {col} : la règle est à x={} et l'octet à x={} — {écart:.1} px d'écart",
+            haut.left(),
+            bas.left()
+        );
+    }
+}
+
+/// Le vidage ne déborde pas la place qu'on lui offre.
+///
+/// Il l'a débordée : la règle était allouée à la largeur du vidage, qui
+/// dépassait le panneau. Celui-ci se dotait d'une barre horizontale, la
+/// zone du vidage d'une seconde juste en dessous, et l'on voyait deux
+/// barres l'une sur l'autre pour trois pixels à faire défiler.
+#[test]
+fn the_dump_stays_inside_the_width_it_is_given() {
+    let binaire = binaire();
+    let cpu = Cpu::new(Memory::new(BASE, 0x1000));
+    let ctx = ReContext {
+        cpu: &cpu,
+        disasm: &[],
+        source: "",
+        binary: &binaire,
+        lang: "fr",
+        names: None,
+    };
+    // Trois largeurs, dont une trop étroite pour seize octets par
+    // ligne : c'est là que le débordement se produisait.
+    for largeur in [520.0_f32, 900.0, 1400.0] {
+        let mut module = namsdec_re::HexEditorModule::default();
+        module.on_binary_loaded(&ctx);
+        let egui_ctx = egui::Context::default();
+        let entrée = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(largeur, 1200.0),
+            )),
+            ..Default::default()
+        };
+        let mut débords: Vec<String> = Vec::new();
+        for _ in 0..3 {
+            débords.clear();
+            let mut sortie = egui_ctx.run_ui(entrée.clone(), |ui| module.ui(ui, &ctx));
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                    let rect = egui::Rect::from_min_size(t.pos, t.galley.size());
+                    // L'encre VUE, et non l'encre posée : une zone qui
+                    // défile peint ce qu'elle rogne, et le rognage
+                    // n'est pas un débord.
+                    let vu = rect.intersect(clipped.clip_rect);
+                    if vu.is_positive() && vu.right() > largeur + 1.0 {
+                        débords.push(format!(
+                            "« {} » jusqu'à x={:.0}",
+                            t.galley.text(),
+                            vu.right()
+                        ));
+                    }
+                }
+            }
+            sortie.textures_delta.clear();
+            let _ = module.take_request();
+        }
+        assert!(
+            débords.is_empty(),
+            "à {largeur} px de large, le vidage déborde : {débords:?}"
+        );
+    }
+}
+
+/// L'octet choisi dit dans quelle section il tombe.
+///
+/// `.text`, `.rodata`, `.data` : un nom plutôt qu'un nombre. C'est la
+/// première question qu'on se pose devant un octet qu'on s'apprête à
+/// changer, parce que la réponse décide de tout le reste — on ne touche
+/// pas à du code comme à une constante. Il fallait aller la poser à la
+/// carte du fichier, dans un autre panneau.
+#[test]
+fn the_picked_byte_says_which_section_it_falls_in() {
+    let binaire = binaire();
+    let cpu = Cpu::new(Memory::new(BASE, 0x1000));
+    let ctx = ReContext {
+        cpu: &cpu,
+        disasm: &[],
+        source: "",
+        binary: &binaire,
+        lang: "fr",
+        names: None,
+    };
+    // La section qu'on vise, demandée au même lecteur d'ELF que le
+    // panneau : écrire « .text » ici supposerait un binaire d'épreuve
+    // qu'on ne contrôle pas d'ici.
+    let scan = namsdec_re::elf_scan::scan(&binaire).expect("le germe est un ELF");
+    let section = scan
+        .sections
+        .iter()
+        .find(|s| !s.nobits && s.size > 4 && s.name.starts_with('.'))
+        .expect("le germe porte au moins une section nommée");
+    let dedans = section.offset as usize + 1;
+
+    let mut module = namsdec_re::HexEditorModule::default();
+    module.on_binary_loaded(&ctx);
+    module.deliver(&namsdec_re::ReResult::ShowBytesAt {
+        offset: dedans,
+        addr: None,
+    });
+
+    let egui_ctx = egui::Context::default();
+    let entrée = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1400.0, 1400.0),
+        )),
+        ..Default::default()
+    };
+    let mut écrits: Vec<String> = Vec::new();
+    for _ in 0..2 {
+        écrits.clear();
+        let mut sortie = egui_ctx.run_ui(entrée.clone(), |ui| module.ui(ui, &ctx));
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                let vu =
+                    egui::Rect::from_min_size(t.pos, t.galley.size()).intersect(clipped.clip_rect);
+                if vu.is_positive() {
+                    écrits.push(t.galley.text().to_owned());
+                }
+            }
+        }
+        sortie.textures_delta.clear();
+        let _ = module.take_request();
+    }
+    assert!(
+        écrits.iter().any(|t| t == &section.name),
+        "« {} » doit être écrit quand l'octet {dedans:#x} est choisi",
+        section.name
+    );
+}
+
+/// Maj+flèches choisit plusieurs octets, et « Remplir de 90 » les
+/// recouvre d'un seul correctif.
+///
+/// C'est le geste le plus fréquent devant un binaire — neutraliser une
+/// instruction entière —, et on le faisait octet par octet, en tapant
+/// « 9 0 » autant de fois qu'il le fallait. Un correctif par octet, donc
+/// autant de gestes pour défaire.
+#[test]
+fn shift_arrows_pick_several_bytes_and_fill_writes_them_at_once() {
+    let binaire = binaire();
+    let cpu = Cpu::new(Memory::new(BASE, 0x1000));
+    let ctx = ReContext {
+        cpu: &cpu,
+        disasm: &[],
+        source: "",
+        binary: &binaire,
+        lang: "fr",
+        names: None,
+    };
+    let mut module = namsdec_re::HexEditorModule::default();
+    module.on_binary_loaded(&ctx);
+    module.deliver(&namsdec_re::ReResult::ShowBytesAt {
+        offset: 0x100,
+        addr: None,
+    });
+
+    let egui_ctx = egui::Context::default();
+    let base = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1400.0, 1600.0),
+        )),
+        ..Default::default()
+    };
+    let image = |module: &mut dyn ReModule, events: Vec<egui::Event>| {
+        let mut entrée = base.clone();
+        entrée.events = events;
+        let mut sortie = egui_ctx.run_ui(entrée, |ui| module.ui(ui, &ctx));
+        sortie.textures_delta.clear();
+    };
+    image(&mut module, Vec::new());
+    let _ = module.take_request();
+
+    // Deux fois Maj+droite : trois octets choisis, de 0x100 à 0x102.
+    for _ in 0..2 {
+        image(
+            &mut module,
+            vec![egui::Event::Key {
+                key: egui::Key::ArrowRight,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::SHIFT,
+            }],
+        );
+        let _ = module.take_request();
+    }
+
+    // Ce que le panneau dit de la sélection : trois octets, et leurs
+    // bornes. Mesuré sur ce qui est PEINT — un champ privé qui dirait
+    // « trois » sans que rien ne s'affiche ne servirait à personne.
+    let mut écrits: Vec<(String, egui::Rect)> = Vec::new();
+    for _ in 0..2 {
+        écrits.clear();
+        let mut sortie = egui_ctx.run_ui(base.clone(), |ui| module.ui(ui, &ctx));
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                let vu =
+                    egui::Rect::from_min_size(t.pos, t.galley.size()).intersect(clipped.clip_rect);
+                if vu.is_positive() {
+                    écrits.push((t.galley.text().to_owned(), vu));
+                }
+            }
+        }
+        sortie.textures_delta.clear();
+        let _ = module.take_request();
+    }
+    assert!(
+        écrits
+            .iter()
+            .any(|(t, _)| t.contains("3 octets") && t.contains("0x100")),
+        "le panneau doit dire ce qui est choisi : {:?}",
+        écrits.iter().map(|(t, _)| t).collect::<Vec<_>>()
+    );
+
+    // Et « Remplir de 90 » demande UN correctif de trois octets.
+    let bouton = écrits
+        .iter()
+        .find(|(t, _)| t.starts_with("Remplir de"))
+        .map(|(_, r)| r.center())
+        .expect("le bouton « Remplir de 90 » est peint");
+    let mut demande = None;
+    for pressé in [true, false] {
+        let mut events = Vec::new();
+        if pressé {
+            events.push(egui::Event::PointerMoved(bouton));
+        }
+        events.push(egui::Event::PointerButton {
+            pos: bouton,
+            button: egui::PointerButton::Primary,
+            pressed: pressé,
+            modifiers: egui::Modifiers::NONE,
+        });
+        image(&mut module, events);
+        if let Some(d) = module.take_request() {
+            demande = Some(d);
+        }
+    }
+    match demande {
+        Some(namsdec_re::ReRequest::PatchBytes {
+            offset,
+            retirés,
+            bytes,
+        }) => {
+            assert_eq!(offset, 0x100);
+            assert_eq!(retirés, 3, "les trois octets choisis sont remplacés");
+            assert_eq!(bytes, vec![0x90, 0x90, 0x90], "par autant de `nop`");
+        }
+        autre => panic!("« Remplir » doit demander une écriture de trois octets : {autre:?}"),
+    }
+}
+
+/// La sélection s'emporte, et le presse-papiers revient dans le champ.
+///
+/// Deux gestes qui manquaient dès que la sélection a existé : on
+/// choisit seize octets et l'on n'a aucun moyen de les sortir de là,
+/// ni d'y mettre ceux qu'on a relevés ailleurs.
+///
+/// Ctrl+C copie dans l'écriture de la COLONNE ACTIVE — des octets
+/// hexadécimaux à gauche, le texte à droite —, la même règle que pour
+/// la frappe : on copie ce qu'on voit.
+///
+/// Ctrl+V, lui, remplit le CHAMP et n'écrit rien. C'est le seul endroit
+/// du panneau où la frappe n'atteint pas le fichier, et c'est voulu :
+/// un collage peut porter quatre mille octets venus d'on ne sait où.
+#[test]
+fn the_selection_can_be_copied_and_the_clipboard_lands_in_the_field() {
+    let binaire = binaire();
+    let cpu = Cpu::new(Memory::new(BASE, 0x1000));
+    let ctx = ReContext {
+        cpu: &cpu,
+        disasm: &[],
+        source: "",
+        binary: &binaire,
+        lang: "fr",
+        names: None,
+    };
+    let mut module = namsdec_re::HexEditorModule::default();
+    module.on_binary_loaded(&ctx);
+    module.deliver(&namsdec_re::ReResult::ShowBytesAt {
+        offset: 0x100,
+        addr: None,
+    });
+
+    let egui_ctx = egui::Context::default();
+    let base = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1400.0, 1600.0),
+        )),
+        ..Default::default()
+    };
+    let image = |module: &mut dyn ReModule, events: Vec<egui::Event>| -> egui::PlatformOutput {
+        let mut entrée = base.clone();
+        entrée.events = events;
+        let mut sortie = egui_ctx.run_ui(entrée, |ui| module.ui(ui, &ctx));
+        sortie.textures_delta.clear();
+        sortie.platform_output
+    };
+    image(&mut module, Vec::new());
+    let _ = module.take_request();
+
+    // Trois octets choisis : 0x100, 0x101, 0x102.
+    for _ in 0..2 {
+        image(
+            &mut module,
+            vec![egui::Event::Key {
+                key: egui::Key::ArrowRight,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::SHIFT,
+            }],
+        );
+        let _ = module.take_request();
+    }
+
+    // Ctrl+C : egui en fait un évènement `Copy`, et ce qui part se lit
+    // dans ce que la plateforme reçoit.
+    let sortie = image(&mut module, vec![egui::Event::Copy]);
+    let attendu = binaire[0x100..0x103]
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let copié: Vec<String> = sortie
+        .commands
+        .iter()
+        .filter_map(|c| match c {
+            egui::OutputCommand::CopyText(t) => Some(t.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        copié,
+        vec![attendu.clone()],
+        "la sélection part en octets hexadécimaux"
+    );
+
+    // Ctrl+V : le champ se remplit, et RIEN n'est écrit.
+    image(&mut module, vec![egui::Event::Paste("de ad be ef".into())]);
+    assert!(
+        module.take_request().is_none(),
+        "un collage n'écrit pas tout seul : il se lit d'abord"
+    );
+    let mut écrits: Vec<String> = Vec::new();
+    for _ in 0..2 {
+        écrits.clear();
+        let mut sortie = egui_ctx.run_ui(base.clone(), |ui| module.ui(ui, &ctx));
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                écrits.push(t.galley.text().to_owned());
+            }
+        }
+        sortie.textures_delta.clear();
+        let _ = module.take_request();
+    }
+    assert!(
+        écrits.iter().any(|t| t == "de ad be ef"),
+        "le collage doit se lire dans le champ avant d'être écrit"
+    );
 }

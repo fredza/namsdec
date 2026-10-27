@@ -255,6 +255,16 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
             ["--quiet, -q", "ne dire que l'essentiel"],
             ["--no-color", "pas de couleurs (NO_COLOR est respecté aussi)"],
         ]),
+        ("note",
+         "<b>L'épingle du dock est vérifiée, pas supposée.</b> GNOME Shell élague de "
+         "lui-même les favoris dont il ne trouve pas le fichier "
+         "<font face='Courier'>.desktop</font> ; juste après une réinstallation, le "
+         "lanceur vient d'être réécrit et le cache des applications n'est pas forcément "
+         "relu. Le dash retirait alors l'entrée qu'install.sh venait de poser, le script "
+         "annonçait « épinglé », et l'on concluait que l'installation avait "
+         "<i>désinstallé</i> l'icône. Il relit maintenant, laisse une seconde au bureau, "
+         "repose une fois — et si l'épingle ne tient toujours pas, il le dit au lieu "
+         "d'annoncer le contraire."),
         ("p",
          "<font face='Courier'>./uninstall.sh</font> prend <b>--prefix</b>, <b>--bin-dir</b>, "
          "<b>--dry-run</b>, <b>--quiet</b> "
@@ -1337,6 +1347,23 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "encore », au lieu de laisser vérifier à l'œil. Ce qui a été réussi une fois le "
          "reste, d'une session à l'autre." % (avec_but, total_exos)),
         ("p",
+         "<b>Les autres sont des démonstrations</b> : des programmes à regarder tourner, "
+         "sans rien à y réussir — le tout premier du parcours en est un, qui montre ce "
+         "qu'une écriture 32 bits fait à la moitié haute d'un registre. Une "
+         "démonstration <b>se termine quand on l'a regardée jusqu'au bout</b>, c'est-à-"
+         "dire quand le programme s'arrête, et le panneau le dit au lieu de se taire. "
+         "Jusqu'au 27 octobre 2026 il n'en disait rien : on allait jusqu'au "
+         "<font face='Courier'>hlt</font>, la pastille restait creuse, « en cours » ne "
+         "partait jamais, et rien n'expliquait pourquoi. Un parcours dont la première "
+         "étape ne peut pas se finir n'invite pas à faire la deuxième."),
+        ("p",
+         "Chaque palier porte une <b>barre d'avancement</b> à côté de son compte, et le "
+         "parcours entier la sienne en tête de la série. Un chiffre se lit, une barre se "
+         "voit : c'est toute la différence quand on hésite à rouvrir une liste de %d "
+         "étapes. Pas de flamme, pas de série de jours, pas de récompense — la seule "
+         "distinction de namsdec reste l'<b>anneau du budget</b>, qui se gagne en "
+         "réécrivant son programme plus court que la solution livrée." % total_exos),
+        ("p",
          "Le but et la progression se lisent dans la <b>fenêtre des exercices</b> "
          "(Aide › Exercices), sous le titre de l'étape en cours — et non plus dans le "
          "bandeau du processeur. Ce bandeau est toujours visible : le but y restait "
@@ -1807,15 +1834,49 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "bloc à 7,9 bits par octet est chiffré ou compressé, un bloc à "
          "4,5 est du code. Cliquer un octet pose le début de la tranche.",
          "<b>Éditeur binaire</b> — le fichier en grille hexadécimale, octet par octet, avec "
-         "sa colonne de texte. On clique un octet, on en pose un autre : remplacer "
+         "sa colonne de texte. Le vidage porte une <b>règle de colonnes</b> — "
+         "<font face='Courier'>00 01 02 … 0f</font> au-dessus des octets, alignée au "
+         "pixel — et ses colonnes portent leur nom : <b>fichier</b>, où l'octet est "
+         "écrit, et <b>mémoire</b>, où il sera lu. Sans la règle on comptait les colonnes "
+         "avec le doigt pour savoir à quelle position un octet se trouve ; sans les noms, "
+         "les deux colonnes d'adresses se ressemblaient assez pour être prises l'une pour "
+         "l'autre — sur une page où segment et fichier coïncident, elles sont identiques "
+         "chiffre pour chiffre. On patche à la première et l'on raisonne avec la "
+         "seconde. On clique un octet, on en pose un autre : remplacer "
          "<font face=\'Courier\'>75</font> (jne) par <font face=\'Courier\'>74</font> (je) "
          "fait lire ce que le programme ferait de l\'autre côté du saut. Ce qu\'on a touché "
          "porte un fond, pour le retrouver. Chaque écriture <b>se défait</b> depuis "
          "Outils › Correctifs, avec l\'octet d\'avant, et <b>rien n\'atteint le disque</b> "
          "tant qu\'on n\'enregistre pas soi-même, vers un fichier qu\'on choisit — jamais "
-         "par-dessus l\'original. C\'est un début : éditer plusieurs octets d\'un coup et "
-         "insérer viendront ensuite, l\'insertion avec sa prudence propre, car elle décale "
-         "tout ce qui suit et chaque adresse du fichier deviendrait fausse.",
+         "par-dessus l\'original.",
+         "<b>Plusieurs octets à la fois.</b> <b>Maj+clic</b> et <b>Maj+flèches</b> tendent "
+         "une sélection ; le panneau dit ce qu\'on tient — « 3 octets, 0x2050 … 0x2052 » "
+         "—, et le curseur garde un trait sous sa cellule pour qu\'on sache lequel des "
+         "trois la frappe touchera. <b>Écrire</b> remplace toute la sélection d\'un seul "
+         "correctif, donc d\'un seul geste pour défaire. <b>Remplir de 90</b> la recouvre "
+         "de <font face='Courier'>nop</font> : c\'est le geste le plus fréquent devant un "
+         "binaire — neutraliser une instruction entière — et il se faisait octet par "
+         "octet, en tapant « 9 0 » autant de fois qu\'il le fallait.",
+         "<b>Insérer</b> ajoute des octets sans rien retirer, et c\'est le seul geste de "
+         "namsdec qui SORTE du cadre de la longueur exacte. Tout ce qui suit se décale : "
+         "chaque position devient fausse, et dans un exécutable, chaque en-tête qui "
+         "désignait un segment ou une section désigne désormais autre chose. namsdec le "
+         "dit <b>avant</b> — « Écrire ferait grandir le fichier : tout ce qui suit se "
+         "décale » paraît dès que la longueur ne correspond plus — et refuse après coup "
+         "si le fichier ne se relit plus, sans rien perdre. Défaire une insertion la "
+         "RETIRE, et rend le fichier exactement : c\'est la condition de tout le reste, "
+         "et un contrôle compare le fichier entier, octet par octet.",
+         "Le détour reste la bonne réponse quand on veut <i>ajouter du code</i> : il "
+         "écrit dans le bourrage que l\'éditeur de liens a laissé, et ne décale rien.",
+         "La sélection <b>s\'emporte</b> : <b>Ctrl+A</b> prend tout le fichier, "
+         "<b>Ctrl+C</b> copie dans l\'écriture de la colonne active — des octets "
+         "hexadécimaux à gauche, le texte à droite, la même règle que pour la frappe : "
+         "on copie ce qu\'on voit. <b>Ctrl+V</b> rapporte le presse-papiers <b>dans le "
+         "champ</b>, et n\'écrit rien : c\'est le seul endroit du panneau où la frappe "
+         "n\'atteint pas le fichier, et c\'est voulu — un collage peut porter quatre "
+         "mille octets venus d\'on ne sait où. Posé dans le champ, il se lit avant de "
+         "partir, la ligne qui dit ce que l\'écriture ferait à la taille s\'affiche, et "
+         "« Écrire » reste un geste qu\'on fait.",
          "<b>Un octet de l\'en-tête ne s\'écrit pas, et namsdec le dit.</b> L\'octet zéro "
          "d\'un ELF porte le <font face=\'Courier\'>7f</font> du nombre magique, et les "
          "soixante-trois suivants disent l\'architecture, le point d\'entrée, où sont les "
@@ -1894,10 +1955,32 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "« Aller à » accepte les deux : un nombre qui dépasse le fichier mais que les "
          "segments portent est lu comme une adresse.",
          "C\'est aussi là qu\'on atterrit quand on clique une adresse dans un autre "
-         "panneau et qu\'on choisit « dans l\'éditeur binaire » : la page est cadrée sur "
+         "panneau et qu\'on choisit « dans l\'éditeur binaire » : la vue est amenée sur "
          "la position, l\'octet est choisi, et l\'adresse d\'où l\'on vient est écrite en "
          "tête — on vient de cliquer dessus, et la retrouver est ce qui dit qu\'on est au "
          "bon endroit.",
+         "<b>Le fichier défile d\'un bout à l\'autre</b>, et il n\'a pas de pages. Il se "
+         "montrait par pages de 256 octets, avec « ‹ » et « › » pour tourner — ET une "
+         "zone défilante par-dessus, parce que seize lignes ne tenaient pas dans la "
+         "hauteur accordée : deux façons de se déplacer dans la même chose, dont l\'une "
+         "s\'arrêtait tous les 256 octets sans raison. Seules les lignes visibles sont "
+         "construites, si bien qu\'un fichier de plusieurs mégaoctets se parcourt sans "
+         "que rien ne soit peint hors de l\'écran.",
+         "<b>Huit, seize ou trente-deux octets par ligne</b>, au choix. Trente-deux "
+         "remplit un panneau large et fait sauter aux yeux un motif qui se répète ; huit "
+         "tient dans un panneau étroit. Des puissances de deux seulement, et c\'est tout "
+         "l\'intérêt : chaque ligne commence alors à une adresse ronde, et la règle donne "
+         "directement le dernier chiffre de la position. Le choix ne se devine pas tout "
+         "seul de la largeur disponible, et c\'est délibéré — un panneau qui lit la place "
+         "qu\'on lui laisse pour décider de ce qu\'il occupe se mord la queue, et "
+         "celui-ci a déjà payé cette leçon.",
+         "L\'octet choisi dit <b>où il est</b> : sa position, son adresse en mémoire, et "
+         "la <b>section</b> qui le porte — <font face='Courier'>.text</font>, "
+         "<font face='Courier'>.rodata</font>, <font face='Courier'>.data</font> — avec "
+         "ce que cela veut dire : du code, des données modifiables, des données en "
+         "lecture seule. C\'est la première question qu\'on se pose devant un octet qu\'on "
+         "s\'apprête à changer, parce que la réponse décide de tout le reste ; il fallait "
+         "jusqu\'ici aller la poser à la carte du fichier, dans un autre panneau.",
          "Sous l\'octet choisi, un <b>inspecteur</b> — comme celui de 010 Editor — lit les "
          "octets à partir de là dans chaque format : <font face=\'Courier\'>int8</font> à "
          "<font face=\'Courier\'>int64</font>, signés et non signés, flottants, caractère, "
@@ -1910,7 +1993,9 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "La recherche fait le tour quand il n\'y a plus rien devant, et la trouvaille est "
          "surlignée — on saute d\'une occurrence à la suivante comme dans un éditeur.",
          "Et le <b>clavier</b>, une fois un octet choisi : les flèches déplacent le curseur "
-         "(gauche/droite d\'un octet, haut/bas d\'une ligne, Page préc./suiv. d\'une page), "
+         "(gauche/droite d\'un octet, haut/bas d\'une ligne, Page préc./suiv. d\'un écran, "
+         "Origine et Fin aux deux bouts de la ligne — et <b>Maj</b> tenue, le "
+         "déplacement TIRE la sélection au lieu de la défaire), "
          "et les chiffres hexadécimaux l\'écrivent <b>en place</b>, quartet par quartet — "
          "taper « 7 » puis « 4 » pose <font face=\'Courier\'>74</font> et avance tout seul, "
          "comme dans 010 Editor. Échap annule un quartet commencé. <b>Tab</b> passe à la "

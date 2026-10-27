@@ -182,8 +182,19 @@ pub enum GoTarget {
 /// autant sans qu'on lui ouvre l'application en grand.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReRequest {
-    /// Écrire ces octets à cette position du fichier.
-    PatchBytes { offset: usize, bytes: Vec<u8> },
+    /// Écrire ces octets à cette position du fichier, à la place des
+    /// `retirés` qui s'y trouvent.
+    ///
+    /// `retirés == bytes.len()` est le cas sûr : le fichier garde sa
+    /// taille, et rien ne bouge ailleurs. Les deux autres — insérer
+    /// (`retirés == 0`), supprimer (`bytes` vide) — DÉCALENT tout ce
+    /// qui suit, et l'application le dit avant de les faire. Voir
+    /// [`patch::splice`].
+    PatchBytes {
+        offset: usize,
+        retirés: usize,
+        bytes: Vec<u8>,
+    },
     /// Poser un détour : les DEUX changements d'un coup.
     ///
     /// Pas deux `PatchBytes` à la file, et c'est la raison même de cette

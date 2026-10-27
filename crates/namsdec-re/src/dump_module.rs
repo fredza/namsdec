@@ -276,6 +276,10 @@ impl ReModule for DumpModule {
                         {
                             self.demande = Some(ReRequest::PatchBytes {
                                 offset: début,
+                                // Autant retirés qu'écrits : le vidage
+                                // du panneau latéral remplace sur
+                                // place, et ne déplace jamais rien.
+                                retirés: bytes.len(),
                                 bytes,
                             });
                             self.remplacement.clear();

@@ -1526,7 +1526,7 @@ fn the_binary_editor_really_writes_a_byte() {
     };
     let neuf = avant ^ 0xff;
 
-    app.write_patch(offset, vec![neuf], 0);
+    app.write_patch(offset, 1, vec![neuf], 0);
 
     let state = app.assemble_state.as_ref().expect("un état après écriture");
     assert_eq!(
@@ -1554,7 +1554,7 @@ fn the_binary_editor_really_writes_a_byte() {
 
     // Écrire la MÊME valeur ne crée pas de correctif : une liste de
     // choses à défaire qui n'ont rien fait n'aide personne.
-    app.write_patch(offset, vec![neuf], 0);
+    app.write_patch(offset, 1, vec![neuf], 0);
     assert_eq!(app.patches.len(), 1, "rien de neuf, rien d'inscrit");
 }
 
@@ -1586,7 +1586,7 @@ fn the_magic_byte_is_refused_and_the_refusal_is_spoken() {
         .output
         .file
         .clone();
-    app.write_patch(0, vec![0x42], 0);
+    app.write_patch(0, 1, vec![0x42], 0);
     assert!(
         matches!(app.status, Status::Error(_)),
         "le refus doit se DIRE : {:?}",
@@ -1618,7 +1618,7 @@ fn the_magic_byte_is_refused_and_the_refusal_is_spoken() {
         let at = texte.offset as usize + 8;
         (at, state.output.file[at])
     };
-    app.write_patch(offset, vec![avant ^ 0xff], 0);
+    app.write_patch(offset, 1, vec![avant ^ 0xff], 0);
     assert_eq!(
         app.assemble_state.as_ref().expect("un état").output.file[offset],
         avant ^ 0xff,
@@ -1679,10 +1679,21 @@ fn the_hex_grid_takes_the_keyboard_from_the_editor() {
     image(&mut app, vec![]);
     println!("focus avant le clic : {:?}", ctx.memory(|m| m.focused()));
 
-    // Où une cellule hexadécimale est peinte, DANS la fenêtre d'analyse.
+    // Où l'OCTET ZÉRO est peint, DANS la fenêtre d'analyse.
+    //
+    // Pas « la première cellule hexadécimale venue » : depuis que le
+    // vidage porte une règle de colonnes, « 00 », « 01 », … sont peints
+    // au-dessus de lui et viennent les premiers dans la liste des
+    // formes. Le relevé cliquait la règle, qui ne se clique pas, et le
+    // contrôle échouait en accusant le refus de correctif.
+    //
+    // On relève donc toutes les cellules, on les range par rangée, on
+    // écarte les rangées trop courtes pour être le vidage — le choix
+    // « par ligne : 8 / 16 / 32 » en est une —, et l'octet zéro est le
+    // plus à gauche de la deuxième rangée pleine.
     let mut cible = None;
     for _ in 0..2 {
-        cible = None;
+        let mut cellules: Vec<egui::Rect> = Vec::new();
         let input = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
@@ -1700,20 +1711,35 @@ fn the_hex_grid_takes_the_keyboard_from_the_editor() {
         for clipped in &output.shapes {
             if let egui::epaint::Shape::Text(t) = &clipped.shape {
                 let texte = t.galley.text();
-                if texte.len() == 2
-                    && texte.chars().all(|c| c.is_ascii_hexdigit())
-                    && cible.is_none()
-                {
+                if texte.len() == 2 && texte.chars().all(|c| c.is_ascii_hexdigit()) {
                     let rect = egui::Rect::from_min_size(t.pos, t.galley.size());
                     let vu = rect.intersect(clipped.clip_rect);
                     let dedans = fenêtre.is_none_or(|f: egui::Rect| f.contains(vu.center()));
                     if vu.is_positive() && dedans {
-                        cible = Some(vu.center());
+                        cellules.push(vu);
                     }
                 }
             }
         }
         output.textures_delta.clear();
+
+        let mut rangées: std::collections::BTreeMap<i32, Vec<egui::Rect>> = Default::default();
+        for rect in cellules {
+            rangées
+                .entry(rect.top().round() as i32)
+                .or_default()
+                .push(rect);
+        }
+        let pleines: Vec<Vec<egui::Rect>> = rangées
+            .into_values()
+            .filter(|rangée| rangée.len() >= 8)
+            .collect();
+        cible = pleines.get(1).and_then(|première| {
+            première
+                .iter()
+                .min_by(|a, b| a.left().total_cmp(&b.left()))
+                .map(|r| r.center())
+        });
     }
     // UNE CELLULE EST PEINTE, ou c'est un défaut. Ce `println!` était
     // resté de la chasse d'octobre : il imprimait là où il fallait
@@ -2804,7 +2830,7 @@ fn a_refused_patch_says_so() {
     // D'abord ce qui MARCHE : un octet du code, loin de l'en-tête.
     let dans_le_code = octets.len() - 1;
     let avant = octets[dans_le_code];
-    app.write_patch(dans_le_code, vec![avant ^ 0xff], 0);
+    app.write_patch(dans_le_code, 1, vec![avant ^ 0xff], 0);
     assert_eq!(
         app.assemble_state.as_ref().expect("un état").output.file[dans_le_code],
         avant ^ 0xff,
@@ -2824,7 +2850,7 @@ fn a_refused_patch_says_so() {
         .output
         .file
         .clone();
-    app.write_patch(0, vec![0x42], 0);
+    app.write_patch(0, 1, vec![0x42], 0);
     assert_eq!(
         app.assemble_state.as_ref().expect("un état").output.file,
         image,
@@ -2838,4 +2864,127 @@ fn a_refused_patch_says_so() {
         ),
         autre => panic!("un correctif refusé doit le DIRE. Statut : {autre:?}"),
     }
+}
+
+/// Le vidage hexadécimal ne pose pas de barre horizontale sous lui.
+///
+/// Il en posait une, et sa cause est un piège d'egui qui mérite d'être
+/// écrit : **l'ascenseur vertical d'une zone se pose à l'intérieur de
+/// sa largeur**, pas à côté. Une zone bornée à la largeur exacte du
+/// vidage ne montrait donc que « largeur moins barre » ; le contenu
+/// dépassait d'une dizaine de pixels, et une barre HORIZONTALE
+/// paraissait sous un vidage qui tenait pourtant dans la place offerte.
+///
+/// Ni le banc ni la capture ne pouvaient trancher — l'un voyait une
+/// barre légitime, l'autre une barre de trop. C'est l'application
+/// elle-même qui a répondu : elle seule savait que la vue faisait 633
+/// pixels pour un contenu de 642.
+///
+/// Mesuré aux trois tailles qui comptent, dont la plus petite que
+/// l'application accepte.
+#[test]
+fn the_hex_dump_adds_no_horizontal_scrollbar() {
+    let Some(octets) = binaire_fabriqué() else {
+        return;
+    };
+    for (largeur, hauteur) in [(1280.0_f32, 820.0_f32), (1600.0, 1100.0), (800.0, 520.0)] {
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp::default();
+        app.apply_theme(&ctx);
+        if !app.load_elf(&octets, NOM_FABRIQUÉ) {
+            return;
+        }
+        app.rebuild_emulator();
+        app.show_re_tab = true;
+        app.analysis_module = "hex_editor".to_owned();
+        app.vue_centrale = VueCentrale::Analysis;
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(largeur, hauteur),
+            )),
+            ..Default::default()
+        };
+        let mut barres: Vec<egui::Rect> = Vec::new();
+        // Trois images : la zone défilante se pose, puis se peint à sa
+        // taille, et c'est à la troisième qu'elle est stable.
+        for _ in 0..3 {
+            barres.clear();
+            let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+            for clipped in &output.shapes {
+                // Une poignée d'ascenseur horizontal : basse, large, et
+                // dans la moitié basse de l'écran — là où le vidage se
+                // termine. La forme est reconnue à ses MESURES et non à
+                // sa couleur : les thèmes changent, la silhouette non.
+                if let egui::epaint::Shape::Rect(r) = &clipped.shape
+                    && r.rect.height() < 14.0
+                    && r.rect.width() > 200.0
+                    && r.rect.top() > hauteur * 0.3
+                {
+                    barres.push(r.rect);
+                }
+            }
+            output.textures_delta.clear();
+        }
+        assert!(
+            barres.is_empty(),
+            "à {largeur}x{hauteur}, le vidage pose une barre horizontale : {barres:?}"
+        );
+    }
+}
+
+/// Insérer fait grandir le fichier, et défaire le rend exactement.
+///
+/// C'est la règle que tout le reste suppose : un correctif qu'on ne
+/// peut pas défaire n'est pas un outil d'analyse, c'est une décision
+/// définitive. Défaire une insertion demande de RETIRER ce qu'on a
+/// écrit — `after.len()` octets — et non d'en réécrire autant qu'on en
+/// avait pris : avec l'ancienne `apply`, qui suppose les deux longueurs
+/// égales, on aurait écrasé les voisins en croyant revenir en arrière.
+///
+/// Le contrôle compare le fichier ENTIER, octet par octet. Comparer sa
+/// taille seule aurait laissé passer exactement la faute qu'on vient de
+/// décrire.
+#[test]
+fn inserting_grows_the_file_and_undoing_gives_it_back_whole() {
+    let Some(octets) = binaire_fabriqué() else {
+        return;
+    };
+    let mut app = NamsdecApp::default();
+    if !app.load_elf(&octets, NOM_FABRIQUÉ) {
+        return;
+    }
+    let avant = app.assemble_state.as_ref().unwrap().output.file.clone();
+
+    // Dans le corps du fichier, loin de l'en-tête : celui-ci est le
+    // seul endroit où namsdec refuse d'écrire, et ce n'est pas lui
+    // qu'on mesure ici.
+    app.write_patch(0x200, 0, vec![0x90, 0x90, 0x90], 0);
+    let après = app.assemble_state.as_ref().unwrap().output.file.clone();
+    assert_eq!(
+        après.len(),
+        avant.len() + 3,
+        "insérer trois octets fait grandir le fichier de trois"
+    );
+    assert_eq!(
+        &après[..0x200],
+        &avant[..0x200],
+        "ce qui précède ne bouge pas"
+    );
+    assert_eq!(&après[0x200..0x203], &[0x90, 0x90, 0x90]);
+    assert_eq!(
+        &après[0x203..],
+        &avant[0x200..],
+        "et tout ce qui suit s'est décalé, sans rien perdre"
+    );
+    assert_eq!(
+        app.patches.len(),
+        1,
+        "l'insertion est un correctif comme un autre"
+    );
+
+    app.undo_patch(0);
+    let rendu = app.assemble_state.as_ref().unwrap().output.file.clone();
+    assert_eq!(rendu, avant, "défaire doit rendre le fichier exactement");
+    assert!(app.patches.is_empty());
 }

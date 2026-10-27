@@ -103,6 +103,17 @@ pub struct Strings {
     pub call_arguments: &'static str,
     pub goal_label: &'static str,
     pub goal_reached: &'static str,
+    /// Ce que dit le panneau pour un exercice SANS but.
+    ///
+    /// Sept des quatre-vingt-seize sont des programmes à regarder
+    /// tourner. Le panneau se taisait pour eux : rien ne disait ce
+    /// qu'on attendait, et la pastille du parcours restait creuse quoi
+    /// qu'on fasse.
+    pub goal_demo: &'static str,
+    pub goal_demo_watch: &'static str,
+    pub goal_demo_done: &'static str,
+    /// Un palier dont les étapes sont toutes faites.
+    pub exercises_level_done: &'static str,
     pub exercises_done_note: &'static str,
     pub exercises_done_count: &'static str,
     pub exercises_search: &'static str,
@@ -1237,6 +1248,10 @@ const FR: Strings = Strings {
     call_arguments: "Appelée avec :",
     goal_label: "But :",
     goal_reached: "atteint",
+    goal_demo: "Démonstration :",
+    goal_demo_watch: "à regarder tourner — terminée quand le programme s'arrête",
+    goal_demo_done: "regardée jusqu'au bout",
+    exercises_level_done: "palier terminé",
     exercises_done_note: "Exercice réussi",
     exercises_done_count: "réussis",
     exercises_search: "Chercher :",
@@ -2128,6 +2143,10 @@ const EN: Strings = Strings {
     call_arguments: "Called with:",
     goal_label: "Goal:",
     goal_reached: "reached",
+    goal_demo: "Demonstration:",
+    goal_demo_watch: "watch it run — finished when the program halts",
+    goal_demo_done: "watched to the end",
+    exercises_level_done: "level complete",
     exercises_done_note: "Exercise solved",
     exercises_done_count: "solved",
     exercises_search: "Search:",

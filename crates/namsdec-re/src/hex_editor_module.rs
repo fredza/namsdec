@@ -1,4 +1,4 @@
-use crate::{ReContext, ReModule, ReRequest, ReResult, ReSection, framed, framed_button};
+use crate::{ReContext, ReModule, ReRequest, ReResult, ReSection, framed_button};
 
 /// Un éditeur binaire : le fichier chargé en grille hexadécimale, un octet
 /// qu'on choisit, une valeur qu'on pose à la place.
@@ -30,12 +30,53 @@ enum Colonne {
 
 #[derive(Default)]
 pub struct HexEditorModule {
-    /// L'octet du début de la page affichée.
-    page: usize,
+    /// L'octet qu'il faut AMENER SOUS LES YEUX à la prochaine image.
+    ///
+    /// Remplace la pagination. L'éditeur montrait le fichier par pages
+    /// de 256 octets, avec « ‹ » et « › » pour tourner — ET une zone
+    /// défilante par-dessus, parce que seize lignes ne tenaient pas
+    /// dans la hauteur accordée. Deux façons de se déplacer dans la
+    /// même chose, dont l'une s'arrête tous les 256 octets sans raison
+    /// : un fichier n'a pas de pages. Il défile maintenant d'un bout à
+    /// l'autre, et ce champ ne sert qu'aux sauts — « aller à », une
+    /// trouvaille, une arrivée depuis un autre panneau, le curseur qui
+    /// sort de l'écran.
+    amener: Option<usize>,
+    /// Les sections du fichier, rangées par position, relevées une fois
+    /// au chargement.
+    ///
+    /// Dire `.text` plutôt que « 0x2050 » est ce qui change une adresse
+    /// en lieu. Relevé une fois : relire les en-têtes à chaque image
+    /// pour une ligne d'information coûterait plus que tout le reste du
+    /// panneau.
+    sections: Vec<(String, std::ops::Range<usize>, bool, bool)>,
+    /// De combien le vidage est décalé horizontalement.
+    ///
+    /// La règle des colonnes vit HORS de la zone qui défile — elle doit
+    /// rester en vue quand on descend — et doit pourtant suivre son
+    /// défilement de côté, sans quoi elle désignerait la mauvaise
+    /// colonne. Relevé après coup, employé à l'image suivante.
+    décalage_x: f32,
+    /// Combien d'octets par ligne à la dernière image.
+    ///
+    /// Calculé sur la largeur disponible, et retenu : le clavier s'en
+    /// sert — flèche bas, page suivante — et il s'exécute APRÈS la
+    /// grille, qui vient de le mesurer.
+    par_ligne: usize,
     /// Ce qu'on a tapé dans « aller à ».
     aller: String,
-    /// L'octet choisi, s'il y en a un.
+    /// L'octet choisi, s'il y en a un. C'est le CURSEUR.
     choisi: Option<usize>,
+    /// L'autre bout de la sélection, quand on en a tendu une.
+    ///
+    /// `None` : un seul octet, celui du curseur. Sinon la sélection va
+    /// de l'un à l'autre, bornes comprises, et c'est elle que
+    /// « Écrire » remplace et que « Remplir » recouvre.
+    ///
+    /// Un bout FIXE et un curseur qui bouge, et non deux bornes
+    /// rangées : c'est ce qui permet d'étendre dans les deux sens avec
+    /// Maj+flèches sans que la sélection se retourne sous les doigts.
+    ancre: Option<usize>,
     /// La valeur qu'on pose à la place, en hexadécimal.
     valeur: String,
     /// Les octets qu'on a modifiés depuis l'ouverture de ce binaire, pour
@@ -74,12 +115,172 @@ pub struct HexEditorModule {
     demande: Option<ReRequest>,
 }
 
-/// Seize octets par ligne, et seize lignes par page : la forme de tous les
-/// éditeurs hexadécimaux, et de `xxd`. Assez pour lire un bloc, pas assez
-/// pour noyer la fenêtre.
+/// Les largeurs de ligne acceptées, en octets.
+///
+/// DES PUISSANCES DE DEUX, et c'est tout l'intérêt : chaque ligne
+/// commence alors à une adresse ronde, et la règle des colonnes donne
+/// directement le dernier chiffre de la position — `0x2050` se lit
+/// « ligne 2050, colonne 0 ». À vingt-quatre octets par ligne on
+/// remplirait mieux la fenêtre et l'on ne saurait plus lire une
+/// adresse.
+///
+/// Seize est la forme de `xxd` et de tous les éditeurs hexadécimaux ;
+/// trente-deux sert quand le panneau est large, et c'est là qu'un motif
+/// qui se répète toutes les seize ou trente-deux positions se voit d'un
+/// coup d'œil. Huit est pour les panneaux étroits, où seize se
+/// couperait.
+const LARGEURS: [usize; 3] = [8, 16, 32];
+
+/// La largeur par défaut, et celle dont le clavier se sert tant que la
+/// grille n'a pas encore été peinte.
 const PAR_LIGNE: usize = 16;
-const LIGNES: usize = 16;
-const PAR_PAGE: usize = PAR_LIGNE * LIGNES;
+
+/// Les octets se groupent par huit : l'œil retrouve la huitième colonne
+/// sans la compter, et un mot de huit octets se lit d'un bloc.
+const GROUPE: usize = 8;
+
+/// La largeur d'une cellule d'octet, en caractères : deux chiffres et
+/// ce qui les sépare du voisin.
+///
+/// SIX DIXIÈMES D'ESPACE, et non un entier. Mesuré : à un espace plein,
+/// seize octets par ligne avec leurs deux colonnes d'adresses font 642
+/// pixels dans un panneau qui en offre 622 — le vidage se dotait d'une
+/// barre horizontale pour vingt pixels, sur la disposition PAR DÉFAUT.
+/// Un appareil dont la vue ordinaire ne tient pas dans sa place n'a pas
+/// la bonne taille ; les octets se resserrent, et le cran entre deux
+/// groupes de huit suffit à ce que l'œil retrouve sa colonne.
+const PAS_OCTET: f32 = 2.6;
+
+/// Combien de lignes du vidage sont à l'écran.
+///
+/// UN NOMBRE DE LIGNES, et non une hauteur disponible. Lire la place
+/// qui reste serait lire une dimension que ce panneau FIXE lui-même
+/// quand il vit dans une fenêtre qui épouse son contenu : la zone
+/// prendrait la hauteur offerte, la fenêtre grandirait pour la
+/// contenir, ce qui agrandirait l'offre, et ainsi de suite. Ce panneau
+/// a déjà payé cette leçon une fois, sur la largeur, à propos de
+/// l'inspecteur — voir plus bas.
+const LIGNES_VUES: usize = 22;
+
+/// Où chaque colonne du vidage commence, en pixels depuis le bord
+/// gauche de la ligne.
+///
+/// UNE GÉOMÉTRIE CALCULÉE, et c'est ce qui permet la règle des
+/// colonnes. Chaque octet était jusqu'ici une étiquette posée dans une
+/// rangée horizontale : leurs abscisses dépendaient des largeurs de
+/// glyphe et des écarts d'egui, personne ne les connaissait, et l'on ne
+/// pouvait donc rien écrire AU-DESSUS qui tombe juste. On comptait les
+/// colonnes avec le doigt — exactement ce que la grille de bits de la
+/// calculatrice évite depuis toujours avec ses index.
+///
+/// Les mesures sont en caractères, puis multipliées par la chasse :
+/// c'est la seule façon qu'une règle et un vidage s'alignent quelle que
+/// soit la police.
+struct Colonnes {
+    chasse: f32,
+    par_ligne: usize,
+    /// Combien de chiffres hexadécimaux une position demande.
+    chiffres: usize,
+    x_adresse: f32,
+    x_hex: f32,
+    x_texte: f32,
+    largeur: f32,
+}
+
+impl Colonnes {
+    fn new(chasse: f32, par_ligne: usize, adresses: bool, chiffres: usize) -> Self {
+        // `chiffres` de position, deux espaces ; autant pour l'adresse
+        // quand elle est là ; trois caractères par octet (« xx ») plus
+        // un de plus entre deux groupes ; deux espaces, puis le texte.
+        //
+        // LE NOMBRE DE CHIFFRES EST TAILLÉ SUR LE FICHIER, et non écrit
+        // d'avance. Huit zéros devant chaque ligne d'un fichier de cent
+        // cinquante kilooctets, c'est trois colonnes qui ne disent
+        // jamais rien d'autre que « zéro » — et quatre caractères de
+        // large, deux fois, soit de quoi faire déborder le vidage de la
+        // place qu'on lui laisse.
+        let après_position = chiffres as f32 + 2.0;
+        let après_adresse = if adresses { chiffres as f32 + 2.0 } else { 0.0 };
+        let x_hex = après_position + après_adresse;
+        let groupes = par_ligne.div_ceil(GROUPE).saturating_sub(1) as f32;
+        let x_texte = x_hex + par_ligne as f32 * PAS_OCTET + groupes + 1.0;
+        Self {
+            chasse,
+            par_ligne,
+            chiffres,
+            x_adresse: après_position * chasse,
+            x_hex: x_hex * chasse,
+            x_texte: x_texte * chasse,
+            largeur: (x_texte + par_ligne as f32) * chasse,
+        }
+    }
+
+    /// Le bord gauche de la cellule hexadécimale de cette colonne.
+    fn x_octet(&self, col: usize) -> f32 {
+        self.x_hex + (col as f32 * PAS_OCTET + (col / GROUPE) as f32) * self.chasse
+    }
+
+    /// Le bord gauche du caractère de cette colonne.
+    fn x_car(&self, col: usize) -> f32 {
+        self.x_texte + col as f32 * self.chasse
+    }
+
+    /// Quelle cellule se trouve sous cette abscisse, comptée depuis le
+    /// bord gauche de la ligne ?
+    ///
+    /// Les deux colonnes sont cliquables, et le clic doit dire DANS
+    /// LAQUELLE il est tombé : c'est elle qui décide de ce que la
+    /// frappe suivante voudra dire — des chiffres hexadécimaux d'un
+    /// côté, un caractère de l'autre.
+    fn sous(&self, dx: f32) -> Option<(usize, Colonne)> {
+        if dx >= self.x_texte - self.chasse * 0.5 {
+            let col = ((dx - self.x_texte) / self.chasse).floor();
+            let col = if col < 0.0 { 0 } else { col as usize };
+            return (col < self.par_ligne).then_some((col, Colonne::Texte));
+        }
+        (0..self.par_ligne).find_map(|col| {
+            let gauche = self.x_octet(col);
+            // La moitié de l'espace qui suit appartient à la cellule :
+            // viser entre deux octets ne doit pas rater les deux.
+            (dx >= gauche - self.chasse * 0.3 && dx < gauche + self.chasse * 2.3)
+                .then_some((col, Colonne::Hex))
+        })
+    }
+}
+
+/// Les deux bornes d'une sélection, dans l'ordre.
+fn étendue(curseur: usize, ancre: Option<usize>) -> std::ops::Range<usize> {
+    match ancre {
+        Some(a) if a < curseur => a..curseur + 1,
+        Some(a) => curseur..a + 1,
+        None => curseur..curseur + 1,
+    }
+}
+
+/// Dans quelle section de l'ELF cet octet tombe-t-il ?
+///
+/// `.text`, `.rodata`, `.data` : un nom plutôt qu'un nombre. C'est ce
+/// qui change une position en LIEU, et c'est la première question qu'on
+/// se pose devant un octet qu'on s'apprête à changer — parce que la
+/// réponse décide si l'on touche à du code ou à une constante.
+fn sections_par_position(octets: &[u8]) -> Vec<(String, std::ops::Range<usize>, bool, bool)> {
+    let Some(scan) = crate::elf_scan::scan(octets) else {
+        return Vec::new();
+    };
+    scan.sections
+        .iter()
+        // `.bss` et ses semblables n'occupent RIEN dans le fichier :
+        // leur position désigne ce qui suit, et les compter ferait
+        // nommer le voisin.
+        .filter(|s| !s.nobits && s.size > 0)
+        .map(|s| {
+            let début = s.offset as usize;
+            let fin = (début + s.size as usize).min(octets.len());
+            (s.name.clone(), début..fin, s.write, s.execute)
+        })
+        .filter(|(_, plage, _, _)| plage.start < plage.end)
+        .collect()
+}
 
 /// La colonne des adresses apprend-elle quelque chose sur ce fichier ?
 ///
@@ -114,15 +315,6 @@ fn nombre(texte: &str) -> Option<usize> {
     }
 }
 
-/// Lit un octet : un ou deux chiffres hexadécimaux, de `0` à `ff`.
-fn octet(texte: &str) -> Option<u8> {
-    let t = texte.trim();
-    if t.is_empty() || t.len() > 2 {
-        return None;
-    }
-    u8::from_str_radix(t, 16).ok()
-}
-
 impl ReModule for HexEditorModule {
     fn section(&self) -> ReSection {
         ReSection::Bytes
@@ -148,9 +340,14 @@ impl ReModule for HexEditorModule {
         // Un autre fichier : ce qu'on avait touché ne le concerne plus.
         self.touchés.clear();
         self.choisi = None;
-        self.page = 0;
+        self.ancre = None;
+        self.amener = Some(0);
         self.trouvé = None;
         self.venu_de = None;
+        self.sections = sections_par_position(ctx.binary);
+        if self.par_ligne == 0 {
+            self.par_ligne = PAR_LIGNE;
+        }
         // Et la colonne des adresses ne paraît que si elle apprend
         // quelque chose : dans un exécutable indépendant de la position,
         // le premier segment est chargé à l'adresse zéro, et elle
@@ -166,7 +363,7 @@ impl ReModule for HexEditorModule {
     /// cette arrivée d'un éditeur qu'on vient d'ouvrir au hasard.
     fn deliver(&mut self, result: &ReResult) {
         if let ReResult::ShowBytesAt { offset, addr } = result {
-            self.page = offset / PAR_PAGE * PAR_PAGE;
+            self.amener = Some(*offset);
             self.choisi = Some(*offset);
             self.venu_de = *addr;
             self.trouvé = None;
@@ -188,12 +385,13 @@ impl ReModule for HexEditorModule {
         }
 
         ui.weak(ctx.t(
-            "Choisissez un octet, posez-en un autre. Chaque écriture se défait depuis \
-             Outils › Correctifs, et rien ne touche le disque tant que vous n'enregistrez \
-             pas vous-même, vers un fichier que vous choisissez.",
-            "Pick a byte, put another in its place. Each write can be undone from \
-             Tools › Patches, and nothing touches the disk until you save it yourself, to \
-             a file you choose.",
+            "Choisissez un octet — ou plusieurs, avec Maj —, posez-en d'autres à la place. \
+             Chaque écriture se défait depuis Outils › Correctifs, et rien ne touche le \
+             disque tant que vous n'enregistrez pas vous-même, vers un fichier que vous \
+             choisissez.",
+            "Pick a byte — or several, with Shift — and put others in its place. Each \
+             write can be undone from Tools › Patches, and nothing touches the disk until \
+             you save it yourself, to a file you choose.",
         ));
         // D'OÙ L'ON VIENT. Une position seule ne dit pas qu'on y a été
         // envoyé : on a cliqué une adresse dans un autre panneau, et
@@ -212,10 +410,12 @@ impl ReModule for HexEditorModule {
         }
         ui.add_space(6.0);
 
-        // La barre de navigation : aller à un décalage, page précédente et
-        // suivante. La page est bornée au fichier des deux côtés.
-        let dernière_page = octets.len().saturating_sub(1) / PAR_PAGE * PAR_PAGE;
-        self.page = self.page.min(dernière_page);
+        // La barre de navigation : aller à un décalage. Plus de « page
+        // précédente / suivante » — le fichier défile d'un bout à
+        // l'autre, et il n'a jamais eu de pages.
+        if self.par_ligne == 0 {
+            self.par_ligne = PAR_LIGNE;
+        }
         ui.horizontal_wrapped(|ui| {
             ui.weak(ctx.t("Aller à", "Go to"));
             let champ = ui.add(
@@ -240,34 +440,27 @@ impl ReModule for HexEditorModule {
                     _ => n,
                 }
                 .min(octets.len().saturating_sub(1));
-                self.page = cible / PAR_PAGE * PAR_PAGE;
+                self.amener = Some(cible);
                 self.choisi = Some(cible);
                 self.venu_de = None;
             }
             ui.separator();
-            // « ‹ » et « › », et non « ◀ » et « ▶ » : ces deux-là
-            // n'existent pas dans les polices qu'egui embarque, et se
-            // peignaient en carré vide — un bouton qui ne montre rien
-            // ne se clique pas.
-            if ui
-                .add_enabled(self.page > 0, framed(ui, "\u{2039}"))
-                .clicked()
-            {
-                self.page = self.page.saturating_sub(PAR_PAGE);
-            }
-            ui.monospace(format!(
-                "{:#x} … {:#x}",
-                self.page,
-                (self.page + PAR_PAGE).min(octets.len())
-            ));
-            if ui
-                .add_enabled(self.page < dernière_page, framed(ui, "\u{203a}"))
-                .clicked()
-            {
-                self.page = (self.page + PAR_PAGE).min(dernière_page);
-            }
-            ui.separator();
             ui.weak(format!("{} {}", octets.len(), ctx.t("octets", "bytes")));
+            ui.separator();
+            // COMBIEN D'OCTETS PAR LIGNE, et choisi à la main plutôt que
+            // déduit de la largeur disponible. Trente-deux remplit un
+            // panneau large et fait sauter aux yeux un motif qui se
+            // répète ; huit tient dans un panneau étroit. Mais lire la
+            // largeur offerte pour en décider serait lire une dimension
+            // que ce panneau fixe lui-même dès qu'il vit dans une
+            // fenêtre qui épouse son contenu — c'est exactement la
+            // boucle qui a fait gonfler la fenêtre d'analyse jusqu'à
+            // déborder de l'écran (voir l'inspecteur, plus bas). Un
+            // réglage ne se reboucle pas.
+            ui.weak(ctx.t("par ligne", "per row"));
+            for largeur in LARGEURS {
+                ui.selectable_value(&mut self.par_ligne, largeur, largeur.to_string());
+            }
             // La colonne des adresses, qu'on peut retirer : sur un
             // fichier qu'aucun segment ne porte — un tampon brut, une
             // archive —, elle ne montrerait que des tirets.
@@ -335,7 +528,7 @@ impl ReModule for HexEditorModule {
                             self.trouvé = Some(pos..pos + m.len());
                             self.choisi = Some(pos);
                             self.valeur = format!("{:02x}", octets[pos]);
-                            self.page = pos / PAR_PAGE * PAR_PAGE;
+                            self.amener = Some(pos);
                         }
                         None => {
                             self.trouvé = None;
@@ -354,116 +547,304 @@ impl ReModule for HexEditorModule {
         let fond_trouvé = visuals.hyperlink_color.gamma_multiply(0.35);
         let mut nouveau_choix: Option<usize> = None;
         let mut nouvelle_colonne: Colonne = self.colonne;
-        let glyphe = egui::TextStyle::Monospace.resolve(ui.style());
+        // La sélection courante, relevée avant de peindre : la grille
+        // l'emprunte en lecture seule, et le clic ne la change qu'après.
+        let sélection = match self.choisi {
+            Some(curseur) => étendue(curseur, self.ancre),
+            None => 0..0,
+        };
+        let mut étendre = false;
 
-        egui::ScrollArea::vertical()
-            .max_height(320.0)
-            .show(ui, |ui| {
-                ui.spacing_mut().item_spacing = egui::vec2(0.0, 2.0);
-                let fin = (self.page + PAR_PAGE).min(octets.len());
-                let mut ligne = self.page;
-                while ligne < fin {
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 6.0;
-                        // Le décalage de la ligne, en tête — et
-                        // l'adresse à laquelle elle sera lue, quand un
-                        // segment la porte.
-                        ui.monospace(
-                            egui::RichText::new(format!("{ligne:08x}"))
-                                .color(visuals.weak_text_color()),
-                        );
-                        if adresses {
-                            let texte = match crate::imports::virtual_address(octets, ligne as u64)
-                            {
-                                Some(addr) => format!("{addr:08x}"),
-                                // Une ligne qu'aucun segment ne porte —
-                                // l'en-tête, la table des symboles — :
-                                // des tirets, et non un blanc, pour que
-                                // la colonne reste une colonne.
-                                None => "--------".to_owned(),
-                            };
-                            ui.monospace(
-                                egui::RichText::new(texte)
-                                    .color(visuals.hyperlink_color.gamma_multiply(0.75)),
-                            );
-                        }
-                        ui.add_space(2.0);
-                        // Les octets, cliquables.
-                        for col in 0..PAR_LIGNE {
-                            let off = ligne + col;
-                            if off >= fin {
-                                // Aligner l'ASCII même sur une ligne
-                                // incomplète : deux espaces par octet absent.
-                                ui.monospace("  ");
-                            } else {
-                                let mut texte =
-                                    egui::RichText::new(format!("{:02x}", octets[off])).monospace();
-                                if Some(off) == self.choisi {
-                                    texte = texte.background_color(fond_choisi);
-                                } else if self.trouvé.as_ref().is_some_and(|r| r.contains(&off)) {
-                                    texte = texte.background_color(fond_trouvé);
-                                } else if self.touchés.contains(&off) {
-                                    texte = texte.background_color(fond_touché);
-                                }
-                                if crate::clickable_label(ui, egui::Label::new(texte))
-                                    .on_hover_cursor(egui::CursorIcon::PointingHand)
-                                    .clicked()
-                                {
-                                    nouveau_choix = Some(off);
-                                    nouvelle_colonne = Colonne::Hex;
-                                }
-                            }
-                            // Un demi-espace entre les octets, un cran de
-                            // plus au milieu : l'œil retrouve la 8e colonne.
-                            if col == 7 {
-                                ui.add_space(6.0);
-                            }
-                        }
-                        ui.add_space(10.0);
-                        // La colonne de texte, caractère par caractère et
-                        // cliquable : c'est l'autre fenêtre sur les mêmes
-                        // octets, et l'autre endroit où l'on édite. Les
-                        // caractères se touchent (espacement nul) pour se
-                        // lire comme un mot.
-                        ui.scope(|ui| {
-                            ui.spacing_mut().item_spacing.x = 0.0;
-                            for col in 0..PAR_LIGNE {
-                                let off = ligne + col;
-                                if off >= fin {
-                                    break;
-                                }
-                                let b = octets[off];
-                                let c = if (0x20..0x7f).contains(&b) {
-                                    b as char
-                                } else {
-                                    '·'
-                                };
-                                let mut texte = egui::RichText::new(c.to_string())
-                                    .monospace()
-                                    .color(visuals.weak_text_color());
-                                if Some(off) == self.choisi {
-                                    texte = texte.background_color(fond_choisi);
-                                } else if self.trouvé.as_ref().is_some_and(|r| r.contains(&off)) {
-                                    texte = texte.background_color(fond_trouvé);
-                                } else if self.touchés.contains(&off) {
-                                    texte = texte.background_color(fond_touché);
-                                }
-                                if crate::clickable_label(ui, egui::Label::new(texte))
-                                    .on_hover_cursor(egui::CursorIcon::PointingHand)
-                                    .clicked()
-                                {
-                                    nouveau_choix = Some(off);
-                                    nouvelle_colonne = Colonne::Texte;
-                                }
-                            }
-                        });
-                    });
-                    ligne += PAR_LIGNE;
+        let police = egui::TextStyle::Monospace.resolve(ui.style());
+        // La chasse, demandée à la police et non devinée : c'est elle
+        // qui fait tomber la règle juste au-dessus des octets.
+        // Mesurée sur HUIT caractères puis divisée : un seul glyphe
+        // rend une largeur arrondie, et l'erreur, multipliée par les
+        // quatre-vingt-dix colonnes d'une ligne, décalait la règle d'un
+        // caractère entier au bout.
+        let gabarit = ui.painter().layout_no_wrap(
+            "00000000".to_owned(),
+            police.clone(),
+            egui::Color32::PLACEHOLDER,
+        );
+        let chasse = gabarit.size().x / 8.0;
+        let hauteur = gabarit.size().y;
+        let par_ligne = self.par_ligne.max(1);
+        // Les chiffres que ce fichier-ci demande : six au minimum —
+        // en dessous, la colonne est trop étroite pour se lire comme
+        // une adresse — et deux de plus par tranche de seize fois plus
+        // grand. La plus haute adresse compte autant que la plus haute
+        // position : un segment peut être chargé bien au-delà de la
+        // fin du fichier.
+        let plus_haut = octets.len().max(
+            crate::imports::virtual_address(octets, octets.len() as u64 / 2).unwrap_or(0) as usize,
+        );
+        let chiffres = format!("{plus_haut:x}").len().max(6).div_ceil(2) * 2;
+        let cols = Colonnes::new(chasse, par_ligne, adresses, chiffres);
+        let lignes = octets.len().div_ceil(par_ligne);
+        // LA LARGEUR VUE EST BORNÉE PAR CE QU'ON OFFRE, et c'est un
+        // plafond, jamais un plancher : du contenu qui prend MOINS que
+        // la place disponible ne peut pas faire grandir la fenêtre qui
+        // la lui offre. C'est ce qui rend cette lecture sûre là où la
+        // lecture symétrique — prendre toute la place — reboucle.
+        //
+        // Sans elle, la règle était allouée à la largeur du vidage, qui
+        // dépassait le panneau : celui-ci se dotait d'une barre
+        // horizontale, la zone du vidage d'une seconde juste en
+        // dessous, et deux barres l'une sur l'autre pour trois pixels à
+        // faire défiler.
+        // L'ASCENSEUR VERTICAL SE POSE À L'INTÉRIEUR DE `max_width`, et
+        // c'est tout le contraire de ce que le premier essai supposait.
+        // Il rogne la vue de sa propre largeur : une zone bornée à la
+        // largeur du vidage ne montrait que `largeur − barre`, le
+        // contenu dépassait d'une dizaine de pixels, et une barre
+        // HORIZONTALE paraissait sous un vidage qui tenait pourtant
+        // dans la place offerte. Mesuré dans l'application elle-même —
+        // ni le banc ni la capture ne pouvaient trancher : l'un voyait
+        // une barre légitime, l'autre une barre de trop.
+        //
+        // La zone est donc bornée à « vidage + barre », et la règle à
+        // la VUE, c'est-à-dire à ce qui reste une fois la barre posée.
+        let barre = ui.spacing().scroll.bar_width + ui.spacing().scroll.bar_inner_margin;
+        let zone_large = (cols.largeur + barre).min(ui.available_width());
+        let vue = (zone_large - barre).max(chasse * 20.0);
+
+        // LA RÈGLE DES COLONNES, au-dessus du vidage et alignée au
+        // pixel sur lui. Sans elle on compte les colonnes avec le
+        // doigt pour savoir à quelle position un octet se trouve ;
+        // avec elle, l'adresse se lit d'un trait — la ligne donne les
+        // chiffres de poids fort, la colonne le dernier.
+        //
+        // Et les deux colonnes d'adresses portent enfin leur nom. Elles
+        // se ressemblent assez pour être prises l'une pour l'autre —
+        // sur une page où segment et fichier coïncident, elles sont
+        // identiques chiffre pour chiffre —, et rien ne disait laquelle
+        // on patche et laquelle on lit dans le listing.
+        let (cadre, _) = ui.allocate_exact_size(egui::vec2(vue, hauteur), egui::Sense::hover());
+        {
+            // Rognée au cadre, et décalée comme le vidage : une règle
+            // qui ne suivrait pas le défilement horizontal désignerait
+            // la mauvaise colonne, ce qui est pire que pas de règle du
+            // tout. Le décalage est celui de l'image PRÉCÉDENTE — il
+            // n'existe qu'une fois la zone dessinée, et l'écart d'une
+            // image ne se voit pas.
+            let p = ui.painter().with_clip_rect(cadre);
+            let cadre = cadre.translate(egui::vec2(-self.décalage_x, 0.0));
+            let dim = visuals.weak_text_color();
+            let écrire = |x: f32, texte: String, couleur: egui::Color32| {
+                p.text(
+                    egui::pos2(cadre.left() + x, cadre.center().y),
+                    egui::Align2::LEFT_CENTER,
+                    texte,
+                    police.clone(),
+                    couleur,
+                );
+            };
+            // « fichier » et « mémoire », et non « position » et
+            // « adresse ». Deux raisons, et la seconde est la bonne :
+            // les mots tiennent dans la colonne — « position » fait
+            // huit caractères pour un emplacement qui en a huit, et se
+            // collait à l'étiquette suivante —, et surtout ils disent
+            // la DIFFÉRENCE au lieu de la supposer connue. L'une dit où
+            // l'octet est écrit, l'autre où il sera lu ; on patche à la
+            // première et l'on raisonne avec la seconde, et c'est pour
+            // avoir à les rapprocher de tête qu'on se trompe de ligne.
+            écrire(0.0, ctx.t("fichier", "file").to_owned(), dim);
+            if adresses {
+                écrire(
+                    cols.x_adresse,
+                    ctx.t("mémoire", "memory").to_owned(),
+                    visuals.hyperlink_color.gamma_multiply(0.75),
+                );
+            }
+            for col in 0..par_ligne {
+                écrire(cols.x_octet(col), format!("{col:02x}"), dim);
+            }
+            écrire(cols.x_texte, ctx.t("texte", "text").to_owned(), dim);
+        }
+        // Un filet sous la règle : c'est un en-tête, pas une ligne du
+        // vidage, et rien d'autre ne le dirait.
+        {
+            let y = cadre.bottom() + 2.0;
+            ui.painter().hline(
+                cadre.left()..=cadre.right(),
+                y,
+                egui::Stroke::new(1.0, visuals.weak_text_color().gamma_multiply(0.5)),
+            );
+        }
+        ui.add_space(4.0);
+
+        // LE FICHIER ENTIER DÉFILE, d'un bout à l'autre. Il n'a pas de
+        // pages : `show_rows` ne construit que les lignes visibles, si
+        // bien qu'un fichier de plusieurs mégaoctets se parcourt sans
+        // que rien ne soit peint hors de l'écran.
+        let mut zone = egui::ScrollArea::both()
+            .id_salt("hex_dump")
+            .max_height(hauteur * LIGNES_VUES as f32)
+            // LARGEUR : la zone épouse le vidage. Elle réclamait toute
+            // la place offerte, ce qui posait son ascenseur à l'autre
+            // bout du panneau — à quarante pixels de ce qu'il fait
+            // défiler — et débordait d'assez peu pour que le panneau se
+            // dote d'une barre horizontale dont il n'avait pas l'usage.
+            //
+            // HAUTEUR : imposée, et c'est l'inverse. Une hauteur qui
+            // épouse son contenu dans une fenêtre qui épouse le sien se
+            // reboucle, et ce panneau connaît la chanson.
+            //
+            // `both` plutôt que `vertical` : à trente-deux octets par
+            // ligne dans un panneau étroit, le vidage dépasse, et ce
+            // qu'on ne peut pas atteindre n'existe pas. La barre ne
+            // paraît que s'il y a de quoi défiler.
+            .max_width(zone_large)
+            .auto_shrink([false, false]);
+        // Un saut demandé : « aller à », une trouvaille, une arrivée
+        // d'un autre panneau, ou le curseur sorti de l'écran. La ligne
+        // visée est amenée au tiers haut de la zone — collée en haut,
+        // on ne voit pas ce qui la précède, et c'est souvent là qu'est
+        // la réponse.
+        if let Some(off) = self.amener.take() {
+            let y = (off / par_ligne) as f32 * hauteur;
+            zone = zone.vertical_scroll_offset((y - hauteur * (LIGNES_VUES as f32 / 3.0)).max(0.0));
+        }
+        let sortie = zone.show_rows(ui, hauteur, lignes, |ui, plage| {
+            // Aucun écart vertical : c'est ce qui rend le pas d'une
+            // ligne exactement égal à `hauteur`, et donc le saut
+            // calculable.
+            ui.spacing_mut().item_spacing.y = 0.0;
+            for index in plage.clone() {
+                let début = index * par_ligne;
+                let fin = (début + par_ligne).min(octets.len());
+                let (rect, réponse) =
+                    ui.allocate_exact_size(egui::vec2(cols.largeur, hauteur), egui::Sense::click());
+                if !ui.is_rect_visible(rect) {
+                    continue;
                 }
-                let _ = glyphe;
-            });
+                let p = ui.painter();
+                // Les fonds d'abord, le texte ensuite : peints dans
+                // l'autre ordre, un fond recouvrirait ses chiffres.
+                for off in début..fin {
+                    let col = off - début;
+                    // TOUTE LA SÉLECTION, et non le seul curseur : ce
+                    // qu'on va remplacer doit se voir avant qu'on le
+                    // remplace. Le curseur garde un liseré, plus bas,
+                    // pour qu'on sache lequel des trente octets la
+                    // frappe touchera.
+                    let fond = if sélection.contains(&off) {
+                        Some(fond_choisi)
+                    } else if self.trouvé.as_ref().is_some_and(|r| r.contains(&off)) {
+                        Some(fond_trouvé)
+                    } else if self.touchés.contains(&off) {
+                        Some(fond_touché)
+                    } else {
+                        None
+                    };
+                    let Some(fond) = fond else { continue };
+                    for (x, large) in [(cols.x_octet(col), chasse * 2.0), (cols.x_car(col), chasse)]
+                    {
+                        p.rect_filled(
+                            egui::Rect::from_min_size(
+                                egui::pos2(rect.left() + x - 1.0, rect.top()),
+                                egui::vec2(large + 2.0, hauteur),
+                            ),
+                            2.0,
+                            fond,
+                        );
+                    }
+                }
+                // LE CURSEUR DANS LA SÉLECTION : un trait sous sa
+                // cellule, peint APRÈS les fonds — dessiné avant, le
+                // fond de la sélection le recouvrait, et l'on cherchait
+                // un repère qui existait pourtant. Sans lui, une
+                // sélection de trente octets ne dit pas lequel la
+                // frappe suivante touche, ni de quel bout Maj+flèche
+                // tirera.
+                if sélection.len() > 1
+                    && let Some(curseur) = self.choisi
+                    && (début..fin).contains(&curseur)
+                {
+                    let x = rect.left() + cols.x_octet(curseur - début);
+                    p.hline(
+                        x..=x + chasse * 2.0,
+                        rect.bottom() - 1.0,
+                        egui::Stroke::new(1.5, visuals.text_color()),
+                    );
+                }
+                let écrire = |x: f32, texte: String, couleur: egui::Color32| {
+                    p.text(
+                        egui::pos2(rect.left() + x, rect.center().y),
+                        egui::Align2::LEFT_CENTER,
+                        texte,
+                        police.clone(),
+                        couleur,
+                    );
+                };
+                écrire(
+                    0.0,
+                    format!("{début:0larg$x}", larg = cols.chiffres),
+                    visuals.weak_text_color(),
+                );
+                if adresses {
+                    let texte = match crate::imports::virtual_address(octets, début as u64) {
+                        Some(addr) => format!("{addr:0larg$x}", larg = cols.chiffres),
+                        // Une ligne qu'aucun segment ne porte —
+                        // l'en-tête, la table des symboles — : des
+                        // tirets, et non un blanc, pour que la
+                        // colonne reste une colonne.
+                        None => "-".repeat(cols.chiffres),
+                    };
+                    écrire(
+                        cols.x_adresse,
+                        texte,
+                        visuals.hyperlink_color.gamma_multiply(0.75),
+                    );
+                }
+                for (col, &b) in octets[début..fin].iter().enumerate() {
+                    écrire(cols.x_octet(col), format!("{b:02x}"), visuals.text_color());
+                    let c = if (0x20..0x7f).contains(&b) {
+                        b as char
+                    } else {
+                        '\u{b7}'
+                    };
+                    écrire(cols.x_car(col), c.to_string(), visuals.weak_text_color());
+                }
+                // Le clic est relevé sur la LIGNE et rendu à une
+                // cellule par la géométrie : une étiquette par
+                // octet coûtait trente-deux widgets par ligne, et
+                // surtout ne disait pas où elle était.
+                if réponse.clicked()
+                    && let Some(pos) = réponse.interact_pointer_pos()
+                    && let Some((col, colonne)) = cols.sous(pos.x - rect.left())
+                    && début + col < fin
+                {
+                    nouveau_choix = Some(début + col);
+                    nouvelle_colonne = colonne;
+                    // Maj+clic ÉTEND au lieu de déplacer : le geste de
+                    // toutes les listes, et le seul moyen de prendre
+                    // trente octets sans les traverser à la flèche.
+                    étendre = ui.input(|i| i.modifiers.shift);
+                }
+                if réponse.hovered() {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                }
+            }
+        });
+        self.décalage_x = sortie.state.offset.x;
+        let vues = sortie.inner_rect;
+        // Ce que l'écran montre, en lignes : le clavier s'en sert pour
+        // savoir quand le curseur en sort, et de combien « page
+        // suivante » avance.
+        let lignes_vues = ((vues.height() / hauteur).floor() as usize).max(1);
 
         if let Some(off) = nouveau_choix {
+            if étendre {
+                // Le bout fixe est celui d'où l'on vient, sauf si une
+                // sélection était déjà tendue : on la prolonge alors
+                // depuis SON ancre, et non depuis le curseur qu'on
+                // vient de quitter.
+                self.ancre = self.ancre.or(self.choisi);
+            } else {
+                self.ancre = None;
+            }
             self.choisi = Some(off);
             self.valeur = format!("{:02x}", octets[off]);
             self.nibble = None;
@@ -486,29 +867,104 @@ impl ReModule for HexEditorModule {
             && ui.memory(|m| m.focused()).is_none()
         {
             let dernier = octets.len().saturating_sub(1);
+            // « Page suivante » avance d'un écran, et non d'un nombre
+            // écrit d'avance : l'écran est ce qu'on voit, et c'est de
+            // ça qu'on parle en disant « page ».
+            let par_page = lignes_vues * par_ligne;
+            let première_vue = (vues.top() / hauteur).floor().max(0.0) as usize;
+            let dernière_vue = première_vue + lignes_vues;
             let mut bascule: Option<usize> = None;
+            // Maj tenue : le déplacement TIRE la sélection au lieu de
+            // la défaire. C'est le geste de tous les éditeurs, et sans
+            // lui, prendre trente octets demandait de viser les deux
+            // bouts à la souris.
+            let mut étend_clavier = false;
             let mut chiffre: Option<u8> = None;
             let mut caractère: Option<u8> = None;
             let mut annule = false;
             let mut change_colonne = false;
+            // Le presse-papiers : ce qu'on emporte, ce qu'on rapporte.
+            let mut à_copier: Option<String> = None;
+            let mut collé: Option<String> = None;
+            let mut tout = false;
             let en_texte = self.colonne == Colonne::Texte;
             ui.input_mut(|i| {
                 use egui::Key;
                 let rien = egui::Modifiers::NONE;
-                if i.consume_key(rien, Key::ArrowRight) {
+                /// La touche est-elle tombée, et Maj était-elle tenue ?
+                ///
+                /// Les deux sont demandées d'un coup parce que ce sont
+                /// la MÊME frappe : « droite » déplace, « Maj+droite »
+                /// tire. Écrites en deux séries de `else if`, les huit
+                /// déplacements auraient fait seize branches où l'on
+                /// finit par en oublier une.
+                fn tirer(i: &mut egui::InputState, k: egui::Key) -> Option<bool> {
+                    // MAJ D'ABORD, et ce n'est pas une préférence :
+                    // `consume_key` compare par `matches_logically`,
+                    // qui exige les modificateurs du MOTIF et tolère
+                    // ceux en trop dans l'évènement. `Modifiers::NONE`
+                    // n'exige donc rien, et avalait les Maj+flèches
+                    // avant que la ligne suivante ne les voie — le
+                    // curseur se déplaçait sans rien sélectionner, et
+                    // aucune de ces deux lignes n'avait l'air fausse.
+                    if i.consume_key(egui::Modifiers::SHIFT, k) {
+                        Some(true)
+                    } else if i.consume_key(egui::Modifiers::NONE, k) {
+                        Some(false)
+                    } else {
+                        None
+                    }
+                }
+                // LE PRESSE-PAPIERS EN PREMIER : `Copie` et `Collage`
+                // sont des évènements à part — egui les fabrique à
+                // partir de Ctrl+C et Ctrl+V et n'en laisse pas la
+                // touche —, et les lire avant les déplacements évite de
+                // se demander lequel des deux a mangé la frappe.
+                i.events.retain(|ev| match ev {
+                    egui::Event::Copy | egui::Event::Cut => {
+                        à_copier = Some(String::new());
+                        false
+                    }
+                    egui::Event::Paste(texte) => {
+                        collé = Some(texte.clone());
+                        false
+                    }
+                    _ => true,
+                });
+                if let Some(maj) = tirer(i, Key::ArrowRight) {
                     bascule = Some((off + 1).min(dernier));
-                } else if i.consume_key(rien, Key::ArrowLeft) {
+                    étend_clavier = maj;
+                } else if let Some(maj) = tirer(i, Key::ArrowLeft) {
                     bascule = Some(off.saturating_sub(1));
-                } else if i.consume_key(rien, Key::ArrowDown) {
-                    bascule = Some((off + PAR_LIGNE).min(dernier));
-                } else if i.consume_key(rien, Key::ArrowUp) {
-                    bascule = Some(off.saturating_sub(PAR_LIGNE));
-                } else if i.consume_key(rien, Key::PageDown) {
-                    bascule = Some((off + PAR_PAGE).min(dernier));
-                } else if i.consume_key(rien, Key::PageUp) {
-                    bascule = Some(off.saturating_sub(PAR_PAGE));
+                    étend_clavier = maj;
+                } else if let Some(maj) = tirer(i, Key::ArrowDown) {
+                    bascule = Some((off + par_ligne).min(dernier));
+                    étend_clavier = maj;
+                } else if let Some(maj) = tirer(i, Key::ArrowUp) {
+                    bascule = Some(off.saturating_sub(par_ligne));
+                    étend_clavier = maj;
+                } else if let Some(maj) = tirer(i, Key::PageDown) {
+                    bascule = Some((off + par_page).min(dernier));
+                    étend_clavier = maj;
+                } else if let Some(maj) = tirer(i, Key::PageUp) {
+                    bascule = Some(off.saturating_sub(par_page));
+                    étend_clavier = maj;
+                } else if let Some(maj) = tirer(i, Key::Home) {
+                    // Le début de la ligne, et Fin sa fin : les deux
+                    // touches que tout éditeur de texte donne, et qui
+                    // manquaient ici.
+                    bascule = Some(off - off % par_ligne);
+                    étend_clavier = maj;
+                } else if let Some(maj) = tirer(i, Key::End) {
+                    bascule = Some((off - off % par_ligne + par_ligne - 1).min(dernier));
+                    étend_clavier = maj;
                 } else if i.consume_key(rien, Key::Escape) {
                     annule = true;
+                } else if i.consume_key(egui::Modifiers::COMMAND, Key::A) {
+                    // Tout le fichier : le geste de toutes les
+                    // fenêtres, et ici le seul moyen de dire « ces
+                    // cent cinquante mille octets » sans les parcourir.
+                    tout = true;
                 } else if i.consume_key(rien, Key::Tab) {
                     change_colonne = true;
                 } else if en_texte {
@@ -560,16 +1016,71 @@ impl ReModule for HexEditorModule {
                 };
                 self.nibble = None;
             }
+            if tout {
+                self.ancre = Some(0);
+                self.choisi = Some(dernier);
+            }
+            // CE QU'ON EMPORTE, dans l'écriture de la colonne active :
+            // des octets hexadécimaux à gauche, le texte à droite.
+            // C'est la même règle que pour la frappe, et c'est elle qui
+            // rend le geste prévisible — on copie ce qu'on voit.
+            if à_copier.is_some() {
+                let plage = étendue(self.choisi.unwrap_or(off), self.ancre);
+                if let Some(tranche) = octets.get(plage) {
+                    let texte = if en_texte {
+                        tranche
+                            .iter()
+                            .map(|b| {
+                                if (0x20..0x7f).contains(b) {
+                                    *b as char
+                                } else {
+                                    '.'
+                                }
+                            })
+                            .collect()
+                    } else {
+                        tranche
+                            .iter()
+                            .map(|b| format!("{b:02x}"))
+                            .collect::<Vec<_>>()
+                            .join(" ")
+                    };
+                    ui.ctx().copy_text(texte);
+                }
+            }
+            // CE QU'ON RAPPORTE VA DANS LE CHAMP, et n'écrit rien.
+            //
+            // C'est le seul endroit de ce panneau où la frappe
+            // n'atteint pas le fichier, et c'est voulu : un collage
+            // peut porter quatre mille octets venus d'on ne sait où.
+            // Posé dans le champ, il se lit avant de partir, la ligne
+            // qui dit ce que l'écriture ferait à la taille du fichier
+            // s'affiche, et « Écrire » reste un geste qu'on fait.
+            // Taper des chiffres, à côté, écrit UN octet qu'on vient de
+            // voir : ce n'est pas le même risque.
+            if let Some(texte) = collé {
+                self.valeur = texte.trim().to_owned();
+            }
             if annule {
                 self.nibble = None;
+                // Et la sélection avec : Échap défait ce qu'on vient de
+                // tendre, comme il défait un quartet commencé.
+                self.ancre = None;
             }
             if let Some(cible) = bascule {
+                if étend_clavier {
+                    self.ancre = self.ancre.or(Some(off));
+                } else {
+                    self.ancre = None;
+                }
                 self.choisi = Some(cible);
                 self.valeur = format!("{:02x}", octets[cible]);
                 self.nibble = None;
                 // Suivre le curseur : s'il sort de la page, on tourne.
-                if cible < self.page || cible >= self.page + PAR_PAGE {
-                    self.page = cible / PAR_PAGE * PAR_PAGE;
+                // Suivre le curseur : s'il sort de ce qu'on voit, la
+                // vue le rattrape.
+                if cible / par_ligne < première_vue || cible / par_ligne >= dernière_vue {
+                    self.amener = Some(cible);
                 }
             }
             // Ce qu'on écrit, d'où qu'il vienne : un octet complet tapé en
@@ -585,6 +1096,7 @@ impl ReModule for HexEditorModule {
                 if octets.get(off).copied() != Some(valeur) {
                     self.demande = Some(ReRequest::PatchBytes {
                         offset: off,
+                        retirés: 1,
                         bytes: vec![valeur],
                     });
                     self.touchés.insert(off);
@@ -595,8 +1107,8 @@ impl ReModule for HexEditorModule {
                 self.choisi = Some(suivant);
                 self.valeur = format!("{:02x}", octets.get(suivant).copied().unwrap_or(0));
                 self.nibble = None;
-                if suivant >= self.page + PAR_PAGE {
-                    self.page = suivant / PAR_PAGE * PAR_PAGE;
+                if suivant / par_ligne >= dernière_vue {
+                    self.amener = Some(suivant);
                 }
             }
         }
@@ -605,53 +1117,172 @@ impl ReModule for HexEditorModule {
         if let Some(off) = self.choisi {
             ui.add_space(8.0);
             ui.separator();
+            // OÙ L'ON EST, avant ce qu'on y voit. Une position seule ne
+            // dit rien : `0x2050` est un nombre, `.text` est un lieu —
+            // et c'est le lieu qui décide si l'octet qu'on s'apprête à
+            // changer est du code, une constante ou un nom de symbole.
+            // La question se pose à chaque fois, et il fallait jusqu'ici
+            // aller la poser à la carte du fichier, dans un autre
+            // panneau.
             ui.horizontal_wrapped(|ui| {
                 ui.monospace(
-                    egui::RichText::new(format!(
-                        "{} {off:#x}  =  {:02x}",
-                        ctx.t("Octet", "Byte"),
-                        octets.get(off).copied().unwrap_or(0)
-                    ))
-                    .strong(),
+                    egui::RichText::new(format!("{} {off:#x}", ctx.t("position", "offset")))
+                        .strong(),
                 );
                 // Et son adresse : c'est elle qu'on lit dans le
                 // listing, et c'est par elle qu'on revient.
                 if let Some(addr) = crate::imports::virtual_address(octets, off as u64) {
+                    ui.weak("·");
                     ui.monospace(
                         egui::RichText::new(format!("{addr:#010x}")).color(visuals.hyperlink_color),
                     );
                 }
-                ui.add_space(8.0);
+                if let Some((nom, _, write, execute)) =
+                    self.sections.iter().find(|(_, p, _, _)| p.contains(&off))
+                {
+                    ui.weak("·");
+                    let quoi = match (execute, write) {
+                        (true, _) => ctx.t("du code", "code"),
+                        (_, true) => ctx.t("des données modifiables", "writable data"),
+                        _ => ctx.t("des données en lecture seule", "read-only data"),
+                    };
+                    ui.monospace(egui::RichText::new(nom).color(visuals.warn_fg_color))
+                        .on_hover_text(quoi);
+                    ui.weak(quoi);
+                }
+            });
+            // LA SÉLECTION, ET CE QU'ON EN FAIT.
+            //
+            // Elle remplace le « un octet, une valeur » du premier jet.
+            // Trois gestes manquaient, et ce sont les trois qu'on fait
+            // devant un binaire : recouvrir une instruction entière de
+            // `nop`, écrire une chaîne à la place d'une autre, et
+            // ajouter ce qui n'y était pas.
+            let plage = étendue(off, self.ancre);
+            let combien = plage.len();
+            let écrits = motif(&self.valeur, true);
+            ui.horizontal_wrapped(|ui| {
+                // Ce qu'on a sous la main, en toutes lettres : « 3
+                // octets, 0x2050 … 0x2052 ». Une sélection qu'on ne
+                // compte pas se compte à l'œil, et l'on se trompe d'un.
+                ui.monospace(
+                    egui::RichText::new(if combien == 1 {
+                        format!("{:02x}", octets.get(off).copied().unwrap_or(0))
+                    } else {
+                        format!(
+                            "{combien} {} {:#x} … {:#x}",
+                            ctx.t("octets", "bytes"),
+                            plage.start,
+                            plage.end - 1
+                        )
+                    })
+                    .strong(),
+                );
                 // « -> » et non « → » : la flèche n'existe pas dans
                 // les polices qu'egui embarque, et se peignait en
                 // carré vide.
                 ui.weak(ctx.t("->", "->"));
                 let champ = ui.add(
                     egui::TextEdit::singleline(&mut self.valeur)
-                        .hint_text("90")
+                        .hint_text("90 90 90")
                         .font(egui::TextStyle::Monospace)
-                        .desired_width(44.0),
+                        .desired_width(120.0),
                 );
-                let nouvel = octet(&self.valeur);
-                let change = nouvel.is_some_and(|b| Some(b) != octets.get(off).copied());
+                let change = écrits
+                    .as_ref()
+                    .is_some_and(|b| !b.is_empty() && octets.get(plage.clone()) != Some(&b[..]));
                 let validé = champ.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
                 ui.add_enabled_ui(change, |ui| {
                     if (framed_button(ui, ctx.t("Écrire", "Write")).clicked() || (validé && change))
-                        && let Some(b) = nouvel
+                        && let Some(bytes) = écrits.clone()
+                    {
+                        for o in plage.start..plage.start + bytes.len() {
+                            self.touchés.insert(o);
+                        }
+                        self.demande = Some(ReRequest::PatchBytes {
+                            offset: plage.start,
+                            retirés: combien,
+                            bytes,
+                        });
+                    }
+                });
+                // RECOUVRIR DE `nop` : le geste le plus fréquent de
+                // tous, et celui qu'on faisait jusqu'ici octet par
+                // octet en tapant « 9 0 » autant de fois qu'il le
+                // fallait. Il garde la longueur, donc il ne décale
+                // rien.
+                if framed_button(ui, format!("{} 90", ctx.t("Remplir de", "Fill with")))
+                    .on_hover_text(ctx.t(
+                        "Recouvre la sélection de `nop`. La longueur ne change pas : \
+                         rien ne se décale.",
+                        "Covers the selection with `nop`s. The length does not change: \
+                         nothing shifts.",
+                    ))
+                    .clicked()
+                {
+                    for o in plage.clone() {
+                        self.touchés.insert(o);
+                    }
+                    self.demande = Some(ReRequest::PatchBytes {
+                        offset: plage.start,
+                        retirés: combien,
+                        bytes: vec![0x90; combien],
+                    });
+                }
+                // INSÉRER : le geste qui sort du cadre, et qui le dit.
+                ui.add_enabled_ui(écrits.as_ref().is_some_and(|b| !b.is_empty()), |ui| {
+                    if framed_button(ui, ctx.t("Insérer", "Insert"))
+                        .on_hover_text(ctx.t(
+                            "Ajoute les octets AVANT la sélection, sans rien retirer. Tout ce \
+                             qui suit se décale, et un exécutable n'y survit presque jamais : \
+                             ses en-têtes désignent alors autre chose. Refusé si le fichier \
+                             ne se relit plus, et rien n'est perdu.",
+                            "Adds the bytes BEFORE the selection, removing nothing. Everything \
+                             after shifts, and an executable hardly ever survives it: its \
+                             headers then point elsewhere. Refused if the file no longer \
+                             loads, and nothing is lost.",
+                        ))
+                        .clicked()
+                        && let Some(bytes) = écrits.clone()
                     {
                         self.demande = Some(ReRequest::PatchBytes {
-                            offset: off,
-                            bytes: vec![b],
+                            offset: plage.start,
+                            retirés: 0,
+                            bytes,
                         });
-                        self.touchés.insert(off);
                     }
                 });
             });
-            if !self.valeur.trim().is_empty() && octet(&self.valeur).is_none() {
+            if !self.valeur.trim().is_empty() && écrits.is_none() {
                 ui.weak(ctx.t(
-                    "Un octet en hexadécimal : de « 0 » à « ff ».",
-                    "One byte in hexadecimal: from \"0\" to \"ff\".",
+                    "Des octets en hexadécimal, par paires : « 90 » ou « 48 31 c0 ».",
+                    "Bytes in hexadecimal, in pairs: \"90\" or \"48 31 c0\".",
                 ));
+            }
+            // CE QUE L'ÉCRITURE FERAIT À LA TAILLE DU FICHIER, dit
+            // AVANT de cliquer. Le refus existe déjà après coup — le
+            // fichier illisible n'est pas chargé —, mais apprendre
+            // après que tout s'est décalé n'est pas apprendre : c'est
+            // essayer.
+            if let Some(bytes) = &écrits
+                && !bytes.is_empty()
+                && bytes.len() != combien
+            {
+                let delta = bytes.len() as isize - combien as isize;
+                ui.colored_label(
+                    visuals.warn_fg_color,
+                    if delta > 0 {
+                        ctx.t(
+                            "« Écrire » ferait grandir le fichier : tout ce qui suit se décale.",
+                            "\"Write\" would grow the file: everything after it shifts.",
+                        )
+                    } else {
+                        ctx.t(
+                            "« Écrire » ferait rétrécir le fichier : tout ce qui suit se décale.",
+                            "\"Write\" would shrink the file: everything after it shifts.",
+                        )
+                    },
+                );
             }
             // La frappe en place : le quartet déjà tapé, en attente du
             // second, et l'indice pour qui ne connaît pas le geste.
@@ -671,7 +1302,10 @@ impl ReModule for HexEditorModule {
                 };
                 ui.weak(format!(
                     "{colonne} — {} ; {geste}, Tab {}",
-                    ctx.t("flèches pour se déplacer", "arrows to move"),
+                    ctx.t(
+                        "flèches pour se déplacer, Maj+flèches pour choisir plusieurs                          octets, Ctrl+A pour tout prendre, Ctrl+C pour emporter, Ctrl+V                          pour rapporter dans le champ",
+                        "arrows to move, Shift+arrows to pick several bytes, Ctrl+A to                          take everything, Ctrl+C to copy, Ctrl+V to bring back into the                          field",
+                    ),
                     ctx.t("pour changer de colonne", "to switch column"),
                 ));
             }
@@ -909,16 +1543,6 @@ mod tests {
         assert_eq!(nombre(""), None);
     }
 
-    #[test]
-    fn un_octet_tient_sur_deux_chiffres_hex() {
-        assert_eq!(octet("90"), Some(0x90));
-        assert_eq!(octet("f"), Some(0x0f));
-        assert_eq!(octet("ff"), Some(0xff));
-        assert_eq!(octet("100"), None); // trois chiffres
-        assert_eq!(octet("gg"), None);
-        assert_eq!(octet(""), None);
-    }
-
     /// Changer d'octet oublie ce qu'on avait touché : un nouveau fichier
     /// n'hérite pas des marques de l'ancien.
     /// L'inspecteur lit les octets dans chaque format, en petit-boutien,
@@ -1071,10 +1695,14 @@ mod tests {
         let mut module = HexEditorModule::default();
         module.touchés.insert(2);
         module.choisi = Some(2);
-        module.page = 256;
+        module.amener = None;
         module.on_binary_loaded(&ctx);
         assert!(module.touchés.is_empty());
         assert_eq!(module.choisi, None);
-        assert_eq!(module.page, 0);
+        assert_eq!(
+            module.amener,
+            Some(0),
+            "un fichier neuf se regarde par son début"
+        );
     }
 }
