@@ -7461,3 +7461,72 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      Le jeu compte maintenant 35 actions, toutes dans la table, toutes
      dans les deux jeux, toutes dans la palette avec leur frappe écrite,
      toutes dans un menu, et toutes dans le manuel.
+
+9.33 [FAIT] « TOUCHE SUIVANTE ATTENDUE » — LESQUELLES ?  (27 octobre 2026)
+--------------------------------------------------------------------------------
+     La barre d'état montre depuis longtemps ce qui a été tapé d'une
+     séquence : « Espace — touche suivante attendue… ». Elle ne dit pas
+     LESQUELLES. C'est l'endroit exact où un outil qui sert à apprendre
+     doit parler : on vient de taper Espace, on ne sait plus ce qui
+     suit, et le seul recours était d'abandonner la séquence pour ouvrir
+     Préférences — c'est-à-dire de renoncer à ce qu'on était en train
+     d'apprendre.
+
+     Un panneau paraît donc en bas à gauche après QUATRE DIXIÈMES DE
+     SECONDE : les touches qui restent, et l'action au bout de chacune.
+     Le délai est ce qui rend la chose supportable à qui sait déjà — des
+     doigts qui tapent `Espace s i` ne voient rien passer. C'est le
+     réglage que which-key a fini par adopter dans Neovim, après l'avoir
+     cherché. Pas un réglage de l'utilisateur, et c'est délibéré : qui
+     connaît ses séquences ne voit jamais ce panneau, qui ne les connaît
+     pas le veut toujours.
+
+     CE QU'IL NE MONTRE PAS : des noms de familles — `p` « les pas »,
+     `v` « voir » —, qui sont pourtant écrits en toutes lettres dans les
+     commentaires qui les ont posées. Ce serait une seconde table à
+     tenir en accord avec la première, et elle mentirait dès le premier
+     raccourci déplacé. Les touches qui restent et l'action au bout ne
+     peuvent pas mentir : elles SONT le jeu.
+
+     TROIS CHOSES APPRISES, et deux viennent d'un contrôle qui refusait
+     de voir son sujet.
+
+     · UNE SURFACE ANCRÉE NE PARAÎT QU'À LA DEUXIÈME IMAGE. egui ne peut
+       pas placer en bas à gauche ce dont il ignore la hauteur : il
+       dessine la surface INVISIBLE une fois pour la mesurer, puis
+       redemande une image. Imperceptible à soixante images par seconde,
+       et fatal à un relevé qui n'en regarde qu'une — le premier essai
+       rendait « rien de peint » pour un panneau qui s'affichait
+       parfaitement.
+
+     · egui NE DÉCOUPE PAS LE CONTENU D'UNE `Area` : son découpage reste
+       celui de l'écran. Le banc isole une fenêtre en comparant le
+       découpage de ses formes à son cadre ; il ne voyait donc RIEN de
+       ce panneau et rendait « n'écrit presque rien », alors qu'il
+       écrivait vingt lignes. C'est le banc qui a tranché, en refusant
+       la scène qu'on venait de lui donner. Le panneau est devenu une
+       `Window` sans titre ni poignée — elle se découpe à elle-même, et
+       redevient mesurable. Elle entre du même coup dans `window_states`,
+       la table qui fait passer devant une fenêtre qui vient de
+       paraître : un invariant l'a exigé, et il avait raison.
+
+     · LES NOMS D'ACTIONS ONDULAIENT. Les restes de séquence font deux
+       touches dans le jeu livré, donc trois caractères à chasse fixe,
+       donc des noms alignés par accident. Un seul raccourci déplacé —
+       `Espace k` au lieu de `Espace c a` — et son nom part 15,66 px à
+       gauche des autres. Une grille à deux colonnes règle la chose pour
+       de bon, et le contrôle pose EXPRÈS ce raccourci d'une touche :
+       un contrôle qui ne mesure que le jeu livré ne mesure qu'une
+       coïncidence.
+
+     Le banc a reçu la scène, et il a fallu lui donner de quoi l'armer :
+     `Dispatcher::arm`, sous `#[cfg(test)]`. Le banc pose une scène en
+     écrivant dans l'application, il n'a pas de clavier — sans cela, ce
+     panneau aurait été le seul écran du programme qu'aucune scène ne
+     puisse atteindre, donc le seul qu'aucun invariant ne mesure.
+
+     La règle du délai est sortie de l'affichage pour être contrôlable :
+     `hint_is_due(Duration)` rend la décision, et le contrôle la lit sans
+     horloge. Un contrôle qui compare deux `Instant` pris à deux lignes
+     d'intervalle passe sur une machine au repos et échoue sur une
+     machine chargée — c'est écrit dans ce fichier depuis le 4 octobre.

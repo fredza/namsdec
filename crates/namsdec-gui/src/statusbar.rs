@@ -397,3 +397,121 @@ fn mode_pill_ui(ui: &mut egui::Ui, theme: &Theme, mode: EditorMode) {
             ui.colored_label(encre_sur(fond, theme), mode.label());
         });
 }
+
+impl NamsdecApp {
+    /// Les suites possibles d'une séquence armée, montrées après un
+    /// temps d'hésitation.
+    ///
+    /// LA BARRE D'ÉTAT DISAIT « touche suivante attendue… » SANS DIRE
+    /// LESQUELLES. C'est l'endroit exact où un outil qui sert à
+    /// apprendre doit parler : on vient de taper `Espace`, on ne sait
+    /// plus ce qui suit, et le seul recours était d'abandonner et
+    /// d'ouvrir Préférences — c'est-à-dire de renoncer à la séquence
+    /// qu'on était en train d'apprendre.
+    ///
+    /// Les touches qui restent, et l'action au bout, lues dans le jeu
+    /// ACTIF : ce qui est montré est ce qui arrivera.
+    ///
+    /// IL PARAÎT UNE IMAGE APRÈS LE DÉLAI, et ce n'est pas un défaut :
+    /// une surface ancrée ne peut pas se placer tant qu'elle ignore sa
+    /// taille, egui la dessine donc invisible la première fois et
+    /// redemande une image. Imperceptible à soixante images par
+    /// seconde ; indispensable à savoir pour la mesurer.
+    ///
+    /// AU-DESSUS DES PANNEAUX DU BAS, et non par-dessus : la hauteur de
+    /// la barre de statut et de la console est relue à l'image, parce
+    /// qu'un décalage en dur couvrirait la barre dès qu'on ouvre la
+    /// console. Un panneau qui recouvre ce qu'on venait de lire est
+    /// pire que pas de panneau du tout.
+    pub(crate) fn leader_hints_ui(&self, ctx: &egui::Context) {
+        let pending = self.dispatcher.pending();
+        if pending.is_empty() {
+            return;
+        }
+        let Some(depuis) = self.leader_since else {
+            return;
+        };
+        let attendu = depuis.elapsed();
+        if !keybindings::hint_is_due(attendu) {
+            // Sans cela, le panneau n'apparaîtrait qu'à la frappe
+            // suivante — c'est-à-dire jamais, puisque c'est elle qu'on
+            // cherche. egui ne repeint pas tout seul.
+            ctx.request_repaint_after(keybindings::LEADER_HINT_DELAY - attendu);
+            return;
+        }
+
+        let suites = keybindings::continuations(&self.keybindings, pending);
+        if suites.is_empty() {
+            return;
+        }
+        let s = strings(self.lang);
+        let fr = self.lang == Lang::Fr;
+        let theme = self.theme;
+
+        // Ce que prennent les panneaux du bas, relu à l'image.
+        let hauteur = |id: &str| {
+            egui::containers::panel::PanelState::load(ctx, egui::Id::new(id))
+                .map(|p| p.outer_rect.height())
+                .unwrap_or(0.0)
+        };
+        let bas = if self.show_statusbar {
+            hauteur("statusbar")
+        } else {
+            0.0
+        } + if self.show_console {
+            hauteur("console")
+        } else {
+            0.0
+        };
+        // UNE FENÊTRE, ET NON UNE SURFACE NUE, bien qu'elle n'ait ni
+        // titre ni poignée. egui ne découpe pas le contenu d'une
+        // `Area` : son découpage reste celui de l'écran. Le banc, qui
+        // isole une fenêtre en comparant le découpage de ses formes à
+        // son cadre, ne voyait donc RIEN de ce panneau — « n'écrit
+        // presque rien », alors qu'il écrivait vingt lignes. Une
+        // fenêtre se découpe à elle-même, et redevient mesurable.
+        egui::Window::new("leader_hints")
+            .id(egui::Id::new("leader_hints"))
+            .title_bar(false)
+            .resizable(false)
+            .collapsible(false)
+            .interactable(false)
+            .frame(egui::Frame::popup(&ctx.style_of(ctx.theme())))
+            .anchor(egui::Align2::LEFT_BOTTOM, egui::vec2(12.0, -(bas + 12.0)))
+            .show(ctx, |ui| {
+                ui.spacing_mut().item_spacing.y = 2.0;
+                // Ce qui a déjà été tapé, en tête : le panneau se lit
+                // seul, sans la barre d'état.
+                ui.colored_label(
+                    theme.accent,
+                    egui::RichText::new(keybindings::keys_display(pending, fr))
+                        .monospace()
+                        .strong(),
+                );
+                ui.separator();
+                // UNE GRILLE, et non deux étiquettes à la suite. Les
+                // restes de séquence n'ont pas tous la même longueur —
+                // `v e` en fait deux, et un raccourci qu'on déplace peut
+                // n'en laisser qu'une —, si bien que les noms d'actions
+                // commençaient chacun où finissait sa touche. Une
+                // colonne qui ondule ne se descend pas des yeux, et
+                // c'est tout ce qu'on demande à ce panneau.
+                egui::Grid::new("leader_hints_grid")
+                    .num_columns(2)
+                    .spacing(egui::vec2(12.0, 2.0))
+                    .show(ui, |ui| {
+                        for (reste, action) in &suites {
+                            // Les touches qui restent, à chasse fixe et
+                            // en accent : c'est ce qu'on va frapper.
+                            ui.colored_label(
+                                theme.accent,
+                                egui::RichText::new(keybindings::keys_display(reste, fr))
+                                    .monospace(),
+                            );
+                            ui.colored_label(theme.text, action_label(s, *action));
+                            ui.end_row();
+                        }
+                    });
+            });
+    }
+}

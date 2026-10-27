@@ -2767,6 +2767,19 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "la notation que l'application emploie elle aussi, dans son tableau, dans ses "
          "infobulles et dans sa barre d'état : il n'y en a qu'une à retenir."),
         ("p",
+         "<b>Quand une séquence est armée et qu'on hésite, namsdec dit quoi taper.</b> On "
+         "tape « Espace », on ne sait plus ce qui suit — et jusqu'ici la barre d'état "
+         "répondait « touche suivante attendue… » sans dire lesquelles, si bien que le seul "
+         "recours était d'abandonner la séquence pour ouvrir Préférences. Un petit panneau "
+         "paraît maintenant en bas à gauche, après un temps d'hésitation de quatre dixièmes "
+         "de seconde : les touches qui restent, et l'action au bout de chacune. Qui connaît "
+         "ses séquences ne le voit jamais passer."),
+        ("p",
+         "Ce panneau lit le <b>jeu actif</b>, et rien d'autre : un raccourci déplacé y "
+         "paraît déplacé. Il ne montre pas des noms de familles — « les pas », « voir » — "
+         "qui seraient une seconde table à tenir en accord avec la première, et qui "
+         "mentiraient dès le premier changement."),
+        ("p",
          "La <b>palette de commandes</b> écrit, à droite de chaque commande, la frappe qui "
          "la déclenche. C'est l'endroit où l'on cherche une action dont on ne connaît pas "
          "le raccourci : c'est donc le seul endroit où l'apprendre au moment où l'on en a "

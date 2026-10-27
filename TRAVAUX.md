@@ -99,6 +99,41 @@ défauts suspectés, c'étaient des questions qu'on n'avait jamais posées.
 
 ---
 
+## 0 quaterdecies. « Touche suivante attendue » — lesquelles ? (A 9.33)
+
+- [x] **Le programme dit enfin quoi taper** — une séquence armée, une
+      hésitation de quatre dixièmes de seconde, et un panneau paraît en
+      bas à gauche : les touches qui restent, et l'action au bout de
+      chacune. La barre d'état disait « touche suivante attendue… » sans
+      dire lesquelles, et le seul recours était d'abandonner la séquence
+      qu'on était en train d'apprendre pour ouvrir Préférences.
+      Lu dans le jeu ACTIF, et pas de noms de familles : une seconde
+      table mentirait dès le premier raccourci déplacé.
+      Quatre contrôles. La partie pure — `continuations` et la règle du
+      délai — se lit sans écran ni horloge. Le reste est de bout en
+      bout : la frappe entre par les évènements, le dispatcher s'arme,
+      et l'on mesure ce qui est peint.
+- [x] **Une fenêtre, et non une surface nue** — egui ne découpe pas le
+      contenu d'une `Area` : son découpage reste celui de l'écran. Le
+      banc, qui isole une fenêtre en comparant le découpage de ses
+      formes à son cadre, ne voyait donc RIEN du panneau — « n'écrit
+      presque rien », alors qu'il écrivait vingt lignes. Une fenêtre se
+      découpe à elle-même, et redevient mesurable.
+      C'est le banc qui l'a dit, en refusant la scène qu'on venait de
+      lui donner.
+- [x] **Une grille, et non deux étiquettes à la suite** — les restes de
+      séquence n'ont pas tous la même longueur, et un raccourci déplacé
+      suffit à en laisser une d'une seule touche. Les noms d'actions
+      partaient alors chacun où finissait sa touche : 15,66 px d'écart,
+      mesurés. Une colonne qui ondule ne se descend pas des yeux, et
+      c'est le seul service que ce panneau rende.
+- [x] **Il ne recouvre jamais les barres du bas** — la hauteur de la
+      barre de statut et de la console est relue à l'image. Un décalage
+      en dur suffisait tant que la console restait fermée ; éprouvé en
+      le remettant, le panneau descend 10 px sous le haut de la barre.
+
+---
+
 ## 0 terdecies. La palette, les raccourcis, et une notation de trop (A 9.28 à 9.30)
 
 - [x] **Le seul raccourci qu'on ne pouvait pas déplacer** — `Ctrl+Maj+P`,

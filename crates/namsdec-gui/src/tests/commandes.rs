@@ -1406,3 +1406,324 @@ fn les_bascules_d_affichage_vont_et_reviennent() {
         );
     }
 }
+
+/// Les suites possibles sont lues dans le jeu actif, et nulle part
+/// ailleurs.
+///
+/// Le panneau pourrait montrer des noms de familles — `p` « les pas »,
+/// `v` « voir » — comme le font les comentaires qui les ont posées. Ce
+/// serait une seconde table à tenir en accord avec la première, et elle
+/// mentirait dès le premier raccourci déplacé. Les touches QUI RESTENT
+/// et l'action au bout ne peuvent pas mentir : elles sont le jeu.
+#[test]
+fn les_suites_possibles_sortent_du_jeu_et_suivent_ce_qu_on_y_change() {
+    use crate::keybindings::{Chord, continuations};
+    use egui::Key;
+
+    let jeu = KeyBindings::preset(keybindings::Preset::Vim);
+
+    // Rien d'armé, rien à montrer.
+    assert!(continuations(&jeu, &[]).is_empty());
+
+    // `Espace v` mène aux vues, et à elles seules.
+    let vues = continuations(&jeu, &[Key::Space, Key::V]);
+    let actions: Vec<Action> = vues.iter().map(|(_, a)| *a).collect();
+    for attendue in [
+        Action::ToggleExplorer,
+        Action::ShowFlow,
+        Action::ShowPreferences,
+        Action::ToggleConsole,
+        Action::ToggleSidebar,
+    ] {
+        assert!(
+            actions.contains(&attendue),
+            "{attendue:?} est sous « Espace v » : {actions:?}"
+        );
+    }
+    // Et rien d'autre : une seule touche reste à taper, et c'est la
+    // bonne.
+    for (reste, action) in &vues {
+        assert_eq!(reste.len(), 1, "{action:?} : il reste {reste:?}");
+        assert_eq!(
+            jeu.map.get(action),
+            Some(&Chord::leader(&[Key::Space, Key::V, reste[0]])),
+            "{action:?} doit s'atteindre par ce qui est montré"
+        );
+    }
+
+    // Une séquence complète n'a pas de suite : elle vient de partir.
+    assert!(continuations(&jeu, &[Key::Y, Key::Y]).is_empty());
+
+    // Et tout cela SUIT ce qu'on déplace : un raccourci changé change
+    // ce que le panneau montre, à l'image suivante.
+    let mut déplacé = jeu.clone();
+    déplacé.map.insert(
+        Action::ToggleCalculator,
+        Chord::leader(&[Key::Space, Key::V, Key::X]),
+    );
+    assert!(
+        continuations(&déplacé, &[Key::Space, Key::V])
+            .iter()
+            .any(|(reste, a)| *a == Action::ToggleCalculator && reste == &[Key::X]),
+        "le panneau montre le jeu, pas une table écrite à côté"
+    );
+
+    // La règle du délai se lit sans horloge.
+    assert!(!keybindings::hint_is_due(
+        keybindings::LEADER_HINT_DELAY - std::time::Duration::from_millis(1)
+    ));
+    assert!(keybindings::hint_is_due(keybindings::LEADER_HINT_DELAY));
+}
+
+/// Quand une séquence est armée et qu'on hésite, le programme dit quoi
+/// taper.
+///
+/// La barre d'état disait « touche suivante attendue… » sans dire
+/// LESQUELLES. C'est l'endroit exact où un outil qui sert à apprendre
+/// doit parler : on vient de taper `Espace`, on ne sait plus ce qui
+/// suit, et le seul recours était d'abandonner la séquence pour ouvrir
+/// Préférences.
+///
+/// Le relevé est de bout en bout : la frappe entre par les évènements,
+/// le dispatcher s'arme, et l'on mesure ce qui est PEINT. La date
+/// d'armement est reculée d'une seconde pleine — on ne compare pas deux
+/// instants pris à deux lignes d'intervalle, ce qui passerait ici et
+/// tomberait sur une machine chargée.
+#[test]
+fn une_sequence_armee_dit_ce_qu_on_peut_taper_ensuite() {
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp::default();
+    app.apply_theme(&ctx);
+    let s = strings(Lang::Fr);
+    let entrée = |events: Vec<egui::Event>| egui::RawInput {
+        events,
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1400.0, 900.0),
+        )),
+        ..Default::default()
+    };
+    let frappe = |key| {
+        vec![
+            egui::Event::Key {
+                key,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            },
+            egui::Event::Key {
+                key,
+                physical_key: None,
+                pressed: false,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            },
+        ]
+    };
+
+    // Espace arme la séquence — par le vrai chemin, celui des touches.
+    let mut sortie = ctx.run_ui(entrée(frappe(egui::Key::Space)), |ui| app.draw(ui));
+    sortie.textures_delta.clear();
+    assert_eq!(
+        app.dispatcher.pending(),
+        [egui::Key::Space],
+        "Espace doit armer la séquence"
+    );
+
+    // Juste armée, rien ne doit paraître : qui tape vite ne voit rien
+    // passer.
+    // TROIS IMAGES, et c'est une règle d'egui qu'il vaut mieux
+    // connaître : une surface ancrée ne peut pas se placer tant qu'elle
+    // ignore sa taille — elle doit se mesurer d'abord. egui la dessine
+    // donc INVISIBLE la première fois et redemande une image. Mesurer
+    // une seule image ne montre rien, et ce n'est pas un défaut.
+    let peint = |app: &mut NamsdecApp, ctx: &egui::Context| -> Vec<String> {
+        let mut textes = Vec::new();
+        for _ in 0..3 {
+            textes.clear();
+            let mut sortie = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(1400.0, 900.0),
+                    )),
+                    ..Default::default()
+                },
+                |ui| app.draw(ui),
+            );
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                    textes.push(t.galley.text().to_owned());
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+        textes
+    };
+
+    // Puis on recule l'armement d'une seconde pleine : l'hésitation est
+    // franche, et la mesure ne dépend pas de la vitesse de la machine.
+    app.leader_since = Some(std::time::Instant::now() - std::time::Duration::from_secs(1));
+    let après = peint(&mut app, &ctx);
+
+    // Chaque suite de `Espace` est annoncée, touches ET action.
+    let suites = keybindings::continuations(&app.keybindings, &[egui::Key::Space]);
+    assert!(
+        suites.len() > 4,
+        "le jeu vim a plusieurs familles sous Espace : {}",
+        suites.len()
+    );
+    for (reste, action) in &suites {
+        let touches = keybindings::keys_display(reste, true);
+        assert!(
+            après.iter().any(|t| t == &touches),
+            "« {touches} » doit être montré : {après:?}"
+        );
+        assert!(
+            après.iter().any(|t| t == action_label(s, *action)),
+            "« {} » doit être nommée en face de « {touches} »",
+            action_label(s, *action)
+        );
+    }
+}
+
+/// Dans le panneau des suites, les noms d'actions s'alignent en
+/// colonne.
+///
+/// Les restes de séquence n'ont pas tous la même longueur — et un
+/// raccourci qu'on déplace peut n'en laisser qu'une touche là où son
+/// voisin en laisse deux. Posés à la suite, les noms commençaient
+/// chacun où finissait sa touche, et une colonne qui ondule ne se
+/// descend pas des yeux. C'est le seul service que ce panneau rende :
+/// se lire d'un coup d'œil.
+#[test]
+fn les_noms_d_actions_du_panneau_des_suites_s_alignent() {
+    use crate::keybindings::Chord;
+
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp::default();
+    app.apply_theme(&ctx);
+    // Un reste d'UNE touche à côté de restes de deux : le cas qui
+    // disloque la colonne, et il suffit d'un raccourci déplacé pour
+    // l'obtenir.
+    app.keybindings.map.insert(
+        Action::ToggleCalculator,
+        Chord::leader(&[egui::Key::Space, egui::Key::K]),
+    );
+    app.dispatcher.arm(&[egui::Key::Space]);
+    app.leader_since = Some(std::time::Instant::now() - std::time::Duration::from_secs(1));
+
+    let (cadre, lignes) = ce_qui_est_écrit_sur(
+        &ctx,
+        &mut app,
+        Some("leader_hints"),
+        3,
+        egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1400.0, 1000.0),
+            )),
+            ..Default::default()
+        },
+    );
+    cadre.expect("le panneau des suites est affiché");
+    let s = strings(Lang::Fr);
+    let suites = keybindings::continuations(&app.keybindings, &[egui::Key::Space]);
+    assert!(
+        suites.iter().any(|(reste, _)| reste.len() == 1),
+        "la scène doit contenir le cas qui disloque : un reste d'une touche"
+    );
+
+    let mut gauches: Vec<(String, f32)> = Vec::new();
+    for (_, action) in &suites {
+        let nom = action_label(s, *action);
+        let posé = lignes
+            .iter()
+            .find(|(t, _)| t == nom)
+            .unwrap_or_else(|| panic!("« {nom} » doit être peint dans le panneau"));
+        gauches.push((nom.to_owned(), posé.1.left()));
+    }
+    let premier = gauches[0].1;
+    let fautifs: Vec<&(String, f32)> = gauches
+        .iter()
+        .filter(|(_, x)| (x - premier).abs() > 0.5)
+        .collect();
+    assert!(
+        fautifs.is_empty(),
+        "les noms d'actions doivent partir de la même abscisse ({premier:.2}) : \
+         {fautifs:?}"
+    );
+}
+
+/// Le panneau des suites ne recouvre jamais la barre d'état ni la
+/// console.
+///
+/// Il s'ancre en bas à gauche, et c'est là que vivent les deux panneaux
+/// qui disent où l'on en est. Un décalage en dur suffisait tant que la
+/// console restait fermée ; dès qu'on l'ouvre, le panneau se poserait
+/// par-dessus ce qu'on venait d'y lire. La hauteur est donc relue à
+/// l'image.
+#[test]
+fn le_panneau_des_suites_reste_au_dessus_des_barres_du_bas() {
+    for avec_console in [false, true] {
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp {
+            show_console: avec_console,
+            ..Default::default()
+        };
+        app.apply_theme(&ctx);
+        let entrée = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1400.0, 900.0),
+            )),
+            ..Default::default()
+        };
+        let mut sortie = ctx.run_ui(
+            egui::RawInput {
+                events: vec![egui::Event::Key {
+                    key: egui::Key::Space,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::NONE,
+                }],
+                ..entrée.clone()
+            },
+            |ui| app.draw(ui),
+        );
+        sortie.textures_delta.clear();
+        app.leader_since = Some(std::time::Instant::now() - std::time::Duration::from_secs(1));
+
+        // Trois images : les panneaux du bas prennent leur hauteur à la
+        // première, le panneau la lit à la suivante.
+        let mut cadre = None;
+        let mut barres = Vec::new();
+        for _ in 0..3 {
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            sortie.textures_delta.clear();
+            cadre = egui::AreaState::load(&ctx, egui::Id::new("leader_hints")).map(|a| a.rect());
+            barres.clear();
+            for id in ["statusbar", "console"] {
+                if let Some(p) = egui::containers::panel::PanelState::load(&ctx, egui::Id::new(id))
+                {
+                    barres.push((id, p.outer_rect.height()));
+                }
+            }
+        }
+        let cadre = cadre.expect("le panneau des suites est affiché");
+        let pris: f32 = barres
+            .iter()
+            .filter(|(id, _)| *id == "statusbar" || avec_console)
+            .map(|(_, h)| h)
+            .sum();
+        let haut_des_barres = 900.0 - pris;
+        assert!(
+            cadre.bottom() <= haut_des_barres + 0.5,
+            "console {avec_console} : le panneau descend à {:.2} px, les \
+             barres commencent à {haut_des_barres:.2} ({barres:?})",
+            cadre.bottom()
+        );
+    }
+}

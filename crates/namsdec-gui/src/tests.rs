@@ -882,6 +882,15 @@ fn fenêtres_ouvrables() -> Vec<Ouverture> {
         ("palette de commandes", "command_palette", |app| {
             app.command_palette = Some(CommandPalette::default());
         }),
+        // Les suites possibles d'une séquence armée : vingt lignes, et
+        // la seule surface du programme qui n'apparaisse qu'au clavier.
+        // La date d'armement est reculée d'une seconde pleine — le
+        // panneau ne se montre qu'après une hésitation, et une scène ne
+        // doit pas dépendre de la vitesse de la machine.
+        ("suites d'une séquence", "leader_hints", |app| {
+            app.dispatcher.arm(&[egui::Key::Space]);
+            app.leader_since = Some(std::time::Instant::now() - std::time::Duration::from_secs(1));
+        }),
     ]
 }
 

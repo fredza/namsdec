@@ -949,6 +949,61 @@ impl KeyBindings {
     }
 }
 
+/// Le temps qu'on laisse avant de montrer les suites possibles d'une
+/// séquence armée.
+///
+/// Quatre cents millisecondes : assez pour que des doigts qui savent
+/// tapent `Espace s i` sans rien voir passer, assez court pour que
+/// l'hésitation soit secourue avant qu'on renonce. C'est le réglage que
+/// which-key a fini par adopter dans Neovim, après l'avoir cherché.
+///
+/// Pas un réglage de l'utilisateur, et c'est délibéré : il n'y a rien à
+/// régler. Qui connaît ses séquences ne voit jamais ce panneau, qui ne
+/// les connaît pas le veut toujours.
+pub const LEADER_HINT_DELAY: std::time::Duration = std::time::Duration::from_millis(400);
+
+/// A-t-on assez hésité pour qu'on montre les suites ?
+///
+/// La règle est sortie de l'affichage pour qu'un contrôle puisse la
+/// lire sans horloge : un contrôle qui compare deux `Instant` pris à
+/// deux lignes d'intervalle passe sur une machine au repos et échoue
+/// sur une machine chargée. Celui-ci reçoit la durée et rend la
+/// décision.
+pub fn hint_is_due(waited: std::time::Duration) -> bool {
+    waited >= LEADER_HINT_DELAY
+}
+
+/// Ce qu'on peut encore taper, une fois `pending` frappé.
+///
+/// Rendu : les touches QUI RESTENT, et l'action au bout. Et non des
+/// noms de familles — `p` « les pas », `v` « voir » —, qui seraient une
+/// seconde table à tenir en accord avec la première et qui mentiraient
+/// dès le premier raccourci déplacé. Ici tout est lu dans le jeu actif :
+/// ce que le panneau montre est ce qui arrivera.
+///
+/// Trié sur les touches restantes, pour que la liste ne change pas
+/// d'ordre d'une image à l'autre.
+pub fn continuations(bindings: &KeyBindings, pending: &[Key]) -> Vec<(Vec<Key>, Action)> {
+    if pending.is_empty() {
+        return Vec::new();
+    }
+    let mut suites: Vec<(Vec<Key>, Action)> = bindings
+        .map
+        .iter()
+        .filter_map(|(&action, chord)| match chord {
+            Chord::Leader(sequence) if sequence.starts_with(pending) => {
+                let reste = sequence.as_slice()[pending.len()..].to_vec();
+                // Une séquence déjà complète n'a pas de suite : elle
+                // vient de partir.
+                (!reste.is_empty()).then_some((reste, action))
+            }
+            _ => None,
+        })
+        .collect();
+    suites.sort_by(|(a, _), (b, _)| a.iter().map(|k| k.name()).cmp(b.iter().map(|k| k.name())));
+    suites
+}
+
 /// Mode choisi pendant la capture d'un nouveau raccourci dans Préférences.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum RebindMode {
@@ -1158,6 +1213,18 @@ impl Dispatcher {
                 )
             });
         });
+    }
+
+    /// Arme une séquence directement, pour les contrôles.
+    ///
+    /// Le banc pose une scène en écrivant dans l'application ; il n'a
+    /// pas de clavier. Sans cela, le panneau des suites possibles —
+    /// une surface de vingt lignes — serait le seul écran du programme
+    /// qu'aucune scène ne puisse atteindre, et donc le seul qu'aucun
+    /// invariant ne mesure.
+    #[cfg(test)]
+    pub fn arm(&mut self, keys: &[Key]) {
+        self.pending = keys.to_vec();
     }
 
     /// Tout ce qui a été tapé de la séquence en cours, pour l'afficher —

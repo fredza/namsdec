@@ -1046,6 +1046,13 @@ struct NamsdecApp {
     /// sauvegarde.
     keymap_checked: Option<std::time::Instant>,
     dispatcher: Dispatcher,
+    /// Depuis quand une séquence est armée, pour ne montrer les suites
+    /// possibles qu'après un temps d'hésitation (`LEADER_HINT_DELAY`).
+    ///
+    /// Remis à zéro dès que la séquence se termine ou s'abandonne : le
+    /// panneau ne doit pas reparaître instantanément à la séquence
+    /// suivante sous prétexte qu'on a hésité à la précédente.
+    leader_since: Option<std::time::Instant>,
     rebinding: Option<Rebinding>,
     running: bool,
     run_steps_taken: u64,
@@ -2132,6 +2139,7 @@ impl Default for NamsdecApp {
             keymap_mtime: None,
             keymap_checked: None,
             dispatcher: Dispatcher::default(),
+            leader_since: None,
             rebinding: None,
             running: false,
             run_steps_taken: 0,
@@ -2668,7 +2676,7 @@ impl NamsdecApp {
     /// ajouter une fenêtre sans y penser reviendrait à réintroduire le
     /// défaut sans le voir. Les noms sont les identifiants qu'on passe à
     /// `egui::Window::id`, lesquels ne changent pas avec la langue.
-    fn window_states(&self) -> [(&'static str, bool); 19] {
+    fn window_states(&self) -> [(&'static str, bool); 20] {
         [
             ("preferences_window", self.show_preferences),
             (ABOUT_WINDOW, self.show_about),
@@ -2695,6 +2703,12 @@ impl NamsdecApp {
             ("command_palette", self.command_palette.is_some()),
             (INPUT_DIALOG, self.show_input_dialog),
             (PATCHES_WINDOW, self.show_patches),
+            // Les suites d'une séquence armée. Elle n'a ni titre ni
+            // poignée, mais c'est bien une fenêtre — et elle doit
+            // passer devant en paraissant, comme les autres : un
+            // panneau qui sort sous une fenêtre ouverte ne dit rien à
+            // personne.
+            ("leader_hints", !self.dispatcher.pending().is_empty()),
         ]
     }
 
@@ -3448,7 +3462,19 @@ impl NamsdecApp {
             if let Some(action) = self.dispatcher.poll(&ctx, &self.keybindings, text_focused) {
                 self.dispatch(action);
             }
+            // Depuis quand on attend la touche suivante. La date est
+            // posée à l'armement et NON remise à chaque image : c'est
+            // elle qui mesure l'hésitation.
+            if self.dispatcher.pending().is_empty() {
+                self.leader_since = None;
+            } else {
+                self.leader_since.get_or_insert_with(Instant::now);
+            }
         }
+
+        // Après les panneaux : le relevé de leur hauteur a besoin
+        // qu'ils aient été posés.
+        self.leader_hints_ui(&ctx);
 
         self.guard_close(&ctx);
         // Accordée : on repasse la demande au gestionnaire de fenêtres,
